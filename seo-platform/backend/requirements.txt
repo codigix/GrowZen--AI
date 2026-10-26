@@ -1,0 +1,22 @@
+# Version ranges; exact tested versions are in requirements.lock (pip freeze).
+# Web API
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+pydantic>=2.11,<3
+pydantic-settings>=2.9,<3
+# Database (PostgreSQL)
+SQLAlchemy>=2.0.40,<2.1
+alembic>=1.15,<2
+psycopg[binary]>=3.2.10,<4
+# Auth, security
+PyJWT>=2.10,<3
+cryptography>=44
+# Outbound HTTP, crawling, AI
+httpx>=0.28,<1
+beautifulsoup4>=4.13,<5
+openai>=1.78,<3
+# Jobs and reports
+APScheduler>=3.11,<4
+reportlab>=4.4,<5
+# Tests
+pytest>=8.3
