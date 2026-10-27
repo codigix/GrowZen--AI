@@ -1,11 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Download, Search, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { Card, Button, Badge, useToast } from './SeoUi';
+import { pathOf, LEVEL_ORDER, SEVERITY_TONE } from './siteUtils';
 
 /** Every crawled page with its checks: sortable, searchable, expandable rows, CSV export. */
 
-const LEVEL_ORDER = { critical: 0, serious: 1, warning: 2, info: 3 };
-const pathOf = (u) => { try { const p = new URL(u); return (p.pathname || '/') + p.search; } catch (e) { return u; } };
 const worst = (issues) => issues.reduce((w, i) => (LEVEL_ORDER[i.level] < LEVEL_ORDER[w] ? i.level : w), 'info');
 
 /** Each check the crawler applies to a page, with the same thresholds as the backend. */
@@ -26,7 +25,6 @@ function pageChecks(p) {
   ];
 }
 
-const SEVERITY_TONE = { critical: 'text-red-700 bg-red-50 ring-red-200', serious: 'text-orange-700 bg-orange-50 ring-orange-200', warning: 'text-amber-700 bg-amber-50 ring-amber-200', info: 'text-slate-600 bg-slate-50 ring-slate-200' };
 
 function Check({ ok, soft }) {
   if (ok) return <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />;

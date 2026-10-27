@@ -28,7 +28,7 @@ const OPEN = {
 };
 const ROLE = { PRIMARY_OWNER: 'Primary owner', OWNER: 'Owner', MANAGER: 'Manager', SITE_MANAGER: 'Site manager' };
 const NEEDS_ACTION = new Set(['pending', 'unverified', 'suspended', 'disabled', 'conflict']);
-const FREE_MAIL = /@(gmail|googlemail|yahoo|outlook|hotmail|live|icloud|rediffmail|rediff|aol|proton|zoho)\./i;
+export const FREE_MAIL = /@(gmail|googlemail|yahoo|outlook|hotmail|live|icloud|rediffmail|rediff|aol|proton|zoho)\./i;
 
 export function VerifyPill({ state }) {
   const v = VERIFY[state] || VERIFY.unknown;

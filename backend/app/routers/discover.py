@@ -1,7 +1,6 @@
 """Find a business from an email address (public website + Google Maps), then add and audit it."""
 import re
 from datetime import datetime
-from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -16,6 +15,7 @@ from ..schemas import DiscoverImportIn, DiscoverIn, SuggestionIn
 from ..serialize import row
 from ..services import agent, audits, discovery, schedules, suggest
 from ..services.activity import log
+from ..services.match import phone_digits as _digits, site_domain as _domain
 
 router = APIRouter(prefix="/discover", tags=["discover"])
 
@@ -70,14 +70,6 @@ def reverse_geocode(lat: float, lng: float, _: User = Depends(current_user)):
         raise HTTPException(400, str(exc)) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(502, f"OpenStreetMap did not answer: {exc}") from exc
-
-
-def _digits(s: str | None) -> str:
-    return re.sub(r"\D", "", s or "")[-10:]
-
-
-def _domain(url: str | None) -> str:
-    return urlparse(url if (url or "").startswith("http") else f"https://{url}").netloc.removeprefix("www.") if url else ""
 
 
 def _existing(db: Session, c: dict) -> Business | None:

@@ -67,7 +67,7 @@ Every URL is checked for SSRF before it is queued and again before it runs. It m
 ## Run it
 
 ```bash
-cd seo-platform/backend
+cd backend
 python -m venv .venv && .venv/Scripts/activate      # Windows (Linux/macOS: source .venv/bin/activate)
 pip install -r requirements.lock                    # exact tested versions (requirements.txt = ranges)
 cp .env.example .env                                # then fill in SECRET_KEY, ADMIN_EMAIL, ADMIN_PASSWORD

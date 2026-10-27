@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Copy, Check, ExternalLink, Wrench, Sparkles, TrendingUp, Clock, FileCode, Download, RotateCw } from 'lucide-react';
 import { Card, Button } from './SeoUi';
+import { pathOf, LEVEL_ORDER, SEVERITY_TONE as TONE } from './siteUtils';
 
 /**
  * Improvements for the on-page screen: every audit issue grouped by kind across pages, ranked by
@@ -12,11 +13,8 @@ import { Card, Button } from './SeoUi';
  */
 
 const WEIGHT = { critical: 12, serious: 6, warning: 2, info: 0.5 };
-const LEVEL_ORDER = { critical: 0, serious: 1, warning: 2, info: 3 };
-const TONE = { critical: 'text-red-700 bg-red-50 ring-red-200', serious: 'text-orange-700 bg-orange-50 ring-orange-200', warning: 'text-amber-700 bg-amber-50 ring-amber-200', info: 'text-slate-600 bg-slate-50 ring-slate-200' };
 const PAGE_LEVEL = new Set(['http_error', 'javascript_only', 'noindex', 'missing_title', 'title_length', 'missing_meta_description', 'h1_count', 'thin_content', 'missing_alt', 'no_viewport']);
 
-const pathOf = (u) => { try { const p = new URL(u); return (p.pathname || '/') + p.search; } catch (e) { return u; } };
 const domainOf = (u) => { try { return new URL(u).origin; } catch (e) { return ''; } };
 const clip = (s, n) => (s.length <= n ? s : `${s.slice(0, n - 1).replace(/\s+\S*$/, '')}…`);
 const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');

@@ -3,7 +3,7 @@
 A standalone app for running local SEO for clients. You paste or forward an onboarding email, or connect the owner's Google account. The platform then finds the business, audits it, plans the work and keeps it running on a schedule. It is completely separate from the CRM: it has its own code, database, users and processes.
 
 ```
-seo-platform/
+GrowZen--AI/
   backend/     Python FastAPI API + PostgreSQL (SQLite for local dev) + scheduler   → port 8100
   frontend/    React (Vite + Tailwind) web app with every SEO page                  → port 3100
 ```
@@ -13,7 +13,7 @@ seo-platform/
 **Backend: terminal 1**
 
 ```bash
-cd seo-platform/backend
+cd backend
 python -m venv .venv
 .venv\Scripts\activate                 # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.lock
@@ -27,7 +27,7 @@ API docs: http://localhost:8100/docs
 **Frontend: terminal 2**
 
 ```bash
-cd seo-platform/frontend
+cd frontend
 npm install
 npm run dev
 ```
@@ -65,7 +65,7 @@ The frontend has one setting, `VITE_API_URL` (in `frontend/.env`). Its default i
 ## Tests
 
 ```bash
-cd seo-platform/backend
+cd backend
 pytest -q
 ```
 

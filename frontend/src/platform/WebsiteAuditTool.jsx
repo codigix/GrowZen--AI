@@ -8,6 +8,7 @@ import { Card, Button, Badge, ScoreRing, inputCls, ErrorNote, useToast, useActio
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 import Improvements from './OnPageImprovements';
 import { PagesCard } from './SitePages';
+import { pathOnly as pathOf, hostOf, LEVEL_ORDER, SEVERITY_TONE as TONE } from './siteUtils';
 import LighthouseDetails from './LighthouseDetails';
 
 /**
@@ -17,8 +18,6 @@ import LighthouseDetails from './LighthouseDetails';
  */
 
 const LEVELS = ['critical', 'serious', 'warning', 'info'];
-const LEVEL_ORDER = { critical: 0, serious: 1, warning: 2, info: 3 };
-const TONE = { critical: 'text-red-700 bg-red-50 ring-red-200', serious: 'text-orange-700 bg-orange-50 ring-orange-200', warning: 'text-amber-700 bg-amber-50 ring-amber-200', info: 'text-slate-600 bg-slate-50 ring-slate-200' };
 const lhLevel = (s) => (s >= 90 ? 'good' : s >= 50 ? 'warning' : 'critical');
 const lhWord = (s) => (s >= 90 ? 'Good' : s >= 50 ? 'Needs work' : 'Poor');
 const LH_TEXT = { good: 'text-emerald-700', warning: 'text-amber-700', critical: 'text-red-600' };
@@ -49,8 +48,6 @@ const normalise = (raw) => {
     return '';
   }
 };
-const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u; } };
-const pathOf = (u) => { try { return new URL(u).pathname || '/'; } catch (e) { return u; } };
 
 /** A name for suggestions on sites that aren't a saved business: the home page title's brand part, else the domain. */
 function siteBrand(target, pages) {

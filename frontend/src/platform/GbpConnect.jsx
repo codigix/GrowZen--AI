@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Mail, ShieldCheck, Loader2, Plug, MapPin, Plus, CheckCircle2, ArrowRight, Search, Globe, Star, AtSign } from 'lucide-react';
+import { Mail, ShieldCheck, Loader2, Plug, MapPin, Plus, ArrowRight, Search, Globe, Star, AtSign } from 'lucide-react';
 import { Modal, Button, StatusPill, Badge, Card, Field, inputCls, areaCls, ErrorNote, useAction, refreshBusinesses } from './SeoUi';
 import { api, useApi } from './seoApi';
-import { VerifyPill } from './GbpAccounts';
+import { VerifyPill, FREE_MAIL } from './GbpAccounts';
 
 /**
  * Adding businesses (SEO backend):
@@ -81,7 +81,7 @@ function FindByEmail({ onAdded }) {
   const [q, setQ] = useState({ email: '', name: '', city: '', plan: 'Starter' });
   const [res, setRes] = useState(null);
   const [busy, error, run] = useAction();
-  const free = /@(gmail|googlemail|yahoo|outlook|hotmail|live|icloud|rediffmail|rediff|aol|proton|zoho)\./i.test(q.email);
+  const free = FREE_MAIL.test(q.email);
   const find = () => run('find', async () => setRes(await api('/discover', { method: 'POST', body: { email: q.email.trim(), name: q.name, city: q.city } })));
   const add = (c, i) => run(`add${i}`, async () => {
     const b = await api('/discover/import', { method: 'POST', body: { email: q.email.trim(), candidate: c, plan: q.plan } });
@@ -216,11 +216,5 @@ export function ConnectModal({ open, onClose, onAdded, initialMode = 'find' }) {
       )}
       <ErrorNote>{error}</ErrorNote>
     </Modal>
-  );
-}
-
-export function ImportDone({ businesses }) {
-  return (
-    <div className="flex items-center gap-2 text-[13px] text-emerald-800"><CheckCircle2 size={16} /> Added {businesses.length}: {businesses.map(b => b.name).join(', ')}</div>
   );
 }

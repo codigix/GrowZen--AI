@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Download, Loader2, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, XCircle, Gauge, Play, Info } from 'lucide-react';
 import { Card, Button, Tabs, ErrorNote, useToast, useAction } from './SeoUi';
 import { api, useApi, usePoll } from './seoApi';
+import { pathOf, hostOf } from './siteUtils';
 
 /**
  * The full Google Lighthouse report inside the audit report: every category's audits (failed,
@@ -26,8 +27,6 @@ const BUCKETS = [
 ];
 const ACTIVE = ['queued', 'running'];
 const plain = (md) => String(md || '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/`/g, '');
-const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u; } };
-const pathOf = (u) => { try { const p = new URL(u); return (p.pathname || '/') + p.search; } catch (e) { return u; } };
 const ms = (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`);
 const kb = (v) => `${Math.round(v / 1024)} KiB`;
 const itemText = (it) => it?.url || it?.node?.snippet || it?.source?.url || it?.label || it?.groupLabel || it?.entity || JSON.stringify(it).slice(0, 160);

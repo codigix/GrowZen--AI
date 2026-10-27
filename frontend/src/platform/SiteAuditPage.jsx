@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Copy, ExternalLink, Check, ScanSearch, FileBarChart, Braces, CheckCircle2, XCircle } from 'lucide-react';
 import { SeoShell, Card, Button, useToast } from './SeoUi';
 import { useSiteAudit, AuditStep, ReportStep } from './WebsiteAuditTool';
+import { pathOnly as pathOf } from './siteUtils';
 
 const BUSINESS_TYPES = /LocalBusiness|Organization|Dentist|Clinic|Physician|Hospital|Restaurant|Store|Cafe|Hotel|Salon|Gym|Agency/i;
 
@@ -25,7 +26,6 @@ function SchemaStep({ b, report }) {
   const found = {};
   pages.forEach(p => (p.schema_types || []).forEach(t => { (found[t] = found[t] || []).push(p.url); }));
   const hasBusiness = Object.keys(found).some(t => BUSINESS_TYPES.test(t));
-  const pathOf = (u) => { try { return new URL(u).pathname || '/'; } catch (e) { return u; } };
 
   return (
     <div className="space-y-5">

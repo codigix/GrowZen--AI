@@ -4,10 +4,8 @@ Steps (progress saved on the email so the UI can show it live):
   extract -> profile -> gbp_match -> audits -> plan -> report -> schedule -> notify
 If required details are missing, the AI asks the sender instead of guessing (status needs_info).
 """
-import re
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlparse
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,6 +13,7 @@ from sqlalchemy.orm import Session
 from ..models import Business, GoogleConnection, IntakeEmail
 from . import agent, audits, extraction, gbp, reports, schedules
 from .activity import log
+from .match import phone_digits as _digits, site_domain as _domain
 from .notify import send_email
 
 STEPS = [
@@ -27,14 +26,6 @@ STEPS = [
     ("schedule", "Schedule created for the plan"),
     ("notify", "Team and client notified"),
 ]
-
-
-def _digits(s: str | None) -> str:
-    return re.sub(r"\D", "", s or "")[-10:]
-
-
-def _domain(url: str | None) -> str:
-    return urlparse(url if (url or "").startswith("http") else f"https://{url}").netloc.removeprefix("www.") if url else ""
 
 
 def _step(db: Session, em: IntakeEmail, key: str, status: str, note: str = "") -> None:

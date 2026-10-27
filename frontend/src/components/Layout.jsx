@@ -136,15 +136,15 @@ export default function Layout({ user, onLogout }) {
       >
         {/* Brand */}
         <div className={`h-16 shrink-0 flex items-center border-b border-slate-200 ${rail ? 'justify-center px-2' : 'justify-between px-4'}`}>
-          <NavLink to="/dashboard" className="flex items-center gap-2.5 min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" title="GrowZen AI">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500/20 to-cyan-500/10 ring-1 ring-inset ring-emerald-400/25 p-1.5 flex items-center justify-center shrink-0">
-              <img src="/growzen-icon.png" alt="GrowZen" className="w-full h-full object-contain" />
+          <NavLink to="/dashboard" className="flex items-center gap-2.5 min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" title="Bevisiby AI">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500/15 via-cyan-500/10 to-teal-500/15 ring-1 ring-inset ring-blue-500/20 p-1 flex items-center justify-center shrink-0">
+              <img src="/bevisiby-icon.png" alt="Bevisiby" className="w-full h-full object-contain" />
             </div>
             {!rail && (
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-slate-900 font-bold text-[15px] tracking-tight font-display leading-tight">
-                  GrowZen
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-emerald-400 to-teal-300 text-slate-950 tracking-wider">AI</span>
+                  Bevisiby
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-blue-600 to-teal-500 text-white tracking-wider">AI</span>
                 </div>
                 <p className="text-[11px] text-slate-500 leading-tight truncate">Autonomous Local SEO</p>
               </div>
@@ -219,9 +219,9 @@ export default function Layout({ user, onLogout }) {
               <Menu size={20} />
             </button>
             <div className="flex items-center gap-2">
-              <img src="/growzen-icon.png" alt="GrowZen" className="w-6 h-6 object-contain" />
-              <span className="font-bold text-[15px] text-slate-900 font-display">GrowZen</span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-emerald-400 to-teal-300 text-slate-950 tracking-wider">AI</span>
+              <img src="/bevisiby-icon.png" alt="Bevisiby" className="w-7 h-7 object-contain" />
+              <span className="font-bold text-[15px] text-slate-900 font-display">Bevisiby</span>
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-blue-600 to-teal-500 text-white tracking-wider">AI</span>
             </div>
           </div>
           <button onClick={onLogout} className="text-[12px] font-medium text-slate-500 hover:text-slate-900 cursor-pointer">Sign out</button>

@@ -4,7 +4,7 @@ import { SeoShell, Card, Tabs, StatusPill, Badge, useToast } from './SeoUi';
 import { useApi, fmtDateTime, SEO_API } from './seoApi';
 import { PLANS } from './seoMock';
 
-// What each backend setting switches on (names match seo-platform/backend/.env).
+// What each backend setting switches on (names match backend/.env).
 const SOURCES = [
   ['ai', 'AI (extraction, replies, posts, reports)', 'DEEPSEEK_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY + AI_PROVIDER', s => s.ai.configured, s => s.ai.provider],
   ['google_oauth', 'Google sign-in for Business Profiles', 'GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (Business Profile API approved)', s => s.google_oauth],
@@ -28,7 +28,7 @@ function Connections() {
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'connections', label: 'Data sources' }, { id: 'google', label: 'Google accounts' }, { id: 'plans', label: 'Plans' }, { id: 'rules', label: 'Safety rules' }]} />
 
       {tab === 'connections' && (
-        <Card title="What the SEO backend is connected to" subtitle={`Set in seo-platform/backend/.env · API ${SEO_API}`}>
+        <Card title="What the SEO backend is connected to" subtitle={`Set in backend/.env · API ${SEO_API}`}>
           {!s ? (status.error ? <div className="text-[13px] text-red-700">{status.error.message}</div> : <Loader2 size={16} className="animate-spin text-gray-400" />) : (
             <div className="divide-y divide-gray-100">
               {SOURCES.map(([id, name, env, on, extra]) => (

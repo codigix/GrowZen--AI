@@ -22,6 +22,8 @@ from bs4 import BeautifulSoup
 
 from ..config import get_settings
 from .net import site_client
+from .crawler import renders_with_javascript
+from .match import phone_digits as _digits
 
 FREE_MAIL = {"gmail.com", "googlemail.com", "yahoo.com", "yahoo.in", "yahoo.co.in", "outlook.com", "hotmail.com", "live.com", "msn.com",
              "icloud.com", "me.com", "rediffmail.com", "rediff.com", "aol.com", "protonmail.com", "proton.me", "zoho.com", "zohomail.in", "gmx.com", "yandex.com"}
@@ -45,14 +47,6 @@ PIN_RE = re.compile(r"\b[1-9]\d{5}\b")
 LOCALBUSINESS_HINT = re.compile(r"LocalBusiness|Organization|Store|Clinic|Dentist|Physician|Restaurant|Salon|Gym|Hotel|Service|Contractor|School", re.I)
 
 
-APP_ROOT = re.compile(r'<div[^>]+id=["\'](root|app|__next|__nuxt)["\']', re.I)
-
-
-def renders_with_javascript(html: str, word_count: int) -> bool:
-    """A single-page app: the raw HTML is an empty shell filled in by JavaScript."""
-    return word_count < 60 and bool(APP_ROOT.search(html or ""))
-
-
 class DiscoveryError(RuntimeError):
     pass
 
@@ -70,10 +64,6 @@ def website_domain(url: str) -> str:
     if not re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", host or ""):
         raise DiscoveryError("That doesn't look like a website address.")
     return host
-
-
-def _digits(s: str | None) -> str:
-    return re.sub(r"\D", "", s or "")[-10:]
 
 
 def _norm_phone(raw: str | None) -> str | None:

@@ -5,7 +5,8 @@ import {
   TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink
 } from 'lucide-react';
 import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction } from './SeoUi';
-import { api, useApi, fmtDateTime } from './seoApi';
+import { api, useApi, fmtDateTime, fmt } from './seoApi';
+import { pathOnly as pathOf } from './siteUtils';
 
 /**
  * Keyword intelligence for the selected business. Discovery starts from what the platform knows
@@ -24,8 +25,6 @@ const GROUPS = {
   brand: { label: 'Your brand', icon: Tag, tone: 'bg-emerald-50 text-emerald-700 ring-emerald-200', hint: 'People searching for you by name' }
 };
 const ORDER = ['local', 'near_me', 'service', 'question', 'fresh', 'competitor', 'brand'];
-const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'));
-const pathOf = (u) => { try { return new URL(u).pathname || '/'; } catch (e) { return u; } };
 const kd = (d) => (d == null ? ['—', 'gray'] : d < 30 ? ['Easy', 'green'] : d < 55 ? ['Medium', 'amber'] : ['Hard', 'red']);
 
 function Chip({ on, children, onClick, onRemove, title }) {
