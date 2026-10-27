@@ -527,10 +527,10 @@ export default function LighthouseAuditTool({ defaultUrl = 'https://morayamultis
               <input
                 type="number"
                 min={1}
-                max={50}
+                max={100}
                 className={`${inputCls} mt-1`}
                 value={maxPages}
-                onChange={e => setMaxPages(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                onChange={e => setMaxPages(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
               />
             </label>
           )}

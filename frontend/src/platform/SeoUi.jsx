@@ -174,14 +174,14 @@ export const BackendDown = ({ error, onRetry }) => (
       </div>
       <div>
         <div>{error?.status === 401 ? 'Authentication Required' : error?.status === 403 ? 'Access Forbidden' : 'Backend Engine Offline'}</div>
-        <p className="text-[13px] text-slate-400 font-normal mt-0.5">{error?.message || 'FastAPI service on port 8100 is not responding'}</p>
+        <p className="text-[13px] text-slate-400 font-normal mt-0.5">{error?.message || 'FastAPI service on port 8000 is not responding'}</p>
       </div>
     </div>
     {!error?.status && (
       <div className="mt-6">
         <span className="text-[12px] font-bold text-slate-400 uppercase tracking-wider font-mono">Terminal start command:</span>
         <pre className="mt-2 text-[12px] bg-slate-950 text-slate-200 rounded-xl p-4 font-mono overflow-x-auto border border-white/10 shadow-inner">
-          {'cd backend\n.\\.venv\\Scripts\\activate\nuvicorn app.main:app --port 8100'}
+          {'cd backend\n.\\.venv\\Scripts\\activate\nuvicorn app.main:app --port 8000'}
         </pre>
       </div>
     )}

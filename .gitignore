@@ -10,3 +10,4 @@ reports/*.html
 .pytest_cache/
 reports/*
 **/reports/
+.venv2/

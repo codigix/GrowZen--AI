@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * Client for the SEO platform backend (FastAPI). The login is a session cookie, so every
  * request sends credentials.
  */
-export const SEO_API = (import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1').replace(/\/$/, '');
+export const SEO_API = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '');
 
 export class SeoApiError extends Error {
   constructor(message, status) { super(message); this.status = status; }
