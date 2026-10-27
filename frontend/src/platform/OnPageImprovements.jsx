@@ -55,7 +55,11 @@ function suggestDescription(page, b) {
   const cta = b.phone ? ` Call ${b.phone} or book online today.` : ' Book online today.';
   const services = (b.services || []).map(s => (typeof s === 'string' ? s : s.name)).filter(Boolean).slice(0, 3);
   const extra = services.length ? ` ${services.join(', ')} and more.` : '';
-  return clip(`${what}${where}.${extra}${cta}`, 160);
+  let text = `${what}${where}.${extra}${cta}`;
+  // Aim for the 150–160 characters Google shows: add a trust line when there is room.
+  const trust = ` Trusted ${(b.primary_category || 'local experts').toLowerCase()}${place(b) ? ` serving ${place(b)} and nearby areas` : ''}.`;
+  if (text.length < 140 && text.length + trust.length <= 160) text = `${what}${where}.${extra}${trust}${cta}`;
+  return clip(text, 160);
 }
 
 function suggestAlt(src, b) {
@@ -279,10 +283,11 @@ function ImprovementCard({ group, rank, ctx, open, onToggle }) {
   return (
     <div className={`rounded-2xl ring-1 ring-inset bg-white ${open ? 'ring-indigo-200 shadow-sm' : 'ring-slate-200'}`}>
       <button type="button" onClick={onToggle} className="w-full text-left px-4 py-3.5 flex items-center gap-3 cursor-pointer">
-        <span className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 text-[12px] font-bold flex items-center justify-center shrink-0 tabular-nums">{rank}</span>
-        <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[group.level]}`}>{group.level}</span>
+        <span className="hidden sm:flex w-7 h-7 rounded-lg bg-slate-100 text-slate-600 text-[12px] font-bold items-center justify-center shrink-0 tabular-nums">{rank}</span>
+        <span className={`hidden sm:inline shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[group.level]}`}>{group.level}</span>
         <span className="flex-1 min-w-0">
-          <span className="block text-[14px] font-semibold text-slate-900 truncate">{g.title}</span>
+          <span className={`sm:hidden inline-block mb-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[group.level]}`}>{group.level}</span>
+          <span className="block text-[14px] font-semibold text-slate-900 sm:truncate">{g.title}</span>
           <span className="block text-[12px] text-slate-500">{group.pageCount ? `${group.pageCount} page${group.pageCount === 1 ? '' : 's'}` : 'Whole site'} · {g.technical ? 'Technical' : group.area}{g.effort ? ` · ${g.effort}` : ''}</span>
         </span>
         {group.gain > 0 && <span className="shrink-0 inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-2 py-0.5 rounded-lg" title="Estimated on-page score gain"><TrendingUp size={12} />+{group.gain < 1 ? group.gain.toFixed(1) : Math.round(group.gain)}</span>}
