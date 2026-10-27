@@ -9,8 +9,10 @@ import {
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, ErrorNote, Modal,
-  Field, inputCls, areaCls, useToast, useAction, useBusinesses
+  Field, inputCls, areaCls, useToast, useAction, useBusinesses,
+  LifecycleGrowthBar, LifecycleNextCard
 } from './SeoUi';
+
 import { api, useApi, fmtDateTime } from './seoApi';
 
 // 7 Specialized AI Agents with Full Telemetry and Deep Specs
@@ -480,8 +482,8 @@ export default function AiAgentPage() {
 
   return (
     <SeoShell
-      title="Autonomous AI SEO Assistant & Agent Swarm"
-      subtitle="Supervised multi-agent intelligence executing Google Business Profile optimizations, review handling, and code diffs with human-in-the-loop governance"
+      title="Phase 7 — Autonomous AI SEO Swarm & Execution Engine"
+      subtitle="Supervised multi-agent intelligence executing Google Business Profile optimizations, review handling, and code diffs with human-in-the-loop governance."
       hideSwitcher
       needsBusiness={false}
       actions={
@@ -499,6 +501,8 @@ export default function AiAgentPage() {
         </div>
       }
     >
+      <LifecycleGrowthBar currentStepId="swarm" />
+
       {/* Top Telemetry KPI Ribbon */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
         <div className="ai-glass-card rounded-2xl p-4.5 relative overflow-hidden group border-amber-500/20">
@@ -1087,7 +1091,16 @@ export default function AiAgentPage() {
         </Card>
       )}
 
+      <LifecycleNextCard
+        currentStepId="swarm"
+        customTitle="Proceed to Phase 8: Business Results, Lead Tracking & ROI Attribution"
+        customDescription="Autonomous agent swarm is orchestrating crawl checks, review replies, and ranking protection. Advance to Leads & Reports to measure inbound emergency calls, OPD cataract consultations, and attributed revenue."
+        customActionPath="/leads"
+        customActionLabel="Launch Phase 8: Leads & ROI Attribution ➔"
+      />
+
       {toastNode}
     </SeoShell>
+
   );
 }

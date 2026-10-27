@@ -14,8 +14,9 @@ import {
 import {
   SeoShell, Card, Stat, ScoreRing, Meter, StatusPill, Badge, Button, ChartTooltip,
   Legend, SourceTag, ErrorNote, BackendDown, SERIES, INK, scoreWord,
-  useModulePath, useToast, useAction
+  useModulePath, useToast, useAction, LifecycleGrowthBar
 } from './SeoUi';
+
 import { api, useApi, fmtDateTime } from './seoApi';
 
 export default function SeoOverviewPage() {
@@ -77,6 +78,8 @@ function OverviewContent({ b }) {
 
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
+      {/* Universal End-to-End Growth Engine Lifecycle Navigator */}
+      <LifecycleGrowthBar currentStepId="onboarding" />
 
       {/* ════════════════ 1. TOP HERO ROW: 2 CARDS ════════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">

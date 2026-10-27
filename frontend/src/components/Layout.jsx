@@ -128,7 +128,7 @@ export default function Layout({ user, onLogout }) {
 
       <aside
         className={`fixed lg:sticky top-0 z-50 h-screen shrink-0 flex flex-col bg-[#0a0f1d]/95 backdrop-blur-xl border-r border-white/[0.06] transition-[width,transform] duration-300 ease-in-out ${
-          rail ? 'lg:w-[72px]' : 'lg:w-64'
+          rail ? 'lg:w-[72px]' : 'lg:w-72'
         } w-72 ${open ? 'translate-x-0 shadow-2xl shadow-black/50' : '-translate-x-full lg:translate-x-0'}`}
       >
         {/* Brand */}

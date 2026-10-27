@@ -7,8 +7,10 @@ import {
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
-  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, PreviewNote
+  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, PreviewNote,
+  LifecycleGrowthBar, LifecycleNextCard
 } from './SeoUi';
+
 import { rng, fmt, shortDate, daysBack, ymd } from './seoMock';
 
 const STEPS = ['Topic & Intent', 'SERP Analysis', 'Structured Brief', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
@@ -796,11 +798,13 @@ export default function ContentStudioPage() {
 
   return (
     <SeoShell
-      title="AI Blog Studio & Autonomous Content Engine"
-      subtitle="Discover trending patient queries, draft E-E-A-T validated medical articles, schedule CMS publishing, and build ethical backlinks"
+      title="Phase 6 — Continuous AI Content Studio & Digital PR Hub"
+      subtitle="Discover trending patient queries, draft E-E-A-T validated medical articles, schedule CMS publishing, and build ethical backlinks."
     >
       {(b) => (
         <div className="space-y-5 animate-in fade-in duration-200">
+          <LifecycleGrowthBar currentStepId="content" />
+
           <Tabs
             value={tab}
             onChange={setTab}
@@ -816,6 +820,14 @@ export default function ContentStudioPage() {
           {tab === 'blog' && <BlogWriterTab b={b} selectedTopic={activeTopic} toast={window.__seoToast || console.log} />}
           {tab === 'calendar' && <CalendarTab b={b} />}
           {tab === 'backlinks' && <BacklinksTab b={b} toast={window.__seoToast || console.log} />}
+
+          <LifecycleNextCard
+            currentStepId="content"
+            customTitle="Proceed to Phase 7: AI Autonomous Swarm & Automation Pipeline"
+            customDescription="Content generation, E-E-A-T reviews, and digital PR prospects are configured. Advance to the AI Swarm to view the 7 specialized autonomous pods running background crawls, review replies, and ranking protection."
+            customActionPath="/automation"
+            customActionLabel="Open Phase 7: AI Swarm & Automation ➔"
+          />
         </div>
       )}
     </SeoShell>
