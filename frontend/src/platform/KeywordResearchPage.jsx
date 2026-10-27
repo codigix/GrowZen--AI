@@ -4,6 +4,7 @@ import {
   Search, Plus, Sparkles, FileText, Trash2, Loader2, MapPin, Globe, Users, X, Star, CheckCircle2, CircleDashed, AlertTriangle,
   TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink
 } from 'lucide-react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction } from './SeoUi';
 import { api, useApi, fmtDateTime, fmt } from './seoApi';
 import { pathOnly as pathOf } from './siteUtils';
@@ -269,6 +270,193 @@ function Discover({ b, tracked, onTracked }) {
   );
 }
 
+/* ── Google Trends ────────────────────────────────────────────────────── */
+
+const TREND_TIMEFRAMES = [
+  { id: 'past_day', label: 'Past day' },
+  { id: 'past_7_days', label: 'Past 7 days' },
+  { id: 'past_30_days', label: 'Past 30 days' },
+  { id: 'past_90_days', label: 'Past 90 days' },
+  { id: 'past_12_months', label: 'Past 12 months' }
+];
+
+function GoogleTrends({ b, tracked, onTracked }) {
+  const [keyword, setKeyword] = useState('');
+  const [country, setCountry] = useState('IN');
+  const [timeframe, setTimeframe] = useState('past_30_days');
+  const [trend, setTrend] = useState(null);
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
+
+  const trackedSet = new Set(tracked.map(k => k.keyword));
+
+  const search = () => run('search', async () => {
+    const q = keyword.trim().toLowerCase();
+    if (!q) return;
+    const qs = `keyword=${encodeURIComponent(q)}&country=${encodeURIComponent(country)}&timeframe=${timeframe}`;
+    const t = await api(`/keyword-trends/planner?${qs}&limit=20&regional_limit=10`);
+    setTrend(t);
+  });
+
+  const track = (kw) => run(`t-${kw}`, async () => {
+    await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: kw }] });
+    onTracked(); toast(`"${kw}" added to tracking`);
+  });
+
+  const chartData = (trend?.interest_over_time || []).map(p => ({ date: p.date, value: p.value }));
+  const avg = chartData.length ? Math.round(chartData.reduce((s, p) => s + p.value, 0) / chartData.length) : null;
+  const peak = chartData.length ? Math.max(...chartData.map(p => p.value)) : null;
+
+  return (
+    <div className="space-y-5">
+      <Card title="Google Trends" subtitle="Live search interest and related queries from Google Trends.">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex-1 min-w-[220px]">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Keyword</div>
+            <input className={inputCls} placeholder="e.g. seo services" value={keyword} onChange={e => setKeyword(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} />
+          </label>
+          <label>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Country</div>
+            <input className={`${inputCls} w-20 uppercase`} maxLength={2} value={country} onChange={e => setCountry(e.target.value.toUpperCase())} />
+          </label>
+          <label>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Timeframe</div>
+            <select className="h-9 px-2.5 text-[12.5px] rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" value={timeframe} onChange={e => setTimeframe(e.target.value)}>
+              {TREND_TIMEFRAMES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </label>
+          <Button variant="primary" icon={Search} busy={busy === 'search'} disabled={!keyword.trim()} onClick={search}>Search</Button>
+        </div>
+        <ErrorNote>{error}</ErrorNote>
+      </Card>
+
+      {trend && (
+        <div className="space-y-5">
+          <Card title={`Interest over time: "${trend.seed_keyword}"`} subtitle={`${trend.country} · ${TREND_TIMEFRAMES.find(t => t.id === timeframe)?.label}`}>
+            {chartData.length > 1 ? (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+                    <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={{ stroke: '#cbd5e1' }} minTickGap={24} />
+                    <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} domain={[0, 100]} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="value" name="Interest" stroke="#4f46e5" strokeWidth={2} dot={false} isAnimationActive={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <div className="py-10 text-center text-[13px] text-slate-500">Not enough data for this keyword.</div>}
+            <div className="mt-3 flex gap-4 text-[12px] text-slate-600">
+              {avg != null && <span>Average interest: <span className="font-semibold text-slate-900">{avg}</span></span>}
+              {peak != null && <span>Peak: <span className="font-semibold text-slate-900">{peak}</span></span>}
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <Card title="Top queries" subtitle="Most-searched related queries, scored 0-100 relative to the top one">
+              {trend.related_keywords?.length ? (
+                <>
+                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
+                    <span className="flex-1">Query</span>
+                    <span className="w-8 text-right">Interest</span>
+                    <span className="w-16 text-right">Change</span>
+                    <span className="w-14 text-right"> </span>
+                  </div>
+                  <ul className="space-y-2">
+                    {trend.related_keywords.map(r => {
+                      const isTracked = trackedSet.has(r.keyword);
+                      const pct = /^[+-]\d+%$/.test(r.growth_indicator || '') ? parseInt(r.growth_indicator, 10) : null;
+                      return (
+                        <li key={r.keyword} className="flex items-center gap-2 text-[12.5px]">
+                          <span className="flex-1 text-slate-800">{r.keyword}</span>
+                          <span className="tabular-nums text-slate-500 w-8 text-right">{r.score}</span>
+                          <span className="w-16 text-right">
+                            {r.growth_indicator === 'Breakout' ? <Badge tone="blue">Breakout</Badge>
+                              : pct != null ? (
+                                <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums ${pct >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                                  {pct >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(pct)}%
+                                </span>
+                              ) : <span className="text-slate-300">—</span>}
+                          </span>
+                          <span className="w-14 text-right">
+                            {isTracked ? <span className="text-[11px] text-emerald-700 font-medium">Tracked</span>
+                              : <button type="button" onClick={() => track(r.keyword)} disabled={busy === `t-${r.keyword}`} className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              ) : <div className="py-6 text-center text-[13px] text-slate-500">No top queries found.</div>}
+            </Card>
+
+            <Card title="Rising queries" subtitle="Queries with the biggest increase in search interest">
+              {trend.rising_keywords?.length ? (
+                <>
+                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
+                    <span className="flex-1">Query</span>
+                    <span className="w-8 text-right" title="Google Trends doesn't provide a 0-100 interest score for rising queries, only the % change">Interest</span>
+                    <span className="w-16 text-right">Change</span>
+                    <span className="w-14 text-right"> </span>
+                  </div>
+                  <ul className="space-y-2">
+                    {trend.rising_keywords.map(r => {
+                      const isTracked = trackedSet.has(r.keyword);
+                      const isBreakout = r.growth_indicator === 'Breakout';
+                      return (
+                        <li key={r.keyword} className="flex items-center gap-2 text-[12.5px]">
+                          <span className="flex-1 text-slate-800">{r.keyword}</span>
+                          <span className="tabular-nums text-slate-300 w-8 text-right">—</span>
+                          <span className="w-16 text-right">
+                            {isBreakout ? <Badge tone="blue">Breakout</Badge>
+                              : r.growth_indicator ? (
+                                <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums text-emerald-700">
+                                  <TrendingUp size={11} />{r.growth_indicator}
+                                </span>
+                              ) : <span className="text-slate-300">—</span>}
+                          </span>
+                          <span className="w-14 text-right">
+                            {isTracked ? <span className="text-[11px] text-emerald-700 font-medium">Tracked</span>
+                              : <button type="button" onClick={() => track(r.keyword)} disabled={busy === `t-${r.keyword}`} className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              ) : <div className="py-6 text-center text-[13px] text-slate-500">No rising queries found.</div>}
+            </Card>
+          </div>
+
+          <Card title="Interest by region" subtitle={`Where "${trend.seed_keyword}" is searched most, relative to its top region (100)`}>
+            {trend.regional_interest?.length ? (
+              <div className="divide-y divide-slate-100">
+                <div className="flex items-center gap-3 pb-2 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
+                  <span className="w-5" />
+                  <span className="w-44 shrink-0">Region</span>
+                  <span className="flex-1">Search interest</span>
+                  <span className="w-8" />
+                </div>
+                {trend.regional_interest.map((r, i) => (
+                  <div key={r.region} className={`flex items-center gap-3 py-2.5 ${i % 2 ? '' : 'bg-slate-50/60 -mx-2 px-2 rounded'}`}>
+                    <span className="w-5 text-[12px] text-slate-400 tabular-nums">{i + 1}</span>
+                    <span className="w-44 shrink-0 text-[13px] text-slate-800">{r.region}</span>
+                    <div className="flex-1 h-2.5 rounded-full bg-indigo-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-indigo-600" style={{ width: `${r.score}%` }} />
+                    </div>
+                    <span className="w-8 text-right text-[12px] tabular-nums text-slate-600">{r.score}</span>
+                  </div>
+                ))}
+              </div>
+            ) : <div className="py-6 text-center text-[13px] text-slate-500">No regional data found.</div>}
+          </Card>
+        </div>
+      )}
+      {toastNode}
+    </div>
+  );
+}
+
 /* ── Tracked & topics ─────────────────────────────────────────────────── */
 
 function Tracked({ b, kw }) {
@@ -353,6 +541,7 @@ function Keywords({ b, tab }) {
   return (
     <>
       {tab === 'discover' && <Discover b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
+      {tab === 'trends' && <GoogleTrends b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
       {tab === 'tracked' && <Tracked b={b} kw={kw} />}
       {tab === 'topics' && <Topics b={b} kw={kw} />}
     </>
@@ -365,7 +554,7 @@ export default function KeywordResearchPage() {
     <SeoShell title="Keyword Intelligence" subtitle="Real searches for this business's services and area: local, near me, questions and fresh searches, checked against the website">
       {(b) => (
         <>
-          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'discover', label: 'Discover' }, { id: 'tracked', label: 'Tracked & pages' }, { id: 'topics', label: 'Topics' }]} />
+          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'discover', label: 'Discover' }, { id: 'trends', label: 'Google Trends' }, { id: 'tracked', label: 'Tracked & pages' }, { id: 'topics', label: 'Topics' }]} />
           <Keywords key={b.id} b={b} tab={tab} />
         </>
       )}

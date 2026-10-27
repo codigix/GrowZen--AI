@@ -225,7 +225,38 @@ def build_related_keywords_expanded(keyword: str, country: str, timeframe: str, 
                                      max_seed_expansions: int = MAX_SEED_EXPANSIONS) -> tuple[list[RelatedKeyword], list[RelatedKeyword]]:
     """build_related_keywords(), topped up toward target_count via expand_related_keywords()."""
     top, rising = build_related_keywords(keyword, country, timeframe)
-    return expand_related_keywords(keyword, top, rising, country, timeframe, target_count, max_seed_expansions)
+    top, rising = expand_related_keywords(keyword, top, rising, country, timeframe, target_count, max_seed_expansions)
+    top = _attach_top_query_changes(top, keyword, country, timeframe)
+    return top, rising
+
+
+def _attach_top_query_changes(top: list[RelatedKeyword], keyword: str, country: str,
+                               timeframe: str) -> list[RelatedKeyword]:
+    """Adds a period-over-period growth_indicator to each top query, by comparing its score
+    against the same query's score in the immediately preceding period of the same length
+    (one extra Google Trends request for the seed keyword, same as Google Trends' own UI
+    shows alongside the Top queries table). "Breakout" is Google's own signal (only ever seen
+    on rising queries) and is never invented here: a top query with no prior-period match
+    (this period's top-N snapshot and the previous one are each capped at ~25 rows, so a fast-
+    moving topic's lists can simply not overlap) is left without a growth_indicator rather than
+    mislabeled -- the frontend shows "no comparison data" for it, same as any other missing field."""
+    if not top:
+        return top
+    raw_prev = trends_client.fetch_related_queries_previous_period(keyword, country, timeframe)
+    if not raw_prev:
+        return top
+    prev_top, _ = _related_queries_dict_to_lists(raw_prev, keyword)
+    prev_scores = {_normalize(kw.keyword): kw.score for kw in prev_top if kw.score is not None}
+
+    updated: list[RelatedKeyword] = []
+    for kw in top:
+        prev_score = prev_scores.get(_normalize(kw.keyword))
+        if kw.score is None or prev_score is None or prev_score == 0:
+            updated.append(kw)
+        else:
+            pct = round((kw.score - prev_score) / prev_score * 100)
+            updated.append(kw.model_copy(update={"growth_indicator": f"{'+' if pct >= 0 else ''}{pct}%"}))
+    return updated
 
 
 def build_regional_interest(keyword: str, country: str, timeframe: str) -> list[RegionalInterest]:

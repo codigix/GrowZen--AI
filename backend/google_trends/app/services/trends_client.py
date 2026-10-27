@@ -8,6 +8,7 @@ API or the keyword-planner logic.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import threading
 import time
@@ -130,6 +131,61 @@ def fetch_related_queries(keyword: str, country: str, timeframe: str) -> dict:
     result = _with_retries(f"related_queries:{keyword}", _call)
     _cache.set(key, result)
     return result or {}
+
+
+# Day-counts for each timeframe's previous-period comparison window.
+_PERIOD_DAYS: dict[str, int] = {
+    "past_day": 1,
+    "past_7_days": 7,
+    "past_30_days": 30,
+    "past_90_days": 90,
+    "past_12_months": 365,
+}
+
+
+def _previous_period_range(timeframe: str) -> str | None:
+    """Builds an explicit 'YYYY-MM-DD YYYY-MM-DD' range for the period immediately
+    preceding ``timeframe`` (same length), so top queries can be compared
+    period-over-period the way Google Trends' own UI does. None if ``timeframe``
+    is too short to compare this way."""
+    days = _PERIOD_DAYS.get(timeframe)
+    if not days:
+        return None
+    today = datetime.date.today()
+    end = today - datetime.timedelta(days=days + 1)
+    start = end - datetime.timedelta(days=days - 1)
+    return f"{start.isoformat()} {end.isoformat()}"
+
+
+def fetch_related_queries_previous_period(keyword: str, country: str, timeframe: str) -> dict | None:
+    """Related queries for the period immediately before ``timeframe``, used to compute
+    top queries' period-over-period change. Returns None (no extra request made) when
+    ``timeframe`` is too short to compare, or when the request fails -- a missing
+    comparison is not worth risking the main request's rate-limit budget."""
+    tf = _previous_period_range(timeframe)
+    if tf is None:
+        return None
+
+    key = _cache_key("related_prev", keyword.lower(), country.upper(), timeframe)
+    cached = _cache.get(key)
+    if cached is not None:
+        return cached
+
+    geo = country.upper()
+
+    def _call() -> dict:
+        client = _build_client()
+        client.build_payload([keyword], cat=0, timeframe=tf, geo=geo, gprop="")
+        return client.related_queries()
+
+    try:
+        result = _with_retries(f"related_queries_previous_period:{keyword}", _call)
+    except TrendsUnavailableError as exc:
+        logger.warning("Previous-period related queries unavailable for '%s': %s", keyword, exc)
+        return None
+    result = result or {}
+    _cache.set(key, result)
+    return result
 
 
 def fetch_interest_by_region(keyword: str, country: str, timeframe: str) -> pd.DataFrame:
