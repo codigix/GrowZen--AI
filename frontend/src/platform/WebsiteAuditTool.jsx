@@ -13,9 +13,9 @@ const lhLevel = (s) => (s >= 90 ? 'good' : s >= 50 ? 'warning' : 'critical');
 const lhWord = (s) => (s >= 90 ? 'Good' : s >= 50 ? 'Needs work' : 'Poor');
 const LEVEL = { critical: 'critical', serious: 'serious', warning: 'warning', info: 'info' };
 const ICON = {
-  pass: <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />,
-  fail: <XCircle size={16} className="text-rose-400 shrink-0" />,
-  manual: <CircleDashed size={16} className="text-amber-400 shrink-0" />,
+  pass: <CheckCircle2 size={16} className="text-emerald-700 shrink-0" />,
+  fail: <XCircle size={16} className="text-rose-600 shrink-0" />,
+  manual: <CircleDashed size={16} className="text-amber-700 shrink-0" />,
   na: <CircleDashed size={16} className="text-slate-600 shrink-0" />
 };
 
@@ -107,7 +107,7 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
         subtitle="Full Google Lighthouse evaluation (SEO, Performance, Accessibility, Best Practices) & on-page crawler"
       >
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex-1 min-w-[280px] text-[12px] text-slate-300 font-medium">
+          <label className="flex-1 min-w-[280px] text-[12px] text-slate-700 font-medium">
             Target Page URL
             <input
               className={`${inputCls} mt-1`}
@@ -117,7 +117,7 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
               onKeyDown={e => e.key === 'Enter' && start()}
             />
           </label>
-          <div className="flex gap-1.5 p-1 bg-slate-950/80 rounded-xl border border-white/10">
+          <div className="flex gap-1.5 p-1 bg-slate-50 rounded-xl border border-slate-200">
             {[
               ['mobile', Smartphone, 'Mobile'],
               ['desktop', Monitor, 'Desktop']
@@ -128,7 +128,7 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
                 className={`h-9 px-3.5 flex items-center gap-1.5 text-[12px] font-semibold rounded-lg cursor-pointer transition-all ${
                   strategy === s
                     ? 'bg-gradient-to-tr from-indigo-600 to-cyan-500 text-white shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
                 <I size={14} />
@@ -147,7 +147,7 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
         </div>
         <ErrorNote>{error || audit.error?.message}</ErrorNote>
         {a?.error && (
-          <div className="mt-3 text-[12px] text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2 font-mono">
+          <div className="mt-3 text-[12px] text-amber-800 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2 font-mono">
             {a.error}
           </div>
         )}
@@ -155,8 +155,8 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
 
       {running && (
         <Card>
-          <div className="py-12 flex flex-col items-center justify-center gap-3 text-[13px] text-slate-300">
-            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+          <div className="py-12 flex flex-col items-center justify-center gap-3 text-[13px] text-slate-700">
+            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-700">
               <Loader2 size={20} className="animate-spin" />
             </div>
             <span>Executing headless Chrome Lighthouse audit for {hostOf(audit.data.target)}…</span>
@@ -183,20 +183,20 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
                 ['accessibility', 'Accessibility'],
                 ['best_practices', 'Best Practices']
               ].map(([k, l]) => (
-                <div key={k} className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-slate-950/40 border border-white/5">
+                <div key={k} className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
                   <ScoreRing score={ps.scores[k] ?? 0} label={l} size={96} level={lhLevel(ps.scores[k] ?? 0)} />
                   <StatusPill level={lhLevel(ps.scores[k] ?? 0)}>{lhWord(ps.scores[k] ?? 0)}</StatusPill>
                 </div>
               ))}
               {crawl && (
-                <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-slate-950/40 border border-white/5">
+                <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
                   <ScoreRing score={crawl.score} label="On-page" size={96} level={lhLevel(crawl.score)} />
                   <StatusPill level={lhLevel(crawl.score)}>{crawl.crawled} pages</StatusPill>
                 </div>
               )}
             </div>
             {prev && a.score != null && prev.score != null && a.score !== prev.score && (
-              <div className={`mt-3 text-center text-[12px] font-mono font-bold ${a.score > prev.score ? 'text-emerald-400' : 'text-rose-400'}`}>
+              <div className={`mt-3 text-center text-[12px] font-mono font-bold ${a.score > prev.score ? 'text-emerald-700' : 'text-rose-600'}`}>
                 {a.score > prev.score ? <ArrowUp size={12} className="inline mr-1" /> : <ArrowDown size={12} className="inline mr-1" />}
                 {Math.abs(a.score - prev.score)} points since previous audit
               </div>
@@ -211,28 +211,28 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
                   action={
                     <button
                       onClick={() => setShowPassed(s => !s)}
-                      className="text-[12px] text-cyan-400 hover:text-cyan-300 font-medium cursor-pointer"
+                      className="text-[12px] text-cyan-700 hover:text-cyan-700 font-medium cursor-pointer"
                     >
                       {showPassed ? 'Hide' : 'Show'} {passed.length} passed
                     </button>
                   }
                 >
-                  <div className="divide-y divide-white/10">
+                  <div className="divide-y divide-slate-200">
                     {[...failed, ...checks.filter(c => c.status === 'manual'), ...(showPassed ? passed : [])].map(c => (
                       <div key={c.id} className="flex items-start gap-3 py-3">
                         {ICON[c.status]}
                         <div className="flex-1 min-w-0">
-                          <div className="text-[13px] font-semibold text-white">
-                            {c.title}{c.display_value ? <span className="text-slate-400 font-mono text-[11px]"> · {c.display_value}</span> : null}
+                          <div className="text-[13px] font-semibold text-slate-900">
+                            {c.title}{c.display_value ? <span className="text-slate-500 font-mono text-[11px]"> · {c.display_value}</span> : null}
                           </div>
                           {c.status !== 'pass' && (
-                            <div className="text-[12px] text-slate-400 mt-0.5 leading-relaxed">{c.description}</div>
+                            <div className="text-[12px] text-slate-500 mt-0.5 leading-relaxed">{c.description}</div>
                           )}
                         </div>
                       </div>
                     ))}
                     {failed.length === 0 && !showPassed && (
-                      <div className="py-4 text-[13px] text-emerald-300">Every automatic SEO check passed.</div>
+                      <div className="py-4 text-[13px] text-emerald-700">Every automatic SEO check passed.</div>
                     )}
                   </div>
                 </Card>
@@ -240,20 +240,20 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
 
               {crawl && (
                 <Card title={`On-Page Crawl Issues (${crawlIssues.length})`} subtitle="Deep crawler findings">
-                  <div className="divide-y divide-white/10">
+                  <div className="divide-y divide-slate-200">
                     {crawlIssues.map((i, n) => (
                       <div key={n} className="flex items-start gap-3 py-3">
                         <span className="w-24 shrink-0">
                           <StatusPill level={LEVEL[i.level] || 'info'}>{i.level}</StatusPill>
                         </span>
                         <div className="flex-1 min-w-0">
-                          <div className="text-[13px] font-bold text-white">{i.title}</div>
-                          <div className="text-[12px] text-slate-400 mt-0.5">{i.fix}</div>
+                          <div className="text-[13px] font-bold text-slate-900">{i.title}</div>
+                          <div className="text-[12px] text-slate-500 mt-0.5">{i.fix}</div>
                         </div>
                       </div>
                     ))}
                     {crawlIssues.length === 0 && (
-                      <div className="py-4 text-[13px] text-slate-400">No on-page issues found.</div>
+                      <div className="py-4 text-[13px] text-slate-500">No on-page issues found.</div>
                     )}
                   </div>
                 </Card>
@@ -263,7 +263,7 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
             <div className="space-y-5">
               {ps && (
                 <Card title="Lab Speed Metrics">
-                  <div className="divide-y divide-white/10 text-[13px]">
+                  <div className="divide-y divide-slate-200 text-[13px]">
                     {[
                       ['Largest Contentful Paint (LCP)', ps.metrics.lcp],
                       ['Total Blocking Time (TBT)', ps.metrics.tbt],
@@ -272,18 +272,18 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
                       ['Speed Index (SI)', ps.metrics.si]
                     ].map(([n, v]) => (
                       <div key={n} className="flex justify-between py-2">
-                        <span className="text-slate-400">{n}</span>
-                        <span className="font-mono font-bold text-white">{v || '—'}</span>
+                        <span className="text-slate-500">{n}</span>
+                        <span className="font-mono font-bold text-slate-900">{v || '—'}</span>
                       </div>
                     ))}
                   </div>
                   {ps.opportunities.length > 0 && (
-                    <div className="mt-4 pt-3 border-t border-white/10 space-y-2">
+                    <div className="mt-4 pt-3 border-t border-slate-200 space-y-2">
                       <span className="text-[11px] font-mono text-slate-500 uppercase tracking-wider">Speed Opportunities</span>
                       {ps.opportunities.map(o => (
                         <div key={o.title} className="flex justify-between text-[12px] gap-2">
-                          <span className="text-slate-300">{o.title}</span>
-                          <span className="text-emerald-400 font-mono font-semibold shrink-0">−{(o.savings_ms / 1000).toFixed(1)} s</span>
+                          <span className="text-slate-700">{o.title}</span>
+                          <span className="text-emerald-700 font-mono font-semibold shrink-0">−{(o.savings_ms / 1000).toFixed(1)} s</span>
                         </div>
                       ))}
                     </div>
@@ -300,8 +300,8 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
                       ['XML Sitemap Index', crawl.sitemap],
                       ['Crawlers Unblocked', !crawl.robots_blocks_all]
                     ].map(([l, ok]) => (
-                      <div key={l} className="flex items-center gap-2 text-slate-300">
-                        {ok ? <CheckCircle2 size={15} className="text-emerald-400" /> : <XCircle size={15} className="text-rose-400" />}
+                      <div key={l} className="flex items-center gap-2 text-slate-700">
+                        {ok ? <CheckCircle2 size={15} className="text-emerald-700" /> : <XCircle size={15} className="text-rose-600" />}
                         <span>{l}</span>
                       </div>
                     ))}
@@ -315,7 +315,7 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
             <Card title="Crawled URLs Index">
               <div className="overflow-x-auto">
                 <table className="w-full text-[13px]">
-                  <thead className="text-[11px] font-mono uppercase tracking-wider text-slate-400 border-b border-white/10">
+                  <thead className="text-[11px] font-mono uppercase tracking-wider text-slate-500 border-b border-slate-200">
                     <tr>
                       <th className="p-2.5 text-left font-semibold">Page Permalink</th>
                       <th className="p-2.5 text-left font-semibold">Status</th>
@@ -327,12 +327,12 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
                       <th className="p-2.5 text-left font-semibold">Schema</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/10 font-mono text-[12px]">
+                  <tbody className="divide-y divide-slate-200 font-mono text-[12px]">
                     {crawl.pages.map(p => {
-                      const bad = (ok) => (ok ? 'text-slate-300' : 'text-rose-400 font-bold');
+                      const bad = (ok) => (ok ? 'text-slate-700' : 'text-rose-600 font-bold');
                       return (
-                        <tr key={p.url} className="hover:bg-white/5 transition-colors">
-                          <td className="p-2.5 text-cyan-300 max-w-[280px] truncate" title={p.url}>
+                        <tr key={p.url} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-2.5 text-cyan-700 max-w-[280px] truncate" title={p.url}>
                             {new URL(p.url).pathname}
                           </td>
                           <td className="p-2.5">
@@ -343,7 +343,7 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
                           <td className={`p-2.5 text-right ${bad(p.h1_count === 1)}`}>{p.h1_count}</td>
                           <td className={`p-2.5 text-right ${bad(p.word_count >= 300)}`}>{p.word_count}</td>
                           <td className={`p-2.5 text-right ${bad(!p.images_missing_alt)}`}>{p.images_missing_alt}</td>
-                          <td className="p-2.5 text-slate-400">{p.schema_types.join(', ') || '—'}</td>
+                          <td className="p-2.5 text-slate-500">{p.schema_types.join(', ') || '—'}</td>
                         </tr>
                       );
                     })}
@@ -357,7 +357,7 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
 
       {a && a.status === 'failed' && (
         <Card>
-          <div className="py-6 text-[13px] text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl p-4">
+          <div className="py-6 text-[13px] text-rose-700 bg-rose-500/10 border border-rose-500/20 rounded-xl p-4">
             The audit failed: {a.error}
           </div>
         </Card>
@@ -366,18 +366,18 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
       <Card
         title="Audit Telemetry History"
         subtitle="Historical passes logged across managed client websites"
-        action={<History size={15} className="text-slate-400" />}
+        action={<History size={15} className="text-slate-500" />}
       >
         {!history.data ? (
-          <div className="py-6 flex justify-center text-slate-400">
-            <Loader2 size={16} className="animate-spin text-cyan-400" />
+          <div className="py-6 flex justify-center text-slate-500">
+            <Loader2 size={16} className="animate-spin text-cyan-700" />
           </div>
         ) : history.data.length === 0 ? (
-          <div className="py-6 text-center text-[13px] text-slate-400">No audits yet.</div>
+          <div className="py-6 text-center text-[13px] text-slate-500">No audits yet.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
-              <thead className="text-[11px] font-mono uppercase tracking-wider text-slate-400 border-b border-white/10">
+              <thead className="text-[11px] font-mono uppercase tracking-wider text-slate-500 border-b border-slate-200">
                 <tr>
                   <th className="p-2.5 text-left font-semibold">Website</th>
                   <th className="p-2.5 text-left font-semibold">Date</th>
@@ -387,13 +387,13 @@ export default function WebsiteAuditTool({ defaultUrl = 'https://morayamultispec
                   <th className="p-2.5" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10">
+              <tbody className="divide-y divide-slate-200">
                 {history.data.slice(0, 20).map(h => (
-                  <tr key={h.id} className={`hover:bg-white/5 transition-colors ${h.id === current ? 'bg-indigo-600/15' : ''}`}>
-                    <td className="p-2.5 text-white font-medium">{hostOf(h.target)}</td>
-                    <td className="p-2.5 text-slate-400 font-mono text-[12px]">{fmtDateTime(h.finished_at || h.created_at)}</td>
-                    <td className="p-2.5 text-right tabular-nums font-mono font-bold text-white">{h.score ?? '—'}</td>
-                    <td className="p-2.5 text-right tabular-nums font-mono text-slate-300">{(h.issues || []).length}</td>
+                  <tr key={h.id} className={`hover:bg-slate-50 transition-colors ${h.id === current ? 'bg-indigo-600/15' : ''}`}>
+                    <td className="p-2.5 text-slate-900 font-medium">{hostOf(h.target)}</td>
+                    <td className="p-2.5 text-slate-500 font-mono text-[12px]">{fmtDateTime(h.finished_at || h.created_at)}</td>
+                    <td className="p-2.5 text-right tabular-nums font-mono font-bold text-slate-900">{h.score ?? '—'}</td>
+                    <td className="p-2.5 text-right tabular-nums font-mono text-slate-700">{(h.issues || []).length}</td>
                     <td className="p-2.5">
                       <Badge tone={h.status === 'done' ? 'green' : h.status === 'failed' ? 'red' : 'blue'}>{h.status}</Badge>
                     </td>

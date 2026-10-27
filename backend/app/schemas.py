@@ -59,9 +59,17 @@ class BusinessPatch(BaseModel):
 
 
 class DiscoverIn(BaseModel):
-    email: str = Field(min_length=3)
+    """Any of: the client's email (its domain points to the website), the website itself, or name + city."""
+    email: str = ""
+    website: str = ""
     name: str = ""
     city: str = ""
+
+
+class SuggestionIn(BaseModel):
+    source: Literal["google_maps", "openstreetmap"]
+    ref: str = Field(min_length=1, max_length=300)
+    session: str = Field(default="", max_length=64)  # Google Autocomplete session token
 
 
 class DiscoverImportIn(BaseModel):
