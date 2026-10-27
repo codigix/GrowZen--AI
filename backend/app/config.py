@@ -6,12 +6,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 _backend_dir = Path(__file__).resolve().parent.parent
+_repo_root = _backend_dir.parent
 _default_db = f"sqlite:///{(_backend_dir / 'seo_platform_dev.db').as_posix()}"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(_backend_dir / ".env", ".env"),
+        # One .env shared by the whole repo (backend/frontend/google_trends all read the same file).
+        env_file=(_repo_root / ".env", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -87,7 +89,7 @@ class Settings(BaseSettings):
 
     # Google Trends keyword planner: separate microservice (see /google_trends at the repo root),
     # its own process/venv/port so it can be run and debugged independently of this API.
-    google_trends_base_url: str = "http://localhost:8010"
+    google_trends_base_url: str = "http://localhost:8100"
     # Generous: that service may expand related/rising keywords via several extra, throttled
     # Google Trends calls to reach its target count, which can take tens of seconds.
     google_trends_timeout_seconds: float = 90.0

@@ -13,9 +13,10 @@ from pathlib import Path
 
 def _load_dotenv() -> None:
     """Minimal .env loader so GOOGLE_TRENDS_* vars can be set without an
-    extra dependency. Does not override variables already set in the
-    environment."""
-    env_path = Path(__file__).resolve().parent.parent / ".env"
+    extra dependency. Reads the single .env shared by the whole repo (one
+    level above this folder). Does not override variables already set in
+    the environment."""
+    env_path = Path(__file__).resolve().parent.parent.parent / ".env"
     if not env_path.exists():
         return
     for line in env_path.read_text().splitlines():
