@@ -1,13 +1,40 @@
+# Cross-cutting rules for the whole monorepo (backend/, frontend/, google_trends/).
+# Each subproject also has its own .gitignore for build output specific to it.
+
+# Python virtual environments, any name/depth (.venv, .venv2, venv, etc.)
 .venv/
+.venv*/
+venv/
 **/.venv/
+**/.venv*/
+**/venv/
+
+# Python
 __pycache__/
-*.pyc
-.env
-audits.db
-reports/*.json
-reports/*.html
-!reports/.gitkeep
+**/__pycache__/
+*.py[cod]
 .pytest_cache/
-reports/*
+**/.pytest_cache/
+*.egg-info/
+
+# Node
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# Environment files: never commit secrets. .env.example files are templates and stay tracked.
+.env
+.env.*
+!.env.example
+
+# Databases and generated reports
+*.db
+*.sqlite3
+reports/
 **/reports/
-.venv2/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.log
