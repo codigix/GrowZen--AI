@@ -1,5 +1,5 @@
 """Request bodies (responses are plain dicts built by `serialize`)."""
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import AnyUrl, BaseModel, Field, HttpUrl, field_validator
 
@@ -93,6 +93,7 @@ class WebsiteAuditIn(BaseModel):
     url: HttpUrl
     strategy: Literal["mobile", "desktop"] = "mobile"
     crawl_pages: int = Field(default=10, ge=1, le=50)
+    business_id: int | None = None  # set when this is the business's own site: the scan also updates its audits
 
 
 class LighthouseAuditIn(BaseModel):
@@ -155,6 +156,11 @@ class KeywordIn(BaseModel):
 class KeywordIdeasIn(BaseModel):
     seed: str = Field(min_length=1)
     location: str = ""
+
+
+class KeywordDiscoverIn(BaseModel):
+    seeds: list[Annotated[str, Field(min_length=1, max_length=60)]] = Field(min_length=1, max_length=6)
+    areas: list[Annotated[str, Field(max_length=60)]] = Field(default_factory=list, max_length=10)
 
 
 class RankScanIn(BaseModel):

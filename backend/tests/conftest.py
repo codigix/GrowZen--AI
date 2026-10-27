@@ -13,7 +13,8 @@ os.environ.update({
     "DEEPSEEK_API_KEY": "", "OPENAI_API_KEY": "", "GEMINI_API_KEY": "", "PERPLEXITY_API_KEY": "", "ANTHROPIC_API_KEY": "",
     "DATAFORSEO_LOGIN": "", "INTAKE_ALLOWED_SENDERS": "codigixinfotech.com", "INTAKE_WEBHOOK_TOKEN": "hook-token",
     "SMTP_HOST": "", "SECRET_KEY": "test-session-secret-0123456789-abcdef", "ADMIN_EMAIL": "", "ADMIN_PASSWORD": "",
-    "PAGESPEED_API_KEY": "", "GOOGLE_PLACES_API_KEY": "", "LIGHTHOUSE_REPORTS_DIR": os.path.join(os.path.dirname(_db), "reports"), "LIGHTHOUSE_RATE_LIMIT_PER_MINUTE": "1000",
+    "PAGESPEED_API_KEY": "", "GOOGLE_PLACES_API_KEY": "", "TOKEN_ENCRYPTION_KEY": "aGol6LzAESrBGxyWgYQb0ObDl04ajkjTg_snnQRslJ4=",  # test-only key
+    "LIGHTHOUSE_REPORTS_DIR": os.path.join(os.path.dirname(_db), "reports"), "LIGHTHOUSE_RATE_LIMIT_PER_MINUTE": "1000",
 })
 
 import jwt  # noqa: E402
@@ -40,7 +41,10 @@ def client(monkeypatch):
         "url": url, "strategy": strategy, "scores": {"seo": 83, "performance": 54, "accessibility": 88, "best_practices": 92},
         "seo_checks": [{"id": "meta-description", "title": "Document does not have a meta description", "description": "Write one.", "status": "fail", "display_value": ""}],
         "metrics": {"lcp": "4.1 s"}, "field": {}, "opportunities": [{"title": "Properly size images", "savings_ms": 1200, "description": ""}]})
-    monkeypatch.setattr(crawler, "crawl", lambda url, max_pages=25, timeout=15: {
+    # Website scans run Lighthouse through the Lighthouse engine; here it is the canned PageSpeed result.
+    from app.services import audits
+    monkeypatch.setattr(audits, "run_lighthouse", lambda url, strategy="mobile": pagespeed.run(url, strategy))
+    monkeypatch.setattr(crawler, "crawl", lambda url, max_pages=25, timeout=15, on_progress=None: {
         "start_url": url, "host": "example.in", "https": True, "robots_txt": True, "robots_blocks_all": False, "sitemap": False, "crawled": 1, "broken": [],
         "pages": [crawler.analyse_html(url, 200, "<html><head><title>Home</title></head><body><h1>Hi</h1><p>short</p></body></html>")]})
     token = jwt.encode({"sub": "48", "exp": int(time.time()) + 3600}, "test-secret-0123456789-abcdefghijklmnop", algorithm="HS256")

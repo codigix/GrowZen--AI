@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import get_business, in_background
 from ..models import Business, GeoPrompt, GeoResult, Keyword, RankScan
-from ..schemas import GeoPromptIn, KeywordIdeasIn, KeywordIn, RankScanIn
+from ..schemas import GeoPromptIn, KeywordDiscoverIn, KeywordIdeasIn, KeywordIn, RankScanIn
 from ..serialize import row, rows
-from ..services import ai, audits, geo, providers
+from ..services import ai, audits, geo, keywords, providers
 from ..services.providers.base import intent_of
 
 router = APIRouter(prefix="/businesses/{business_id}", tags=["growth"])
@@ -70,6 +70,18 @@ def delete_keyword(keyword_id: int, b: Business = Depends(get_business), db: Ses
 def keyword_ideas(body: KeywordIdeasIn, b: Business = Depends(get_business)):
     prov = providers.keyword_provider()
     return {"data_source": prov.source, "ideas": prov.ideas(body.seed, body.location or ", ".join(x for x in [b.area, b.city] if x), b)}
+
+
+@router.get("/keywords/context")
+def keyword_context(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """What keyword discovery starts from: category and services, area and nearby localities, the website's topics."""
+    return keywords.context(db, b)
+
+
+@router.post("/keywords/discover")
+def discover_keywords(body: KeywordDiscoverIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Real searches from Google Autocomplete for the seeds and areas, grouped, scored and checked against the website."""
+    return keywords.discover(db, b, body.seeds, body.areas)
 
 
 @router.post("/keywords/cluster")

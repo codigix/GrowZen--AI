@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
-  LogOut, Menu, X, ShieldCheck, MapPin, Building2, CalendarDays, Target, Award, Radar, PanelLeftClose, PanelLeftOpen
+  LogOut, Menu, X, MapPin, Building2, CalendarDays, Target, Award, Radar, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import { useApi } from '../platform/seoApi';
 
@@ -17,8 +17,7 @@ export const SIDEBAR_GROUPS = [
   {
     title: 'SEO Intelligence',
     items: [
-      { to: '/website-audit', label: 'Website Audit', icon: ScanSearch },
-      { to: '/on-page-seo', label: 'Technical & On-Page SEO', icon: ShieldCheck },
+      { to: '/website-audit', label: 'Website & On-Page SEO', icon: ScanSearch },
       { to: '/keyword-management', label: 'Keyword Intelligence', icon: Search }
     ]
   },
@@ -109,9 +108,13 @@ export default function Layout({ user, onLogout }) {
   const location = useLocation();
   const connections = useConnections();
   const rail = collapsed && !open; // the mobile drawer always shows labels
+  const mainRef = useRef(null);
 
   useEffect(() => { try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0'); } catch (e) { /* private mode */ } }, [collapsed]);
-  useEffect(() => { setOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    setOpen(false);
+    if (mainRef.current) mainRef.current.scrollTop = 0;
+  }, [location.pathname]);
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
@@ -120,14 +123,14 @@ export default function Layout({ user, onLogout }) {
   }, [open]);
 
   return (
-    <div className="min-h-screen flex bg-slate-50 text-slate-900 relative overflow-x-hidden">
+    <div className="h-screen flex bg-slate-50 text-slate-900 relative overflow-hidden">
       <div className="ambient-glow-mesh" />
       <div className="fixed inset-0 ai-grid-pattern pointer-events-none z-0" />
 
       {open && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setOpen(false)} />}
 
       <aside
-        className={`fixed lg:sticky top-0 z-50 h-screen shrink-0 flex flex-col bg-white/95 backdrop-blur-xl border-r border-slate-200 transition-[width,transform] duration-300 ease-in-out ${
+        className={`fixed lg:static top-0 bottom-0 left-0 z-50 h-screen shrink-0 flex flex-col bg-white/95 backdrop-blur-xl border-r border-slate-200 transition-[width,transform] duration-300 ease-in-out ${
           rail ? 'lg:w-[72px]' : 'lg:w-72'
         } w-72 ${open ? 'translate-x-0 shadow-2xl shadow-slate-900/10' : '-translate-x-full lg:translate-x-0'}`}
       >
@@ -208,7 +211,7 @@ export default function Layout({ user, onLogout }) {
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0 flex flex-col relative z-10">
+      <div ref={mainRef} className="flex-1 min-w-0 flex flex-col h-screen overflow-y-auto relative z-10">
         {/* Mobile header */}
         <header className="lg:hidden h-14 px-4 flex items-center justify-between bg-white/95 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-30">
           <div className="flex items-center gap-3">

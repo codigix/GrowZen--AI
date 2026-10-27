@@ -21,11 +21,15 @@ router = APIRouter(prefix="/discover", tags=["discover"])
 
 
 @router.post("")
-def find(body: DiscoverIn, _: User = Depends(current_user)):
+def find(body: DiscoverIn, db: Session = Depends(get_db), _: User = Depends(current_user)):
     try:
-        return discovery.discover(body.email.strip(), body.name.strip(), body.city.strip(), body.website.strip())
+        out = discovery.discover(body.email.strip(), body.name.strip(), body.city.strip(), body.website.strip())
     except discovery.DiscoveryError as exc:
         raise HTTPException(400, str(exc)) from exc
+    for c in out["candidates"]:  # already a business here: the page offers Manage instead of Add
+        b = _existing(db, c)
+        c["business_id"] = b.id if b else None
+    return out
 
 
 @router.get("/suggest")
@@ -136,6 +140,8 @@ def add(body: DiscoverImportIn, tasks: BackgroundTasks, db: Session = Depends(ge
         try:
             d = discovery.place_details(b.place_id)
             b.photo_count = b.photo_count or len(d.get("photos") or [])
+            if not b.gbp_location:  # a signed-in Google account's data is richer; otherwise keep the public status
+                b.gbp_status = discovery.public_status(d)
             for rv in d.get("reviews") or []:
                 ext = rv.get("name")
                 if db.scalar(select(Review).where(Review.business_id == b.id, Review.external_id == ext)):
