@@ -51,11 +51,15 @@ def analyse_html(url: str, status: int, html: str) -> dict[str, Any]:
         if href.startswith("http"):
             links.append({"href": href, "text": a.get_text(" ", strip=True)})
     images = soup.find_all("img")
+    h1s = soup.find_all("h1")
     return {
         "url": url, "status": status,
         "title": title, "title_length": len(title),
+        "meta_description": meta_desc[:320],  # kept so the UI can show it and suggest a better one
         "meta_description_length": len(meta_desc),
-        "h1_count": len(soup.find_all("h1")),
+        "h1_count": len(h1s),
+        "h1": h1s[0].get_text(" ", strip=True)[:160] if h1s else "",
+        "images_without_alt": [urljoin(url, i.get("src") or "") for i in images if not (i.get("alt") or "").strip() and i.get("src")][:8],
         "word_count": len(text.split()),
         "canonical": canonical.get("href") if canonical else None,
         "noindex": bool(robots and "noindex" in (robots.get("content") or "").lower()),
@@ -73,27 +77,27 @@ def page_issues(p: dict[str, Any]) -> list[dict[str, Any]]:
     out = []
     path = urlparse(p["url"]).path or "/"
     if p["status"] >= 400:
-        return [{"area": "Crawlability", "level": "critical", "title": f"{path} returns {p['status']}", "fix": "Fix the page or 301-redirect it to the closest live page."}]
+        return [{"code": "http_error", "area": "Crawlability", "level": "critical", "title": f"{path} returns {p['status']}", "fix": "Fix the page or 301-redirect it to the closest live page."}]
     if p.get("javascript_only"):
-        out.append({"area": "Crawlability", "level": "critical", "title": f"{path} is empty without JavaScript",
+        out.append({"code": "javascript_only", "area": "Crawlability", "level": "critical", "title": f"{path} is empty without JavaScript",
                     "fix": "The page content is built in the browser. Use server-side rendering or pre-rendering so search engines and AI crawlers see the text, links and contact details."})
         return out
     if p["noindex"]:
-        out.append({"area": "Indexing", "level": "critical", "title": f"{path} has noindex", "fix": "Remove noindex if this page should rank."})
+        out.append({"code": "noindex", "area": "Indexing", "level": "critical", "title": f"{path} has noindex", "fix": "Remove noindex if this page should rank."})
     if not p["title_length"]:
-        out.append({"area": "On-page", "level": "serious", "title": f"{path} has no title", "fix": "Add a unique 50-60 character title with the keyword near the start."})
+        out.append({"code": "missing_title", "area": "On-page", "level": "serious", "title": f"{path} has no title", "fix": "Add a unique 50-60 character title with the keyword near the start."})
     elif p["title_length"] > 60 or p["title_length"] < 25:
-        out.append({"area": "On-page", "level": "warning", "title": f"{path} title is {p['title_length']} characters", "fix": "Keep titles 50-60 characters."})
+        out.append({"code": "title_length", "area": "On-page", "level": "warning", "title": f"{path} title is {p['title_length']} characters", "fix": "Keep titles 50-60 characters."})
     if not p["meta_description_length"]:
-        out.append({"area": "On-page", "level": "warning", "title": f"{path} has no meta description", "fix": "Write 150-160 characters that earn the click."})
+        out.append({"code": "missing_meta_description", "area": "On-page", "level": "warning", "title": f"{path} has no meta description", "fix": "Write 150-160 characters that earn the click."})
     if p["h1_count"] != 1:
-        out.append({"area": "On-page", "level": "warning", "title": f"{path} has {p['h1_count']} H1 headings", "fix": "Use exactly one H1 per page."})
+        out.append({"code": "h1_count", "area": "On-page", "level": "warning", "title": f"{path} has {p['h1_count']} H1 headings", "fix": "Use exactly one H1 per page."})
     if p["word_count"] < 300:
-        out.append({"area": "On-page", "level": "warning", "title": f"{path} is thin ({p['word_count']} words)", "fix": "Answer the visitor's questions in more depth."})
+        out.append({"code": "thin_content", "area": "On-page", "level": "warning", "title": f"{path} is thin ({p['word_count']} words)", "fix": "Answer the visitor's questions in more depth."})
     if p["images_missing_alt"]:
-        out.append({"area": "Images", "level": "info", "title": f"{path}: {p['images_missing_alt']} images without alt text", "fix": "Add short descriptive alt text."})
+        out.append({"code": "missing_alt", "area": "Images", "level": "info", "title": f"{path}: {p['images_missing_alt']} images without alt text", "fix": "Add short descriptive alt text."})
     if not p["has_viewport"]:
-        out.append({"area": "Mobile", "level": "serious", "title": f"{path} has no viewport tag", "fix": "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">."})
+        out.append({"code": "no_viewport", "area": "Mobile", "level": "serious", "title": f"{path} has no viewport tag", "fix": "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">."})
     return out
 
 
@@ -146,22 +150,24 @@ def summarise(site: dict[str, Any]) -> tuple[int, list[dict[str, Any]]]:
     """Score (0-100) and issues for a crawl."""
     issues: list[dict[str, Any]] = []
     if not site.get("https"):
-        issues.append({"area": "Security", "level": "serious", "title": "Site is not on HTTPS", "fix": "Install an SSL certificate and redirect HTTP to HTTPS."})
+        issues.append({"code": "no_https", "area": "Security", "level": "serious", "title": "Site is not on HTTPS", "fix": "Install an SSL certificate and redirect HTTP to HTTPS."})
     if site.get("robots_blocks_all"):
-        issues.append({"area": "Crawlability", "level": "critical", "title": "robots.txt blocks all crawlers", "fix": "Remove 'Disallow: /' for User-agent: *."})
+        issues.append({"code": "robots_blocks_all", "area": "Crawlability", "level": "critical", "title": "robots.txt blocks all crawlers", "fix": "Remove 'Disallow: /' for User-agent: *."})
     if not site.get("sitemap"):
-        issues.append({"area": "Crawlability", "level": "warning", "title": "No XML sitemap found", "fix": "Publish /sitemap.xml and submit it in Search Console."})
+        issues.append({"code": "no_sitemap", "area": "Crawlability", "level": "warning", "title": "No XML sitemap found", "fix": "Publish /sitemap.xml and submit it in Search Console."})
     pages = site.get("pages", [])
     if pages and not any("LocalBusiness" in t or t in ("Dentist", "MedicalClinic", "Restaurant", "Store") for p in pages for t in p["schema_types"]):
-        issues.append({"area": "Structured data", "level": "serious", "title": "No LocalBusiness schema on the site", "fix": "Add LocalBusiness JSON-LD to the home and contact pages."})
+        issues.append({"code": "no_localbusiness_schema", "area": "Structured data", "level": "serious", "title": "No LocalBusiness schema on the site", "fix": "Add LocalBusiness JSON-LD to the home and contact pages."})
     titles = [p["title"] for p in pages if p["title"]]
     dupes = {t for t in titles if titles.count(t) > 1}
     if dupes:
-        issues.append({"area": "On-page", "level": "warning", "title": f"{len(dupes)} duplicate page titles", "fix": "Give every page a unique title."})
+        issues.append({"code": "duplicate_titles", "area": "On-page", "level": "warning", "title": f"{len(dupes)} duplicate page titles", "fix": "Give every page a unique title.",
+                       "titles": sorted(dupes)[:10], "pages": [p["url"] for p in pages if p["title"] in dupes][:20]})
     weight = {"critical": 12, "serious": 6, "warning": 2, "info": 0.5}
     site_penalty = sum(weight.get(i["level"], 1) for i in issues)
     page_found = [page_issues(p) for p in pages]
-    for found in page_found:
+    for p, found in zip(pages, page_found):
+        p["issues"] = found  # kept with the page, so the UI shows each page's own problems
         issues += found
     # Page problems are averaged over the pages, so a big site isn't punished for its size.
     page_penalty = (sum(weight.get(i["level"], 1) for found in page_found for i in found) / len(pages)) * 4 if pages else 0

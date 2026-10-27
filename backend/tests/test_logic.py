@@ -75,6 +75,19 @@ def test_crawler_page_checks():
     assert any("thin" in t for t in titles)
     assert not any("H1" in t for t in titles)
 
+    # The site summary keeps each page's own issues on the page (the on-page screen lists them per page).
+    broken = crawler.analyse_html("https://shreephysio.in/old", 404, "")
+    score, issues = crawler.summarise({"https": True, "sitemap": True, "pages": [p, broken]})
+    assert [i["title"] for i in broken["issues"]] == ["/old returns 404"]
+    # Facts and codes the on-page screen uses to group problems and suggest fixes.
+    assert p["h1"] == "Physiotherapy" and p["meta_description"].startswith("Back pain") and p["images_without_alt"] == ["https://shreephysio.in/a.jpg"]
+    assert {i["code"] for i in p["issues"]} >= {"thin_content", "missing_alt"} and broken["issues"][0]["code"] == "http_error"
+    _, site_issues = crawler.summarise({"https": False, "sitemap": False, "pages": [p, dict(p, url="https://shreephysio.in/b")]})
+    codes = {i["code"] for i in site_issues}
+    assert {"no_https", "no_sitemap", "duplicate_titles"} <= codes and all(i.get("code") for i in site_issues)
+    assert p["issues"] and all(i in issues for i in p["issues"] + broken["issues"])
+    assert 0 <= score <= 100
+
 
 def test_geo_answer_analysis():
     b = SimpleNamespace(name="Shree Physio & Rehab Clinic")

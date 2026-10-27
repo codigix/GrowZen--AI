@@ -12,6 +12,7 @@ from ..models import AgentTask, Audit, Business, InsightDay, Lead, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
 from ..services import agent, audits, gbp, reports, schedules
+from ..services import portfolio as portfolio_service
 from ..services.activity import log
 from ..services.profile_score import score_profile
 
@@ -26,6 +27,12 @@ def list_businesses(db: Session = Depends(get_db), _: User = Depends(current_use
         nxt = db.scalar(select(func.min(Schedule.next_run_at)).where(Schedule.business_id == b.id, Schedule.every != "off"))
         out.append(row(b) | {"pending_tasks": pending, "next_run_at": nxt.isoformat() if nxt else None})
     return out
+
+
+@router.get("/portfolio")
+def portfolio(db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """Every client with its status, plan, health, running services and what needs attention (dashboard)."""
+    return portfolio_service.summary(db)
 
 
 @router.post("", status_code=201)

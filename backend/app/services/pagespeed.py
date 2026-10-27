@@ -86,8 +86,8 @@ def run(url: str, strategy: str = "mobile") -> dict[str, Any]:
 
 
 def issues_from(result: dict[str, Any]) -> list[dict[str, Any]]:
-    out = [{"area": "Technical", "level": "serious", "title": c["title"], "fix": c["description"]} for c in result["seo_checks"] if c["status"] == "fail"]
+    out = [{"code": f"lighthouse:{c['id']}", "area": "Technical", "level": "serious", "title": c["title"], "fix": c["description"]} for c in result["seo_checks"] if c["status"] == "fail"]
     perf = result["scores"].get("performance")
     if perf is not None and perf < 50:
-        out.append({"area": "Speed", "level": "serious", "title": f"Mobile performance {perf}/100 (LCP {result['metrics'].get('lcp')})", "fix": "; ".join(o["title"] for o in result["opportunities"][:3])})
+        out.append({"code": "slow_mobile", "area": "Speed", "level": "serious", "title": f"Mobile performance {perf}/100 (LCP {result['metrics'].get('lcp')})", "fix": "; ".join(o["title"] for o in result["opportunities"][:3])})
     return out

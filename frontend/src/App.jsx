@@ -13,6 +13,7 @@ import LocalRankTrackerPage from './platform/LocalRankTrackerPage';
 import KeywordResearchPage from './platform/KeywordResearchPage';
 import ContentStudioPage from './platform/ContentStudioPage';
 import SiteAuditPage from './platform/SiteAuditPage';
+import OnPageSeoPage from './platform/OnPageSeoPage';
 import BacklinksCitationsPage from './platform/BacklinksCitationsPage';
 import GeoTrackerPage from './platform/GeoTrackerPage';
 import ReportsLeadsPage from './platform/ReportsLeadsPage';
@@ -60,7 +61,7 @@ export default function App() {
         <Route path="ai-content-generation" element={<ContentStudioPage />} />
         <Route path="content-calendar" element={<ContentStudioPage initialTab="calendar" />} />
         <Route path="website-audit" element={<SiteAuditPage />} />
-        <Route path="on-page-seo" element={<SiteAuditPage initialTab="pages" />} />
+        <Route path="on-page-seo" element={<OnPageSeoPage />} />
         <Route path="off-page-seo" element={<BacklinksCitationsPage />} />
         <Route path="geo-optimization" element={<GeoTrackerPage />} />
         <Route path="leads" element={<ReportsLeadsPage initialTab="leads" />} />

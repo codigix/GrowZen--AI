@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     pagespeed_api_key: str = ""
     # Google Places API (New): find a business on Google Maps from an email / name (read-only)
     google_places_api_key: str = ""
+    # OpenStreetMap (Photon + Nominatim, no key): business-name suggestions and details while onboarding
+    osm_lookup_enabled: bool = True
 
     # Onboarding email intake: a dedicated mailbox read over IMAP.
     intake_imap_host: str = ""

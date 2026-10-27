@@ -7,12 +7,13 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .config import get_settings
-from .db import SessionLocal
+from .db import Base, SessionLocal, engine
+from . import models  # noqa: F401 - register all tables
 from .routers import agent, auth, businesses, connections, discover, growth, intake, leads, lighthouse, profile, system, website
 from .services import lighthouse_runner, scheduler
 
@@ -25,6 +26,12 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Ensure database schema is created if running fresh or with SQLite
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:
+        logging.getLogger("seo").warning("Table creation skipped: %s", exc)
+
     db = SessionLocal()
     try:
         auth.seed_admin(db, settings)
@@ -41,6 +48,23 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logging.getLogger("seo").exception("Unhandled server error on %s %s: %s", request.method, request.url.path, exc)
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {exc}"},
+    )
+    origin = request.headers.get("origin")
+    if origin and (origin in settings.cors_list or "*" in settings.cors_list):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
 
 for r in (system, auth, businesses, profile, growth, leads, intake, connections, discover, agent, website, lighthouse):
     app.include_router(r.router, prefix=settings.api_prefix)

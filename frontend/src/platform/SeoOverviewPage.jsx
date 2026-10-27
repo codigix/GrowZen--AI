@@ -1,968 +1,618 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip
-} from 'recharts';
-import {
-  Phone, Navigation, MousePointerClick, Users, Star, Grid3x3, Bot, ArrowRight,
-  Sparkles, CheckCircle2, Plug, Play, Loader2, TrendingUp, AlertTriangle,
-  ShieldCheck, ExternalLink, RefreshCw, Zap, ArrowUpRight, BarChart3,
-  Calendar, Award, Globe, Layers, Check, Search, FileText, Send, Terminal,
-  Sliders, Cpu, ChevronRight, Activity, Flame, ShieldAlert, X, Copy,
-  Eye, Stethoscope, Compass, MapPin, ChevronDown, Info, Code, Link2, CheckCheck
+  Sparkles, Bot, Cpu, ShieldCheck, CalendarClock, Briefcase, Activity, AlertTriangle, ClipboardCheck, Layers, Target,
+  Search, CheckCircle2, XCircle, ArrowUp, ArrowDown, ArrowRight, Phone, Navigation, MousePointerClick,
+  Settings2, LayoutGrid, List, Globe, Store, Star, Send, User, Link2, Wrench, RefreshCw
 } from 'lucide-react';
-import {
-  SeoShell, Card, Stat, ScoreRing, Meter, StatusPill, Badge, Button, ChartTooltip,
-  Legend, SourceTag, ErrorNote, BackendDown, SERIES, INK, scoreWord,
-  useModulePath, useToast, useAction, LifecycleGrowthBar
-} from './SeoUi';
+import { SeoShell, Card, Badge, ScoreRing, ChartTooltip, ErrorNote, SERIES, scoreLevel, scoreWord, useModulePath, useSeoBusiness } from './SeoUi';
+import { useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 
-import { api, useApi, fmtDateTime } from './seoApi';
+/**
+ * Command Center: every project (client business) at once, with the AI side of the work in front.
+ * AI briefing + recommended next steps, projects (cards or table), AI operations (agents, approvals,
+ * schedule), performance and health. Data: GET /businesses/portfolio, /tasks, /activity, /me.
+ * Real data only; the briefing text is built from these numbers, not generated.
+ */
 
-export default function SeoOverviewPage() {
+const AREA_LABELS = { gbp: 'Profile', rankings: 'Rankings', technical: 'Technical', onpage: 'On-page', backlinks: 'Backlinks', citations: 'Citations' };
+const STATUS_META = {
+  active: { label: 'Active', tone: 'green', color: '#10b981' },
+  needs_approval: { label: 'Needs approval', tone: 'amber', color: '#f59e0b' },
+  paused: { label: 'Paused', tone: 'gray', color: '#94a3b8' }
+};
+const EVERY = { daily: 'Daily', weekly: 'Weekly', fortnightly: 'Fortnightly', monthly: 'Monthly' };
+const LEVEL_DOT = { critical: 'bg-red-500', serious: 'bg-orange-500', warning: 'bg-amber-400', info: 'bg-slate-300' };
+const IMPACT_ORDER = { High: 0, Medium: 1, Low: 2 };
+const PLAN_ORDER = { Starter: 0, Growth: 1, Pro: 2, Agency: 3, 'No plan': 4 };
+const AGENT_ICON = { audit: Globe, gbp: Store, review: Star, outreach: Send };
+const TASK_KIND = {
+  review_reply_high: '4–5★ review replies', review_reply_low: '1–3★ review replies', gbp_post: 'GBP posts', profile_edit: 'Profile edits',
+  website_fix: 'Website fixes', blog_draft: 'Blog drafts', outreach_email: 'Outreach emails'
+};
+const VIEW_KEY = 'growzen.dashboard.view';
+
+const scoreText = (s) => (s == null ? 'text-slate-400' : s >= 80 ? 'text-emerald-700' : s >= 60 ? 'text-amber-700' : 'text-red-600');
+const scoreBar = (s) => (s >= 80 ? 'bg-emerald-500' : s >= 60 ? 'bg-amber-400' : s >= 40 ? 'bg-orange-500' : 'bg-red-500');
+const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+const relDay = (iso) => {
+  if (!iso) return '—';
+  const days = Math.round((new Date(iso) - new Date()) / 86400000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  if (days === -1) return 'yesterday';
+  return days > 0 ? `in ${days} days` : `${-days} days ago`;
+};
+const dayGroup = (iso) => {
+  const d = new Date(iso); const t = new Date();
+  const diff = Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(t.getFullYear(), t.getMonth(), t.getDate())) / 86400000);
+  return diff <= 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+};
+const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
+const readView = () => { try { return localStorage.getItem(VIEW_KEY) || 'cards'; } catch (e) { return 'cards'; } };
+
+function SectionHeader({ icon: Icon, title, subtitle, right }) {
   return (
-    <SeoShell
-      title="Executive Local SEO Command Center"
-      subtitle="Autonomous SERP dominance, Google Business Profile signals, and multi-node rank intelligence"
-    >
-      {(b) => <OverviewContent key={b.id} b={b} />}
-    </SeoShell>
+    <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+      <div className="flex items-center gap-2.5">
+        <span className="w-8 h-8 rounded-lg bg-white ring-1 ring-inset ring-slate-200 shadow-sm flex items-center justify-center text-indigo-600"><Icon size={16} /></span>
+        <div>
+          <h2 className="text-[15px] font-semibold text-slate-900 leading-tight">{title}</h2>
+          {subtitle && <p className="text-[12px] text-slate-500">{subtitle}</p>}
+        </div>
+      </div>
+      {right}
+    </div>
   );
 }
 
-function OverviewContent({ b }) {
+/* ── AI briefing ─────────────────────────────────────────────────────────── */
+
+function GlassStat({ icon: Icon, label, value, hint, ok }) {
+  return (
+    <div className="rounded-2xl bg-white/10 ring-1 ring-inset ring-white/20 backdrop-blur-sm px-4 py-3 flex items-start gap-3">
+      <span className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center shrink-0"><Icon size={17} /></span>
+      <div className="min-w-0">
+        <div className="text-[11px] font-medium uppercase tracking-wider text-indigo-100">{label}</div>
+        <div className="text-[14px] font-semibold flex items-center gap-1.5">{value}{ok === false && <AlertTriangle size={13} className="text-amber-200" />}</div>
+        {hint && <div className="text-[12px] text-indigo-100/90 leading-snug line-clamp-2" title={hint}>{hint}</div>}
+      </div>
+    </div>
+  );
+}
+
+function Briefing({ data, me, onOpenProject }) {
   const navigate = useNavigate();
   const path = useModulePath();
-  const [toast, toastNode] = useToast();
-  const [chartRange, setChartRange] = useState('Last 30 Days');
-  const [aiAssistantInput, setAiAssistantInput] = useState('');
-  const [aiAssistantReply, setAiAssistantReply] = useState('');
-  const [isAiAnswering, setIsAiAnswering] = useState(false);
+  const { totals: t, projects, ai } = data;
+  const upcoming7 = (data.upcoming || []).filter(u => new Date(u.at) - new Date() < 7 * 86400000).length;
 
-  const ov = useApi(`/businesses/${b.id}/overview`);
-  const [busy, error, run] = useAction();
+  const steps = [];
+  if (t.pending_tasks) steps.push({ icon: ClipboardCheck, label: `Review ${plural(t.pending_tasks, 'approval')}`, go: () => navigate(path('automation')) });
+  const worst = [...projects].sort((a, b) => b.issues.critical - a.issues.critical)[0];
+  if (worst?.issues.critical) steps.push({ icon: Wrench, label: `Fix ${plural(worst.issues.critical, 'critical issue')} · ${worst.name}`, go: () => onOpenProject(worst.id, 'on-page-seo') });
+  const failed = projects.filter(p => p.services.some(s => s.last_status === 'failed'));
+  if (failed.length) steps.push({ icon: RefreshCw, label: `Check ${plural(failed.length, 'failed job')}`, go: () => navigate(path('automation-pipeline')) });
+  const unlinked = projects.filter(p => !p.gbp_linked && p.status !== 'paused');
+  if (unlinked.length) steps.push({ icon: Link2, label: `Link ${plural(unlinked.length, 'Google profile')}`, go: () => navigate(path('google-integrations')) });
+  const unaudited = projects.filter(p => !p.last_audit_at && p.status !== 'paused');
+  if (unaudited.length && steps.length < 4) steps.push({ icon: Activity, label: `Audit ${plural(unaudited.length, 'new project')}`, go: () => onOpenProject(unaudited[0].id, 'on-page-seo') });
 
-  // Active clean target URL
-  const targetDomain = b.website ? b.website.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : 'morayamultispecialitycharitablehospital.com';
-  const targetSlug = 'cataract-surgery-in-pcmc';
-  const targetUrl = `https://${targetDomain}/${targetSlug}`;
-
-  const copyToClipboard = (text, msg) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      toast(msg || 'Copied to clipboard');
-    }
-  };
-
-  const handleAiAsk = (promptText) => {
-    const q = promptText || aiAssistantInput;
-    if (!q.trim()) return;
-    setIsAiAnswering(true);
-    setAiAssistantInput(q);
-    setTimeout(() => {
-      setAiAssistantReply(`Analyzed '${q}' for ${b.name}: High local search intent detected in PCMC & Chinchwad. Recommend adding 2 new FAQ schemas to /${targetSlug} and increasing review response velocity to under 4 hours.`);
-      setIsAiAnswering(false);
-    }, 900);
-  };
-
-  // 30-Day Verified Conversion Trends data matching reference image
-  const trendData = [
-    { day: 'Oct 1', profile_views: 180, calls: 90, directions: 120, clicks: 140 },
-    { day: 'Oct 5', profile_views: 240, calls: 110, directions: 160, clicks: 190 },
-    { day: 'Oct 10', profile_views: 310, calls: 140, directions: 210, clicks: 250 },
-    { day: 'Oct 15', profile_views: 360, calls: 160, directions: 260, clicks: 280 },
-    { day: 'Oct 20', profile_views: 420, calls: 186, directions: 312, clicks: 298 },
-    { day: 'Oct 25', profile_views: 390, calls: 175, directions: 290, clicks: 270 },
-    { day: 'Oct 30', profile_views: 450, calls: 195, directions: 330, clicks: 320 }
-  ];
+  const summary = [
+    `${plural(t.projects, 'project')} under management (${t.by_status.active} active, ${t.by_status.needs_approval} waiting for approval${t.by_status.paused ? `, ${t.by_status.paused} paused` : ''}).`,
+    t.needs_attention ? `${plural(t.needs_attention, 'project needs', 'projects need')} attention${t.critical_issues ? `, with ${plural(t.critical_issues, 'critical issue')} open` : ''}.` : 'No project needs urgent attention.',
+    `The AI agents have ${plural(t.pending_tasks, 'change')} waiting for your approval${upcoming7 ? ` and ${plural(upcoming7, 'job')} scheduled this week` : ''}.`
+  ].join(' ');
+  const firstName = (me?.name || '').split(' ')[0];
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-300">
-      {/* Universal End-to-End Growth Engine Lifecycle Navigator */}
-      <LifecycleGrowthBar currentStepId="onboarding" />
-
-      {/* ════════════════ 1. TOP HERO ROW: 2 CARDS ════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Card 1: Business Entity & Clean URL Spotlight (approx 68% / 8 cols) */}
-        <div className="lg:col-span-8 bg-[#0d1424] border border-[#1b253b] rounded-2xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-5 relative overflow-hidden">
-          <div className="flex items-center gap-4 min-w-0">
-            {/* Hospital Building Image */}
-            <div className="relative w-40 h-28 rounded-xl overflow-hidden border border-white/10 shrink-0 shadow-md">
-              <img
-                src="/moraya-hospital.jpg"
-                alt="Moraya Hospital"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'flex';
-                }}
-              />
-              <div className="hidden absolute inset-0 bg-gradient-to-tr from-blue-700 to-indigo-600 items-center justify-center text-white font-extrabold text-2xl">
-                M
-              </div>
-            </div>
-
-            {/* Info and Clean URL */}
-            <div className="min-w-0">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-semibold mb-1.5">
-                <Check size={11} strokeWidth={3} /> Google Verified
-              </div>
-
-              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight font-display truncate">
-                {b.name}
-              </h2>
-
-              <p className="text-[12px] text-slate-400 mt-0.5">
-                {b.primaryCategory || 'Multispeciality Hospital'} · {[b.city, b.area].filter(Boolean).join(', ') || 'PCMC, Pune'}
-              </p>
-
-              {/* Clean URL Bar */}
-              <div className="mt-2.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#080d18] border border-white/10 text-[11px] font-mono text-cyan-400 shadow-inner max-w-full">
-                <span className="truncate">{targetUrl}</span>
-                <button
-                  onClick={() => copyToClipboard(targetUrl, 'Clean URL copied!')}
-                  className="p-0.5 text-slate-400 hover:text-white transition-colors cursor-pointer"
-                  title="Copy URL"
-                >
-                  <Copy size={12} />
-                </button>
-                <a
-                  href={targetUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="p-0.5 text-slate-400 hover:text-cyan-300 transition-colors"
-                  title="Visit Live Page"
-                >
-                  <ExternalLink size={12} />
-                </a>
-              </div>
-            </div>
+    <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white shadow-xl shadow-indigo-500/20">
+      <div className="absolute -top-24 -right-16 w-80 h-80 rounded-full bg-white/10 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-32 left-1/3 w-96 h-96 rounded-full bg-fuchsia-300/20 blur-3xl pointer-events-none" />
+      <div className="absolute inset-0 opacity-[0.07] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '22px 22px' }} />
+      <div className="relative p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="lg:col-span-3">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-inset ring-white/25 text-[11px] font-semibold uppercase tracking-wider">
+            <Sparkles size={12} /> AI briefing · {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
-
-          {/* Overall SEO Health Score Gauge on the right */}
-          <div className="flex items-center gap-4 shrink-0 border-t md:border-t-0 md:border-l border-white/10 pt-3 md:pt-0 md:pl-5 w-full md:w-auto justify-between md:justify-end">
-            {/* Custom Neon Circular Ring with 84 */}
-            <div className="relative w-20 h-20 flex items-center justify-center shrink-0">
-              <svg className="w-20 h-20 -rotate-90">
-                <circle cx="40" cy="40" r="33" stroke="#172338" strokeWidth="6" fill="transparent" />
-                <circle
-                  cx="40"
-                  cy="40"
-                  r="33"
-                  stroke="#10b981"
-                  strokeWidth="6"
-                  strokeDasharray="207"
-                  strokeDashoffset="33"
-                  strokeLinecap="round"
-                  fill="transparent"
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-black text-white font-display">84</span>
+          <h2 className="mt-3 text-2xl lg:text-[28px] font-bold tracking-tight">{greeting()}{firstName ? `, ${firstName}` : ''}</h2>
+          <p className="mt-2 text-[14px] leading-relaxed text-indigo-50 max-w-2xl">{summary}</p>
+          <div className="mt-5">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-indigo-100 mb-2">Recommended next steps</div>
+            {steps.length ? (
+              <div className="flex flex-wrap gap-2">
+                {steps.slice(0, 4).map((s, i) => (
+                  <button key={s.label} onClick={s.go} className={`h-9 px-3.5 inline-flex items-center gap-2 rounded-xl text-[13px] font-semibold cursor-pointer transition-all ${i === 0 ? 'bg-white text-indigo-700 shadow-md hover:shadow-lg' : 'bg-white/15 text-white ring-1 ring-inset ring-white/25 hover:bg-white/25'}`}>
+                    <s.icon size={14} /> <span className="truncate max-w-[260px]">{s.label}</span> <ArrowRight size={13} className="opacity-70" />
+                  </button>
+                ))}
               </div>
-            </div>
-
-            <div className="min-w-0">
-              <div className="text-[12px] font-bold text-emerald-400 flex items-center gap-0.5">
-                <span>↑ +12</span>
-              </div>
-              <div className="text-[12px] font-bold text-white flex items-center gap-1 font-display">
-                Overall SEO Health <Info size={11} className="text-slate-400" />
-              </div>
-              <div className="text-[11px] font-bold text-emerald-400 mt-0.5">
-                Good Progress
-              </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">
-                3 priority items remaining
-              </div>
-            </div>
+            ) : <div className="inline-flex items-center gap-2 text-[13px] text-white/90"><CheckCircle2 size={15} /> All clear: nothing needs you right now.</div>}
           </div>
         </div>
-
-        {/* Card 2: AI Insight & Actions (approx 32% / 4 cols) */}
-        <div className="lg:col-span-4 bg-[#0d1424] border border-[#1b253b] rounded-2xl p-4 shadow-xl flex flex-col justify-between gap-3">
-          {/* Top Box: AI Insight */}
-          <div className="bg-gradient-to-r from-blue-950/70 via-indigo-950/60 to-purple-950/50 border border-indigo-500/30 rounded-xl p-3.5 relative">
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="flex items-center gap-1.5 text-[12px] font-bold text-white">
-                <Sparkles size={14} className="text-cyan-400" />
-                <span>AI Insight</span>
-              </div>
-              <button
-                onClick={() => navigate(path('automation'))}
-                className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer"
-              >
-                <ArrowRight size={11} />
-              </button>
-            </div>
-            <p className="text-[12px] text-slate-300 leading-relaxed">
-              Your local visibility increased by 28% this month. Continue optimizing service pages.
-            </p>
-          </div>
-
-          {/* Bottom Action Buttons */}
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={() => {
-                toast('Multi-node neural audit started: crawling GBP, rankings, and on-page schema...');
-                setTimeout(() => toast('Multi-node audit completed: SERP Health score updated to 84/100'), 3000);
-              }}
-              className="flex-1 h-9.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:opacity-95 text-white font-bold text-[12px] shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
-            >
-              <Play size={13} className="fill-white" />
-              <span>Run Multi-Node Audit</span>
-            </button>
-            <button
-              onClick={() => navigate(path('reports'))}
-              className="h-9.5 px-3.5 rounded-xl bg-[#131b2e] hover:bg-[#1a253e] border border-white/10 text-slate-200 hover:text-white font-bold text-[12px] transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-            >
-              <FileText size={13} />
-              <span>View Report</span>
-            </button>
-          </div>
+        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-2.5 content-start">
+          <GlassStat icon={Cpu} label="AI engine" value={!ai ? '—' : ai.engine.configured ? `${ai.engine.provider} connected` : 'Not configured'}
+            hint={!ai ? 'Restart the backend' : ai.engine.configured ? 'Drafts, replies and reports are AI-written' : 'Add an AI key in Integrations to enable drafts'} ok={ai?.engine.configured} />
+          <GlassStat icon={ShieldCheck} label="Autopilot" value={ai ? `${ai.autopilot.auto.length} of ${ai.autopilot.auto.length + ai.autopilot.manual.length} task types` : '—'}
+            hint={ai ? `Runs without approval: ${ai.autopilot.auto.map(k => TASK_KIND[k] || k).join(', ') || 'none'}` : ''} />
+          <GlassStat icon={Bot} label="Agent work · 30 days" value={ai ? `${ai.applied_30} applied · ${t.pending_tasks} waiting` : `${t.pending_tasks} waiting`}
+            hint={`${plural(upcoming7, 'job')} scheduled in the next 7 days`} />
         </div>
       </div>
+    </section>
+  );
+}
 
-      {/* ════════════════ 2. FIVE METRIC CARDS ROW ════════════════ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-        {/* Card 1: Google Profile Views */}
-        <div className="bg-[#0d1424] border border-[#1b253b] rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-8 h-8 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
-              <MapPin size={15} />
-            </div>
-            <span className="text-[11px] font-medium text-slate-300 leading-tight">
-              Google Profile Views
-            </span>
-          </div>
-          <div className="text-2xl font-black text-white font-display">2,348</div>
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-0.5">
-              ↑ 28%
-            </span>
-            {/* Smooth SVG Sparkline */}
-            <svg width="72" height="24" className="overflow-visible">
-              <path d="M0,20 Q18,12 36,15 T72,4" fill="none" stroke="#3b82f6" strokeWidth="2.5" />
-            </svg>
-          </div>
-        </div>
+/* ── KPIs ────────────────────────────────────────────────────────────────── */
 
-        {/* Card 2: Direct Phone Calls */}
-        <div className="bg-[#0d1424] border border-[#1b253b] rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-8 h-8 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
-              <Phone size={15} />
-            </div>
-            <span className="text-[11px] font-medium text-slate-300 leading-tight">
-              Direct Phone Calls
-            </span>
-          </div>
-          <div className="text-2xl font-black text-white font-display">186</div>
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-0.5">
-              ↑ 42%
-            </span>
-            <svg width="72" height="24" className="overflow-visible">
-              <path d="M0,22 Q18,16 36,18 T72,5" fill="none" stroke="#a855f7" strokeWidth="2.5" />
-            </svg>
-          </div>
-        </div>
-
-        {/* Card 3: Direction Requests */}
-        <div className="bg-[#0d1424] border border-[#1b253b] rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-8 h-8 rounded-xl bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
-              <Navigation size={15} />
-            </div>
-            <span className="text-[11px] font-medium text-slate-300 leading-tight">
-              Direction Requests
-            </span>
-          </div>
-          <div className="text-2xl font-black text-white font-display">312</div>
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-0.5">
-              ↑ 36%
-            </span>
-            <svg width="72" height="24" className="overflow-visible">
-              <path d="M0,20 Q18,18 36,12 T72,6" fill="none" stroke="#06b6d4" strokeWidth="2.5" />
-            </svg>
-          </div>
-        </div>
-
-        {/* Card 4: Website Clicks */}
-        <div className="bg-[#0d1424] border border-[#1b253b] rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-600/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-              <MousePointerClick size={15} />
-            </div>
-            <span className="text-[11px] font-medium text-slate-300 leading-tight">
-              Website Clicks
-            </span>
-          </div>
-          <div className="text-2xl font-black text-white font-display">423</div>
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-0.5">
-              ↑ 24%
-            </span>
-            <svg width="72" height="24" className="overflow-visible">
-              <path d="M0,21 Q18,14 36,16 T72,7" fill="none" stroke="#f97316" strokeWidth="2.5" />
-            </svg>
-          </div>
-        </div>
-
-        {/* Card 5: New Patient Leads */}
-        <div className="bg-[#0d1424] border border-[#1b253b] rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-8 h-8 rounded-xl bg-pink-600/20 border border-pink-500/30 flex items-center justify-center text-pink-400 shrink-0">
-              <Users size={15} />
-            </div>
-            <span className="text-[11px] font-medium text-slate-300 leading-tight">
-              New Patient Leads
-            </span>
-          </div>
-          <div className="text-2xl font-black text-white font-display">61</div>
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-0.5">
-              ↑ 51%
-            </span>
-            <svg width="72" height="24" className="overflow-visible">
-              <path d="M0,22 Q18,17 36,19 T72,4" fill="none" stroke="#ec4899" strokeWidth="2.5" />
-            </svg>
-          </div>
-        </div>
+function Kpi({ icon: Icon, label, value, hint, tone }) {
+  const tones = { indigo: 'from-indigo-500 to-violet-500', emerald: 'from-emerald-500 to-teal-500', red: 'from-rose-500 to-red-500', amber: 'from-amber-400 to-orange-500', sky: 'from-sky-500 to-indigo-500', slate: 'from-slate-400 to-slate-500' };
+  return (
+    <div className="ai-glass-card rounded-2xl p-4 flex items-center gap-3.5 min-w-0">
+      <span className={`w-11 h-11 rounded-xl bg-gradient-to-br ${tones[tone] || tones.slate} text-white flex items-center justify-center shrink-0 shadow-sm`}><Icon size={19} /></span>
+      <div className="min-w-0">
+        <div className="text-[12px] font-medium text-slate-500 truncate">{label}</div>
+        <div className="text-[22px] leading-tight font-bold text-slate-900 tabular-nums">{value}</div>
+        {hint && <div className="text-[11px] text-slate-500 truncate" title={hint}>{hint}</div>}
       </div>
-
-      {/* ════════════════ 3. MIDDLE ROW: TRENDS & MAP PERFORMANCE ════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Left Card: Patient Conversion Trends (approx 62% / 7 cols) */}
-        <div className="lg:col-span-7 bg-[#0d1424] border border-[#1b253b] rounded-2xl p-5 shadow-xl flex flex-col justify-between">
-          <div>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-              <div>
-                <h3 className="text-[15px] font-bold text-white font-display">
-                  Patient Conversion Trends
-                </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Google activity and website engagement (last 30 days)
-                </p>
-              </div>
-
-              {/* Date dropdown */}
-              <div className="h-8 px-2.5 rounded-lg bg-[#12192c] border border-white/10 flex items-center gap-1.5 text-[11px] font-medium text-slate-300 cursor-pointer">
-                <span>{chartRange}</span>
-                <ChevronDown size={12} className="text-slate-400" />
-              </div>
-            </div>
-
-            {/* Legend */}
-            <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-300 mb-3 font-medium">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-blue-500" /> Profile Views
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-purple-500" /> Calls
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-cyan-400" /> Directions
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-amber-500" /> Website Clicks
-              </span>
-            </div>
-          </div>
-
-          {/* Area Chart with Floating Tooltip at Oct 20 */}
-          <div className="h-64 relative pt-1">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData} margin={{ top: 8, right: 10, left: -22, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="viewsGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0} />
-                  </linearGradient>
-                  <linearGradient id="callsGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.0} />
-                  </linearGradient>
-                  <linearGradient id="dirGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
-                  </linearGradient>
-                  <linearGradient id="clicksGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0.0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#172238" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={{ stroke: '#1e293b' }} />
-                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
-                <Area type="monotone" dataKey="profile_views" stroke="#3b82f6" strokeWidth={2.5} fill="url(#viewsGrad)" />
-                <Area type="monotone" dataKey="calls" stroke="#8b5cf6" strokeWidth={2.5} fill="url(#callsGrad)" />
-                <Area type="monotone" dataKey="directions" stroke="#06b6d4" strokeWidth={2.5} fill="url(#dirGrad)" />
-                <Area type="monotone" dataKey="clicks" stroke="#f97316" strokeWidth={2.5} fill="url(#clicksGrad)" />
-              </AreaChart>
-            </ResponsiveContainer>
-
-            {/* Pinned Tooltip Box exactly matching Oct 20 callout in reference */}
-            <div className="absolute top-10 right-28 bg-[#0a0f1d]/95 backdrop-blur-md border border-white/15 rounded-xl p-3 shadow-2xl text-[11px] text-slate-200 pointer-events-none z-10 w-44">
-              <div className="font-bold text-white mb-1.5 border-b border-white/10 pb-1">Oct 20, 2026</div>
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-slate-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Profile Views
-                  </span>
-                  <span className="font-mono font-bold text-white">420</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-slate-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Calls
-                  </span>
-                  <span className="font-mono font-bold text-white">186</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-slate-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" /> Directions
-                  </span>
-                  <span className="font-mono font-bold text-white">312</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-slate-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Website Clicks
-                  </span>
-                  <span className="font-mono font-bold text-white">298</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Card: Local Map Performance (approx 38% / 5 cols) */}
-        <div className="lg:col-span-5 bg-[#0d1424] border border-[#1b253b] rounded-2xl p-5 shadow-xl flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <div>
-                <h3 className="text-[15px] font-bold text-white font-display">
-                  Local Map Performance
-                </h3>
-                <p className="text-[11px] text-slate-400">
-                  Google Maps ranking across PCMC region
-                </p>
-              </div>
-              <button
-                onClick={() => navigate(path('rank-tracking'))}
-                className="px-2.5 py-1 rounded-lg bg-[#131b2e] hover:bg-[#1a253e] border border-white/10 text-cyan-400 hover:text-cyan-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
-              >
-                View Geo-Grid →
-              </button>
-            </div>
-          </div>
-
-          {/* Interactive Radar Map Canvas */}
-          <div className="relative my-3 h-52 rounded-xl bg-[#090d18] border border-white/5 overflow-hidden flex items-center justify-center">
-            {/* Concentric Radar Rings */}
-            <div className="absolute w-44 h-44 rounded-full border border-blue-500/10 pointer-events-none" />
-            <div className="absolute w-32 h-32 rounded-full border border-cyan-500/15 pointer-events-none" />
-            <div className="absolute w-20 h-20 rounded-full border border-cyan-500/20 pointer-events-none" />
-
-            {/* Radar Sweep Effect */}
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-500/10 via-transparent to-transparent pointer-events-none" />
-
-            {/* Center Hospital Marker */}
-            <div className="relative z-10 flex flex-col items-center">
-              <div className="w-7 h-7 rounded-full bg-blue-600 border-2 border-white text-white flex items-center justify-center shadow-lg shadow-blue-500/40">
-                <MapPin size={14} className="fill-white" />
-              </div>
-              <span className="mt-1 px-2 py-0.5 rounded bg-blue-950/90 border border-blue-500/40 text-[9px] font-bold text-white shadow-md">
-                Moraya Hospital
-              </span>
-            </div>
-
-            {/* Scattered Rank Nodes matching reference */}
-            {/* Green #1 nodes */}
-            <div className="absolute top-10 left-16 w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-md shadow-emerald-400/50" />
-            <div className="absolute top-20 left-12 w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-md shadow-emerald-400/50" />
-            <div className="absolute bottom-12 left-18 w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-md shadow-emerald-400/50" />
-            <div className="absolute bottom-16 left-28 w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-md shadow-emerald-400/50" />
-
-            {/* Teal Top 3 nodes */}
-            <div className="absolute top-8 left-32 w-2.5 h-2.5 rounded-full bg-teal-300" />
-            <div className="absolute top-14 left-24 w-2.5 h-2.5 rounded-full bg-teal-300" />
-            <div className="absolute bottom-8 left-36 w-2.5 h-2.5 rounded-full bg-teal-300" />
-            <div className="absolute bottom-10 left-14 w-2.5 h-2.5 rounded-full bg-teal-300" />
-
-            {/* Orange Top 10 nodes */}
-            <div className="absolute top-12 right-24 w-2.5 h-2.5 rounded-full bg-amber-400" />
-            <div className="absolute top-24 right-20 w-2.5 h-2.5 rounded-full bg-amber-400" />
-            <div className="absolute bottom-14 right-26 w-2.5 h-2.5 rounded-full bg-amber-400" />
-            <div className="absolute top-18 right-32 w-2.5 h-2.5 rounded-full bg-amber-400" />
-
-            {/* Red Outside 10 nodes */}
-            <div className="absolute top-6 right-16 w-2.5 h-2.5 rounded-full bg-rose-500" />
-            <div className="absolute bottom-6 right-14 w-2.5 h-2.5 rounded-full bg-rose-500" />
-
-            {/* Stats Sidebar inside Map on the right */}
-            <div className="absolute top-3 right-3 bg-[#0c1220]/90 border border-white/10 rounded-xl p-2.5 space-y-1.5 text-[11px] shadow-lg">
-              <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400" /> #1
-                </span>
-                <span className="text-slate-300 font-mono">5 locations</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-1.5 text-teal-300 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-teal-300" /> Top 3
-                </span>
-                <span className="text-slate-300 font-mono">18 locations</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-1.5 text-amber-400 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-amber-400" /> Top 10
-                </span>
-                <span className="text-slate-300 font-mono">42 locations</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-1.5 text-rose-400 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-rose-400" /> Outside 10
-                </span>
-                <span className="text-slate-300 font-mono">6 locations</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Map Legend */}
-          <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium pt-2 border-t border-white/10">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" /> #1 Rank
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-teal-300" /> Top 3
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-400" /> Top 10
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-rose-500" /> Outside 10
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* ════════════════ 4. NEXT ROW: 6-PILLAR AUDIT & PRIORITY ACTION CENTER ════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Left Card: 6-Pillar Local SEO Audit (approx 65% / 8 cols) */}
-        <div className="lg:col-span-8 bg-[#0d1424] border border-[#1b253b] rounded-2xl p-5 shadow-xl">
-          <div className="flex items-center justify-between mb-3.5">
-            <div>
-              <h3 className="text-[15px] font-bold text-white font-display">
-                6-Pillar Local SEO Audit
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Comprehensive SERP ranking authority scores
-              </p>
-            </div>
-            <button
-              onClick={() => navigate(path('website-audit'))}
-              className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer transition-colors"
-            >
-              View Detailed Audit →
-            </button>
-          </div>
-
-          {/* 6 Pillars in a row */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-            {/* 1. Google Profile */}
-            <div
-              onClick={() => navigate(path('gmb-profile'))}
-              className="bg-[#090e1c] border border-white/5 rounded-xl p-3 hover:border-blue-500/40 transition-all cursor-pointer flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center mb-2">
-                  <Globe size={14} />
-                </div>
-                <div className="text-lg font-black text-white font-display">92/100</div>
-                <div className="text-[12px] font-bold text-white mt-1">Google Profile</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">NAP & Category</div>
-              </div>
-              <div className="w-full h-1 bg-slate-800 rounded-full mt-3 overflow-hidden">
-                <div className="h-full bg-emerald-400 rounded-full" style={{ width: '92%' }} />
-              </div>
-            </div>
-
-            {/* 2. Map 3-Pack */}
-            <div
-              onClick={() => navigate(path('rank-tracking'))}
-              className="bg-[#090e1c] border border-white/5 rounded-xl p-3 hover:border-cyan-500/40 transition-all cursor-pointer flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-7 h-7 rounded-lg bg-cyan-600/20 text-cyan-400 flex items-center justify-center mb-2">
-                  <Grid3x3 size={14} />
-                </div>
-                <div className="text-lg font-black text-white font-display">88/100</div>
-                <div className="text-[12px] font-bold text-white mt-1">Map 3-Pack</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Geo-centroid ranking</div>
-              </div>
-              <div className="w-full h-1 bg-slate-800 rounded-full mt-3 overflow-hidden">
-                <div className="h-full bg-cyan-400 rounded-full" style={{ width: '88%' }} />
-              </div>
-            </div>
-
-            {/* 3. Technical SEO */}
-            <div
-              onClick={() => navigate(path('website-audit'))}
-              className="bg-[#090e1c] border border-white/5 rounded-xl p-3 hover:border-emerald-500/40 transition-all cursor-pointer flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-7 h-7 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center mb-2">
-                  <Zap size={14} />
-                </div>
-                <div className="text-lg font-black text-white font-display">96/100</div>
-                <div className="text-[12px] font-bold text-white mt-1">Technical SEO</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Core Web Vitals</div>
-              </div>
-              <div className="w-full h-1 bg-slate-800 rounded-full mt-3 overflow-hidden">
-                <div className="h-full bg-emerald-400 rounded-full" style={{ width: '96%' }} />
-              </div>
-            </div>
-
-            {/* 4. On-Page SEO */}
-            <div
-              onClick={() => navigate(path('on-page-seo'))}
-              className="bg-[#090e1c] border border-white/5 rounded-xl p-3 hover:border-amber-500/40 transition-all cursor-pointer flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-7 h-7 rounded-lg bg-amber-600/20 text-amber-400 flex items-center justify-center mb-2">
-                  <Layers size={14} />
-                </div>
-                <div className="text-lg font-black text-white font-display">90/100</div>
-                <div className="text-[12px] font-bold text-white mt-1">On-Page SEO</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Schema & Content</div>
-              </div>
-              <div className="w-full h-1 bg-slate-800 rounded-full mt-3 overflow-hidden">
-                <div className="h-full bg-amber-400 rounded-full" style={{ width: '90%' }} />
-              </div>
-            </div>
-
-            {/* 5. Backlink Authority */}
-            <div
-              onClick={() => navigate(path('off-page-seo'))}
-              className="bg-[#090e1c] border border-white/5 rounded-xl p-3 hover:border-purple-500/40 transition-all cursor-pointer flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-7 h-7 rounded-lg bg-purple-600/20 text-purple-400 flex items-center justify-center mb-2">
-                  <BarChart3 size={14} />
-                </div>
-                <div className="text-lg font-black text-white font-display">68/100</div>
-                <div className="text-[12px] font-bold text-white mt-1">Backlink Authority</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Local Citations</div>
-              </div>
-              <div className="w-full h-1 bg-slate-800 rounded-full mt-3 overflow-hidden">
-                <div className="h-full bg-purple-400 rounded-full" style={{ width: '68%' }} />
-              </div>
-            </div>
-
-            {/* 6. Directory Sync */}
-            <div
-              onClick={() => navigate(path('off-page-seo'))}
-              className="bg-[#090e1c] border border-white/5 rounded-xl p-3 hover:border-indigo-500/40 transition-all cursor-pointer flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-7 h-7 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center mb-2">
-                  <Award size={14} />
-                </div>
-                <div className="text-lg font-black text-white font-display">82/100</div>
-                <div className="text-[12px] font-bold text-white mt-1">Directory Sync</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Listings & NAP</div>
-              </div>
-              <div className="w-full h-1 bg-slate-800 rounded-full mt-3 overflow-hidden">
-                <div className="h-full bg-indigo-400 rounded-full" style={{ width: '82%' }} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Card: Priority Action Center (approx 35% / 4 cols) */}
-        <div className="lg:col-span-4 bg-[#0d1424] border border-[#1b253b] rounded-2xl p-5 shadow-xl flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <h3 className="text-[15px] font-bold text-white font-display">
-                  Priority Action Center
-                </h3>
-                <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] font-bold">
-                  3 High Priority
-                </span>
-              </div>
-              <button
-                onClick={() => navigate(path('automation-pipeline'))}
-                className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 cursor-pointer"
-              >
-                View All →
-              </button>
-            </div>
-
-            {/* 4 Action Items */}
-            <div className="space-y-2">
-              {/* Item 1 */}
-              <div
-                onClick={() => navigate(path('website-builder'))}
-                className="p-2.5 rounded-xl bg-[#090e1c] border border-white/5 hover:border-rose-500/40 transition-all flex items-center justify-between gap-3 cursor-pointer group"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-6 h-6 rounded-lg bg-rose-600/20 text-rose-400 flex items-center justify-center text-[11px] font-bold shrink-0">
-                    1
-                  </div>
-                  <span className="text-[12px] font-medium text-slate-200 group-hover:text-white truncate">
-                    Optimize cataract-surgery-in-pcmc page
-                  </span>
-                </div>
-                <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 text-[10px] font-bold shrink-0">
-                  High
-                </span>
-              </div>
-
-              {/* Item 2 */}
-              <div
-                onClick={() => navigate(path('website-builder'))}
-                className="p-2.5 rounded-xl bg-[#090e1c] border border-white/5 hover:border-amber-500/40 transition-all flex items-center justify-between gap-3 cursor-pointer group"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-6 h-6 rounded-lg bg-purple-600/20 text-purple-400 flex items-center justify-center text-[11px] font-bold shrink-0">
-                    2
-                  </div>
-                  <span className="text-[12px] font-medium text-slate-200 group-hover:text-white truncate">
-                    Add Schema.org MedicalWebPage
-                  </span>
-                </div>
-                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[10px] font-bold shrink-0">
-                  Medium
-                </span>
-              </div>
-
-              {/* Item 3 */}
-              <div
-                onClick={() => navigate(path('google-posts'))}
-                className="p-2.5 rounded-xl bg-[#090e1c] border border-white/5 hover:border-blue-500/40 transition-all flex items-center justify-between gap-3 cursor-pointer group"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-6 h-6 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center text-[11px] font-bold shrink-0">
-                    3
-                  </div>
-                  <span className="text-[12px] font-medium text-slate-200 group-hover:text-white truncate">
-                    Publish 3 weekly Google Posts
-                  </span>
-                </div>
-                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[10px] font-bold shrink-0">
-                  Medium
-                </span>
-              </div>
-
-              {/* Item 4 */}
-              <div
-                onClick={() => navigate(path('off-page-seo'))}
-                className="p-2.5 rounded-xl bg-[#090e1c] border border-white/5 hover:border-emerald-500/40 transition-all flex items-center justify-between gap-3 cursor-pointer group"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-6 h-6 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center text-[11px] font-bold shrink-0">
-                    4
-                  </div>
-                  <span className="text-[12px] font-medium text-slate-200 group-hover:text-white truncate">
-                    Build 10 high-authority local citations
-                  </span>
-                </div>
-                <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold shrink-0">
-                  Low
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ════════════════ 5. BOTTOM ROW: RECENT ACTIONS, KEYWORDS, AI ASSISTANT ════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Column 1: Recent AI Actions (approx 28% / 3.5 cols) */}
-        <div className="lg:col-span-4 bg-[#0d1424] border border-[#1b253b] rounded-2xl p-4 shadow-xl flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5 text-[14px] font-bold text-white font-display">
-                <Sparkles size={14} className="text-cyan-400" />
-                <span>Recent AI Actions</span>
-              </div>
-              <button
-                onClick={() => navigate(path('automation'))}
-                className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 cursor-pointer"
-              >
-                View All →
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-400 -mt-2 mb-3">Latest automated SEO activities</p>
-
-            <div className="space-y-2.5 text-[12px]">
-              <div className="p-2 rounded-xl bg-[#090e1c] border border-white/5 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-slate-200 font-medium truncate">Added service keyword to GBP description</div>
-                    <div className="text-[10px] text-slate-400">2 hours ago</div>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] font-semibold shrink-0">
-                  GBP Update
-                </span>
-              </div>
-
-              <div className="p-2 rounded-xl bg-[#090e1c] border border-white/5 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-slate-200 font-medium truncate">Created 3 optimized meta titles</div>
-                    <div className="text-[10px] text-slate-400">5 hours ago</div>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] font-semibold shrink-0">
-                  Content
-                </span>
-              </div>
-
-              <div className="p-2 rounded-xl bg-[#090e1c] border border-white/5 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-slate-200 font-medium truncate">Scanned PCMC local map pack</div>
-                    <div className="text-[10px] text-slate-400">12 hours ago</div>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px] font-semibold shrink-0">
-                  Rank Tracking
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Column 2: Top Performing Keywords (approx 36% / 4.5 cols) */}
-        <div className="lg:col-span-4 bg-[#0d1424] border border-[#1b253b] rounded-2xl p-4 shadow-xl flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[14px] font-bold text-white font-display">
-                Top Performing Keywords
-              </h3>
-              <button
-                onClick={() => navigate(path('keyword-management'))}
-                className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 cursor-pointer"
-              >
-                View All →
-              </button>
-            </div>
-
-            <table className="w-full text-left text-[11px]">
-              <thead className="text-slate-400 border-b border-white/10 pb-1">
-                <tr>
-                  <th className="pb-1.5 font-semibold">Keyword</th>
-                  <th className="pb-1.5 text-center font-semibold">Position</th>
-                  <th className="pb-1.5 text-center font-semibold">Change</th>
-                  <th className="pb-1.5 text-right font-semibold">Search Vol.</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                <tr>
-                  <td className="py-2 text-slate-200 font-medium truncate">cataract surgery in pcmc</td>
-                  <td className="py-2 text-center font-bold text-white font-mono">1</td>
-                  <td className="py-2 text-center text-emerald-400 font-bold font-mono">↑ 2</td>
-                  <td className="py-2 text-right text-slate-300 font-mono">1,600</td>
-                </tr>
-                <tr>
-                  <td className="py-2 text-slate-200 font-medium truncate">eye hospital pcmc</td>
-                  <td className="py-2 text-center font-bold text-white font-mono">2</td>
-                  <td className="py-2 text-center text-emerald-400 font-bold font-mono">↑ 1</td>
-                  <td className="py-2 text-right text-slate-300 font-mono">1,300</td>
-                </tr>
-                <tr>
-                  <td className="py-2 text-slate-200 font-medium truncate">multispeciality hospital pcmc</td>
-                  <td className="py-2 text-center font-bold text-white font-mono">3</td>
-                  <td className="py-2 text-center text-emerald-400 font-bold font-mono">↑ 3</td>
-                  <td className="py-2 text-right text-slate-300 font-mono">2,400</td>
-                </tr>
-                <tr>
-                  <td className="py-2 text-slate-200 font-medium truncate">best eye hospital in pune</td>
-                  <td className="py-2 text-center font-bold text-white font-mono">4</td>
-                  <td className="py-2 text-center text-emerald-400 font-bold font-mono">↑ 5</td>
-                  <td className="py-2 text-right text-slate-300 font-mono">880</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Column 3: AI Assistant (approx 36% / 4 cols) */}
-        <div className="lg:col-span-4 bg-[#0d1424] border border-[#1b253b] rounded-2xl p-4 shadow-xl flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5 text-[13px] font-bold text-white font-display">
-                <div className="w-5 h-5 rounded-lg bg-blue-600/30 text-blue-400 flex items-center justify-center">
-                  <Sparkles size={12} />
-                </div>
-                <span>AI Assistant</span>
-              </div>
-              <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5">
-                <img src="/growzen-icon.png" alt="" className="w-3.5 h-3.5 object-contain" />
-                <span>Powered by GrowZen AI</span>
-              </span>
-            </div>
-
-            <div className="text-[13px] font-bold text-white mt-1">How can I help you today?</div>
-            <p className="text-[11px] text-slate-400 mt-0.5 mb-2.5">
-              Get SEO insights, create content, analyze competitors, and more.
-            </p>
-
-            {/* Quick Action Chips */}
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {[
-                'Optimize this page',
-                'Find new keywords',
-                'Improve Google Profile',
-                'Generate content ideas'
-              ].map((chip) => (
-                <button
-                  key={chip}
-                  onClick={() => handleAiAsk(chip)}
-                  className="px-2.5 py-1 rounded-lg bg-[#12192c] hover:bg-[#1a253e] border border-white/10 text-slate-300 hover:text-white text-[10px] font-medium transition-all cursor-pointer"
-                >
-                  {chip}
-                </button>
-              ))}
-            </div>
-
-            {/* AI Assistant Output if any */}
-            {aiAssistantReply && (
-              <div className="mb-2 p-2 rounded-xl bg-blue-950/40 border border-blue-500/20 text-[11px] text-cyan-200">
-                {aiAssistantReply}
-              </div>
-            )}
-          </div>
-
-          {/* Chat Input Bar with Send Button */}
-          <div className="flex items-center gap-1.5 bg-[#080d18] border border-white/10 rounded-xl px-2.5 py-1.5 shadow-inner">
-            <input
-              type="text"
-              value={aiAssistantInput}
-              onChange={(e) => setAiAssistantInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAiAsk()}
-              placeholder="Ask anything about your local SEO..."
-              className="flex-1 bg-transparent text-[12px] text-white placeholder-slate-500 focus:outline-none"
-            />
-            <button
-              onClick={() => handleAiAsk()}
-              disabled={isAiAnswering}
-              className="w-7 h-7 rounded-lg bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center cursor-pointer transition-colors shrink-0 disabled:opacity-50"
-            >
-              {isAiAnswering ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {toastNode}
     </div>
+  );
+}
+
+/* ── Projects ────────────────────────────────────────────────────────────── */
+
+function nextStepFor(p) {
+  const top = p.attention.find(a => a.level === 'critical' || a.level === 'serious') || p.attention[0];
+  if (top) return { text: top.text, level: top.level };
+  if (p.next_job) return { text: `Next: ${p.next_job.label} ${relDay(p.next_job.at)}`, level: 'ok' };
+  return { text: 'On track', level: 'ok' };
+}
+
+function ProjectCard({ p, onOpen }) {
+  const st = STATUS_META[p.status] || { label: p.status, tone: 'gray' };
+  const step = nextStepFor(p);
+  return (
+    <div role="button" tabIndex={0} onClick={() => onOpen(p.id)} onKeyDown={e => e.key === 'Enter' && onOpen(p.id)}
+      className="group ai-glass-card rounded-2xl p-5 flex flex-col gap-4 cursor-pointer transition-transform hover:-translate-y-0.5 outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+      <div className="flex items-start gap-3">
+        <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white text-[15px] font-bold flex items-center justify-center shrink-0">{p.name.slice(0, 1).toUpperCase()}</span>
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-slate-900 truncate">{p.name}</div>
+          <div className="text-[12px] text-slate-500 truncate">{[p.category, p.area || p.city].filter(Boolean).join(' · ') || '—'}{p.plan ? ` · ${p.plan}` : ''}</div>
+        </div>
+        <Badge tone={st.tone}>{st.label}</Badge>
+      </div>
+
+      <div className="flex items-center gap-4">
+        {p.health != null
+          ? <ScoreRing score={p.health} size={76} label="health" />
+          : <div className="w-[76px] h-[76px] rounded-full border-[7px] border-slate-100 flex flex-col items-center justify-center text-slate-400 shrink-0"><span className="text-lg font-bold">—</span><span className="text-[9px] uppercase tracking-wider">no audit</span></div>}
+        <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1.5">
+          {Object.entries(AREA_LABELS).map(([k, label]) => {
+            const a = p.areas[k];
+            return (
+              <div key={k} title={!a ? `${label}: not audited` : a.status === 'failed' ? `${label}: audit failed` : `${label}: ${a.score}/100`}>
+                <div className="flex justify-between text-[10px] text-slate-500"><span>{label}</span><span className={a?.status === 'failed' ? 'text-red-600' : scoreText(a?.score)}>{!a ? '—' : a.status === 'failed' ? 'failed' : a.score}</span></div>
+                <div className="h-1 rounded-full bg-slate-100 overflow-hidden">{a && a.status === 'done' && <div className={`h-full ${scoreBar(a.score)}`} style={{ width: `${a.score}%` }} />}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1 min-h-[22px]">
+        {p.services.length ? p.services.slice(0, 4).map(s => (
+          <span key={s.job} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium ring-1 ring-inset ${s.last_status === 'failed' ? 'bg-red-50 text-red-700 ring-red-200' : 'bg-slate-50 text-slate-700 ring-slate-200'}`} title={`${s.label} · ${EVERY[s.every] || s.every}`}>
+            {s.last_status === 'failed' && <XCircle size={10} />}{s.label}
+          </span>
+        )) : <span className="text-[12px] text-slate-400">No services scheduled</span>}
+        {p.services.length > 4 && <span className="text-[11px] text-slate-500 px-1">+{p.services.length - 4}</span>}
+      </div>
+
+      <div className={`rounded-xl px-3 py-2 flex items-start gap-2 text-[12px] ring-1 ring-inset ${step.level === 'ok' ? 'bg-emerald-50 ring-emerald-100 text-emerald-800' : step.level === 'critical' ? 'bg-red-50 ring-red-100 text-red-800' : 'bg-violet-50 ring-violet-100 text-violet-900'}`}>
+        <Sparkles size={13} className="mt-0.5 shrink-0" />
+        <span><span className="font-semibold">AI next step: </span>{step.text}</span>
+      </div>
+
+      <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between text-[12px] text-slate-500">
+        <span className="flex gap-3">
+          <span title="Changes waiting for approval"><b className="text-slate-900 tabular-nums">{p.pending_tasks}</b> to approve</span>
+          <span title="Leads in the last 30 days"><b className="text-slate-900 tabular-nums">{p.leads_30}</b> leads</span>
+          <span title="Reviews without a reply"><b className="text-slate-900 tabular-nums">{p.unreplied_reviews}</b> unreplied</span>
+        </span>
+        <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 opacity-70 group-hover:opacity-100">Open <ArrowRight size={13} /></span>
+      </div>
+    </div>
+  );
+}
+
+function ProjectsTable({ projects, onOpen }) {
+  return (
+    <div className="ai-glass-card rounded-2xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-[13px]">
+          <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+            <tr>
+              <th className="px-5 py-3 text-left font-semibold">Project</th>
+              <th className="px-3 py-3 text-left font-semibold">Status</th>
+              <th className="px-3 py-3 text-left font-semibold">Health</th>
+              <th className="px-3 py-3 text-left font-semibold">SEO services</th>
+              <th className="px-3 py-3 text-left font-semibold">Google</th>
+              <th className="px-3 py-3 text-right font-semibold">Work</th>
+              <th className="px-5 py-3 text-left font-semibold">AI next step</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {projects.map(p => {
+              const st = STATUS_META[p.status] || { label: p.status, tone: 'gray' };
+              const step = nextStepFor(p);
+              return (
+                <tr key={p.id} onClick={() => onOpen(p.id)} className="cursor-pointer align-top hover:bg-slate-50">
+                  <td className="px-5 py-3 min-w-[200px]">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 text-white text-[12px] font-bold flex items-center justify-center shrink-0">{p.name.slice(0, 1).toUpperCase()}</span>
+                      <div className="min-w-0"><div className="font-semibold text-slate-900 truncate">{p.name}</div><div className="text-[12px] text-slate-500 truncate">{[p.category, p.area || p.city].filter(Boolean).join(' · ') || '—'}</div></div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 whitespace-nowrap"><Badge tone={st.tone}>{st.label}</Badge><div className="mt-1 text-[12px] text-slate-500">{p.plan ? `${p.plan} plan` : 'No plan'}</div></td>
+                  <td className="px-3 py-3"><span className={`text-lg font-bold tabular-nums ${scoreText(p.health)}`}>{p.health ?? '—'}</span><div className="text-[11px] text-slate-400">{p.last_audit_at ? `Audited ${relDay(p.last_audit_at)}` : 'Not audited'}</div></td>
+                  <td className="px-3 py-3 max-w-[280px]">
+                    <div className="flex flex-wrap gap-1">{p.services.length ? p.services.map(s => <span key={s.job} className={`px-1.5 py-0.5 rounded-md text-[11px] font-medium ring-1 ring-inset ${s.last_status === 'failed' ? 'bg-red-50 text-red-700 ring-red-200' : 'bg-slate-50 text-slate-700 ring-slate-200'}`}>{s.label}</span>) : <span className="text-[12px] text-slate-400">Not scheduled</span>}</div>
+                  </td>
+                  <td className="px-3 py-3 whitespace-nowrap">{p.gbp_linked ? <span className="inline-flex items-center gap-1 text-[12px] font-medium text-emerald-700"><CheckCircle2 size={13} /> Linked</span> : <span className="inline-flex items-center gap-1 text-[12px] text-slate-500"><XCircle size={13} className="text-slate-400" /> Not linked</span>}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap text-[12px] text-slate-600 leading-5"><div><b className="text-slate-900">{p.pending_tasks}</b> to approve</div><div><b className="text-slate-900">{p.leads_30}</b> leads · 30d</div></td>
+                  <td className="px-5 py-3 min-w-[200px]"><div className="flex items-start gap-1.5 text-[12px] text-slate-800"><span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${LEVEL_DOT[step.level] || 'bg-emerald-500'}`} />{step.text}</div></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Projects({ projects, onOpen }) {
+  const path = useModulePath();
+  const [view, setView] = useState(readView);
+  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  useEffect(() => { try { localStorage.setItem(VIEW_KEY, view); } catch (e) { /* private window */ } }, [view]);
+  const needsAttention = (p) => p.attention.some(a => a.level === 'critical' || a.level === 'serious');
+  const filters = [['all', 'All', projects.length], ['active', 'Active', projects.filter(p => p.status === 'active').length],
+    ['needs_approval', 'Needs approval', projects.filter(p => p.status === 'needs_approval').length], ['paused', 'Paused', projects.filter(p => p.status === 'paused').length],
+    ['attention', 'Needs attention', projects.filter(needsAttention).length]];
+  const shown = projects.filter(p => (filter === 'all' || (filter === 'attention' ? needsAttention(p) : p.status === filter))
+    && (!query || `${p.name} ${p.category || ''} ${p.city || ''} ${p.area || ''}`.toLowerCase().includes(query.toLowerCase())));
+  const seg = (on) => `h-8 px-3 rounded-lg text-[12px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`;
+
+  return (
+    <section>
+      <SectionHeader icon={Briefcase} title="Projects" subtitle="Every client, its health, the services we run and the AI's next step"
+        right={<Link to={path('onboarding')} className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-xl text-[13px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm">+ New project</Link>} />
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="flex gap-0.5 p-0.5 rounded-xl bg-slate-100 overflow-x-auto max-w-full">
+          {filters.map(([id, label, n]) => <button key={id} className={seg(filter === id)} onClick={() => setFilter(id)}>{label} <span className="opacity-60 tabular-nums">{n}</span></button>)}
+        </div>
+        <label className="relative flex-1 min-w-[180px] max-w-xs ml-auto">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search projects" className="w-full h-9 pl-8 pr-3 text-[13px] rounded-xl bg-white ring-1 ring-inset ring-slate-200 focus:ring-indigo-400 outline-none text-slate-900 placeholder-slate-400" />
+        </label>
+        <div className="flex gap-0.5 p-0.5 rounded-xl bg-slate-100">
+          <button className={seg(view === 'cards')} onClick={() => setView('cards')} aria-label="Card view" title="Cards"><LayoutGrid size={14} /></button>
+          <button className={seg(view === 'table')} onClick={() => setView('table')} aria-label="Table view" title="Table"><List size={14} /></button>
+        </div>
+      </div>
+      {!shown.length ? <div className="ai-glass-card rounded-2xl py-12 text-center text-[13px] text-slate-500">No projects match.</div>
+        : view === 'cards' ? <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">{shown.map(p => <ProjectCard key={p.id} p={p} onOpen={onOpen} />)}</div>
+          : <ProjectsTable projects={shown} onOpen={onOpen} />}
+    </section>
+  );
+}
+
+/* ── AI operations ───────────────────────────────────────────────────────── */
+
+function Agents({ ai }) {
+  return (
+    <Card className="h-full" title="AI agents" subtitle="Proposed and applied in the last 30 days">
+      <ul className="space-y-3.5">
+        {Object.entries(ai.agents).map(([key, a]) => {
+          const Icon = AGENT_ICON[key] || Bot;
+          const total = Math.max(1, a.applied_30 + a.pending + a.rejected_30);
+          return (
+            <li key={key} className="flex items-start gap-3">
+              <span className="w-9 h-9 rounded-xl bg-violet-50 ring-1 ring-inset ring-violet-100 text-violet-600 flex items-center justify-center shrink-0"><Icon size={16} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2"><span className="text-[13px] font-semibold text-slate-900">{a.label}</span><span className="text-[11px] text-slate-500 tabular-nums">{a.proposed_30} proposed</span></div>
+                <div className="text-[11px] text-slate-500 truncate">{a.does}</div>
+                <div className="mt-1.5 flex h-1.5 rounded-full overflow-hidden bg-slate-100">
+                  <div className="bg-emerald-500" style={{ width: `${(a.applied_30 / total) * 100}%` }} />
+                  <div className="bg-amber-400" style={{ width: `${(a.pending / total) * 100}%` }} />
+                  <div className="bg-slate-300" style={{ width: `${(a.rejected_30 / total) * 100}%` }} />
+                </div>
+                <div className="mt-1 flex gap-3 text-[11px] text-slate-500"><span><b className="text-emerald-700">{a.applied_30}</b> applied</span><span><b className="text-amber-700">{a.pending}</b> waiting</span><span><b className="text-slate-700">{a.rejected_30}</b> rejected</span></div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
+function ApprovalQueue({ projects }) {
+  const tasks = useApi('/tasks?status=pending');
+  const path = useModulePath();
+  const names = Object.fromEntries(projects.map(p => [p.id, p.name]));
+  const list = [...(tasks.data || [])].sort((x, y) => (IMPACT_ORDER[x.impact] ?? 3) - (IMPACT_ORDER[y.impact] ?? 3));
+  return (
+    <Card className="h-full" title="Waiting for your approval" subtitle={tasks.data ? `${plural(list.length, 'change')} the agents proposed` : 'Loading…'}
+      action={<Link to={path('automation')} className="text-[12px] font-semibold text-indigo-700 hover:underline whitespace-nowrap">Review all</Link>}>
+      {tasks.error ? <ErrorNote>{tasks.error.message}</ErrorNote> : list.length ? (
+        <ul className="space-y-2">
+          {list.slice(0, 6).map(t => (
+            <li key={t.id} className="rounded-xl ring-1 ring-inset ring-slate-200 px-3 py-2.5 flex items-start gap-2.5">
+              <Bot size={15} className="text-violet-500 mt-0.5 shrink-0" />
+              <span className="min-w-0 flex-1"><span className="block text-[13px] text-slate-800 line-clamp-2">{t.title}</span><span className="block text-[11px] text-slate-500 truncate">{names[t.business_id] || '—'} · {t.agent} agent</span></span>
+              <Badge tone={t.impact === 'High' ? 'red' : t.impact === 'Medium' ? 'amber' : 'gray'}>{t.impact}</Badge>
+            </li>
+          ))}
+          {list.length > 6 && <li className="text-[12px] text-slate-500 text-center pt-1">+{list.length - 6} more in the queue</li>}
+        </ul>
+      ) : tasks.data && <div className="py-6 text-center text-[13px] text-slate-500"><CheckCircle2 size={22} className="mx-auto text-emerald-500 mb-1" />Nothing waiting. The agents are up to date.</div>}
+    </Card>
+  );
+}
+
+function AgentSchedule({ upcoming }) {
+  const path = useModulePath();
+  const groups = upcoming.slice(0, 10).reduce((g, u) => { const k = dayGroup(u.at); (g[k] = g[k] || []).push(u); return g; }, {});
+  return (
+    <Card className="h-full" title="Agent schedule" subtitle="Upcoming automatic work"
+      action={<Link to={path('automation-pipeline')} className="inline-flex items-center gap-1 text-[12px] font-semibold text-indigo-700 hover:underline whitespace-nowrap"><Settings2 size={12} /> Manage</Link>}>
+      {upcoming.length ? (
+        <div className="space-y-4">
+          {Object.entries(groups).map(([day, items]) => (
+            <div key={day}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">{day}</div>
+              <ol className="relative border-l border-slate-200 ml-1.5 space-y-2.5">
+                {items.map((u, i) => (
+                  <li key={i} className="pl-4 relative">
+                    <span className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full bg-indigo-500 ring-2 ring-white" />
+                    <div className="text-[13px] font-medium text-slate-800">{u.label}</div>
+                    <div className="text-[11px] text-slate-500">{u.project} · {EVERY[u.every] || u.every}</div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
+        </div>
+      ) : <div className="py-6 text-center text-[13px] text-slate-500"><CalendarClock size={22} className="mx-auto text-slate-300 mb-1" />Nothing scheduled. Set up services in Automation Pipeline.</div>}
+    </Card>
+  );
+}
+
+/* ── Performance & health ────────────────────────────────────────────────── */
+
+function Delta({ now, before }) {
+  if (!before) return <span className="text-[11px] text-slate-400">no earlier data</span>;
+  const pct = Math.round(((now - before) / before) * 100);
+  if (!pct) return <span className="text-[11px] text-slate-500">same as before</span>;
+  return <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${pct > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{pct > 0 ? <ArrowUp size={11} /> : <ArrowDown size={11} />}{Math.abs(pct)}% vs previous 30 days</span>;
+}
+
+function CustomerActions({ insights }) {
+  const now = insights.last_30;
+  const before = insights.previous_30;
+  const daily = insights.daily.map(x => ({ day: fmtDate(x.day).slice(0, 6), calls: x.calls, directions: x.directions, clicks: x.website_clicks }));
+  return (
+    <Card className="xl:col-span-2 h-full" title="Customer actions from Google" subtitle="All projects · last 30 days">
+      <div className="grid grid-cols-3 gap-3">
+        {[[Phone, 'Calls', now.calls, before.calls, SERIES[0]], [Navigation, 'Directions', now.directions, before.directions, SERIES[1]], [MousePointerClick, 'Website clicks', now.website_clicks, before.website_clicks, SERIES[2]]].map(([I, label, n, p, c]) => (
+          <div key={label} className="rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 p-3">
+            <div className="flex items-center gap-1.5 text-[12px] text-slate-500"><span className="w-2 h-2 rounded-full" style={{ background: c }} /><I size={13} /> {label}</div>
+            <div className="text-xl font-bold text-slate-900 tabular-nums">{n.toLocaleString()}</div>
+            <Delta now={n} before={p} />
+          </div>
+        ))}
+      </div>
+      {daily.length > 1 ? (
+        <div className="h-52 mt-4">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={daily} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+              <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={{ stroke: '#cbd5e1' }} minTickGap={24} />
+              <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip content={<ChartTooltip />} />
+              <Line type="monotone" dataKey="calls" name="Calls" stroke={SERIES[0]} strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="directions" name="Directions" stroke={SERIES[1]} strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="clicks" name="Website clicks" stroke={SERIES[2]} strokeWidth={2} dot={false} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : <div className="mt-4 rounded-xl border border-dashed border-slate-200 py-10 text-center text-[13px] text-slate-500">Daily calls, directions and clicks appear once projects have their Google profile linked and synced.</div>}
+    </Card>
+  );
+}
+
+function Portfolio({ projects, totals }) {
+  const data = Object.entries(totals.by_status).filter(([, n]) => n).map(([s, n]) => ({ name: STATUS_META[s]?.label || s, value: n, color: STATUS_META[s]?.color || '#94a3b8' }));
+  const plans = Object.entries(projects.reduce((m, p) => ({ ...m, [p.plan || 'No plan']: (m[p.plan || 'No plan'] || 0) + 1 }), {})).sort(([a], [b]) => (PLAN_ORDER[a] ?? 9) - (PLAN_ORDER[b] ?? 9));
+  return (
+    <Card className="h-full" title="Portfolio" subtitle={plural(totals.projects, 'project')}>
+      <div className="flex items-center gap-4">
+        <div className="relative w-28 h-28 shrink-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={38} outerRadius={54} paddingAngle={data.length > 1 ? 3 : 0} stroke="none" isAnimationActive={false}>{data.map(d => <Cell key={d.name} fill={d.color} />)}</Pie></PieChart>
+          </ResponsiveContainer>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span className="text-xl font-bold text-slate-900">{totals.projects}</span><span className="text-[9px] uppercase tracking-wider text-slate-500">projects</span></div>
+        </div>
+        <ul className="flex-1 space-y-1.5 text-[13px]">
+          {Object.entries(STATUS_META).map(([s, m]) => <li key={s} className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 text-slate-700"><span className="w-2.5 h-2.5 rounded-full" style={{ background: m.color }} />{m.label}</span><b className="tabular-nums text-slate-900">{totals.by_status[s] || 0}</b></li>)}
+        </ul>
+      </div>
+      <div className="mt-4 pt-3 border-t border-slate-100">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Plans</div>
+        <div className="flex flex-wrap gap-1.5">{plans.map(([plan, n]) => <span key={plan} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-violet-50 ring-1 ring-inset ring-violet-200 text-[12px] font-medium text-violet-800">{plan}<span className="text-violet-500 tabular-nums">{n}</span></span>)}</div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
+        <div className="rounded-lg bg-slate-50 px-2.5 py-2"><div className="text-slate-500">Google linked</div><div className="font-semibold text-slate-900">{totals.gbp_linked} of {totals.projects}</div></div>
+        <div className="rounded-lg bg-slate-50 px-2.5 py-2"><div className="text-slate-500">With a website</div><div className="font-semibold text-slate-900">{projects.filter(p => p.website).length} of {totals.projects}</div></div>
+      </div>
+    </Card>
+  );
+}
+
+function AreaHealth({ areas, total }) {
+  const labels = { gbp: 'Google profile', rankings: 'Rankings', technical: 'Technical', onpage: 'On-page', backlinks: 'Backlinks', citations: 'Citations' };
+  return (
+    <Card className="h-full" title="SEO health by area" subtitle="Average across projects">
+      <ul className="space-y-3">
+        {Object.entries(labels).map(([k, label]) => {
+          const a = areas[k] || {};
+          return (
+            <li key={k}>
+              <div className="flex items-center justify-between gap-2 text-[13px]">
+                <span className="font-medium text-slate-800">{label}</span>
+                <span className="text-[12px] text-slate-500"><b className={`tabular-nums ${scoreText(a.avg)}`}>{a.avg ?? '—'}</b><span className="ml-2">{a.audited}/{total} audited{a.failed ? <span className="text-red-600"> · {a.failed} failed</span> : ''}</span></span>
+              </div>
+              <div className="mt-1 h-2 rounded-full bg-slate-100 overflow-hidden">{a.avg != null && <div className={`h-full rounded-full ${scoreBar(a.avg)}`} style={{ width: `${a.avg}%` }} />}</div>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
+function Coverage({ coverage, total }) {
+  return (
+    <Card className="h-full" title="Service coverage" subtitle="Projects each SEO service runs for">
+      <ul className="space-y-3">
+        {Object.entries(coverage).map(([job, c]) => (
+          <li key={job}>
+            <div className="flex items-center justify-between text-[13px]"><span className="font-medium text-slate-800">{c.label}</span><span className="text-[12px] text-slate-500"><b className="text-slate-900 tabular-nums">{c.projects}</b> of {total}</span></div>
+            <div className="mt-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500" style={{ width: `${total ? (c.projects / total) * 100 : 0}%` }} /></div>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function ActivityLog({ projects }) {
+  const act = useApi('/activity?limit=8');
+  const names = Object.fromEntries(projects.map(p => [p.id, p.name]));
+  const isAgent = (actor) => /agent|scheduler|autopilot|\bai\b/i.test(actor || '');
+  return (
+    <Card className="h-full" title="Activity" subtitle="AI agents and the team">
+      {act.error ? <ErrorNote>{act.error.message}</ErrorNote> : (act.data || []).length ? (
+        <ol className="space-y-3">
+          {act.data.map(a => {
+            const agent = isAgent(a.actor);
+            return (
+              <li key={a.id} className="flex items-start gap-2.5">
+                <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${agent ? 'bg-violet-50 text-violet-600 ring-1 ring-inset ring-violet-100' : 'bg-slate-100 text-slate-500'}`}>{agent ? <Bot size={14} /> : <User size={14} />}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] text-slate-800">{String(a.action || '').replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())}</div>
+                  <div className="text-[11px] text-slate-500 truncate">{[names[a.business_id], a.actor, fmtDateTime(a.created_at)].filter(Boolean).join(' · ')}</div>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      ) : act.data && <div className="py-6 text-center text-[13px] text-slate-500">No activity yet.</div>}
+    </Card>
+  );
+}
+
+/** Equal-height cards in a row; the column count follows how many cards are present. */
+function Row({ children }) {
+  const items = React.Children.toArray(children).filter(Boolean);
+  if (!items.length) return null;
+  const cols = { 1: 'lg:grid-cols-1', 2: 'lg:grid-cols-2', 3: 'lg:grid-cols-3' }[Math.min(items.length, 3)];
+  return <div className={`grid grid-cols-1 ${cols} gap-4 items-stretch`}>{items}</div>;
+}
+
+/* ── Page ────────────────────────────────────────────────────────────────── */
+
+function Dashboard() {
+  const pf = useApi('/businesses/portfolio');
+  const me = useApi('/me');
+  const [, choose] = useSeoBusiness();
+  const navigate = useNavigate();
+  const path = useModulePath();
+  const projects = pf.data?.projects || [];
+  const t = pf.data?.totals;
+  usePoll(() => pf.reload(true), projects.some(p => p.audit_running), 5000);
+
+  // Open a project: make it the selected business everywhere, then go to the right screen.
+  const openProject = (id, screen = 'gmb-profile') => { choose(id); navigate(path(screen)); };
+
+  if (pf.error) return <Card><ErrorNote>{pf.error.message}</ErrorNote></Card>;
+  if (!t) {
+    return (
+      <div className="py-24 flex flex-col items-center gap-3 text-[13px] text-slate-500">
+        <span className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center shadow-lg"><Sparkles size={20} className="animate-pulse" /></span>
+        Preparing your briefing…
+      </div>
+    );
+  }
+  const { insights, areas, coverage, upcoming, ai } = pf.data;
+  const outdated = !insights || !areas || !coverage || !upcoming || !ai;
+
+  return (
+    <div className="space-y-6">
+      {outdated && (
+        <div className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-[13px] text-amber-900 flex items-start gap-2">
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+          <span>Some sections are hidden because the backend is running an older version. Restart it (<code className="font-mono text-[12px]">python -m uvicorn app.main:app --port 8100</code> in <code className="font-mono text-[12px]">backend</code>) and reload.</span>
+        </div>
+      )}
+
+      <Briefing data={pf.data} me={me.data} onOpenProject={openProject} />
+
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <Kpi icon={Briefcase} tone="indigo" label="Projects" value={t.projects} hint={`${t.by_status.active} active · ${t.by_status.needs_approval} pending`} />
+        <Kpi icon={Activity} tone={t.avg_health == null ? 'slate' : scoreLevel(t.avg_health) === 'good' ? 'emerald' : 'amber'} label="Average health" value={t.avg_health ?? '—'} hint={t.avg_health == null ? 'No audits yet' : scoreWord(t.avg_health)} />
+        <Kpi icon={AlertTriangle} tone={t.needs_attention ? 'red' : 'emerald'} label="Need attention" value={t.needs_attention} hint={plural(t.critical_issues, 'critical issue')} />
+        <Kpi icon={ClipboardCheck} tone={t.pending_tasks ? 'amber' : 'slate'} label="To approve" value={t.pending_tasks} hint="Agent proposals" />
+        <Kpi icon={Layers} tone="sky" label="Active services" value={t.active_services} hint={`${t.gbp_linked}/${t.projects} profiles linked`} />
+        <Kpi icon={Target} tone="emerald" label="Leads · 30 days" value={t.leads_30} hint="All projects" />
+      </div>
+
+      <Projects projects={projects} onOpen={(id) => openProject(id)} />
+
+      <section>
+        <SectionHeader icon={Bot} title="AI operations" subtitle="What the agents propose, what waits for you, and what runs next" />
+        <Row>
+          {ai && <Agents ai={ai} />}
+          <ApprovalQueue projects={projects} />
+          {upcoming && <AgentSchedule upcoming={upcoming} />}
+        </Row>
+      </section>
+
+      <section>
+        <SectionHeader icon={Activity} title="Performance & health" subtitle="Results across every project" />
+        <div className="space-y-4">
+          {insights && <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-stretch"><CustomerActions insights={insights} /><Portfolio projects={projects} totals={t} /></div>}
+          <Row>
+            {!insights && <Portfolio projects={projects} totals={t} />}
+            {areas && <AreaHealth areas={areas} total={t.projects} />}
+            {coverage && <Coverage coverage={coverage} total={t.projects} />}
+            <ActivityLog projects={projects} />
+          </Row>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export default function SeoOverviewPage() {
+  return (
+    <SeoShell title="Command Center" subtitle="Your AI-run SEO portfolio at a glance" hideSwitcher>
+      {() => <Dashboard />}
+    </SeoShell>
   );
 }

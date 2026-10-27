@@ -98,6 +98,53 @@ def test_rank_scan_and_keywords(client):
     assert client.get(f"/api/v1/businesses/{bid}/keywords").json()["keywords"][0]["keyword"] == "hair salon baner"
 
 
+def test_portfolio(client):
+    from app.db import SessionLocal
+    from app.models import Schedule
+
+    bid = client.post("/api/v1/businesses", json={"name": "Portfolio Bakery", "city": "Pune", "plan": "Growth",
+                                                  "services": [{"name": "Custom cakes"}, {"name": "Catering"}]}).json()["id"]
+    p = next(x for x in client.get("/api/v1/businesses/portfolio").json()["projects"] if x["id"] == bid)
+    assert p["status"] == "active" and p["plan"] == "Growth" and p["business_services"] == ["Custom cakes", "Catering"]
+    assert not p["services_configured"] and p["services"] == [] and p["areas"] == {}
+    assert {"Google profile not linked", "No website", "No services scheduled", "Never audited"} <= {a["text"] for a in p["attention"]}
+    db = SessionLocal()
+    assert db.query(Schedule).filter(Schedule.business_id == bid).count() == 0  # reading the portfolio creates nothing
+    db.close()
+
+    client.post(f"/api/v1/businesses/{bid}/audits", json={"kinds": ["gbp"]})
+    client.put(f"/api/v1/businesses/{bid}/schedules", json={"job": "rank_scan", "every": "weekly"})
+    data = client.get("/api/v1/businesses/portfolio").json()
+    p = next(x for x in data["projects"] if x["id"] == bid)
+    assert p["areas"]["gbp"]["status"] == "done" and p["health"] is not None and p["last_audit_at"]
+    assert p["services"] == [{"job": "rank_scan", "label": "Rank tracking", "every": "weekly", "last_run_at": None, "last_status": None, "last_error": None, "next_run_at": p["services"][0]["next_run_at"]}]
+    assert p["next_job"]["job"] == "rank_scan"
+    t = data["totals"]
+    assert t["projects"] >= 1 and t["by_status"]["active"] >= 1 and t["active_services"] >= 1
+    assert data["coverage"]["rank_scan"]["projects"] >= 1 and data["areas"]["gbp"]["audited"] >= 1
+    assert any(u["project_id"] == bid and u["job"] == "rank_scan" for u in data["upcoming"])
+
+    # Google customer actions: per project and across the portfolio, last 30 days vs the 30 before.
+    from datetime import date, timedelta
+
+    from app.models import InsightDay
+    db = SessionLocal()
+    db.add_all([InsightDay(business_id=bid, day=date.today() - timedelta(days=1), calls=5, directions=2, website_clicks=1),
+                InsightDay(business_id=bid, day=date.today() - timedelta(days=40), calls=3, directions=0, website_clicks=0)])
+    db.commit()
+    db.close()
+    data = client.get("/api/v1/businesses/portfolio").json()
+    p = next(x for x in data["projects"] if x["id"] == bid)
+    assert p["actions_30"] == {"calls": 5, "directions": 2, "website_clicks": 1} and p["actions_prev_30"]["calls"] == 3
+    assert data["insights"]["last_30"]["calls"] >= 5 and any(d["calls"] >= 5 for d in data["insights"]["daily"])
+
+    # The AI side: provider status, autopilot rules and each agent's workload.
+    a = data["ai"]
+    assert a["engine"]["configured"] is False and "profile_edit" in a["autopilot"]["manual"] and "gbp_post" in a["autopilot"]["auto"]
+    assert {"audit", "gbp", "review", "outreach"} <= set(a["agents"]) and a["agents"]["gbp"]["label"] == "Profile agent"
+    assert all(v["pending"] >= 0 and v["proposed_30"] >= v["applied_30"] for v in a["agents"].values())
+
+
 def test_playbook_and_status(client):
     pb = client.get("/api/v1/playbook").json()
     assert pb["approval_rules"]["profile_edit"] is True

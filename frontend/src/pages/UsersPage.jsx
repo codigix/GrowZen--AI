@@ -72,7 +72,7 @@ export default function UsersPage({ me }) {
             <div className="overflow-x-auto">
               <table className="w-full text-[13px] text-left">
                 <thead>
-                  <tr className="text-[11px] font-bold uppercase tracking-wider text-slate-400 font-mono border-b border-slate-100 bg-slate-50/70">
+                  <tr className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-mono border-b border-slate-100 bg-slate-50/70">
                     <th className="px-5 py-3.5">User</th>
                     <th className="px-5 py-3.5">Role</th>
                     <th className="px-5 py-3.5">Last Active</th>
@@ -100,7 +100,7 @@ export default function UsersPage({ me }) {
                                 )}
                               </div>
                               <div className="text-[12px] text-slate-500 flex items-center gap-1 mt-0.5">
-                                <Mail size={12} className="text-slate-400" />
+                                <Mail size={12} className="text-slate-500" />
                                 <span>{u.email}</span>
                               </div>
                             </div>
@@ -122,7 +122,7 @@ export default function UsersPage({ me }) {
                         </td>
                         <td className="px-5 py-3.5 text-slate-600">
                           <div className="flex items-center gap-1.5 text-[12px]">
-                            <Calendar size={13} className="text-slate-400" />
+                            <Calendar size={13} className="text-slate-500" />
                             <span>{fmtDateTime(u.last_login_at)}</span>
                           </div>
                         </td>

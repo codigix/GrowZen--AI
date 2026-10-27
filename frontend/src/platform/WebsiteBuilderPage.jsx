@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   SeoShell, Card, Badge, Button, StatusPill, Field, inputCls, areaCls,
-  useSimulated, useToast, PreviewNote, Modal, LifecycleGrowthBar, LifecycleNextCard
+  useSimulated, useToast, PreviewNote, Modal
 } from './SeoUi';
 import { useApi } from './seoApi';
 
@@ -264,7 +264,7 @@ function Builder({ b }) {
     <>
       <PreviewNote>
         <strong>AI Autonomous Website Studio</strong>: Generating full multi-page architecture with clean SEO URL slugs. Previewing live URL structure matching{' '}
-        <span className="font-mono text-cyan-300 font-semibold">{currentFullUrl}</span>.
+        <span className="font-mono text-cyan-700 font-semibold">{currentFullUrl}</span>.
       </PreviewNote>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
@@ -282,17 +282,17 @@ function Builder({ b }) {
               {busy === 'build' ? 'Synthesizing Neural Layout…' : 'AI Re-Generate Site'}
             </Button>
 
-            <div className="mt-4 pt-3 border-t border-white/10 space-y-2 text-[12px]">
-              <div className="flex items-center justify-between text-slate-300">
-                <span className="flex items-center gap-1.5"><ShieldCheck size={14} className="text-emerald-400" /> SEO URL Architecture</span>
+            <div className="mt-4 pt-3 border-t border-slate-200 space-y-2 text-[12px]">
+              <div className="flex items-center justify-between text-slate-700">
+                <span className="flex items-center gap-1.5"><ShieldCheck size={14} className="text-emerald-700" /> SEO URL Architecture</span>
                 <Badge tone="green">Clean Slugs</Badge>
               </div>
-              <div className="flex items-center justify-between text-slate-300">
-                <span className="flex items-center gap-1.5"><Building2 size={14} className="text-cyan-400" /> Schema Graph</span>
+              <div className="flex items-center justify-between text-slate-700">
+                <span className="flex items-center gap-1.5"><Building2 size={14} className="text-cyan-700" /> Schema Graph</span>
                 <Badge tone="blue">Hospital + FAQ</Badge>
               </div>
-              <div className="flex items-center justify-between text-slate-300">
-                <span className="flex items-center gap-1.5"><Bot size={14} className="text-purple-400" /> Patient AI Concierge</span>
+              <div className="flex items-center justify-between text-slate-700">
+                <span className="flex items-center gap-1.5"><Bot size={14} className="text-purple-600" /> Patient AI Concierge</span>
                 <Badge tone="violet">Integrated</Badge>
               </div>
             </div>
@@ -305,7 +305,7 @@ function Builder({ b }) {
             action={
               <button
                 onClick={() => setSchemaModal(true)}
-                className="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
+                className="text-[11px] font-semibold text-cyan-700 hover:text-cyan-700 flex items-center gap-1 cursor-pointer"
               >
                 <Code size={12} /> View Schema
               </button>
@@ -320,19 +320,19 @@ function Builder({ b }) {
                     onClick={() => handleSelectPage(p)}
                     className={`w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
                       isSelected
-                        ? 'bg-indigo-600/20 border-indigo-500/50 text-white shadow-sm ring-1 ring-indigo-500/40'
-                        : 'bg-slate-900/40 border-white/5 text-slate-300 hover:bg-slate-800/50 hover:border-white/10'
+                        ? 'bg-indigo-600/20 border-indigo-500/50 text-slate-900 shadow-sm ring-1 ring-indigo-500/40'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-200'
                     }`}
                   >
                     <div className="min-w-0 pr-2">
                       <div className="text-[12px] font-bold truncate flex items-center gap-1.5">
-                        {p.id === 'home' && <Globe size={12} className="text-cyan-400 shrink-0" />}
-                        {p.service && <Stethoscope size={12} className="text-emerald-400 shrink-0" />}
-                        {p.id === 'loc' && <MapPin size={12} className="text-amber-400 shrink-0" />}
-                        {p.id === 'contact' && <Phone size={12} className="text-purple-400 shrink-0" />}
+                        {p.id === 'home' && <Globe size={12} className="text-cyan-700 shrink-0" />}
+                        {p.service && <Stethoscope size={12} className="text-emerald-700 shrink-0" />}
+                        {p.id === 'loc' && <MapPin size={12} className="text-amber-700 shrink-0" />}
+                        {p.id === 'contact' && <Phone size={12} className="text-purple-600 shrink-0" />}
                         <span className="truncate">{p.label}</span>
                       </div>
-                      <div className="font-mono text-[11px] text-cyan-400/90 truncate mt-0.5">
+                      <div className="font-mono text-[11px] text-cyan-700 truncate mt-0.5">
                         {p.path}
                       </div>
                     </div>
@@ -347,7 +347,7 @@ function Builder({ b }) {
             </div>
 
             {/* Custom Slug Editor for Active Page */}
-            <div className="mt-4 pt-3 border-t border-white/10">
+            <div className="mt-4 pt-3 border-t border-slate-200">
               <Field label="Active URL Slug (SEO Path)" hint="Clean URL structure matching your hospital domain">
                 <div className="flex items-center gap-1 mt-1">
                   <span className="text-[11px] font-mono text-slate-500 select-none">/</span>
@@ -359,11 +359,11 @@ function Builder({ b }) {
                   />
                 </div>
               </Field>
-              <div className="mt-2 p-2 rounded-lg bg-slate-950/70 border border-white/5 font-mono text-[11px] text-emerald-400 break-all flex items-center justify-between">
+              <div className="mt-2 p-2 rounded-lg bg-slate-50 border border-slate-200 font-mono text-[11px] text-emerald-700 break-all flex items-center justify-between">
                 <span>https://{domain}/{customSlug.replace(/^\//, '')}</span>
                 <button
                   onClick={() => copyToClipboard(`https://${domain}/${customSlug.replace(/^\//, '')}`, 'URL copied!')}
-                  className="p-1 text-slate-400 hover:text-white cursor-pointer"
+                  className="p-1 text-slate-500 hover:text-slate-900 cursor-pointer"
                   title="Copy URL"
                 >
                   <Copy size={12} />
@@ -382,25 +382,25 @@ function Builder({ b }) {
                     onClick={() => setTheme(t)}
                     className={`p-2 rounded-xl border text-left cursor-pointer transition-all flex items-center gap-2 ${
                       theme.id === t.id
-                        ? 'bg-slate-800/80 border-cyan-500/60 text-white ring-1 ring-cyan-500/40'
-                        : 'bg-slate-900/30 border-white/5 text-slate-400 hover:bg-slate-800/40'
+                        ? 'bg-slate-100 border-cyan-500/60 text-slate-900 ring-1 ring-cyan-500/40'
+                        : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100'
                     }`}
                   >
-                    <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs" style={{ background: t.primary }} />
+                    <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-sm" style={{ background: t.primary }} />
                     <span className="text-[12px] font-medium truncate">{t.name}</span>
                   </button>
                 ))}
               </div>
 
-              <div className="pt-2 border-t border-white/10 space-y-1.5">
-                <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Page Modules</span>
+              <div className="pt-2 border-t border-slate-200 space-y-1.5">
+                <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">Page Modules</span>
                 {SECTIONS.map(([k, l]) => (
-                  <label key={k} className="flex items-center gap-2 text-[12px] text-slate-300 cursor-pointer hover:text-white select-none">
+                  <label key={k} className="flex items-center gap-2 text-[12px] text-slate-700 cursor-pointer hover:text-slate-900 select-none">
                     <input
                       type="checkbox"
                       checked={on[k]}
                       onChange={e => setOn({ ...on, [k]: e.target.checked })}
-                      className="rounded bg-slate-800 border-white/20 text-indigo-500 focus:ring-0"
+                      className="rounded bg-slate-100 border-slate-300 text-indigo-500 focus:ring-0"
                     />
                     <span>{l}</span>
                   </label>
@@ -440,9 +440,9 @@ function Builder({ b }) {
             </div>
 
             {published && (
-              <div className="mt-3 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[12px] flex items-center justify-between">
+              <div className="mt-3 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 text-[12px] flex items-center justify-between">
                 <span className="font-mono truncate">Live: https://{domain}</span>
-                <CheckCircle2 size={14} className="shrink-0 text-emerald-400" />
+                <CheckCircle2 size={14} className="shrink-0 text-emerald-700" />
               </div>
             )}
           </Card>
@@ -451,29 +451,29 @@ function Builder({ b }) {
         {/* Right Columns: Futuristic Multi-Page Browser Simulator */}
         <div className="xl:col-span-3 space-y-3">
           {/* Simulated Browser Chrome Bar */}
-          <div className="ai-glass-card rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+          <div className="ai-glass-card rounded-2xl overflow-hidden border border-slate-200 shadow-2xl">
             {/* Top Browser Bar */}
-            <div className="bg-[#0b1120] px-4 py-2.5 border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
+            <div className="bg-white px-4 py-2.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
               {/* Window Controls */}
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-rose-500/80 inline-block" />
                 <span className="w-3 h-3 rounded-full bg-amber-500/80 inline-block" />
                 <span className="w-3 h-3 rounded-full bg-emerald-500/80 inline-block" />
-                <span className="ml-2 text-[12px] font-bold text-slate-300 font-display hidden sm:inline">
+                <span className="ml-2 text-[12px] font-bold text-slate-700 font-display hidden sm:inline">
                   {b.name} — Website Engine
                 </span>
               </div>
 
               {/* URL Address Bar with Lock and Copy Button */}
-              <div className="flex-1 max-w-xl mx-auto flex items-center bg-slate-900/90 border border-white/15 rounded-xl px-3 py-1 shadow-inner group">
-                <ShieldCheck size={14} className="text-emerald-400 shrink-0 mr-2" />
-                <span className="text-[12px] font-mono text-slate-400 select-none hidden md:inline">https://</span>
-                <span className="text-[12px] font-mono text-white font-semibold truncate">{domain}</span>
-                <span className="text-[12px] font-mono text-cyan-400 font-bold">/{customSlug.replace(/^\//, '')}</span>
+              <div className="flex-1 max-w-xl mx-auto flex items-center bg-white border border-slate-300 rounded-xl px-3 py-1 shadow-inner group">
+                <ShieldCheck size={14} className="text-emerald-700 shrink-0 mr-2" />
+                <span className="text-[12px] font-mono text-slate-500 select-none hidden md:inline">https://</span>
+                <span className="text-[12px] font-mono text-slate-900 font-semibold truncate">{domain}</span>
+                <span className="text-[12px] font-mono text-cyan-700 font-bold">/{customSlug.replace(/^\//, '')}</span>
                 <div className="ml-auto flex items-center gap-1.5 pl-2">
                   <button
                     onClick={() => copyToClipboard(currentFullUrl, 'Clean URL copied!')}
-                    className="p-1 text-slate-400 hover:text-white cursor-pointer transition-colors"
+                    className="p-1 text-slate-500 hover:text-slate-900 cursor-pointer transition-colors"
                     title="Copy full clean URL"
                   >
                     <Copy size={13} />
@@ -482,7 +482,7 @@ function Builder({ b }) {
                     href={`https://${domain}/${customSlug.replace(/^\//, '')}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-1 text-slate-400 hover:text-cyan-300 cursor-pointer transition-colors"
+                    className="p-1 text-slate-500 hover:text-cyan-700 cursor-pointer transition-colors"
                     title="Open live link"
                   >
                     <ExternalLink size={13} />
@@ -491,7 +491,7 @@ function Builder({ b }) {
               </div>
 
               {/* Device Viewport Switcher */}
-              <div className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-white/10">
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
                 {[
                   ['desktop', Monitor, 'Desktop View'],
                   ['tablet', Tablet, 'Tablet View'],
@@ -502,8 +502,8 @@ function Builder({ b }) {
                     onClick={() => setDevice(d)}
                     className={`h-7 px-2.5 flex items-center gap-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
                       device === d
-                        ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
                     }`}
                     title={tooltip}
                   >
@@ -515,8 +515,8 @@ function Builder({ b }) {
             </div>
 
             {/* Quick Navigation Tab Bar inside Preview */}
-            <div className="bg-slate-950/90 px-4 py-2 border-b border-white/5 flex items-center gap-2 overflow-x-auto no-scrollbar">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 font-mono shrink-0 mr-1">
+            <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center gap-2 overflow-x-auto no-scrollbar">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-mono shrink-0 mr-1">
                 Pages:
               </span>
               {pageList.map(p => (
@@ -525,8 +525,8 @@ function Builder({ b }) {
                   onClick={() => handleSelectPage(p)}
                   className={`px-3 py-1 rounded-lg text-[12px] font-medium transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
                     activePage.id === p.id
-                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border border-transparent'
+                      ? 'bg-cyan-500/20 text-cyan-700 border border-cyan-500/40 font-bold'
+                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50 border border-transparent'
                   }`}
                 >
                   <span>{p.label}</span>
@@ -536,40 +536,40 @@ function Builder({ b }) {
             </div>
 
             {/* Viewport Canvas */}
-            <div className="p-4 sm:p-6 bg-slate-950/50 min-h-[700px] flex justify-center items-start overflow-y-auto">
+            <div className="p-4 sm:p-6 bg-slate-50 min-h-[700px] flex justify-center items-start overflow-y-auto">
               <div
                 className={`w-full transition-all duration-300 rounded-2xl overflow-hidden shadow-2xl bg-white text-slate-900 border border-slate-200 relative ${
                   device === 'mobile'
-                    ? 'max-w-[390px] ring-8 ring-slate-800'
+                    ? 'max-w-[390px] ring-8 ring-slate-200'
                     : device === 'tablet'
-                    ? 'max-w-[768px] ring-4 ring-slate-800'
+                    ? 'max-w-[768px] ring-4 ring-slate-200'
                     : 'max-w-full'
                 }`}
                 style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
               >
                 {/* 1. Header & Emergency Bar */}
-                <div className="bg-slate-900 text-white text-[12px] px-4 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800">
+                <div className="bg-slate-100 text-slate-700 text-[12px] px-4 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200">
                   <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                    <span className="flex items-center gap-1 text-emerald-700 font-medium">
                       <Clock size={13} /> 24/7 Casualty & Emergency Open
                     </span>
-                    <span className="hidden sm:inline text-slate-400">|</span>
-                    <span className="hidden sm:inline text-slate-300">
+                    <span className="hidden sm:inline text-slate-500">|</span>
+                    <span className="hidden sm:inline text-slate-700">
                       Charitable Trust Reg: F-1289 (Pune)
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <a href={`tel:${b.phone}`} className="flex items-center gap-1 text-cyan-300 font-bold hover:underline">
+                    <a href={`tel:${b.phone}`} className="flex items-center gap-1 text-cyan-700 font-bold hover:underline">
                       <Phone size={13} /> {b.phone || '+91 20 2742 0000'}
                     </a>
                   </div>
                 </div>
 
                 {/* Main Navigation Bar */}
-                <header className="px-5 py-3.5 bg-white border-b border-slate-100 flex items-center justify-between sticky top-0 z-20 shadow-xs">
+                <header className="px-5 py-3.5 bg-white border-b border-slate-100 flex items-center justify-between sticky top-0 z-20 shadow-sm">
                   <div className="flex items-center gap-2.5">
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-extrabold text-[15px] shadow-sm"
+                      className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-900 font-extrabold text-[15px] shadow-sm"
                       style={{ background: theme.primary }}
                     >
                       <Heart size={20} className="fill-white/20" />
@@ -585,15 +585,15 @@ function Builder({ b }) {
                   </div>
 
                   <div className="hidden lg:flex items-center gap-5 text-[13px] font-semibold text-slate-700">
-                    <button onClick={() => handleSelectPage(pageList[0])} className="hover:text-cyan-600 cursor-pointer">Home</button>
-                    <button onClick={() => handleSelectPage(defaultPage)} className="text-cyan-600 font-bold cursor-pointer">Eye Care & Cataract</button>
-                    <button onClick={() => handleSelectPage(pageList.find(p => p.id === 'loc') || pageList[0])} className="hover:text-cyan-600 cursor-pointer">PCMC Centre</button>
-                    <button onClick={() => handleSelectPage(pageList[pageList.length - 1])} className="hover:text-cyan-600 cursor-pointer">Contact & OPD</button>
+                    <button onClick={() => handleSelectPage(pageList[0])} className="hover:text-cyan-700 cursor-pointer">Home</button>
+                    <button onClick={() => handleSelectPage(defaultPage)} className="text-cyan-700 font-bold cursor-pointer">Eye Care & Cataract</button>
+                    <button onClick={() => handleSelectPage(pageList.find(p => p.id === 'loc') || pageList[0])} className="hover:text-cyan-700 cursor-pointer">PCMC Centre</button>
+                    <button onClick={() => handleSelectPage(pageList[pageList.length - 1])} className="hover:text-cyan-700 cursor-pointer">Contact & OPD</button>
                   </div>
 
                   <button
                     onClick={() => setBookingModal(true)}
-                    className="px-4 py-2 rounded-xl text-[12px] font-bold text-white shadow-md hover:opacity-95 transition-all cursor-pointer flex items-center gap-1.5"
+                    className="px-4 py-2 rounded-xl text-[12px] font-bold text-slate-900 shadow-md hover:opacity-95 transition-all cursor-pointer flex items-center gap-1.5"
                     style={{ background: theme.primary }}
                   >
                     <Calendar size={13} />
@@ -618,7 +618,7 @@ function Builder({ b }) {
                   >
                     <div className="max-w-2xl relative z-10">
                       {/* AI Optimized Badge */}
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[11px] font-bold tracking-wide uppercase mb-3 text-white border border-white/25 shadow-xs">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[11px] font-bold tracking-wide uppercase mb-3 text-white border border-white/25 shadow-sm">
                         <Sparkles size={12} className="text-amber-300" />
                         <span>NABH Accredited Eye Care · PCMC, Pune</span>
                       </div>
@@ -719,11 +719,11 @@ function Builder({ b }) {
                     {/* Lens packages comparison if cataract, or list of hospital services */}
                     {activePage.service?.name.toLowerCase().includes('cataract') ? (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="border border-slate-200 rounded-2xl p-4 bg-white hover:border-cyan-500 transition-all shadow-xs">
+                        <div className="border border-slate-200 rounded-2xl p-4 bg-white hover:border-cyan-500 transition-all shadow-sm">
                           <Badge tone="blue">Standard</Badge>
                           <div className="font-bold text-[15px] mt-2 text-slate-900">Monofocal Aspheric IOL</div>
                           <div className="text-[12px] text-slate-500 mt-1">Clear distance vision; requires reading glasses. Rapid 24-hr recovery.</div>
-                          <div className="mt-3 font-extrabold text-[16px] text-cyan-600">₹15,000 - ₹20,000</div>
+                          <div className="mt-3 font-extrabold text-[16px] text-cyan-700">₹15,000 - ₹20,000</div>
                           <button onClick={() => setBookingModal(true)} className="mt-3 w-full py-1.5 rounded-lg border border-slate-300 text-[12px] font-bold text-slate-700 hover:bg-slate-50 cursor-pointer">
                             Select Package
                           </button>
@@ -736,17 +736,17 @@ function Builder({ b }) {
                           <Badge tone="green">Advanced</Badge>
                           <div className="font-bold text-[15px] mt-2 text-slate-900">Toric Astigmatism IOL</div>
                           <div className="text-[12px] text-slate-500 mt-1">Corrects pre-existing cylinder astigmatism + cataract in single 15-min procedure.</div>
-                          <div className="mt-3 font-extrabold text-[16px] text-cyan-600">₹24,000 - ₹28,000</div>
-                          <button onClick={() => setBookingModal(true)} className="mt-3 w-full py-1.5 rounded-lg bg-cyan-600 text-white text-[12px] font-bold shadow-xs hover:bg-cyan-700 cursor-pointer">
+                          <div className="mt-3 font-extrabold text-[16px] text-cyan-700">₹24,000 - ₹28,000</div>
+                          <button onClick={() => setBookingModal(true)} className="mt-3 w-full py-1.5 rounded-lg bg-cyan-600 text-white text-[12px] font-bold shadow-sm hover:bg-cyan-700 cursor-pointer">
                             Select Package
                           </button>
                         </div>
 
-                        <div className="border border-slate-200 rounded-2xl p-4 bg-white hover:border-cyan-500 transition-all shadow-xs">
+                        <div className="border border-slate-200 rounded-2xl p-4 bg-white hover:border-cyan-500 transition-all shadow-sm">
                           <Badge tone="violet">Premium</Badge>
                           <div className="font-bold text-[15px] mt-2 text-slate-900">Multifocal / Trifocal IOL</div>
                           <div className="text-[12px] text-slate-500 mt-1">Complete freedom from glasses for reading, computer, and driving.</div>
-                          <div className="mt-3 font-extrabold text-[16px] text-cyan-600">₹30,000 - ₹35,000</div>
+                          <div className="mt-3 font-extrabold text-[16px] text-cyan-700">₹30,000 - ₹35,000</div>
                           <button onClick={() => setBookingModal(true)} className="mt-3 w-full py-1.5 rounded-lg border border-slate-300 text-[12px] font-bold text-slate-700 hover:bg-slate-50 cursor-pointer">
                             Select Package
                           </button>
@@ -763,14 +763,14 @@ function Builder({ b }) {
                             }}
                             className="p-3.5 rounded-xl border border-slate-200 hover:border-cyan-500 transition-all cursor-pointer bg-white group"
                           >
-                            <div className="font-bold text-[14px] text-slate-900 group-hover:text-cyan-600 flex items-center justify-between">
+                            <div className="font-bold text-[14px] text-slate-900 group-hover:text-cyan-700 flex items-center justify-between">
                               <span>{s.name}</span>
-                              <ArrowRight size={13} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                              <ArrowRight size={13} className="text-slate-500 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                             <div className="text-[12px] text-slate-500 mt-1 line-clamp-2">
                               {s.description || 'Specialized procedure performed by expert medical staff.'}
                             </div>
-                            <div className="mt-2 text-[12px] font-semibold text-cyan-600 font-mono">
+                            <div className="mt-2 text-[12px] font-semibold text-cyan-700 font-mono">
                               {s.price || 'Charitable trust rates'}
                             </div>
                           </div>
@@ -812,7 +812,7 @@ function Builder({ b }) {
                         <h3 className="text-lg font-bold text-slate-900">What Our Patients Say</h3>
                         <p className="text-[12px] text-slate-500">Verified reviews from Google Maps & Business Profile</p>
                       </div>
-                      <div className="flex items-center gap-1 text-[13px] font-bold text-amber-500 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
+                      <div className="flex items-center gap-1 text-[13px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
                         <Star size={14} className="fill-amber-400" />
                         <span>{b.rating || 4.7} / 5.0</span>
                       </div>
@@ -820,9 +820,9 @@ function Builder({ b }) {
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                       {reviews.map(r => (
-                        <div key={r.id} className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs flex flex-col justify-between">
+                        <div key={r.id} className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col justify-between">
                           <div>
-                            <div className="flex items-center gap-1 text-amber-400">
+                            <div className="flex items-center gap-1 text-amber-700">
                               {'★'.repeat(r.rating || 5)}
                             </div>
                             <p className="text-[12px] text-slate-700 mt-2 italic leading-relaxed">
@@ -831,7 +831,7 @@ function Builder({ b }) {
                           </div>
                           <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
                             <span className="font-bold text-slate-900">{r.author}</span>
-                            <span className="text-slate-400">{r.time || 'Verified Patient'}</span>
+                            <span className="text-slate-500">{r.time || 'Verified Patient'}</span>
                           </div>
                         </div>
                       ))}
@@ -854,13 +854,13 @@ function Builder({ b }) {
                       {faqs.map((f, i) => {
                         const isOpen = activeFaq === i;
                         return (
-                          <div key={i} className="border border-slate-200 rounded-xl bg-white overflow-hidden transition-all shadow-xs">
+                          <div key={i} className="border border-slate-200 rounded-xl bg-white overflow-hidden transition-all shadow-sm">
                             <button
                               onClick={() => setActiveFaq(isOpen ? null : i)}
                               className="w-full text-left p-3.5 flex items-center justify-between gap-3 font-semibold text-[13px] text-slate-900 hover:text-cyan-700 cursor-pointer"
                             >
                               <span>{f.q}</span>
-                              {isOpen ? <ChevronUp size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
+                              {isOpen ? <ChevronUp size={16} className="text-slate-500 shrink-0" /> : <ChevronDown size={16} className="text-slate-500 shrink-0" />}
                             </button>
                             {isOpen && (
                               <div className="px-3.5 pb-3.5 text-[12px] text-slate-600 leading-relaxed border-t border-slate-100 pt-2.5">
@@ -892,7 +892,7 @@ function Builder({ b }) {
                         href={`https://maps.google.com/?q=${encodeURIComponent(`${b.name} ${b.area || 'Chinchwad'} ${b.city || 'PCMC'}`)}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-2.5 inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white border border-slate-300 text-[11px] font-bold text-slate-800 shadow-xs hover:bg-slate-50 cursor-pointer"
+                        className="mt-2.5 inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white border border-slate-300 text-[11px] font-bold text-slate-800 shadow-sm hover:bg-slate-50 cursor-pointer"
                       >
                         <ExternalLink size={12} /> Get Directions on Google Maps
                       </a>
@@ -902,33 +902,33 @@ function Builder({ b }) {
 
                 {/* 9. Contact & Emergency Footer */}
                 {on.contact && (
-                  <footer className="bg-slate-950 text-white px-6 py-8 border-t border-slate-800">
+                  <footer className="bg-slate-50 text-slate-700 px-6 py-8 border-t border-slate-200">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-[13px]">
                       <div>
-                        <div className="font-black text-[16px] text-white tracking-tight flex items-center gap-2">
-                          <Heart size={18} className="text-cyan-400" /> {b.name}
+                        <div className="font-black text-[16px] text-slate-900 tracking-tight flex items-center gap-2">
+                          <Heart size={18} className="text-cyan-700" /> {b.name}
                         </div>
-                        <p className="text-slate-400 text-[12px] mt-2 leading-relaxed">
+                        <p className="text-slate-500 text-[12px] mt-2 leading-relaxed">
                           Non-profit charitable healthcare trust dedicated to affordable and advanced medical care in PCMC, Chinchwad.
                         </p>
-                        <div className="mt-3 text-[11px] text-cyan-300 font-mono">
+                        <div className="mt-3 text-[11px] text-cyan-700 font-mono">
                           Clean SEO URL: /{customSlug.replace(/^\//, '')}
                         </div>
                       </div>
 
                       <div>
-                        <div className="font-bold text-white text-[13px] uppercase tracking-wider mb-2 font-mono text-slate-300">
+                        <div className="font-bold text-slate-900 text-[13px] uppercase tracking-wider mb-2 font-mono text-slate-700">
                           Emergency & Casualty
                         </div>
-                        <div className="text-slate-300 text-[12px] space-y-1">
-                          <p className="flex items-center gap-1.5"><Phone size={13} className="text-rose-400" /> 24/7 Hotline: {b.phone || '+91 20 2742 0000'}</p>
-                          <p className="flex items-center gap-1.5"><Clock size={13} className="text-emerald-400" /> OPD Hours: 9:00 AM – 8:00 PM</p>
-                          <p className="flex items-center gap-1.5"><MapPin size={13} className="text-cyan-400" /> {b.area || 'Chinchwad'}, {b.city || 'PCMC'}</p>
+                        <div className="text-slate-700 text-[12px] space-y-1">
+                          <p className="flex items-center gap-1.5"><Phone size={13} className="text-rose-600" /> 24/7 Hotline: {b.phone || '+91 20 2742 0000'}</p>
+                          <p className="flex items-center gap-1.5"><Clock size={13} className="text-emerald-700" /> OPD Hours: 9:00 AM – 8:00 PM</p>
+                          <p className="flex items-center gap-1.5"><MapPin size={13} className="text-cyan-700" /> {b.area || 'Chinchwad'}, {b.city || 'PCMC'}</p>
                         </div>
                       </div>
 
                       <div>
-                        <div className="font-bold text-white text-[13px] uppercase tracking-wider mb-2 font-mono text-slate-300">
+                        <div className="font-bold text-slate-900 text-[13px] uppercase tracking-wider mb-2 font-mono text-slate-700">
                           Quick Actions
                         </div>
                         <div className="flex flex-col gap-2">
@@ -940,15 +940,15 @@ function Builder({ b }) {
                           </button>
                           <button
                             onClick={() => setAiChatOpen(true)}
-                            className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[12px] transition-all cursor-pointer border border-white/10 flex items-center justify-center gap-1.5"
+                            className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[12px] transition-all cursor-pointer border border-slate-200 flex items-center justify-center gap-1.5"
                           >
-                            <Bot size={14} className="text-purple-400" /> Talk to AI Care Assistant
+                            <Bot size={14} className="text-purple-600" /> Talk to AI Care Assistant
                           </button>
                         </div>
                       </div>
                     </div>
 
-                    <div className="mt-8 pt-4 border-t border-slate-900 text-center text-[11px] text-slate-500">
+                    <div className="mt-8 pt-4 border-t border-slate-200 text-center text-[11px] text-slate-500">
                       © {new Date().getFullYear()} {b.name}. All Rights Reserved. Clean URL Architecture powered by GrowZen AI.
                     </div>
                   </footer>
@@ -957,20 +957,20 @@ function Builder({ b }) {
                 {/* FLOATING AI CARE CONCIERGE WIDGET (Bottom Right of Preview) */}
                 <div className="absolute bottom-5 right-5 z-30 flex flex-col items-end">
                   {aiChatOpen && (
-                    <div className="w-80 h-96 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden mb-3 animate-in slide-in-from-bottom-4 duration-200 text-white ring-1 ring-white/10">
-                      <div className="px-4 py-3 bg-gradient-to-r from-indigo-900 to-slate-900 border-b border-white/10 flex items-center justify-between">
+                    <div className="w-80 h-96 bg-white backdrop-blur-xl border border-slate-300 rounded-2xl shadow-2xl flex flex-col overflow-hidden mb-3 animate-in slide-in-from-bottom-4 duration-200 text-slate-900 ring-1 ring-slate-200">
+                      <div className="px-4 py-3 bg-gradient-to-r from-indigo-50 to-white border-b border-slate-200 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-cyan-300">
+                          <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-cyan-700">
                             <Bot size={15} />
                           </div>
                           <div>
                             <div className="text-[12px] font-bold">AI Patient Concierge</div>
-                            <div className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                            <div className="text-[10px] text-emerald-700 font-mono flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Online 24/7
                             </div>
                           </div>
                         </div>
-                        <button onClick={() => setAiChatOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                        <button onClick={() => setAiChatOpen(false)} className="text-slate-500 hover:text-slate-900 cursor-pointer">
                           ✕
                         </button>
                       </div>
@@ -985,8 +985,8 @@ function Builder({ b }) {
                             <div
                               className={`p-2.5 rounded-xl max-w-[85%] leading-relaxed ${
                                 m.sender === 'user'
-                                  ? 'bg-cyan-600 text-white rounded-br-xs'
-                                  : 'bg-slate-800 text-slate-200 border border-white/10 rounded-bl-xs'
+                                  ? 'bg-cyan-600 text-white rounded-br-sm'
+                                  : 'bg-slate-100 text-slate-800 border border-slate-200 rounded-bl-sm'
                               }`}
                             >
                               {m.text}
@@ -996,7 +996,7 @@ function Builder({ b }) {
                       </div>
 
                       {/* Quick FAQ Chips */}
-                      <div className="px-2.5 py-1.5 bg-slate-950/80 border-t border-white/5 flex gap-1.5 overflow-x-auto no-scrollbar">
+                      <div className="px-2.5 py-1.5 bg-slate-50 border-t border-slate-200 flex gap-1.5 overflow-x-auto no-scrollbar">
                         {['Cost of Cataract?', 'Recovery time?', 'Cashless insurance?', 'Book OPD'].map(q => (
                           <button
                             key={q}
@@ -1004,7 +1004,7 @@ function Builder({ b }) {
                               setInputMsg(q);
                               setTimeout(handleSendChat, 50);
                             }}
-                            className="px-2 py-0.5 rounded-full bg-slate-800 border border-white/10 text-[10px] text-cyan-300 font-medium whitespace-nowrap hover:bg-slate-700 cursor-pointer"
+                            className="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[10px] text-cyan-700 font-medium whitespace-nowrap hover:bg-slate-200 cursor-pointer"
                           >
                             {q}
                           </button>
@@ -1012,9 +1012,9 @@ function Builder({ b }) {
                       </div>
 
                       {/* Input */}
-                      <div className="p-2 border-t border-white/10 bg-slate-950/90 flex gap-1.5">
+                      <div className="p-2 border-t border-slate-200 bg-slate-50 flex gap-1.5">
                         <input
-                          className="flex-1 bg-slate-800 border border-white/10 rounded-xl px-2.5 text-[12px] text-white focus:outline-none focus:border-cyan-500 placeholder-slate-500"
+                          className="flex-1 bg-white border border-slate-300 rounded-xl px-2.5 text-[12px] text-slate-900 focus:outline-none focus:border-cyan-500 placeholder-slate-400"
                           placeholder="Ask about procedure, doctors..."
                           value={inputMsg}
                           onChange={e => setInputMsg(e.target.value)}
@@ -1094,8 +1094,8 @@ function Builder({ b }) {
               <option>24/7 Emergency / Casualty</option>
             </select>
           </Field>
-          <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/25 text-[12px] text-cyan-200">
-            <ShieldCheck size={14} className="inline mr-1 text-cyan-400" />
+          <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/25 text-[12px] text-cyan-800">
+            <ShieldCheck size={14} className="inline mr-1 text-cyan-700" />
             No advance consultation fee required for charitable trust evaluation. Pay directly at the hospital reception.
           </div>
         </div>
@@ -1122,10 +1122,10 @@ function Builder({ b }) {
       >
         <div className="space-y-3">
           <div className="flex items-center justify-between text-[12px]">
-            <span className="font-mono text-cyan-300 font-semibold">{currentFullUrl}</span>
+            <span className="font-mono text-cyan-700 font-semibold">{currentFullUrl}</span>
             <Badge tone="green">Valid Schema.org</Badge>
           </div>
-          <pre className="text-[11px] font-mono bg-slate-950 p-3.5 rounded-xl border border-white/10 text-slate-300 overflow-auto max-h-[420px] no-scrollbar">
+          <pre className="text-[11px] font-mono bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-slate-700 overflow-auto max-h-[420px] no-scrollbar">
             {schemaJson}
           </pre>
         </div>
@@ -1139,22 +1139,22 @@ function Builder({ b }) {
         onClose={() => setServerConfigModal(false)}
         footer={<Button variant="secondary" onClick={() => setServerConfigModal(false)}>Close</Button>}
       >
-        <div className="space-y-4 text-[13px] text-slate-300">
+        <div className="space-y-4 text-[13px] text-slate-700">
           <p>
-            To serve URLs like <span className="font-mono text-cyan-300 font-bold">https://{domain}/cataract-surgery-in-pcmc</span> without needing <span className="font-mono text-amber-300">.html</span>, use one of the following rewrite snippets on your web server:
+            To serve URLs like <span className="font-mono text-cyan-700 font-bold">https://{domain}/cataract-surgery-in-pcmc</span> without needing <span className="font-mono text-amber-300">.html</span>, use one of the following rewrite snippets on your web server:
           </p>
 
           <div className="space-y-2">
-            <div className="font-bold text-white text-[12px] flex items-center justify-between">
+            <div className="font-bold text-slate-900 text-[12px] flex items-center justify-between">
               <span>Nginx (nginx.conf)</span>
               <button
                 onClick={() => copyToClipboard(`location / {\n    try_files $uri $uri.html $uri/ /index.html;\n}`, 'Nginx config copied!')}
-                className="text-cyan-400 hover:text-cyan-300 text-xs flex items-center gap-1 cursor-pointer"
+                className="text-cyan-700 hover:text-cyan-700 text-xs flex items-center gap-1 cursor-pointer"
               >
                 <Copy size={11} /> Copy
               </button>
             </div>
-            <pre className="p-3 bg-slate-950 border border-white/10 rounded-xl font-mono text-[11px] text-slate-300 overflow-x-auto">
+            <pre className="p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px] text-slate-700 overflow-x-auto">
 {`location / {
     try_files $uri $uri.html $uri/ /index.html;
 }`}
@@ -1162,16 +1162,16 @@ function Builder({ b }) {
           </div>
 
           <div className="space-y-2">
-            <div className="font-bold text-white text-[12px] flex items-center justify-between">
+            <div className="font-bold text-slate-900 text-[12px] flex items-center justify-between">
               <span>Apache (.htaccess)</span>
               <button
                 onClick={() => copyToClipboard(`RewriteEngine On\nRewriteCond %{REQUEST_FILENAME} !-d\nRewriteCond %{REQUEST_FILENAME}\\.html -f\nRewriteRule ^(.*)$ $1.html [L]`, 'Apache config copied!')}
-                className="text-cyan-400 hover:text-cyan-300 text-xs flex items-center gap-1 cursor-pointer"
+                className="text-cyan-700 hover:text-cyan-700 text-xs flex items-center gap-1 cursor-pointer"
               >
                 <Copy size={11} /> Copy
               </button>
             </div>
-            <pre className="p-3 bg-slate-950 border border-white/10 rounded-xl font-mono text-[11px] text-slate-300 overflow-x-auto">
+            <pre className="p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px] text-slate-700 overflow-x-auto">
 {`RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}\\.html -f
@@ -1180,16 +1180,16 @@ RewriteRule ^(.*)$ $1.html [L]`}
           </div>
 
           <div className="space-y-2">
-            <div className="font-bold text-white text-[12px] flex items-center justify-between">
+            <div className="font-bold text-slate-900 text-[12px] flex items-center justify-between">
               <span>IIS / Plesk Windows (web.config)</span>
               <button
                 onClick={() => copyToClipboard(`<system.webServer>\n  <rewrite>\n    <rules>\n      <rule name="CleanURL" stopProcessing="true">\n        <match url="^([a-zA-Z0-9_-]+)/?$" />\n        <conditions logicalGrouping="MatchAll">\n          <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />\n        </conditions>\n        <action type="Rewrite" url="{R:1}.html" />\n      </rule>\n    </rules>\n  </rewrite>\n</system.webServer>`, 'web.config copied!')}
-                className="text-cyan-400 hover:text-cyan-300 text-xs flex items-center gap-1 cursor-pointer"
+                className="text-cyan-700 hover:text-cyan-700 text-xs flex items-center gap-1 cursor-pointer"
               >
                 <Copy size={11} /> Copy
               </button>
             </div>
-            <pre className="p-3 bg-slate-950 border border-white/10 rounded-xl font-mono text-[11px] text-slate-300 overflow-x-auto">
+            <pre className="p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px] text-slate-700 overflow-x-auto">
 {`<system.webServer>
   <rewrite>
     <rules>
@@ -1216,23 +1216,10 @@ RewriteRule ^(.*)$ $1.html [L]`}
 export default function WebsiteBuilderPage() {
   return (
     <SeoShell
-      title="Phase 3 — AI Website Studio, CMS & Clean Slug Engine"
-      subtitle="Autonomous generation of high-converting multi-page websites with clean SEO URL slugs matching your Google Business Profile."
+      title="AI Website Studio & Clean URL Engine"
+      subtitle="Autonomous generation of high-converting multi-page websites with clean SEO URL slugs matching your Google Business Profile"
     >
-      {(b) => (
-        <>
-          <LifecycleGrowthBar currentStepId="cms" />
-          <Builder key={b.id} b={b} />
-          <LifecycleNextCard
-            currentStepId="cms"
-            customTitle="Proceed to Phase 4: Google Business Profile Optimization"
-            customDescription="Landing page foundation and clean URL /cataract-surgery-in-pcmc are live with schema and conversion hooks. Advance to GBP Manager to align local categories, operational hours, and weekly post cadence."
-            customActionPath="/gmb-profile"
-            customActionLabel="Open Phase 4: Google Business Profile ➔"
-          />
-        </>
-      )}
+      {(b) => <Builder key={b.id} b={b} />}
     </SeoShell>
   );
 }
-
