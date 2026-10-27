@@ -1,1 +1,0 @@
-"""Audit engine: on-page crawler, PageSpeed/Lighthouse, sitemap discovery, SSRF-safe URL checks, GBP profile scoring, and the audit orchestrator. Its two routers (one-off website audits, Lighthouse audits) live in audit/routers/."""

@@ -7,13 +7,13 @@ images without alt text, structured data types, and broken internal links.
 import json
 import re
 from collections import deque
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urldefrag, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 
-from ..services.net import site_client
+from .net import site_client
 
 UA = "CodigixSEOAuditBot/1.0 (+https://codigixinfotech.com)"
 SKIP_EXT = re.compile(r"\.(jpg|jpeg|png|gif|webp|svg|pdf|zip|mp4|mp3|css|js|ico|woff2?)$", re.I)
@@ -101,7 +101,18 @@ def page_issues(p: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def crawl(start_url: str, max_pages: int = 25, timeout: float = 15) -> dict[str, Any]:
+def frameable(headers: Any) -> bool:
+    """Whether a browser may show the page inside an iframe (no X-Frame-Options / frame-ancestors block)."""
+    if (headers.get("x-frame-options") or "").strip().lower() in ("deny", "sameorigin"):
+        return False
+    m = re.search(r"frame-ancestors([^;]*)", headers.get("content-security-policy") or "", re.I)
+    return not m or "*" in m.group(1)
+
+
+def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
+    """`on_progress` (optional) gets an event per step so a caller can show the scan live:
+    {"step": "robots" | "sitemap" | "fetching" | "page", ...}."""
+    report = on_progress or (lambda event: None)
     start = start_url if start_url.startswith("http") else f"https://{start_url}"
     host = urlparse(start).netloc
     client = site_client(timeout)
@@ -110,10 +121,12 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15) -> dict[str,
         robots = client.get(urljoin(start, "/robots.txt"))
         site["robots_txt"] = robots.status_code == 200
         site["robots_blocks_all"] = bool(re.search(r"(?im)^user-agent:\s*\*\s*$[\s\S]*?^disallow:\s*/\s*$", robots.text)) if robots.status_code == 200 else False
+        report({"step": "robots", "found": site["robots_txt"], "blocks_all": site["robots_blocks_all"]})
         sitemap_urls = re.findall(r"(?im)^sitemap:\s*(\S+)", robots.text) if robots.status_code == 200 else []
         sm = client.get(sitemap_urls[0] if sitemap_urls else urljoin(start, "/sitemap.xml"))
         site["sitemap"] = sm.status_code == 200 and ("<urlset" in sm.text or "<sitemapindex" in sm.text)
         site["https"] = start.startswith("https")
+        report({"step": "sitemap", "found": site["sitemap"]})
         seen: set[str] = set()
         queue = deque([start])
         pages: list[dict[str, Any]] = []
@@ -123,6 +136,7 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15) -> dict[str,
             if url in seen:
                 continue
             seen.add(url)
+            report({"step": "fetching", "url": url, "done": len(pages), "queued": len(queue)})
             try:
                 r = client.get(url)
             except httpx.HTTPError as exc:
@@ -131,6 +145,7 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15) -> dict[str,
             if "text/html" not in r.headers.get("content-type", ""):
                 continue
             p = analyse_html(str(r.url), r.status_code, r.text)
+            p["frameable"] = frameable(r.headers)
             if r.status_code >= 400:
                 broken.append({"url": url, "error": str(r.status_code)})
             pages.append(p)
@@ -138,6 +153,7 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15) -> dict[str,
                 href = link["href"]
                 if urlparse(href).netloc == host and href not in seen and not SKIP_EXT.search(href):
                     queue.append(href)
+            report({"step": "page", "page": {k: v for k, v in p.items() if k != "links"}, "queued": len(queue)})
         for p in pages:
             p.pop("links", None)
         site.update(pages=pages, broken=broken, crawled=len(pages))

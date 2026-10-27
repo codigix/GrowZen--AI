@@ -1,6 +1,10 @@
 """Run audits and store them: GBP, rankings, technical (PageSpeed), on-page (crawler),
 backlinks, citations. Each audit saves a score, issues and whether the data was live or sample."""
+import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from statistics import mean
 from typing import Any
 from urllib.parse import urlparse
@@ -8,9 +12,10 @@ from urllib.parse import urlparse
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from ..models import Audit, Business, Keyword, Post, RankScan, Review
-from ..services import providers
-from . import crawler, pagespeed
+from ..config import get_settings
+from ..db import SessionLocal
+from ..models import Audit, Business, LighthouseAudit, Keyword, Post, RankScan, Review
+from . import crawler, lighthouse_runner, pagespeed, providers
 from .profile_score import ProfileStats, issues_from, score_profile
 
 KINDS = ["gbp", "rankings", "technical", "onpage", "backlinks", "citations"]
@@ -133,6 +138,52 @@ def overall(db: Session, b: Business) -> int | None:
     return round(mean(scores)) if scores else None
 
 
+def run_lighthouse(url: str, strategy: str = "mobile") -> dict[str, Any]:
+    """Google Lighthouse for a website scan, through the Lighthouse engine: PageSpeed Insights, falling back
+    to local Chrome when PageSpeed fails or its quota is used up. Returns the scan's summary (pagespeed.normalise
+    shape) plus the id of the full Lighthouse audit, whose report has every category's audits and the
+    original HTML/JSON downloads. Runs in its own DB session (called from a worker thread)."""
+    db = SessionLocal()
+    try:
+        lh = lighthouse_runner.create_and_queue(db, url, strategy, "pagespeed")
+        deadline = time.monotonic() + get_settings().lighthouse_timeout_seconds * 2 + 60  # PageSpeed, then the local fallback
+        while lh.status in ("queued", "running"):
+            if time.monotonic() > deadline:
+                raise pagespeed.PageSpeedTimeoutError("Google Lighthouse took too long")
+            time.sleep(1.5)
+            db.expire_all()
+            lh = db.get(LighthouseAudit, lh.id)
+        if lh.status != "completed":
+            raise pagespeed.PageSpeedError(lh.error_message or "Google Lighthouse failed")
+        raw = json.loads(Path(lh.raw_json_path).read_text(encoding="utf-8")) if lh.raw_json_path and Path(lh.raw_json_path).is_file() else None
+        if not raw:
+            raise pagespeed.PageSpeedError("Google Lighthouse finished without a report")
+        summary = pagespeed.normalise(raw if "lighthouseResult" in raw else {"lighthouseResult": raw}, strategy)  # local runs store the bare Lighthouse JSON
+        return summary | {"lighthouse_audit_id": lh.id, "engine_used": lh.engine_used, "fallback_reason": lh.fallback_reason}
+    finally:
+        db.close()
+
+
+def record_for_business(db: Session, b: Business, web: Audit) -> list[Audit]:
+    """Save a finished website scan of the business's own site as its `technical` and `onpage` audits,
+    scored exactly like _run_technical / _run_onpage, so the dashboard and agents see the same result."""
+    saved = []
+    ps, crawl = (web.result or {}).get("pagespeed"), (web.result or {}).get("crawl")
+    if ps:
+        scores = [v for v in ps["scores"].values() if v is not None]
+        saved.append(Audit(business_id=b.id, kind="technical", target=web.target, status="done", data_source="live", score=round(mean(scores)) if scores else 0,
+                           issues=pagespeed.issues_from(ps), result=ps, started_at=web.started_at, finished_at=web.finished_at))
+    if crawl:
+        saved.append(Audit(business_id=b.id, kind="onpage", target=web.target, status="done", data_source="live", score=crawl.get("score", 0),
+                           issues=[i for i in web.issues or [] if i.get("area") not in ("Technical", "Speed")],
+                           result={k: v for k, v in crawl.items() if k != "score"}, started_at=web.started_at, finished_at=web.finished_at))
+    db.add_all(saved)
+    db.flush()
+    b.last_audit_score = overall(db, b)
+    db.commit()
+    return saved
+
+
 def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: int = 10, audit: Audit | None = None) -> Audit:
     """One-off audit of any URL (no business needed): PageSpeed + a short crawl."""
     audit = audit or Audit(kind="website", target=url)
@@ -142,18 +193,45 @@ def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: 
     result: dict[str, Any] = {}
     issues: list[dict[str, Any]] = []
     errors = []
+    # Lighthouse (an HTTP call, no DB) runs beside the crawl; the crawl saves live progress after each step.
+    pool = ThreadPoolExecutor(max_workers=1)
+    psi = pool.submit(run_lighthouse, url, strategy)
+    progress: dict[str, Any] = {"lighthouse": "running", "current": url, "pages": [], "queued": 0, "max_pages": crawl_pages}
+
+    def save(event: dict[str, Any] | None = None) -> None:
+        step = (event or {}).get("step")
+        if step in ("robots", "sitemap"):
+            progress[step] = event["found"]
+        elif step == "fetching":
+            progress.update(current=event["url"], queued=event["queued"])
+        elif step == "page":
+            p = event["page"]
+            found = crawler.page_issues(p)
+            progress["pages"].append({k: p.get(k) for k in ("url", "status", "title", "meta_description", "h1", "word_count", "images", "images_missing_alt", "has_viewport", "noindex", "frameable", "schema_types")}
+                                     | {"issues": [{"level": i["level"], "title": i["title"]} for i in found]})
+            progress["queued"] = event["queued"]
+        if progress["lighthouse"] == "running" and psi.done():
+            progress["lighthouse"] = "failed" if psi.exception() else "done"
+        audit.result = {"progress": dict(progress)}  # a new dict, so SQLAlchemy sees the JSON change
+        db.commit()
+
     try:
-        result["pagespeed"] = pagespeed.run(url, strategy)
-        issues += pagespeed.issues_from(result["pagespeed"])
-    except Exception as exc:
-        errors.append(f"PageSpeed: {exc}")
-    try:
-        site = crawler.crawl(url, max_pages=crawl_pages)
-        crawl_score, crawl_issues = crawler.summarise(site)
-        result["crawl"] = site | {"score": crawl_score}
-        issues += crawl_issues
-    except Exception as exc:
-        errors.append(f"Crawl: {exc}")
+        try:
+            site = crawler.crawl(url, max_pages=crawl_pages, on_progress=save)
+            crawl_score, crawl_issues = crawler.summarise(site)
+            result["crawl"] = site | {"score": crawl_score}
+            issues += crawl_issues
+        except Exception as exc:
+            errors.append(f"Crawl: {exc}")
+        progress.update(current=None, crawl="done")
+        save()
+        try:
+            result["pagespeed"] = psi.result()
+            issues = pagespeed.issues_from(result["pagespeed"]) + issues
+        except Exception as exc:
+            errors.append(f"Lighthouse: {exc}")
+    finally:
+        pool.shutdown(wait=False)
     seo = (result.get("pagespeed") or {}).get("scores", {}).get("seo")
     parts = [x for x in [seo, (result.get("crawl") or {}).get("score")] if x is not None]
     audit.score = round(mean(parts)) if parts else None

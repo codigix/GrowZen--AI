@@ -1,9 +1,8 @@
 """Pure logic: profile score, email extraction, crawler page checks, GEO answer analysis."""
 from types import SimpleNamespace
 
-from app.audit import crawler
-from app.audit.profile_score import ProfileStats, name_looks_stuffed, score_profile
-from app.services import extraction, geo
+from app.services import crawler, extraction, geo
+from app.services.profile_score import ProfileStats, name_looks_stuffed, score_profile
 
 
 def biz(**kw):
@@ -97,3 +96,10 @@ def test_geo_answer_analysis():
     assert a["mentioned"] and a["position"] == 2 and a["sentiment"] == "positive"
     assert a["competitors"] == ["ActiveLife Physiotherapy", "Rehab Plus"]
     assert a["cited_urls"] == ["https://practo.com/x"]
+
+
+def test_frameable_headers():
+    assert crawler.frameable({})
+    assert not crawler.frameable({"x-frame-options": "SAMEORIGIN"})
+    assert not crawler.frameable({"content-security-policy": "default-src 'self'; frame-ancestors 'self'"})
+    assert crawler.frameable({"content-security-policy": "frame-ancestors *"})

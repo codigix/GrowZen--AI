@@ -1,39 +1,75 @@
 """Find a business from an email address (public website + Google Maps), then add and audit it."""
 import re
 from datetime import datetime
-from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..audit import audits
 from ..auth import User, current_user
 from ..db import get_db
 from ..deps import in_background
 from ..models import Business, Review
-from ..schemas import DiscoverImportIn, DiscoverIn
+from ..schemas import DiscoverImportIn, DiscoverIn, SuggestionIn
 from ..serialize import row
-from ..services import agent, discovery, schedules
+from ..services import agent, audits, discovery, schedules, suggest
 from ..services.activity import log
+from ..services.match import phone_digits as _digits, site_domain as _domain
 
 router = APIRouter(prefix="/discover", tags=["discover"])
 
 
 @router.post("")
-def find(body: DiscoverIn, _: User = Depends(current_user)):
+def find(body: DiscoverIn, db: Session = Depends(get_db), _: User = Depends(current_user)):
     try:
-        return discovery.discover(body.email, body.name.strip(), body.city.strip())
+        out = discovery.discover(body.email.strip(), body.name.strip(), body.city.strip(), body.website.strip())
     except discovery.DiscoveryError as exc:
         raise HTTPException(400, str(exc)) from exc
+    for c in out["candidates"]:  # already a business here: the page offers Manage instead of Add
+        b = _existing(db, c)
+        c["business_id"] = b.id if b else None
+    return out
 
 
-def _digits(s: str | None) -> str:
-    return re.sub(r"\D", "", s or "")[-10:]
+@router.get("/suggest")
+def suggestions(q: str = "", near: str = "", session: str = "", db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """Business names while typing: existing projects, Google Maps and OpenStreetMap. `session` is the
+    browser's Autocomplete session token (one per search, ended by /resolve)."""
+    return suggest.suggest(db, q[:120], near[:80], session[:64])
 
 
-def _domain(url: str | None) -> str:
-    return urlparse(url if (url or "").startswith("http") else f"https://{url}").netloc.removeprefix("www.") if url else ""
+@router.post("/resolve")
+def resolve(body: SuggestionIn, _: User = Depends(current_user)):
+    """Full details (location, contact, hours) of the suggestion that was picked."""
+    try:
+        return suggest.resolve(body.source, body.ref, body.session)
+    except discovery.DiscoveryError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"The map service did not answer: {exc}") from exc
+
+
+@router.get("/geocode")
+def geocode(q: str = "", _: User = Depends(current_user)):
+    """A typed address -> map pins (OpenStreetMap)."""
+    try:
+        return {"results": suggest.geocode(q[:300])}
+    except discovery.DiscoveryError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"OpenStreetMap did not answer: {exc}") from exc
+
+
+@router.get("/reverse")
+def reverse_geocode(lat: float, lng: float, _: User = Depends(current_user)):
+    """A map pin -> its address (OpenStreetMap)."""
+    try:
+        return suggest.reverse(lat, lng)
+    except discovery.DiscoveryError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"OpenStreetMap did not answer: {exc}") from exc
 
 
 def _existing(db: Session, c: dict) -> Business | None:
@@ -96,6 +132,8 @@ def add(body: DiscoverImportIn, tasks: BackgroundTasks, db: Session = Depends(ge
         try:
             d = discovery.place_details(b.place_id)
             b.photo_count = b.photo_count or len(d.get("photos") or [])
+            if not b.gbp_location:  # a signed-in Google account's data is richer; otherwise keep the public status
+                b.gbp_status = discovery.public_status(d)
             for rv in d.get("reviews") or []:
                 ext = rv.get("name")
                 if db.scalar(select(Review).where(Review.business_id == b.id, Review.external_id == ext)):

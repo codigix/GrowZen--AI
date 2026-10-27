@@ -29,7 +29,7 @@ def test_facts_without_schema():
 def test_javascript_only_site():
     shell = '<html><head><title>Codigix Infotech</title></head><body><div id="root"></div><script src="/static/js/main.js"></script></body></html>'
     assert discovery.extract_facts("https://codigixinfotech.com", shell)["javascript_only"]
-    from app.audit import crawler
+    from app.services import crawler
     p = crawler.analyse_html("https://codigixinfotech.com/", 200, shell)
     assert [i["title"] for i in crawler.page_issues(p)] == ["/ is empty without JavaScript"]
 

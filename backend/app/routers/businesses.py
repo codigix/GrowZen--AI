@@ -5,16 +5,16 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..audit import audits
-from ..audit.profile_score import score_profile
 from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business, in_background
 from ..models import AgentTask, Audit, Business, InsightDay, Lead, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
-from ..services import agent, gbp, reports, schedules
+from ..services import agent, audits, discovery, gbp, reports, schedules
+from ..services import portfolio as portfolio_service
 from ..services.activity import log
+from ..services.profile_score import score_profile
 
 router = APIRouter(prefix="/businesses", tags=["businesses"])
 
@@ -27,6 +27,12 @@ def list_businesses(db: Session = Depends(get_db), _: User = Depends(current_use
         nxt = db.scalar(select(func.min(Schedule.next_run_at)).where(Schedule.business_id == b.id, Schedule.every != "off"))
         out.append(row(b) | {"pending_tasks": pending, "next_run_at": nxt.isoformat() if nxt else None})
     return out
+
+
+@router.get("/portfolio")
+def portfolio(db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """Every client with its status, plan, health, running services and what needs attention (dashboard)."""
+    return portfolio_service.summary(db)
 
 
 @router.post("", status_code=201)
@@ -104,6 +110,29 @@ def overview(b: Business = Depends(get_business), db: Session = Depends(get_db))
 def gbp_score(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     r = score_profile(b, audits.profile_stats(db, b))
     return {"score": r.score, "factors": r.factors, "items": r.items, "alerts": r.alerts, "top_fixes": r.top_fixes}
+
+
+@router.post("/{business_id}/maps-refresh")
+def maps_refresh(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Re-read the listing's public state on Google Maps (open or closed, rating, reviews, photos):
+    no Google sign-in needed, only the business's Maps listing (place_id)."""
+    if not b.place_id:
+        raise HTTPException(400, "This business isn't matched to a Google Maps listing yet. Find it by email first.")
+    if not discovery.places_enabled():
+        raise HTTPException(400, "Google Maps lookup is off: set GOOGLE_PLACES_API_KEY on the backend.")
+    discovery._details_cache.pop(b.place_id, None)  # always fresh
+    try:
+        d = discovery.place_details(b.place_id)
+    except discovery.DiscoveryError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    status = discovery.public_status(d)
+    b.rating, b.review_count = status["rating"] or b.rating, status["review_count"] or b.review_count
+    b.photo_count = status["photos"] or b.photo_count
+    if not b.gbp_location:
+        b.gbp_status = status
+    log(db, user.name, "maps_refreshed", b.id, open_status=status["open_status"])
+    db.commit()
+    return status
 
 
 @router.post("/{business_id}/sync")

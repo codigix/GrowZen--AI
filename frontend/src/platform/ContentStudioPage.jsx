@@ -9,7 +9,8 @@ import {
   SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
   ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, PreviewNote
 } from './SeoUi';
-import { rng, fmt, shortDate, daysBack, ymd } from './seoMock';
+import { rng, shortDate, daysBack, ymd } from './seoMock';
+import { fmt } from './seoApi';
 
 const STEPS = ['Topic & Intent', 'SERP Analysis', 'Structured Brief', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
 

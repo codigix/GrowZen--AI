@@ -151,3 +151,60 @@ def test_playbook_and_status(client):
     assert client.put("/api/v1/playbook", json={"tone": "Warm"}).json()["tone"] == "Warm"
     st = client.get("/api/v1/status").json()
     assert st["ai"]["configured"] is False and st["dataforseo"] is False
+
+
+def test_website_audit_saves_live_progress(client, monkeypatch):
+    from app.services import crawler
+    seen = []
+
+    def crawl(url, max_pages=25, timeout=15, on_progress=None):
+        page = crawler.analyse_html(url, 200, "<html><head><title>Home</title></head><body><h1>Hi</h1></body></html>") | {"frameable": True}
+        on_progress({"step": "robots", "found": True, "blocks_all": False})
+        on_progress({"step": "fetching", "url": url, "done": 0, "queued": 0})
+        on_progress({"step": "page", "page": page, "queued": 0})
+        seen.append(True)
+        return {"start_url": url, "host": "example.in", "https": True, "robots_txt": True, "robots_blocks_all": False, "sitemap": False, "crawled": 1, "broken": [], "pages": [page]}
+
+    monkeypatch.setattr(crawler, "crawl", crawl)
+    r = client.post("/api/v1/website-audits", json={"url": "https://example.in/", "crawl_pages": 5})
+    assert r.status_code == 202
+    a = client.get(f"/api/v1/website-audits/{r.json()['id']}").json()
+    assert seen and a["status"] == "done" and a["score"] is not None
+    assert a["result"]["pagespeed"]["scores"]["seo"] == 83 and a["result"]["crawl"]["pages"][0]["frameable"]
+    assert a["issues"][0]["area"] == "Technical"  # Lighthouse findings first, then the crawl's
+
+    # Scanning the business's own site also becomes its technical + on-page audits.
+    bid = client.post("/api/v1/businesses", json={"name": "Scan Test Clinic", "website": "https://example.in/"}).json()["id"]
+    assert client.post("/api/v1/website-audits", json={"url": "https://example.in/", "business_id": 999999}).status_code == 404
+    client.post("/api/v1/website-audits", json={"url": "https://example.in/", "business_id": bid})
+    kinds = {x["kind"]: x for x in client.get(f"/api/v1/businesses/{bid}/audits").json()}
+    assert kinds["technical"]["status"] == "done" and kinds["technical"]["score"] == round((83 + 54 + 88 + 92) / 4)
+    assert kinds["onpage"]["status"] == "done" and "website" not in kinds
+    onpage = client.get(f"/api/v1/businesses/{bid}/audits/{kinds['onpage']['id']}").json()
+    assert onpage["result"]["pages"] and all(i["area"] not in ("Technical", "Speed") for i in onpage["issues"])
+    assert client.get(f"/api/v1/businesses/{bid}").json()["last_audit_score"] is not None
+
+
+def test_scan_lighthouse_goes_through_the_engine(monkeypatch, tmp_path):
+    """The scan's Lighthouse half uses the Lighthouse engine (with its local-Chrome fallback) and links the full audit."""
+    import json as _json
+    from app.models import LighthouseAudit
+    from app.services import audits, lighthouse_runner
+    raw = {"finalDisplayedUrl": "https://example.in/", "fetchTime": "2026-10-27T10:00:00Z",  # a bare local Lighthouse report
+           "categories": {"seo": {"score": 0.9, "auditRefs": [{"id": "document-title"}]}, "performance": {"score": 0.42}},
+           "audits": {"document-title": {"title": "Document has a <title> element", "score": 1, "description": ""},
+                      "final-screenshot": {"details": {"data": "data:image/jpeg;base64,AAA"}}}}
+    path = tmp_path / "lh.json"
+    path.write_text(_json.dumps(raw), encoding="utf-8")
+
+    def queue(db, url, strategy, engine):
+        a = LighthouseAudit(submitted_url=url, strategy=strategy, engine=engine, status="completed", raw_json_path=str(path),
+                            engine_used="lighthouse", fallback_reason="PageSpeed quota used up")
+        db.add(a)
+        db.commit()
+        return a
+
+    monkeypatch.setattr(lighthouse_runner, "create_and_queue", queue)
+    r = audits.run_lighthouse("https://example.in/")
+    assert r["scores"]["seo"] == 90 and r["scores"]["performance"] == 42 and r["seo_checks"][0]["status"] == "pass"
+    assert r["lighthouse_audit_id"] and r["engine_used"] == "lighthouse" and r["screenshot"].startswith("data:image")

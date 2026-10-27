@@ -52,6 +52,9 @@ def normalise(d: dict[str, Any], strategy: str) -> dict[str, Any]:
         "metrics": {k: (audits.get(v) or {}).get("displayValue") for k, v in {"lcp": "largest-contentful-paint", "fcp": "first-contentful-paint", "cls": "cumulative-layout-shift", "tbt": "total-blocking-time", "si": "speed-index"}.items()},
         "field": {k: field.get(v, {}).get("category") for k, v in {"lcp": "LARGEST_CONTENTFUL_PAINT_MS", "inp": "INTERACTION_TO_NEXT_PAINT", "cls": "CUMULATIVE_LAYOUT_SHIFT_SCORE"}.items()},
         "opportunities": [{"title": a.get("title"), "savings_ms": round(a["details"].get("overallSavingsMs", 0)), "description": _plain(a.get("description", ""))} for a in opportunities],
+        # What Lighthouse's Chrome actually saw (base64 JPEG data URIs): the loaded page and how it filled in.
+        "screenshot": ((audits.get("final-screenshot") or {}).get("details") or {}).get("data"),
+        "filmstrip": [{"ms": f.get("timing"), "data": f.get("data")} for f in (((audits.get("screenshot-thumbnails") or {}).get("details") or {}).get("items") or [])][:8],
     }
 
 

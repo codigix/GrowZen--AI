@@ -1,7 +1,7 @@
 """Request bodies (responses are plain dicts built by `serialize`)."""
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AnyUrl, BaseModel, Field, HttpUrl, field_validator
 
 
 class BusinessIn(BaseModel):
@@ -89,6 +89,35 @@ class AuditRunIn(BaseModel):
     kinds: list[Literal["gbp", "rankings", "technical", "onpage", "backlinks", "citations"]] | None = None
 
 
+class WebsiteAuditIn(BaseModel):
+    url: HttpUrl
+    strategy: Literal["mobile", "desktop"] = "mobile"
+    crawl_pages: int = Field(default=10, ge=1, le=50)
+    business_id: int | None = None  # set when this is the business's own site: the scan also updates its audits
+
+
+class LighthouseAuditIn(BaseModel):
+    url: str = Field(description="Publicly reachable http(s) URL")
+    strategy: Literal["mobile", "desktop"] = "mobile"
+    engine: Literal["pagespeed", "lighthouse"] = "lighthouse"
+
+    @field_validator("url")
+    @classmethod
+    def http_only(cls, v: str) -> str:
+        # Not HttpUrl: that rewrites the URL (e.g. adds a trailing slash), and the URL is kept as typed.
+        v = v.strip()
+        if AnyUrl(v).scheme not in ("http", "https"):
+            raise ValueError("Only http:// and https:// URLs are supported")
+        return v
+
+
+class LighthouseSiteAuditIn(BaseModel):
+    url: str = Field(description="Site whose sitemap.xml lists the pages to audit")
+    strategy: Literal["mobile", "desktop"] = "mobile"
+    engine: Literal["pagespeed", "lighthouse"] = "lighthouse"
+    max_pages: int = Field(default=10, ge=1, le=50)
+
+
 class ImportLocationsIn(BaseModel):
     locations: list[str] = Field(min_length=1)  # "locations/123"
 
@@ -127,6 +156,11 @@ class KeywordIn(BaseModel):
 class KeywordIdeasIn(BaseModel):
     seed: str = Field(min_length=1)
     location: str = ""
+
+
+class KeywordDiscoverIn(BaseModel):
+    seeds: list[Annotated[str, Field(min_length=1, max_length=60)]] = Field(min_length=1, max_length=6)
+    areas: list[Annotated[str, Field(max_length=60)]] = Field(default_factory=list, max_length=10)
 
 
 class RankScanIn(BaseModel):

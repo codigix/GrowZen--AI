@@ -4,7 +4,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..audit import audits
+from ..services import audits
 from ..auth import User, current_user
 from ..config import get_settings
 from ..db import get_db
@@ -66,7 +66,8 @@ def google_callback(code: str = "", state: str = "", error: str = "", db: Sessio
 
 @router.get("/{connection_id}/locations")
 def locations(connection_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
-    """Every business location the account owns or manages, marked if already imported."""
+    """Every business location the account owns or manages, with its live status (verification, open,
+    pending edits) and, when already imported, the business it became."""
     c = _conn(db, connection_id)
     try:
         found = gbp.GbpClient(c).all_locations()
@@ -74,8 +75,10 @@ def locations(connection_id: int, db: Session = Depends(get_db), _: User = Depen
         c.last_error = str(exc)[:500]
         db.commit()
         raise HTTPException(502, str(exc)) from exc
-    imported = set(db.scalars(select(Business.gbp_location).where(Business.gbp_location.is_not(None))))
-    return [gbp.location_to_fields(l) | {"imported": l.get("name") in imported, "account_role": l.get("account_role")} for l in found]
+    c.last_error = None
+    db.commit()
+    imported = dict(db.execute(select(Business.gbp_location, Business.id).where(Business.gbp_location.is_not(None))).all())
+    return [gbp.location_to_fields(l) | {"imported": l.get("name") in imported, "business_id": imported.get(l.get("name")), "account_role": l.get("account_role")} for l in found]
 
 
 @router.post("/{connection_id}/import")

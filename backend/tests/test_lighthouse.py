@@ -12,10 +12,10 @@ from collections import defaultdict, deque
 import httpx
 import pytest
 
-from app.audit import lighthouse, lighthouse_report, pagespeed, url_safety
-from app.audit.sitemap import SitemapDiscoveryError, discover_site_urls
-from app.audit.url_safety import SSRFValidationError, resolve_and_validate, validate_url_shape
 from app.config import get_settings
+from app.services import lighthouse, lighthouse_report, pagespeed, url_safety
+from app.services.sitemap import SitemapDiscoveryError, discover_site_urls
+from app.services.url_safety import SSRFValidationError, resolve_and_validate, validate_url_shape
 
 PUBLIC_IP = "93.184.215.14"
 
@@ -477,7 +477,7 @@ def test_rerun_makes_a_new_audit(lh, monkeypatch, result):
 
 
 def test_rate_limit(lh, monkeypatch, result):
-    from app.audit.routers import lighthouse as router
+    from app.routers import lighthouse as router
     monkeypatch.setattr(router, "_hits", defaultdict(deque))
     monkeypatch.setattr(get_settings(), "lighthouse_rate_limit_per_minute", 2)
     psi_ok(monkeypatch, result)
@@ -495,7 +495,7 @@ def test_health_hides_secrets(lh):
 
 
 def _discovery(monkeypatch, urls=None, error=None):
-    from app.audit.routers import lighthouse as router
+    from app.routers import lighthouse as router
 
     def fake(url, max_pages):
         if error:
@@ -549,7 +549,7 @@ def test_site_audit_errors(lh, monkeypatch):
 def test_restart_marks_unfinished_audits_failed(lh):
     from app.db import SessionLocal
     from app.models import LighthouseAudit
-    from app.audit import lighthouse_runner
+    from app.services import lighthouse_runner
     db = SessionLocal()
     a = LighthouseAudit(submitted_url="https://example.com/stuck", strategy="mobile", engine="lighthouse", status="running")
     db.add(a)

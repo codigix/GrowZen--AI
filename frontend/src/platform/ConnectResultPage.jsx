@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { SeoShell, Card, Button, useSeoBusiness } from './SeoUi';
@@ -13,6 +13,8 @@ export default function ConnectResultPage() {
   const connection = q.get('connection');
   const error = q.get('error');
   const gbpPage = '/gmb-profile';
+  // Signed in: the GBP page lists every business on the account with its status.
+  useEffect(() => { if (connection && !error) navigate(`${gbpPage}?account=${connection}`, { replace: true }); }, [connection, error, navigate]);
   return (
     <SeoShell title="Google account connected" subtitle="Choose which of its Business Profiles to add" hideSwitcher needsBusiness={false}>
       <Card className="max-w-3xl">

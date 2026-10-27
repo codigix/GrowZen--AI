@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends
 
-from ..audit import lighthouse
 from ..auth import User, current_user
 from ..config import get_settings
-from ..services import ai
+from ..services import ai, lighthouse
 
 router = APIRouter(tags=["system"])
 

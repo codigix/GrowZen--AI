@@ -13,6 +13,7 @@ Read-only: managing the profile (posts, replies) still needs the owner's Google 
 import json
 import re
 import time
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -21,6 +22,8 @@ from bs4 import BeautifulSoup
 
 from ..config import get_settings
 from .net import site_client
+from .crawler import renders_with_javascript
+from .match import phone_digits as _digits
 
 FREE_MAIL = {"gmail.com", "googlemail.com", "yahoo.com", "yahoo.in", "yahoo.co.in", "outlook.com", "hotmail.com", "live.com", "msn.com",
              "icloud.com", "me.com", "rediffmail.com", "rediff.com", "aol.com", "protonmail.com", "proton.me", "zoho.com", "zohomail.in", "gmx.com", "yandex.com"}
@@ -44,14 +47,6 @@ PIN_RE = re.compile(r"\b[1-9]\d{5}\b")
 LOCALBUSINESS_HINT = re.compile(r"LocalBusiness|Organization|Store|Clinic|Dentist|Physician|Restaurant|Salon|Gym|Hotel|Service|Contractor|School", re.I)
 
 
-APP_ROOT = re.compile(r'<div[^>]+id=["\'](root|app|__next|__nuxt)["\']', re.I)
-
-
-def renders_with_javascript(html: str, word_count: int) -> bool:
-    """A single-page app: the raw HTML is an empty shell filled in by JavaScript."""
-    return word_count < 60 and bool(APP_ROOT.search(html or ""))
-
-
 class DiscoveryError(RuntimeError):
     pass
 
@@ -69,10 +64,6 @@ def website_domain(url: str) -> str:
     if not re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", host or ""):
         raise DiscoveryError("That doesn't look like a website address.")
     return host
-
-
-def _digits(s: str | None) -> str:
-    return re.sub(r"\D", "", s or "")[-10:]
 
 
 def _norm_phone(raw: str | None) -> str | None:
@@ -191,8 +182,8 @@ def places_enabled() -> bool:
     return bool(get_settings().google_places_api_key)
 
 
-def _places_post(query: str) -> list[dict[str, Any]]:
-    r = httpx.post(f"{PLACES}/places:searchText", json={"textQuery": query, "regionCode": "IN", "maxResultCount": 5},
+def _places_post(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    r = httpx.post(f"{PLACES}/places:searchText", json={"textQuery": query, "regionCode": "IN", "maxResultCount": limit},
                    headers={"X-Goog-Api-Key": get_settings().google_places_api_key, "X-Goog-FieldMask": SEARCH_FIELDS}, timeout=20)
     if r.status_code != 200:
         msg = (r.json().get("error") or {}).get("message", r.text[:200]) if r.content else f"HTTP {r.status_code}"
@@ -200,6 +191,23 @@ def _places_post(query: str) -> list[dict[str, Any]]:
             raise DiscoveryError("Places API (New) is not enabled in the Google Cloud project for GOOGLE_PLACES_API_KEY.")
         raise DiscoveryError(f"Google Places: {msg}")
     return r.json().get("places", [])
+
+
+OPEN_STATUS = {"OPERATIONAL": "open", "CLOSED_TEMPORARILY": "closed_temporarily", "CLOSED_PERMANENTLY": "closed_permanently"}
+
+
+def review_link(place_id: str | None) -> str | None:
+    """Google's public "write a review" link for a listing."""
+    return f"https://search.google.com/local/writereview?placeid={place_id}" if place_id else None
+
+
+def public_status(p: dict[str, Any]) -> dict[str, Any]:
+    """What anyone can see about a listing on Google Maps (no owner sign-in): open or closed, rating,
+    reviews, photos, links. Kept on the business as gbp_status with source "maps"."""
+    return {"source": "maps", "open_status": OPEN_STATUS.get(p.get("businessStatus"), "unknown"), "live_on_maps": bool(p.get("id")),
+            "maps_url": p.get("googleMapsUri"), "review_url": review_link(p.get("id")), "rating": p.get("rating"),
+            "review_count": p.get("userRatingCount"), "photos": len(p.get("photos") or []) or None,
+            "checked_at": datetime.now(timezone.utc).isoformat()}
 
 
 def place_to_candidate(p: dict[str, Any], reason: str) -> dict[str, Any]:
@@ -210,7 +218,8 @@ def place_to_candidate(p: dict[str, Any], reason: str) -> dict[str, Any]:
         "address": clean_address(p.get("formattedAddress")), "phone": _norm_phone(p.get("nationalPhoneNumber") or p.get("internationalPhoneNumber")),
         "website": p.get("websiteUri"), "rating": p.get("rating"), "review_count": p.get("userRatingCount"),
         "category": (p.get("primaryTypeDisplayName") or {}).get("text"), "lat": loc.get("latitude"), "lng": loc.get("longitude"),
-        "maps_url": p.get("googleMapsUri"), "status": p.get("businessStatus"),
+        "maps_url": p.get("googleMapsUri"), "status": p.get("businessStatus"), "open_status": OPEN_STATUS.get(p.get("businessStatus"), "unknown"),
+        "review_url": review_link(p.get("id")),
         "hours": (p.get("regularOpeningHours") or {}).get("weekdayDescriptions"),
     }
 
@@ -265,20 +274,24 @@ def discover(email: str = "", name: str = "", city: str = "", website: str = "")
         queries = []
         if query_name:
             queries.append((f"{query_name} {query_city}".strip(), "name" + (" + city" if query_city else "")))
+            if query_city:
+                queries.append((query_name, "name (all branches)"))  # the same brand's other branches
         if site and site.get("phone"):
             queries.append((site["phone"], "phone from the website"))
         if domain and not free and not queries:
             queries.append((domain, "website domain"))
         for q, reason in queries:
-            for p in _places_post(q):
+            for p in _places_post(q, 10 if reason.startswith("name") else 5):
                 c = place_to_candidate(p, reason)
                 if c["place_id"] in seen:
                     continue
                 seen.add(c["place_id"])
                 # A listing whose website or phone matches the email's business is the strongest match.
-                if (domain and c.get("website") and domain in (c["website"] or "")) or (site and site.get("phone") and _digits(site["phone"]) == _digits(c.get("phone"))):
+                if (domain and not free and c.get("website") and domain in (c["website"] or "")) or (site and site.get("phone") and _digits(site["phone"]) == _digits(c.get("phone"))):
                     c["match"] = "website or phone matches"
                     c["confidence"] = "high"
+                elif reason == "name (all branches)" and query_name and query_name.lower() not in (c.get("name") or "").lower():
+                    continue  # a name-only search also finds unrelated places: keep only the brand's own listings
                 out["candidates"].append(c)
     else:
         out["notes"].append("Google Maps lookup is off: set GOOGLE_PLACES_API_KEY on the SEO backend to find the real listing (rating, reviews, category, hours).")

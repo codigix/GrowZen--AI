@@ -91,4 +91,5 @@ export const toUi = (b) => (b ? {
 } : null);
 
 export const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+export const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'));
 export const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
