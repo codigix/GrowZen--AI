@@ -198,7 +198,7 @@ function Report({ id, onRerun, rerunning, onSettled }) {
         <>
           <Card
             title={hostOf(r.submitted_url)}
-            subtitle={`${r.submitted_url} · ${r.strategy} · ${engineLabel(r.engine)} · ${fmtDateTime(r.finished_at)}`}
+            subtitle={`${r.submitted_url} · ${r.strategy} · ${engineLabel(r.engine)} · ${fmtDateTime(r.completed_at)}`}
             action={
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="secondary" icon={Download} busy={busy === 'json'} onClick={() => download('json')}>JSON</Button>
@@ -216,7 +216,7 @@ function Report({ id, onRerun, rerunning, onSettled }) {
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             <div className="xl:col-span-2 space-y-5">
-              <CategoryAudits report={r} metricIds={metricIds} />
+              <CategoryAudits report={r.report} metricIds={metricIds} />
             </div>
 
             <div className="space-y-5">
@@ -231,12 +231,11 @@ function Report({ id, onRerun, rerunning, onSettled }) {
                 </div>
               </Card>
 
-              {r.runtime && (
+              {r.report && (
                 <Card title="Environment Telemetry">
                   <div className="space-y-2 text-[12px] font-mono text-slate-500">
-                    <div>Browser: <span className="text-slate-800">{r.runtime.browser_version || 'Chrome'}</span></div>
-                    <div>User Agent: <span className="text-slate-800 truncate block">{r.runtime.user_agent || 'Headless'}</span></div>
-                    <div>Lighthouse Version: <span className="text-cyan-700">{r.runtime.lighthouse_version || '13.x'}</span></div>
+                    <div>User Agent: <span className="text-slate-800 truncate block">{r.report.user_agent || 'Headless'}</span></div>
+                    <div>Lighthouse Version: <span className="text-cyan-700">{r.report.lighthouse_version || '13.x'}</span></div>
                   </div>
                 </Card>
               )}
