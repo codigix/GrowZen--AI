@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends
 
+from ..audit import lighthouse
 from ..auth import User, current_user
 from ..config import get_settings
-from ..services import ai, lighthouse
+from ..services import ai
 
 router = APIRouter(tags=["system"])
 
@@ -33,4 +34,5 @@ def status(_: User = Depends(current_user)):
         "smtp": bool(s.smtp_host and s.smtp_from),
         "geo_engines": [n for n, k in [("ChatGPT", s.openai_api_key), ("Gemini", s.gemini_api_key), ("Perplexity", s.perplexity_api_key), ("Claude", s.anthropic_api_key), ("DeepSeek", s.deepseek_api_key)] if k],
         "scheduler": s.scheduler_enabled,
+        "google_trends": s.google_trends_enabled,
     }

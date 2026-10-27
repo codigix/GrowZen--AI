@@ -73,10 +73,10 @@ pip install -r requirements.lock                    # exact tested versions (req
 cp .env.example .env                                # then fill in SECRET_KEY, ADMIN_EMAIL, ADMIN_PASSWORD
 # create the database once:  CREATE DATABASE seo_platform_db;
 alembic upgrade head
-uvicorn app.main:app --port 8100
+uvicorn app.main:app --port 8000
 ```
 
-Interactive API docs are at http://localhost:8100/docs.
+Interactive API docs are at http://localhost:8000/docs.
 
 **Production:** run one instance with the scheduler (`SCHEDULER_ENABLED=true`). If you run more API instances, set `SCHEDULER_ENABLED=false` on the others.
 

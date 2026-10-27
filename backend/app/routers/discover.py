@@ -7,13 +7,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..audit import audits
 from ..auth import User, current_user
 from ..db import get_db
 from ..deps import in_background
 from ..models import Business, Review
 from ..schemas import DiscoverImportIn, DiscoverIn
 from ..serialize import row
-from ..services import agent, audits, discovery, schedules
+from ..services import agent, discovery, schedules
 from ..services.activity import log
 
 router = APIRouter(prefix="/discover", tags=["discover"])

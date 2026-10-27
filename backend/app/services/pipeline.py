@@ -13,7 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Business, GoogleConnection, IntakeEmail
-from . import agent, audits, extraction, gbp, reports, schedules
+from ..audit import audits
+from . import agent, extraction, gbp, reports, schedules
 from .activity import log
 from .notify import send_email
 

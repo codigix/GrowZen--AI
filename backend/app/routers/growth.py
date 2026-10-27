@@ -5,12 +5,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..audit import audits
 from ..db import get_db
 from ..deps import get_business, in_background
 from ..models import Business, GeoPrompt, GeoResult, Keyword, RankScan
 from ..schemas import GeoPromptIn, KeywordIdeasIn, KeywordIn, RankScanIn
 from ..serialize import row, rows
-from ..services import ai, audits, geo, providers
+from ..services import ai, geo, providers
 from ..services.providers.base import intent_of
 
 router = APIRouter(prefix="/businesses/{business_id}", tags=["growth"])

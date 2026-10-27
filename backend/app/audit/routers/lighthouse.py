@@ -11,15 +11,15 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..auth import User, current_user
-from ..config import get_settings
-from ..db import get_db
-from ..models import LighthouseAudit, LighthouseSiteAudit
+from ...auth import User, current_user
+from ...config import get_settings
+from ...db import get_db
+from ...models import LighthouseAudit, LighthouseSiteAudit
+from ...serialize import row
+from .. import lighthouse, lighthouse_report, lighthouse_runner
 from ..schemas import LighthouseAuditIn, LighthouseSiteAuditIn
-from ..serialize import row
-from ..services import lighthouse, lighthouse_report, lighthouse_runner
-from ..services.sitemap import SitemapDiscoveryError, discover_site_urls
-from ..services.url_safety import SSRFValidationError
+from ..sitemap import SitemapDiscoveryError, discover_site_urls
+from ..url_safety import SSRFValidationError
 
 router = APIRouter(prefix="/lighthouse", tags=["lighthouse"])
 

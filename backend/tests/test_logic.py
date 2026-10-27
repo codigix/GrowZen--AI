@@ -1,8 +1,9 @@
 """Pure logic: profile score, email extraction, crawler page checks, GEO answer analysis."""
 from types import SimpleNamespace
 
-from app.services import crawler, extraction, geo
-from app.services.profile_score import ProfileStats, name_looks_stuffed, score_profile
+from app.audit import crawler
+from app.audit.profile_score import ProfileStats, name_looks_stuffed, score_profile
+from app.services import extraction, geo
 
 
 def biz(**kw):

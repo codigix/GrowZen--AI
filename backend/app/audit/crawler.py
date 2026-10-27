@@ -13,7 +13,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from .net import site_client
+from ..services.net import site_client
 
 UA = "CodigixSEOAuditBot/1.0 (+https://codigixinfotech.com)"
 SKIP_EXT = re.compile(r"\.(jpg|jpeg|png|gif|webp|svg|pdf|zip|mp4|mp3|css|js|ico|woff2?)$", re.I)

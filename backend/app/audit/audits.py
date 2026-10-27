@@ -9,7 +9,8 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from ..models import Audit, Business, Keyword, Post, RankScan, Review
-from . import crawler, pagespeed, providers
+from ..services import providers
+from . import crawler, pagespeed
 from .profile_score import ProfileStats, issues_from, score_profile
 
 KINDS = ["gbp", "rankings", "technical", "onpage", "backlinks", "citations"]

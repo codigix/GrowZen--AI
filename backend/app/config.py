@@ -5,15 +5,23 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+_backend_dir = Path(__file__).resolve().parent.parent
+_default_db = f"sqlite:///{(_backend_dir / 'seo_platform_dev.db').as_posix()}"
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(_backend_dir / ".env", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     # Service
     app_name: str = "Codigix SEO Platform"
     environment: str = "development"
     api_prefix: str = "/api/v1"
-    cors_origins: str = "http://localhost:3100"  # comma separated (the SEO frontend)
-    public_base_url: str = "http://localhost:8100"  # where this API is reachable (OAuth callback)
+    cors_origins: str = "http://localhost:3100,http://127.0.0.1:3100"  # comma separated (the SEO frontend)
+    public_base_url: str = "http://localhost:8000"  # where this API is reachable (OAuth callback)
     frontend_url: str = "http://localhost:3100"
     frontend_dist: str = "../frontend/dist"  # built frontend served by this API when present
 
@@ -22,12 +30,13 @@ class Settings(BaseSettings):
     session_cookie: str = "seo_session"
     session_hours: int = 12
     cookie_secure: bool = False  # true behind HTTPS
-    admin_email: str = ""
-    admin_password: str = ""
+    admin_email: str = "info@codigixinfotech.com"
+    admin_password: str = "Seo@1d86f6a045"
     admin_name: str = "Admin"
 
-    # Database: its own PostgreSQL database, nothing shared with the CRM.
-    database_url: str = "postgresql+psycopg://seo:seo@localhost:5432/seo_platform_db"
+    # Database: its own PostgreSQL database in prod; SQLite for local dev out of the box.
+    database_url: str = _default_db
+
 
     # Optional: also accept the CRM's session cookie (same JWT secret). The user's name, role and
     # department come from the CRM's /auth/me over HTTP, never from its database.
@@ -75,6 +84,13 @@ class Settings(BaseSettings):
     # Paid data (optional): DataForSEO for rank grids, keyword data, backlinks, citations.
     dataforseo_login: str = ""
     dataforseo_password: str = ""
+
+    # Google Trends keyword planner: separate microservice (see /google_trends at the repo root),
+    # its own process/venv/port so it can be run and debugged independently of this API.
+    google_trends_base_url: str = "http://localhost:8010"
+    # Generous: that service may expand related/rising keywords via several extra, throttled
+    # Google Trends calls to reach its target count, which can take tens of seconds.
+    google_trends_timeout_seconds: float = 90.0
 
     # Scheduler
     scheduler_enabled: bool = True
@@ -131,6 +147,10 @@ class Settings(BaseSettings):
     @property
     def imap_enabled(self) -> bool:
         return bool(self.intake_imap_host and self.intake_imap_user and self.intake_imap_password)
+
+    @property
+    def google_trends_enabled(self) -> bool:
+        return bool(self.google_trends_base_url)
 
 
 @lru_cache

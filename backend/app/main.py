@@ -1,7 +1,7 @@
 """SEO platform API (FastAPI). Separate service from the CRM: own database, own process.
 
-Run:  uvicorn app.main:app --port 8100
-Docs: http://localhost:8100/docs
+Run:  uvicorn app.main:app --port 8000
+Docs: http://localhost:8000/docs
 """
 import logging
 from contextlib import asynccontextmanager
@@ -11,10 +11,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from .audit import lighthouse_runner
+from .audit.routers import lighthouse as audit_lighthouse, website as audit_website
 from .config import get_settings
 from .db import SessionLocal
-from .routers import agent, auth, businesses, connections, discover, growth, intake, leads, lighthouse, profile, system, website
-from .services import lighthouse_runner, scheduler
+from .routers import agent, auth, businesses, connections, discover, growth, intake, keyword_trends, leads, profile, system
+from .services import scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 # httpx logs every request URL at INFO, and PageSpeed Insights takes the API key in the query string.
@@ -42,7 +44,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-for r in (system, auth, businesses, profile, growth, leads, intake, connections, discover, agent, website, lighthouse):
+for r in (system, auth, businesses, profile, growth, leads, intake, connections, discover, agent, audit_website, audit_lighthouse, keyword_trends):
     app.include_router(r.router, prefix=settings.api_prefix)
 
 # Production: serve the built frontend (frontend/dist) from the same address as the API.

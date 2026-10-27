@@ -5,15 +5,16 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..audit import audits
+from ..audit.profile_score import score_profile
 from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business, in_background
 from ..models import AgentTask, Audit, Business, InsightDay, Lead, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
-from ..services import agent, audits, gbp, reports, schedules
+from ..services import agent, gbp, reports, schedules
 from ..services.activity import log
-from ..services.profile_score import score_profile
 
 router = APIRouter(prefix="/businesses", tags=["businesses"])
 

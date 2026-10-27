@@ -14,6 +14,7 @@ os.environ.update({
     "DATAFORSEO_LOGIN": "", "INTAKE_ALLOWED_SENDERS": "codigixinfotech.com", "INTAKE_WEBHOOK_TOKEN": "hook-token",
     "SMTP_HOST": "", "SECRET_KEY": "test-session-secret-0123456789-abcdef", "ADMIN_EMAIL": "", "ADMIN_PASSWORD": "",
     "PAGESPEED_API_KEY": "", "LIGHTHOUSE_REPORTS_DIR": os.path.join(os.path.dirname(_db), "reports"), "LIGHTHOUSE_RATE_LIMIT_PER_MINUTE": "1000",
+    "SERPER_API_KEY": "",  # overrides the real key in backend/.env: tests never call Serper
 })
 
 import jwt  # noqa: E402
@@ -35,7 +36,7 @@ def schema():
 @pytest.fixture()
 def client(monkeypatch):
     # No network in tests: PageSpeed and the crawler return canned results.
-    from app.services import crawler, pagespeed
+    from app.audit import crawler, pagespeed
     monkeypatch.setattr(pagespeed, "run", lambda url, strategy="mobile": {
         "url": url, "strategy": strategy, "scores": {"seo": 83, "performance": 54, "accessibility": 88, "best_practices": 92},
         "seo_checks": [{"id": "meta-description", "title": "Document does not have a meta description", "description": "Write one.", "status": "fail", "display_value": ""}],

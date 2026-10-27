@@ -11,7 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import Business, InsightDay, Keyword, Lead, Review
-from . import ai, audits
+from ..audit import audits
+from . import ai
 from .activity import log
 from .notify import send_email
 

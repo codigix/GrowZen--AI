@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Business, Schedule
-from . import agent, audits, gbp, geo, reports
+from ..audit import audits
+from . import agent, gbp, geo, reports
 from .activity import log
 from .playbook import get_playbook
 
