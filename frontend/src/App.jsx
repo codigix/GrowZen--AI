@@ -18,6 +18,7 @@ import GeoTrackerPage from './platform/GeoTrackerPage';
 import ReportsLeadsPage from './platform/ReportsLeadsPage';
 import AiAgentPage from './platform/AiAgentPage';
 import WebsiteBuilderPage from './platform/WebsiteBuilderPage';
+import BusinessOnboardingPage from './platform/BusinessOnboardingPage';
 import ConnectionsPage from './platform/ConnectionsPage';
 import ConnectResultPage from './platform/ConnectResultPage';
 
@@ -48,6 +49,7 @@ export default function App() {
       <Route element={<Layout user={user} onLogout={logout} />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<SeoOverviewPage />} />
+        <Route path="onboarding" element={<BusinessOnboardingPage />} />
         <Route path="automation-pipeline" element={<AutomationPipelinePage />} />
         <Route path="gmb-profile" element={<GbpManagerPage />} />
         <Route path="google-posts" element={<GbpManagerPage initialTab="posts" />} />
@@ -56,10 +58,12 @@ export default function App() {
         <Route path="rank-tracking" element={<LocalRankTrackerPage />} />
         <Route path="keyword-management" element={<KeywordResearchPage />} />
         <Route path="ai-content-generation" element={<ContentStudioPage />} />
+        <Route path="content-calendar" element={<ContentStudioPage initialTab="calendar" />} />
         <Route path="website-audit" element={<SiteAuditPage />} />
         <Route path="on-page-seo" element={<SiteAuditPage initialTab="pages" />} />
         <Route path="off-page-seo" element={<BacklinksCitationsPage />} />
         <Route path="geo-optimization" element={<GeoTrackerPage />} />
+        <Route path="leads" element={<ReportsLeadsPage initialTab="leads" />} />
         <Route path="reports" element={<ReportsLeadsPage />} />
         <Route path="automation" element={<AiAgentPage />} />
         <Route path="website-builder" element={<WebsiteBuilderPage />} />

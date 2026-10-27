@@ -2,7 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { CheckCircle2, Circle, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Loader2, Save } from 'lucide-react';
-import { SeoShell, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useSeoBusiness, refreshBusinesses } from './SeoUi';
+import {
+  SeoShell, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field,
+  inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord,
+  useToast, useAction, useSeoBusiness, refreshBusinesses, LifecycleGrowthBar, LifecycleNextCard
+} from './SeoUi';
 import { ConnectModal, ConnectionsBar, ConnectEmptyState } from './GbpConnect';
 import { api, useApi, fmtDate } from './seoApi';
 
@@ -318,6 +322,7 @@ function InsightsTab({ b }) {
 function Manager({ b, tab, setTab, toast, onConnect }) {
   return (
     <>
+      <LifecycleGrowthBar currentStepId="gbp" />
       <ConnectionsBar onConnect={() => onConnect('find')} toast={toast} />
       {!b.gbp_location && tab === 'audit' && <div className="mb-4"><ConnectEmptyState onConnect={() => onConnect('google')} /></div>}
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'audit', label: 'Audit' }, { id: 'profile', label: 'Profile' }, { id: 'posts', label: 'Posts' }, { id: 'photos', label: 'Photos' }, { id: 'hours', label: 'Hours' }, { id: 'faq', label: 'Q&A / FAQs' }, { id: 'insights', label: 'Insights' }]} />
@@ -328,9 +333,17 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
       {tab === 'hours' && <HoursTab b={b} toast={toast} />}
       {tab === 'faq' && <FaqTab b={b} toast={toast} />}
       {tab === 'insights' && <InsightsTab b={b} />}
+      <LifecycleNextCard
+        currentStepId="gbp"
+        customTitle="Proceed to Phase 5: Geo-Grid Local Rank Tracker"
+        customDescription="Google Business Profile is audited and aligned with 24/7 hours, medical categories, and target booking link. Advance to Local Rank Tracker to scan street-by-street map pack rankings across PCMC nodes."
+        customActionPath="/rank-tracking"
+        customActionLabel="Launch Phase 5: Geo-Grid Radar ➔"
+      />
     </>
   );
 }
+
 
 export default function GbpManagerPage({ initialTab = 'audit' }) {
   const [tab, setTab] = useState(initialTab);

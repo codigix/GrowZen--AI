@@ -134,7 +134,7 @@ function InboxTab({ emails, toast }) {
         footer={<>{d && !['processing', 'rejected'].includes(d.status) && <Button icon={Play} busy={busy === 're'} onClick={reprocess}>Run pipeline again</Button>}<Button onClick={() => setOpen(null)}>Close</Button></>}>
         {!d ? <Loader2 size={16} className="animate-spin text-gray-400" /> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><div className="text-[12px] text-gray-500 mb-1">Email</div><pre className="whitespace-pre-wrap text-[12px] text-gray-800 bg-gray-50 border border-gray-200 rounded p-3 font-sans max-h-80 overflow-auto">{d.body}</pre></div>
+            <div><div className="text-[12px] text-gray-500 mb-1">Email</div><pre className="whitespace-pre-wrap text-[12px] text-gray-800 bg-gray-50 border border-gray-200 rounded p-3  max-h-80 overflow-auto">{d.body}</pre></div>
             <div>
               <div className="text-[12px] text-gray-500 mb-1">Extracted</div>
               {Object.keys(d.extracted || {}).length === 0 ? <div className="text-[13px] text-gray-500">Not processed yet.</div> : (

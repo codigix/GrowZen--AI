@@ -92,7 +92,16 @@ def run_audit(*, url: str, strategy: str, timeout_seconds: float, reports_dir: P
     reports_dir.mkdir(parents=True, exist_ok=True)
     output_base = reports_dir / f"{audit_id}-{uuid.uuid4().hex[:8]}"
 
-    chrome_flags = ["--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]
+    chrome_flags = [
+        "--headless=new",
+        "--no-sandbox",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        "--ignore-certificate-errors",
+        "--allow-insecure-localhost",
+        "--allow-running-insecure-content",
+        "--disable-features=SafeBrowsing,OptimizationHints"
+    ]
     if validated is not None and validated.resolved_ips:
         # Pin DNS to the IP already validated, so a rebind before the fetch can't reach an internal address.
         chrome_flags.append(f"--host-resolver-rules=MAP {validated.hostname} {validated.resolved_ips[0]}")
@@ -116,8 +125,13 @@ def run_audit(*, url: str, strategy: str, timeout_seconds: float, reports_dir: P
     html_path = output_base.with_name(output_base.name + ".report.html")
     if returncode != 0 or not json_path.is_file():
         tail = stderr.decode("utf-8", errors="replace")[-_STDERR_TAIL_CHARS:].strip()
-        raise LighthouseError(f"Local Lighthouse audit failed to produce a report (exit code {returncode}). "
-                              f"Chrome/Chromium may be missing or the page may be unreachable. Details: {tail}")
+        if "interstitial" in tail.lower():
+            hint = " (Chrome halted because the target URL either timed out, refused connections, or returned an unreachable interstitial. Verify the URL is online and responding)."
+        elif "timeout" in tail.lower():
+            hint = " (The target server took too long to respond)."
+        else:
+            hint = ""
+        raise LighthouseError(f"Local Lighthouse audit failed to produce a report (exit code {returncode}).{hint} Details: {tail}")
     try:
         raw_json = json.loads(json_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:

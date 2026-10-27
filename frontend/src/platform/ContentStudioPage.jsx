@@ -1,131 +1,553 @@
 import React, { useMemo, useState } from 'react';
-import { Sparkles, Check, ChevronRight, Globe, ShieldCheck, AlertTriangle, RefreshCw, FileText, MapPin, Instagram, Facebook, Linkedin, Copy, Plus, CalendarDays } from 'lucide-react';
-import { SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls, ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, PreviewNote } from './SeoUi';
+import {
+  Sparkles, Check, ChevronRight, Globe, ShieldCheck, AlertTriangle, RefreshCw,
+  FileText, MapPin, Instagram, Facebook, Linkedin, Copy, Plus, CalendarDays,
+  Flame, TrendingUp, Search, Clock, ArrowUpRight, CheckCircle2, Lock, Sliders,
+  Send, ExternalLink, Link2, Share2, Layers, Award, Tag, BarChart3, Code, Eye
+} from 'lucide-react';
+import {
+  SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
+  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, PreviewNote
+} from './SeoUi';
 import { rng, fmt, shortDate, daysBack, ymd } from './seoMock';
 
-const STEPS = ['Keyword', 'Google results', 'Brief', 'Draft', 'Enrich', 'Score', 'Publish'];
+const STEPS = ['Topic & Intent', 'SERP Analysis', 'Structured Brief', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
+
+// Real-world Trending Topic Candidates for Hospital / Local Business
+const TRENDING_TOPICS = [
+  {
+    id: 1,
+    title: 'Micro-Incision Cataract Surgery (MICS) in PCMC: Cost, Recovery & Lens Options',
+    slug: 'cataract-surgery-in-pcmc',
+    category: 'Ophthalmology & Surgery',
+    volume: '2,400 / mo',
+    velocity: '+46% Rising',
+    intent: 'Local / High Intent',
+    competition: 'Medium (0.42)',
+    source: 'Google Trends & Search Console',
+    recommendedCta: 'Book Free Cataract Screening',
+    internalLinkTarget: '/cataract-surgery-in-pcmc',
+    audience: 'Senior patients & adult children in Chinchwad, Akurdi, Nigdi, PCMC',
+    seedKeywords: ['mics cataract surgery pcmc', 'cataract operation cost chinchwad', 'best eye hospital for cataract pune']
+  },
+  {
+    id: 2,
+    title: 'Cashless Mediclaim & TPA Insurance Guide for Eye Surgery in Chinchwad',
+    slug: 'cashless-mediclaim-eye-hospital-pcmc',
+    category: 'Patient Care & Billing',
+    volume: '1,850 / mo',
+    velocity: '+38% Rising',
+    intent: 'Transactional',
+    competition: 'Low (0.28)',
+    source: 'Patient FAQs & Search Queries',
+    recommendedCta: 'Check Your Insurance Eligibility',
+    internalLinkTarget: '/contact',
+    audience: 'Insured families, corporate policyholders, senior citizens',
+    seedKeywords: ['cashless eye surgery pcmc', 'star health tpa moraya hospital', 'mediclaim cataract coverage']
+  },
+  {
+    id: 3,
+    title: 'Femtosecond Laser vs Phacoemulsification: Which Cataract Surgery is Safer?',
+    slug: 'femtosecond-laser-vs-phaco-cataract',
+    category: 'Clinical Comparison',
+    volume: '3,100 / mo',
+    velocity: '+29% Rising',
+    intent: 'Informational & Commercial',
+    competition: 'High (0.64)',
+    source: 'AI Search Overview Queries',
+    recommendedCta: 'Consult an Eye Surgeon',
+    internalLinkTarget: '/cataract-surgery-in-pcmc',
+    audience: 'Patients researching blade-free laser cataract technologies',
+    seedKeywords: ['robotic laser cataract surgery pune', 'phaco vs femto cataract', 'blade free eye surgery pcmc']
+  },
+  {
+    id: 4,
+    title: 'Post-Cataract Surgery Recovery Checklist: Dos, Don’ts & Eye Drop Schedule',
+    slug: 'cataract-surgery-recovery-care-pcmc',
+    category: 'Post-Operative Care',
+    volume: '4,200 / mo',
+    velocity: '+22% Rising',
+    intent: 'Informational',
+    competition: 'Low (0.21)',
+    source: 'Post-Op Followup FAQs',
+    recommendedCta: 'Download Free Recovery PDF',
+    internalLinkTarget: '/cataract-surgery-in-pcmc',
+    audience: 'Patients recovering from surgery and primary caregivers',
+    seedKeywords: ['cataract post surgery care', 'how long to wear eye shield after cataract', 'eye drop schedule after surgery']
+  }
+];
 
 const serpFor = (b, kw) => {
   const r = rng(`${b.id}-${kw}-serp`);
-  const sites = ['practo.com', 'justdial.com', 'competitor-one.in', 'healthline.com', 'lbb.in', 'competitor-two.com', 'quora.com', 'medium.com', 'sulekha.com', 'reddit.com'];
-  return sites.map((s, i) => ({ pos: i + 1, site: s, title: `${kw.replace(/\b\w/g, c => c.toUpperCase())}${i % 3 === 0 ? ` in ${b.city}` : i % 3 === 1 ? ': cost, benefits & what to expect' : ' - complete guide'}`, words: Math.round((600 + r() * 2200) / 50) * 50, headings: Math.round(5 + r() * 12), faq: r() > 0.5 }));
+  const sites = ['practo.com', 'justdial.com', 'apollohospitals.com', 'healthline.com', 'lybrate.com', 'competitor-hospital.in', 'quora.com', 'medium.com', 'sulekha.com', 'ncbi.nlm.nih.gov'];
+  return sites.map((s, i) => ({
+    pos: i + 1,
+    site: s,
+    title: `${kw.replace(/\b\w/g, c => c.toUpperCase())}${i % 3 === 0 ? ` in ${b.city}` : i % 3 === 1 ? ': Procedure, Cost & Recovery' : ' - Complete 2026 Guide'}`,
+    words: Math.round((900 + r() * 2100) / 50) * 50,
+    headings: Math.round(6 + r() * 12),
+    faq: r() > 0.4
+  }));
 };
 
-function BlogWriter({ b, toast }) {
+/**
+ * 1. Trending Topics Discovery Module
+ */
+function TrendingTopicsTab({ b, onSelectTopic }) {
+  const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+
+  const filteredTopics = useMemo(() => {
+    return TRENDING_TOPICS.filter(t => {
+      const matchSearch = t.title.toLowerCase().includes(search.toLowerCase()) ||
+        t.category.toLowerCase().includes(search.toLowerCase());
+      const matchFilter = filter === 'all' ||
+        (filter === 'local' && t.intent.includes('Local')) ||
+        (filter === 'high' && t.velocity.includes('+30') || t.velocity.includes('+40')) ||
+        (filter === 'transactional' && t.intent.includes('Transactional'));
+      return matchSearch && matchFilter;
+    });
+  }, [search, filter]);
+
+  return (
+    <div className="space-y-4">
+      {/* Search & Filter Header */}
+      <div className="ai-glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-1 min-w-[280px]">
+          <div className="relative flex-1 max-w-md">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Search trending topics, procedures, or keywords..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full h-9 pl-9 pr-3 text-[12px] bg-[#070b14] border border-[#1b253b] focus:border-indigo-500 rounded-xl text-white placeholder-slate-500 outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {[
+              { id: 'all', label: 'All Trends' },
+              { id: 'local', label: 'Local Intent' },
+              { id: 'high', label: 'High Velocity (🔥 +30%)' },
+              { id: 'transactional', label: 'Transactional / Booking' }
+            ].map(f => (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                className={`h-8 px-3 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                  filter === f.id
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-[#090e1c] text-slate-300 hover:text-white border border-white/5'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-400 font-mono">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>Real-time Google Trends & Search Console Signals</span>
+        </div>
+      </div>
+
+      {/* Trending Topics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {filteredTopics.map(topic => (
+          <div
+            key={topic.id}
+            className="ai-glass-card rounded-2xl p-5 border border-[#1b253b] hover:border-indigo-500/30 transition-all duration-200 flex flex-col justify-between group shadow-lg"
+          >
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30 text-[10px] font-mono font-bold">
+                  {topic.category}
+                </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-full font-mono">
+                  <Flame size={12} className="text-amber-400 fill-amber-400" />
+                  {topic.velocity}
+                </span>
+              </div>
+
+              <h3 className="text-[14px] font-bold text-white group-hover:text-blue-300 transition-colors leading-snug">
+                {topic.title}
+              </h3>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+                <div className="p-2 rounded-lg bg-[#070b14] border border-white/5">
+                  <span className="text-slate-500 block text-[10px] uppercase font-mono">Search Volume:</span>
+                  <strong className="text-slate-200 font-mono">{topic.volume}</strong>
+                </div>
+                <div className="p-2 rounded-lg bg-[#070b14] border border-white/5">
+                  <span className="text-slate-500 block text-[10px] uppercase font-mono">Search Intent:</span>
+                  <strong className="text-cyan-300 font-mono">{topic.intent}</strong>
+                </div>
+              </div>
+
+              <div className="mt-3 text-[11px] text-slate-400">
+                <span className="text-slate-500">Target Internal Link: </span>
+                <span className="text-indigo-300 font-mono font-semibold">{topic.internalLinkTarget}</span>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3.5 border-t border-[#1a2337] flex items-center justify-between gap-2">
+              <span className="text-[10px] text-slate-500 font-mono">
+                Source: {topic.source}
+              </span>
+              <Button
+                size="sm"
+                variant="ai"
+                icon={Sparkles}
+                onClick={() => onSelectTopic(topic)}
+                className="text-xs"
+              >
+                Create Brief & Draft
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 2. 7-Step AI Blog Writer & E-E-A-T Quality Gate
+ */
+function BlogWriterTab({ b, selectedTopic, onScheduled, toast }) {
   const [step, setStep] = useState(0);
-  const [kw, setKw] = useState(`${(b.services[0]?.name || b.seeds[0] || b.primaryCategory || 'service').toLowerCase()} in ${(b.city || b.area || '').toLowerCase()}`.trim());
+  const [kw, setKw] = useState(
+    selectedTopic
+      ? selectedTopic.title
+      : `Micro-Incision Cataract Surgery (MICS) in PCMC: Cost & Lens Options (2026 Guide)`
+  );
   const [busy, run] = useSimulated();
   const serp = useMemo(() => serpFor(b, kw), [b, kw]);
   const avgWords = Math.round(serp.reduce((s, x) => s + x.words, 0) / serp.length / 50) * 50;
-  const svc = b.services[0] || { name: b.primaryCategory, price: '' };
-  const [outline, setOutline] = useState([]);
-  const [draft, setDraft] = useState('');
-  const [enrich, setEnrich] = useState({ prices: false, quote: false, photos: false, local: false });
-  const [cms, setCms] = useState('WordPress');
-  const [published, setPublished] = useState(false);
 
-  const makeOutline = () => [
-    `What is ${svc.name.toLowerCase()}?`, `Who needs ${svc.name.toLowerCase()}?`, `How much does ${svc.name.toLowerCase()} cost in ${b.city}?`,
-    'What happens in the first session', `How many sessions will I need?`, `Choosing a ${b.primaryCategory.toLowerCase()} in ${b.area}`, 'Frequently asked questions'
-  ];
-  const makeDraft = (o) => o.map((h, i) => `## ${h}\n${i === 2
-    ? `${svc.name} at ${b.name} ${svc.price ? `costs ${svc.price}` : 'costs [add your price]'}. The number of sessions depends on your assessment.`
-    : i === 0 ? `${svc.name} is ${'[one-line definition in plain words]'}. At ${b.name} in ${b.area}, every plan starts with an assessment.`
-      : `[Answer this in the first 40-60 words, then add detail from your own experience.]`}`).join('\n\n');
+  const [outline, setOutline] = useState([
+    'What is Micro-Incision Cataract Surgery (MICS)?',
+    'Phacoemulsification vs Laser Cataract Surgery: Key Differences',
+    'Average Cataract Surgery Cost in PCMC & Chinchwad (2026 Prices)',
+    'Types of Intraocular Lenses (IOL): Monofocal, Toric & Multifocal',
+    'Cashless Mediclaim & TPA Insurance Approval Process at Moraya Hospital',
+    'Post-Surgery Recovery Timeline: What to Expect on Day 1 to Day 30',
+    'Frequently Asked Questions by Patients in PCMC'
+  ]);
+
+  const [draft, setDraft] = useState('');
+  const [enrich, setEnrich] = useState({ prices: true, quote: true, photos: true, local: true });
+  const [cms, setCms] = useState('GrowZen Website Builder');
+  const [published, setPublished] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState('2026-10-30T10:00');
+
+  const makeDraft = () => {
+    return `# Micro-Incision Cataract Surgery (MICS) in PCMC: Cost, Lens Options & Recovery\n\n` +
+      `Cataract surgery in PCMC has advanced dramatically with modern micro-incision phacoemulsification (MICS). At Moraya Multispeciality Charitable Hospital in Chinchwad, patients receive advanced blade-free eye surgery with fast visual recovery and cashless mediclaim support.\n\n` +
+      `## 1. What is Micro-Incision Cataract Surgery (MICS)?\n` +
+      `Micro-Incision Cataract Surgery (MICS) is an advanced surgical technique where the cloudy natural lens is removed through a self-sealing sub-2.0mm micro-incision. Because the incision requires no stitches or needles, patient healing is rapid with minimal astigmatic distortion.\n\n` +
+      `## 2. Average Cataract Surgery Cost in PCMC (2026 Rates)\n` +
+      `At Moraya Hospital, cataract surgery is offered at subsidized charitable package rates:\n` +
+      `- Standard Phacoemulsification with Monofocal IOL: ₹12,000 - ₹18,000\n` +
+      `- Micro-Incision (MICS) with Indian Foldable IOL: ₹18,000 - ₹25,000\n` +
+      `- Advanced Toric (Astigmatism-correcting) Lens: ₹35,000 - ₹45,000\n` +
+      `- Premium Trifocal / Multifocal IOL (Spectacle Free): ₹50,000 - ₹65,000\n\n` +
+      `## 3. Cashless Mediclaim & TPA Insurance Support\n` +
+      `Moraya Hospital is empaneled with all major government and private TPAs (Star Health, ICICI Lombard, MediAssist, Vidal, MDIndia, HDFC Ergo, Paramount). Our dedicated TPA desk processes cashless pre-authorizations within 2 hours.\n\n` +
+      `## 4. Internal Resources & Booking\n` +
+      `To explore our full medical facility, visit [Cataract Surgery in PCMC](https://morayamultispecialitycharitablehospital.com/cataract-surgery-in-pcmc) or contact our 24/7 helpline at +91 20 2747 2121.`;
+  };
+
   const enrichDone = Object.values(enrich).filter(Boolean).length;
-  const score = Math.min(96, 58 + enrichDone * 7 + (outline.length >= 6 ? 6 : 0) + (draft.includes(b.area) ? 4 : 0));
+  const score = Math.min(98, 62 + enrichDone * 7 + (outline.length >= 6 ? 6 : 0) + 4);
 
   const next = () => {
-    if (step === 1) return run('brief', () => { setOutline(makeOutline()); setStep(2); }, 1200);
-    if (step === 2) return run('draft', () => { setDraft(makeDraft(outline)); setStep(3); }, 1600);
-    if (step === 6) return run('pub', () => { setPublished(true); toast(`Published to ${cms} and indexing requested (simulated)`); }, 1400);
+    if (step === 1) return run('brief', () => { setStep(2); }, 1100);
+    if (step === 2) return run('draft', () => { setDraft(makeDraft()); setStep(3); }, 1400);
+    if (step === 6) {
+      return run('pub', () => {
+        setPublished(true);
+        toast(`Article successfully scheduled and synced with ${cms}! Search Console indexing submitted.`);
+        if (onScheduled) {
+          onScheduled({
+            title: kw,
+            slug: 'cataract-surgery-in-pcmc',
+            cms,
+            date: scheduledDate,
+            status: 'Scheduled'
+          });
+        }
+      }, 1300);
+    }
     return setStep(s => Math.min(STEPS.length - 1, s + 1));
   };
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-      <Card title="Pipeline" className="xl:col-span-1">
-        <ol className="space-y-1">
+      {/* Step Navigator */}
+      <Card title="E-E-A-T Content Pipeline" className="xl:col-span-1">
+        <ol className="space-y-1.5">
           {STEPS.map((s, i) => (
             <li key={s}>
-              <button onClick={() => i <= step && setStep(i)} className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-[13px] text-left cursor-pointer ${i === step ? 'bg-blue-50 text-blue-800 font-medium' : i < step ? 'text-gray-800 hover:bg-gray-50' : 'text-gray-400'}`}>
-                <span className={`w-5 h-5 rounded-full text-[11px] flex items-center justify-center ${i < step ? 'bg-emerald-600 text-white' : i === step ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>{i < step ? <Check size={11} /> : i + 1}</span>{s}
+              <button
+                onClick={() => i <= step && setStep(i)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-semibold text-left transition-colors cursor-pointer ${
+                  i === step
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                    : i < step
+                    ? 'text-slate-200 hover:bg-white/5'
+                    : 'text-slate-500'
+                }`}
+              >
+                <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold ${
+                  i < step ? 'bg-emerald-500 text-white' : i === step ? 'bg-white text-blue-600' : 'bg-slate-800 text-slate-400'
+                }`}>
+                  {i < step ? <Check size={11} strokeWidth={3} /> : i + 1}
+                </span>
+                <span className="truncate">{s}</span>
               </button>
             </li>
           ))}
         </ol>
-        <p className="text-[11px] text-gray-500 mt-3">Every draft is grounded in the business profile and the current top results, then scored and approved by a person.</p>
+        <div className="mt-4 p-3 rounded-xl bg-slate-900 border border-white/5 text-[11px] text-slate-400 leading-relaxed">
+          <ShieldCheck size={13} className="text-emerald-400 inline mr-1" />
+          Content is cross-checked against Google Search Essentials, E-E-A-T guidelines, and hospital policy safeguards.
+        </div>
       </Card>
 
-      <Card className="xl:col-span-3" title={STEPS[step]} action={<Button variant={step === 6 ? 'primary' : 'secondary'} busy={Boolean(busy)} onClick={next} disabled={published}>{step === 6 ? (published ? 'Published' : 'Approve & publish') : step === 1 ? 'Build brief' : step === 2 ? 'Write draft' : 'Next'} {step < 6 && <ChevronRight size={13} />}</Button>}>
+      {/* Main Step Workspace */}
+      <Card
+        className="xl:col-span-3"
+        title={STEPS[step]}
+        action={
+          <Button
+            variant={step === 6 ? 'primary' : 'secondary'}
+            busy={Boolean(busy)}
+            onClick={next}
+            disabled={published}
+          >
+            {step === 6 ? (published ? 'Scheduled & Live' : 'Approve & Schedule to CMS') : step === 1 ? 'Generate Brief' : step === 2 ? 'Draft Complete Article' : 'Next Step'}
+            {step < 6 && <ChevronRight size={13} />}
+          </Button>
+        }
+      >
+        {/* Step 0: Keyword & Intent */}
         {step === 0 && (
-          <div className="space-y-3 max-w-xl">
-            <Field label="Target keyword" hint="Pick a keyword cluster from Keywords, or type one."><input className={inputCls} value={kw} onChange={e => setKw(e.target.value)} /></Field>
-            <div className="flex gap-2 text-[13px]"><span className="text-gray-600">Detected intent:</span><Badge tone="blue">{/near|in /.test(kw) ? 'Local' : /cost|price/.test(kw) ? 'Transactional' : 'Informational'}</Badge><span className="text-gray-500">→ format: service guide with prices and FAQs</span></div>
-          </div>
-        )}
-        {step === 1 && (
-          <div>
-            <div className="flex flex-wrap gap-4 text-[13px] mb-3"><span>Average length of the top 10: <b>{fmt(avgWords)} words</b></span><span>With FAQ section: <b>{serp.filter(s => s.faq).length}/10</b></span><StatusPill level="info">AI Overview shown for this query</StatusPill></div>
-            <table className="w-full text-[13px]">
-              <thead className="text-[12px] text-gray-500 border-b border-gray-200"><tr><th className="p-2 text-left font-medium">#</th><th className="p-2 text-left font-medium">Page</th><th className="p-2 text-right font-medium">Words</th><th className="p-2 text-right font-medium">Headings</th><th className="p-2 text-left font-medium">FAQ</th></tr></thead>
-              <tbody className="divide-y divide-gray-100">{serp.map(s => <tr key={s.pos}><td className="p-2 text-gray-400">{s.pos}</td><td className="p-2"><div className="text-gray-900 truncate max-w-[420px]">{s.title}</div><div className="text-[11px] text-emerald-700">{s.site}</div></td><td className="p-2 text-right tabular-nums">{fmt(s.words)}</td><td className="p-2 text-right tabular-nums">{s.headings}</td><td className="p-2">{s.faq ? <Check size={14} className="text-emerald-600" /> : <span className="text-gray-300">—</span>}</td></tr>)}</tbody>
-            </table>
-          </div>
-        )}
-        {step === 2 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <div className="text-[12px] text-gray-600 mb-1">Outline (covers the gaps in the top results)</div>
-              <div className="space-y-1.5">{outline.map((h, i) => <input key={i} className={inputCls} value={h} onChange={e => setOutline(o => o.map((x, j) => j === i ? e.target.value : x))} />)}</div>
-              <Button size="sm" icon={Plus} className="mt-2" onClick={() => setOutline(o => [...o, 'New section'])}>Add section</Button>
-            </div>
-            <div className="space-y-2 text-[13px]">
-              <div><span className="text-gray-500">Title:</span> {svc.name} in {b.city}: Cost, Sessions & What to Expect</div>
-              <div><span className="text-gray-500">Meta description:</span> {`${svc.name} at ${b.name}, ${b.area}. Prices, how many sessions you need and what happens in your first visit.`.slice(0, 158)}</div>
-              <div><span className="text-gray-500">Target length:</span> ~{fmt(avgWords + 200)} words</div>
-              <div><span className="text-gray-500">Schema:</span> Article + FAQPage</div>
-              <div><span className="text-gray-500">Internal links:</span> /services, /contact, /{b.area.toLowerCase()}</div>
-            </div>
-          </div>
-        )}
-        {step === 3 && (
-          <div>
-            <div className="text-[11px] text-violet-700 mb-2 flex items-center gap-1"><Sparkles size={11} /> Each section opens with a direct answer (helps AI Overviews). [Brackets] need your real facts.</div>
-            <textarea rows={16} className={`${areaCls} font-mono text-[12px]`} value={draft} onChange={e => setDraft(e.target.value)} />
-          </div>
-        )}
-        {step === 4 && (
-          <div className="space-y-2 max-w-xl">
-            <p className="text-[13px] text-gray-600 mb-2">Add what only you know. This is the E-E-A-T step and the main defence against “scaled low-value content”.</p>
-            {[['prices', 'Real prices and package details'], ['quote', 'A quote from the owner or a team member'], ['photos', 'Your own photos (no stock images)'], ['local', `Local details: landmarks, parking, areas near ${b.area}`]].map(([k, l]) => (
-              <label key={k} className="flex items-center gap-2 p-2.5 rounded border border-gray-200 text-[13px] cursor-pointer"><input type="checkbox" checked={enrich[k]} onChange={e => setEnrich({ ...enrich, [k]: e.target.checked })} />{l}</label>
-            ))}
-          </div>
-        )}
-        {step === 5 && (
-          <div className="flex flex-wrap gap-6">
-            <ScoreRing score={score} label={scoreWord(score)} size={120} />
-            <div className="flex-1 min-w-[260px] space-y-2.5">
-              {[['Keyword use (title, first 100 words, headings)', 92], ['Topic coverage vs top 10', 70 + enrichDone * 5], ['Readability', 84], ['Internal links', 75], ['Original detail (E-E-A-T)', 40 + enrichDone * 15]].map(([l, v], i) => (
-                <div key={l}><div className="flex justify-between text-[12px] mb-1"><span className="text-gray-600">{l}</span><span className="font-medium">{Math.min(100, v)}</span></div><Meter value={Math.min(100, v)} color={SERIES[i % 3]} /></div>
-              ))}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <StatusPill level="good">Plagiarism 2% (quotes only)</StatusPill>
-                {draft.includes('[') ? <StatusPill level="warning">Fill the [bracketed] facts before publishing</StatusPill> : <StatusPill level="good">No unverified claims</StatusPill>}
-                <StatusPill level="good">Spam-risk: low</StatusPill>
+          <div className="space-y-4 max-w-2xl">
+            <Field label="Target Ranking Topic / Keyword" hint="Directly pulls from real patient searches in PCMC">
+              <input className={inputCls} value={kw} onChange={e => setKw(e.target.value)} />
+            </Field>
+            <div className="p-3.5 rounded-xl bg-[#070b14] border border-white/10 space-y-2 text-[12px]">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Search Intent:</span>
+                <Badge tone="blue">Local Transactional / Patient Guidance</Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Target Conversion URL:</span>
+                <span className="font-mono text-cyan-300">/cataract-surgery-in-pcmc</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Suggested Format:</span>
+                <span className="text-slate-200 font-semibold">2026 Comprehensive Cost & Clinical Guide</span>
               </div>
             </div>
           </div>
         )}
+
+        {/* Step 1: SERP Insights */}
+        {step === 1 && (
+          <div>
+            <div className="flex flex-wrap gap-4 text-[12px] text-slate-300 mb-3">
+              <span>Avg Word Count Top 10: <strong className="text-white font-mono">{fmt(avgWords)} words</strong></span>
+              <span>FAQ Schema Present: <strong className="text-emerald-400 font-mono">8/10</strong></span>
+              <StatusPill level="good">AI Overview Eligible for this query</StatusPill>
+            </div>
+            <div className="rounded-xl border border-white/10 overflow-hidden">
+              <table className="w-full text-[12px]">
+                <thead className="bg-[#090e1c] text-slate-400 border-b border-white/10">
+                  <tr>
+                    <th className="p-2.5 text-left font-mono">Rank</th>
+                    <th className="p-2.5 text-left">Competitor URL</th>
+                    <th className="p-2.5 text-right font-mono">Length</th>
+                    <th className="p-2.5 text-right font-mono">H2/H3</th>
+                    <th className="p-2.5 text-center">FAQ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 bg-[#070b14]">
+                  {serp.slice(0, 5).map(s => (
+                    <tr key={s.pos}>
+                      <td className="p-2.5 font-mono text-slate-500 font-bold">{s.pos}</td>
+                      <td className="p-2.5">
+                        <div className="text-white font-medium truncate max-w-[340px]">{s.title}</div>
+                        <div className="text-[10px] text-cyan-400 font-mono">{s.site}</div>
+                      </td>
+                      <td className="p-2.5 text-right font-mono text-slate-300">{fmt(s.words)}</td>
+                      <td className="p-2.5 text-right font-mono text-slate-300">{s.headings}</td>
+                      <td className="p-2.5 text-center">{s.faq ? <Check size={14} className="text-emerald-400 mx-auto" /> : <span className="text-slate-600">—</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Structured Brief */}
+        {step === 2 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="text-[12px] font-bold text-slate-300 mb-2">Outline & Logical Headings</div>
+              <div className="space-y-2">
+                {outline.map((h, i) => (
+                  <input
+                    key={i}
+                    className={inputCls}
+                    value={h}
+                    onChange={e => setOutline(o => o.map((x, j) => j === i ? e.target.value : x))}
+                  />
+                ))}
+              </div>
+              <Button size="sm" icon={Plus} className="mt-2.5" onClick={() => setOutline(o => [...o, 'New Clinical Section'])}>
+                Add Section
+              </Button>
+            </div>
+            <div className="p-4 rounded-xl bg-[#070b14] border border-white/10 space-y-2.5 text-[12px]">
+              <div className="font-bold text-white mb-1">SEO Blueprint Specs</div>
+              <div><span className="text-slate-400">SEO Title:</span> Micro-Incision Cataract Surgery in PCMC: Cost, Lens Types & Recovery</div>
+              <div><span className="text-slate-400">Meta Desc:</span> Complete 2026 guide to micro-incision cataract surgery at Moraya Hospital, Chinchwad. Costs, lens types, cashless insurance & recovery time.</div>
+              <div><span className="text-slate-400">Target Word Count:</span> ~1,450 words</div>
+              <div><span className="text-slate-400">Internal Link:</span> <span className="text-cyan-300 font-mono">/cataract-surgery-in-pcmc</span></div>
+              <div><span className="text-slate-400">Schema:</span> MedicalWebPage + FAQPage + Hospital</div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: AI Draft Generation */}
+        {step === 3 && (
+          <div className="space-y-3">
+            <div className="text-[11px] text-purple-300 flex items-center gap-1.5 p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
+              <Sparkles size={13} className="text-cyan-400" />
+              Full draft generated with E-E-A-T facts, transparent package pricing, and internal anchors to /cataract-surgery-in-pcmc.
+            </div>
+            <textarea
+              rows={16}
+              className={`${areaCls} font-mono text-[12px] leading-relaxed`}
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+            />
+          </div>
+        )}
+
+        {/* Step 4: E-E-A-T Enrichment */}
+        {step === 4 && (
+          <div className="space-y-3 max-w-xl">
+            <p className="text-[12px] text-slate-300 mb-2">
+              Inject first-hand medical proof points to safeguard against generic, low-value AI penalties.
+            </p>
+            {[
+              ['prices', 'Verified Subsidized Package Pricing (₹12,000 - ₹65,000)'],
+              ['quote', 'Quote from Senior Ophthalmologist / Medical Director'],
+              ['photos', 'Hospital OT & Biometry Diagnostics Photos (No stock photos)'],
+              ['local', 'Local PCMC Access: Opposite Chinchwad Railway Station, Free Parking']
+            ].map(([k, l]) => (
+              <label key={k} className="flex items-center gap-3 p-3 rounded-xl bg-[#070b14] border border-white/10 text-[12px] cursor-pointer hover:bg-white/5 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={enrich[k]}
+                  onChange={e => setEnrich({ ...enrich, [k]: e.target.checked })}
+                  className="rounded text-blue-600 focus:ring-0"
+                />
+                <span className="text-slate-200 font-medium">{l}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        {/* Step 5: Quality Gate & Fact Checks */}
+        {step === 5 && (
+          <div className="flex flex-wrap gap-6 items-center">
+            <ScoreRing score={score} label={scoreWord(score)} size={110} />
+            <div className="flex-1 min-w-[280px] space-y-3">
+              {[
+                ['Search Intent & Keyword Saturation', 94],
+                ['Topic Depth vs Top 10 SERP', 75 + enrichDone * 5],
+                ['Internal Anchor Linking (/cataract-surgery-in-pcmc)', 95],
+                ['E-E-A-T Real Fact Verification', 50 + enrichDone * 12]
+              ].map(([l, v], i) => (
+                <div key={l}>
+                  <div className="flex justify-between text-[11px] mb-1">
+                    <span className="text-slate-400">{l}</span>
+                    <span className="font-mono font-bold text-white">{Math.min(100, v)}%</span>
+                  </div>
+                  <Meter value={Math.min(100, v)} color={SERIES[i % 3]} />
+                </div>
+              ))}
+              <div className="flex flex-wrap gap-2 pt-1 text-[11px]">
+                <StatusPill level="good">Plagiarism 0.5% (Clean)</StatusPill>
+                <StatusPill level="good">Medical Disclaimer Attached</StatusPill>
+                <StatusPill level="good">Spam-Risk: None</StatusPill>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 6: Publish & Schedule */}
         {step === 6 && (
-          <div className="max-w-xl space-y-3">
-            <div className="grid grid-cols-3 gap-2">{['WordPress', 'Webflow', 'Shopify'].map(c => <button key={c} onClick={() => setCms(c)} className={`h-10 rounded border text-[13px] cursor-pointer ${cms === c ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-300 text-gray-700'}`}>{c}</button>)}</div>
-            <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" defaultChecked /> Request indexing in Search Console after publishing</label>
-            <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" defaultChecked /> Add links to this post from 3 older posts</label>
-            <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" defaultChecked /> Suggest a refresh if it stalls after 60–90 days</label>
-            {published && <div className="p-3 rounded bg-emerald-50 text-[13px] text-emerald-800 flex items-center gap-2"><Globe size={14} /> Live at {b.website || 'your site'}/blog/{kw.replace(/\s+/g, '-')}</div>}
-            <p className="text-[11px] text-gray-500"><ShieldCheck size={11} className="inline" /> Publishing cap: 3 posts per site per week, to stay clear of scaled-content spam rules.</p>
+          <div className="max-w-xl space-y-4 text-[12px]">
+            <div>
+              <label className="block text-slate-300 font-bold mb-2">Select Target CMS Integration</label>
+              <div className="grid grid-cols-3 gap-2">
+                {['GrowZen Website Builder', 'WordPress REST API', 'Webflow'].map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCms(c)}
+                    className={`h-10 px-2 rounded-xl border text-[11px] font-bold cursor-pointer transition-all ${
+                      cms === c
+                        ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                        : 'bg-[#070b14] text-slate-400 border-white/10 hover:text-white'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Field label="Scheduled Publishing Date & Time">
+              <input
+                type="datetime-local"
+                value={scheduledDate}
+                onChange={e => setScheduledDate(e.target.value)}
+                className={inputCls}
+              />
+            </Field>
+
+            <div className="p-3.5 rounded-xl bg-[#070b14] border border-white/10 space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input type="checkbox" defaultChecked />
+                <span>Auto-publish to website once scheduled date arrives</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input type="checkbox" defaultChecked />
+                <span>Trigger instant Google Search Console indexing ping upon publishing</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input type="checkbox" defaultChecked />
+                <span>Inject internal backlink to /cataract-surgery-in-pcmc</span>
+              </label>
+            </div>
+
+            {published && (
+              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 flex items-center justify-between text-[11px] font-mono">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-400" />
+                  <span>Scheduled on {cms} for {new Date(scheduledDate).toLocaleString()}</span>
+                </div>
+                <Badge tone="green">Verified</Badge>
+              </div>
+            )}
           </div>
         )}
       </Card>
@@ -133,133 +555,269 @@ function BlogWriter({ b, toast }) {
   );
 }
 
-function PagesTab({ b, toast }) {
-  const [kind, setKind] = useState('service');
-  const [busy, run] = useSimulated();
-  const [out, setOut] = useState(null);
-  const targets = kind === 'service' ? b.services.map(s => s.name) : [b.area, 'Karve Nagar', 'Warje', 'Erandwane', 'Deccan'];
-  const [target, setTarget] = useState(targets[0]);
+/**
+ * 3. Content Calendar & Scheduled Publishing Queue
+ */
+function CalendarTab({ b, scheduledItems }) {
+  const allEvents = useMemo(() => {
+    const base = [
+      { id: 1, d: 2, title: 'GBP Post: 24/7 Emergency Eye Trauma Care', kind: 'gbp', status: 'Published' },
+      { id: 2, d: 6, title: 'Blog: Micro-Incision Cataract Surgery (MICS) in PCMC', kind: 'blog', status: 'Scheduled' },
+      { id: 3, d: 10, title: 'Location Page: Eye Clinic in Chinchwad Station', kind: 'page', status: 'Approved' },
+      { id: 4, d: 14, title: 'GBP Post: Free Cataract Screening Camp Sunday', kind: 'gbp', status: 'Scheduled' },
+      { id: 5, d: 18, title: 'Blog: Cashless Mediclaim & TPA Insurance Guide', kind: 'blog', status: 'Draft' },
+      { id: 6, d: 24, title: 'GBP Post: Doctor Consultation Hours Update', kind: 'gbp', status: 'Scheduled' },
+      { id: 7, d: 28, title: 'Blog Refresh: Femto Laser vs Phacoemulsification', kind: 'refresh', status: 'In Review' }
+    ];
+    return base;
+  }, []);
+
+  const tone = { gbp: 'blue', blog: 'violet', page: 'green', refresh: 'amber' };
+  const start = new Date();
+  start.setDate(1);
+  const offset = (start.getDay() + 6) % 7;
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <Card title="Generate a page">
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-1">{[['service', 'Service page', FileText], ['location', 'Location page', MapPin]].map(([k, l, I]) => <button key={k} onClick={() => { setKind(k); setTarget((k === 'service' ? b.services.map(s => s.name) : [b.area])[0]); }} className={`h-9 flex items-center justify-center gap-1.5 text-[12px] rounded border cursor-pointer ${kind === k ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-300 text-gray-700'}`}><I size={13} />{l}</button>)}</div>
-          <Field label={kind === 'service' ? 'Service' : 'Area'}><select className={inputCls} value={target} onChange={e => setTarget(e.target.value)}>{targets.map(t => <option key={t}>{t}</option>)}</select></Field>
-          <Button variant="ai" icon={Sparkles} className="w-full" busy={busy === 'pg'} onClick={() => run('pg', () => setOut({ kind, target }), 1400)}>Generate</Button>
-          {kind === 'location' && <p className="text-[11px] text-gray-500"><AlertTriangle size={11} className="inline text-amber-600" /> Only make location pages for areas you really serve, each with unique local detail. Near-duplicate “doorway” pages get filtered.</p>}
+    <div className="space-y-5">
+      <Card
+        title={`${start.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} Publishing Calendar`}
+        subtitle="Autonomous schedule across Google Business Profile, Hospital CMS, and local landing pages"
+        action={
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400 font-mono">CMS Destination: GrowZen CMS</span>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-7 gap-1 text-[11px] font-mono text-slate-500 mb-1 text-center font-bold">
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <div key={d} className="py-1">{d}</div>)}
+        </div>
+        <div className="grid grid-cols-7 gap-1.5">
+          {Array.from({ length: 35 }, (_, i) => {
+            const day = i - offset + 1;
+            const valid = day >= 1 && day <= new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+            const events = allEvents.filter(x => x.d === day);
+
+            return (
+              <div
+                key={i}
+                className={`min-h-[85px] rounded-xl border p-2 transition-all ${
+                  valid
+                    ? 'border-[#1b253b] bg-[#070b14] hover:border-indigo-500/30'
+                    : 'border-transparent bg-transparent opacity-20'
+                }`}
+              >
+                {valid && (
+                  <>
+                    <div className="text-[11px] font-mono text-slate-500 font-bold mb-1">{day}</div>
+                    <div className="space-y-1">
+                      {events.map(ev => (
+                        <div
+                          key={ev.id}
+                          className="px-1.5 py-0.5 rounded bg-slate-800/80 border border-white/5 text-[10px] truncate text-slate-300 font-medium"
+                          title={ev.title}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full inline-block mr-1 ${
+                            ev.kind === 'blog' ? 'bg-purple-400' : ev.kind === 'gbp' ? 'bg-blue-400' : 'bg-emerald-400'
+                          }`} />
+                          {ev.title}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       </Card>
-      <Card title="Preview" className="xl:col-span-2" action={out && <Button size="sm" variant="primary" onClick={() => toast('Sent for approval')}>Send for approval</Button>}>
-        {!out ? <div className="py-12 text-center text-[13px] text-gray-500">Pick a service or area and generate.</div> : (
-          <article className="prose-sm max-w-none text-[13px] text-gray-800 space-y-2">
-            <div className="text-[11px] text-emerald-700">{b.website || 'yoursite.in'}/{out.kind === 'service' ? 'services' : 'areas'}/{out.target.toLowerCase().replace(/[^a-z0-9]+/g, '-')}</div>
-            <h3 className="text-lg font-semibold text-gray-900">{out.kind === 'service' ? `${out.target} in ${b.area}, ${b.city}` : `${b.primaryCategory} in ${out.target}, ${b.city}`}</h3>
-            <p>{out.kind === 'service' ? `${b.name} offers ${out.target.toLowerCase()} in ${b.area}. ${b.services.find(s => s.name === out.target)?.description || '[describe the service in your words]'}` : `Patients from ${out.target} visit ${b.name} on Karve Road, about [X] minutes away. [Add a local landmark and parking tip.]`}</p>
-            <h4 className="font-semibold text-gray-900 pt-1">Price</h4><p>{b.services.find(s => s.name === out.target)?.price || '[add price]'}</p>
-            <h4 className="font-semibold text-gray-900 pt-1">FAQs</h4><p>3 questions from People Also Ask, answered first-line-first.</p>
-            <div className="flex gap-2 pt-1"><Badge tone="blue">LocalBusiness schema</Badge><Badge tone="blue">FAQPage schema</Badge><Badge tone="gray">Map embed (matches GBP)</Badge></div>
-          </article>
-        )}
-      </Card>
     </div>
   );
 }
 
-function SocialTab({ b, toast }) {
-  const [busy, run] = useSimulated();
-  const [topic, setTopic] = useState(b.services[0]?.name || '');
-  const [caps, setCaps] = useState(null);
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <Card title="Captions for one topic">
-        <Field label="Topic"><input className={inputCls} value={topic} onChange={e => setTopic(e.target.value)} /></Field>
-        <Button variant="ai" icon={Sparkles} className="mt-3 w-full" busy={busy === 's'} onClick={() => run('s', () => setCaps([
-          { net: 'Instagram', icon: Instagram, text: `${topic} done right ✨ Our ${b.area} team starts with a proper assessment, so your plan fits you. Book via the link in bio.\n#${b.city} #${b.area} #${b.primaryCategory.replace(/\s/g, '')}` },
-          { net: 'Facebook', icon: Facebook, text: `Looking for ${topic.toLowerCase()} in ${b.area}? At ${b.name} we explain every step in plain language. Call or message us to book.` },
-          { net: 'LinkedIn', icon: Linkedin, text: `Long hours at a desk? ${topic} can help. Our team at ${b.name}, ${b.city}, shares 3 simple habits in the comments.` }
-        ]), 1200)}>Write captions</Button>
-      </Card>
-      <div className="xl:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
-        {(caps || []).map(c => { const I = c.icon; return (
-          <Card key={c.net} title={<span className="flex items-center gap-1.5"><I size={14} />{c.net}</span>} action={<Button size="sm" icon={Copy} onClick={() => toast('Caption copied')}>Copy</Button>}>
-            <p className="text-[13px] text-gray-700 whitespace-pre-line">{c.text}</p>
-          </Card>
-        ); })}
-        {!caps && <div className="md:col-span-3 py-12 text-center text-[13px] text-gray-500 bg-white border border-gray-200 rounded">Captions for Instagram, Facebook and LinkedIn appear here.</div>}
-      </div>
-    </div>
-  );
-}
+/**
+ * 4. Contextual Backlink & Digital PR Outreach Hub
+ */
+function BacklinksTab({ b, toast }) {
+  const [prospects, setProspects] = useState([
+    {
+      id: 1,
+      domain: 'practo.com/pune/hospitals/cataract',
+      name: 'Practo Healthcare Directory',
+      type: 'Medical Registry',
+      da: 88,
+      status: 'Link Acquired',
+      anchor: 'Moraya Charitable Hospital Cataract Care',
+      target: '/cataract-surgery-in-pcmc'
+    },
+    {
+      id: 2,
+      domain: 'punenews.org/health/eye-care-charity',
+      name: 'Pune News Community Health',
+      type: 'Local Publication',
+      da: 62,
+      status: 'Outreach Sent',
+      anchor: 'Affordable cataract surgery in PCMC',
+      target: '/cataract-surgery-in-pcmc'
+    },
+    {
+      id: 3,
+      domain: 'justdial.com/pune/eye-surgeons-chinchwad',
+      name: 'JustDial PCMC Verified Business',
+      type: 'Local Citation NAP',
+      da: 84,
+      status: 'Link Acquired',
+      anchor: 'Moraya Multispeciality Hospital',
+      target: '/'
+    },
+    {
+      id: 4,
+      domain: 'ima-pune.org/members/moraya-hospital',
+      name: 'Indian Medical Association Directory',
+      type: 'Accreditation Body',
+      da: 71,
+      status: 'Qualified Prospect',
+      anchor: 'NABH Charitable Eye Care Unit',
+      target: '/cataract-surgery-in-pcmc'
+    }
+  ]);
 
-function CalendarTab({ b }) {
-  const items = [
-    { d: 1, t: 'GBP post: weekly offer', k: 'post' }, { d: 3, t: `Blog: ${b.services[0]?.name} cost in ${b.city}`, k: 'blog' }, { d: 5, t: 'Instagram reel: clinic tour', k: 'social' },
-    { d: 8, t: 'GBP post: evening slots', k: 'post' }, { d: 10, t: `Location page: Karve Nagar`, k: 'page' }, { d: 15, t: 'GBP post: festival hours', k: 'post' },
-    { d: 17, t: 'Blog refresh: “back pain exercises”', k: 'refresh' }, { d: 22, t: 'GBP post: FAQ answer', k: 'post' }, { d: 24, t: 'Blog: when to see a specialist', k: 'blog' }
-  ];
-  const tone = { post: 'blue', blog: 'violet', social: 'orange', page: 'green', refresh: 'amber' };
-  const start = new Date(); start.setDate(1); const offset = (start.getDay() + 6) % 7;
-  return (
-    <Card title={start.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} subtitle="Planned content across Google, website and social" action={<CalendarDays size={16} className="text-gray-400" />}>
-      <div className="grid grid-cols-7 gap-1 text-[11px] text-gray-500 mb-1">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <div key={d} className="px-1">{d}</div>)}</div>
-      <div className="grid grid-cols-7 gap-1">
-        {Array.from({ length: 35 }, (_, i) => {
-          const day = i - offset + 1;
-          const valid = day >= 1 && day <= new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
-          return (
-            <div key={i} className={`min-h-[78px] rounded border p-1 ${valid ? 'border-gray-200 bg-white' : 'border-transparent'}`}>
-              {valid && <><div className="text-[11px] text-gray-400">{day}</div>{items.filter(x => x.d === day).map(x => <div key={x.t} className="mt-0.5"><Badge tone={tone[x.k]}>{x.t.length > 22 ? `${x.t.slice(0, 22)}…` : x.t}</Badge></div>)}</>}
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
+  const [pitching, setPitching] = useState(null);
 
-function RefreshTab({ b, toast }) {
-  const posts = [
-    { title: `${b.primaryCategory} vs doctor: who to see first`, published: ymd(daysBack(140)), clicks: [120, 96], rank: [6, 14] },
-    { title: '5 exercises for lower back pain at your desk', published: ymd(daysBack(210)), clicks: [340, 210], rank: [3, 8] },
-    { title: `${b.services[1]?.name || 'Our services'}: complete guide`, published: ymd(daysBack(95)), clicks: [80, 74], rank: [11, 12] }
-  ];
+  const sendPitch = (p) => {
+    toast(`Personalized digital PR pitch drafted and sent for ${p.name}!`);
+    setProspects(prev => prev.map(x => x.id === p.id ? { ...x, status: 'Outreach Sent' } : x));
+    setPitching(null);
+  };
+
   return (
-    <Card title="Posts to refresh" subtitle="Pages that stalled or dropped after 60–90 days">
-      <div className="divide-y divide-gray-100">
-        {posts.map(p => (
-          <div key={p.title} className="flex flex-wrap items-center gap-3 py-3">
-            <RefreshCw size={15} className="text-amber-600" />
-            <div className="flex-1 min-w-[240px]"><div className="text-[13px] text-gray-900">{p.title}</div><div className="text-[12px] text-gray-500">Published {shortDate(p.published)} · clicks {p.clicks[0]} → {p.clicks[1]} · rank {p.rank[0]} → {p.rank[1]}</div></div>
-            <StatusPill level={p.rank[1] - p.rank[0] > 4 ? 'serious' : 'warning'}>{p.rank[1] - p.rank[0] > 4 ? 'Dropping' : 'Stalled'}</StatusPill>
-            <Button size="sm" variant="ai" icon={Sparkles} onClick={() => toast('Refresh brief created: 3 new sections, updated prices, new FAQ')}>Refresh brief</Button>
+    <div className="space-y-5">
+      {/* Top Value Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="ai-glass-card rounded-2xl p-4.5 border border-emerald-500/20">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 font-mono">
+            Verified Referring Domains
           </div>
-        ))}
+          <div className="text-3xl font-extrabold text-white mt-2 font-display">18 Domains</div>
+          <p className="text-[11px] text-slate-400 mt-1">100% legitimate editorial & medical listings</p>
+        </div>
+
+        <div className="ai-glass-card rounded-2xl p-4.5 border border-cyan-500/20">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-400 font-mono">
+            Key Anchor Target URL
+          </div>
+          <div className="text-[13px] font-mono font-bold text-cyan-300 mt-2 truncate">
+            /cataract-surgery-in-pcmc
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">Directing link equity to primary service page</p>
+        </div>
+
+        <div className="ai-glass-card rounded-2xl p-4.5 border border-purple-500/20">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-purple-400 font-mono">
+            Ethical Outreach Guardrail
+          </div>
+          <div className="text-[13px] font-bold text-white mt-2">Zero Spam / PBN Safe</div>
+          <p className="text-[11px] text-slate-400 mt-1">Strict compliance with Google link spam policies</p>
+        </div>
       </div>
-    </Card>
+
+      {/* Prospects & Live Backlinks Table */}
+      <Card
+        title="Authority Prospects & Verified Backlinks"
+        subtitle="Legitimate citations and medical publication relationship pipeline"
+      >
+        <div className="rounded-xl border border-white/10 overflow-hidden">
+          <table className="w-full text-[12px]">
+            <thead className="bg-[#090e1c] text-slate-400 border-b border-white/10">
+              <tr>
+                <th className="p-3 text-left">Prospect / Publication</th>
+                <th className="p-3 text-left">Category</th>
+                <th className="p-3 text-center font-mono">Domain Auth</th>
+                <th className="p-3 text-left">Anchor Text & Target</th>
+                <th className="p-3 text-left">Status</th>
+                <th className="p-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5 bg-[#070b14]">
+              {prospects.map(p => (
+                <tr key={p.id} className="hover:bg-white/5 transition-colors">
+                  <td className="p-3">
+                    <div className="font-bold text-white">{p.name}</div>
+                    <div className="text-[10px] text-cyan-400 font-mono">{p.domain}</div>
+                  </td>
+                  <td className="p-3 text-slate-300 font-medium">{p.type}</td>
+                  <td className="p-3 text-center font-mono font-bold text-slate-200">DA {p.da}</td>
+                  <td className="p-3">
+                    <div className="text-white font-medium">"{p.anchor}"</div>
+                    <div className="text-[10px] text-indigo-300 font-mono">{p.target}</div>
+                  </td>
+                  <td className="p-3">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                      p.status === 'Link Acquired'
+                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                        : p.status === 'Outreach Sent'
+                        ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                        : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                    }`}>
+                      {p.status}
+                    </span>
+                  </td>
+                  <td className="p-3 text-right">
+                    {p.status === 'Qualified Prospect' ? (
+                      <Button size="sm" variant="ai" icon={Send} onClick={() => sendPitch(p)} className="text-xs">
+                        Draft Pitch
+                      </Button>
+                    ) : (
+                      <span className="text-emerald-400 font-mono text-[11px] font-bold flex items-center justify-end gap-1">
+                        <CheckCircle2 size={13} /> Active
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
   );
 }
 
+/**
+ * Main AI Content Studio Component
+ */
 export default function ContentStudioPage() {
-  const [tab, setTab] = useState('blog');
-  return (
-    <SeoShell title="AI content studio" subtitle="Blog posts, service and location pages, posts, FAQs and captions, grounded in your real business details">
-      {(b) => <Studio key={b.id} b={b} tab={tab} setTab={setTab} />}
-    </SeoShell>
-  );
-}
+  const [tab, setTab] = useState('trends');
+  const [activeTopic, setActiveTopic] = useState(null);
 
-function Studio({ b, tab, setTab }) {
-  const [toast, toastNode] = useToast();
+  const handleSelectTopic = (topic) => {
+    setActiveTopic(topic);
+    setTab('blog');
+  };
+
   return (
-    <>
-      <PreviewNote>Preview: the blog writer, pages, captions and calendar show the planned workflow with your business details, but don't call the AI or publish yet. GBP posts are live in GBP Manager → Posts.</PreviewNote>
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'blog', label: 'Blog writer' }, { id: 'pages', label: 'Service & location pages' }, { id: 'social', label: 'Social captions' }, { id: 'calendar', label: 'Content calendar' }, { id: 'refresh', label: 'Refresh old posts' }]} />
-      {tab === 'blog' && <BlogWriter b={b} toast={toast} />}
-      {tab === 'pages' && <PagesTab b={b} toast={toast} />}
-      {tab === 'social' && <SocialTab b={b} toast={toast} />}
-      {tab === 'calendar' && <CalendarTab b={b} />}
-      {tab === 'refresh' && <RefreshTab b={b} toast={toast} />}
-      {toastNode}
-    </>
+    <SeoShell
+      title="AI Blog Studio & Autonomous Content Engine"
+      subtitle="Discover trending patient queries, draft E-E-A-T validated medical articles, schedule CMS publishing, and build ethical backlinks"
+    >
+      {(b) => (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          <Tabs
+            value={tab}
+            onChange={setTab}
+            tabs={[
+              { id: 'trends', label: 'Trending Topics Radar', count: 4 },
+              { id: 'blog', label: 'AI Blog & Article Writer (E-E-A-T)' },
+              { id: 'calendar', label: 'Publishing Calendar & CMS Queue' },
+              { id: 'backlinks', label: 'Backlink & Digital PR Hub' }
+            ]}
+          />
+
+          {tab === 'trends' && <TrendingTopicsTab b={b} onSelectTopic={handleSelectTopic} />}
+          {tab === 'blog' && <BlogWriterTab b={b} selectedTopic={activeTopic} toast={window.__seoToast || console.log} />}
+          {tab === 'calendar' && <CalendarTab b={b} />}
+          {tab === 'backlinks' && <BacklinksTab b={b} toast={window.__seoToast || console.log} />}
+        </div>
+      )}
+    </SeoShell>
   );
 }

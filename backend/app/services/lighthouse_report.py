@@ -243,7 +243,7 @@ def render_summary_html(normalized: dict, audit_meta: dict) -> str:
 <meta charset="utf-8">
 <title>Audit Summary Report (non-original) - {html_lib.escape(audit_meta.get('url', ''))}</title>
 <style>
-body {{ font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; color: #222; background:#fafafa; }}
+body {{ font-family: "Roboto", sans-serif; margin: 2rem; color: #222; background:#fafafa; }}
 .banner {{ background:#fff3cd; border:1px solid #ffe69c; padding: .75rem 1rem; border-radius: 6px; margin-bottom:1.5rem; }}
 .scores {{ display:flex; gap:2rem; margin-bottom:2rem; }}
 .score-circle {{ width:72px;height:72px;border-radius:50%;border:4px solid; display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:bold; }}
