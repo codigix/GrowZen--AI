@@ -4,13 +4,14 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..services import audits
 from ..auth import User, current_user
 from ..config import get_settings
 from ..db import get_db
 from ..models import Business, GoogleConnection
 from ..schemas import ImportLocationsIn
 from ..serialize import row
-from ..services import audits, gbp
+from ..services import gbp
 from ..services.activity import log
 
 router = APIRouter(prefix="/connections", tags=["connections"])

@@ -126,6 +126,13 @@ class WebsiteAuditIn(BaseModel):
     business_id: int | None = None  # set when this is the business's own site: the scan also updates its audits
 
 
+class CompetitorAuditIn(BaseModel):
+    """Audit several competitor websites in one go (no business attached)."""
+    urls: list[HttpUrl] = Field(min_length=1, max_length=20)
+    strategy: Literal["mobile", "desktop"] = "mobile"
+    crawl_pages: int = Field(default=10, ge=1, le=50)
+
+
 class LighthouseAuditIn(BaseModel):
     url: str = Field(description="Publicly reachable http(s) URL")
     strategy: Literal["mobile", "desktop"] = "mobile"

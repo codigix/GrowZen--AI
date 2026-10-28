@@ -109,12 +109,27 @@ def frameable(headers: Any) -> bool:
     return not m or "*" in m.group(1)
 
 
+def _norm_host(netloc: str) -> str:
+    """"www.example.com" and "example.com" are the same site for same-domain link filtering."""
+    return netloc.lower().removeprefix("www.")
+
+
+def _norm_url(url: str) -> str:
+    """"/page" and "/page/" (and "" vs "/") are the same page, so they share one dedup key and
+    aren't queued and crawled twice as cosmetic variants of each other."""
+    parts = urlparse(url)
+    path = parts.path or "/"
+    if len(path) > 1 and path.endswith("/"):
+        path = path.rstrip("/")
+    return parts._replace(path=path).geturl()
+
+
 def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
     """`on_progress` (optional) gets an event per step so a caller can show the scan live:
     {"step": "robots" | "sitemap" | "fetching" | "page", ...}."""
     report = on_progress or (lambda event: None)
     start = start_url if start_url.startswith("http") else f"https://{start_url}"
-    host = urlparse(start).netloc
+    host = _norm_host(urlparse(start).netloc)
     client = site_client(timeout)
     site: dict[str, Any] = {"start_url": start, "host": host}
     try:
@@ -127,15 +142,16 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
         site["sitemap"] = sm.status_code == 200 and ("<urlset" in sm.text or "<sitemapindex" in sm.text)
         site["https"] = start.startswith("https")
         report({"step": "sitemap", "found": site["sitemap"]})
-        seen: set[str] = set()
+        seen: set[str] = set()  # URLs already queued or dequeued, so the same link isn't crawled twice
+        fetched: set[str] = set()  # resolved (post-redirect) URLs of pages already captured
         queue = deque([start])
         pages: list[dict[str, Any]] = []
         broken: list[dict[str, str]] = []
         while queue and len(pages) < max_pages:
             url = queue.popleft()
-            if url in seen:
+            if _norm_url(url) in seen:
                 continue
-            seen.add(url)
+            seen.add(_norm_url(url))
             report({"step": "fetching", "url": url, "done": len(pages), "queued": len(queue)})
             try:
                 r = client.get(url)
@@ -144,6 +160,13 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
                 continue
             if "text/html" not in r.headers.get("content-type", ""):
                 continue
+            resolved = _norm_url(str(r.url))
+            if resolved in fetched:
+                continue  # this URL redirected to a page already crawled: same content, not a new one
+            fetched.add(resolved)
+            seen.add(resolved)  # the fetched URL may differ from the queued one after a redirect
+            if not pages:  # the start URL may redirect to a different host (e.g. www -> bare domain)
+                host = _norm_host(urlparse(str(r.url)).netloc) or host
             p = analyse_html(str(r.url), r.status_code, r.text)
             p["frameable"] = frameable(r.headers)
             if r.status_code >= 400:
@@ -151,7 +174,7 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
             pages.append(p)
             for link in p["links"]:
                 href = link["href"]
-                if urlparse(href).netloc == host and href not in seen and not SKIP_EXT.search(href):
+                if _norm_host(urlparse(href).netloc) == host and _norm_url(href) not in seen and not SKIP_EXT.search(href):
                     queue.append(href)
             report({"step": "page", "page": {k: v for k, v in p.items() if k != "links"}, "queued": len(queue)})
         for p in pages:

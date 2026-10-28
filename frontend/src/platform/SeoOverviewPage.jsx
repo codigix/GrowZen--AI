@@ -575,7 +575,7 @@ function Dashboard() {
       {outdated && (
         <div className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-[13px] text-amber-900 flex items-start gap-2">
           <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-          <span>Some sections are hidden because the backend is running an older version. Restart it (<code className="font-mono text-[12px]">python -m uvicorn app.main:app --port 8100</code> in <code className="font-mono text-[12px]">backend</code>) and reload.</span>
+          <span>Some sections are hidden because the backend is running an older version. Restart it (<code className="font-mono text-[12px]">python -m uvicorn app.main:app --port 8000</code> in <code className="font-mono text-[12px]">backend</code>) and reload.</span>
         </div>
       )}
 
