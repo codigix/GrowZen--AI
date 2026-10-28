@@ -13,6 +13,7 @@ import GbpManagerPage from './platform/GbpManagerPage';
 import ReviewManagerPage from './platform/ReviewManagerPage';
 import LocalRankTrackerPage from './platform/LocalRankTrackerPage';
 import KeywordResearchPage from './platform/KeywordResearchPage';
+import CompetitorFinderPage from './platform/CompetitorFinderPage';
 import ContentStudioPage from './platform/ContentStudioPage';
 import SiteAuditPage from './platform/SiteAuditPage';
 import BacklinksCitationsPage from './platform/BacklinksCitationsPage';
@@ -65,6 +66,7 @@ export default function App() {
         <Route path="reviews" element={<ReviewManagerPage />} />
         <Route path="rank-tracking" element={<LocalRankTrackerPage />} />
         <Route path="keyword-management" element={<KeywordResearchPage />} />
+        <Route path="competitor-finder" element={<CompetitorFinderPage />} />
         <Route path="ai-content-generation" element={<ContentStudioPage />} />
         <Route path="content-calendar" element={<ContentStudioPage initialTab="calendar" />} />
         <Route path="website-audit" element={<SiteAuditPage />} />

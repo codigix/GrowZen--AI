@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
-  LogOut, Menu, X, MapPin, Building2, CalendarDays, Target, Award, Radar, PanelLeftClose, PanelLeftOpen
+  LogOut, Menu, X, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import { useApi } from '../platform/seoApi';
 
@@ -18,7 +18,8 @@ export const SIDEBAR_GROUPS = [
     title: 'SEO Intelligence',
     items: [
       { to: '/website-audit', label: 'Website & On-Page SEO', icon: ScanSearch },
-      { to: '/keyword-management', label: 'Keyword Intelligence', icon: Search }
+      { to: '/keyword-management', label: 'Keyword Intelligence', icon: Search },
+      { to: '/competitor-finder', label: 'Competitor Research', icon: Swords }
     ]
   },
   {

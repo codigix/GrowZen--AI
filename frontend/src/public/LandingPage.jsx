@@ -15,33 +15,39 @@ import { PLANS } from '../platform/seoMock';
  */
 
 /* ── Brand Logo Component ─────────────────────────────────────────────── */
-export const Logo = ({ light = true, className = '', iconSize = 'w-9 h-9 sm:w-10 sm:h-10', textSize = 'text-xl sm:text-2xl' }) => (
-  <span className={`inline-flex items-center gap-2.5 transition-transform hover:scale-[1.02] select-none ${className}`}>
-    <div className={`${iconSize} shrink-0 relative flex items-center justify-center`}>
+export const Logo = ({ light = true, className = '', iconSize = 'w-10 h-10', textSize = 'text-2xl', showSubtitle = true }) => (
+  <span className={`inline-flex items-center gap-3 transition-transform hover:scale-[1.02] select-none ${className}`}>
+    <div className={`${iconSize} shrink-0  flex items-center justify-center `}>
       <img
         src="/bevisiby-mark.png"
         alt="Bevisiby Logo"
-        className="w-full h-full object-contain filter drop-shadow-[0_2px_8px_rgba(6,182,212,0.3)]"
+        className="w-full h-full object-contain filter drop-shadow-[0_2px_8px_rgba(6,182,212,0.4)]"
       />
     </div>
-    <div className="flex items-center gap-1.5">
-      <span className={`font-display font-extrabold tracking-tight ${textSize} ${light ? 'text-white' : 'text-slate-900'}`}>
-        Bevisiby
-      </span>
-      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md text-white bg-gradient-to-r from-blue-500 via-cyan-400 to-teal-400 shadow-sm tracking-wider">
-        AI
-      </span>
+    <div className="flex flex-col text-left leading-none">
+      <div className="flex items-center gap-1.5">
+        <span className={`font-display font-extrabold tracking-tight ${textSize} ${light ? 'text-white' : 'text-slate-900'}`}>
+          Bevisiby
+        </span>
+        <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md text-slate-950 bg-gradient-to-r from-cyan-400 to-teal-300 shadow-sm tracking-wider uppercase">
+          AI
+        </span>
+      </div>
+      {showSubtitle && (
+        <span className="text-[9.5px] font-mono tracking-[0.18em] text-cyan-400 font-bold uppercase mt-1">
+          Autonomous Local SEO
+        </span>
+      )}
     </div>
   </span>
 );
 
 /* ── UI Badges & Buttons ──────────────────────────────────────────────── */
 const Eyebrow = ({ children, light = true }) => (
-  <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[12px] font-bold uppercase tracking-[0.14em] ${
-    light
-      ? 'bg-gradient-to-r from-blue-500/15 via-cyan-500/15 to-teal-500/15 text-cyan-300 border border-cyan-400/30 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)]'
-      : 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
-  }`}>
+  <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[12px] font-bold uppercase tracking-[0.14em] ${light
+    ? 'bg-gradient-to-r from-blue-500/15 via-cyan-500/15 to-teal-500/15 text-cyan-300 border border-cyan-400/30 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)]'
+    : 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
+    }`}>
     <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
     <span>{children}</span>
   </div>
@@ -102,11 +108,10 @@ function InteractiveShowcase() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-3.5 py-2 rounded-xl text-[12.5px] font-medium flex items-center gap-2 cursor-pointer transition-all ${
-                  active
-                    ? 'bg-gradient-to-r from-blue-600/30 to-cyan-500/20 text-cyan-300 border border-cyan-400/40 shadow-xs font-semibold'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
-                }`}
+                className={`px-3.5 py-2 rounded-xl text-[12.5px] font-medium flex items-center gap-2 cursor-pointer transition-all ${active
+                  ? 'bg-gradient-to-r from-blue-600/30 to-cyan-500/20 text-cyan-300 border border-cyan-400/40 shadow-xs font-semibold'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
+                  }`}
               >
                 <Icon size={14} className={active ? 'text-cyan-400' : 'text-slate-500'} />
                 <span>{tab.label}</span>
@@ -194,14 +199,13 @@ function InteractiveShowcase() {
                     const bg = rank <= 3
                       ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/25 ring-1 ring-emerald-300/40'
                       : rank <= 6
-                      ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-200'
-                      : 'bg-rose-600 text-white shadow-md ring-1 ring-rose-300';
+                        ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-200'
+                        : 'bg-rose-600 text-white shadow-md ring-1 ring-rose-300';
                     return (
                       <div
                         key={idx}
-                        className={`w-10 h-10 rounded-xl ${bg} text-[13px] font-bold flex items-center justify-center transition-transform hover:scale-110 cursor-pointer ${
-                          idx === 12 ? 'ring-4 ring-cyan-400 scale-105 shadow-cyan-400/40' : ''
-                        }`}
+                        className={`w-10 h-10 rounded-xl ${bg} text-[13px] font-bold flex items-center justify-center transition-transform hover:scale-110 cursor-pointer ${idx === 12 ? 'ring-4 ring-cyan-400 scale-105 shadow-cyan-400/40' : ''
+                          }`}
                         title={`Rank #${rank}`}
                       >
                         {rank}
@@ -416,21 +420,32 @@ export default function LandingPage({ user }) {
 
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100 selection:bg-cyan-500/30 selection:text-cyan-200 font-sans antialiased overflow-x-hidden">
+      {/* ── 0. Top Announcement Ribbon ─────────────────────────────────── */}
+      <div className="bg-gradient-to-r from-blue-950/90 via-slate-900 to-cyan-950/90 border-b border-white/[0.06] text-xs py-2 px-4 text-center text-slate-300 relative z-50 flex items-center justify-center gap-2.5">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10.5px] font-bold border border-cyan-500/40 shadow-xs">
+          <Sparkles size={11} className="text-cyan-300" /> NEW v2.4
+        </span>
+        <span className="hidden sm:inline text-slate-300 font-medium">Autonomous Google Maps Geo-Grid Scans & AI Review Copilot.</span>
+        <a href="#how-it-works" className="text-cyan-300 font-semibold hover:underline inline-flex items-center gap-1 ml-1">
+          Explore Live Engine <ArrowRight size={11} />
+        </a>
+      </div>
+
       {/* ── 1. Top Navbar ──────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-[#070b14]/85 backdrop-blur-xl border-b border-slate-800/80 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
+      <header className="sticky top-0 z-50 bg-[#070b14]/85 backdrop-blur-2xl border-b border-slate-800/80 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.8)] relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[1px] after:bg-gradient-to-r after:from-transparent after:via-cyan-500/50 after:to-transparent">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
           {/* Logo brand */}
           <a href="#top" className="flex items-center gap-1 focus:outline-hidden" aria-label="Bevisiby AI Home">
-            <Logo light={true} iconSize="w-10 h-10" textSize="text-2xl" />
+            <Logo light={true} iconSize="w-11 h-11" textSize="text-2xl" showSubtitle={true} />
           </a>
 
-          {/* Desktop Nav Links */}
-          <nav className="hidden lg:flex items-center gap-8 text-[14.5px] font-medium text-slate-300">
+          {/* Centered Capsule Nav Links */}
+          <nav className="hidden lg:flex items-center gap-1 bg-[#0e1627]/80 px-2 py-1.5 rounded-full border border-white/[0.08] backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)]">
             {navLinks.map(link => (
               <a
                 key={link.href}
                 href={link.href}
-                className="hover:text-cyan-300 transition-colors relative py-1 hover:font-semibold"
+                className="px-4 py-1.5 rounded-full text-[13.5px] font-medium text-slate-300 hover:text-white hover:bg-white/[0.08] transition-all"
               >
                 {link.label}
               </a>
@@ -460,7 +475,7 @@ export default function LandingPage({ user }) {
             <button
               type="button"
               onClick={() => setMobileMenuOpen(prev => !prev)}
-              className="lg:hidden p-2 rounded-xl text-slate-300 hover:bg-slate-800 cursor-pointer focus:outline-hidden"
+              className="lg:hidden p-2.5 rounded-xl text-slate-300 hover:bg-slate-800 cursor-pointer focus:outline-hidden border border-slate-800"
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
@@ -470,18 +485,18 @@ export default function LandingPage({ user }) {
 
         {/* Mobile menu dropdown */}
         {mobileMenuOpen && (
-          <div className="lg:hidden bg-[#0c1222]/95 backdrop-blur-2xl border-b border-slate-800 px-6 py-4 space-y-2 shadow-2xl animate-fadeIn">
+          <div className="lg:hidden bg-[#0c1222]/98 backdrop-blur-2xl border-b border-slate-800 px-6 py-5 space-y-3 shadow-2xl animate-fadeIn">
             {navLinks.map(link => (
               <a
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className="block py-2.5 text-[15px] font-medium text-slate-300 hover:text-cyan-300"
+                className="block py-2.5 text-[15px] font-medium text-slate-200 hover:text-cyan-300 border-b border-slate-800/40"
               >
                 {link.label}
               </a>
             ))}
-            <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
+            <div className="pt-3 flex flex-col gap-2.5">
               {!signedIn && (
                 <Link
                   to="/login"
@@ -504,7 +519,7 @@ export default function LandingPage({ user }) {
 
       <main id="top">
         {/* ── 2. Hero Section ─────────────────────────────────────────── */}
-        <section id="overview" className="relative pt-16 pb-24 sm:pt-24 sm:pb-32 overflow-hidden">
+        <section id="overview" className="relative pt-12 pb-24 sm:pt-20 sm:pb-32 overflow-hidden">
           {/* Ambient luminous glow background */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[700px] pointer-events-none opacity-50">
             <div className="absolute -top-40 left-1/4 w-[600px] h-[600px] rounded-full bg-gradient-to-br from-blue-600/30 via-cyan-400/25 to-teal-400/15 blur-[120px]" />
@@ -515,9 +530,14 @@ export default function LandingPage({ user }) {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-14 lg:gap-8 items-center">
               {/* Left Column: Copy & CTAs */}
               <div className="lg:col-span-6 space-y-7 text-center lg:text-left">
-                <Eyebrow light={true}>Autonomous Local Growth & Maps SEO</Eyebrow>
+                <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-slate-900/90 border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.2)] backdrop-blur-xl">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                  <span className="text-[12px] font-bold uppercase tracking-[0.14em] text-cyan-300">
+                    Autonomous Local Growth & Maps SEO
+                  </span>
+                </div>
 
-                <h1 className="text-4xl sm:text-5xl lg:text-[60px] font-extrabold tracking-tight text-white leading-[1.06] font-display">
+                <h1 className="text-4xl sm:text-5xl lg:text-[62px] font-extrabold tracking-tight text-white leading-[1.06] font-display">
                   Dominate Local Search on{' '}
                   <span className="bg-gradient-to-r from-blue-400 via-cyan-300 to-teal-300 bg-clip-text text-transparent">
                     Autopilot.
@@ -547,11 +567,12 @@ export default function LandingPage({ user }) {
                   </a>
                 </div>
 
-                {/* Trust Badges */}
-                <div className="pt-4 flex flex-wrap items-center justify-center lg:justify-start gap-y-2 gap-x-6 text-[13px] text-slate-400 font-medium">
+                {/* Trust Badges with Rating stars */}
+                <div className="pt-4 flex flex-wrap items-center justify-center lg:justify-start gap-y-3 gap-x-6 text-[13px] text-slate-400 font-medium">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-emerald-400" />
-                    <span>No credit card required</span>
+                    <div className="flex text-amber-400 text-[13px]">★★★★★</div>
+                    <span className="text-slate-200 font-bold">4.9/5</span>
+                    <span className="text-slate-500">(500+ businesses)</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={16} className="text-cyan-400" />
@@ -559,7 +580,7 @@ export default function LandingPage({ user }) {
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={16} className="text-teal-400" />
-                    <span>Full Human-In-The-Loop</span>
+                    <span>100% Human Approval</span>
                   </div>
                 </div>
               </div>
@@ -851,11 +872,10 @@ export default function LandingPage({ user }) {
                 return (
                   <div
                     key={plan.name}
-                    className={`relative p-8 rounded-3xl bg-[#0d1424] border flex flex-col justify-between transition-all ${
-                      popular
-                        ? 'border-cyan-400 shadow-2xl shadow-cyan-500/20 lg:-translate-y-2 ring-2 ring-cyan-400/30'
-                        : 'border-slate-800 hover:border-slate-700'
-                    }`}
+                    className={`relative p-8 rounded-3xl bg-[#0d1424] border flex flex-col justify-between transition-all ${popular
+                      ? 'border-cyan-400 shadow-2xl shadow-cyan-500/20 lg:-translate-y-2 ring-2 ring-cyan-400/30'
+                      : 'border-slate-800 hover:border-slate-700'
+                      }`}
                   >
                     {popular && (
                       <span className={`absolute -top-3.5 left-1/2 -translate-x-1/2 text-[11px] font-extrabold uppercase tracking-wider px-3.5 py-1 rounded-full ${GRADIENT_BTN}`}>
@@ -888,11 +908,10 @@ export default function LandingPage({ user }) {
                     <div className="pt-8 mt-auto">
                       <Link
                         to={startDestination}
-                        className={`w-full h-12 inline-flex items-center justify-center rounded-xl text-[14px] font-bold transition-all ${
-                          popular
-                            ? `${GRADIENT_BTN}`
-                            : 'border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800'
-                        }`}
+                        className={`w-full h-12 inline-flex items-center justify-center rounded-xl text-[14px] font-bold transition-all ${popular
+                          ? `${GRADIENT_BTN}`
+                          : 'border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800'
+                          }`}
                       >
                         {signedIn ? 'Access Plan' : 'Get Started'}
                       </Link>
