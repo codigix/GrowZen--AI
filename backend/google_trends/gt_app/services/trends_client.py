@@ -25,6 +25,7 @@ logger = logging.getLogger("google_trends.client")
 _cache = TTLCache(ttl_seconds=settings.cache_ttl_seconds)
 _request_lock = threading.Lock()
 _last_request_at = 0.0
+_client = None  # lazily-built, reused TrendReq -- see _get_client()
 
 
 def _throttle() -> None:
@@ -38,7 +39,7 @@ def _throttle() -> None:
         _last_request_at = time.monotonic()
 
 
-def _build_client():
+def _new_client():
     try:
         from pytrends.request import TrendReq
     except ImportError as exc:  # pragma: no cover - exercised only if dependency missing
@@ -52,6 +53,21 @@ def _build_client():
         timeout=(settings.request_timeout_seconds, settings.request_timeout_seconds),
         retries=0,  # we handle retries ourselves so we control backoff/logging
     )
+
+
+def _get_client(force_new: bool = False):
+    """Returns a shared, cookie-warmed TrendReq client, building it once and reusing it
+    across calls. Building a new client fetches a fresh Google NID cookie (an extra
+    round-trip on top of the token + data round-trips every pytrends call already makes),
+    and churning through fresh cookies on every call makes Google far more likely to flag
+    the traffic and 429 it -- which is what was driving the very slow (40-50s) responses:
+    each failure fell into the retry/backoff loop below. ``force_new`` rebuilds the client
+    (fresh cookie) after a failure, in case the cached one got rate-limited or expired."""
+    global _client
+    with _request_lock:
+        if _client is None or force_new:
+            _client = _new_client()
+        return _client
 
 
 def _resolve_timeframe(timeframe: str) -> str:
@@ -77,7 +93,7 @@ def _with_retries(label: str, fn, *args, **kwargs) -> Any:
     for attempt in range(settings.max_retries + 1):
         try:
             _throttle()
-            return fn(*args, **kwargs)
+            return fn(_get_client(force_new=attempt > 0), *args, **kwargs)
         except InvalidTrendsRequestError:
             raise
         except Exception as exc:  # noqa: BLE001 - pytrends raises assorted/undocumented errors
@@ -104,8 +120,7 @@ def fetch_interest_over_time(keyword: str, country: str, timeframe: str) -> pd.D
     geo = country.upper()
     tf = _resolve_timeframe(timeframe)
 
-    def _call() -> pd.DataFrame:
-        client = _build_client()
+    def _call(client) -> pd.DataFrame:
         client.build_payload([keyword], cat=0, timeframe=tf, geo=geo, gprop="")
         return client.interest_over_time()
 
@@ -123,8 +138,7 @@ def fetch_related_queries(keyword: str, country: str, timeframe: str) -> dict:
     geo = country.upper()
     tf = _resolve_timeframe(timeframe)
 
-    def _call() -> dict:
-        client = _build_client()
+    def _call(client) -> dict:
         client.build_payload([keyword], cat=0, timeframe=tf, geo=geo, gprop="")
         return client.related_queries()
 
@@ -173,8 +187,7 @@ def fetch_related_queries_previous_period(keyword: str, country: str, timeframe:
 
     geo = country.upper()
 
-    def _call() -> dict:
-        client = _build_client()
+    def _call(client) -> dict:
         client.build_payload([keyword], cat=0, timeframe=tf, geo=geo, gprop="")
         return client.related_queries()
 
@@ -197,8 +210,7 @@ def fetch_interest_by_region(keyword: str, country: str, timeframe: str) -> pd.D
     geo = country.upper()
     tf = _resolve_timeframe(timeframe)
 
-    def _call() -> pd.DataFrame:
-        client = _build_client()
+    def _call(client) -> pd.DataFrame:
         client.build_payload([keyword], cat=0, timeframe=tf, geo=geo, gprop="")
         return client.interest_by_region(resolution="REGION", inc_low_vol=True, inc_geo_code=False)
 
@@ -218,8 +230,7 @@ def fetch_interest_over_time_multi(keywords: list[str], geo: str, timeframe: str
 
     tf = _resolve_explore_timeframe(timeframe)
 
-    def _call() -> pd.DataFrame:
-        client = _build_client()
+    def _call(client) -> pd.DataFrame:
         client.build_payload(keywords, cat=category, timeframe=tf, geo=geo, gprop="")
         return client.interest_over_time()
 
@@ -236,8 +247,7 @@ def fetch_related_queries_multi(keywords: list[str], geo: str, timeframe: str, c
 
     tf = _resolve_explore_timeframe(timeframe)
 
-    def _call() -> dict:
-        client = _build_client()
+    def _call(client) -> dict:
         client.build_payload(keywords, cat=category, timeframe=tf, geo=geo, gprop="")
         return client.related_queries()
 
@@ -255,8 +265,7 @@ def fetch_interest_by_region_multi(keywords: list[str], geo: str, timeframe: str
     tf = _resolve_explore_timeframe(timeframe)
     resolution = "REGION" if "-" not in geo else "CITY"
 
-    def _call() -> pd.DataFrame:
-        client = _build_client()
+    def _call(client) -> pd.DataFrame:
         client.build_payload(keywords, cat=category, timeframe=tf, geo=geo, gprop="")
         return client.interest_by_region(resolution=resolution, inc_low_vol=True, inc_geo_code=False)
 

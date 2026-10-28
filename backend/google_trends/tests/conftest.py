@@ -10,8 +10,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 def _clear_cache():
     from gt_app.services import trends_client
     trends_client.clear_cache()
+    trends_client._client = None
     yield
     trends_client.clear_cache()
+    trends_client._client = None
 
 
 @pytest.fixture(autouse=True)
