@@ -135,6 +135,8 @@ def extract_facts(url: str, html: str) -> dict[str, Any]:
     meta = soup.find("meta", attrs={"name": re.compile("^description$", re.I)})
     if meta and meta.get("content"):
         facts["description"] = meta["content"].strip()[:750]
+    headings = [h.get_text(" ", strip=True) for h in soup.find_all(["h1", "h2", "h3"])]
+    facts["headings"] = list(dict.fromkeys(h for h in headings if 2 < len(h) <= 80))[:25]  # clues to the services offered
     socials = {a["href"] for a in soup.find_all("a", href=True) if re.search(r"facebook\.com|instagram\.com|linkedin\.com|youtube\.com|x\.com|twitter\.com", a["href"])}
     if socials:
         facts["socials"] = sorted(socials)[:8]

@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from .config import get_settings
 from .db import Base, SessionLocal, engine
 from . import models  # noqa: F401 - register all tables
-from .routers import agent, auth, businesses, connections, discover, growth, intake, leads, lighthouse, profile, system, website
+from .routers import agent, auth, businesses, connections, copilot, discover, growth, intake, leads, lighthouse, profile, system, website
 from .services import lighthouse_runner, scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -66,7 +66,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return response
 
 
-for r in (system, auth, businesses, profile, growth, leads, intake, connections, discover, agent, website, lighthouse):
+for r in (system, auth, businesses, profile, growth, leads, intake, connections, discover, agent, copilot, website, lighthouse):
     app.include_router(r.router, prefix=settings.api_prefix)
 
 # Production: serve the built frontend (frontend/dist) from the same address as the API.

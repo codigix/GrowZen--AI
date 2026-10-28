@@ -11,9 +11,9 @@ from ..auth import User, current_user
 from ..db import get_db
 from ..deps import in_background
 from ..models import Business, Review
-from ..schemas import DiscoverImportIn, DiscoverIn, SuggestionIn
+from ..schemas import DiscoverImportIn, DiscoverIn, OnboardAssistIn, SuggestionIn
 from ..serialize import row
-from ..services import agent, audits, discovery, schedules, suggest
+from ..services import agent, audits, discovery, onboard_assist, schedules, suggest
 from ..services.activity import log
 from ..services.match import phone_digits as _digits, site_domain as _domain
 
@@ -30,6 +30,13 @@ def find(body: DiscoverIn, db: Session = Depends(get_db), _: User = Depends(curr
         b = _existing(db, c)
         c["business_id"] = b.id if b else None
     return out
+
+
+@router.post("/assist")
+def assist(body: OnboardAssistIn, _: User = Depends(current_user)):
+    """Onboarding assistant: cross-check the details against Google Maps and the website, flag problems,
+    and suggest the category, description, services and real local keywords."""
+    return onboard_assist.assist(body.model_dump(exclude={"place_id"}), body.place_id)
 
 
 @router.get("/suggest")

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Copy, ExternalLink, Check, ScanSearch, FileBarChart, Braces, CheckCircle2, XCircle } from 'lucide-react';
+import { Copy, ExternalLink, Check, ScanSearch, FileBarChart, Braces, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { SeoShell, Card, Button, useToast } from './SeoUi';
 import { useSiteAudit, AuditStep, ReportStep } from './WebsiteAuditTool';
 import { pathOnly as pathOf } from './siteUtils';
@@ -104,10 +104,13 @@ function SiteAudit({ b, step, setStep }) {
     if (wasRunning.current && !sa.running && sa.audit.data?.status === 'done') setStep('report');
     wasRunning.current = sa.running;
   }, [sa.running]); // eslint-disable-line react-hooks/exhaustive-deps
-  const current = step === 'report' && !sa.report ? 'audit' : step;
+  // Opens on the latest report when there is one; while it loads, a short wait instead of a flash of step 1.
+  const loading = !sa.history.data || (sa.current && !sa.audit.data);
+  const current = step === 'report' && !sa.report ? (loading ? 'loading' : 'audit') : step;
   return (
     <div className="space-y-5">
-      <Stepper step={current} onStep={setStep} hasReport={Boolean(sa.report)} running={sa.running} />
+      <Stepper step={current === 'loading' ? 'report' : current} onStep={setStep} hasReport={Boolean(sa.report)} running={sa.running} />
+      {current === 'loading' && <Card><div className="py-12 flex items-center justify-center gap-2 text-[13px] text-slate-500"><Loader2 size={16} className="animate-spin" /> Opening the latest report…</div></Card>}
       {current === 'audit' && <AuditStep sa={sa} business={b} onOpenReport={() => setStep('report')} />}
       {current === 'report' && <ReportStep sa={sa} business={b} onNext={setStep} />}
       {current === 'schema' && <SchemaStep b={b} report={sa.report} />}
@@ -122,7 +125,7 @@ function SiteAudit({ b, step, setStep }) {
 export default function SiteAuditPage() {
   const [params, setParams] = useSearchParams();
   const raw = params.get('tab');
-  const step = STEPS.some(s => s.id === raw) ? raw : OLD_TABS[raw] || 'audit';
+  const step = STEPS.some(s => s.id === raw) ? raw : OLD_TABS[raw] || 'report'; // the latest report; step 1 when there isn't one
   const setStep = (t) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
   return (
     <SeoShell title="Website & On-Page SEO" subtitle="Audit the website, read the report, then fix and re-check: page by page, with ready-made fixes.">

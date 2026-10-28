@@ -39,6 +39,18 @@ CITIES = {"mumbai", "delhi", "bangalore", "bengaluru", "hyderabad", "chennai", "
           "nagpur", "indore", "thane", "bhopal", "visakhapatnam", "patna", "vadodara", "ghaziabad", "ludhiana", "agra", "nashik", "noida", "gurgaon",
           "gurugram", "faridabad", "rajkot", "meerut", "kalyan", "varanasi", "aurangabad", "amritsar", "ranchi", "coimbatore", "kochi", "chandigarh",
           "mysore", "mysuru", "goa", "dehradun", "bhubaneswar", "raipur", "guwahati", "navi", "kolhapur", "solapur", "dubai", "london", "usa", "uk"}
+# Places inside a bigger city's metro area: searches naming the big city are local for them too.
+METRO = {"pimpri": "pune", "chinchwad": "pune", "hinjewadi": "pune", "wakad": "pune", "hadapsar": "pune", "kharadi": "pune", "baner": "pune",
+         "thane": "mumbai", "navi": "mumbai", "kalyan": "mumbai", "vashi": "mumbai", "panvel": "mumbai", "noida": "delhi", "gurgaon": "delhi",
+         "gurugram": "delhi", "ghaziabad": "delhi", "faridabad": "delhi", "secunderabad": "hyderabad", "howrah": "kolkata"}
+
+
+def other_cities(place_words: set[str]) -> set[str]:
+    """Cities whose searches aren't this business's customers: every known city except its own and its metro's."""
+    own = place_words | {METRO[w] for w in place_words if w in METRO}
+    return CITIES - own
+
+
 PER_GROUP = 40
 QUESTION = re.compile(r"^(how|what|why|which|when|where|who|can|is|are|does|do|should|will)\b")
 GROUPS = ["question", "near_me", "local", "fresh", "competitor", "brand", "service"]
@@ -189,7 +201,7 @@ def discover(db: Session, b: Business, seeds: list[str], areas: list[str]) -> di
     seeds = [" ".join(s.lower().split()) for s in seeds if s.strip()][:6]
     areas = [a.strip() for a in areas if a.strip()][:10]
     places = {w for a in [*areas, b.city or "", b.area or ""] for w in _words(a)}
-    elsewhere = CITIES - places  # other cities: searches there aren't this business's customers
+    elsewhere = other_cities(places)  # other cities: searches there aren't this business's customers
     competitors = [c.lower() for c in context_competitors(db, b)]
     brand = _core(b.name, places) - _core(" ".join(seeds), places)
     seed_core = set().union(*(_core(s, places) for s in seeds)) if seeds else set()

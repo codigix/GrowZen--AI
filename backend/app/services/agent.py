@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import AgentTask, Business, Post, Review
-from . import ai, gbp
+from . import ai, copilot, gbp
 from .activity import log
 from .playbook import get_playbook
 
@@ -44,7 +44,11 @@ def plan_from_audits(db: Session, b: Business, issues: list[dict[str, Any]]) -> 
     for i in sorted(issues, key=lambda x: order.get(x.get("level"), 9))[:10]:
         area = i.get("area", "")
         kind = "profile_edit" if area == "GBP" else "website_fix" if area in ("Technical", "On-page", "Structured data", "Crawlability", "Indexing", "Mobile", "Security", "Speed", "Images") else "outreach_email" if area in ("Backlinks", "Citations") else "profile_edit"
-        tasks.append(_task(db, b, {"profile_edit": "gbp", "website_fix": "audit", "outreach_email": "outreach"}[kind], kind, i["title"], IMPACT.get(i.get("level"), "Medium"), fix=i.get("fix", ""), area=area))
+        t = _task(db, b, {"profile_edit": "gbp", "website_fix": "audit", "outreach_email": "outreach"}[kind], kind, i["title"], IMPACT.get(i.get("level"), "Medium"),
+                  fix=i.get("fix", ""), area=area, code=i.get("code") or i.get("key"))
+        if not (t.detail or {}).get("draft"):
+            copilot.draft_for(db, b, t)  # the change itself, ready to approve
+        tasks.append(t)
     db.commit()
     return tasks
 

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, CheckCircle2, Info, MapPin,
@@ -552,6 +553,40 @@ export const Modal = ({ open, title, onClose, children, footer, width = 'max-w-l
         {footer && <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-2.5">{footer}</div>}
       </div>
     </div>
+  );
+};
+
+/** A panel that slides in from the right over the page: secondary detail without leaving the screen. */
+export const Drawer = ({ open, title, subtitle, onClose, children, width = 'max-w-2xl' }) => {
+  useEffect(() => {
+    if (!open) return undefined;
+    const k = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', k);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', k); document.body.style.overflow = overflow; };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  // On <body>, so an animated (transformed) page container can't clip or offset the fixed overlay.
+  return createPortal(
+    <div className="fixed inset-0 z-[70] bg-slate-900/30 backdrop-blur-sm animate-in fade-in duration-150" onMouseDown={onClose}>
+      <aside role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined}
+        className={`absolute right-0 top-0 h-full w-full ${width} bg-slate-50 shadow-2xl border-l border-slate-200 flex flex-col animate-in slide-in-from-right duration-200`} onMouseDown={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 px-6 py-4 border-b border-slate-200 bg-white">
+          <div className="min-w-0">
+            <h3 className="text-[15px] font-bold text-slate-900 font-display">{title}</h3>
+            {subtitle && <p className="text-[12px] text-slate-500 mt-0.5">{subtitle}</p>}
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer" aria-label="Close">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+      </aside>
+    </div>,
+    document.body
   );
 };
 
