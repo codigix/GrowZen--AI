@@ -67,6 +67,51 @@ def ai_description(b: Business = Depends(get_business)):
     return {"text": text[:750]}
 
 
+DAY_NAMES = {"MONDAY": "Monday", "TUESDAY": "Tuesday", "WEDNESDAY": "Wednesday", "THURSDAY": "Thursday", "FRIDAY": "Friday", "SATURDAY": "Saturday", "SUNDAY": "Sunday"}
+
+
+def _hours_text(hours: dict | None) -> str:
+    """Opening hours in words, from the stored periods ("Monday 09:00-19:00, …")."""
+    t = lambda o: f"{(o or {}).get('hours', 0):02d}:{(o or {}).get('minutes', 0):02d}"  # noqa: E731
+    return ", ".join(f"{DAY_NAMES.get(p.get('openDay'), p.get('openDay'))} {t(p.get('openTime'))}-{t(p.get('closeTime'))}" for p in (hours or {}).get("periods") or [])
+
+
+def rule_faqs(b: Business) -> list[dict[str, str]]:
+    """FAQs answered only from what the profile holds; a question is left out when its answer isn't known."""
+    place = ", ".join(x for x in [b.address or b.area, b.city] if x)
+    services = [s.get("name") for s in (b.services or []) if s.get("name")]
+    hours = _hours_text(b.hours)
+    out = []
+    if place:
+        out.append({"q": f"Where is {b.name} located?", "a": f"{b.name} is at {place}."})
+    if hours:
+        out.append({"q": f"What are {b.name}'s opening hours?", "a": f"We're open {hours}."})
+    if services:
+        out.append({"q": "What services do you offer?", "a": f"We offer {', '.join(services[:8])}."})
+    if b.booking_url or b.phone:
+        out.append({"q": "How can I book an appointment?", "a": f"{'Book online on our website' if b.booking_url else 'Call us'}{f' or call {b.phone}' if b.booking_url and b.phone else f' on {b.phone}' if b.phone else ''}."})
+    if b.area or b.service_area:
+        out.append({"q": f"Do you serve customers near {b.area or b.city}?", "a": f"Yes. We serve {b.service_area or f'{b.area} and nearby areas' + (f' in {b.city}' if b.city else '')}."})
+    return out
+
+
+@router.post("/ai/faqs")
+def ai_faqs(b: Business = Depends(get_business)):
+    """Draft FAQs for the website and Google Q&A from the profile (nothing invented). Not saved.
+    AI-written with a key; otherwise template answers built only from the profile's facts."""
+    base = rule_faqs(b)
+    if not ai.is_configured():
+        return {"source": "rules", "faqs": base}
+    try:
+        out = ai.complete_json(f"You write FAQs for a local business website and its Google Q&A.\n{ai.RULES}\n- Answer only from the facts given; skip a question rather than guess.",
+                               f"Business profile:\n{ai.profile_text(b)}\nOpening hours: {_hours_text(b.hours) or 'not given'}\nBooking: {b.booking_url or b.phone or 'not given'}\n\n"
+                               'Return JSON {"faqs": [{"q": "a question customers really ask", "a": "a 1-3 sentence answer"}]} with 5-7 items.', temperature=0.4, max_tokens=1200)
+        faqs = [{"q": str(f.get("q", "")).strip()[:200], "a": str(f.get("a", "")).strip()[:600]} for f in out.get("faqs") or [] if isinstance(f, dict) and f.get("q") and f.get("a")]
+        return {"source": "ai", "faqs": faqs[:8]} if faqs else {"source": "rules", "faqs": base}
+    except Exception:
+        return {"source": "rules", "faqs": base}
+
+
 # Reviews
 @router.get("/reviews")
 def list_reviews(b: Business = Depends(get_business), db: Session = Depends(get_db)):

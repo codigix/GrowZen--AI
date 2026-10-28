@@ -117,3 +117,20 @@ def test_bulk_reports_and_status(client):
     assert r["ai"] is False and rep["summary"] and rep["pdf"].startswith(f"/businesses/{rep['business_id']}/report.pdf")
     s = client.get("/api/v1/copilot/status").json()
     assert s["ai"] is False and "deepseek" in s["providers"]
+
+
+def test_faq_drafts_use_only_profile_facts(client, monkeypatch):
+    bid = client.post("/api/v1/businesses", json={"name": "FAQ Dental", "address": "Shop 12, ITI Road", "area": "Aundh", "city": "Pune", "phone": "+91 98505 22140",
+                                                   "services": [{"name": "Root canal"}, {"name": "Braces"}]}).json()["id"]
+    client.patch(f"/api/v1/businesses/{bid}", json={"hours": {"periods": [{"openDay": "MONDAY", "closeDay": "MONDAY", "openTime": {"hours": 9}, "closeTime": {"hours": 19, "minutes": 30}}]}})
+    r = client.post(f"/api/v1/businesses/{bid}/ai/faqs").json()
+    qa = {f["q"]: f["a"] for f in r["faqs"]}
+    assert r["source"] == "rules"
+    assert qa["Where is FAQ Dental located?"] == "FAQ Dental is at Shop 12, ITI Road, Pune."
+    assert qa["What are FAQ Dental's opening hours?"] == "We're open Monday 09:00-19:30."
+    assert qa["What services do you offer?"] == "We offer Root canal, Braces." and "on +91 98505 22140" in qa["How can I book an appointment?"]
+    bare = client.post("/api/v1/businesses", json={"name": "Bare Business"}).json()["id"]
+    assert client.post(f"/api/v1/businesses/{bare}/ai/faqs").json()["faqs"] == []  # nothing known, nothing invented
+    monkeypatch.setattr(ai, "is_configured", lambda: True)
+    monkeypatch.setattr(ai, "complete_json", lambda system, user, **kw: {"faqs": [{"q": "Do you treat children?", "a": "Yes, families are welcome."}, {"q": "", "a": "x"}]})
+    assert client.post(f"/api/v1/businesses/{bid}/ai/faqs").json() == {"source": "ai", "faqs": [{"q": "Do you treat children?", "a": "Yes, families are welcome."}]}
