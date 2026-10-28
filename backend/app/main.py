@@ -11,10 +11,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from .competitors import audit_router as competitor_audits, router as competitors
+from .competitors import audit_router as competitor_audits, intel_router as competitor_research, router as competitors
 from .config import get_settings
 from .db import SessionLocal
-from .routers import agent, auth, businesses, connections, discover, growth, intake, keyword_trends, leads, lighthouse, profile, system, website
+from .routers import agent, auth, businesses, connections, copilot, discover, growth, intake, keyword_trends, leads, lighthouse, profile, system, website
 from .services import lighthouse_runner, scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -43,7 +43,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-for r in (system, auth, businesses, profile, growth, leads, intake, connections, discover, agent, website, lighthouse, keyword_trends, competitors, competitor_audits):
+for r in (system, auth, businesses, profile, growth, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, competitors, competitor_audits, competitor_research):
     app.include_router(r.router, prefix=settings.api_prefix)
 
 # Production: serve the built frontend (frontend/dist) from the same address as the API.

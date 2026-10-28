@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
-  LogOut, Menu, X, MapPin, Building2, CalendarDays, Target, Award, Radar, PanelLeftClose, PanelLeftOpen
+  LogOut, Menu, X, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import { useApi } from '../platform/seoApi';
 
@@ -18,7 +18,8 @@ export const SIDEBAR_GROUPS = [
     title: 'SEO Intelligence',
     items: [
       { to: '/website-audit', label: 'Website & On-Page SEO', icon: ScanSearch },
-      { to: '/keyword-management', label: 'Keyword Intelligence', icon: Search }
+      { to: '/keyword-management', label: 'Keyword Intelligence', icon: Search },
+      { to: '/competitor-finder', label: 'Competitor Research', icon: Swords }
     ]
   },
   {
@@ -85,11 +86,10 @@ function NavItem({ to, label, icon: Icon, badge, collapsed, active, onNavigate }
       onClick={onNavigate}
       title={collapsed ? label : undefined}
       aria-label={collapsed ? label : undefined}
-      className={`group relative flex items-center h-9 rounded-lg text-[13px] transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
-        collapsed ? 'justify-center px-0' : 'gap-3 px-3'
-      } ${active
-        ? 'bg-gradient-to-r from-blue-500/[0.18] to-blue-500/[0.04] text-slate-900 font-medium'
-        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+      className={`group relative flex items-center h-9 rounded-lg text-[13px] transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${collapsed ? 'justify-center px-0' : 'gap-3 px-3'
+        } ${active
+          ? 'bg-gradient-to-r from-blue-500/[0.18] to-blue-500/[0.04] text-slate-900 font-medium'
+          : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
     >
       {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-blue-400" aria-hidden="true" />}
       <Icon size={16} strokeWidth={active ? 2.2 : 1.8} className={`shrink-0 transition-colors ${active ? 'text-blue-600' : 'text-slate-500 group-hover:text-slate-700'}`} />
@@ -130,20 +130,19 @@ export default function Layout({ user, onLogout }) {
       {open && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setOpen(false)} />}
 
       <aside
-        className={`fixed lg:static top-0 bottom-0 left-0 z-50 h-screen shrink-0 flex flex-col bg-white/95 backdrop-blur-xl border-r border-slate-200 transition-[width,transform] duration-300 ease-in-out ${
-          rail ? 'lg:w-[72px]' : 'lg:w-72'
-        } w-72 ${open ? 'translate-x-0 shadow-2xl shadow-slate-900/10' : '-translate-x-full lg:translate-x-0'}`}
+        className={`fixed lg:static top-0 bottom-0 left-0 z-50 h-screen shrink-0 flex flex-col bg-white/95 backdrop-blur-xl border-r border-slate-200 transition-[width,transform] duration-300 ease-in-out ${rail ? 'lg:w-[72px]' : 'lg:w-72'
+          } w-72 ${open ? 'translate-x-0 shadow-2xl shadow-slate-900/10' : '-translate-x-full lg:translate-x-0'}`}
       >
         {/* Brand */}
         <div className={`h-16 shrink-0 flex items-center border-b border-slate-200 ${rail ? 'justify-center px-2' : 'justify-between px-4'}`}>
-          <NavLink to="/dashboard" className="flex items-center gap-2.5 min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" title="Bevisiby AI">
+          <NavLink to="/dashboard" className="flex items-center gap-2.5 min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" title="bevisibe AI">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500/15 via-cyan-500/10 to-teal-500/15 ring-1 ring-inset ring-blue-500/20 p-1 flex items-center justify-center shrink-0">
-              <img src="/bevisiby-icon.png" alt="Bevisiby" className="w-full h-full object-contain" />
+              <img src="/bevisibe-icon.png" alt="bevisibe" className="w-full h-full object-contain" />
             </div>
             {!rail && (
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-slate-900 font-bold text-[15px] tracking-tight font-display leading-tight">
-                  Bevisiby
+                  bevisibe
                   <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-blue-600 to-teal-500 text-white tracking-wider">AI</span>
                 </div>
                 <p className="text-[11px] text-slate-500 leading-tight truncate">Autonomous Local SEO</p>
@@ -219,8 +218,8 @@ export default function Layout({ user, onLogout }) {
               <Menu size={20} />
             </button>
             <div className="flex items-center gap-2">
-              <img src="/bevisiby-icon.png" alt="Bevisiby" className="w-7 h-7 object-contain" />
-              <span className="font-bold text-[15px] text-slate-900 font-display">Bevisiby</span>
+              <img src="/bevisibe-icon.png" alt="bevisibe" className="w-7 h-7 object-contain" />
+              <span className="font-bold text-[15px] text-slate-900 font-display">bevisibe</span>
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-blue-600 to-teal-500 text-white tracking-wider">AI</span>
             </div>
           </div>

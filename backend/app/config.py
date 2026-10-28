@@ -87,6 +87,8 @@ class Settings(BaseSettings):
     perplexity_api_key: str = ""
     anthropic_api_key: str = ""
 
+    # Google search results (serper.dev): competitor research -- organic top 10 and Maps results per keyword
+    serper_api_key: str = ""
     # Paid data (optional): DataForSEO for rank grids, keyword data, backlinks, citations.
     dataforseo_login: str = ""
     dataforseo_password: str = ""
