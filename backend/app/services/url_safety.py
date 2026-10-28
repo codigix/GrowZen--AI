@@ -28,6 +28,19 @@ _EXTRA_BLOCKED_NETWORKS = [
     ipaddress.ip_network("192.0.0.0/24"),  # IETF protocol assignments
     ipaddress.ip_network("::ffff:0:0/96"),  # IPv4-mapped IPv6 (unwrapped separately too)
 ]
+# RFC 6052 "Well-Known Prefix" used by NAT64/DNS64 networks to represent a public IPv4 address as
+# IPv6 (e.g. 64:ff9b::1.2.3.4). It is globally routable, so `ipaddress` marking it non-global would
+# otherwise block every audit on a NAT64-only network; the embedded IPv4 is checked instead.
+_NAT64_WELL_KNOWN_PREFIX = ipaddress.ip_network("64:ff9b::/96")
+
+
+def _unwrap(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return ip.ipv4_mapped
+        if ip in _NAT64_WELL_KNOWN_PREFIX:
+            return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+    return ip
 
 
 class SSRFValidationError(ValueError):
@@ -44,8 +57,7 @@ class ValidatedURL:
 
 
 def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
+    ip = _unwrap(ip)
     if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified or not ip.is_global:
         return True
     return any(ip in net for net in _EXTRA_BLOCKED_NETWORKS if net.version == ip.version)

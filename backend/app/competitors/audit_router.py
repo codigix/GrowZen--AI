@@ -1,8 +1,6 @@
 """Batch SEO audit of competitor websites (no business attached): PageSpeed + a short crawl per URL,
-run in the background and saved so a specific one can be looked up later by id -- including the
-same Lighthouse HTML report page the regular website audit shows on the frontend."""
-from pathlib import Path
-
+run in the background and saved so a specific one can be looked up later by id -- including an
+HTML report page covering every page the crawl visited, not just the home page's score."""
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
@@ -13,7 +11,8 @@ from ..deps import in_background
 from ..models import Audit, LighthouseAudit
 from ..schemas import CompetitorAuditIn
 from ..serialize import row, rows
-from ..services import audits, lighthouse_report
+from ..services import audits
+from .report import render_competitor_report
 
 router = APIRouter(prefix="/audit/competitors", tags=["competitor-audits"])
 
@@ -52,17 +51,15 @@ def get_one(audit_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{audit_id}/html")
 def get_html(audit_id: int, db: Session = Depends(get_db)):
-    """The Lighthouse report page for this competitor's audit, to show on the frontend."""
+    """One report page for this competitor: the Lighthouse scores plus every page the crawl
+    visited (title, meta, H1, word count, images, issues) -- all `crawl_pages` worth, not just one."""
     a = db.get(Audit, audit_id)
     if not a or a.kind != "competitor":
         raise HTTPException(404, "Competitor audit not found")
+    if a.status != "done":
+        raise HTTPException(409, f"This audit is still {a.status}; try again once it finishes.")
+    if not (a.result or {}).get("crawl"):
+        raise HTTPException(404, a.error or "No crawl data is available for this audit.")
     lh_id = ((a.result or {}).get("pagespeed") or {}).get("lighthouse_audit_id")
     lh = db.get(LighthouseAudit, lh_id) if lh_id else None
-    if not lh:
-        raise HTTPException(404, "No Lighthouse report is available for this audit")
-    if lh.html_report_path and Path(lh.html_report_path).is_file():
-        return HTMLResponse(Path(lh.html_report_path).read_text(encoding="utf-8"))
-    if not lh.report:
-        raise HTTPException(404, "No report is available for this audit")
-    html = lighthouse_report.render_summary_html(lh.report, {"url": lh.submitted_url, "strategy": lh.strategy, "engine": lh.engine, "completed_at": lh.completed_at})
-    return HTMLResponse(html)
+    return HTMLResponse(render_competitor_report(a, lh))
