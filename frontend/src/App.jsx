@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { api } from './platform/seoApi';
 import Layout from './components/Layout';
+import LandingPage from './public/LandingPage';
+import LegalPage from './public/LegalPage';
 import LoginPage from './pages/LoginPage';
 import UsersPage from './pages/UsersPage';
 import SeoOverviewPage from './platform/SeoOverviewPage';
@@ -25,6 +27,7 @@ import ConnectResultPage from './platform/ConnectResultPage';
 export default function App() {
   // undefined = checking the session, null = signed out
   const [user, setUser] = useState(undefined);
+  const { pathname } = useLocation();
 
   const loadMe = useCallback(() => api('/me').then(setUser).catch(() => setUser(null)), []);
   useEffect(() => { loadMe(); }, [loadMe]);
@@ -38,6 +41,11 @@ export default function App() {
     await api('/auth/logout', { method: 'POST' }).catch(() => {});
     setUser(null);
   };
+
+  // Public pages: the home page and policies open without signing in (Google's OAuth review needs them).
+  if (pathname === '/') return <LandingPage user={user} />;
+  if (pathname === '/privacy') return <LegalPage kind="privacy" />;
+  if (pathname === '/terms') return <LegalPage kind="terms" />;
 
   if (user === undefined) {
     return <div className="min-h-screen flex items-center justify-center gap-2 text-[13px] text-gray-500"><Loader2 size={15} className="animate-spin" /> Loading…</div>;
