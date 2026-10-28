@@ -79,3 +79,8 @@ def test_keyword_routes(client, monkeypatch):
     r = client.post(f"/api/v1/businesses/{bid}/keywords/discover", json={"seeds": ["dentist"], "areas": ["Aundh"]}).json()
     assert next(x for x in r["keywords"] if x["keyword"] == "dentist near me")["tracked"]
     assert client.post(f"/api/v1/businesses/{bid}/keywords/discover", json={"seeds": [], "areas": []}).status_code == 422
+
+
+def test_metro_parent_city_counts_as_local():
+    assert "pune" not in kw.other_cities({"pimpri", "chinchwad"}) and "mumbai" in kw.other_cities({"pimpri", "chinchwad"})
+    assert "pune" not in kw.other_cities({"aundh", "pune"}) and "thane" in kw.other_cities({"aundh", "pune"})

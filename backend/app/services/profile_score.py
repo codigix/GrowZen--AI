@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-STUFFED = re.compile(r"[|]|\s-\s|\bbest\b|\bcheap\b|no\.?\s?1|\btop\s", re.I)
+STUFFED = re.compile(r"[|]|\s[-–—]\s|\bbest\b|\bcheap\b|no\.?\s?1|\btop\s", re.I)  # "Name – keywords" with any dash
 
 
 @dataclass

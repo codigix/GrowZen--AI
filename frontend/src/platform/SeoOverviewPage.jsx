@@ -4,10 +4,11 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tool
 import {
   Sparkles, Bot, Cpu, ShieldCheck, CalendarClock, Briefcase, Activity, AlertTriangle, ClipboardCheck, Layers, Target,
   Search, CheckCircle2, XCircle, ArrowUp, ArrowDown, ArrowRight, Phone, Navigation, MousePointerClick,
-  Settings2, LayoutGrid, List, Globe, Store, Star, Send, User, Link2, Wrench, RefreshCw
+  Settings2, LayoutGrid, List, Globe, Store, Star, Send, User, ChevronRight, FileText, HeartPulse, BarChart3
 } from 'lucide-react';
-import { SeoShell, Card, Badge, ScoreRing, ChartTooltip, ErrorNote, SERIES, scoreLevel, scoreWord, useModulePath, useSeoBusiness } from './SeoUi';
-import { useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
+import { SeoShell, Card, Badge, Button, ScoreRing, ChartTooltip, ErrorNote, SERIES, scoreLevel, scoreWord, useModulePath, useSeoBusiness, useAction, useToast, Drawer, Tabs } from './SeoUi';
+import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
+import { CopilotPriorities, CopilotAlerts, ReportsModal } from './CopilotPanel';
 
 /**
  * Command Center: every project (client business) at once, with the AI side of the work in front.
@@ -71,33 +72,20 @@ function SectionHeader({ icon: Icon, title, subtitle, right }) {
 
 function GlassStat({ icon: Icon, label, value, hint, ok }) {
   return (
-    <div className="rounded-2xl bg-white/10 ring-1 ring-inset ring-white/20 backdrop-blur-sm px-4 py-3 flex items-start gap-3">
-      <span className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center shrink-0"><Icon size={17} /></span>
+    <div className="rounded-xl bg-white/10 ring-1 ring-inset ring-white/20 backdrop-blur-sm px-3 py-2.5 flex items-center gap-2.5 min-w-0" title={hint || undefined}>
+      <span className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center shrink-0"><Icon size={15} /></span>
       <div className="min-w-0">
-        <div className="text-[11px] font-medium uppercase tracking-wider text-indigo-100">{label}</div>
-        <div className="text-[14px] font-semibold flex items-center gap-1.5">{value}{ok === false && <AlertTriangle size={13} className="text-amber-200" />}</div>
-        {hint && <div className="text-[12px] text-indigo-100/90 leading-snug line-clamp-2" title={hint}>{hint}</div>}
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-indigo-100 truncate">{label}</div>
+        <div className="text-[13px] font-semibold flex items-center gap-1 truncate">{value}{ok === false && <AlertTriangle size={12} className="text-amber-200 shrink-0" />}</div>
+        {hint && <div className="text-[11px] text-indigo-100/85 truncate">{hint}</div>}
       </div>
     </div>
   );
 }
 
-function Briefing({ data, me, onOpenProject }) {
-  const navigate = useNavigate();
-  const path = useModulePath();
-  const { totals: t, projects, ai } = data;
+function Briefing({ data, me }) {
+  const { totals: t, ai } = data;
   const upcoming7 = (data.upcoming || []).filter(u => new Date(u.at) - new Date() < 7 * 86400000).length;
-
-  const steps = [];
-  if (t.pending_tasks) steps.push({ icon: ClipboardCheck, label: `Review ${plural(t.pending_tasks, 'approval')}`, go: () => navigate(path('automation')) });
-  const worst = [...projects].sort((a, b) => b.issues.critical - a.issues.critical)[0];
-  if (worst?.issues.critical) steps.push({ icon: Wrench, label: `Fix ${plural(worst.issues.critical, 'critical issue')} · ${worst.name}`, go: () => onOpenProject(worst.id, 'on-page-seo') });
-  const failed = projects.filter(p => p.services.some(s => s.last_status === 'failed'));
-  if (failed.length) steps.push({ icon: RefreshCw, label: `Check ${plural(failed.length, 'failed job')}`, go: () => navigate(path('automation-pipeline')) });
-  const unlinked = projects.filter(p => !p.gbp_linked && p.status !== 'paused');
-  if (unlinked.length) steps.push({ icon: Link2, label: `Link ${plural(unlinked.length, 'Google profile')}`, go: () => navigate(path('google-integrations')) });
-  const unaudited = projects.filter(p => !p.last_audit_at && p.status !== 'paused');
-  if (unaudited.length && steps.length < 4) steps.push({ icon: Activity, label: `Audit ${plural(unaudited.length, 'new project')}`, go: () => onOpenProject(unaudited[0].id, 'on-page-seo') });
 
   const summary = [
     `${plural(t.projects, 'project')} under management (${t.by_status.active} active, ${t.by_status.needs_approval} waiting for approval${t.by_status.paused ? `, ${t.by_status.paused} paused` : ''}).`,
@@ -107,31 +95,21 @@ function Briefing({ data, me, onOpenProject }) {
   const firstName = (me?.name || '').split(' ')[0];
 
   return (
-    <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white shadow-xl shadow-indigo-500/20">
+    <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white shadow-lg shadow-indigo-500/20">
       <div className="absolute -top-24 -right-16 w-80 h-80 rounded-full bg-white/10 blur-3xl pointer-events-none" />
       <div className="absolute -bottom-32 left-1/3 w-96 h-96 rounded-full bg-fuchsia-300/20 blur-3xl pointer-events-none" />
       <div className="absolute inset-0 opacity-[0.07] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '22px 22px' }} />
-      <div className="relative p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <div className="lg:col-span-3">
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-inset ring-white/25 text-[11px] font-semibold uppercase tracking-wider">
-            <Sparkles size={12} /> AI briefing · {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+      <div className="relative px-5 py-4 flex flex-col xl:flex-row xl:items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 className="text-lg font-bold tracking-tight">{greeting()}{firstName ? `, ${firstName}` : ''}</h2>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/15 ring-1 ring-inset ring-white/25 text-[10.5px] font-semibold uppercase tracking-wider">
+              <Sparkles size={11} /> AI briefing · {new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+            </span>
           </div>
-          <h2 className="mt-3 text-2xl lg:text-[28px] font-bold tracking-tight">{greeting()}{firstName ? `, ${firstName}` : ''}</h2>
-          <p className="mt-2 text-[14px] leading-relaxed text-indigo-50 max-w-2xl">{summary}</p>
-          <div className="mt-5">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-indigo-100 mb-2">Recommended next steps</div>
-            {steps.length ? (
-              <div className="flex flex-wrap gap-2">
-                {steps.slice(0, 4).map((s, i) => (
-                  <button key={s.label} onClick={s.go} className={`h-9 px-3.5 inline-flex items-center gap-2 rounded-xl text-[13px] font-semibold cursor-pointer transition-all ${i === 0 ? 'bg-white text-indigo-700 shadow-md hover:shadow-lg' : 'bg-white/15 text-white ring-1 ring-inset ring-white/25 hover:bg-white/25'}`}>
-                    <s.icon size={14} /> <span className="truncate max-w-[260px]">{s.label}</span> <ArrowRight size={13} className="opacity-70" />
-                  </button>
-                ))}
-              </div>
-            ) : <div className="inline-flex items-center gap-2 text-[13px] text-white/90"><CheckCircle2 size={15} /> All clear: nothing needs you right now.</div>}
-          </div>
+          <p className="mt-1 text-[13px] leading-relaxed text-indigo-50 line-clamp-2" title={summary}>{summary}</p>
         </div>
-        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-2.5 content-start">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 xl:w-[620px] shrink-0">
           <GlassStat icon={Cpu} label="AI engine" value={!ai ? '—' : ai.engine.configured ? `${ai.engine.provider} connected` : 'Not configured'}
             hint={!ai ? 'Restart the backend' : ai.engine.configured ? 'Drafts, replies and reports are AI-written' : 'Add an AI key in Integrations to enable drafts'} ok={ai?.engine.configured} />
           <GlassStat icon={ShieldCheck} label="Autopilot" value={ai ? `${ai.autopilot.auto.length} of ${ai.autopilot.auto.length + ai.autopilot.manual.length} task types` : '—'}
@@ -305,7 +283,7 @@ function Projects({ projects, onOpen }) {
         </div>
       </div>
       {!shown.length ? <div className="ai-glass-card rounded-2xl py-12 text-center text-[13px] text-slate-500">No projects match.</div>
-        : view === 'cards' ? <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">{shown.map(p => <ProjectCard key={p.id} p={p} onOpen={onOpen} />)}</div>
+        : view === 'cards' ? <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{shown.map(p => <ProjectCard key={p.id} p={p} onOpen={onOpen} />)}</div>
           : <ProjectsTable projects={shown} onOpen={onOpen} />}
     </section>
   );
@@ -341,26 +319,35 @@ function Agents({ ai }) {
   );
 }
 
+const RISK_TONE = { low: 'green', medium: 'amber', high: 'red' };
+
 function ApprovalQueue({ projects }) {
   const tasks = useApi('/tasks?status=pending');
   const path = useModulePath();
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
   const names = Object.fromEntries(projects.map(p => [p.id, p.name]));
   const list = [...(tasks.data || [])].sort((x, y) => (IMPACT_ORDER[x.impact] ?? 3) - (IMPACT_ORDER[y.impact] ?? 3));
+  const lowRisk = list.filter(t => t.detail?.risk === 'low').length;
+  const approveLow = () => run('low', async () => { const r = await api('/tasks/approve-low-risk', { method: 'POST' }); tasks.reload(true); toast(`${plural(r.approved, 'low-risk change')} approved`); });
   return (
-    <Card className="h-full" title="Waiting for your approval" subtitle={tasks.data ? `${plural(list.length, 'change')} the agents proposed` : 'Loading…'}
-      action={<Link to={path('automation')} className="text-[12px] font-semibold text-indigo-700 hover:underline whitespace-nowrap">Review all</Link>}>
+    <Card className="h-full" title="To approve" subtitle={tasks.data ? `${plural(list.length, 'change')} drafted by the agents` : 'Loading…'}
+      action={<div className="flex items-center gap-2">{lowRisk > 0 && <Button size="sm" variant="primary" busy={busy === 'low'} onClick={approveLow}>Approve {lowRisk} low-risk</Button>}<Link to={path('automation')} className="text-[12px] font-semibold text-indigo-700 hover:underline whitespace-nowrap">Review all</Link></div>}>
+      <ErrorNote>{error}</ErrorNote>
       {tasks.error ? <ErrorNote>{tasks.error.message}</ErrorNote> : list.length ? (
         <ul className="space-y-2">
-          {list.slice(0, 6).map(t => (
+          {list.slice(0, 5).map(t => (
             <li key={t.id} className="rounded-xl ring-1 ring-inset ring-slate-200 px-3 py-2.5 flex items-start gap-2.5">
               <Bot size={15} className="text-violet-500 mt-0.5 shrink-0" />
-              <span className="min-w-0 flex-1"><span className="block text-[13px] text-slate-800 line-clamp-2">{t.title}</span><span className="block text-[11px] text-slate-500 truncate">{names[t.business_id] || '—'} · {t.agent} agent</span></span>
-              <Badge tone={t.impact === 'High' ? 'red' : t.impact === 'Medium' ? 'amber' : 'gray'}>{t.impact}</Badge>
+              <span className="min-w-0 flex-1"><span className="block text-[13px] text-slate-800 line-clamp-2">{t.title}</span><span className="block text-[11px] text-slate-500 truncate">{names[t.business_id] || '—'} · {t.agent} agent</span>
+                {t.detail?.draft?.changes?.[0]?.after && <span className="mt-1 block text-[11.5px] text-emerald-800 bg-emerald-50 rounded-md px-2 py-1 line-clamp-2" title={t.detail.draft.changes[0].after}>{t.detail.draft.changes[0].label}: {t.detail.draft.changes[0].after}</span>}</span>
+              <span className="flex flex-col items-end gap-1"><Badge tone={t.impact === 'High' ? 'red' : t.impact === 'Medium' ? 'amber' : 'gray'}>{t.impact}</Badge>{t.detail?.risk && <Badge tone={RISK_TONE[t.detail.risk]}>{t.detail.risk} risk</Badge>}</span>
             </li>
           ))}
-          {list.length > 6 && <li className="text-[12px] text-slate-500 text-center pt-1">+{list.length - 6} more in the queue</li>}
+          {list.length > 5 && <li className="text-[12px] text-slate-500 text-center pt-1">+{list.length - 5} more in the queue</li>}
         </ul>
       ) : tasks.data && <div className="py-6 text-center text-[13px] text-slate-500"><CheckCircle2 size={22} className="mx-auto text-emerald-500 mb-1" />Nothing waiting. The agents are up to date.</div>}
+      {toastNode}
     </Card>
   );
 }
@@ -528,12 +515,31 @@ function ActivityLog({ projects }) {
 }
 
 /** Equal-height cards in a row; the column count follows how many cards are present. */
-function Row({ children }) {
-  const items = React.Children.toArray(children).filter(Boolean);
-  if (!items.length) return null;
-  const cols = { 1: 'lg:grid-cols-1', 2: 'lg:grid-cols-2', 3: 'lg:grid-cols-3' }[Math.min(items.length, 3)];
-  return <div className={`grid grid-cols-1 ${cols} gap-4 items-stretch`}>{items}</div>;
+const PANELS = {
+  performance: { label: 'Performance', icon: BarChart3, hint: 'Calls, directions and website clicks; projects by status' },
+  health: { label: 'Project health', icon: HeartPulse, hint: 'Scores by area and which services run where' },
+  agents: { label: 'AI agents & schedule', icon: Bot, hint: "What each agent did and what's scheduled next" },
+  activity: { label: 'Activity log', icon: Activity, hint: 'Everything the team and the agents did' }
+};
+
+function MoreCard({ onPanel, onReports }) {
+  const Item = ({ icon: Icon, label, hint, onClick }) => (
+    <button type="button" onClick={onClick} className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-slate-50 ring-1 ring-inset ring-transparent hover:ring-slate-200 cursor-pointer">
+      <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0"><Icon size={15} /></span>
+      <span className="flex-1 min-w-0"><span className="block text-[13px] font-semibold text-slate-900">{label}</span><span className="block text-[11.5px] text-slate-500 truncate">{hint}</span></span>
+      <ChevronRight size={15} className="text-slate-400 shrink-0" />
+    </button>
+  );
+  return (
+    <Card title="More" subtitle="Details open in a side panel">
+      <div className="-mx-2 space-y-0.5">
+        {Object.entries(PANELS).map(([id, p]) => <Item key={id} icon={p.icon} label={p.label} hint={p.hint} onClick={() => onPanel(id)} />)}
+        <Item icon={FileText} label="Monthly reports" hint="Draft every client's report in one go" onClick={onReports} />
+      </div>
+    </Card>
+  );
 }
+
 
 /* ── Page ────────────────────────────────────────────────────────────────── */
 
@@ -543,6 +549,8 @@ function Dashboard() {
   const [, choose] = useSeoBusiness();
   const navigate = useNavigate();
   const path = useModulePath();
+  const [panel, setPanel] = useState(null); // side panel: performance | health | agents | activity
+  const [reports, setReports] = useState(false);
   const projects = pf.data?.projects || [];
   const t = pf.data?.totals;
   usePoll(() => pf.reload(true), projects.some(p => p.audit_running), 5000);
@@ -567,11 +575,11 @@ function Dashboard() {
       {outdated && (
         <div className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-[13px] text-amber-900 flex items-start gap-2">
           <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-          <span>Some sections are hidden because the backend is running an older version. Restart it (<code className="font-mono text-[12px]">python -m uvicorn app.main:app --port 8100</code> in <code className="font-mono text-[12px]">backend</code>) and reload.</span>
+          <span>Some sections are hidden because the backend is running an older version. Restart it (<code className="font-mono text-[12px]">python -m uvicorn app.main:app --port 8000</code> in <code className="font-mono text-[12px]">backend</code>) and reload.</span>
         </div>
       )}
 
-      <Briefing data={pf.data} me={me.data} onOpenProject={openProject} />
+      <Briefing data={pf.data} me={me.data} />
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Kpi icon={Briefcase} tone="indigo" label="Projects" value={t.projects} hint={`${t.by_status.active} active · ${t.by_status.needs_approval} pending`} />
@@ -582,29 +590,28 @@ function Dashboard() {
         <Kpi icon={Target} tone="emerald" label="Leads · 30 days" value={t.leads_30} hint="All projects" />
       </div>
 
-      <Projects projects={projects} onOpen={(id) => openProject(id)} />
-
-      <section>
-        <SectionHeader icon={Bot} title="AI operations" subtitle="What the agents propose, what waits for you, and what runs next" />
-        <Row>
-          {ai && <Agents ai={ai} />}
-          <ApprovalQueue projects={projects} />
-          {upcoming && <AgentSchedule upcoming={upcoming} />}
-        </Row>
-      </section>
-
-      <section>
-        <SectionHeader icon={Activity} title="Performance & health" subtitle="Results across every project" />
-        <div className="space-y-4">
-          {insights && <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-stretch"><CustomerActions insights={insights} /><Portfolio projects={projects} totals={t} /></div>}
-          <Row>
-            {!insights && <Portfolio projects={projects} totals={t} />}
-            {areas && <AreaHealth areas={areas} total={t.projects} />}
-            {coverage && <Coverage coverage={coverage} total={t.projects} />}
-            <ActivityLog projects={projects} />
-          </Row>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
+        <div className="xl:col-span-2 space-y-5 min-w-0">
+          <CopilotPriorities onOpenProject={openProject} />
+          <Projects projects={projects} onOpen={(id) => openProject(id)} />
         </div>
-      </section>
+        <aside className="space-y-5 min-w-0">
+          <CopilotAlerts onOpenProject={openProject} />
+          <ApprovalQueue projects={projects} />
+          <MoreCard onPanel={setPanel} onReports={() => setReports(true)} />
+        </aside>
+      </div>
+
+      <Drawer open={Boolean(panel)} onClose={() => setPanel(null)} title={PANELS[panel]?.label} subtitle={PANELS[panel]?.hint}>
+        <Tabs value={panel} onChange={setPanel} tabs={Object.entries(PANELS).map(([id, p]) => ({ id, label: p.label }))} />
+        <div className="mt-4 space-y-4">
+          {panel === 'performance' && <>{insights && <CustomerActions insights={insights} />}<Portfolio projects={projects} totals={t} /></>}
+          {panel === 'health' && <>{areas && <AreaHealth areas={areas} total={t.projects} />}{coverage && <Coverage coverage={coverage} total={t.projects} />}</>}
+          {panel === 'agents' && <>{ai && <Agents ai={ai} />}{upcoming && <AgentSchedule upcoming={upcoming} />}</>}
+          {panel === 'activity' && <ActivityLog projects={projects} />}
+        </div>
+      </Drawer>
+      <ReportsModal open={reports} onClose={() => setReports(false)} />
     </div>
   );
 }

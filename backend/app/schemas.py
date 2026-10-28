@@ -66,6 +66,36 @@ class DiscoverIn(BaseModel):
     city: str = ""
 
 
+class AuditSummaryIn(BaseModel):
+    """The essentials of a website audit report, as the report screen has them."""
+    target: str = Field(max_length=2000)
+    score: int | None = None
+    scores: dict[str, int | None] = Field(default_factory=dict)
+    pages: int = 0
+    vitals: dict[str, str | None] = Field(default_factory=dict)
+    issues: list[dict[str, Any]] = Field(default_factory=list, max_length=300)
+
+
+class PageRewriteIn(BaseModel):
+    kind: Literal["title", "meta"]
+    business: dict[str, str | None] = Field(default_factory=dict)  # name, category, area, city, phone
+    pages: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
+
+
+class OnboardAssistIn(BaseModel):
+    """What the onboarding form holds so far, and the Maps listing it came from (if any)."""
+    name: str = Field(default="", max_length=255)
+    primary_category: str = Field(default="", max_length=160)
+    description: str = Field(default="", max_length=1000)
+    phone: str = Field(default="", max_length=40)
+    website: str = Field(default="", max_length=300)
+    address: str = Field(default="", max_length=500)
+    area: str = Field(default="", max_length=120)
+    city: str = Field(default="", max_length=120)
+    services: list[Annotated[str, Field(max_length=120)]] = Field(default_factory=list, max_length=40)
+    place_id: str | None = Field(default=None, max_length=300)
+
+
 class SuggestionIn(BaseModel):
     source: Literal["google_maps", "openstreetmap"]
     ref: str = Field(min_length=1, max_length=300)
@@ -94,6 +124,13 @@ class WebsiteAuditIn(BaseModel):
     strategy: Literal["mobile", "desktop"] = "mobile"
     crawl_pages: int = Field(default=10, ge=1, le=50)
     business_id: int | None = None  # set when this is the business's own site: the scan also updates its audits
+
+
+class CompetitorAuditIn(BaseModel):
+    """Audit several competitor websites in one go (no business attached)."""
+    urls: list[HttpUrl] = Field(min_length=1, max_length=20)
+    strategy: Literal["mobile", "desktop"] = "mobile"
+    crawl_pages: int = Field(default=10, ge=1, le=50)
 
 
 class LighthouseAuditIn(BaseModel):

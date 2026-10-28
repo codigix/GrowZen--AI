@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
-  Sparkles, Check, X, Bot, ShieldCheck, Loader2, ArrowRight, CheckCircle2,
+  Sparkles, Check, X, Bot, ShieldCheck, Loader2, ArrowRight, CheckCircle2, TrendingUp,
   AlertTriangle, ShieldAlert, Zap, Filter, Search, RefreshCw, Cpu, Layers,
   Activity, Eye, Terminal, ChevronDown, ChevronRight, Lock, Unlock, Play,
   FileCode, CheckCheck, MessageSquare, Globe, ExternalLink, ArrowUpRight,
@@ -186,12 +186,33 @@ const REJECTION_CHIPS = [
 /**
  * Task Card: High-contrast Obsidian card with code diff viewer, impact metrics & learning loop
  */
+const RISK_STYLE = { low: 'bg-emerald-50 text-emerald-700 border-emerald-200', medium: 'bg-amber-50 text-amber-700 border-amber-200', high: 'bg-rose-50 text-rose-700 border-rose-200' };
+
+function DraftChange({ c }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="rounded-lg bg-white border border-slate-200 overflow-hidden">
+      <div className="px-3 py-1.5 border-b border-slate-100 flex items-center justify-between text-[11px]">
+        <span className="font-semibold text-slate-700">{c.label}</span>
+        <button type="button" onClick={() => navigator.clipboard?.writeText(c.after).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })} className="text-slate-500 hover:text-slate-900 flex items-center gap-1 cursor-pointer">
+          {copied ? <CheckCheck size={12} className="text-emerald-700" /> : <Copy size={12} />}{copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      {c.before && <div className="px-3 pt-2 text-[12px] text-slate-400 line-through decoration-slate-300 break-words">{c.before}</div>}
+      <pre className="px-3 py-2 text-[12px] text-slate-900 font-sans whitespace-pre-wrap break-words max-h-48 overflow-y-auto">{c.after}</pre>
+    </div>
+  );
+}
+
 function TaskCard({ t, businessName, onDone }) {
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState('');
   const [showDetail, setShowDetail] = useState(false);
   const [copied, setCopied] = useState(false);
   const [busy, error, run] = useAction();
+  const [task, setTask] = useState(t);
+  const draft = task.detail?.draft;
+  const redraft = () => run('d', async () => setTask(await api(`/tasks/${t.id}/redraft`, { method: 'POST' })));
 
   const decide = (approve) => run(approve ? 'a' : 'r', async () => {
     const out = await api(`/tasks/${t.id}/${approve ? 'approve' : 'reject'}`, {
@@ -237,6 +258,7 @@ function TaskCard({ t, businessName, onDone }) {
                 {t.title}
               </span>
               <Badge tone="blue">{t.kind ? t.kind.replace(/_/g, ' ') : 'Task'}</Badge>
+              {task.detail?.risk && <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${RISK_STYLE[task.detail.risk]}`} title={task.detail.risk === 'low' ? 'Text or markup only: safe to approve in bulk' : task.detail.risk === 'high' ? 'Changes what the public sees or whether the site can be found' : 'Check before approving'}>{task.detail.risk} risk</span>}
               <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
                 isHighImpact
                   ? 'bg-rose-500/15 text-rose-700 border-rose-500/30'
@@ -292,22 +314,33 @@ function TaskCard({ t, businessName, onDone }) {
         )}
       </div>
 
-      {/* Target Clean URL Slug Banner (for Moraya Hospital context) */}
-      <div className="mt-3.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
-        <div className="flex items-center gap-2 truncate">
+      {draft?.page && (
+        <div className="mt-3.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2 text-[11px] text-slate-500 truncate">
           <Globe size={13} className="text-cyan-700 shrink-0" />
-          <span className="text-slate-500">Target Entity:</span>
-          <span className="text-cyan-700 font-mono font-medium truncate">
-            https://morayamultispecialitycharitablehospital.com/cataract-surgery-in-pcmc
-          </span>
+          <span>Page:</span>
+          <a href={draft.page} target="_blank" rel="noreferrer" className="text-cyan-700 font-mono font-medium truncate hover:underline">{draft.page}</a>
         </div>
-        <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-700 shrink-0 ml-2">
-          Verified Target
-        </span>
-      </div>
+      )}
+
+      {draft && (
+        <div className="mt-3.5 rounded-xl bg-slate-50 border border-slate-200 p-3.5 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
+              <Sparkles size={13} className="text-violet-600" />
+              {draft.source === 'ai' ? 'Drafted by AI' : 'Drafted from the audit (rules)'}
+            </span>
+            <button type="button" onClick={redraft} disabled={busy === 'd'} className="text-[11px] font-semibold text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50">
+              <RefreshCw size={11} className={busy === 'd' ? 'animate-spin' : ''} /> Redraft
+            </button>
+          </div>
+          <p className="text-[12.5px] text-slate-700">{draft.summary}</p>
+          {draft.changes.map((c, i) => <DraftChange key={i} c={c} />)}
+          {draft.ai_error && <p className="text-[11px] text-amber-700">AI draft unavailable ({draft.ai_error}); showing the rule-based draft.</p>}
+        </div>
+      )}
 
       {/* Code / Proposal Content Preview Box */}
-      {proposalContent && (
+      {proposalContent && !draft && (
         <div className="mt-3.5 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden">
           <div className="px-3.5 py-1.5 bg-white border-b border-slate-200 flex items-center justify-between text-[11px]">
             <span className="font-semibold text-slate-700 flex items-center gap-1.5">
@@ -448,6 +481,15 @@ export default function AiAgentPage() {
       return matchSearch && matchAgent && matchImpact;
     });
   }, [tasks.data, searchQuery, selectedAgentFilter, selectedImpactFilter]);
+
+  // Approve every draft the copilot rated low risk (text and markup only).
+  const lowRiskCount = (tasks.data || []).filter(t => t.detail?.risk === 'low').length;
+  const handleApproveLowRisk = () => run('low_risk', async () => {
+    const r = await api('/tasks/approve-low-risk', { method: 'POST' });
+    tasks.reload(true);
+    done.reload(true);
+    toast(`${r.approved} low-risk change${r.approved === 1 ? '' : 's'} approved`);
+  });
 
   // Bulk Approve All High Impact Tasks
   const handleBatchApproveHigh = () => {
@@ -646,6 +688,11 @@ export default function AiAgentPage() {
 
             {/* Quick Bulk Action */}
             <div className="flex items-center gap-2 shrink-0">
+              {lowRiskCount > 0 && (
+                <Button size="sm" variant="primary" icon={CheckCheck} busy={busy === 'low_risk'} onClick={handleApproveLowRisk} className="text-xs">
+                  Approve {lowRiskCount} low-risk
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="secondary"

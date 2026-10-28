@@ -4,12 +4,13 @@ import {
   Search, Smartphone, Monitor, Download, CheckCircle2, XCircle, CircleDashed, History, ArrowUp, ArrowDown, Loader2, Globe, Gauge,
   FileText, ShieldCheck, RotateCw, ExternalLink, Accessibility, BadgeCheck, Sparkles, Clock, ArrowRight
 } from 'lucide-react';
-import { Card, Button, Badge, ScoreRing, inputCls, ErrorNote, useToast, useAction } from './SeoUi';
+import { Card, Button, Badge, ScoreRing, Tabs, inputCls, ErrorNote, useToast, useAction } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 import Improvements from './OnPageImprovements';
 import { PagesCard } from './SitePages';
 import { pathOnly as pathOf, hostOf, LEVEL_ORDER, SEVERITY_TONE as TONE } from './siteUtils';
 import LighthouseDetails from './LighthouseDetails';
+import { AuditSummary, PageRewrites } from './AuditAI';
 
 /**
  * Audit any website through the SEO backend: Google PageSpeed (Lighthouse) for SEO, speed,
@@ -307,40 +308,137 @@ function LighthouseChecks({ checks }) {
   );
 }
 
-function HistoryCard({ history, current, running, onView, onRerun }) {
-  const [q, setQ] = useState('');
-  const list = (history.data || []).filter(h => !q || h.target.toLowerCase().includes(q.toLowerCase())).slice(0, 20);
+/** Score history as a small line: oldest left, latest right. */
+function Sparkline({ values, width = 160, height = 36 }) {
+  if (values.length < 2) return <span className="text-[11px] text-slate-400">First audit of this site</span>;
+  const min = Math.min(...values, 0), max = Math.max(...values, 100);
+  const x = (i) => (i / (values.length - 1)) * (width - 6) + 3;
+  const y = (v) => height - 3 - ((v - min) / (max - min || 1)) * (height - 6);
+  const d = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const last = values[values.length - 1];
   return (
-    <Card title="Recent audits" subtitle="Every website checked by your team" action={<History size={15} className="text-slate-400" />}>
-      {!history.data ? (
-        <div className="py-6 flex justify-center text-slate-500"><Loader2 size={16} className="animate-spin" /></div>
-      ) : history.data.length === 0 ? (
-        <div className="py-6 text-center text-[13px] text-slate-500">No audits yet. Run your first one above.</div>
-      ) : (
-        <>
-          {history.data.length > 6 && <input className={`${inputCls} mb-3`} placeholder="Filter by website" value={q} onChange={e => setQ(e.target.value)} />}
-          <div className="divide-y divide-slate-100">
-            {list.map(h => {
-              const lvl = h.score == null ? null : lhLevel(h.score);
-              return (
-                <div key={h.id} className={`flex items-center gap-3 py-2.5 px-2 -mx-2 rounded-lg ${h.id === current ? 'bg-indigo-50' : ''}`}>
-                  <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-[14px] font-bold tabular-nums shrink-0 ${lvl === 'good' ? 'bg-emerald-50 text-emerald-700' : lvl === 'warning' ? 'bg-amber-50 text-amber-700' : lvl ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-400'}`}>
-                    {h.status === 'done' ? h.score ?? '—' : ['queued', 'running'].includes(h.status) ? <Loader2 size={14} className="animate-spin" /> : '!'}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-medium text-slate-900 truncate" title={h.target}>{hostOf(h.target)}<span className="text-slate-400 font-normal">{pathOf(h.target) !== '/' ? pathOf(h.target) : ''}</span></div>
-                    <div className="text-[11.5px] text-slate-500">{fmtDateTime(h.finished_at || h.created_at)} · {h.status === 'failed' ? 'failed' : `${(h.issues || []).length} issues`}</div>
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-<Button size="sm" variant="ghost" onClick={() => onView(h)}>{['queued', 'running'].includes(h.status) ? 'Watch' : 'View'}</Button>
-                    <Button size="sm" variant="ghost" icon={RotateCw} disabled={running} onClick={() => onRerun(h)} aria-label="Re-run audit" />
-                  </div>
-                </div>
-              );
-            })}
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Scores: ${values.join(', ')}`}>
+      <path d={d} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={x(values.length - 1)} cy={y(last)} r="3.5" fill="#6366f1" stroke="#fff" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+const siteKey = (u) => `${hostOf(u)}${pathOf(u) !== '/' ? pathOf(u) : ''}`;
+const scoreTone = (s) => (s == null ? 'bg-slate-100 text-slate-400' : lhLevel(s) === 'good' ? 'bg-emerald-50 text-emerald-700' : lhLevel(s) === 'warning' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700');
+
+/** Recent audits, one row per website: latest score, change since the previous run, and its past runs. */
+function RecentSites({ history, current, running, onView, onRerun }) {
+  const [open, setOpen] = useState(null);
+  const [q, setQ] = useState('');
+  const [all, setAll] = useState(false);
+  const groups = useMemo(() => {
+    const by = {};
+    (history.data || []).forEach(h => { (by[siteKey(h.target)] = by[siteKey(h.target)] || []).push(h); });
+    return Object.entries(by).map(([key, runs]) => {
+      const done = runs.filter(r => r.status === 'done' && r.score != null);
+      return { key, runs, latest: runs[0], done, delta: done.length > 1 ? done[0].score - done[1].score : null };
+    }).filter(g => !q || g.key.includes(q.toLowerCase()));
+  }, [history.data, q]);
+  const shown = all ? groups : groups.slice(0, 8);
+  return (
+    <Card title="Recent audits" subtitle={history.data ? `${groups.length} website${groups.length === 1 ? '' : 's'} checked by your team` : 'Loading…'}>
+      {!history.data ? <div className="py-6 flex justify-center text-slate-400"><Loader2 size={16} className="animate-spin" /></div>
+        : !history.data.length ? <div className="py-6 text-center text-[13px] text-slate-500">No audits yet. Run your first one.</div> : (
+          <>
+            {history.data.length > 6 && (
+              <div className="relative mb-3"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input className={`${inputCls} pl-8`} placeholder="Filter websites" value={q} onChange={e => setQ(e.target.value)} aria-label="Filter websites" /></div>
+            )}
+            <ul className="-mx-2 space-y-0.5">
+              {shown.map(g => {
+                const active = g.runs.some(r => r.id === current);
+                const busyRun = ['queued', 'running'].includes(g.latest.status);
+                const best = g.done[0];
+                return (
+                  <li key={g.key} className={`rounded-xl ${active ? 'bg-indigo-50/70 ring-1 ring-inset ring-indigo-100' : 'hover:bg-slate-50'}`}>
+                    <div className="flex items-center gap-2.5 px-2 py-2">
+                      <button type="button" onClick={() => setOpen(open === g.key ? null : g.key)} className="flex-1 min-w-0 flex items-center gap-2.5 text-left cursor-pointer" aria-expanded={open === g.key}>
+                        <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-[14px] font-bold tabular-nums shrink-0 ${scoreTone(best?.score)}`}>{busyRun ? <Loader2 size={14} className="animate-spin" /> : best ? best.score : '!'}</span>
+                        <span className="min-w-0">
+                          <span className="block text-[13px] font-semibold text-slate-900 truncate" title={g.latest.target}>{g.key}</span>
+                          <span className="block text-[11.5px] text-slate-500">
+                            {g.runs.length} audit{g.runs.length === 1 ? '' : 's'} · {fmtDateTime(g.latest.finished_at || g.latest.created_at)}
+                            {g.delta ? <span className={`ml-1.5 font-semibold ${g.delta > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{g.delta > 0 ? '▲' : '▼'}{Math.abs(g.delta)}</span> : null}
+                          </span>
+                        </span>
+                      </button>
+                      {best && <Button size="sm" variant="ghost" onClick={() => onView(best)}>View</Button>}
+                      <button type="button" disabled={running} onClick={() => onRerun(g.latest)} title="Audit again" aria-label={`Audit ${g.key} again`} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-white cursor-pointer disabled:opacity-40"><RotateCw size={14} /></button>
+                    </div>
+                    {open === g.key && (
+                      <ul className="px-2 pb-2 pl-14 space-y-1">
+                        {g.runs.slice(0, 10).map(r => (
+                          <li key={r.id} className="flex items-center gap-2 text-[12px]">
+                            <span className={`w-8 text-center rounded-md font-bold tabular-nums ${scoreTone(r.score)}`}>{r.status === 'done' ? r.score ?? '—' : ['queued', 'running'].includes(r.status) ? '…' : '!'}</span>
+                            <span className="flex-1 text-slate-600">{fmtDateTime(r.finished_at || r.created_at)} · {r.status === 'failed' ? 'failed' : `${(r.issues || []).length} issues`}</span>
+                            <button type="button" onClick={() => onView(r)} className="font-semibold text-indigo-700 hover:underline cursor-pointer">{['queued', 'running'].includes(r.status) ? 'Watch' : 'Open'}</button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {groups.length > 8 && <button type="button" onClick={() => setAll(a => !a)} className="mt-2 text-[12px] font-semibold text-indigo-700 hover:underline cursor-pointer">{all ? 'Show fewer' : `Show all ${groups.length} websites`}</button>}
+          </>
+        )}
+    </Card>
+  );
+}
+
+/** The latest report at a glance: overall score, the five scores, history for this site. */
+function LatestReport({ report, history, onOpen }) {
+  const ps = report.result?.pagespeed;
+  const crawl = report.result?.crawl;
+  const runs = (history.data || []).filter(h => siteKey(h.target) === siteKey(report.target) && h.status === 'done' && h.score != null);
+  const scores = runs.slice(0, 10).map(h => h.score).reverse();
+  const prev = runs.find(h => h.id !== report.id && new Date(h.finished_at) < new Date(report.finished_at));
+  const delta = prev && report.score != null ? report.score - prev.score : null;
+  const issues = report.issues || [];
+  const counts = Object.fromEntries(LEVELS.map(l => [l, issues.filter(i => i.level === l).length]));
+  const rows = [...CATEGORIES.map(([k, l]) => [l, ps?.scores?.[k] ?? null]), ['On-page', crawl?.score ?? null]];
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Latest report</div>
+          <a href={report.target} target="_blank" rel="noreferrer" className="text-[15px] font-semibold text-slate-900 hover:text-indigo-700 inline-flex items-center gap-1.5 max-w-full"><span className="truncate">{siteKey(report.target)}</span><ExternalLink size={12} className="text-slate-400 shrink-0" /></a>
+          <div className="text-[12px] text-slate-500">{fmtDateTime(report.finished_at)}{report.fromBusiness ? ' · scheduled audit' : ''}</div>
+        </div>
+        <Button variant="primary" icon={ArrowRight} onClick={onOpen}>View report</Button>
+      </div>
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-[auto_1fr] gap-5 items-center">
+        <div className="flex items-center gap-4">
+          <ScoreRing score={report.score ?? 0} label="Overall" size={104} level={lhLevel(report.score ?? 0)} />
+          <div className="max-w-[230px]">
+            <div className={`text-[14px] font-semibold ${LH_TEXT[lhLevel(report.score ?? 0)]}`}>{lhWord(report.score ?? 0)}</div>
+            <div className="text-[12px] text-slate-600 mt-0.5">{verdict(report, issues)}</div>
+            {delta !== null && delta !== 0 && <div className={`mt-1 text-[12px] font-semibold inline-flex items-center gap-1 ${delta > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{delta > 0 ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{Math.abs(delta)} since the previous audit</div>}
           </div>
-        </>
-      )}
+        </div>
+        <div className="space-y-1.5">
+          {rows.map(([l, v]) => {
+            const lvl = v == null ? null : lhLevel(v);
+            return (
+              <div key={l} className="flex items-center gap-3 text-[12.5px]">
+                <span className="w-28 shrink-0 text-slate-600">{l}</span>
+                <span className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden"><span className={`block h-full rounded-full ${lvl === 'good' ? 'bg-emerald-500' : lvl === 'warning' ? 'bg-amber-400' : lvl ? 'bg-red-500' : ''}`} style={{ width: `${v ?? 0}%` }} /></span>
+                <span className={`w-8 text-right font-bold tabular-nums ${lvl ? LH_TEXT[lvl] : 'text-slate-400'}`}>{v ?? '—'}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-1.5">{LEVELS.map(l => counts[l] > 0 && <span key={l} className={`text-[10.5px] font-bold uppercase px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[l]}`}>{counts[l]} {l}</span>)}{!issues.length && <span className="text-[12px] text-emerald-700">No issues found</span>}</div>
+        <div className="flex items-center gap-2 text-[11px] text-slate-500"><span>Score history</span><Sparkline values={scores} /></div>
+      </div>
     </Card>
   );
 }
@@ -413,76 +511,69 @@ export function AuditStep({ sa, business, onOpenReport }) {
   const chip = (on) => `h-9 px-3 flex items-center gap-1.5 text-[12px] font-semibold rounded-lg cursor-pointer transition-colors ${on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-900'}`;
   const own = business?.website && hostOf(normalise(url)) === hostOf(business.website);
   return (
-    <div className="space-y-5">
-      <Card>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 ring-1 ring-inset ring-indigo-100 flex items-center justify-center text-indigo-600 shrink-0"><Globe size={18} /></div>
-          <div className="min-w-0">
-            <div className="text-[15px] font-semibold text-slate-900">Audit a website</div>
-            <div className="text-[12px] text-slate-500">Google Lighthouse (SEO, speed, accessibility, best practices) plus a crawl of every page. Watch it scan live, then get the report.</div>
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
+      <div className="xl:col-span-2 space-y-5 min-w-0">
+        <Card>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-500/20"><Globe size={18} /></div>
+            <div className="min-w-0">
+              <div className="text-[15px] font-semibold text-slate-900">Audit a website</div>
+              <div className="text-[12px] text-slate-500">Google Lighthouse plus a crawl of every page. Watch it scan live, then get the report.</div>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative flex-1 min-w-[240px]">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input className={`${inputCls} pl-9 h-10`} placeholder="https://yourbusiness.com" value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && sa.start()} aria-label="Website address" />
+          <div className="mt-4 flex flex-col sm:flex-row gap-2.5">
+            <div className="relative flex-1 min-w-0">
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input className={`${inputCls} pl-10 h-11 text-[14px]`} placeholder="https://yourbusiness.com" value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && sa.start()} aria-label="Website address" />
+            </div>
+            <Button variant="primary" className="h-11 px-5" icon={Search} busy={busy === 'start' || running} onClick={sa.start}>{running ? 'Auditing…' : 'Run audit'}</Button>
           </div>
-          <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-xl">
-            {[['mobile', Smartphone, 'Mobile'], ['desktop', Monitor, 'Desktop']].map(([s, I, l]) => (
-              <button key={s} type="button" onClick={() => setStrategy(s)} className={chip(strategy === s)}><I size={14} /> {l}</button>
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-xl">
+              {[['mobile', Smartphone, 'Mobile'], ['desktop', Monitor, 'Desktop']].map(([s, I, l]) => <button key={s} type="button" onClick={() => setStrategy(s)} className={chip(strategy === s)}><I size={14} /> {l}</button>)}
+            </div>
+            <select value={crawlPages} onChange={e => setCrawlPages(Number(e.target.value))} className="h-10 px-2.5 rounded-xl text-[12px] font-semibold text-slate-700 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer" aria-label="Pages to crawl">
+              {[5, 10, 25, 50].map(n => <option key={n} value={n}>Crawl {n} pages</option>)}
+            </select>
+            <span className="text-[12px] text-slate-500 min-w-0">
+              {own ? <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-600 shrink-0" /> Updates this business's scores, dashboard and AI tasks</span>
+                : business?.website ? <>Another site (not saved to {business.name}) · <button type="button" onClick={() => setUrl(business.website)} className="font-medium text-indigo-700 hover:underline cursor-pointer">use {hostOf(business.website)}</button></>
+                  : 'No website on file for this business; you can still check any site.'}
+            </span>
+          </div>
+          <ErrorNote>{error || audit.error?.message}</ErrorNote>
+        </Card>
+
+        {running && <LiveScan audit={audit.data} startedAt={sa.startedAt} strategy={strategy} />}
+
+        {!running && audit.data?.status === 'failed' && (
+          <Card>
+            <div className="flex items-start gap-3">
+              <XCircle size={18} className="text-red-600 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-[14px] font-semibold text-slate-900">The audit of {hostOf(audit.data.target)} couldn't finish</div>
+                <div className="text-[12.5px] text-slate-600 mt-0.5 break-words">{audit.data.error || 'The site could not be reached.'}</div>
+                <div className="text-[12px] text-slate-500 mt-1">Check the address opens in a browser, then run it again.</div>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {!running && report && <LatestReport report={report} history={sa.history} onOpen={onOpenReport} />}
+
+        {!running && !report && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[[ShieldCheck, 'Technical health', 'HTTPS, robots.txt, sitemap, indexing, broken pages and structured data.'], [FileText, 'Every page checked', 'Titles, meta descriptions, headings, content depth and image alt text.'], [Sparkles, 'Fixes, not just scores', 'Problems ranked by impact, with ready-to-paste code and copy.']].map(([I, t, d]) => (
+              <Card key={t}><div className="flex items-start gap-3"><div className="w-9 h-9 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 flex items-center justify-center text-slate-600 shrink-0"><I size={16} /></div><div><div className="text-[14px] font-semibold text-slate-900">{t}</div><div className="text-[12.5px] text-slate-500 mt-0.5">{d}</div></div></div></Card>
             ))}
           </div>
-          <select value={crawlPages} onChange={e => setCrawlPages(Number(e.target.value))} className="h-10 px-2.5 rounded-xl text-[12px] font-semibold text-slate-700 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer" aria-label="Pages to crawl">
-            {[5, 10, 25, 50].map(n => <option key={n} value={n}>Crawl {n} pages</option>)}
-          </select>
-          <Button variant="primary" icon={Search} busy={busy === 'start' || running} onClick={sa.start}>{running ? 'Auditing…' : 'Run audit'}</Button>
-        </div>
-        <div className="mt-2.5 text-[12px] text-slate-500">
-          {own ? <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-600" /> {business.name}'s website: results also update its scores, dashboard and AI agent tasks.</span>
-            : business?.website ? <>Checking another site (results aren't saved to {business.name}). <button type="button" onClick={() => setUrl(business.website)} className="font-medium text-indigo-700 hover:underline cursor-pointer">Use {hostOf(business.website)}</button></>
-              : `${business?.name || 'This business'} has no website on file yet; you can still check any site.`}
-        </div>
-        <ErrorNote>{error || audit.error?.message}</ErrorNote>
-      </Card>
+        )}
+      </div>
 
-      {running && <LiveScan audit={audit.data} startedAt={sa.startedAt} strategy={strategy} />}
-
-      {!running && audit.data?.status === 'failed' && (
-        <Card>
-          <div className="flex items-start gap-3">
-            <XCircle size={18} className="text-red-600 shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <div className="text-[14px] font-semibold text-slate-900">The audit of {hostOf(audit.data.target)} couldn't finish</div>
-              <div className="text-[12.5px] text-slate-600 mt-0.5 break-words">{audit.data.error || 'The site could not be reached.'}</div>
-              <div className="text-[12px] text-slate-500 mt-1">Check the address opens in a browser, then run it again.</div>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {!running && report && (
-        <Card>
-          <div className="flex flex-wrap items-center gap-4">
-            <span className={`w-14 h-14 rounded-2xl flex items-center justify-center text-[20px] font-bold tabular-nums shrink-0 ${report.score == null ? 'bg-slate-100 text-slate-400' : lhLevel(report.score) === 'good' ? 'bg-emerald-50 text-emerald-700' : lhLevel(report.score) === 'warning' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{report.score ?? '—'}</span>
-            <div className="flex-1 min-w-[200px]">
-              <div className="text-[14px] font-semibold text-slate-900">Latest report · {hostOf(report.target)}</div>
-              <div className="text-[12px] text-slate-500">{fmtDateTime(report.finished_at)} · {(report.issues || []).length} issues · {verdict(report, report.issues || [])}</div>
-            </div>
-            <Button variant="primary" icon={ArrowRight} onClick={onOpenReport}>View report</Button>
-          </div>
-        </Card>
-      )}
-
-      {!running && !report && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[[ShieldCheck, 'Technical health', 'HTTPS, robots.txt, sitemap, indexing, broken pages and structured data.'], [FileText, 'Every page checked', 'Titles, meta descriptions, headings, content depth and image alt text.'], [Sparkles, 'Fixes, not just scores', 'Problems ranked by impact, with ready-to-paste code and copy.']].map(([I, t, d]) => (
-            <Card key={t}><div className="flex items-start gap-3"><div className="w-9 h-9 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 flex items-center justify-center text-slate-600 shrink-0"><I size={16} /></div><div><div className="text-[14px] font-semibold text-slate-900">{t}</div><div className="text-[12.5px] text-slate-500 mt-0.5">{d}</div></div></div></Card>
-          ))}
-        </div>
-      )}
-
-      <HistoryCard history={sa.history} current={sa.current} running={running || busy === 'start'}
-        onView={h => { sa.setCurrent(h.id); if (h.status === 'done') onOpenReport(); }} onRerun={h => { setUrl(h.target); sa.launch(h.target); }} />
+      <aside className="min-w-0 xl:sticky xl:top-24">
+        <RecentSites history={sa.history} current={sa.current} running={running || busy === 'start'}
+          onView={h => { sa.setCurrent(h.id); if (h.status === 'done') onOpenReport(); }} onRerun={h => { setUrl(h.target); sa.launch(h.target); }} />
+      </aside>
     </div>
   );
 }
@@ -490,6 +581,7 @@ export function AuditStep({ sa, business, onOpenReport }) {
 /** Step 2: the report for the scan: summary, ranked improvements, Google checks, vitals, foundations, pages. */
 export function ReportStep({ sa, business, onNext }) {
   const [toast, toastNode] = useToast();
+  const [tab, setTab] = useState('fixes'); // fixes | pages | speed | google
   const a = sa.report;
   const ps = a?.result?.pagespeed;
   const crawl = a?.result?.crawl;
@@ -539,6 +631,7 @@ export function ReportStep({ sa, business, onNext }) {
     toast('Audit report downloaded');
   };
   const rerun = () => sa.launch(normalise(a.target));
+  const showTab = (t) => { setTab(t); document.getElementById('report-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 
   return (
     <div className="space-y-5">
@@ -547,10 +640,6 @@ export function ReportStep({ sa, business, onNext }) {
           <div className="min-w-0">
             <a href={a.target} target="_blank" rel="noreferrer" className="text-[16px] font-semibold text-slate-900 hover:text-indigo-700 inline-flex items-center gap-1.5 max-w-full"><span className="truncate">{a.target.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span><ExternalLink size={13} className="text-slate-400 shrink-0" /></a>
             <div className="text-[12px] text-slate-500">Audited {fmtDateTime(a.finished_at)}{ps?.strategy ? ` · ${ps.strategy}` : ''}{crawl ? ` · ${pages.length} page${pages.length === 1 ? '' : 's'} crawled` : ''}{a.fromBusiness ? ' · from the scheduled audit' : ''}</div>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" icon={RotateCw} busy={sa.busy === 'start' || sa.running} onClick={rerun}>Re-run audit</Button>
-            <Button size="sm" icon={Download} onClick={downloadPdf}>PDF report</Button>
           </div>
         </div>
         {a.error && <div className="mb-4 text-[12px] text-amber-800 bg-amber-50 ring-1 ring-inset ring-amber-200 rounded-xl px-3 py-2">Part of the audit didn't finish, so some scores are missing: {a.error}</div>}
@@ -576,23 +665,32 @@ export function ReportStep({ sa, business, onNext }) {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
         <div className="xl:col-span-2 space-y-5 min-w-0">
-          <Improvements issues={issues} pages={pages} business={subject} score={crawl?.score} technical={ps} onRecheck={rerun} rechecking={sa.busy === 'start' || sa.running} />
-          {ps && <LighthouseChecks checks={ps.seo_checks || []} />}
+          <AuditSummary report={a} ps={ps} pages={pages} issues={issues} onTab={showTab} />
+          <div id="report-tabs" className="scroll-mt-24">
+            <Tabs value={tab} onChange={setTab} tabs={[
+              { id: 'fixes', label: 'Fixes', count: issues.length },
+              { id: 'pages', label: 'Pages', count: pages.length },
+              { id: 'speed', label: 'Speed' },
+              { id: 'google', label: 'Google checks', count: (ps?.seo_checks || []).filter(c => c.status === 'fail').length }
+            ]} />
+          </div>
+          {tab === 'fixes' && <Improvements issues={issues} pages={pages} business={subject} score={crawl?.score} technical={ps} onRecheck={rerun} rechecking={sa.busy === 'start' || sa.running} />}
+          {tab === 'pages' && (pages.length ? <><PageRewrites pages={pages} subject={subject} /><PagesCard pages={pages} siteIssues={issues} /></> : <Card><div className="py-8 text-center text-[13px] text-slate-500">No pages were crawled in this audit.</div></Card>)}
+          {tab === 'speed' && (ps ? <Vitals ps={ps} /> : <Card><div className="py-8 text-center text-[13px] text-slate-500">Google Lighthouse didn't finish for this audit, so there are no speed results. Re-run the audit.</div></Card>)}
+          {tab === 'google' && <>{ps && <LighthouseChecks checks={ps.seo_checks || []} />}<LighthouseDetails auditId={ps?.lighthouse_audit_id} target={normalise(a.target)} pages={pages} strategy={ps?.strategy || 'mobile'} fallbackReason={ps?.fallback_reason} /></>}
         </div>
-        <div className="space-y-5 min-w-0">
-          {ps && <Vitals ps={ps} />}
+        <aside className="space-y-5 min-w-0 xl:sticky xl:top-24">
           {crawl && <Foundations crawl={crawl} />}
-        </div>
-      </div>
-
-      {pages.length > 0 && <PagesCard pages={pages} siteIssues={issues} />}
-
-      <LighthouseDetails auditId={ps?.lighthouse_audit_id} target={normalise(a.target)} pages={pages} strategy={ps?.strategy || 'mobile'} fallbackReason={ps?.fallback_reason} />
-
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button variant="primary" icon={ArrowRight} onClick={() => onNext('schema')}>Next: schema</Button>
+          <Card title="Next" subtitle="After the fixes">
+            <div className="space-y-2">
+              <Button className="w-full" variant="primary" icon={ArrowRight} onClick={() => onNext('schema')}>Structured data (schema)</Button>
+              <Button className="w-full" icon={RotateCw} busy={sa.busy === 'start' || sa.running} onClick={rerun}>Re-check the site</Button>
+              <Button className="w-full" icon={Download} onClick={downloadPdf}>Download PDF report</Button>
+            </div>
+          </Card>
+        </aside>
       </div>
       {toastNode}
     </div>

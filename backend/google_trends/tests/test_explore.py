@@ -2,8 +2,8 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.services import keyword_planner, trends_client
+from gt_app.main import app
+from gt_app.services import keyword_planner, trends_client
 
 client = TestClient(app)
 
@@ -100,7 +100,7 @@ def test_explore_endpoint_rejects_unknown_category():
 
 
 def test_explore_endpoint_upstream_failure_returns_503(monkeypatch):
-    from app.services.exceptions import TrendsUnavailableError
+    from gt_app.services.exceptions import TrendsUnavailableError
 
     def _raise(*a, **k):
         raise TrendsUnavailableError("down")

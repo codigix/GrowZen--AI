@@ -1,8 +1,8 @@
 import pandas as pd
 import pytest
 
-from app.services import trends_client
-from app.services.exceptions import InvalidTrendsRequestError, TrendsUnavailableError
+from gt_app.services import trends_client
+from gt_app.services.exceptions import InvalidTrendsRequestError, TrendsUnavailableError
 
 
 class _FakeTrendReq:

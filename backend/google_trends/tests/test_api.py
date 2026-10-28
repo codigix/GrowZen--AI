@@ -2,10 +2,10 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.schemas import RelatedKeyword, RegionalInterest, TrendSummary
-from app.services import keyword_planner
-from app.services.exceptions import TrendsUnavailableError
+from gt_app.main import app
+from gt_app.schemas import RelatedKeyword, RegionalInterest, TrendSummary
+from gt_app.services import keyword_planner
+from gt_app.services.exceptions import TrendsUnavailableError
 
 client = TestClient(app)
 

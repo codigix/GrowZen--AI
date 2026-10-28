@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     pagespeed_api_key: str = ""
     # Google Places API (New): find a business on Google Maps from an email / name (read-only)
     google_places_api_key: str = ""
+    # Google Places API (New): used by the competitor finder (see app/competitors)
+    google_api_key: str = ""
     # OpenStreetMap (Photon + Nominatim, no key): business-name suggestions and details while onboarding
     osm_lookup_enabled: bool = True
 
@@ -88,13 +90,6 @@ class Settings(BaseSettings):
     # Paid data (optional): DataForSEO for rank grids, keyword data, backlinks, citations.
     dataforseo_login: str = ""
     dataforseo_password: str = ""
-
-    # Google Trends keyword planner: separate microservice (see /google_trends at the repo root),
-    # its own process/venv/port so it can be run and debugged independently of this API.
-    google_trends_base_url: str = "http://localhost:8100"
-    # Generous: that service may expand related/rising keywords via several extra, throttled
-    # Google Trends calls to reach its target count, which can take tens of seconds.
-    google_trends_timeout_seconds: float = 90.0
 
     # Scheduler
     scheduler_enabled: bool = True
@@ -154,7 +149,9 @@ class Settings(BaseSettings):
 
     @property
     def google_trends_enabled(self) -> bool:
-        return bool(self.google_trends_base_url)
+        # The google_trends keyword planner now runs in-process (see services/google_trends_client.py),
+        # so it's always available whenever this backend is.
+        return True
 
 
 @lru_cache

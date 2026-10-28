@@ -1,8 +1,8 @@
 import pandas as pd
 import pytest
 
-from app.services import keyword_planner, trends_client
-from app.services.exceptions import TrendsUnavailableError
+from gt_app.services import keyword_planner, trends_client
+from gt_app.services.exceptions import TrendsUnavailableError
 
 
 def _iot_df(keyword, values):
@@ -81,7 +81,7 @@ def test_build_regional_interest_sorts_and_filters_zero(monkeypatch):
 
 
 def test_expand_candidate_keywords_bounded_and_deduped():
-    from app.schemas import RelatedKeyword
+    from gt_app.schemas import RelatedKeyword
 
     related = [RelatedKeyword(keyword="SEO Audit", score=1, source_type="top")]
     rising = [RelatedKeyword(keyword="seo audit tool", source_type="rising")]
@@ -102,7 +102,7 @@ def test_apply_limit_none_returns_everything():
 
 
 def test_expand_candidate_keywords_respects_max_candidates_override():
-    from app.schemas import RelatedKeyword
+    from gt_app.schemas import RelatedKeyword
 
     rising = [RelatedKeyword(keyword=f"kw {i}", source_type="rising") for i in range(10)]
 
