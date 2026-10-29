@@ -83,6 +83,7 @@ Interactive API docs are at http://localhost:8100/docs.
 ## Tests
 
 ```bash
+pip install -r requirements-dev.txt   # adds pytest on top of requirements.txt
 pytest -q
 ```
 
