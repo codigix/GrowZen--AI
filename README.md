@@ -22,7 +22,7 @@ alembic upgrade head                   # creates / updates the database tables
 uvicorn app.main:app --port 8100
 ```
 
-API docs: http://localhost:8100/docs
+API docs: http://localhost:8000/docs
 
 **Frontend: terminal 2**
 
@@ -46,7 +46,7 @@ All settings go in `backend/.env`; see `backend/.env.example` for the full list.
 
 | Setting | Turns on |
 |---|---|
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | "Connect Google account": imports the Business Profiles that account manages. Register `http://localhost:8100/api/v1/connections/google/callback` as a redirect URI and enable the Business Profile APIs |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | "Connect Google account": imports the Business Profiles that account manages. Register `http://localhost:8000/api/v1/connections/google/callback` as a redirect URI and enable the Business Profile APIs |
 | `GOOGLE_PLACES_API_KEY` | "Find by email": finds a business on Google Maps from an email address and its website |
 | `PAGESPEED_API_KEY` | Technical SEO audit; Lighthouse audits (PageSpeed engine) |
 | Node.js + `npm install -g lighthouse` + Chrome/Edge (no setting) | Lighthouse audits (local engine, original Lighthouse HTML). Options: `LIGHTHOUSE_*` in `.env.example` |
@@ -54,7 +54,7 @@ All settings go in `backend/.env`; see `backend/.env.example` for the full list.
 | `AI_PROVIDER` + `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | AI drafts (posts, review replies, descriptions), email reading, reports |
 | `INTAKE_IMAP_*`, `SMTP_*` | Reading the onboarding mailbox; sending reports and replies |
 
-The frontend has one setting, `VITE_API_URL` (in `frontend/.env`). Its default is `http://localhost:8100/api/v1`.
+The frontend has one setting, `VITE_API_URL` (in `frontend/.env`). Its default is `http://localhost:8000/api/v1`.
 
 ## Production
 

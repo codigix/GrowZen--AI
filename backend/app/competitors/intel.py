@@ -17,7 +17,7 @@ import re
 import threading
 import time
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any, Callable
 from urllib.parse import urljoin, urlparse
@@ -397,6 +397,44 @@ def _strategy(domain: str, comp: dict[str, Any], prof: dict[str, Any], local: di
     return out
 
 
+def _organic_rollup(serps: list[dict[str, Any]], n_keywords: int) -> list[dict[str, Any]]:
+    """Organic competitors across the keyword results so far, by visibility."""
+    domains: dict[str, dict[str, Any]] = {}
+    for s in serps:
+        for o in s["organic"]:
+            if o["mine"] or not o["domain"]:
+                continue
+            d = domains.setdefault(o["domain"], {"domain": o["domain"], "type": o["type"], "positions": {}, "urls": {}, "title": o["title"]})
+            if s["keyword"] not in d["positions"]:
+                d["positions"][s["keyword"]] = o["position"]
+                d["urls"][s["keyword"]] = o["url"]
+    for d in domains.values():
+        d["visibility"] = _visibility(d["positions"], n_keywords, CTR)
+        d["keywords_top10"] = len(d["positions"])
+        d["keywords_top3"] = sum(1 for p in d["positions"].values() if p <= 3)
+        d["avg_position"] = round(sum(d["positions"].values()) / len(d["positions"]), 1)
+    return sorted(domains.values(), key=lambda d: (-d["visibility"], d["avg_position"]))
+
+
+def _local_rollup(serps: list[dict[str, Any]], n_keywords: int) -> list[dict[str, Any]]:
+    """Google Maps competitors across the keyword results so far, by visibility."""
+    places: dict[str, dict[str, Any]] = {}
+    for s in serps:
+        for p in s["local"]:
+            if p["mine"]:
+                continue
+            key = str(p.get("cid") or _norm_name(p["name"]))
+            e = places.setdefault(key, {k: p.get(k) for k in ("name", "rating", "reviews", "category", "address", "website", "phone")} | {"positions": {}})
+            e["positions"].setdefault(s["keyword"], p["position"])
+    for e in places.values():
+        e["appearances"] = len(e["positions"])
+        e["best"] = min(e["positions"].values())
+        e["avg_position"] = round(sum(e["positions"].values()) / len(e["positions"]), 1)
+        e["visibility"] = _visibility(e["positions"], n_keywords, LOCAL_CTR)
+        e["domain"] = host_of(e.get("website"))
+    return sorted(places.values(), key=lambda e: (-e["visibility"], -(e.get("reviews") or 0)))
+
+
 def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Callable[[dict[str, Any]], None] = lambda e: None) -> dict[str, Any]:
     serper = Serper(countries.of(b))
     settings = get_settings()
@@ -405,15 +443,32 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
     total_steps = len(keywords) + 6
     step = 0
 
-    def progress(label: str) -> None:
+    def progress(label: str, found: dict[str, Any] | None = None) -> None:
         nonlocal step
         step += 1
-        on_progress({"step": label, "done": min(step, total_steps), "total": total_steps})
+        event = {"step": label, "done": min(step, total_steps), "total": total_steps}
+        if found is not None:
+            event["found"] = found  # shown by the page while the research is still running
+        on_progress(event)
+
+    def update(label: str, found: dict[str, Any]) -> None:
+        """Another result arrived inside the current step."""
+        on_progress({"step": label, "done": min(step, total_steps), "total": total_steps, "found": found})
+
+    def live(profiles_done: dict[str, Any] | None = None) -> dict[str, Any]:
+        """What is known so far: the keywords done, the competitors and Maps businesses found, their site profiles."""
+        n = len(keywords)
+        return {
+            "keywords": [{"keyword": x["keyword"], "you_organic": x["you_organic"], "you_local": x["you_local"], "first": x["organic"][0]["domain"] if x["organic"] else None} for x in serps],
+            "competitors": [{k: d[k] for k in ("domain", "type", "visibility", "keywords_top10", "keywords_top3", "avg_position")} for d in _organic_rollup(serps, n)[:12]],
+            "maps": [{k: e.get(k) for k in ("name", "rating", "reviews", "best", "appearances", "visibility", "website")} for e in _local_rollup(serps, n)[:10]],
+            "sites": profiles_done or {},
+        }
 
     # 1. Google results for every keyword: the organic top 10 and the Maps results.
     serps: list[dict[str, Any]] = []
     for kw in keywords:
-        progress(f"Google results for \"{kw}\"")
+        progress(f"Google results for \"{kw}\"", live() if serps else None)
         org = serper.search(kw, location)
         try:
             plc = serper.places(kw, location)
@@ -438,37 +493,8 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
         })
 
     # 2. Who competes: organic domains and Maps businesses, by visibility across all keywords.
-    domains: dict[str, dict[str, Any]] = {}
-    for s in serps:
-        for o in s["organic"]:
-            if o["mine"] or not o["domain"]:
-                continue
-            d = domains.setdefault(o["domain"], {"domain": o["domain"], "type": o["type"], "positions": {}, "urls": {}, "title": o["title"]})
-            if s["keyword"] not in d["positions"]:
-                d["positions"][s["keyword"]] = o["position"]
-                d["urls"][s["keyword"]] = o["url"]
-    for d in domains.values():
-        d["visibility"] = _visibility(d["positions"], len(keywords), CTR)
-        d["keywords_top10"] = len(d["positions"])
-        d["keywords_top3"] = sum(1 for p in d["positions"].values() if p <= 3)
-        d["avg_position"] = round(sum(d["positions"].values()) / len(d["positions"]), 1)
-    organic_competitors = sorted(domains.values(), key=lambda d: (-d["visibility"], d["avg_position"]))
-
-    places: dict[str, dict[str, Any]] = {}
-    for s in serps:
-        for p in s["local"]:
-            if p["mine"]:
-                continue
-            key = str(p.get("cid") or _norm_name(p["name"]))
-            e = places.setdefault(key, {k: p.get(k) for k in ("name", "rating", "reviews", "category", "address", "website", "phone")} | {"positions": {}})
-            e["positions"].setdefault(s["keyword"], p["position"])
-    for e in places.values():
-        e["appearances"] = len(e["positions"])
-        e["best"] = min(e["positions"].values())
-        e["avg_position"] = round(sum(e["positions"].values()) / len(e["positions"]), 1)
-        e["visibility"] = _visibility(e["positions"], len(keywords), LOCAL_CTR)
-        e["domain"] = host_of(e.get("website"))
-    local_competitors = sorted(places.values(), key=lambda e: (-e["visibility"], -(e.get("reviews") or 0)))
+    organic_competitors = _organic_rollup(serps, len(keywords))
+    local_competitors = _local_rollup(serps, len(keywords))
 
     # 3. Deep look at the top competing businesses (not directories), and at the business itself.
     # Place words (the business's area and city, and localities in competitors' addresses) mark
@@ -482,7 +508,7 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
     places_words = {w for w in _words(f"{b.area or ''} {b.city or ''}") if len(w) > 2} | {w for w, n in seen_localities.items() if n >= 2}
     away = other_cities(places_words, countries.of(b))
     targets = [d for d in organic_competitors if d["type"] == "business"][:4]
-    progress("Scanning competitors' websites")
+    progress("Scanning competitors' websites", live())
     profiles: dict[str, dict[str, Any]] = {}
 
     def scan(d: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -494,8 +520,10 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
 
     jobs = targets + ([{"domain": my_host, "name": b.name}] if my_host else [])
     with ThreadPoolExecutor(max_workers=5) as pool:
-        for dom, prof in pool.map(scan, jobs):
+        for fut in as_completed([pool.submit(scan, j) for j in jobs]):
+            dom, prof = fut.result()
             profiles[dom] = prof
+            update(f"Scanned {dom}", live({k: {"scanned": v.get("scanned"), "services": (v.get("services") or [])[:6], "avg_words": v.get("avg_words"), "blog": v.get("blog")} for k, v in profiles.items() if k != my_host}))
     my_profile = profiles.pop(my_host, None) if my_host else None
 
     progress("Finding where competitors are listed and linked")

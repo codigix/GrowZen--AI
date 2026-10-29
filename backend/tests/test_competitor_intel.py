@@ -153,3 +153,36 @@ def test_api_explains_a_missing_key(client):
     assert client.get(f"/api/v1/businesses/{bid}/competitor-research").json()["setup"]["google_results"] is False
     r = client.post(f"/api/v1/businesses/{bid}/competitor-research", json={"keywords": ["dentist in pune"]})
     assert r.status_code == 400 and "SERPER_API_KEY" in r.json()["detail"]
+
+
+def test_progress_streams_what_is_found_so_far(faked):
+    me = SimpleNamespace(id=1, name="My Dental", website="https://mydental.in", phone="", area="Baner", city="Pune",
+                         primary_category="Dentist", secondary_categories=[], services=[], rating=4.2, review_count=40)
+    events = []
+    r = intel.analyse(me, KEYWORDS, "Pune, India", events.append)
+    found = [e["found"] for e in events if "found" in e]
+    assert found, "the page shows competitors while the research is still running"
+    # After the first keyword there are already competitors; later events only add to them.
+    assert found[0]["keywords"] and found[0]["competitors"]
+    assert len(found[-1]["keywords"]) >= len(found[0]["keywords"])
+    assert any(e["step"].startswith("Scanned ") for e in events)  # sites arrive one by one
+    assert {d["domain"] for d in found[0]["competitors"]} <= {d["domain"] for d in r["organic_competitors"]}
+
+
+def test_a_run_whose_worker_died_is_failed_not_left_spinning(client_with_db=None):
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+
+    from app.competitors import intel_router
+
+    class DB:
+        committed = False
+
+        def commit(self):
+            self.committed = True
+
+    old = SimpleNamespace(status="running", updated_at=datetime.now(timezone.utc) - timedelta(minutes=10), created_at=None, error=None, finished_at=None)
+    fresh = SimpleNamespace(status="running", updated_at=datetime.now(timezone.utc) - timedelta(seconds=20), created_at=None, error=None, finished_at=None)
+    db = DB()
+    assert intel_router._expire_stale(db, old).status == "failed" and "interrupted" in old.error and db.committed
+    assert intel_router._expire_stale(DB(), fresh).status == "running"
