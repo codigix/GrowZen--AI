@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, Field, Tabs, inputCls, ErrorNote, useToast, useAction } from './SeoUi';
 import { api, usePoll, fmt, fmtDateTime } from './seoApi';
+import CompetitorAuditCompare from './CompetitorAuditCompare';
 
 /**
  * Competitor research for the selected business, Semrush-style, from live Google data: who ranks
@@ -489,6 +490,7 @@ function Research({ b }) {
   return (
     <div className="space-y-5">
       {toastNode}
+      <CompetitorAuditCompare b={b} />
       <Setup b={b} defaults={defaults} onStart={start} busy={busy === 'start' || isRunning(current)} error={error} setupInfo={state.setup} hasRun={Boolean(result)} />
 
       {isRunning(current) && (
