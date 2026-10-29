@@ -197,50 +197,91 @@ function ComparisonResult({ c }) {
   );
 }
 
+const STATUS_LABEL = { queued: 'Queued…', running: 'Auditing…', done: 'Audited', failed: 'Audit failed' };
+
 export default function CompetitorAuditCompare({ b }) {
   const [competitors, setCompetitors] = useState(null);
+  const [auditMap, setAuditMap] = useState({}); // { [competitorId]: { id, status } } -- latest audit per competitor
+  const [ourAudit, setOurAudit] = useState(null); // { id, status } | null
   const [loadError, setLoadError] = useState('');
   const [businessType, setBusinessType] = useState(b.primaryCategory || '');
   const [location, setLocation] = useState([b.area, b.city].filter(Boolean).join(', ') || '');
   const [strategy, setStrategy] = useState('mobile');
-  const [selected, setSelected] = useState(null); // competitor id
-  const [competitorAudit, setCompetitorAudit] = useState(null); // { id, status }
+  const [comparing, setComparing] = useState(null); // competitor id currently being compared
   const [comparison, setComparison] = useState(null);
   const [findBusy, findError, runFind] = useAction();
-  const [auditBusy, auditError, runAudit] = useAction();
-  const [ourBusy, ourError, runOur] = useAction();
-  const [compareBusy, compareError, runCompare] = useAction();
+  const [compareError, setCompareError] = useState('');
 
-  const loadCompetitors = () => api(`/competitors?business_id=${b.id}`).then(r => { setCompetitors(r); setLoadError(''); }).catch(e => setLoadError(e.message));
-  useEffect(() => { loadCompetitors(); }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const loadAll = () => Promise.all([
+    api(`/competitors?business_id=${b.id}`),
+    api(`/audit/competitors?business_id=${b.id}&limit=200`)
+  ]).then(([comps, hist]) => {
+    setCompetitors(comps);
+    setAuditMap(m => {
+      const next = { ...m };
+      for (const a of hist) if (a.competitor_id && !next[a.competitor_id]) next[a.competitor_id] = { id: a.id, status: a.status };
+      return next;
+    });
+    setLoadError('');
+    return comps; // so a caller (e.g. find()) can act on the fresh full list right away
+  }).catch(e => { setLoadError(e.message); return []; });
+  useEffect(() => { loadAll(); }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // One audit per competitor, fired off together right after they're found/registered -- no need
+  // to click "Audit" on each row one at a time.
+  const auditCompetitor = async (competitor) => {
+    try {
+      const [{ id, status }] = await api('/audit/competitors', { method: 'POST', body: { urls: [competitor.website], business_id: b.id, competitor_id: competitor.id, strategy } });
+      setAuditMap(m => ({ ...m, [competitor.id]: { id, status } }));
+    } catch (e) {
+      setAuditMap(m => ({ ...m, [competitor.id]: { id: null, status: 'failed', error: e.message } }));
+    }
+  };
+  // Every competitor with a website that isn't already audited or mid-audit -- so a repeat Find
+  // doesn't needlessly re-POST for ones already done (the backend would just reuse them anyway,
+  // but this also covers one that Google Places didn't return again this time around).
+  const auditAllCompetitors = (list, statusMap) => {
+    list.filter(c => c.website && !['done', 'queued', 'running'].includes(statusMap[c.id]?.status)).forEach(auditCompetitor);
+  };
+
+  const auditOurSite = async () => {
+    if (!b.website) return;
+    try {
+      const r = await api('/website-audits', { method: 'POST', body: { url: b.website, business_id: b.id, strategy } });
+      setOurAudit({ id: r.id, status: 'queued' });
+    } catch { /* surfaced only if Compare then fails */ }
+  };
+
+  // Poll every audit still in flight (ours + each competitor's) until it finishes.
+  const runningCompetitors = Object.entries(auditMap).filter(([, v]) => isRunning(v.status));
   usePoll(async () => {
-    const r = await api(`/audit/competitors/${competitorAudit.id}`).catch(() => null);
-    if (r) setCompetitorAudit(r);
-  }, isRunning(competitorAudit?.status), 2000);
+    const updates = await Promise.all(runningCompetitors.map(([cid, v]) => api(`/audit/competitors/${v.id}`).then(a => [cid, a]).catch(() => null)));
+    setAuditMap(m => {
+      const next = { ...m };
+      for (const u of updates) if (u) next[u[0]] = { id: u[1].id, status: u[1].status };
+      return next;
+    });
+  }, runningCompetitors.length > 0, 2500);
+  usePoll(async () => {
+    const a = await api(`/website-audits/${ourAudit.id}`).catch(() => null);
+    if (a) setOurAudit({ id: a.id, status: a.status });
+  }, isRunning(ourAudit?.status), 2500);
 
   const find = () => runFind('find', async () => {
     const r = await api('/competitors', { method: 'POST', body: { business_type: businessType, location, business_id: b.id, top_n: 10 } });
-    loadCompetitors();
+    const fullList = await loadAll(); // every registered competitor, not just the ones this particular search returned
+    auditOurSite();
+    auditAllCompetitors(fullList, auditMap);
     return r;
   });
 
-  const startAudit = (competitor) => runAudit('audit', async () => {
-    setComparison(null);
-    const [{ id, status }] = await api('/audit/competitors', { method: 'POST', body: { urls: [competitor.website], business_id: b.id, competitor_id: competitor.id, strategy } });
-    setSelected(competitor.id);
-    setCompetitorAudit({ id, status });
-  });
-
-  const runOurAudit = () => runOur('our', async () => {
-    await api('/website-audits', { method: 'POST', body: { url: b.website, business_id: b.id, strategy } });
-  });
-
-  const compare = (competitorId) => runCompare('compare', async () => {
-    const r = await api('/audit/competitors/compare', { method: 'POST', body: { business_id: b.id, competitor_ids: [competitorId], strategy } });
-    setComparison(r.comparisons?.[0] || null);
-    setSelected(competitorId);
-  });
+  const compare = async (competitorId) => {
+    setComparing(competitorId); setCompareError(''); setComparison(null);
+    try {
+      const r = await api('/audit/competitors/compare', { method: 'POST', body: { business_id: b.id, competitor_ids: [competitorId], strategy } });
+      setComparison(r.comparisons?.[0] || null);
+    } catch (e) { setCompareError(e.message); } finally { setComparing(null); }
+  };
 
   if (!competitors) return loadError ? <ErrorNote>{loadError}</ErrorNote> : <div className="flex items-center gap-2 text-[13px] text-slate-500"><Loader2 size={15} className="animate-spin" /> Loading…</div>;
 
@@ -253,6 +294,7 @@ export default function CompetitorAuditCompare({ b }) {
           <Button variant="primary" icon={Search} busy={findBusy === 'find'} disabled={!businessType.trim() || !location.trim()} onClick={find}>Find competitors</Button>
         </div>
         <ErrorNote>{findError}</ErrorNote>
+        {findBusy === 'find' && <p className="text-[12px] text-slate-500 mb-2">Registering competitors, then auditing your site and every one of them in the background…</p>}
 
         <div className="flex items-center justify-between gap-3 mb-2">
           <div className="text-[12px] font-semibold uppercase tracking-wide text-slate-500">Registered competitors ({competitors.length})</div>
@@ -262,33 +304,39 @@ export default function CompetitorAuditCompare({ b }) {
                 <button key={s} type="button" onClick={() => setStrategy(s)} className={`h-7 px-2.5 flex items-center gap-1 text-[11.5px] font-semibold rounded-md cursor-pointer transition-colors ${strategy === s ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500'}`}><I size={12} />{s}</button>
               ))}
             </div>
-            <Button size="sm" variant="secondary" icon={RotateCcw} busy={ourBusy === 'our'} disabled={!b.website} onClick={runOurAudit}>Audit our site</Button>
+            <span className="text-[12px] text-slate-500 inline-flex items-center gap-1.5">
+              {ourAudit && isRunning(ourAudit.status) && <Loader2 size={12} className="animate-spin" />}
+              {ourAudit ? STATUS_LABEL[ourAudit.status] || '' : ''}
+            </span>
+            <Button size="sm" variant="secondary" icon={RotateCcw} disabled={!b.website || isRunning(ourAudit?.status)} onClick={auditOurSite}>Audit our site</Button>
           </div>
         </div>
-        <ErrorNote>{ourError}</ErrorNote>
 
         {!competitors.length ? (
           <p className="text-[13px] text-slate-500">No competitors registered yet. Search above to find some near you on Google Maps.</p>
         ) : (
           <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
             {competitors.map(c => {
-              const active = selected === c.id;
-              const thisAudit = active ? competitorAudit : null;
+              const a = auditMap[c.id];
               return (
                 <li key={c.id} className="px-4 py-3 flex flex-wrap items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="text-[13.5px] font-semibold text-slate-900 truncate">{c.name}</div>
                     <a href={c.website} target="_blank" rel="noreferrer" className="text-[12px] text-indigo-700 hover:underline inline-flex items-center gap-1 truncate"><Globe size={11} />{c.website}</a>
                   </div>
-                  {thisAudit && isRunning(thisAudit.status) && <span className="text-[12px] text-slate-500 inline-flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> Auditing…</span>}
-                  <Button size="sm" icon={Gauge} busy={auditBusy === 'audit' && active} onClick={() => startAudit(c)}>Audit</Button>
-                  <Button size="sm" variant="primary" icon={ShieldCheck} busy={compareBusy === 'compare' && active} onClick={() => compare(c.id)}>Compare</Button>
+                  {a && (
+                    <span className="text-[12px] text-slate-500 inline-flex items-center gap-1.5 whitespace-nowrap">
+                      {isRunning(a.status) && <Loader2 size={13} className="animate-spin" />}
+                      {STATUS_LABEL[a.status] || a.status}
+                    </span>
+                  )}
+                  <Button size="sm" icon={Gauge} disabled={isRunning(a?.status)} onClick={() => auditCompetitor(c)}>{a ? 'Re-audit' : 'Audit'}</Button>
+                  <Button size="sm" variant="primary" icon={ShieldCheck} busy={comparing === c.id} onClick={() => compare(c.id)}>Compare</Button>
                 </li>
               );
             })}
           </ul>
         )}
-        <ErrorNote>{auditError}</ErrorNote>
         <ErrorNote>{compareError}</ErrorNote>
       </Card>
 
