@@ -535,7 +535,8 @@ export const Modal = ({ open, title, onClose, children, footer, width = 'max-w-l
 
   if (!open) return null;
 
-  return (
+  // Rendered on <body>: inside the page's scroll area a modal could not cover the sidebar and was clipped by it.
+  return createPortal(
     <div className="fixed inset-0 z-[70] bg-slate-900/40 backdrop-blur-md flex items-start justify-center p-4 overflow-y-auto animate-in fade-in duration-150" onMouseDown={onClose}>
       <div className={`bg-white backdrop-blur-2xl rounded shadow-2xl border border-slate-300 w-full ${width} mt-12 overflow-hidden animate-in zoom-in-95 duration-150 text-slate-900 ring-1 ring-slate-200`} onMouseDown={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
@@ -547,7 +548,8 @@ export const Modal = ({ open, title, onClose, children, footer, width = 'max-w-l
         <div className="p-6">{children}</div>
         {footer && <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-2.5">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

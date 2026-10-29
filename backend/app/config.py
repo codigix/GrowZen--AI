@@ -2,6 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,6 +39,15 @@ class Settings(BaseSettings):
 
     # Database: its own PostgreSQL database in prod; SQLite for local dev out of the box.
     database_url: str = _default_db
+
+    @field_validator("database_url")
+    @classmethod
+    def _psycopg3(cls, url: str) -> str:
+        """The installed PostgreSQL driver is psycopg 3 (requirements.txt); a `postgresql://` or `+psycopg2` URL means that one."""
+        for old in ("postgresql+psycopg2://", "postgresql://", "postgres://"):
+            if url.startswith(old):
+                return "postgresql+psycopg://" + url[len(old):]
+        return url
 
 
     # Optional: also accept the CRM's session cookie (same JWT secret). The user's name, role and

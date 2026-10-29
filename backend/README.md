@@ -76,7 +76,7 @@ alembic upgrade head
 uvicorn app.main:app --port 8100
 ```
 
-Interactive API docs are at http://localhost:8100/docs.
+Interactive API docs are at http://localhost:8000/docs.
 
 **Production:** run one instance with the scheduler (`SCHEDULER_ENABLED=true`). If you run more API instances, set `SCHEDULER_ENABLED=false` on the others.
 
