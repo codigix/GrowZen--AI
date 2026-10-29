@@ -9,18 +9,18 @@
   }
 
   body {
-    @apply m-0 font-sans;
+    @apply m-0 font-sans text-slate-700 bg-body text-14;
   }
 }
 
 /* Surfaces (light theme). Class names kept so every screen picks them up. */
 @layer components {
   .ai-glass-card {
-    @apply bg-white border border-slate-200 hover:border-growzen-200 hover:shadow-card-glow;
+    @apply bg-white border border-transparent shadow-card transition-shadow duration-200 hover:shadow-card-hover;
   }
 
   .ai-glass-input {
-    @apply bg-white border border-slate-300 text-slate-900 transition-all duration-200 focus:border-growzen-500 focus:ring-[3px] focus:ring-growzen-500/15 focus:outline-none;
+    @apply bg-white border border-slate-200 text-slate-700 transition-all duration-200 focus:border-growzen-400 focus:ring-[3px] focus:ring-growzen-500/15 focus:outline-none;
   }
 
   .text-gradient {
@@ -35,4 +35,112 @@
   .ai-grid-pattern {
     @apply bg-none;
   }
+}
+
+.barlow-thin {
+  font-family: "Barlow", sans-serif;
+  font-weight: 100;
+  font-style: normal;
+}
+
+.barlow-extralight {
+  font-family: "Barlow", sans-serif;
+  font-weight: 200;
+  font-style: normal;
+}
+
+.barlow-light {
+  font-family: "Barlow", sans-serif;
+  font-weight: 300;
+  font-style: normal;
+}
+
+.barlow-regular {
+  font-family: "Barlow", sans-serif;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.barlow-medium {
+  font-family: "Barlow", sans-serif;
+  font-weight: 500;
+  font-style: normal;
+}
+
+.barlow-semibold {
+  font-family: "Barlow", sans-serif;
+  font-weight: 600;
+  font-style: normal;
+}
+
+.barlow-bold {
+  font-family: "Barlow", sans-serif;
+  font-weight: 700;
+  font-style: normal;
+}
+
+.barlow-extrabold {
+  font-family: "Barlow", sans-serif;
+  font-weight: 800;
+  font-style: normal;
+}
+
+.barlow-black {
+  font-family: "Barlow", sans-serif;
+  font-weight: 900;
+  font-style: normal;
+}
+
+.barlow-thin-italic {
+  font-family: "Barlow", sans-serif;
+  font-weight: 100;
+  font-style: italic;
+}
+
+.barlow-extralight-italic {
+  font-family: "Barlow", sans-serif;
+  font-weight: 200;
+  font-style: italic;
+}
+
+.barlow-light-italic {
+  font-family: "Barlow", sans-serif;
+  font-weight: 300;
+  font-style: italic;
+}
+
+.barlow-regular-italic {
+  font-family: "Barlow", sans-serif;
+  font-weight: 400;
+  font-style: italic;
+}
+
+.barlow-medium-italic {
+  font-family: "Barlow", sans-serif;
+  font-weight: 500;
+  font-style: italic;
+}
+
+.barlow-semibold-italic {
+  font-family: "Barlow", sans-serif;
+  font-weight: 600;
+  font-style: italic;
+}
+
+.barlow-bold-italic {
+  font-family: "Barlow", sans-serif;
+  font-weight: 700;
+  font-style: italic;
+}
+
+.barlow-extrabold-italic {
+  font-family: "Barlow", sans-serif;
+  font-weight: 800;
+  font-style: italic;
+}
+
+.barlow-black-italic {
+  font-family: "Barlow", sans-serif;
+  font-weight: 900;
+  font-style: italic;
 }

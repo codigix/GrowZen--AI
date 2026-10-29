@@ -19,8 +19,8 @@ import { ReportsModal } from './CopilotPanel';
 
 const AREA_LABELS = { gbp: 'Profile', rankings: 'Rankings', technical: 'Technical', onpage: 'On-page', backlinks: 'Backlinks', citations: 'Citations' };
 const STATUS_META = {
-  active: { label: 'Active', tone: 'green', color: '#10b981' },
-  needs_approval: { label: 'Needs approval', tone: 'amber', color: '#f59e0b' },
+  active: { label: 'Active', tone: 'green', color: '#1abc9c' },
+  needs_approval: { label: 'Needs approval', tone: 'amber', color: '#f7b84b' },
   paused: { label: 'Paused', tone: 'gray', color: '#94a3b8' }
 };
 const EVERY = { daily: 'Daily', weekly: 'Weekly', fortnightly: 'Fortnightly', monthly: 'Monthly' };
@@ -71,14 +71,14 @@ function SectionHeader({ icon: Icon, title, subtitle, right }) {
 /* ── AI briefing ─────────────────────────────────────────────────────────── */
 
 function Kpi({ icon: Icon, label, value, hint, tone }) {
-  const tones = { indigo: 'from-indigo-500 to-violet-500', emerald: 'from-emerald-500 to-teal-500', red: 'from-rose-500 to-red-500', amber: 'from-amber-400 to-orange-500', sky: 'from-sky-500 to-indigo-500', slate: 'from-slate-400 to-slate-500' };
+  const tones = { indigo: 'bg-indigo-50 text-indigo-500', emerald: 'bg-emerald-50 text-emerald-500', red: 'bg-red-50 text-red-500', amber: 'bg-amber-50 text-amber-500', sky: 'bg-sky-50 text-sky-500', slate: 'bg-slate-100 text-slate-500' };
   return (
     <div className="ai-glass-card rounded p-4 flex items-center gap-3.5 min-w-0">
-      <span className={`w-11 h-11 rounded bg-gradient-to-br ${tones[tone] || tones.slate} text-white flex items-center justify-center shrink-0 shadow-sm`}><Icon size={19} /></span>
+      <span className={`w-12 h-12 rounded-full ${tones[tone] || tones.slate} flex items-center justify-center shrink-0`}><Icon size={20} /></span>
       <div className="min-w-0">
-        <div className="text-12 font-medium text-slate-500 truncate">{label}</div>
+        <div className="text-12 font-semibold uppercase tracking-wide text-slate-400 truncate">{label}</div>
         <div className="text-22 leading-tight font-bold text-slate-900 tabular-nums">{value}</div>
-        {hint && <div className="text-11 text-slate-500 truncate" title={hint}>{hint}</div>}
+        {hint && <div className="text-11.5 text-slate-500 truncate" title={hint}>{hint}</div>}
       </div>
     </div>
   );
@@ -552,12 +552,12 @@ const weekLabel = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB
 
 // Each tab: what it plots, which way is good, and the weekly series (keys come from GET /businesses/analytics).
 const METRICS = [
-  { id: 'health', label: 'SEO health', icon: Activity, hint: 'Average audit score across projects', better: 'up', domain: [0, 100], series: [{ key: 'health', name: 'Health', color: '#059669' }], headline: 'health', empty: 'Fills in as audits run each week.' },
-  { id: 'rank', label: 'Rankings', icon: Navigation, hint: 'Average local position (lower is better)', better: 'down', reversed: true, domain: [1, 'auto'], series: [{ key: 'avg_rank', name: 'Avg position', color: '#4f46e5' }], headline: 'avg_rank', empty: 'Appears once rank scans have completed.' },
-  { id: 'customers', label: 'Customers', icon: Phone, hint: 'Google calls, directions and website clicks', better: 'up', series: [{ key: 'calls', name: 'Calls', color: '#4f46e5' }, { key: 'directions', name: 'Directions', color: '#0284c7' }, { key: 'website_clicks', name: 'Website clicks', color: '#059669' }], headline: 'calls', empty: 'Appears once Google profiles are linked and synced.' },
-  { id: 'leads', label: 'Leads', icon: Target, hint: 'New leads per week', better: 'up', series: [{ key: 'leads', name: 'Leads', color: '#d97706' }], headline: 'leads', empty: 'No leads recorded yet.' },
-  { id: 'ai', label: 'AI work', icon: Bot, hint: 'Changes the agents proposed and applied', better: 'up', series: [{ key: 'proposed', name: 'Proposed', color: '#7c3aed' }, { key: 'applied', name: 'Applied', color: '#059669' }], headline: 'applied', empty: 'No agent activity yet.' },
-  { id: 'projects', label: 'Portfolio', icon: Briefcase, hint: 'Projects under management', better: 'up', series: [{ key: 'projects', name: 'Projects', color: '#2563eb' }], headline: 'projects', empty: 'No projects yet.' }
+  { id: 'health', label: 'SEO health', icon: Activity, hint: 'Average audit score across projects', better: 'up', domain: [0, 100], series: [{ key: 'health', name: 'Health', color: '#1abc9c' }], headline: 'health', empty: 'Fills in as audits run each week.' },
+  { id: 'rank', label: 'Rankings', icon: Navigation, hint: 'Average local position (lower is better)', better: 'down', reversed: true, domain: [1, 'auto'], series: [{ key: 'avg_rank', name: 'Avg position', color: '#6658dd' }], headline: 'avg_rank', empty: 'Appears once rank scans have completed.' },
+  { id: 'customers', label: 'Customers', icon: Phone, hint: 'Google calls, directions and website clicks', better: 'up', series: [{ key: 'calls', name: 'Calls', color: '#6658dd' }, { key: 'directions', name: 'Directions', color: '#4a81d4' }, { key: 'website_clicks', name: 'Website clicks', color: '#1abc9c' }], headline: 'calls', empty: 'Appears once Google profiles are linked and synced.' },
+  { id: 'leads', label: 'Leads', icon: Target, hint: 'New leads per week', better: 'up', series: [{ key: 'leads', name: 'Leads', color: '#f7b84b' }], headline: 'leads', empty: 'No leads recorded yet.' },
+  { id: 'ai', label: 'AI work', icon: Bot, hint: 'Changes the agents proposed and applied', better: 'up', series: [{ key: 'proposed', name: 'Proposed', color: '#6658dd' }, { key: 'applied', name: 'Applied', color: '#1abc9c' }], headline: 'applied', empty: 'No agent activity yet.' },
+  { id: 'projects', label: 'Portfolio', icon: Briefcase, hint: 'Projects under management', better: 'up', series: [{ key: 'projects', name: 'Projects', color: '#4a81d4' }], headline: 'projects', empty: 'No projects yet.' }
 ];
 
 function GrowthTooltip({ active, payload, label }) {
