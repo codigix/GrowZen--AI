@@ -14,8 +14,8 @@ from fastapi.responses import FileResponse
 from .competitors import audit_router as competitor_audits, router as competitors
 from .config import get_settings
 from .db import SessionLocal
-from .routers import agent, auth, businesses, connections, discover, growth, intake, keyword_trends, leads, lighthouse, profile, system, website
-from .services import lighthouse_runner, scheduler
+from .routers import agent, articles, auth, businesses, connections, discover, growth, intake, keyword_trends, leads, lighthouse, profile, system, website
+from .services import articles as article_service, lighthouse_runner, scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 # httpx logs every request URL at INFO, and PageSpeed Insights takes the API key in the query string.
@@ -30,6 +30,7 @@ async def lifespan(_: FastAPI):
     try:
         auth.seed_admin(db, settings)
         lighthouse_runner.recover_interrupted(db)
+        article_service.recover_interrupted(db)
     except Exception as exc:  # e.g. migrations not run yet
         logging.getLogger("seo").warning("Start-up step skipped: %s", exc)
     finally:
@@ -43,7 +44,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-for r in (system, auth, businesses, profile, growth, leads, intake, connections, discover, agent, website, lighthouse, keyword_trends, competitors, competitor_audits):
+for r in (system, auth, businesses, profile, growth, leads, intake, connections, discover, agent, website, lighthouse, keyword_trends, articles, competitors, competitor_audits):
     app.include_router(r.router, prefix=settings.api_prefix)
 
 # Production: serve the built frontend (frontend/dist) from the same address as the API.

@@ -83,6 +83,17 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     openai_api_key: str = ""
     gemini_api_key: str = ""
+    # Blog article generation (AI Blog Studio): local Ollama, same settings as the auto-blogger project.
+    ollama_host: str = "http://localhost:11434"
+    ollama_model: str = "llama3.2"
+    ollama_max_tokens: int = 4096
+    ollama_timeout_seconds: int = 300
+    ollama_prompt_persona: str = "You are an experienced SEO blog writer. Write clearly and helpfully, in simple English."
+    ollama_prompt_requirements: str = "- Keep paragraphs short."
+    # WordPress REST API (Application Password) for pushing a generated article as a draft; optional.
+    wordpress_url: str = ""
+    wordpress_user: str = ""
+    wordpress_app_password: str = ""
     # Extra engines for the GEO / AEO tracker (optional)
     perplexity_api_key: str = ""
     anthropic_api_key: str = ""

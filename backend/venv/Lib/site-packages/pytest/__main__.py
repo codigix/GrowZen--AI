@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from _pytest.config import _console_main
+import pytest
 
 
 if __name__ == "__main__":
-    raise SystemExit(_console_main())
+    raise SystemExit(pytest.console_main())
