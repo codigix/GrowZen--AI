@@ -15,7 +15,7 @@ const OLD_TABS = { site: 'report', business: 'report', check: 'audit', lighthous
 function Stepper({ step, onStep, hasReport, running }) {
   const at = STEPS.findIndex(s => s.id === step);
   return (
-    <nav aria-label="Audit steps" className="ai-glass-card rounded-2xl p-1.5 grid grid-cols-1 sm:grid-cols-3 gap-1">
+    <nav aria-label="Audit steps" className="ai-glass-card rounded p-1.5 grid grid-cols-1 sm:grid-cols-3 gap-1">
       {STEPS.map((s, i) => {
         const locked = s.id === 'report' && !hasReport;
         const done = (s.id === 'audit' && hasReport) || (i < at && !locked);
@@ -23,13 +23,13 @@ function Stepper({ step, onStep, hasReport, running }) {
         return (
           <button key={s.id} type="button" disabled={locked} onClick={() => onStep(s.id)} aria-current={active ? 'step' : undefined}
             title={locked ? 'Run an audit first' : undefined}
-            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-colors ${active ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20' : locked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-50 cursor-pointer'}`}>
-            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 ${active ? 'bg-white/20 text-white' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+            className={`flex items-center gap-2.5 px-3 py-2.5 rounded text-left transition-colors ${active ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20' : locked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-50 cursor-pointer'}`}>
+            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-12 font-bold shrink-0 ${active ? 'bg-white/20 text-white' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
               {done && !active ? <Check size={14} /> : i + 1}
             </span>
             <span className="min-w-0">
-              <span className={`block text-[13px] font-semibold truncate ${active ? 'text-white' : 'text-slate-900'}`}>{s.label}{s.id === 'audit' && running ? '…' : ''}</span>
-              <span className={`block text-[11px] truncate ${active ? 'text-indigo-100' : 'text-slate-500'}`}>{s.id === 'audit' && running ? 'Scanning now' : s.hint}</span>
+              <span className={`block text-13 font-semibold truncate ${active ? 'text-white' : 'text-slate-900'}`}>{s.label}{s.id === 'audit' && running ? '…' : ''}</span>
+              <span className={`block text-11 truncate ${active ? 'text-indigo-100' : 'text-slate-500'}`}>{s.id === 'audit' && running ? 'Scanning now' : s.hint}</span>
             </span>
           </button>
         );
@@ -52,7 +52,7 @@ function SiteAudit({ b, step, setStep }) {
   return (
     <div className="space-y-5">
       <Stepper step={current === 'loading' ? 'report' : current} onStep={setStep} hasReport={Boolean(sa.report)} running={sa.running} />
-      {current === 'loading' && <Card><div className="py-12 flex items-center justify-center gap-2 text-[13px] text-slate-500"><Loader2 size={16} className="animate-spin" /> Opening the latest report…</div></Card>}
+      {current === 'loading' && <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Opening the latest report…</div></Card>}
       {current === 'audit' && <AuditStep sa={sa} business={b} onOpenReport={() => setStep('report')} />}
       {current === 'report' && <ReportStep sa={sa} business={b} onNext={setStep} />}
       {current === 'schema' && <SchemaStudio b={b} report={sa.report} />}

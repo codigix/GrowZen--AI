@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import AgentTask, Audit, Business, InsightDay, Keyword, Review
-from . import ai
+from . import countries, ai
 
 RISKS = ["low", "medium", "high"]
 # Website fixes that only add or improve text and markup: safe to approve in bulk.
@@ -84,8 +84,12 @@ def rule_draft(b: Business, kind: str, detail: dict[str, Any], page: dict[str, A
         changes.append({"label": "Add inside <head>", "before": "", "after": '<meta name="viewport" content="width=device-width, initial-scale=1">'})
     elif code == "no_localbusiness_schema":
         schema = {"@context": "https://schema.org", "@type": "LocalBusiness", "name": b.name, "url": b.website, "telephone": b.phone,
-                  "address": {"@type": "PostalAddress", "streetAddress": b.address, "addressLocality": b.city, "addressCountry": "IN"} if b.address else None}
+                  "address": {"@type": "PostalAddress", "streetAddress": b.address, "addressLocality": b.city, "addressCountry": countries.of(b)} if b.address else None}
         changes.append({"label": "Add to the home page <head>", "before": "", "after": '<script type="application/ld+json">\n' + json.dumps({k: v for k, v in schema.items() if v}, indent=2) + "\n</script>"})
+    elif code in ("nap_phone", "nap_address", "nap_mismatch"):
+        # Name, address and phone shown the same way everywhere (footer and contact page) is what Google matches.
+        nap = "\n".join(x for x in [b.name, b.address, f"Phone: {b.phone}" if b.phone else None] if x)
+        changes.append({"label": "Add to the footer and contact page", "before": "", "after": nap})
     elif kind == "outreach_email":
         changes.append({"label": "Email", "before": "", "after": f"Hello,\n\nWe're {b.name}{', ' + (b.primary_category or '').lower() if b.primary_category else ''} in {_place(b) or b.city or 'your area'}. "
                         f"We'd like to be listed on your site. Our details: {b.name}, {b.address or '[add address]'}, {b.phone or '[add phone]'}, {b.website or '[add website]'}.\n\nThank you,\n[your name]"})

@@ -27,6 +27,7 @@ import httpx
 from ..config import get_settings
 from ..services.crawler import analyse_html
 from ..services.keywords import CITIES, METRO, NOISE, default_seeds, other_cities
+from ..services import countries
 from ..services.net import site_client
 
 SERPER = "https://google.serper.dev"
@@ -46,6 +47,13 @@ DIRECTORIES = {
     "urbancompany.com", "housing.com", "99acres.com", "magicbricks.com", "nobroker.in", "makemytrip.com", "booking.com", "yelp.com",
     "clutch.co", "goodfirms.co", "glassdoor.co.in", "ambitionbox.com", "naukri.com", "grotal.com", "asklaila.com", "nearbuy.com",
     "bajajfinservhealth.in", "medibuddy.in", "1mg.com", "pharmeasy.in", "netmeds.com", "amazon.in", "flipkart.com", "shiksha.com",
+    # elsewhere
+    "yelp.ca", "yelp.co.uk", "yelp.ie", "yellowpages.ca", "bbb.org", "angi.com", "thumbtack.com", "houzz.com", "nextdoor.com", "trustpilot.com",
+    "yell.com", "thomsonlocal.com", "checkatrade.com", "goldenpages.ie", "yellowpages.com.au", "truelocal.com.au", "hotfrog.com.au", "yellow.co.nz",
+    "yellowpages.com.om", "yellowpages-uae.com", "connect.ae", "dubizzle.com", "bayut.com", "propertyfinder.ae", "daleeli.com", "yellowpages.com.sa",
+    "qatcom.com", "yellowpages.com.kw", "bahrainyellowpages.com", "talabat.com", "deliveroo.co.uk", "ubereats.com", "doordash.com", "opentable.com",
+    "doctoralia.com", "healthgrades.com", "zocdoc.com", "fresha.com", "booksy.com", "edarabia.com", "foursquare.com", "apple.com", "bing.com",
+    "yellowpages.com.sg", "yellowpages.my", "brabys.com", "snupit.co.za", "alibaba.com", "kompass.com",
 }
 GENERIC_LINKS = {
     "home", "about", "about us", "contact", "contact us", "blog", "blogs", "gallery", "careers", "privacy policy", "terms", "terms and conditions",
@@ -113,8 +121,9 @@ _lock = threading.Lock()
 class Serper:
     """Serper.dev calls with a 12-hour cache (same query + place = same answer), counting credits."""
 
-    def __init__(self) -> None:
+    def __init__(self, country: str | None = None) -> None:
         self.key = get_settings().serper_api_key
+        self.gl = countries.gl(country)  # Google's results for the business's country
         if not self.key:
             raise IntelError("Competitor research needs Google results: set SERPER_API_KEY on the SEO backend (serper.dev).")
         self.credits = 0
@@ -142,23 +151,29 @@ class Serper:
         return data
 
     def search(self, q: str, location: str | None) -> dict[str, Any]:
-        body = {"q": q, "gl": "in", "hl": "en", "num": 10}
+        body = {"q": q, "gl": self.gl, "hl": "en", "num": 10}
         if location:
             body["location"] = location
         return self.call("/search", body)
 
     def places(self, q: str, location: str | None) -> dict[str, Any]:
-        body = {"q": q, "gl": "in", "hl": "en"}
+        body = {"q": q, "gl": self.gl, "hl": "en"}
         if location:
             body["location"] = location
         return self.call("/places", body)
 
 
 # ── Keywords ────────────────────────────────────────────────────────────
+GENERIC_CATEGORIES = {"doctor", "store", "shop", "company", "business", "service", "services", "building", "establishment", "office",
+                      "point of interest", "corporate office", "organization", "local business"}
+
+
 def default_keywords(b: Any) -> list[str]:
     """The searches a customer would type to find this business, with the place in them (Google
     localises 'near me' by the searcher's own location, which a server does not have)."""
-    seeds = default_seeds(b)[:3]
+    # A generic Google category ("Doctor", "Store") finds everyone; specific ones (services, other categories) first.
+    seeds = default_seeds(b)
+    seeds = ([s for s in seeds if s not in GENERIC_CATEGORIES] + [s for s in seeds if s in GENERIC_CATEGORIES])[:3]
     area = (b.area or "").split(",")[0].strip()
     city = (b.city or "").strip()
     out: list[str] = []
@@ -179,7 +194,7 @@ def default_keywords(b: Any) -> list[str]:
 
 
 def default_location(b: Any) -> str:
-    return ", ".join(x for x in [(b.city or "").strip(), "India"] if x)
+    return countries.search_location(b.city, countries.of(b))
 
 
 # ── Site scan ───────────────────────────────────────────────────────────
@@ -336,8 +351,7 @@ def _is_me_place(p: dict[str, Any], b: Any, my_host: str) -> bool:
     a, n = _norm_name(p.get("title", "")), _norm_name(b.name or "")
     if n and a and (a == n or (len(n) > 4 and (n in a or a in n))):
         return True
-    pd, bd = re.sub(r"\D", "", p.get("phoneNumber") or "")[-10:], re.sub(r"\D", "", b.phone or "")[-10:]
-    return len(bd) == 10 and pd == bd
+    return countries.same_phone(p.get("phoneNumber"), b.phone, countries.of(b))
 
 
 def _locality(address: str | None) -> str:
@@ -384,7 +398,7 @@ def _strategy(domain: str, comp: dict[str, Any], prof: dict[str, Any], local: di
 
 
 def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Callable[[dict[str, Any]], None] = lambda e: None) -> dict[str, Any]:
-    serper = Serper()
+    serper = Serper(countries.of(b))
     settings = get_settings()
     my_host = host_of(b.website)
     keywords = [k.strip() for k in keywords if k.strip()][:10]
@@ -466,7 +480,7 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
                 if len(w) > 3 and w not in NOT_PLACE and not w.isdigit():
                     seen_localities[w] += 1
     places_words = {w for w in _words(f"{b.area or ''} {b.city or ''}") if len(w) > 2} | {w for w, n in seen_localities.items() if n >= 2}
-    away = other_cities(places_words)
+    away = other_cities(places_words, countries.of(b))
     targets = [d for d in organic_competitors if d["type"] == "business"][:4]
     progress("Scanning competitors' websites")
     profiles: dict[str, dict[str, Any]] = {}

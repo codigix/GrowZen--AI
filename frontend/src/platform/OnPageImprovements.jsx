@@ -27,9 +27,9 @@ export function codeFor(i, technical) {
   if (check) return `lighthouse:${check.id}`;
   const t = i.title || '';
   const rules = [[/returns \d{3}/, 'http_error'], [/empty without JavaScript/, 'javascript_only'], [/has noindex/, 'noindex'], [/has no title/, 'missing_title'],
-    [/title is \d+ characters/, 'title_length'], [/has no meta description/, 'missing_meta_description'], [/H1 headings/, 'h1_count'], [/is thin \(/, 'thin_content'],
-    [/images without alt text/, 'missing_alt'], [/no viewport tag/, 'no_viewport'], [/not on HTTPS/, 'no_https'], [/robots\.txt blocks/, 'robots_blocks_all'],
-    [/No XML sitemap/, 'no_sitemap'], [/LocalBusiness schema/, 'no_localbusiness_schema'], [/duplicate page titles/, 'duplicate_titles'], [/^Mobile performance/, 'slow_mobile']];
+  [/title is \d+ characters/, 'title_length'], [/has no meta description/, 'missing_meta_description'], [/H1 headings/, 'h1_count'], [/is thin \(/, 'thin_content'],
+  [/images without alt text/, 'missing_alt'], [/no viewport tag/, 'no_viewport'], [/not on HTTPS/, 'no_https'], [/robots\.txt blocks/, 'robots_blocks_all'],
+  [/No XML sitemap/, 'no_sitemap'], [/LocalBusiness schema/, 'no_localbusiness_schema'], [/duplicate page titles/, 'duplicate_titles'], [/^Mobile performance/, 'slow_mobile']];
   const hit = rules.find(([re]) => re.test(t));
   if (hit) return hit[1];
   return i.area === 'Technical' ? `lighthouse:${t}` : `other:${t}`;
@@ -211,15 +211,15 @@ function CodeBlock({ label, text, download }) {
     setTimeout(() => URL.revokeObjectURL(href), 1000);
   };
   return (
-    <div className="rounded-xl overflow-hidden ring-1 ring-slate-200">
+    <div className="rounded overflow-hidden ring-1 ring-slate-200">
       <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-slate-50 border-b border-slate-200">
-        <span className="text-[11px] font-semibold text-slate-600 inline-flex items-center gap-1.5"><FileCode size={12} /> {label}</span>
+        <span className="text-11 font-semibold text-slate-600 inline-flex items-center gap-1.5"><FileCode size={12} /> {label}</span>
         <span className="flex gap-1">
-          {download && <button type="button" onClick={save} className="h-7 px-2 rounded-md text-[11px] font-semibold text-slate-700 hover:bg-white inline-flex items-center gap-1 cursor-pointer"><Download size={12} /> Download</button>}
-          <button type="button" onClick={copy} className="h-7 px-2 rounded-md text-[11px] font-semibold text-slate-700 hover:bg-white inline-flex items-center gap-1 cursor-pointer">{copied ? <><Check size={12} className="text-emerald-600" /> Copied</> : <><Copy size={12} /> Copy</>}</button>
+          {download && <button type="button" onClick={save} className="h-7 px-2 rounded-md text-11 font-semibold text-slate-700 hover:bg-white inline-flex items-center gap-1 cursor-pointer"><Download size={12} /> Download</button>}
+          <button type="button" onClick={copy} className="h-7 px-2 rounded-md text-11 font-semibold text-slate-700 hover:bg-white inline-flex items-center gap-1 cursor-pointer">{copied ? <><Check size={12} className="text-emerald-600" /> Copied</> : <><Copy size={12} /> Copy</>}</button>
         </span>
       </div>
-      <pre className="px-3 py-2.5 text-[11.5px] leading-relaxed font-mono text-slate-800 bg-white overflow-x-auto max-h-72 whitespace-pre-wrap break-all">{text}</pre>
+      <pre className="px-3 py-2.5 text-11.5 leading-relaxed font-mono text-slate-800 bg-white overflow-x-auto max-h-72 whitespace-pre-wrap break-all">{text}</pre>
     </div>
   );
 }
@@ -228,7 +228,7 @@ function CopyLine({ text }) {
   const [copied, setCopied] = useState(false);
   return (
     <button type="button" onClick={() => navigator.clipboard?.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })}
-      className="shrink-0 h-7 px-2 rounded-md text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 inline-flex items-center gap-1 cursor-pointer" aria-label="Copy suggestion">
+      className="shrink-0 h-7 px-2 rounded-md text-11 font-semibold text-indigo-700 hover:bg-indigo-50 inline-flex items-center gap-1 cursor-pointer" aria-label="Copy suggestion">
       {copied ? <Check size={12} /> : <Copy size={12} />}{copied ? 'Copied' : 'Copy'}
     </button>
   );
@@ -237,19 +237,19 @@ function CopyLine({ text }) {
 /** Per-page current value and a ready-made fix (title, meta description, H1, image alt text). */
 function PerPage({ kind, items, business }) {
   return (
-    <div className="rounded-xl ring-1 ring-slate-200 divide-y divide-slate-100">
+    <div className="rounded ring-1 ring-slate-200 divide-y divide-slate-100">
       {items.map(({ page, issue }, n) => {
-        if (!page) return <div key={n} className="px-3 py-2 text-[12px] text-slate-700">{issue.title}</div>;
+        if (!page) return <div key={n} className="px-3 py-2 text-12 text-slate-700">{issue.title}</div>;
         const path = pathOf(page.url);
         if (kind === 'alt') {
           const imgs = page.images_without_alt || [];
           return (
             <div key={n} className="px-3 py-2.5">
-              <div className="text-[12px] font-mono font-semibold text-slate-900">{path} <span className="font-sans font-normal text-slate-500">· {page.images_missing_alt} image{page.images_missing_alt === 1 ? '' : 's'} without alt text</span></div>
+              <div className="text-12 font-mono font-semibold text-slate-900">{path} <span className="font-sans font-normal text-slate-500">· {page.images_missing_alt} image{page.images_missing_alt === 1 ? '' : 's'} without alt text</span></div>
               {imgs.length ? imgs.map(src => {
                 const tag = `<img src="${esc(src)}" alt="${esc(suggestAlt(src, business))}">`;
-                return <div key={src} className="mt-1.5 flex items-center gap-2"><code className="flex-1 min-w-0 text-[11px] text-slate-700 bg-slate-50 rounded px-2 py-1 truncate" title={tag}>{tag}</code><CopyLine text={tag} /></div>;
-              }) : <div className="mt-1 text-[11px] text-slate-500">Re-audit to list the exact images.</div>}
+                return <div key={src} className="mt-1.5 flex items-center gap-2"><code className="flex-1 min-w-0 text-11 text-slate-700 bg-slate-50 rounded px-2 py-1 truncate" title={tag}>{tag}</code><CopyLine text={tag} /></div>;
+              }) : <div className="mt-1 text-11 text-slate-500">Re-audit to list the exact images.</div>}
             </div>
           );
         }
@@ -259,13 +259,13 @@ function PerPage({ kind, items, business }) {
         return (
           <div key={n} className="px-3 py-2.5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <a href={page.url} target="_blank" rel="noreferrer" className="text-[12px] font-mono font-semibold text-slate-900 hover:text-indigo-700">{path}</a>
-              <span className="text-[11px] text-slate-500">{kind === 'h1' ? `${page.h1_count} H1 heading${page.h1_count === 1 ? '' : 's'} now` : `Now: ${current ? `${current.length} characters` : 'missing'}`}</span>
+              <a href={page.url} target="_blank" rel="noreferrer" className="text-12 font-mono font-semibold text-slate-900 hover:text-indigo-700">{path}</a>
+              <span className="text-11 text-slate-500">{kind === 'h1' ? `${page.h1_count} H1 heading${page.h1_count === 1 ? '' : 's'} now` : `Now: ${current ? `${current.length} characters` : 'missing'}`}</span>
             </div>
-            {current && kind !== 'h1' && <div className="mt-1 text-[12px] text-slate-500 line-through decoration-slate-300">{current}</div>}
+            {current && kind !== 'h1' && <div className="mt-1 text-12 text-slate-500 line-through decoration-slate-300">{current}</div>}
             <div className="mt-1 flex items-start gap-2">
               <Sparkles size={13} className="text-violet-500 mt-0.5 shrink-0" />
-              <span className="flex-1 min-w-0 text-[12.5px] text-slate-900">{suggestion} {kind !== 'h1' && <span className="text-[11px] text-slate-400 tabular-nums">({suggestion.length})</span>}</span>
+              <span className="flex-1 min-w-0 text-12.5 text-slate-900">{suggestion} {kind !== 'h1' && <span className="text-11 text-slate-400 tabular-nums">({suggestion.length})</span>}</span>
               <CopyLine text={tag} />
             </div>
           </div>
@@ -279,44 +279,44 @@ function ImprovementCard({ group, rank, ctx, open, onToggle }) {
   const g = group.guide;
   const code = g.code?.({ ...ctx, items: group.items });
   return (
-    <div className={`rounded-2xl ring-1 ring-inset bg-white ${open ? 'ring-indigo-200 shadow-sm' : 'ring-slate-200'}`}>
+    <div className={`rounded ring-1 ring-inset bg-white ${open ? 'ring-indigo-200 shadow-sm' : 'ring-slate-200'}`}>
       <button type="button" onClick={onToggle} className="w-full text-left px-4 py-3.5 flex items-center gap-3 cursor-pointer">
-        <span className="hidden sm:flex w-7 h-7 rounded-lg bg-slate-100 text-slate-600 text-[12px] font-bold items-center justify-center shrink-0 tabular-nums">{rank}</span>
-        <span className={`hidden sm:inline shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[group.level]}`}>{group.level}</span>
+        <span className="hidden sm:flex w-7 h-7 rounded-lg bg-slate-100 text-slate-600 text-12 font-bold items-center justify-center shrink-0 tabular-nums">{rank}</span>
+        <span className={`hidden sm:inline shrink-0 text-10 font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[group.level]}`}>{group.level}</span>
         <span className="flex-1 min-w-0">
-          <span className={`sm:hidden inline-block mb-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[group.level]}`}>{group.level}</span>
-          <span className="block text-[14px] font-semibold text-slate-900 sm:truncate">{g.title}</span>
-          <span className="block text-[12px] text-slate-500">{group.pageCount ? `${group.pageCount} page${group.pageCount === 1 ? '' : 's'}` : 'Whole site'} · {g.technical ? 'Technical' : group.area}{g.effort ? ` · ${g.effort}` : ''}</span>
+          <span className={`sm:hidden inline-block mb-1 text-10 font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[group.level]}`}>{group.level}</span>
+          <span className="block text-14 font-semibold text-slate-900 sm:truncate">{g.title}</span>
+          <span className="block text-12 text-slate-500">{group.pageCount ? `${group.pageCount} page${group.pageCount === 1 ? '' : 's'}` : 'Whole site'} · {g.technical ? 'Technical' : group.area}{g.effort ? ` · ${g.effort}` : ''}</span>
         </span>
-        {group.gain > 0 && <span className="shrink-0 inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-2 py-0.5 rounded-lg" title="Estimated on-page score gain"><TrendingUp size={12} />+{group.gain < 1 ? group.gain.toFixed(1) : Math.round(group.gain)}</span>}
+        {group.gain > 0 && <span className="shrink-0 inline-flex items-center gap-1 text-12 font-semibold text-emerald-700 bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-2 py-0.5 rounded-lg" title="Estimated on-page score gain"><TrendingUp size={12} />+{group.gain < 1 ? group.gain.toFixed(1) : Math.round(group.gain)}</span>}
         {open ? <ChevronDown size={16} className="text-slate-400 shrink-0" /> : <ChevronRight size={16} className="text-slate-400 shrink-0" />}
       </button>
       {open && (
         <div className="px-4 pb-4 space-y-4 border-t border-slate-100 pt-3">
-          {g.why && <div><div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Why it matters</div><p className="text-[13px] text-slate-700 leading-relaxed">{g.why}</p></div>}
+          {g.why && <div><div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1">Why it matters</div><p className="text-13 text-slate-700 leading-relaxed">{g.why}</p></div>}
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">How to fix</div>
-            <ol className="space-y-1.5">{g.steps.map((s, i) => <li key={i} className="flex gap-2.5 text-[13px] text-slate-800"><span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-bold flex items-center justify-center shrink-0 mt-px">{i + 1}</span><span>{s}</span></li>)}</ol>
+            <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">How to fix</div>
+            <ol className="space-y-1.5">{g.steps.map((s, i) => <li key={i} className="flex gap-2.5 text-13 text-slate-800"><span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-700 text-11 font-bold flex items-center justify-center shrink-0 mt-px">{i + 1}</span><span>{s}</span></li>)}</ol>
           </div>
-          {g.perPage && <div><div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Suggested fix for each page</div><PerPage kind={g.perPage} items={group.items} business={ctx.business} /></div>}
+          {g.perPage && <div><div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Suggested fix for each page</div><PerPage kind={g.perPage} items={group.items} business={ctx.business} /></div>}
           {code && <CodeBlock {...code} />}
           {group.code === 'slow_mobile' && ctx.opportunities?.length > 0 && (
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Biggest speed wins on this site</div>
-              <ul className="rounded-xl ring-1 ring-slate-200 divide-y divide-slate-100">{ctx.opportunities.map(o => <li key={o.title} className="px-3 py-2 flex justify-between gap-3 text-[12.5px]"><span className="text-slate-800">{o.title}</span><span className="text-slate-500 tabular-nums shrink-0">saves {(o.savings_ms / 1000).toFixed(1)} s</span></li>)}</ul>
+              <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Biggest speed wins on this site</div>
+              <ul className="rounded ring-1 ring-slate-200 divide-y divide-slate-100">{ctx.opportunities.map(o => <li key={o.title} className="px-3 py-2 flex justify-between gap-3 text-12.5"><span className="text-slate-800">{o.title}</span><span className="text-slate-500 tabular-nums shrink-0">saves {(o.savings_ms / 1000).toFixed(1)} s</span></li>)}</ul>
             </div>
           )}
           {group.code === 'duplicate_titles' && group.items[0]?.issue?.titles && (
-            <div className="rounded-xl ring-1 ring-slate-200 px-3 py-2 text-[12px] text-slate-700 space-y-1">{group.items[0].issue.titles.map(t => <div key={t}>“{t}” is used on {(group.items[0].issue.pages || []).length ? `${(group.items[0].issue.pages || []).filter(u => ctx.pages.find(p => p.url === u)?.title === t).map(pathOf).join(', ') || 'several pages'}` : 'several pages'}</div>)}</div>
+            <div className="rounded ring-1 ring-slate-200 px-3 py-2 text-12 text-slate-700 space-y-1">{group.items[0].issue.titles.map(t => <div key={t}>“{t}” is used on {(group.items[0].issue.pages || []).length ? `${(group.items[0].issue.pages || []).filter(u => ctx.pages.find(p => p.url === u)?.title === t).map(pathOf).join(', ') || 'several pages'}` : 'several pages'}</div>)}</div>
           )}
           {!g.perPage && group.pageCount > 0 && (
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Affected pages</div>
-              <div className="flex flex-wrap gap-1.5">{group.items.filter(i => i.page).map(i => <a key={i.page.url} href={i.page.url} target="_blank" rel="noreferrer" className="text-[11.5px] font-mono px-2 py-1 rounded-md bg-slate-50 ring-1 ring-inset ring-slate-200 text-slate-700 hover:text-indigo-700 inline-flex items-center gap-1">{pathOf(i.page.url)} <ExternalLink size={10} /></a>)}</div>
+              <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Affected pages</div>
+              <div className="flex flex-wrap gap-1.5">{group.items.filter(i => i.page).map(i => <a key={i.page.url} href={i.page.url} target="_blank" rel="noreferrer" className="text-11.5 font-mono px-2 py-1 rounded-md bg-slate-50 ring-1 ring-inset ring-slate-200 text-slate-700 hover:text-indigo-700 inline-flex items-center gap-1">{pathOf(i.page.url)} <ExternalLink size={10} /></a>)}</div>
             </div>
           )}
           {g.link && (g.link[1] || (group.code === 'slow_mobile' && ctx.origin)) && (
-            <a href={g.link[1] || `https://pagespeed.web.dev/analysis?url=${encodeURIComponent(ctx.origin)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] font-semibold text-indigo-700 hover:underline">{g.link[0]} <ExternalLink size={11} /></a>
+            <a href={g.link[1] || `https://pagespeed.web.dev/analysis?url=${encodeURIComponent(ctx.origin)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-12 font-semibold text-indigo-700 hover:underline">{g.link[0]} <ExternalLink size={11} /></a>
           )}
         </div>
       )}
@@ -354,21 +354,21 @@ export default function Improvements({ issues, pages, business, score, technical
 
   const shown = groups.filter(g => filter === 'all' || (filter === 'technical' ? g.technical : !g.technical));
   const top3 = groups.filter(g => !g.technical).slice(0, 3).reduce((s, g) => s + g.gain, 0);
-  const chip = (on) => `h-8 px-3 rounded-lg text-[12px] font-semibold cursor-pointer ${on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`;
+  const chip = (on) => `h-8 px-3 rounded-lg text-12 font-semibold cursor-pointer ${on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`;
 
   return (
     <Card title={`Improvements (${groups.length})`}
       subtitle={groups.length ? `Ranked by what to fix first.${top3 >= 1 ? ` Fixing the top 3 on-page items should add about +${Math.round(top3)} points.` : ''}` : 'Nothing to improve right now'}
       action={onRecheck && <Button size="sm" icon={RotateCw} busy={rechecking} onClick={onRecheck}>Re-check after fixing</Button>}>
       {groups.length === 0 ? (
-        <div className="py-8 text-center text-[13px] text-slate-600"><Wrench size={24} className="mx-auto text-emerald-500 mb-2" />Every page passed the on-page checks. Re-audit after publishing new pages.</div>
+        <div className="py-8 text-center text-13 text-slate-600"><Wrench size={24} className="mx-auto text-emerald-500 mb-2" />Every page passed the on-page checks. Re-audit after publishing new pages.</div>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            <div className="flex gap-0.5 p-0.5 rounded-xl bg-slate-100">
+            <div className="flex gap-0.5 p-0.5 rounded bg-slate-100">
               {[['all', 'All', groups.length], ['onpage', 'On-page', groups.filter(g => !g.technical).length], ['technical', 'Technical & speed', groups.filter(g => g.technical).length]].map(([id, l, c]) => <button key={id} type="button" className={chip(filter === id)} onClick={() => setFilter(id)}>{l} <span className="opacity-60">{c}</span></button>)}
             </div>
-            <span className="ml-auto text-[11px] text-slate-500 inline-flex items-center gap-1"><Clock size={11} /> Click an item for the step-by-step fix</span>
+            <span className="ml-auto text-11 text-slate-500 inline-flex items-center gap-1"><Clock size={11} /> Click an item for the step-by-step fix</span>
           </div>
           <div className="space-y-2">
             {shown.map((g, i) => <ImprovementCard key={g.code} group={g} rank={groups.indexOf(g) + 1} ctx={ctx} open={open === g.code} onToggle={() => setOpen(open === g.code ? null : g.code)} />)}

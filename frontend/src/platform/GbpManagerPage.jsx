@@ -6,6 +6,7 @@ import { SeoShell, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Moda
 import { ConnectModal } from './GbpConnect';
 import { GbpAccounts, ListingStatus, VerifyPill } from './GbpAccounts';
 import { api, useApi, fmtDate } from './seoApi';
+import { useCountries } from './countries';
 
 const CTA = { BOOK: 'Book', ORDER: 'Order online', LEARN_MORE: 'Learn more', SIGN_UP: 'Sign up', CALL: 'Call now' };
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
@@ -23,16 +24,16 @@ function AuditTab({ b, onEditProfile }) {
             <ScoreRing score={d.score} label={scoreWord(d.score)} />
             <div className="flex-1 space-y-2.5">
               {[['Relevance', d.factors.relevance], ['Distance', d.factors.distance], ['Prominence', d.factors.prominence]].map(([n, v], i) => (
-                <div key={n}><div className="flex justify-between text-[12px] mb-1"><span className="text-gray-600">{n}</span><span className="font-medium">{v}/100</span></div><Meter value={v} color={SERIES[i]} /></div>
+                <div key={n}><div className="flex justify-between text-12 mb-1"><span className="text-gray-600">{n}</span><span className="font-medium">{v}/100</span></div><Meter value={v} color={SERIES[i]} /></div>
               ))}
             </div>
           </div>
         </Card>
         {d.alerts.length > 0 && (
-          <Card title="Alerts"><div className="space-y-2">{d.alerts.map(a => <div key={a.text} className="text-[12px] text-gray-700"><StatusPill level={a.level}>{a.level === 'critical' ? 'Critical' : 'Warning'}</StatusPill> <span className="ml-1">{a.text}</span></div>)}</div></Card>
+          <Card title="Alerts"><div className="space-y-2">{d.alerts.map(a => <div key={a.text} className="text-12 text-gray-700"><StatusPill level={a.level}>{a.level === 'critical' ? 'Critical' : 'Warning'}</StatusPill> <span className="ml-1">{a.text}</span></div>)}</div></Card>
         )}
         <Card title="Google link">
-          <div className="space-y-1.5 text-[13px]">
+          <div className="space-y-1.5 text-13">
             <div className="flex justify-between"><span className="text-gray-500">Linked profile</span><span className="text-gray-900">{b.gbp_location || 'Not linked'}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Verification</span><VerifyPill state={b.verification} /></div>
             <div className="flex justify-between"><span className="text-gray-500">Reviews / rating</span><span className="text-gray-900">{b.reviewCount} · {b.rating ?? '—'}★</span></div>
@@ -45,9 +46,9 @@ function AuditTab({ b, onEditProfile }) {
           {[...d.items].sort((a, c) => (c.weight * (1 - c.score)) - (a.weight * (1 - a.score))).map(i => (
             <div key={i.key} className="flex items-start gap-3 py-2.5">
               {i.ok ? <CheckCircle2 size={16} className="text-emerald-600 mt-0.5 shrink-0" /> : <Circle size={16} className="text-gray-300 mt-0.5 shrink-0" />}
-              <div className="flex-1 min-w-0"><div className="text-[13px] text-gray-900">{i.label}</div>{!i.ok && <div className="text-[12px] text-gray-500 mt-0.5">{i.fix}</div>}</div>
+              <div className="flex-1 min-w-0"><div className="text-13 text-gray-900">{i.label}</div>{!i.ok && <div className="text-12 text-gray-500 mt-0.5">{i.fix}</div>}</div>
               <Badge tone="gray">{i.factor}</Badge>
-              <span className="w-16 text-right text-[12px] tabular-nums text-gray-600">{Number((i.weight * i.score).toFixed(1))}/{i.weight}</span>
+              <span className="w-16 text-right text-12 tabular-nums text-gray-600">{Number((i.weight * i.score).toFixed(1))}/{i.weight}</span>
             </div>
           ))}
         </div>
@@ -57,7 +58,8 @@ function AuditTab({ b, onEditProfile }) {
 }
 
 function ProfileTab({ b, toast }) {
-  const [p, setP] = useState(() => ({ name: b.name, primary_category: b.primary_category || '', secondary_categories: b.secondary_categories || [], phone: b.phone || '', website: b.website || '', address: b.address || '', area: b.area || '', city: b.city || '', description: b.description || '', services: b.services || [], attributes: b.attributes || [], booking_url: b.booking_url || '', lat: b.lat ?? '', lng: b.lng ?? '' }));
+  const countryRows = useCountries();
+  const [p, setP] = useState(() => ({ name: b.name, primary_category: b.primary_category || '', secondary_categories: b.secondary_categories || [], phone: b.phone || '', website: b.website || '', address: b.address || '', area: b.area || '', city: b.city || '', country: b.country || 'IN', description: b.description || '', services: b.services || [], attributes: b.attributes || [], booking_url: b.booking_url || '', lat: b.lat ?? '', lng: b.lng ?? '' }));
   const [attr, setAttr] = useState('');
   const [busy, error, run] = useAction();
   const set = (k, v) => setP(x => ({ ...x, [k]: v }));
@@ -81,7 +83,8 @@ function ProfileTab({ b, toast }) {
           <Field label="Website (landing page)"><input className={inputCls} value={p.website} onChange={e => set('website', e.target.value)} placeholder="https://" /></Field>
           <Field label="Booking link"><input className={inputCls} value={p.booking_url} onChange={e => set('booking_url', e.target.value)} placeholder="https://" /></Field>
           <Field label="Address"><input className={inputCls} value={p.address} onChange={e => set('address', e.target.value)} /></Field>
-          <div className="grid grid-cols-2 gap-2"><Field label="Area"><input className={inputCls} value={p.area} onChange={e => set('area', e.target.value)} /></Field><Field label="City"><input className={inputCls} value={p.city} onChange={e => set('city', e.target.value)} /></Field></div>
+          <div className="grid grid-cols-3 gap-2"><Field label="Area"><input className={inputCls} value={p.area} onChange={e => set('area', e.target.value)} /></Field><Field label="City"><input className={inputCls} value={p.city} onChange={e => set('city', e.target.value)} /></Field>
+            <Field label="Country" hint="Google searches, phone checks and listing sites follow it."><select className={inputCls} value={p.country} onChange={e => set('country', e.target.value)} aria-label="Country">{countryRows.map(r => <option key={r.code} value={r.code}>{r.name}</option>)}</select></Field></div>
           <div className="grid grid-cols-2 gap-2"><Field label="Map pin latitude"><input className={inputCls} value={p.lat} onChange={e => set('lat', e.target.value)} /></Field><Field label="Longitude"><input className={inputCls} value={p.lng} onChange={e => set('lng', e.target.value)} /></Field></div>
         </div>
         <div className="mt-3">
@@ -91,7 +94,7 @@ function ProfileTab({ b, toast }) {
           <Button className="mt-2" variant="ai" icon={Sparkles} busy={busy === 'ai'} onClick={aiDesc}>Write with AI</Button>
         </div>
         <div className="mt-4">
-          <div className="flex items-center justify-between mb-2"><span className="text-[12px] text-gray-600">Services and prices</span><Button size="sm" icon={Plus} onClick={() => set('services', [...p.services, { name: '', price: '', description: '' }])}>Add service</Button></div>
+          <div className="flex items-center justify-between mb-2"><span className="text-12 text-gray-600">Services and prices</span><Button size="sm" icon={Plus} onClick={() => set('services', [...p.services, { name: '', price: '', description: '' }])}>Add service</Button></div>
           <div className="space-y-2">
             {p.services.map((s, i) => (
               <div key={i} className="grid grid-cols-12 gap-2">
@@ -104,10 +107,10 @@ function ProfileTab({ b, toast }) {
           </div>
         </div>
         <div className="mt-4">
-          <span className="text-[12px] text-gray-600">Attributes</span>
+          <span className="text-12 text-gray-600">Attributes</span>
           <div className="flex flex-wrap gap-1.5 mt-1.5">
-            {p.attributes.map(a => <span key={a} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-100 text-[12px] text-gray-700">{a}<button onClick={() => set('attributes', p.attributes.filter(x => x !== a))} className="text-gray-400 hover:text-red-600 cursor-pointer">×</button></span>)}
-            <input className="h-7 px-2 text-[12px] border border-dashed border-gray-300 rounded outline-none w-44" placeholder="Add attribute + Enter" value={attr} onChange={e => setAttr(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && attr.trim()) { set('attributes', [...p.attributes, attr.trim()]); setAttr(''); } }} />
+            {p.attributes.map(a => <span key={a} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-100 text-12 text-gray-700">{a}<button onClick={() => set('attributes', p.attributes.filter(x => x !== a))} className="text-gray-400 hover:text-red-600 cursor-pointer">×</button></span>)}
+            <input className="h-7 px-2 text-12 border border-dashed border-gray-300 rounded outline-none w-44" placeholder="Add attribute + Enter" value={attr} onChange={e => setAttr(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && attr.trim()) { set('attributes', [...p.attributes, attr.trim()]); setAttr(''); } }} />
           </div>
         </div>
         <ErrorNote>{error}</ErrorNote>
@@ -117,11 +120,11 @@ function ProfileTab({ b, toast }) {
         <div className="border border-gray-200 rounded overflow-hidden">
           <div className="h-28 bg-gradient-to-br from-blue-100 to-emerald-100 flex items-center justify-center text-gray-400"><ImageIcon size={28} /></div>
           <div className="p-3">
-            <div className="text-[15px] text-gray-900">{p.name}</div>
-            <div className="text-[12px] text-gray-600 mt-0.5">{b.rating ? <span className="text-amber-600">{b.rating} ★ </span> : null}({b.reviewCount}) · {p.primary_category || 'Category'}</div>
-            <div className="flex gap-2 mt-3">{[['Directions', MapPin], ['Call', Phone], ['Website', Globe]].map(([l, I]) => <span key={l} className="flex-1 flex flex-col items-center gap-1 text-[11px] text-blue-700"><span className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center"><I size={14} /></span>{l}</span>)}</div>
-            <p className="text-[12px] text-gray-700 mt-3 line-clamp-4">{p.description || 'No description yet.'}</p>
-            <div className="text-[12px] text-gray-600 mt-2">{p.address || 'Service-area business'}</div>
+            <div className="text-15 text-gray-900">{p.name}</div>
+            <div className="text-12 text-gray-600 mt-0.5">{b.rating ? <span className="text-amber-600">{b.rating} ★ </span> : null}({b.reviewCount}) · {p.primary_category || 'Category'}</div>
+            <div className="flex gap-2 mt-3">{[['Directions', MapPin], ['Call', Phone], ['Website', Globe]].map(([l, I]) => <span key={l} className="flex-1 flex flex-col items-center gap-1 text-11 text-blue-700"><span className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center"><I size={14} /></span>{l}</span>)}</div>
+            <p className="text-12 text-gray-700 mt-3 line-clamp-4">{p.description || 'No description yet.'}</p>
+            <div className="text-12 text-gray-600 mt-2">{p.address || 'Service-area business'}</div>
           </div>
         </div>
       </Card>
@@ -146,14 +149,14 @@ function PostsTab({ b, toast }) {
       <Card title="Posts" subtitle="One or two Updates or Offers a week keeps the profile active. Every post is approved before it goes live."
         action={<div className="flex gap-2"><Button variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={aiDraft}>AI draft</Button><Button variant="primary" icon={Plus} onClick={open}>New post</Button></div>}>
         <ErrorNote>{!edit && error}</ErrorNote>
-        {!posts.data ? <div className="py-8 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : posts.data.length === 0 ? <div className="py-8 text-center text-[13px] text-gray-500">No posts yet.</div> : (
+        {!posts.data ? <div className="py-8 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : posts.data.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No posts yet.</div> : (
           <div className="divide-y divide-gray-100">
             {posts.data.map(p => (
               <div key={p.id} className="flex items-start gap-3 py-3">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap"><Badge tone={p.post_type === 'Offer' ? 'orange' : p.post_type === 'Event' ? 'violet' : 'blue'}>{p.post_type}</Badge>{p.title && <span className="text-[13px] font-medium text-gray-900">{p.title}</span>}{p.ai_generated && <Badge tone="violet"><Sparkles size={10} /> AI</Badge>}</div>
-                  <p className="text-[12px] text-gray-600 mt-1 line-clamp-2">{p.body}</p>
-                  <div className="text-[11px] text-gray-500 mt-1">{CTA[p.cta_type] || '—'} · {p.published_at ? `published ${fmtDate(p.published_at)}` : p.scheduled_for ? `for ${fmtDate(p.scheduled_for)}` : `created ${fmtDate(p.created_at)}`}</div>
+                  <div className="flex items-center gap-2 flex-wrap"><Badge tone={p.post_type === 'Offer' ? 'orange' : p.post_type === 'Event' ? 'violet' : 'blue'}>{p.post_type}</Badge>{p.title && <span className="text-13 font-medium text-gray-900">{p.title}</span>}{p.ai_generated && <Badge tone="violet"><Sparkles size={10} /> AI</Badge>}</div>
+                  <p className="text-12 text-gray-600 mt-1 line-clamp-2">{p.body}</p>
+                  <div className="text-11 text-gray-500 mt-1">{CTA[p.cta_type] || '—'} · {p.published_at ? `published ${fmtDate(p.published_at)}` : p.scheduled_for ? `for ${fmtDate(p.scheduled_for)}` : `created ${fmtDate(p.created_at)}`}</div>
                 </div>
                 <StatusPill level={p.status === 'published' ? 'good' : p.status === 'failed' ? 'critical' : 'warning'}>{p.status === 'published' ? 'Live' : p.status === 'failed' ? 'Failed' : 'Waiting for approval'}</StatusPill>
                 {p.status !== 'published' && <button onClick={() => del(p.id)} className="p-1 text-gray-400 hover:text-red-600 cursor-pointer" aria-label="Delete"><Trash2 size={14} /></button>}
@@ -166,7 +169,7 @@ function PostsTab({ b, toast }) {
         {edit && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-3">
-              <div className="flex gap-1">{['Update', 'Offer', 'Event'].map(t => <button key={t} onClick={() => setEdit({ ...edit, post_type: t })} className={`flex-1 h-8 text-[13px] rounded border cursor-pointer ${edit.post_type === t ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-300 text-gray-700'}`}>{t}</button>)}</div>
+              <div className="flex gap-1">{['Update', 'Offer', 'Event'].map(t => <button key={t} onClick={() => setEdit({ ...edit, post_type: t })} className={`flex-1 h-8 text-13 rounded border cursor-pointer ${edit.post_type === t ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-300 text-gray-700'}`}>{t}</button>)}</div>
               {edit.post_type !== 'Update' && <Field label="Title"><input className={inputCls} value={edit.title} onChange={e => setEdit({ ...edit, title: e.target.value })} /></Field>}
               <Field label="Post text" counter={<span className="text-gray-400">{edit.body.length}/1500</span>} hint="No phone numbers or links in the text; use the button."><textarea rows={6} className={areaCls} value={edit.body} onChange={e => setEdit({ ...edit, body: e.target.value.slice(0, 1500) })} /></Field>
               <div className="grid grid-cols-2 gap-2">
@@ -177,10 +180,10 @@ function PostsTab({ b, toast }) {
               <ErrorNote>{error}</ErrorNote>
             </div>
             <div>
-              <div className="text-[12px] text-gray-600 mb-1">Preview</div>
+              <div className="text-12 text-gray-600 mb-1">Preview</div>
               <div className="border border-gray-200 rounded overflow-hidden">
                 <div className="h-32 flex items-center justify-center text-gray-500 bg-emerald-50"><ImageIcon size={24} /></div>
-                <div className="p-3"><div className="text-[12px] text-gray-500">{b.name} · just now</div>{edit.title && <div className="text-[14px] font-medium text-gray-900 mt-1">{edit.title}</div>}<p className="text-[13px] text-gray-700 mt-1 whitespace-pre-line">{edit.body || 'Your post text appears here.'}</p><div className="mt-3 text-[13px] font-medium text-blue-700">{CTA[edit.cta_type]}</div></div>
+                <div className="p-3"><div className="text-12 text-gray-500">{b.name} · just now</div>{edit.title && <div className="text-14 font-medium text-gray-900 mt-1">{edit.title}</div>}<p className="text-13 text-gray-700 mt-1 whitespace-pre-line">{edit.body || 'Your post text appears here.'}</p><div className="mt-3 text-13 font-medium text-blue-700">{CTA[edit.cta_type]}</div></div>
               </div>
             </div>
           </div>
@@ -199,11 +202,11 @@ function PhotosTab({ b, toast }) {
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card title="Photos on Google" subtitle="Counted on every sync of the connected profile">
         <div className="text-3xl font-semibold text-gray-900">{b.photo_count ?? '—'}</div>
-        <div className="text-[12px] text-gray-500 mt-1">{b.photo_count == null ? 'Connect the Google profile to count photos.' : b.photo_count >= 10 ? 'Good: keep adding real photos weekly.' : 'Aim for 10+ real photos: outside, inside, team, work. No stock images.'}</div>
-        <div className="mt-4 space-y-2 text-[13px]">
+        <div className="text-12 text-gray-500 mt-1">{b.photo_count == null ? 'Connect the Google profile to count photos.' : b.photo_count >= 10 ? 'Good: keep adding real photos weekly.' : 'Aim for 10+ real photos: outside, inside, team, work. No stock images.'}</div>
+        <div className="mt-4 space-y-2 text-13">
           {[['10 or more photos', (b.photo_count || 0) >= 10], ['Cover photo set', Boolean(b.cover_photo)], ['Logo set', Boolean(b.logo)]].map(([l, ok]) => <div key={l} className="flex items-center gap-2">{ok ? <CheckCircle2 size={15} className="text-emerald-600" /> : <Circle size={15} className="text-gray-300" />}<span className={ok ? 'text-gray-800' : 'text-gray-500'}>{l}</span></div>)}
         </div>
-        <p className="text-[11px] text-gray-500 mt-4">Upload photos in the Google Business Profile app; geo-relevant file names help (e.g. {`${(b.primaryCategory || 'business').toLowerCase().replace(/\s/g, '-')}-${(b.area || 'area').toLowerCase()}.webp`}).</p>
+        <p className="text-11 text-gray-500 mt-4">Upload photos in the Google Business Profile app; geo-relevant file names help (e.g. {`${(b.primaryCategory || 'business').toLowerCase().replace(/\s/g, '-')}-${(b.area || 'area').toLowerCase()}.webp`}).</p>
       </Card>
       <Card title="Cover photo and logo">
         <div className="space-y-3">
@@ -235,15 +238,15 @@ function HoursTab({ b, toast }) {
         <div className="divide-y divide-gray-100">
           {rows.map((h, i) => (
             <div key={h.day} className="flex items-center gap-3 py-2">
-              <span className="w-24 text-[13px] text-gray-800 capitalize">{h.day.toLowerCase()}</span>
-              <label className="flex items-center gap-1.5 text-[12px] text-gray-600 w-20"><input type="checkbox" checked={h.on} onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, on: e.target.checked } : x))} /> {h.on ? 'Open' : 'Closed'}</label>
+              <span className="w-24 text-13 text-gray-800 capitalize">{h.day.toLowerCase()}</span>
+              <label className="flex items-center gap-1.5 text-12 text-gray-600 w-20"><input type="checkbox" checked={h.on} onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, on: e.target.checked } : x))} /> {h.on ? 'Open' : 'Closed'}</label>
               {h.on && <><input type="time" className={`${inputCls} w-28`} value={h.open} onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, open: e.target.value } : x))} /><span className="text-gray-400">–</span><input type="time" className={`${inputCls} w-28`} value={h.close} onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, close: e.target.value } : x))} /></>}
             </div>
           ))}
         </div>
       </Card>
       <Card title="Special hours" subtitle="Festivals and holidays" action={<Button size="sm" icon={Plus} onClick={() => setSpecial(s => [...s, { date: new Date().toISOString().slice(0, 10), name: 'Holiday', closed: true }])}>Add day</Button>}>
-        {special.length === 0 ? <div className="text-[13px] text-gray-500 py-4">None yet.</div> : (
+        {special.length === 0 ? <div className="text-13 text-gray-500 py-4">None yet.</div> : (
           <div className="divide-y divide-gray-100">
             {special.map((s, i) => (
               <div key={i} className="flex flex-wrap items-center gap-2 py-2">
@@ -298,7 +301,7 @@ function InsightsTab({ b }) {
   }, [ins.data]);
   return (
     <Card title="Profile views per week" subtitle="From the Business Profile Performance API (synced daily)" action={<Legend items={[['Google Search', SERIES[0]], ['Google Maps', SERIES[1]]]} />}>
-      {!ins.data ? <div className="py-10 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : weekly.length === 0 ? <div className="py-12 text-center text-[13px] text-gray-500">No insights yet: they arrive once the Google profile is connected and synced.</div> : (
+      {!ins.data ? <div className="py-10 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : weekly.length === 0 ? <div className="py-12 text-center text-13 text-gray-500">No insights yet: they arrive once the Google profile is connected and synced.</div> : (
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={weekly} margin={{ top: 8, right: 8, left: -14, bottom: 0 }}>
@@ -357,7 +360,7 @@ export default function GbpManagerPage({ initialTab = 'audit' }) {
           <div className="space-y-5">
             <GbpAccounts business={b} initialAccount={account} toast={toast} onOtherWays={() => setConnect('find')} onOpenBusiness={(id) => { setBusiness(id); setTab('audit'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
             {b ? <div><Manager key={b.id} b={b} tab={tab} setTab={setTab} toast={toast} onConnect={(mode = 'find') => setConnect(mode)} /></div>
-              : <Card><div className="py-8 text-center text-[13px] text-slate-500">No businesses yet. Find one by its email above, or use Other ways to add.</div></Card>}
+              : <Card><div className="py-8 text-center text-13 text-slate-500">No businesses yet. Find one by its email above, or use Other ways to add.</div></Card>}
           </div>
         )}
       </SeoShell>

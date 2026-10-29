@@ -35,7 +35,7 @@ function download(name, text) {
   setTimeout(() => URL.revokeObjectURL(href), 1000);
 }
 function Code({ text }) {
-  return <pre className="text-[11.5px] leading-relaxed font-mono text-slate-100 bg-slate-900 rounded-xl p-4 overflow-auto max-h-[420px]">{text}</pre>;
+  return <pre className="text-11.5 leading-relaxed font-mono text-slate-100 bg-slate-900 rounded p-4 overflow-auto max-h-[420px]">{text}</pre>;
 }
 
 function localBusiness(b, type) {
@@ -57,7 +57,7 @@ function FieldRow({ ok, soft, label, hint, to }) {
   return (
     <li className="flex items-start gap-2.5 py-1.5">
       {ok ? <CheckCircle2 size={15} className="text-emerald-600 shrink-0 mt-px" /> : soft ? <CircleDashed size={15} className="text-slate-400 shrink-0 mt-px" /> : <XCircle size={15} className="text-red-500 shrink-0 mt-px" />}
-      <span className="min-w-0 flex-1 text-[12.5px] text-slate-800">{label}{!ok && hint && <span className="block text-[11.5px] text-slate-500">{hint}{to && <> · <Link to={path(to)} className="font-medium text-indigo-700 hover:underline">add it</Link></>}</span>}</span>
+      <span className="min-w-0 flex-1 text-12.5 text-slate-800">{label}{!ok && hint && <span className="block text-11.5 text-slate-500">{hint}{to && <> · <Link to={path(to)} className="font-medium text-indigo-700 hover:underline">add it</Link></>}</span>}</span>
     </li>
   );
 }
@@ -83,25 +83,25 @@ function FaqEditor({ b, toast }) {
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={draft}>Draft FAQs from the profile</Button>
         <Button icon={Plus} onClick={() => setFaqs(list => [...list, { q: '', a: '' }])}>Add question</Button>
-        {source && <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${source === 'ai' ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-slate-50 text-slate-500 ring-slate-200'}`}>{source === 'ai' ? 'AI' : 'from the profile'}</span>}
+        {source && <span className={`text-10 font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${source === 'ai' ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-slate-50 text-slate-500 ring-slate-200'}`}>{source === 'ai' ? 'AI' : 'from the profile'}</span>}
         <Button className="ml-auto" variant="primary" icon={Save} busy={busy === 'save'} disabled={!dirty} onClick={save}>Save to profile</Button>
       </div>
       <ErrorNote>{error}</ErrorNote>
-      {faqs.length === 0 ? <div className="py-6 text-center text-[13px] text-slate-500">No FAQs yet. Draft them from the profile or add your own.</div> : (
+      {faqs.length === 0 ? <div className="py-6 text-center text-13 text-slate-500">No FAQs yet. Draft them from the profile or add your own.</div> : (
         <ol className="space-y-2.5">
           {faqs.map((f, i) => (
-            <li key={i} className="rounded-xl ring-1 ring-inset ring-slate-200 p-3 space-y-2">
-              <div className="flex items-center gap-2"><span className="text-[11px] font-bold text-slate-400 w-5">Q{i + 1}</span><input className={inputCls} value={f.q} onChange={e => set(i, 'q', e.target.value)} placeholder="A question customers ask" aria-label={`Question ${i + 1}`} />
+            <li key={i} className="rounded ring-1 ring-inset ring-slate-200 p-3 space-y-2">
+              <div className="flex items-center gap-2"><span className="text-11 font-bold text-slate-400 w-5">Q{i + 1}</span><input className={inputCls} value={f.q} onChange={e => set(i, 'q', e.target.value)} placeholder="A question customers ask" aria-label={`Question ${i + 1}`} />
                 <button type="button" onClick={() => setFaqs(list => list.filter((_, n) => n !== i))} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 cursor-pointer" aria-label={`Remove question ${i + 1}`}><Trash2 size={14} /></button></div>
               <textarea rows={2} className={areaCls} value={f.a} onChange={e => set(i, 'a', e.target.value)} placeholder="The answer, 1-3 sentences" aria-label={`Answer ${i + 1}`} />
             </li>
           ))}
         </ol>
       )}
-      {dirty && valid.length > 0 && <p className="text-[12px] text-amber-700 flex items-center gap-1.5"><Info size={13} /> Save to keep these FAQs on the profile (they also feed Google Q&A).</p>}
+      {dirty && valid.length > 0 && <p className="text-12 text-amber-700 flex items-center gap-1.5"><Info size={13} /> Save to keep these FAQs on the profile (they also feed Google Q&A).</p>}
       {json && (
         <div>
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-2"><span className="text-[12px] font-semibold text-slate-700">FAQ code ({valid.length} question{valid.length === 1 ? '' : 's'})</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2"><span className="text-12 font-semibold text-slate-700">FAQ code ({valid.length} question{valid.length === 1 ? '' : 's'})</span>
             <div className="flex gap-2"><Button size="sm" icon={Download} onClick={() => download('faq-schema.html', script(json))}>Download</Button><CopyBtn text={script(json)} /></div></div>
           <Code text={script(json)} />
         </div>
@@ -136,19 +136,19 @@ export default function SchemaStudio({ b, report }) {
       <div className="xl:col-span-2 space-y-5 min-w-0">
         <Card>
           <div className="flex items-center gap-3">
-            <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 shrink-0"><Braces size={18} /></span>
+            <span className="w-10 h-10 rounded bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 shrink-0"><Braces size={18} /></span>
             <div className="min-w-0">
-              <div className="text-[15px] font-semibold text-slate-900">Structured data</div>
-              <div className="text-[12px] text-slate-500">Code that tells Google exactly who the business is, where, when it's open and what it offers.</div>
+              <div className="text-15 font-semibold text-slate-900">Structured data</div>
+              <div className="text-12 text-slate-500">Code that tells Google exactly who the business is, where, when it's open and what it offers.</div>
             </div>
           </div>
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[[bizTypes.length > 0, 'Business markup on the site', report ? (bizTypes.length ? bizTypes.join(', ') : 'None found') : 'Run an audit to check'],
-              [onHome, 'On the home page', report ? (onHome ? 'Found on /' : 'Add it to the home page') : '—'],
-              [have === fields.length, 'Profile details for the code', `${have} of ${fields.length} available`]].map(([ok, l, d]) => (
-              <div key={l} className={`rounded-xl ring-1 ring-inset px-3.5 py-3 ${ok ? 'bg-emerald-50/60 ring-emerald-200' : 'bg-amber-50/60 ring-amber-200'}`}>
-                <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-900">{ok ? <CheckCircle2 size={14} className="text-emerald-600" /> : <XCircle size={14} className="text-amber-600" />} {l}</div>
-                <div className="mt-0.5 text-[12px] text-slate-600 truncate" title={d}>{d}</div>
+            [onHome, 'On the home page', report ? (onHome ? 'Found on /' : 'Add it to the home page') : '—'],
+            [have === fields.length, 'Profile details for the code', `${have} of ${fields.length} available`]].map(([ok, l, d]) => (
+              <div key={l} className={`rounded ring-1 ring-inset px-3.5 py-3 ${ok ? 'bg-emerald-50/60 ring-emerald-200' : 'bg-amber-50/60 ring-amber-200'}`}>
+                <div className="flex items-center gap-1.5 text-12.5 font-semibold text-slate-900">{ok ? <CheckCircle2 size={14} className="text-emerald-600" /> : <XCircle size={14} className="text-amber-600" />} {l}</div>
+                <div className="mt-0.5 text-12 text-slate-600 truncate" title={d}>{d}</div>
               </div>
             ))}
           </div>
@@ -160,14 +160,14 @@ export default function SchemaStudio({ b, report }) {
           <Card title="LocalBusiness code" subtitle="Built from the saved profile, so it always matches Google. Paste it once; regenerate after profile changes."
             action={<div className="flex gap-2"><Button size="sm" icon={Download} onClick={() => download('localbusiness-schema.html', script(json))}>Download</Button><CopyBtn text={script(json)} /></div>}>
             <div className="flex flex-wrap items-center gap-2 mb-3">
-              <label className="text-[12px] font-semibold text-slate-700" htmlFor="schema-type">Type</label>
-              <select id="schema-type" value={type} onChange={e => setType(e.target.value)} className="h-9 px-2.5 rounded-xl text-[12.5px] font-semibold text-slate-800 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer">
+              <label className="text-12 font-semibold text-slate-700" htmlFor="schema-type">Type</label>
+              <select id="schema-type" value={type} onChange={e => setType(e.target.value)} className="h-9 px-2.5 rounded text-12.5 font-semibold text-slate-800 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer">
                 {TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}{t === auto ? ' (suggested)' : ''}</option>)}
               </select>
-              <span className="text-[11.5px] text-slate-500">{type === auto ? `The most specific type for “${b.primary_category || 'this business'}”.` : `Suggested: ${auto}`}</span>
+              <span className="text-11.5 text-slate-500">{type === auto ? `The most specific type for “${b.primary_category || 'this business'}”.` : `Suggested: ${auto}`}</span>
             </div>
             <Code text={script(json)} />
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-[12px]">
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-12">
               <a href="https://search.google.com/test/rich-results" target="_blank" rel="noreferrer" className="font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1">Test in Google's Rich Results Test <ExternalLink size={11} /></a>
               <a href="https://validator.schema.org/" target="_blank" rel="noreferrer" className="font-semibold text-slate-600 hover:underline inline-flex items-center gap-1">Schema validator <ExternalLink size={11} /></a>
               <span className="text-slate-400">Review stars aren't included: Google ignores ratings a business marks up about itself.</span>
@@ -182,18 +182,18 @@ export default function SchemaStudio({ b, report }) {
           <ul className="-my-1">{fields.map(([l, ok, to]) => <FieldRow key={l} ok={Boolean(ok)} label={l} hint="Missing from the profile" to={to} />)}</ul>
         </Card>
         <Card title="Found on the site" subtitle={report ? `${pages.length} pages from the latest audit` : 'No audit yet'}>
-          {!report ? <div className="text-[12.5px] text-slate-500">Run an audit to see which structured data the site already has.</div>
+          {!report ? <div className="text-12.5 text-slate-500">Run an audit to see which structured data the site already has.</div>
             : Object.keys(found).length ? (
-              <ul className="space-y-2">{Object.entries(found).map(([t, urls]) => <li key={t} className="text-[12px]"><span className="font-mono font-semibold text-slate-900 bg-slate-50 ring-1 ring-inset ring-slate-200 rounded px-1.5 py-0.5">{t}</span> <span className="text-slate-500">on {urls.slice(0, 3).map(pathOf).join(', ')}{urls.length > 3 ? ` +${urls.length - 3}` : ''}</span></li>)}</ul>
-            ) : <div className="text-[12.5px] text-amber-700">No structured data on any crawled page yet.</div>}
+              <ul className="space-y-2">{Object.entries(found).map(([t, urls]) => <li key={t} className="text-12"><span className="font-mono font-semibold text-slate-900 bg-slate-50 ring-1 ring-inset ring-slate-200 rounded px-1.5 py-0.5">{t}</span> <span className="text-slate-500">on {urls.slice(0, 3).map(pathOf).join(', ')}{urls.length > 3 ? ` +${urls.length - 3}` : ''}</span></li>)}</ul>
+            ) : <div className="text-12.5 text-amber-700">No structured data on any crawled page yet.</div>}
         </Card>
         <Card title="How to add it">
-          <ol className="space-y-2 text-[12.5px] text-slate-700 list-decimal ml-4">
+          <ol className="space-y-2 text-12.5 text-slate-700 list-decimal ml-4">
             <li>Copy the code.</li>
-            <li>Paste it inside <code className="font-mono text-[11.5px] bg-slate-100 px-1 rounded">&lt;head&gt;</code> on the home and contact pages (WordPress: a header-scripts or schema plugin).</li>
+            <li>Paste it inside <code className="font-mono text-11.5 bg-slate-100 px-1 rounded">&lt;head&gt;</code> on the home and contact pages (WordPress: a header-scripts or schema plugin).</li>
             <li>Check it in the Rich Results Test, then re-run the website audit.</li>
           </ol>
-          <div className="mt-2 text-[11.5px] text-slate-500 flex items-center gap-1.5"><FileCode size={12} /> The FAQ code goes on the page that shows those FAQs.</div>
+          <div className="mt-2 text-11.5 text-slate-500 flex items-center gap-1.5"><FileCode size={12} /> The FAQ code goes on the page that shows those FAQs.</div>
         </Card>
       </aside>
       {toastNode}

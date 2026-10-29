@@ -49,7 +49,7 @@ export default function App() {
   if (pathname === '/terms') return <LegalPage kind="terms" />;
 
   if (user === undefined) {
-    return <div className="min-h-screen flex items-center justify-center gap-2 text-[13px] text-gray-500"><Loader2 size={15} className="animate-spin" /> Loading…</div>;
+    return <div className="min-h-screen flex items-center justify-center gap-2 text-13 text-gray-500"><Loader2 size={15} className="animate-spin" /> Loading…</div>;
   }
   if (!user) return <LoginPage onSignedIn={loadMe} />;
 

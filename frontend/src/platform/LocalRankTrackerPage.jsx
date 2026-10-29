@@ -33,7 +33,7 @@ function Grid({ points, size, label }) {
           );
         })}
       </div>
-      {label && <span className="absolute top-2 left-2 bg-white/90 rounded px-1.5 py-0.5 text-[11px] text-gray-700">{label}</span>}
+      {label && <span className="absolute top-2 left-2 bg-white/90 rounded px-1.5 py-0.5 text-11 text-gray-700">{label}</span>}
     </div>
   );
 }
@@ -48,7 +48,11 @@ function Tracker({ b }) {
     return [...new Set([...fromScans, ...tracked, ...base])].filter(Boolean);
   }, [kw.data, scans.data, b]);
   const [keyword, setKeyword] = useState('');
-  const [size, setSize] = useState(7);
+  // Live Google results (Serper) cost 3 credits per grid point, so those scans stay at 3x3 or 5x5.
+  const status = useApi('/status');
+  const live = status.data?.rank_source === 'serper';
+  const sizes = live ? [3, 5] : [3, 5, 7, 9, 11, 13];
+  const [size, setSize] = useState(5);
   const [radius, setRadius] = useState(5);
   const [waiting, setWaiting] = useState(null); // scan count when a scan was started
   const [busy, error, run] = useAction();
@@ -73,38 +77,38 @@ function Tracker({ b }) {
   return (
     <>
       <div className="flex flex-wrap items-end gap-3 mb-4 bg-white border border-gray-200 rounded p-3">
-        <label className="text-[12px] text-gray-600">Keyword
-          <input list="rank-kw" className="block mt-1 h-8 px-2 text-[13px] border border-gray-300 rounded bg-white min-w-[240px]" value={kwNow} onChange={e => setKeyword(e.target.value)} />
+        <label className="text-12 text-gray-600">Keyword
+          <input list="rank-kw" className="block mt-1 h-8 px-2 text-13 border border-gray-300 rounded bg-white min-w-[240px]" value={kwNow} onChange={e => setKeyword(e.target.value)} />
           <datalist id="rank-kw">{suggestions.map(k => <option key={k} value={k} />)}</datalist>
         </label>
-        <label className="text-[12px] text-gray-600">Grid<select className="block mt-1 h-8 px-2 text-[13px] border border-gray-300 rounded bg-white" value={size} onChange={e => setSize(Number(e.target.value))}>{[3, 5, 7, 9, 11, 13].map(n => <option key={n} value={n}>{n} × {n}</option>)}</select></label>
-        <label className="text-[12px] text-gray-600">Radius<select className="block mt-1 h-8 px-2 text-[13px] border border-gray-300 rounded bg-white" value={radius} onChange={e => setRadius(Number(e.target.value))}>{[1, 2, 3, 5, 8, 10].map(n => <option key={n} value={n}>{n} km</option>)}</select></label>
-        <div className="text-[12px] text-gray-500 flex items-center gap-1.5 pb-2"><Clock size={12} /> {latest ? `Last scan ${fmtDateTime(latest.created_at)}` : 'Not scanned yet'} · {size * size} points</div>
+        <label className="text-12 text-gray-600">Grid<select className="block mt-1 h-8 px-2 text-13 border border-gray-300 rounded bg-white" value={size} onChange={e => setSize(Number(e.target.value))}>{sizes.map(n => <option key={n} value={n}>{n} × {n}</option>)}</select></label>
+        <label className="text-12 text-gray-600">Radius<select className="block mt-1 h-8 px-2 text-13 border border-gray-300 rounded bg-white" value={radius} onChange={e => setRadius(Number(e.target.value))}>{[1, 2, 3, 5, 8, 10].map(n => <option key={n} value={n}>{n} km</option>)}</select></label>
+        <div className="text-12 text-gray-500 flex items-center gap-1.5 pb-2"><Clock size={12} /> {latest ? `Last scan ${fmtDateTime(latest.created_at)}` : 'Not scanned yet'} · {Math.min(size, live ? 5 : size) ** 2} points{live ? ` · live Google Maps, ${Math.min(size, 5) ** 2 * 3} Serper credits` : status.data?.rank_source === 'sample' ? ' · sample data (no ranking source connected)' : ''}</div>
         <Button variant="primary" icon={Play} className="ml-auto" busy={busy === 'scan' || waiting != null} disabled={!kwNow} onClick={start}>{waiting != null ? 'Scanning…' : 'Run scan'}</Button>
       </div>
       <ErrorNote>{error}</ErrorNote>
 
       {!scans.data ? <div className="py-16 flex justify-center text-slate-500"><Loader2 size={16} className="animate-spin" /></div> : !latest ? (
-        <Card><div className="py-12 text-center text-[13px] text-gray-500">No scan for “{kwNow || '—'}” yet. Run one to see how you rank street by street.</div></Card>
+        <Card><div className="py-12 text-center text-13 text-gray-500">No scan for “{kwNow || '—'}” yet. Run one to see how you rank street by street.</div></Card>
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4 mt-2">
             <Stat label="Average rank (where found)" value={latest.avg_rank ?? '—'} hint="lower is better" />
             <Stat label="Points in the top 3" value={`${latest.top3} / ${cells}`} hint={`${Math.round((latest.top3 / cells) * 100)}% of the area`} />
             <Stat label="Found in the top 20" value={`${latest.found} / ${cells}`} />
-            <div className="bg-white border border-gray-200 rounded p-3.5"><div className="text-[12px] text-gray-500">Data</div><div className="mt-2"><SourceTag source={latest.data_source} /></div><div className="text-[11px] text-gray-500 mt-1">{latest.data_source === 'sample' ? 'Connect DataForSEO for live Maps ranks' : 'Google Maps results'}</div></div>
+            <div className="bg-white border border-gray-200 rounded p-3.5"><div className="text-12 text-gray-500">Data</div><div className="mt-2"><SourceTag source={latest.data_source} /></div><div className="text-11 text-gray-500 mt-1">{latest.data_source === 'sample' ? 'Connect DataForSEO for live Maps ranks' : 'Google Maps results'}</div></div>
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 mb-4">
             <Card title={`Map grid for “${latest.keyword}”`} subtitle={`${latest.grid_size}×${latest.grid_size} points, ${latest.radius_km} km around the pin (black ring)`} className="xl:col-span-3">
               <div className="max-w-[560px] mx-auto"><Grid points={latest.points} size={latest.grid_size} label={<><MapPin size={10} className="inline" /> {[b.area, b.city].filter(Boolean).join(', ')}</>} /></div>
-              <div className="flex flex-wrap justify-center gap-3 mt-3 text-[12px] text-gray-600">
+              <div className="flex flex-wrap justify-center gap-3 mt-3 text-12 text-gray-600">
                 {[['1–3', STATUS.good], ['4–10', STATUS.warning], ['11–20', STATUS.serious], ['Not in top 20', STATUS.critical]].map(([l, c]) => <span key={l} className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full" style={{ background: c }} />{l}</span>)}
               </div>
             </Card>
             <Card title="Competitors on this grid" subtitle="Businesses that appear most in the top 10" className="xl:col-span-2">
-              {(latest.competitors || []).length === 0 ? <div className="text-[13px] text-gray-500">None recorded.</div> : (
-                <table className="w-full text-[13px]">
-                  <thead className="text-[12px] text-gray-500 border-b border-gray-200"><tr><th className="p-2 text-left font-medium">Business</th><th className="p-2 text-right font-medium">Avg rank</th><th className="p-2 text-right font-medium">Top-3 points</th></tr></thead>
+              {(latest.competitors || []).length === 0 ? <div className="text-13 text-gray-500">None recorded.</div> : (
+                <table className="w-full text-13">
+                  <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><th className="p-2 text-left font-medium">Business</th><th className="p-2 text-right font-medium">Avg rank</th><th className="p-2 text-right font-medium">Top-3 points</th></tr></thead>
                   <tbody className="divide-y divide-gray-100">{latest.competitors.map(c => <tr key={c.name}><td className="p-2 text-gray-900">{c.name}</td><td className="p-2 text-right tabular-nums">{c.avg_rank}</td><td className="p-2 text-right tabular-nums">{c.top3}</td></tr>)}</tbody>
                 </table>
               )}

@@ -43,15 +43,15 @@ const ScoreCell = ({ s }) => (
 );
 
 const Ring = ({ score, label }) => (score == null ? (
-  <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+  <div className="flex flex-col items-center gap-1.5 p-3 rounded bg-slate-50 border border-slate-200">
     <div className="w-[100px] h-[100px] rounded-full border-8 border-slate-200 flex flex-col items-center justify-center">
       <span className="text-2xl font-mono font-semibold text-slate-500 leading-none">—</span>
-      <span className="text-[11px] text-slate-500 mt-1">{label}</span>
+      <span className="text-11 text-slate-500 mt-1">{label}</span>
     </div>
     <Badge>N/A</Badge>
   </div>
 ) : (
-  <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+  <div className="flex flex-col items-center gap-1.5 p-3 rounded bg-slate-50 border border-slate-200">
     <ScoreRing score={score} label={label} size={100} level={lhLevel(score)} />
     <StatusPill level={lhLevel(score)}>{lhWord(score)}</StatusPill>
   </div>
@@ -66,15 +66,15 @@ function EnginePicker({ health, engine, setEngine }) {
     ['lighthouse', Cpu, 'Local Lighthouse', health?.local_lighthouse_available && health?.local_lighthouse_enabled, 'Headless Chrome CLI on host machine.']
   ];
   return (
-    <div className="flex flex-wrap gap-1.5 p-1 bg-slate-50 rounded-xl border border-slate-200">
+    <div className="flex flex-wrap gap-1.5 p-1 bg-slate-50 rounded border border-slate-200">
       {opts.map(([id, I, label, ok, tip]) => (
         <button
           key={id}
           title={`${tip}${health ? (ok ? ' (ready)' : ' (not configured)') : ''}`}
           onClick={() => setEngine(id)}
-          className={`h-9 px-3 flex items-center gap-2 text-[12px] font-semibold whitespace-nowrap rounded-lg cursor-pointer transition-all ${engine === id
-              ? 'bg-gradient-to-tr from-indigo-600 to-cyan-500 text-white shadow-md'
-              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+          className={`h-9 px-3 flex items-center gap-2 text-12 font-semibold whitespace-nowrap rounded-lg cursor-pointer transition-all ${engine === id
+            ? 'bg-gradient-to-tr from-indigo-600 to-cyan-500 text-white shadow-md'
+            : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
             }`}
         >
           <I size={14} />
@@ -101,18 +101,18 @@ function AuditRow({ a }) {
     <div className="py-2.5">
       <button onClick={() => setOpen(o => !o)} className="w-full flex items-start gap-2.5 text-left cursor-pointer group">
         {icon}
-        <span className="flex-1 min-w-0 text-[13px] text-slate-900 group-hover:text-cyan-700 transition-colors">
+        <span className="flex-1 min-w-0 text-13 text-slate-900 group-hover:text-cyan-700 transition-colors">
           {a.title}
-          {a.display_value ? <span className="text-slate-500 font-mono text-[11px]"> · {a.display_value}</span> : null}
+          {a.display_value ? <span className="text-slate-500 font-mono text-11"> · {a.display_value}</span> : null}
         </span>
-        {savings && <span className="text-[12px] text-emerald-700 font-mono font-medium shrink-0 tabular-nums">{savings}</span>}
+        {savings && <span className="text-12 text-emerald-700 font-mono font-medium shrink-0 tabular-nums">{savings}</span>}
         {open ? <ChevronDown size={14} className="text-slate-500 shrink-0 mt-0.5" /> : <ChevronRight size={14} className="text-slate-500 shrink-0 mt-0.5" />}
       </button>
       {open && (
         <div className="ml-6 mt-2 space-y-2 animate-in fade-in duration-150">
-          <p className="text-[12px] text-slate-500 leading-relaxed">{plain(a.description)}</p>
+          <p className="text-12 text-slate-500 leading-relaxed">{plain(a.description)}</p>
           {a.items?.length > 0 && (
-            <ul className="text-[11px] font-mono text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1 max-h-48 overflow-auto">
+            <ul className="text-11 font-mono text-slate-700 bg-slate-50 border border-slate-200 rounded p-3 space-y-1 max-h-48 overflow-auto">
               {a.items.map((it, n) => <li key={n} className="truncate text-cyan-700" title={itemText(it)}>{itemText(it)}</li>)}
               {a.item_count > a.items.length && <li className="text-slate-500 ">…and {a.item_count - a.items.length} more (full list in JSON report)</li>}
             </ul>
@@ -137,13 +137,13 @@ function CategoryAudits({ report, metricIds }) {
       <div className="space-y-4 mt-4">
         {BUCKETS.filter(([b]) => b !== 'passed' || showPassed).map(([b, label]) => (buckets[b]?.length ? (
           <div key={b}>
-            <div className="text-[11px] font-mono uppercase tracking-wider text-slate-500 font-semibold mb-1">{label} ({buckets[b].length})</div>
+            <div className="text-11 font-mono uppercase tracking-wider text-slate-500 font-semibold mb-1">{label} ({buckets[b].length})</div>
             <div className="divide-y divide-slate-200">{buckets[b].map(a => <AuditRow key={a.id} a={a} />)}</div>
           </div>
         ) : null))}
-        {toFix(cat) === 0 && <div className="text-[13px] text-emerald-700">Nothing to fix in this category.</div>}
+        {toFix(cat) === 0 && <div className="text-13 text-emerald-700">Nothing to fix in this category.</div>}
         {buckets.passed?.length > 0 && (
-          <button onClick={() => setShowPassed(s => !s)} className="text-[12px] text-cyan-700 hover:text-cyan-700 font-medium cursor-pointer">
+          <button onClick={() => setShowPassed(s => !s)} className="text-12 text-cyan-700 hover:text-cyan-700 font-medium cursor-pointer">
             {showPassed ? 'Hide' : 'Show'} {buckets.passed.length} passed audits
           </button>
         )}
@@ -176,19 +176,19 @@ function Report({ id, onRerun, rerunning, onSettled }) {
     <div className="space-y-5 animate-in fade-in duration-200">
       {running && (
         <Card>
-          <div className="py-12 flex flex-col items-center justify-center gap-3 text-[13px] text-slate-700">
-            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-700">
+          <div className="py-12 flex flex-col items-center justify-center gap-3 text-13 text-slate-700">
+            <div className="w-10 h-10 rounded bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-700">
               <Loader2 size={20} className="animate-spin" />
             </div>
             <span>Running Google Lighthouse audit for {hostOf(s.submitted_url)}…</span>
-            <span className="text-[11px] text-slate-500 font-mono">Engine: {engineLabel(s.engine)} · Strategy: {s.strategy}</span>
+            <span className="text-11 text-slate-500 font-mono">Engine: {engineLabel(s.engine)} · Strategy: {s.strategy}</span>
           </div>
         </Card>
       )}
 
       {s && !running && s.status === 'failed' && (
         <Card>
-          <div className="py-6 text-[13px] text-rose-700 bg-rose-500/10 border border-rose-500/20 rounded-xl p-4">
+          <div className="py-6 text-13 text-rose-700 bg-rose-500/10 border border-rose-500/20 rounded p-4">
             Audit failed: {s.error_message || 'Internal error'}
           </div>
         </Card>
@@ -221,7 +221,7 @@ function Report({ id, onRerun, rerunning, onSettled }) {
 
             <div className="space-y-5">
               <Card title="Lab Core Web Vitals">
-                <div className="divide-y divide-slate-200 text-[13px]">
+                <div className="divide-y divide-slate-200 text-13">
                   {Object.entries(r.metrics || {}).map(([k, m]) => (
                     <div key={k} className="flex justify-between py-2.5">
                       <span className="text-slate-500">{m.title || k}</span>
@@ -233,7 +233,7 @@ function Report({ id, onRerun, rerunning, onSettled }) {
 
               {r.report && (
                 <Card title="Environment Telemetry">
-                  <div className="space-y-2 text-[12px] font-mono text-slate-500">
+                  <div className="space-y-2 text-12 font-mono text-slate-500">
                     <div>User Agent: <span className="text-slate-800 truncate block">{r.report.user_agent || 'Headless'}</span></div>
                     <div>Lighthouse Version: <span className="text-cyan-700">{r.report.lighthouse_version || '13.x'}</span></div>
                   </div>
@@ -268,14 +268,14 @@ function SiteAudit({ id, current, onOpenPage, onRerun, rerunning, onSettled }) {
       action={<Button icon={RotateCw} busy={rerunning} disabled={s.status === 'running'} onClick={() => onRerun(s)}>Re-run Site</Button>}
     >
       {s.discovery_error ? (
-        <div className="text-[13px] text-rose-700 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3.5 py-2">{s.discovery_error}</div>
+        <div className="text-13 text-rose-700 bg-rose-500/10 border border-rose-500/20 rounded px-3.5 py-2">{s.discovery_error}</div>
       ) : (
         <>
           <div className="flex items-center gap-3 mb-4">
             <div className="flex-1">
               <Meter value={done} max={Math.max(1, s.page_count)} color={s.failed_count ? SERIES[1] : SERIES[0]} />
             </div>
-            <span className="text-[12px] font-mono text-slate-500 whitespace-nowrap">
+            <span className="text-12 font-mono text-slate-500 whitespace-nowrap">
               {done}/{s.page_count} done{s.failed_count ? ` · ${s.failed_count} failed` : ''}
             </span>
             <Badge tone={statusTone(s.status)}>
@@ -285,7 +285,7 @@ function SiteAudit({ id, current, onOpenPage, onRerun, rerunning, onSettled }) {
 
           {ok.length > 0 && (
             <>
-              <div className="text-[12px] text-slate-500 font-medium mb-2">Average across {ok.length} completed pages:</div>
+              <div className="text-12 text-slate-500 font-medium mb-2">Average across {ok.length} completed pages:</div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 {CATEGORIES.map(([, label, key]) => <Ring key={key} score={avg(`${key}_score`)} label={label} />)}
               </div>
@@ -293,8 +293,8 @@ function SiteAudit({ id, current, onOpenPage, onRerun, rerunning, onSettled }) {
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead className="text-[11px] font-mono uppercase tracking-wider text-slate-500 border-b border-slate-200">
+            <table className="w-full text-13">
+              <thead className="text-11 font-mono uppercase tracking-wider text-slate-500 border-b border-slate-200">
                 <tr>
                   <th className="p-2.5 text-left font-semibold">Page Permalink</th>
                   <th className="p-2.5 text-right font-semibold">Perf.</th>
@@ -308,7 +308,7 @@ function SiteAudit({ id, current, onOpenPage, onRerun, rerunning, onSettled }) {
               <tbody className="divide-y divide-slate-200">
                 {s.pages.map(p => (
                   <tr key={p.id} className={`hover:bg-slate-50 transition-colors ${p.id === current ? 'bg-indigo-600/15' : ''}`}>
-                    <td className="p-2.5 font-mono text-[12px] text-cyan-700 max-w-[320px] truncate" title={p.submitted_url}>
+                    <td className="p-2.5 font-mono text-12 text-cyan-700 max-w-[320px] truncate" title={p.submitted_url}>
                       {pathOf(p.submitted_url)}
                     </td>
                     <td className="p-2.5 text-right"><ScoreCell s={p.performance_score} /></td>
@@ -348,13 +348,13 @@ function HistoryCard({ mode, current, currentSite, refresh, onOpen, onOpenSite, 
       {list.error ? <ErrorNote>{list.error.message}</ErrorNote> : !list.data ? (
         <div className="py-6 flex justify-center text-slate-500"><Loader2 size={16} className="animate-spin text-cyan-700" /></div>
       ) : items.length === 0 ? (
-        <div className="py-6 text-center text-[13px] text-slate-500">No {mode === 'site' ? 'site' : 'page'} audits yet.</div>
+        <div className="py-6 text-center text-13 text-slate-500">No {mode === 'site' ? 'site' : 'page'} audits yet.</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
+          <table className="w-full text-13">
             {mode === 'site' ? (
               <>
-                <thead className="text-[11px] font-mono uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                <thead className="text-11 font-mono uppercase tracking-wider text-slate-500 border-b border-slate-200">
                   <tr>
                     <th className="p-2.5 text-left font-semibold">Site</th>
                     <th className="p-2.5 text-left font-semibold">Date</th>
@@ -368,7 +368,7 @@ function HistoryCard({ mode, current, currentSite, refresh, onOpen, onOpenSite, 
                   {items.map(h => (
                     <tr key={h.id} className={`hover:bg-slate-50 transition-colors ${h.id === currentSite ? 'bg-indigo-600/15' : ''}`}>
                       <td className="p-2.5 text-slate-900 font-medium">{hostOf(h.base_url)}</td>
-                      <td className="p-2.5 text-slate-500 font-mono text-[12px]">{fmtDateTime(h.created_at)}</td>
+                      <td className="p-2.5 text-slate-500 font-mono text-12">{fmtDateTime(h.created_at)}</td>
                       <td className="p-2.5 text-slate-500 capitalize">{h.strategy}</td>
                       <td className="p-2.5 text-right font-mono text-slate-700 tabular-nums">
                         {h.completed_count}/{h.page_count}{h.failed_count ? <span className="text-rose-600"> ({h.failed_count} failed)</span> : null}
@@ -384,7 +384,7 @@ function HistoryCard({ mode, current, currentSite, refresh, onOpen, onOpenSite, 
               </>
             ) : (
               <>
-                <thead className="text-[11px] font-mono uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                <thead className="text-11 font-mono uppercase tracking-wider text-slate-500 border-b border-slate-200">
                   <tr>
                     <th className="p-2.5 text-left font-semibold">Page Permalink</th>
                     <th className="p-2.5 text-left font-semibold">Date</th>
@@ -400,10 +400,10 @@ function HistoryCard({ mode, current, currentSite, refresh, onOpen, onOpenSite, 
                 <tbody className="divide-y divide-slate-200">
                   {items.map(h => (
                     <tr key={h.id} className={`hover:bg-slate-50 transition-colors ${h.id === current ? 'bg-indigo-600/15' : ''}`}>
-                      <td className="p-2.5 text-cyan-700 max-w-[260px] truncate font-mono text-[12px]" title={h.submitted_url}>
+                      <td className="p-2.5 text-cyan-700 max-w-[260px] truncate font-mono text-12" title={h.submitted_url}>
                         {hostOf(h.submitted_url)}<span className="text-slate-500">{pathOf(h.submitted_url) === '/' ? '' : pathOf(h.submitted_url)}</span>
                       </td>
-                      <td className="p-2.5 text-slate-500 font-mono text-[12px]">{fmtDateTime(h.completed_at || h.created_at)}</td>
+                      <td className="p-2.5 text-slate-500 font-mono text-12">{fmtDateTime(h.completed_at || h.created_at)}</td>
                       <td className="p-2.5 text-slate-500 capitalize">{h.strategy}</td>
                       <td className="p-2.5 text-right"><ScoreCell s={h.performance_score} /></td>
                       <td className="p-2.5 text-right"><ScoreCell s={h.accessibility_score} /></td>
@@ -490,7 +490,7 @@ export default function LighthouseAuditTool({ defaultUrl = 'https://morayamultis
         subtitle="Performance, Accessibility, Best Practices & SEO with raw Core Web Vitals telemetry"
       >
         <div className="flex flex-wrap items-end gap-3">
-          <div className="flex gap-1.5 p-1 bg-slate-50 rounded-xl border border-slate-200">
+          <div className="flex gap-1.5 p-1 bg-slate-50 rounded border border-slate-200">
             {[
               ['page', FileText, 'One Page'],
               ['site', Globe, 'Whole Site']
@@ -498,9 +498,9 @@ export default function LighthouseAuditTool({ defaultUrl = 'https://morayamultis
               <button
                 key={m}
                 onClick={() => setMode(m)}
-                className={`h-9 px-3.5 flex items-center gap-1.5 text-[12px] font-semibold rounded-lg cursor-pointer transition-all ${mode === m
-                    ? 'bg-gradient-to-tr from-indigo-600 to-cyan-500 text-white shadow-md'
-                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                className={`h-9 px-3.5 flex items-center gap-1.5 text-12 font-semibold rounded-lg cursor-pointer transition-all ${mode === m
+                  ? 'bg-gradient-to-tr from-indigo-600 to-cyan-500 text-white shadow-md'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
                   }`}
               >
                 <I size={14} />
@@ -509,7 +509,7 @@ export default function LighthouseAuditTool({ defaultUrl = 'https://morayamultis
             ))}
           </div>
 
-          <label className="flex-1 min-w-[260px] text-[12px] text-slate-700 font-medium">
+          <label className="flex-1 min-w-[260px] text-12 text-slate-700 font-medium">
             {mode === 'site' ? 'Website URL (crawls sitemap.xml)' : 'Target Page Permalink'}
             <input
               className={`${inputCls} mt-1`}
@@ -521,7 +521,7 @@ export default function LighthouseAuditTool({ defaultUrl = 'https://morayamultis
           </label>
 
           {mode === 'site' && (
-            <label className="w-28 text-[12px] text-slate-700 font-medium">
+            <label className="w-28 text-12 text-slate-700 font-medium">
               Max Pages
               <input
                 type="number"
@@ -536,7 +536,7 @@ export default function LighthouseAuditTool({ defaultUrl = 'https://morayamultis
         </div>
 
         <div className="flex flex-wrap items-center gap-3 mt-3">
-          <div className="flex gap-1.5 p-1 bg-slate-50 rounded-xl border border-slate-200">
+          <div className="flex gap-1.5 p-1 bg-slate-50 rounded border border-slate-200">
             {[
               ['mobile', Smartphone, 'Mobile'],
               ['desktop', Monitor, 'Desktop']
@@ -544,9 +544,9 @@ export default function LighthouseAuditTool({ defaultUrl = 'https://morayamultis
               <button
                 key={s}
                 onClick={() => setStrategy(s)}
-                className={`h-9 px-3.5 flex items-center gap-1.5 text-[12px] font-semibold rounded-lg cursor-pointer transition-all ${strategy === s
-                    ? 'bg-gradient-to-tr from-indigo-600 to-cyan-500 text-white shadow-md'
-                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                className={`h-9 px-3.5 flex items-center gap-1.5 text-12 font-semibold rounded-lg cursor-pointer transition-all ${strategy === s
+                  ? 'bg-gradient-to-tr from-indigo-600 to-cyan-500 text-white shadow-md'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
                   }`}
               >
                 <I size={14} />
@@ -568,7 +568,7 @@ export default function LighthouseAuditTool({ defaultUrl = 'https://morayamultis
           </Button>
 
           {h && (
-            <span className="text-[12px] text-slate-500 font-mono">
+            <span className="text-12 text-slate-500 font-mono">
               {h.active_audits ? `${h.active_audits} active on host` : ''}
             </span>
           )}

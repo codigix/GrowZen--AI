@@ -76,16 +76,16 @@ export function PagesCard({ pages, siteIssues }) {
       <div className="px-6 py-3 flex flex-wrap items-center gap-2 border-b border-slate-100">
         <label className="relative flex-1 min-w-[200px] max-w-sm">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search URL or title" className="w-full h-8 pl-8 pr-3 text-[13px] rounded-lg bg-white ring-1 ring-inset ring-slate-200 focus:ring-indigo-400 outline-none text-slate-900 placeholder-slate-400" />
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search URL or title" className="w-full h-8 pl-8 pr-3 text-13 rounded-lg bg-white ring-1 ring-inset ring-slate-200 focus:ring-indigo-400 outline-none text-slate-900 placeholder-slate-400" />
         </label>
-        <label className="flex items-center gap-2 text-[12px] font-medium text-slate-700 cursor-pointer select-none">
+        <label className="flex items-center gap-2 text-12 font-medium text-slate-700 cursor-pointer select-none">
           <input type="checkbox" checked={onlyIssues} onChange={e => setOnlyIssues(e.target.checked)} className="accent-indigo-600" /> Only pages with issues
         </label>
-        <span className="ml-auto text-[12px] text-slate-500">{shown.length} shown</span>
+        <span className="ml-auto text-12 text-slate-500">{shown.length} shown</span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-[13px]">
-          <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+        <table className="w-full text-13">
+          <thead className="bg-slate-50 text-11 uppercase tracking-wider text-slate-500">
             <tr>
               <th className="w-8" />
               {COLUMNS.map(([key, label]) => (
@@ -105,12 +105,12 @@ export function PagesCard({ pages, siteIssues }) {
                   <tr onClick={() => setOpen(isOpen ? null : r.url)} className={`cursor-pointer ${isOpen ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
                     <td className="pl-4 text-slate-400">{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</td>
                     <td className="px-3 py-2.5 max-w-[340px]">
-                      <div className="font-mono text-[12px] text-slate-900 truncate" title={r.url}>{r.path}</div>
-                      <div className="text-[12px] text-slate-500 truncate">{r.title || <span className="text-red-600">No title</span>}</div>
+                      <div className="font-mono text-12 text-slate-900 truncate" title={r.url}>{r.path}</div>
+                      <div className="text-12 text-slate-500 truncate">{r.title || <span className="text-red-600">No title</span>}</div>
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       {r.status >= 400 ? <Badge tone="red">HTTP {r.status}</Badge>
-                        : r.issues.length ? <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ring-1 ring-inset ${SEVERITY_TONE[worst(r.issues)]}`}>{r.issues.length}</span>
+                        : r.issues.length ? <span className={`text-11 font-bold px-2 py-0.5 rounded-full ring-1 ring-inset ${SEVERITY_TONE[worst(r.issues)]}`}>{r.issues.length}</span>
                           : <CheckCircle2 size={16} className="inline text-emerald-600" />}
                     </td>
                     <td className={`px-3 py-2.5 text-right tabular-nums ${bad(r.title_length >= 25 && r.title_length <= 60)}`}>{r.title_length || '—'}</td>
@@ -118,7 +118,7 @@ export function PagesCard({ pages, siteIssues }) {
                     <td className={`px-3 py-2.5 text-right tabular-nums ${bad(r.h1_count === 1)}`}>{r.h1_count}</td>
                     <td className={`px-3 py-2.5 text-right tabular-nums ${bad(r.word_count >= 300)}`}>{r.word_count}</td>
                     <td className={`px-3 py-2.5 text-right tabular-nums ${bad(!r.images_missing_alt)}`}>{r.images_missing_alt}</td>
-                    <td className="px-3 py-2.5 text-right">{r.schema ? <span className="text-[12px] text-slate-700">{r.schema_types.length}</span> : <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-2.5 text-right">{r.schema ? <span className="text-12 text-slate-700">{r.schema_types.length}</span> : <span className="text-slate-300">—</span>}</td>
                   </tr>
                   {isOpen && (
                     <tr className="bg-slate-50/60">
@@ -130,25 +130,25 @@ export function PagesCard({ pages, siteIssues }) {
                               <div key={c.id} className="flex items-start gap-2 rounded-lg bg-white ring-1 ring-inset ring-slate-200 px-3 py-2">
                                 <Check ok={c.ok} soft={c.soft} />
                                 <div className="min-w-0">
-                                  <div className="text-[12px] font-semibold text-slate-900">{c.label}</div>
-                                  <div className="text-[12px] text-slate-600 truncate" title={c.value}>{c.value} <span className="text-slate-400">· {c.target}</span></div>
+                                  <div className="text-12 font-semibold text-slate-900">{c.label}</div>
+                                  <div className="text-12 text-slate-600 truncate" title={c.value}>{c.value} <span className="text-slate-400">· {c.target}</span></div>
                                 </div>
                               </div>
                             ))}
                           </div>
                           <div className="lg:col-span-2">
-                            <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">What to fix on this page</div>
+                            <div className="text-12 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">What to fix on this page</div>
                             {r.issues.length ? (
                               <ul className="space-y-2">
                                 {[...r.issues].sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]).map((i, n) => (
                                   <li key={n} className="rounded-lg bg-white ring-1 ring-inset ring-slate-200 px-3 py-2">
-                                    <div className="flex items-center gap-2"><span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ring-1 ring-inset ${SEVERITY_TONE[i.level]}`}>{i.level}</span><span className="text-[12px] font-medium text-slate-900">{i.title}</span></div>
-                                    <div className="text-[12px] text-slate-500 mt-1">{i.fix}</div>
+                                    <div className="flex items-center gap-2"><span className={`text-10 font-bold uppercase px-1.5 py-0.5 rounded ring-1 ring-inset ${SEVERITY_TONE[i.level]}`}>{i.level}</span><span className="text-12 font-medium text-slate-900">{i.title}</span></div>
+                                    <div className="text-12 text-slate-500 mt-1">{i.fix}</div>
                                   </li>
                                 ))}
                               </ul>
-                            ) : <div className="text-[12px] text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Nothing to fix on this page.</div>}
-                            <a href={r.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="mt-3 inline-flex items-center gap-1 text-[12px] font-medium text-indigo-700 hover:underline">Open page <ExternalLink size={12} /></a>
+                            ) : <div className="text-12 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Nothing to fix on this page.</div>}
+                            <a href={r.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="mt-3 inline-flex items-center gap-1 text-12 font-medium text-indigo-700 hover:underline">Open page <ExternalLink size={12} /></a>
                           </div>
                         </div>
                       </td>
@@ -159,7 +159,7 @@ export function PagesCard({ pages, siteIssues }) {
             })}
           </tbody>
         </table>
-        {!shown.length && <div className="py-10 text-center text-[13px] text-slate-500">{rows.length ? 'No pages match.' : 'No pages were crawled.'}</div>}
+        {!shown.length && <div className="py-10 text-center text-13 text-slate-500">{rows.length ? 'No pages match.' : 'No pages were crawled.'}</div>}
       </div>
       {toastNode}
     </Card>

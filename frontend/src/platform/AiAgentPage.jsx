@@ -192,14 +192,14 @@ function DraftChange({ c }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="rounded-lg bg-white border border-slate-200 overflow-hidden">
-      <div className="px-3 py-1.5 border-b border-slate-100 flex items-center justify-between text-[11px]">
+      <div className="px-3 py-1.5 border-b border-slate-100 flex items-center justify-between text-11">
         <span className="font-semibold text-slate-700">{c.label}</span>
         <button type="button" onClick={() => navigator.clipboard?.writeText(c.after).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })} className="text-slate-500 hover:text-slate-900 flex items-center gap-1 cursor-pointer">
           {copied ? <CheckCheck size={12} className="text-emerald-700" /> : <Copy size={12} />}{copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      {c.before && <div className="px-3 pt-2 text-[12px] text-slate-400 line-through decoration-slate-300 break-words">{c.before}</div>}
-      <pre className="px-3 py-2 text-[12px] text-slate-900 font-sans whitespace-pre-wrap break-words max-h-48 overflow-y-auto">{c.after}</pre>
+      {c.before && <div className="px-3 pt-2 text-12 text-slate-400 line-through decoration-slate-300 break-words">{c.before}</div>}
+      <pre className="px-3 py-2 text-12 text-slate-900 font-sans whitespace-pre-wrap break-words max-h-48 overflow-y-auto">{c.after}</pre>
     </div>
   );
 }
@@ -243,43 +243,42 @@ function TaskCard({ t, businessName, onDone }) {
   const isHighImpact = (t.impact || '').toLowerCase() === 'high';
 
   return (
-    <div className="bg-white hover:bg-slate-100 border border-slate-200 hover:border-indigo-500/30 rounded-2xl p-5 transition-all duration-200 shadow-lg relative group">
+    <div className="bg-white hover:bg-slate-100 border border-slate-200 hover:border-indigo-500/30 rounded p-5 transition-all duration-200 shadow-lg relative group">
       {/* Top Header Row */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3.5 min-w-0 flex-1">
           {/* Agent Avatar Badge */}
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border shadow-sm ${agentMeta.accentBg} ${agentMeta.accentBorder}`}>
+          <div className={`w-10 h-10 rounded flex items-center justify-center shrink-0 border shadow-sm ${agentMeta.accentBg} ${agentMeta.accentBorder}`}>
             <AgentIcon size={18} />
           </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[14px] font-bold text-slate-900 group-hover:text-indigo-800 transition-colors">
+              <span className="text-14 font-bold text-slate-900 group-hover:text-indigo-800 transition-colors">
                 {t.title}
               </span>
               <Badge tone="blue">{t.kind ? t.kind.replace(/_/g, ' ') : 'Task'}</Badge>
-              {task.detail?.risk && <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${RISK_STYLE[task.detail.risk]}`} title={task.detail.risk === 'low' ? 'Text or markup only: safe to approve in bulk' : task.detail.risk === 'high' ? 'Changes what the public sees or whether the site can be found' : 'Check before approving'}>{task.detail.risk} risk</span>}
-              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                isHighImpact
-                  ? 'bg-rose-500/15 text-rose-700 border-rose-500/30'
-                  : 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
-              }`}>
+              {task.detail?.risk && <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-11 font-bold border ${RISK_STYLE[task.detail.risk]}`} title={task.detail.risk === 'low' ? 'Text or markup only: safe to approve in bulk' : task.detail.risk === 'high' ? 'Changes what the public sees or whether the site can be found' : 'Check before approving'}>{task.detail.risk} risk</span>}
+              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-11 font-bold border ${isHighImpact
+                ? 'bg-rose-500/15 text-rose-700 border-rose-500/30'
+                : 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
+                }`}>
                 {isHighImpact ? <Zap size={11} className="text-amber-700 fill-amber-400" /> : <TrendingUp size={11} />}
                 {t.impact || 'Medium'} Impact
               </span>
             </div>
 
             {/* Target Entity & Metadata */}
-            <div className="text-[12px] text-slate-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <div className="text-12 text-slate-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="font-medium text-slate-700">{businessName}</span>
               <span className="text-slate-600">•</span>
-              <span className="text-indigo-700 font-mono text-[11px]">{agentMeta.name}</span>
+              <span className="text-indigo-700 font-mono text-11">{agentMeta.name}</span>
               <span className="text-slate-600">•</span>
               <span className="text-slate-500">{fmtDateTime(t.created_at)}</span>
               {t.detail?.area && (
                 <>
                   <span className="text-slate-600">•</span>
-                  <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-mono">
+                  <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-10 font-mono">
                     Pillar: {t.detail.area}
                   </span>
                 </>
@@ -315,7 +314,7 @@ function TaskCard({ t, businessName, onDone }) {
       </div>
 
       {draft?.page && (
-        <div className="mt-3.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2 text-[11px] text-slate-500 truncate">
+        <div className="mt-3.5 px-3 py-1.5 rounded bg-slate-50 border border-slate-200 flex items-center gap-2 text-11 text-slate-500 truncate">
           <Globe size={13} className="text-cyan-700 shrink-0" />
           <span>Page:</span>
           <a href={draft.page} target="_blank" rel="noreferrer" className="text-cyan-700 font-mono font-medium truncate hover:underline">{draft.page}</a>
@@ -323,39 +322,39 @@ function TaskCard({ t, businessName, onDone }) {
       )}
 
       {draft && (
-        <div className="mt-3.5 rounded-xl bg-slate-50 border border-slate-200 p-3.5 space-y-2.5">
+        <div className="mt-3.5 rounded bg-slate-50 border border-slate-200 p-3.5 space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
+            <span className="text-11 font-semibold text-slate-700 flex items-center gap-1.5">
               <Sparkles size={13} className="text-violet-600" />
               {draft.source === 'ai' ? 'Drafted by AI' : 'Drafted from the audit (rules)'}
             </span>
-            <button type="button" onClick={redraft} disabled={busy === 'd'} className="text-[11px] font-semibold text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50">
+            <button type="button" onClick={redraft} disabled={busy === 'd'} className="text-11 font-semibold text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50">
               <RefreshCw size={11} className={busy === 'd' ? 'animate-spin' : ''} /> Redraft
             </button>
           </div>
-          <p className="text-[12.5px] text-slate-700">{draft.summary}</p>
+          <p className="text-12.5 text-slate-700">{draft.summary}</p>
           {draft.changes.map((c, i) => <DraftChange key={i} c={c} />)}
-          {draft.ai_error && <p className="text-[11px] text-amber-700">AI draft unavailable ({draft.ai_error}); showing the rule-based draft.</p>}
+          {draft.ai_error && <p className="text-11 text-amber-700">AI draft unavailable ({draft.ai_error}); showing the rule-based draft.</p>}
         </div>
       )}
 
       {/* Code / Proposal Content Preview Box */}
       {proposalContent && !draft && (
-        <div className="mt-3.5 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden">
-          <div className="px-3.5 py-1.5 bg-white border-b border-slate-200 flex items-center justify-between text-[11px]">
+        <div className="mt-3.5 rounded bg-slate-50 border border-slate-200 overflow-hidden">
+          <div className="px-3.5 py-1.5 bg-white border-b border-slate-200 flex items-center justify-between text-11">
             <span className="font-semibold text-slate-700 flex items-center gap-1.5">
               <Code size={13} className="text-indigo-600" />
               AI Agent Proposal / Suggested Resolution
             </span>
             <button
               onClick={copyProposal}
-              className="text-slate-500 hover:text-slate-900 transition-colors flex items-center gap-1 text-[11px] cursor-pointer"
+              className="text-slate-500 hover:text-slate-900 transition-colors flex items-center gap-1 text-11 cursor-pointer"
             >
               {copied ? <CheckCheck size={12} className="text-emerald-700" /> : <Copy size={12} />}
               {copied ? 'Copied' : 'Copy'}
             </button>
           </div>
-          <div className="p-3 text-[12px] text-slate-800 font-sans leading-relaxed whitespace-pre-line max-h-48 overflow-y-auto custom-scrollbar bg-gradient-to-b from-transparent to-slate-900/5">
+          <div className="p-3 text-12 text-slate-800 font-sans leading-relaxed whitespace-pre-line max-h-48 overflow-y-auto custom-scrollbar bg-gradient-to-b from-transparent to-slate-900/5">
             {proposalContent}
           </div>
         </div>
@@ -363,12 +362,12 @@ function TaskCard({ t, businessName, onDone }) {
 
       {/* Rejection Learning Drawer */}
       {rejecting && (
-        <div className="mt-4 p-4 rounded-xl bg-rose-50 border border-rose-500/30 animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="flex items-center gap-2 text-rose-700 text-[12px] font-bold mb-1.5">
+        <div className="mt-4 p-4 rounded bg-rose-50 border border-rose-500/30 animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center gap-2 text-rose-700 text-12 font-bold mb-1.5">
             <ShieldAlert size={14} />
             Reject Task & Train AI Model
           </div>
-          <p className="text-[11px] text-slate-500 mb-2.5">
+          <p className="text-11 text-slate-500 mb-2.5">
             Please specify why this task was rejected. GrowZen’s reinforcement learning engine stores this rationale in the <span className="text-indigo-700 font-semibold">Playbook Memory Bank</span> so this agent never proposes this pattern again.
           </p>
 
@@ -379,7 +378,7 @@ function TaskCard({ t, businessName, onDone }) {
                 key={chip}
                 type="button"
                 onClick={() => setNote(prev => prev ? `${prev}. ${chip}` : chip)}
-                className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 transition-colors cursor-pointer"
+                className="text-11 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 transition-colors cursor-pointer"
               >
                 + {chip}
               </button>
@@ -543,81 +542,81 @@ export default function AiAgentPage() {
     >
       {/* Top Telemetry KPI Ribbon */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
-        <div className="ai-glass-card rounded-2xl p-[18px] relative overflow-hidden group border-amber-500/20">
+        <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-amber-500/20">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 font-mono truncate flex items-center gap-1.5">
+            <span className="text-11 font-bold uppercase tracking-wider text-amber-700 font-mono truncate flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
               Waiting for Approval
             </span>
-            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-700 shrink-0">
+            <div className="w-8 h-8 rounded bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-700 shrink-0">
               <Clock size={16} />
             </div>
           </div>
           <div className="text-3xl font-extrabold text-slate-900 mt-2 font-display tracking-tight flex items-baseline gap-2">
             {tasks.data?.length ?? '—'}
-            <span className="text-[12px] font-medium text-amber-700">pending</span>
+            <span className="text-12 font-medium text-amber-700">pending</span>
           </div>
-          <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
+          <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
             <span>Human-in-the-loop signoff</span>
             <span className="text-slate-500 font-mono">Zero unvetted push</span>
           </div>
         </div>
 
-        <div className="ai-glass-card rounded-2xl p-[18px] relative overflow-hidden group border-emerald-500/20">
+        <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-emerald-500/20">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 font-mono truncate flex items-center gap-1.5">
+            <span className="text-11 font-bold uppercase tracking-wider text-emerald-700 font-mono truncate flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
               Applied & Executed
             </span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-700 shrink-0">
+            <div className="w-8 h-8 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-700 shrink-0">
               <CheckCircle2 size={16} />
             </div>
           </div>
           <div className="text-3xl font-extrabold text-slate-900 mt-2 font-display tracking-tight flex items-baseline gap-2">
             {done.data?.length ?? 1}
-            <span className="text-[12px] font-medium text-emerald-700">completed</span>
+            <span className="text-12 font-medium text-emerald-700">completed</span>
           </div>
-          <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
+          <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
             <span>Live on Google & CMS</span>
             <span className="text-emerald-700 font-mono">100% verified</span>
           </div>
         </div>
 
-        <div className="ai-glass-card rounded-2xl p-[18px] relative overflow-hidden group border-indigo-500/20">
+        <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-indigo-500/20">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 font-mono truncate flex items-center gap-1.5">
+            <span className="text-11 font-bold uppercase tracking-wider text-indigo-700 font-mono truncate flex items-center gap-1.5">
               <Zap size={13} className="text-cyan-700" />
               Autopilot Triggers
             </span>
-            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-700 shrink-0">
+            <div className="w-8 h-8 rounded bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-700 shrink-0">
               <Cpu size={16} />
             </div>
           </div>
           <div className="text-3xl font-extrabold text-slate-900 mt-2 font-display tracking-tight flex items-baseline gap-2">
             {autopilotRulesCount}
-            <span className="text-[12px] font-medium text-slate-500">of {AUTOPILOT_RULES.length} automated</span>
+            <span className="text-12 font-medium text-slate-500">of {AUTOPILOT_RULES.length} automated</span>
           </div>
-          <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
+          <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
             <span>Core NAP profile protected</span>
             <span className="text-cyan-700 font-mono">Safe Mode</span>
           </div>
         </div>
 
-        <div className="ai-glass-card rounded-2xl p-[18px] relative overflow-hidden group border-purple-500/20">
+        <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-purple-500/20">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700 font-mono truncate flex items-center gap-1.5">
+            <span className="text-11 font-bold uppercase tracking-wider text-purple-700 font-mono truncate flex items-center gap-1.5">
               <Bot size={13} className="text-purple-600" />
               Agent Swarm Active
             </span>
-            <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-700 shrink-0">
+            <div className="w-8 h-8 rounded bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-700 shrink-0">
               <Layers size={16} />
             </div>
           </div>
           <div className="text-3xl font-extrabold text-slate-900 mt-2 font-display tracking-tight flex items-baseline gap-2">
             7
-            <span className="text-[12px] font-medium text-purple-600">nodes online</span>
+            <span className="text-12 font-medium text-purple-600">nodes online</span>
           </div>
-          <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
+          <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
             <span>DeepSeek V3 + Gemini 2.0</span>
             <span className="text-purple-600 font-mono">~98.4% Acc.</span>
           </div>
@@ -642,7 +641,7 @@ export default function AiAgentPage() {
       {tab === 'queue' && (
         <div className="space-y-4">
           {/* Queue Filter & Search Bar */}
-          <div className="ai-glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="ai-glass-card rounded p-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
               {/* Search input */}
               <div className="relative flex-1 min-w-[200px] max-w-md">
@@ -652,7 +651,7 @@ export default function AiAgentPage() {
                   placeholder="Filter tasks by keyword, area or slug..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full h-9 pl-9 pr-3 text-[12px] bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl text-slate-900 placeholder-slate-400 outline-none transition-all"
+                  className="w-full h-9 pl-9 pr-3 text-12 bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded text-slate-900 placeholder-slate-400 outline-none transition-all"
                 />
                 {searchQuery && (
                   <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900">
@@ -674,11 +673,10 @@ export default function AiAgentPage() {
                   <button
                     key={chip.id}
                     onClick={() => setSelectedAgentFilter(chip.id)}
-                    className={`h-8 px-2.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap cursor-pointer ${
-                      selectedAgentFilter === chip.id
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
-                    }`}
+                    className={`h-8 px-2.5 rounded-lg text-11 font-semibold transition-all whitespace-nowrap cursor-pointer ${selectedAgentFilter === chip.id
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                      }`}
                   >
                     {chip.label}
                   </button>
@@ -708,17 +706,17 @@ export default function AiAgentPage() {
 
           {/* Pending Tasks List */}
           {!tasks.data ? (
-            <div className="ai-glass-card rounded-2xl p-16 flex flex-col items-center justify-center gap-3 text-slate-500">
+            <div className="ai-glass-card rounded p-16 flex flex-col items-center justify-center gap-3 text-slate-500">
               <Loader2 size={24} className="animate-spin text-cyan-700" />
-              <span className="text-[13px] font-semibold text-slate-700">Synchronizing pending AI proposals…</span>
+              <span className="text-13 font-semibold text-slate-700">Synchronizing pending AI proposals…</span>
             </div>
           ) : filteredTasks.length === 0 ? (
-            <div className="ai-glass-card rounded-2xl p-16 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 flex items-center justify-center mx-auto mb-3 shadow-lg">
+            <div className="ai-glass-card rounded p-16 text-center">
+              <div className="w-14 h-14 rounded bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 flex items-center justify-center mx-auto mb-3 shadow-lg">
                 <CheckCircle2 size={28} />
               </div>
-              <h3 className="text-[16px] font-bold text-slate-900 font-display">Approval Queue Fully Cleared</h3>
-              <p className="text-[12px] text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
+              <h3 className="text-16 font-bold text-slate-900 font-display">Approval Queue Fully Cleared</h3>
+              <p className="text-12 text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
                 {searchQuery || selectedAgentFilter !== 'all'
                   ? 'No tasks match your current filter settings. Try clearing the search or switching agent filters.'
                   : 'All proposed actions have been reviewed and applied. New tasks will be drafted automatically after scheduled SERP audits, review syncs, and weekly post cycles.'}
@@ -753,25 +751,25 @@ export default function AiAgentPage() {
       {tab === 'agents' && (
         <div className="space-y-6">
           {/* Swarm Architecture Banner */}
-          <div className="ai-glass-card rounded-2xl p-5 border border-purple-500/20 bg-gradient-to-r from-purple-50 via-white to-indigo-50 flex flex-wrap items-center justify-between gap-4">
+          <div className="ai-glass-card rounded p-5 border border-purple-500/20 bg-gradient-to-r from-purple-50 via-white to-indigo-50 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 text-white flex items-center justify-center shadow-lg shrink-0">
+              <div className="w-11 h-11 rounded bg-gradient-to-tr from-purple-600 to-indigo-500 text-white flex items-center justify-center shadow-lg shrink-0">
                 <Cpu size={22} />
               </div>
               <div>
-                <h3 className="text-[15px] font-bold text-slate-900 font-display flex items-center gap-2">
+                <h3 className="text-15 font-bold text-slate-900 font-display flex items-center gap-2">
                   Multi-Agent Neural Swarm Architecture
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 border border-emerald-500/30 text-[10px] font-mono">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 border border-emerald-500/30 text-10 font-mono">
                     DeepSeek V3 / Gemini 2.0 Flash Hybrid
                   </span>
                 </h3>
-                <p className="text-[12px] text-slate-700 mt-0.5">
+                <p className="text-12 text-slate-700 mt-0.5">
                   Decentralized agent pods operate in parallel: a lead planner translates SERP metrics into task queues, while specialized workers execute domain actions.
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-mono font-medium">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-slate-100 text-slate-700 border border-slate-200 text-11 font-mono font-medium">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 Telemetry: All Nodes Healthy
               </span>
@@ -785,25 +783,25 @@ export default function AiAgentPage() {
               return (
                 <div
                   key={agent.id}
-                  className="bg-white hover:bg-slate-100 border border-slate-200 hover:border-indigo-500/40 rounded-2xl p-5 transition-all duration-200 flex flex-col justify-between shadow-lg group relative overflow-hidden"
+                  className="bg-white hover:bg-slate-100 border border-slate-200 hover:border-indigo-500/40 rounded p-5 transition-all duration-200 flex flex-col justify-between shadow-lg group relative overflow-hidden"
                 >
                   <div>
                     {/* Header with Icon, Name & Model */}
                     <div className="flex items-start justify-between gap-2.5">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${agent.accentBg} ${agent.accentBorder}`}>
+                        <div className={`w-10 h-10 rounded flex items-center justify-center shrink-0 border ${agent.accentBg} ${agent.accentBorder}`}>
                           <Icon size={18} />
                         </div>
                         <div className="min-w-0">
-                          <h4 className="text-[14px] font-bold text-slate-900 group-hover:text-indigo-800 transition-colors truncate">
+                          <h4 className="text-14 font-bold text-slate-900 group-hover:text-indigo-800 transition-colors truncate">
                             {agent.name}
                           </h4>
-                          <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-500">
+                          <span className="text-10 font-mono font-semibold uppercase tracking-wider text-slate-500">
                             {agent.badge}
                           </span>
                         </div>
                       </div>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-mono text-cyan-700 shrink-0">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 text-10 font-mono text-cyan-700 shrink-0">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                         Online
                       </span>
@@ -811,10 +809,10 @@ export default function AiAgentPage() {
 
                     {/* Role & Description */}
                     <div className="mt-3.5">
-                      <div className="text-[12px] font-semibold text-slate-800">
+                      <div className="text-12 font-semibold text-slate-800">
                         {agent.role}
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                      <p className="text-11 text-slate-500 mt-1 leading-relaxed">
                         {agent.description}
                       </p>
                     </div>
@@ -822,7 +820,7 @@ export default function AiAgentPage() {
                     {/* Capabilities Tags */}
                     <div className="mt-3.5 flex flex-wrap gap-1.5">
                       {agent.capabilities.map((cap, i) => (
-                        <span key={i} className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-[10px] font-medium text-slate-700">
+                        <span key={i} className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-10 font-medium text-slate-700">
                           {cap}
                         </span>
                       ))}
@@ -830,8 +828,8 @@ export default function AiAgentPage() {
                   </div>
 
                   {/* Bottom Stats Footer */}
-                  <div className="mt-4 pt-3.5 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="font-mono text-indigo-700 text-[10px]">
+                  <div className="mt-4 pt-3.5 border-t border-slate-200 flex items-center justify-between text-11 text-slate-500">
+                    <span className="font-mono text-indigo-700 text-10">
                       {agent.model}
                     </span>
                     <span className="font-semibold text-slate-700">
@@ -844,18 +842,18 @@ export default function AiAgentPage() {
           </div>
 
           {/* AI Memory Bank: Learnt from User Feedback */}
-          <div className="ai-glass-card rounded-2xl p-6 border border-indigo-500/20">
+          <div className="ai-glass-card rounded p-6 border border-indigo-500/20">
             <div className="flex items-center justify-between gap-3 mb-3">
               <div>
-                <h3 className="text-[15px] font-bold text-slate-900 font-display flex items-center gap-2">
+                <h3 className="text-15 font-bold text-slate-900 font-display flex items-center gap-2">
                   <Bookmark size={16} className="text-indigo-600" />
                   Learnt from Rejection Feedback (Memory Bank)
                 </h3>
-                <p className="text-[12px] text-slate-500 mt-0.5">
+                <p className="text-12 text-slate-500 mt-0.5">
                   Whenever an administrator rejects a task with an explanation note, the agent incorporates the constraint into its active reinforcement heuristics.
                 </p>
               </div>
-              <span className="text-[11px] px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-700 border border-indigo-500/30 font-mono font-bold">
+              <span className="text-11 px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-700 border border-indigo-500/30 font-mono font-bold">
                 {playbook.data?.learnt?.length || 3} Active Directives
               </span>
             </div>
@@ -863,8 +861,8 @@ export default function AiAgentPage() {
             <div className="space-y-2 mt-4">
               {playbook.data?.learnt?.length > 0 ? (
                 playbook.data.learnt.slice(0, 10).map((l, i) => (
-                  <div key={i} className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[12px] flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-md bg-purple-500/20 text-purple-700 flex items-center justify-center shrink-0 text-[10px] font-bold mt-0.5">
+                  <div key={i} className="p-3 rounded bg-slate-50 border border-slate-200 text-12 flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-md bg-purple-500/20 text-purple-700 flex items-center justify-center shrink-0 text-10 font-bold mt-0.5">
                       {i + 1}
                     </span>
                     <div className="flex-1 min-w-0">
@@ -874,7 +872,7 @@ export default function AiAgentPage() {
                       <div className="text-purple-700 mt-0.5 flex items-center gap-1.5 font-sans">
                         <CornerDownRight size={13} className="shrink-0 text-purple-600" />
                         Feedback Rule: <span className="font-semibold">"{l.note}"</span>
-                        <span className="text-slate-500 text-[10px] ml-auto">By {l.by || 'Admin'}</span>
+                        <span className="text-slate-500 text-10 ml-auto">By {l.by || 'Admin'}</span>
                       </div>
                     </div>
                   </div>
@@ -898,8 +896,8 @@ export default function AiAgentPage() {
                     by: 'Medical Compliance Trustee'
                   }
                 ].map((item, i) => (
-                  <div key={i} className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[12px] flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-md bg-indigo-500/20 text-indigo-700 flex items-center justify-center shrink-0 text-[10px] font-bold mt-0.5">
+                  <div key={i} className="p-3 rounded bg-slate-50 border border-slate-200 text-12 flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-md bg-indigo-500/20 text-indigo-700 flex items-center justify-center shrink-0 text-10 font-bold mt-0.5">
                       {i + 1}
                     </span>
                     <div className="flex-1 min-w-0">
@@ -909,7 +907,7 @@ export default function AiAgentPage() {
                       <div className="text-cyan-700 mt-0.5 flex items-center gap-1.5 font-sans">
                         <CornerDownRight size={13} className="shrink-0 text-cyan-700" />
                         Permanent Heuristic: <span className="font-semibold">"{item.note}"</span>
-                        <span className="text-slate-500 text-[10px] ml-auto">Enforced by {item.by}</span>
+                        <span className="text-slate-500 text-10 ml-auto">Enforced by {item.by}</span>
                       </div>
                     </div>
                   </div>
@@ -943,20 +941,19 @@ export default function AiAgentPage() {
                       <div key={rule.key} className="py-4 first:pt-1 last:pb-1 flex items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-bold text-slate-900">
+                            <span className="text-13 font-bold text-slate-900">
                               {rule.label}
                             </span>
-                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                              rule.riskTone === 'red'
-                                ? 'bg-rose-500/15 text-rose-700 border-rose-500/30'
-                                : rule.riskTone === 'amber'
+                            <span className={`text-10 font-mono px-2 py-0.5 rounded-full border ${rule.riskTone === 'red'
+                              ? 'bg-rose-500/15 text-rose-700 border-rose-500/30'
+                              : rule.riskTone === 'amber'
                                 ? 'bg-amber-500/15 text-amber-700 border-amber-500/30'
                                 : 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
-                            }`}>
+                              }`}>
                               {rule.risk}
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                          <p className="text-11 text-slate-500 mt-1 leading-relaxed">
                             {rule.description}
                           </p>
                         </div>
@@ -964,7 +961,7 @@ export default function AiAgentPage() {
                         {/* Interactive Switch */}
                         <div className="shrink-0 flex items-center gap-2 pt-1">
                           {isLocked ? (
-                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-slate-200 text-slate-500 text-[11px] font-medium cursor-not-allowed">
+                            <div className="flex items-center gap-1.5 px-3 py-1 rounded bg-white border border-slate-200 text-slate-500 text-11 font-medium cursor-not-allowed">
                               <Lock size={12} className="text-rose-600" />
                               Strictly Locked
                             </div>
@@ -973,14 +970,12 @@ export default function AiAgentPage() {
                               type="button"
                               disabled={busy === rule.key}
                               onClick={() => setRule(rule.key, isAuto ? true : false)}
-                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                isAuto ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30' : 'bg-slate-100'
-                              }`}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isAuto ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30' : 'bg-slate-100'
+                                }`}
                             >
                               <span
-                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                                  isAuto ? 'translate-x-5' : 'translate-x-0'
-                                }`}
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${isAuto ? 'translate-x-5' : 'translate-x-0'
+                                  }`}
                               />
                             </button>
                           )}
@@ -999,33 +994,33 @@ export default function AiAgentPage() {
               title="Safety & Guardrails Architecture"
               subtitle="Hospital-grade regulatory compliance standards"
             >
-              <div className="space-y-3.5 text-[12px]">
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-center gap-2 text-rose-700 font-bold text-[13px] mb-1">
+              <div className="space-y-3.5 text-12">
+                <div className="p-3.5 rounded bg-slate-50 border border-slate-200">
+                  <div className="flex items-center gap-2 text-rose-700 font-bold text-13 mb-1">
                     <ShieldCheck size={16} className="text-rose-600" />
                     Core NAP Permanent Lock
                   </div>
-                  <p className="text-slate-500 text-[11px] leading-relaxed">
+                  <p className="text-slate-500 text-11 leading-relaxed">
                     Name, Address, Phone, and Hospital Category changes can never be executed via autopilot. These modifications require mandatory multi-signature authorization.
                   </p>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-center gap-2 text-amber-700 font-bold text-[13px] mb-1">
+                <div className="p-3.5 rounded bg-slate-50 border border-slate-200">
+                  <div className="flex items-center gap-2 text-amber-700 font-bold text-13 mb-1">
                     <AlertTriangle size={16} className="text-amber-700" />
                     Negative Review Escalation
                   </div>
-                  <p className="text-slate-500 text-[11px] leading-relaxed">
+                  <p className="text-slate-500 text-11 leading-relaxed">
                     Reviews with 1–3 stars trigger an instant escalation alert to hospital patient care managers. Autopilot is bypassed to ensure clinical sensitivity.
                   </p>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-center gap-2 text-emerald-700 font-bold text-[13px] mb-1">
+                <div className="p-3.5 rounded bg-slate-50 border border-slate-200">
+                  <div className="flex items-center gap-2 text-emerald-700 font-bold text-13 mb-1">
                     <CheckCircle2 size={16} className="text-emerald-700" />
                     Audit Rollback Capability
                   </div>
-                  <p className="text-slate-500 text-[11px] leading-relaxed">
+                  <p className="text-slate-500 text-11 leading-relaxed">
                     Every code diff or meta tag change applied to the website or CMS is backed up automatically with a 1-click snapshot restore function.
                   </p>
                 </div>
@@ -1033,11 +1028,11 @@ export default function AiAgentPage() {
             </Card>
 
             <Card title="Connected Target Entity">
-              <div className="text-[12px] space-y-2">
+              <div className="text-12 space-y-2">
                 <div className="text-slate-500">Hospital:</div>
                 <div className="text-slate-900 font-bold">Moraya Multispeciality Charitable Hospital</div>
                 <div className="text-slate-500 mt-2">Active Target URL:</div>
-                <div className="text-cyan-700 font-mono text-[11px] break-all p-2 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="text-cyan-700 font-mono text-11 break-all p-2 rounded-lg bg-slate-50 border border-slate-200">
                   https://morayamultispecialitycharitablehospital.com/cataract-surgery-in-pcmc
                 </div>
               </div>
@@ -1059,17 +1054,16 @@ export default function AiAgentPage() {
                 <button
                   key={act}
                   onClick={() => setActivityFilter(act)}
-                  className={`h-[30px] px-3 rounded-lg text-[11px] font-semibold transition-all capitalize cursor-pointer ${
-                    activityFilter === act
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-white text-slate-500 hover:text-slate-900 border border-slate-200'
-                  }`}
+                  className={`h-[30px] px-3 rounded-lg text-11 font-semibold transition-all capitalize cursor-pointer ${activityFilter === act
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-slate-500 hover:text-slate-900 border border-slate-200'
+                    }`}
                 >
                   {act === 'all' ? 'All Events' : `${act} Events`}
                 </button>
               ))}
             </div>
-            <span className="text-[11px] text-slate-500 font-mono">
+            <span className="text-11 text-slate-500 font-mono">
               Displaying {activity.data?.length || 0} recent events
             </span>
           </div>
@@ -1077,14 +1071,14 @@ export default function AiAgentPage() {
           {!activity.data ? (
             <div className="py-16 flex flex-col items-center justify-center gap-2 text-slate-500">
               <Loader2 size={20} className="animate-spin text-cyan-700" />
-              <span className="text-[12px]">Streaming activity events…</span>
+              <span className="text-12">Streaming activity events…</span>
             </div>
           ) : activity.data.length === 0 ? (
-            <div className="py-16 text-center text-[13px] text-slate-500">
+            <div className="py-16 text-center text-13 text-slate-500">
               No activity logs recorded yet. Events will appear here as agents execute tasks.
             </div>
           ) : (
-            <div className="rounded-xl bg-slate-50 border border-slate-200 divide-y divide-slate-200 overflow-hidden font-mono text-[11px]">
+            <div className="rounded bg-slate-50 border border-slate-200 divide-y divide-slate-200 overflow-hidden font-mono text-11">
               {activity.data
                 .filter(a => {
                   if (activityFilter === 'all') return true;
@@ -1098,16 +1092,15 @@ export default function AiAgentPage() {
                   return (
                     <div key={a.id} className="p-3 hover:bg-slate-100 transition-colors flex flex-wrap items-center gap-3">
                       {/* Timestamp */}
-                      <span className="text-slate-500 w-36 shrink-0 text-[10px]">
+                      <span className="text-slate-500 w-36 shrink-0 text-10">
                         {fmtDateTime(a.created_at)}
                       </span>
 
                       {/* Actor Pill */}
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
-                        isAgent
-                          ? 'bg-purple-500/15 text-purple-700 border-purple-500/30'
-                          : 'bg-indigo-500/15 text-indigo-700 border-indigo-500/30'
-                      }`}>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-10 font-bold border ${isAgent
+                        ? 'bg-purple-500/15 text-purple-700 border-purple-500/30'
+                        : 'bg-indigo-500/15 text-indigo-700 border-indigo-500/30'
+                        }`}>
                         {isAgent ? <Bot size={11} /> : <Eye size={11} />}
                         {a.actor}
                       </span>
@@ -1123,7 +1116,7 @@ export default function AiAgentPage() {
                         {a.detail?.title || a.detail?.email || JSON.stringify(a.detail || {})}
                       </span>
 
-                      <span className="text-emerald-700 text-[10px] ml-auto shrink-0 flex items-center gap-1">
+                      <span className="text-emerald-700 text-10 ml-auto shrink-0 flex items-center gap-1">
                         <Check size={11} /> logged
                       </span>
                     </div>

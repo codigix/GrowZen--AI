@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import SessionLocal
 from ..models import Audit, Business, LighthouseAudit, Keyword, Post, RankScan, Review
-from . import crawler, lighthouse_runner, pagespeed, providers
+from . import countries, crawler, lighthouse_runner, pagespeed, providers
 from .profile_score import ProfileStats, issues_from, score_profile
 
 KINDS = ["gbp", "rankings", "technical", "onpage", "backlinks", "citations"]
@@ -42,14 +42,19 @@ def _run_gbp(db: Session, b: Business) -> tuple[int, list[dict[str, Any]], dict[
 def _run_rankings(db: Session, b: Business) -> tuple[int, list[dict[str, Any]], dict[str, Any], str]:
     keywords = [k.keyword for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)).order_by(Keyword.volume.desc().nullslast()).limit(3))]
     if not keywords:
-        keywords = [f"{b.primary_category or 'business'} near me".lower(), f"{b.primary_category or 'business'} in {b.area or b.city or ''}".strip().lower()]
+        from ..competitors.intel import default_keywords  # noqa: PLC0415 - avoids an import cycle
+        keywords = [k.lower() for k in default_keywords(b)] or [f"{b.primary_category or 'business'} in {b.area or b.city or ''}".strip().lower()]
     prov = providers.rank_provider()
+    # Live Google results cost per grid point, so that provider scans a smaller grid for fewer keywords.
+    size, radius = getattr(prov, "default_grid", 7), getattr(prov, "default_radius_km", 5.0)
+    if getattr(prov, "default_grid", None):
+        keywords = keywords[:2]
     scans = []
     for kw in keywords:
-        out = prov.scan_grid(b, kw, 7, 5.0)
+        out = prov.scan_grid(b, kw, size, radius)
         pts = out["points"]
         found = [p["rank"] for p in pts if p["rank"]]
-        scan = RankScan(business_id=b.id, keyword=kw, grid_size=7, radius_km=5.0, points=pts, competitors=out["competitors"],
+        scan = RankScan(business_id=b.id, keyword=kw, grid_size=out.get("grid_size", size), radius_km=radius, points=pts, competitors=out["competitors"],
                         avg_rank=round(mean(found), 1) if found else None, top3=sum(1 for r in found if r <= 3), found=len(found), data_source=prov.source)
         db.add(scan)
         scans.append(scan)
@@ -57,14 +62,17 @@ def _run_rankings(db: Session, b: Business) -> tuple[int, list[dict[str, Any]], 
     top3 = sum(s.top3 for s in scans)
     found = sum(s.found for s in scans)
     score = round((top3 / total) * 70 + (found / total) * 30) if total else 0
-    issues = [{"area": "Rankings", "level": "serious" if s.top3 < 10 else "warning", "title": f"“{s.keyword}”: top 3 at {s.top3} of {s.grid_size ** 2} grid points", "fix": "Improve category, reviews and the matching landing page; add local posts."} for s in scans if s.top3 < 25]
+    issues = [{"area": "Rankings", "level": "serious" if s.top3 < s.grid_size ** 2 * 0.2 else "warning",
+               "title": f"“{s.keyword}”: {'not found in Google Maps around the pin' if not s.found else f'top 3 at {s.top3} of {s.grid_size ** 2} points'}",
+               "fix": "Improve category, reviews and the matching landing page; add local posts."} for s in scans if s.top3 < s.grid_size ** 2 * 0.5]
     return score, issues, {"keywords": keywords, "scans": [{"keyword": s.keyword, "avg_rank": s.avg_rank, "top3": s.top3, "found": s.found} for s in scans]}, prov.source
 
 
 def _run_technical(db: Session, b: Business) -> tuple[int, list[dict[str, Any]], dict[str, Any], str]:
     if not b.website:
         return 0, [{"area": "Website", "level": "critical", "title": "No website", "fix": "Build one from the profile (Website Builder)."}], {}, "live"
-    result = pagespeed.run(b.website, "mobile")
+    # PageSpeed, falling back to Lighthouse in local Chrome when PageSpeed fails or its quota is used up.
+    result = run_lighthouse(b.website, "mobile")
     scores = [v for v in result["scores"].values() if v is not None]
     return round(mean(scores)) if scores else 0, pagespeed.issues_from(result), result, "live"
 
@@ -82,12 +90,16 @@ def _run_backlinks(db: Session, b: Business) -> tuple[int, list[dict[str, Any]],
     domain = urlparse(b.website).netloc if b.website else None
     if not domain:
         return 0, [{"area": "Backlinks", "level": "warning", "title": "No website, so no backlink profile", "fix": "Build a website first."}], {}, prov.source
-    s = prov.summary(domain)
+    s = prov.summary(domain, name=b.name, city=b.city or "", country=countries.of(b))
     rd = s.get("referring_domains") or 0
-    score = min(100, round(rd * 1.6))
+    mentions = s.get("source") == "google_mentions"
+    # Google shows at most a page or two of other sites for a name, so mentions score on a smaller scale.
+    score = min(100, round(rd / 12 * 100)) if mentions else min(100, round(rd * 1.6))
     issues = []
-    if rd < 20:
-        issues.append({"area": "Backlinks", "level": "warning", "title": f"Only {rd} referring domains", "fix": "Earn links from local news, associations and directories; see the link gap."})
+    if (mentions and rd < 6) or (not mentions and rd < 20):
+        issues.append({"area": "Backlinks", "level": "warning",
+                       "title": f"Only {rd} other site{'s' if rd != 1 else ''} found {'linking to or mentioning the business' if mentions else 'linking to it (referring domains)'}",
+                       "fix": "Earn links from local news, associations and directories; see the link gap."})
     if s.get("toxic"):
         issues.append({"area": "Backlinks", "level": "warning", "title": f"{s['toxic']} toxic links", "fix": "Review them; disavow only clear spam."})
     return score, issues, s, prov.source

@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from . import ai, discovery, keywords
+from . import countries
 from .match import phone_digits, site_domain
 from .profile_score import name_looks_stuffed
 
@@ -29,16 +30,18 @@ def _category(v: Any) -> str:
     return "" if s.lower() in GENERIC else s
 
 
-def _norm(field: str, v: Any) -> str:
-    """The comparable core of a value: digits for phones, PIN code for addresses, domain for websites."""
+def _norm(field: str, v: Any, country: str | None = None) -> str:
+    """The comparable core of a value: the national number for phones, the postcode (where the country uses
+    them) for addresses, the domain for websites."""
     s = str(v or "").strip()
     if not s:
         return ""
     if field == "phone":
-        return phone_digits(s) if len(phone_digits(s)) == 10 else ""
+        return countries.national(s, country) if countries.phone_ok(s, country) else ""
     if field == "address":
-        m = PIN_RE.search(s)
-        return m.group(0) if m else re.sub(r"[^a-z0-9]", "", s.lower())[:40]
+        rx = countries.postcode_re(country)
+        m = rx.search(s) if rx else None
+        return m.group(0).replace(" ", "").upper() if m else re.sub(r"[^a-z0-9]", "", s.lower())[:40]
     if field == "website":
         return site_domain(s).lower()
     words = re.findall(r"[a-z0-9]+", s.lower())
@@ -57,15 +60,18 @@ def verify(form: dict[str, Any], maps: dict[str, Any], site: dict[str, Any]) -> 
     """Per field: each source's value, the status, and the options when sources disagree."""
     values = {
         "name": {"form": form.get("name"), "maps": (maps.get("displayName") or {}).get("text"), "website": site.get("name")},
-        "phone": {"form": form.get("phone"), "maps": discovery._norm_phone(maps.get("nationalPhoneNumber") or maps.get("internationalPhoneNumber")), "website": site.get("phone")},
+        "phone": {"form": form.get("phone"), "maps": discovery._norm_phone(maps.get("internationalPhoneNumber") or maps.get("nationalPhoneNumber"), form.get("country") or None), "website": site.get("phone")},
         "address": {"form": form.get("address"), "maps": discovery.clean_address(maps.get("formattedAddress")), "website": site.get("address")},
         "website": {"form": form.get("website"), "maps": maps.get("websiteUri"), "website": site.get("website")},
         "primary_category": {"form": _category(form.get("primary_category")), "maps": _category((maps.get("primaryTypeDisplayName") or {}).get("text")), "website": _category(site.get("schema_type"))},
     }
+    # A site whose title is just its domain ("www.example.com") gives no business name.
+    if re.fullmatch(r"(https?://)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+/?", str(values["name"]["website"] or "").strip().lower()):
+        values["name"]["website"] = None
     out = {}
     for field, by in values.items():
         by = {k: v for k, v in by.items() if v}
-        norm = {k: _norm(field, v) for k, v in by.items()}
+        norm = {k: _norm(field, v, form.get("country")) for k, v in by.items()}
         groups: list[dict[str, Any]] = []  # sources that agree with each other
         for src, n in norm.items():
             if not n:
@@ -112,10 +118,12 @@ def checks(form: dict[str, Any], maps: dict[str, Any], site: dict[str, Any] | No
     listed = (maps.get("displayName") or {}).get("text") or ""
     if listed and name_looks_stuffed(listed) and listed != form.get("name"):
         out.append({"level": "warning", "text": f"The Google listing's name is \"{listed}\": extra words after the business name count as keyword stuffing and can get the profile suspended. Rename it to the registered name."})
-    if form.get("phone") and len(phone_digits(form["phone"])) != 10:
-        out.append({"level": "serious", "text": "The phone number doesn't have 10 digits."})
-    if form.get("address") and not PIN_RE.search(form["address"]):
-        out.append({"level": "warning", "text": "The address has no 6-digit PIN code."})
+    c = form.get("country") or None
+    if form.get("phone") and not countries.phone_ok(form["phone"], c):
+        lengths = countries.info(c)["digits"]
+        out.append({"level": "serious", "text": f"The phone number doesn't look complete for {countries.name(c)}" + (f" ({' or '.join(map(str, lengths))} digits after +{countries.info(c)['dial']})." if lengths else ".")})
+    if form.get("address") and not countries.has_postcode(form["address"], c):
+        out.append({"level": "warning", "text": f"The address has no {countries.postcode_name(c)}."})
     desc = form.get("description") or ""
     if re.search(r"https?://|www\.|\+?\d[\d\s-]{8,}", desc):
         out.append({"level": "warning", "text": "The description contains a link or phone number, which Google doesn't allow there."})
@@ -132,9 +140,9 @@ def _keywords(form: dict[str, Any], category: str, services: list[str]) -> list[
     queries = [q for s in seeds for q in (f"{s} in {area}" if area else None, f"{s} {city}" if city else None, f"{s} near me")][:9]
     queries = [q for q in queries if q]
     with ThreadPoolExecutor(max_workers=6) as pool:
-        answers = list(pool.map(keywords.autocomplete, queries))
+        answers = list(pool.map(lambda q: keywords.autocomplete(q, countries.gl(form.get("country"))), queries))
     places = set(re.findall(r"[a-z]+", f"{area} {city}".lower()))
-    elsewhere = keywords.other_cities(places)  # searches in other cities aren't this client's customers
+    elsewhere = keywords.other_cities(places, countries.code(form.get("country")))  # searches in other cities aren't this client's customers
     found: list[str] = []
     for q, sug in zip(queries, answers):
         core = set(re.findall(r"[a-z]+", q)) - {"in", "near", "me"}
@@ -162,7 +170,18 @@ def suggestions(form: dict[str, Any], maps: dict[str, Any], site: dict[str, Any]
         where = ", ".join(x for x in [form.get("area"), form.get("city")] if x)
         description = (f"{registered} is a {category.lower()}{' in ' + where if where else ''}."
                        + (f" Services include {', '.join(services[:6])}." if services else "")
-                       + (f" {description}" if description else "")).strip()[:750]
+                       + (f" {description}" if description else "")).strip()
+        # Only facts we have, until Google's useful length: where it is and whom it serves (no phone or links,
+        # which Google doesn't allow in a description).
+        address = discovery.clean_address(maps.get("formattedAddress")) or form.get("address") or site.get("address") or ""
+        extra = [f" Visit us at {address}." if address else "",
+                 f" Serving customers in {where} and nearby areas." if where else "",
+                 f" Contact {registered} to ask about {category.lower()} services or to book a visit."]
+        for sentence in extra:
+            if len(description) >= 250:
+                break
+            description += sentence
+        description = description.strip()[:750]
         source["description"] = "template"
     if ai.is_configured():
         try:
@@ -195,24 +214,25 @@ def suggestions(form: dict[str, Any], maps: dict[str, Any], site: dict[str, Any]
             "pin": {"lat": loc.get("latitude"), "lng": loc.get("longitude")} if loc.get("latitude") is not None else None}
 
 
-def assist(form: dict[str, Any], place_id: str | None = None) -> dict[str, Any]:
+def assist(form: dict[str, Any], place_id: str | None = None, fresh: bool = False) -> dict[str, Any]:
     """Cross-check the form against Google Maps and the website, flag problems, and suggest what's missing."""
     maps: dict[str, Any] = {}
     matched = None
     if discovery.places_enabled():
         if place_id:
             try:
-                maps, matched = discovery.place_details(place_id), "listing"
+                maps, matched = discovery.place_details(place_id, fresh=fresh), "listing"
             except discovery.DiscoveryError:
                 maps = {}
         elif form.get("name"):
             try:
-                found = discovery._places_post(f"{form['name']} {form.get('city') or ''}".strip(), 3)
+                found = discovery._places_post(f"{form['name']} {form.get('city') or ''}".strip(), 3, form.get("country") or None)
             except discovery.DiscoveryError:
                 found = []
             hit = next((p for p in found if _agree("name", _norm("name", form["name"]), _norm("name", (p.get("displayName") or {}).get("text")))), None)
             if hit:
-                maps, matched = discovery.place_details(hit["id"]), "search"
+                maps, matched = discovery.place_details(hit["id"], fresh=fresh), "search"
+    form = {**form, "country": form.get("country") or countries.detect(maps.get("addressComponents"), maps.get("formattedAddress"), maps.get("internationalPhoneNumber") or form.get("phone")) or ""}
     domain = site_domain(form.get("website") or maps.get("websiteUri") or "")
     site = None
     if domain:
@@ -222,7 +242,7 @@ def assist(form: dict[str, Any], place_id: str | None = None) -> dict[str, Any]:
             site = None
     fields = verify(form, maps, site or {})
     verified = sum(1 for f in fields.values() if f["status"] == "verified")
-    return {"ai": ai.is_configured(), "maps": {"matched": matched, "url": maps.get("googleMapsUri"), "place_id": maps.get("id")},
+    return {"ai": ai.is_configured(), "country": countries.code(form.get("country")), "maps": {"enabled": discovery.places_enabled(), "matched": matched, "url": maps.get("googleMapsUri"), "place_id": maps.get("id")},
             "website": {"read": bool(site), "domain": domain or None},
             "fields": fields, "verified": verified, "conflicts": sum(1 for f in fields.values() if f["status"] == "conflict"),
             "checks": checks(form, maps, site, bool(domain)),

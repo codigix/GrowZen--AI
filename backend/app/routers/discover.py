@@ -13,9 +13,9 @@ from ..deps import in_background
 from ..models import Business, Review
 from ..schemas import DiscoverImportIn, DiscoverIn, OnboardAssistIn, SuggestionIn
 from ..serialize import row
-from ..services import agent, audits, discovery, onboard_assist, schedules, suggest
+from ..services import agent, audits, countries, discovery, onboard_assist, schedules, suggest
 from ..services.activity import log
-from ..services.match import phone_digits as _digits, site_domain as _domain
+from ..services.match import is_same_business, phone_digits as _digits, site_domain as _domain
 
 router = APIRouter(prefix="/discover", tags=["discover"])
 
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/discover", tags=["discover"])
 @router.post("")
 def find(body: DiscoverIn, db: Session = Depends(get_db), _: User = Depends(current_user)):
     try:
-        out = discovery.discover(body.email.strip(), body.name.strip(), body.city.strip(), body.website.strip())
+        out = discovery.discover(body.email.strip(), body.name.strip(), body.city.strip(), body.website.strip(), body.country.strip().upper())
     except discovery.DiscoveryError as exc:
         raise HTTPException(400, str(exc)) from exc
     for c in out["candidates"]:  # already a business here: the page offers Manage instead of Add
@@ -36,14 +36,22 @@ def find(body: DiscoverIn, db: Session = Depends(get_db), _: User = Depends(curr
 def assist(body: OnboardAssistIn, _: User = Depends(current_user)):
     """Onboarding assistant: cross-check the details against Google Maps and the website, flag problems,
     and suggest the category, description, services and real local keywords."""
-    return onboard_assist.assist(body.model_dump(exclude={"place_id"}), body.place_id)
+    return onboard_assist.assist(body.model_dump(exclude={"place_id", "fresh"}), body.place_id, fresh=body.fresh)
+
+
+@router.get("/countries")
+def country_list(_: User = Depends(current_user)):
+    """Countries with their dial code, phone lengths, postcode format and listing sites (for the forms)."""
+    return [c | {"digits": list(countries.info(c["code"])["digits"]), "postcode": countries.info(c["code"]).get("postcode"),
+                 "postcode_name": countries.postcode_name(c["code"]), "sites": [n for n, _ in countries.info(c["code"])["sites"]]}
+            for c in countries.all_countries()]
 
 
 @router.get("/suggest")
-def suggestions(q: str = "", near: str = "", session: str = "", db: Session = Depends(get_db), _: User = Depends(current_user)):
+def suggestions(q: str = "", near: str = "", session: str = "", country: str = "IN", db: Session = Depends(get_db), _: User = Depends(current_user)):
     """Business names while typing: existing projects, Google Maps and OpenStreetMap. `session` is the
     browser's Autocomplete session token (one per search, ended by /resolve)."""
-    return suggest.suggest(db, q[:120], near[:80], session[:64])
+    return suggest.suggest(db, q[:120], near[:80], session[:64], country[:2])
 
 
 @router.post("/resolve")
@@ -68,6 +76,17 @@ def geocode(q: str = "", _: User = Depends(current_user)):
         raise HTTPException(502, f"OpenStreetMap did not answer: {exc}") from exc
 
 
+@router.get("/areas")
+def area_list(q: str = "", country: str = "IN", near: str = "", _: User = Depends(current_user)):
+    """Suburbs, towns and cities in a country to target, while typing (OpenStreetMap)."""
+    try:
+        return {"results": suggest.areas(q[:80], country[:2], near[:80])}
+    except discovery.DiscoveryError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"OpenStreetMap did not answer: {exc}") from exc
+
+
 @router.get("/reverse")
 def reverse_geocode(lat: float, lng: float, _: User = Depends(current_user)):
     """A map pin -> its address (OpenStreetMap)."""
@@ -80,14 +99,14 @@ def reverse_geocode(lat: float, lng: float, _: User = Depends(current_user)):
 
 
 def _existing(db: Session, c: dict) -> Business | None:
+    """The project this candidate already is: the same Google place, or the same phone / website with a
+    matching name. Anything weaker creates a new project rather than overwriting another business."""
     if c.get("place_id"):
         b = db.scalar(select(Business).where(Business.place_id == c["place_id"]))
         if b:
             return b
     for b in db.scalars(select(Business)):
-        if c.get("phone") and _digits(b.phone) and _digits(b.phone) == _digits(c["phone"]):
-            return b
-        if c.get("website") and _domain(b.website) and _domain(b.website) == _domain(c["website"]):
+        if is_same_business(b, c.get("place_id"), c.get("name"), c.get("phone"), c.get("website")):
             return b
     return None
 
@@ -118,6 +137,8 @@ def add(body: DiscoverImportIn, tasks: BackgroundTasks, db: Session = Depends(ge
     for k, v in fields.items():
         if v not in (None, "") and not getattr(b, k, None):
             setattr(b, k, v[:750] if k == "description" and isinstance(v, str) else v)
+    if not b.country:
+        b.country = countries.code(c.get("country") or countries.detect(address=c.get("address"), phone=c.get("phone")))
     if c.get("hours") and not b.hours:
         b.hours = {"weekdayDescriptions": c["hours"]}
     if body.email and not b.contact_email:
@@ -156,5 +177,18 @@ def add(body: DiscoverImportIn, tasks: BackgroundTasks, db: Session = Depends(ge
 
     log(db, user.name, "business_found_by_email" if created else "business_updated_by_email", b.id, email=body.email, source=c.get("source"), place_id=b.place_id)
     db.commit()
-    tasks.add_task(in_background(_onboard, b.id))
+    if not body.defer_audit:
+        tasks.add_task(in_background(_onboard, b.id))
     return row(b) | {"created": created, "imported_reviews": imported_reviews}
+
+
+@router.post("/onboard/{business_id}", status_code=202)
+def start_onboarding(business_id: int, tasks: BackgroundTasks, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Start the onboarding run (audit, fix plan, schedule) once all details and keywords are saved."""
+    b = db.get(Business, business_id)
+    if not b:
+        raise HTTPException(404, "Business not found")
+    log(db, user.name, "onboarding_started", b.id)
+    db.commit()
+    tasks.add_task(in_background(_onboard, b.id))
+    return {"queued": True}

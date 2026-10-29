@@ -23,7 +23,7 @@ function Steps({ em }) {
         return (
           <li key={k} className={`flex items-start gap-3 p-2 rounded ${st === 'running' ? 'bg-blue-50' : ''}`}>
             {st === 'done' ? <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-px" /> : st === 'running' ? <Loader2 size={16} className="text-blue-600 animate-spin shrink-0 mt-px" /> : st === 'needs_info' ? <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-px" /> : <Circle size={16} className="text-gray-300 shrink-0 mt-px" />}
-            <div className="flex-1 min-w-0"><div className={`text-[13px] ${s ? 'text-gray-900' : 'text-gray-400'}`}>{STEP_LABEL[k]}</div>{s?.note && <div className="text-[12px] text-gray-500 mt-0.5 line-clamp-2">{s.note}</div>}</div>
+            <div className="flex-1 min-w-0"><div className={`text-13 ${s ? 'text-gray-900' : 'text-gray-400'}`}>{STEP_LABEL[k]}</div>{s?.note && <div className="text-12 text-gray-500 mt-0.5 line-clamp-2">{s.note}</div>}</div>
           </li>
         );
       })}
@@ -70,22 +70,22 @@ function PipelineTab({ emails, toast }) {
         action={<div className="flex gap-2"><Button icon={RefreshCw} busy={busy === 'poll'} onClick={poll}>Check mailbox</Button><Button variant="primary" icon={Plus} onClick={() => setPaste(true)}>Paste email</Button></div>}>
         <ErrorNote>{error}</ErrorNote>
         {!em ? (
-          <div className="py-14 text-center text-[13px] text-gray-500"><Inbox size={28} className="mx-auto mb-2 text-gray-300" />No onboarding emails yet. Forward one to the onboarding mailbox, or paste it here.</div>
+          <div className="py-14 text-center text-13 text-gray-500"><Inbox size={28} className="mx-auto mb-2 text-gray-300" />No onboarding emails yet. Forward one to the onboarding mailbox, or paste it here.</div>
         ) : (
           <>
-            <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-13">
               <span className="font-medium text-gray-900">{em.extracted?.name || em.subject || 'Email'}</span>
               <Badge tone={STATUS_TONE[em.status]}>{em.status.replace('_', ' ')}</Badge>
-              <span className="text-[12px] text-gray-500">{em.from_addr} · {fmtDateTime(em.received_at)}</span>
+              <span className="text-12 text-gray-500">{em.from_addr} · {fmtDateTime(em.received_at)}</span>
             </div>
             <Steps em={em} />
-            {em.status === 'needs_info' && <div className="mt-3 p-3 rounded bg-amber-50 border border-amber-200 text-[13px] text-amber-900">Missing: <b>{(em.missing || []).join(', ')}</b>. The sender was asked by email (if SMTP is set up). Reply with the details as a new email, or fix and re-run from the inbox.</div>}
-            {em.status === 'failed' && <div className="mt-3 p-3 rounded bg-red-50 border border-red-200 text-[13px] text-red-800">Failed: {em.error}</div>}
-            {em.status === 'rejected' && <div className="mt-3 p-3 rounded bg-gray-50 border border-gray-200 text-[13px] text-gray-700">{em.error}</div>}
+            {em.status === 'needs_info' && <div className="mt-3 p-3 rounded bg-amber-50 border border-amber-200 text-13 text-amber-900">Missing: <b>{(em.missing || []).join(', ')}</b>. The sender was asked by email (if SMTP is set up). Reply with the details as a new email, or fix and re-run from the inbox.</div>}
+            {em.status === 'failed' && <div className="mt-3 p-3 rounded bg-red-50 border border-red-200 text-13 text-red-800">Failed: {em.error}</div>}
+            {em.status === 'rejected' && <div className="mt-3 p-3 rounded bg-gray-50 border border-gray-200 text-13 text-gray-700">{em.error}</div>}
             {em.status === 'done' && em.business_id && (
               <div className="mt-4 flex flex-wrap items-center gap-3 p-3 rounded border border-emerald-200 bg-emerald-50/50">
                 <CheckCircle2 size={18} className="text-emerald-600" />
-                <span className="flex-1 text-[13px] text-gray-800">{em.extracted?.name} is audited and scheduled.</span>
+                <span className="flex-1 text-13 text-gray-800">{em.extracted?.name} is audited and scheduled.</span>
                 <Button size="sm" onClick={() => { setBusiness(em.business_id); navigate(path('dashboard')); }}>Open overview <ArrowRight size={12} /></Button>
               </div>
             )}
@@ -93,12 +93,12 @@ function PipelineTab({ emails, toast }) {
         )}
       </Card>
       <Card title="Recent emails">
-        {!emails.data ? <Loader2 size={16} className="animate-spin text-gray-400" /> : emails.data.length === 0 ? <div className="text-[13px] text-gray-500">None yet.</div> : (
+        {!emails.data ? <Loader2 size={16} className="animate-spin text-gray-400" /> : emails.data.length === 0 ? <div className="text-13 text-gray-500">None yet.</div> : (
           <div className="divide-y divide-gray-100">
             {emails.data.slice(0, 12).map(e => (
               <button key={e.id} onClick={() => setSelected(e.id)} className={`w-full flex items-center gap-2 py-2 px-1 text-left cursor-pointer ${e.id === selected ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}>
                 <Mail size={13} className="text-gray-400 shrink-0" />
-                <span className="flex-1 min-w-0"><span className="block text-[13px] text-gray-900 truncate">{e.extracted?.name || e.subject || '(no subject)'}</span><span className="block text-[11px] text-gray-500">{fmtDateTime(e.received_at)}</span></span>
+                <span className="flex-1 min-w-0"><span className="block text-13 text-gray-900 truncate">{e.extracted?.name || e.subject || '(no subject)'}</span><span className="block text-11 text-gray-500">{fmtDateTime(e.received_at)}</span></span>
                 <Badge tone={STATUS_TONE[e.status]}>{e.status.replace('_', ' ')}</Badge>
               </button>
             ))}
@@ -118,12 +118,12 @@ function InboxTab({ emails, toast }) {
   const d = detail.data;
   return (
     <Card title="Onboarding inbox" subtitle="Every email received (mailbox, webhook or pasted)">
-      {!emails.data ? <Loader2 size={16} className="animate-spin text-gray-400" /> : emails.data.length === 0 ? <div className="py-8 text-center text-[13px] text-gray-500">No emails yet.</div> : (
+      {!emails.data ? <Loader2 size={16} className="animate-spin text-gray-400" /> : emails.data.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No emails yet.</div> : (
         <div className="divide-y divide-gray-100">
           {emails.data.map(e => (
             <button key={e.id} onClick={() => setOpen(e.id)} className="w-full flex items-center gap-3 py-2.5 text-left hover:bg-gray-50 px-1 cursor-pointer">
               <Mail size={15} className="text-gray-400 shrink-0" />
-              <div className="flex-1 min-w-0"><div className="text-[13px] text-gray-900 truncate">{e.subject || '(no subject)'}</div><div className="text-[12px] text-gray-500 truncate">{e.from_addr} · {fmtDateTime(e.received_at)}</div></div>
+              <div className="flex-1 min-w-0"><div className="text-13 text-gray-900 truncate">{e.subject || '(no subject)'}</div><div className="text-12 text-gray-500 truncate">{e.from_addr} · {fmtDateTime(e.received_at)}</div></div>
               {(e.missing || []).length > 0 && <StatusPill level="warning">Missing {e.missing.join(', ')}</StatusPill>}
               <Badge tone={STATUS_TONE[e.status]}>{e.status.replace('_', ' ')}</Badge>
             </button>
@@ -134,14 +134,14 @@ function InboxTab({ emails, toast }) {
         footer={<>{d && !['processing', 'rejected'].includes(d.status) && <Button icon={Play} busy={busy === 're'} onClick={reprocess}>Run pipeline again</Button>}<Button onClick={() => setOpen(null)}>Close</Button></>}>
         {!d ? <Loader2 size={16} className="animate-spin text-gray-400" /> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><div className="text-[12px] text-gray-500 mb-1">Email</div><pre className="whitespace-pre-wrap text-[12px] text-gray-800 bg-gray-50 border border-gray-200 rounded p-3  max-h-80 overflow-auto">{d.body}</pre></div>
+            <div><div className="text-12 text-gray-500 mb-1">Email</div><pre className="whitespace-pre-wrap text-12 text-gray-800 bg-gray-50 border border-gray-200 rounded p-3  max-h-80 overflow-auto">{d.body}</pre></div>
             <div>
-              <div className="text-[12px] text-gray-500 mb-1">Extracted</div>
-              {Object.keys(d.extracted || {}).length === 0 ? <div className="text-[13px] text-gray-500">Not processed yet.</div> : (
-                <div className="space-y-1.5 text-[13px]">{Object.entries(d.extracted).map(([k, v]) => <div key={k} className="flex gap-2"><span className="w-28 text-gray-500 shrink-0 text-[12px]">{k.replace('_', ' ')}</span><span className="text-gray-900 break-words">{Array.isArray(v) ? v.join(', ') : String(v)}</span></div>)}</div>
+              <div className="text-12 text-gray-500 mb-1">Extracted</div>
+              {Object.keys(d.extracted || {}).length === 0 ? <div className="text-13 text-gray-500">Not processed yet.</div> : (
+                <div className="space-y-1.5 text-13">{Object.entries(d.extracted).map(([k, v]) => <div key={k} className="flex gap-2"><span className="w-28 text-gray-500 shrink-0 text-12">{k.replace('_', ' ')}</span><span className="text-gray-900 break-words">{Array.isArray(v) ? v.join(', ') : String(v)}</span></div>)}</div>
               )}
-              {(d.missing || []).length > 0 && <div className="mt-2 text-[12px] text-amber-800">Missing: {d.missing.join(', ')}</div>}
-              {d.error && <div className="mt-2 text-[12px] text-red-700">{d.error}</div>}
+              {(d.missing || []).length > 0 && <div className="mt-2 text-12 text-amber-800">Missing: {d.missing.join(', ')}</div>}
+              {d.error && <div className="mt-2 text-12 text-red-700">{d.error}</div>}
             </div>
           </div>
         )}
@@ -162,10 +162,10 @@ function ScheduleModal({ business, onClose, toast }) {
           {JOBS.map(([job, label]) => {
             const s = sch.data.find(x => x.job === job);
             return (
-              <div key={job} className="flex items-center gap-2 py-2 text-[13px]">
-                <span className="flex-1 text-gray-800">{label}{s?.last_status === 'failed' && <span className="ml-2 text-[11px] text-red-600" title={s.last_error}>last run failed</span>}</span>
+              <div key={job} className="flex items-center gap-2 py-2 text-13">
+                <span className="flex-1 text-gray-800">{label}{s?.last_status === 'failed' && <span className="ml-2 text-11 text-red-600" title={s.last_error}>last run failed</span>}</span>
                 <select className="h-7 px-1.5 text-xs border border-gray-300 rounded bg-white" disabled={busy === job} value={s?.every || 'off'} onChange={e => setJob(job, e.target.value)}>{EVERY.map(f => <option key={f} value={f}>{f}</option>)}</select>
-                <span className="w-32 text-right text-[12px] text-gray-500">{s?.next_run_at ? `next ${fmtDateTime(s.next_run_at)}` : 'off'}</span>
+                <span className="w-32 text-right text-12 text-gray-500">{s?.next_run_at ? `next ${fmtDateTime(s.next_run_at)}` : 'off'}</span>
               </div>
             );
           })}
@@ -184,12 +184,12 @@ function ProfilesTab({ toast }) {
     <Card title={`Client profiles (${rows.data?.length ?? '…'})`} subtitle="Each profile runs on its own schedule">
       {!rows.data ? <Loader2 size={16} className="animate-spin text-gray-400" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead className="text-[12px] text-gray-500 border-b border-gray-200"><tr><th className="p-2 text-left font-medium">Business</th><th className="p-2 text-left font-medium">Plan</th><th className="p-2 text-left font-medium">Source</th><th className="p-2 text-right font-medium">Score</th><th className="p-2 text-left font-medium">Status</th><th className="p-2 text-right font-medium">Waiting tasks</th><th className="p-2 text-left font-medium">Next job</th><th className="p-2" /></tr></thead>
+          <table className="w-full text-13">
+            <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><th className="p-2 text-left font-medium">Business</th><th className="p-2 text-left font-medium">Plan</th><th className="p-2 text-left font-medium">Source</th><th className="p-2 text-right font-medium">Score</th><th className="p-2 text-left font-medium">Status</th><th className="p-2 text-right font-medium">Waiting tasks</th><th className="p-2 text-left font-medium">Next job</th><th className="p-2" /></tr></thead>
             <tbody className="divide-y divide-gray-100">
               {rows.data.map(b => (
                 <tr key={b.id}>
-                  <td className="p-2"><div className="text-gray-900">{b.name}</div><div className="text-[12px] text-gray-500">{[b.primary_category, b.area || b.city].filter(Boolean).join(' · ')}</div></td>
+                  <td className="p-2"><div className="text-gray-900">{b.name}</div><div className="text-12 text-gray-500">{[b.primary_category, b.area || b.city].filter(Boolean).join(' · ')}</div></td>
                   <td className="p-2">{b.plan ? <Badge tone="blue">{b.plan}</Badge> : '—'}</td>
                   <td className="p-2 text-gray-600">{b.source}</td>
                   <td className="p-2 text-right tabular-nums font-medium">{b.last_audit_score ?? '—'}</td>
@@ -223,7 +223,7 @@ function PlaybookTab({ toast }) {
         <ol className="space-y-1.5">
           {draft.steps.map((s, i) => (
             <li key={i} className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-gray-900 text-white text-[11px] flex items-center justify-center shrink-0">{i + 1}</span>
+              <span className="w-6 h-6 rounded-full bg-gray-900 text-white text-11 flex items-center justify-center shrink-0">{i + 1}</span>
               <input className={inputCls} value={s} onChange={e => setDraft(d => ({ ...d, steps: d.steps.map((x, j) => j === i ? e.target.value : x) }))} />
               <button onClick={() => setDraft(d => ({ ...d, steps: d.steps.filter((_, j) => j !== i) }))} className="text-gray-400 hover:text-red-600 cursor-pointer" aria-label="Remove step"><Trash2 size={14} /></button>
             </li>
@@ -238,12 +238,12 @@ function PlaybookTab({ toast }) {
       </Card>
       <Card title="Schedules per plan" subtitle="Used when a new client is onboarded">
         <div className="overflow-x-auto">
-          <table className="w-full text-[12px]">
+          <table className="w-full text-12">
             <thead className="text-gray-500 border-b border-gray-200"><tr><th className="p-1.5 text-left font-medium">Job</th>{plans.map(p => <th key={p} className="p-1.5 text-left font-medium">{p}</th>)}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {JOBS.map(([job, label]) => (
                 <tr key={job}><td className="p-1.5 text-gray-800">{label}</td>{plans.map(p => (
-                  <td key={p} className="p-1.5"><select className="h-6 px-1 text-[11px] border border-gray-300 rounded bg-white" value={draft.plan_schedules[p]?.[job] || 'off'} onChange={e => setDraft(d => ({ ...d, plan_schedules: { ...d.plan_schedules, [p]: { ...d.plan_schedules[p], [job]: e.target.value } } }))}>{EVERY.map(f => <option key={f} value={f}>{f}</option>)}</select></td>
+                  <td key={p} className="p-1.5"><select className="h-6 px-1 text-11 border border-gray-300 rounded bg-white" value={draft.plan_schedules[p]?.[job] || 'off'} onChange={e => setDraft(d => ({ ...d, plan_schedules: { ...d.plan_schedules, [p]: { ...d.plan_schedules[p], [job]: e.target.value } } }))}>{EVERY.map(f => <option key={f} value={f}>{f}</option>)}</select></td>
                 ))}</tr>
               ))}
             </tbody>

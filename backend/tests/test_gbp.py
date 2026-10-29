@@ -126,7 +126,7 @@ def test_find_by_email_lists_branches_with_public_status(client, monkeypatch):
     places = {"Smile Studio Pune": [_place("p1", "Smile Studio", "https://smilestudio.in/")],
               "Smile Studio": [_place("p1", "Smile Studio", "https://smilestudio.in/"), _place("p2", "Smile Studio Baner", "https://smilestudio.in/baner", "CLOSED_TEMPORARILY"),
                                _place("p3", "Happy Teeth", "https://happyteeth.in/")]}
-    monkeypatch.setattr(discovery, "_places_post", lambda q, limit=5: places.get(q, []))
+    monkeypatch.setattr(discovery, "_places_post", lambda q, limit=5, country=None: places.get(q, []))
     monkeypatch.setattr(discovery, "place_details", lambda pid, session_token="": _place(pid, "Smile Studio", "https://smilestudio.in/"))
     monkeypatch.setattr("app.routers.discover._onboard", lambda db, business_id: None)
 

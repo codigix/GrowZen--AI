@@ -6,9 +6,9 @@ import { Logo } from './LandingPage';
 
 /** Privacy Policy and Terms of Service: public pages linked from the landing page and Google's consent screen. */
 
-const H = ({ children }) => <h2 className="mt-10 text-[20px] font-bold text-slate-900">{children}</h2>;
-const P = ({ children }) => <p className="mt-3 text-[15px] leading-relaxed text-slate-700">{children}</p>;
-const L = ({ items }) => <ul className="mt-3 space-y-2 list-disc pl-5 text-[15px] leading-relaxed text-slate-700">{items.map((x, i) => <li key={i}>{x}</li>)}</ul>;
+const H = ({ children }) => <h2 className="mt-10 text-20 font-bold text-slate-900">{children}</h2>;
+const P = ({ children }) => <p className="mt-3 text-15 leading-relaxed text-slate-700">{children}</p>;
+const L = ({ items }) => <ul className="mt-3 space-y-2 list-disc pl-5 text-15 leading-relaxed text-slate-700">{items.map((x, i) => <li key={i}>{x}</li>)}</ul>;
 const Mail = () => (SITE.email ? <a className="text-blue-700 underline" href={`mailto:${SITE.email}`}>{SITE.email}</a> : <b>{CONTACT}</b>);
 
 function Privacy() {
@@ -30,10 +30,10 @@ function Privacy() {
 
       <H>3. Google user data</H>
       <P>{SITE.name} requests access to Google data only when you connect a Google account, and only for these purposes:</P>
-      <div className="mt-4 overflow-x-auto rounded-xl ring-1 ring-slate-200">
-        <table className="w-full text-[14px]">
+      <div className="mt-4 overflow-x-auto rounded ring-1 ring-slate-200">
+        <table className="w-full text-14">
           <thead className="bg-slate-50 text-left text-slate-600"><tr><th className="p-3 font-semibold">Google product and permission</th><th className="p-3 font-semibold">What we use it for</th></tr></thead>
-          <tbody className="divide-y divide-slate-200">{GOOGLE_ACCESS.map(g => <tr key={g.product} className="align-top"><td className="p-3"><b>{g.product}</b><code className="block mt-1 text-[12px] text-slate-500 break-all">{g.scope}</code></td><td className="p-3 text-slate-700">{g.use} {g.never}</td></tr>)}</tbody>
+          <tbody className="divide-y divide-slate-200">{GOOGLE_ACCESS.map(g => <tr key={g.product} className="align-top"><td className="p-3"><b>{g.product}</b><code className="block mt-1 text-12 text-slate-500 break-all">{g.scope}</code></td><td className="p-3 text-slate-700">{g.use} {g.never}</td></tr>)}</tbody>
         </table>
       </div>
       <P><b>Limited Use.</b> {SITE.name}'s use and transfer to any other app of information received from Google APIs will adhere to the <a className="text-blue-700 underline" href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noreferrer">Google API Services User Data Policy</a>, including the Limited Use requirements. In particular:</P>
@@ -132,14 +132,14 @@ export default function LegalPage({ kind }) {
       <header className="border-b border-slate-200">
         <div className="max-w-3xl mx-auto px-5 h-16 flex items-center justify-between">
           <Link to="/" aria-label={`${SITE.name} home`}><Logo /></Link>
-          <Link to="/" className="text-[14px] font-medium text-slate-600 hover:text-slate-900 inline-flex items-center gap-1.5"><ArrowLeft size={15} /> Home</Link>
+          <Link to="/" className="text-14 font-medium text-slate-600 hover:text-slate-900 inline-flex items-center gap-1.5"><ArrowLeft size={15} /> Home</Link>
         </div>
       </header>
       <main className="max-w-3xl mx-auto px-5 py-12">
-        <h1 className="text-[34px] font-bold tracking-tight text-slate-900">{title}</h1>
-        <p className="mt-2 text-[14px] text-slate-500">Last updated: {SITE.updated}</p>
+        <h1 className="text-34 font-bold tracking-tight text-slate-900">{title}</h1>
+        <p className="mt-2 text-14 text-slate-500">Last updated: {SITE.updated}</p>
         {kind === 'privacy' ? <Privacy /> : <Terms />}
-        <div className="mt-12 pt-6 border-t border-slate-200 flex flex-wrap gap-4 text-[14px]">
+        <div className="mt-12 pt-6 border-t border-slate-200 flex flex-wrap gap-4 text-14">
           <Link to="/" className="text-blue-700 hover:underline">Home</Link>
           <Link to={kind === 'privacy' ? '/terms' : '/privacy'} className="text-blue-700 hover:underline">{kind === 'privacy' ? 'Terms of Service' : 'Privacy Policy'}</Link>
         </div>

@@ -26,8 +26,11 @@ def status(_: User = Depends(current_user)):
         "google_oauth": s.google_oauth_enabled,
         "pagespeed_key": bool(s.pagespeed_api_key),
         "lighthouse_local": s.lighthouse_local_enabled and lighthouse.is_available(),
-        "places_key": bool(s.google_places_api_key),
+        "places_key": bool(s.google_places_api_key or s.google_api_key),
         "dataforseo": s.dataforseo_enabled,
+        "serper": bool(s.serper_api_key),
+        # Where rank grids, backlinks and citations come from: paid DataForSEO, live Google results (Serper) or sample data.
+        "rank_source": "dataforseo" if s.dataforseo_enabled else "serper" if s.serper_api_key else "sample",
         "intake_imap": s.imap_enabled,
         "intake_webhook": bool(s.intake_webhook_token),
         "smtp": bool(s.smtp_host and s.smtp_from),

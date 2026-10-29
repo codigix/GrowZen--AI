@@ -51,9 +51,13 @@ class Business(TimestampMixin, Base):
     address: Mapped[str | None] = mapped_column(String(500))
     area: Mapped[str | None] = mapped_column(String(120))
     city: Mapped[str | None] = mapped_column(String(120))
+    country: Mapped[str | None] = mapped_column(String(2))  # ISO code (IN, OM, AE, US…); see services/countries.py
     lat: Mapped[float | None] = mapped_column(Float)
     lng: Mapped[float | None] = mapped_column(Float)
     service_area: Mapped[str | None] = mapped_column(String(500))
+    target_scope: Mapped[str | None] = mapped_column(String(15))  # local | international: who the business wants customers from
+    target_countries: Mapped[list[str]] = mapped_column(JSON, default=list)  # ISO codes, for international
+    target_areas: Mapped[list[str]] = mapped_column(JSON, default=list)  # "Aundh, Pune", for local
     services: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{name, price, description}]
     attributes: Mapped[list[str]] = mapped_column(JSON, default=list)
     hours: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

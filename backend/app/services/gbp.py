@@ -51,19 +51,24 @@ def _redirect_uri() -> str:
     return f"{s.public_base_url.rstrip('/')}{s.api_prefix}/connections/google/callback"
 
 
+def _state_secret() -> str:
+    """Signs the Google sign-in `state`. The app's own secret always exists; CRM_JWT_SECRET is optional."""
+    return get_settings().secret_key
+
+
 def auth_url(user_id: str) -> str:
     s = get_settings()
     if not s.google_oauth_enabled:
         raise GbpError("Google sign-in is not set up: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.")
     if not s.token_encryption_key:
         raise GbpError("Add TOKEN_ENCRYPTION_KEY to the backend settings first: it encrypts the stored Google access.")
-    state = jwt.encode({"sub": user_id, "nonce": secrets.token_urlsafe(8), "exp": int(time.time()) + 600}, s.crm_jwt_secret, algorithm="HS256")
+    state = jwt.encode({"sub": user_id, "nonce": secrets.token_urlsafe(8), "exp": int(time.time()) + 600}, _state_secret(), algorithm="HS256")
     return f"{AUTH_URL}?{urlencode({'client_id': s.google_client_id, 'redirect_uri': _redirect_uri(), 'response_type': 'code', 'scope': SCOPES, 'access_type': 'offline', 'prompt': 'consent', 'include_granted_scopes': 'true', 'state': state})}"
 
 
 def read_state(state: str) -> str:
     try:
-        return str(jwt.decode(state, get_settings().crm_jwt_secret, algorithms=["HS256"])["sub"])
+        return str(jwt.decode(state, _state_secret(), algorithms=["HS256"])["sub"])
     except jwt.InvalidTokenError as exc:
         raise GbpError("Sign-in link expired. Start again.") from exc
 

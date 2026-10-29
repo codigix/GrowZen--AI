@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..models import Business, GoogleConnection, IntakeEmail
 from . import agent, audits, extraction, gbp, reports, schedules
 from .activity import log
-from .match import phone_digits as _digits, site_domain as _domain
+from .match import is_same_business, phone_digits as _digits, site_domain as _domain
 from .notify import send_email
 
 STEPS = [
@@ -37,12 +37,9 @@ def _step(db: Session, em: IntakeEmail, key: str, status: str, note: str = "") -
 
 
 def find_existing(db: Session, f: dict[str, Any]) -> Business | None:
-    """Same business already on file? Match by phone, then website domain, then exact name."""
-    phone, domain = _digits(f.get("phone")), _domain(f.get("website"))
+    """Same business already on file? The same phone or website with a matching name, else the exact name."""
     for b in db.scalars(select(Business)):
-        if phone and _digits(b.phone) == phone:
-            return b
-        if domain and _domain(b.website) == domain:
+        if is_same_business(b, f.get("place_id"), f.get("name"), f.get("phone"), f.get("website")):
             return b
     return db.scalar(select(Business).where(Business.name == f.get("name"))) if f.get("name") else None
 

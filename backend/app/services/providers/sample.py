@@ -46,7 +46,7 @@ class SampleKeywords(KeywordProvider):
 class SampleBacklinks(BacklinkProvider):
     source = "sample"
 
-    def summary(self, domain):
+    def summary(self, domain, name="", city="", country=None):
         r = _rng(domain)
         top = [{"domain": d, "authority": r.randint(15, 80) if not d.endswith((".xyz", ".biz")) else r.randint(1, 9),
                 "anchor": r.choice(["brand", "website", "click here", "service keyword"]), "toxic": d.endswith((".xyz", ".biz"))}

@@ -1,14 +1,18 @@
 """AI agent: the approval queue, activity log and playbook."""
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..db import get_db
+from ..deps import get_business
 from ..models import ActivityLog, AgentTask, Business
 from ..schemas import DecisionIn, PlaybookIn
 from ..serialize import row, rows
-from ..services import agent, copilot
+from ..services import activity as activity_log, agent, copilot
 from ..services.playbook import get_playbook
 
 router = APIRouter(tags=["agent"])
@@ -29,6 +33,36 @@ def list_tasks(status: str | None = "pending", business_id: int | None = None, d
     if missing:
         db.commit()
     return rows(found)
+
+
+class FollowUpIn(BaseModel):
+    kind: Literal["website_fix", "profile_edit"]
+    title: str = Field(min_length=3, max_length=300)
+    fix: str = Field(default="", max_length=1000)
+    code: str = Field(default="", max_length=60)
+    impact: Literal["High", "Medium", "Low"] = "Medium"
+
+
+@router.post("/businesses/{business_id}/tasks", status_code=201)
+def add_follow_ups(body: list[FollowUpIn], b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Fixes found outside the app while onboarding (on the business's website or Google profile), added to the
+    to-do list so they are followed up. A task already pending with the same title is not added twice."""
+    pending = {t.title for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.status == "pending"))}
+    added = []
+    for f in body[:20]:
+        if f.title in pending:
+            continue
+        t = AgentTask(business_id=b.id, agent="gbp" if f.kind == "profile_edit" else "audit", kind=f.kind, title=f.title, impact=f.impact,
+                      detail={"fix": f.fix, "code": f.code, "source": "onboarding"}, requires_approval=True)
+        db.add(t)
+        db.flush()
+        copilot.draft_for(db, b, t, use_ai=False)
+        pending.add(f.title)
+        added.append(t)
+    if added:
+        activity_log.log(db, user.name, "Onboarding follow-ups", b.id, added=len(added), titles=[t.title for t in added])
+    db.commit()
+    return {"added": len(added), "tasks": rows(added)}
 
 
 @router.post("/tasks/approve-low-risk")

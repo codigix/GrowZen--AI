@@ -14,9 +14,13 @@ class BusinessIn(BaseModel):
     address: str | None = None
     area: str | None = None
     city: str | None = None
+    country: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")  # ISO code
     lat: float | None = None
     lng: float | None = None
     service_area: str | None = None
+    target_scope: Literal["local", "international"] | None = None
+    target_countries: list[str] | None = None
+    target_areas: list[str] | None = None
     services: list[dict[str, Any]] = []
     attributes: list[str] = []
     hours: dict[str, Any] = {}
@@ -39,9 +43,13 @@ class BusinessPatch(BaseModel):
     address: str | None = None
     area: str | None = None
     city: str | None = None
+    country: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")  # ISO code
     lat: float | None = None
     lng: float | None = None
     service_area: str | None = None
+    target_scope: Literal["local", "international"] | None = None
+    target_countries: list[str] | None = None
+    target_areas: list[str] | None = None
     services: list[dict[str, Any]] | None = None
     attributes: list[str] | None = None
     hours: dict[str, Any] | None = None
@@ -64,6 +72,7 @@ class DiscoverIn(BaseModel):
     website: str = ""
     name: str = ""
     city: str = ""
+    country: str = ""  # ISO code; Google is searched in this country (default India)
 
 
 class AuditSummaryIn(BaseModel):
@@ -94,6 +103,8 @@ class OnboardAssistIn(BaseModel):
     city: str = Field(default="", max_length=120)
     services: list[Annotated[str, Field(max_length=120)]] = Field(default_factory=list, max_length=40)
     place_id: str | None = Field(default=None, max_length=300)
+    country: str = Field(default="", max_length=2)
+    fresh: bool = False  # re-fetch from Google Maps instead of the 10-minute cache (after the details were changed there)
 
 
 class SuggestionIn(BaseModel):
@@ -106,6 +117,7 @@ class DiscoverImportIn(BaseModel):
     email: str = ""
     candidate: dict[str, Any]
     plan: str | None = None
+    defer_audit: bool = False  # the caller saves more details first, then starts it with POST /discover/onboard/{id}
 
 
 class IntakeEmailIn(BaseModel):

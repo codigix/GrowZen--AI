@@ -34,8 +34,9 @@ class BacklinkProvider(ABC):
     source = "sample"
 
     @abstractmethod
-    def summary(self, domain: str) -> dict[str, Any]:
-        """{referring_domains, backlinks, toxic, anchors: {...}, top: [{domain, authority, anchor, toxic}]}"""
+    def summary(self, domain: str, name: str = "", city: str = "", country: str | None = None) -> dict[str, Any]:
+        """{referring_domains, backlinks, toxic, anchors: {...}, top: [{domain, authority, anchor, toxic}]}.
+        `name` / `city` help providers that search by the business's name."""
 
 
 class CitationProvider(ABC):

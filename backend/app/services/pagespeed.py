@@ -1,4 +1,5 @@
 """Google PageSpeed Insights (Lighthouse): SEO, performance, accessibility, best practices."""
+import logging
 import re
 from typing import Any
 
@@ -6,6 +7,7 @@ import httpx
 
 from ..config import get_settings
 
+log = logging.getLogger("seo.pagespeed")
 PSI = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 
 
@@ -58,12 +60,12 @@ def normalise(d: dict[str, Any], strategy: str) -> dict[str, Any]:
     }
 
 
-def fetch(url: str, strategy: str = "mobile", timeout: float = 90) -> dict[str, Any]:
+def fetch(url: str, strategy: str = "mobile", timeout: float = 90, use_key: bool = True) -> dict[str, Any]:
     """The raw PSI response: a full `lighthouseResult` (same shape as the Lighthouse CLI's JSON)
     plus CrUX field data in `loadingExperience` / `originLoadingExperience`.
     The key goes in the query string, so httpx request logging is kept off (see main.py)."""
     params: list[tuple[str, str]] = [("url", url), ("strategy", strategy)] + [("category", c) for c in ("SEO", "PERFORMANCE", "ACCESSIBILITY", "BEST_PRACTICES")]
-    key = get_settings().pagespeed_api_key
+    key = get_settings().pagespeed_api_key if use_key else ""
     if key:
         params.append(("key", key))
     try:
@@ -76,6 +78,10 @@ def fetch(url: str, strategy: str = "mobile", timeout: float = 90) -> dict[str, 
     if r.status_code != 200:
         err = data.get("error") or {}
         msg = err.get("message") or f"HTTP {r.status_code}"
+        if key and r.status_code == 400 and "api key not valid" in msg.lower():
+            # A wrong PAGESPEED_API_KEY shouldn't stop audits: PageSpeed also works without a key (lower daily quota).
+            log.warning("PAGESPEED_API_KEY was rejected; retrying without it. Fix or remove the key in .env.")
+            return fetch(url, strategy, timeout, use_key=False)
         if r.status_code == 429 or err.get("status") == "RESOURCE_EXHAUSTED" or "quota" in msg.lower():
             raise PageSpeedQuotaError(f"PageSpeed quota used up: set PAGESPEED_API_KEY (free, 25,000/day). ({msg})")
         raise PageSpeedError(f"PageSpeed Insights error ({r.status_code}): {msg}")
