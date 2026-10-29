@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Gauge, Globe, Loader2, RotateCcw, Search, ShieldCheck, Smartphone, Monitor, AlertTriangle, CheckCircle2, XCircle, MinusCircle
 } from 'lucide-react';
@@ -200,10 +200,12 @@ function ComparisonResult({ c }) {
 const STATUS_LABEL = { queued: 'Queued…', running: 'Auditing…', done: 'Audited', failed: 'Audit failed' };
 
 export default function CompetitorAuditCompare({ b }) {
-  const [competitors, setCompetitors] = useState(null);
+  // Scoped to the *current* search only (top N for this business type + location) -- not every
+  // competitor ever registered for this business. Re-searching with different terms replaces it.
+  const [competitors, setCompetitors] = useState([]);
+  const [searched, setSearched] = useState(false);
   const [auditMap, setAuditMap] = useState({}); // { [competitorId]: { id, status } } -- latest audit per competitor
   const [ourAudit, setOurAudit] = useState(null); // { id, status } | null
-  const [loadError, setLoadError] = useState('');
   const [businessType, setBusinessType] = useState(b.primaryCategory || '');
   const [location, setLocation] = useState([b.area, b.city].filter(Boolean).join(', ') || '');
   const [strategy, setStrategy] = useState('mobile');
@@ -212,20 +214,18 @@ export default function CompetitorAuditCompare({ b }) {
   const [findBusy, findError, runFind] = useAction();
   const [compareError, setCompareError] = useState('');
 
-  const loadAll = () => Promise.all([
-    api(`/competitors?business_id=${b.id}`),
-    api(`/audit/competitors?business_id=${b.id}&limit=200`)
-  ]).then(([comps, hist]) => {
-    setCompetitors(comps);
-    setAuditMap(m => {
-      const next = { ...m };
-      for (const a of hist) if (a.competitor_id && !next[a.competitor_id]) next[a.competitor_id] = { id: a.id, status: a.status };
+  // Seeds audit statuses for a given list of competitors from this business's audit history, so a
+  // site that was already audited (e.g. it resurfaces in a later search) shows its status right away.
+  const seedAuditStatuses = (list) => api(`/audit/competitors?business_id=${b.id}&limit=200`)
+    .then(hist => {
+      const byCompetitor = {};
+      for (const a of hist) if (a.competitor_id) byCompetitor[a.competitor_id] = { id: a.id, status: a.status };
+      const next = {};
+      for (const c of list) if (byCompetitor[c.id]) next[c.id] = byCompetitor[c.id];
+      setAuditMap(next);
       return next;
-    });
-    setLoadError('');
-    return comps; // so a caller (e.g. find()) can act on the fresh full list right away
-  }).catch(e => { setLoadError(e.message); return []; });
-  useEffect(() => { loadAll(); }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    })
+    .catch(() => ({}));
 
   // One audit per competitor, fired off together right after they're found/registered -- no need
   // to click "Audit" on each row one at a time.
@@ -269,9 +269,13 @@ export default function CompetitorAuditCompare({ b }) {
 
   const find = () => runFind('find', async () => {
     const r = await api('/competitors', { method: 'POST', body: { business_type: businessType, location, business_id: b.id, top_n: 10 } });
-    const fullList = await loadAll(); // every registered competitor, not just the ones this particular search returned
+    const list = r.registered || []; // only this search's top-N results, not every competitor ever found
+    setCompetitors(list);
+    setSearched(true);
+    setComparison(null);
+    const statuses = await seedAuditStatuses(list);
     auditOurSite();
-    auditAllCompetitors(fullList, auditMap);
+    auditAllCompetitors(list, statuses);
     return r;
   });
 
@@ -282,8 +286,6 @@ export default function CompetitorAuditCompare({ b }) {
       setComparison(r.comparisons?.[0] || null);
     } catch (e) { setCompareError(e.message); } finally { setComparing(null); }
   };
-
-  if (!competitors) return loadError ? <ErrorNote>{loadError}</ErrorNote> : <div className="flex items-center gap-2 text-[13px] text-slate-500"><Loader2 size={15} className="animate-spin" /> Loading…</div>;
 
   return (
     <div className="space-y-5">
@@ -313,7 +315,9 @@ export default function CompetitorAuditCompare({ b }) {
         </div>
 
         {!competitors.length ? (
-          <p className="text-[13px] text-slate-500">No competitors registered yet. Search above to find some near you on Google Maps.</p>
+          <p className="text-[13px] text-slate-500">
+            {searched ? 'No competitors with a website found for that search.' : 'Enter a business type and location, then search to find competitors near you on Google Maps.'}
+          </p>
         ) : (
           <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
             {competitors.map(c => {
