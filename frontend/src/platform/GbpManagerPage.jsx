@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { CheckCircle2, Circle, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Loader2, Save } from 'lucide-react';
 import { SeoShell, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useSeoBusiness, refreshBusinesses } from './SeoUi';
-import { ConnectModal, ConnectionsBar, ConnectEmptyState } from './GbpConnect';
+import { ConnectModal } from './GbpConnect';
+import { GbpAccounts, ListingStatus, VerifyPill } from './GbpAccounts';
 import { api, useApi, fmtDate } from './seoApi';
 
 const CTA = { BOOK: 'Book', ORDER: 'Order online', LEARN_MORE: 'Learn more', SIGN_UP: 'Sign up', CALL: 'Call now' };
@@ -33,7 +34,7 @@ function AuditTab({ b, onEditProfile }) {
         <Card title="Google link">
           <div className="space-y-1.5 text-[13px]">
             <div className="flex justify-between"><span className="text-gray-500">Linked profile</span><span className="text-gray-900">{b.gbp_location || 'Not linked'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Verification</span><span>{b.verification === 'verified' ? <StatusPill level="good">Verified</StatusPill> : b.verification === 'unknown' ? <Badge>Unknown</Badge> : <StatusPill level="critical">{b.verification}</StatusPill>}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Verification</span><VerifyPill state={b.verification} /></div>
             <div className="flex justify-between"><span className="text-gray-500">Reviews / rating</span><span className="text-gray-900">{b.reviewCount} · {b.rating ?? '—'}★</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Photos</span><span className="text-gray-900">{b.photo_count ?? '—'}</span></div>
           </div>
@@ -318,8 +319,7 @@ function InsightsTab({ b }) {
 function Manager({ b, tab, setTab, toast, onConnect }) {
   return (
     <>
-      <ConnectionsBar onConnect={() => onConnect('find')} toast={toast} />
-      {!b.gbp_location && tab === 'audit' && <div className="mb-4"><ConnectEmptyState onConnect={() => onConnect('google')} /></div>}
+      <div className="mb-4"><ListingStatus b={b} toast={toast} onFind={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => document.querySelector('input[aria-label="Business email"]')?.focus(), 400); }} /></div>
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'audit', label: 'Audit' }, { id: 'profile', label: 'Profile' }, { id: 'posts', label: 'Posts' }, { id: 'photos', label: 'Photos' }, { id: 'hours', label: 'Hours' }, { id: 'faq', label: 'Q&A / FAQs' }, { id: 'insights', label: 'Insights' }]} />
       {tab === 'audit' && <AuditTab b={b} onEditProfile={() => setTab('profile')} />}
       {tab === 'profile' && <ProfileTab b={b} toast={toast} />}
@@ -343,6 +343,7 @@ export default function GbpManagerPage({ initialTab = 'audit' }) {
   useEffect(() => {
     if (new URLSearchParams(location.search).get('connect')) { setConnect('find'); navigate(location.pathname, { replace: true }); }
   }, [location.search, location.pathname, navigate]);
+  const account = Number(new URLSearchParams(location.search).get('account')) || null; // just connected (from Google sign-in)
   const added = (list, note) => {
     setConnect(null);
     if (list.length) { setBusiness(list[0].id); setTab('audit'); }
@@ -351,8 +352,14 @@ export default function GbpManagerPage({ initialTab = 'audit' }) {
   // The window lives outside the shell so it also opens when there are no businesses yet.
   return (
     <>
-      <SeoShell title="Google Business Profile" subtitle="Connect the business's Google account; profiles sync and are audited automatically">
-        {(b) => <Manager key={b.id} b={b} tab={tab} setTab={setTab} toast={toast} onConnect={(mode = 'find') => setConnect(mode)} />}
+      <SeoShell title="Google Business Profile" subtitle="Find a business's Google listings from its email, see their live status, and manage each profile's audit, posts, photos, hours and insights" needsBusiness={false}>
+        {(b) => (
+          <div className="space-y-5">
+            <GbpAccounts business={b} initialAccount={account} toast={toast} onOtherWays={() => setConnect('find')} onOpenBusiness={(id) => { setBusiness(id); setTab('audit'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
+            {b ? <div><Manager key={b.id} b={b} tab={tab} setTab={setTab} toast={toast} onConnect={(mode = 'find') => setConnect(mode)} /></div>
+              : <Card><div className="py-8 text-center text-[13px] text-slate-500">No businesses yet. Find one by its email above, or use Other ways to add.</div></Card>}
+          </div>
+        )}
       </SeoShell>
       <ConnectModal open={Boolean(connect)} initialMode={connect || 'find'} onClose={() => setConnect(null)} onAdded={added} />
       {toastNode}

@@ -1,0 +1,152 @@
+"""Google Business Profile: every listing on a connected account with its live status, import, sync."""
+from app.db import SessionLocal
+from app.models import Business, GoogleConnection
+from app.services import crypto, gbp
+
+ACC = "accounts/111"
+
+
+def location(n, **meta):
+    return {"name": f"locations/{n}", "title": f"Clinic {n}", "storefrontAddress": {"addressLines": ["MG Road", "Aundh"], "locality": "Pune", "postalCode": "411007"},
+            "categories": {"primaryCategory": {"displayName": "Dentist"}}, "openInfo": {"status": meta.pop("open", "OPEN")},
+            "metadata": {"placeId": f"place{n}", "mapsUri": f"https://maps.google.com/?cid={n}", "newReviewUri": f"https://g.page/r/{n}/review", **meta}}
+
+
+LOCATIONS = [location(1, hasVoiceOfMerchant=True), location(2), location(3, open="CLOSED_TEMPORARILY", hasPendingEdits=True), location(4, duplicateLocation=True)]
+VOM = {"locations/1": {"hasVoiceOfMerchant": True, "hasBusinessAuthority": True},
+       "locations/2": {"verify": {"hasPendingVerification": True}},
+       "locations/3": {"complyWithGuidelines": {"recommendationReason": "BUSINESS_LOCATION_SUSPENDED"}},
+       "locations/4": {"resolveOwnershipConflict": {}}}
+
+
+def fake_google(monkeypatch, vom_enabled=True):
+    def req(self, method, url, **kw):
+        if url.endswith("/accounts"):
+            return {"accounts": [{"name": ACC, "accountName": "Sai Dental Group", "type": "LOCATION_GROUP", "role": "OWNER"}]}
+        if url.endswith(f"{ACC}/locations"):
+            return {"locations": LOCATIONS}
+        if url.endswith("/VoiceOfMerchantState"):
+            if not vom_enabled:
+                raise gbp.GbpError("My Business Verifications API is not enabled")
+            return VOM[url.split("v1/")[1].replace("/VoiceOfMerchantState", "")]
+        if "/locations/" in url and url.startswith(gbp.INFO):
+            return next(l for l in LOCATIONS if url.endswith(l["name"]))
+        if url.endswith("/reviews"):
+            return {"reviews": [{"reviewId": "r1", "starRating": "FIVE", "comment": "Great", "createTime": "2026-10-01T10:00:00Z"}]}
+        if url.endswith("/media"):
+            return {"totalMediaItemCount": 7}
+        if "fetchMultiDailyMetricsTimeSeries" in url:
+            return {}
+        raise AssertionError(f"unexpected Google call {url}")
+    monkeypatch.setattr(gbp.GbpClient, "_req", req)
+
+
+def connection():
+    db = SessionLocal()
+    c = db.query(GoogleConnection).filter_by(email="owner@saidental.in").first() or GoogleConnection(email="owner@saidental.in", display_name="Sai Owner")
+    c.refresh_token_enc, c.status = crypto.seal("refresh-token"), "active"
+    db.add(c)
+    db.commit()
+    cid = c.id
+    db.close()
+    return cid
+
+
+def test_verification_states():
+    assert gbp.verification_state({"hasVoiceOfMerchant": True}, {}) == "verified"
+    assert gbp.verification_state({"waitForVoiceOfMerchant": {}}, {}) == "pending"
+    assert gbp.verification_state({"verify": {"hasPendingVerification": True}}, {}) == "pending"
+    assert gbp.verification_state({"verify": {}}, {}) == "unverified"
+    assert gbp.verification_state({"complyWithGuidelines": {"recommendationReason": "BUSINESS_LOCATION_SUSPENDED"}}, {}) == "suspended"
+    assert gbp.verification_state({"complyWithGuidelines": {"recommendationReason": "BUSINESS_LOCATION_DISABLED"}}, {}) == "disabled"
+    assert gbp.verification_state({"resolveOwnershipConflict": {}}, {}) == "conflict"
+    # Without the Verifications API: only what the location metadata says.
+    assert gbp.verification_state(None, {"hasVoiceOfMerchant": True}) == "verified" and gbp.verification_state(None, {}) == "unverified"
+
+
+def test_every_listing_with_its_status(client, monkeypatch):
+    fake_google(monkeypatch)
+    cid = connection()
+    found = client.get(f"/api/v1/connections/{cid}/locations").json()
+    by = {l["gbp_location"]: l for l in found}
+    assert [by[f"locations/{n}"]["verification"] for n in range(1, 5)] == ["verified", "pending", "suspended", "conflict"]
+    s3 = by["locations/3"]["gbp_status"]
+    assert s3["open_status"] == "closed_temporarily" and s3["pending_edits"] and s3["verification_source"] == "google"
+    s1 = by["locations/1"]["gbp_status"]
+    assert s1["account_name"] == "Sai Dental Group" and s1["account_role"] == "OWNER" and s1["maps_url"].endswith("cid=1") and s1["review_url"]
+    assert by["locations/4"]["duplicate_listing"] and not any(l["imported"] for l in found)
+
+
+def test_listing_status_without_verifications_api(client, monkeypatch):
+    fake_google(monkeypatch, vom_enabled=False)
+    found = client.get(f"/api/v1/connections/{connection()}/locations").json()
+    by = {l["gbp_location"]: l for l in found}
+    assert by["locations/1"]["verification"] == "verified" and by["locations/2"]["verification"] == "unverified"
+    assert by["locations/1"]["gbp_status"]["verification_source"] == "metadata"
+
+
+def test_import_and_sync_keep_the_status(client, monkeypatch):
+    fake_google(monkeypatch)
+    cid = connection()
+    out = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()
+    bid = out[0]["id"]
+    b = client.get(f"/api/v1/businesses/{bid}").json()
+    assert b["verification"] == "verified" and b["gbp_status"]["open_status"] == "open" and b["review_count"] == 1 and b["photo_count"] == 7
+    listed = {l["gbp_location"]: l for l in client.get(f"/api/v1/connections/{cid}/locations").json()}
+    assert listed["locations/1"]["imported"] and listed["locations/1"]["business_id"] == bid
+
+    # Google suspends it: the next sync picks that up.
+    VOM["locations/1"] = {"complyWithGuidelines": {"recommendationReason": "BUSINESS_LOCATION_SUSPENDED"}}
+    try:
+        r = client.post(f"/api/v1/businesses/{bid}/sync").json()
+        assert r["verification"] == "suspended"
+        b = client.get(f"/api/v1/businesses/{bid}").json()
+        assert b["verification"] == "suspended" and b["gbp_status"]["account_name"] == "Sai Dental Group"
+        assert any("suspended" in a["text"].lower() for a in client.get(f"/api/v1/businesses/{bid}/gbp/score").json()["alerts"])
+    finally:
+        VOM["locations/1"] = {"hasVoiceOfMerchant": True}
+        db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
+
+
+# Email only (no Google sign-in): public listings on Google Maps and their public status.
+def _place(pid, name, website, status="OPERATIONAL"):
+    return {"id": pid, "displayName": {"text": name}, "formattedAddress": "MG Road, Aundh, Pune, Maharashtra 411007, India", "websiteUri": website,
+            "rating": 4.6, "userRatingCount": 128, "primaryTypeDisplayName": {"text": "Dentist"}, "location": {"latitude": 18.56, "longitude": 73.81},
+            "googleMapsUri": f"https://maps.google.com/?cid={pid}", "businessStatus": status, "photos": [{}, {}, {}]}
+
+
+def test_find_by_email_lists_branches_with_public_status(client, monkeypatch):
+    from app.config import get_settings
+    from app.services import discovery
+    monkeypatch.setattr(get_settings(), "google_places_api_key", "test-key")
+    monkeypatch.setattr(discovery, "read_website", lambda domain: {"name": "Smile Studio", "city": "Pune", "website": f"https://{domain}"})
+    places = {"Smile Studio Pune": [_place("p1", "Smile Studio", "https://smilestudio.in/")],
+              "Smile Studio": [_place("p1", "Smile Studio", "https://smilestudio.in/"), _place("p2", "Smile Studio Baner", "https://smilestudio.in/baner", "CLOSED_TEMPORARILY"),
+                               _place("p3", "Happy Teeth", "https://happyteeth.in/")]}
+    monkeypatch.setattr(discovery, "_places_post", lambda q, limit=5: places.get(q, []))
+    monkeypatch.setattr(discovery, "place_details", lambda pid, session_token="": _place(pid, "Smile Studio", "https://smilestudio.in/"))
+    monkeypatch.setattr("app.routers.discover._onboard", lambda db, business_id: None)
+
+    found = client.post("/api/v1/discover", json={"email": "hello@smilestudio.in"}).json()
+    maps = [c for c in found["candidates"] if c["source"] == "google_maps"]
+    assert [c["place_id"] for c in maps] == ["p1", "p2"]  # both branches, not the unrelated "Happy Teeth"
+    assert all(c["confidence"] == "high" for c in maps) and maps[1]["open_status"] == "closed_temporarily"
+    assert maps[0]["review_url"].endswith("placeid=p1") and maps[0]["business_id"] is None
+
+    b = client.post("/api/v1/discover/import", json={"email": "hello@smilestudio.in", "candidate": maps[0]}).json()
+    assert b["gbp_status"]["source"] == "maps" and b["gbp_status"]["open_status"] == "open" and b["gbp_status"]["live_on_maps"]
+    again = client.post("/api/v1/discover", json={"email": "hello@smilestudio.in"}).json()
+    assert next(c for c in again["candidates"] if c.get("place_id") == "p1")["business_id"] == b["id"]
+
+    # Refresh the public status later: Google now shows it as temporarily closed.
+    monkeypatch.setattr(discovery, "place_details", lambda pid, session_token="": _place(pid, "Smile Studio", "https://smilestudio.in/", "CLOSED_TEMPORARILY") | {"userRatingCount": 131})
+    r = client.post(f"/api/v1/businesses/{b['id']}/maps-refresh").json()
+    assert r["open_status"] == "closed_temporarily" and r["review_count"] == 131
+    after = client.get(f"/api/v1/businesses/{b['id']}").json()
+    assert after["review_count"] == 131 and after["gbp_status"]["open_status"] == "closed_temporarily"
+    assert any("temporarily closed" in a["text"] for a in client.get(f"/api/v1/businesses/{b['id']}/gbp/score").json()["alerts"])
+    no_place = client.post("/api/v1/businesses", json={"name": "No Listing Yet"}).json()["id"]
+    assert client.post(f"/api/v1/businesses/{no_place}/maps-refresh").status_code == 400

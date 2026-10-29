@@ -73,7 +73,8 @@ class Business(TimestampMixin, Base):
     gbp_account: Mapped[str | None] = mapped_column(String(120))  # "accounts/123"
     gbp_location: Mapped[str | None] = mapped_column(String(120), unique=True)  # "locations/456"
     place_id: Mapped[str | None] = mapped_column(String(200))
-    verification: Mapped[str] = mapped_column(String(20), default="unknown")  # verified | unverified | suspended | unknown
+    verification: Mapped[str] = mapped_column(String(20), default="unknown")  # verified | pending | unverified | suspended | disabled | conflict | unknown
+    gbp_status: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # live listing state from Google: open status, pending edits, links, checked_at
     duplicate_listing: Mapped[bool] = mapped_column(Boolean, default=False)
     rating: Mapped[float | None] = mapped_column(Float)
     review_count: Mapped[int | None] = mapped_column(Integer)

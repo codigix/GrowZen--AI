@@ -7,7 +7,7 @@ images without alt text, structured data types, and broken internal links.
 import json
 import re
 from collections import deque
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urldefrag, urljoin, urlparse
 
 import httpx
@@ -101,28 +101,58 @@ def page_issues(p: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def crawl(start_url: str, max_pages: int = 25, timeout: float = 15) -> dict[str, Any]:
+def frameable(headers: Any) -> bool:
+    """Whether a browser may show the page inside an iframe (no X-Frame-Options / frame-ancestors block)."""
+    if (headers.get("x-frame-options") or "").strip().lower() in ("deny", "sameorigin"):
+        return False
+    m = re.search(r"frame-ancestors([^;]*)", headers.get("content-security-policy") or "", re.I)
+    return not m or "*" in m.group(1)
+
+
+def _norm_host(netloc: str) -> str:
+    """"www.example.com" and "example.com" are the same site for same-domain link filtering."""
+    return netloc.lower().removeprefix("www.")
+
+
+def _norm_url(url: str) -> str:
+    """"/page" and "/page/" (and "" vs "/") are the same page, so they share one dedup key and
+    aren't queued and crawled twice as cosmetic variants of each other."""
+    parts = urlparse(url)
+    path = parts.path or "/"
+    if len(path) > 1 and path.endswith("/"):
+        path = path.rstrip("/")
+    return parts._replace(path=path).geturl()
+
+
+def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
+    """`on_progress` (optional) gets an event per step so a caller can show the scan live:
+    {"step": "robots" | "sitemap" | "fetching" | "page", ...}."""
+    report = on_progress or (lambda event: None)
     start = start_url if start_url.startswith("http") else f"https://{start_url}"
-    host = urlparse(start).netloc
+    host = _norm_host(urlparse(start).netloc)
     client = site_client(timeout)
     site: dict[str, Any] = {"start_url": start, "host": host}
     try:
         robots = client.get(urljoin(start, "/robots.txt"))
         site["robots_txt"] = robots.status_code == 200
         site["robots_blocks_all"] = bool(re.search(r"(?im)^user-agent:\s*\*\s*$[\s\S]*?^disallow:\s*/\s*$", robots.text)) if robots.status_code == 200 else False
+        report({"step": "robots", "found": site["robots_txt"], "blocks_all": site["robots_blocks_all"]})
         sitemap_urls = re.findall(r"(?im)^sitemap:\s*(\S+)", robots.text) if robots.status_code == 200 else []
         sm = client.get(sitemap_urls[0] if sitemap_urls else urljoin(start, "/sitemap.xml"))
         site["sitemap"] = sm.status_code == 200 and ("<urlset" in sm.text or "<sitemapindex" in sm.text)
         site["https"] = start.startswith("https")
-        seen: set[str] = set()
+        report({"step": "sitemap", "found": site["sitemap"]})
+        seen: set[str] = set()  # URLs already queued or dequeued, so the same link isn't crawled twice
+        fetched: set[str] = set()  # resolved (post-redirect) URLs of pages already captured
         queue = deque([start])
         pages: list[dict[str, Any]] = []
         broken: list[dict[str, str]] = []
         while queue and len(pages) < max_pages:
             url = queue.popleft()
-            if url in seen:
+            if _norm_url(url) in seen:
                 continue
-            seen.add(url)
+            seen.add(_norm_url(url))
+            report({"step": "fetching", "url": url, "done": len(pages), "queued": len(queue)})
             try:
                 r = client.get(url)
             except httpx.HTTPError as exc:
@@ -130,14 +160,23 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15) -> dict[str,
                 continue
             if "text/html" not in r.headers.get("content-type", ""):
                 continue
+            resolved = _norm_url(str(r.url))
+            if resolved in fetched:
+                continue  # this URL redirected to a page already crawled: same content, not a new one
+            fetched.add(resolved)
+            seen.add(resolved)  # the fetched URL may differ from the queued one after a redirect
+            if not pages:  # the start URL may redirect to a different host (e.g. www -> bare domain)
+                host = _norm_host(urlparse(str(r.url)).netloc) or host
             p = analyse_html(str(r.url), r.status_code, r.text)
+            p["frameable"] = frameable(r.headers)
             if r.status_code >= 400:
                 broken.append({"url": url, "error": str(r.status_code)})
             pages.append(p)
             for link in p["links"]:
                 href = link["href"]
-                if urlparse(href).netloc == host and href not in seen and not SKIP_EXT.search(href):
+                if _norm_host(urlparse(href).netloc) == host and _norm_url(href) not in seen and not SKIP_EXT.search(href):
                     queue.append(href)
+            report({"step": "page", "page": {k: v for k, v in p.items() if k != "links"}, "queued": len(queue)})
         for p in pages:
             p.pop("links", None)
         site.update(pages=pages, broken=broken, crawled=len(pages))

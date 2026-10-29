@@ -70,6 +70,22 @@ class DataForSeoKeywords(KeywordProvider):
         return sorted(out, key=lambda k: k["volume"] or 0, reverse=True)[:60]
 
 
+def keyword_volumes(keywords: list[str], location: str = "India") -> dict[str, dict[str, Any]]:
+    """Google Ads volume, CPC and competition for known keywords, with the 12-month trend: the last
+    three months against the three before, in percent."""
+    task = _post("/keywords_data/google_ads/search_volume/live", [{"keywords": keywords[:1000], "location_name": location, "language_code": "en"}], timeout=90)
+    out: dict[str, dict[str, Any]] = {}
+    for r in task.get("result") or []:
+        if not r.get("keyword"):
+            continue
+        months = sorted((m for m in r.get("monthly_searches") or [] if m.get("search_volume") is not None), key=lambda m: (m["year"], m["month"]))
+        recent, before = sum(m["search_volume"] for m in months[-3:]), sum(m["search_volume"] for m in months[-6:-3])
+        out[r["keyword"].lower()] = {"volume": r.get("search_volume"), "cpc": r.get("cpc"), "difficulty": r.get("competition_index"),
+                                     "trend": round((recent - before) / before * 100) if len(months) >= 6 and before else None,
+                                     "monthly": [m["search_volume"] for m in months[-12:]] or None}
+    return out
+
+
 class DataForSeoBacklinks(BacklinkProvider):
     source = "live"
 

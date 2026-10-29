@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Mail, ShieldCheck, Loader2, Store, RefreshCw, Plug, X, MapPin, Plus, CheckCircle2, ArrowRight, Search, Globe, Star, AtSign } from 'lucide-react';
+import { Mail, ShieldCheck, Loader2, Plug, MapPin, Plus, ArrowRight, Search, Globe, Star, AtSign } from 'lucide-react';
 import { Modal, Button, StatusPill, Badge, Card, Field, inputCls, areaCls, ErrorNote, useAction, refreshBusinesses } from './SeoUi';
-import { api, useApi, fmtDateTime } from './seoApi';
+import { api, useApi } from './seoApi';
+import { VerifyPill, FREE_MAIL } from './GbpAccounts';
 
 /**
  * Adding businesses (SEO backend):
@@ -36,7 +37,7 @@ export function LocationPicker({ connectionId, onImported }) {
               <div className="text-[12px] text-gray-500 truncate flex items-center gap-1"><MapPin size={10} /> {l.address || 'Service-area business'}{l.primary_category ? ` · ${l.primary_category}` : ''}</div>
             </div>
             {l.duplicate_listing && <StatusPill level="warning">Duplicate</StatusPill>}
-            {l.verification === 'verified' ? <StatusPill level="good">Verified</StatusPill> : <StatusPill level="critical">Not verified</StatusPill>}
+            <VerifyPill state={l.verification} />
             {l.imported && <Badge tone="gray">Already added</Badge>}
           </label>
         ))}
@@ -60,7 +61,7 @@ function GoogleSetup({ s, open: startOpen }) {
       </button>
       {open && (
         <ol className="px-4 pb-3 space-y-2.5 text-[12px] text-gray-700 list-decimal list-outside ml-4">
-          {!s.configured && <li>Set <code className="bg-gray-100 px-1 rounded">GOOGLE_CLIENT_ID</code> and <code className="bg-gray-100 px-1 rounded">GOOGLE_CLIENT_SECRET</code> in <code className="bg-gray-100 px-1 rounded">seo-platform/backend/.env</code> (an OAuth client of type “Web application”), then restart the backend.</li>}
+          {!s.configured && <li>Set <code className="bg-gray-100 px-1 rounded">GOOGLE_CLIENT_ID</code> and <code className="bg-gray-100 px-1 rounded">GOOGLE_CLIENT_SECRET</code> in <code className="bg-gray-100 px-1 rounded">backend/.env</code> (an OAuth client of type “Web application”), then restart the backend.</li>}
           <li>
             In Google Cloud → APIs &amp; Services → Credentials → your OAuth client{s.client_id ? <> (<code className="bg-gray-100 px-1 rounded">{s.client_id}</code>)</> : null}, add this <b>Authorized redirect URI</b>:
             <div className="mt-1 flex items-center gap-2"><code className="flex-1 bg-white border border-gray-200 rounded px-2 py-1 text-[11px] break-all">{s.redirect_uri}</code><button onClick={copy} className="h-7 px-2 text-[11px] border border-gray-300 rounded bg-white hover:bg-gray-50 cursor-pointer">{copied ? 'Copied' : 'Copy'}</button></div>
@@ -80,7 +81,7 @@ function FindByEmail({ onAdded }) {
   const [q, setQ] = useState({ email: '', name: '', city: '', plan: 'Starter' });
   const [res, setRes] = useState(null);
   const [busy, error, run] = useAction();
-  const free = /@(gmail|googlemail|yahoo|outlook|hotmail|live|icloud|rediffmail|rediff|aol|proton|zoho)\./i.test(q.email);
+  const free = FREE_MAIL.test(q.email);
   const find = () => run('find', async () => setRes(await api('/discover', { method: 'POST', body: { email: q.email.trim(), name: q.name, city: q.city } })));
   const add = (c, i) => run(`add${i}`, async () => {
     const b = await api('/discover/import', { method: 'POST', body: { email: q.email.trim(), candidate: c, plan: q.plan } });
@@ -215,57 +216,5 @@ export function ConnectModal({ open, onClose, onAdded, initialMode = 'find' }) {
       )}
       <ErrorNote>{error}</ErrorNote>
     </Modal>
-  );
-}
-
-// Connected accounts across the top of GBP Manager.
-export function ConnectionsBar({ onConnect, toast }) {
-  const conns = useApi('/connections');
-  const [busy, error, run] = useAction();
-  const active = (conns.data || []).filter(c => c.status === 'active');
-  if (!active.length) return null;
-  return (
-    <div className="mb-4">
-      <div className="flex flex-wrap items-center gap-2 bg-white border border-gray-200 rounded px-3 py-2">
-        <span className="text-[12px] text-gray-500 mr-1">Connected:</span>
-        {active.map(c => (
-          <span key={c.id} className="inline-flex items-center gap-1.5 h-7 pl-2 pr-1 rounded border border-gray-200 bg-gray-50 text-[12px] text-gray-800">
-            <Mail size={12} className="text-gray-500" /> {c.email}
-            <span className="text-gray-500">· {c.businesses} business{c.businesses === 1 ? '' : 'es'} · synced {c.last_sync_at ? fmtDateTime(c.last_sync_at) : 'never'}</span>
-            {c.last_error && <span title={c.last_error} className="text-red-600">⚠</span>}
-            <button title="Sync now" onClick={() => run(`s${c.id}`, async () => { const r = await api(`/connections/${c.id}/sync`, { method: 'POST' }); toast(`Synced ${r.synced} business${r.synced === 1 ? '' : 'es'}${r.failed.length ? `, ${r.failed.length} failed` : ''}`); conns.reload(true); })} className="p-1 rounded hover:bg-gray-200 text-gray-500 cursor-pointer">
-              <RefreshCw size={12} className={busy === `s${c.id}` ? 'animate-spin' : ''} />
-            </button>
-            <button title="Disconnect" onClick={() => { if (window.confirm(`Disconnect ${c.email}? Its businesses stay, but stop syncing.`)) run(`d${c.id}`, async () => { await api(`/connections/${c.id}`, { method: 'DELETE' }); conns.reload(true); }); }} className="p-1 rounded hover:bg-gray-200 text-gray-500 cursor-pointer"><X size={12} /></button>
-          </span>
-        ))}
-        <Button size="sm" icon={Plug} className="ml-auto" onClick={onConnect}>Add businesses</Button>
-      </div>
-      <ErrorNote>{error}</ErrorNote>
-    </div>
-  );
-}
-
-export function ConnectEmptyState({ onConnect }) {
-  return (
-    <Card>
-      <div className="py-8 text-center max-w-xl mx-auto">
-        <span className="w-12 h-12 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center mx-auto mb-3"><Store size={22} /></span>
-        <h2 className="text-lg font-semibold text-gray-900">Link this business to its Google profile</h2>
-        <p className="text-[13px] text-gray-600 mt-1">Sign in with the email that owns or manages the Business Profile. Reviews, photos and daily insights then sync automatically, and approved posts and replies go live on Google.</p>
-        <div className="mt-5"><Button variant="primary" icon={Plug} onClick={onConnect}>Connect Google account</Button></div>
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
-          {[['1', 'Sign in with Google', 'The account that owns the profile'], ['2', 'Pick the businesses', 'All its locations are listed'], ['3', 'Automatic sync + audit', 'Reviews, insights, score']].map(([n, t, d]) => (
-            <div key={n} className="p-3 rounded border border-gray-200"><div className="w-6 h-6 rounded-full bg-gray-900 text-white text-[12px] flex items-center justify-center mb-2">{n}</div><div className="text-[13px] font-medium text-gray-900">{t}</div><div className="text-[12px] text-gray-500">{d}</div></div>
-          ))}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-export function ImportDone({ businesses }) {
-  return (
-    <div className="flex items-center gap-2 text-[13px] text-emerald-800"><CheckCircle2 size={16} /> Added {businesses.length}: {businesses.map(b => b.name).join(', ')}</div>
   );
 }

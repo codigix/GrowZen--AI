@@ -10,9 +10,11 @@ APIs used (all need the project to be approved for the Business Profile APIs):
   Business Information mybusinessbusinessinformation.googleapis.com/v1/{account}/locations
   Reviews, posts, media (v4) mybusiness.googleapis.com/v4/{account}/{location}/...
   Performance          businessprofileperformance.googleapis.com/v1/{location}:fetchMultiDailyMetricsTimeSeries
+  Verifications        mybusinessverifications.googleapis.com/v1/{location}/VoiceOfMerchantState
 """
 import secrets
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlencode
@@ -34,7 +36,9 @@ ACCOUNTS = "https://mybusinessaccountmanagement.googleapis.com/v1"
 INFO = "https://mybusinessbusinessinformation.googleapis.com/v1"
 V4 = "https://mybusiness.googleapis.com/v4"
 PERF = "https://businessprofileperformance.googleapis.com/v1"
-READ_MASK = "name,title,storefrontAddress,phoneNumbers,categories,websiteUri,latlng,metadata,profile,regularHours,serviceArea"
+VERIFY = "https://mybusinessverifications.googleapis.com/v1"
+READ_MASK = "name,title,storefrontAddress,phoneNumbers,categories,websiteUri,latlng,metadata,profile,regularHours,serviceArea,openInfo"
+OPEN_STATUS = {"OPEN": "open", "CLOSED_TEMPORARILY": "closed_temporarily", "CLOSED_PERMANENTLY": "closed_permanently"}
 STAR = {"ONE": 1, "TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5}
 
 
@@ -51,6 +55,8 @@ def auth_url(user_id: str) -> str:
     s = get_settings()
     if not s.google_oauth_enabled:
         raise GbpError("Google sign-in is not set up: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.")
+    if not s.token_encryption_key:
+        raise GbpError("Add TOKEN_ENCRYPTION_KEY to the backend settings first: it encrypts the stored Google access.")
     state = jwt.encode({"sub": user_id, "nonce": secrets.token_urlsafe(8), "exp": int(time.time()) + 600}, s.crm_jwt_secret, algorithm="HS256")
     return f"{AUTH_URL}?{urlencode({'client_id': s.google_client_id, 'redirect_uri': _redirect_uri(), 'response_type': 'code', 'scope': SCOPES, 'access_type': 'offline', 'prompt': 'consent', 'include_granted_scopes': 'true', 'state': state})}"
 
@@ -131,11 +137,29 @@ class GbpClient:
             if not token:
                 return out
 
-    def all_locations(self) -> list[dict[str, Any]]:
+    def location(self, name: str) -> dict[str, Any]:
+        return self._req("GET", f"{INFO}/{name}", params={"readMask": READ_MASK})
+
+    def voice_of_merchant(self, name: str) -> dict[str, Any] | None:
+        """Google's verification state for a location, or None when the Verifications API can't be read
+        (not enabled for the project): callers then fall back to the location's metadata."""
+        try:
+            return self._req("GET", f"{VERIFY}/{name}/VoiceOfMerchantState")
+        except GbpError:
+            return None
+
+    def all_locations(self, with_status: bool = True) -> list[dict[str, Any]]:
+        """Every location of every account the user can see, with the account's name, type and the
+        user's role, and (with_status) each location's verification state."""
         found = []
         for acc in self.accounts():
             for loc in self.locations(acc["name"]):
-                found.append({"account": acc["name"], "account_role": acc.get("role"), **loc})
+                found.append({"account": acc["name"], "account_role": acc.get("role"), "account_name": acc.get("accountName"),
+                              "account_type": acc.get("type"), **loc})
+        if with_status and found:
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                for loc, vom in zip(found, pool.map(lambda l: self.voice_of_merchant(l["name"]), found)):
+                    loc["voice_of_merchant"] = vom
         return found
 
     def reviews(self, account: str, location: str) -> list[dict[str, Any]]:
@@ -187,6 +211,7 @@ API_NAMES = {
     "mybusinessbusinessinformation": "My Business Business Information API",
     "businessprofileperformance": "Business Profile Performance API",
     "mybusiness.googleapis.com": "Google My Business API (v4: reviews, posts, media)",
+    "mybusinessverifications": "My Business Verifications API",
 }
 ACCESS_FORM = "https://developers.google.com/my-business/content/prereqs#request-access"
 
@@ -212,12 +237,58 @@ def setup_info() -> dict[str, Any]:
     """What must be set up in Google Cloud for Connect Google to work."""
     s = get_settings()
     return {
-        "configured": s.google_oauth_enabled,
+        "configured": s.google_oauth_enabled and bool(s.token_encryption_key),
+        "oauth_client": s.google_oauth_enabled,
+        "token_key": bool(s.token_encryption_key),  # needed to store the Google refresh token encrypted
         "client_id": (s.google_client_id[:16] + "...") if s.google_client_id else None,
         "redirect_uri": _redirect_uri(),
         "scopes": SCOPES.split(),
         "apis": list(API_NAMES.values()),
         "access_form": ACCESS_FORM,
+    }
+
+
+VERIFICATION_TEXT = {
+    "verified": "Verified: the listing shows on Google Search and Maps.",
+    "pending": "Verification in progress: Google is reviewing it or a code is on its way.",
+    "unverified": "Not verified: verify it so it can appear in the Map Pack.",
+    "suspended": "Suspended by Google: fix the guideline issue and request reinstatement.",
+    "disabled": "Disabled by Google: the listing is hidden. Contact Google Business Profile support.",
+    "conflict": "Someone else has verified this listing: request ownership from Google.",
+    "unknown": "Google didn't report a verification state.",
+}
+
+
+def verification_state(vom: dict[str, Any] | None, meta: dict[str, Any]) -> str:
+    """Google's VoiceOfMerchantState -> verified | pending | unverified | suspended | disabled | conflict.
+    Without it (Verifications API not enabled), only verified / unverified from the location metadata."""
+    if vom is None:
+        return "verified" if meta.get("hasVoiceOfMerchant") else "unverified"
+    if "complyWithGuidelines" in vom:
+        reason = (vom.get("complyWithGuidelines") or {}).get("recommendationReason")
+        return "disabled" if reason == "BUSINESS_LOCATION_DISABLED" else "suspended"
+    if "resolveOwnershipConflict" in vom:
+        return "conflict"
+    if vom.get("hasVoiceOfMerchant"):
+        return "verified"
+    if "waitForVoiceOfMerchant" in vom or (vom.get("verify") or {}).get("hasPendingVerification"):
+        return "pending"
+    return "unverified"
+
+
+def listing_status(loc: dict[str, Any]) -> dict[str, Any]:
+    """The listing's live state, kept on the business as gbp_status."""
+    meta = loc.get("metadata") or {}
+    state = verification_state(loc.get("voice_of_merchant"), meta)
+    return {
+        "verification": state, "verification_text": VERIFICATION_TEXT[state],
+        "verification_source": "google" if loc.get("voice_of_merchant") is not None else "metadata",
+        "open_status": OPEN_STATUS.get((loc.get("openInfo") or {}).get("status"), "unknown"),
+        "pending_edits": bool(meta.get("hasPendingEdits")), "google_updated": bool(meta.get("hasGoogleUpdated")),
+        "duplicate": bool(meta.get("duplicateLocation")), "can_post": meta.get("canOperateLocalPost"),
+        "maps_url": meta.get("mapsUri"), "review_url": meta.get("newReviewUri"),
+        "account_name": loc.get("account_name"), "account_role": loc.get("account_role"), "account_type": loc.get("account_type"),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -240,11 +311,12 @@ def location_to_fields(loc: dict[str, Any]) -> dict[str, Any]:
         "city": addr.get("locality"),
         "lat": latlng.get("latitude"), "lng": latlng.get("longitude"),
         "place_id": meta.get("placeId"),
-        "verification": "verified" if meta.get("hasVoiceOfMerchant") else "unverified",
+        "verification": verification_state(loc.get("voice_of_merchant"), meta),
         "duplicate_listing": bool(meta.get("duplicateLocation")),
         "hours": loc.get("regularHours") or {},
         "gbp_location": loc.get("name"),
         "gbp_account": loc.get("account"),
+        "gbp_status": listing_status(loc),
     }
 
 
@@ -260,11 +332,21 @@ def import_location(db: Session, conn: GoogleConnection, loc: dict[str, Any], ac
     return b
 
 
+def refresh_status(client: GbpClient, b: Business) -> dict[str, Any]:
+    """Re-read the listing's state from Google (verification, open status, pending edits, links)."""
+    loc = client.location(b.gbp_location) | {"voice_of_merchant": client.voice_of_merchant(b.gbp_location)}
+    status = listing_status(loc) | {k: (b.gbp_status or {}).get(k) for k in ("account_name", "account_role", "account_type")}
+    b.verification, b.duplicate_listing, b.gbp_status = status["verification"], status["duplicate"], status
+    return status
+
+
 def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
-    """Pull reviews, photo count and daily insights for one connected business."""
+    """Refresh the listing's status, then pull reviews, photo count and daily insights for one connected business."""
     if not (b.connection and b.gbp_account and b.gbp_location):
         raise GbpError("This business is not linked to a connected Google account.")
     client = GbpClient(b.connection)
+    status = refresh_status(client, b)
+    db.commit()
     reviews = client.reviews(b.gbp_account, b.gbp_location)
     added = 0
     for rv in reviews:
@@ -298,4 +380,4 @@ def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
         db.add(row)
     b.connection.last_sync_at = datetime.now(timezone.utc)
     db.commit()
-    return {"reviews": len(reviews), "new_reviews": added, "photos": b.photo_count}
+    return {"reviews": len(reviews), "new_reviews": added, "photos": b.photo_count, "verification": status["verification"], "open_status": status["open_status"]}

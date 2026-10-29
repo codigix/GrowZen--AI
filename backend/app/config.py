@@ -5,15 +5,25 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+_backend_dir = Path(__file__).resolve().parent.parent
+_repo_root = _backend_dir.parent
+_default_db = f"sqlite:///{(_backend_dir / 'seo_platform_dev.db').as_posix()}"
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        # One .env shared by the whole repo (backend/frontend/google_trends all read the same file).
+        env_file=(_repo_root / ".env", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     # Service
     app_name: str = "Codigix SEO Platform"
     environment: str = "development"
     api_prefix: str = "/api/v1"
-    cors_origins: str = "http://localhost:3100"  # comma separated (the SEO frontend)
-    public_base_url: str = "http://localhost:8100"  # where this API is reachable (OAuth callback)
+    cors_origins: str = "http://localhost:3100,http://127.0.0.1:3100"  # comma separated (the SEO frontend)
+    public_base_url: str = "http://localhost:8000"  # where this API is reachable (OAuth callback)
     frontend_url: str = "http://localhost:3100"
     frontend_dist: str = "../frontend/dist"  # built frontend served by this API when present
 
@@ -22,12 +32,13 @@ class Settings(BaseSettings):
     session_cookie: str = "seo_session"
     session_hours: int = 12
     cookie_secure: bool = False  # true behind HTTPS
-    admin_email: str = ""
-    admin_password: str = ""
+    admin_email: str = "info@codigixinfotech.com"
+    admin_password: str = "Seo@1d86f6a045"
     admin_name: str = "Admin"
 
-    # Database: its own PostgreSQL database, nothing shared with the CRM.
-    database_url: str = "postgresql+psycopg://seo:seo@localhost:5432/seo_platform_db"
+    # Database: its own PostgreSQL database in prod; SQLite for local dev out of the box.
+    database_url: str = _default_db
+
 
     # Optional: also accept the CRM's session cookie (same JWT secret). The user's name, role and
     # department come from the CRM's /auth/me over HTTP, never from its database.
@@ -46,6 +57,8 @@ class Settings(BaseSettings):
     pagespeed_api_key: str = ""
     # Google Places API (New): find a business on Google Maps from an email / name (read-only)
     google_places_api_key: str = ""
+    # Google Places API (New): used by the competitor finder (see app/competitors)
+    google_api_key: str = ""
     # OpenStreetMap (Photon + Nominatim, no key): business-name suggestions and details while onboarding
     osm_lookup_enabled: bool = True
 
@@ -133,6 +146,12 @@ class Settings(BaseSettings):
     @property
     def imap_enabled(self) -> bool:
         return bool(self.intake_imap_host and self.intake_imap_user and self.intake_imap_password)
+
+    @property
+    def google_trends_enabled(self) -> bool:
+        # The google_trends keyword planner now runs in-process (see services/google_trends_client.py),
+        # so it's always available whenever this backend is.
+        return True
 
 
 @lru_cache

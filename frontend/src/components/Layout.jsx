@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
-  LogOut, Menu, X, ShieldCheck, MapPin, Building2, CalendarDays, Target, Award, Radar, PanelLeftClose, PanelLeftOpen
+  LogOut, Menu, X, MapPin, Building2, CalendarDays, Target, Award, Radar, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import { useApi } from '../platform/seoApi';
 
@@ -17,8 +17,7 @@ export const SIDEBAR_GROUPS = [
   {
     title: 'SEO Intelligence',
     items: [
-      { to: '/website-audit', label: 'Website Audit', icon: ScanSearch },
-      { to: '/on-page-seo', label: 'Technical & On-Page SEO', icon: ShieldCheck },
+      { to: '/website-audit', label: 'Website & On-Page SEO', icon: ScanSearch },
       { to: '/keyword-management', label: 'Keyword Intelligence', icon: Search }
     ]
   },
@@ -109,9 +108,13 @@ export default function Layout({ user, onLogout }) {
   const location = useLocation();
   const connections = useConnections();
   const rail = collapsed && !open; // the mobile drawer always shows labels
+  const mainRef = useRef(null);
 
   useEffect(() => { try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0'); } catch (e) { /* private mode */ } }, [collapsed]);
-  useEffect(() => { setOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    setOpen(false);
+    if (mainRef.current) mainRef.current.scrollTop = 0;
+  }, [location.pathname]);
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
@@ -120,28 +123,28 @@ export default function Layout({ user, onLogout }) {
   }, [open]);
 
   return (
-    <div className="min-h-screen flex bg-slate-50 text-slate-900 relative overflow-x-hidden">
+    <div className="h-screen flex bg-slate-50 text-slate-900 relative overflow-hidden">
       <div className="ambient-glow-mesh" />
       <div className="fixed inset-0 ai-grid-pattern pointer-events-none z-0" />
 
       {open && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setOpen(false)} />}
 
       <aside
-        className={`fixed lg:sticky top-0 z-50 h-screen shrink-0 flex flex-col bg-white/95 backdrop-blur-xl border-r border-slate-200 transition-[width,transform] duration-300 ease-in-out ${
+        className={`fixed lg:static top-0 bottom-0 left-0 z-50 h-screen shrink-0 flex flex-col bg-white/95 backdrop-blur-xl border-r border-slate-200 transition-[width,transform] duration-300 ease-in-out ${
           rail ? 'lg:w-[72px]' : 'lg:w-72'
         } w-72 ${open ? 'translate-x-0 shadow-2xl shadow-slate-900/10' : '-translate-x-full lg:translate-x-0'}`}
       >
         {/* Brand */}
         <div className={`h-16 shrink-0 flex items-center border-b border-slate-200 ${rail ? 'justify-center px-2' : 'justify-between px-4'}`}>
-          <NavLink to="/dashboard" className="flex items-center gap-2.5 min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" title="GrowZen AI">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500/20 to-cyan-500/10 ring-1 ring-inset ring-emerald-400/25 p-1.5 flex items-center justify-center shrink-0">
-              <img src="/growzen-icon.png" alt="GrowZen" className="w-full h-full object-contain" />
+          <NavLink to="/dashboard" className="flex items-center gap-2.5 min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" title="Bevisiby AI">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500/15 via-cyan-500/10 to-teal-500/15 ring-1 ring-inset ring-blue-500/20 p-1 flex items-center justify-center shrink-0">
+              <img src="/bevisiby-icon.png" alt="Bevisiby" className="w-full h-full object-contain" />
             </div>
             {!rail && (
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-slate-900 font-bold text-[15px] tracking-tight font-display leading-tight">
-                  GrowZen
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-emerald-400 to-teal-300 text-slate-950 tracking-wider">AI</span>
+                  Bevisiby
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-blue-600 to-teal-500 text-white tracking-wider">AI</span>
                 </div>
                 <p className="text-[11px] text-slate-500 leading-tight truncate">Autonomous Local SEO</p>
               </div>
@@ -208,7 +211,7 @@ export default function Layout({ user, onLogout }) {
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0 flex flex-col relative z-10">
+      <div ref={mainRef} className="flex-1 min-w-0 flex flex-col h-screen overflow-y-auto relative z-10">
         {/* Mobile header */}
         <header className="lg:hidden h-14 px-4 flex items-center justify-between bg-white/95 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-30">
           <div className="flex items-center gap-3">
@@ -216,9 +219,9 @@ export default function Layout({ user, onLogout }) {
               <Menu size={20} />
             </button>
             <div className="flex items-center gap-2">
-              <img src="/growzen-icon.png" alt="GrowZen" className="w-6 h-6 object-contain" />
-              <span className="font-bold text-[15px] text-slate-900 font-display">GrowZen</span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-emerald-400 to-teal-300 text-slate-950 tracking-wider">AI</span>
+              <img src="/bevisiby-icon.png" alt="Bevisiby" className="w-7 h-7 object-contain" />
+              <span className="font-bold text-[15px] text-slate-900 font-display">Bevisiby</span>
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-blue-600 to-teal-500 text-white tracking-wider">AI</span>
             </div>
           </div>
           <button onClick={onLogout} className="text-[12px] font-medium text-slate-500 hover:text-slate-900 cursor-pointer">Sign out</button>

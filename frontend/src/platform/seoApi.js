@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * Client for the SEO platform backend (FastAPI). The login is a session cookie, so every
  * request sends credentials.
  */
-export const SEO_API = (import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1').replace(/\/$/, '');
+export const SEO_API = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '');
 
 export class SeoApiError extends Error {
   constructor(message, status) { super(message); this.status = status; }
@@ -91,4 +91,5 @@ export const toUi = (b) => (b ? {
 } : null);
 
 export const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+export const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'));
 export const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');

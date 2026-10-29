@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-STUFFED = re.compile(r"[|]|\s-\s|\bbest\b|\bcheap\b|no\.?\s?1|\btop\s", re.I)
+STUFFED = re.compile(r"[|]|\s[-–—]\s|\bbest\b|\bcheap\b|no\.?\s?1|\btop\s", re.I)  # "Name – keywords" with any dash
 
 
 @dataclass
@@ -79,6 +79,17 @@ def score_profile(b: Any, stats: ProfileStats) -> ScoreResult:
         alerts.append({"level": "critical", "text": "Profile not verified: it will not show in the Map Pack until verified."})
     if b.verification == "suspended":
         alerts.append({"level": "critical", "text": "Profile suspended. Request reinstatement before anything else."})
+    if b.verification == "disabled":
+        alerts.append({"level": "critical", "text": "Profile disabled by Google: it's hidden from Search and Maps. Contact Business Profile support."})
+    if b.verification == "conflict":
+        alerts.append({"level": "critical", "text": "Someone else has verified this listing. Request ownership from Google to manage it."})
+    if b.verification == "pending":
+        alerts.append({"level": "warning", "text": "Verification in progress: finish it (enter the code or complete the video check) to appear in the Map Pack."})
+    open_status = (getattr(b, "gbp_status", None) or {}).get("open_status")
+    if open_status == "closed_temporarily":
+        alerts.append({"level": "warning", "text": "Marked temporarily closed on Google: customers see it as closed. Reopen it when you're back."})
+    if open_status == "closed_permanently":
+        alerts.append({"level": "critical", "text": "Marked permanently closed on Google. If that's wrong, reopen it in Business Profile at once."})
     if b.duplicate_listing:
         alerts.append({"level": "warning", "text": "A duplicate listing exists. Duplicates split reviews and ranking; request a merge."})
     if stuffed and b.name:
