@@ -139,10 +139,34 @@ class WebsiteAuditIn(BaseModel):
 
 
 class CompetitorAuditIn(BaseModel):
-    """Audit several competitor websites in one go (no business attached)."""
+    """Audit several competitor websites in one go. `business_id`/`competitor_id` are optional:
+    set them to tie the audit to a business and a registered competitor for later comparison."""
     urls: list[HttpUrl] = Field(min_length=1, max_length=20)
     strategy: Literal["mobile", "desktop"] = "mobile"
     crawl_pages: int = Field(default=10, ge=1, le=50)
+    business_id: int | None = None
+    competitor_id: int | None = None
+    reuse_existing: bool = Field(default=True, description="Skip queuing a URL that already has a finished audit of the same strategy, newer than max_age_hours")
+    max_age_hours: int = Field(default=24, ge=1, le=24 * 30)
+
+
+class CompetitorRegisterIn(BaseModel):
+    """Find competitors near a location; optionally register them against a business."""
+    business_type: str = Field(min_length=1, max_length=160)
+    location: str = Field(min_length=1, max_length=200)
+    own_firm_name: str = Field(default="", max_length=255)
+    top_n: int = Field(default=10, ge=1, le=20)
+    business_id: int | None = Field(default=None, description="When set, found competitors are saved against this business (deduped by website)")
+
+
+class CompetitorCompareIn(BaseModel):
+    """Compare the business's own audit against one or more competitor audits. Either pass the
+    audit ids directly, or a business_id (+ optional strategy) to use each side's latest finished audit."""
+    our_audit_id: int | None = None
+    business_id: int | None = None
+    competitor_audit_ids: list[int] = Field(default_factory=list, max_length=10)
+    competitor_ids: list[int] = Field(default_factory=list, max_length=10)
+    strategy: Literal["mobile", "desktop"] | None = None
 
 
 class LighthouseAuditIn(BaseModel):
