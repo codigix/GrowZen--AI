@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Business, Schedule
-from . import agent, audits, gbp, geo, reports
+from . import agent, audits, gbp, geo, reports, organic
 from .activity import log
 from .playbook import get_playbook
 
@@ -42,9 +42,14 @@ def run_job(db: Session, s: Schedule) -> None:
         return
     if s.job == "full_audit":
         found = audits.run_all(db, b)
-        agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues])
+        agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues], audited=[a.kind for a in found if a.status == "done"])
     elif s.job == "rank_scan":
         audits.run(db, b, "rankings")
+        if b.website and organic.intel.serper_enabled():  # the organic positions too, so the history grows without anyone pressing a button
+            try:
+                organic.check(db, b)
+            except organic.RankCheckError as exc:
+                log(db, "scheduler", "rank_check_skipped", b.id, error=str(exc)[:200])
     elif s.job == "technical":
         audits.run(db, b, "technical")
     elif s.job == "reviews":

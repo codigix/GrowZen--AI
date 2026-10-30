@@ -1,16 +1,17 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, CheckCircle2, Info, MapPin,
   Plug, ServerCrash, Plus, Mail, Store, RefreshCw, Sparkles, Building2, ExternalLink, Cpu,
   Bell, Calendar
 } from 'lucide-react';
 import { api, toUi, SEO_API } from './seoApi';
+import { MarketBadge } from './MarketBadge';
 
 // Categorical palette, tuned for white surfaces
 export const SERIES = ['#6658dd', '#4a81d4', '#1abc9c', '#f7b84b', '#f1556c', '#43bfe5', '#313a46', '#9ba6b7'];
-export const STATUS = { good: '#10b981', warning: '#f59e0b', serious: '#f97316', critical: '#ef4444' };
+export const STATUS = { good: '#1abc9c', warning: '#f7b84b', serious: '#f1556c', critical: '#f1556c' };
 export const INK = { primary: '#0f172a', secondary: '#475569', muted: '#64748b', grid: '#e2e8f0', axis: '#cbd5e1', up: '#059669' };
 
 // Shared businesses store
@@ -304,7 +305,7 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
         {/* Page title with breadcrumb */}
         <div className="py-5 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <h1 className="text-18 font-semibold text-slate-900 tracking-tight">{title}</h1>
+            <h1 className="text-18 font-semibold text-slate-900 tracking-tight flex flex-wrap items-center gap-2">{title}{business && needsBusiness && <MarketBadge business={business} />}</h1>
             {subtitle && <p className="text-12 text-slate-400 mt-0.5 max-w-3xl">{subtitle}</p>}
           </div>
           <nav className="text-12 text-slate-400 flex items-center gap-1.5" aria-label="Breadcrumb"><span>bevisibe</span><span>›</span><span className="text-slate-600">{title}</span></nav>
@@ -435,7 +436,7 @@ export const ScoreRing = ({ score, size = 112, label = 'Score', level }) => {
   return (
     <div className="relative shrink-0 flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth="8" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#eef2f7" strokeWidth="8" />
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -472,6 +473,15 @@ export const Meter = ({ value, max = 100, color = SERIES[0], height = 7 }) => (
 /**
  * Segmented dark pill tabs
  */
+/** A tab kept in the address (?tab=), so sidebar links can open a page on a given tab. */
+export const useUrlTab = (fallback, valid) => {
+  const [params, setParams] = useSearchParams();
+  const raw = params.get('tab');
+  const tab = raw && (!valid || valid.includes(raw)) ? raw : fallback;
+  const setTab = (t) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
+  return [tab, setTab];
+};
+
 export const Tabs = ({ tabs, value, onChange }) => (
   <div className="flex gap-1 p-1 bg-white shadow-card rounded mb-5 overflow-x-auto no-scrollbar w-fit max-w-full">
     {tabs.map(t => {

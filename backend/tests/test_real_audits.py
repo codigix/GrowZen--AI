@@ -144,3 +144,11 @@ def test_default_rank_keywords_skip_generic_categories():
     from app.competitors.intel import default_keywords
     b = SimpleNamespace(name="Skin 101", primary_category="Doctor", secondary_categories=["Dermatologist"], services=[], area="Baner", city="Pune")
     assert default_keywords(b)[0] == "dermatologist in Baner"
+
+
+def test_audits_always_start_at_the_homepage():
+    from app.services import crawler
+
+    assert crawler.homepage("https://parthvalve.com/products/valves?id=3#x") == "https://parthvalve.com/"
+    assert crawler.homepage("parthvalve.com/about") == "https://parthvalve.com/"
+    assert crawler.homepage("http://www.site.in") == "http://www.site.in/"

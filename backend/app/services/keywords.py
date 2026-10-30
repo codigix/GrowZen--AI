@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from . import countries
+from . import countries, market
 from ..models import Audit, Business, Keyword, RankScan
 from .providers.base import intent_of
 from .suggest import UA, _cached
@@ -159,8 +159,9 @@ def context(db: Session, b: Business) -> dict[str, Any]:
         "business": {"name": b.name, "category": b.primary_category, "area": b.area, "city": b.city, "has_location": b.lat is not None,
                      "services": [x.get("name") if isinstance(x, dict) else x for x in (b.services or [])][:12]},
         "seeds": default_seeds(b),
-        "areas": [x for x in [(b.area or "").split(",")[0].strip(), (b.city or "").strip()] if x],
-        "nearby": nearby_areas(b),
+        "areas": market.places(b),
+        "nearby": nearby_areas(b) if market.scope(b) == "local" else [],
+        "market": market.summary(b),
         "website": site and {k: v for k, v in site.items() if k != "pages"} | {"pages": len(site["pages"]), "topics": [w for w, _ in sorted(words.items(), key=lambda x: -x[1])[:12]]},
         "competitors": context_competitors(db, b)[:6],
         "competitor_research": research and {"analysed_at": research.get("analysed_at"), "competitors": research["summary"].get("competitors"),

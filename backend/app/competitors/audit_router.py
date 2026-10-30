@@ -13,15 +13,17 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..auth import current_user
 from ..db import get_db
 from ..deps import in_background
 from ..models import Audit, Business, Competitor, LighthouseAudit
 from ..schemas import CompetitorAuditIn, CompetitorCompareIn
 from ..serialize import row, rows
 from ..services import audits, competitor_compare
+from ..services.url_safety import SSRFValidationError, validate_url_shape
 from .report import render_competitor_report
 
-router = APIRouter(prefix="/audit/competitors", tags=["competitor-audits"])
+router = APIRouter(prefix="/audit/competitors", tags=["competitor-audits"], dependencies=[Depends(current_user)])
 
 
 def _run(db: Session, audit_id: int, url: str, strategy: str, pages: int) -> None:
@@ -56,6 +58,11 @@ def start(body: CompetitorAuditIn, tasks: BackgroundTasks, db: Session = Depends
         comp = db.get(Competitor, body.competitor_id)
         if not comp or (body.business_id is not None and comp.business_id != body.business_id):
             raise HTTPException(404, "Competitor not found for this business")
+    for url in body.urls:
+        try:
+            validate_url_shape(str(url))
+        except SSRFValidationError as exc:
+            raise HTTPException(400, str(exc)) from exc
     out = []
     for url in body.urls:
         existing = _reusable(db, str(url), body.strategy, body.max_age_hours, body.business_id, body.competitor_id) if body.reuse_existing else None

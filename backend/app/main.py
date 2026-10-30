@@ -13,9 +13,9 @@ from fastapi.responses import FileResponse
 
 from .competitors import audit_router as competitor_audits, intel_router as competitor_research, router as competitors
 from .config import get_settings
-from .db import SessionLocal
-from .routers import agent, auth, businesses, connections, copilot, discover, growth, intake, keyword_trends, leads, lighthouse, profile, system, website
-from .services import lighthouse_runner, scheduler
+from .db import SessionLocal, engine
+from .routers import agent, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_trends, leads, lighthouse, profile, seo, system, website
+from .services import jobs, lighthouse_runner, schema, scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 # httpx logs every request URL at INFO, and PageSpeed Insights takes the API key in the query string.
@@ -28,8 +28,11 @@ settings = get_settings()
 async def lifespan(_: FastAPI):
     db = SessionLocal()
     try:
+        if settings.schema_auto_sync:
+            schema.sync(engine)
         auth.seed_admin(db, settings)
         lighthouse_runner.recover_interrupted(db)
+        jobs.recover_stale(db, startup=True)
     except Exception as exc:  # e.g. migrations not run yet
         logging.getLogger("seo").warning("Start-up step skipped: %s", exc)
     finally:
@@ -41,9 +44,10 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+# max_age is short on purpose: browsers cache a preflight answer, and a stale one (from another process that held this port) would keep failing PATCH for 10 minutes.
+app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"], max_age=30)
 
-for r in (system, auth, businesses, profile, growth, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, competitors, competitor_audits, competitor_research):
+for r in (system, auth, businesses, profile, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, competitors, competitor_audits, competitor_research):
     app.include_router(r.router, prefix=settings.api_prefix)
 
 # Production: serve the built frontend (frontend/dist) from the same address as the API.

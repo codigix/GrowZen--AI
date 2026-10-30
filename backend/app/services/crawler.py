@@ -117,7 +117,10 @@ def analyse_html(url: str, status: int, html: str) -> dict[str, Any]:
             links.append({"href": href, "text": a.get_text(" ", strip=True)})
     images = soup.find_all("img")
     h1s = soup.find_all("h1")
+    html_tag = soup.find("html")
     return {
+        "lang": ((html_tag.get("lang") or "").strip() if html_tag else ""),
+        "hreflang": len(soup.find_all("link", rel=lambda v: v and "alternate" in (v if isinstance(v, list) else [v]), hreflang=True)),
         "url": url, "status": status,
         "title": title, "title_length": len(title),
         "meta_description": meta_desc[:320],  # kept so the UI can show it and suggest a better one
@@ -190,11 +193,19 @@ def _norm_url(url: str) -> str:
     return parts._replace(path=path).geturl()
 
 
+def homepage(url: str) -> str:
+    """The site's first page: scheme and host with "/", whatever page the URL points at. An audit always starts here."""
+    url = (url or "").strip()
+    url = url if url.startswith("http") else f"https://{url}"
+    parts = urlparse(url)
+    return f"{parts.scheme}://{parts.netloc}/"
+
+
 def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
     """`on_progress` (optional) gets an event per step so a caller can show the scan live:
     {"step": "robots" | "sitemap" | "fetching" | "page", ...}."""
     report = on_progress or (lambda event: None)
-    start = start_url if start_url.startswith("http") else f"https://{start_url}"
+    start = homepage(start_url)  # always the first page, so the crawl and the site-wide checks begin at the homepage
     host = _norm_host(urlparse(start).netloc)
     client = site_client(timeout)
     site: dict[str, Any] = {"start_url": start, "host": host}
@@ -243,6 +254,17 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
                 if _norm_host(urlparse(href).netloc) == host and _norm_url(href) not in seen and not SKIP_EXT.search(href):
                     queue.append(href)
             report({"step": "page", "page": {k: v for k, v in p.items() if k != "links"}, "queued": len(queue)})
+        # Internal linking: how many other crawled pages link to each page (0 = an orphan), and links going out.
+        keys = {_norm_url(p["url"]) for p in pages}
+        inbound: dict[str, set[str]] = {}
+        for p in pages:
+            me = _norm_url(p["url"])
+            same = {_norm_url(link["href"]) for link in p.get("links", []) if _norm_host(urlparse(link["href"]).netloc) == host}
+            p["internal_out"] = len(same - {me})
+            for t in (same & keys) - {me}:
+                inbound.setdefault(t, set()).add(me)
+        for p in pages:
+            p["inbound"] = len(inbound.get(_norm_url(p["url"]), ()))
         for p in pages:
             p.pop("links", None)
         site.update(pages=pages, broken=broken, crawled=len(pages))

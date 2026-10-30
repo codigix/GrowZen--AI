@@ -37,8 +37,32 @@ def _task(db: Session, b: Business, agent: str, kind: str, title: str, impact: s
     return t
 
 
-def plan_from_audits(db: Session, b: Business, issues: list[dict[str, Any]]) -> list[AgentTask]:
-    """Planner: one task per actionable issue, highest impact first, capped per run."""
+AREAS = {"technical": {"Technical", "Speed", "Performance"}, "onpage": {"On-page", "Structured data", "Crawlability", "Indexing", "Mobile", "Security", "Images", "Content", "Links"}, "gbp": {"GBP"}}
+
+
+def reconcile(db: Session, b: Business, issues: list[dict[str, Any]], audited: list[str]) -> int:
+    """Close the tasks whose issue the latest audit no longer reports: the fix was made and the audit confirms it.
+    Only areas that were audited this time are touched, so a task is never closed by an audit that did not look."""
+    areas = set().union(*(AREAS.get(k, set()) for k in audited)) if audited else set()
+    if not areas:
+        return 0
+    norm = lambda x: " ".join(str(x or "").lower().split())  # noqa: E731
+    still = {norm(i.get("title")) for i in issues} | {norm(i.get("code")) for i in issues if i.get("code")}
+    n = 0
+    for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.status.in_(("pending", "handoff")), AgentTask.kind.in_(("website_fix", "profile_edit")))):
+        area = (t.detail or {}).get("area")
+        if area in areas and norm(t.title) not in still and norm((t.detail or {}).get("code")) not in still:
+            t.status = "resolved"
+            t.result = {"verified": True, "note": "The latest audit no longer reports this issue.", "at": datetime.now(timezone.utc).isoformat()}
+            log(db, "audit", "task_resolved", b.id, task_id=t.id, title=t.title)
+            n += 1
+    return n
+
+
+def plan_from_audits(db: Session, b: Business, issues: list[dict[str, Any]], audited: list[str] | None = None) -> list[AgentTask]:
+    """Planner: one task per actionable issue, highest impact first, capped per run. Tasks for issues that are gone are closed first."""
+    if audited:
+        reconcile(db, b, issues, audited)
     order = {"critical": 0, "serious": 1, "warning": 2, "info": 3}
     tasks: list[AgentTask] = []
     for i in sorted(issues, key=lambda x: order.get(x.get("level"), 9))[:10]:
@@ -115,8 +139,13 @@ def apply(db: Session, task: AgentTask, actor: str = "agent") -> AgentTask:
             else:
                 task.result = {"published": False, "note": "Not linked to Google."}
         else:
-            # Profile edits, website fixes and outreach are handed to a person with the drafted fix.
-            task.result = {"handoff": True, "note": "Assigned for the team to carry out."}
+            # Profile edits, website fixes and outreach need a person (the platform cannot edit a client's website): the task
+            # says so instead of claiming it was applied, and the next audit closes it when the issue is really gone.
+            task.result = {"handoff": True, "note": "Needs a person to make this change. It closes by itself when the next audit no longer reports it."}
+            task.status = "handoff"
+            log(db, actor, "task_handed_off", task.business_id, task_id=task.id, kind=task.kind)
+            db.commit()
+            return task
         task.status, task.applied_at = "applied", datetime.now(timezone.utc)
         log(db, actor, "task_applied", task.business_id, task_id=task.id, kind=task.kind, result=task.result)
     except Exception as exc:

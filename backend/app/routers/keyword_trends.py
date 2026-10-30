@@ -1,6 +1,6 @@
 """Keyword/trend research: proxies to the standalone google_trends microservice (/google_trends
-at the repo root). Not behind this platform's own auth for now (easier to test directly); the
-upstream service itself has no auth of its own either.
+at the repo root). Behind this platform's sign-in (the upstream service has no auth of its own, so it must
+never be reachable without it).
 
 The Timeframe/ExploreTimeframe values mirror google_trends' own enums (see its app/schemas.py) so
 Swagger renders a dropdown here too; kept as a local copy rather than an import since the two
@@ -8,11 +8,13 @@ services are deliberately independent code bases.
 """
 from enum import Enum
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from ..auth import current_user
 
 from ..services import google_trends_client as gt
 
-router = APIRouter(prefix="/keyword-trends", tags=["keyword-trends"])
+router = APIRouter(prefix="/keyword-trends", tags=["keyword-trends"], dependencies=[Depends(current_user)])
 
 CountryQuery = Query(default=None, min_length=2, max_length=2, description="Two-letter country code, e.g. IN, US")
 

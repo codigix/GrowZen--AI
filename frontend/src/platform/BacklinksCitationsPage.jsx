@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Play, Download, ShieldAlert, Loader2 } from 'lucide-react';
-import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, Meter, SourceTag, ErrorNote, SERIES, useToast, useAction } from './SeoUi';
+import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, Meter, SourceTag, ErrorNote, SERIES, useToast, useAction, useUrlTab } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 
 function Links({ b, tab }) {
@@ -121,7 +121,7 @@ function Links({ b, tab }) {
 }
 
 export default function BacklinksCitationsPage() {
-  const [tab, setTab] = useState('citations');
+  const [tab, setTab] = useUrlTab('citations', ['citations', 'backlinks', 'outreach']);
   return (
     <SeoShell title="Backlinks & citations" subtitle="Consistent listings everywhere and links the web gives you, earned, never bought">
       {(b) => (

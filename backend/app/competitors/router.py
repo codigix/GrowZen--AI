@@ -5,13 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..auth import current_user
 from ..db import get_db
 from ..models import Business, Competitor
 from ..schemas import CompetitorRegisterIn
 from ..serialize import rows
 from . import service
 
-router = APIRouter(prefix="/competitors", tags=["competitors"])
+router = APIRouter(prefix="/competitors", tags=["competitors"], dependencies=[Depends(current_user)])
 
 
 def _upsert(db: Session, business_id: int, found: list[dict]) -> list[Competitor]:

@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     session_hours: int = 12
     cookie_secure: bool = False  # true behind HTTPS
     admin_email: str = "info@codigixinfotech.com"
-    admin_password: str = "Seo@1d86f6a045"
+    admin_password: str = ""  # first start only; empty = a random one is generated and logged once (never a default in the source)
     admin_name: str = "Admin"
 
     # Database: its own PostgreSQL database in prod; SQLite for local dev out of the box.
@@ -89,7 +89,9 @@ class Settings(BaseSettings):
     smtp_from: str = ""
 
     # AI: OpenAI-compatible provider (deepseek | openai | gemini)
-    ai_provider: str = "deepseek"
+    ai_provider: str = "deepseek"  # deepseek | openai | gemini | llamacpp (a local llama.cpp server: LLAMACPP_BASE_URL)
+    llamacpp_base_url: str = "http://localhost:8080/v1"
+    llamacpp_model: str = "local"
     deepseek_api_key: str = ""
     openai_api_key: str = ""
     gemini_api_key: str = ""
@@ -116,6 +118,17 @@ class Settings(BaseSettings):
     lighthouse_max_concurrent_pagespeed: int = 8  # just an HTTP call to Google
     lighthouse_reports_dir: str = "./reports/lighthouse"  # raw JSON / HTML reports
     lighthouse_rate_limit_per_minute: int = 10  # new audits per user per minute
+
+    # Guards that can be switched off in development
+    login_max_failures: int = 5
+    login_lockout_minutes: int = 15
+    enforce_plan_limits: bool = True
+    schema_auto_sync: bool = True  # create missing tables and add missing nullable columns at start-up
+    audit_retention_days: int = 180
+
+    @property
+    def secure_cookies(self) -> bool:
+        return self.cookie_secure or self.public_base_url.lower().startswith("https://")
 
     @property
     def lighthouse_reports_path(self) -> Path:

@@ -2,44 +2,77 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
-  LogOut, Menu, X, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen
+  LogOut, Menu, X, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen,
+  TrendingUp, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send
 } from 'lucide-react';
 import { useApi } from '../platform/seoApi';
+import AssistantWidget from './AssistantWidget';
 
 export const SIDEBAR_GROUPS = [
   {
     title: 'Overview',
     items: [
-      { to: '/dashboard', label: 'Command Center', icon: LayoutDashboard },
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/onboarding', label: 'Business Onboarding', icon: Building2, badge: 'Phase 1' }
     ]
   },
   {
-    title: 'SEO Intelligence',
+    title: 'Site Performance',
     items: [
-      { to: '/website-audit', label: 'Website & On-Page SEO', icon: ScanSearch },
-      { to: '/competitor-finder', label: '1. Competitor Research', icon: Swords },
-      { to: '/keyword-management', label: '2. Keyword Intelligence', icon: Search }
+      { to: '/website-audit', label: 'Site Audit', icon: ScanSearch },
+      { to: '/organic-rankings', label: 'Organic Rankings', icon: TrendingUp },
+      { to: '/rank-tracking', label: 'Position Tracking', icon: MapPin }
+    ]
+  },
+  {
+    title: 'Competitive Analysis',
+    items: [
+      { to: '/domain-overview', label: 'Domain Overview', icon: Globe },
+      { to: '/top-pages', label: 'Top Pages', icon: FileText },
+      { to: '/competitor-finder', label: 'Competitor Research', icon: Swords },
+      { to: '/compare-domains', label: 'Compare Domains', icon: Columns3 },
+      { to: '/keyword-gap', label: 'Keyword Gap', icon: Target }
+    ]
+  },
+  {
+    title: 'Keyword Research',
+    items: [
+      { to: '/keyword-overview', label: 'Keyword Overview', icon: Search },
+      { to: '/keyword-management?tab=discover', label: 'Keyword Magic Tool', icon: Wand2 },
+      { to: '/keyword-management?tab=topics', label: 'Keyword Strategy Builder', icon: Layers },
+      { to: '/keyword-management?tab=tracked', label: 'Saved Keywords', icon: Bookmark }
+    ]
+  },
+  {
+    title: 'Content Ideas',
+    items: [
+      { to: '/ai-content-generation?tab=trends', label: 'Topic Research', icon: Lightbulb },
+      { to: '/ai-content-generation?tab=blog', label: 'SEO Writing Assistant', icon: Sparkles, badge: 'AI' },
+      { to: '/ai-content-generation?tab=calendar', label: 'Content Calendar & CMS', icon: CalendarDays }
+    ]
+  },
+  {
+    title: 'Link Building',
+    items: [
+      { to: '/off-page-seo?tab=backlinks', label: 'Backlinks & Referring Domains', icon: Link2 },
+      { to: '/off-page-seo?tab=outreach', label: 'Outreach', icon: Send }
     ]
   },
   {
     title: 'Local SEO & Maps',
     items: [
       { to: '/gmb-profile', label: 'GBP Profile Manager', icon: Store },
-      { to: '/rank-tracking', label: 'Geo-Grid Rank Tracking', icon: MapPin },
       { to: '/reviews', label: 'Reviews & Reputation', icon: Star },
-      { to: '/off-page-seo', label: 'Local Citations & NAP', icon: Award }
+      { to: '/off-page-seo?tab=citations', label: 'Local Citations & NAP', icon: Award }
     ]
   },
   {
-    title: 'AI Growth & Content',
+    title: 'AI & Automation',
     items: [
-      { to: '/ai-content-generation', label: 'AI Blog & Trend Studio', icon: Sparkles, badge: 'AI' },
       { to: '/geo-optimization', label: 'AI Search Visibility', icon: Radar },
-      { to: '/content-calendar', label: 'Content Calendar & CMS', icon: CalendarDays },
-      { to: '/website-builder', label: 'Website Builder & Slugs', icon: Globe, badge: 'Live' },
       { to: '/automation', label: 'Autonomous AI Agents', icon: Bot },
-      { to: '/automation-pipeline', label: 'Automation Pipeline', icon: Workflow }
+      { to: '/automation-pipeline', label: 'Automation Pipeline', icon: Workflow },
+      { to: '/website-builder', label: 'Website Builder & Slugs', icon: Globe, badge: 'Live' }
     ]
   },
   {
@@ -69,7 +102,15 @@ const readCollapsed = () => { try { return localStorage.getItem(COLLAPSE_KEY) ==
 
 const initials = (name = '') => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
 
-const isActivePath = (pathname, to) => pathname === to || (to !== '/dashboard' && pathname.startsWith(`${to}/`));
+const splitTo = (to) => { const [path, query = ''] = to.split('?'); return [path, new URLSearchParams(query).get('tab')]; };
+// One page can carry several entries (?tab=): an entry is active on its own tab; one without a tab, when no sibling claims the current tab.
+const isActivePath = (pathname, search, to) => {
+  const [path, tab] = splitTo(to);
+  if (!(pathname === path || (path !== '/dashboard' && pathname.startsWith(`${path}/`)))) return false;
+  const current = new URLSearchParams(search).get('tab');
+  if (tab) return current ? current === tab : SIDEBAR_GROUPS.flatMap(g => g.items).find(i => splitTo(i.to)[0] === path)?.to === to;
+  return true;
+};
 
 // Real numbers only: what the backend reports as connected (GET /status).
 function useConnections() {
@@ -174,7 +215,7 @@ export default function Layout({ user, onLogout }) {
                   ? gi > 0 && <div className="mx-2 mb-3 border-t border-slate-200" />
                   : <div className="px-3 mb-2 text-11 font-semibold uppercase tracking-wider text-slate-400">{group.title}</div>}
                 <div className="space-y-0.5">
-                  {items.map(item => <NavItem key={item.to} {...item} collapsed={rail} active={isActivePath(location.pathname, item.to)} onNavigate={() => setOpen(false)} />)}
+                  {items.map(item => <NavItem key={item.to} {...item} collapsed={rail} active={isActivePath(location.pathname, location.search, item.to)} onNavigate={() => setOpen(false)} />)}
                 </div>
               </div>
             );
@@ -229,6 +270,7 @@ export default function Layout({ user, onLogout }) {
           <Outlet />
         </main>
       </div>
+      <AssistantWidget />
     </div>
   );
 }

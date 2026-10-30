@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Check, ScanSearch, FileBarChart, Braces, Loader2 } from 'lucide-react';
+import { Check, ChevronRight, ScanSearch, FileBarChart, Braces, Loader2 } from 'lucide-react';
 import { SeoShell, Card } from './SeoUi';
 import { useSiteAudit, AuditStep, ReportStep } from './WebsiteAuditTool';
 import SchemaStudio from './SchemaStudio';
@@ -15,23 +15,24 @@ const OLD_TABS = { site: 'report', business: 'report', check: 'audit', lighthous
 function Stepper({ step, onStep, hasReport, running }) {
   const at = STEPS.findIndex(s => s.id === step);
   return (
-    <nav aria-label="Audit steps" className="ai-glass-card rounded p-1.5 grid grid-cols-1 sm:grid-cols-3 gap-1">
+    <nav aria-label="Audit steps" className="ai-glass-card rounded p-1 flex flex-wrap items-center gap-0.5 w-fit max-w-full">
       {STEPS.map((s, i) => {
         const locked = s.id === 'report' && !hasReport;
         const done = (s.id === 'audit' && hasReport) || (i < at && !locked);
         const active = s.id === step;
         return (
-          <button key={s.id} type="button" disabled={locked} onClick={() => onStep(s.id)} aria-current={active ? 'step' : undefined}
-            title={locked ? 'Run an audit first' : undefined}
-            className={`flex items-center gap-2.5 px-3 py-2.5 rounded text-left transition-colors ${active ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20' : locked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-50 cursor-pointer'}`}>
-            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-12 font-bold shrink-0 ${active ? 'bg-white/20 text-white' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-              {done && !active ? <Check size={14} /> : i + 1}
-            </span>
-            <span className="min-w-0">
-              <span className={`block text-13 font-semibold truncate ${active ? 'text-white' : 'text-slate-900'}`}>{s.label}{s.id === 'audit' && running ? '…' : ''}</span>
-              <span className={`block text-11 truncate ${active ? 'text-indigo-100' : 'text-slate-500'}`}>{s.id === 'audit' && running ? 'Scanning now' : s.hint}</span>
-            </span>
-          </button>
+          <React.Fragment key={s.id}>
+            {i > 0 && <ChevronRight size={14} className="text-slate-300 shrink-0" aria-hidden="true" />}
+            <button type="button" disabled={locked} onClick={() => onStep(s.id)} aria-current={active ? 'step' : undefined}
+              title={locked ? 'Run an audit first' : s.hint}
+              className={`h-9 pl-1.5 pr-3.5 rounded flex items-center gap-2 text-left whitespace-nowrap transition-colors ${active ? 'bg-indigo-500 text-white' : locked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-50 cursor-pointer'}`}>
+              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-11 font-bold shrink-0 ${active ? 'bg-white/20 text-white' : done ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                {done && !active ? <Check size={13} /> : i + 1}
+              </span>
+              <span className={`text-13 font-semibold ${active ? 'text-white' : 'text-slate-700'}`}>{s.label}{s.id === 'audit' && running ? '…' : ''}</span>
+              <span className={`hidden lg:inline text-11.5 ${active ? 'text-indigo-100' : 'text-slate-400'}`}>{s.id === 'audit' && running ? 'Scanning now' : s.hint}</span>
+            </button>
+          </React.Fragment>
         );
       })}
     </nav>

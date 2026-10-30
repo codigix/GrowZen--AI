@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { api } from './platform/seoApi';
 import Layout from './components/Layout';
+import PasswordGate from './components/PasswordGate';
 import LandingPage from './public/LandingPage';
 import LegalPage from './public/LegalPage';
 import LoginPage from './pages/LoginPage';
@@ -24,6 +25,7 @@ import WebsiteBuilderPage from './platform/WebsiteBuilderPage';
 import BusinessOnboardingPage from './platform/BusinessOnboardingPage';
 import ConnectionsPage from './platform/ConnectionsPage';
 import ConnectResultPage from './platform/ConnectResultPage';
+import { DomainOverviewPage, OrganicRankingsPage, TopPagesPage, KeywordGapPage, CompareDomainsPage, KeywordOverviewPage } from './platform/SeoToolkit';
 
 export default function App() {
   // undefined = checking the session, null = signed out
@@ -54,6 +56,8 @@ export default function App() {
   if (!user) return <LoginPage onSignedIn={loadMe} />;
 
   return (
+    <>
+    {user.must_change_password && <PasswordGate user={user} onChanged={loadMe} />}
     <Routes>
       <Route element={<Layout user={user} onLogout={logout} />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
@@ -67,8 +71,14 @@ export default function App() {
         <Route path="rank-tracking" element={<LocalRankTrackerPage />} />
         <Route path="keyword-management" element={<KeywordResearchPage />} />
         <Route path="competitor-finder" element={<CompetitorFinderPage />} />
+        <Route path="domain-overview" element={<DomainOverviewPage />} />
+        <Route path="organic-rankings" element={<OrganicRankingsPage />} />
+        <Route path="top-pages" element={<TopPagesPage />} />
+        <Route path="keyword-gap" element={<KeywordGapPage />} />
+        <Route path="compare-domains" element={<CompareDomainsPage />} />
+        <Route path="keyword-overview" element={<KeywordOverviewPage />} />
         <Route path="ai-content-generation" element={<ContentStudioPage />} />
-        <Route path="content-calendar" element={<ContentStudioPage initialTab="calendar" />} />
+        <Route path="content-calendar" element={<Navigate to="/ai-content-generation?tab=calendar" replace />} />
         <Route path="website-audit" element={<SiteAuditPage />} />
         <Route path="on-page-seo" element={<Navigate to="/website-audit?tab=site" replace />} />
         <Route path="off-page-seo" element={<BacklinksCitationsPage />} />
@@ -83,5 +93,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
     </Routes>
+    </>
   );
 }

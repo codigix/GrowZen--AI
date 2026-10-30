@@ -179,7 +179,7 @@ function Listings({ connection, onOpenBusiness, toast, onChanged }) {
   );
 }
 
-function GoogleSignIn({ onOpenBusiness, toast, initialAccount }) {
+export function GoogleSignIn({ onOpenBusiness, toast, initialAccount }) {
   const setup = useApi('/connections/google/setup');
   const conns = useApi('/connections');
   const [current, setCurrent] = useState(initialAccount);
@@ -194,13 +194,14 @@ function GoogleSignIn({ onOpenBusiness, toast, initialAccount }) {
   };
   const sync = (c) => run(`s${c.id}`, async () => { const r = await api(`/connections/${c.id}/sync`, { method: 'POST' }); toast(`Synced ${r.synced} business${r.synced === 1 ? '' : 'es'} from Google`); conns.reload(true); await refreshBusinesses(); });
   const disconnect = (c) => { if (window.confirm(`Disconnect ${c.email}? Its businesses stay here but stop syncing with Google.`)) run(`d${c.id}`, async () => { await api(`/connections/${c.id}`, { method: 'DELETE' }); conns.reload(true); }); };
-  if (!s || !conns.data) return null;
+  if (setup.error || conns.error) return <ErrorNote>{(setup.error || conns.error).message}</ErrorNote>;
+  if (!s || !conns.data) return <div className="py-8 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={15} className="animate-spin" /> Loading your Google accounts…</div>;
   return (
-    <div className="mt-5 pt-4 border-t border-slate-100">
+    <div>
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[240px]">
-          <div className="text-13 font-semibold text-slate-900">{active.length ? 'Signed-in Google accounts' : 'Owner sign-in (optional)'}</div>
-          <div className="text-12 text-slate-500">{active.length ? 'Every listing on these accounts, with verification status from Google.' : 'The owner signs in with the same Google account to unlock verification status, review replies and posting.'}</div>
+          <div className="text-13 font-semibold text-slate-900">{active.length ? 'Your Google accounts' : 'Connect a Google account'}</div>
+          <div className="text-12 text-slate-500">{active.length ? 'Pick the account that manages the profile, then add its businesses. Each one is synced and audited.' : 'Sign in with the Google account that owns or manages the Business Profile. Its businesses are listed here to add.'}</div>
         </div>
         <Button size="sm" icon={Plug} busy={busy === 'connect'} onClick={connect}>{active.length ? 'Sign in another account' : 'Sign in with Google'}</Button>
       </div>
@@ -230,13 +231,13 @@ function GoogleSignIn({ onOpenBusiness, toast, initialAccount }) {
   );
 }
 
-/** Top of GBP Manager: find the business's listings by email; optional owner sign-in. */
-export function GbpAccounts({ business, onOpenBusiness, onOtherWays, toast, initialAccount = null }) {
+/** Find a business's public Google Maps listings by the email on its profile (no Google sign-in needed). */
+export function GbpAccounts({ business, onOpenBusiness, toast, open, onToggle }) {
+  if (!open) return null;
   return (
-    <Card title="Find businesses on Google" subtitle="Type the email registered on the Business Profile. Its listings on Google Maps appear with their live status: no setup needed."
-      action={<Button size="sm" onClick={onOtherWays}>Other ways to add</Button>}>
+    <Card title="Find a business by email" subtitle="Type the email registered on the Business Profile. Its listings on Google Maps appear with their public status. To manage a profile you own, use Connect Google account instead."
+      action={<Button size="sm" onClick={onToggle}>Close</Button>}>
       <FindByEmail business={business} onOpenBusiness={onOpenBusiness} toast={toast} />
-      <GoogleSignIn onOpenBusiness={onOpenBusiness} toast={toast} initialAccount={initialAccount} />
     </Card>
   );
 }

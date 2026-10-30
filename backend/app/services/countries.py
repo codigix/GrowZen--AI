@@ -43,6 +43,8 @@ COUNTRIES: dict[str, dict[str, Any]] = {
            "sites": [("Yellow Pages", "yellowpages.com.au"), ("True Local", "truelocal.com.au"), ("Hotfrog", "hotfrog.com.au"), ("Facebook", "facebook.com"), ("Bing Places", "bing.com")]},
     "NZ": {"name": "New Zealand", "dial": "64", "digits": (8, 9), "postcode": r"\b\d{4}\b", "postcode_name": "postcode", "hl": "en",
            "sites": [("Yellow", "yellow.co.nz"), ("Finda", "finda.co.nz"), ("Facebook", "facebook.com"), ("Bing Places", "bing.com")]},
+    "DE": {"name": "Germany", "dial": "49", "digits": (10, 11), "postcode": r"\d{5}", "postcode_name": "postcode", "hl": "de",
+           "sites": [("Gelbe Seiten", "gelbeseiten.de"), ("Das Örtliche", "dasoertliche.de"), ("Yelp", "yelp.de"), ("Facebook", "facebook.com"), ("Bing Places", "bing.com")]},
     "SG": {"name": "Singapore", "dial": "65", "digits": (8,), "postcode": r"\b\d{6}\b", "postcode_name": "postal code", "hl": "en",
            "sites": [("Yellow Pages SG", "yellowpages.com.sg"), ("Facebook", "facebook.com"), ("Instagram", "instagram.com"), ("LinkedIn", "linkedin.com")]},
     "MY": {"name": "Malaysia", "dial": "60", "digits": (9, 10), "postcode": r"\b\d{5}\b", "postcode_name": "postcode", "hl": "en",

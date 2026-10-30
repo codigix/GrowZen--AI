@@ -27,7 +27,7 @@ import httpx
 from ..config import get_settings
 from ..services.crawler import analyse_html
 from ..services.keywords import CITIES, METRO, NOISE, default_seeds, other_cities
-from ..services import countries
+from ..services import countries, market
 from ..services.net import site_client
 
 SERPER = "https://google.serper.dev"
@@ -174,6 +174,15 @@ def default_keywords(b: Any) -> list[str]:
     # A generic Google category ("Doctor", "Store") finds everyone; specific ones (services, other categories) first.
     seeds = default_seeds(b)
     seeds = ([s for s in seeds if s not in GENERIC_CATEGORIES] + [s for s in seeds if s in GENERIC_CATEGORIES])[:3]
+    if market.scope(b) == "national":  # customers anywhere in the country: no city in the search
+        out = []
+        for i, s in enumerate(seeds):
+            out += [s, f"best {s}"] if i == 0 else [s]
+        return list(dict.fromkeys(out))[:6]
+    if market.scope(b) == "international":  # one search per target country
+        names = [countries.name(c) for c in market.target_countries(b)][:3]
+        out = [f"{seeds[0]} in {n}" for n in names] if seeds else []
+        return (out + ([f"best {seeds[0]}"] if seeds else []))[:6]
     area = (b.area or "").split(",")[0].strip()
     city = (b.city or "").strip()
     out: list[str] = []
@@ -194,7 +203,7 @@ def default_keywords(b: Any) -> list[str]:
 
 
 def default_location(b: Any) -> str:
-    return countries.search_location(b.city, countries.of(b))
+    return market.search_location(b)
 
 
 # ── Site scan ───────────────────────────────────────────────────────────
@@ -436,7 +445,7 @@ def _local_rollup(serps: list[dict[str, Any]], n_keywords: int) -> list[dict[str
 
 
 def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Callable[[dict[str, Any]], None] = lambda e: None) -> dict[str, Any]:
-    serper = Serper(countries.of(b))
+    serper = Serper(market.serp_country(b))
     settings = get_settings()
     my_host = host_of(b.website)
     keywords = [k.strip() for k in keywords if k.strip()][:10]
