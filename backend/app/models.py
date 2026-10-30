@@ -215,6 +215,32 @@ class Post(TimestampMixin, Base):
     ai_generated: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class Article(TimestampMixin, Base):
+    """A blog article drafted for one Google Trends keyword (AI Blog Studio)."""
+    __tablename__ = "articles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    topic: Mapped[str | None] = mapped_column(String(255))  # the trending topic the article was started from
+    keyword: Mapped[str] = mapped_column(String(255))  # the primary keyword (the first one selected)
+    secondary_keywords: Mapped[list[str]] = mapped_column(JSON, default=list)  # the other selected keywords
+    rising_keywords: Mapped[list[str]] = mapped_column(JSON, default=list)  # those of them Google lists as rising
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | generating | completed | failed
+    progress: Mapped[str | None] = mapped_column(String(255))  # the step being written, while generating
+    length: Mapped[str | None] = mapped_column(String(10))  # short | standard | long
+    stats: Mapped[dict | None] = mapped_column(JSON)  # time and Ollama calls per step, words written
+    title: Mapped[str | None] = mapped_column(String(255))
+    meta_description: Mapped[str | None] = mapped_column(String(500))
+    suggested_keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
+    headings: Mapped[list[str]] = mapped_column(JSON, default=list)
+    warnings: Mapped[list[str]] = mapped_column(JSON, default=list)
+    body: Mapped[str | None] = mapped_column(Text)  # HTML: intro, sections, FAQs
+    error: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String(80))
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    wp_post_id: Mapped[str | None] = mapped_column(String(40))
+    wp_url: Mapped[str | None] = mapped_column(String(500))
+
+
 class Keyword(TimestampMixin, Base):
     __tablename__ = "keywords"
     __table_args__ = (UniqueConstraint("business_id", "keyword"),)
