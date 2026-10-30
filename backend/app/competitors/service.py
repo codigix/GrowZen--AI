@@ -9,6 +9,11 @@ import httpx
 
 from ..config import get_settings
 
+
+def _key() -> str:
+    s = get_settings()
+    return s.google_places_api_key or s.google_api_key  # same rule as the rest of the app (services/discovery.places_key)
+
 URL = "https://places.googleapis.com/v1/places:searchText"
 
 # Fields we want back (the field mask controls what you are billed for).
@@ -29,15 +34,15 @@ class CompetitorSearchError(RuntimeError):
 
 
 def competitors_enabled() -> bool:
-    return bool(get_settings().google_api_key)
+    return bool(_key())
 
 
 def find_competitors(business_type: str, location: str, own_firm_name: str = "", top_n: int = 10) -> list[dict[str, Any]]:
     """Search Google Maps for `business_type` in `location` and return up to `top_n` results,
     excluding `own_firm_name` and permanently closed businesses."""
-    api_key = get_settings().google_api_key
+    api_key = _key()
     if not api_key:
-        raise CompetitorSearchError("Competitor search is off: set GOOGLE_API_KEY on the SEO backend.")
+        raise CompetitorSearchError("Competitor search is off: set GOOGLE_PLACES_API_KEY on the SEO backend.")
 
     headers = {
         "Content-Type": "application/json",

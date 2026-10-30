@@ -112,7 +112,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
   return (
     <div className="space-y-4">
       {/* Search & Filter Header */}
-      <div className="ai-glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="ai-glass-card rounded p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-[280px]">
           <div className="relative flex-1 max-w-md">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -136,11 +136,10 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
               <button
                 key={f.id}
                 onClick={() => setFilter(f.id)}
-                className={`h-8 px-3 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap cursor-pointer ${
-                  filter === f.id
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-white text-slate-700 hover:text-slate-900 border border-slate-200'
-                }`}
+                className={`h-8 px-3 rounded-lg text-11 font-semibold transition-all whitespace-nowrap cursor-pointer ${filter === f.id
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-white text-slate-700 hover:text-slate-900 border border-slate-200'
+                  }`}
               >
                 {f.label}
               </button>
@@ -148,7 +147,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-500 font-mono">
+        <div className="flex items-center gap-2 shrink-0 text-11 text-slate-500 font-mono">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <span>Google Trends · India · Last 30 days</span>
         </div>
@@ -221,56 +220,56 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
       ) : !topics.length ? (
         <div className="py-10 text-center text-[13px] text-slate-500">No trending topics found for “{seed}”.</div>
       ) : (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {[
-          ['Top queries', 'Most-searched related queries, scored 0-100 relative to the top one', topQueries],
-          ['Rising queries', 'Queries with the biggest increase in search interest', risingQueries]
-        ].map(([title, subtitle, rows]) => {
-          const shown = rows.filter(passes);
-          return (
-            <Card key={title} title={title} subtitle={subtitle}>
-              {shown.length ? (
-                <>
-                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
-                    <span className="w-4" />
-                    <span className="flex-1">Query</span>
-                    <span className="w-8 text-right">Interest</span>
-                    <span className="w-16 text-right">Change</span>
-                    <span className="w-14 text-right"> </span>
-                  </div>
-                  <ul className="space-y-2">
-                    {shown.map(t => {
-                      const pct = /^[+-]\d+%$/.test(t.velocity || '') ? parseInt(t.velocity, 10) : null;
-                      return (
-                        <li key={t.id} className="flex items-center gap-2 text-[12.5px]">
-                          <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[t.title])} onChange={() => toggle(t)} title="Select to generate an article" />
-                          <span className="flex-1 text-slate-800">{t.title}</span>
-                          <span className="tabular-nums text-slate-500 w-8 text-right">{t.score ?? <span className="text-slate-300">—</span>}</span>
-                          <span className="w-16 text-right">
-                            {t.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge>
-                              : pct != null ? (
-                                <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums ${pct >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                                  {pct >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(pct)}%
-                                </span>
-                              ) : t.velocity ? (
-                                <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums text-emerald-700">
-                                  <TrendingUp size={11} />{t.velocity}
-                                </span>
-                              ) : <span className="text-slate-300">—</span>}
-                          </span>
-                          <span className="w-14 text-right">
-                            <button type="button" onClick={() => openWriter(t)} title="Create Brief & Draft" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer">Draft</button>
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              ) : <div className="py-6 text-center text-[13px] text-slate-500">No {title.toLowerCase()} found.</div>}
-            </Card>
-          );
-        })}
-      </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {[
+            ['Top queries', 'Most-searched related queries, scored 0-100 relative to the top one', topQueries],
+            ['Rising queries', 'Queries with the biggest increase in search interest', risingQueries]
+          ].map(([title, subtitle, rows]) => {
+            const shown = rows.filter(passes);
+            return (
+              <Card key={title} title={title} subtitle={subtitle}>
+                {shown.length ? (
+                  <>
+                    <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="w-4" />
+                      <span className="flex-1">Query</span>
+                      <span className="w-8 text-right">Interest</span>
+                      <span className="w-16 text-right">Change</span>
+                      <span className="w-14 text-right"> </span>
+                    </div>
+                    <ul className="space-y-2">
+                      {shown.map(t => {
+                        const pct = /^[+-]\d+%$/.test(t.velocity || '') ? parseInt(t.velocity, 10) : null;
+                        return (
+                          <li key={t.id} className="flex items-center gap-2 text-[12.5px]">
+                            <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[t.title])} onChange={() => toggle(t)} title="Select to generate an article" />
+                            <span className="flex-1 text-slate-800">{t.title}</span>
+                            <span className="tabular-nums text-slate-500 w-8 text-right">{t.score ?? <span className="text-slate-300">—</span>}</span>
+                            <span className="w-16 text-right">
+                              {t.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge>
+                                : pct != null ? (
+                                  <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums ${pct >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                                    {pct >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(pct)}%
+                                  </span>
+                                ) : t.velocity ? (
+                                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums text-emerald-700">
+                                    <TrendingUp size={11} />{t.velocity}
+                                  </span>
+                                ) : <span className="text-slate-300">—</span>}
+                            </span>
+                            <span className="w-14 text-right">
+                              <button type="button" onClick={() => openWriter(t)} title="Create Brief & Draft" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer">Draft</button>
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                ) : <div className="py-6 text-center text-[13px] text-slate-500">No {title.toLowerCase()} found.</div>}
+              </Card>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -367,7 +366,7 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
   return (
     <div className="space-y-4">
       {articles.length > 0 && <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={setOpenId} />}
-            {pendingId && (
+      {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
           <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
           <span className="font-bold">AI is writing your blog live with Ollama ({pendingLength.label})</span>
@@ -378,7 +377,7 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
       {openId && !article
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
-            onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
+          onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
     </div>
   );
 }
@@ -546,17 +545,15 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             <li key={s}>
               <button
                 onClick={() => i <= step && setStep(i)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-semibold text-left transition-colors cursor-pointer ${
-                  i === step
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                    : i < step
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-12 font-semibold text-left transition-colors cursor-pointer ${i === step
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : i < step
                     ? 'text-slate-800 hover:bg-slate-50'
                     : 'text-slate-500'
-                }`}
+                  }`}
               >
-                <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold ${
-                  i < step ? 'bg-emerald-500 text-white' : i === step ? 'bg-white text-blue-600' : 'bg-slate-100 text-slate-500'
-                }`}>
+                <span className={`w-5 h-5 rounded-full text-10 flex items-center justify-center font-bold ${i < step ? 'bg-emerald-500 text-white' : i === step ? 'bg-white text-blue-600' : 'bg-slate-100 text-slate-500'
+                  }`}>
                   {i < step ? <Check size={11} strokeWidth={3} /> : i + 1}
                 </span>
                 <span className="truncate">{s}</span>
@@ -564,7 +561,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             </li>
           ))}
         </ol>
-        <div className="mt-4 p-3 rounded-xl bg-white border border-slate-200 text-[11px] text-slate-500 leading-relaxed">
+        <div className="mt-4 p-3 rounded bg-white border border-slate-200 text-11 text-slate-500 leading-relaxed">
           <ShieldCheck size={13} className="text-emerald-700 inline mr-1" />
           Content is cross-checked against Google Search Essentials, E-E-A-T guidelines, and hospital policy safeguards.
         </div>
@@ -804,7 +801,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
 
         {step === 2 && (
           <div className="space-y-3 max-w-xl">
-            <p className="text-[12px] text-slate-700 mb-2">
+            <p className="text-12 text-slate-700 mb-2">
               Inject first-hand medical proof points to safeguard against generic, low-value AI penalties.
             </p>
             {[
@@ -813,7 +810,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               ['photos', 'Hospital OT & Biometry Diagnostics Photos (No stock photos)'],
               ['local', 'Local PCMC Access: Opposite Chinchwad Railway Station, Free Parking']
             ].map(([k, l]) => (
-              <label key={k} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-[12px] cursor-pointer hover:bg-slate-50 transition-colors">
+              <label key={k} className="flex items-center gap-3 p-3 rounded bg-slate-50 border border-slate-200 text-12 cursor-pointer hover:bg-slate-50 transition-colors">
                 <input
                   type="checkbox"
                   checked={enrich[k]}
@@ -838,14 +835,14 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 ['E-E-A-T Real Fact Verification', 50 + enrichDone * 12]
               ].map(([l, v], i) => (
                 <div key={l}>
-                  <div className="flex justify-between text-[11px] mb-1">
+                  <div className="flex justify-between text-11 mb-1">
                     <span className="text-slate-500">{l}</span>
                     <span className="font-mono font-bold text-slate-900">{Math.min(100, v)}%</span>
                   </div>
                   <Meter value={Math.min(100, v)} color={SERIES[i % 3]} />
                 </div>
               ))}
-              <div className="flex flex-wrap gap-2 pt-1 text-[11px]">
+              <div className="flex flex-wrap gap-2 pt-1 text-11">
                 <StatusPill level="good">Plagiarism 0.5% (Clean)</StatusPill>
                 <StatusPill level="good">Medical Disclaimer Attached</StatusPill>
                 <StatusPill level="good">Spam-Risk: None</StatusPill>
@@ -865,11 +862,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     key={c}
                     type="button"
                     onClick={() => setCms(c)}
-                    className={`h-10 px-2 rounded-xl border text-[11px] font-bold cursor-pointer transition-all ${
-                      cms === c
-                        ? 'bg-blue-600 text-white border-blue-500 shadow-md'
-                        : 'bg-slate-50 text-slate-500 border-slate-200 hover:text-slate-900'
-                    }`}
+                    className={`h-10 px-2 rounded border text-11 font-bold cursor-pointer transition-all ${cms === c
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                      : 'bg-slate-50 text-slate-500 border-slate-200 hover:text-slate-900'
+                      }`}
                   >
                     {c}
                   </button>
@@ -886,7 +882,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               />
             </Field>
 
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+            <div className="p-3.5 rounded bg-slate-50 border border-slate-200 space-y-2">
               <label className="flex items-center gap-2 cursor-pointer text-slate-700">
                 <input type="checkbox" defaultChecked />
                 <span>Auto-publish to website once scheduled date arrives</span>
@@ -902,7 +898,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             </div>
 
             {published && (
-              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 flex items-center justify-between text-[11px] font-mono">
+              <div className="p-3.5 rounded bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 flex items-center justify-between text-11 font-mono">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 size={16} className="text-emerald-700" />
                   <span>Scheduled on {cms} for {new Date(scheduledDate).toLocaleString()}</span>
@@ -946,11 +942,11 @@ function CalendarTab({ b, scheduledItems }) {
         subtitle="Autonomous schedule across Google Business Profile, Hospital CMS, and local landing pages"
         action={
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-500 font-mono">CMS Destination: GrowZen CMS</span>
+            <span className="text-11 text-slate-500 font-mono">CMS Destination: GrowZen CMS</span>
           </div>
         }
       >
-        <div className="grid grid-cols-7 gap-1 text-[11px] font-mono text-slate-500 mb-1 text-center font-bold">
+        <div className="grid grid-cols-7 gap-1 text-11 font-mono text-slate-500 mb-1 text-center font-bold">
           {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <div key={d} className="py-1">{d}</div>)}
         </div>
         <div className="grid grid-cols-7 gap-1.5">
@@ -962,25 +958,23 @@ function CalendarTab({ b, scheduledItems }) {
             return (
               <div
                 key={i}
-                className={`min-h-[85px] rounded-xl border p-2 transition-all ${
-                  valid
-                    ? 'border-slate-200 bg-slate-50 hover:border-indigo-500/30'
-                    : 'border-transparent bg-transparent opacity-20'
-                }`}
+                className={`min-h-[85px] rounded border p-2 transition-all ${valid
+                  ? 'border-slate-200 bg-slate-50 hover:border-indigo-500/30'
+                  : 'border-transparent bg-transparent opacity-20'
+                  }`}
               >
                 {valid && (
                   <>
-                    <div className="text-[11px] font-mono text-slate-500 font-bold mb-1">{day}</div>
+                    <div className="text-11 font-mono text-slate-500 font-bold mb-1">{day}</div>
                     <div className="space-y-1">
                       {events.map(ev => (
                         <div
                           key={ev.id}
-                          className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] truncate text-slate-700 font-medium"
+                          className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-10 truncate text-slate-700 font-medium"
                           title={ev.title}
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full inline-block mr-1 ${
-                            ev.kind === 'blog' ? 'bg-purple-400' : ev.kind === 'gbp' ? 'bg-blue-400' : 'bg-emerald-400'
-                          }`} />
+                          <span className={`w-1.5 h-1.5 rounded-full inline-block mr-1 ${ev.kind === 'blog' ? 'bg-purple-400' : ev.kind === 'gbp' ? 'bg-blue-400' : 'bg-emerald-400'
+                            }`} />
                           {ev.title}
                         </div>
                       ))}
@@ -1055,30 +1049,30 @@ function BacklinksTab({ b, toast }) {
     <div className="space-y-5">
       {/* Top Value Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="ai-glass-card rounded-2xl p-[18px] border border-emerald-500/20">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 font-mono">
+        <div className="ai-glass-card rounded p-[18px] border border-emerald-500/20">
+          <div className="text-11 font-bold uppercase tracking-wider text-emerald-700 font-mono">
             Verified Referring Domains
           </div>
           <div className="text-3xl font-extrabold text-slate-900 mt-2 font-display">18 Domains</div>
-          <p className="text-[11px] text-slate-500 mt-1">100% legitimate editorial & medical listings</p>
+          <p className="text-11 text-slate-500 mt-1">100% legitimate editorial & medical listings</p>
         </div>
 
-        <div className="ai-glass-card rounded-2xl p-[18px] border border-cyan-500/20">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-700 font-mono">
+        <div className="ai-glass-card rounded p-[18px] border border-cyan-500/20">
+          <div className="text-11 font-bold uppercase tracking-wider text-cyan-700 font-mono">
             Key Anchor Target URL
           </div>
-          <div className="text-[13px] font-mono font-bold text-cyan-700 mt-2 truncate">
+          <div className="text-13 font-mono font-bold text-cyan-700 mt-2 truncate">
             /cataract-surgery-in-pcmc
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Directing link equity to primary service page</p>
+          <p className="text-11 text-slate-500 mt-1">Directing link equity to primary service page</p>
         </div>
 
-        <div className="ai-glass-card rounded-2xl p-[18px] border border-purple-500/20">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-purple-600 font-mono">
+        <div className="ai-glass-card rounded p-[18px] border border-purple-500/20">
+          <div className="text-11 font-bold uppercase tracking-wider text-purple-600 font-mono">
             Ethical Outreach Guardrail
           </div>
-          <div className="text-[13px] font-bold text-slate-900 mt-2">Zero Spam / PBN Safe</div>
-          <p className="text-[11px] text-slate-500 mt-1">Strict compliance with Google link spam policies</p>
+          <div className="text-13 font-bold text-slate-900 mt-2">Zero Spam / PBN Safe</div>
+          <p className="text-11 text-slate-500 mt-1">Strict compliance with Google link spam policies</p>
         </div>
       </div>
 
@@ -1087,8 +1081,8 @@ function BacklinksTab({ b, toast }) {
         title="Authority Prospects & Verified Backlinks"
         subtitle="Legitimate citations and medical publication relationship pipeline"
       >
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <table className="w-full text-[12px]">
+        <div className="rounded border border-slate-200 overflow-hidden">
+          <table className="w-full text-12">
             <thead className="bg-white text-slate-500 border-b border-slate-200">
               <tr>
                 <th className="p-3 text-left">Prospect / Publication</th>
@@ -1104,22 +1098,21 @@ function BacklinksTab({ b, toast }) {
                 <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                   <td className="p-3">
                     <div className="font-bold text-slate-900">{p.name}</div>
-                    <div className="text-[10px] text-cyan-700 font-mono">{p.domain}</div>
+                    <div className="text-10 text-cyan-700 font-mono">{p.domain}</div>
                   </td>
                   <td className="p-3 text-slate-700 font-medium">{p.type}</td>
                   <td className="p-3 text-center font-mono font-bold text-slate-800">DA {p.da}</td>
                   <td className="p-3">
                     <div className="text-slate-900 font-medium">"{p.anchor}"</div>
-                    <div className="text-[10px] text-indigo-700 font-mono">{p.target}</div>
+                    <div className="text-10 text-indigo-700 font-mono">{p.target}</div>
                   </td>
                   <td className="p-3">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
-                      p.status === 'Link Acquired'
-                        ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
-                        : p.status === 'Outreach Sent'
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-10 font-mono font-bold border ${p.status === 'Link Acquired'
+                      ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
+                      : p.status === 'Outreach Sent'
                         ? 'bg-blue-500/15 text-blue-700 border-blue-500/30'
                         : 'bg-amber-500/15 text-amber-700 border-amber-500/30'
-                    }`}>
+                      }`}>
                       {p.status}
                     </span>
                   </td>
@@ -1129,7 +1122,7 @@ function BacklinksTab({ b, toast }) {
                         Draft Pitch
                       </Button>
                     ) : (
-                      <span className="text-emerald-700 font-mono text-[11px] font-bold flex items-center justify-end gap-1">
+                      <span className="text-emerald-700 font-mono text-11 font-bold flex items-center justify-end gap-1">
                         <CheckCircle2 size={13} /> Active
                       </span>
                     )}
@@ -1148,7 +1141,7 @@ function BacklinksTab({ b, toast }) {
  * Main AI Content Studio Component
  */
 export default function ContentStudioPage() {
-  const [tab, setTab] = useState('trends');
+  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'calendar', 'backlinks']);
   const [activeTopic, setActiveTopic] = useState(null);
   const [openArticleId, setOpenArticleId] = useState(null);
 

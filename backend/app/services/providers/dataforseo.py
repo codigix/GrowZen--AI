@@ -89,7 +89,7 @@ def keyword_volumes(keywords: list[str], location: str = "India") -> dict[str, d
 class DataForSeoBacklinks(BacklinkProvider):
     source = "live"
 
-    def summary(self, domain):
+    def summary(self, domain, name="", city="", country=None):
         task = _post("/backlinks/summary/live", [{"target": domain, "include_subdomains": True}])
         res = (task.get("result") or [{}])[0] or {}
         ref = _post("/backlinks/referring_domains/live", [{"target": domain, "limit": 20, "order_by": ["rank,desc"]}])

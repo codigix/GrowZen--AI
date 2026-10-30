@@ -46,17 +46,17 @@ function AuditRow({ a }) {
     <div className="py-2.5">
       <button type="button" onClick={() => setOpen(o => !o)} className="w-full flex items-start gap-2.5 text-left cursor-pointer group">
         {icon}
-        <span className="flex-1 min-w-0 text-[13px] text-slate-900 group-hover:text-indigo-700">
-          {a.title}{a.display_value ? <span className="text-slate-500 text-[12px]"> · {a.display_value}</span> : null}
+        <span className="flex-1 min-w-0 text-13 text-slate-900 group-hover:text-indigo-700">
+          {a.title}{a.display_value ? <span className="text-slate-500 text-12"> · {a.display_value}</span> : null}
         </span>
-        {savings && <span className="text-[12px] text-emerald-700 font-semibold shrink-0 tabular-nums">{savings}</span>}
+        {savings && <span className="text-12 text-emerald-700 font-semibold shrink-0 tabular-nums">{savings}</span>}
         {open ? <ChevronDown size={14} className="text-slate-400 shrink-0 mt-0.5" /> : <ChevronRight size={14} className="text-slate-400 shrink-0 mt-0.5" />}
       </button>
       {open && (
         <div className="ml-6 mt-2 space-y-2">
-          <p className="text-[12px] text-slate-600 leading-relaxed">{plain(a.description)}</p>
+          <p className="text-12 text-slate-600 leading-relaxed">{plain(a.description)}</p>
           {a.items?.length > 0 && (
-            <ul className="text-[11px] font-mono text-slate-700 bg-slate-50 ring-1 ring-inset ring-slate-200 rounded-xl p-3 space-y-1 max-h-48 overflow-auto">
+            <ul className="text-11 font-mono text-slate-700 bg-slate-50 ring-1 ring-inset ring-slate-200 rounded p-3 space-y-1 max-h-48 overflow-auto">
               {a.items.map((it, n) => <li key={n} className="truncate" title={itemText(it)}>{itemText(it)}</li>)}
               {a.item_count > a.items.length && <li className="text-slate-500">…and {a.item_count - a.items.length} more (full list in the JSON report)</li>}
             </ul>
@@ -82,13 +82,13 @@ function CategoryAudits({ report }) {
       <div className="space-y-4 mt-4">
         {BUCKETS.filter(([b]) => b !== 'passed' || showPassed).map(([b, label]) => (buckets[b]?.length ? (
           <div key={b}>
-            <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-1">{label} ({buckets[b].length})</div>
+            <div className="text-11 uppercase tracking-wider text-slate-500 font-semibold mb-1">{label} ({buckets[b].length})</div>
             <div className="divide-y divide-slate-100">{buckets[b].map(a => <AuditRow key={a.id} a={a} />)}</div>
           </div>
         ) : null))}
-        {toFix(cat) === 0 && <div className="text-[13px] text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Nothing to fix in this category.</div>}
+        {toFix(cat) === 0 && <div className="text-13 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Nothing to fix in this category.</div>}
         {buckets.passed?.length > 0 && (
-          <button type="button" onClick={() => setShowPassed(s => !s)} className="text-[12px] font-semibold text-indigo-700 hover:underline cursor-pointer">
+          <button type="button" onClick={() => setShowPassed(s => !s)} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">
             {showPassed ? 'Hide' : 'Show'} {buckets.passed.length} passed audits
           </button>
         )}
@@ -134,36 +134,36 @@ export default function LighthouseDetails({ auditId, target, pages = [], strateg
         <Button size="sm" icon={Download} busy={busy === 'json'} disabled={!r.has_raw_json} onClick={() => download('json')}>JSON</Button>
       </div>}>
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <label className="text-[12px] font-semibold text-slate-600" htmlFor="lh-page">Page</label>
-        <select id="lh-page" value={url} onChange={e => setUrl(e.target.value)} className="h-9 flex-1 min-w-[200px] max-w-md px-2.5 rounded-xl text-[12.5px] font-mono text-slate-800 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer">
+        <label className="text-12 font-semibold text-slate-600" htmlFor="lh-page">Page</label>
+        <select id="lh-page" value={url} onChange={e => setUrl(e.target.value)} className="h-9 flex-1 min-w-[200px] max-w-md px-2.5 rounded text-12.5 font-mono text-slate-800 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer">
           {choices.map(u => <option key={u} value={u}>{pathOf(u)}{byUrl[u] ? '' : ' (not run yet)'}</option>)}
         </select>
         {!id && <Button size="sm" variant="primary" icon={Play} busy={busy === 'run'} onClick={runFor}>Run Lighthouse on this page</Button>}
-        {s && !running && <span className="text-[11.5px] text-slate-500">{s.engine_used === 'lighthouse' ? 'Local Chrome' : 'PageSpeed Insights'} · {s.strategy}</span>}
+        {s && !running && <span className="text-11.5 text-slate-500">{s.engine_used === 'lighthouse' ? 'Local Chrome' : 'PageSpeed Insights'} · {s.strategy}</span>}
       </div>
       <ErrorNote>{error}</ErrorNote>
       {(s?.fallback_reason || (url === target && fallbackReason)) && (
-        <div className="mb-4 text-[12px] text-slate-600 bg-slate-50 ring-1 ring-inset ring-slate-200 rounded-xl px-3 py-2">{s?.fallback_reason || fallbackReason}</div>
+        <div className="mb-4 text-12 text-slate-600 bg-slate-50 ring-1 ring-inset ring-slate-200 rounded px-3 py-2">{s?.fallback_reason || fallbackReason}</div>
       )}
 
       {!id ? (
-        <div className="py-6 text-center text-[13px] text-slate-500"><Gauge size={22} className="mx-auto mb-2 text-slate-400" />{url === target ? 'This report was made before full Lighthouse details were saved. Run Lighthouse on this page, or re-run the audit.' : 'Run Lighthouse on this page to see its full report.'}</div>
+        <div className="py-6 text-center text-13 text-slate-500"><Gauge size={22} className="mx-auto mb-2 text-slate-400" />{url === target ? 'This report was made before full Lighthouse details were saved. Run Lighthouse on this page, or re-run the audit.' : 'Run Lighthouse on this page to see its full report.'}</div>
       ) : running || (s && !r && s.status === 'completed') || !s ? (
-        <div className="py-10 flex items-center justify-center gap-2 text-[13px] text-slate-500"><Loader2 size={16} className="animate-spin" /> Running Google Lighthouse on {pathOf(url)}… this takes up to a minute.</div>
+        <div className="py-10 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Running Google Lighthouse on {pathOf(url)}… this takes up to a minute.</div>
       ) : s.status === 'failed' ? (
         <ErrorNote>Lighthouse couldn't finish for this page: {s.error_message || 'unknown error'}</ErrorNote>
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
             {CATEGORIES.map(([, label, key]) => (
-              <div key={key} className="rounded-xl ring-1 ring-inset ring-slate-200 px-3 py-2">
-                <div className="text-[11px] font-semibold text-slate-500">{label}</div>
-                <div className={`text-[20px] font-bold tabular-nums ${scoreTone(r.scores[key])}`}>{r.scores[key] == null ? '—' : Math.round(r.scores[key])}</div>
+              <div key={key} className="rounded ring-1 ring-inset ring-slate-200 px-3 py-2">
+                <div className="text-11 font-semibold text-slate-500">{label}</div>
+                <div className={`text-20 font-bold tabular-nums ${scoreTone(r.scores[key])}`}>{r.scores[key] == null ? '—' : Math.round(r.scores[key])}</div>
               </div>
             ))}
           </div>
           <CategoryAudits key={id} report={r.report} />
-          {r.report?.lighthouse_version && <div className="mt-4 text-[11px] text-slate-400">Lighthouse {r.report.lighthouse_version}{r.report.fetch_time ? ` · run ${new Date(r.report.fetch_time).toLocaleString()}` : ''}</div>}
+          {r.report?.lighthouse_version && <div className="mt-4 text-11 text-slate-400">Lighthouse {r.report.lighthouse_version}{r.report.fetch_time ? ` · run ${new Date(r.report.fetch_time).toLocaleString()}` : ''}</div>}
         </>
       )}
       {toastNode}

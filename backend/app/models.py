@@ -51,9 +51,13 @@ class Business(TimestampMixin, Base):
     address: Mapped[str | None] = mapped_column(String(500))
     area: Mapped[str | None] = mapped_column(String(120))
     city: Mapped[str | None] = mapped_column(String(120))
+    country: Mapped[str | None] = mapped_column(String(2))  # ISO code (IN, OM, AE, US…); see services/countries.py
     lat: Mapped[float | None] = mapped_column(Float)
     lng: Mapped[float | None] = mapped_column(Float)
     service_area: Mapped[str | None] = mapped_column(String(500))
+    target_scope: Mapped[str | None] = mapped_column(String(15))  # local | national | international: who the business wants customers from (services/market.py)
+    target_countries: Mapped[list[str]] = mapped_column(JSON, default=list)  # ISO codes, for international
+    target_areas: Mapped[list[str]] = mapped_column(JSON, default=list)  # "Aundh, Pune", for local
     services: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{name, price, description}]
     attributes: Mapped[list[str]] = mapped_column(JSON, default=list)
     hours: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -109,6 +113,7 @@ class Audit(TimestampMixin, Base):
     __tablename__ = "audits"
     id: Mapped[int] = mapped_column(primary_key=True)
     business_id: Mapped[int | None] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    competitor_id: Mapped[int | None] = mapped_column(ForeignKey("competitors.id", ondelete="SET NULL"), index=True)
     kind: Mapped[str] = mapped_column(String(20))  # gbp | technical | onpage | rankings | backlinks | citations | geo | website
     target: Mapped[str | None] = mapped_column(String(500))  # URL for website audits
     status: Mapped[str] = mapped_column(String(20), default="queued")  # queued | running | done | failed
@@ -119,6 +124,23 @@ class Audit(TimestampMixin, Base):
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Competitor(TimestampMixin, Base):
+    """A competitor registered against a business (from the Maps finder or added by hand), so its
+    audits can be looked up again and compared with the business's own."""
+    __tablename__ = "competitors"
+    __table_args__ = (UniqueConstraint("business_id", "website"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    website: Mapped[str | None] = mapped_column(String(500))
+    address: Mapped[str | None] = mapped_column(String(500))
+    phone: Mapped[str | None] = mapped_column(String(40))
+    rating: Mapped[float | None] = mapped_column(Float)
+    reviews: Mapped[int | None] = mapped_column(Integer)
+    maps_link: Mapped[str | None] = mapped_column(String(500))
+    source: Mapped[str] = mapped_column(String(20), default="google_places")  # google_places | manual
 
 
 class LighthouseSiteAudit(TimestampMixin, Base):
@@ -354,3 +376,15 @@ class Playbook(TimestampMixin, Base):
     approval_rules: Mapped[dict[str, bool]] = mapped_column(JSON, default=dict)  # kind -> needs approval
     plan_schedules: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # plan -> {job: every}
     learnt: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # corrections the AI learnt from
+
+
+class KeywordRankLog(Base):
+    """One checked Google position of a tracked keyword on a day (null rank = not in the top 20): the history behind the rank chart."""
+    __tablename__ = "keyword_rank_log"
+    __table_args__ = (UniqueConstraint("business_id", "keyword", "day"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    keyword: Mapped[str] = mapped_column(String(255))
+    day: Mapped[date] = mapped_column(Date, index=True)
+    rank: Mapped[int | None] = mapped_column(Integer)
+    location: Mapped[str | None] = mapped_column(String(160))

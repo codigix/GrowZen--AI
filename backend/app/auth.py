@@ -35,7 +35,7 @@ class User:
 def issue_session(response: Response, user_id: int, settings: Settings) -> None:
     exp = datetime.now(timezone.utc) + timedelta(hours=settings.session_hours)
     token = jwt.encode({"sub": str(user_id), "kind": "seo", "exp": exp}, settings.secret_key, algorithm="HS256")
-    response.set_cookie(settings.session_cookie, token, httponly=True, samesite="lax", secure=settings.cookie_secure,
+    response.set_cookie(settings.session_cookie, token, httponly=True, samesite="lax", secure=settings.secure_cookies,
                         max_age=settings.session_hours * 3600, path="/")
 
 
@@ -93,19 +93,32 @@ def _crm_user(token: str, settings: Settings) -> User | None:
     return user
 
 
+# POSTs that only read or compute (search, ask, look up): a viewer may use them. Everything else that writes is for editors and admins.
+READ_ONLY_POSTS = ("/assistant", "/seo/keyword-overview", "/discover", "/discover/assist", "/discover/resolve", "/auth/logout", "/auth/change-password", "/ai/preview")
+
+
+def _enforce_role(request: Request, user: User) -> User:
+    """A viewer can read everything and change nothing."""
+    if user.source == "seo" and (user.role or "").lower() == "viewer" and request.method not in ("GET", "HEAD", "OPTIONS"):
+        path = request.url.path.rstrip("/")
+        if not any(path.endswith(p) for p in READ_ONLY_POSTS):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Your account is read-only (viewer). Ask an admin for editor access to change things.")
+    return user
+
+
 def current_user(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)) -> User:
     auth = request.headers.get("authorization", "")
     bearer = auth[7:] if auth.lower().startswith("bearer ") else None
     for token in (request.cookies.get(settings.session_cookie), bearer):
         if token and (u := _seo_user(token, db, settings)):
-            return u
+            return _enforce_role(request, u)
     for token in (request.cookies.get(settings.crm_session_cookie), bearer):
         if token and (u := _crm_user(token, settings)):
-            return u
+            return u  # a CRM session is trusted as before: the CRM decides who may open the platform
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Please sign in.")
 
 
 def require_admin(user: User = Depends(current_user)) -> User:
-    if not user.is_admin:
+    if not (user.is_admin or (user.source == "crm" and not user.role)):  # a CRM session with no role keeps the access it always had
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Admins only.")
     return user

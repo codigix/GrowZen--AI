@@ -30,8 +30,8 @@ def biz(**kw_):
 
 
 def test_discover_groups_filters_and_scores(monkeypatch):
-    monkeypatch.setattr(kw, "autocomplete", lambda q: [(t, 600 - i) for i, t in enumerate(SUGGEST.get(q.lower(), []))])
-    monkeypatch.setattr(kw, "trending_today", lambda words: [])
+    monkeypatch.setattr(kw, "autocomplete", lambda q, gl="in": [(t, 600 - i) for i, t in enumerate(SUGGEST.get(q.lower(), []))])
+    monkeypatch.setattr(kw, "trending_today", lambda words, country="IN": [])
     r = kw.discover(FakeDB(), biz(), ["dentist", "root canal"], ["Aundh", "Pune"])
     got = {x["keyword"]: x for x in r["keywords"]}
     # Junk and other cities are dropped; everything kept is about the business's topics.
@@ -68,8 +68,8 @@ def test_volumes_and_trend(monkeypatch):
 
 
 def test_keyword_routes(client, monkeypatch):
-    monkeypatch.setattr(kw, "autocomplete", lambda q: [(t, 0) for t in SUGGEST.get(q.lower(), [])])
-    monkeypatch.setattr(kw, "trending_today", lambda words: [])
+    monkeypatch.setattr(kw, "autocomplete", lambda q, gl="in": [(t, 0) for t in SUGGEST.get(q.lower(), [])])
+    monkeypatch.setattr(kw, "trending_today", lambda words, country="IN": [])
     monkeypatch.setattr(kw, "nearby_areas", lambda b, limit=8: ["Baner", "Pashan"])
     bid = client.post("/api/v1/businesses", json={"name": "Sai Dental Care", "primary_category": "Dentist", "area": "Aundh", "city": "Pune",
                                                    "services": [{"name": "Root canal"}]}).json()["id"]
@@ -84,3 +84,33 @@ def test_keyword_routes(client, monkeypatch):
 def test_metro_parent_city_counts_as_local():
     assert "pune" not in kw.other_cities({"pimpri", "chinchwad"}) and "mumbai" in kw.other_cities({"pimpri", "chinchwad"})
     assert "pune" not in kw.other_cities({"aundh", "pune"}) and "thane" in kw.other_cities({"aundh", "pune"})
+
+
+RESEARCH = {
+    "summary": {"competitors": 2}, "analysed_at": "2026-10-29T10:00:00+00:00", "keywords": ["dentist in aundh"],
+    "local_competitors": [{"name": "Smile Studio"}], "profiles": [{"domain": "smilehub.in"}],
+    "gaps": {"keywords": [{"keyword": "teeth whitening aundh", "competitors": [{"domain": "smilehub.in", "position": 2}]}]},
+    "ideas": {"competitor_keywords": ["invisible braces pune"], "related": ["dental implants cost", "dentist jobs"], "questions": []},
+}
+
+
+def test_discover_builds_on_competitor_research(monkeypatch):
+    monkeypatch.setattr(kw, "autocomplete", lambda q, gl="in": [])
+    monkeypatch.setattr(kw, "trending_today", lambda words, country="IN": [])
+    monkeypatch.setattr(kw, "competitor_research", lambda db, b: RESEARCH)
+    r = kw.discover(FakeDB(), biz(), ["dentist"], ["Aundh"])
+    got = {x["keyword"]: x for x in r["keywords"]}
+    # Gaps first, then what rivals' pages target; junk and other searches are filtered like everywhere else.
+    assert got["teeth whitening aundh"]["group"] == "competitor" and "smilehub.in rank" in got["teeth whitening aundh"]["from_competitors"]
+    assert got["teeth whitening aundh"]["strength"] > got["invisible braces pune"]["strength"] >= got["dental implants cost"]["strength"]
+    assert "dentist jobs" not in got
+    assert r["competitor_based"] is True and r["competitor_ideas"] == 4
+    assert "Smile Studio" in kw.context_competitors(FakeDB(), biz())
+
+
+def test_discover_without_competitor_research_says_so(monkeypatch):
+    monkeypatch.setattr(kw, "autocomplete", lambda q, gl="in": [])
+    monkeypatch.setattr(kw, "trending_today", lambda words, country="IN": [])
+    monkeypatch.setattr(kw, "competitor_research", lambda db, b: None)
+    r = kw.discover(FakeDB(), biz(), ["dentist"], ["Aundh"])
+    assert r["competitor_based"] is False and r["competitor_ideas"] == 0

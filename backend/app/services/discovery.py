@@ -23,13 +23,14 @@ from bs4 import BeautifulSoup
 from ..config import get_settings
 from .net import site_client
 from .crawler import renders_with_javascript
+from . import countries
 from .match import phone_digits as _digits
 
 FREE_MAIL = {"gmail.com", "googlemail.com", "yahoo.com", "yahoo.in", "yahoo.co.in", "outlook.com", "hotmail.com", "live.com", "msn.com",
              "icloud.com", "me.com", "rediffmail.com", "rediff.com", "aol.com", "protonmail.com", "proton.me", "zoho.com", "zohomail.in", "gmx.com", "yandex.com"}
 UA = "Mozilla/5.0 (compatible; CodigixSEOAuditBot/1.0; +https://codigixinfotech.com)"
 PLACES = "https://places.googleapis.com/v1"
-SEARCH_FIELDS = ",".join(f"places.{f}" for f in ["id", "displayName", "formattedAddress", "nationalPhoneNumber", "internationalPhoneNumber", "websiteUri", "rating",
+SEARCH_FIELDS = ",".join(f"places.{f}" for f in ["id", "displayName", "formattedAddress", "addressComponents", "nationalPhoneNumber", "internationalPhoneNumber", "websiteUri", "rating",
                                                   "userRatingCount", "primaryTypeDisplayName", "types", "location", "googleMapsUri", "businessStatus", "regularOpeningHours"])
 DETAIL_FIELDS = "id,displayName,formattedAddress,nationalPhoneNumber,internationalPhoneNumber,websiteUri,rating,userRatingCount,primaryTypeDisplayName,location,googleMapsUri,regularOpeningHours,reviews,photos,editorialSummary,addressComponents,businessStatus"
 PLUS_CODE_RE = re.compile(r"\b[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}\b,?\s*")
@@ -38,11 +39,15 @@ _details_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 def clean_address(address: str | None) -> str | None:
-    """Google's formatted address without its plus code ("JRG3+PQG") and trailing country."""
+    """Google's formatted address without its plus code ("JRG3+PQG") and trailing country name."""
     if not address:
         return address
-    return re.sub(r",\s*India$", "", PLUS_CODE_RE.sub("", address)).strip(" ,") or None
-PHONE_RE = re.compile(r"(?:\+?91[\s-]?)?(?:0)?([6-9]\d{4}[\s-]?\d{5}|[2-9]\d{1,3}[\s-]?\d{6,8})")
+    out = PLUS_CODE_RE.sub("", address).strip(" ,")
+    parts = [p.strip() for p in out.split(",")]
+    if len(parts) > 1 and countries.detect(address=parts[-1]):
+        out = ", ".join(parts[:-1])
+    return out.strip(" ,") or None
+PHONE_RE = re.compile(r"\+\d{1,3}[\s-]?\d[\d\s-]{6,14}\d|(?:\+?91[\s-]?)?(?:0)?([6-9]\d{4}[\s-]?\d{5}|[2-9]\d{1,3}[\s-]?\d{6,8})")
 PIN_RE = re.compile(r"\b[1-9]\d{5}\b")
 LOCALBUSINESS_HINT = re.compile(r"LocalBusiness|Organization|Store|Clinic|Dentist|Physician|Restaurant|Salon|Gym|Hotel|Service|Contractor|School", re.I)
 
@@ -66,9 +71,12 @@ def website_domain(url: str) -> str:
     return host
 
 
-def _norm_phone(raw: str | None) -> str | None:
-    d = _digits(raw)
-    return f"+91 {d[:5]} {d[5:]}" if len(d) == 10 else (raw.strip() if raw else None)
+def _norm_phone(raw: str | None, country: str | None = None) -> str | None:
+    """A phone in "+<dial code> <number>" form: the country given, else the one its "+" code shows, else India."""
+    if not raw:
+        return None
+    c = country or countries.detect(phone=raw) or countries.DEFAULT
+    return countries.format_phone(raw, c)
 
 
 # ── 2. the website ─────────────────────────────────────────────────────────────
@@ -180,13 +188,20 @@ def read_website(domain: str) -> dict[str, Any] | None:
 
 
 # ── 3. Google Maps (Places API) ────────────────────────────────────────────────
+def places_key() -> str:
+    """The Google Places API (New) key: GOOGLE_PLACES_API_KEY, or GOOGLE_API_KEY (the same API, used by the competitor finder)."""
+    s = get_settings()
+    return s.google_places_api_key or s.google_api_key
+
+
 def places_enabled() -> bool:
-    return bool(get_settings().google_places_api_key)
+    return bool(places_key())
 
 
-def _places_post(query: str, limit: int = 5) -> list[dict[str, Any]]:
-    r = httpx.post(f"{PLACES}/places:searchText", json={"textQuery": query, "regionCode": "IN", "maxResultCount": limit},
-                   headers={"X-Goog-Api-Key": get_settings().google_places_api_key, "X-Goog-FieldMask": SEARCH_FIELDS}, timeout=20)
+def _places_post(query: str, limit: int = 5, country: str | None = None) -> list[dict[str, Any]]:
+    """Google Maps text search, biased to the business's country (India when not given)."""
+    r = httpx.post(f"{PLACES}/places:searchText", json={"textQuery": query, "regionCode": countries.code(country), "maxResultCount": limit},
+                   headers={"X-Goog-Api-Key": places_key(), "X-Goog-FieldMask": SEARCH_FIELDS}, timeout=20)
     if r.status_code != 200:
         msg = (r.json().get("error") or {}).get("message", r.text[:200]) if r.content else f"HTTP {r.status_code}"
         if "not been used" in msg or "disabled" in msg.lower():
@@ -214,10 +229,12 @@ def public_status(p: dict[str, Any]) -> dict[str, Any]:
 
 def place_to_candidate(p: dict[str, Any], reason: str) -> dict[str, Any]:
     loc = p.get("location") or {}
+    country = countries.detect(p.get("addressComponents"), p.get("formattedAddress"), p.get("internationalPhoneNumber"))
     return {
-        "source": "google_maps", "match": reason,
+        "source": "google_maps", "match": reason, "country": country,
         "place_id": p.get("id"), "name": (p.get("displayName") or {}).get("text"),
-        "address": clean_address(p.get("formattedAddress")), "phone": _norm_phone(p.get("nationalPhoneNumber") or p.get("internationalPhoneNumber")),
+        "address": clean_address(p.get("formattedAddress")),
+        "phone": _norm_phone(p.get("internationalPhoneNumber") or p.get("nationalPhoneNumber"), country),
         "website": p.get("websiteUri"), "rating": p.get("rating"), "review_count": p.get("userRatingCount"),
         "category": (p.get("primaryTypeDisplayName") or {}).get("text"), "lat": loc.get("latitude"), "lng": loc.get("longitude"),
         "maps_url": p.get("googleMapsUri"), "status": p.get("businessStatus"), "open_status": OPEN_STATUS.get(p.get("businessStatus"), "unknown"),
@@ -226,15 +243,15 @@ def place_to_candidate(p: dict[str, Any], reason: str) -> dict[str, Any]:
     }
 
 
-def place_details(place_id: str, session_token: str = "") -> dict[str, Any]:
-    """Place Details, cached for 10 minutes. `session_token` closes an Autocomplete session, so the
-    typing that led here is billed as one session instead of per request."""
+def place_details(place_id: str, session_token: str = "", fresh: bool = False) -> dict[str, Any]:
+    """Place Details, cached for 10 minutes (`fresh` skips the cache). `session_token` closes an Autocomplete
+    session, so the typing that led here is billed as one session instead of per request."""
     hit = _details_cache.get(place_id)
-    if hit and hit[0] > time.monotonic():
+    if hit and hit[0] > time.monotonic() and not fresh:
         return hit[1]
     params = {"sessionToken": session_token} if session_token else None
     r = httpx.get(f"{PLACES}/places/{place_id}", params=params, timeout=20,
-                  headers={"X-Goog-Api-Key": get_settings().google_places_api_key, "X-Goog-FieldMask": DETAIL_FIELDS})
+                  headers={"X-Goog-Api-Key": places_key(), "X-Goog-FieldMask": DETAIL_FIELDS})
     if r.status_code != 200:
         raise DiscoveryError(f"Google Places details: HTTP {r.status_code}")
     if len(_details_cache) > 500:
@@ -244,7 +261,7 @@ def place_details(place_id: str, session_token: str = "") -> dict[str, Any]:
 
 
 # ── putting it together ────────────────────────────────────────────────────────
-def discover(email: str = "", name: str = "", city: str = "", website: str = "") -> dict[str, Any]:
+def discover(email: str = "", name: str = "", city: str = "", website: str = "", country: str = "") -> dict[str, Any]:
     """Candidates for a business from its website (given, or the email's domain) and Google Maps."""
     if not (email or website or name):
         raise DiscoveryError("Enter the website, the client's email or the business name.")
@@ -283,7 +300,7 @@ def discover(email: str = "", name: str = "", city: str = "", website: str = "")
         if domain and not free and not queries:
             queries.append((domain, "website domain"))
         for q, reason in queries:
-            for p in _places_post(q, 10 if reason.startswith("name") else 5):
+            for p in _places_post(q, 10 if reason.startswith("name") else 5, country or None):
                 c = place_to_candidate(p, reason)
                 if c["place_id"] in seen:
                     continue

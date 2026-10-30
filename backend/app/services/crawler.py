@@ -18,6 +18,71 @@ from .net import site_client
 UA = "CodigixSEOAuditBot/1.0 (+https://codigixinfotech.com)"
 SKIP_EXT = re.compile(r"\.(jpg|jpeg|png|gif|webp|svg|pdf|zip|mp4|mp3|css|js|ico|woff2?)$", re.I)
 
+# On-page keyword extraction (adapted from keyword_extractor.py): what a page's own title, meta
+# description, headings, alt text and body copy actually emphasise -- no external API, so this
+# works for any crawled page (ours or a competitor's), unlike Serper-based search-keyword data.
+_KW_STOPWORDS = frozenset("""
+a about above after again against all am an and any are as at be because been before being below between
+both but by can cannot could did do does doing down during each few for from further had has have having
+he her here hers herself him himself his how i if in into is it its itself just me more most my myself no
+nor not now of off on once only or other our ours ourselves out over own same she should so some such than
+that the their theirs them themselves then there these they this those through to too under until up very
+was we were what when where which while who whom why will with would you your yours yourself yourselves
+also get got us one two may might must shall using use used like new click read more learn home menu
+login log sign signup register contact privacy policy terms cookie cookies copyright rights reserved
+""".split())
+_KW_WORD = re.compile(r"[a-zA-Z][a-zA-Z0-9'’-]{2,}")
+
+
+def _kw_tokenize(text: str) -> list[str]:
+    return [w.strip("'’-") for w in _KW_WORD.findall((text or "").lower())]
+
+
+def _kw_ngrams(words: list[str], n: int) -> list[str]:
+    return [" ".join(words[i:i + n]) for i in range(len(words) - n + 1) if all(w not in _KW_STOPWORDS for w in words[i:i + n])]
+
+
+def extract_keywords(html: str, top_n: int = 15) -> list[dict[str, Any]]:
+    """Top keyword phrases this page's own content emphasises: multi-word phrases that repeat,
+    then single words, from the title/meta description/alt text/body text with nav and footer
+    chrome stripped out (a repeated mega-menu or footer link list would otherwise drown out the
+    page's own content). Returns [] for a page with nothing to say (e.g. a 404 or empty body)."""
+    soup = BeautifulSoup(html or "", "html.parser")  # own copy: analyse_html's soup must stay untouched
+    for tag in soup(["script", "style", "noscript", "svg", "iframe", "template", "nav", "footer"]):
+        tag.decompose()
+    for header in soup.find_all("header"):
+        if header.find("nav"):
+            header.decompose()
+    title = soup.title.get_text(strip=True) if soup.title else ""
+    meta = soup.find("meta", attrs={"name": re.compile("^description$", re.I)})
+    meta_desc = (meta.get("content") or "").strip() if meta else ""
+    alt_texts = [img["alt"].strip() for img in soup.find_all("img", alt=True) if img["alt"].strip()]
+    body = soup.body or soup
+    segments = [s for s in [title, meta_desc, *alt_texts, body.get_text(" ", strip=True)] if s and s.strip()]
+
+    single: dict[str, int] = {}
+    bi: dict[str, int] = {}
+    tri: dict[str, int] = {}
+    for seg in segments:
+        words = _kw_tokenize(seg)
+        for w in words:
+            if w not in _KW_STOPWORDS and not w.isdigit():
+                single[w] = single.get(w, 0) + 1
+        for n, counter in ((2, bi), (3, tri)):
+            for kw in _kw_ngrams(words, n):
+                counter[kw] = counter.get(kw, 0) + 1
+    bi = {k: v for k, v in bi.items() if v >= 2}
+    tri = {k: v for k, v in tri.items() if v >= 2}
+
+    ranked: list[tuple[str, int]] = []
+    seen: set[str] = set()
+    for counter in (tri, bi, single):
+        for kw, count in sorted(counter.items(), key=lambda kv: -kv[1]):
+            if kw not in seen:
+                seen.add(kw)
+                ranked.append((kw, count))
+    return [{"keyword": kw, "count": count} for kw, count in ranked[:top_n]]
+
 
 APP_ROOT = re.compile(r'<div[^>]+id=["\'](root|app|__next|__nuxt)["\']', re.I)
 
@@ -52,7 +117,10 @@ def analyse_html(url: str, status: int, html: str) -> dict[str, Any]:
             links.append({"href": href, "text": a.get_text(" ", strip=True)})
     images = soup.find_all("img")
     h1s = soup.find_all("h1")
+    html_tag = soup.find("html")
     return {
+        "lang": ((html_tag.get("lang") or "").strip() if html_tag else ""),
+        "hreflang": len(soup.find_all("link", rel=lambda v: v and "alternate" in (v if isinstance(v, list) else [v]), hreflang=True)),
         "url": url, "status": status,
         "title": title, "title_length": len(title),
         "meta_description": meta_desc[:320],  # kept so the UI can show it and suggest a better one
@@ -70,6 +138,7 @@ def analyse_html(url: str, status: int, html: str) -> dict[str, Any]:
         "links": links,
         "generic_link_text": sum(1 for l in links if l["text"].lower() in ("click here", "here", "read more", "more", "link")),
         "javascript_only": renders_with_javascript(html, len(text.split())),
+        "top_keywords": extract_keywords(html),
     }
 
 
@@ -124,11 +193,19 @@ def _norm_url(url: str) -> str:
     return parts._replace(path=path).geturl()
 
 
+def homepage(url: str) -> str:
+    """The site's first page: scheme and host with "/", whatever page the URL points at. An audit always starts here."""
+    url = (url or "").strip()
+    url = url if url.startswith("http") else f"https://{url}"
+    parts = urlparse(url)
+    return f"{parts.scheme}://{parts.netloc}/"
+
+
 def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
     """`on_progress` (optional) gets an event per step so a caller can show the scan live:
     {"step": "robots" | "sitemap" | "fetching" | "page", ...}."""
     report = on_progress or (lambda event: None)
-    start = start_url if start_url.startswith("http") else f"https://{start_url}"
+    start = homepage(start_url)  # always the first page, so the crawl and the site-wide checks begin at the homepage
     host = _norm_host(urlparse(start).netloc)
     client = site_client(timeout)
     site: dict[str, Any] = {"start_url": start, "host": host}
@@ -177,6 +254,17 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
                 if _norm_host(urlparse(href).netloc) == host and _norm_url(href) not in seen and not SKIP_EXT.search(href):
                     queue.append(href)
             report({"step": "page", "page": {k: v for k, v in p.items() if k != "links"}, "queued": len(queue)})
+        # Internal linking: how many other crawled pages link to each page (0 = an orphan), and links going out.
+        keys = {_norm_url(p["url"]) for p in pages}
+        inbound: dict[str, set[str]] = {}
+        for p in pages:
+            me = _norm_url(p["url"])
+            same = {_norm_url(link["href"]) for link in p.get("links", []) if _norm_host(urlparse(link["href"]).netloc) == host}
+            p["internal_out"] = len(same - {me})
+            for t in (same & keys) - {me}:
+                inbound.setdefault(t, set()).add(me)
+        for p in pages:
+            p["inbound"] = len(inbound.get(_norm_url(p["url"]), ()))
         for p in pages:
             p.pop("links", None)
         site.update(pages=pages, broken=broken, crawled=len(pages))

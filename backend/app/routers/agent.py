@@ -1,22 +1,26 @@
 """AI agent: the approval queue, activity log and playbook."""
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..db import get_db
+from ..deps import get_business
 from ..models import ActivityLog, AgentTask, Business
 from ..schemas import DecisionIn, PlaybookIn
 from ..serialize import row, rows
-from ..services import agent, copilot
+from ..services import activity as activity_log, agent, copilot
 from ..services.playbook import get_playbook
 
 router = APIRouter(tags=["agent"])
 
 
 @router.get("/tasks")
-def list_tasks(status: str | None = "pending", business_id: int | None = None, db: Session = Depends(get_db), _: User = Depends(current_user)):
-    q = select(AgentTask).order_by(AgentTask.created_at.desc()).limit(300)
+def list_tasks(status: str | None = "pending", business_id: int | None = None, offset: int = 0, limit: int = 300, db: Session = Depends(get_db), _: User = Depends(current_user)):
+    q = select(AgentTask).order_by(AgentTask.created_at.desc()).offset(max(0, offset)).limit(max(1, min(limit, 300)))
     if status:
         q = q.where(AgentTask.status == status)
     if business_id:
@@ -31,6 +35,36 @@ def list_tasks(status: str | None = "pending", business_id: int | None = None, d
     return rows(found)
 
 
+class FollowUpIn(BaseModel):
+    kind: Literal["website_fix", "profile_edit"]
+    title: str = Field(min_length=3, max_length=300)
+    fix: str = Field(default="", max_length=1000)
+    code: str = Field(default="", max_length=60)
+    impact: Literal["High", "Medium", "Low"] = "Medium"
+
+
+@router.post("/businesses/{business_id}/tasks", status_code=201)
+def add_follow_ups(body: list[FollowUpIn], b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Fixes found outside the app while onboarding (on the business's website or Google profile), added to the
+    to-do list so they are followed up. A task already pending with the same title is not added twice."""
+    pending = {t.title for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.status == "pending"))}
+    added = []
+    for f in body[:20]:
+        if f.title in pending:
+            continue
+        t = AgentTask(business_id=b.id, agent="gbp" if f.kind == "profile_edit" else "audit", kind=f.kind, title=f.title, impact=f.impact,
+                      detail={"fix": f.fix, "code": f.code, "source": "onboarding"}, requires_approval=True)
+        db.add(t)
+        db.flush()
+        copilot.draft_for(db, b, t, use_ai=False)
+        pending.add(f.title)
+        added.append(t)
+    if added:
+        activity_log.log(db, user.name, "Onboarding follow-ups", b.id, added=len(added), titles=[t.title for t in added])
+    db.commit()
+    return {"added": len(added), "tasks": rows(added)}
+
+
 @router.post("/tasks/approve-low-risk")
 def approve_low_risk(business_id: int | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Approve every pending task the copilot rated low risk (text and markup fixes, thank-you replies).
@@ -40,6 +74,57 @@ def approve_low_risk(business_id: int | None = None, db: Session = Depends(get_d
         q = q.where(AgentTask.business_id == business_id)
     done = [agent.decide(db, t, True, user.name) for t in db.scalars(q).all() if (t.detail or {}).get("risk") == "low" and t.kind not in agent.ALWAYS_ASK]
     return {"approved": len(done), "tasks": rows(done)}
+
+
+class BulkIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=200)
+    action: Literal["approve", "reject"]
+
+
+@router.post("/tasks/bulk")
+def bulk(body: BulkIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Approve or reject several pending changes at once. Profile edits can't be approved in bulk: they always wait for a person."""
+    done, skipped = [], 0
+    for t in db.scalars(select(AgentTask).where(AgentTask.id.in_(body.ids), AgentTask.status == "pending")):
+        if body.action == "approve" and t.kind in agent.ALWAYS_ASK:
+            skipped += 1
+            continue
+        done.append(agent.decide(db, t, body.action == "approve", user.name))
+    return {"done": len(done), "skipped": skipped, "action": body.action}
+
+
+@router.post("/tasks/triage")
+def triage(business_id: int | None = None, approve_low_risk: bool = False, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Clean the queue: close the changes the latest audit no longer reports (fixed), reject exact duplicates, and
+    rank what is left by impact and age. With approve_low_risk, the changes rated low risk are approved too."""
+    from ..services import audits as audit_service  # noqa: PLC0415
+
+    q = select(Business) if not business_id else select(Business).where(Business.id == business_id)
+    resolved = duplicates = 0
+    for b in db.scalars(q):
+        latest = audit_service.latest(db, b)
+        done = [a for a in latest.values() if a and a.status == "done"]
+        if done:
+            resolved += agent.reconcile(db, b, [i for a in done for i in (a.issues or [])], [a.kind for a in done])
+        seen: dict[tuple, AgentTask] = {}
+        for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.status == "pending").order_by(AgentTask.created_at.desc())):
+            key = (t.kind, " ".join(t.title.lower().split()))
+            if key in seen:
+                t.status, t.result = "rejected", {"note": "Duplicate of a newer change.", "by": "triage"}
+                duplicates += 1
+            else:
+                seen[key] = t
+    db.commit()
+    pending = list(db.scalars(select(AgentTask).where(AgentTask.status == "pending", *( [AgentTask.business_id == business_id] if business_id else []))))
+    weight = {"High": 3, "Medium": 2, "Low": 1}
+    ranked = sorted(pending, key=lambda t: (-weight.get(t.impact, 1), t.created_at))
+    approved = 0
+    if approve_low_risk:
+        approved = len([agent.decide(db, t, True, user.name) for t in pending if (t.detail or {}).get("risk") == "low" and t.kind not in agent.ALWAYS_ASK])
+    activity_log.log(db, user.name, "tasks_triaged", business_id, resolved=resolved, duplicates=duplicates, approved=approved)
+    db.commit()
+    return {"resolved": resolved, "duplicates_rejected": duplicates, "approved_low_risk": approved, "remaining": len(pending) - approved,
+            "top": [{"id": t.id, "title": t.title, "impact": t.impact, "business_id": t.business_id} for t in ranked[:10]]}
 
 
 @router.post("/tasks/{task_id}/redraft")

@@ -44,17 +44,17 @@ export default function UsersPage({ me }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800">
+    <div className="min-h-screen bg-slate-50 text-slate-800">
       {/* Top Header */}
       <header className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 shadow-[0_1px_4px_rgba(0,0,0,0.02)]">
         <div className="max-w-7xl mx-auto px-5 lg:px-8 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
+            <div className="w-10 h-10 rounded bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
               <UsersIcon size={20} />
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-900 tracking-tight font-display">Team & Access Control</h1>
-              <p className="text-[13px] text-slate-500 mt-0.5">Manage teammates, administrative roles, and platform permissions</p>
+              <p className="text-13 text-slate-500 mt-0.5">Manage teammates, administrative roles, and platform permissions</p>
             </div>
           </div>
           <Button variant="primary" icon={UserPlus} onClick={() => { setForm(blank); setFormError(''); }}>
@@ -70,9 +70,9 @@ export default function UsersPage({ me }) {
           {users?.length === 0 && <Empty>No registered team members yet.</Empty>}
           {users?.length > 0 && (
             <div className="overflow-x-auto">
-              <table className="w-full text-[13px] text-left">
+              <table className="w-full text-13 text-left">
                 <thead>
-                  <tr className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-mono border-b border-slate-100 bg-slate-50/70">
+                  <tr className="text-11 font-bold uppercase tracking-wider text-slate-500 font-mono border-b border-slate-100 bg-slate-50/70">
                     <th className="px-5 py-3.5">User</th>
                     <th className="px-5 py-3.5">Role</th>
                     <th className="px-5 py-3.5">Last Active</th>
@@ -87,19 +87,19 @@ export default function UsersPage({ me }) {
                       <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-cyan-500 text-white font-bold flex items-center justify-center text-xs shadow-sm">
+                            <div className="w-9 h-9 rounded bg-gradient-to-tr from-indigo-500 to-cyan-500 text-white font-bold flex items-center justify-center text-xs shadow-sm">
                               {u.name ? u.name.slice(0, 1).toUpperCase() : 'U'}
                             </div>
                             <div>
                               <div className="font-semibold text-slate-900 flex items-center gap-1.5">
                                 <span>{u.name}</span>
                                 {self && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200">
+                                  <span className="text-10 font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200">
                                     Current Session
                                   </span>
                                 )}
                               </div>
-                              <div className="text-[12px] text-slate-500 flex items-center gap-1 mt-0.5">
+                              <div className="text-12 text-slate-500 flex items-center gap-1 mt-0.5">
                                 <Mail size={12} className="text-slate-500" />
                                 <span>{u.email}</span>
                               </div>
@@ -121,7 +121,7 @@ export default function UsersPage({ me }) {
                           </select>
                         </td>
                         <td className="px-5 py-3.5 text-slate-600">
-                          <div className="flex items-center gap-1.5 text-[12px]">
+                          <div className="flex items-center gap-1.5 text-12">
                             <Calendar size={13} className="text-slate-500" />
                             <span>{fmtDateTime(u.last_login_at)}</span>
                           </div>

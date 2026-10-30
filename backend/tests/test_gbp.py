@@ -29,12 +29,20 @@ def fake_google(monkeypatch, vom_enabled=True):
             if not vom_enabled:
                 raise gbp.GbpError("My Business Verifications API is not enabled")
             return VOM[url.split("v1/")[1].replace("/VoiceOfMerchantState", "")]
+        if url.endswith("/attributes"):
+            return {"attributes": [{"name": "locations/1/attributes/has_wheelchair_accessible_entrance", "valueType": "BOOL", "values": [True]}]}
+        if url.endswith("/localPosts"):
+            return {"localPosts": [{"name": f"{ACC}/locations/1/localPosts/p1", "topicType": "STANDARD", "state": "LIVE", "summary": "Free check-up week", "createTime": "2026-10-20T09:00:00Z",
+                                    "searchUrl": "https://g.co/p1", "callToAction": {"actionType": "BOOK", "url": "https://saidental.in/book"}}]}
+        if "searchkeywords" in url:
+            return {"searchKeywordsCounts": [{"searchKeyword": "dentist near me", "insightsValue": {"value": "120"}}, {"searchKeyword": "root canal pune", "insightsValue": {"threshold": "15"}}]}
         if "/locations/" in url and url.startswith(gbp.INFO):
             return next(l for l in LOCATIONS if url.endswith(l["name"]))
         if url.endswith("/reviews"):
             return {"reviews": [{"reviewId": "r1", "starRating": "FIVE", "comment": "Great", "createTime": "2026-10-01T10:00:00Z"}]}
         if url.endswith("/media"):
-            return {"totalMediaItemCount": 7}
+            return {"mediaItems": [{"name": f"m{i}", "mediaFormat": "PHOTO", "googleUrl": f"https://lh3.google.com/{i}", "thumbnailUrl": f"https://lh3.google.com/t{i}",
+                                    "createTime": "2026-10-01T00:00:00Z", "locationAssociation": {"category": "EXTERIOR"}, "insights": {"viewCount": str(i * 10)}} for i in range(7)], "totalMediaItemCount": 7}
         if "fetchMultiDailyMetricsTimeSeries" in url:
             return {}
         raise AssertionError(f"unexpected Google call {url}")
@@ -92,6 +100,18 @@ def test_import_and_sync_keep_the_status(client, monkeypatch):
     bid = out[0]["id"]
     b = client.get(f"/api/v1/businesses/{bid}").json()
     assert b["verification"] == "verified" and b["gbp_status"]["open_status"] == "open" and b["review_count"] == 1 and b["photo_count"] == 7
+    # Everything else Google holds is read live too: photos, posts, attributes and the searches that found it.
+    live = b["gbp_status"]["live"]
+    assert len(live["media"]) == 7 and live["media"][3]["views"] == 30 and live["media"][0]["category"] == "EXTERIOR"
+    assert live["posts"][0]["summary"] == "Free check-up week" and live["posts"][0]["cta"] == "BOOK"
+    assert live["attributes"][0]["id"] == "has_wheelchair_accessible_entrance"
+    assert live["search_keywords"][0] == {"keyword": "dentist near me", "impressions": 120, "below": None} and live["search_keywords"][1]["below"] == 15
+    assert live["errors"] == {} and live["synced_at"]
+    # One call gives the page everything, project by project.
+    page = client.get(f"/api/v1/businesses/{bid}/gbp/live").json()
+    assert page["linked"] and page["connection"]["email"] == "owner@saidental.in" and page["profile"]["primary_category"] == "Dentist"
+    assert page["metrics"]["review_count"] == 1 and page["metrics"]["photo_count"] == 7 and page["recent_reviews"][0]["author"] is None or page["recent_reviews"]
+    assert page["rating_split"]["5"] == 1 and page["live"]["posts"] and "live" not in page["status"]
     listed = {l["gbp_location"]: l for l in client.get(f"/api/v1/connections/{cid}/locations").json()}
     assert listed["locations/1"]["imported"] and listed["locations/1"]["business_id"] == bid
 
@@ -126,7 +146,7 @@ def test_find_by_email_lists_branches_with_public_status(client, monkeypatch):
     places = {"Smile Studio Pune": [_place("p1", "Smile Studio", "https://smilestudio.in/")],
               "Smile Studio": [_place("p1", "Smile Studio", "https://smilestudio.in/"), _place("p2", "Smile Studio Baner", "https://smilestudio.in/baner", "CLOSED_TEMPORARILY"),
                                _place("p3", "Happy Teeth", "https://happyteeth.in/")]}
-    monkeypatch.setattr(discovery, "_places_post", lambda q, limit=5: places.get(q, []))
+    monkeypatch.setattr(discovery, "_places_post", lambda q, limit=5, country=None: places.get(q, []))
     monkeypatch.setattr(discovery, "place_details", lambda pid, session_token="": _place(pid, "Smile Studio", "https://smilestudio.in/"))
     monkeypatch.setattr("app.routers.discover._onboard", lambda db, business_id: None)
 
@@ -150,3 +170,25 @@ def test_find_by_email_lists_branches_with_public_status(client, monkeypatch):
     assert any("temporarily closed" in a["text"] for a in client.get(f"/api/v1/businesses/{b['id']}/gbp/score").json()["alerts"])
     no_place = client.post("/api/v1/businesses", json={"name": "No Listing Yet"}).json()["id"]
     assert client.post(f"/api/v1/businesses/{no_place}/maps-refresh").status_code == 400
+
+
+def test_a_part_google_refuses_does_not_stop_the_rest(client, monkeypatch):
+    fake_google(monkeypatch)
+    original = gbp.GbpClient._req
+
+    def req(self, method, url, **kw):
+        if url.endswith("/localPosts"):
+            raise gbp.GbpError("Google has not approved access for posts")
+        return original(self, method, url, **kw)
+    monkeypatch.setattr(gbp.GbpClient, "_req", req)
+    cid = connection()
+    try:
+        bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+        live = client.get(f"/api/v1/businesses/{bid}").json()["gbp_status"]["live"]
+        assert live["posts"] == [] and "approved" in live["errors"]["posts"]
+        assert len(live["media"]) == 7 and live["search_keywords"]
+    finally:
+        db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()

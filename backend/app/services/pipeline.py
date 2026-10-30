@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..models import Business, GoogleConnection, IntakeEmail
 from . import agent, audits, extraction, gbp, reports, schedules
 from .activity import log
-from .match import phone_digits as _digits, site_domain as _domain
+from .match import is_same_business, phone_digits as _digits, site_domain as _domain
 from .notify import send_email
 
 STEPS = [
@@ -37,12 +37,9 @@ def _step(db: Session, em: IntakeEmail, key: str, status: str, note: str = "") -
 
 
 def find_existing(db: Session, f: dict[str, Any]) -> Business | None:
-    """Same business already on file? Match by phone, then website domain, then exact name."""
-    phone, domain = _digits(f.get("phone")), _domain(f.get("website"))
+    """Same business already on file? The same phone or website with a matching name, else the exact name."""
     for b in db.scalars(select(Business)):
-        if phone and _digits(b.phone) == phone:
-            return b
-        if domain and _domain(b.website) == domain:
+        if is_same_business(b, f.get("place_id"), f.get("name"), f.get("phone"), f.get("website")):
             return b
     return db.scalar(select(Business).where(Business.name == f.get("name"))) if f.get("name") else None
 
@@ -110,7 +107,7 @@ def onboard(db: Session, em: IntakeEmail, actor: str = "pipeline") -> IntakeEmai
         _step(db, em, "audits", "done", f"Overall {b.last_audit_score if b.last_audit_score is not None else '—'}/100" + (f"; failed: {', '.join(failed)}" if failed else ""))
 
         _step(db, em, "plan", "running")
-        tasks = agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues])
+        tasks = agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues], audited=[a.kind for a in found if a.status == "done"])
         _step(db, em, "plan", "done", f"{len(tasks)} tasks ({sum(1 for t in tasks if t.requires_approval)} need approval)")
 
         _step(db, em, "report", "running")

@@ -21,14 +21,14 @@ export default function ConnectResultPage() {
         {error ? (
           <div className="py-4">
             <div className="flex items-center gap-2 text-red-700 font-medium"><AlertTriangle size={16} /> Google sign-in did not finish</div>
-            <p className="text-[13px] text-gray-700 mt-1">{error === 'access_denied' || error === 'cancelled' ? 'Access was not granted.' : error}</p>
+            <p className="text-13 text-gray-700 mt-1">{error === 'access_denied' || error === 'cancelled' ? 'Access was not granted.' : error}</p>
             <Button className="mt-3" onClick={() => navigate(`${gbpPage}?connect=1`)}>Try again</Button>
           </div>
         ) : connection ? (
           <div className="pt-2">
             <LocationPicker connectionId={connection} onImported={(out) => { if (out[0]) setBusiness(out[0].id); navigate(gbpPage); }} />
           </div>
-        ) : <div className="py-6 text-[13px] text-gray-600">Nothing to show.</div>}
+        ) : <div className="py-6 text-13 text-gray-600">Nothing to show.</div>}
       </Card>
     </SeoShell>
   );

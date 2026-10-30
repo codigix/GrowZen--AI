@@ -56,5 +56,5 @@ export default function LocationMap({ lat, lng, onMove, height = 280 }) {
     m.setView([lat, lng], Math.max(m.getZoom(), 16));
   }, [lat, lng]);
 
-  return <div ref={el} style={{ height }} className="relative isolate z-0 w-full rounded-xl overflow-hidden ring-1 ring-slate-200 bg-slate-100" aria-label="Map of the business location" />;
+  return <div ref={el} style={{ height }} className="relative isolate z-0 w-full rounded overflow-hidden ring-1 ring-slate-200 bg-slate-100" aria-label="Map of the business location" />;
 }

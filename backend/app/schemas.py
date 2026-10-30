@@ -14,9 +14,13 @@ class BusinessIn(BaseModel):
     address: str | None = None
     area: str | None = None
     city: str | None = None
+    country: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")  # ISO code
     lat: float | None = None
     lng: float | None = None
     service_area: str | None = None
+    target_scope: Literal["local", "national", "international"] | None = None
+    target_countries: list[str] | None = None
+    target_areas: list[str] | None = None
     services: list[dict[str, Any]] = []
     attributes: list[str] = []
     hours: dict[str, Any] = {}
@@ -39,9 +43,13 @@ class BusinessPatch(BaseModel):
     address: str | None = None
     area: str | None = None
     city: str | None = None
+    country: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")  # ISO code
     lat: float | None = None
     lng: float | None = None
     service_area: str | None = None
+    target_scope: Literal["local", "national", "international"] | None = None
+    target_countries: list[str] | None = None
+    target_areas: list[str] | None = None
     services: list[dict[str, Any]] | None = None
     attributes: list[str] | None = None
     hours: dict[str, Any] | None = None
@@ -64,6 +72,7 @@ class DiscoverIn(BaseModel):
     website: str = ""
     name: str = ""
     city: str = ""
+    country: str = ""  # ISO code; Google is searched in this country (default India)
 
 
 class AuditSummaryIn(BaseModel):
@@ -94,6 +103,8 @@ class OnboardAssistIn(BaseModel):
     city: str = Field(default="", max_length=120)
     services: list[Annotated[str, Field(max_length=120)]] = Field(default_factory=list, max_length=40)
     place_id: str | None = Field(default=None, max_length=300)
+    country: str = Field(default="", max_length=2)
+    fresh: bool = False  # re-fetch from Google Maps instead of the 10-minute cache (after the details were changed there)
 
 
 class SuggestionIn(BaseModel):
@@ -106,6 +117,7 @@ class DiscoverImportIn(BaseModel):
     email: str = ""
     candidate: dict[str, Any]
     plan: str | None = None
+    defer_audit: bool = False  # the caller saves more details first, then starts it with POST /discover/onboard/{id}
 
 
 class IntakeEmailIn(BaseModel):
@@ -127,10 +139,34 @@ class WebsiteAuditIn(BaseModel):
 
 
 class CompetitorAuditIn(BaseModel):
-    """Audit several competitor websites in one go (no business attached)."""
+    """Audit several competitor websites in one go. `business_id`/`competitor_id` are optional:
+    set them to tie the audit to a business and a registered competitor for later comparison."""
     urls: list[HttpUrl] = Field(min_length=1, max_length=20)
     strategy: Literal["mobile", "desktop"] = "mobile"
     crawl_pages: int = Field(default=10, ge=1, le=50)
+    business_id: int | None = None
+    competitor_id: int | None = None
+    reuse_existing: bool = Field(default=True, description="Skip queuing a URL that already has a finished audit of the same strategy, newer than max_age_hours")
+    max_age_hours: int = Field(default=24, ge=1, le=24 * 30)
+
+
+class CompetitorRegisterIn(BaseModel):
+    """Find competitors near a location; optionally register them against a business."""
+    business_type: str = Field(min_length=1, max_length=160)
+    location: str = Field(min_length=1, max_length=200)
+    own_firm_name: str = Field(default="", max_length=255)
+    top_n: int = Field(default=10, ge=1, le=20)
+    business_id: int | None = Field(default=None, description="When set, found competitors are saved against this business (deduped by website)")
+
+
+class CompetitorCompareIn(BaseModel):
+    """Compare the business's own audit against one or more competitor audits. Either pass the
+    audit ids directly, or a business_id (+ optional strategy) to use each side's latest finished audit."""
+    our_audit_id: int | None = None
+    business_id: int | None = None
+    competitor_audit_ids: list[int] = Field(default_factory=list, max_length=10)
+    competitor_ids: list[int] = Field(default_factory=list, max_length=10)
+    strategy: Literal["mobile", "desktop"] | None = None
 
 
 class LighthouseAuditIn(BaseModel):

@@ -23,7 +23,8 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import Business
-from .discovery import PLACES, UA, DiscoveryError, _norm_phone, place_details, place_to_candidate, places_enabled, read_website, website_domain
+from . import countries
+from .discovery import PLACES, UA, DiscoveryError, _norm_phone, place_details, place_to_candidate, places_enabled, places_key, read_website, website_domain
 
 log = logging.getLogger("seo.suggest")
 
@@ -92,7 +93,9 @@ def _address_parts(a: dict[str, Any]) -> dict[str, Any]:
 
 
 # ── suggestions ──────────────────────────────────────────────────────────────
-def suggest(db: Session, q: str, near: str = "", session: str = "") -> dict[str, Any]:
+def suggest(db: Session, q: str, near: str = "", session: str = "", country: str = "IN") -> dict[str, Any]:
+    """Business names while typing, from existing projects, then Google Maps and OpenStreetMap in `country`."""
+    country = countries.code(country)
     q = " ".join((q or "").split())
     s = get_settings()
     out: dict[str, Any] = {"query": q, "suggestions": [], "notes": [],
@@ -106,25 +109,25 @@ def suggest(db: Session, q: str, near: str = "", session: str = "") -> dict[str,
     google: list[dict[str, Any]] = []
     if places_enabled():
         try:
-            google = _google(text, session)
+            google = _google(text, session, country)
         except (httpx.HTTPError, DiscoveryError, ValueError) as exc:
             out["notes"].append(f"Google Maps suggestions unavailable: {exc}")
     out["suggestions"] += google
     if s.osm_lookup_enabled:
         try:
-            osm = _cached(("photon", text.lower()), 600, lambda: _osm(text))
+            osm = _cached(("photon", country, text.lower()), 600, lambda: _osm(text, country))
             out["suggestions"] += osm[:3] if google else osm  # Google's listings are the better match; keep OSM as backup
         except (httpx.HTTPError, ValueError) as exc:
             out["notes"].append(f"OpenStreetMap suggestions unavailable: {exc}")
     return out
 
 
-def _google(text: str, session: str = "") -> list[dict[str, Any]]:
-    body: dict[str, Any] = {"input": text, "includedRegionCodes": ["in"]}
+def _google(text: str, session: str = "", country: str = "IN") -> list[dict[str, Any]]:
+    body: dict[str, Any] = {"input": text, "includedRegionCodes": [countries.gl(country)]}
     if session:
         body["sessionToken"] = session  # with the Place Details call that follows, billed as one session
     r = httpx.post(f"{PLACES}/places:autocomplete", json=body,
-                   headers={"X-Goog-Api-Key": get_settings().google_places_api_key}, timeout=8)
+                   headers={"X-Goog-Api-Key": places_key()}, timeout=8)
     if r.status_code != 200:
         raise DiscoveryError(((r.json().get("error") or {}).get("message") if r.content else None) or f"HTTP {r.status_code}")
     found = []
@@ -138,8 +141,11 @@ def _google(text: str, session: str = "") -> list[dict[str, Any]]:
     return found[:6]
 
 
-def _osm(text: str) -> list[dict[str, Any]]:
-    r = httpx.get(PHOTON, params={"q": text, "limit": 10, "lang": "en", "bbox": INDIA_BBOX}, headers=HEADERS, timeout=8)
+def _osm(text: str, country: str = "IN") -> list[dict[str, Any]]:
+    params: dict[str, Any] = {"q": text, "limit": 15, "lang": "en"}
+    if country == "IN":
+        params["bbox"] = INDIA_BBOX  # Photon has no country filter; elsewhere results are filtered by country below
+    r = httpx.get(PHOTON, params=params, headers=HEADERS, timeout=8)
     r.raise_for_status()
     # Photon matches loosely: keep names that contain the first word typed (its first 5 letters).
     first = next((w for w in text.lower().split() if len(w) >= 3), text.lower())[:5]
@@ -147,7 +153,7 @@ def _osm(text: str) -> list[dict[str, Any]]:
     for f in r.json().get("features", []):
         p = f.get("properties") or {}
         if (not p.get("name") or p.get("osm_key") in NOT_A_BUSINESS or p.get("osm_type") not in OSM_KINDS
-                or str(p.get("countrycode", "IN")).upper() != "IN" or first not in p["name"].lower()):
+                or str(p.get("countrycode", country)).upper() != country or first not in p["name"].lower()):
             continue
         where = ", ".join(x for x in (p.get("district") or p.get("locality"), p.get("city") or p.get("county"), p.get("state")) if x)
         key = (p["name"].lower(), where.lower())
@@ -206,11 +212,12 @@ def _from_osm(ref: str) -> dict[str, Any]:
     ex = item.get("extratags") or {}
     socials = [v for k in ("contact:facebook", "facebook", "contact:instagram", "instagram", "contact:youtube", "contact:linkedin") if (v := ex.get(k))]
     speciality = ex.get("healthcare:speciality") or ex.get("cuisine")
+    country = countries.code((item.get("address") or {}).get("country_code"))
     return {
-        "source": "openstreetmap", "match": "chosen from OpenStreetMap suggestions", "confidence": "high", "place_id": None,
+        "source": "openstreetmap", "match": "chosen from OpenStreetMap suggestions", "confidence": "high", "place_id": None, "country": country,
         "name": item.get("name") or (item.get("display_name") or "").split(",")[0], "category": _label(item.get("type")),
         **_address_parts(item.get("address") or {}),
-        "phone": _norm_phone(ex.get("phone") or ex.get("contact:phone") or ex.get("contact:mobile")),
+        "phone": _norm_phone(ex.get("phone") or ex.get("contact:phone") or ex.get("contact:mobile"), country),
         "website": ex.get("website") or ex.get("contact:website"), "email": ex.get("email") or ex.get("contact:email"),
         "hours": [ex["opening_hours"]] if ex.get("opening_hours") else None,
         "attributes": sorted({label for (tag, val), label in ATTRIBUTES.items() if str(ex.get(tag, "")).lower() == val}),
@@ -249,6 +256,36 @@ def geocode(q: str) -> list[dict[str, Any]]:
         return []
     items = _nominatim("search", {"q": q, "format": "jsonv2", "addressdetails": 1, "limit": 5, "countrycodes": "in"})
     return [{"lat": float(i["lat"]), "lng": float(i["lon"]), "label": i.get("display_name"), **_address_parts(i.get("address") or {})} for i in items]
+
+
+AREA_TYPES = {"suburb", "neighbourhood", "quarter", "city_district", "city", "town", "village", "borough", "municipality", "county", "state_district", "administrative", "locality", "hamlet"}
+
+
+def areas(q: str, country: str = "IN", near: str = "") -> list[dict[str, Any]]:
+    """Places to target (suburbs, towns, cities) matching what was typed, inside `country`, with the nearest
+    to `near` (the business's city) first. Each is {label, area, city, state, lat, lng}."""
+    _require_osm()
+    q = " ".join((q or "").split())
+    if len(q) < 2:
+        return []
+    items = _nominatim("search", {"q": q, "format": "jsonv2", "addressdetails": 1, "limit": 10, "countrycodes": countries.code(country).lower(), "accept-language": "en"})
+    out, seen = [], set()
+    for i in items:
+        if i.get("category") not in ("place", "boundary") and i.get("type") not in AREA_TYPES:
+            continue
+        a = i.get("address") or {}
+        p = _address_parts(a)
+        name = i.get("name") or p["area"] or p["city"]
+        if not name:
+            continue
+        city = p["city"] if p["city"] and p["city"] != name else None
+        label = ", ".join(x for x in (name, city, p["state"] if not city else None) if x)
+        if label.lower() in seen:
+            continue
+        seen.add(label.lower())
+        out.append({"label": label, "area": name, "city": city, "state": p["state"], "lat": float(i["lat"]), "lng": float(i["lon"]),
+                    "near": bool(near) and near.lower() in (i.get("display_name") or "").lower()})
+    return sorted(out, key=lambda x: not x["near"])
 
 
 def reverse(lat: float, lng: float) -> dict[str, Any]:

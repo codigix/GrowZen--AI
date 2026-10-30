@@ -12,10 +12,10 @@ SITE = {"website": "https://saidentalcare.in", "name": "Sai Dental Care", "phone
 
 def fakes(monkeypatch, maps=MAPS, site=SITE):
     monkeypatch.setattr(discovery, "places_enabled", lambda: True)
-    monkeypatch.setattr(discovery, "place_details", lambda pid, session_token="": maps)
-    monkeypatch.setattr(discovery, "_places_post", lambda q, limit=5: [maps])
+    monkeypatch.setattr(discovery, "place_details", lambda pid, session_token="", fresh=False: maps)
+    monkeypatch.setattr(discovery, "_places_post", lambda q, limit=5, country=None: [maps])
     monkeypatch.setattr(discovery, "read_website", lambda domain: site)
-    monkeypatch.setattr(keywords, "autocomplete", lambda q: [(f"{q} for kids", 600), (f"{q} cost", 500), ("dentist costume", 400)] if "dentist" in q else [])
+    monkeypatch.setattr(keywords, "autocomplete", lambda q, gl="in": [(f"{q} for kids", 600), (f"{q} cost", 500), ("dentist costume", 400)] if "dentist" in q else [])
 
 
 def form(**kw):
@@ -76,7 +76,7 @@ def test_ai_suggestions(monkeypatch):
 
 def test_without_places_key(client, monkeypatch):
     monkeypatch.setattr(discovery, "read_website", lambda domain: None)
-    monkeypatch.setattr(keywords, "autocomplete", lambda q: [])
+    monkeypatch.setattr(keywords, "autocomplete", lambda q, gl="in": [])
     r = client.post("/api/v1/discover/assist", json=form(phone="+91 98505 22140")).json()
     assert r["maps"]["matched"] is None and r["fields"]["phone"]["status"] == "only_typed" and r["fields"]["address"]["status"] == "missing"
 

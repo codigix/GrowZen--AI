@@ -111,7 +111,7 @@ def _scan(db: Session, business_id: int, keyword: str, size: int, radius: float)
     prov = providers.rank_provider()
     out = prov.scan_grid(b, keyword, size, radius)
     found = [p["rank"] for p in out["points"] if p["rank"]]
-    db.add(RankScan(business_id=b.id, keyword=keyword, grid_size=size, radius_km=radius, points=out["points"], competitors=out["competitors"],
+    db.add(RankScan(business_id=b.id, keyword=keyword, grid_size=out.get("grid_size", size), radius_km=radius, points=out["points"], competitors=out["competitors"],
                     avg_rank=round(mean(found), 1) if found else None, top3=sum(1 for r in found if r <= 3), found=len(found), data_source=prov.source))
     db.commit()
 
