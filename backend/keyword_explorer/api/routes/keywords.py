@@ -15,18 +15,33 @@ from ...schemas.keyword import (
 from ...services.keyword_engine import keyword_engine
 from ...services.platforms import PLATFORM_REGISTRY
 
-router = APIRouter(prefix="/api/keywords", tags=["Keyword Explorer"])
+router = APIRouter(tags=["Keyword Explorer"])
 
 
 @router.post(
-    "",
+    "/api/keywords",
     response_model=List[KeywordItem],
     status_code=status.HTTP_200_OK,
     summary="Discover Keywords Across Multi-Platform Suggestion Engines",
-    description=(
-        "Concurrently queries Google, YouTube, Bing, Amazon, DuckDuckGo, eBay, and App Stores. "
-        "Returns a list containing exclusively: Keyword, Trend (12m), Search Volume, Intent, Competition, CPC, and Difficulty."
-    ),
+    description="Concurrently queries Google, YouTube, Bing, Amazon, DuckDuckGo, eBay, and App Stores. Returns a list containing exclusively: Keyword, Trend (12m), Search Volume, Intent, Competition, CPC, and Difficulty.",
+)
+@router.post(
+    "/api/keyword",
+    response_model=List[KeywordItem],
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+@router.post(
+    "/api/v1/keywords",
+    response_model=List[KeywordItem],
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+@router.post(
+    "/api/v1/keyword",
+    response_model=List[KeywordItem],
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
 )
 async def discover_keywords(payload: KeywordSearchRequest) -> List[KeywordItem]:
     """Execute keyword research across specified platforms and return the 7 core fields."""
@@ -41,9 +56,19 @@ async def discover_keywords(payload: KeywordSearchRequest) -> List[KeywordItem]:
 
 
 @router.get(
-    "/platforms",
+    "/api/keywords/platforms",
     response_model=List[PlatformInfo],
     summary="List Supported Keyword Discovery Platforms",
+)
+@router.get(
+    "/api/keyword/platforms",
+    response_model=List[PlatformInfo],
+    include_in_schema=False,
+)
+@router.get(
+    "/api/v1/keywords/platforms",
+    response_model=List[PlatformInfo],
+    include_in_schema=False,
 )
 async def list_platforms() -> List[PlatformInfo]:
     """Retrieve catalog of all supported suggestion platforms."""
@@ -69,8 +94,18 @@ async def list_platforms() -> List[PlatformInfo]:
 
 
 @router.get(
-    "/export",
+    "/api/keywords/export",
     summary="Export Keyword Research Results as CSV",
+    response_class=StreamingResponse,
+)
+@router.get(
+    "/api/keyword/export",
+    include_in_schema=False,
+    response_class=StreamingResponse,
+)
+@router.get(
+    "/api/v1/keywords/export",
+    include_in_schema=False,
     response_class=StreamingResponse,
 )
 async def export_keywords_csv(
