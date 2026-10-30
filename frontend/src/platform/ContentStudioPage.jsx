@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
-  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, useAction, ErrorNote, PreviewNote
+  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, useAction, useUrlTab, ErrorNote, PreviewNote
 } from './SeoUi';
 import { rng, shortDate, daysBack, ymd } from './seoMock';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
