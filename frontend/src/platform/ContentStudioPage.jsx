@@ -12,6 +12,7 @@ import {
 import { rng, shortDate, daysBack, ymd } from './seoMock';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
 import { api, fmt, useApi, usePoll } from './seoApi';
+import SitePublishPanel from './SitePublishPanel';
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
 
@@ -435,7 +436,6 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const liveTitle = activeArt?.title || meta?.title || '';
   const liveMetaDesc = activeArt?.meta_description || meta?.meta_description || '';
   const liveProgress = pendingArticle?.progress || (generating ? 'Connecting to Claude AI…' : '');
-  const [wpBusy, setWpBusy] = useState(false);
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState('');
   const [articleLength, setArticleLength] = useState(() => { try { return localStorage.getItem('growzen.articleLength') || 'standard'; } catch { return 'standard'; } });
@@ -486,9 +486,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       .finally(() => setSaveBusy(false));
   };
   const [enrich, setEnrich] = useState({ prices: true, quote: true, photos: true, local: true });
-  const [cms, setCms] = useState('GrowZen Website Builder');
-  const [published, setPublished] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState('2026-10-30T10:00');
+  const [scheduledDate] = useState(() => { const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); });  // tomorrow 10:00, local
 
   const makeDraft = () => {
     const title = topic.replace(/\b\w/g, c => c.toUpperCase());
@@ -511,29 +509,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       }
       return;
     }
-    if (step === 4 && selectedArticle && cms === 'WordPress REST API') {
-      setWpBusy(true);
-      return api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: articleFields() })
-        .then(() => api(`/businesses/${b.id}/articles/${selectedArticle.id}/publish-wordpress`, { method: 'POST' }))
-        .then(() => { setPublished(true); toast('Sent to WordPress as a draft.'); })
-        .catch(e => toast(e.message))
-        .finally(() => setWpBusy(false));
-    }
-    if (step === 4) {
-      return run('pub', () => {
-        setPublished(true);
-        toast(`Article successfully scheduled and synced with ${cms}! Search Console indexing submitted.`);
-        if (onScheduled) {
-          onScheduled({
-            title: kw,
-            slug: kw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
-            cms,
-            date: scheduledDate,
-            status: 'Scheduled'
-          });
-        }
-      }, 1300);
-    }
+    if (step === 4) return undefined;
     return setStep(s => Math.min(STEPS.length - 1, s + 1));
   };
 
@@ -574,17 +550,12 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       <Card
         className="xl:col-span-3"
         title={STEPS[step]}
-        action={
-          <Button
-            variant={step === 4 ? 'primary' : 'secondary'}
-            busy={Boolean(busy) || wpBusy}
-            onClick={next}
-            disabled={published}
-          >
-            {step === 4 ? (published ? 'Scheduled & Live' : 'Approve & Schedule to CMS') : step === 0 ? 'Generate Blog' : 'Next Step'}
-            {step < 4 && <ChevronRight size={13} />}
+        action={step === 4 ? null : (
+          <Button variant="secondary" busy={Boolean(busy)} onClick={next}>
+            {step === 0 ? 'Generate Blog' : 'Next Step'}
+            <ChevronRight size={13} />
           </Button>
-        }
+        )}
       >
         {/* Step 0: Keyword & Intent */}
         {step === 0 && (
@@ -856,61 +827,24 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
 
         {/* Step 4: Publish & Schedule */}
         {step === 4 && (
-          <div className="max-w-xl space-y-4 text-[12px]">
-            <div>
-              <label className="block text-slate-700 font-bold mb-2">Select Target CMS Integration</label>
-              <div className="grid grid-cols-3 gap-2">
-                {['GrowZen Website Builder', 'WordPress REST API', 'Webflow'].map(c => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setCms(c)}
-                    className={`h-10 px-2 rounded-xl border text-[11px] font-bold cursor-pointer transition-all ${
-                      cms === c
-                        ? 'bg-blue-600 text-white border-blue-500 shadow-md'
-                        : 'bg-slate-50 text-slate-500 border-slate-200 hover:text-slate-900'
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <Field label="Scheduled Publishing Date & Time">
-              <input
-                type="datetime-local"
-                value={scheduledDate}
-                onChange={e => setScheduledDate(e.target.value)}
-                className={inputCls}
-              />
-            </Field>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer text-slate-700">
-                <input type="checkbox" defaultChecked />
-                <span>Auto-publish to website once scheduled date arrives</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer text-slate-700">
-                <input type="checkbox" defaultChecked />
-                <span>Trigger instant Google Search Console indexing ping upon publishing</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer text-slate-700">
-                <input type="checkbox" defaultChecked />
-                <span>Inject internal backlink to the article page</span>
-              </label>
-            </div>
-
-            {published && (
-              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 flex items-center justify-between text-[11px] font-mono">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-emerald-700" />
-                  <span>Scheduled on {cms} for {new Date(scheduledDate).toLocaleString()}</span>
-                </div>
-                <Badge tone="green">Verified</Badge>
-              </div>
-            )}
-          </div>
+          <SitePublishPanel
+            b={b}
+            article={selectedArticle}
+            toast={toast}
+            defaultWhen={scheduledDate}
+            onPublished={(r, mode, when) => {
+              if (mode === 'schedule' && onScheduled) {
+                onScheduled({
+                  title: kw,
+                  slug: kw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+                  cms: 'Your website',
+                  date: when,
+                  status: 'Scheduled'
+                });
+              }
+              if (onSaved) onSaved();
+            }}
+          />
         )}
       </Card>
     </div>

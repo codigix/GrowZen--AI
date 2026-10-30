@@ -37,7 +37,7 @@ function Tile({ icon: Icon, label, value, sub, tone = 'indigo', right }) {
   );
 }
 
-const Th = ({ children, c = 'text-left', cls = '' }) => <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${c} ${cls}`}>{children}</th>;
+export const Th = ({ children, c = 'text-left', cls = '' }) => <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${c} ${cls}`}>{children}</th>;
 const Table = ({ head, children, max = 'max-h-[calc(100vh-360px)]' }) => (
   <div className={`overflow-auto ${max} min-h-[160px]`}>
     <table className="w-full text-13"><thead className="sticky top-0 z-10 bg-slate-50 text-11.5  tracking-wide text-slate-500 shadow-[0_1px_0_0_theme(colors.slate.200)]"><tr>{head}</tr></thead><tbody className="divide-y divide-slate-100">{children}</tbody></table>
@@ -71,7 +71,7 @@ const NeedResearch = ({ path, what }) => (
 
 /* ── Organic Rankings ──────────────────────────────────────────────────── */
 
-function OrganicRankings({ b }) {
+export function TrackedPositions({ b }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
@@ -331,7 +331,6 @@ const page = (title, subtitle, Component) => function Page() {
 };
 
 export { DomainOverviewPage } from './DomainOverview';
-export const OrganicRankingsPage = page('Organic Rankings', "Where the site ranks on Google for every tracked keyword, and how that moved", OrganicRankings);
 export const TopPagesPage = page('Top Pages', "The site's pages from its latest crawl, with what each carries and the keywords mapped to it", TopPages);
 export const KeywordGapPage = page('Keyword Gap', "Keywords your competitors rank for that you don't, and where you are weaker or stronger", KeywordGap);
 export const CompareDomainsPage = page('Compare Domains', "You and your top competitors side by side", CompareDomains);

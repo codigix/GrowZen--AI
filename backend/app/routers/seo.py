@@ -2,7 +2,7 @@
 Google results from Serper, the competitor research and the backlink provider. Each response says where its figures
 come from; what needs a paid index (organic traffic, backlink totals) is left out, never estimated."""
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,8 +15,8 @@ from ..competitors import intel
 from ..config import get_settings
 from ..db import get_db
 from ..deps import get_business
-from ..models import Audit, Business, GeoPrompt, GeoResult, GoogleConnection, Keyword
-from ..services import countries, geo, gsc, market, organic
+from ..models import Audit, Business, GeoPrompt, GeoResult, GoogleConnection, Keyword, KeywordRankLog
+from ..services import countries, domain_checks, domain_intel, geo, landscape as landscape_svc, gsc, market, organic
 from ..services.gbp import GbpError
 from ..services.providers.base import intent_of
 from ..services.activity import log
@@ -84,6 +84,50 @@ def rank_history(days: int = 90, b: Business = Depends(get_business), db: Sessio
     return {"history": organic.history(db, b, max(7, min(days, 365)))}
 
 
+@router.get("/position-landscape")
+def position_landscape(days: int = 30, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Visibility, estimated traffic, positions, movers, tags, competitors, SERP features, pages and cannibalization of the tracked
+    keywords over the last `days`, computed from the saved rank checks (services/landscape.py)."""
+    days = max(7, min(days, 365))
+    me = organic.host(b.website)
+    today = datetime.now(timezone.utc).date()
+    start = date.fromordinal(today.toordinal() - days)
+    tracked = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
+    base = {"domain": me or None, "days": days, "tracked": len(tracked), "serper": intel.serper_enabled()}
+    if get_settings().rank_landscape_mock_on and me:
+        obs, meta = landscape_svc.mock_obs(me, days, today)
+        return {**base, **landscape_svc.landscape(obs, meta, me, start, today), "mock": True}
+    if not me:
+        return {**base, "state": "no_website"}
+    if not tracked:
+        return {**base, "state": "no_keywords"}
+    logs = list(db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= start)))
+    meta = {k.keyword: {"volume": k.volume, "tag": k.cluster} for k in tracked}
+    out = landscape_svc.landscape(landscape_svc.from_logs([r for r in logs if r.keyword in meta]), meta, me, start, today)
+    return {**base, **out}
+
+
+@router.get("/organic-research")
+def organic_research(days: int = 30, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Position changes and SERP features of the tracked keywords over the last `days`, from the saved rank checks."""
+    days = max(7, min(days, 365))
+    me = organic.host(b.website)
+    today = datetime.now(timezone.utc).date()
+    start = date.fromordinal(today.toordinal() - days)
+    tracked = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
+    base = {"domain": me or None, "days": days, "tracked": len(tracked), "serper": intel.serper_enabled()}
+    if get_settings().rank_landscape_mock_on and me:
+        obs, meta = landscape_svc.mock_obs(me, days, today)
+        return {**base, **landscape_svc.organic_research(obs, meta, me, start, today), "mock": True}
+    if not me:
+        return {**base, "state": "no_website"}
+    if not tracked:
+        return {**base, "state": "no_keywords"}
+    meta = {k.keyword: {"volume": k.volume, "tag": k.cluster} for k in tracked}
+    logs = [r for r in db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= start)) if r.keyword in meta]
+    return {**base, **landscape_svc.organic_research(landscape_svc.from_logs(logs), meta, me, start, today)}
+
+
 class OverviewIn(BaseModel):
     keyword: str = Field(min_length=2, max_length=120)
 
@@ -143,6 +187,40 @@ def _ai_search(db: Session, b: Business, host: str) -> dict:
             "data_source": next(iter(latest.values())).data_source}
 
 
+def _brand_terms(b: Business, host: str) -> list[str]:
+    """What makes a keyword "branded": the domain's name and the business name."""
+    name = re.sub(r"[^a-z0-9 ]", "", (b.name or "").lower()).strip()
+    return list(dict.fromkeys(t for t in (host.split(".")[0], name, name.replace(" ", "")) if len(t) >= 3))
+
+
+@router.get("/domain-intel")
+def domain_intel_report(country: str | None = None, refresh: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Authority, estimated traffic, keywords, competitors, ads and backlinks from DataForSEO (cached; see services/domain_intel.py).
+    The size of the data set depends on whether the business is one of our own sites or a client."""
+    host = gsc.host_of(b.website)
+    internal = domain_checks.is_internal(b)
+    limits = domain_checks.limits_for(internal)
+    codes = market.target_countries(b)
+    cc = countries.code(country) if country else codes[0]
+    out: dict = {"domain": host or None, "internal": internal, "limits": limits, "country": cc, "country_name": countries.name(cc),
+                 "markets": [{"code": c, "name": countries.name(c)} for c in codes], "state": "ok"}
+    mocked = get_settings().domain_intel_mock_on
+    out["brand"] = _brand_terms(b, host)
+    if not get_settings().dataforseo_enabled and not mocked:
+        return {**out, "state": "not_configured"}
+    if not host or host in domain_checks.PLACEHOLDER_HOSTS:
+        return {**out, "state": "no_website"}
+    if not internal and b.status == "needs_approval":
+        return {**out, "state": "needs_approval"}
+    if mocked:  # sample data for testing the page: never stored, never mixed with real results
+        return {**out, **domain_intel.mock(host, cc, limits, _brand_terms(b, host)), "by_country": domain_intel.mock_by_country(host, codes), "fetched_at": datetime.now(timezone.utc), "cached": False, "mock": True}
+    tier = "internal" if internal else "client"
+    brand = _brand_terms(b, host)
+    main = domain_intel.cached(db, f"v2:{cc}", host, tier, limits["cache_days"], refresh, lambda: domain_intel.fetch(host, cc, limits, brand))
+    table = domain_intel.cached(db, "countries:" + ",".join(codes[:6]), host, tier, limits["cache_days"], refresh, lambda: domain_intel.by_country(host, codes))
+    return {**out, **main["data"], "by_country": table["data"], "fetched_at": main["fetched_at"], "cached": main["cached"]}
+
+
 @router.get("/domain")
 def domain(range: str = "3m", country: str | None = None, device: str | None = None, connection_id: int | None = None,
            b: Business = Depends(get_business), db: Session = Depends(get_db)):
@@ -150,7 +228,8 @@ def domain(range: str = "3m", country: str | None = None, device: str | None = N
     visibility from the stored AI checks, and keyword positions from the rank checks. Authority, backlinks and paid
     figures need a link index or Google Ads and are reported as unavailable, never estimated."""
     host = gsc.host_of(b.website)
-    out: dict = {"domain": host or None, "name": b.name, "market": market.summary(b), "range": range if range in gsc.RANGES else "3m",
+    internal = domain_checks.is_internal(b)
+    out: dict = {"domain": host or None, "name": b.name, "internal": internal, "limits": domain_checks.limits_for(internal), "market": market.summary(b), "range": range if range in gsc.RANGES else "3m",
                  "ai": _ai_search(db, b, host), "traffic": {"state": "not_connected"}, "unavailable": {}}
     conns = list(db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None))))
     if connection_id:
@@ -181,5 +260,6 @@ def domain(range: str = "3m", country: str | None = None, device: str | None = N
     r = (links.result or {}) if live_links else {}
     out["links"] = {"available": bool(live_links), "backlinks": r.get("total"), "referring_domains": r.get("referring_domains"), "authority": r.get("authority"),
                     "reason": None if live_links else "A link index is needed for authority score, backlinks and referring domains: connect DataForSEO (DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD)."}
+    out["checks"] = domain_checks.checks(db, b, internal, out["traffic"])
     out["unavailable"]["paid"] = "Paid traffic and paid keywords come from Google Ads or a paid index; they aren't available for this project."
     return out

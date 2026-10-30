@@ -120,6 +120,14 @@ class Settings(BaseSettings):
     dataforseo_login: str = ""
     dataforseo_password: str = ""
 
+    # Development only: fill the Domain Overview with clearly labelled sample data instead of calling DataForSEO (ignored in production).
+    domain_intel_mock: bool = False
+    # Development only: the same for the Position Tracking landscape (generated rank checks).
+    rank_landscape_mock: bool = False
+
+    # Our own sites (comma separated domains): these businesses are "internal", all others are clients. See services/domain_checks.py.
+    internal_domains: str = "codigix.co,codigixinfotech.com"
+
     # Scheduler
     scheduler_enabled: bool = True
     scheduler_tick_seconds: int = 300
@@ -174,6 +182,18 @@ class Settings(BaseSettings):
     @property
     def intake_sender_list(self) -> list[str]:
         return self._csv(self.intake_allowed_senders)
+
+    @property
+    def domain_intel_mock_on(self) -> bool:
+        return self.domain_intel_mock and self.environment.lower() != "production"
+
+    @property
+    def rank_landscape_mock_on(self) -> bool:
+        return self.rank_landscape_mock and self.environment.lower() != "production"
+
+    @property
+    def internal_domain_list(self) -> list[str]:
+        return [d.strip().lower().removeprefix("www.") for d in self.internal_domains.split(",") if d.strip()]
 
     @property
     def dataforseo_enabled(self) -> bool:

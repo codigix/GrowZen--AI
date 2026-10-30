@@ -1,6 +1,7 @@
 """Blog articles generated from Google Trends keywords: one article per generation (primary + secondary keywords), saved separately."""
 import sys
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import Literal
 
 # Enable direct script execution: add backend directory to sys.path so 'app' is recognized
@@ -14,17 +15,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 try:
+    from ..config import get_settings
     from ..db import get_db
     from ..deps import get_business, in_background
-    from ..models import Article, Business
+    from ..models import Article, Business, SiteIntegration
     from ..serialize import row, rows
-    from ..services import articles as svc
+    from ..services import articles as svc, crypto, site_publish as sp
 except (ImportError, ValueError):
+    from app.config import get_settings
     from app.db import get_db
     from app.deps import get_business, in_background
-    from app.models import Article, Business
+    from app.models import Article, Business, SiteIntegration
     from app.serialize import row, rows
-    from app.services import articles as svc
+    from app.services import articles as svc, crypto, site_publish as sp
 
 router = APIRouter(prefix="/businesses/{business_id}/articles", tags=["articles"])
 
@@ -133,17 +136,40 @@ def edit(article_id: int, body: ArticleEdit, b: Business = Depends(get_business)
     return row(a)
 
 
-@router.post("/{article_id}/publish-wordpress")
-def publish_wordpress(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+class PublishIn(BaseModel):
+    mode: Literal["draft", "publish", "schedule"] = "draft"
+    scheduled_at: datetime | None = None  # with a time zone; required for "schedule"
+
+
+def _target(db: Session, b: Business) -> SiteIntegration:
+    """The business's connected website; falls back to the WORDPRESS_* settings in .env for a WordPress site."""
+    row = db.scalar(select(SiteIntegration).where(SiteIntegration.business_id == b.id))
+    if row and row.status == "connected" and row.method:
+        return row
+    s = get_settings()
+    if s.wordpress_url and s.wordpress_user and s.wordpress_app_password:
+        return SiteIntegration(business_id=b.id, method="wordpress", base_url=s.wordpress_url, username=s.wordpress_user, secret_enc=crypto.seal(s.wordpress_app_password), status="connected")
+    raise HTTPException(409, "Connect this business's website first (Publish & Schedule > Connect your website).")
+
+
+@router.post("/{article_id}/publish")
+def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     a = _get(db, b, article_id)
     if a.status != "completed":
         raise HTTPException(409, "Only a completed article can be published")
+    when = body.scheduled_at.astimezone(timezone.utc) if body.scheduled_at and body.scheduled_at.tzinfo else None
     try:
-        a.wp_post_id, a.wp_url = svc.publish_wordpress(a)
-    except RuntimeError as exc:
+        out = sp.publish(_target(db, b), a, body.mode, when)
+    except sp.PublishError as exc:
         raise HTTPException(502, str(exc))
+    a.wp_post_id, a.wp_url = out["id"] or None, out["url"] or None
     db.commit()
-    return row(a)
+    return {**out, "article": row(a)}
+
+
+@router.post("/{article_id}/publish-wordpress")
+def publish_wordpress(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    return publish(article_id, PublishIn(), b, db)
 
 
 @router.delete("/{article_id}", status_code=204)

@@ -16,6 +16,25 @@ class RankCheckError(RuntimeError):
     pass
 
 
+# Serper result keys that mark a SERP feature, and the name shown for it.
+FEATURES = {"answerBox": "Featured snippet", "knowledgeGraph": "Knowledge panel", "peopleAlsoAsk": "People also ask", "places": "Local pack", "videos": "Videos",
+            "images": "Images", "topStories": "Top stories", "shopping": "Shopping", "relatedSearches": "Related searches"}
+
+
+def serp_features(res: dict, me: str) -> tuple[list[str], list[str]]:
+    """(features on the page, those the site appears in)."""
+    on, own = [], []
+    for key, name in FEATURES.items():
+        v = res.get(key)
+        if not v:
+            continue
+        on.append(name)
+        items = v if isinstance(v, list) else [v]
+        if any(isinstance(i, dict) and host(i.get("link") or i.get("source") or "") == me for i in items):
+            own.append(name)
+    return on, own
+
+
 def host(url: str | None) -> str:
     h = urlparse(url if (url or "").startswith("http") else f"https://{url or ''}").netloc.lower()
     return h[4:] if h.startswith("www.") else h
@@ -40,13 +59,20 @@ def check(db: Session, b: Business, only: list[str] | None = None, limit: int = 
             res = serper.search(k.keyword, location)
         except intel.IntelError as exc:
             raise RankCheckError(str(exc)) from exc
-        hit = next((o for o in res.get("organic", [])[:20] if host(o.get("link")) == me), None)
+        organic = res.get("organic", [])[:20]
+        hit = next((o for o in organic if host(o.get("link")) == me), None)
+        mine = [o.get("link") for o in organic if host(o.get("link")) == me]
+        features, own_features = serp_features(res, me)
+        serp = [{"d": host(o.get("link")), "p": o.get("position")} for o in organic if o.get("link")]
         k.prev_rank, k.rank, k.rank_checked_at = k.rank, hit.get("position") if hit else None, today
         log_row = db.scalar(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.keyword == k.keyword, KeywordRankLog.day == today))
+        detail = {"url": hit.get("link") if hit else None, "own_urls": mine, "serp": serp, "features": features, "own_features": own_features}
         if log_row:
             log_row.rank = k.rank
+            for field, value in detail.items():
+                setattr(log_row, field, value)
         else:
-            db.add(KeywordRankLog(business_id=b.id, keyword=k.keyword, day=today, rank=k.rank, location=location))
+            db.add(KeywordRankLog(business_id=b.id, keyword=k.keyword, day=today, rank=k.rank, location=location, **detail))
         out.append({"keyword": k.keyword, "rank": k.rank, "prev_rank": k.prev_rank, "url": hit.get("link") if hit else None})
     db.commit()
     return {"checked": len(out), "credits": serper.credits, "results": out, "location": location}
