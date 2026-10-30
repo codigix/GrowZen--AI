@@ -66,7 +66,7 @@ export default function AssistantWidget() {
     setMsgs(next); save(bid, next); setText(''); setBusy(true);
     try {
       const last = [...msgs].reverse().find(m => m.role === 'assistant');
-      const r = await api(`/businesses/${bid}/assistant`, { method: 'POST', body: { message: q, history: msgs.slice(-8).map(m => ({ role: m.role, text: m.text })), topic: last?.topic || null } });
+      const r = await api(`/businesses/${bid}/assistant`, { method: 'POST', body: { message: q, history: msgs.slice(-8).map(m => ({ role: m.role, text: m.text })), topic: null } });
       const done = [...next, { role: 'assistant', text: r.answer, links: r.links, sources: r.sources, topic: r.topic, mode: r.mode }];
       setMsgs(done); save(bid, done);
     } catch (e) {
