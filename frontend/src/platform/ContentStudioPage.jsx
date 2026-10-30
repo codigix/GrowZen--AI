@@ -298,22 +298,7 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
   const done = articles.filter(a => a.status === 'completed').length;
 
   return (
-    <Card
-      title="Generated articles"
-      subtitle={`${done} of ${articles.length} written by Claude AI. Each article covers all the keywords you selected and is saved separately.`}
-      action={
-        articles.length > 0 ? (
-          <Button
-            size="sm"
-            variant={openId === null ? "primary" : "secondary"}
-            icon={Plus}
-            onClick={() => onOpen(null)}
-          >
-            + Write New Article
-          </Button>
-        ) : null
-      }
-    >
+    <Card title="Generated articles" subtitle={`${done} of ${articles.length} written by Claude AI. Each article covers all the keywords you selected and is saved separately.`}>
       <ul className="divide-y divide-slate-100">
         {articles.map(x => {
           const [label, tone] = ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending;
@@ -332,7 +317,7 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
               </div>
               {x.wp_url && <a href={x.wp_url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-700 hover:underline">WordPress draft</a>}
               {x.status === 'completed' && (openId === x.id
-                ? <span className="inline-flex items-center gap-1 text-[11.5px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full"><Check size={12} strokeWidth={3} /> Active in Pipeline Below</span>
+                ? <span className="text-[11.5px] font-semibold text-emerald-700">Open below</span>
                 : <button type="button" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => onOpen(x.id)}>Review & edit</button>)}
               {x.status === 'failed' && <button type="button" disabled={busy === `r-${x.id}`} className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => retry(x.id)}>Retry</button>}
               <button type="button" disabled={busy === `d-${x.id}`} className="text-[11.5px] text-slate-400 hover:text-red-600 cursor-pointer" onClick={() => del(x.id)}>Delete</button>
@@ -352,16 +337,6 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
   const full = useApi(openId ? `/businesses/${b.id}/articles/${openId}` : null);
   const article = openId && full.data?.id === openId ? full.data : null;
   const [pendingId, setPendingId] = useState(null);  // an article started from the writer: opened as soon as it is written
-
-  // Automatically load the latest generated article into the E-E-A-T pipeline below
-  useEffect(() => {
-    if (openId === null && !pendingId && !activeTopic && articles.length > 0) {
-      const latest = articles.find(a => a.status === 'completed') || articles[0];
-      if (latest) {
-        setOpenId(latest.id);
-      }
-    }
-  }, [articles, openId, pendingId, activeTopic, setOpenId]);
   const pending = pendingId ? articles.find(x => x.id === pendingId) : null;
   const pendingFull = useApi(pendingId ? `/businesses/${b.id}/articles/${pendingId}` : null);  // the text written so far
   usePoll(() => pendingFull.reload(true), Boolean(pendingId), 1000);
@@ -403,15 +378,14 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
       {openId && !article
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
-            onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} onNewArticle={() => setOpenId(null)} toast={toast} />}
+            onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
     </div>
   );
 }
 /**
  * 2. 7-Step AI Blog Writer & E-E-A-T Quality Gate
  */
-function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pendingLength, elapsed = 0, onGenerate, generating, onSaved, onScheduled, onNewArticle, toast }) {
-  const [viewMode, setViewMode] = useState('preview'); // 'preview' | 'edit' 
+function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pendingLength, elapsed = 0, onGenerate, generating, onSaved, onScheduled, toast }) {
   const [step, setStep] = useState(selectedArticle ? 1 : 0);
   const [kw, setKw] = useState(selectedArticle ? selectedArticle.keyword : selectedTopic ? selectedTopic.title : '');  // the primary keyword
   const [topicText, setTopicText] = useState(selectedArticle ? selectedArticle.topic || selectedArticle.keyword : selectedTopic ? selectedTopic.title : '');
@@ -567,21 +541,6 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
       {/* Step Navigator */}
       <Card title="E-E-A-T Content Pipeline" className="xl:col-span-1">
-        {selectedArticle && (
-          <div className="mb-3 p-2.5 rounded-xl bg-indigo-50/80 border border-indigo-200">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Active Article</div>
-            <div className="text-[12px] font-bold text-slate-900 truncate mt-0.5">{selectedArticle.title || selectedArticle.keyword}</div>
-            {onNewArticle && (
-              <button
-                type="button"
-                onClick={onNewArticle}
-                className="mt-1.5 text-[11px] font-semibold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 cursor-pointer"
-              >
-                <Plus size={11} /> + Write New Article
-              </button>
-            )}
-          </div>
-        )}
         <ol className="space-y-1.5">
           {STEPS.map((s, i) => (
             <li key={s}>
@@ -614,25 +573,17 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       {/* Main Step Workspace */}
       <Card
         className="xl:col-span-3"
-        title={selectedArticle ? `${STEPS[step]} — ${selectedArticle.title || selectedArticle.keyword}` : STEPS[step]}
-        subtitle={selectedArticle ? `Reviewing generated article for "${selectedArticle.keyword}"` : undefined}
+        title={STEPS[step]}
         action={
-          <div className="flex items-center gap-2">
-            {selectedArticle && onNewArticle && (
-              <Button size="sm" variant="secondary" icon={Plus} onClick={onNewArticle}>
-                Write New Article
-              </Button>
-            )}
-            <Button
-              variant={step === 4 ? 'primary' : 'secondary'}
-              busy={Boolean(busy) || wpBusy}
-              onClick={next}
-              disabled={published}
-            >
-              {step === 4 ? (published ? 'Scheduled & Live' : 'Approve & Schedule to CMS') : step === 0 ? 'Generate Blog' : 'Next Step'}
-              {step < 4 && <ChevronRight size={13} />}
-            </Button>
-          </div>
+          <Button
+            variant={step === 4 ? 'primary' : 'secondary'}
+            busy={Boolean(busy) || wpBusy}
+            onClick={next}
+            disabled={published}
+          >
+            {step === 4 ? (published ? 'Scheduled & Live' : 'Approve & Schedule to CMS') : step === 0 ? 'Generate Blog' : 'Next Step'}
+            {step < 4 && <ChevronRight size={13} />}
+          </Button>
         }
       >
         {/* Step 0: Keyword & Intent */}
@@ -749,62 +700,6 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             {/* If article completed and selected: show full editor */}
             {selectedArticle && !isGenerating ? (
               <div className="space-y-3">
-                {/* Visual Preview / HTML Source toggle */}
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('preview')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all cursor-pointer ${
-                        viewMode === 'preview'
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      <Eye size={13} /> Formatted Article Preview
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('edit')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all cursor-pointer ${
-                        viewMode === 'edit'
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      <Code size={13} /> Edit HTML & Metadata
-                    </button>
-                  </div>
-                  <Button size="sm" busy={saveBusy} onClick={saveArticle}>Save changes</Button>
-                </div>
-
-                {viewMode === 'preview' ? (
-                  <div className="space-y-3">
-                    {(meta.title || meta.meta_description) && (
-                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                        {meta.title && (
-                          <div>
-                            <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">SEO Title</span>
-                            <div className="text-[14px] font-bold text-slate-900">{meta.title}</div>
-                          </div>
-                        )}
-                        {meta.meta_description && (
-                          <div>
-                            <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Meta Description</span>
-                            <div className="text-[12px] text-slate-600 leading-normal">{meta.meta_description}</div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs min-h-[350px]">
-                      <div
-                        className="text-[13px] text-slate-800 leading-relaxed space-y-3 [&_h1]:text-[18px] [&_h1]:font-extrabold [&_h1]:text-slate-900 [&_h1]:mb-3 [&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-slate-100 [&_h2]:pb-1.5 [&_h3]:text-[13.5px] [&_h3]:font-semibold [&_h3]:text-slate-800 [&_h3]:mt-3.5 [&_p]:mt-2 [&_p]:text-slate-700 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mt-1"
-                        dangerouslySetInnerHTML={{ __html: draft }}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Field label="Primary keyword" hint="Must appear in the title, meta description and introduction"><input className={inputCls} value={meta.keyword} onChange={e => setMeta(m => ({ ...m, keyword: e.target.value }))} /></Field>
                   <Field label="Secondary keywords" hint="Comma separated; each should appear in the article"><input className={inputCls} value={meta.secondary} onChange={e => setMeta(m => ({ ...m, secondary: e.target.value }))} /></Field>
@@ -848,8 +743,6 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     <div className="text-[11px] font-semibold text-slate-600">Checks (updated each time you save)</div>
                     {selectedArticle.warnings.map((w, i) => <div key={i} className="flex gap-1.5 p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{w}</div>)}
                   </div>
-                )}
-                  </>
                 )}
               </div>
             ) : (isGenerating || liveBody) ? (
