@@ -1,18 +1,37 @@
-import React, { useState } from 'react';
-import { Loader2, Mail, Lock, Eye, EyeOff, Sparkles, Zap, CheckCircle2, ArrowRight, ShieldCheck, TrendingUp, Star } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Loader2, Mail, Lock, Eye, EyeOff, Sparkles, CheckCircle2, ArrowRight, ArrowLeft, TrendingUp, Star, KeyRound, ShieldAlert } from 'lucide-react';
 import { api } from '../platform/seoApi';
 
 export default function LoginPage({ onSignedIn }) {
+  const [view, setView] = useState('login'); // 'login' | 'forgot' | 'reset'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
-  const submit = async (e) => {
+  // Reset password states
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+
+  // Check URL query parameters for reset_token
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('reset_token');
+    if (token) {
+      setResetToken(token);
+      setView('reset');
+    }
+  }, []);
+
+  const submitLogin = async (e) => {
     if (e) e.preventDefault();
     setBusy(true);
     setError('');
+    setSuccessMsg('');
     try {
       await api('/auth/login', { method: 'POST', body: { email, password } });
       await onSignedIn();
@@ -22,9 +41,71 @@ export default function LoginPage({ onSignedIn }) {
     }
   };
 
+  const submitForgotPassword = async (e) => {
+    if (e) e.preventDefault();
+    if (!email.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const res = await api('/auth/forgot-password', { method: 'POST', body: { email: email.trim() } });
+      setSuccessMsg(res.message || 'Password reset instructions have been sent.');
+      if (res.token) {
+        setResetToken(res.token);
+      }
+    } catch (err) {
+      setError(err.message || 'Unable to process password reset request.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitResetPassword = async (e) => {
+    if (e) e.preventDefault();
+    if (!resetToken.trim()) {
+      setError('Reset token is required.');
+      return;
+    }
+    if (newPassword.length < 10) {
+      setError('Password must be at least 10 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api('/auth/reset-password', {
+        method: 'POST',
+        body: { token: resetToken.trim(), password: newPassword }
+      });
+      setSuccessMsg(res.message || 'Password updated successfully! You can now sign in.');
+      setPassword('');
+      setTimeout(() => {
+        setView('login');
+        setError('');
+      }, 2000);
+    } catch (err) {
+      setError(err.message || 'Failed to reset password.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const fillAdmin = () => {
     setEmail('info@codigixinfotech.com');
     setPassword('Seo@1d86f6a045');
+    if (view !== 'login') {
+      setView('login');
+      setError('');
+      setSuccessMsg('');
+    }
   };
 
   return (
@@ -99,102 +180,336 @@ export default function LoginPage({ onSignedIn }) {
           </div>
         </div>
 
-        {/* Right column: Login Card */}
+        {/* Right column: Auth Card */}
         <div className="lg:col-span-5">
-          <div className="relative bg-white backdrop-blur-xl border border-slate-200 rounded-3xl p-7 lg:p-8 shadow-2xl shadow-slate-900/10 ring-1 ring-slate-200">
-            <div className="mb-6 text-center lg:text-left">
-              <div className="flex items-center justify-center lg:justify-start mb-4">
-                <img src="/bevisibe-horizontal.png" alt="bevisibe" className="h-12 w-auto object-contain filter drop-shadow-md" />
-              </div>
-              <h2 className="text-xl font-bold text-slate-900 font-display">Sign In</h2>
-              <p className="text-13 text-slate-500 mt-1">Access your agency dashboard and client portfolios</p>
-            </div>
+          <div className="relative bg-white backdrop-blur-xl border border-slate-200 rounded-3xl p-7 lg:p-8 shadow-2xl shadow-slate-900/10 ring-1 ring-slate-200 transition-all">
 
-            <form onSubmit={submit} className="space-y-4">
-              <div>
-                <label className="block text-12 font-semibold text-slate-700 mb-1.5">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                    <Mail size={16} />
+            {/* View 1: Standard Sign In */}
+            {view === 'login' && (
+              <>
+                <div className="mb-6 text-center lg:text-left">
+                  <div className="flex items-center justify-center lg:justify-start mb-4">
+                    <img src="/bevisibe-horizontal.png" alt="bevisibe" className="h-12 w-auto object-contain filter drop-shadow-md" />
                   </div>
-                  <input
-                    type="email"
-                    autoComplete="username"
-                    required
-                    placeholder="admin@agency.com"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    className="w-full h-10 pl-10 pr-3.5 text-13 bg-slate-50 border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
-                  />
+                  <h2 className="text-xl font-bold text-slate-900 font-display">Sign In</h2>
+                  <p className="text-13 text-slate-500 mt-1">Access your agency dashboard and client portfolios</p>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-12 font-semibold text-slate-700 mb-1.5">
-                  Password
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                    <Lock size={16} />
+                <form onSubmit={submitLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-12 font-semibold text-slate-700 mb-1.5">
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                        <Mail size={16} />
+                      </div>
+                      <input
+                        type="email"
+                        autoComplete="username"
+                        required
+                        placeholder="admin@agency.com"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        className="w-full h-10 pl-10 pr-3.5 text-13 bg-slate-50 border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                      />
+                    </div>
                   </div>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    required
-                    placeholder="••••••••••••"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    className="w-full h-10 pl-10 pr-10 text-13 bg-slate-50 border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
-                  />
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-12 font-semibold text-slate-700">
+                        Password
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => { setView('forgot'); setError(''); setSuccessMsg(''); }}
+                        className="text-11 font-semibold text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                        <Lock size={16} />
+                      </div>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        autoComplete="current-password"
+                        required
+                        placeholder="••••••••••••"
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        className="w-full h-10 pl-10 pr-10 text-13 bg-slate-50 border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(s => !s)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-700 cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="text-12 font-medium text-rose-700 bg-rose-500/10 border border-rose-500/20 rounded px-3.5 py-2.5">
+                      {error}
+                    </div>
+                  )}
+
+                  {successMsg && (
+                    <div className="text-12 font-medium text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 rounded px-3.5 py-2.5 flex items-center gap-2">
+                      <CheckCircle2 size={15} />
+                      <span>{successMsg}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="w-full h-10 inline-flex items-center justify-center gap-2 rounded bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 text-white text-13 font-bold hover:opacity-95 shadow-lg shadow-indigo-600/30 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {busy ? <Loader2 size={16} className="animate-spin" /> : (
+                      <>
+                        <span>Enter Platform</span>
+                        <ArrowRight size={15} />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                {/* Quick Demo Credentials Helper */}
+                <div className="mt-6 pt-5 border-t border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-11 font-medium text-slate-500">Default Dev Account:</span>
+                    <button
+                      type="button"
+                      onClick={fillAdmin}
+                      className="text-11 font-bold text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <Sparkles size={11} /> Auto-fill Admin
+                    </button>
+                  </div>
+                  <div className="mt-2 text-11 bg-slate-50 p-2.5 rounded border border-slate-200 text-slate-500 font-mono flex flex-col gap-0.5">
+                    <div><span className="text-slate-500">Email:</span> info@codigixinfotech.com</div>
+                    <div><span className="text-slate-500">Password:</span> Seo@1d86f6a045</div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* View 2: Forgot Password */}
+            {view === 'forgot' && (
+              <div>
+                <div className="mb-6">
                   <button
                     type="button"
-                    onClick={() => setShowPassword(s => !s)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-700 cursor-pointer"
+                    onClick={() => { setView('login'); setError(''); setSuccessMsg(''); }}
+                    className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500 hover:text-indigo-600 mb-4 transition-colors cursor-pointer"
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    <ArrowLeft size={14} /> Back to Sign In
                   </button>
+                  <div className="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-3">
+                    <KeyRound size={20} />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900 font-display">Forgot Password</h2>
+                  <p className="text-13 text-slate-500 mt-1">
+                    Enter the email address registered with your account and we will help you reset your password.
+                  </p>
+                </div>
+
+                <form onSubmit={submitForgotPassword} className="space-y-4">
+                  <div>
+                    <label className="block text-12 font-semibold text-slate-700 mb-1.5">
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                        <Mail size={16} />
+                      </div>
+                      <input
+                        type="email"
+                        autoComplete="email"
+                        required
+                        placeholder="yourname@agency.com"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        className="w-full h-10 pl-10 pr-3.5 text-13 bg-slate-50 border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="text-12 font-medium text-rose-700 bg-rose-500/10 border border-rose-500/20 rounded px-3.5 py-2.5">
+                      {error}
+                    </div>
+                  )}
+
+                  {successMsg && (
+                    <div className="space-y-3">
+                      <div className="text-12 font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-3 leading-relaxed">
+                        <div className="flex items-center gap-2 font-bold mb-1">
+                          <CheckCircle2 size={16} className="text-emerald-600" />
+                          <span>Request Processed</span>
+                        </div>
+                        {successMsg}
+                      </div>
+
+                      {resetToken && (
+                        <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-lg">
+                          <div className="text-12 text-indigo-900 font-semibold mb-2">
+                            Development / Direct Reset Available:
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => { setView('reset'); setError(''); }}
+                            className="w-full py-2 px-3 rounded bg-indigo-600 text-white text-12 font-bold hover:bg-indigo-700 transition cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <span>Set New Password Now</span>
+                            <ArrowRight size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="w-full h-10 inline-flex items-center justify-center gap-2 rounded bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 text-white text-13 font-bold hover:opacity-95 shadow-lg shadow-indigo-600/30 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {busy ? <Loader2 size={16} className="animate-spin" /> : (
+                      <>
+                        <span>Send Reset Instructions</span>
+                        <ArrowRight size={15} />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <div className="mt-6 pt-5 border-t border-slate-200 text-center">
+                  <p className="text-12 text-slate-500">
+                    Need immediate help? Contact{' '}
+                    <a href="mailto:info@codigixinfotech.com" className="font-semibold text-indigo-600 hover:underline">
+                      info@codigixinfotech.com
+                    </a>
+                  </p>
                 </div>
               </div>
+            )}
 
-              {error && (
-                <div className="text-12 font-medium text-rose-700 bg-rose-500/10 border border-rose-500/20 rounded px-3.5 py-2.5">
-                  {error}
+            {/* View 3: Reset Password (Enter New Password) */}
+            {view === 'reset' && (
+              <div>
+                <div className="mb-6">
+                  <button
+                    type="button"
+                    onClick={() => { setView('login'); setError(''); setSuccessMsg(''); }}
+                    className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500 hover:text-indigo-600 mb-4 transition-colors cursor-pointer"
+                  >
+                    <ArrowLeft size={14} /> Back to Sign In
+                  </button>
+                  <div className="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-3">
+                    <ShieldAlert size={20} />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900 font-display">Set New Password</h2>
+                  <p className="text-13 text-slate-500 mt-1">
+                    Choose a secure new password of at least 10 characters.
+                  </p>
                 </div>
-              )}
 
-              <button
-                type="submit"
-                disabled={busy}
-                className="w-full h-10 inline-flex items-center justify-center gap-2 rounded bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 text-white text-13 font-bold hover:opacity-95 shadow-lg shadow-indigo-600/30 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {busy ? <Loader2 size={16} className="animate-spin" /> : (
-                  <>
-                    <span>Enter Platform</span>
-                    <ArrowRight size={15} />
-                  </>
-                )}
-              </button>
-            </form>
+                <form onSubmit={submitResetPassword} className="space-y-4">
+                  <div>
+                    <label className="block text-12 font-semibold text-slate-700 mb-1.5">
+                      Reset Token
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Paste reset token"
+                      value={resetToken}
+                      onChange={e => setResetToken(e.target.value)}
+                      className="w-full h-10 px-3.5 text-12 font-mono bg-slate-50 border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                    />
+                  </div>
 
-            {/* Quick Demo Credentials Helper */}
-            <div className="mt-6 pt-5 border-t border-slate-200">
-              <div className="flex items-center justify-between">
-                <span className="text-11 font-medium text-slate-500">Default Dev Account:</span>
-                <button
-                  type="button"
-                  onClick={fillAdmin}
-                  className="text-11 font-bold text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer flex items-center gap-1"
-                >
-                  <Sparkles size={11} /> Auto-fill Admin
-                </button>
+                  <div>
+                    <label className="block text-12 font-semibold text-slate-700 mb-1.5">
+                      New Password (10+ characters)
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                        <Lock size={16} />
+                      </div>
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        autoComplete="new-password"
+                        required
+                        placeholder="••••••••••••"
+                        value={newPassword}
+                        onChange={e => setNewPassword(e.target.value)}
+                        className="w-full h-10 pl-10 pr-10 text-13 bg-slate-50 border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(s => !s)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-700 cursor-pointer"
+                      >
+                        {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-12 font-semibold text-slate-700 mb-1.5">
+                      Confirm New Password
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                        <Lock size={16} />
+                      </div>
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        autoComplete="new-password"
+                        required
+                        placeholder="••••••••••••"
+                        value={confirmPassword}
+                        onChange={e => setConfirmPassword(e.target.value)}
+                        className="w-full h-10 pl-10 pr-3.5 text-13 bg-slate-50 border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="text-12 font-medium text-rose-700 bg-rose-500/10 border border-rose-500/20 rounded px-3.5 py-2.5">
+                      {error}
+                    </div>
+                  )}
+
+                  {successMsg && (
+                    <div className="text-12 font-medium text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 rounded px-3.5 py-2.5 flex items-center gap-2">
+                      <CheckCircle2 size={15} />
+                      <span>{successMsg}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="w-full h-10 inline-flex items-center justify-center gap-2 rounded bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 text-white text-13 font-bold hover:opacity-95 shadow-lg shadow-indigo-600/30 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {busy ? <Loader2 size={16} className="animate-spin" /> : (
+                      <>
+                        <span>Update Password</span>
+                        <ArrowRight size={15} />
+                      </>
+                    )}
+                  </button>
+                </form>
               </div>
-              <div className="mt-2 text-11 bg-slate-50 p-2.5 rounded border border-slate-200 text-slate-500 font-mono flex flex-col gap-0.5">
-                <div><span className="text-slate-500">Email:</span> info@codigixinfotech.com</div>
-                <div><span className="text-slate-500">Password:</span> Seo@1d86f6a045</div>
-              </div>
-            </div>
+            )}
+
           </div>
         </div>
       </div>

@@ -3,7 +3,9 @@ import logging
 import secrets
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+import jwt
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -86,6 +88,81 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
 class PasswordIn(BaseModel):
     current: str
     new: str = Field(min_length=10, max_length=200)
+
+
+class ForgotPasswordIn(BaseModel):
+    email: str
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    password: str = Field(min_length=10, max_length=200)
+
+
+@router.post("/auth/forgot-password")
+def forgot_password(body: ForgotPasswordIn, request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    email_clean = body.email.strip().lower()
+    u = db.scalar(select(AppUser).where(func.lower(AppUser.email) == email_clean))
+
+    token = None
+    if u and u.active:
+        exp = datetime.now(timezone.utc) + timedelta(hours=1)
+        token = jwt.encode({"sub": str(u.id), "kind": "password_reset", "exp": exp}, settings.secret_key, algorithm="HS256")
+
+        from ..services.notify import send_email
+        reset_link = f"{settings.frontend_url}/?reset_token={token}"
+        email_body = f"""Hello {u.name},
+
+You requested to reset your password for your account on {settings.app_name}.
+
+You can reset your password by opening the following link:
+{reset_link}
+
+Or enter this reset token in the platform:
+{token}
+
+If you did not request this password reset, please ignore this email.
+"""
+        sent = send_email(to=u.email, subject=f"Password Reset - {settings.app_name}", body=email_body)
+        if sent:
+            return {"ok": True, "message": f"Password reset instructions have been sent to {u.email}."}
+
+    if u:
+        return {
+            "ok": True,
+            "message": "Password reset request received. Since SMTP email service is not configured on this server, you can set a new password directly below or contact your administrator at info@codigixinfotech.com.",
+            "token": token,
+            "dev_mode": not bool(settings.smtp_host)
+        }
+    return {
+        "ok": True,
+        "message": "If an account with this email exists, password reset instructions have been processed."
+    }
+
+
+@router.post("/auth/reset-password")
+def reset_password(body: ResetPasswordIn, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    try:
+        claims = jwt.decode(body.token, settings.secret_key, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(400, "The reset link or token has expired. Please request a new one.")
+    except jwt.InvalidTokenError:
+        raise HTTPException(400, "Invalid reset token.")
+
+    if claims.get("kind") != "password_reset":
+        raise HTTPException(400, "Invalid token type.")
+
+    user_id = claims.get("sub")
+    u = db.get(AppUser, int(user_id)) if user_id and str(user_id).isdigit() else None
+    if not u or not u.active:
+        raise HTTPException(404, "User not found or account is disabled.")
+
+    if is_known_default(hash_password(body.password)):
+        raise HTTPException(400, "Cannot use a known default password. Please choose a secure password.")
+
+    u.password_hash = hash_password(body.password)
+    db.commit()
+    return {"ok": True, "message": "Password updated successfully. You can now sign in with your new password."}
 
 
 @router.post("/auth/change-password")
