@@ -291,6 +291,13 @@ const ARTICLE_STATUS = { pending: ['Pending', 'gray'], generating: ['Generating'
  */
 function ArticlesList({ b, articles, reload, openId, onOpen }) {
   const working = articles.some(a => a.status === 'pending' || a.status === 'generating');
+  const handleOpen = (id) => {
+    onOpen(id);
+    setTimeout(() => {
+      const el = document.getElementById('eeat-pipeline-workspace');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
   usePoll(() => reload(true), working, 3000);
   const [busy, error, run] = useAction();
   const retry = (id) => run(`r-${id}`, async () => { await api(`/businesses/${b.id}/articles/${id}/retry`, { method: 'POST' }); reload(true); });
@@ -318,7 +325,7 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
               {x.wp_url && <a href={x.wp_url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-700 hover:underline">WordPress draft</a>}
               {x.status === 'completed' && (openId === x.id
                 ? <span className="text-[11.5px] font-semibold text-emerald-700">Open below</span>
-                : <button type="button" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => onOpen(x.id)}>Review & edit</button>)}
+                : <button type="button" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => handleOpen(x.id)}>Review & edit</button>)}
               {x.status === 'failed' && <button type="button" disabled={busy === `r-${x.id}`} className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => retry(x.id)}>Retry</button>}
               <button type="button" disabled={busy === `d-${x.id}`} className="text-[11.5px] text-slate-400 hover:text-red-600 cursor-pointer" onClick={() => del(x.id)}>Delete</button>
             </li>
@@ -538,7 +545,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+    <div id="eeat-pipeline-workspace" className="grid grid-cols-1 xl:grid-cols-4 gap-4 scroll-mt-6">
       {/* Step Navigator */}
       <Card title="E-E-A-T Content Pipeline" className="xl:col-span-1">
         <ol className="space-y-1.5">
