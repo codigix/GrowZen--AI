@@ -298,7 +298,7 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
   const done = articles.filter(a => a.status === 'completed').length;
 
   return (
-    <Card title="Generated articles" subtitle={`${done} of ${articles.length} written by the local Ollama model. Each article covers all the keywords you selected and is saved separately.`}>
+    <Card title="Generated articles" subtitle={`${done} of ${articles.length} written by Claude AI. Each article covers all the keywords you selected and is saved separately.`}>
       <ul className="divide-y divide-slate-100">
         {articles.map(x => {
           const [label, tone] = ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending;
@@ -311,7 +311,7 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
                 {x.status === 'generating' && x.progress && <div className="text-[11px] text-indigo-700 font-semibold mt-0.5">{x.progress}…</div>}
                 {x.status === 'completed' && x.stats && (
                   <div className="text-[10.5px] text-slate-400 mt-0.5" title={(x.stats.steps || []).map(st => `${st.step}: ${mins(st.seconds)}, ${st.calls} call${st.calls === 1 ? '' : 's'}`).join('\n')}>
-                    {ARTICLE_LENGTHS.find(l => l.id === x.stats.length)?.label || 'Standard'} · {x.stats.words} words · written in {mins(x.stats.total_seconds)} · {x.stats.ollama_calls} Ollama calls
+                    {ARTICLE_LENGTHS.find(l => l.id === x.stats.length)?.label || 'Standard'} · {x.stats.words} words · written in {mins(x.stats.total_seconds)} · {x.stats.ollama_calls || x.stats.calls || 1} Claude AI calls
                   </div>
                 )}
               </div>
@@ -370,7 +370,7 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
             {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
           <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
-          <span className="font-bold">AI is writing your blog live with Ollama ({pendingLength.label})</span>
+          <span className="font-bold">AI is writing your blog live with Claude ({pendingLength.label})</span>
           <span className="text-indigo-700 truncate hidden sm:inline">— {pending?.progress || 'Streaming line by line below…'}</span>
           <span className="ml-auto font-mono text-[11px] font-semibold text-slate-500 shrink-0">Elapsed {mins(elapsed)}</span>
         </div>
@@ -434,7 +434,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const liveBody = activeArt?.body || draft || '';
   const liveTitle = activeArt?.title || meta?.title || '';
   const liveMetaDesc = activeArt?.meta_description || meta?.meta_description || '';
-  const liveProgress = pendingArticle?.progress || (generating ? 'Starting Ollama model…' : '');
+  const liveProgress = pendingArticle?.progress || (generating ? 'Connecting to Claude AI…' : '');
   const [wpBusy, setWpBusy] = useState(false);
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState('');
@@ -455,8 +455,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       setSecondaryList([...new Set([...keep, ...r.secondary])].slice(0, 10));
       setIntent(r.intent || '');
       setKwNote(r.trends === 'ok' || r.trends === 'cached' || r.trends === 'provided'
-        ? 'Keywords were written by Ollama together with Google Trends related queries. They have no verified search volumes.'
-        : 'Google Trends is not available right now (rate limited), so Ollama wrote these keywords on its own. They have no verified search volumes.');
+        ? 'Keywords were written by Claude AI together with Google Trends related queries. They have no verified search volumes.'
+        : 'Google Trends is not available right now (rate limited), so Claude AI wrote these keywords on its own. They have no verified search volumes.');
     } catch (e) {
       setKwError(`${e.message || e} You can type the keywords yourself below.`);
       if (!kw.trim()) setKw(topicText.trim().toLowerCase());
@@ -600,7 +600,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     {kwReady ? 'Regenerate Keywords' : 'Generate Keywords'}
                   </Button>
                 </div>
-                {kwBusy && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />Writing keywords for “{topicText}” with Ollama (about 20 seconds)…</div>}
+                {kwBusy && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />Writing keywords for “{topicText}” with Claude AI…</div>}
                 {kwError && <div className="text-[11.5px] text-amber-800">{kwError}</div>}
                 {kwReady && !kwBusy && kwNote && <div className="text-[11px] text-slate-500">{kwNote}</div>}
                 {!kwReady && !kwBusy && <div className="text-[11.5px] text-slate-500">Enter a topic and click Generate Keywords. The blog is written after you confirm the keywords.</div>}
@@ -683,7 +683,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   <div className="text-[12.5px] font-bold text-indigo-950 flex items-center gap-2">
                     {isGenerating ? 'AI is writing your blog live…' : 'AI Blog Draft Ready'}
                     <span className="text-[10px] uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">
-                      Ollama llama3.2
+                      Claude Haiku 5.5
                     </span>
                   </div>
                   <div className="text-[11.5px] text-indigo-700 font-medium">
@@ -781,7 +781,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   ) : (
                     <div className="flex flex-col items-center justify-center py-16 text-center space-y-2">
                       <RefreshCw size={22} className="animate-spin text-indigo-500 opacity-60" />
-                      <div className="text-[13px] font-bold text-slate-700">Connecting to Ollama…</div>
+                      <div className="text-[13px] font-bold text-slate-700">Connecting to Claude AI…</div>
                       <div className="text-[11.5px] text-slate-400 max-w-sm">
                         Title, meta description and introductory paragraphs will begin streaming here in a few moments.
                       </div>
