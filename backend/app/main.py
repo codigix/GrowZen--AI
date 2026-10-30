@@ -4,12 +4,20 @@ Run:  uvicorn app.main:app --port 8000
 Docs: http://localhost:8000/docs
 """
 import logging
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+
+# Ensure backend root is on sys.path for sibling packages like keyword_explorer
+_backend_root = Path(__file__).resolve().parent.parent
+if str(_backend_root) not in sys.path:
+    sys.path.insert(0, str(_backend_root))
+
+from keyword_explorer.api.routes.keywords import router as keyword_explorer_router
 
 from .competitors import audit_router as competitor_audits, intel_router as competitor_research, router as competitors
 from .config import get_settings
@@ -50,12 +58,15 @@ app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_crede
 for r in (system, auth, businesses, profile, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, competitors, competitor_audits, competitor_research):
     app.include_router(r.router, prefix=settings.api_prefix)
 
+# Keyword Explorer endpoints (/api/keywords)
+app.include_router(keyword_explorer_router)
+
 # Production: serve the built frontend (frontend/dist) from the same address as the API.
 _dist = (Path(__file__).resolve().parent.parent / settings.frontend_dist).resolve()
 if (_dist / "index.html").is_file():
     @app.get("/{path:path}", include_in_schema=False)
     def frontend(path: str):
-        if path.startswith(settings.api_prefix.strip("/")):
+        if path.startswith(settings.api_prefix.strip("/")) or path.startswith("api/"):
             raise HTTPException(404, "Not found")
         f = (_dist / path).resolve()
         return FileResponse(f if f.is_file() and _dist in f.parents else _dist / "index.html")
