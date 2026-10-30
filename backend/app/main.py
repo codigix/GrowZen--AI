@@ -8,7 +8,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -20,6 +20,9 @@ if str(_backend_root) not in sys.path:
 from keyword_explorer.api.routes.keywords import router as keyword_explorer_router
 
 from .competitors import audit_router as competitor_audits, intel_router as competitor_research, router as competitors
+from .auth import current_user
+from .backlinks import router as backlinks
+from .backlinks.router import outcomes_router, watch_router
 from .config import get_settings
 from .db import SessionLocal, engine
 from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_trends, leads, lighthouse, profile, seo, site_integration, system, website
@@ -47,6 +50,8 @@ async def lifespan(_: FastAPI):
         db.close()
     scheduler.start()
     yield
+    from .backlinks import stop as backlink_stop
+    backlink_stop.STOP.set()  # let a running crawl finish its current page and leave, so shutdown does not hang
     scheduler.stop()
     lighthouse_runner.stop()
 
@@ -55,11 +60,15 @@ app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 # max_age is short on purpose: browsers cache a preflight answer, and a stale one (from another process that held this port) would keep failing PATCH for 10 minutes.
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"], max_age=30)
 
-for r in (system, auth, businesses, profile, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, articles, site_integration, competitors, competitor_audits, competitor_research):
+for r in (system, auth, businesses, profile, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, articles, site_integration, competitors, competitor_audits, competitor_research, backlinks):
     app.include_router(r.router, prefix=settings.api_prefix)
 
+app.include_router(outcomes_router, prefix=settings.api_prefix)
+app.include_router(watch_router, prefix=settings.api_prefix)
+
 # Keyword Explorer endpoints (/api/keywords)
-app.include_router(keyword_explorer_router)
+# Signed-in users only: it calls external suggestion engines on our server's behalf, so it must not be open to the internet.
+app.include_router(keyword_explorer_router, dependencies=[Depends(current_user)])
 
 # Production: serve the built frontend (frontend/dist) from the same address as the API.
 _dist = (Path(__file__).resolve().parent.parent / settings.frontend_dist).resolve()

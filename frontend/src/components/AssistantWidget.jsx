@@ -67,12 +67,24 @@ export default function AssistantWidget() {
     try {
       const last = [...msgs].reverse().find(m => m.role === 'assistant');
       const r = await api(`/businesses/${bid}/assistant`, { method: 'POST', body: { message: q, history: msgs.slice(-8).map(m => ({ role: m.role, text: m.text })), topic: null } });
-      const done = [...next, { role: 'assistant', text: r.answer, links: r.links, sources: r.sources, topic: r.topic, mode: r.mode }];
+      const done = [...next, { role: 'assistant', text: r.answer, links: r.links, sources: r.sources, topic: r.topic, mode: r.mode, action: r.action }];
       setMsgs(done); save(bid, done);
     } catch (e) {
       const done = [...next, { role: 'assistant', text: `I couldn't answer that: ${e.message || 'the server did not respond'}. Try again in a moment.`, error: true }];
       setMsgs(done); save(bid, done);
     } finally { setBusy(false); }
+  };
+  // The assistant only proposes an action; it runs when the user presses the button, and the button can be pressed once.
+  const confirmAction = async (index, action) => {
+    setMsgs(cur => cur.map((m, i) => i === index ? { ...m, action: { ...m.action, state: 'running' } } : m));
+    let msg;
+    try {
+      const r = await api(`/businesses/${bid}/assistant/actions`, { method: 'POST', body: { action: action.id, params: action.params || {} } });
+      msg = { role: 'assistant', text: r.message, links: r.link ? [r.link] : [], error: !r.ok };
+    } catch (e) {
+      msg = { role: 'assistant', text: `That did not work: ${e.message || 'the server did not respond'}.`, error: true };
+    }
+    setMsgs(cur => { const done = [...cur.map((m, i) => i === index ? { ...m, action: { ...m.action, state: 'done' } } : m), msg]; save(bid, done); return done; });
   };
   const clear = () => { setMsgs([]); if (bid) save(bid, []); };
   const go = (to) => { navigate(to); if (window.innerWidth < 640) setOpen(false); };
@@ -113,6 +125,15 @@ export default function AssistantWidget() {
                 <div className={`min-w-0 max-w-[88%] rounded-lg rounded-tl-sm bg-white shadow-card px-3.5 py-2.5 ${m.error ? 'ring-1 ring-red-200' : ''}`}>
                   <Rich text={m.text} />
                   {m.links?.length > 0 && <div className="mt-2.5 flex flex-wrap gap-1.5">{m.links.map(l => <button key={l.to} type="button" onClick={() => go(l.to)} className="h-7 px-2.5 rounded text-12 font-semibold border border-indigo-200 text-indigo-600 hover:bg-indigo-50 inline-flex items-center gap-1 cursor-pointer">{l.label}<ArrowRight size={11} /></button>)}</div>}
+                  {m.action && (
+                    <div className="mt-2.5 p-2.5 rounded border border-indigo-200 bg-indigo-50/60">
+                      <div className="text-12 text-slate-700 mb-1.5">{m.action.does}</div>
+                      <button type="button" disabled={m.action.state} onClick={() => confirmAction(i, m.action)}
+                        className="h-8 px-3 rounded text-12 font-semibold bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-60 cursor-pointer inline-flex items-center gap-1.5">
+                        {m.action.state === 'running' && <Loader2 size={12} className="animate-spin" />}{m.action.state === 'done' ? 'Done' : m.action.state === 'running' ? 'Working…' : `Confirm: ${m.action.label}`}
+                      </button>
+                    </div>
+                  )}
                   {m.sources?.length > 0 && <div className="mt-2 text-10.5 text-slate-400">Based on: {m.sources.join(', ')}{m.mode === 'ai' ? ' · AI' : ''}</div>}
                 </div>
               </div>

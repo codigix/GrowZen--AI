@@ -5,8 +5,13 @@ import tempfile
 import time
 
 _db = os.path.join(tempfile.mkdtemp(), "test.db")
+# To run the suite on PostgreSQL:  TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost/seo_test  python -m pytest
+# The tables are created and DROPPED by the tests, so the database name must contain "test" or the run is refused.
+_test_url = os.environ.get("TEST_DATABASE_URL", "")
+if _test_url and "test" not in _test_url.rsplit("/", 1)[-1].lower():
+    raise RuntimeError("TEST_DATABASE_URL must point at a database whose name contains 'test': the suite drops every table when it finishes.")
 os.environ.update({
-    "DATABASE_URL": f"sqlite:///{_db}",
+    "DATABASE_URL": _test_url or f"sqlite:///{_db}",
     "CRM_JWT_SECRET": "test-secret-0123456789-abcdefghijklmnop",
     "CRM_API_URL": "",
     "SCHEDULER_ENABLED": "false",

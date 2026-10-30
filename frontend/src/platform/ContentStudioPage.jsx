@@ -180,6 +180,9 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
         </div>
       )}
 
+      {trend.error && !trend.loading && (
+        <ErrorNote>Google Trends is not answering right now ({trend.error.message}). This is on Google's side; try again in a minute.</ErrorNote>
+      )}
       {trend.data && !trend.loading && (() => {
         const ts = trend.data.trend_summary || {};
         const pts = (trend.data.interest_over_time || []).map(p => ({ date: p.date, value: p.value }));

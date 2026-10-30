@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction, useUrlTab } from './SeoUi';
-import { api, useApi, fmtDateTime, fmt } from './seoApi';
+import { api, useApi, fmtDateTime, fmt, SEO_API } from './seoApi';
 import { pathOnly as pathOf } from './siteUtils';
 
 /**
@@ -606,8 +606,10 @@ function KeywordExplorer({ b, tracked = [], onTracked }) {
   const search = () => run('search', async () => {
     const q = keyword.trim();
     if (!q) return;
-    const r = await fetch('http://localhost:8000/api/keywords', {
+    // Same host as the rest of the API (SEO_API ends in /api/v1; the Keyword Explorer lives at /api/keywords), signed in with the session cookie.
+    const r = await fetch(`${SEO_API.replace(/\/v1$/, '')}/keywords`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         keyword: q,

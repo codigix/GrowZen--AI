@@ -1,3 +1,4 @@
+import logging
 """The AI agent: a planner turns audit results into tasks; workers draft the changes; a person
 approves (or the playbook's autopilot rules do); approved tasks are applied through the APIs.
 
@@ -118,6 +119,16 @@ def decide(db: Session, task: AgentTask, approve: bool, actor: str) -> AgentTask
     return task
 
 
+def _track_outcome(db: Session, task: AgentTask) -> None:
+    """Take a baseline so the effect of this task can be measured after 14 and 30 days. Never lets tracking break the task."""
+    try:
+        from ..backlinks import outcomes
+        outcomes.start(db, task.business_id, task.kind, f"task:{task.id}", task.title)
+    except Exception as exc:  # pragma: no cover - defensive
+        log_exc = logging.getLogger("seo.agent")
+        log_exc.warning("Outcome tracking skipped for task %s: %s", task.id, exc)
+
+
 def apply(db: Session, task: AgentTask, actor: str = "agent") -> AgentTask:
     """Carry out an approved task. Google writes need the business linked to a connected account."""
     b = db.get(Business, task.business_id)
@@ -144,10 +155,12 @@ def apply(db: Session, task: AgentTask, actor: str = "agent") -> AgentTask:
             task.result = {"handoff": True, "note": "Needs a person to make this change. It closes by itself when the next audit no longer reports it."}
             task.status = "handoff"
             log(db, actor, "task_handed_off", task.business_id, task_id=task.id, kind=task.kind)
+            _track_outcome(db, task)
             db.commit()
             return task
         task.status, task.applied_at = "applied", datetime.now(timezone.utc)
         log(db, actor, "task_applied", task.business_id, task_id=task.id, kind=task.kind, result=task.result)
+        _track_outcome(db, task)
     except Exception as exc:
         task.status, task.result = "failed", {"error": str(exc)[:500]}
         log(db, actor, "task_failed", task.business_id, task_id=task.id, error=str(exc)[:200])

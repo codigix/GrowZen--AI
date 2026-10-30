@@ -42,6 +42,21 @@ def tick() -> dict[str, int]:
     return out
 
 
+def bot_tick() -> None:
+    """Run the backlink discovery bot for businesses whose interval has elapsed (separate job: a run can take minutes)."""
+    from ..backlinks import bot, router as bl_router
+    db = SessionLocal()
+    try:
+        bot.run_due(db, bl_router.get_fetcher())
+        from ..backlinks import outcomes, watch
+        outcomes.measure_due(db)
+        watch.run_due(db, bl_router.get_fetcher())  # weekly competitor visits (each business only when a week has passed)
+    except Exception as exc:
+        log.warning("Backlink bot tick failed: %s", exc)
+    finally:
+        db.close()
+
+
 def start() -> None:
     global _scheduler
     s = get_settings()
@@ -49,6 +64,7 @@ def start() -> None:
         return
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.add_job(tick, "interval", seconds=s.scheduler_tick_seconds, id="seo-tick", max_instances=1, coalesce=True)
+    _scheduler.add_job(bot_tick, "interval", seconds=60, id="backlink-bot", max_instances=1, coalesce=True)
     _scheduler.start()
     log.info("Scheduler started (every %ss)", s.scheduler_tick_seconds)
 

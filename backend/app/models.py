@@ -421,3 +421,6 @@ class KeywordRankLog(Base):
     serp: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)  # [{d: domain, p: position}] of the results Google returned
     features: Mapped[list[str] | None] = mapped_column(JSON)  # SERP features present on the results page
     own_features: Mapped[list[str] | None] = mapped_column(JSON)  # of those, the ones the site appears in
+
+
+from .backlinks import models as _backlink_models  # noqa: E402,F401  (registers the backlink graph tables)

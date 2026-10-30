@@ -10,6 +10,10 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from datetime import datetime
+
+from ..backlinks.models import Backlink, BacklinkEvent, BiDomain
+from ..backlinks.summary import own_site_links
 from ..models import Business, InsightDay, Keyword, Lead, Review
 from . import ai, audits
 from .activity import log
@@ -40,8 +44,18 @@ def monthly_summary(db: Session, b: Business, month: str | None = None) -> dict[
     scores = {k: a.score for k, a in latest.items()}
     fixes = sorted((i for a in latest.values() for i in a.issues), key=lambda i: {"critical": 0, "serious": 1, "warning": 2}.get(i.get("level"), 3))[:5]
     kws = [{"keyword": k.keyword, "rank": k.rank, "prev_rank": k.prev_rank} for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.rank.is_not(None)).limit(10))]
+    own = own_site_links(db, b.id)
+    gained = lost = 0
+    if own:
+        for kind in ("NEW", "LOST_CONFIRMED"):
+            n = db.scalar(select(func.count(func.distinct(BacklinkEvent.backlink_id))).join(Backlink, Backlink.id == BacklinkEvent.backlink_id)
+                          .join(BiDomain, BiDomain.id == Backlink.target_domain_id)
+                          .where(BiDomain.registrable_domain == own["domain"], BacklinkEvent.event_type == kind, BacklinkEvent.event_at >= datetime.combine(start, datetime.min.time()),
+                                 BacklinkEvent.event_at < datetime.combine(end + timedelta(days=1), datetime.min.time()))) or 0
+            gained, lost = (n, lost) if kind == "NEW" else (gained, n)
     summary = {"business": b.name, "month": month, "insights": cur, "previous": prev, "leads": leads, "new_reviews": new_reviews,
-               "scores": scores, "overall": audits.overall(db, b), "top_fixes": fixes, "keywords": kws}
+               "scores": scores, "overall": audits.overall(db, b), "top_fixes": fixes, "keywords": kws,
+               "backlinks": ({**own, "new_this_month": gained, "lost_this_month": lost} if own else None)}
     summary["plain_words"] = _plain_words(b, summary)
     return summary
 
@@ -67,6 +81,9 @@ def pdf(summary: dict[str, Any], agency: str = "Codigix Infotech") -> bytes:
     cur, prev = summary["insights"], summary["previous"]
     rows = [["", "This month", "Last month"]] + [[k.replace("_", " ").capitalize(), cur[k], prev[k]] for k in ("calls", "directions", "website_clicks", "views")]
     rows += [["Leads", summary["leads"], ""], ["New reviews", summary["new_reviews"], ""]]
+    if summary.get("backlinks"):
+        bl = summary["backlinks"]
+        rows += [["Backlinks (live, found by our bot)", bl["backlinks"], f"{bl['referring_domains']} referring domains"], ["Links gained / lost this month", bl["new_this_month"], bl["lost_this_month"]]]
     t = Table(rows, colWidths=[200, 120, 120])
     t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2a78d6")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e1e0d9")), ("FONTSIZE", (0, 0), (-1, -1), 10)]))

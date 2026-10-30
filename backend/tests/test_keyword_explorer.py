@@ -8,8 +8,9 @@ from keyword_explorer.services.keyword_engine import keyword_engine
 
 
 @pytest.fixture
-def kw_client():
-    return TestClient(app)
+def kw_client(client):
+    """A signed-in client: the Keyword Explorer requires a session (see test_security.test_keyword_explorer_requires_sign_in)."""
+    return client
 
 
 def test_keyword_explorer_health_removed(kw_client):

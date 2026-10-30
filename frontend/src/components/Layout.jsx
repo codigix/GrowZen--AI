@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useApi } from '../platform/seoApi';
 import AssistantWidget from './AssistantWidget';
+import ErrorBoundary from './ErrorBoundary';
 
 export const SIDEBAR_GROUPS = [
   {
@@ -30,6 +31,7 @@ export const SIDEBAR_GROUPS = [
       { to: '/domain-overview', label: 'Domain Overview', icon: Globe },
       { to: '/top-pages', label: 'Top Pages', icon: FileText },
       { to: '/competitor-finder', label: 'Competitor Research', icon: Swords },
+      { to: '/competitor-watch', label: 'Competitor Watch', icon: Radar, badge: 'New' },
       { to: '/compare-domains', label: 'Compare Domains', icon: Columns3 },
       { to: '/keyword-gap', label: 'Keyword Gap', icon: Target }
     ]
@@ -54,7 +56,7 @@ export const SIDEBAR_GROUPS = [
   {
     title: 'Link Building',
     items: [
-      { to: '/off-page-seo?tab=backlinks', label: 'Backlinks & Referring Domains', icon: Link2 },
+      { to: '/backlink-intelligence', label: 'Backlink Intelligence', icon: Link2, badge: 'New' },
       { to: '/off-page-seo?tab=outreach', label: 'Outreach', icon: Send }
     ]
   },
@@ -288,7 +290,7 @@ export default function Layout({ user, onLogout, onChangePassword }) {
         </header>
 
         <main className="flex-1 min-w-0">
-          <Outlet />
+          <ErrorBoundary key={location.pathname}><Outlet /></ErrorBoundary>
         </main>
       </div>
       <AssistantWidget />

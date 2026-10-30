@@ -117,6 +117,75 @@ One test really runs Node, Lighthouse and Chrome against example.com. It is skip
 | Schedules | `GET/PUT /businesses/{id}/schedules` |
 | Agent | `GET /tasks?status=&business_id=`, `POST /tasks/{id}/approve`, `POST /tasks/{id}/reject` (a note teaches the playbook), `GET /activity`, `GET/PUT /playbook` |
 
+## Backlink Intelligence (our own discovery bot)
+
+No third-party link index is used. The bot lives in `app/backlinks/` and the page is **Link Building → Backlink Intelligence**.
+
+Flow, start to end:
+
+1. **Targets**: add your site and your competitors (`POST /businesses/{id}/backlink-intel/targets`).
+2. **Discovery bot** tab: *Run now*, or tick *Run automatically* (the scheduler runs it every N minutes). It starts at each tracked site, reads
+   `robots.txt` and sitemaps, follows links outward (0 to 3 steps), and records every link it finds to a tracked domain. It obeys
+   `robots.txt`, waits between requests to the same host, refuses private addresses (SSRF guard), skips giant platforms, and stops at the
+   page budget you set.
+3. **Seeds & verify** tab: give it pages that should link to you; re-check links it already found. A link only counts as lost after
+   two consecutive clean fetches without it; a failed fetch (403/429/5xx/timeout) never marks a link lost.
+4. **Overview / Backlink explorer / Competitor gap**: reports computed from what the bot found. Review decisions (whitelist, disavow,
+   removal outreach) are stored per business and a Google-format disavow file can be downloaded.
+
+The bot only finds links on pages it can reach by following links from your sites, so coverage grows with each run but is smaller than a
+commercial index. Give it seed pages to widen it.
+
+5. **Removal requests**: select one referring domain in the Overview table and choose *Draft removal email*. With an AI key the wording is
+   written by the model (it must name the real linking pages); otherwise a plain template is used. Nothing is sent: copy it into your email.
+6. The dashboard, Domain Overview and the assistant show the same live-link totals the bot found for your own site.
+
+Tests: `python -m pytest tests/test_backlinks.py` (the bot runs against a simulated web, no network).
+
+To run the whole suite on PostgreSQL instead of SQLite (the tables are created and dropped, so the database name must contain "test"):
+
+```
+createdb seo_test
+TEST_DATABASE_URL=postgresql+psycopg://user:password@localhost/seo_test python -m pytest
+```
+
+Or, with Docker: `docker compose -f docker-compose.test.yml up -d`, then `TEST_DATABASE_URL=postgresql+psycopg://seo:seo_test_pw@localhost:55432/seo_test python -m pytest`.
+The suite has been run on SQLite only; every backlink table and query compiles for PostgreSQL, but a green run on a real PostgreSQL is still to be done.
+
+Run `alembic upgrade head`: the migration history has a single head again (`0019_merge_heads`).
+
+## AI layer
+
+### JavaScript pages and the weekly competitor watch
+
+- **Read JavaScript pages** (Discovery bot tab, off by default): pages that are an empty app shell until JavaScript runs are loaded in headless Chrome, at most 10 per run.
+  The browser is pinned to the validated IP of the page's own host and every other hostname fails to resolve, so page scripts cannot reach internal services or third
+  parties; pages that need an outside CDN to render come back unrendered. Needs Chrome/Edge/Chromium (`CHROME_PATH` to point at it; `CHROME_NO_SANDBOX=1` inside containers).
+- **Competitor watch** (sidebar: Competitor Watch): every week, for each competitor you track, the bot reads up to 25 pages (home page, newly listed pages, then those not
+  seen for longest) and compares them with last week: new pages, changed titles/headings/descriptions or large rewrites, removed pages (confirmed by a 404/410). The first
+  visit only sets the baseline. A summary is written from those facts (AI when a key is set, a template otherwise; an AI answer that names a site it was not given is discarded).
+
+### What the AI does on the backlink data
+
+Every feature has a rule-based fallback and says which one produced the answer (`source` / `method`). All of them answer from facts the bot collected and
+validate the model's JSON; anything invalid is discarded, never shown.
+
+| Feature | Where | Endpoint |
+|---|---|---|
+| Link quality score (relevance, spam risk, reason) | Overview table, "Score with AI" | `POST /businesses/{id}/backlink-intel/scores/run` |
+| Gap prioritiser (win chance + honest approach) | Competitor gap tab | `POST .../gap/prioritize` |
+| "Explain what changed" | Overview | `POST .../explain` |
+| Removal-request email draft | Domains table | `POST .../reviews/draft-removal` |
+| Bot results become tasks and activity | Autonomous AI Agents (Outreach), Activity | automatic after each bot run |
+| Before/after measurement of actions (14 and 30 days) | Autonomous AI Agents, "What worked" | `GET /businesses/{id}/outcomes` |
+| Assistant that proposes actions you confirm | Chat widget | `POST /businesses/{id}/assistant/actions` |
+
+The bot only files a removal task for clearly spammy linkers (risk 70 or more), never for a client who credits you in their footer.
+
+
+`app/services/ai.py` talks to DeepSeek, OpenAI, Gemini or Claude. Transient failures are retried with backoff (honouring `Retry-After`);
+if the chosen provider keeps failing, the next provider that has an API key is tried. Claude's model comes from `CLAUDE_MODEL`.
+
 ## Layout
 
 ```

@@ -16,6 +16,7 @@ from ..config import get_settings
 from ..db import get_db
 from ..deps import get_business
 from ..models import Audit, Business, GeoPrompt, GeoResult, GoogleConnection, Keyword, KeywordRankLog
+from ..backlinks.summary import own_site_links
 from ..services import countries, domain_checks, domain_intel, geo, landscape as landscape_svc, top_pages as top_pages_svc, gsc, market, organic
 from ..services.gbp import GbpError
 from ..services.providers.base import intent_of
@@ -286,11 +287,12 @@ def domain(range: str = "3m", country: str | None = None, device: str | None = N
             out["traffic"].update(state="error", message=str(exc))
     kws = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id)))
     out["rankings"] = {"tracked": len(kws), "ranking": sum(1 for k in kws if k.rank), "checked_at": max((k.rank_checked_at for k in kws if k.rank_checked_at), default=None)}
-    links = _latest(db, b, "backlinks")
-    live_links = get_settings().dataforseo_enabled and links and links.data_source != "sample"
-    r = (links.result or {}) if live_links else {}
-    out["links"] = {"available": bool(live_links), "backlinks": r.get("total"), "referring_domains": r.get("referring_domains"), "authority": r.get("authority"),
-                    "reason": None if live_links else "A link index is needed for authority score, backlinks and referring domains: connect DataForSEO (DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD)."}
+    own = own_site_links(db, b.id)
+    out["links"] = {"available": bool(own and own["backlinks"]), "source": "codigix_bot", "domain": own["domain"] if own else None,
+                    "backlinks": own["backlinks"] if own else None, "referring_domains": own["referring_domains"] if own else None, "authority": None,
+                    "reason": None if own and own["backlinks"] else (
+                        "Our Discovery bot has not found backlinks yet: open Backlink Intelligence and run it." if own
+                        else "Add your site under Backlink Intelligence and run the Discovery bot to see your backlinks.")}
     out["checks"] = domain_checks.checks(db, b, internal, out["traffic"])
     out["unavailable"]["paid"] = "Paid traffic and paid keywords come from Google Ads or a paid index; they aren't available for this project."
     return out
