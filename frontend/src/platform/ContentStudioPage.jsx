@@ -13,7 +13,7 @@ import { rng, shortDate, daysBack, ymd } from './seoMock';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
 import { api, fmt, useApi, usePoll } from './seoApi';
 
-const STEPS = ['Topic & Intent', 'SERP Analysis', 'Structured Brief', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
+const STEPS = ['Topic & Intent', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
 
 const serpFor = (b, kw) => {
   const r = rng(`${b.id}-${kw}-serp`);
@@ -337,6 +337,19 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
   const full = useApi(openId ? `/businesses/${b.id}/articles/${openId}` : null);
   const article = openId && full.data?.id === openId ? full.data : null;
   const [pendingId, setPendingId] = useState(null);  // an article started from the writer: opened as soon as it is written
+  const pending = pendingId ? articles.find(x => x.id === pendingId) : null;
+  const pendingFull = useApi(pendingId ? `/businesses/${b.id}/articles/${pendingId}` : null);  // the text written so far
+  usePoll(() => pendingFull.reload(true), Boolean(pendingId), 1000);
+  usePoll(() => list.reload(true), Boolean(pendingId), 2000);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!pendingId) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [pendingId]);
+  const pendingLength = ARTICLE_LENGTHS.find(l => l.id === pending?.length) || ARTICLE_LENGTHS[1];
+  const elapsed = pending?.created_at ? Math.max(0, (now - new Date(pending.created_at).getTime()) / 1000) : 0;
+  const preview = pendingFull.data?.id === pendingId ? pendingFull.data.body : '';
 
   const generate = async ({ topic, keywords, length }) => {
     const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, keywords: keywords.map(k => ({ keyword: k })) } });
@@ -354,16 +367,17 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
   return (
     <div className="space-y-4">
       {articles.length > 0 && <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={setOpenId} />}
-      {pendingId && (
-        <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 text-[12.5px] text-indigo-900 flex items-center gap-2">
-          <RefreshCw size={14} className="animate-spin shrink-0" />
-          <span>Writing the blog with Ollama ({(ARTICLE_LENGTHS.find(l => l.id === articles.find(x => x.id === pendingId)?.length) || ARTICLE_LENGTHS[1]).label}, about {(ARTICLE_LENGTHS.find(l => l.id === articles.find(x => x.id === pendingId)?.length) || ARTICLE_LENGTHS[1]).time.replace('~', '')}). It opens here as soon as it is ready.
-            {articles.find(x => x.id === pendingId)?.progress && <strong className="block mt-0.5">Now: {articles.find(x => x.id === pendingId).progress}…</strong>}</span>
+            {pendingId && (
+        <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
+          <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
+          <span className="font-bold">AI is writing your blog live with Ollama ({pendingLength.label})</span>
+          <span className="text-indigo-700 truncate hidden sm:inline">— {pending?.progress || 'Streaming line by line below…'}</span>
+          <span className="ml-auto font-mono text-[11px] font-semibold text-slate-500 shrink-0">Elapsed {mins(elapsed)}</span>
         </div>
       )}
       {openId && !article
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
-        : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} onGenerate={generate}
+        : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
             onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
     </div>
   );
@@ -371,8 +385,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
 /**
  * 2. 7-Step AI Blog Writer & E-E-A-T Quality Gate
  */
-function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, onSaved, onScheduled, toast }) {
-  const [step, setStep] = useState(selectedArticle ? 3 : 0);
+function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pendingLength, elapsed = 0, onGenerate, generating, onSaved, onScheduled, toast }) {
+  const [step, setStep] = useState(selectedArticle ? 1 : 0);
   const [kw, setKw] = useState(selectedArticle ? selectedArticle.keyword : selectedTopic ? selectedTopic.title : '');  // the primary keyword
   const [topicText, setTopicText] = useState(selectedArticle ? selectedArticle.topic || selectedArticle.keyword : selectedTopic ? selectedTopic.title : '');
   const [secondaryList, setSecondaryList] = useState(selectedArticle ? selectedArticle.secondary_keywords || [] : selectedTopic?.selected || []);
@@ -398,6 +412,29 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, onSaved,
   ]);
 
   const [draft, setDraft] = useState(selectedArticle ? selectedArticle.body || '' : '');
+  const [meta, setMeta] = useState({
+    keyword: selectedArticle?.keyword || '',
+    secondary: (selectedArticle?.secondary_keywords || []).join(', '),
+    title: selectedArticle?.title || '',
+    meta_description: selectedArticle?.meta_description || ''
+  });
+  useEffect(() => {
+    if (selectedArticle) {
+      setDraft(selectedArticle.body || '');
+      setMeta({
+        keyword: selectedArticle.keyword || '',
+        secondary: (selectedArticle.secondary_keywords || []).join(', '),
+        title: selectedArticle.title || '',
+        meta_description: selectedArticle.meta_description || ''
+      });
+    }
+  }, [selectedArticle]);
+  const isGenerating = Boolean(generating || (pendingArticle && pendingArticle.status === 'generating'));
+  const activeArt = selectedArticle || pendingArticle;
+  const liveBody = activeArt?.body || draft || '';
+  const liveTitle = activeArt?.title || meta?.title || '';
+  const liveMetaDesc = activeArt?.meta_description || meta?.meta_description || '';
+  const liveProgress = pendingArticle?.progress || (generating ? 'Starting Ollama model…' : '');
   const [wpBusy, setWpBusy] = useState(false);
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState('');
@@ -435,12 +472,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, onSaved,
     setGenBusy(true); setGenError('');
     return onGenerate({ topic: topicText.trim() || kw.trim(), keywords, length: articleLength }).catch(e => setGenError(e.message || String(e))).finally(() => setGenBusy(false));
   };
-  const [meta, setMeta] = useState({
-    keyword: selectedArticle?.keyword || '',
-    secondary: (selectedArticle?.secondary_keywords || []).join(', '),
-    title: selectedArticle?.title || '',
-    meta_description: selectedArticle?.meta_description || ''
-  });
+
   const articleFields = () => ({
     keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean),
     title: meta.title, meta_description: meta.meta_description, body: draft
@@ -470,9 +502,16 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, onSaved,
   const score = Math.min(98, 62 + enrichDone * 7 + (outline.length >= 6 ? 6 : 0) + 4);
 
   const next = () => {
-    if (step === 1) return run('brief', () => { setStep(2); }, 1100);
-    if (step === 2) return run('draft', () => { setDraft(makeDraft()); setStep(3); }, 1400);
-    if (step === 6 && selectedArticle && cms === 'WordPress REST API') {
+    if (step === 0) {
+      // Topic & Intent -> start real Ollama generation, then go to AI Draft
+      if (kwReady && kw.trim()) {
+        generateBlog().then(() => setStep(1));
+      } else {
+        run('draft', () => { setStep(1); }, 800);
+      }
+      return;
+    }
+    if (step === 4 && selectedArticle && cms === 'WordPress REST API') {
       setWpBusy(true);
       return api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: articleFields() })
         .then(() => api(`/businesses/${b.id}/articles/${selectedArticle.id}/publish-wordpress`, { method: 'POST' }))
@@ -480,7 +519,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, onSaved,
         .catch(e => toast(e.message))
         .finally(() => setWpBusy(false));
     }
-    if (step === 6) {
+    if (step === 4) {
       return run('pub', () => {
         setPublished(true);
         toast(`Article successfully scheduled and synced with ${cms}! Search Console indexing submitted.`);
@@ -537,12 +576,12 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, onSaved,
         title={STEPS[step]}
         action={
           <Button
-            variant={step === 6 ? 'primary' : 'secondary'}
+            variant={step === 4 ? 'primary' : 'secondary'}
             busy={Boolean(busy) || wpBusy}
             onClick={next}
             disabled={published}
           >
-            {step === 6 ? (published ? 'Scheduled & Live' : 'Approve & Schedule to CMS') : step === 1 ? 'Generate Brief' : step === 2 ? 'Draft Complete Article' : 'Next Step'}
+            {step === 4 ? (published ? 'Scheduled & Live' : 'Approve & Schedule to CMS') : step === 0 ? 'Generate Blog' : 'Next Step'}
             {step < 6 && <ChevronRight size={13} />}
           </Button>
         }
@@ -603,7 +642,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, onSaved,
             )}
             {onGenerate && (
               <div className="flex flex-wrap items-center gap-3">
-                <Button variant="ai" icon={Sparkles} busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim()} onClick={generateBlog}>Generate Blog</Button>
+                <Button variant="ai" icon={Sparkles} busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={generateBlog}>Generate Blog</Button>
+                {generating && <span className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</span>}
                 <span className="text-[11.5px] text-slate-500">Writes a complete blog (SEO title, meta description, introduction, H2/H3 sections, FAQs, conclusion) using every keyword above, then opens it for review.</span>
               </div>
             )}
@@ -625,82 +665,40 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, onSaved,
           </div>
         )}
 
-        {/* Step 1: SERP Insights */}
+        {/* Step 1: AI Draft */}
         {step === 1 && (
-          <div>
-            <div className="flex flex-wrap gap-4 text-[12px] text-slate-700 mb-3">
-              <span>Avg Word Count Top 10: <strong className="text-slate-900 font-mono">{fmt(avgWords)} words</strong></span>
-              <span>FAQ Schema Present: <strong className="text-emerald-700 font-mono">8/10</strong></span>
-              <StatusPill level="good">AI Overview Eligible for this query</StatusPill>
-            </div>
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <table className="w-full text-[12px]">
-                <thead className="bg-white text-slate-500 border-b border-slate-200">
-                  <tr>
-                    <th className="p-2.5 text-left font-mono">Rank</th>
-                    <th className="p-2.5 text-left">Competitor URL</th>
-                    <th className="p-2.5 text-right font-mono">Length</th>
-                    <th className="p-2.5 text-right font-mono">H2/H3</th>
-                    <th className="p-2.5 text-center">FAQ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-slate-50">
-                  {serp.slice(0, 5).map(s => (
-                    <tr key={s.pos}>
-                      <td className="p-2.5 font-mono text-slate-500 font-bold">{s.pos}</td>
-                      <td className="p-2.5">
-                        <div className="text-slate-900 font-medium truncate max-w-[340px]">{s.title}</div>
-                        <div className="text-[10px] text-cyan-700 font-mono">{s.site}</div>
-                      </td>
-                      <td className="p-2.5 text-right font-mono text-slate-700">{fmt(s.words)}</td>
-                      <td className="p-2.5 text-right font-mono text-slate-700">{s.headings}</td>
-                      <td className="p-2.5 text-center">{s.faq ? <Check size={14} className="text-emerald-700 mx-auto" /> : <span className="text-slate-600">—</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Structured Brief */}
-        {step === 2 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <div className="text-[12px] font-bold text-slate-700 mb-2">Outline & Logical Headings</div>
-              <div className="space-y-2">
-                {outline.map((h, i) => (
-                  <input
-                    key={i}
-                    className={inputCls}
-                    value={h}
-                    onChange={e => setOutline(o => o.map((x, j) => j === i ? e.target.value : x))}
-                  />
-                ))}
+          <div className="space-y-4">
+            {/* Status indicator bar */}
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 border border-indigo-200">
+              <div className="flex items-center gap-2.5">
+                {isGenerating ? (
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                  </span>
+                ) : (
+                  <Check size={15} className="text-emerald-600" />
+                )}
+                <div>
+                  <div className="text-[12.5px] font-bold text-indigo-950 flex items-center gap-2">
+                    {isGenerating ? 'AI is writing your blog live…' : 'AI Blog Draft Ready'}
+                    <span className="text-[10px] uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">
+                      Ollama llama3.2
+                    </span>
+                  </div>
+                  <div className="text-[11.5px] text-indigo-700 font-medium">
+                    {isGenerating ? (liveProgress || 'Streaming line by line…') : 'Completed and validated. Review and edit below.'}
+                  </div>
+                </div>
               </div>
-              <Button size="sm" icon={Plus} className="mt-2.5" onClick={() => setOutline(o => [...o, 'New Clinical Section'])}>
-                Add Section
-              </Button>
+              <div className="flex items-center gap-3 text-[11px] font-mono text-slate-500">
+                <span>{liveBody.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length} words</span>
+                {isGenerating && pendingLength && <span>• {mins(elapsed)}</span>}
+              </div>
             </div>
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 text-[12px]">
-              <div className="font-bold text-slate-900 mb-1">SEO Blueprint Specs</div>
-              <div><span className="text-slate-500">SEO Title:</span> {kw}</div>
-              <div><span className="text-slate-500">Meta Desc:</span> Complete 2026 guide to {kw} from {b.name}.</div>
-              <div><span className="text-slate-500">Target Word Count:</span> ~1,450 words</div>
-              <div><span className="text-slate-500">Internal Link:</span> <span className="text-cyan-700 font-mono">/{kw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}</span></div>
-              <div><span className="text-slate-500">Schema:</span> MedicalWebPage + FAQPage + Hospital</div>
-            </div>
-          </div>
-        )}
 
-        {/* Step 3: AI Draft Generation */}
-        {step === 3 && (
-          <div className="space-y-3">
-            <div className="text-[11px] text-purple-700 flex items-center gap-1.5 p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
-              <Sparkles size={13} className="text-cyan-700" />
-              Full draft generated with E-E-A-T facts, transparent package pricing, and internal anchors.
-            </div>
-            {selectedArticle ? (
+            {/* If article completed and selected: show full editor */}
+            {selectedArticle && !isGenerating ? (
               <div className="space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Field label="Primary keyword" hint="Must appear in the title, meta description and introduction"><input className={inputCls} value={meta.keyword} onChange={e => setMeta(m => ({ ...m, keyword: e.target.value }))} /></Field>
@@ -747,19 +745,64 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, onSaved,
                   </div>
                 )}
               </div>
+            ) : (isGenerating || liveBody) ? (
+              /* ChatGPT-Style Live Streaming View */
+              <div className="space-y-3">
+                {(liveTitle || liveMetaDesc) && (
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                    {liveTitle && (
+                      <div>
+                        <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">SEO Title</span>
+                        <div className="text-[13.5px] font-bold text-slate-900">{liveTitle}</div>
+                      </div>
+                    )}
+                    {liveMetaDesc && (
+                      <div>
+                        <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Meta Description</span>
+                        <div className="text-[12px] text-slate-600 leading-normal">{liveMetaDesc}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="rounded-xl border border-slate-200 bg-white p-5 min-h-[300px] max-h-[500px] overflow-auto shadow-xs">
+                  {liveBody ? (
+                    <div>
+                      <div
+                        className="text-[13px] text-slate-800 leading-relaxed space-y-3 [&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-slate-100 [&_h2]:pb-1 [&_h3]:text-[13.5px] [&_h3]:font-semibold [&_h3]:text-slate-800 [&_h3]:mt-3 [&_p]:mt-2 [&_p]:text-slate-700 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mt-1"
+                        dangerouslySetInnerHTML={{ __html: liveBody }}
+                      />
+                      {isGenerating && (
+                        <div className="mt-3 flex items-center gap-1.5 text-indigo-600 font-mono text-[11.5px]">
+                          <span className="inline-block w-2 h-4 bg-indigo-600 animate-pulse rounded-xs" />
+                          <span className="text-[11px] text-slate-400">writing next line…</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16 text-center space-y-2">
+                      <RefreshCw size={22} className="animate-spin text-indigo-500 opacity-60" />
+                      <div className="text-[13px] font-bold text-slate-700">Connecting to Ollama…</div>
+                      <div className="text-[11.5px] text-slate-400 max-w-sm">
+                        Title, meta description and introductory paragraphs will begin streaming here in a few moments.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             ) : (
-              <textarea
-                rows={16}
-                className={`${areaCls} font-mono text-[12px] leading-relaxed`}
-                value={draft}
-                onChange={e => setDraft(e.target.value)}
-              />
+              /* Idle state: no article and not generating */
+              <div className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 p-8 text-center space-y-2">
+                <Sparkles size={24} className="text-indigo-400 mx-auto" />
+                <div className="text-[13.5px] font-bold text-indigo-900">No draft yet</div>
+                <div className="text-[12px] text-indigo-600 max-w-md mx-auto">
+                  Click <strong>Generate Blog</strong> on the <strong>Topic &amp; Intent</strong> tab to start writing. You will see the AI write your article line by line in real time.
+                </div>
+              </div>
             )}
           </div>
         )}
 
-        {/* Step 4: E-E-A-T Enrichment */}
-        {step === 4 && (
+        {step === 2 && (
           <div className="space-y-3 max-w-xl">
             <p className="text-[12px] text-slate-700 mb-2">
               Inject first-hand medical proof points to safeguard against generic, low-value AI penalties.
@@ -784,7 +827,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, onSaved,
         )}
 
         {/* Step 5: Quality Gate & Fact Checks */}
-        {step === 5 && (
+        {step === 3 && (
           <div className="flex flex-wrap gap-6 items-center">
             <ScoreRing score={score} label={scoreWord(score)} size={110} />
             <div className="flex-1 min-w-[280px] space-y-3">
@@ -811,8 +854,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, onSaved,
           </div>
         )}
 
-        {/* Step 6: Publish & Schedule */}
-        {step === 6 && (
+        {/* Step 4: Publish & Schedule */}
+        {step === 4 && (
           <div className="max-w-xl space-y-4 text-[12px]">
             <div>
               <label className="block text-slate-700 font-bold mb-2">Select Target CMS Integration</label>

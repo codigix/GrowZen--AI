@@ -1,16 +1,30 @@
 """Blog articles generated from Google Trends keywords: one article per generation (primary + secondary keywords), saved separately."""
+import sys
+from pathlib import Path
 from typing import Literal
+
+# Enable direct script execution: add backend directory to sys.path so 'app' is recognized
+_backend_dir = str(Path(__file__).resolve().parents[2])
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db import get_db
-from ..deps import get_business, in_background
-from ..models import Article, Business
-from ..serialize import row, rows
-from ..services import articles as svc
+try:
+    from ..db import get_db
+    from ..deps import get_business, in_background
+    from ..models import Article, Business
+    from ..serialize import row, rows
+    from ..services import articles as svc
+except (ImportError, ValueError):
+    from app.db import get_db
+    from app.deps import get_business, in_background
+    from app.models import Article, Business
+    from app.serialize import row, rows
+    from app.services import articles as svc
 
 router = APIRouter(prefix="/businesses/{business_id}/articles", tags=["articles"])
 
@@ -80,6 +94,9 @@ def generate(body: GenerateIn, tasks: BackgroundTasks, b: Business = Depends(get
     for k in body.keywords:
         picked.setdefault(" ".join(k.keyword.lower().split()), k.rising)
     keywords = list(picked)
+    running = db.scalar(select(Article).where(Article.business_id == b.id, Article.keyword == keywords[0], Article.status.in_(["pending", "generating"])))
+    if running:
+        raise HTTPException(409, f"An article for '{keywords[0]}' is already being written. Wait for it to finish or delete it first.")
     a = Article(business_id=b.id, topic=(body.topic or "").strip() or None, length=body.length, keyword=keywords[0], secondary_keywords=keywords[1:], rising_keywords=[k for k, r in picked.items() if r], status="pending")
     db.add(a)
     db.commit()
@@ -135,3 +152,59 @@ def delete_article(article_id: int, b: Business = Depends(get_business), db: Ses
     if a and a.business_id == b.id:
         db.delete(a)
         db.commit()
+
+
+@router.get("/{article_id}/stream")
+async def stream_article(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """SSE endpoint: streams article progress and body chunks while Ollama writes.
+    
+    Events emitted:
+      {"type":"progress","text":"..."} — status message from the writer
+      {"type":"body","html":"..."}    — new HTML appended to body (delta only)
+      {"type":"done","status":"completed"|"failed","title":"...","meta":"...","body":"...","error":"..."}
+    """
+    from fastapi.responses import StreamingResponse
+    import asyncio
+    import json as _json_mod
+
+    a = _get(db, b, article_id)
+
+    async def gen():
+        last_body_len = 0
+        last_progress = ""
+        for _ in range(360):  # poll up to 6 min (360 * 1s)
+            await asyncio.sleep(1)
+            try:
+                db.refresh(a)
+            except Exception:
+                break
+            # progress update
+            prog = (a.progress or "").strip()
+            if prog and prog != last_progress:
+                last_progress = prog
+                yield f"data: {_json_mod.dumps({'type': 'progress', 'text': prog})}\n\n"
+            # body delta
+            body = a.body or ""
+            if len(body) > last_body_len:
+                delta = body[last_body_len:]
+                last_body_len = len(body)
+                yield f"data: {_json_mod.dumps({'type': 'body', 'html': delta})}\n\n"
+            # done
+            if a.status in ("completed", "failed"):
+                yield f"data: {_json_mod.dumps({'type': 'done', 'status': a.status, 'title': a.title or '', 'meta': a.meta_description or '', 'body': a.body or '', 'error': a.error or ''})}\n\n"
+                break
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    from fastapi import FastAPI
+    app = FastAPI(title="Articles Router Dev Server")
+    app.include_router(router)
+    print("Starting Articles Dev Server on http://127.0.0.1:8000 ...")
+    uvicorn.run(app, host="127.0.0.1", port=8000)

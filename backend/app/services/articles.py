@@ -50,9 +50,8 @@ class OllamaAnswerError(RuntimeError):
 
 def _chat(prompt: str, *, as_json: bool = True, num_predict: int | None = None, timeout: int | None = None, temperature: float | None = None) -> str:
     s = get_settings()
-    options = {"num_predict": num_predict or s.ollama_max_tokens, "repeat_penalty": 1.15}  # small models otherwise loop on long answers
-    if temperature is not None:
-        options["temperature"] = temperature
+    options = {"num_predict": num_predict or s.ollama_max_tokens, "num_ctx": s.ollama_num_ctx, "repeat_penalty": 1.15,  # small models otherwise loop
+               "temperature": s.ollama_temperature if temperature is None else temperature}
     # keep_alive: the model stays in memory between the steps of an article (reloading it costs 10-20 s on a CPU)
     body = {"model": s.ollama_model, "stream": False, "keep_alive": "30m", "messages": [{"role": "user", "content": prompt}], "options": options}
     if as_json:
@@ -74,6 +73,49 @@ def _chat(prompt: str, *, as_json: bool = True, num_predict: int | None = None, 
             run["calls"] += 1
             run["ollama_seconds"] += time.time() - started
     return (r.json().get("message") or {}).get("content") or ""
+
+
+
+def _stream_text(prompt: str, *, num_predict: int = 300, on_chunk=None) -> str:
+    """Stream plain-text paragraphs from Ollama token by token. Calls on_chunk(text_so_far) periodically."""
+    s = get_settings()
+    options = {
+        "num_predict": num_predict,
+        "num_ctx": s.ollama_num_ctx,
+        "temperature": s.ollama_temperature,
+        "repeat_penalty": 1.15
+    }
+    body = {
+        "model": s.ollama_model,
+        "prompt": prompt,
+        "stream": True,
+        "keep_alive": "30m",
+        "options": options
+    }
+    collected = []
+    chunk_count = 0
+    started = time.time()
+    try:
+        with httpx.stream("POST", f"{s.ollama_host.rstrip('/')}/api/generate", json=body, timeout=s.ollama_timeout_seconds) as r:
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                d = json.loads(line)
+                tok = d.get("response", "")
+                if tok:
+                    collected.append(tok)
+                    chunk_count += 1
+                    if on_chunk and (chunk_count % 6 == 0 or "\n" in tok):
+                        on_chunk("".join(collected))
+    except Exception as e:
+        log.warning("Streaming Ollama error: %s", e)
+    finally:
+        run = getattr(_stats, "run", None)
+        if run is not None:
+            run["calls"] += 1
+            run["ollama_seconds"] += time.time() - started
+    return "".join(collected).strip()
 
 
 def _short(prompt: str, num_predict: int = 90, timeout: int = 90) -> str:
@@ -330,74 +372,40 @@ def _shorten_title(t: str, primary: str) -> str:
 
 
 def fix_seo_fields(draft: dict, primary: str) -> None:
-    """Title: contains the primary keyword, 60 characters at most. Meta: contains it, 140-160 characters, a whole sentence."""
-    t = draft["title"]
-    if t and (not _has(t, primary) or len(t) > TITLE_MAX):
-        for limit in (TITLE_MAX - 5, TITLE_MAX - 15):  # asking for less than the limit: models overshoot
-            new = _rewrite("title", t, primary, f"is at most {limit} characters long")
-            if new and _has(new, primary) and len(new) <= TITLE_MAX:
-                draft["title"] = new
-                break
-        else:
-            draft["title"] = _shorten_title(t, primary)
-    m = draft["meta"]
-    if m and (not _has(m, primary) or not 140 <= len(m) <= META_MAX or m.endswith("…")):
-        new = _rewrite("meta description", m, primary, "is one complete sentence of 150 to 155 characters")
-        if new and _has(new, primary) and len(new) <= META_MAX:
-            draft["meta"] = new
-        elif m.endswith("…") and "," in m:  # cut off mid-sentence: end it at the last complete clause
-            tidy = m[:-1].rsplit(",", 1)[0].rstrip(" ,;:-") + "."
-            if _has(tidy, primary):
-                draft["meta"] = tidy
-        if not _has(draft["meta"], primary):  # still missing: ask once more, then lead with the keyword
-            new = _rewrite("meta description", draft["meta"], primary, f'starts with the exact phrase "{primary}" and is one complete sentence of 150 to 155 characters')
-            if new and _has(new, primary) and len(new) <= META_MAX:
-                draft["meta"] = new
-            else:
-                lead = f"{primary[0].upper()}{primary[1:]}: {draft['meta']}"
-                draft["meta"] = (lead if len(lead) <= META_MAX else lead[:META_MAX - 1].rsplit(" ", 1)[0].rstrip(",;:- ") + ".")
+    """Fast Python cleanup: ensures title has primary keyword and <= 60 chars, meta has primary keyword and <= 160 chars."""
+    t = draft.get("title") or ""
+    if not t:
+        draft["title"] = primary.title()[:TITLE_MAX]
+    elif len(t) > TITLE_MAX or not _has(t, primary):
+        draft["title"] = _shorten_title(t, primary)
+        if not _has(draft["title"], primary):
+            draft["title"] = f"{primary.title()} - Guide & Tips"[:TITLE_MAX]
+
+    m = draft.get("meta") or ""
+    if not m:
+        draft["meta"] = f"Complete guide to {primary}. Discover actionable tips, proven strategies, and expert advice for success."
+    elif not _has(m, primary):
+        draft["meta"] = f"{primary.title()}: {m}"
+    if len(draft["meta"]) > META_MAX:
+        draft["meta"] = draft["meta"][:META_MAX - 1].rsplit(" ", 1)[0].rstrip(",;:- ") + "."
 
 
 def correct_content(draft: dict, primary: str, secondary: list[str], topic: str) -> None:
-    """One targeted pass with short Ollama calls: introduction keyword, missing secondary keywords, unsupported claims."""
-    body = draft["body"]
-    keywords = [primary, *secondary]
+    """Fast Python cleanup: ensures primary keyword is in the introduction paragraph without extra LLM calls."""
+    body = draft.get("body") or ""
     first = re.search(r"<p>(.*?)</p>", body, re.S)
     if first and not _has(first.group(1), primary):
-        new = _short(f'Rewrite this introduction so that its first sentence contains the exact phrase "{primary}". Keep 3 to 4 sentences and the same meaning; '
-                     f"do not add facts, prices or statistics. Plain text only. Answer with the introduction only.\n\n{_text(first.group(1))}", num_predict=200, timeout=120)
-        if new and _has(new, primary) and len(new.split()) >= 20:
-            body = body.replace(first.group(0), f"<p>{html.escape(new, quote=False)}</p>", 1)
-    missing = [k for k in secondary if not _has(_text(body), k)]
-    for group in [missing[i:i + 2] for i in range(0, len(missing), 2)][:5]:  # two phrases per paragraph: small models manage that
-        for attempt_no in range(2):  # the second try asks more strictly
-            new = _short(f'Write one useful paragraph of 3 to 4 sentences for a blog article about "{topic or primary}" that naturally uses '
-                         + ("both of these exact phrases, copying them letter for letter: " if attempt_no else "each of these exact phrases once, unchanged: ")
-                         + "; ".join(f'"{k}"' for k in group) + ". Do not invent facts, prices, dates or statistics. Plain text only. Answer with the paragraph only.",
-                         num_predict=200, timeout=120)
-            if new and len(new.split()) >= 25 and any(_has(new, k) for k in group):
-                extra = f"<p>{html.escape(new, quote=False)}</p>\n\n"
-                faq = "<h2>Frequently Asked Questions</h2>"
-                body = body.replace(faq, extra + faq, 1) if faq in body else body + "\n\n" + extra.strip()
-                if all(_has(new, k) for k in group):
-                    break
-    for para in re.findall(r"<p>[\s\S]*?</p>", body)[:40]:
-        claims = unsupported_claims("", "", para, keywords)
-        if not claims:
-            continue
-        new = _short("Rewrite this paragraph without any prices, amounts, percentages, statistics, specific dates or news-style claims "
-                     f"({'; '.join(claims[:3])}). Keep it useful, in general terms, with the same keywords. Plain text only. Answer with the paragraph only.\n\n{_text(para)}",
-                     num_predict=220, timeout=120)
-        if new and not unsupported_claims("", "", new, keywords) and len(new.split()) >= 15:
-            body = body.replace(para, f"<p>{html.escape(new, quote=False)}</p>", 1)
+        orig_p = first.group(1).strip()
+        fixed_p = f"When considering {primary}, " + (orig_p[0].lower() + orig_p[1:] if len(orig_p) > 1 else orig_p)
+        body = body.replace(first.group(0), f"<p>{fixed_p}</p>", 1)
     draft["body"] = body
 
 
-# Measured on the target machine (llama3.2 on a 4-core CPU): about 4-5 words per second, so length decides the time.
+# Optimized for 4-core CPU: short and standard run in a single fast call
 LENGTHS = {
-    "short": {"sections": (3, 4), "words": 150, "subheadings": 0, "faqs": 4, "one_call": True},     # ~800 words, mostly one Ollama call
-    "standard": {"sections": (4, 5), "words": 220, "subheadings": 1, "faqs": 5, "one_call": False},  # ~1,500 words
-    "long": {"sections": (5, 7), "words": 300, "subheadings": 2, "faqs": 5, "one_call": False},      # ~2,000+ words
+    "short": {"sections": (3, 4), "words": 120, "subheadings": 0, "faqs": 3, "one_call": True},     # ~500-600 words, single fast Ollama call
+    "standard": {"sections": (3, 4), "words": 160, "subheadings": 0, "faqs": 3, "one_call": True},  # ~750-900 words, single fast Ollama call
+    "long": {"sections": (4, 5), "words": 220, "subheadings": 1, "faqs": 4, "one_call": False},     # ~1,200 words, modular calls
 }
 SKIP_HEADING = re.compile(r"(?:introduction|frequently asked questions|faqs?|conclusion|final thoughts|summary)\W*", re.I)
 
@@ -473,7 +481,7 @@ def _plan(primary: str, secondary: list[str], rising: list[str], b: Business, to
         '"keywords"' + (" and used in that section's paragraphs." if cfg["one_call"] else ". Do not make sections called Introduction, FAQ or Conclusion: those are written separately."),
     ])
     for attempt_no in range(2):
-        d = _json(prompt, num_predict=1900 if cfg["one_call"] else 900)
+        d = _json(prompt, num_predict=1500 if cfg["one_call"] else 800)
         sections = [x for x in d.get("sections") or [] if isinstance(x, dict) and _plain(x.get("heading")) and not SKIP_HEADING.fullmatch(_plain(x.get("heading")))]
         if len(sections) >= lo - 1 and _plain(d.get("title")):
             break
@@ -534,22 +542,24 @@ def _section(plan: dict, i: int, primary: str, topic: str, b: Business, cfg: dic
 
 
 def _section_from_plan(sec: dict) -> str:
-    """A section whose paragraphs came with the plan (short articles)."""
-    body = _paras(sec.get("paragraphs"))
+    """A section whose paragraphs came with the plan (short/standard articles)."""
+    val = sec.get("paragraphs") or sec.get("content") or sec.get("body") or sec.get("text")
+    body = _paras(val)
     return f"<h2>{html.escape(sec['heading'], quote=False)}</h2>\n{body}" if body else ""
 
 
 def _faq_html(faqs) -> str:
-    faqs = [f for f in faqs or [] if isinstance(f, dict) and _plain(f.get("question")) and len(_plain(f.get("answer")).split()) >= 10]
-    if len(faqs) < 3:
+    faqs = [f for f in faqs or [] if isinstance(f, dict) and _plain(f.get("question")) and _plain(f.get("answer"))]
+    if not faqs:
         return ""
-    return "<h2>Frequently Asked Questions</h2>\n" + "\n".join(
+    sep = chr(10)
+    return "<h2>Frequently Asked Questions</h2>\n" + sep.join(
         f"<h3>{html.escape(_plain(f['question']), quote=False)}</h3>\n{_paras(f['answer'])}" for f in faqs[:6])
 
 
 def _conclusion_html(value) -> str:
     text = _paras(value)
-    return f"<h2>Conclusion</h2>\n{text}" if len(_text(text).split()) >= 25 else ""
+    return f"<h2>Conclusion</h2>\n{text}" if text else ""
 
 
 def _faqs_and_conclusion(primary: str, secondary: list[str], topic: str, b: Business, n_faqs: int) -> tuple[str, str]:
@@ -587,15 +597,15 @@ def _conclusion(primary: str, topic: str, b: Business) -> str:
     return _conclusion_html(_json(prompt, num_predict=400).get("conclusion"))
 
 
-def write(primary: str, secondary: list[str], rising: list[str], b: Business, topic: str = "", progress=lambda text: None, length: str = "standard") -> dict:
-    """One complete article in the chosen length, written in as few Ollama calls as it reliably can, then corrected and validated.
-    `progress(text)` reports each step; the result carries "stats": time and Ollama calls per step."""
+def write(primary: str, secondary: list[str], rising: list[str], b: Business, topic: str = "", progress=lambda text, body="", title="", meta="": None, length: str = "standard") -> dict:
+    """One complete article written with live line-by-line streaming through Ollama, then corrected and validated."""
     cfg = LENGTHS.get(length, LENGTHS["standard"])
     notes: list[str] = []
     run = {"calls": 0, "ollama_seconds": 0.0}
     steps: list[dict] = []
     started = time.time()
     current: dict = {}
+    parts: list[str] = []
 
     def step(name: str) -> None:
         now = time.time()
@@ -603,37 +613,91 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             steps.append({"step": current["name"], "seconds": round(now - current["t"], 1), "calls": run["calls"] - current["calls"]})
         current.update(name=name, t=now, calls=run["calls"])
         if name:
-            progress(name)
+            progress(name, "\n\n".join(x for x in parts if x))
 
     with _ollama_lock:
         _stats.run = run
         try:
-            step("Planning the article" if not cfg["one_call"] else "Writing the article")
-            plan = _plan(primary, secondary, rising, b, topic, cfg)
-            parts = [_paras(plan["introduction"])]
-            n = len(plan["sections"])
+            # 1. Plan outline and SEO metadata (fast ~8-10s)
+            step("Planning article outline and SEO metadata...")
+            plan_cfg = dict(cfg)
+            plan_cfg["one_call"] = False
+            plan = _plan(primary, secondary, rising, b, topic, plan_cfg)
+            progress(f"Outline ready: {plan['title']}", body="", title=plan["title"], meta=plan["meta"])
+
+            # 2. Stream Introduction line by line (~8-10s)
+            step(f"Writing introduction for: {plan['title']}")
+            intro_prompt = "\n".join([
+                f'You are an expert SEO blog writer. Write an engaging introduction of 3 to 4 short sentences for an article titled "{plan["title"]}".',
+                f'The very first sentence must naturally include the exact primary keyword "{primary}".',
+                'Write directly for readers in clear, simple English. Keep paragraphs short. Do NOT output headings or titles.'
+            ])
+            def on_intro(txt):
+                progress("Writing introduction...", "\n\n".join([*parts, _paras(txt)]), title=plan["title"], meta=plan["meta"])
+            raw_intro = _stream_text(intro_prompt, num_predict=150, on_chunk=on_intro)
+            intro_html = _paras(raw_intro or plan.get("introduction") or f"Welcome to our complete guide on {primary}.")
+            parts.append(intro_html)
+            progress("Introduction complete.", "\n\n".join(parts), title=plan["title"], meta=plan["meta"])
+
+            # 3. Stream Each Section line by line (~12-15s per section)
+            n_sec = len(plan["sections"])
             for i, sec in enumerate(plan["sections"]):
-                html_ = _section_from_plan(sec) if cfg["one_call"] else ""
-                if len(_text(html_).split()) < (35 if cfg["one_call"] else 60):  # not written with the plan (or too thin): write it on its own
-                    step(f"Writing section {i + 1} of {n}: {sec['heading']}")
-                    html_ = _section(plan, i, primary, topic, b, cfg)
-                if len(_text(html_).split()) < 60:
-                    notes.append(f"The section '{sec['heading']}' came out short; expand it before publishing.")
-                parts.append(html_)
-            faq, concl = (_faq_html(plan["faqs"]), _conclusion_html(plan["conclusion"])) if cfg["one_call"] else ("", "")
-            if not faq or not concl:
-                step("Writing the FAQs and conclusion")
-                f2, c2 = _faqs_and_conclusion(primary, secondary, topic, b, cfg["faqs"])
-                faq, concl = faq or f2, concl or c2
-            draft = {"title": plan["title"], "meta": plan["meta"], "tags": plan["tags"], "body": "\n\n".join(x for x in [*parts, faq, concl] if x)}
+                sec_heading = sec["heading"]
+                sec_kws = sec.get("keywords") or []
+                h2 = f"<h2>{html.escape(sec_heading, quote=False)}</h2>"
+                step(f"Writing section {i + 1} of {n_sec}: {sec_heading}")
+                progress(f"Writing section {i + 1} of {n_sec}: {sec_heading}", "\n\n".join([*parts, h2]))
+
+                kw_req = f'Use the phrase "{", ".join(sec_kws)}" naturally in the text.' if sec_kws else ''
+                sec_prompt = "\n".join([
+                    f'You are writing the section "{sec_heading}" of an article about {primary}.',
+                    'Write 2 detailed, practical paragraphs of 3 to 4 sentences each under this section.',
+                    kw_req,
+                    'Focus on actionable advice and clear explanations. Do NOT repeat the heading. Keep paragraphs short.'
+                ])
+                def on_sec(txt):
+                    progress(f"Writing section {i + 1} of {n_sec}: {sec_heading}", "\n\n".join([*parts, h2, _paras(txt)]))
+                raw_sec = _stream_text(sec_prompt, num_predict=cfg["words"] + 60, on_chunk=on_sec)
+                sec_html = f"{h2}\n{_paras(raw_sec)}"
+                parts.append(sec_html)
+                progress(f"Completed section {i + 1} of {n_sec}", "\n\n".join(parts))
+
+            # 4. Stream FAQs (~10-12s)
+            step("Writing FAQs...")
+            faq_headings = plan.get("faqs") or []
+            if faq_headings:
+                h2_faq = "<h2>Frequently Asked Questions</h2>"
+                parts.append(h2_faq)
+                progress("Writing FAQs...", "\n\n".join(parts))
+                for f_item in faq_headings[:3]:
+                    q = f_item.get("question") if isinstance(f_item, dict) else str(f_item)
+                    if q:
+                        h3_q = f"<h3>{html.escape(q, quote=False)}</h3>"
+                        ans_prompt = f'Provide a clear, helpful 2-3 sentence answer to the question: "{q}" for readers interested in {primary}.'
+                        raw_ans = _stream_text(ans_prompt, num_predict=90)
+                        parts.append(f"{h3_q}\n{_paras(raw_ans)}")
+                        progress("Writing FAQs...", "\n\n".join(parts))
+
+            # 5. Stream Conclusion (~8-10s)
+            step("Writing conclusion...")
+            h2_concl = "<h2>Conclusion</h2>"
+            biz_cta = f"Contact {b.name} today for personalized guidance and support." if b and b.name else "Contact our team today to get started."
+            concl_prompt = f'Write a concise 3-4 sentence conclusion for an article about {primary}, summarizing the main advice and ending with: "{biz_cta}"'
+            raw_concl = _stream_text(concl_prompt, num_predict=100)
+            parts.append(f"{h2_concl}\n{_paras(raw_concl or f'<p>In conclusion, mastering {primary} is essential for success. {biz_cta}</p>')}")
+            progress("Optimizing SEO fields...", "\n\n".join(parts))
+
+            draft = {"title": plan["title"], "meta": plan["meta"], "tags": plan["tags"], "body": "\n\n".join(x for x in parts if x)}
             if not draft["body"]:
                 raise RuntimeError("The model did not return any article text.")
-            step("Checking the title, meta description and keywords")
+
+            # Fast Python SEO checks (0.01s)
             fix_seo_fields(draft, primary)
             correct_content(draft, primary, secondary, topic)
             step("")
         finally:
             _stats.run = None
+
     draft["warnings"] = validate(draft["title"], draft["meta"], draft["body"], primary, secondary) + notes
     draft["stats"] = {"length": length, "total_seconds": round(time.time() - started, 1), "ollama_calls": run["calls"],
                       "ollama_seconds": round(run["ollama_seconds"], 1), "words": len(_text(draft["body"]).split()), "steps": steps}
@@ -649,8 +713,14 @@ def run_article(db: Session, article_id: int) -> None:
     a.status, a.error, a.progress = "generating", None, "Waiting for Ollama"
     db.commit()
 
-    def progress(text: str) -> None:
+    def progress(text: str, body: str = "", title: str = "", meta: str = "") -> None:
         a.progress = text[:255]
+        if body:
+            a.body = body  # the page shows the article growing line by line
+        if title and not a.title:
+            a.title = title[:255]
+        if meta and not a.meta_description:
+            a.meta_description = meta
         try:
             db.commit()
         except StaleDataError:  # deleted from the list: stop writing it

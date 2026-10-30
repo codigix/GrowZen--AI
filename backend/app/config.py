@@ -86,8 +86,10 @@ class Settings(BaseSettings):
     # Blog article generation (AI Blog Studio): local Ollama, same settings as the auto-blogger project.
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
-    ollama_max_tokens: int = 4096
-    ollama_timeout_seconds: int = 300
+    ollama_max_tokens: int = 2048
+    ollama_timeout_seconds: int = 180
+    ollama_temperature: float = 0.6  # lower = steadier wording; the keyword "Regenerate" call raises it for variety
+    ollama_num_ctx: int = 2048  # context window; 4096 fits a 3B model comfortably in 8 GB RAM
     ollama_prompt_persona: str = "You are an experienced SEO blog writer. Write clearly and helpfully, in simple English."
     ollama_prompt_requirements: str = "- Keep paragraphs short."
     # WordPress REST API (Application Password) for pushing a generated article as a draft; optional.
