@@ -39,7 +39,7 @@ CLAIM_PATTERNS = {
     "specific date": rf"\b(?:{_MONTHS})\s+\d{{1,2}}\b|\b\d{{1,2}}(?:st|nd|rd|th)?\s+(?:{_MONTHS})\b",
     "news claim": r"\b(?:announced|unveiled|reportedly|according to|breaking news|just launched|officially launched|press release)\b",
 }
-ALLOWED_TAGS = {"p", "h2", "h3", "h4", "ul", "ol", "li", "strong", "b", "em", "i", "br", "blockquote"}
+ALLOWED_TAGS = {"p", "h1", "h2", "h3", "h4", "ul", "ol", "li", "strong", "b", "em", "i", "br", "blockquote", "img", "figure", "figcaption", "div", "span", "script"}
 PLACEHOLDER = re.compile(r"\[[^\]]{2,}\]|\b(?:lorem ipsum|write about|insert here|to be added|your text here)\b", re.I)
 
 
@@ -278,11 +278,30 @@ def _html_paragraphs(value) -> str:
 
 
 def sanitize_html(body: str) -> str:
-    """Edited bodies are untrusted too: keep simple formatting tags (no attributes), turn anything else into text."""
+    """Keep formatting tags, preserve schema script and img attributes."""
+    scripts = re.findall(r'<script type="application/ld\+json">[\s\S]*?</script>', body, re.I)
+    body = re.sub(r'<script type="application/ld\+json">[\s\S]*?</script>', "<!--SCHEMA_PLACEHOLDER-->", body, flags=re.I)
     body = re.sub(r"<(script|style|iframe|object|embed)\b[\s\S]*?</\1\s*>", "", body, flags=re.I)
-    body = re.sub(r"<!--[\s\S]*?-->", "", body)
+    body = re.sub(r"<!--(?!SCHEMA_PLACEHOLDER)[\s\S]*?-->", "", body)
     body = re.sub(r"<(?![a-zA-Z/])", "&lt;", body)
-    body = re.sub(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>", lambda m: f"<{m.group(1)}{m.group(2).lower()}>" if m.group(2).lower() in ALLOWED_TAGS else "", body)
+
+    def tag_clean(m):
+        slash, tag = m.group(1), m.group(2).lower()
+        if tag not in ALLOWED_TAGS:
+            return ""
+        if tag == "img":
+            src = re.search(r'src="([^"]*)"', m.group(0), re.I)
+            alt = re.search(r'alt="([^"]*)"', m.group(0), re.I)
+            cls = re.search(r'class="([^"]*)"', m.group(0), re.I)
+            s = f' src="{src.group(1)}"' if src else ''
+            a = f' alt="{alt.group(1)}"' if alt else ''
+            c = f' class="{cls.group(1)}"' if cls else ''
+            return f"<img{s}{a}{c} />"
+        return f"<{slash}{tag}>"
+
+    body = re.sub(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>", tag_clean, body)
+    if scripts:
+        body = body.replace("<!--SCHEMA_PLACEHOLDER-->", "\n" + "\n".join(scripts))
     return body.strip()
 
 
@@ -318,16 +337,19 @@ def unsupported_claims(title: str, meta: str, body: str, keywords: list[str]) ->
 
 
 def validate(title: str, meta: str, body: str, primary: str, secondary: list[str]) -> list[str]:
-    """Warnings shown to the editor: keyword use, lengths, structure, details that cannot be verified."""
+    """Warnings shown to the editor enforcing the complete 10-part SEO blog structure."""
     w = []
     text = _text(body)
-    first_p = re.search(r"<p>(.*?)</p>", body or "", re.S)
+    
+    # Title validation
     if not title:
         w.append("The SEO title is empty.")
     elif len(title) > TITLE_MAX:
         w.append(f"The SEO title is {len(title)} characters (aim for {TITLE_MAX} or fewer).")
     if title and not _has(title, primary):
         w.append(f"The title does not contain the primary keyword '{primary}'.")
+        
+    # Meta description validation
     if not meta:
         w.append("The meta description is empty.")
     else:
@@ -335,22 +357,75 @@ def validate(title: str, meta: str, body: str, primary: str, secondary: list[str
             w.append(f"The meta description is {len(meta)} characters (aim for 150-160).")
         if not _has(meta, primary):
             w.append(f"The meta description does not contain the primary keyword '{primary}'.")
-    if not first_p or not _has(first_p.group(1), primary):
+            
+    # Section 1: H1 Title
+    if not re.search(r"<h1\b", body or "", re.I):
+        w.append("Structure check: Blog Title (H1) heading is missing from article body.")
+        
+    # Section 2: Introduction (min 500 characters)
+    first_p = re.search(r"<p\b[^>]*>(.*?)</p>", body or "", re.S | re.I)
+    intro_text = _text(first_p.group(1)) if first_p else ""
+    if not first_p:
+        w.append("Structure check: Introduction paragraph is missing.")
+    elif len(intro_text) < 500:
+        w.append(f"Structure check: Introduction is {len(intro_text)} characters (minimum 500 characters required).")
+    if first_p and not _has(intro_text, primary):
         w.append(f"The introduction does not contain the primary keyword '{primary}'.")
+        
+    # Section 3 & 4: Subheadings (H2) and 500+ char body paragraphs
+    h2_matches = re.findall(r"<h2\b[^>]*>(.*?)</h2>", body or "", re.S | re.I)
+    if len(h2_matches) < 4:
+        w.append(f"Structure check: Article has {len(h2_matches)} H2 sections (minimum 5 required for full SEO structure).")
+        
+    # Section 5: WH Question (H2)
+    wh_match = re.search(r"<h2\b[^>]*>\s*(What|Why|How|When|Where)\b[^<]*</h2>\s*<p\b[^>]*>(.*?)</p>", body or "", re.S | re.I)
+    if not wh_match:
+        w.append("Structure check: Missing a WH Question (What/Why/How/When/Where) H2 section.")
+    else:
+        wh_ans_len = len(_text(wh_match.group(2)))
+        if wh_ans_len > 750:
+            w.append(f"Structure check: WH Question answer is {wh_ans_len} characters (maximum 750 allowed).")
+            
+    # Section 6: Action / Don't Wait section
+    if not re.search(r"don't wait|take action|timely action|act now|why wait", body or "", re.I):
+        w.append("Structure check: Missing 'Don\'t Wait to Take Action' section.")
+        
+    # Section 7: Why Choose [Business Name]
+    if not re.search(r"why choose", body or "", re.I):
+        w.append("Structure check: Missing 'Why Choose [Business Name]?' section.")
+        
+    # Section 8: FAQs (MANDATORY: 3-5 Q&As)
+    has_faq = bool(re.search(r"frequently asked|faq", body or "", re.I))
+    if not has_faq:
+        w.append("MANDATORY: FAQ section is missing. All articles must include an FAQ section.")
+    else:
+        faq_idx = re.search(r"frequently asked|faq", body or "", re.I).start()
+        faq_q_count = len(re.findall(r"<h3\b", body[faq_idx:], re.I))
+        if faq_q_count < 3:
+            w.append(f"MANDATORY: FAQ section has only {faq_q_count} questions (minimum 3 required).")
+            
+    # Section 9: CTA - Call To Action
+    if not re.search(r"contact|ready to|get started|call us|reach out", body or "", re.I):
+        w.append("Structure check: Missing Call To Action (CTA) section.")
+        
+    # Section 10: Local Business Schema
+    if not re.search(r'application/ld\+json', body or "", re.I):
+        w.append("Structure check: Missing Local Business Schema structured data.")
+        
+    # Keywords check
     if not _has(text, primary):
-        w.append(f"The primary keyword '{primary}' does not appear in the article.")
+        w.append(f"The primary keyword '{primary}' does not appear in the article body.")
     for k in secondary:
         if not _has(text, k):
-            w.append(f"The secondary keyword '{k}' does not appear in the article.")
-    if len(re.findall(r"<h2>", body or "")) < 3:
-        w.append("The article has fewer than 3 <h2> sections.")
-    if not re.search(r"frequently asked|faq", body or "", re.I):
-        w.append("The article has no FAQ section.")
+            w.append(f"Secondary keyword '{k}' does not appear in the article.")
+            
     if PLACEHOLDER.search(text):
         w.append("The article still contains placeholder text in [brackets].")
+        
     claims = unsupported_claims(title, meta, body or "", [primary, *secondary])
     if claims:
-        w.append("May contain details that were not supplied and cannot be verified; review before publishing: " + "; ".join(claims[:6]))
+        w.append("May contain unverified claims; review before publishing: " + "; ".join(claims[:6]))
+        
     return w
 
 
@@ -598,7 +673,18 @@ def _conclusion(primary: str, topic: str, b: Business) -> str:
 
 
 def write(primary: str, secondary: list[str], rising: list[str], b: Business, topic: str = "", progress=lambda text, body="", title="", meta="": None, length: str = "standard") -> dict:
-    """One complete article written with live line-by-line streaming through Ollama, then corrected and validated."""
+    """Generate one complete blog article strictly adhering to the 10-part SEO Writing Structure:
+    1. Blog Title (H1)
+    2. Introduction + 1 Image (min 500 chars)
+    3. Subheading 1 (H2): Paragraph 2 + Paragraph 3 (500+ chars each)
+    4. Subheading 2 (H2): Paragraph 4 (500+ chars)
+    5. WH Question (H2): Answer up to 750 chars
+    6. Don't Wait to Seek Help (H2)
+    7. Why Choose [Business Name]? (H2, 3-5 reasons)
+    8. FAQs (H2, 3-5 questions and answers) - MANDATORY
+    9. CTA - Call To Action with verified business info
+    10. Local Business Schema (<script type="application/ld+json">)
+    """
     cfg = LENGTHS.get(length, LENGTHS["standard"])
     notes: list[str] = []
     run = {"calls": 0, "ollama_seconds": 0.0}
@@ -618,80 +704,263 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
     with _ollama_lock:
         _stats.run = run
         try:
-            # 1. Plan outline and SEO metadata (fast ~8-10s)
-            step("Planning article outline and SEO metadata...")
-            plan_cfg = dict(cfg)
-            plan_cfg["one_call"] = False
-            plan = _plan(primary, secondary, rising, b, topic, plan_cfg)
-            progress(f"Outline ready: {plan['title']}", body="", title=plan["title"], meta=plan["meta"])
+            # ── 0. Plan Complete SEO Blueprint ──
+            step("Planning 10-part SEO article structure and metadata...")
+            plan_prompt = "\n".join([
+                *_context(b, lean=True), "",
+                "You are an elite SEO strategist. Plan a comprehensive, high-ranking blog article.",
+                f"Topic: {topic or primary}",
+                f'Primary keyword: "{primary}"',
+                f"Secondary keywords: {json.dumps(secondary[:6]) if secondary else 'None'}",
+                f"Business name: {b.name} (Location: {', '.join(x for x in [b.area, b.city] if x) or 'Local'})",
+                "",
+                "Answer with ONE JSON object and nothing else:",
+                "{",
+                f'  "title": "Clear, engaging SEO title under {TITLE_MAX} characters containing exact primary keyword",',
+                '  "meta": "One compelling meta description of 150-160 characters containing exact primary keyword",',
+                '  "subheading_1": "First in-depth H2 subheading exploring key concepts and practical advice",',
+                '  "subheading_2": "Second H2 subheading covering advanced implementation and strategies",',
+                '  "wh_question": "One high-value question starting with What, Why, How, When, or Where",',
+                '  "help_heading": "An action-oriented H2 heading urging timely action",',
+                '  "faqs": [',
+                '    {"question": "Frequent question 1", "answer": "Clear 2-3 sentence answer"},',
+                '    {"question": "Frequent question 2", "answer": "Clear 2-3 sentence answer"},',
+                '    {"question": "Frequent question 3", "answer": "Clear 2-3 sentence answer"}',
+                '  ],',
+                '  "tags": ["5 to 8 relevant SEO tags"]',
+                "}"
+            ])
+            d_plan = _json(plan_prompt, num_predict=650)
+            title = _plain(d_plan.get("title") or f"Complete Guide to {primary.title()} | {b.name}")[:TITLE_MAX]
+            if not _has(title, primary):
+                title = f"{primary.title()}: Expert Guide & Tips"[:TITLE_MAX]
+            meta = _plain(d_plan.get("meta") or f"Learn everything about {primary} with expert guidance from {b.name}. Discover proven strategies, tips, and actionable insights.")
+            if len(meta) > META_MAX:
+                meta = meta[:META_MAX - 1].rsplit(" ", 1)[0].rstrip(",;:.- ") + "…"
+            tags = [_plain(t) for t in d_plan.get("tags") or [] if _plain(t)][:8]
+            
+            sub_1 = _plain(d_plan.get("subheading_1") or f"Key Strategies for Mastering {primary.title()}")
+            sub_2 = _plain(d_plan.get("subheading_2") or f"Advanced Techniques and Practical Implementation")
+            wh_q = _plain(d_plan.get("wh_question") or f"How Does {primary.title()} Impact Business Growth?")
+            if not re.match(r"^(What|Why|How|When|Where)", wh_q, re.I):
+                wh_q = f"How Does {primary.title()} Benefit Your Business?"
+            help_h = _plain(d_plan.get("help_heading") or "Don't Wait to Take Action: The Cost of Inaction")
+            plan_faqs = d_plan.get("faqs") or [
+                {"question": f"What is the best way to get started with {primary}?", "answer": f"The best way to get started with {primary} is by conducting an initial assessment of your current position and defining clear goals. Partnering with a reliable service provider like {b.name} ensures a smooth implementation process."},
+                {"question": f"How long does it take to see results from {primary}?", "answer": f"Results from {primary} typically become noticeable within a few weeks to months depending on consistency and strategy. Continuous optimization is key to long-term success."},
+                {"question": f"Why is professional guidance recommended for {primary}?", "answer": f"Professional guidance helps avoid common pitfalls, saves valuable time, and provides access to advanced industry tools and proven methodologies."}
+            ]
 
-            # 2. Stream Introduction line by line (~8-10s)
-            step(f"Writing introduction for: {plan['title']}")
+            # ── 1. Blog Title (H1) ──
+            h1_html = f"<h1>{html.escape(title, quote=False)}</h1>"
+            parts.append(h1_html)
+            progress(f"Starting article: {title}", "\n\n".join(parts), title=title, meta=meta)
+
+            # ── 2. Introduction Paragraph (min 500 characters) + 1 Image ──
+            step("Writing Introduction (min 500 chars) & Featured Image...")
+            loc_str = f" in {b.city}" if b.city else ""
+            sec_kws_str = ", ".join(secondary[:3]) if secondary else primary
             intro_prompt = "\n".join([
-                f'You are an expert SEO blog writer. Write an engaging introduction of 3 to 4 short sentences for an article titled "{plan["title"]}".',
-                f'The very first sentence must naturally include the exact primary keyword "{primary}".',
-                'Write directly for readers in clear, simple English. Keep paragraphs short. Do NOT output headings or titles.'
+                f'You are an expert content writer for {b.name}. Write an in-depth, compelling introduction for "{title}".',
+                f'Requirements:',
+                f'- MUST be at least 500 characters of high-value text (2 detailed paragraphs).',
+                f'- The first sentence must naturally include the exact primary keyword "{primary}".',
+                f'- Naturally integrate secondary keywords where relevant: {sec_kws_str}.',
+                f'- Explain the topic, its importance, and the practical benefits to readers{loc_str}.',
+                '- Write in clear, professional English. Do NOT output headings or titles.'
             ])
             def on_intro(txt):
-                progress("Writing introduction...", "\n\n".join([*parts, _paras(txt)]), title=plan["title"], meta=plan["meta"])
-            raw_intro = _stream_text(intro_prompt, num_predict=150, on_chunk=on_intro)
-            intro_html = _paras(raw_intro or plan.get("introduction") or f"Welcome to our complete guide on {primary}.")
-            parts.append(intro_html)
-            progress("Introduction complete.", "\n\n".join(parts), title=plan["title"], meta=plan["meta"])
+                progress("Writing Introduction...", "\n\n".join([*parts, _paras(txt)]), title=title, meta=meta)
+            raw_intro = _stream_text(intro_prompt, num_predict=280, on_chunk=on_intro)
+            intro_p = _paras(raw_intro)
+            
+            # Ensure 500+ character requirement
+            if len(_text(intro_p)) < 500:
+                supp_prompt = f'Write one additional detailed explanatory paragraph of 4 sentences about {primary} and why timely expertise from {b.name} makes a significant difference.'
+                supp_raw = _stream_text(supp_prompt, num_predict=160)
+                intro_p = intro_p + "\n" + _paras(supp_raw)
+            parts.append(intro_p)
 
-            # 3. Stream Each Section line by line (~12-15s per section)
-            n_sec = len(plan["sections"])
-            for i, sec in enumerate(plan["sections"]):
-                sec_heading = sec["heading"]
-                sec_kws = sec.get("keywords") or []
-                h2 = f"<h2>{html.escape(sec_heading, quote=False)}</h2>"
-                step(f"Writing section {i + 1} of {n_sec}: {sec_heading}")
-                progress(f"Writing section {i + 1} of {n_sec}: {sec_heading}", "\n\n".join([*parts, h2]))
+            # Add Image with descriptive ALT text right after introduction
+            img_alt = html.escape(f"{title} - {primary} by {b.name}", quote=True)
+            img_html = f'<figure><img src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80" alt="{img_alt}" class="rounded-xl my-4 w-full object-cover max-h-96" /><figcaption class="text-xs text-slate-500 text-center mt-1">{html.escape(title, quote=False)}</figcaption></figure>'
+            parts.append(img_html)
+            progress("Introduction & Image complete.", "\n\n".join(parts), title=title, meta=meta)
 
-                kw_req = f'Use the phrase "{", ".join(sec_kws)}" naturally in the text.' if sec_kws else ''
-                sec_prompt = "\n".join([
-                    f'You are writing the section "{sec_heading}" of an article about {primary}.',
-                    'Write 2 detailed, practical paragraphs of 3 to 4 sentences each under this section.',
-                    kw_req,
-                    'Focus on actionable advice and clear explanations. Do NOT repeat the heading. Keep paragraphs short.'
-                ])
-                def on_sec(txt):
-                    progress(f"Writing section {i + 1} of {n_sec}: {sec_heading}", "\n\n".join([*parts, h2, _paras(txt)]))
-                raw_sec = _stream_text(sec_prompt, num_predict=cfg["words"] + 60, on_chunk=on_sec)
-                sec_html = f"{h2}\n{_paras(raw_sec)}"
-                parts.append(sec_html)
-                progress(f"Completed section {i + 1} of {n_sec}", "\n\n".join(parts))
+            # ── 3. First Subheading (H2): Paragraph 2 + Paragraph 3 (500+ chars each) ──
+            step(f"Writing Subheading 1: {sub_1} (Paragraphs 2 & 3, 500+ chars each)...")
+            h2_1 = f"<h2>{html.escape(sub_1, quote=False)}</h2>"
+            parts.append(h2_1)
+            progress(f"Writing: {sub_1}", "\n\n".join(parts), title=title, meta=meta)
 
-            # 4. Stream FAQs (~10-12s)
-            step("Writing FAQs...")
-            faq_headings = plan.get("faqs") or []
-            if faq_headings:
-                h2_faq = "<h2>Frequently Asked Questions</h2>"
-                parts.append(h2_faq)
-                progress("Writing FAQs...", "\n\n".join(parts))
-                for f_item in faq_headings[:3]:
-                    q = f_item.get("question") if isinstance(f_item, dict) else str(f_item)
-                    if q:
-                        h3_q = f"<h3>{html.escape(q, quote=False)}</h3>"
-                        ans_prompt = f'Provide a clear, helpful 2-3 sentence answer to the question: "{q}" for readers interested in {primary}.'
-                        raw_ans = _stream_text(ans_prompt, num_predict=90)
-                        parts.append(f"{h3_q}\n{_paras(raw_ans)}")
-                        progress("Writing FAQs...", "\n\n".join(parts))
+            # Paragraph 2 (min 500 chars)
+            p2_prompt = "\n".join([
+                f'Write ONE detailed, comprehensive paragraph of at least 500 characters exploring core insights and foundational principles of "{sub_1}" for an article on {primary}.',
+                'Provide actionable tips, practical clarity, and clear industry context. No bullet points, one deep paragraph only.'
+            ])
+            def on_p2(txt):
+                progress(f"Writing Paragraph 2 ({sub_1})...", "\n\n".join([*parts, _paras(txt)]), title=title, meta=meta)
+            p2_raw = _stream_text(p2_prompt, num_predict=260, on_chunk=on_p2)
+            p2_html = _paras(p2_raw)
+            if len(_text(p2_html)) < 500:
+                p2_extra = _stream_text(f'Expand on this with 2 more practical examples: {p2_raw[:150]}', num_predict=120)
+                p2_html = _paras(p2_raw + " " + p2_extra)
+            parts.append(p2_html)
 
-            # 5. Stream Conclusion (~8-10s)
-            step("Writing conclusion...")
-            h2_concl = "<h2>Conclusion</h2>"
-            biz_cta = f"Contact {b.name} today for personalized guidance and support." if b and b.name else "Contact our team today to get started."
-            concl_prompt = f'Write a concise 3-4 sentence conclusion for an article about {primary}, summarizing the main advice and ending with: "{biz_cta}"'
-            raw_concl = _stream_text(concl_prompt, num_predict=100)
-            parts.append(f"{h2_concl}\n{_paras(raw_concl or f'<p>In conclusion, mastering {primary} is essential for success. {biz_cta}</p>')}")
-            progress("Optimizing SEO fields...", "\n\n".join(parts))
+            # Paragraph 3 (min 500 chars)
+            p3_prompt = "\n".join([
+                f'Write ONE detailed paragraph of at least 500 characters continuing the discussion under "{sub_1}".',
+                'Focus on concrete real-world implementation, step-by-step methodologies, and overcoming common challenges.',
+                'Ensure depth, clarity, and practical value. One deep paragraph only.'
+            ])
+            def on_p3(txt):
+                progress(f"Writing Paragraph 3 ({sub_1})...", "\n\n".join([*parts, _paras(txt)]), title=title, meta=meta)
+            p3_raw = _stream_text(p3_prompt, num_predict=260, on_chunk=on_p3)
+            p3_html = _paras(p3_raw)
+            if len(_text(p3_html)) < 500:
+                p3_extra = _stream_text(f'Add further actionable insight: {p3_raw[:150]}', num_predict=120)
+                p3_html = _paras(p3_raw + " " + p3_extra)
+            parts.append(p3_html)
+            progress("Subheading 1 complete.", "\n\n".join(parts), title=title, meta=meta)
 
-            draft = {"title": plan["title"], "meta": plan["meta"], "tags": plan["tags"], "body": "\n\n".join(x for x in parts if x)}
-            if not draft["body"]:
-                raise RuntimeError("The model did not return any article text.")
+            # ── 4. Second Subheading (H2): Paragraph 4 (500+ chars) ──
+            step(f"Writing Subheading 2: {sub_2} (Paragraph 4, 500+ chars)...")
+            h2_2 = f"<h2>{html.escape(sub_2, quote=False)}</h2>"
+            parts.append(h2_2)
+            progress(f"Writing: {sub_2}", "\n\n".join(parts), title=title, meta=meta)
 
-            # Fast Python SEO checks (0.01s)
+            p4_prompt = "\n".join([
+                f'Write ONE comprehensive paragraph of at least 500 characters under "{sub_2}" for {primary}.',
+                f'Naturally incorporate relevant secondary keywords: {", ".join(secondary[1:4]) if len(secondary) > 1 else primary}.',
+                'Provide thorough analysis, advanced strategies, and long-term optimization recommendations. One deep paragraph only.'
+            ])
+            def on_p4(txt):
+                progress(f"Writing Paragraph 4 ({sub_2})...", "\n\n".join([*parts, _paras(txt)]), title=title, meta=meta)
+            p4_raw = _stream_text(p4_prompt, num_predict=280, on_chunk=on_p4)
+            p4_html = _paras(p4_raw)
+            if len(_text(p4_html)) < 500:
+                p4_extra = _stream_text(f'Continue with strategic recommendations: {p4_raw[:150]}', num_predict=120)
+                p4_html = _paras(p4_raw + " " + p4_extra)
+            parts.append(p4_html)
+            progress("Subheading 2 complete.", "\n\n".join(parts), title=title, meta=meta)
+
+            # ── 5. WH Question (H2, answer max 750 chars) ──
+            step(f"Writing WH Question: {wh_q}...")
+            h2_wh = f"<h2>{html.escape(wh_q, quote=False)}</h2>"
+            parts.append(h2_wh)
+            progress(f"Writing: {wh_q}", "\n\n".join(parts), title=title, meta=meta)
+
+            wh_prompt = f'Provide a direct, authoritative, and informative answer to the question: "{wh_q}" regarding {primary}. Keep the answer between 400 and 700 characters (concise, high-impact paragraph).'
+            def on_wh(txt):
+                progress(f"Writing WH Answer...", "\n\n".join([*parts, _paras(txt)]), title=title, meta=meta)
+            wh_raw = _stream_text(wh_prompt, num_predict=180, on_chunk=on_wh)
+            wh_text = _text(wh_raw)
+            if len(wh_text) > 750:
+                wh_text = wh_text[:745].rsplit(".", 1)[0] + "."
+            parts.append(f"<p>{html.escape(wh_text, quote=False)}</p>")
+            progress("WH Question complete.", "\n\n".join(parts), title=title, meta=meta)
+
+            # ── 6. Don't Wait to Seek Help / Take Action (H2) ──
+            step(f"Writing: {help_h}...")
+            h2_help = f"<h2>{html.escape(help_h, quote=False)}</h2>"
+            parts.append(h2_help)
+            progress(f"Writing: {help_h}", "\n\n".join(parts), title=title, meta=meta)
+
+            help_prompt = "\n".join([
+                f'Write an empathetic, persuasive paragraph of 4-5 sentences under the heading "{help_h}".',
+                f'Encourage readers interested in {primary} to take timely action rather than delaying.',
+                f'Explain why procrastination leads to lost momentum or missed opportunities, and how taking prompt action ensures peace of mind and measurable progress.'
+            ])
+            def on_help(txt):
+                progress(f"Writing Action Guidance...", "\n\n".join([*parts, _paras(txt)]), title=title, meta=meta)
+            raw_help = _stream_text(help_prompt, num_predict=180, on_chunk=on_help)
+            parts.append(_paras(raw_help))
+            progress("Action Guidance complete.", "\n\n".join(parts), title=title, meta=meta)
+
+            # ── 7. Why Choose [Business Name]? (H2, 3-5 reasons) ──
+            step(f"Writing: Why Choose {b.name}?... ")
+            h2_why = f"<h2>Why Choose {html.escape(b.name, quote=False)}?</h2>"
+            parts.append(h2_why)
+            
+            reasons = [
+                f"<li><strong>Local Market Authority:</strong> Serving clients in {b.city or 'your region'}{f' ({b.area})' if b.area else ''} with targeted, reliable solutions designed for lasting success.</li>",
+                f"<li><strong>Customized Service Delivery:</strong> Tailored strategies aligned specifically with your requirements rather than generic one-size-fits-all packages.</li>",
+                f"<li><strong>Transparent Communication:</strong> Direct access to experienced professionals with regular progress updates and clear expectations.</li>",
+                f"<li><strong>Proven Methodology:</strong> Systematic execution focused on delivering measurable, sustainable value for your brand.</li>"
+            ]
+            why_html = f"<p>When selecting a trusted partner for {primary}, {html.escape(b.name, quote=False)} stands apart through dedicated expertise and customer-first execution:</p>\n<ul>\n" + "\n".join(reasons) + "\n</ul>"
+            parts.append(why_html)
+            progress(f"Why Choose {b.name} complete.", "\n\n".join(parts), title=title, meta=meta)
+
+            # ── 8. FAQs (H2, 3-5 questions and answers) - MANDATORY ──
+            step("Writing Mandatory FAQs section (3-5 Q&As)...")
+            h2_faq = "<h2>Frequently Asked Questions</h2>"
+            parts.append(h2_faq)
+            progress("Writing FAQs...", "\n\n".join(parts), title=title, meta=meta)
+
+            faq_blocks = []
+            for item in plan_faqs[:4]:
+                q = item.get("question") if isinstance(item, dict) else str(item)
+                a = item.get("answer") if isinstance(item, dict) else ""
+                if q:
+                    if not a or len(a) < 30:
+                        ans_prompt = f'Provide a clear, authoritative 2-3 sentence answer to the question: "{q}" for readers researching {primary}.'
+                        a = _stream_text(ans_prompt, num_predict=90)
+                    h3_q = f"<h3>{html.escape(q, quote=False)}</h3>"
+                    p_a = f"<p>{html.escape(a, quote=False)}</p>"
+                    faq_blocks.append(f"{h3_q}\n{p_a}")
+                    progress("Writing FAQs...", "\n\n".join([*parts, "\n".join(faq_blocks)]), title=title, meta=meta)
+            parts.append("\n".join(faq_blocks))
+            progress("FAQs complete.", "\n\n".join(parts), title=title, meta=meta)
+
+            # ── 9. CTA - Call To Action with Verified Business Details ──
+            step(f"Writing CTA for {b.name}...")
+            h2_cta = f"<h2>Ready to Get Started? Contact {html.escape(b.name, quote=False)} Today</h2>"
+            contact_items = []
+            if b.phone:
+                contact_items.append(f"<li><strong>Phone:</strong> <a href=\"tel:{html.escape(b.phone, quote=True)}\">{html.escape(b.phone, quote=False)}</a></li>")
+            if b.website:
+                contact_items.append(f"<li><strong>Website:</strong> <a href=\"{html.escape(b.website, quote=True)}\" target=\"_blank\" rel=\"noopener\">{html.escape(b.website, quote=False)}</a></li>")
+            loc_disp = ", ".join(x for x in [b.area, b.city] if x)
+            if loc_disp:
+                contact_items.append(f"<li><strong>Location:</strong> {html.escape(loc_disp, quote=False)}</li>")
+            
+            cta_html = "\n".join([
+                h2_cta,
+                '<div class="blog-cta-box" style="padding: 20px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0; margin-top: 20px;">',
+                f'  <p>Taking your {html.escape(primary, quote=False)} strategy to the next level requires proven expertise and dedicated execution. Partner with the specialists at <strong>{html.escape(b.name, quote=False)}</strong> to receive customized recommendations designed around your specific objectives.</p>',
+                f'  <ul>\n    {"".join(contact_items)}\n  </ul>' if contact_items else '',
+                '</div>'
+            ])
+            parts.append(cta_html)
+            progress("CTA complete.", "\n\n".join(parts), title=title, meta=meta)
+
+            # ── 10. Local Business Schema ──
+            step("Adding Local Business Schema structured data...")
+            schema_data = {
+                "@context": "https://schema.org",
+                "@type": "LocalBusiness",
+                "name": b.name,
+                "url": b.website or "",
+                "telephone": b.phone or "",
+                "address": {
+                    "@type": "PostalAddress",
+                    "streetAddress": b.area or "",
+                    "addressLocality": b.city or ""
+                }
+            }
+            schema_script = f'<script type="application/ld+json">\n{json.dumps(schema_data, indent=2)}\n</script>'
+            parts.append(schema_script)
+
+            draft = {
+                "title": title,
+                "meta": meta,
+                "tags": tags,
+                "body": "\n\n".join(x for x in parts if x)
+            }
+
+            # Final pure-Python corrections
+            step("Running SEO validation...")
             fix_seo_fields(draft, primary)
             correct_content(draft, primary, secondary, topic)
             step("")
@@ -699,10 +968,15 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             _stats.run = None
 
     draft["warnings"] = validate(draft["title"], draft["meta"], draft["body"], primary, secondary) + notes
-    draft["stats"] = {"length": length, "total_seconds": round(time.time() - started, 1), "ollama_calls": run["calls"],
-                      "ollama_seconds": round(run["ollama_seconds"], 1), "words": len(_text(draft["body"]).split()), "steps": steps}
-    log.info("Article '%s' (%s): %ss, %d Ollama calls, %d words; steps: %s", primary, length, draft["stats"]["total_seconds"], run["calls"],
-             draft["stats"]["words"], "; ".join(f"{x['step']} {x['seconds']}s/{x['calls']} calls" for x in steps))
+    draft["stats"] = {
+        "length": length,
+        "total_seconds": round(time.time() - started, 1),
+        "ollama_calls": run["calls"],
+        "ollama_seconds": round(run["ollama_seconds"], 1),
+        "words": len(_text(draft["body"]).split()),
+        "steps": steps
+    }
+    log.info("Article '%s' written in %ss, %d Ollama calls, %d words", primary, draft["stats"]["total_seconds"], run["calls"], draft["stats"]["words"])
     return draft
 
 
