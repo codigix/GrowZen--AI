@@ -14,7 +14,10 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
-import httpx
+try:
+    import httpx
+except ImportError:
+    import requests as httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
@@ -44,72 +47,106 @@ PLACEHOLDER = re.compile(r"\[[^\]]{2,}\]|\b(?:lorem ipsum|write about|insert her
 
 
 class OllamaAnswerError(RuntimeError):
-    """Ollama is running but this answer failed (timeout, or an aborted prediction such as "token repeat limit reached"):
-    the caller can retry or skip this part. A connection error is a plain RuntimeError and stops the article."""
+    """Claude AI answered with an error or invalid payload: caller can retry or skip this part."""
+    pass
 
 
 def _chat(prompt: str, *, as_json: bool = True, num_predict: int | None = None, timeout: int | None = None, temperature: float | None = None) -> str:
     s = get_settings()
-    options = {"num_predict": num_predict or s.ollama_max_tokens, "num_ctx": s.ollama_num_ctx, "repeat_penalty": 1.15,  # small models otherwise loop
-               "temperature": s.ollama_temperature if temperature is None else temperature}
-    # keep_alive: the model stays in memory between the steps of an article (reloading it costs 10-20 s on a CPU)
-    body = {"model": s.ollama_model, "stream": False, "keep_alive": "30m", "messages": [{"role": "user", "content": prompt}], "options": options}
+    key = s.anthropic_api_key
+    if not key:
+        raise RuntimeError("Claude API is not configured: please set ANTHROPIC_API_KEY in .env")
+
+    headers = {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+
+    sys_prompt = "You are an experienced, elite SEO blog copywriter."
     if as_json:
-        body["format"] = "json"
-    wait = min(timeout, s.ollama_timeout_seconds) if timeout else s.ollama_timeout_seconds
+        sys_prompt += "\n\nCRITICAL: Answer ONLY with a valid JSON object. Do NOT include markdown code fences (no ```json), no prefix or explanations."
+
+    model = getattr(s, "claude_model", "claude-haiku-5-5") or "claude-haiku-5-5"
+    body = {
+        "model": model,
+        "max_tokens": num_predict or 4096,
+        "system": sys_prompt,
+        "messages": [{"role": "user", "content": prompt}]
+    }
+
+    wait = timeout or getattr(s, "claude_timeout_seconds", 90)
     started = time.time()
     try:
-        r = httpx.post(f"{s.ollama_host.rstrip('/')}/api/chat", timeout=wait, json=body)
-        r.raise_for_status()
+        r = httpx.post("https://api.anthropic.com/v1/messages", headers=headers, json=body, timeout=wait)
+        if r.status_code != 200:
+            raise OllamaAnswerError(f"Claude API error {r.status_code}: {r.text[:300]}")
+        data = r.json()
+        text = "".join(item["text"] for item in data.get("content", []) if item.get("type") == "text")
     except httpx.ConnectError:
-        raise RuntimeError(f"Ollama is not reachable at {s.ollama_host}. Start it with `ollama serve` and make sure `{s.ollama_model}` is pulled.")
+        raise RuntimeError("Claude API (https://api.anthropic.com) is not reachable. Check your internet connection.")
     except httpx.TimeoutException:
-        raise OllamaAnswerError(f"Ollama did not answer within {wait}s.")
+        raise OllamaAnswerError(f"Claude API did not answer within {wait}s.")
     except httpx.HTTPStatusError as e:
-        raise OllamaAnswerError(f"Ollama error {e.response.status_code}: {e.response.text[:200]}")
+        raise OllamaAnswerError(f"Claude API error {e.response.status_code}: {e.response.text[:200]}")
     finally:
         run = getattr(_stats, "run", None)
         if run is not None:
             run["calls"] += 1
             run["ollama_seconds"] += time.time() - started
-    return (r.json().get("message") or {}).get("content") or ""
+    return text.strip()
 
 
-
-def _stream_text(prompt: str, *, num_predict: int = 300, on_chunk=None) -> str:
-    """Stream plain-text paragraphs from Ollama token by token. Calls on_chunk(text_so_far) periodically."""
+def _stream_text(prompt: str, *, num_predict: int = 500, on_chunk=None) -> str:
+    """Stream plain-text paragraphs from Claude token by token. Calls on_chunk(text_so_far) periodically."""
     s = get_settings()
-    options = {
-        "num_predict": num_predict,
-        "num_ctx": s.ollama_num_ctx,
-        "temperature": s.ollama_temperature,
-        "repeat_penalty": 1.15
+    key = s.anthropic_api_key
+    if not key:
+        return _chat(prompt, as_json=False, num_predict=num_predict)
+
+    headers = {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
     }
+    model = getattr(s, "claude_model", "claude-haiku-5-5") or "claude-haiku-5-5"
     body = {
-        "model": s.ollama_model,
-        "prompt": prompt,
+        "model": model,
+        "max_tokens": num_predict,
         "stream": True,
-        "keep_alive": "30m",
-        "options": options
+        "messages": [{"role": "user", "content": prompt}]
     }
+
     collected = []
     chunk_count = 0
     started = time.time()
     try:
-        with httpx.stream("POST", f"{s.ollama_host.rstrip('/')}/api/generate", json=body, timeout=s.ollama_timeout_seconds) as r:
-            r.raise_for_status()
+        with httpx.stream("POST", "https://api.anthropic.com/v1/messages", headers=headers, json=body, timeout=s.claude_timeout_seconds) as r:
+            if r.status_code != 200:
+                err_text = r.read().decode("utf-8", errors="replace")
+                log.warning("Claude streaming error %s: %s", r.status_code, err_text[:200])
+                return _chat(prompt, as_json=False, num_predict=num_predict)
             for line in r.iter_lines():
-                if not line:
+                if not line or not line.startswith("data: "):
                     continue
-                d = json.loads(line)
-                tok = d.get("response", "")
-                if tok:
-                    collected.append(tok)
-                    chunk_count += 1
-                    if on_chunk and (chunk_count % 6 == 0 or "\n" in tok):
-                        on_chunk("".join(collected))
+                raw_data = line[6:].strip()
+                if raw_data == "[DONE]":
+                    break
+                try:
+                    d = json.loads(raw_data)
+                except Exception:
+                    continue
+                if d.get("type") == "content_block_delta":
+                    tok = d.get("delta", {}).get("text", "")
+                    if tok:
+                        collected.append(tok)
+                        chunk_count += 1
+                        if on_chunk and (chunk_count % 4 == 0 or "\n" in tok):
+                            on_chunk("".join(collected))
     except Exception as e:
-        log.warning("Streaming Ollama error: %s", e)
+        log.warning("Streaming Claude error: %s", e)
+        if not collected:
+            return _chat(prompt, as_json=False, num_predict=num_predict)
     finally:
         run = getattr(_stats, "run", None)
         if run is not None:
@@ -123,7 +160,7 @@ def _short(prompt: str, num_predict: int = 90, timeout: int = 90) -> str:
     try:
         return _plain(_chat(prompt, as_json=False, num_predict=num_predict, timeout=timeout)).strip(" \"'")
     except RuntimeError as exc:
-        log.warning("Short Ollama call failed: %s", exc)
+        log.warning("Short Claude call failed: %s", exc)
         return ""
 
 
@@ -984,7 +1021,7 @@ def run_article(db: Session, article_id: int) -> None:
     a = db.get(Article, article_id)
     if not a or a.status in ("completed", "generating"):
         return
-    a.status, a.error, a.progress = "generating", None, "Waiting for Ollama"
+    a.status, a.error, a.progress = "generating", None, "Waiting for Claude AI"
     db.commit()
 
     def progress(text: str, body: str = "", title: str = "", meta: str = "") -> None:
@@ -1005,7 +1042,7 @@ def run_article(db: Session, article_id: int) -> None:
         d = write(a.keyword, a.secondary_keywords or [], a.rising_keywords or [], db.get(Business, a.business_id), a.topic or "", progress, a.length or "standard")
         a.title, a.meta_description = d["title"][:255] or a.keyword.title(), d["meta"]
         a.suggested_keywords, a.body, a.headings, a.warnings = d["tags"], d["body"], headings_of(d["body"]), d["warnings"]
-        a.status, a.model, a.generated_at, a.progress, a.stats = "completed", get_settings().ollama_model, utcnow(), None, d["stats"]
+        a.status, a.model, a.generated_at, a.progress, a.stats = "completed", getattr(get_settings(), "claude_model", "claude-haiku-5-5"), utcnow(), None, d["stats"]
     except Cancelled:
         log.info("Article %s was deleted while generating; stopped", article_id)
         return

@@ -1,0 +1,82 @@
+Created At: 2026-10-30T12:26:08+05:30
+Completed At: 2026-10-30T12:26:10+05:30
+Command exited with code 0.
+
+Command output:
+334: function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }) {
+335:   const list = useApi(`/businesses/${b.id}/articles`);
+336:   const articles = list.data?.articles || [];
+337:   const full = useApi(openId ? `/businesses/${b.id}/articles/${openId}` : null);
+338:   const article = openId && full.data?.id === openId ? full.data : null;
+339:   const [pendingId, setPendingId] = useState(null);  // an article started from the writer: opened as soon as it is written
+340:   const pending = pendingId ? articles.find(x => x.id === pendingId) : null;
+341:   const pendingFull = useApi(pendingId ? `/businesses/${b.id}/articles/${pendingId}` : null);  // the text written so far
+342:   usePoll(() => pendingFull.reload(true), Boolean(pendingId), 6000);
+343:   const [now, setNow] = useState(() => Date.now());
+344:   useEffect(() => {
+345:     if (!pendingId) return undefined;
+346:     const t = setInterval(() => setNow(Date.now()), 1000);
+347:     return () => clearInterval(t);
+348:   }, [pendingId]);
+349:   const pendingLength = ARTICLE_LENGTHS.find(l => l.id === pending?.length) || ARTICLE_LENGTHS[1];
+350:   const elapsed = pending?.created_at ? Math.max(0, (now - new Date(pending.created_at).getTime()) / 1000) : 0;
+351:   const preview = pendingFull.data?.id === pendingId ? pendingFull.data.body : '';
+352: 
+353:   const generate = async ({ topic, keywords, length }) => {
+354:     const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, keywords: keywords.map(k => ({ keyword: k })) } });
+355:     setPendingId(r.articles[0].id);
+356:     setOpenId(null);
+357:     list.reload(true);
+358:   };
+359:   useEffect(() => {
+360:     const a = pendingId && articles.find(x => x.id === pendingId);
+361:     if (!a) return;
+362:     if (a.status === 'completed') { setOpenId(a.id); setPendingId(null); }
+363:     else if (a.status === 'failed') setPendingId(null);
+364:   }, [articles, pendingId, setOpenId]);
+365: 
+366:   return (
+367:     <div className="space-y-4">
+368:       {articles.length > 0 && <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={setOpenId} />}
+369:       {pendingId && (
+370:         <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 text-[12.5px] text-indigo-900 space-y-2">
+371:           <div className="flex flex-wrap items-center gap-2">
+372:             <RefreshCw size={14} className="animate-spin shrink-0" />
+373:             <span>Writing the blog with Ollama on this computer ({pendingLength.label}, usually {pendingLength.time.replace('~', 'about ')}). It opens here as soon as it is ready.</span>
+374:             <span className="ml-auto font-mono font-semibold">Elapsed {mins(elapsed)}</span>
+375:           </div>
+376:           {pending?.progress && <div className="font-semibold">Now: {pending.progress}�</div>}
+377:           {preview && (
+378:             <details open className="rounded-lg bg-white border border-indigo-100">
+379:               <summary className="px-3 py-2 cursor-pointer text-[11.5px] font-semibold text-slate-600">Written so far ({preview.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length} words, updates as each part finishes)</summary>
+380:               {/* built on the server from escaped text and a fixed set of tags (p, h2, h3, ul, li) */}
+381:               <div className="px-4 pb-3 max-h-80 overflow-auto text-[12.5px] text-slate-700 leading-relaxed [&_h2]:text-[14px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-3 [&_h3]:font-semibold [&_h3]:mt-2 [&_p]:mt-1.5 [&_ul]:list-disc [&_ul]:pl-5"
+382:                 dangerouslySetInnerHTML={{ __html: preview }} />
+383:             </details>
+384:           )}
+385:         </div>
+386:       )}
+387:       {openId && !article
+388:         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article�</div>
+389:         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} onGenerate={generate} generating={Boolean(pendingId)}
+390:             onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
+391:     </div>
+392:   );
+393: }
+394: /**
+395:  * 2. 7-Step AI Blog Writer & E-E-A-T Quality Gate
+396:  */
+397: function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, generating, onSaved, onScheduled, toast }) {
+398:   const [step, setStep] = useState(selectedArticle ? 3 : 0);
+399:   const [kw, setKw] = useState(selectedArticle ? selectedArticle.keyword : selectedTopic ? selectedTopic.title : '');  // the primary keyword
+400:   const [topicText, setTopicText] = useState(selectedArticle ? selectedArticle.topic || selectedArticle.keyword : selectedTopic ? selectedTopic.title : '');
+401:   const [secondaryList, setSecondaryList] = useState(selectedArticle ? selectedArticle.secondary_keywords || [] : selectedTopic?.selected || []);
+402:   const [kwReady, setKwReady] = useState(Boolean(selectedArticle));  // the full blog is only started once there is a keyword set
+403:   const [kwBusy, setKwBusy] = useState(false);
+404:   const [kwError, setKwError] = useState('');
+405:   const [kwNote, setKwNote] = useState('');
+406:   const [intent, setIntent] = useState('');
+407:   const [related, setRelated] = useState(selectedTopic?.related || []);
+408:   const [busy, run] = useSimulated();
+409:   const serp = useMemo(() => serpFor(b, kw), [b, kw]);
+410:   const avgWords = Math.round(serp.reduce((s, x) => s + x.words, 0) / serp.length / 50) * 50;

@@ -111,6 +111,8 @@ class Settings(BaseSettings):
     # Extra engines for the GEO / AEO tracker (optional)
     perplexity_api_key: str = ""
     anthropic_api_key: str = ""
+    claude_model: str = "claude-haiku-5-5"
+    claude_timeout_seconds: int = 90
 
     # Google search results (serper.dev): competitor research -- organic top 10 and Maps results per keyword
     serper_api_key: str = ""

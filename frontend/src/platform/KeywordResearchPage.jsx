@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Search, Plus, Sparkles, FileText, Trash2, Loader2, MapPin, Globe, Users, X, Star, CheckCircle2, CircleDashed, AlertTriangle,
+  Search, Plus, Sparkles, FileText, Trash2, Loader2, MapPin, Globe, Users, X, Star, CheckCircle2, CircleDashed, AlertTriangle, Copy, Check, BarChart2,
   TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
@@ -552,6 +552,423 @@ function Topics({ b, kw }) {
   );
 }
 
+
+const EXPLORER_PLATFORMS = [
+  { id: 'google', label: 'Google' },
+  { id: 'youtube', label: 'YouTube' },
+  { id: 'bing', label: 'Bing' },
+  { id: 'amazon', label: 'Amazon' },
+  { id: 'duckduckgo', label: 'DuckDuckGo' },
+  { id: 'ebay', label: 'eBay' },
+  { id: 'app_stores', label: 'App Stores' }
+];
+
+function SparkTrend({ values = [] }) {
+  if (!values || !values.length) return <span className="text-slate-300 font-mono text-[11px]">—</span>;
+  const max = Math.max(...values, 1);
+  return (
+    <div className="flex items-end gap-0.5 h-4 w-16" title={values.map(v => fmt(v)).join(', ')}>
+      {values.map((v, idx) => (
+        <div
+          key={idx}
+          className="w-1 bg-indigo-500 rounded-t-xs transition-all hover:bg-indigo-700"
+          style={{ height: `${Math.max(15, Math.round((v / max) * 100))}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function KeywordExplorer({ b, tracked = [], onTracked }) {
+  const [keyword, setKeyword] = useState('');
+  const [country, setCountry] = useState('IN');
+  const [platforms, setPlatforms] = useState(['google', 'youtube', 'bing', 'amazon', 'duckduckgo']);
+  const [limit, setLimit] = useState(100);
+  const [results, setResults] = useState([]);
+  const [filterText, setFilterText] = useState('');
+  const [filterIntent, setFilterIntent] = useState('ALL');
+  const [filterComp, setFilterComp] = useState('ALL');
+  const [selectedKws, setSelectedKws] = useState([]);
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
+  const [copiedKw, setCopiedKw] = useState(null);
+
+  const trackedSet = useMemo(() => new Set((tracked || []).map(k => (k.keyword || '').toLowerCase())), [tracked]);
+
+  const togglePlatform = (pid) => {
+    setPlatforms(prev =>
+      prev.includes(pid)
+        ? (prev.length > 1 ? prev.filter(x => x !== pid) : prev)
+        : [...prev, pid]
+    );
+  };
+
+  const search = () => run('search', async () => {
+    const q = keyword.trim();
+    if (!q) return;
+    const r = await fetch('http://localhost:8000/api/keywords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        keyword: q,
+        country: country.trim().toUpperCase() || 'IN',
+        platforms,
+        limit: Number(limit) || 100,
+        include_expansions: true
+      })
+    });
+    if (!r.ok) {
+      const errData = await r.json().catch(() => ({}));
+      throw new Error(errData.detail || `Keyword Explorer failed (${r.status})`);
+    }
+    const data = await r.json();
+    setResults(data || []);
+    setSelectedKws([]);
+  });
+
+  const trackSingle = (kw) => run(`t-${kw}`, async () => {
+    await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: kw }] });
+    if (onTracked) onTracked();
+    toast(`"${kw}" added to tracking`);
+  });
+
+  const trackSelected = () => run('bulk-track', async () => {
+    if (!selectedKws.length) return;
+    await api(`/businesses/${b.id}/keywords`, {
+      method: 'POST',
+      body: selectedKws.map(k => ({ keyword: k }))
+    });
+    if (onTracked) onTracked();
+    toast(`${selectedKws.length} keywords added to tracking`);
+    setSelectedKws([]);
+  });
+
+  const copyText = (kw) => {
+    navigator.clipboard?.writeText(kw);
+    setCopiedKw(kw);
+    setTimeout(() => setCopiedKw(null), 1500);
+  };
+
+  const filteredResults = useMemo(() => {
+    return results.filter(item => {
+      if (filterText && !item.keyword.toLowerCase().includes(filterText.toLowerCase())) return false;
+      if (filterIntent !== 'ALL' && item.intent !== filterIntent) return false;
+      if (filterComp !== 'ALL' && item.competition !== filterComp) return false;
+      return true;
+    });
+  }, [results, filterText, filterIntent, filterComp]);
+
+  const toggleSelectAll = () => {
+    if (selectedKws.length === filteredResults.length) {
+      setSelectedKws([]);
+    } else {
+      setSelectedKws(filteredResults.map(x => x.keyword));
+    }
+  };
+
+  const exportCsv = () => {
+    if (!filteredResults.length) return;
+    const header = ['Keyword', 'Search Volume', 'Intent', 'Competition', 'CPC', 'Difficulty'];
+    const rows = filteredResults.map(k => [
+      `"${(k.keyword || '').replace(/"/g, '""')}"`,
+      k.search_volume || 0,
+      k.intent || '',
+      k.competition || '',
+      k.cpc || 0,
+      k.difficulty || 0
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [header.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const encoded = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encoded);
+    link.setAttribute('download', `keywords_${keyword.trim().replace(/\s+/g, '_')}_${country}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const avgVol = results.length ? Math.round(results.reduce((s, x) => s + (x.search_volume || 0), 0) / results.length) : 0;
+  const avgCpc = results.length ? (results.reduce((s, x) => s + (x.cpc || 0), 0) / results.length).toFixed(2) : '0.00';
+  const avgDiff = results.length ? Math.round(results.reduce((s, x) => s + (x.difficulty || 0), 0) / results.length) : 0;
+
+  return (
+    <div className="space-y-5">
+      <Card
+        title="Keyword Explorer"
+        subtitle="Multi-platform search suggestion engine across Google, YouTube, Bing, Amazon, DuckDuckGo, eBay, and App Stores with volume, competition, CPC, and intent."
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex-1 min-w-[240px]">
+              <div className="text-11 font-semibold text-slate-500 mb-1">Seed Keyword</div>
+              <input
+                className={inputCls}
+                placeholder="e.g. digital marketing, dental clinic, travel agency..."
+                value={keyword}
+                onChange={e => setKeyword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && search()}
+              />
+            </label>
+            <label>
+              <div className="text-11 font-semibold text-slate-500 mb-1">Country</div>
+              <input
+                className={`${inputCls} w-20 uppercase font-mono`}
+                maxLength={2}
+                value={country}
+                onChange={e => setCountry(e.target.value.toUpperCase())}
+              />
+            </label>
+            <label>
+              <div className="text-11 font-semibold text-slate-500 mb-1">Limit</div>
+              <select
+                className="h-9 px-2.5 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400"
+                value={limit}
+                onChange={e => setLimit(Number(e.target.value))}
+              >
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={200}>200</option>
+              </select>
+            </label>
+            <Button
+              variant="primary"
+              icon={Search}
+              busy={busy === 'search'}
+              disabled={!keyword.trim()}
+              onClick={search}
+            >
+              Explore Keywords
+            </Button>
+          </div>
+
+          <div>
+            <div className="text-11 font-semibold text-slate-500 mb-1.5">Platforms to Query:</div>
+            <div className="flex flex-wrap gap-1.5">
+              {EXPLORER_PLATFORMS.map(p => {
+                const active = platforms.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => togglePlatform(p.id)}
+                    className={`px-2.5 py-1 rounded-lg text-11.5 font-semibold transition-all cursor-pointer ring-1 ring-inset ${
+                      active
+                        ? 'bg-indigo-600 text-white ring-indigo-600 shadow-xs'
+                        : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <ErrorNote>{error}</ErrorNote>
+      </Card>
+
+      {results.length > 0 && (
+        <div className="space-y-4">
+          {/* Summary KPIs */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Discovered</div>
+              <div className="text-18 font-bold text-slate-900 mt-0.5">{results.length} keywords</div>
+            </div>
+            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Avg Search Volume</div>
+              <div className="text-18 font-bold text-indigo-600 mt-0.5">{fmt(avgVol)} /mo</div>
+            </div>
+            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Avg CPC</div>
+              <div className="text-18 font-bold text-emerald-600 mt-0.5">${avgCpc}</div>
+            </div>
+            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Avg Difficulty</div>
+              <div className="text-18 font-bold text-amber-600 mt-0.5">{avgDiff} / 100</div>
+            </div>
+          </div>
+
+          {/* Results Table Card */}
+          <Card
+            pad={false}
+            title={`Keywords (${filteredResults.length} of ${results.length})`}
+            subtitle="Multi-platform search suggestions with competitive and cost metrics."
+            action={
+              <div className="flex items-center gap-2">
+                <Button size="sm" icon={Download} onClick={exportCsv} disabled={!filteredResults.length}>
+                  CSV
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={Plus}
+                  busy={busy === 'bulk-track'}
+                  disabled={!selectedKws.length}
+                  onClick={trackSelected}
+                >
+                  Track {selectedKws.length ? `(${selectedKws.length})` : ''}
+                </Button>
+              </div>
+            }
+          >
+            {/* Filter Toolbar */}
+            <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/60">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="relative min-w-[180px] max-w-xs">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    className="w-full h-8 pl-8 pr-3 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400"
+                    placeholder="Filter results..."
+                    value={filterText}
+                    onChange={e => setFilterText(e.target.value)}
+                  />
+                </label>
+                <select
+                  className="h-8 px-2.5 text-11.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400"
+                  value={filterIntent}
+                  onChange={e => setFilterIntent(e.target.value)}
+                >
+                  <option value="ALL">All Intents</option>
+                  <option value="INFORMATIONAL">Informational</option>
+                  <option value="COMMERCIAL">Commercial</option>
+                  <option value="TRANSACTIONAL">Transactional</option>
+                  <option value="NAVIGATIONAL">Navigational</option>
+                </select>
+                <select
+                  className="h-8 px-2.5 text-11.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400"
+                  value={filterComp}
+                  onChange={e => setFilterComp(e.target.value)}
+                >
+                  <option value="ALL">All Competition</option>
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                </select>
+              </div>
+              <div className="text-11.5 text-slate-500 font-mono">
+                {selectedKws.length} selected
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-12">
+                <thead className="bg-white text-slate-500 border-b border-slate-200 text-11 font-semibold uppercase tracking-wider">
+                  <tr>
+                    <th className="p-3 w-8 text-center">
+                      <input
+                        type="checkbox"
+                        className="accent-indigo-600 rounded cursor-pointer"
+                        checked={selectedKws.length === filteredResults.length && filteredResults.length > 0}
+                        onChange={toggleSelectAll}
+                      />
+                    </th>
+                    <th className="p-3 text-left">Keyword</th>
+                    <th className="p-3 text-left">12m Trend</th>
+                    <th className="p-3 text-right">Volume</th>
+                    <th className="p-3 text-center">Intent</th>
+                    <th className="p-3 text-center">Competition</th>
+                    <th className="p-3 text-right">CPC</th>
+                    <th className="p-3 text-center">Difficulty</th>
+                    <th className="p-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredResults.map((item, idx) => {
+                    const isTracked = trackedSet.has((item.keyword || '').toLowerCase());
+                    const isSelected = selectedKws.includes(item.keyword);
+                    const intentKey = (item.intent || '').toLowerCase();
+                    return (
+                      <tr key={idx} className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-indigo-50/40' : ''}`}>
+                        <td className="p-3 text-center">
+                          <input
+                            type="checkbox"
+                            className="accent-indigo-600 rounded cursor-pointer"
+                            checked={isSelected}
+                            onChange={() => {
+                              setSelectedKws(prev =>
+                                prev.includes(item.keyword)
+                                  ? prev.filter(k => k !== item.keyword)
+                                  : [...prev, item.keyword]
+                              );
+                            }}
+                          />
+                        </td>
+                        <td className="p-3 font-semibold text-slate-800">
+                          <div className="flex items-center gap-1.5">
+                            <span>{item.keyword}</span>
+                            <button
+                              type="button"
+                              onClick={() => copyText(item.keyword)}
+                              className="text-slate-300 hover:text-slate-600 p-0.5 cursor-pointer"
+                              title="Copy keyword"
+                            >
+                              {copiedKw === item.keyword ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <SparkTrend values={item.trend} />
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold text-slate-900">
+                          {fmt(item.search_volume)}
+                        </td>
+                        <td className="p-3 text-center">
+                          <Badge tone={INTENT_TONE[intentKey] || 'gray'}>
+                            {item.intent}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-center">
+                          <Badge tone={item.competition === 'LOW' ? 'green' : item.competition === 'MEDIUM' ? 'amber' : 'red'}>
+                            {item.competition}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-right font-mono text-slate-700">
+                          ${(item.cpc || 0).toFixed(2)}
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-11 font-bold ${
+                            item.difficulty < 30
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : item.difficulty < 60
+                              ? 'bg-amber-50 text-amber-700'
+                              : 'bg-rose-50 text-rose-700'
+                          }`}>
+                            {item.difficulty}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          {isTracked ? (
+                            <span className="inline-flex items-center gap-1 text-11 font-semibold text-emerald-700">
+                              <CheckCircle2 size={12} /> Tracked
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              icon={Plus}
+                              busy={busy === `t-${item.keyword}`}
+                              onClick={() => trackSingle(item.keyword)}
+                            >
+                              Track
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+      {toastNode}
+    </div>
+  );
+}
+
 function Keywords({ b, tab }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
   const tracked = kw.data?.keywords || [];
@@ -559,6 +976,7 @@ function Keywords({ b, tab }) {
     <>
       {tab === 'discover' && <Discover b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
       {tab === 'trends' && <GoogleTrends b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
+      {tab === 'explorer' && <KeywordExplorer b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
       {tab === 'tracked' && <Tracked b={b} kw={kw} />}
       {tab === 'topics' && <Topics b={b} kw={kw} />}
     </>
@@ -566,12 +984,12 @@ function Keywords({ b, tab }) {
 }
 
 export default function KeywordResearchPage() {
-  const [tab, setTab] = useUrlTab('discover', ['discover', 'trends', 'tracked', 'topics']);
+  const [tab, setTab] = useUrlTab('discover', ['discover', 'trends', 'explorer', 'tracked', 'topics']);
   return (
     <SeoShell title="Keyword Intelligence" subtitle="Real searches for this business's services and area: local, near me, questions and fresh searches, checked against the website">
       {(b) => (
         <>
-          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'discover', label: 'Discover' }, { id: 'trends', label: 'Google Trends' }, { id: 'tracked', label: 'Tracked & pages' }, { id: 'topics', label: 'Topics' }]} />
+          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'discover', label: 'Discover' }, { id: 'trends', label: 'Google Trends' }, { id: 'explorer', label: 'Keyword Explorer' }, { id: 'tracked', label: 'Tracked & pages' }, { id: 'topics', label: 'Topics' }]} />
           <Keywords key={b.id} b={b} tab={tab} />
         </>
       )}
