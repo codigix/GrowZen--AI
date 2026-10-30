@@ -324,7 +324,7 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
               </div>
               {x.wp_url && <a href={x.wp_url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-700 hover:underline">WordPress draft</a>}
               {x.status === 'completed' && (openId === x.id
-                ? <span className="text-[11.5px] font-semibold text-emerald-700">Open below</span>
+                ? <span className="text-[11.5px] font-semibold text-emerald-700">Open above in Pipeline</span>
                 : <button type="button" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => handleOpen(x.id)}>Review & edit</button>)}
               {x.status === 'failed' && <button type="button" disabled={busy === `r-${x.id}`} className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => retry(x.id)}>Retry</button>}
               <button type="button" disabled={busy === `d-${x.id}`} className="text-[11.5px] text-slate-400 hover:text-red-600 cursor-pointer" onClick={() => del(x.id)}>Delete</button>
@@ -372,9 +372,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
   }, [articles, pendingId, setOpenId]);
 
   return (
-    <div className="space-y-4">
-      {articles.length > 0 && <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={setOpenId} />}
-            {pendingId && (
+    <div className="space-y-6">
+      {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
           <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
           <span className="font-bold">AI is writing your blog live with Claude ({pendingLength.label})</span>
@@ -386,6 +385,13 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
             onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
+
+      {/* Generated Articles History List - Below E-E-A-T Content Pipeline */}
+      {articles.length > 0 && (
+        <div className="pt-2">
+          <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={setOpenId} />
+        </div>
+      )}
     </div>
   );
 }
