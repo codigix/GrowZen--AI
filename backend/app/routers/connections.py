@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..services import audits
-from ..auth import User, current_user
+from ..auth import User, current_user, require_admin
 from ..config import get_settings
 from ..db import get_db
 from ..models import Business, GoogleConnection
@@ -40,10 +40,10 @@ def google_setup(_: User = Depends(current_user)):
 
 
 @router.get("/google/start")
-def google_start(user: User = Depends(current_user)):
-    """Returns Google's sign-in URL; the frontend sends the browser there."""
+def google_start(purpose: str = "gbp", user: User = Depends(current_user)):
+    """Returns Google's sign-in URL; the frontend sends the browser there. `purpose=gsc` asks only for Search Console access."""
     try:
-        return {"url": gbp.auth_url(user.id)}
+        return {"url": gbp.auth_url(user.id, "gsc" if purpose == "gsc" else "gbp")}
     except gbp.GbpError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -61,6 +61,8 @@ def google_callback(code: str = "", state: str = "", error: str = "", db: Sessio
         db.commit()
     except gbp.GbpError as exc:
         return RedirectResponse(f"{front}/connect-result?error={str(exc)[:200]}")
+    if gbp.read_purpose(state) == "gsc":  # Search Console only: back to the page that asked, no business picking
+        return RedirectResponse(f"{front}/domain-overview?gsc=connected&connection={conn.id}")
     return RedirectResponse(f"{front}/connect-result?connection={conn.id}")
 
 
@@ -123,7 +125,7 @@ def sync_connection(connection_id: int, db: Session = Depends(get_db), user: Use
 
 
 @router.delete("/{connection_id}", status_code=204)
-def disconnect(connection_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def disconnect(connection_id: int, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     c = _conn(db, connection_id)
     c.status, c.refresh_token_enc = "revoked", None
     log(db, user.name, "google_disconnected", None, email=c.email)

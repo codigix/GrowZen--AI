@@ -5,14 +5,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..auth import User, current_user
+from ..auth import User, current_user, require_admin
 from ..db import get_db
 from ..deps import get_business, in_background
-from ..models import AgentTask, Audit, Business, InsightDay, Lead, Schedule
+from ..models import AgentTask, Audit, Business, InsightDay, Lead, Review, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
 from ..services import agent, audits, discovery, gbp, reports, schedules
-from ..services import analytics as analytics_service, portfolio as portfolio_service
+from ..services import analytics as analytics_service, portfolio as portfolio_service, site_health
 from ..services.activity import log
 from ..services.profile_score import score_profile
 
@@ -33,6 +33,12 @@ def list_businesses(db: Session = Depends(get_db), _: User = Depends(current_use
 def analytics(weeks: int = 12, db: Session = Depends(get_db), _: User = Depends(current_user)):
     """Weekly growth across every client (health, rankings, customer actions, leads, reviews, AI work, projects)."""
     return analytics_service.summary(db, weeks)
+
+
+@router.get("/site-audit")
+def site_audit_table(db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """Every project's site health broken into crawlability, HTTPS, performance, markups, Core Web Vitals and more."""
+    return site_health.table(db)
 
 
 @router.get("/portfolio")
@@ -67,7 +73,7 @@ def update(body: BusinessPatch, b: Business = Depends(get_business), db: Session
 
 
 @router.delete("/{business_id}", status_code=204)
-def delete(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+def delete(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(require_admin)):
     log(db, user.name, "business_deleted", None, name=b.name, id=b.id)
     db.delete(b)
     db.commit()
@@ -118,6 +124,33 @@ def gbp_score(b: Business = Depends(get_business), db: Session = Depends(get_db)
     return {"score": r.score, "factors": r.factors, "items": r.items, "alerts": r.alerts, "top_fixes": r.top_fixes}
 
 
+@router.get("/{business_id}/gbp/live")
+def gbp_live(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Everything read live from this project's Google Business Profile, in one call: the connection, the
+    profile as Google holds it, the last 30 days of customer actions, reviews, photos, posts and search keywords."""
+    since = date.today() - timedelta(days=30)
+    totals = db.execute(select(func.coalesce(func.sum(InsightDay.calls), 0), func.coalesce(func.sum(InsightDay.directions), 0), func.coalesce(func.sum(InsightDay.website_clicks), 0),
+                                func.coalesce(func.sum(InsightDay.views_search), 0), func.coalesce(func.sum(InsightDay.views_maps), 0), func.coalesce(func.sum(InsightDay.bookings), 0))
+                        .where(InsightDay.business_id == b.id, InsightDay.day > since)).one()
+    reviews = list(db.scalars(select(Review).where(Review.business_id == b.id).order_by(Review.review_date.desc().nullslast(), Review.id.desc())))
+    c = b.connection
+    status = dict(b.gbp_status or {})
+    live = status.pop("live", None)
+    return {
+        "linked": bool(b.gbp_location),
+        "connection": c and {"id": c.id, "email": c.email, "name": c.display_name, "status": c.status, "last_sync_at": c.last_sync_at.isoformat() if c.last_sync_at else None, "last_error": c.last_error},
+        "status": status, "verification": b.verification,
+        "profile": {"name": b.name, "primary_category": b.primary_category, "secondary_categories": b.secondary_categories or [], "description": b.description, "phone": b.phone,
+                    "website": b.website, "address": b.address, "area": b.area, "city": b.city, "lat": b.lat, "lng": b.lng, "hours": b.hours or {}, "special_hours": b.special_hours or [],
+                    "service_area": b.service_area, "place_id": b.place_id, "location": b.gbp_location, "account": b.gbp_account},
+        "metrics": {"rating": b.rating, "review_count": b.review_count, "photo_count": b.photo_count, "unreplied_reviews": sum(1 for r in reviews if r.reply_status in ("none", "draft")),
+                    "calls_30": int(totals[0]), "directions_30": int(totals[1]), "website_clicks_30": int(totals[2]), "views_search_30": int(totals[3]), "views_maps_30": int(totals[4]), "bookings_30": int(totals[5])},
+        "rating_split": {str(n): sum(1 for r in reviews if r.rating == n) for n in (5, 4, 3, 2, 1)},
+        "recent_reviews": [{"id": r.id, "author": r.author, "rating": r.rating, "body": r.body, "date": r.review_date.isoformat() if r.review_date else None, "replied": r.reply_status == "posted", "reply": r.reply_text} for r in reviews[:6]],
+        "live": live,
+    }
+
+
 @router.post("/{business_id}/maps-refresh")
 def maps_refresh(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Re-read the listing's public state on Google Maps (open or closed, rating, reviews, photos):
@@ -159,7 +192,7 @@ def _run_audits(db: Session, business_id: int, kinds: list[str] | None, plan: bo
         return
     found = audits.run_all(db, b, kinds)
     if plan:
-        agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues])
+        agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues], audited=[a.kind for a in found if a.status == "done"])
 
 
 @router.post("/{business_id}/audits", status_code=202)

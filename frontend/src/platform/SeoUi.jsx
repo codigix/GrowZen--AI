@@ -1,16 +1,17 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, CheckCircle2, Info, MapPin,
   Plug, ServerCrash, Plus, Mail, Store, RefreshCw, Sparkles, Building2, ExternalLink, Cpu,
   Bell, Calendar
 } from 'lucide-react';
 import { api, toUi, SEO_API } from './seoApi';
+import { MarketBadge } from './MarketBadge';
 
 // Categorical palette, tuned for white surfaces
-export const SERIES = ['#4f46e5', '#0284c7', '#059669', '#d97706', '#db2777', '#7c3aed', '#2563eb', '#dc2626'];
-export const STATUS = { good: '#10b981', warning: '#f59e0b', serious: '#f97316', critical: '#ef4444' };
+export const SERIES = ['#6658dd', '#4a81d4', '#1abc9c', '#f7b84b', '#f1556c', '#43bfe5', '#313a46', '#9ba6b7'];
+export const STATUS = { good: '#1abc9c', warning: '#f7b84b', serious: '#f1556c', critical: '#f1556c' };
 export const INK = { primary: '#0f172a', secondary: '#475569', muted: '#64748b', grid: '#e2e8f0', axis: '#cbd5e1', up: '#059669' };
 
 // Shared businesses store
@@ -132,7 +133,7 @@ const BusinessSwitcher = ({ business, onChange, list }) => {
                 className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${b.id === business.id ? 'bg-indigo-600/20 text-slate-900 font-medium border-l-2 border-indigo-400' : 'hover:bg-slate-50 text-slate-700'
                   }`}
               >
-                <span className={`w-8 h-8 rounded text-12 font-bold flex items-center justify-center shrink-0 ${b.id === business.id ? 'bg-gradient-to-tr from-indigo-600 to-cyan-500 text-white shadow-md' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                <span className={`w-8 h-8 rounded text-12 font-bold flex items-center justify-center shrink-0 ${b.id === business.id ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200'
                   }`}>
                   {b.name.slice(0, 1).toUpperCase()}
                 </span>
@@ -154,7 +155,7 @@ const BusinessSwitcher = ({ business, onChange, list }) => {
           <div className="p-2.5 border-t border-slate-200 bg-slate-50">
             <button
               onClick={() => { setOpen(false); navigate(`${path('gmb-profile')}?connect=1`); }}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded bg-gradient-to-r from-indigo-600 to-cyan-600 hover:opacity-95 text-white text-12 font-bold shadow-md transition-all cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded bg-indigo-500 hover:bg-indigo-600 text-white text-12 font-semibold transition-colors cursor-pointer"
             >
               <Plus size={14} /> Add new client business
             </button>
@@ -277,30 +278,21 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
   else body = typeof children === 'function' ? children(business) : children;
 
   return (
-    <div className="min-h-screen text-slate-900 bg-slate-50">
-      {/* Top Header Banner matching reference image */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
-        <div className="max-w-[1520px] mx-auto px-6 py-3 flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-17 font-bold text-slate-900 tracking-tight font-display">{title}</h1>
-            {subtitle && <p className="text-11 text-slate-500 mt-0.5 font-normal">{subtitle}</p>}
-          </div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Calendar Last 30 Days Dropdown */}
-            <div className="h-9 px-3 rounded bg-white border border-slate-200 flex items-center gap-2 text-12 font-medium text-slate-700 hover:text-slate-900 cursor-pointer transition-colors shadow-sm">
-              <Calendar size={13} className="text-slate-500" />
+    <div className="min-h-screen text-slate-700 bg-body">
+      {/* Topbar (Ubold: dark bar, light icons) */}
+      <header className="bg-topbar sticky top-0 z-30 h-[70px]">
+        <div className="h-full px-6 flex items-center justify-between gap-4">
+          <div className="min-w-0" />
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 px-3 rounded bg-topbar-field border border-dashed border-white/10 flex items-center gap-2 text-12 font-medium text-topbar-item hover:text-white cursor-pointer transition-colors">
+              <Calendar size={13} />
               <span>Last 30 Days</span>
-              <ChevronDown size={13} className="text-slate-500" />
+              <ChevronDown size={13} />
             </div>
-
-            {/* Notification Bell with Badge 3 */}
-            <div className="relative w-9 h-9 rounded bg-white border border-slate-200 flex items-center justify-center text-slate-700 hover:text-slate-900 cursor-pointer transition-colors">
+            <div className="relative w-9 h-9 rounded bg-topbar-field flex items-center justify-center text-topbar-item hover:text-white cursor-pointer transition-colors">
               <Bell size={15} />
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-600 text-white font-bold text-9 flex items-center justify-center shadow-sm">
-                3
-              </span>
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white font-bold text-9 flex items-center justify-center">3</span>
             </div>
-
             {actions}
             {!hideSwitcher && business && list?.length > 0 && (
               <BusinessSwitcher business={business} onChange={setBusiness} list={list} />
@@ -309,8 +301,15 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
         </div>
       </header>
 
-      {/* Main Page Container */}
-      <div className="max-w-[1520px] mx-auto px-6 py-5 animate-in fade-in duration-200">
+      <div className="max-w-[1520px] mx-auto px-6 pb-6 animate-in fade-in duration-200">
+        {/* Page title with breadcrumb */}
+        <div className="py-5 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-18 font-semibold text-slate-900 tracking-tight flex flex-wrap items-center gap-2">{title}{business && needsBusiness && <MarketBadge business={business} />}</h1>
+            {subtitle && <p className="text-12 text-slate-400 mt-0.5 max-w-3xl">{subtitle}</p>}
+          </div>
+          <nav className="text-12 text-slate-400 flex items-center gap-1.5" aria-label="Breadcrumb"><span>bevisibe</span><span>›</span><span className="text-slate-600">{title}</span></nav>
+        </div>
         {body}
       </div>
     </div>
@@ -351,12 +350,12 @@ export const PreviewNote = ({ children }) => (
  * Modern AI Glassmorphism Card
  */
 export const Card = ({ title, subtitle, action, children, className = '', pad = true }) => (
-  <section className={`ai-glass-card rounded transition-all duration-200 ${className}`}>
+  <section className={`ai-glass-card rounded ${className}`}>
     {(title || action) && (
-      <header className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-slate-200">
+      <header className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-slate-100">
         <div className="min-w-0">
-          {title && <h2 className="text-15 font-bold text-slate-900 font-display tracking-tight">{title}</h2>}
-          {subtitle && <p className="text-12 text-slate-500 mt-0.5 font-normal">{subtitle}</p>}
+          {title && <h2 className="text-15 font-semibold text-slate-900 tracking-tight">{title}</h2>}
+          {subtitle && <p className="text-12 text-slate-400 mt-0.5 font-normal">{subtitle}</p>}
         </div>
         {action}
       </header>
@@ -437,7 +436,7 @@ export const ScoreRing = ({ score, size = 112, label = 'Score', level }) => {
   return (
     <div className="relative shrink-0 flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth="8" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#eef2f7" strokeWidth="8" />
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -474,8 +473,17 @@ export const Meter = ({ value, max = 100, color = SERIES[0], height = 7 }) => (
 /**
  * Segmented dark pill tabs
  */
+/** A tab kept in the address (?tab=), so sidebar links can open a page on a given tab. */
+export const useUrlTab = (fallback, valid) => {
+  const [params, setParams] = useSearchParams();
+  const raw = params.get('tab');
+  const tab = raw && (!valid || valid.includes(raw)) ? raw : fallback;
+  const setTab = (t) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
+  return [tab, setTab];
+};
+
 export const Tabs = ({ tabs, value, onChange }) => (
-  <div className="flex gap-1.5 p-1 bg-white border border-slate-200 rounded mb-5 overflow-x-auto no-scrollbar w-fit max-w-full shadow-lg">
+  <div className="flex gap-1 p-1 bg-white shadow-card rounded mb-5 overflow-x-auto no-scrollbar w-fit max-w-full">
     {tabs.map(t => {
       const id = typeof t === 'string' ? t : t.id;
       const label = typeof t === 'string' ? t : t.label;
@@ -485,7 +493,7 @@ export const Tabs = ({ tabs, value, onChange }) => (
           key={id}
           onClick={() => onChange(id)}
           className={`px-4 py-1.5 text-13 font-semibold whitespace-nowrap rounded-lg transition-all duration-150 cursor-pointer flex items-center gap-1.5 ${active
-            ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-md font-bold'
+            ? 'bg-indigo-500 text-white font-semibold'
             : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
             }`}
         >
@@ -504,11 +512,11 @@ export const Tabs = ({ tabs, value, onChange }) => (
 
 export const Button = ({ variant = 'secondary', size = 'md', icon: Icon, busy, children, className = '', ...rest }) => {
   const v = {
-    primary: 'bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:opacity-95 text-white shadow-lg shadow-indigo-500/25 border-transparent',
-    secondary: 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200 shadow-sm',
+    primary: 'bg-indigo-500 hover:bg-indigo-600 text-white border-indigo-500 hover:border-indigo-600',
+    secondary: 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200',
     ghost: 'bg-transparent text-slate-700 hover:bg-slate-100 border-transparent',
     danger: 'bg-rose-500/20 text-rose-700 hover:bg-rose-500/30 border-rose-500/30',
-    ai: 'bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-500 hover:opacity-95 text-white shadow-lg shadow-purple-500/30 border-transparent'
+    ai: 'bg-violet-500 hover:bg-violet-600 text-white border-violet-500 hover:border-violet-600'
   }[variant];
 
   const s = size === 'sm' ? 'h-[30px] px-3 text-xs rounded-lg' : 'h-9 px-4 text-13 rounded';
@@ -517,7 +525,7 @@ export const Button = ({ variant = 'secondary', size = 'md', icon: Icon, busy, c
     <button
       {...rest}
       disabled={busy || rest.disabled}
-      className={`inline-flex items-center justify-center gap-2 border font-bold whitespace-nowrap cursor-pointer active:scale-[0.98] transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${v} ${s} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 border font-semibold whitespace-nowrap cursor-pointer active:scale-[0.98] transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${v} ${s} ${className}`}
     >
       {busy ? <Loader2 size={14} className="animate-spin" /> : Icon ? <Icon size={14} className="shrink-0" /> : null}
       {children}

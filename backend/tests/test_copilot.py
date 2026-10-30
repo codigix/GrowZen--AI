@@ -40,7 +40,7 @@ def test_planned_tasks_carry_a_draft_and_risk(client):
 
     # Approve all low-risk: only the meta description goes; the noindex fix and the profile edit wait.
     r = client.post(f"/api/v1/tasks/approve-low-risk?business_id={bid}").json()
-    assert [t["title"] for t in r["tasks"]] == ["/implants has no meta description"] and r["tasks"][0]["status"] == "applied"
+    assert [t["title"] for t in r["tasks"]] == ["/implants has no meta description"] and r["tasks"][0]["status"] == "handoff"
     left = {t["title"] for t in client.get(f"/api/v1/tasks?status=pending&business_id={bid}").json()}
     assert left == {"/implants has noindex", "Business description"}
 

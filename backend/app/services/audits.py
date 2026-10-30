@@ -72,7 +72,7 @@ def _run_technical(db: Session, b: Business) -> tuple[int, list[dict[str, Any]],
     if not b.website:
         return 0, [{"area": "Website", "level": "critical", "title": "No website", "fix": "Build one from the profile (Website Builder)."}], {}, "live"
     # PageSpeed, falling back to Lighthouse in local Chrome when PageSpeed fails or its quota is used up.
-    result = run_lighthouse(b.website, "mobile")
+    result = run_lighthouse(crawler.homepage(b.website), "mobile")
     scores = [v for v in result["scores"].values() if v is not None]
     return round(mean(scores)) if scores else 0, pagespeed.issues_from(result), result, "live"
 
@@ -146,7 +146,7 @@ def latest(db: Session, b: Business) -> dict[str, Audit]:
 
 def overall(db: Session, b: Business) -> int | None:
     """Average of the latest score per area (areas that don't apply, e.g. no website, left out)."""
-    scores = [a.score for k, a in latest(db, b).items() if a.score is not None and not (k in ("technical", "onpage") and not b.website)]
+    scores = [a.score for k, a in latest(db, b).items() if a.score is not None and a.data_source != "sample" and not (k in ("technical", "onpage") and not b.website)]  # sample data is never part of the health
     return round(mean(scores)) if scores else None
 
 
@@ -197,8 +197,10 @@ def record_for_business(db: Session, b: Business, web: Audit) -> list[Audit]:
 
 
 def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: int = 10, audit: Audit | None = None) -> Audit:
-    """One-off audit of any URL (no business needed): PageSpeed + a short crawl."""
+    """One-off audit of any URL (no business needed): PageSpeed + a short crawl. Always starts from the site's homepage."""
+    url = crawler.homepage(url)
     audit = audit or Audit(kind="website", target=url)
+    audit.target = url
     audit.status, audit.started_at = "running", _now()
     db.add(audit)
     db.commit()

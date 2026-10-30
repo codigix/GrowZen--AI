@@ -2,44 +2,77 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
-  LogOut, Menu, X, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen
+  LogOut, Menu, X, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen,
+  TrendingUp, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send
 } from 'lucide-react';
 import { useApi } from '../platform/seoApi';
+import AssistantWidget from './AssistantWidget';
 
 export const SIDEBAR_GROUPS = [
   {
     title: 'Overview',
     items: [
-      { to: '/dashboard', label: 'Command Center', icon: LayoutDashboard },
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/onboarding', label: 'Business Onboarding', icon: Building2, badge: 'Phase 1' }
     ]
   },
   {
-    title: 'SEO Intelligence',
+    title: 'Site Performance',
     items: [
-      { to: '/website-audit', label: 'Website & On-Page SEO', icon: ScanSearch },
-      { to: '/competitor-finder', label: '1. Competitor Research', icon: Swords },
-      { to: '/keyword-management', label: '2. Keyword Intelligence', icon: Search }
+      { to: '/website-audit', label: 'Site Audit', icon: ScanSearch },
+      { to: '/organic-rankings', label: 'Organic Rankings', icon: TrendingUp },
+      { to: '/rank-tracking', label: 'Position Tracking', icon: MapPin }
+    ]
+  },
+  {
+    title: 'Competitive Analysis',
+    items: [
+      { to: '/domain-overview', label: 'Domain Overview', icon: Globe },
+      { to: '/top-pages', label: 'Top Pages', icon: FileText },
+      { to: '/competitor-finder', label: 'Competitor Research', icon: Swords },
+      { to: '/compare-domains', label: 'Compare Domains', icon: Columns3 },
+      { to: '/keyword-gap', label: 'Keyword Gap', icon: Target }
+    ]
+  },
+  {
+    title: 'Keyword Research',
+    items: [
+      { to: '/keyword-overview', label: 'Keyword Overview', icon: Search },
+      { to: '/keyword-management?tab=discover', label: 'Keyword Magic Tool', icon: Wand2 },
+      { to: '/keyword-management?tab=topics', label: 'Keyword Strategy Builder', icon: Layers },
+      { to: '/keyword-management?tab=tracked', label: 'Saved Keywords', icon: Bookmark }
+    ]
+  },
+  {
+    title: 'Content Ideas',
+    items: [
+      { to: '/ai-content-generation?tab=trends', label: 'Topic Research', icon: Lightbulb },
+      { to: '/ai-content-generation?tab=blog', label: 'SEO Writing Assistant', icon: Sparkles, badge: 'AI' },
+      { to: '/ai-content-generation?tab=calendar', label: 'Content Calendar & CMS', icon: CalendarDays }
+    ]
+  },
+  {
+    title: 'Link Building',
+    items: [
+      { to: '/off-page-seo?tab=backlinks', label: 'Backlinks & Referring Domains', icon: Link2 },
+      { to: '/off-page-seo?tab=outreach', label: 'Outreach', icon: Send }
     ]
   },
   {
     title: 'Local SEO & Maps',
     items: [
       { to: '/gmb-profile', label: 'GBP Profile Manager', icon: Store },
-      { to: '/rank-tracking', label: 'Geo-Grid Rank Tracking', icon: MapPin },
       { to: '/reviews', label: 'Reviews & Reputation', icon: Star },
-      { to: '/off-page-seo', label: 'Local Citations & NAP', icon: Award }
+      { to: '/off-page-seo?tab=citations', label: 'Local Citations & NAP', icon: Award }
     ]
   },
   {
-    title: 'AI Growth & Content',
+    title: 'AI & Automation',
     items: [
-      { to: '/ai-content-generation', label: 'AI Blog & Trend Studio', icon: Sparkles, badge: 'AI' },
       { to: '/geo-optimization', label: 'AI Search Visibility', icon: Radar },
-      { to: '/content-calendar', label: 'Content Calendar & CMS', icon: CalendarDays },
-      { to: '/website-builder', label: 'Website Builder & Slugs', icon: Globe, badge: 'Live' },
       { to: '/automation', label: 'Autonomous AI Agents', icon: Bot },
-      { to: '/automation-pipeline', label: 'Automation Pipeline', icon: Workflow }
+      { to: '/automation-pipeline', label: 'Automation Pipeline', icon: Workflow },
+      { to: '/website-builder', label: 'Website Builder & Slugs', icon: Globe, badge: 'Live' }
     ]
   },
   {
@@ -59,9 +92,9 @@ export const SIDEBAR_GROUPS = [
 ];
 
 const BADGE_TONES = {
-  AI: 'bg-violet-500/15 text-violet-700 ring-violet-400/25',
-  Live: 'bg-emerald-500/15 text-emerald-700 ring-emerald-400/25',
-  'Phase 1': 'bg-amber-500/15 text-amber-700 ring-amber-400/25'
+  AI: 'bg-indigo-50 text-indigo-600 ring-indigo-100',
+  Live: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+  'Phase 1': 'bg-amber-50 text-amber-700 ring-amber-100'
 };
 
 const COLLAPSE_KEY = 'growzen.sidebar.collapsed';
@@ -69,7 +102,15 @@ const readCollapsed = () => { try { return localStorage.getItem(COLLAPSE_KEY) ==
 
 const initials = (name = '') => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
 
-const isActivePath = (pathname, to) => pathname === to || (to !== '/dashboard' && pathname.startsWith(`${to}/`));
+const splitTo = (to) => { const [path, query = ''] = to.split('?'); return [path, new URLSearchParams(query).get('tab')]; };
+// One page can carry several entries (?tab=): an entry is active on its own tab; one without a tab, when no sibling claims the current tab.
+const isActivePath = (pathname, search, to) => {
+  const [path, tab] = splitTo(to);
+  if (!(pathname === path || (path !== '/dashboard' && pathname.startsWith(`${path}/`)))) return false;
+  const current = new URLSearchParams(search).get('tab');
+  if (tab) return current ? current === tab : SIDEBAR_GROUPS.flatMap(g => g.items).find(i => splitTo(i.to)[0] === path)?.to === to;
+  return true;
+};
 
 // Real numbers only: what the backend reports as connected (GET /status).
 function useConnections() {
@@ -86,13 +127,12 @@ function NavItem({ to, label, icon: Icon, badge, collapsed, active, onNavigate }
       onClick={onNavigate}
       title={collapsed ? label : undefined}
       aria-label={collapsed ? label : undefined}
-      className={`group relative flex items-center h-9 rounded-lg text-13 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${collapsed ? 'justify-center px-0' : 'gap-3 px-3'
+      className={`group relative flex items-center h-9 rounded text-14 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 ${collapsed ? 'justify-center px-0' : 'gap-3 px-3'
         } ${active
-          ? 'bg-gradient-to-r from-blue-500/[0.18] to-blue-500/[0.04] text-slate-900 font-medium'
-          : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+          ? 'text-indigo-500 font-semibold bg-indigo-50'
+          : 'text-slate-600 hover:text-indigo-500'}`}
     >
-      {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-blue-400" aria-hidden="true" />}
-      <Icon size={16} strokeWidth={active ? 2.2 : 1.8} className={`shrink-0 transition-colors ${active ? 'text-blue-600' : 'text-slate-500 group-hover:text-slate-700'}`} />
+      <Icon size={16} strokeWidth={active ? 2.2 : 1.8} className={`shrink-0 transition-colors ${active ? 'text-indigo-500' : 'text-slate-500 group-hover:text-indigo-500'}`} />
       {!collapsed && <span className="truncate flex-1">{label}</span>}
       {!collapsed && badge && (
         <span className={`shrink-0 text-10 font-semibold leading-none px-1.5 py-1 rounded-md ring-1 ring-inset ${BADGE_TONES[badge] || 'bg-slate-500/15 text-slate-700 ring-slate-400/25'}`}>{badge}</span>
@@ -123,38 +163,38 @@ export default function Layout({ user, onLogout }) {
   }, [open]);
 
   return (
-    <div className="h-screen flex bg-slate-50 text-slate-900 relative overflow-hidden">
+    <div className="h-screen flex bg-body text-slate-700 relative overflow-hidden">
       <div className="ambient-glow-mesh" />
       <div className="fixed inset-0 ai-grid-pattern pointer-events-none z-0" />
 
       {open && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setOpen(false)} />}
 
       <aside
-        className={`fixed lg:static top-0 bottom-0 left-0 z-50 h-screen shrink-0 flex flex-col bg-white/95 backdrop-blur-xl border-r border-slate-200 transition-[width,transform] duration-300 ease-in-out ${rail ? 'lg:w-[72px]' : 'lg:w-72'
-          } w-72 ${open ? 'translate-x-0 shadow-2xl shadow-slate-900/10' : '-translate-x-full lg:translate-x-0'}`}
+        className={`fixed lg:static top-0 bottom-0 left-0 z-50 h-screen shrink-0 flex flex-col bg-white border-r border-slate-200 transition-[width,transform] duration-300 ease-in-out ${rail ? 'lg:w-[72px]' : 'lg:w-60'
+          } w-60 ${open ? 'translate-x-0 shadow-2xl shadow-slate-900/10' : '-translate-x-full lg:translate-x-0'}`}
       >
         {/* Brand */}
-        <div className={`h-16 shrink-0 flex items-center border-b border-slate-200 ${rail ? 'justify-center px-2' : 'justify-between px-4'}`}>
+        <div className={`h-[70px] shrink-0 flex items-center bg-topbar ${rail ? 'justify-center px-2' : 'justify-between px-4'}`}>
           <NavLink to="/dashboard" className="flex items-center gap-2.5 min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" title="bevisibe AI">
-            <div className="w-9 h-9 rounded bg-gradient-to-br from-blue-500/15 via-cyan-500/10 to-teal-500/15 ring-1 ring-inset ring-blue-500/20 p-1 flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded bg-white p-1 flex items-center justify-center shrink-0">
               <img src="/bevisibe-icon.png" alt="bevisibe" className="w-full h-full object-contain" />
             </div>
             {!rail && (
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5 text-slate-900 font-bold text-15 tracking-tight font-display leading-tight">
+                <div className="flex items-center gap-1.5 text-white font-bold text-15 tracking-tight leading-tight">
                   bevisibe
-                  <span className="text-9 font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-blue-600 to-teal-500 text-white tracking-wider">AI</span>
+                  <span className="text-9 font-bold px-1.5 py-0.5 rounded bg-indigo-500 text-white tracking-wider">AI</span>
                 </div>
-                <p className="text-11 text-slate-500 leading-tight truncate">Autonomous Local SEO</p>
+                <p className="text-11 text-topbar-item leading-tight truncate">Autonomous Local SEO</p>
               </div>
             )}
           </NavLink>
           {!rail && (
-            <button onClick={() => setCollapsed(true)} className="hidden lg:flex p-1.5 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-50 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" aria-label="Collapse sidebar" title="Collapse sidebar">
+            <button onClick={() => setCollapsed(true)} className="hidden lg:flex p-1.5 rounded-md text-topbar-item hover:text-white hover:bg-white/10 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" aria-label="Collapse sidebar" title="Collapse sidebar">
               <PanelLeftClose size={16} />
             </button>
           )}
-          <button className="lg:hidden p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-50 cursor-pointer" onClick={() => setOpen(false)} aria-label="Close menu">
+          <button className="lg:hidden p-1.5 rounded-md text-topbar-item hover:text-white hover:bg-white/10 cursor-pointer" onClick={() => setOpen(false)} aria-label="Close menu">
             <X size={18} />
           </button>
         </div>
@@ -170,12 +210,12 @@ export default function Layout({ user, onLogout }) {
             const items = group.items.filter(item => !item.adminOnly || user?.is_admin);
             if (!items.length) return null;
             return (
-              <div key={group.title} className={gi ? 'mt-5' : ''}>
+              <div key={group.title} className={gi ? 'mt-4' : ''}>
                 {rail
                   ? gi > 0 && <div className="mx-2 mb-3 border-t border-slate-200" />
-                  : <div className="px-3 mb-1.5 text-10.5 font-semibold uppercase tracking-[0.08em] text-slate-500">{group.title}</div>}
+                  : <div className="px-3 mb-2 text-11 font-semibold uppercase tracking-wider text-slate-400">{group.title}</div>}
                 <div className="space-y-0.5">
-                  {items.map(item => <NavItem key={item.to} {...item} collapsed={rail} active={isActivePath(location.pathname, item.to)} onNavigate={() => setOpen(false)} />)}
+                  {items.map(item => <NavItem key={item.to} {...item} collapsed={rail} active={isActivePath(location.pathname, location.search, item.to)} onNavigate={() => setOpen(false)} />)}
                 </div>
               </div>
             );
@@ -212,24 +252,25 @@ export default function Layout({ user, onLogout }) {
 
       <div ref={mainRef} className="flex-1 min-w-0 flex flex-col h-screen overflow-y-auto relative z-10">
         {/* Mobile header */}
-        <header className="lg:hidden h-14 px-4 flex items-center justify-between bg-white/95 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-30">
+        <header className="lg:hidden h-14 px-4 flex items-center justify-between bg-topbar text-topbar-item sticky top-0 z-30">
           <div className="flex items-center gap-3">
-            <button onClick={() => setOpen(true)} className="p-2 -ml-1 text-slate-700 hover:bg-slate-50 rounded-lg cursor-pointer" aria-label="Open navigation menu">
+            <button onClick={() => setOpen(true)} className="p-2 -ml-1 text-topbar-item hover:text-white rounded-lg cursor-pointer" aria-label="Open navigation menu">
               <Menu size={20} />
             </button>
             <div className="flex items-center gap-2">
               <img src="/bevisibe-icon.png" alt="bevisibe" className="w-7 h-7 object-contain" />
-              <span className="font-bold text-15 text-slate-900 font-display">bevisibe</span>
-              <span className="text-9 font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-blue-600 to-teal-500 text-white tracking-wider">AI</span>
+              <span className="font-bold text-15 text-white">bevisibe</span>
+              <span className="text-9 font-bold px-1.5 py-0.5 rounded bg-indigo-500 text-white tracking-wider">AI</span>
             </div>
           </div>
-          <button onClick={onLogout} className="text-12 font-medium text-slate-500 hover:text-slate-900 cursor-pointer">Sign out</button>
+          <button onClick={onLogout} className="text-12 font-medium text-topbar-item hover:text-white cursor-pointer">Sign out</button>
         </header>
 
         <main className="flex-1 min-w-0">
           <Outlet />
         </main>
       </div>
+      <AssistantWidget />
     </div>
   );
 }

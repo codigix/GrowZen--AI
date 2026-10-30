@@ -55,7 +55,7 @@ class Business(TimestampMixin, Base):
     lat: Mapped[float | None] = mapped_column(Float)
     lng: Mapped[float | None] = mapped_column(Float)
     service_area: Mapped[str | None] = mapped_column(String(500))
-    target_scope: Mapped[str | None] = mapped_column(String(15))  # local | international: who the business wants customers from
+    target_scope: Mapped[str | None] = mapped_column(String(15))  # local | national | international: who the business wants customers from (services/market.py)
     target_countries: Mapped[list[str]] = mapped_column(JSON, default=list)  # ISO codes, for international
     target_areas: Mapped[list[str]] = mapped_column(JSON, default=list)  # "Aundh, Pune", for local
     services: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{name, price, description}]
@@ -350,3 +350,15 @@ class Playbook(TimestampMixin, Base):
     approval_rules: Mapped[dict[str, bool]] = mapped_column(JSON, default=dict)  # kind -> needs approval
     plan_schedules: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # plan -> {job: every}
     learnt: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # corrections the AI learnt from
+
+
+class KeywordRankLog(Base):
+    """One checked Google position of a tracked keyword on a day (null rank = not in the top 20): the history behind the rank chart."""
+    __tablename__ = "keyword_rank_log"
+    __table_args__ = (UniqueConstraint("business_id", "keyword", "day"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    keyword: Mapped[str] = mapped_column(String(255))
+    day: Mapped[date] = mapped_column(Date, index=True)
+    rank: Mapped[int | None] = mapped_column(Integer)
+    location: Mapped[str | None] = mapped_column(String(160))

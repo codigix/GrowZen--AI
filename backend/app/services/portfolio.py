@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import AgentTask, Audit, Business, InsightDay, Lead, Playbook, Review, Schedule
-from . import ai
+from . import ai, market
 from .audits import KINDS
 from .playbook import DEFAULT_APPROVAL
 from .schedules import JOBS
@@ -135,7 +135,7 @@ def summary(db: Session) -> dict[str, Any]:
 
         projects.append({
             "id": b.id, "name": b.name, "category": b.primary_category, "area": b.area, "city": b.city, "website": b.website,
-            "plan": b.plan, "status": b.status, "source": b.source, "contact_name": b.contact_name, "created_at": _iso(b.created_at),
+            "plan": b.plan, "market": market.summary(b), "status": b.status, "source": b.source, "contact_name": b.contact_name, "created_at": _iso(b.created_at),
             "gbp_linked": bool(b.gbp_location), "verification": b.verification, "rating": b.rating, "review_count": b.review_count,
             "health": b.last_audit_score, "areas": areas, "last_audit_at": _iso(last_audit), "audit_running": b.id in running,
             "issues": {"critical": critical, "serious": serious},

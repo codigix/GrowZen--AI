@@ -117,7 +117,7 @@ def _onboard(db: Session, business_id: int) -> None:
     if not b:
         return
     found = audits.run_all(db, b)
-    tasks = agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues])
+    tasks = agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues], audited=[a.kind for a in found if a.status == "done"])
     schedules.create_for_plan(db, b)
     b.status = "needs_approval" if any(t.requires_approval and t.status == "pending" for t in tasks) else "active"
     db.commit()

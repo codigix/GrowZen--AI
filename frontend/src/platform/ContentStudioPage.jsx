@@ -7,8 +7,7 @@ import {
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
-  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, PreviewNote
-} from './SeoUi';
+  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, PreviewNote, useUrlTab } from './SeoUi';
 import { rng, shortDate, daysBack, ymd } from './seoMock';
 import { fmt } from './seoApi';
 
@@ -780,7 +779,7 @@ function BacklinksTab({ b, toast }) {
  * Main AI Content Studio Component
  */
 export default function ContentStudioPage() {
-  const [tab, setTab] = useState('trends');
+  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'calendar', 'backlinks']);
   const [activeTopic, setActiveTopic] = useState(null);
 
   const handleSelectTopic = (topic) => {

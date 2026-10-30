@@ -18,7 +18,7 @@ class BusinessIn(BaseModel):
     lat: float | None = None
     lng: float | None = None
     service_area: str | None = None
-    target_scope: Literal["local", "international"] | None = None
+    target_scope: Literal["local", "national", "international"] | None = None
     target_countries: list[str] | None = None
     target_areas: list[str] | None = None
     services: list[dict[str, Any]] = []
@@ -47,7 +47,7 @@ class BusinessPatch(BaseModel):
     lat: float | None = None
     lng: float | None = None
     service_area: str | None = None
-    target_scope: Literal["local", "international"] | None = None
+    target_scope: Literal["local", "national", "international"] | None = None
     target_countries: list[str] | None = None
     target_areas: list[str] | None = None
     services: list[dict[str, Any]] | None = None

@@ -4,11 +4,12 @@ import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, X
 import {
   Sparkles, Bot, Cpu, ShieldCheck, CalendarClock, Briefcase, Activity, AlertTriangle, ClipboardCheck, Layers, Target,
   Search, CheckCircle2, XCircle, ArrowUp, ArrowDown, ArrowRight, Phone, Navigation, MousePointerClick,
-  Settings2, LayoutGrid, List, Globe, Store, Star, Send, User, ChevronRight, FileText, HeartPulse, BarChart3
+  Settings2, LayoutGrid, List, ScanSearch, Globe, Store, Star, Send, User, ChevronRight, FileText, HeartPulse, BarChart3
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ScoreRing, ChartTooltip, ErrorNote, SERIES, scoreLevel, scoreWord, useModulePath, useSeoBusiness, useAction, useToast, Drawer, Tabs } from './SeoUi';
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 import { ReportsModal } from './CopilotPanel';
+import SiteAuditTable from './SiteAuditTable';
 
 /**
  * Command Center: every project (client business) at once, with the AI side of the work in front.
@@ -19,8 +20,8 @@ import { ReportsModal } from './CopilotPanel';
 
 const AREA_LABELS = { gbp: 'Profile', rankings: 'Rankings', technical: 'Technical', onpage: 'On-page', backlinks: 'Backlinks', citations: 'Citations' };
 const STATUS_META = {
-  active: { label: 'Active', tone: 'green', color: '#10b981' },
-  needs_approval: { label: 'Needs approval', tone: 'amber', color: '#f59e0b' },
+  active: { label: 'Active', tone: 'green', color: '#1abc9c' },
+  needs_approval: { label: 'Needs approval', tone: 'amber', color: '#f7b84b' },
   paused: { label: 'Paused', tone: 'gray', color: '#94a3b8' }
 };
 const EVERY = { daily: 'Daily', weekly: 'Weekly', fortnightly: 'Fortnightly', monthly: 'Monthly' };
@@ -51,7 +52,7 @@ const dayGroup = (iso) => {
   return diff <= 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
 };
 const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
-const readView = () => { try { return localStorage.getItem(VIEW_KEY) || 'cards'; } catch (e) { return 'cards'; } };
+const readView = () => { try { return localStorage.getItem(VIEW_KEY) || 'table'; } catch (e) { return 'table'; } };
 
 function SectionHeader({ icon: Icon, title, subtitle, right }) {
   return (
@@ -71,14 +72,14 @@ function SectionHeader({ icon: Icon, title, subtitle, right }) {
 /* ── AI briefing ─────────────────────────────────────────────────────────── */
 
 function Kpi({ icon: Icon, label, value, hint, tone }) {
-  const tones = { indigo: 'from-indigo-500 to-violet-500', emerald: 'from-emerald-500 to-teal-500', red: 'from-rose-500 to-red-500', amber: 'from-amber-400 to-orange-500', sky: 'from-sky-500 to-indigo-500', slate: 'from-slate-400 to-slate-500' };
+  const tones = { indigo: 'bg-indigo-50 text-indigo-500', emerald: 'bg-emerald-50 text-emerald-500', red: 'bg-red-50 text-red-500', amber: 'bg-amber-50 text-amber-500', sky: 'bg-sky-50 text-sky-500', slate: 'bg-slate-100 text-slate-500' };
   return (
     <div className="ai-glass-card rounded p-4 flex items-center gap-3.5 min-w-0">
-      <span className={`w-11 h-11 rounded bg-gradient-to-br ${tones[tone] || tones.slate} text-white flex items-center justify-center shrink-0 shadow-sm`}><Icon size={19} /></span>
+      <span className={`w-12 h-12 rounded-full ${tones[tone] || tones.slate} flex items-center justify-center shrink-0`}><Icon size={20} /></span>
       <div className="min-w-0">
-        <div className="text-12 font-medium text-slate-500 truncate">{label}</div>
+        <div className="text-12 font-semibold uppercase tracking-wide text-slate-400 truncate">{label}</div>
         <div className="text-22 leading-tight font-bold text-slate-900 tabular-nums">{value}</div>
-        {hint && <div className="text-11 text-slate-500 truncate" title={hint}>{hint}</div>}
+        {hint && <div className="text-11.5 text-slate-500 truncate" title={hint}>{hint}</div>}
       </div>
     </div>
   );
@@ -153,63 +154,6 @@ function ProjectCard({ p, onOpen }) {
 
 const scorePill = (s) => (s == null ? 'bg-slate-100 text-slate-400 ring-slate-200' : s >= 80 ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : s >= 60 ? 'bg-amber-50 text-amber-700 ring-amber-200' : 'bg-red-50 text-red-600 ring-red-200');
 
-function ProjectsTable({ projects, onOpen }) {
-  const th = 'px-4 py-3 text-left font-semibold whitespace-nowrap';
-  return (
-    <div className="ai-glass-card rounded overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1040px] text-13">
-          <thead className="bg-slate-50/80 text-11 uppercase tracking-wider text-slate-500 border-b border-slate-200">
-            <tr>
-              <th className={`${th} pl-5`}>Project</th>
-              <th className={th}>Status</th>
-              <th className={`${th} text-center`}>Health</th>
-              <th className={th}>SEO services</th>
-              <th className={th}>Google</th>
-              <th className={th}>Work</th>
-              <th className={`${th} pr-5`}>AI next step</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {projects.map(p => {
-              const st = STATUS_META[p.status] || { label: p.status, tone: 'gray' };
-              const step = nextStepFor(p);
-              const failed = p.services.filter(x => x.last_status === 'failed').length;
-              return (
-                <tr key={p.id} onClick={() => onOpen(p.id)} className="cursor-pointer align-middle hover:bg-indigo-50/40 transition-colors">
-                  <td className="pl-5 pr-4 py-3.5 w-[26%]">
-                    <div className="flex items-center gap-3">
-                      <span className="w-9 h-9 rounded bg-gradient-to-br from-indigo-500 to-violet-500 text-white text-13 font-bold flex items-center justify-center shrink-0">{p.name.slice(0, 1).toUpperCase()}</span>
-                      <div className="min-w-0"><div className="font-semibold text-slate-900 truncate max-w-[260px]" title={p.name}>{p.name}</div><div className="text-12 text-slate-500 truncate max-w-[260px]">{[p.category, p.area || p.city].filter(Boolean).join(' · ') || '—'}</div></div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 whitespace-nowrap"><Badge tone={st.tone}>{st.label}</Badge><div className="mt-1 text-12 text-slate-500">{p.plan ? `${p.plan} plan` : 'No plan'}</div></td>
-                  <td className="px-4 py-3.5 text-center whitespace-nowrap">
-                    <span className={`inline-flex items-center justify-center min-w-[44px] h-8 px-2 rounded-lg text-14 font-bold tabular-nums ring-1 ring-inset ${scorePill(p.health)}`}>{p.health ?? '—'}</span>
-                    <div className="mt-1 text-11 text-slate-400">{p.last_audit_at ? relDay(p.last_audit_at) : 'Not audited'}</div>
-                  </td>
-                  <td className="px-4 py-3.5 whitespace-nowrap" title={p.services.map(x => x.label).join(', ')}>
-                    {p.services.length ? (
-                      <div>
-                        <span className="font-semibold text-slate-900 tabular-nums">{p.services.length}</span> <span className="text-slate-600">running</span>
-                        <div className="mt-1 text-11 text-slate-500 max-w-[190px] truncate">{p.services.slice(0, 2).map(x => x.label).join(', ')}{p.services.length > 2 ? ` +${p.services.length - 2}` : ''}</div>
-                        {failed > 0 && <div className="text-11 font-medium text-red-600">{failed} failed last run</div>}
-                      </div>
-                    ) : <span className="text-12 text-slate-400">Not scheduled</span>}
-                  </td>
-                  <td className="px-4 py-3.5 whitespace-nowrap">{p.gbp_linked ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 ring-1 ring-inset ring-emerald-200 text-12 font-medium text-emerald-700"><CheckCircle2 size={12} /> Linked</span> : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 ring-1 ring-inset ring-slate-200 text-12 text-slate-500"><XCircle size={12} className="text-slate-400" /> Not linked</span>}</td>
-                  <td className="px-4 py-3.5 whitespace-nowrap text-12 text-slate-600 leading-5"><div><b className="text-slate-900 tabular-nums">{p.pending_tasks}</b> to approve</div><div><b className="text-slate-900 tabular-nums">{p.leads_30}</b> leads <span className="text-slate-400">· 30d</span></div></td>
-                  <td className="pl-4 pr-5 py-3.5 w-[24%] min-w-[220px]"><div className="flex items-start gap-2 text-12 leading-5 text-slate-800"><span className={`mt-[7px] w-1.5 h-1.5 rounded-full shrink-0 ${LEVEL_DOT[step.level] || 'bg-emerald-500'}`} /><span className="line-clamp-2" title={step.text}>{step.text}</span></div></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 function Projects({ projects, onOpen }) {
   const path = useModulePath();
   const [view, setView] = useState(readView);
@@ -229,6 +173,7 @@ function Projects({ projects, onOpen }) {
       <SectionHeader icon={Briefcase} title="Projects" subtitle="Every client, its health, the services we run and the AI's next step"
         right={<Link to={path('onboarding')} className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm">+ New project</Link>} />
       <div className="flex flex-wrap items-center gap-2 mb-3">
+        {view === 'cards' && (<>
         <div className="flex gap-0.5 p-0.5 rounded bg-slate-100 overflow-x-auto max-w-full">
           {filters.map(([id, label, n]) => <button key={id} className={seg(filter === id)} onClick={() => setFilter(id)}>{label} <span className="opacity-60 tabular-nums">{n}</span></button>)}
         </div>
@@ -236,14 +181,15 @@ function Projects({ projects, onOpen }) {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search projects" className="w-full h-9 pl-8 pr-3 text-13 rounded bg-white ring-1 ring-inset ring-slate-200 focus:ring-indigo-400 outline-none text-slate-900 placeholder-slate-400" />
         </label>
+        </>)}
         <div className="flex gap-0.5 p-0.5 rounded bg-slate-100">
           <button className={seg(view === 'cards')} onClick={() => setView('cards')} aria-label="Card view" title="Cards"><LayoutGrid size={14} /></button>
           <button className={seg(view === 'table')} onClick={() => setView('table')} aria-label="Table view" title="Table"><List size={14} /></button>
         </div>
       </div>
-      {!shown.length ? <div className="ai-glass-card rounded py-12 text-center text-13 text-slate-500">No projects match.</div>
-        : view === 'cards' ? <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{shown.map(p => <ProjectCard key={p.id} p={p} onOpen={onOpen} />)}</div>
-          : <ProjectsTable projects={shown} onOpen={onOpen} />}
+      {view === 'table' ? <SiteAuditTable />
+        : !shown.length ? <div className="ai-glass-card rounded py-12 text-center text-13 text-slate-500">No projects match.</div>
+          : <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{shown.map(p => <ProjectCard key={p.id} p={p} onOpen={onOpen} />)}</div>}
     </section>
   );
 }
@@ -552,12 +498,12 @@ const weekLabel = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB
 
 // Each tab: what it plots, which way is good, and the weekly series (keys come from GET /businesses/analytics).
 const METRICS = [
-  { id: 'health', label: 'SEO health', icon: Activity, hint: 'Average audit score across projects', better: 'up', domain: [0, 100], series: [{ key: 'health', name: 'Health', color: '#059669' }], headline: 'health', empty: 'Fills in as audits run each week.' },
-  { id: 'rank', label: 'Rankings', icon: Navigation, hint: 'Average local position (lower is better)', better: 'down', reversed: true, domain: [1, 'auto'], series: [{ key: 'avg_rank', name: 'Avg position', color: '#4f46e5' }], headline: 'avg_rank', empty: 'Appears once rank scans have completed.' },
-  { id: 'customers', label: 'Customers', icon: Phone, hint: 'Google calls, directions and website clicks', better: 'up', series: [{ key: 'calls', name: 'Calls', color: '#4f46e5' }, { key: 'directions', name: 'Directions', color: '#0284c7' }, { key: 'website_clicks', name: 'Website clicks', color: '#059669' }], headline: 'calls', empty: 'Appears once Google profiles are linked and synced.' },
-  { id: 'leads', label: 'Leads', icon: Target, hint: 'New leads per week', better: 'up', series: [{ key: 'leads', name: 'Leads', color: '#d97706' }], headline: 'leads', empty: 'No leads recorded yet.' },
-  { id: 'ai', label: 'AI work', icon: Bot, hint: 'Changes the agents proposed and applied', better: 'up', series: [{ key: 'proposed', name: 'Proposed', color: '#7c3aed' }, { key: 'applied', name: 'Applied', color: '#059669' }], headline: 'applied', empty: 'No agent activity yet.' },
-  { id: 'projects', label: 'Portfolio', icon: Briefcase, hint: 'Projects under management', better: 'up', series: [{ key: 'projects', name: 'Projects', color: '#2563eb' }], headline: 'projects', empty: 'No projects yet.' }
+  { id: 'health', label: 'SEO health', icon: Activity, hint: 'Average audit score across projects', better: 'up', domain: [0, 100], series: [{ key: 'health', name: 'Health', color: '#1abc9c' }], headline: 'health', empty: 'Fills in as audits run each week.' },
+  { id: 'rank', label: 'Rankings', icon: Navigation, hint: 'Average local position (lower is better)', better: 'down', reversed: true, domain: [1, 'auto'], series: [{ key: 'avg_rank', name: 'Avg position', color: '#6658dd' }], headline: 'avg_rank', empty: 'Appears once rank scans have completed.' },
+  { id: 'customers', label: 'Customers', icon: Phone, hint: 'Google calls, directions and website clicks', better: 'up', series: [{ key: 'calls', name: 'Calls', color: '#6658dd' }, { key: 'directions', name: 'Directions', color: '#4a81d4' }, { key: 'website_clicks', name: 'Website clicks', color: '#1abc9c' }], headline: 'calls', empty: 'Appears once Google profiles are linked and synced.' },
+  { id: 'leads', label: 'Leads', icon: Target, hint: 'New leads per week', better: 'up', series: [{ key: 'leads', name: 'Leads', color: '#f7b84b' }], headline: 'leads', empty: 'No leads recorded yet.' },
+  { id: 'ai', label: 'AI work', icon: Bot, hint: 'Changes the agents proposed and applied', better: 'up', series: [{ key: 'proposed', name: 'Proposed', color: '#6658dd' }, { key: 'applied', name: 'Applied', color: '#1abc9c' }], headline: 'applied', empty: 'No agent activity yet.' },
+  { id: 'projects', label: 'Portfolio', icon: Briefcase, hint: 'Projects under management', better: 'up', series: [{ key: 'projects', name: 'Projects', color: '#4a81d4' }], headline: 'projects', empty: 'No projects yet.' }
 ];
 
 function GrowthTooltip({ active, payload, label }) {
@@ -698,6 +644,11 @@ function Dashboard() {
             <div className="xl:col-span-2 min-w-0"><GrowthAnalytics /></div>
             <NeedsAction projects={projects} totals={t} onOpen={(id) => openProject(id)} />
           </div>
+
+          <section>
+            <SectionHeader icon={ScanSearch} title="Site audit" subtitle="Every project's site health, broken down, with the change since the previous audit" />
+            <SiteAuditTable />
+          </section>
 
           <FeaturedProjects projects={projects} onOpen={(id) => openProject(id)} />
           <Services pf={pf.data} />

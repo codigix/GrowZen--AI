@@ -55,7 +55,7 @@ def render_competitor_report(audit: Audit, lh: LighthouseAudit | None) -> str:
 <meta charset="utf-8">
 <title>Competitor Audit - {html_lib.escape(audit.target or '')}</title>
 <style>
-body {{ font-family: "Roboto", sans-serif; margin: 2rem; color: #222; background:#fafafa; }}
+body {{ font-family: "Barlow", sans-serif;; margin: 2rem; color: #222; background:#fafafa; }}
 .scores {{ display:flex; gap:2rem; margin-bottom:1.5rem; }}
 .score-circle {{ width:72px;height:72px;border-radius:50%;border:4px solid; display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:bold; }}
 .score-label {{ text-align:center;margin-top:.5rem;font-size:.85rem; }}

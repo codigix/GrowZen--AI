@@ -56,7 +56,7 @@ def test_onboarding_pipeline_end_to_end(client):
     assert tasks and all(t["status"] == "pending" for t in tasks)
     t = tasks[0]
     done = client.post(f"/api/v1/tasks/{t['id']}/approve").json()
-    assert done["status"] in ("applied", "failed")
+    assert done["status"] in ("applied", "handoff", "failed")  # a fix only a person can make is handed off, never claimed as applied
     assert client.post(f"/api/v1/tasks/{t['id']}/approve").status_code == 409
 
     report = client.get(f"/api/v1/businesses/{bid}/report").json()

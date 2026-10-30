@@ -21,3 +21,11 @@ def verify_password(password: str, stored: str | None) -> bool:
         return False
     candidate = hashlib.scrypt(password.encode(), salt=salt.encode(), n=_N, r=_R, p=_P, dklen=64).hex()
     return hmac.compare_digest(candidate, digest)
+
+
+# Passwords that were published in this project's source: a hash of one of these is a known credential.
+KNOWN_DEFAULTS = ("Seo@1d86f6a045",)
+
+
+def is_known_default(password_hash: str) -> bool:
+    return any(verify_password(p, password_hash) for p in KNOWN_DEFAULTS)

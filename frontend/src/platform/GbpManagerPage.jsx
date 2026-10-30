@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { CheckCircle2, Circle, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Loader2, Save } from 'lucide-react';
-import { SeoShell, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useSeoBusiness, refreshBusinesses } from './SeoUi';
-import { ConnectModal } from './GbpConnect';
-import { GbpAccounts, ListingStatus, VerifyPill } from './GbpAccounts';
+import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Loader2, Save } from 'lucide-react';
+import { SeoShell, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useSeoBusiness, refreshBusinesses, useUrlTab } from './SeoUi';
+import GbpLive from './GbpLive';
+import { MarketCard } from './Market';
+import { GbpAccounts, GoogleSignIn, ListingStatus, VerifyPill } from './GbpAccounts';
 import { api, useApi, fmtDate } from './seoApi';
 import { useCountries } from './countries';
 
@@ -32,14 +33,6 @@ function AuditTab({ b, onEditProfile }) {
         {d.alerts.length > 0 && (
           <Card title="Alerts"><div className="space-y-2">{d.alerts.map(a => <div key={a.text} className="text-12 text-gray-700"><StatusPill level={a.level}>{a.level === 'critical' ? 'Critical' : 'Warning'}</StatusPill> <span className="ml-1">{a.text}</span></div>)}</div></Card>
         )}
-        <Card title="Google link">
-          <div className="space-y-1.5 text-13">
-            <div className="flex justify-between"><span className="text-gray-500">Linked profile</span><span className="text-gray-900">{b.gbp_location || 'Not linked'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Verification</span><VerifyPill state={b.verification} /></div>
-            <div className="flex justify-between"><span className="text-gray-500">Reviews / rating</span><span className="text-gray-900">{b.reviewCount} · {b.rating ?? '—'}★</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Photos</span><span className="text-gray-900">{b.photo_count ?? '—'}</span></div>
-          </div>
-        </Card>
       </div>
       <Card title="Profile checklist" subtitle="Sorted by impact: category, reviews, proximity, website, then activity." className="xl:col-span-2" action={<Button size="sm" onClick={onEditProfile}>Edit profile</Button>}>
         <div className="divide-y divide-gray-100">
@@ -200,7 +193,7 @@ function PhotosTab({ b, toast }) {
   const save = () => run('save', async () => { await api(`/businesses/${b.id}`, { method: 'PATCH', body: { cover_photo: cover || null, logo: logo || null } }); await refreshBusinesses(); toast('Saved'); });
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-      <Card title="Photos on Google" subtitle="Counted on every sync of the connected profile">
+      <Card title="Photo checklist" subtitle="The photos themselves are on the Live from Google tab">
         <div className="text-3xl font-semibold text-gray-900">{b.photo_count ?? '—'}</div>
         <div className="text-12 text-gray-500 mt-1">{b.photo_count == null ? 'Connect the Google profile to count photos.' : b.photo_count >= 10 ? 'Good: keep adding real photos weekly.' : 'Aim for 10+ real photos: outside, inside, team, work. No stock images.'}</div>
         <div className="mt-4 space-y-2 text-13">
@@ -322,10 +315,11 @@ function InsightsTab({ b }) {
 function Manager({ b, tab, setTab, toast, onConnect }) {
   return (
     <>
-      <div className="mb-4"><ListingStatus b={b} toast={toast} onFind={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => document.querySelector('input[aria-label="Business email"]')?.focus(), 400); }} /></div>
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'audit', label: 'Audit' }, { id: 'profile', label: 'Profile' }, { id: 'posts', label: 'Posts' }, { id: 'photos', label: 'Photos' }, { id: 'hours', label: 'Hours' }, { id: 'faq', label: 'Q&A / FAQs' }, { id: 'insights', label: 'Insights' }]} />
+      {!(b.gbp_location && b.connection_id) && <div className="mb-4"><ListingStatus b={b} toast={toast} onFind={() => { onConnect('email'); setTimeout(() => document.querySelector('input[aria-label="Business email"]')?.focus(), 400); }} /></div>}
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'live', label: 'Live from Google' }, { id: 'audit', label: 'Audit' }, { id: 'profile', label: 'Profile' }, { id: 'posts', label: 'Posts' }, { id: 'photos', label: 'Photos' }, { id: 'hours', label: 'Hours' }, { id: 'faq', label: 'Q&A / FAQs' }, { id: 'insights', label: 'Insights' }]} />
+      {tab === 'live' && <GbpLive b={b} toast={toast} onConnect={onConnect} />}
       {tab === 'audit' && <AuditTab b={b} onEditProfile={() => setTab('profile')} />}
-      {tab === 'profile' && <ProfileTab b={b} toast={toast} />}
+      {tab === 'profile' && <div className="space-y-4"><ProfileTab b={b} toast={toast} /><MarketCard b={b} /></div>}
       {tab === 'posts' && <PostsTab b={b} toast={toast} />}
       {tab === 'photos' && <PhotosTab b={b} toast={toast} />}
       {tab === 'hours' && <HoursTab b={b} toast={toast} />}
@@ -335,36 +329,43 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
   );
 }
 
-export default function GbpManagerPage({ initialTab = 'audit' }) {
-  const [tab, setTab] = useState(initialTab);
+export default function GbpManagerPage({ initialTab = 'live' }) {
+  const [tab, setTab] = useUrlTab(initialTab, ['live', 'audit', 'profile', 'posts', 'photos', 'hours', 'faq', 'insights']);
   const [, setBusiness] = useSeoBusiness();
   const location = useLocation();
   const navigate = useNavigate();
-  const [connect, setConnect] = useState(null); // null | 'find' | 'google'
+  const [addOpen, setAddOpen] = useState(false); // find by email (public Maps data)
+  const [googleOpen, setGoogleOpen] = useState(false); // Google accounts: connect, then pick the businesses to add
+  const addRef = useRef(null);
+  const openAdd = () => { setAddOpen(true); setTimeout(() => addRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); };
   const [toast, toastNode] = useToast();
-  // ?connect=1 (from the business switcher) opens the add-businesses window.
+  // ?connect=1 (from the business switcher) opens the Google accounts window.
   useEffect(() => {
-    if (new URLSearchParams(location.search).get('connect')) { setConnect('find'); navigate(location.pathname, { replace: true }); }
+    if (new URLSearchParams(location.search).get('connect')) { setGoogleOpen(true); navigate(location.pathname, { replace: true }); }
   }, [location.search, location.pathname, navigate]);
   const account = Number(new URLSearchParams(location.search).get('account')) || null; // just connected (from Google sign-in)
-  const added = (list, note) => {
-    setConnect(null);
-    if (list.length) { setBusiness(list[0].id); setTab('audit'); }
-    toast(note || `${list.length} business${list.length === 1 ? '' : 'es'} added`);
-  };
-  // The window lives outside the shell so it also opens when there are no businesses yet.
   return (
     <>
-      <SeoShell title="Google Business Profile" subtitle="Find a business's Google listings from its email, see their live status, and manage each profile's audit, posts, photos, hours and insights" needsBusiness={false}>
+      <SeoShell title="Google Business Profile" subtitle="Each project's Google Business Profile, read live: profile, photos, posts, reviews and search data, plus its audit, hours and insights" needsBusiness={false}>
         {(b) => (
           <div className="space-y-5">
-            <GbpAccounts business={b} initialAccount={account} toast={toast} onOtherWays={() => setConnect('find')} onOpenBusiness={(id) => { setBusiness(id); setTab('audit'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
-            {b ? <div><Manager key={b.id} b={b} tab={tab} setTab={setTab} toast={toast} onConnect={(mode = 'find') => setConnect(mode)} /></div>
-              : <Card><div className="py-8 text-center text-13 text-slate-500">No businesses yet. Find one by its email above, or use Other ways to add.</div></Card>}
+            <div className="ai-glass-card rounded px-5 py-3 flex flex-wrap items-center gap-3">
+              <span className="flex-1 min-w-[200px] text-13 text-slate-600">Add a project's Google Business Profile.</span>
+              <Button size="sm" variant="primary" icon={PlugZap} onClick={() => setGoogleOpen(true)}>Connect Google account</Button>
+              <Button size="sm" icon={Search} onClick={() => (addOpen ? setAddOpen(false) : openAdd())}>Find by email</Button>
+            </div>
+            <div ref={addRef} className="scroll-mt-24">
+              <GbpAccounts business={b} toast={toast} open={addOpen} onToggle={() => setAddOpen(false)}
+                onOpenBusiness={(id) => { setBusiness(id); setTab('live'); setAddOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
+            </div>
+            {b && <Manager key={b.id} b={b} tab={tab} setTab={setTab} toast={toast} onConnect={(mode) => (mode === 'email' ? openAdd() : setGoogleOpen(true))} />}
           </div>
         )}
       </SeoShell>
-      <ConnectModal open={Boolean(connect)} initialMode={connect || 'find'} onClose={() => setConnect(null)} onAdded={added} />
+      <Modal open={googleOpen} onClose={() => setGoogleOpen(false)} width="max-w-3xl" title="Connect Google account">
+        <GoogleSignIn initialAccount={account} toast={toast}
+          onOpenBusiness={(id) => { setBusiness(id); setTab('live'); setGoogleOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
+      </Modal>
       {toastNode}
     </>
   );

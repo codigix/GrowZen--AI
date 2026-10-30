@@ -37,7 +37,7 @@ INFO = "https://mybusinessbusinessinformation.googleapis.com/v1"
 V4 = "https://mybusiness.googleapis.com/v4"
 PERF = "https://businessprofileperformance.googleapis.com/v1"
 VERIFY = "https://mybusinessverifications.googleapis.com/v1"
-READ_MASK = "name,title,storefrontAddress,phoneNumbers,categories,websiteUri,latlng,metadata,profile,regularHours,serviceArea,openInfo"
+READ_MASK = "name,title,storefrontAddress,phoneNumbers,categories,websiteUri,latlng,metadata,profile,regularHours,specialHours,moreHours,serviceItems,serviceArea,labels,openInfo"
 OPEN_STATUS = {"OPEN": "open", "CLOSED_TEMPORARILY": "closed_temporarily", "CLOSED_PERMANENTLY": "closed_permanently"}
 STAR = {"ONE": 1, "TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5}
 
@@ -56,14 +56,25 @@ def _state_secret() -> str:
     return get_settings().secret_key
 
 
-def auth_url(user_id: str) -> str:
+GSC_SCOPES = "openid email profile https://www.googleapis.com/auth/webmasters.readonly"
+
+
+def auth_url(user_id: str, purpose: str = "gbp") -> str:
     s = get_settings()
     if not s.google_oauth_enabled:
         raise GbpError("Google sign-in is not set up: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.")
     if not s.token_encryption_key:
         raise GbpError("Add TOKEN_ENCRYPTION_KEY to the backend settings first: it encrypts the stored Google access.")
-    state = jwt.encode({"sub": user_id, "nonce": secrets.token_urlsafe(8), "exp": int(time.time()) + 600}, _state_secret(), algorithm="HS256")
-    return f"{AUTH_URL}?{urlencode({'client_id': s.google_client_id, 'redirect_uri': _redirect_uri(), 'response_type': 'code', 'scope': SCOPES, 'access_type': 'offline', 'prompt': 'consent', 'include_granted_scopes': 'true', 'state': state})}"
+    state = jwt.encode({"sub": user_id, "purpose": purpose, "nonce": secrets.token_urlsafe(8), "exp": int(time.time()) + 600}, _state_secret(), algorithm="HS256")
+    scope = GSC_SCOPES if purpose == "gsc" else f"{SCOPES} https://www.googleapis.com/auth/webmasters.readonly"  # a Business Profile sign-in also grants Search Console
+    return f"{AUTH_URL}?{urlencode({'client_id': s.google_client_id, 'redirect_uri': _redirect_uri(), 'response_type': 'code', 'scope': scope, 'access_type': 'offline', 'prompt': 'consent', 'include_granted_scopes': 'true', 'state': state})}"
+
+
+def read_purpose(state: str) -> str:
+    try:
+        return str(jwt.decode(state, _state_secret(), algorithms=["HS256"]).get("purpose") or "gbp")
+    except jwt.InvalidTokenError:
+        return "gbp"
 
 
 def read_state(state: str) -> str:
@@ -178,6 +189,41 @@ class GbpClient:
 
     def media_count(self, account: str, location: str) -> int:
         return int(self._req("GET", f"{V4}/{account}/{location}/media", params={"pageSize": 1}).get("totalMediaItemCount", 0))
+
+    def attributes(self, location: str) -> list[dict[str, Any]]:
+        return self._req("GET", f"{INFO}/{location}/attributes").get("attributes", [])
+
+    def media(self, account: str, location: str, limit: int = 100) -> list[dict[str, Any]]:
+        out, token = [], None
+        while True:
+            d = self._req("GET", f"{V4}/{account}/{location}/media", params={"pageSize": 100, **({"pageToken": token} if token else {})})
+            out += d.get("mediaItems", [])
+            token = d.get("nextPageToken")
+            if not token or len(out) >= limit:
+                return out[:limit]
+
+    def local_posts(self, account: str, location: str, limit: int = 50) -> list[dict[str, Any]]:
+        out, token = [], None
+        while True:
+            d = self._req("GET", f"{V4}/{account}/{location}/localPosts", params={"pageSize": 100, **({"pageToken": token} if token else {})})
+            out += d.get("localPosts", [])
+            token = d.get("nextPageToken")
+            if not token or len(out) >= limit:
+                return out[:limit]
+
+    def search_keywords(self, location: str, months: int = 3) -> list[dict[str, Any]]:
+        """The searches people used to find the profile, by month (Performance API); small counts come as a threshold."""
+        end = date.today().replace(day=1) - timedelta(days=1)  # the last full month
+        start = (end.replace(day=1) - timedelta(days=31 * (months - 1))).replace(day=1)
+        params = [("monthlyRange.start_month.year", start.year), ("monthlyRange.start_month.month", start.month),
+                  ("monthlyRange.end_month.year", end.year), ("monthlyRange.end_month.month", end.month), ("pageSize", 100)]
+        out, token = [], None
+        while True:
+            d = self._req("GET", f"{PERF}/{location}/searchkeywords/impressions/monthly", params=params + ([("pageToken", token)] if token else []))
+            out += d.get("searchKeywordsCounts", [])
+            token = d.get("nextPageToken")
+            if not token or len(out) >= 300:
+                return out
 
     def daily_metrics(self, location: str, start: date, end: date) -> dict[str, dict[str, int]]:
         metrics = ["CALL_CLICKS", "BUSINESS_DIRECTION_REQUESTS", "WEBSITE_CLICKS", "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH", "BUSINESS_IMPRESSIONS_MOBILE_SEARCH", "BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRESSIONS_MOBILE_MAPS", "BUSINESS_BOOKINGS"]
@@ -340,9 +386,75 @@ def import_location(db: Session, conn: GoogleConnection, loc: dict[str, Any], ac
 def refresh_status(client: GbpClient, b: Business) -> dict[str, Any]:
     """Re-read the listing's state from Google (verification, open status, pending edits, links)."""
     loc = client.location(b.gbp_location) | {"voice_of_merchant": client.voice_of_merchant(b.gbp_location)}
-    status = listing_status(loc) | {k: (b.gbp_status or {}).get(k) for k in ("account_name", "account_role", "account_type")}
+    status = listing_status(loc) | {k: (b.gbp_status or {}).get(k) for k in ("account_name", "account_role", "account_type", "live")}
     b.verification, b.duplicate_listing, b.gbp_status = status["verification"], status["duplicate"], status
     return status
+
+
+def _hhmm(t: dict[str, Any] | None) -> str | None:
+    return f"{int((t or {}).get('hours', 0)):02d}:{int((t or {}).get('minutes', 0)):02d}" if t is not None else None
+
+
+def special_hours_from(loc: dict[str, Any]) -> list[dict[str, Any]]:
+    """Google specialHours -> the app's [{date, name, closed, open, close}]."""
+    out = []
+    for p in (loc.get("specialHours") or {}).get("specialHourPeriods", []):
+        d = p.get("startDate") or {}
+        if not d:
+            continue
+        out.append({"date": f"{d['year']:04d}-{d['month']:02d}-{d['day']:02d}", "name": "Special hours", "closed": bool(p.get("closed")),
+                    "open": _hhmm(p.get("openTime")), "close": _hhmm(p.get("closeTime"))})
+    return sorted(out, key=lambda x: x["date"])
+
+
+def _media_item(m: dict[str, Any]) -> dict[str, Any]:
+    return {"id": m.get("name"), "type": m.get("mediaFormat"), "url": m.get("googleUrl"), "thumb": m.get("thumbnailUrl"), "created": m.get("createTime"),
+            "category": (m.get("locationAssociation") or {}).get("category") or (m.get("locationAssociation") or {}).get("priceListItemId"),
+            "views": int((m.get("insights") or {}).get("viewCount") or 0), "description": m.get("description")}
+
+
+def _post_item(p: dict[str, Any]) -> dict[str, Any]:
+    cta = p.get("callToAction") or {}
+    return {"id": p.get("name"), "type": p.get("topicType"), "state": p.get("state"), "summary": p.get("summary"), "created": p.get("createTime"), "updated": p.get("updateTime"),
+            "url": p.get("searchUrl"), "cta": cta.get("actionType"), "cta_url": cta.get("url"), "image": next((m.get("googleUrl") for m in p.get("media") or [] if m.get("googleUrl")), None),
+            "title": (p.get("event") or {}).get("title")}
+
+
+def _keyword_item(k: dict[str, Any]) -> dict[str, Any]:
+    v = k.get("insightsValue") or {}
+    return {"keyword": k.get("searchKeyword"), "impressions": int(v["value"]) if v.get("value") is not None else None, "below": int(v["threshold"]) if v.get("threshold") is not None else None}
+
+
+def _attribute_item(a: dict[str, Any]) -> dict[str, Any]:
+    return {"id": a.get("name", "").split("/")[-1], "values": a.get("values") or [], "type": a.get("valueType")}
+
+
+def fetch_live(client: "GbpClient", b: Business, loc: dict[str, Any]) -> dict[str, Any]:
+    """Everything else Google holds about the listing, read live: photos, posts, attributes, services, special
+    hours and the searches that found it. A part Google refuses (API not approved or enabled) is recorded
+    under `errors` and the rest still loads."""
+    parts: dict[str, Any] = {
+        "media": lambda: [_media_item(m) for m in client.media(b.gbp_account, b.gbp_location)],
+        "posts": lambda: [_post_item(p) for p in client.local_posts(b.gbp_account, b.gbp_location)],
+        "attributes": lambda: [_attribute_item(a) for a in client.attributes(b.gbp_location)],
+        "search_keywords": lambda: sorted((_keyword_item(k) for k in client.search_keywords(b.gbp_location)), key=lambda k: -(k["impressions"] or 0)),
+    }
+    live: dict[str, Any] = {"errors": {}}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {name: pool.submit(fn) for name, fn in parts.items()}
+        for name, fut in futures.items():
+            try:
+                live[name] = fut.result()
+            except GbpError as exc:
+                live[name], live["errors"][name] = [], str(exc)[:240]
+    live["special_hours"] = special_hours_from(loc)
+    live["more_hours"] = (loc.get("moreHours") or [])
+    live["service_items"] = [{"name": ((i.get("structuredServiceItem") or {}).get("serviceTypeId") or (i.get("freeFormServiceItem") or {}).get("label", {}).get("displayName") or ""),
+                              "description": ((i.get("freeFormServiceItem") or {}).get("label") or {}).get("description"),
+                              "price": i.get("price")} for i in loc.get("serviceItems") or []]
+    live["labels"] = loc.get("labels") or []
+    live["synced_at"] = datetime.now(timezone.utc).isoformat()
+    return live
 
 
 def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
@@ -350,7 +462,16 @@ def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
     if not (b.connection and b.gbp_account and b.gbp_location):
         raise GbpError("This business is not linked to a connected Google account.")
     client = GbpClient(b.connection)
-    status = refresh_status(client, b)
+    loc = client.location(b.gbp_location) | {"voice_of_merchant": client.voice_of_merchant(b.gbp_location)}
+    # Google is the source of truth for a linked profile: bring its name, categories, contact, address and hours in.
+    for k, v in location_to_fields(loc).items():
+        if k not in ("gbp_status", "gbp_account", "gbp_location") and v not in (None, "", [], {}):
+            setattr(b, k, v)
+    status = listing_status(loc) | {k: (b.gbp_status or {}).get(k) for k in ("account_name", "account_role", "account_type")}
+    live = fetch_live(client, b, loc)
+    if live["special_hours"]:
+        b.special_hours = live["special_hours"]
+    b.verification, b.duplicate_listing, b.gbp_status = status["verification"], status["duplicate"], status | {"live": live}
     db.commit()
     reviews = client.reviews(b.gbp_account, b.gbp_location)
     added = 0
@@ -371,7 +492,8 @@ def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
         db.add(row)
     b.review_count = len(reviews)
     b.rating = round(sum(STAR.get(r.get("starRating"), 0) for r in reviews) / len(reviews), 1) if reviews else None
-    b.photo_count = client.media_count(b.gbp_account, b.gbp_location)
+    if "media" not in live["errors"]:
+        b.photo_count = len(live["media"])
     end = date.today() - timedelta(days=2)  # performance data lags a few days
     for day, m in client.daily_metrics(b.gbp_location, end - timedelta(days=days), end).items():
         d = date.fromisoformat(day)
@@ -385,4 +507,5 @@ def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
         db.add(row)
     b.connection.last_sync_at = datetime.now(timezone.utc)
     db.commit()
-    return {"reviews": len(reviews), "new_reviews": added, "photos": b.photo_count, "verification": status["verification"], "open_status": status["open_status"]}
+    return {"reviews": len(reviews), "new_reviews": added, "photos": b.photo_count, "posts": len(live["posts"]), "keywords": len(live["search_keywords"]),
+            "verification": status["verification"], "open_status": status["open_status"], "errors": live["errors"]}

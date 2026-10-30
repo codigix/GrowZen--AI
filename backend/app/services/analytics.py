@@ -41,7 +41,7 @@ def summary(db: Session, weeks: int = 12) -> dict[str, Any]:
     # Health: average finished-audit score per week.
     health, sample = bucket(), 0
     for score, finished, source in db.execute(select(Audit.score, Audit.finished_at, Audit.data_source).where(
-            Audit.status == "done", Audit.score.is_not(None), Audit.business_id.is_not(None), Audit.finished_at >= since)):
+            Audit.status == "done", Audit.score.is_not(None), Audit.business_id.is_not(None), Audit.finished_at >= since, Audit.data_source != "sample")):
         i = _week(finished, start)
         if inside(i):
             health[i].append(score)

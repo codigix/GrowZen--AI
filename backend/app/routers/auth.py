@@ -1,7 +1,11 @@
 """Sign in / out and user management for the platform's own accounts."""
+import logging
+import secrets
+import threading
+import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -11,7 +15,7 @@ from ..config import Settings, get_settings
 from ..db import get_db
 from ..models import AppUser
 from ..serialize import row
-from ..services.passwords import hash_password, verify_password
+from ..services.passwords import hash_password, is_known_default, verify_password
 
 router = APIRouter(tags=["auth"])
 ROLES = ("admin", "editor", "viewer")
@@ -25,7 +29,7 @@ class LoginIn(BaseModel):
 class UserIn(BaseModel):
     email: str = Field(min_length=3)
     name: str = Field(min_length=1)
-    password: str = Field(min_length=8)
+    password: str = Field(min_length=10)
     role: str = "editor"
 
 
@@ -33,24 +37,70 @@ class UserPatch(BaseModel):
     name: str | None = None
     role: str | None = None
     active: bool | None = None
-    password: str | None = Field(default=None, min_length=8)
+    password: str | None = Field(default=None, min_length=10)
 
 
 def public(u: AppUser) -> dict:
     return row(u, exclude={"password_hash"})
 
 
+_failures: dict[str, list[float]] = {}
+_failures_lock = threading.Lock()
+log = logging.getLogger("seo.auth")
+
+
+def _throttle(key: str, settings: Settings, record: bool = False, reset: bool = False) -> None:
+    """Too many wrong passwords from one address for one email: locked for a while (in memory: a restart clears it)."""
+    window = settings.login_lockout_minutes * 60
+    now = time.time()
+    with _failures_lock:
+        recent = [t for t in _failures.get(key, []) if now - t < window]
+        if reset:
+            _failures.pop(key, None)
+            return
+        if record:
+            recent.append(now)
+        _failures[key] = recent
+        if len(recent) >= settings.login_max_failures:
+            wait = max(1, int((window - (now - recent[0])) / 60) + 1)
+            raise HTTPException(429, f"Too many wrong passwords. Try again in {wait} minute{'s' if wait != 1 else ''}.")
+
+
 @router.post("/auth/login")
-def login(body: LoginIn, response: Response, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+def login(body: LoginIn, request: Request, response: Response, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    key = f"{body.email.strip().lower()}|{request.client.host if request.client else '-'}"
+    _throttle(key, settings)
     u = db.scalar(select(AppUser).where(func.lower(AppUser.email) == body.email.strip().lower()))
     if not u or not verify_password(body.password, u.password_hash):
+        _throttle(key, settings, record=True)
         raise HTTPException(401, "Wrong email or password.")
+    _throttle(key, settings, reset=True)
     if not u.active:
         raise HTTPException(403, "This account is disabled.")
     u.last_login_at = datetime.now(timezone.utc)
     db.commit()
     issue_session(response, u.id, settings)
-    return public(u)
+    return public(u) | {"must_change_password": is_known_default(u.password_hash)}
+
+
+class PasswordIn(BaseModel):
+    current: str
+    new: str = Field(min_length=10, max_length=200)
+
+
+@router.post("/auth/change-password")
+def change_password(body: PasswordIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Change your own password. The password that was published in the source can never be chosen again."""
+    u = db.get(AppUser, int(user.id)) if user.source == "seo" and str(user.id).isdigit() else None
+    if not u:
+        raise HTTPException(400, "This account signs in through the CRM: change the password there.")
+    if not verify_password(body.current, u.password_hash):
+        raise HTTPException(403, "The current password is wrong.")
+    if is_known_default(hash_password(body.new)) or body.new == body.current:
+        raise HTTPException(400, "Choose a new password that is different from the old one and not the published default.")
+    u.password_hash = hash_password(body.new)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/auth/logout")
@@ -99,9 +149,10 @@ def update_user(user_id: int, body: UserPatch, db: Session = Depends(get_db), me
 
 def seed_admin(db: Session, settings: Settings) -> None:
     """First start: create the admin from ADMIN_EMAIL / ADMIN_PASSWORD when there are no users."""
-    if not (settings.admin_email and settings.admin_password):
+    if not settings.admin_email or db.scalar(select(func.count(AppUser.id))):
         return
-    if db.scalar(select(func.count(AppUser.id))):
-        return
-    db.add(AppUser(email=settings.admin_email.strip().lower(), name=settings.admin_name or "Admin", password_hash=hash_password(settings.admin_password), role="admin"))
+    password = settings.admin_password or secrets.token_urlsafe(12)
+    db.add(AppUser(email=settings.admin_email.strip().lower(), name=settings.admin_name or "Admin", password_hash=hash_password(password), role="admin"))
     db.commit()
+    if not settings.admin_password:  # shown once, here: there is no default to fall back on
+        log.warning("First start: admin account %s created with the generated password %s . Change it after signing in.", settings.admin_email, password)

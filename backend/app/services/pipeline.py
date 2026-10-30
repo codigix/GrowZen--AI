@@ -107,7 +107,7 @@ def onboard(db: Session, em: IntakeEmail, actor: str = "pipeline") -> IntakeEmai
         _step(db, em, "audits", "done", f"Overall {b.last_audit_score if b.last_audit_score is not None else '—'}/100" + (f"; failed: {', '.join(failed)}" if failed else ""))
 
         _step(db, em, "plan", "running")
-        tasks = agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues])
+        tasks = agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues], audited=[a.kind for a in found if a.status == "done"])
         _step(db, em, "plan", "done", f"{len(tasks)} tasks ({sum(1 for t in tasks if t.requires_approval)} need approval)")
 
         _step(db, em, "report", "running")

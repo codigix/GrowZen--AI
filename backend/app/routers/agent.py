@@ -19,8 +19,8 @@ router = APIRouter(tags=["agent"])
 
 
 @router.get("/tasks")
-def list_tasks(status: str | None = "pending", business_id: int | None = None, db: Session = Depends(get_db), _: User = Depends(current_user)):
-    q = select(AgentTask).order_by(AgentTask.created_at.desc()).limit(300)
+def list_tasks(status: str | None = "pending", business_id: int | None = None, offset: int = 0, limit: int = 300, db: Session = Depends(get_db), _: User = Depends(current_user)):
+    q = select(AgentTask).order_by(AgentTask.created_at.desc()).offset(max(0, offset)).limit(max(1, min(limit, 300)))
     if status:
         q = q.where(AgentTask.status == status)
     if business_id:
@@ -74,6 +74,57 @@ def approve_low_risk(business_id: int | None = None, db: Session = Depends(get_d
         q = q.where(AgentTask.business_id == business_id)
     done = [agent.decide(db, t, True, user.name) for t in db.scalars(q).all() if (t.detail or {}).get("risk") == "low" and t.kind not in agent.ALWAYS_ASK]
     return {"approved": len(done), "tasks": rows(done)}
+
+
+class BulkIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=200)
+    action: Literal["approve", "reject"]
+
+
+@router.post("/tasks/bulk")
+def bulk(body: BulkIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Approve or reject several pending changes at once. Profile edits can't be approved in bulk: they always wait for a person."""
+    done, skipped = [], 0
+    for t in db.scalars(select(AgentTask).where(AgentTask.id.in_(body.ids), AgentTask.status == "pending")):
+        if body.action == "approve" and t.kind in agent.ALWAYS_ASK:
+            skipped += 1
+            continue
+        done.append(agent.decide(db, t, body.action == "approve", user.name))
+    return {"done": len(done), "skipped": skipped, "action": body.action}
+
+
+@router.post("/tasks/triage")
+def triage(business_id: int | None = None, approve_low_risk: bool = False, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Clean the queue: close the changes the latest audit no longer reports (fixed), reject exact duplicates, and
+    rank what is left by impact and age. With approve_low_risk, the changes rated low risk are approved too."""
+    from ..services import audits as audit_service  # noqa: PLC0415
+
+    q = select(Business) if not business_id else select(Business).where(Business.id == business_id)
+    resolved = duplicates = 0
+    for b in db.scalars(q):
+        latest = audit_service.latest(db, b)
+        done = [a for a in latest.values() if a and a.status == "done"]
+        if done:
+            resolved += agent.reconcile(db, b, [i for a in done for i in (a.issues or [])], [a.kind for a in done])
+        seen: dict[tuple, AgentTask] = {}
+        for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.status == "pending").order_by(AgentTask.created_at.desc())):
+            key = (t.kind, " ".join(t.title.lower().split()))
+            if key in seen:
+                t.status, t.result = "rejected", {"note": "Duplicate of a newer change.", "by": "triage"}
+                duplicates += 1
+            else:
+                seen[key] = t
+    db.commit()
+    pending = list(db.scalars(select(AgentTask).where(AgentTask.status == "pending", *( [AgentTask.business_id == business_id] if business_id else []))))
+    weight = {"High": 3, "Medium": 2, "Low": 1}
+    ranked = sorted(pending, key=lambda t: (-weight.get(t.impact, 1), t.created_at))
+    approved = 0
+    if approve_low_risk:
+        approved = len([agent.decide(db, t, True, user.name) for t in pending if (t.detail or {}).get("risk") == "low" and t.kind not in agent.ALWAYS_ASK])
+    activity_log.log(db, user.name, "tasks_triaged", business_id, resolved=resolved, duplicates=duplicates, approved=approved)
+    db.commit()
+    return {"resolved": resolved, "duplicates_rejected": duplicates, "approved_low_risk": approved, "remaining": len(pending) - approved,
+            "top": [{"id": t.id, "title": t.title, "impact": t.impact, "business_id": t.business_id} for t in ranked[:10]]}
 
 
 @router.post("/tasks/{task_id}/redraft")

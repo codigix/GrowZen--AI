@@ -1117,7 +1117,7 @@ function SearchableCountryMultiSelect({ selected = [], onChange, hostCountry, po
 }
 
 /** Where the business wants customers: nearby areas (local) or other countries (international), with suggestions. */
-function TargetMarket({ form, setForm }) {
+export function TargetMarket({ form, setForm }) {
   const rows = useCountries();
   const [text, setText] = useState('');
   const [found, setFound] = useState([]);
@@ -1178,7 +1178,13 @@ function TargetMarket({ form, setForm }) {
 
       <div className="flex gap-2.5">
         {seg('local', 'Local', 'Customers in nearby areas')}
+        {seg('national', 'National', 'Customers across one country')}
         {seg('international', 'International', 'Customers in other countries')}
+      </div>
+      <div className="rounded-xl bg-white ring-1 ring-inset ring-slate-200 px-3.5 py-2.5 text-12 text-slate-600 leading-relaxed">
+        {scope === 'local' && <>Searches name the area and city. Rankings are tracked street by street on a map grid, and the Google profile and local citations matter most.</>}
+        {scope === 'national' && <>Searches don't name a city: Google is read for the whole country, and rankings are tracked country-wide. The map grid isn't used.</>}
+        {scope === 'international' && <>Google is read separately for each target country, keywords carry the country, and rankings are tracked per country. The map grid isn't used.</>}
       </div>
 
       {scope === 'local' ? (
@@ -1326,6 +1332,14 @@ function TargetMarket({ form, setForm }) {
               })}
             </div>
           )}
+        </div>
+      ) : scope === 'national' ? (
+        <div className="rounded-xl bg-white ring-1 ring-inset ring-slate-200 p-3.5 flex flex-wrap items-center gap-3">
+          <Globe size={16} className="text-indigo-500 shrink-0" />
+          <div className="flex-1 min-w-[200px]">
+            <div className="text-13 font-semibold text-slate-800">Customers anywhere in {countryInfo(form.country).name}</div>
+            <div className="text-11.5 text-slate-500">The business's own country (set in Location). Change the country there if it is wrong.</div>
+          </div>
         </div>
       ) : (
         <SearchableCountryMultiSelect
@@ -1560,7 +1574,7 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
         description: form.description.trim() || null, contact_name: form.contact_name.trim() || null, contact_email: form.contact_email.trim() || null,
         booking_url: normaliseUrl(form.booking_url) || null, plan: form.plan, services: form.services.map(name => ({ name })),
         attributes: form.attributes, lat: form.lat, lng: form.lng,
-        target_scope: form.target_scope || 'local', target_countries: form.target_scope === 'international' ? form.target_countries : [], target_areas: form.target_scope === 'international' ? [] : form.target_areas
+        target_scope: form.target_scope || 'local', target_countries: form.target_scope === 'international' ? form.target_countries : [], target_areas: (form.target_scope || 'local') === 'local' ? form.target_areas : []
       };
       await api(`/businesses/${b.id}`, { method: 'PATCH', body: Object.fromEntries(Object.entries(patch).filter(([k, v]) => v !== null || k === 'services' || k === 'attributes')) });
       mark('details', 'done', `${form.services.length} service${form.services.length === 1 ? '' : 's'}, contact and location saved`);

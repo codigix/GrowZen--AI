@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction } from './SeoUi';
+import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction, useUrlTab } from './SeoUi';
 import { api, useApi, fmtDateTime, fmt } from './seoApi';
 import { pathOnly as pathOf } from './siteUtils';
 
@@ -566,7 +566,7 @@ function Keywords({ b, tab }) {
 }
 
 export default function KeywordResearchPage() {
-  const [tab, setTab] = useState('discover');
+  const [tab, setTab] = useUrlTab('discover', ['discover', 'trends', 'tracked', 'topics']);
   return (
     <SeoShell title="Keyword Intelligence" subtitle="Real searches for this business's services and area: local, near me, questions and fresh searches, checked against the website">
       {(b) => (
