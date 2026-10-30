@@ -504,14 +504,74 @@ def fix_seo_fields(draft: dict, primary: str) -> None:
         draft["meta"] = draft["meta"][:META_MAX - 1].rsplit(" ", 1)[0].rstrip(",;:- ") + "."
 
 
+def make_faq_for_keyword(kw: str, primary: str) -> tuple[str, str]:
+    k = kw.strip()
+    k_lower = k.lower()
+    
+    if k_lower.startswith(('how to', 'what is', 'why', 'when', 'where', 'can you', 'should you')):
+        q = k.capitalize()
+        if not q.endswith('?'):
+            q += '?'
+    elif k_lower.endswith(('tips', 'ideas', 'examples', 'guide', 'strategies', 'best practices', 'steps', 'themes', 'options')):
+        q = f'What are the most popular {k}?'
+    elif k_lower.endswith(('checklist', 'framework', 'template')):
+        q = f'Why is a comprehensive {k} essential?'
+    elif k_lower.startswith(('best', 'top', 'easy', 'simple')):
+        q = f'How do you choose {k}?'
+    else:
+        q = f'How do {k} contribute to {primary}?'
+        
+    if 'tips' in k_lower or 'best practices' in k_lower:
+        ans = f'Implementing proven {k} ensures better organization, reduces common errors, and helps you achieve consistent results throughout your project.'
+    elif 'ideas' in k_lower or 'examples' in k_lower:
+        ans = f'Exploring diverse {k} gives you actionable inspiration and allows you to tailor your approach to your exact goals and preferences.'
+    elif 'checklist' in k_lower:
+        ans = f'Following a structured {k} keeps every detail accounted for, preventing last-minute delays and ensuring nothing important is overlooked.'
+    elif 'cost' in k_lower or 'price' in k_lower:
+        ans = f'Evaluating the costs associated with {k} allows for realistic budgeting and ensures you maximize value without unexpected expenses.'
+    elif k_lower.startswith('how to'):
+        ans = f'A successful approach for {k} begins with clear preparation, reliable resources, and consistent execution from start to finish.'
+    else:
+        ans = f'Prioritizing {k} is essential when working with {primary}. It provides practical clarity and supports long-term success.'
+        
+    return q, ans
+
+
 def correct_content(draft: dict, primary: str, secondary: list[str], topic: str) -> None:
-    """Fast Python cleanup: ensures primary keyword is in the introduction paragraph without extra LLM calls."""
+    """Fast Python cleanup: ensures primary keyword and ALL secondary keywords are present in the article body."""
     body = draft.get("body") or ""
     first = re.search(r"<p>(.*?)</p>", body, re.S)
     if first and not _has(first.group(1), primary):
         orig_p = first.group(1).strip()
         fixed_p = f"When considering {primary}, " + (orig_p[0].lower() + orig_p[1:] if len(orig_p) > 1 else orig_p)
         body = body.replace(first.group(0), f"<p>{fixed_p}</p>", 1)
+
+    # Check for missing secondary keywords
+    full_text = f"{draft.get('title', '')} {draft.get('meta', '')} {_text(body)}"
+    missing = [k.strip() for k in (secondary or []) if k and k.strip() and not _has(full_text, k)]
+    
+    if missing:
+        log.info("Self-healing: integrating %d missing secondary keywords: %s", len(missing), missing)
+        faq_items_html = []
+        for kw in missing:
+            q, ans = make_faq_for_keyword(kw, primary)
+            faq_items_html.append(f"<h3>{html.escape(q, quote=False)}</h3>\n<p>{html.escape(ans, quote=False)}</p>")
+        
+        insert_block = "\n" + "\n\n".join(faq_items_html) + "\n\n"
+        faq_match = re.search(r'<h2\b[^>]*>(?:Frequently Asked Questions|FAQs?)</h2>', body, re.I)
+        if faq_match:
+            after_faq = body[faq_match.end():]
+            next_sec = re.search(r'<(?:h2\b|script\b)', after_faq, re.I)
+            insert_pos = faq_match.end() + (next_sec.start() if next_sec else len(after_faq))
+            body = body[:insert_pos].rstrip() + "\n\n" + insert_block.strip() + "\n\n" + body[insert_pos:].lstrip()
+        else:
+            cta_or_script = re.search(r'<(?:div class="blog-cta-box"|h2\b[^>]*>Ready to Get Started|script\b)', body, re.I)
+            new_faq_section = f"<h2>Frequently Asked Questions</h2>\n\n{insert_block.strip()}\n\n"
+            if cta_or_script:
+                body = body[:cta_or_script.start()].rstrip() + "\n\n" + new_faq_section + body[cta_or_script.start():]
+            else:
+                body = body.rstrip() + "\n\n" + new_faq_section
+                
     draft["body"] = body
 
 
@@ -732,6 +792,23 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
     current: dict = {}
     parts: list[str] = []
 
+    # Clean and distribute ALL secondary keywords across article sections
+    clean_secondary = [k.strip() for k in (secondary or []) if k and k.strip()]
+    kws = list(clean_secondary)
+    intro_kws = kws[:2] if len(kws) >= 2 else kws[:1]
+    rem = kws[len(intro_kws):]
+    p2_kws = rem[:2] if len(rem) >= 2 else rem[:1]
+    rem = rem[len(p2_kws):]
+    p3_kws = rem[:2] if len(rem) >= 2 else rem[:1]
+    rem = rem[len(p3_kws):]
+    p4_kws = rem[:2] if len(rem) >= 2 else rem[:1]
+    rem = rem[len(p4_kws):]
+    wh_kws = rem[:1]
+    rem = rem[len(wh_kws):]
+    help_kws = rem[:1]
+    rem = rem[len(help_kws):]
+    faq_kws = rem  # Any remaining secondary keywords go to FAQs
+
     def step(name: str) -> None:
         now = time.time()
         if current:
@@ -750,7 +827,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 "You are an elite SEO strategist. Plan a comprehensive, high-ranking blog article.",
                 f"Topic: {topic or primary}",
                 f'Primary keyword: "{primary}"',
-                f"Secondary keywords: {json.dumps(secondary[:6]) if secondary else 'None'}",
+                f"Secondary keywords: {json.dumps(clean_secondary) if clean_secondary else 'None'}",
                 f"Business name: {b.name} (Location: {', '.join(x for x in [b.area, b.city] if x) or 'Local'})",
                 "",
                 "Answer with ONE JSON object and nothing else:",
@@ -767,7 +844,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 '    {"question": "Frequent question 3", "answer": "Clear 2-3 sentence answer"}',
                 '  ],',
                 '  "tags": ["5 to 8 relevant SEO tags"]',
-                "}"
+                "}",
+                "The article must cover the topic thoroughly and naturally incorporate the secondary keywords across the subheadings and FAQs."
             ])
             d_plan = _json(plan_prompt, num_predict=650)
             title = _plain(d_plan.get("title") or f"Complete Guide to {primary.title()} | {b.name}")[:TITLE_MAX]
@@ -789,6 +867,9 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 {"question": f"How long does it take to see results from {primary}?", "answer": f"Results from {primary} typically become noticeable within a few weeks to months depending on consistency and strategy. Continuous optimization is key to long-term success."},
                 {"question": f"Why is professional guidance recommended for {primary}?", "answer": f"Professional guidance helps avoid common pitfalls, saves valuable time, and provides access to advanced industry tools and proven methodologies."}
             ]
+            for kw in faq_kws:
+                q_faq, a_faq = make_faq_for_keyword(kw, primary)
+                plan_faqs.append({"question": q_faq, "answer": a_faq})
 
             # ── 1. Blog Title (H1) ──
             h1_html = f"<h1>{html.escape(title, quote=False)}</h1>"
@@ -798,13 +879,13 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             # ── 2. Introduction Paragraph (min 500 characters) + 1 Image ──
             step("Writing Introduction (min 500 chars)...")
             loc_str = f" in {b.city}" if b.city else ""
-            sec_kws_str = ", ".join(secondary[:3]) if secondary else primary
+            intro_kw_inst = [f'- CRITICAL SEO REQUIREMENT: You MUST include each of these exact secondary keyword phrases verbatim: {", ".join(f"{chr(34)}{k}{chr(34)}" for k in intro_kws)}.'] if intro_kws else []
             intro_prompt = "\n".join([
                 f'You are an expert content writer for {b.name}. Write an in-depth, compelling introduction for "{title}".',
-                f'Requirements:',
-                f'- MUST be at least 500 characters of high-value text (2 detailed paragraphs).',
+                'Requirements:',
+                '- MUST be at least 500 characters of high-value text (2 detailed paragraphs).',
                 f'- The first sentence must naturally include the exact primary keyword "{primary}".',
-                f'- Naturally integrate secondary keywords where relevant: {sec_kws_str}.',
+                *intro_kw_inst,
                 f'- Explain the topic, its importance, and the practical benefits to readers{loc_str}.',
                 '- Write in clear, professional English. Do NOT output headings or titles.'
             ])
@@ -829,8 +910,10 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             progress(f"Writing: {sub_1}", "\n\n".join(parts), title=title, meta=meta)
 
             # Paragraph 2 (min 500 chars)
+            p2_kw_inst = [f'CRITICAL SEO REQUIREMENT: You MUST naturally incorporate each of these exact keyword phrase(s) verbatim: {", ".join(f"{chr(34)}{k}{chr(34)}" for k in p2_kws)}.'] if p2_kws else []
             p2_prompt = "\n".join([
                 f'Write ONE detailed, comprehensive paragraph of at least 500 characters exploring core insights and foundational principles of "{sub_1}" for an article on {primary}.',
+                *p2_kw_inst,
                 'Provide actionable tips, practical clarity, and clear industry context. No bullet points, one deep paragraph only.'
             ])
             def on_p2(txt):
@@ -843,8 +926,10 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             parts.append(p2_html)
 
             # Paragraph 3 (min 500 chars)
+            p3_kw_inst = [f'CRITICAL SEO REQUIREMENT: You MUST naturally incorporate each of these exact keyword phrase(s) verbatim: {", ".join(f"{chr(34)}{k}{chr(34)}" for k in p3_kws)}.'] if p3_kws else []
             p3_prompt = "\n".join([
                 f'Write ONE detailed paragraph of at least 500 characters continuing the discussion under "{sub_1}".',
+                *p3_kw_inst,
                 'Focus on concrete real-world implementation, step-by-step methodologies, and overcoming common challenges.',
                 'Ensure depth, clarity, and practical value. One deep paragraph only.'
             ])
@@ -864,9 +949,10 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             parts.append(h2_2)
             progress(f"Writing: {sub_2}", "\n\n".join(parts), title=title, meta=meta)
 
+            p4_kw_inst = [f'CRITICAL SEO REQUIREMENT: You MUST naturally incorporate each of these exact keyword phrase(s) verbatim: {", ".join(f"{chr(34)}{k}{chr(34)}" for k in p4_kws)}.'] if p4_kws else []
             p4_prompt = "\n".join([
                 f'Write ONE comprehensive paragraph of at least 500 characters under "{sub_2}" for {primary}.',
-                f'Naturally incorporate relevant secondary keywords: {", ".join(secondary[1:4]) if len(secondary) > 1 else primary}.',
+                *p4_kw_inst,
                 'Provide thorough analysis, advanced strategies, and long-term optimization recommendations. One deep paragraph only.'
             ])
             def on_p4(txt):
@@ -885,7 +971,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             parts.append(h2_wh)
             progress(f"Writing: {wh_q}", "\n\n".join(parts), title=title, meta=meta)
 
-            wh_prompt = f'Provide a direct, authoritative, and informative answer to the question: "{wh_q}" regarding {primary}. Keep the answer between 400 and 700 characters (concise, high-impact paragraph).'
+            wh_kw_inst = f' CRITICAL: Naturally include the exact keyword phrase "{wh_kws[0]}" verbatim in your answer.' if wh_kws else ''
+            wh_prompt = f'Provide a direct, authoritative, and informative answer to the question: "{wh_q}" regarding {primary}.{wh_kw_inst} Keep the answer between 400 and 700 characters (concise, high-impact paragraph).'
             def on_wh(txt):
                 progress(f"Writing WH Answer...", "\n\n".join([*parts, _paras(txt)]), title=title, meta=meta)
             wh_raw = _stream_text(wh_prompt, num_predict=180, on_chunk=on_wh)
@@ -901,9 +988,11 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             parts.append(h2_help)
             progress(f"Writing: {help_h}", "\n\n".join(parts), title=title, meta=meta)
 
+            help_kw_inst = [f'CRITICAL: Naturally include the exact keyword phrase "{help_kws[0]}" verbatim in this paragraph.'] if help_kws else []
             help_prompt = "\n".join([
                 f'Write an empathetic, persuasive paragraph of 4-5 sentences under the heading "{help_h}".',
                 f'Encourage readers interested in {primary} to take timely action rather than delaying.',
+                *help_kw_inst,
                 f'Explain why procrastination leads to lost momentum or missed opportunities, and how taking prompt action ensures peace of mind and measurable progress.'
             ])
             def on_help(txt):
@@ -934,7 +1023,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             progress("Writing FAQs...", "\n\n".join(parts), title=title, meta=meta)
 
             faq_blocks = []
-            for item in plan_faqs[:4]:
+            for item in plan_faqs:
                 q = item.get("question") if isinstance(item, dict) else str(item)
                 a = item.get("answer") if isinstance(item, dict) else ""
                 if q:
