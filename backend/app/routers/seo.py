@@ -16,7 +16,7 @@ from ..config import get_settings
 from ..db import get_db
 from ..deps import get_business
 from ..models import Audit, Business, GeoPrompt, GeoResult, GoogleConnection, Keyword, KeywordRankLog
-from ..services import countries, domain_checks, domain_intel, geo, landscape as landscape_svc, gsc, market, organic
+from ..services import countries, domain_checks, domain_intel, geo, landscape as landscape_svc, top_pages as top_pages_svc, gsc, market, organic
 from ..services.gbp import GbpError
 from ..services.providers.base import intent_of
 from ..services.activity import log
@@ -123,7 +123,7 @@ def organic_research(days: int = 30, b: Business = Depends(get_business), db: Se
         return {**base, "state": "no_website"}
     if not tracked:
         return {**base, "state": "no_keywords"}
-    meta = {k.keyword: {"volume": k.volume, "tag": k.cluster} for k in tracked}
+    meta = {k.keyword: {"volume": k.volume, "tag": k.cluster, "intent": k.intent} for k in tracked}
     logs = [r for r in db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= start)) if r.keyword in meta]
     return {**base, **landscape_svc.organic_research(landscape_svc.from_logs(logs), meta, me, start, today)}
 
@@ -164,6 +164,37 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
         "metrics": {"volume": saved.volume if saved else None, "difficulty": saved.difficulty if saved else None, "cpc": saved.cpc if saved else None, "tracked": bool(saved and saved.tracked)},
         "volume_source": "saved keyword" if saved and saved.volume else None,
     }
+
+
+@router.get("/top-pages-report")
+def top_pages_report(days: int = 30, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Every page of the site any real source knows, one row each: crawl facts, Google positions (saved rank checks) and traffic and
+    referring domains (data provider, when connected), and the AI answers that cite it (services/top_pages.py)."""
+    days = max(7, min(days, 365))
+    me = organic.host(b.website)
+    today = datetime.now(timezone.utc).date()
+    start = date.fromordinal(today.toordinal() - days)
+    base = {"domain": me or None, "days": days}
+    if not me:
+        return {**base, "state": "no_website"}
+    crawl = top_pages(b, db)
+    payload = domain_intel_report(country=None, refresh=False, b=b, db=db)
+
+    def sec(key: str):
+        s = payload.get(key) if payload.get("state") == "ok" else None
+        return s["data"] if s and s.get("ok") else None
+    index = {"pages": sec("pages"), "indexed": sec("indexed_pages"), "history": sec("history")}
+    tracked = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
+    meta = {k.keyword: {"volume": k.volume, "intent": k.intent} for k in tracked}
+    if get_settings().rank_landscape_mock_on:
+        obs, meta = landscape_svc.mock_obs(me, days, today)
+    else:
+        obs = landscape_svc.from_logs([r for r in db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= start)) if r.keyword in meta])
+    results = list(db.scalars(select(GeoResult).where(GeoResult.business_id == b.id).order_by(GeoResult.created_at.desc()).limit(2000)))
+    geo_rows = [{"prompt_id": g.prompt_id, "engine": g.engine, "urls": g.cited_urls or [], "day": g.created_at.date().isoformat() if g.created_at else None} for g in results]
+    out = top_pages_svc.build(crawl["pages"], obs, meta, geo_rows, index, me, start, today, db.query(GeoPrompt).filter(GeoPrompt.business_id == b.id).count())
+    return {**base, "state": "ok", "intel_state": payload.get("state"), "internal": payload.get("internal"), "country_name": payload.get("country_name"), "markets": payload.get("markets"),
+            "audited_at": crawl.get("audited_at"), "serper": intel.serper_enabled(), "mock": bool(payload.get("mock")) or get_settings().rank_landscape_mock_on, "geo_source": results[0].data_source if results else None, **out}
 
 
 def _ai_search(db: Session, b: Business, host: str) -> dict:

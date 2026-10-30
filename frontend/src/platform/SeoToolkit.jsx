@@ -129,53 +129,6 @@ export function TrackedPositions({ b }) {
   );
 }
 
-/* ── Top Pages ─────────────────────────────────────────────────────────── */
-
-function TopPages({ b }) {
-  const path = useModulePath();
-  const d = useApi(`/businesses/${b.id}/seo/top-pages`);
-  const [sort, setSort] = useState('issues');
-  const [q, setQ] = useState('');
-  const pages = useMemo(() => {
-    const list = (d.data?.pages || []).filter(p => !q || `${p.path} ${p.title || ''}`.toLowerCase().includes(q.toLowerCase()));
-    const val = { issues: p => -p.issues, words: p => -(p.words || 0), inbound: p => -(p.inbound ?? -1), path: p => p.path };
-    return [...list].sort((a, c) => (val[sort](a) > val[sort](c) ? 1 : -1));
-  }, [d.data, sort, q]);
-  if (!d.data) return d.error ? <ErrorNote>{d.error.message}</ErrorNote> : <div className="py-16 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div>;
-  if (!d.data.pages.length) return <Empty icon={ScanSearch} title="No pages crawled yet" action={<Link to={path('website-audit')} className="h-9 px-4 rounded inline-flex items-center text-13 font-semibold bg-indigo-500 text-white hover:bg-indigo-600">Audit the website</Link>}>Top Pages reads the site's own crawl: run a site audit first.</Empty>;
-  const all = d.data.pages;
-  const th = (id, label, c) => <Th c={c}><button type="button" onClick={() => setSort(id)} className={`cursor-pointer hover:text-slate-900 ${sort === id ? 'text-indigo-600' : ''}`}>{label}{sort === id ? ' ↓' : ''}</button></Th>;
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        <Tile icon={FileText} label="Pages crawled" value={all.length} sub={`audited ${d.data.audited_at ? fmtDateTime(d.data.audited_at) : '—'}`} />
-        <Tile icon={Layers} tone="sky" label="Words per page" value={fmt(Math.round(all.reduce((s, p) => s + (p.words || 0), 0) / all.length))} sub="average" />
-        <Tile icon={Sparkles} tone="violet" label="With structured data" value={`${all.filter(p => p.schema.length).length}/${all.length}`} sub="pages with schema" />
-        <Tile icon={AlertTriangle} tone="amber" label="Pages with issues" value={all.filter(p => p.issues).length} sub={`${all.reduce((s, p) => s + p.issues, 0)} issues in total`} />
-      </div>
-      <Card pad={false}>
-        <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2"><span className="text-13 font-semibold text-slate-900">{pages.length} pages</span>
-          <label className="relative ml-auto"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter pages" className="h-8 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></label></div>
-        <Table head={<>{th('path', 'Page')}{th('words', 'Words', 'text-right')}{th('inbound', 'Links in', 'text-right')}<Th c="text-right">Links out</Th><Th>Schema</Th>{th('issues', 'Issues', 'text-right')}<Th>Keywords on the page</Th><Th c="text-right">Best rank</Th></>}>
-          {pages.map(p => (
-            <tr key={p.url} className="hover:bg-slate-50 align-top">
-              <td className="px-4 py-2.5 min-w-[240px] max-w-[340px]"><a href={p.url} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 hover:text-indigo-600  text-12.5">{p.path}</a>{p.noindex && <span className="ml-2"><Badge tone="red">noindex</Badge></span>}{p.status >= 400 && <span className="ml-2"><Badge tone="red">{p.status}</Badge></span>}<div className="text-12 text-slate-500 truncate" title={p.title}>{p.title || '(no title)'}</div></td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{fmt(p.words || 0)}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{p.inbound ?? <span className="text-slate-300" title="Recorded by the next audit">—</span>}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{p.links_out ?? <span className="text-slate-300">—</span>}</td>
-              <td className="px-4 py-2.5 text-12">{p.schema.length ? p.schema.slice(0, 2).join(', ') : <span className="text-slate-300">none</span>}</td>
-              <td className="px-4 py-2.5 text-right">{p.issues ? <Badge tone="amber">{p.issues}</Badge> : <CheckCircle2 size={14} className="inline text-emerald-500" />}</td>
-              <td className="px-4 py-2.5 max-w-[260px]"><div className="flex flex-wrap gap-1">{(p.mapped.length ? p.mapped.map(m => m.keyword) : p.keywords.slice(0, 3).map(x => x.keyword)).map(x => <span key={x} className={`px-1.5 py-0.5 rounded text-11.5 ${p.mapped.length ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>{x}</span>)}</div></td>
-              <td className="px-4 py-2.5 text-right"><Pos value={p.best_rank} /></td>
-            </tr>
-          ))}
-        </Table>
-      </Card>
-      <p className="text-11.5 text-slate-400">Purple keywords are tracked keywords mapped to the page. Traffic per page isn't shown: it needs Google Search Console or a paid traffic index. “—” links are recorded by the next audit.</p>
-    </div>
-  );
-}
-
 /* ── Keyword Gap ───────────────────────────────────────────────────────── */
 
 function KeywordGap({ b }) {
@@ -331,7 +284,6 @@ const page = (title, subtitle, Component) => function Page() {
 };
 
 export { DomainOverviewPage } from './DomainOverview';
-export const TopPagesPage = page('Top Pages', "The site's pages from its latest crawl, with what each carries and the keywords mapped to it", TopPages);
 export const KeywordGapPage = page('Keyword Gap', "Keywords your competitors rank for that you don't, and where you are weaker or stronger", KeywordGap);
 export const CompareDomainsPage = page('Compare Domains', "You and your top competitors side by side", CompareDomains);
 export const KeywordOverviewPage = page('Keyword Overview', "One keyword as Google shows it: who ranks, the Maps pack, related searches and questions", KeywordOverview);

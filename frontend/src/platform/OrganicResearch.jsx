@@ -21,6 +21,9 @@ const BUCKETS = [['top3', 'Top 3', '#f59e0b'], ['p4_10', '4-10', '#4338ca'], ['p
 const INTENT = { informational: ['Informational', '#6658dd'], navigational: ['Navigational', '#a855f7'], commercial: ['Commercial', '#f59e0b'], transactional: ['Transactional', '#1abc9c'], unknown: ['Unclassified', '#94a3b8'] };
 const FEATURE_ICON = { 'Featured snippet': FileText, 'Knowledge panel': BookOpen, 'People also ask': HelpCircle, 'Local pack': MapPin, Videos: Video, Images: ImageIcon, 'Top stories': Newspaper, Shopping: ShoppingCart, 'Related searches': Search };
 const FEATURE_COLORS = ['#6658dd', '#1abc9c', '#f59e0b', '#ef4444', '#0ea5e9', '#a855f7', '#84cc16', '#ec4899', '#64748b'];
+const live = (research) => (research?.state === 'ok' ? research : null);
+const NO_FEATURES = 'Your Google results source returned only the organic list for these searches, so SERP features (people also ask, snippets, video, local pack…) are not available. A data provider such as DataForSEO reports them.';
+const FromTracked = ({ children }) => <p className="text-11.5 text-slate-400 mt-2 px-1">{children}</p>;
 const path = (u) => { try { const x = new URL(u); return x.pathname + x.search || '/'; } catch (e) { return u || '—'; } };
 const money = (n) => (n == null ? '—' : `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 const compact = (n) => (n == null ? '—' : n >= 100 ? fmt(Math.round(n)) : String(Math.round(n * 10) / 10));
@@ -62,10 +65,26 @@ function Stat({ label, hint, value, change, spark, tone = 'text-indigo-700' }) {
 
 /* ── Overview sections ─────────────────────────────────────────────────── */
 
-function Headline({ intel }) {
+function Headline({ intel, research }) {
   const o = section(intel, 'organic');
   const h = section(intel, 'history').data || [];
   const d = o.data;
+  const r = live(research);
+  if (!d && r) {
+    const t = r.tracked_summary;
+    return (
+      <Card pad={false}>
+        <div className="grid grid-cols-2 xl:grid-cols-5 divide-x divide-slate-100">
+          <Stat label="Tracked keywords" hint="Keywords you track. Each one is checked on Google and its top 10 results are saved." value={fmt(t.keywords)} tone="text-slate-900" />
+          <Stat label="Ranking in top 10" hint="Tracked keywords where your site is in Google's top 10." value={`${t.top10} / ${t.keywords}`} spark={r.distribution.map(x => x.top10)} />
+          <Stat label="Visibility" hint="Share of the clicks your tracked keywords could win, from the position of each (a standard click-through curve)." value={`${t.visibility}%`} spark={r.distribution.map(x => x.visibility)} />
+          <Stat label="Average position" hint="Average of the positions where your site ranks in the top 10." value={t.avg_position ?? 'Not ranking'} tone="text-slate-900" />
+          <Stat label="Competing domains" hint="Different domains seen in the top 10 results of your tracked keywords." value={fmt(t.domains)} tone="text-slate-900" />
+        </div>
+        <FromTracked>Real Google results for your tracked keywords ({t.checks} check{t.checks !== 1 ? 's' : ''}). Domain-wide keywords, traffic and traffic cost need the data provider (DataForSEO).</FromTracked>
+      </Card>
+    );
+  }
   const none = !d;
   return (
     <Card pad={false}>
@@ -81,24 +100,27 @@ function Headline({ intel }) {
   );
 }
 
-function KeywordsTrend({ intel }) {
+function KeywordsTrend({ intel, research }) {
   const s = section(intel, 'history');
   const [range, setRange] = useState(24);
   const [off, setOff] = useState({});
-  const rows = (s.data || []).slice(-range);
+  const r = live(research);
+  const fallback = !(s.data || []).length && r;
+  const rows = fallback ? r.distribution.map(x => ({ ...x, date: x.date.slice(5) })) : (s.data || []).slice(-range);
+  const buckets = fallback ? [['top3', 'Top 3', '#f59e0b'], ['p4_10', '4-10', '#4338ca'], ['out', 'Not in top 10', '#cbd5e1']] : BUCKETS;
   return (
-    <Card title="Organic keywords trend" subtitle="Keywords by position, month by month (estimated by the data provider)"
-      action={<div className="flex gap-0.5 p-0.5 bg-slate-100 rounded">{[[6, '6M'], [12, '1Y'], [24, '2Y'], [999, 'All time']].map(([n, l]) => <button key={n} type="button" onClick={() => setRange(n)} className={`h-7 px-2.5 text-12 font-semibold rounded cursor-pointer ${range === n ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>{l}</button>)}</div>}>
+    <Card title={fallback ? 'Tracked keywords by position' : 'Organic keywords trend'} subtitle={fallback ? 'Your tracked keywords on every saved Google check (the chart grows with each check)' : 'Keywords by position, month by month (estimated by the data provider)'}
+      action={!fallback && <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded">{[[6, '6M'], [12, '1Y'], [24, '2Y'], [999, 'All time']].map(([n, l]) => <button key={n} type="button" onClick={() => setRange(n)} className={`h-7 px-2.5 text-12 font-semibold rounded cursor-pointer ${range === n ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>{l}</button>)}</div>}>
       {rows.length ? (
         <>
-          <div className="flex flex-wrap gap-4 mb-2 text-12.5">{BUCKETS.map(([k, l, c]) => <label key={k} className="inline-flex items-center gap-1.5 cursor-pointer text-slate-700"><input type="checkbox" checked={!off[k]} onChange={e => setOff(o => ({ ...o, [k]: !e.target.checked }))} style={{ accentColor: c }} />{l}</label>)}</div>
+          <div className="flex flex-wrap gap-4 mb-2 text-12.5">{buckets.map(([k, l, c]) => <label key={k} className="inline-flex items-center gap-1.5 cursor-pointer text-slate-700"><input type="checkbox" checked={!off[k]} onChange={e => setOff(o => ({ ...o, [k]: !e.target.checked }))} style={{ accentColor: c }} />{l}</label>)}</div>
           <div className="h-64"><ResponsiveContainer width="100%" height="100%">
             <BarChart data={rows} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
               <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} />
               <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={false} minTickGap={24} />
               <YAxis tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} width={40} />
               <Tooltip />
-              {BUCKETS.filter(([k]) => !off[k]).map(([k, l, c]) => <Bar key={k} dataKey={k} name={l} stackId="k" fill={c} />)}
+              {buckets.filter(([k]) => !off[k]).map(([k, l, c]) => <Bar key={k} dataKey={k} name={l} stackId="k" fill={c} />)}
             </BarChart>
           </ResponsiveContainer></div>
         </>
@@ -107,14 +129,35 @@ function KeywordsTrend({ intel }) {
   );
 }
 
-function TopKeywords({ intel, onAll }) {
+function TopKeywords({ intel, research, onAll }) {
   const s = section(intel, 'keywords');
   const [tab, setTab] = useState('all');
   const total = section(intel, 'organic').data?.traffic || 0;
   const terms = (intel?.brand || []).map(t => t.toLowerCase());
   const all = s.data?.rows || [];
-  const rows = (tab === 'top10' ? all.filter(r => r.position && r.position <= 10) : tab === 'branded' ? all.filter(r => terms.some(t => r.keyword.toLowerCase().includes(t))) : all);
+  const r = live(research);
   const chip = (id, l) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-7 px-3 text-12 font-semibold rounded border cursor-pointer ${tab === id ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 bg-white'}`}>{l}</button>;
+  if (!all.length && r) {
+    const rows = [...r.tracked_rows].sort((a, c) => (a.rank || 99) - (c.rank || 99) || a.keyword.localeCompare(c.keyword));
+    return (
+      <Card title="Your tracked keywords" subtitle="Where your site stands on Google, and who is first" pad={false}>
+        <table className="w-full text-13">
+          <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th c="text-right">Position</Th><Th>Ranks first</Th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.slice(0, 6).map(x => (
+              <tr key={x.keyword} className="hover:bg-slate-50">
+                <td className="px-4 py-2.5 max-w-[250px] truncate text-indigo-700 font-medium" title={x.keyword}>{x.keyword}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{x.rank ?? <span className="text-slate-400" title="Not in Google's top 10">&gt;10</span>}</td>
+                <td className="px-4 py-2.5 text-slate-600 max-w-[170px] truncate" title={x.leader}>{x.leader || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="p-4"><Button size="sm" onClick={onAll}>View all {rows.length} keywords</Button></div>
+      </Card>
+    );
+  }
+  const rows = (tab === 'top10' ? all.filter(x => x.position && x.position <= 10) : tab === 'branded' ? all.filter(x => terms.some(t => x.keyword.toLowerCase().includes(t))) : all);
   return (
     <Card title="Top keywords" pad={false}>
       <div className="px-5 py-3 flex gap-2 border-b border-slate-100">{chip('all', 'All positions')}{chip('top10', 'Top 10')}{chip('branded', 'Branded')}</div>
@@ -123,12 +166,12 @@ function TopKeywords({ intel, onAll }) {
           <table className="w-full text-13">
             <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th c="text-right">Position</Th><Th c="text-right">Volume</Th><Th c="text-right">Traffic %</Th></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.slice(0, 5).map(r => (
-                <tr key={r.keyword + r.position} className="hover:bg-slate-50">
-                  <td className="px-4 py-2.5 max-w-[260px] truncate text-indigo-700 font-medium" title={r.keyword}>{r.keyword}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{r.position ?? '—'}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{total ? (r.traffic / total * 100).toFixed(2) : '—'}</td>
+              {rows.slice(0, 5).map(x => (
+                <tr key={x.keyword + x.position} className="hover:bg-slate-50">
+                  <td className="px-4 py-2.5 max-w-[260px] truncate text-indigo-700 font-medium" title={x.keyword}>{x.keyword}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{x.position ?? '—'}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{x.volume != null ? fmt(x.volume) : '—'}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{total ? (x.traffic / total * 100).toFixed(2) : '—'}</td>
                 </tr>
               ))}
               {!rows.length && <tr><td colSpan={4} className="px-5 py-8 text-center text-slate-500">No keyword in this view.</td></tr>}
@@ -141,22 +184,25 @@ function TopKeywords({ intel, onAll }) {
   );
 }
 
-function Intent({ intel }) {
+function Intent({ intel, research }) {
   const s = section(intel, 'keywords');
-  const list = s.data?.intents || [];
+  const r = live(research);
+  const fallback = !(s.data?.intents || []).length && r;
+  const list = fallback ? r.intents.map(i => ({ intent: i.intent, keywords: i.keywords, traffic: 0 })) : s.data?.intents || [];
   const kTotal = list.reduce((a, i) => a + i.keywords, 0) || 1;
   const tTotal = list.reduce((a, i) => a + i.traffic, 0);
+  const meta = (k) => INTENT[k] || [k === 'unknown' ? 'Unclassified' : k.charAt(0).toUpperCase() + k.slice(1), '#94a3b8'];
   return (
-    <Card title="Keywords by intent" subtitle={s.data ? `The top ${s.data.rows.length} keywords by traffic` : undefined} pad={false}>
+    <Card title="Keywords by intent" subtitle={fallback ? 'Your tracked keywords, classified from their wording' : s.data ? `The top ${s.data.rows.length} keywords by traffic` : undefined} pad={false}>
       {list.length ? (
         <div className="p-5">
-          <div className="flex h-3 rounded-full overflow-hidden bg-slate-100 mb-4">{list.map(i => <span key={i.intent} style={{ width: `${(i.keywords / kTotal) * 100}%`, background: (INTENT[i.intent] || INTENT.unknown)[1] }} />)}</div>
+          <div className="flex h-3 rounded-full overflow-hidden bg-slate-100 mb-4">{list.map(i => <span key={i.intent} style={{ width: `${(i.keywords / kTotal) * 100}%`, background: meta(i.intent)[1] }} />)}</div>
           <table className="w-full text-13">
-            <thead className="text-11.5 text-slate-500"><tr><Th>Intent</Th><Th c="text-right">Keywords</Th><Th c="text-right">Traffic</Th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{list.map(i => { const m = INTENT[i.intent] || INTENT.unknown; return (
-              <tr key={i.intent}><td className="px-4 py-2"><span className="inline-block w-2.5 h-2.5 rounded-full mr-2" style={{ background: m[1] }} />{m[0]}</td>
+            <thead className="text-11.5 text-slate-500"><tr><Th>Intent</Th><Th c="text-right">Keywords</Th>{!fallback && <Th c="text-right">Traffic</Th>}</tr></thead>
+            <tbody className="divide-y divide-slate-100">{list.map(i => (
+              <tr key={i.intent}><td className="px-4 py-2"><span className="inline-block w-2.5 h-2.5 rounded-full mr-2" style={{ background: meta(i.intent)[1] }} />{meta(i.intent)[0]}</td>
                 <td className="px-4 py-2 text-right tabular-nums text-indigo-700">{i.keywords} <span className="text-slate-400">({Math.round((i.keywords / kTotal) * 1000) / 10}%)</span></td>
-                <td className="px-4 py-2 text-right tabular-nums">{tTotal ? `${Math.round((i.traffic / tTotal) * 100)}%` : '—'}</td></tr>); })}</tbody>
+                {!fallback && <td className="px-4 py-2 text-right tabular-nums">{tTotal ? `${Math.round((i.traffic / tTotal) * 100)}%` : '—'}</td>}</tr>))}</tbody>
           </table>
         </div>
       ) : <Empty>{whyIntel(intel, s, 'keywords')}</Empty>}
@@ -195,6 +241,7 @@ function researchWhy(r) {
 
 function FeatureChanges({ research, limit = 6 }) {
   const f = research?.state === 'ok' ? research.features : null;
+  if (f && !research.features_reported) return <Card title="Top position changes in SERP features"><Empty>{NO_FEATURES}</Empty></Card>;
   const [tab, setTab] = useState('new');
   const rows = f ? f.changes[tab] : [];
   return (
@@ -229,6 +276,7 @@ function AiBrand({ ai }) {
 
 function FeatureTrend({ research, days, setDays }) {
   const f = research?.state === 'ok' ? research.features : null;
+  if (f && !research.features_reported) return <Card title="SERP features trend"><Empty>{NO_FEATURES}</Empty></Card>;
   const present = f ? f.names.filter(n => f.trend[n].some(v => v > 0)) : [];
   const [sel, setSel] = useState(null);
   const chosen = (sel || present.slice(0, 3)).filter(n => present.includes(n));
@@ -251,6 +299,7 @@ function FeatureTrend({ research, days, setDays }) {
 
 function FeatureGrid({ research }) {
   const f = research?.state === 'ok' ? research.features : null;
+  if (f && !research.features_reported) return <Card title="SERP features"><Empty>{NO_FEATURES}</Empty></Card>;
   const group = (title, rows) => (
     <div>
       <div className="text-13 font-semibold text-slate-800 mb-2">{title}</div>
@@ -270,10 +319,22 @@ function FeatureGrid({ research }) {
   );
 }
 
-function PagesCard({ intel, onAll }) {
+function PagesCard({ intel, research, onAll }) {
   const s = section(intel, 'pages');
   const rows = s.data || [];
   const total = rows.reduce((a, p) => a + p.traffic, 0) || 1;
+  const r = live(research);
+  if (!rows.length && r) {
+    const own = r.own_pages.top;
+    return (
+      <Card title="Your pages in Google's top 10" subtitle="Pages of your site that rank for a tracked keyword" pad={false}>
+        {own.length ? (
+          <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>URL</Th><Th c="text-right">Keywords</Th><Th c="text-right">Avg. position</Th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{own.slice(0, 5).map(p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[320px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={p.url}>{path(p.url)}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5 text-right tabular-nums">{p.keywords}</td><td className="px-4 py-2.5 text-right tabular-nums">{p.avg_position}</td></tr>)}</tbody></table>
+        ) : <Empty>None of your pages is in Google&apos;s top 10 for a tracked keyword yet. Pages appear here as soon as one ranks.</Empty>}
+      </Card>
+    );
+  }
   return (
     <Card title="Top pages" pad={false}>
       {rows.length ? (
@@ -287,14 +348,25 @@ function PagesCard({ intel, onAll }) {
   );
 }
 
-function SubdomainsCard({ intel, full }) {
+function SubdomainsCard({ intel, research, full }) {
   const s = section(intel, 'subdomains');
   const rows = s.data || [];
+  const r = live(research);
+  if (!rows.length && r) {
+    return (
+      <Card title="Your subdomains in Google's top 10" pad={false}>
+        {r.own_hosts.length ? (
+          <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Subdomain</Th><Th c="text-right">Ranking keywords</Th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{r.own_hosts.map(h => <tr key={h.subdomain}><td className="px-4 py-2.5 text-indigo-700">{h.subdomain}</td><td className="px-4 py-2.5 text-right tabular-nums">{h.keywords}</td></tr>)}</tbody></table>
+        ) : <Empty>No subdomain of your site is in Google&apos;s top 10 for a tracked keyword yet.</Empty>}
+      </Card>
+    );
+  }
   return (
     <Card title="Top subdomains" pad={false}>
       {rows.length ? (
         <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Subdomain</Th><Th c="text-right">Traffic %</Th><Th c="text-right">Keywords</Th>{full && <Th c="text-right">Traffic</Th>}</tr></thead>
-          <tbody className="divide-y divide-slate-100">{rows.map(r => <tr key={r.subdomain} className="hover:bg-slate-50"><td className="px-4 py-2.5"><a href={`https://${r.subdomain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{r.subdomain}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5 text-right tabular-nums">{r.share.toFixed(2)}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(r.keywords)}</td>{full && <td className="px-4 py-2.5 text-right tabular-nums">{compact(r.traffic)}</td>}</tr>)}</tbody></table>
+          <tbody className="divide-y divide-slate-100">{rows.map(x => <tr key={x.subdomain} className="hover:bg-slate-50"><td className="px-4 py-2.5"><a href={`https://${x.subdomain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{x.subdomain}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5 text-right tabular-nums">{x.share.toFixed(2)}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(x.keywords)}</td>{full && <td className="px-4 py-2.5 text-right tabular-nums">{compact(x.traffic)}</td>}</tr>)}</tbody></table>
       ) : <Empty>{whyIntel(intel, s, 'subdomains')}</Empty>}
     </Card>
   );
@@ -305,9 +377,9 @@ function SubdomainsCard({ intel, full }) {
 function Overview({ intel, research, ai, days, setDays, go }) {
   return (
     <div className="space-y-4">
-      <Headline intel={intel} />
-      <KeywordsTrend intel={intel} />
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start"><TopKeywords intel={intel} onAll={() => go('positions')} /><Intent intel={intel} /></div>
+      <Headline intel={intel} research={research} />
+      <KeywordsTrend intel={intel} research={research} />
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start"><TopKeywords intel={intel} research={research} onAll={() => go('positions')} /><Intent intel={intel} research={research} /></div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <Changes research={research} title="Top position changes in organic" kinds={[['new', 'New'], ['lost', 'Lost'], ['improved', 'Improved'], ['declined', 'Declined']]} />
         <FeatureChanges research={research} />
@@ -315,7 +387,7 @@ function Overview({ intel, research, ai, days, setDays, go }) {
       <AiBrand ai={ai} />
       <FeatureTrend research={research} days={days} setDays={setDays} />
       <FeatureGrid research={research} />
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start"><PagesCard intel={intel} onAll={() => go('pages')} /><SubdomainsCard intel={intel} /></div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start"><PagesCard intel={intel} research={research} onAll={() => go('pages')} /><SubdomainsCard intel={intel} research={research} /></div>
     </div>
   );
 }
@@ -362,19 +434,36 @@ function ChangesTab({ research }) {
   );
 }
 
-function Competitors({ intel }) {
+function Competitors({ intel, research }) {
   const s = section(intel, 'competitors');
   const rows = s.data || [];
   const max = Math.max(1, ...rows.map(r => r.common));
   const path_ = useModulePath();
+  const r = live(research);
+  const links = (
+    <div className="flex gap-2"><Link to={path_('keyword-gap')} className="h-8 px-3 rounded inline-flex items-center text-12.5 font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">Keyword gap</Link><Link to={path_('compare-domains')} className="h-8 px-3 rounded inline-flex items-center text-12.5 font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">Compare domains</Link></div>
+  );
+  if (!rows.length && r) {
+    return (
+      <Card title={`Domains in the results (${r.competitor_total})`} subtitle="Who appears in Google's top 10 for your tracked keywords, from your saved checks" pad={false} action={links}>
+        <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>#</Th><Th>Domain</Th><Th c="text-right">Keywords</Th><Th c="text-right">Avg. position</Th><Th c="text-right">Visibility</Th></tr></thead>
+          <tbody className="divide-y divide-slate-100">{r.competitors.map(c => (
+            <tr key={c.domain} className={c.you ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}>
+              <td className="px-4 py-2.5 text-slate-500 tabular-nums">{c.rank}</td>
+              <td className="px-4 py-2.5"><a href={`https://${c.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{c.domain}<ExternalLink size={10} /></a>{c.you && <span className="ml-2 text-11 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">You</span>}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums">{c.keywords}</td><td className="px-4 py-2.5 text-right tabular-nums">{c.avg_position}</td><td className="px-4 py-2.5 text-right tabular-nums">{c.visibility}%</td>
+            </tr>))}</tbody></table>
+        {!r.competitors.some(c => c.you) && <p className="px-4 py-3 text-12 text-slate-500 border-t border-slate-100">Your site is not in the top 10 for any tracked keyword yet, so it is not listed.</p>}
+      </Card>
+    );
+  }
   return (
-    <Card title={`Main organic competitors ${rows.length ? `(${rows.length})` : ''}`} subtitle="Domains that rank for the same keywords (data provider)" pad={false}
-      action={<div className="flex gap-2"><Link to={path_('keyword-gap')} className="h-8 px-3 rounded inline-flex items-center text-12.5 font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">Keyword gap</Link><Link to={path_('compare-domains')} className="h-8 px-3 rounded inline-flex items-center text-12.5 font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">Compare domains</Link></div>}>
+    <Card title={`Main organic competitors ${rows.length ? `(${rows.length})` : ''}`} subtitle="Domains that rank for the same keywords (data provider)" pad={false} action={links}>
       {rows.length ? (
         <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Competitor</Th><Th>Com. level</Th><Th c="text-right">Common keywords</Th><Th c="text-right">Organic keywords</Th><Th c="text-right">Traffic</Th><Th c="text-right">Avg. position</Th></tr></thead>
-          <tbody className="divide-y divide-slate-100">{rows.map(r => <tr key={r.domain} className="hover:bg-slate-50"><td className="px-4 py-2.5"><a href={`https://${r.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{r.domain}<ExternalLink size={10} /></a></td>
-            <td className="px-4 py-2.5 w-32"><span className="block h-1.5 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-400" style={{ width: `${(r.common / max) * 100}%` }} /></span></td>
-            <td className="px-4 py-2.5 text-right tabular-nums">{fmt(r.common)}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(r.keywords)}</td><td className="px-4 py-2.5 text-right tabular-nums">{compact(r.traffic)}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.avg_position ?? '—'}</td></tr>)}</tbody></table>
+          <tbody className="divide-y divide-slate-100">{rows.map(x => <tr key={x.domain} className="hover:bg-slate-50"><td className="px-4 py-2.5"><a href={`https://${x.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{x.domain}<ExternalLink size={10} /></a></td>
+            <td className="px-4 py-2.5 w-32"><span className="block h-1.5 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-400" style={{ width: `${(x.common / max) * 100}%` }} /></span></td>
+            <td className="px-4 py-2.5 text-right tabular-nums">{fmt(x.common)}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(x.keywords)}</td><td className="px-4 py-2.5 text-right tabular-nums">{compact(x.traffic)}</td><td className="px-4 py-2.5 text-right tabular-nums">{x.avg_position ?? '—'}</td></tr>)}</tbody></table>
       ) : <Empty>{whyIntel(intel, s, 'competitors')}</Empty>}
     </Card>
   );
@@ -399,9 +488,21 @@ function Topics({ b }) {
   );
 }
 
-function PagesTab({ intel }) {
+function PagesTab({ intel, research }) {
   const s = section(intel, 'pages');
   const rows = s.data || [];
+  const r = live(research);
+  if (!rows.length && r) {
+    const own = [...r.own_pages.top];
+    return (
+      <Card title={`Your ranking pages (${own.length})`} subtitle="Pages of your site in Google's top 10 for a tracked keyword (saved checks)" pad={false}>
+        {own.length ? (
+          <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>URL</Th><Th c="text-right">Keywords</Th><Th c="text-right">Avg. position</Th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{own.map(p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[520px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline" title={p.url}>{p.url.replace(/^https?:\/\//, '')}</a></td><td className="px-4 py-2.5 text-right tabular-nums">{p.keywords}</td><td className="px-4 py-2.5 text-right tabular-nums">{p.avg_position}</td></tr>)}</tbody></table>
+        ) : <Empty>None of your pages is in Google&apos;s top 10 for a tracked keyword yet.</Empty>}
+      </Card>
+    );
+  }
   const total = rows.reduce((a, p) => a + p.traffic, 0) || 1;
   return (
     <Card title={`Top pages ${rows.length ? `(${rows.length})` : ''}`} subtitle="Pages with the most estimated organic traffic (data provider)" pad={false}>
@@ -445,10 +546,10 @@ function Page({ b }) {
       {tab === 'overview' && <Overview intel={d} research={research.data} ai={domain.data?.ai} days={days} setDays={setDays} go={setTab} />}
       {tab === 'positions' && <Positions b={b} intel={d} />}
       {tab === 'changes' && <ChangesTab research={research.data} />}
-      {tab === 'competitors' && <Competitors intel={d} />}
+      {tab === 'competitors' && <Competitors intel={d} research={research.data} />}
       {tab === 'topics' && <Topics b={b} />}
-      {tab === 'pages' && <PagesTab intel={d} />}
-      {tab === 'subdomains' && <SubdomainsCard intel={d} full />}
+      {tab === 'pages' && <PagesTab intel={d} research={research.data} />}
+      {tab === 'subdomains' && <SubdomainsCard intel={d} research={research.data} full />}
       <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />Domain-wide figures (keywords, traffic, trend, pages, subdomains, competitors) are estimates from the data provider. Position changes and SERP features come from the Google rank checks of your tracked keywords (top 10 results). Nothing is filled in where a source has no data.</p>
     </div>
   );

@@ -265,8 +265,29 @@ def organic_research(obs: list[Obs], meta: dict[str, dict], me: str, start: date
                     f_changes["new"].append({"keyword": k, "feature": n})
                 elif was and not now:
                     f_changes["lost"].append({"keyword": k, "feature": n})
+    # What the saved checks show about the whole tracked set: used when the domain-wide index is not connected.
+    base = landscape(obs, meta, me, start, end)
+    rows = []
+    for r in base["all_keywords"]:
+        serp = last[r["keyword"]].serp
+        lead = next((x["d"] for x in sorted(serp, key=lambda x: x.get("p") or 99)[:1]), None)
+        rows.append({**r, "intent": (meta.get(r["keyword"]) or {}).get("intent"), "leader": lead, "features": len(last[r["keyword"]].features)})
+    hosts: dict[str, dict] = {}
+    for p in base["pages"]["top"] + [x for x in base["pages"]["improved"] if x not in base["pages"]["top"]]:
+        h = p["url"].split("/")[2] if p["url"].count("/") >= 2 else p["url"]
+        e = hosts.setdefault(h, {"subdomain": h, "keywords": 0})
+        e["keywords"] += p["keywords"]
+    intents: dict[str, int] = {}
+    for r in rows:
+        intents[r["intent"] or "unknown"] = intents.get(r["intent"] or "unknown", 0) + 1
+    ranking = [r for r in rows if r["rank"]]
+    tracked = {"keywords": len(rows), "ranking": len(ranking), "top3": sum(1 for r in ranking if r["rank"] <= 3), "top10": sum(1 for r in ranking if r["rank"] <= 10),
+               "avg_position": base["cards"]["avg_position"]["value"], "visibility": base["cards"]["visibility"]["value"], "domains": base["competitor_total"], "checks": len(days)}
     return {
         "state": "ok", "domain": me, "period": {"start": days[0].isoformat(), "end": days[-1].isoformat(), "checks": len(days)}, "tracked": len(last), "comparable": comparable,
+        "tracked_summary": tracked, "tracked_rows": rows, "distribution": base["distribution"], "competitors": base["competitors"], "competitor_total": base["competitor_total"],
+        "own_pages": base["pages"], "own_hosts": sorted(hosts.values(), key=lambda h: -h["keywords"]), "intents": sorted(({"intent": k, "keywords": v} for k, v in intents.items()), key=lambda i: -i["keywords"]),
+        "features_reported": any(o.features for o in obs),
         "changes": changes, "counts": {k: len(v) for k, v in changes.items()},
         "features": {"dates": [d.isoformat() for d in days], "trend": trend, "names": names, "linking": [{"feature": n, "keywords": yours[n]} for n in names],
                      "not_linking": [{"feature": n, "keywords": present[n] - yours[n]} for n in names], "changes": f_changes},

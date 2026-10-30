@@ -195,7 +195,7 @@ def fetch(host: str, country: str, limits: dict, brand_terms: list[str] | None =
         "backlinks": lambda: backlinks_list(host, limits["backlinks"]),
         "anchors": lambda: anchors(host, 10),
         "ref_domains": lambda: ref_domains(host, 10),
-        "indexed_pages": lambda: indexed_pages(host, 10),
+        "indexed_pages": lambda: indexed_pages(host, limits["pages"]),
     }
     with ThreadPoolExecutor(max_workers=5) as ex:
         futures = {k: ex.submit(_safe, fn) for k, fn in jobs.items()}

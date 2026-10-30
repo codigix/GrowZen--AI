@@ -26,7 +26,8 @@ import BusinessOnboardingPage from './platform/BusinessOnboardingPage';
 import ConnectionsPage from './platform/ConnectionsPage';
 import ConnectResultPage from './platform/ConnectResultPage';
 import { OrganicRankingsPage } from './platform/OrganicResearch';
-import { DomainOverviewPage, TopPagesPage, KeywordGapPage, CompareDomainsPage, KeywordOverviewPage } from './platform/SeoToolkit';
+import { TopPagesPage } from './platform/TopPagesReport';
+import { DomainOverviewPage, KeywordGapPage, CompareDomainsPage, KeywordOverviewPage } from './platform/SeoToolkit';
 
 export default function App() {
   // undefined = checking the session, null = signed out

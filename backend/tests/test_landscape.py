@@ -79,3 +79,24 @@ def test_organic_summary_splits_branded_traffic():
     d = organic_summary(out, ["acme"])["data"]
     assert d["keywords_change"] == 25.0 and d["traffic_change"] == 25.0 and d["branded"] == 10.0 and d["non_branded"] == 40.0 and d["traffic_cost"] == 120.0
     assert organic_summary({"overview": {"ok": False, "error": "boom"}}, [])["ok"] is False
+
+
+def test_google_redirect_results_keep_their_real_domain():
+    from app.services.organic import _shown, result_host
+    goto = "https://www.google.com/goto?url=CAESabc"
+    assert result_host({"link": "https://www.circadian-ca.com/x", "displayedLink": "ignored"}) == "circadian-ca.com"
+    assert result_host({"link": goto, "displayedLink": "https://www.itorixinfotech.com › Digital Marketing"}) == "itorixinfotech.com"
+    assert _shown({"link": goto, "displayedLink": "https://mysite.com › blog › post-name"}) == ("mysite.com", "https://mysite.com/blog/post-name")
+    assert _shown({"link": goto, "displayedLink": "https://mysite.com › Digital Marketing"})[1] == "https://mysite.com"  # a page title is not a path
+    assert _shown({"link": goto, "displayedLink": ""}) == ("", "")
+    assert result_host({"link": "https://www.google.com/maps/place/x", "displayedLink": "x"}) == "google.com"  # a real Google page is not a redirect
+
+
+def test_tracked_set_summary_when_the_site_does_not_rank():
+    from app.services.landscape import organic_research
+    obs = [_o("a", D1, None, serp=[("rival.com", 1), ("other.com", 2)]), _o("b", D1, None, serp=[("rival.com", 1)])]
+    r = organic_research(obs, {"a": {"intent": "local"}, "b": {}}, ME, D1, D2)
+    assert r["tracked_summary"]["keywords"] == 2 and r["tracked_summary"]["ranking"] == 0 and r["tracked_summary"]["avg_position"] is None
+    assert [c["domain"] for c in r["competitors"][:2]] == ["rival.com", "other.com"] and r["own_pages"]["total"] == 0 and r["own_hosts"] == []
+    assert r["features_reported"] is False and {i["intent"]: i["keywords"] for i in r["intents"]} == {"local": 1, "unknown": 1}
+    assert [x["leader"] for x in r["tracked_rows"]] == ["rival.com", "rival.com"]
