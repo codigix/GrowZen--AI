@@ -12,14 +12,9 @@ def kw_client():
     return TestClient(app)
 
 
-def test_keyword_explorer_health(kw_client):
+def test_keyword_explorer_health_removed(kw_client):
     response = kw_client.get("/api/keywords/health")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "healthy"
-    assert data["app"] == "Keyword Explorer API"
-    assert "concurrency_limit" in data
-    assert "cache_entries" in data
+    assert response.status_code == 404
 
 
 def test_keyword_explorer_platforms(kw_client):

@@ -151,7 +151,7 @@ class KeywordEngine:
 
         # Dynamically scale expansion query limit based on requested limit
         if request.include_expansions:
-            target_queries = min(80, max(settings.KEYWORD_QUERY_LIMIT, int(request.limit * 0.4)))
+            target_queries = min(50, max(12, min(settings.KEYWORD_QUERY_LIMIT, max(14, int(request.limit * 0.25)))))
             queries = self.build_expansion_queries(
                 request.keyword,
                 limit=target_queries,
@@ -159,9 +159,14 @@ class KeywordEngine:
         else:
             queries = [sanitize_keyword(request.keyword)]
 
-        # Concurrency throttle for 4 GB RAM protection
-        semaphore = asyncio.Semaphore(settings.KEYWORD_FETCH_CONCURRENCY)
-        raw_suggestions: List[RawSuggestion] = []
+        # Parallel multi-platform concurrency controls
+        platform_concurrency = getattr(settings, "KEYWORD_PLATFORM_CONCURRENCY", 4)
+        global_concurrency = max(settings.KEYWORD_FETCH_CONCURRENCY, len(fetchers) * platform_concurrency)
+        global_semaphore = asyncio.Semaphore(global_concurrency)
+        platform_semaphores = {
+            pid: asyncio.Semaphore(platform_concurrency)
+            for pid, _ in fetchers
+        }
 
         headers = {
             "User-Agent": (
@@ -172,45 +177,69 @@ class KeywordEngine:
             "Accept": "application/json, text/plain, */*",
         }
 
+        limits = httpx.Limits(
+            max_keepalive_connections=30,
+            max_connections=100,
+            keepalive_expiry=30.0,
+        )
+
         async with httpx.AsyncClient(
             headers=headers,
             timeout=httpx.Timeout(settings.KEYWORD_API_TIMEOUT_SECONDS),
+            limits=limits,
             follow_redirects=True,
         ) as client:
 
-            async def _fetch_task(
+            async def _fetch_query(
                 platform_id: str,
                 platform_fetcher: BasePlatformFetcher,
                 query_str: str,
             ) -> List[RawSuggestion]:
-                async with semaphore:
-                    try:
-                        results = await platform_fetcher.fetch_suggestions(
-                            client,
-                            query_str,
-                            request.language,
-                            request.country,
-                        )
-                        return [
-                            RawSuggestion(
-                                keyword=kw,
-                                source=platform_id,
-                                rank=idx,
+                async with platform_semaphores[platform_id]:
+                    async with global_semaphore:
+                        try:
+                            results = await platform_fetcher.fetch_suggestions(
+                                client,
+                                query_str,
+                                request.language,
+                                request.country,
                             )
-                            for idx, kw in enumerate(results)
-                        ]
-                    except Exception:
-                        return []
+                            return [
+                                RawSuggestion(
+                                    keyword=kw,
+                                    source=platform_id,
+                                    rank=idx,
+                                )
+                                for idx, kw in enumerate(results)
+                            ]
+                        except Exception:
+                            return []
 
-            tasks = []
-            for query in queries:
-                for pid, fetcher in fetchers:
-                    tasks.append(_fetch_task(pid, fetcher, query))
+            async def _platform_worker(
+                platform_id: str,
+                platform_fetcher: BasePlatformFetcher,
+            ) -> List[RawSuggestion]:
+                # Concurrently execute queries for this platform
+                query_tasks = [
+                    _fetch_query(platform_id, platform_fetcher, query)
+                    for query in queries
+                ]
+                query_batches = await asyncio.gather(*query_tasks, return_exceptions=False)
+                flattened: List[RawSuggestion] = []
+                for batch in query_batches:
+                    flattened.extend(batch)
+                return flattened
 
-            batches = await asyncio.gather(*tasks, return_exceptions=False)
-            for batch in batches:
-                for suggestion in batch:
-                    raw_suggestions.append(suggestion)
+            # Run all 4 to 5 platforms in parallel simultaneously
+            platform_workers = [
+                _platform_worker(pid, fetcher)
+                for pid, fetcher in fetchers
+            ]
+            platform_results = await asyncio.gather(*platform_workers, return_exceptions=False)
+
+            raw_suggestions: List[RawSuggestion] = []
+            for suggestions in platform_results:
+                raw_suggestions.extend(suggestions)
 
         # Deduplicate suggestions across all platforms
         deduped = deduplicate_suggestions(raw_suggestions)

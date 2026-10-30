@@ -8,7 +8,6 @@ from fastapi.responses import StreamingResponse
 
 from ...config import settings
 from ...schemas.keyword import (
-    HealthResponse,
     KeywordItem,
     KeywordSearchRequest,
     PlatformInfo,
@@ -39,22 +38,6 @@ async def discover_keywords(payload: KeywordSearchRequest) -> List[KeywordItem]:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Keyword discovery engine failed: {str(exc)}",
         )
-
-
-@router.get(
-    "/health",
-    response_model=HealthResponse,
-    summary="Engine Health and Diagnostic Status",
-)
-async def health_check() -> HealthResponse:
-    """Check API and engine health."""
-    return HealthResponse(
-        status="healthy",
-        app=settings.APP_NAME,
-        version=settings.APP_VERSION,
-        concurrency_limit=settings.KEYWORD_FETCH_CONCURRENCY,
-        cache_entries=len(keyword_engine._cache),
-    )
 
 
 @router.get(

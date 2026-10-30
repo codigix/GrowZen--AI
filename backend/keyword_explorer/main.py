@@ -55,7 +55,6 @@ async def root():
         "documentation": "/docs",
         "endpoints": {
             "search": "POST /api/keywords",
-            "health": "GET /api/keywords/health",
             "platforms": "GET /api/keywords/platforms",
             "export_csv": "GET /api/keywords/export",
         },

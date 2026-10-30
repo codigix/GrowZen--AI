@@ -20,10 +20,11 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
-    # Runtime & Concurrency (Optimized for 4 GB RAM)
+    # Runtime & Concurrency (Parallel multi-platform execution)
     KEYWORD_API_TIMEOUT_SECONDS: float = 4.5
-    KEYWORD_FETCH_CONCURRENCY: int = 2
-    KEYWORD_QUERY_LIMIT: int = 28
+    KEYWORD_FETCH_CONCURRENCY: int = 20
+    KEYWORD_PLATFORM_CONCURRENCY: int = 4
+    KEYWORD_QUERY_LIMIT: int = 24
 
     # Default Localization
     DEFAULT_COUNTRY: str = "IN"
