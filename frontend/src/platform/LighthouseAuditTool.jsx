@@ -39,13 +39,13 @@ const itemText = (it) => it?.url || it?.node?.snippet || it?.source?.url || it?.
 
 const ScoreCell = ({ s }) => (
   s == null ? <span className="text-slate-600">—</span> :
-    <span className={`tabular-nums font-mono font-bold ${s >= 90 ? 'text-emerald-700' : s >= 50 ? 'text-amber-700' : 'text-rose-600'}`}>{s}</span>
+    <span className={`tabular-nums  font-bold ${s >= 90 ? 'text-emerald-700' : s >= 50 ? 'text-amber-700' : 'text-rose-600'}`}>{s}</span>
 );
 
 const Ring = ({ score, label }) => (score == null ? (
   <div className="flex flex-col items-center gap-1.5 p-3 rounded bg-slate-50 border border-slate-200">
     <div className="w-[100px] h-[100px] rounded-full border-8 border-slate-200 flex flex-col items-center justify-center">
-      <span className="text-2xl font-mono font-semibold text-slate-500 leading-none">—</span>
+      <span className="text-2xl  font-semibold text-slate-500 leading-none">—</span>
       <span className="text-11 text-slate-500 mt-1">{label}</span>
     </div>
     <Badge>N/A</Badge>
@@ -103,16 +103,16 @@ function AuditRow({ a }) {
         {icon}
         <span className="flex-1 min-w-0 text-13 text-slate-900 group-hover:text-cyan-700 transition-colors">
           {a.title}
-          {a.display_value ? <span className="text-slate-500 font-mono text-11"> · {a.display_value}</span> : null}
+          {a.display_value ? <span className="text-slate-500  text-11"> · {a.display_value}</span> : null}
         </span>
-        {savings && <span className="text-12 text-emerald-700 font-mono font-medium shrink-0 tabular-nums">{savings}</span>}
+        {savings && <span className="text-12 text-emerald-700  font-medium shrink-0 tabular-nums">{savings}</span>}
         {open ? <ChevronDown size={14} className="text-slate-500 shrink-0 mt-0.5" /> : <ChevronRight size={14} className="text-slate-500 shrink-0 mt-0.5" />}
       </button>
       {open && (
         <div className="ml-6 mt-2 space-y-2 animate-in fade-in duration-150">
           <p className="text-12 text-slate-500 leading-relaxed">{plain(a.description)}</p>
           {a.items?.length > 0 && (
-            <ul className="text-11 font-mono text-slate-700 bg-slate-50 border border-slate-200 rounded p-3 space-y-1 max-h-48 overflow-auto">
+            <ul className="text-11  text-slate-700 bg-slate-50 border border-slate-200 rounded p-3 space-y-1 max-h-48 overflow-auto">
               {a.items.map((it, n) => <li key={n} className="truncate text-cyan-700" title={itemText(it)}>{itemText(it)}</li>)}
               {a.item_count > a.items.length && <li className="text-slate-500 ">…and {a.item_count - a.items.length} more (full list in JSON report)</li>}
             </ul>
@@ -137,7 +137,7 @@ function CategoryAudits({ report, metricIds }) {
       <div className="space-y-4 mt-4">
         {BUCKETS.filter(([b]) => b !== 'passed' || showPassed).map(([b, label]) => (buckets[b]?.length ? (
           <div key={b}>
-            <div className="text-11 font-mono uppercase tracking-wider text-slate-500 font-semibold mb-1">{label} ({buckets[b].length})</div>
+            <div className="text-11    text-slate-500 font-semibold mb-1">{label} ({buckets[b].length})</div>
             <div className="divide-y divide-slate-200">{buckets[b].map(a => <AuditRow key={a.id} a={a} />)}</div>
           </div>
         ) : null))}
@@ -181,7 +181,7 @@ function Report({ id, onRerun, rerunning, onSettled }) {
               <Loader2 size={20} className="animate-spin" />
             </div>
             <span>Running Google Lighthouse audit for {hostOf(s.submitted_url)}…</span>
-            <span className="text-11 text-slate-500 font-mono">Engine: {engineLabel(s.engine)} · Strategy: {s.strategy}</span>
+            <span className="text-11 text-slate-500 ">Engine: {engineLabel(s.engine)} · Strategy: {s.strategy}</span>
           </div>
         </Card>
       )}
@@ -225,7 +225,7 @@ function Report({ id, onRerun, rerunning, onSettled }) {
                   {Object.entries(r.metrics || {}).map(([k, m]) => (
                     <div key={k} className="flex justify-between py-2.5">
                       <span className="text-slate-500">{m.title || k}</span>
-                      <span className="font-mono font-bold text-slate-900">{m.display_value || (m.numeric_value ? `${Math.round(m.numeric_value)} ms` : '—')}</span>
+                      <span className=" font-bold text-slate-900">{m.display_value || (m.numeric_value ? `${Math.round(m.numeric_value)} ms` : '—')}</span>
                     </div>
                   ))}
                 </div>
@@ -233,7 +233,7 @@ function Report({ id, onRerun, rerunning, onSettled }) {
 
               {r.report && (
                 <Card title="Environment Telemetry">
-                  <div className="space-y-2 text-12 font-mono text-slate-500">
+                  <div className="space-y-2 text-12  text-slate-500">
                     <div>User Agent: <span className="text-slate-800 truncate block">{r.report.user_agent || 'Headless'}</span></div>
                     <div>Lighthouse Version: <span className="text-cyan-700">{r.report.lighthouse_version || '13.x'}</span></div>
                   </div>
@@ -275,7 +275,7 @@ function SiteAudit({ id, current, onOpenPage, onRerun, rerunning, onSettled }) {
             <div className="flex-1">
               <Meter value={done} max={Math.max(1, s.page_count)} color={s.failed_count ? SERIES[1] : SERIES[0]} />
             </div>
-            <span className="text-12 font-mono text-slate-500 whitespace-nowrap">
+            <span className="text-12  text-slate-500 whitespace-nowrap">
               {done}/{s.page_count} done{s.failed_count ? ` · ${s.failed_count} failed` : ''}
             </span>
             <Badge tone={statusTone(s.status)}>
@@ -294,7 +294,7 @@ function SiteAudit({ id, current, onOpenPage, onRerun, rerunning, onSettled }) {
 
           <div className="overflow-x-auto">
             <table className="w-full text-13">
-              <thead className="text-11 font-mono uppercase tracking-wider text-slate-500 border-b border-slate-200">
+              <thead className="text-11    text-slate-500 border-b border-slate-200">
                 <tr>
                   <th className="p-2.5 text-left font-semibold">Page Permalink</th>
                   <th className="p-2.5 text-right font-semibold">Perf.</th>
@@ -308,7 +308,7 @@ function SiteAudit({ id, current, onOpenPage, onRerun, rerunning, onSettled }) {
               <tbody className="divide-y divide-slate-200">
                 {s.pages.map(p => (
                   <tr key={p.id} className={`hover:bg-slate-50 transition-colors ${p.id === current ? 'bg-indigo-600/15' : ''}`}>
-                    <td className="p-2.5 font-mono text-12 text-cyan-700 max-w-[320px] truncate" title={p.submitted_url}>
+                    <td className="p-2.5  text-12 text-cyan-700 max-w-[320px] truncate" title={p.submitted_url}>
                       {pathOf(p.submitted_url)}
                     </td>
                     <td className="p-2.5 text-right"><ScoreCell s={p.performance_score} /></td>
@@ -354,7 +354,7 @@ function HistoryCard({ mode, current, currentSite, refresh, onOpen, onOpenSite, 
           <table className="w-full text-13">
             {mode === 'site' ? (
               <>
-                <thead className="text-11 font-mono uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                <thead className="text-11    text-slate-500 border-b border-slate-200">
                   <tr>
                     <th className="p-2.5 text-left font-semibold">Site</th>
                     <th className="p-2.5 text-left font-semibold">Date</th>
@@ -368,9 +368,9 @@ function HistoryCard({ mode, current, currentSite, refresh, onOpen, onOpenSite, 
                   {items.map(h => (
                     <tr key={h.id} className={`hover:bg-slate-50 transition-colors ${h.id === currentSite ? 'bg-indigo-600/15' : ''}`}>
                       <td className="p-2.5 text-slate-900 font-medium">{hostOf(h.base_url)}</td>
-                      <td className="p-2.5 text-slate-500 font-mono text-12">{fmtDateTime(h.created_at)}</td>
+                      <td className="p-2.5 text-slate-500  text-12">{fmtDateTime(h.created_at)}</td>
                       <td className="p-2.5 text-slate-500 capitalize">{h.strategy}</td>
-                      <td className="p-2.5 text-right font-mono text-slate-700 tabular-nums">
+                      <td className="p-2.5 text-right  text-slate-700 tabular-nums">
                         {h.completed_count}/{h.page_count}{h.failed_count ? <span className="text-rose-600"> ({h.failed_count} failed)</span> : null}
                       </td>
                       <td className="p-2.5"><Badge tone={statusTone(h.status)}>{h.status}</Badge></td>
@@ -384,7 +384,7 @@ function HistoryCard({ mode, current, currentSite, refresh, onOpen, onOpenSite, 
               </>
             ) : (
               <>
-                <thead className="text-11 font-mono uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                <thead className="text-11    text-slate-500 border-b border-slate-200">
                   <tr>
                     <th className="p-2.5 text-left font-semibold">Page Permalink</th>
                     <th className="p-2.5 text-left font-semibold">Date</th>
@@ -400,10 +400,10 @@ function HistoryCard({ mode, current, currentSite, refresh, onOpen, onOpenSite, 
                 <tbody className="divide-y divide-slate-200">
                   {items.map(h => (
                     <tr key={h.id} className={`hover:bg-slate-50 transition-colors ${h.id === current ? 'bg-indigo-600/15' : ''}`}>
-                      <td className="p-2.5 text-cyan-700 max-w-[260px] truncate font-mono text-12" title={h.submitted_url}>
+                      <td className="p-2.5 text-cyan-700 max-w-[260px] truncate  text-12" title={h.submitted_url}>
                         {hostOf(h.submitted_url)}<span className="text-slate-500">{pathOf(h.submitted_url) === '/' ? '' : pathOf(h.submitted_url)}</span>
                       </td>
-                      <td className="p-2.5 text-slate-500 font-mono text-12">{fmtDateTime(h.completed_at || h.created_at)}</td>
+                      <td className="p-2.5 text-slate-500  text-12">{fmtDateTime(h.completed_at || h.created_at)}</td>
                       <td className="p-2.5 text-slate-500 capitalize">{h.strategy}</td>
                       <td className="p-2.5 text-right"><ScoreCell s={h.performance_score} /></td>
                       <td className="p-2.5 text-right"><ScoreCell s={h.accessibility_score} /></td>
@@ -568,7 +568,7 @@ export default function LighthouseAuditTool({ defaultUrl = 'https://morayamultis
           </Button>
 
           {h && (
-            <span className="text-12 text-slate-500 font-mono">
+            <span className="text-12 text-slate-500 ">
               {h.active_audits ? `${h.active_audits} active on host` : ''}
             </span>
           )}

@@ -31,7 +31,7 @@ function Tile({ icon: Icon, label, value, sub, tone = 'indigo', right }) {
   return (
     <div className="ai-glass-card rounded p-3.5 flex items-center gap-3 min-w-0">
       <span className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${tones[tone]}`}><Icon size={17} /></span>
-      <div className="min-w-0 flex-1"><div className="text-11.5 font-semibold uppercase tracking-wide text-slate-400 truncate">{label}</div><div className="text-22 leading-tight font-bold text-slate-900 tabular-nums">{value ?? '—'}</div>{sub && <div className="text-11.5 text-slate-500 truncate" title={sub}>{sub}</div>}</div>
+      <div className="min-w-0 flex-1"><div className="text-11.5 font-semibold  tracking-wide text-slate-400 truncate">{label}</div><div className="text-22 leading-tight font-bold text-slate-900 tabular-nums">{value ?? '—'}</div>{sub && <div className="text-11.5 text-slate-500 truncate" title={sub}>{sub}</div>}</div>
       {right}
     </div>
   );
@@ -40,7 +40,7 @@ function Tile({ icon: Icon, label, value, sub, tone = 'indigo', right }) {
 const Th = ({ children, c = 'text-left', cls = '' }) => <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${c} ${cls}`}>{children}</th>;
 const Table = ({ head, children, max = 'max-h-[calc(100vh-360px)]' }) => (
   <div className={`overflow-auto ${max} min-h-[160px]`}>
-    <table className="w-full text-13"><thead className="sticky top-0 z-10 bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_theme(colors.slate.200)]"><tr>{head}</tr></thead><tbody className="divide-y divide-slate-100">{children}</tbody></table>
+    <table className="w-full text-13"><thead className="sticky top-0 z-10 bg-slate-50 text-11.5  tracking-wide text-slate-500 shadow-[0_1px_0_0_theme(colors.slate.200)]"><tr>{head}</tr></thead><tbody className="divide-y divide-slate-100">{children}</tbody></table>
   </div>
 );
 
@@ -159,7 +159,7 @@ function TopPages({ b }) {
         <Table head={<>{th('path', 'Page')}{th('words', 'Words', 'text-right')}{th('inbound', 'Links in', 'text-right')}<Th c="text-right">Links out</Th><Th>Schema</Th>{th('issues', 'Issues', 'text-right')}<Th>Keywords on the page</Th><Th c="text-right">Best rank</Th></>}>
           {pages.map(p => (
             <tr key={p.url} className="hover:bg-slate-50 align-top">
-              <td className="px-4 py-2.5 min-w-[240px] max-w-[340px]"><a href={p.url} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 hover:text-indigo-600 font-mono text-12.5">{p.path}</a>{p.noindex && <span className="ml-2"><Badge tone="red">noindex</Badge></span>}{p.status >= 400 && <span className="ml-2"><Badge tone="red">{p.status}</Badge></span>}<div className="text-12 text-slate-500 truncate" title={p.title}>{p.title || '(no title)'}</div></td>
+              <td className="px-4 py-2.5 min-w-[240px] max-w-[340px]"><a href={p.url} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 hover:text-indigo-600  text-12.5">{p.path}</a>{p.noindex && <span className="ml-2"><Badge tone="red">noindex</Badge></span>}{p.status >= 400 && <span className="ml-2"><Badge tone="red">{p.status}</Badge></span>}<div className="text-12 text-slate-500 truncate" title={p.title}>{p.title || '(no title)'}</div></td>
               <td className="px-4 py-2.5 text-right tabular-nums">{fmt(p.words || 0)}</td>
               <td className="px-4 py-2.5 text-right tabular-nums">{p.inbound ?? <span className="text-slate-300" title="Recorded by the next audit">—</span>}</td>
               <td className="px-4 py-2.5 text-right tabular-nums">{p.links_out ?? <span className="text-slate-300">—</span>}</td>
@@ -262,7 +262,7 @@ function CompareDomains({ b }) {
       </Card>
       <Card pad={false} title="Side by side" subtitle="The best figure in each row is highlighted">
         <div className="overflow-x-auto"><table className="w-full text-13 min-w-[640px]">
-          <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>Metric</Th>{cols.map(c => <Th key={c.domain} c="text-right" cls={`normal-case ${c.mine ? 'text-emerald-700' : ''}`}>{c.domain}{c.mine ? ' (you)' : ''}</Th>)}</tr></thead>
+          <thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><Th>Metric</Th>{cols.map(c => <Th key={c.domain} c="text-right" cls={`normal-case ${c.mine ? 'text-emerald-700' : ''}`}>{c.domain}{c.mine ? ' (you)' : ''}</Th>)}</tr></thead>
           <tbody className="divide-y divide-slate-100">{rows.map(([label, get, fmtv, better]) => {
             const vals = cols.map(get);
             const nums = vals.filter(v => v != null);

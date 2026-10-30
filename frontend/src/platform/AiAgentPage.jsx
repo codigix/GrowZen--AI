@@ -272,13 +272,13 @@ function TaskCard({ t, businessName, onDone }) {
             <div className="text-12 text-slate-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="font-medium text-slate-700">{businessName}</span>
               <span className="text-slate-600">•</span>
-              <span className="text-indigo-700 font-mono text-11">{agentMeta.name}</span>
+              <span className="text-indigo-700  text-11">{agentMeta.name}</span>
               <span className="text-slate-600">•</span>
               <span className="text-slate-500">{fmtDateTime(t.created_at)}</span>
               {t.detail?.area && (
                 <>
                   <span className="text-slate-600">•</span>
-                  <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-10 font-mono">
+                  <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-10 ">
                     Pillar: {t.detail.area}
                   </span>
                 </>
@@ -317,7 +317,7 @@ function TaskCard({ t, businessName, onDone }) {
         <div className="mt-3.5 px-3 py-1.5 rounded bg-slate-50 border border-slate-200 flex items-center gap-2 text-11 text-slate-500 truncate">
           <Globe size={13} className="text-cyan-700 shrink-0" />
           <span>Page:</span>
-          <a href={draft.page} target="_blank" rel="noreferrer" className="text-cyan-700 font-mono font-medium truncate hover:underline">{draft.page}</a>
+          <a href={draft.page} target="_blank" rel="noreferrer" className="text-cyan-700  font-medium truncate hover:underline">{draft.page}</a>
         </div>
       )}
 
@@ -544,7 +544,7 @@ export default function AiAgentPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
         <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-amber-500/20">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-11 font-bold uppercase tracking-wider text-amber-700 font-mono truncate flex items-center gap-1.5">
+            <span className="text-11 font-bold   text-amber-700  truncate flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
               Waiting for Approval
             </span>
@@ -558,13 +558,13 @@ export default function AiAgentPage() {
           </div>
           <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
             <span>Human-in-the-loop signoff</span>
-            <span className="text-slate-500 font-mono">Zero unvetted push</span>
+            <span className="text-slate-500 ">Zero unvetted push</span>
           </div>
         </div>
 
         <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-emerald-500/20">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-11 font-bold uppercase tracking-wider text-emerald-700 font-mono truncate flex items-center gap-1.5">
+            <span className="text-11 font-bold   text-emerald-700  truncate flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
               Applied & Executed
             </span>
@@ -578,13 +578,13 @@ export default function AiAgentPage() {
           </div>
           <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
             <span>Live on Google & CMS</span>
-            <span className="text-emerald-700 font-mono">100% verified</span>
+            <span className="text-emerald-700 ">100% verified</span>
           </div>
         </div>
 
         <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-indigo-500/20">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-11 font-bold uppercase tracking-wider text-indigo-700 font-mono truncate flex items-center gap-1.5">
+            <span className="text-11 font-bold   text-indigo-700  truncate flex items-center gap-1.5">
               <Zap size={13} className="text-cyan-700" />
               Autopilot Triggers
             </span>
@@ -598,13 +598,13 @@ export default function AiAgentPage() {
           </div>
           <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
             <span>Core NAP profile protected</span>
-            <span className="text-cyan-700 font-mono">Safe Mode</span>
+            <span className="text-cyan-700 ">Safe Mode</span>
           </div>
         </div>
 
         <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-purple-500/20">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-11 font-bold uppercase tracking-wider text-purple-700 font-mono truncate flex items-center gap-1.5">
+            <span className="text-11 font-bold   text-purple-700  truncate flex items-center gap-1.5">
               <Bot size={13} className="text-purple-600" />
               Agent Swarm Active
             </span>
@@ -618,7 +618,7 @@ export default function AiAgentPage() {
           </div>
           <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
             <span>DeepSeek V3 + Gemini 2.0</span>
-            <span className="text-purple-600 font-mono">~98.4% Acc.</span>
+            <span className="text-purple-600 ">~98.4% Acc.</span>
           </div>
         </div>
       </div>
@@ -759,7 +759,7 @@ export default function AiAgentPage() {
               <div>
                 <h3 className="text-15 font-bold text-slate-900 font-display flex items-center gap-2">
                   Multi-Agent Neural Swarm Architecture
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 border border-emerald-500/30 text-10 font-mono">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 border border-emerald-500/30 text-10 ">
                     DeepSeek V3 / Gemini 2.0 Flash Hybrid
                   </span>
                 </h3>
@@ -769,7 +769,7 @@ export default function AiAgentPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-slate-100 text-slate-700 border border-slate-200 text-11 font-mono font-medium">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-slate-100 text-slate-700 border border-slate-200 text-11  font-medium">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 Telemetry: All Nodes Healthy
               </span>
@@ -796,12 +796,12 @@ export default function AiAgentPage() {
                           <h4 className="text-14 font-bold text-slate-900 group-hover:text-indigo-800 transition-colors truncate">
                             {agent.name}
                           </h4>
-                          <span className="text-10 font-mono font-semibold uppercase tracking-wider text-slate-500">
+                          <span className="text-10  font-semibold   text-slate-500">
                             {agent.badge}
                           </span>
                         </div>
                       </div>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 text-10 font-mono text-cyan-700 shrink-0">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 text-10  text-cyan-700 shrink-0">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                         Online
                       </span>
@@ -829,7 +829,7 @@ export default function AiAgentPage() {
 
                   {/* Bottom Stats Footer */}
                   <div className="mt-4 pt-3.5 border-t border-slate-200 flex items-center justify-between text-11 text-slate-500">
-                    <span className="font-mono text-indigo-700 text-10">
+                    <span className=" text-indigo-700 text-10">
                       {agent.model}
                     </span>
                     <span className="font-semibold text-slate-700">
@@ -853,7 +853,7 @@ export default function AiAgentPage() {
                   Whenever an administrator rejects a task with an explanation note, the agent incorporates the constraint into its active reinforcement heuristics.
                 </p>
               </div>
-              <span className="text-11 px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-700 border border-indigo-500/30 font-mono font-bold">
+              <span className="text-11 px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-700 border border-indigo-500/30  font-bold">
                 {playbook.data?.learnt?.length || 3} Active Directives
               </span>
             </div>
@@ -944,7 +944,7 @@ export default function AiAgentPage() {
                             <span className="text-13 font-bold text-slate-900">
                               {rule.label}
                             </span>
-                            <span className={`text-10 font-mono px-2 py-0.5 rounded-full border ${rule.riskTone === 'red'
+                            <span className={`text-10  px-2 py-0.5 rounded-full border ${rule.riskTone === 'red'
                               ? 'bg-rose-500/15 text-rose-700 border-rose-500/30'
                               : rule.riskTone === 'amber'
                                 ? 'bg-amber-500/15 text-amber-700 border-amber-500/30'
@@ -1032,7 +1032,7 @@ export default function AiAgentPage() {
                 <div className="text-slate-500">Hospital:</div>
                 <div className="text-slate-900 font-bold">Moraya Multispeciality Charitable Hospital</div>
                 <div className="text-slate-500 mt-2">Active Target URL:</div>
-                <div className="text-cyan-700 font-mono text-11 break-all p-2 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="text-cyan-700  text-11 break-all p-2 rounded-lg bg-slate-50 border border-slate-200">
                   https://morayamultispecialitycharitablehospital.com/cataract-surgery-in-pcmc
                 </div>
               </div>
@@ -1063,7 +1063,7 @@ export default function AiAgentPage() {
                 </button>
               ))}
             </div>
-            <span className="text-11 text-slate-500 font-mono">
+            <span className="text-11 text-slate-500 ">
               Displaying {activity.data?.length || 0} recent events
             </span>
           </div>
@@ -1078,7 +1078,7 @@ export default function AiAgentPage() {
               No activity logs recorded yet. Events will appear here as agents execute tasks.
             </div>
           ) : (
-            <div className="rounded bg-slate-50 border border-slate-200 divide-y divide-slate-200 overflow-hidden font-mono text-11">
+            <div className="rounded bg-slate-50 border border-slate-200 divide-y divide-slate-200 overflow-hidden  text-11">
               {activity.data
                 .filter(a => {
                   if (activityFilter === 'all') return true;

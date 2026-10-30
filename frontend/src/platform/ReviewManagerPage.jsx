@@ -127,7 +127,7 @@ function Reviews({ b, tab }) {
           <Card title="Review link">
             {link ? (
               <>
-                <div className="font-mono text-12 text-gray-700 break-all bg-gray-50 border border-gray-200 rounded p-2">{link}</div>
+                <div className=" text-12 text-gray-700 break-all bg-gray-50 border border-gray-200 rounded p-2">{link}</div>
                 <Button className="mt-2" size="sm" icon={Copy} onClick={() => navigator.clipboard?.writeText(link).then(() => toast('Link copied'))}>Copy link</Button>
                 <p className="text-12 text-gray-500 mt-2">Put it on receipts, the website and a QR code at the counter.</p>
               </>

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
-  LogOut, Menu, X, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen,
+  LogOut, Menu, X, KeyRound, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen,
   TrendingUp, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send
 } from 'lucide-react';
 import { useApi } from '../platform/seoApi';
@@ -142,7 +142,7 @@ function NavItem({ to, label, icon: Icon, badge, collapsed, active, onNavigate }
   );
 }
 
-export default function Layout({ user, onLogout }) {
+export default function Layout({ user, onLogout, onChangePassword }) {
   const [open, setOpen] = useState(false); // mobile drawer
   const [collapsed, setCollapsed] = useState(readCollapsed); // desktop icon rail
   const location = useLocation();
@@ -183,7 +183,7 @@ export default function Layout({ user, onLogout }) {
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-white font-bold text-15 tracking-tight leading-tight">
                   bevisibe
-                  <span className="text-9 font-bold px-1.5 py-0.5 rounded bg-indigo-500 text-white tracking-wider">AI</span>
+                  <span className="text-9 font-bold px-1.5 py-0.5 rounded bg-indigo-500 text-white ">AI</span>
                 </div>
                 <p className="text-11 text-topbar-item leading-tight truncate">Autonomous Local SEO</p>
               </div>
@@ -213,7 +213,7 @@ export default function Layout({ user, onLogout }) {
               <div key={group.title} className={gi ? 'mt-4' : ''}>
                 {rail
                   ? gi > 0 && <div className="mx-2 mb-3 border-t border-slate-200" />
-                  : <div className="px-3 mb-2 text-11 font-semibold uppercase tracking-wider text-slate-400">{group.title}</div>}
+                  : <div className="px-3 mb-2 text-11 font-semibold   text-slate-400">{group.title}</div>}
                 <div className="space-y-0.5">
                   {items.map(item => <NavItem key={item.to} {...item} collapsed={rail} active={isActivePath(location.pathname, location.search, item.to)} onNavigate={() => setOpen(false)} />)}
                 </div>
@@ -243,9 +243,22 @@ export default function Layout({ user, onLogout }) {
                 <div className="text-11 text-slate-500 truncate capitalize">{user?.is_admin ? 'Administrator' : user?.role || user?.email}</div>
               </div>
             )}
-            <button onClick={onLogout} className="p-2 rounded-lg text-slate-500 hover:text-rose-700 hover:bg-rose-500/10 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" aria-label="Sign out" title="Sign out">
-              <LogOut size={15} />
-            </button>
+            <div className="flex items-center gap-0.5">
+              {onChangePassword && (
+                <button
+                  type="button"
+                  onClick={onChangePassword}
+                  className="p-2 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer outline-none transition-colors"
+                  aria-label="Change password"
+                  title="Change password"
+                >
+                  <KeyRound size={15} />
+                </button>
+              )}
+              <button onClick={onLogout} className="p-2 rounded-lg text-slate-500 hover:text-rose-700 hover:bg-rose-500/10 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" aria-label="Sign out" title="Sign out">
+                <LogOut size={15} />
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -260,10 +273,18 @@ export default function Layout({ user, onLogout }) {
             <div className="flex items-center gap-2">
               <img src="/bevisibe-icon.png" alt="bevisibe" className="w-7 h-7 object-contain" />
               <span className="font-bold text-15 text-white">bevisibe</span>
-              <span className="text-9 font-bold px-1.5 py-0.5 rounded bg-indigo-500 text-white tracking-wider">AI</span>
+              <span className="text-9 font-bold px-1.5 py-0.5 rounded bg-indigo-500 text-white ">AI</span>
             </div>
           </div>
-          <button onClick={onLogout} className="text-12 font-medium text-topbar-item hover:text-white cursor-pointer">Sign out</button>
+          <div className="flex items-center gap-2">
+            {onChangePassword && (
+              <button onClick={onChangePassword} className="text-12 font-medium text-topbar-item hover:text-white cursor-pointer flex items-center gap-1">
+                <KeyRound size={13} />
+                <span>Password</span>
+              </button>
+            )}
+            <button onClick={onLogout} className="text-12 font-medium text-topbar-item hover:text-white cursor-pointer">Sign out</button>
+          </div>
         </header>
 
         <main className="flex-1 min-w-0">

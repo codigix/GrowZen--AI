@@ -43,8 +43,10 @@ function RankMap({ points, center, height = 460 }) {
     points.forEach(pt => {
       if (pt.lat == null || pt.lng == null) return;
       const s = band(pt.rank);
-      const icon = L.divIcon({ className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
-        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${s.color};color:${s.text};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font:700 ${size > 28 ? 12 : 10}px/1 system-ui">${s.label}</div>` });
+      const icon = L.divIcon({
+        className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${s.color};color:${s.text};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font:700 ${size > 28 ? 12 : 10}px/1 system-ui">${s.label}</div>`
+      });
       L.marker([pt.lat, pt.lng], { icon, title: `${pt.rank ? `Rank ${pt.rank}` : 'Not in the top 20'} · ${pt.lat.toFixed?.(4)}, ${pt.lng.toFixed?.(4)}` }).addTo(layer.current);
     });
     if (center) {
@@ -70,7 +72,7 @@ function Tile({ icon: Icon, label, value, sub, delta, tone = 'indigo' }) {
     <div className="ai-glass-card rounded p-3.5 flex items-center gap-3 min-w-0">
       <span className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${tones[tone]}`}><Icon size={17} /></span>
       <div className="min-w-0">
-        <div className="text-11.5 font-semibold uppercase tracking-wide text-slate-400 truncate">{label}</div>
+        <div className="text-11.5 font-semibold  tracking-wide text-slate-400 truncate">{label}</div>
         <div className="flex items-baseline gap-2"><span className="text-22 leading-tight font-bold text-slate-900 tabular-nums">{value ?? '—'}</span>{delta}</div>
         {sub && <div className="text-11.5 text-slate-500 truncate">{sub}</div>}
       </div>
@@ -138,7 +140,7 @@ function Tracker({ b }) {
   });
 
   const dist = shownScan ? [['1–3', STATUS.good, shownScan.points.filter(p => p.rank && p.rank <= 3).length], ['4–10', STATUS.warning, shownScan.points.filter(p => p.rank > 3 && p.rank <= 10).length],
-    ['11–20', '#f08a4b', shownScan.points.filter(p => p.rank > 10).length], ['Not in top 20', '#f1556c', shownScan.points.filter(p => !p.rank).length]] : [];
+  ['11–20', '#f08a4b', shownScan.points.filter(p => p.rank > 10).length], ['Not in top 20', '#f1556c', shownScan.points.filter(p => !p.rank).length]] : [];
   const trend = history.map(s => ({ date: fmtDate(s.created_at), 'Average rank': s.avg_rank, 'Top-3 coverage': topPct(s) }));
   const competitors = shownScan?.competitors || [];
   const best = shownScan ? Math.min(...shownScan.points.filter(p => p.rank).map(p => p.rank), Infinity) : null;
@@ -197,7 +199,7 @@ function Tracker({ b }) {
             <Tile icon={Target} tone="emerald" label="Top-3 coverage" value={`${topPct(shownScan)}%`} sub={`${shownScan.top3} of ${cellsOf(shownScan)} points`} delta={<Delta now={topPct(shownScan)} before={topPct(before)} better="up" unit="%" />} />
             <Tile icon={Trophy} tone="indigo" label="Average rank" value={shownScan.avg_rank ?? '—'} sub={Number.isFinite(best) ? `best #${best} · lower is better` : 'not found anywhere'} delta={<Delta now={shownScan.avg_rank} before={before?.avg_rank} better="down" />} />
             <Tile icon={MapPin} tone="sky" label="Found in top 20" value={`${foundPct(shownScan)}%`} sub={`${shownScan.found} of ${cellsOf(shownScan)} points`} delta={<Delta now={foundPct(shownScan)} before={foundPct(before)} better="up" unit="%" />} />
-            <div className="ai-glass-card rounded p-3.5 min-w-0"><div className="text-11.5 font-semibold uppercase tracking-wide text-slate-400">Data</div><div className="mt-1.5"><SourceTag source={shownScan.data_source} /></div><div className="text-11.5 text-slate-500 mt-1">{shownScan.data_source === 'sample' ? 'Connect Serper or DataForSEO for live results.' : 'Live Google Maps results.'}</div></div>
+            <div className="ai-glass-card rounded p-3.5 min-w-0"><div className="text-11.5 font-semibold  tracking-wide text-slate-400">Data</div><div className="mt-1.5"><SourceTag source={shownScan.data_source} /></div><div className="text-11.5 text-slate-500 mt-1">{shownScan.data_source === 'sample' ? 'Connect Serper or DataForSEO for live results.' : 'Live Google Maps results.'}</div></div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
@@ -215,7 +217,7 @@ function Tracker({ b }) {
               <Card title="Who beats you here" subtitle="Businesses that show most often in the top 10" pad={false}>
                 {competitors.length === 0 ? <p className="px-6 py-6 text-13 text-slate-500">None recorded for this scan.</p> : (
                   <table className="w-full text-13">
-                    <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-2 text-left font-semibold">Business</th><th className="px-3 py-2 text-right font-semibold">Avg</th><th className="px-5 py-2 text-right font-semibold">Top 3</th></tr></thead>
+                    <thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><th className="px-5 py-2 text-left font-semibold">Business</th><th className="px-3 py-2 text-right font-semibold">Avg</th><th className="px-5 py-2 text-right font-semibold">Top 3</th></tr></thead>
                     <tbody className="divide-y divide-slate-100">{competitors.slice(0, 8).map(c => <tr key={c.name}><td className="px-5 py-2 text-slate-800 max-w-[200px] truncate" title={c.name}>{c.name}</td><td className="px-3 py-2 text-right tabular-nums">{c.avg_rank}</td><td className="px-5 py-2 text-right tabular-nums">{c.top3}</td></tr>)}</tbody>
                   </table>
                 )}
@@ -246,7 +248,7 @@ function Tracker({ b }) {
         <Card title={`Keywords (${rows.length})`} subtitle="Click a row to see its grid. The change is against the scan before the latest." pad={false}>
           <div className="overflow-x-auto">
             <table className="w-full text-13 min-w-[760px]">
-              <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr>
+              <thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr>
                 <th className="px-5 py-2.5 text-left font-semibold">Keyword</th><th className="px-3 py-2.5 text-left font-semibold">Last scan</th><th className="px-3 py-2.5 text-right font-semibold">Avg rank</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Top-3 coverage</th><th className="px-3 py-2.5 text-right font-semibold">Found</th><th className="px-3 py-2.5 text-left font-semibold">Trend</th><th className="px-5 py-2.5 text-right font-semibold"> </th>
               </tr></thead>

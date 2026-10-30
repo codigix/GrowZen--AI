@@ -264,7 +264,7 @@ function Builder({ b }) {
     <>
       <PreviewNote>
         <strong>AI Autonomous Website Studio</strong>: Generating full multi-page architecture with clean SEO URL slugs. Previewing live URL structure matching{' '}
-        <span className="font-mono text-cyan-700 font-semibold">{currentFullUrl}</span>.
+        <span className=" text-cyan-700 font-semibold">{currentFullUrl}</span>.
       </PreviewNote>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
@@ -331,7 +331,7 @@ function Builder({ b }) {
                         {p.id === 'contact' && <Phone size={12} className="text-purple-600 shrink-0" />}
                         <span className="truncate">{p.label}</span>
                       </div>
-                      <div className="font-mono text-11 text-cyan-700 truncate mt-0.5">
+                      <div className=" text-11 text-cyan-700 truncate mt-0.5">
                         {p.path}
                       </div>
                     </div>
@@ -349,16 +349,16 @@ function Builder({ b }) {
             <div className="mt-4 pt-3 border-t border-slate-200">
               <Field label="Active URL Slug (SEO Path)" hint="Clean URL structure matching your hospital domain">
                 <div className="flex items-center gap-1 mt-1">
-                  <span className="text-11 font-mono text-slate-500 select-none">/</span>
+                  <span className="text-11  text-slate-500 select-none">/</span>
                   <input
-                    className={`${inputCls} font-mono text-12`}
+                    className={`${inputCls}  text-12`}
                     value={customSlug.replace(/^\//, '')}
                     onChange={e => setCustomSlug(e.target.value.toLowerCase().replace(/[^a-z0-9\-_]/g, ''))}
                     placeholder="cataract-surgery-in-pcmc"
                   />
                 </div>
               </Field>
-              <div className="mt-2 p-2 rounded-lg bg-slate-50 border border-slate-200 font-mono text-11 text-emerald-700 break-all flex items-center justify-between">
+              <div className="mt-2 p-2 rounded-lg bg-slate-50 border border-slate-200  text-11 text-emerald-700 break-all flex items-center justify-between">
                 <span>https://{domain}/{customSlug.replace(/^\//, '')}</span>
                 <button
                   onClick={() => copyToClipboard(`https://${domain}/${customSlug.replace(/^\//, '')}`, 'URL copied!')}
@@ -391,7 +391,7 @@ function Builder({ b }) {
               </div>
 
               <div className="pt-2 border-t border-slate-200 space-y-1.5">
-                <span className="text-11 font-bold uppercase text-slate-500 tracking-wider">Page Modules</span>
+                <span className="text-11 font-bold  text-slate-500 ">Page Modules</span>
                 {SECTIONS.map(([k, l]) => (
                   <label key={k} className="flex items-center gap-2 text-12 text-slate-700 cursor-pointer hover:text-slate-900 select-none">
                     <input
@@ -411,7 +411,7 @@ function Builder({ b }) {
           <Card title="Production Deployment" subtitle="Clean URL rewrite rules for Apache, Nginx, or IIS">
             <Field label="Target Hospital Domain">
               <input
-                className={`${inputCls} font-mono text-12`}
+                className={`${inputCls}  text-12`}
                 value={domain}
                 onChange={e => setDomain(e.target.value)}
               />
@@ -439,7 +439,7 @@ function Builder({ b }) {
 
             {published && (
               <div className="mt-3 p-2.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 text-12 flex items-center justify-between">
-                <span className="font-mono truncate">Live: https://{domain}</span>
+                <span className=" truncate">Live: https://{domain}</span>
                 <CheckCircle2 size={14} className="shrink-0 text-emerald-700" />
               </div>
             )}
@@ -465,9 +465,9 @@ function Builder({ b }) {
               {/* URL Address Bar with Lock and Copy Button */}
               <div className="flex-1 max-w-xl mx-auto flex items-center bg-white border border-slate-300 rounded px-3 py-1 shadow-inner group">
                 <ShieldCheck size={14} className="text-emerald-700 shrink-0 mr-2" />
-                <span className="text-12 font-mono text-slate-500 select-none hidden md:inline">https://</span>
-                <span className="text-12 font-mono text-slate-900 font-semibold truncate">{domain}</span>
-                <span className="text-12 font-mono text-cyan-700 font-bold">/{customSlug.replace(/^\//, '')}</span>
+                <span className="text-12  text-slate-500 select-none hidden md:inline">https://</span>
+                <span className="text-12  text-slate-900 font-semibold truncate">{domain}</span>
+                <span className="text-12  text-cyan-700 font-bold">/{customSlug.replace(/^\//, '')}</span>
                 <div className="ml-auto flex items-center gap-1.5 pl-2">
                   <button
                     onClick={() => copyToClipboard(currentFullUrl, 'Clean URL copied!')}
@@ -513,7 +513,7 @@ function Builder({ b }) {
 
             {/* Quick Navigation Tab Bar inside Preview */}
             <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center gap-2 overflow-x-auto no-scrollbar">
-              <span className="text-11 font-bold uppercase tracking-wider text-slate-500 font-mono shrink-0 mr-1">
+              <span className="text-11 font-bold   text-slate-500  shrink-0 mr-1">
                 Pages:
               </span>
               {pageList.map(p => (
@@ -526,7 +526,7 @@ function Builder({ b }) {
                     }`}
                 >
                   <span>{p.label}</span>
-                  <span className="font-mono text-10 opacity-70">({p.path})</span>
+                  <span className=" text-10 opacity-70">({p.path})</span>
                 </button>
               ))}
             </div>
@@ -602,7 +602,7 @@ function Builder({ b }) {
                   <span>/</span>
                   <span className="hover:text-slate-800 cursor-pointer">{b.primaryCategory || 'Services'}</span>
                   <span>/</span>
-                  <span className="text-slate-900 font-bold font-mono">{customSlug.replace(/^\//, '')}</span>
+                  <span className="text-slate-900 font-bold ">{customSlug.replace(/^\//, '')}</span>
                 </div>
 
                 {/* 2. Hero Section (Specific to Active Page) */}
@@ -613,7 +613,7 @@ function Builder({ b }) {
                   >
                     <div className="max-w-2xl relative z-10">
                       {/* AI Optimized Badge */}
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-11 font-bold tracking-wide uppercase mb-3 text-white border border-white/25 shadow-sm">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-11 font-bold tracking-wide  mb-3 text-white border border-white/25 shadow-sm">
                         <Sparkles size={12} className="text-amber-300" />
                         <span>NABH Accredited Eye Care · PCMC, Pune</span>
                       </div>
@@ -725,7 +725,7 @@ function Builder({ b }) {
                         </div>
 
                         <div className="border-2 border-cyan-500 rounded p-4 bg-cyan-50/30 shadow-md relative">
-                          <div className="absolute -top-3 right-4 bg-cyan-600 text-white text-10 font-extrabold uppercase px-2 py-0.5 rounded-full">
+                          <div className="absolute -top-3 right-4 bg-cyan-600 text-white text-10 font-extrabold  px-2 py-0.5 rounded-full">
                             Most Popular
                           </div>
                           <Badge tone="green">Advanced</Badge>
@@ -765,7 +765,7 @@ function Builder({ b }) {
                             <div className="text-12 text-slate-500 mt-1 line-clamp-2">
                               {s.description || 'Specialized procedure performed by expert medical staff.'}
                             </div>
-                            <div className="mt-2 text-12 font-semibold text-cyan-700 font-mono">
+                            <div className="mt-2 text-12 font-semibold text-cyan-700 ">
                               {s.price || 'Charitable trust rates'}
                             </div>
                           </div>
@@ -783,7 +783,7 @@ function Builder({ b }) {
                         <Stethoscope size={44} />
                       </div>
                       <div className="flex-1 text-center md:text-left">
-                        <div className="inline-flex items-center gap-1 text-11 font-bold text-cyan-700 uppercase tracking-wider mb-1">
+                        <div className="inline-flex items-center gap-1 text-11 font-bold text-cyan-700   mb-1">
                           <Award size={13} /> Chief Consultant Ophthalmic Surgeon
                         </div>
                         <h3 className="text-lg font-bold text-slate-900">Dr. M. K. Kadam (MBBS, MS - Ophthalmology)</h3>
@@ -838,7 +838,7 @@ function Builder({ b }) {
                 {on.faq && (
                   <div className="px-6 py-8 bg-slate-50 border-t border-slate-200/80">
                     <div className="max-w-xl mb-4">
-                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-10 font-bold uppercase mb-1">
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-10 font-bold  mb-1">
                         Schema.org FAQPage Enabled
                       </div>
                       <h3 className="text-lg font-bold text-slate-900">Frequently Asked Questions</h3>
@@ -906,13 +906,13 @@ function Builder({ b }) {
                         <p className="text-slate-500 text-12 mt-2 leading-relaxed">
                           Non-profit charitable healthcare trust dedicated to affordable and advanced medical care in PCMC, Chinchwad.
                         </p>
-                        <div className="mt-3 text-11 text-cyan-700 font-mono">
+                        <div className="mt-3 text-11 text-cyan-700 ">
                           Clean SEO URL: /{customSlug.replace(/^\//, '')}
                         </div>
                       </div>
 
                       <div>
-                        <div className="font-bold text-slate-900 text-13 uppercase tracking-wider mb-2 font-mono text-slate-700">
+                        <div className="font-bold text-slate-900 text-13   mb-2  text-slate-700">
                           Emergency & Casualty
                         </div>
                         <div className="text-slate-700 text-12 space-y-1">
@@ -923,7 +923,7 @@ function Builder({ b }) {
                       </div>
 
                       <div>
-                        <div className="font-bold text-slate-900 text-13 uppercase tracking-wider mb-2 font-mono text-slate-700">
+                        <div className="font-bold text-slate-900 text-13   mb-2  text-slate-700">
                           Quick Actions
                         </div>
                         <div className="flex flex-col gap-2">
@@ -960,7 +960,7 @@ function Builder({ b }) {
                           </div>
                           <div>
                             <div className="text-12 font-bold">AI Patient Concierge</div>
-                            <div className="text-10 text-emerald-700 font-mono flex items-center gap-1">
+                            <div className="text-10 text-emerald-700  flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Online 24/7
                             </div>
                           </div>
@@ -1116,10 +1116,10 @@ function Builder({ b }) {
       >
         <div className="space-y-3">
           <div className="flex items-center justify-between text-12">
-            <span className="font-mono text-cyan-700 font-semibold">{currentFullUrl}</span>
+            <span className=" text-cyan-700 font-semibold">{currentFullUrl}</span>
             <Badge tone="green">Valid Schema.org</Badge>
           </div>
-          <pre className="text-11 font-mono bg-slate-50 p-3.5 rounded border border-slate-200 text-slate-700 overflow-auto max-h-[420px] no-scrollbar">
+          <pre className="text-11  bg-slate-50 p-3.5 rounded border border-slate-200 text-slate-700 overflow-auto max-h-[420px] no-scrollbar">
             {schemaJson}
           </pre>
         </div>
@@ -1135,7 +1135,7 @@ function Builder({ b }) {
       >
         <div className="space-y-4 text-13 text-slate-700">
           <p>
-            To serve URLs like <span className="font-mono text-cyan-700 font-bold">https://{domain}/cataract-surgery-in-pcmc</span> without needing <span className="font-mono text-amber-300">.html</span>, use one of the following rewrite snippets on your web server:
+            To serve URLs like <span className=" text-cyan-700 font-bold">https://{domain}/cataract-surgery-in-pcmc</span> without needing <span className=" text-amber-300">.html</span>, use one of the following rewrite snippets on your web server:
           </p>
 
           <div className="space-y-2">
@@ -1148,7 +1148,7 @@ function Builder({ b }) {
                 <Copy size={11} /> Copy
               </button>
             </div>
-            <pre className="p-3 bg-slate-50 border border-slate-200 rounded font-mono text-11 text-slate-700 overflow-x-auto">
+            <pre className="p-3 bg-slate-50 border border-slate-200 rounded  text-11 text-slate-700 overflow-x-auto">
               {`location / {
     try_files $uri $uri.html $uri/ /index.html;
 }`}
@@ -1165,7 +1165,7 @@ function Builder({ b }) {
                 <Copy size={11} /> Copy
               </button>
             </div>
-            <pre className="p-3 bg-slate-50 border border-slate-200 rounded font-mono text-11 text-slate-700 overflow-x-auto">
+            <pre className="p-3 bg-slate-50 border border-slate-200 rounded  text-11 text-slate-700 overflow-x-auto">
               {`RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}\\.html -f
@@ -1183,7 +1183,7 @@ RewriteRule ^(.*)$ $1.html [L]`}
                 <Copy size={11} /> Copy
               </button>
             </div>
-            <pre className="p-3 bg-slate-50 border border-slate-200 rounded font-mono text-11 text-slate-700 overflow-x-auto">
+            <pre className="p-3 bg-slate-50 border border-slate-200 rounded  text-11 text-slate-700 overflow-x-auto">
               {`<system.webServer>
   <rewrite>
     <rules>

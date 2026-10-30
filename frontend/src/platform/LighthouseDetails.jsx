@@ -56,7 +56,7 @@ function AuditRow({ a }) {
         <div className="ml-6 mt-2 space-y-2">
           <p className="text-12 text-slate-600 leading-relaxed">{plain(a.description)}</p>
           {a.items?.length > 0 && (
-            <ul className="text-11 font-mono text-slate-700 bg-slate-50 ring-1 ring-inset ring-slate-200 rounded p-3 space-y-1 max-h-48 overflow-auto">
+            <ul className="text-11  text-slate-700 bg-slate-50 ring-1 ring-inset ring-slate-200 rounded p-3 space-y-1 max-h-48 overflow-auto">
               {a.items.map((it, n) => <li key={n} className="truncate" title={itemText(it)}>{itemText(it)}</li>)}
               {a.item_count > a.items.length && <li className="text-slate-500">…and {a.item_count - a.items.length} more (full list in the JSON report)</li>}
             </ul>
@@ -82,7 +82,7 @@ function CategoryAudits({ report }) {
       <div className="space-y-4 mt-4">
         {BUCKETS.filter(([b]) => b !== 'passed' || showPassed).map(([b, label]) => (buckets[b]?.length ? (
           <div key={b}>
-            <div className="text-11 uppercase tracking-wider text-slate-500 font-semibold mb-1">{label} ({buckets[b].length})</div>
+            <div className="text-11   text-slate-500 font-semibold mb-1">{label} ({buckets[b].length})</div>
             <div className="divide-y divide-slate-100">{buckets[b].map(a => <AuditRow key={a.id} a={a} />)}</div>
           </div>
         ) : null))}
@@ -135,7 +135,7 @@ export default function LighthouseDetails({ auditId, target, pages = [], strateg
       </div>}>
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <label className="text-12 font-semibold text-slate-600" htmlFor="lh-page">Page</label>
-        <select id="lh-page" value={url} onChange={e => setUrl(e.target.value)} className="h-9 flex-1 min-w-[200px] max-w-md px-2.5 rounded text-12.5 font-mono text-slate-800 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer">
+        <select id="lh-page" value={url} onChange={e => setUrl(e.target.value)} className="h-9 flex-1 min-w-[200px] max-w-md px-2.5 rounded text-12.5  text-slate-800 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer">
           {choices.map(u => <option key={u} value={u}>{pathOf(u)}{byUrl[u] ? '' : ' (not run yet)'}</option>)}
         </select>
         {!id && <Button size="sm" variant="primary" icon={Play} busy={busy === 'run'} onClick={runFor}>Run Lighthouse on this page</Button>}

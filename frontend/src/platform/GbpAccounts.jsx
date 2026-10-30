@@ -126,7 +126,7 @@ function FindByEmail({ business, onOpenBusiness, toast }) {
 /* ── Optional: signed-in Google accounts ──────────────────────────────── */
 
 function SetupGuide({ s }) {
-  const code = 'bg-slate-100 px-1 rounded font-mono text-11';
+  const code = 'bg-slate-100 px-1 rounded  text-11';
   return (
     <ol className="mt-2 space-y-1.5 text-12 text-slate-600 list-decimal ml-5">
       <li>Google Cloud → Credentials → OAuth client ID (Web application); add <code className={code}>GOOGLE_CLIENT_ID</code>, <code className={code}>GOOGLE_CLIENT_SECRET</code>{!s.token_key && <> and <code className={code}>TOKEN_ENCRYPTION_KEY</code></>} to <code className={code}>backend/.env</code>.</li>

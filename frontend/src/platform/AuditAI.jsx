@@ -11,7 +11,7 @@ import { pathOf, SEVERITY_TONE } from './siteUtils';
  */
 
 function Badge({ ai }) {
-  return <span className={`text-10 font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${ai ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-slate-50 text-slate-500 ring-slate-200'}`}>{ai ? 'AI' : 'Rules'}</span>;
+  return <span className={`text-10 font-bold  tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${ai ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-slate-50 text-slate-500 ring-slate-200'}`}>{ai ? 'AI' : 'Rules'}</span>;
 }
 
 function CopyButton({ text, label = 'Copy' }) {
@@ -51,7 +51,7 @@ export function AuditSummary({ report, ps, pages, issues, onTab }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-13 font-semibold text-slate-900">{a.title}</div>
                     <div className="text-12 text-slate-500">{a.why}</div>
-                    <div className="mt-1 flex items-center gap-2 text-11"><span className={`font-bold uppercase px-1.5 py-0.5 rounded ring-1 ring-inset ${SEVERITY_TONE[a.level] || SEVERITY_TONE.info}`}>{a.level}</span><span className="text-slate-400">{a.effort}</span></div>
+                    <div className="mt-1 flex items-center gap-2 text-11"><span className={`font-bold  px-1.5 py-0.5 rounded ring-1 ring-inset ${SEVERITY_TONE[a.level] || SEVERITY_TONE.info}`}>{a.level}</span><span className="text-slate-400">{a.effort}</span></div>
                   </div>
                   <Button size="sm" icon={ArrowRight} onClick={() => onTab(a.tab)}>Show fix</Button>
                 </li>
@@ -108,7 +108,7 @@ export function PageRewrites({ pages, subject }) {
           <div className="rounded ring-1 ring-inset ring-slate-200 divide-y divide-slate-100">
             {res.rows.map(r => (
               <div key={r.url} className="px-3.5 py-2.5">
-                <div className="flex items-center justify-between gap-2"><span className="font-mono text-12 font-semibold text-slate-900 truncate">{pathOf(r.url)}</span><CopyButton text={r.after} /></div>
+                <div className="flex items-center justify-between gap-2"><span className=" text-12 font-semibold text-slate-900 truncate">{pathOf(r.url)}</span><CopyButton text={r.after} /></div>
                 {r.before && <div className="text-12 text-slate-400 line-through decoration-slate-300 break-words">{r.before}</div>}
                 <div className="text-12.5 text-slate-900 break-words">{r.after} <span className="text-11 text-slate-400 tabular-nums">({r.after.length})</span>{r.source === 'ai' && <span className="ml-1 text-10 font-bold text-violet-600">AI</span>}</div>
               </div>

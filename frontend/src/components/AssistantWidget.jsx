@@ -98,7 +98,7 @@ export default function AssistantWidget() {
                   <div className="text-14 font-semibold text-slate-900 flex items-center gap-1.5"><Sparkles size={15} className="text-indigo-500" /> Hi, I'm your project guide</div>
                   <p className="text-13 text-slate-600 mt-1">I know <b>{business?.name || 'the selected project'}</b>: its audits, keywords, competitors, Google profile, reviews and what's planned next. I also show you how to use every page. I never use another project's data.</p>
                 </div>
-                <div className="text-11 font-semibold uppercase tracking-wider text-slate-400">Try asking</div>
+                <div className="text-11 font-semibold   text-slate-400">Try asking</div>
                 <div className="flex flex-col gap-1.5">
                   {ideas.map(i => <button key={i} type="button" onClick={() => ask(i)} className="text-left text-13 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 hover:border-indigo-300 hover:text-indigo-700 cursor-pointer transition-colors">{i}</button>)}
                   <button type="button" onClick={() => ask('How does this platform work?')} className="text-left text-13 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-indigo-100 cursor-pointer inline-flex items-center gap-2"><BookOpen size={14} /> Show me how the platform works</button>

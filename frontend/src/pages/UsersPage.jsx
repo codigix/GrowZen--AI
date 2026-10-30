@@ -72,7 +72,7 @@ export default function UsersPage({ me }) {
             <div className="overflow-x-auto">
               <table className="w-full text-13 text-left">
                 <thead>
-                  <tr className="text-11 font-bold uppercase tracking-wider text-slate-500 font-mono border-b border-slate-100 bg-slate-50/70">
+                  <tr className="text-11 font-bold   text-slate-500  border-b border-slate-100 bg-slate-50/70">
                     <th className="px-5 py-3.5">User</th>
                     <th className="px-5 py-3.5">Role</th>
                     <th className="px-5 py-3.5">Last Active</th>

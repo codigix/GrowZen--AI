@@ -220,7 +220,7 @@ function CodeBlock({ label, text, download }) {
           <button type="button" onClick={copy} className="h-7 px-2 rounded-md text-11 font-semibold text-slate-700 hover:bg-white inline-flex items-center gap-1 cursor-pointer">{copied ? <><Check size={12} className="text-emerald-600" /> Copied</> : <><Copy size={12} /> Copy</>}</button>
         </span>
       </div>
-      <pre className="px-3 py-2.5 text-11.5 leading-relaxed font-mono text-slate-800 bg-white overflow-x-auto max-h-72 whitespace-pre-wrap break-all">{text}</pre>
+      <pre className="px-3 py-2.5 text-11.5 leading-relaxed  text-slate-800 bg-white overflow-x-auto max-h-72 whitespace-pre-wrap break-all">{text}</pre>
     </div>
   );
 }
@@ -246,7 +246,7 @@ function PerPage({ kind, items, business }) {
           const imgs = page.images_without_alt || [];
           return (
             <div key={n} className="px-3 py-2.5">
-              <div className="text-12 font-mono font-semibold text-slate-900">{path} <span className="font-sans font-normal text-slate-500">· {page.images_missing_alt} image{page.images_missing_alt === 1 ? '' : 's'} without alt text</span></div>
+              <div className="text-12  font-semibold text-slate-900">{path} <span className="font-sans font-normal text-slate-500">· {page.images_missing_alt} image{page.images_missing_alt === 1 ? '' : 's'} without alt text</span></div>
               {imgs.length ? imgs.map(src => {
                 const tag = `<img src="${esc(src)}" alt="${esc(suggestAlt(src, business))}">`;
                 return <div key={src} className="mt-1.5 flex items-center gap-2"><code className="flex-1 min-w-0 text-11 text-slate-700 bg-slate-50 rounded px-2 py-1 truncate" title={tag}>{tag}</code><CopyLine text={tag} /></div>;
@@ -260,7 +260,7 @@ function PerPage({ kind, items, business }) {
         return (
           <div key={n} className="px-3 py-2.5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <a href={page.url} target="_blank" rel="noreferrer" className="text-12 font-mono font-semibold text-slate-900 hover:text-indigo-700">{path}</a>
+              <a href={page.url} target="_blank" rel="noreferrer" className="text-12  font-semibold text-slate-900 hover:text-indigo-700">{path}</a>
               <span className="text-11 text-slate-500">{kind === 'h1' ? `${page.h1_count} H1 heading${page.h1_count === 1 ? '' : 's'} now` : `Now: ${current ? `${current.length} characters` : 'missing'}`}</span>
             </div>
             {current && kind !== 'h1' && <div className="mt-1 text-12 text-slate-500 line-through decoration-slate-300">{current}</div>}
@@ -317,16 +317,16 @@ function ImprovementCard({ group, ctx, open, onToggle, last }) {
         </div>
         {open && (
           <div className="mt-3 rounded border border-slate-200 bg-slate-50/50 p-4 space-y-4">
-            {g.why && <div><div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1">Why it matters</div><p className="text-13 text-slate-700 leading-relaxed">{g.why}</p></div>}
+            {g.why && <div><div className="text-11 font-semibold   text-slate-500 mb-1">Why it matters</div><p className="text-13 text-slate-700 leading-relaxed">{g.why}</p></div>}
             <div>
-              <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">How to fix</div>
+              <div className="text-11 font-semibold   text-slate-500 mb-1.5">How to fix</div>
               <ol className="space-y-1.5">{g.steps.map((x, i) => <li key={i} className="flex gap-2.5 text-13 text-slate-800"><span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 text-11 font-bold flex items-center justify-center shrink-0 mt-px">{i + 1}</span><span>{x}</span></li>)}</ol>
             </div>
-            {g.perPage && <div><div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Suggested fix for each page</div><PerPage kind={g.perPage} items={group.items} business={ctx.business} /></div>}
+            {g.perPage && <div><div className="text-11 font-semibold   text-slate-500 mb-1.5">Suggested fix for each page</div><PerPage kind={g.perPage} items={group.items} business={ctx.business} /></div>}
             {code && <CodeBlock {...code} />}
             {group.code === 'slow_mobile' && ctx.opportunities?.length > 0 && (
               <div>
-                <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Biggest speed wins on this site</div>
+                <div className="text-11 font-semibold   text-slate-500 mb-1.5">Biggest speed wins on this site</div>
                 <ul className="rounded ring-1 ring-slate-200 bg-white divide-y divide-slate-100">{ctx.opportunities.map(o => <li key={o.title} className="px-3 py-2 flex justify-between gap-3 text-12.5"><span className="text-slate-800">{o.title}</span><span className="text-slate-500 tabular-nums shrink-0">saves {(o.savings_ms / 1000).toFixed(1)} s</span></li>)}</ul>
               </div>
             )}
@@ -335,8 +335,8 @@ function ImprovementCard({ group, ctx, open, onToggle, last }) {
             )}
             {!g.perPage && group.pageCount > 0 && (
               <div>
-                <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Affected pages</div>
-                <div className="flex flex-wrap gap-1.5">{group.items.filter(i => i.page).map(i => <a key={i.page.url} href={i.page.url} target="_blank" rel="noreferrer" className="text-11.5 font-mono px-2 py-1 rounded bg-white ring-1 ring-inset ring-slate-200 text-slate-700 hover:text-indigo-600 inline-flex items-center gap-1">{pathOf(i.page.url)} <ExternalLink size={10} /></a>)}</div>
+                <div className="text-11 font-semibold   text-slate-500 mb-1.5">Affected pages</div>
+                <div className="flex flex-wrap gap-1.5">{group.items.filter(i => i.page).map(i => <a key={i.page.url} href={i.page.url} target="_blank" rel="noreferrer" className="text-11.5  px-2 py-1 rounded bg-white ring-1 ring-inset ring-slate-200 text-slate-700 hover:text-indigo-600 inline-flex items-center gap-1">{pathOf(i.page.url)} <ExternalLink size={10} /></a>)}</div>
               </div>
             )}
           </div>
@@ -398,7 +398,7 @@ export default function Improvements({ issues, pages, business, score, technical
               if (!rows.length) return null;
               return (
                 <div key={level}>
-                  <h6 className="text-12 font-bold uppercase tracking-wide text-slate-400 mb-3 flex items-center gap-2">{LEVEL_STYLE[level].label}<span className={`px-1.5 py-px rounded text-11 ${LEVEL_STYLE[level].badge}`}>{rows.length}</span></h6>
+                  <h6 className="text-12 font-bold  tracking-wide text-slate-400 mb-3 flex items-center gap-2">{LEVEL_STYLE[level].label}<span className={`px-1.5 py-px rounded text-11 ${LEVEL_STYLE[level].badge}`}>{rows.length}</span></h6>
                   {rows.map((g, i) => <ImprovementCard key={g.code} group={g} ctx={ctx} last={i === rows.length - 1} open={open === g.code} onToggle={() => setOpen(open === g.code ? null : g.code)} />)}
                 </div>
               );

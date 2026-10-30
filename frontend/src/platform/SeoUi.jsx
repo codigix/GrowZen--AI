@@ -119,7 +119,7 @@ const BusinessSwitcher = ({ business, onChange, list }) => {
       {open && (
         <div className="absolute right-0 mt-2 w-[21rem] bg-white backdrop-blur-2xl border border-slate-300 rounded shadow-2xl z-50 py-2 overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-slate-900 ring-1 ring-slate-900/5">
           <div className="px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-            <span className="text-11 font-bold uppercase tracking-wider text-slate-500 font-mono">Managed Entities</span>
+            <span className="text-11 font-bold   text-slate-500 ">Managed Entities</span>
             <span className="text-11 bg-slate-100 text-cyan-700 border border-cyan-500/30 font-bold px-2 py-0.5 rounded-full">
               {list.length} clients
             </span>
@@ -179,14 +179,14 @@ export const BackendDown = ({ error, onRetry }) => (
     </div>
     {!error?.status && (
       <div className="mt-6">
-        <span className="text-12 font-bold text-slate-500 uppercase tracking-wider font-mono">Terminal start command:</span>
-        <pre className="mt-2 text-12 bg-slate-50 text-slate-800 rounded p-4 font-mono overflow-x-auto border border-slate-200 shadow-inner">
+        <span className="text-12 font-bold text-slate-500   ">Terminal start command:</span>
+        <pre className="mt-2 text-12 bg-slate-50 text-slate-800 rounded p-4  overflow-x-auto border border-slate-200 shadow-inner">
           {'cd backend\n.\\.venv\\Scripts\\activate\nuvicorn app.main:app --port 8000'}
         </pre>
       </div>
     )}
     <div className="mt-6 flex items-center justify-between pt-4 border-t border-slate-200">
-      <span className="text-12 text-slate-500 font-mono">Endpoint: {SEO_API}</span>
+      <span className="text-12 text-slate-500 ">Endpoint: {SEO_API}</span>
       <Button variant="primary" icon={RefreshCw} onClick={onRetry}>Retry Handshake</Button>
     </div>
   </div>
@@ -327,11 +327,11 @@ export const ErrorNote = ({ children }) => (
 
 export const SourceTag = ({ source }) => (
   source === 'sample' ? (
-    <span title="Sample simulated data" className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/25 text-11 font-semibold font-mono">
+    <span title="Sample simulated data" className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/25 text-11 font-semibold ">
       <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> sample
     </span>
   ) : source === 'live' ? (
-    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 border border-emerald-500/25 text-11 font-semibold font-mono">
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 border border-emerald-500/25 text-11 font-semibold ">
       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> live sync
     </span>
   ) : null
@@ -374,7 +374,7 @@ export const Stat = ({ label, value, delta, deltaGoodWhenUp = true, hint, icon: 
   return (
     <div className="ai-glass-card rounded p-5 min-w-0 relative overflow-hidden group">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-11 font-bold uppercase tracking-wider text-slate-500 font-mono truncate">{label}</span>
+        <span className="text-11 font-bold   text-slate-500  truncate">{label}</span>
         {Icon && (
           <div className="w-8 h-8 rounded bg-slate-100 group-hover:bg-indigo-500/20 border border-slate-200 group-hover:border-indigo-500/30 flex items-center justify-center text-slate-500 group-hover:text-cyan-700 transition-all shrink-0">
             <Icon size={16} />
@@ -451,7 +451,7 @@ export const ScoreRing = ({ score, size = 112, label = 'Score', level }) => {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         <span className="text-2xl font-extrabold text-slate-900 leading-none font-display">{score}</span>
-        <span className="text-10 uppercase font-bold text-slate-500 font-mono mt-1 tracking-wider">{label}</span>
+        <span className="text-10  font-bold text-slate-500  mt-1 ">{label}</span>
       </div>
     </div>
   );
@@ -613,7 +613,7 @@ export const ChartTooltip = ({ active, payload, label, unit = '' }) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-white backdrop-blur-xl border border-slate-300 rounded shadow-2xl px-3.5 py-2.5 text-12 text-slate-900">
-      {label != null && <div className="text-slate-500 font-mono mb-1">{label}</div>}
+      {label != null && <div className="text-slate-500  mb-1">{label}</div>}
       {payload.map(p => (
         <div key={p.dataKey} className="flex items-center gap-2 py-0.5">
           <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.color || p.fill }} />

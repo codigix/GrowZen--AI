@@ -14,7 +14,7 @@ _default_db = f"sqlite:///{(_backend_dir / 'seo_platform_dev.db').as_posix()}"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # One .env shared by the whole repo (backend/frontend/google_trends all read the same file).
-        env_file=(_repo_root / ".env", ".env"),
+        env_file=(_backend_dir / ".env", _repo_root / ".env", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

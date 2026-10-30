@@ -135,7 +135,7 @@ export default function LoginPage({ onSignedIn }) {
                 <h1 className="text-3xl lg:text-4xl font-extrabold tracking-tight font-display text-slate-900 flex items-center gap-2">
                   <span>bevisibe</span> <span className="text-gradient">AI</span>
                 </h1>
-                <p className="text-11 text-teal-700 font-mono font-bold uppercase tracking-wider mt-0.5">
+                <p className="text-11 text-teal-700  font-bold   mt-0.5">
                   Autonomous Local SEO Engine
                 </p>
               </div>
@@ -291,7 +291,7 @@ export default function LoginPage({ onSignedIn }) {
                       <Sparkles size={11} /> Auto-fill Admin
                     </button>
                   </div>
-                  <div className="mt-2 text-11 bg-slate-50 p-2.5 rounded border border-slate-200 text-slate-500 font-mono flex flex-col gap-0.5">
+                  <div className="mt-2 text-11 bg-slate-50 p-2.5 rounded border border-slate-200 text-slate-500  flex flex-col gap-0.5">
                     <div><span className="text-slate-500">Email:</span> info@codigixinfotech.com</div>
                     <div><span className="text-slate-500">Password:</span> Seo@1d86f6a045</div>
                   </div>
@@ -430,7 +430,7 @@ export default function LoginPage({ onSignedIn }) {
                       placeholder="Paste reset token"
                       value={resetToken}
                       onChange={e => setResetToken(e.target.value)}
-                      className="w-full h-10 px-3.5 text-12 font-mono bg-slate-50 border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                      className="w-full h-10 px-3.5 text-12  bg-slate-50 border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                     />
                   </div>
 

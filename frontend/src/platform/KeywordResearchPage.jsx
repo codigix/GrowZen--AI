@@ -43,8 +43,8 @@ function Stars({ n }) {
 
 function Coverage({ c }) {
   if (!c) return <span className="text-11.5 text-slate-400">Not audited</span>;
-  if (c.status === 'covered') return <span className="inline-flex items-center gap-1 text-11.5 text-emerald-700" title="A page's title or main heading targets this"><CheckCircle2 size={12} /> <span className="font-mono truncate max-w-[140px]">{pathOf(c.page)}</span></span>;
-  if (c.status === 'partial') return <span className="inline-flex items-center gap-1 text-11.5 text-amber-700" title="A page is close, but doesn't target every word"><CircleDashed size={12} /> <span className="font-mono truncate max-w-[140px]">{pathOf(c.page)}</span></span>;
+  if (c.status === 'covered') return <span className="inline-flex items-center gap-1 text-11.5 text-emerald-700" title="A page's title or main heading targets this"><CheckCircle2 size={12} /> <span className=" truncate max-w-[140px]">{pathOf(c.page)}</span></span>;
+  if (c.status === 'partial') return <span className="inline-flex items-center gap-1 text-11.5 text-amber-700" title="A page is close, but doesn't target every word"><CircleDashed size={12} /> <span className=" truncate max-w-[140px]">{pathOf(c.page)}</span></span>;
   return <span className="inline-flex items-center gap-1 text-11.5 text-red-600 font-medium" title="No page on the site targets this: a content gap"><AlertTriangle size={12} /> Gap</span>;
 }
 
@@ -135,7 +135,7 @@ function Discover({ b, tracked, onTracked }) {
         action={<Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={find}>Find keywords</Button>}>
         <div className="space-y-4">
           <div>
-            <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Services & category <span className="normal-case font-normal tracking-normal">({activeSeeds.length}/6 on)</span></div>
+            <div className="text-11 font-semibold   text-slate-500 mb-1.5">Services & category <span className="normal-case font-normal tracking-normal">({activeSeeds.length}/6 on)</span></div>
             <div className="flex flex-wrap items-center gap-1.5">
               {seeds.map(s => <Chip key={s.text} on={s.on} onClick={() => (s.on || activeSeeds.length < 6) && toggle(setSeeds, s.text)} onRemove={c.seeds.includes(s.text) ? null : () => setSeeds(list => list.filter(x => x.text !== s.text))}>{s.text}</Chip>)}
               <span className="inline-flex items-center gap-1">
@@ -146,7 +146,7 @@ function Discover({ b, tracked, onTracked }) {
             {!c.seeds.length && <div className="mt-1.5 text-12 text-amber-700">No category or services on the profile yet. Add one above, or fill them in GBP Manager.</div>}
           </div>
           <div>
-            <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Area & nearby localities</div>
+            <div className="text-11 font-semibold   text-slate-500 mb-1.5">Area & nearby localities</div>
             <div className="flex flex-wrap gap-1.5">
               {areas.map((a, i) => <Chip key={a.text} on={a.on} onClick={() => toggle(setAreas, a.text)} title={i < c.areas.length ? 'From the business profile' : 'Nearby, from OpenStreetMap'}>{i < c.areas.length && <MapPin size={11} className="inline -mt-0.5 mr-1" />}{a.text}</Chip>)}
             </div>
@@ -218,7 +218,7 @@ function Discover({ b, tracked, onTracked }) {
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-13 min-w-[640px]">
-                    <thead className="bg-slate-50 text-11 uppercase tracking-wider text-slate-500">
+                    <thead className="bg-slate-50 text-11   text-slate-500">
                       <tr>
                         <th className="pl-6 pr-2 py-2.5 w-8"><input type="checkbox" className="accent-indigo-600" aria-label="Select all" checked={selectable.length > 0 && selectable.every(k => selected.includes(k.keyword))} onChange={e => setSelected(e.target.checked ? selectable.map(k => k.keyword) : [])} /></th>
                         <th className="px-2 py-2.5 text-left font-semibold">Keyword</th>
@@ -329,15 +329,15 @@ function GoogleTrends({ b, tracked, onTracked }) {
       <Card title="Google Trends" subtitle="Live search interest and related queries from Google Trends.">
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex-1 min-w-[220px]">
-            <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1">Keyword</div>
+            <div className="text-11 font-semibold   text-slate-500 mb-1">Keyword</div>
             <input className={inputCls} placeholder="e.g. seo services" value={keyword} onChange={e => setKeyword(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} />
           </label>
           <label>
-            <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1">Country</div>
-            <input className={`${inputCls} w-20 uppercase`} maxLength={2} value={country} onChange={e => setCountry(e.target.value.toUpperCase())} />
+            <div className="text-11 font-semibold   text-slate-500 mb-1">Country</div>
+            <input className={`${inputCls} w-20 `} maxLength={2} value={country} onChange={e => setCountry(e.target.value.toUpperCase())} />
           </label>
           <label>
-            <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1">Timeframe</div>
+            <div className="text-11 font-semibold   text-slate-500 mb-1">Timeframe</div>
             <select className="h-9 px-2.5 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" value={timeframe} onChange={e => setTimeframe(e.target.value)}>
               {TREND_TIMEFRAMES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
@@ -373,7 +373,7 @@ function GoogleTrends({ b, tracked, onTracked }) {
             <Card title="Top queries" subtitle="Most-searched related queries, scored 0-100 relative to the top one">
               {trend.related_keywords?.length ? (
                 <>
-                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-10.5 font-semibold uppercase tracking-wider text-slate-400">
+                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-10.5 font-semibold   text-slate-400">
                     <span className="flex-1">Query</span>
                     <span className="w-8 text-right">Interest</span>
                     <span className="w-16 text-right">Change</span>
@@ -410,7 +410,7 @@ function GoogleTrends({ b, tracked, onTracked }) {
             <Card title="Rising queries" subtitle="Queries with the biggest increase in search interest">
               {trend.rising_keywords?.length ? (
                 <>
-                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-10.5 font-semibold uppercase tracking-wider text-slate-400">
+                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-10.5 font-semibold   text-slate-400">
                     <span className="flex-1">Query</span>
                     <span className="w-8 text-right" title="Google Trends doesn't provide a 0-100 interest score for rising queries, only the % change">Interest</span>
                     <span className="w-16 text-right">Change</span>
@@ -448,7 +448,7 @@ function GoogleTrends({ b, tracked, onTracked }) {
           <Card title="Interest by region" subtitle={`Where "${trend.seed_keyword}" is searched most, relative to its top region (100)`}>
             {trend.regional_interest?.length ? (
               <div className="divide-y divide-slate-100">
-                <div className="flex items-center gap-3 pb-2 text-10.5 font-semibold uppercase tracking-wider text-slate-400">
+                <div className="flex items-center gap-3 pb-2 text-10.5 font-semibold   text-slate-400">
                   <span className="w-5" />
                   <span className="w-44 shrink-0">Region</span>
                   <span className="flex-1">Search interest</span>
@@ -498,7 +498,7 @@ function Tracked({ b, kw }) {
         {!kw.data ? <div className="py-10 flex justify-center text-slate-400"><Loader2 size={16} className="animate-spin" /></div> : !tracked.length ? <div className="py-10 text-center text-13 text-slate-500">No tracked keywords yet. Pick some in Discover.</div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-13 min-w-[640px]">
-              <thead className="text-11 uppercase tracking-wider text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-semibold">Keyword</th><th className="p-2 text-right font-semibold">Searches</th><th className="p-2 text-left font-semibold">Target page</th><th className="p-2 text-right font-semibold">Rank</th><th className="p-2 text-left font-semibold">Priority</th><th className="p-2" /></tr></thead>
+              <thead className="text-11   text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-semibold">Keyword</th><th className="p-2 text-right font-semibold">Searches</th><th className="p-2 text-left font-semibold">Target page</th><th className="p-2 text-right font-semibold">Rank</th><th className="p-2 text-left font-semibold">Priority</th><th className="p-2" /></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {tracked.map(k => (
                   <tr key={k.id} className="hover:bg-slate-50">
@@ -541,7 +541,7 @@ function Topics({ b, kw }) {
             return (
               <Card key={cl.name} title={cl.name} subtitle={`${cl.keywords} keywords${cl.volume ? ` · ${fmt(cl.volume)} searches / month` : ''}`}>
                 <div className="space-y-1.5">{list.slice(0, 8).map(k => <div key={k.id} className="flex items-center gap-2 text-12"><span className="flex-1 truncate text-slate-800">{k.keyword}</span>{k.rank && <span className="tabular-nums text-slate-500">#{k.rank}</span>}</div>)}</div>
-                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 text-12"><FileText size={13} className="text-slate-400" />{page ? <span className="font-mono text-slate-700 truncate">{page}</span> : <span className="text-amber-700">No page yet</span>}</div>
+                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 text-12"><FileText size={13} className="text-slate-400" />{page ? <span className=" text-slate-700 truncate">{page}</span> : <span className="text-amber-700">No page yet</span>}</div>
               </Card>
             );
           })}

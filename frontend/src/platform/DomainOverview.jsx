@@ -61,7 +61,7 @@ function Overview({ d, r, setFilter, filters }) {
                 <Metric label="Mentions" value={fmt(ai.mentions)} tone="text-indigo-600" />
                 <Metric label="Cited pages" value={fmt(ai.cited_pages)} tone="text-indigo-600" />
               </div>
-              <table className="w-full text-13 mt-4"><thead className="text-11.5 uppercase tracking-wide text-slate-400"><tr><th className="py-1 text-left font-semibold">Engine</th><th className="py-1 text-right font-semibold">Visibility</th><th className="py-1 text-right font-semibold">Mentions</th><th className="py-1 text-right font-semibold">Cited pages</th></tr></thead>
+              <table className="w-full text-13 mt-4"><thead className="text-11.5  tracking-wide text-slate-400"><tr><th className="py-1 text-left font-semibold">Engine</th><th className="py-1 text-right font-semibold">Visibility</th><th className="py-1 text-right font-semibold">Mentions</th><th className="py-1 text-right font-semibold">Cited pages</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{ai.engines.map(e => <tr key={e.engine}><td className="py-2 flex items-center gap-2 text-slate-800"><Bot size={13} className="text-slate-400" />{ENGINES[e.engine] || e.engine}</td><td className="py-2 text-right tabular-nums">{e.visibility}%</td><td className="py-2 text-right tabular-nums text-indigo-600">{e.mentions}</td><td className="py-2 text-right tabular-nums text-indigo-600">{e.cited}</td></tr>)}</tbody></table>
               <p className="text-11 text-slate-400 mt-2">From the latest AI checks ({ai.data_source}): the share of questions where the AI names the business, and the pages of this domain it cites.</p>
             </>
@@ -120,7 +120,7 @@ function TrafficPanel({ d, r, filters, setFilter }) {
       <Card className="xl:col-span-2" title="Distribution by country" subtitle="Google Search clicks by the searcher's country" pad={false}>
         <div className="overflow-auto max-h-[430px]">
           <table className="w-full text-13">
-            <thead className="sticky top-0 bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>Country</Th><Th c="text-right">Clicks</Th><Th c="text-right">Impr.</Th><Th c="text-right">Pos.</Th></tr></thead>
+            <thead className="sticky top-0 bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><Th>Country</Th><Th c="text-right">Clicks</Th><Th c="text-right">Impr.</Th><Th c="text-right">Pos.</Th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               <tr onClick={() => setFilter({ country: '' })} className={`cursor-pointer hover:bg-slate-50 ${!filters.country ? 'bg-indigo-50/50 font-semibold' : ''}`}><td className="px-4 py-2.5">🌐 Worldwide</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-600">{fmt(r.totals.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(r.totals.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.totals.position ?? '—'}</td></tr>
               {r.countries.map(c => (
@@ -178,7 +178,7 @@ function KeywordsPanel({ r }) {
       </div>
       <div className="overflow-auto max-h-[460px]">
         <table className="w-full text-13">
-          <thead className="sticky top-0 bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>{tab === 'keywords' ? 'Keyword' : 'Page'}</Th><Th c="text-right">Clicks</Th><Th c="text-right">Impressions</Th><Th c="text-right">CTR</Th><Th c="text-right">Position</Th></tr></thead>
+          <thead className="sticky top-0 bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><Th>{tab === 'keywords' ? 'Keyword' : 'Page'}</Th><Th c="text-right">Clicks</Th><Th c="text-right">Impressions</Th><Th c="text-right">CTR</Th><Th c="text-right">Position</Th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map(x => (
               <tr key={x.query || x.page} className="hover:bg-slate-50">
@@ -213,7 +213,7 @@ function Growth({ r }) {
         <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={months} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}><CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} /><XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} /><YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} allowDecimals={false} /><Tooltip /><Bar dataKey="clicks" name="Clicks" fill="#6658dd" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
       </Card>
       <Card pad={false} title="Month by month">
-        <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>Month</Th><Th c="text-right">Clicks</Th><Th c="text-right">Change</Th><Th c="text-right">Impressions</Th><Th c="text-right">CTR</Th></tr></thead>
+        <table className="w-full text-13"><thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><Th>Month</Th><Th c="text-right">Clicks</Th><Th c="text-right">Change</Th><Th c="text-right">Impressions</Th><Th c="text-right">CTR</Th></tr></thead>
           <tbody className="divide-y divide-slate-100">{[...months].reverse().map(m => <tr key={m.month} className="hover:bg-slate-50"><td className="px-4 py-2.5 font-medium text-slate-900">{m.month}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-600">{fmt(m.clicks)}</td><td className="px-4 py-2.5 text-right">{m.change != null ? <Change now={1 + (m.change / 100)} before={1} /> : '—'}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(m.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.ctr}%</td></tr>)}</tbody></table>
       </Card>
     </div>
@@ -226,7 +226,7 @@ function Compare({ r, setFilter }) {
     <Card pad={false} title="Compare by countries" subtitle="Where the clicks come from and how the site ranks there. Click a country to filter the whole page.">
       <div className="overflow-auto">
         <table className="w-full text-13">
-          <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>Country</Th><Th c="text-right">Clicks</Th><Th c="text-right">Share</Th><Th c="text-right">Impressions</Th><Th c="text-right">CTR</Th><Th c="text-right">Avg position</Th></tr></thead>
+          <thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><Th>Country</Th><Th c="text-right">Clicks</Th><Th c="text-right">Share</Th><Th c="text-right">Impressions</Th><Th c="text-right">CTR</Th><Th c="text-right">Avg position</Th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {r.countries.map(c => (
               <tr key={c.code} onClick={() => setFilter({ country: c.code })} className="cursor-pointer hover:bg-slate-50">

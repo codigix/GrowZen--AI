@@ -85,12 +85,12 @@ export function PagesCard({ pages, siteIssues }) {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-13">
-          <thead className="bg-slate-50 text-11 uppercase tracking-wider text-slate-500">
+          <thead className="bg-slate-50 text-11   text-slate-500">
             <tr>
               <th className="w-8" />
               {COLUMNS.map(([key, label]) => (
                 <th key={key} className={`px-3 py-2.5 font-semibold ${key === 'path' ? 'text-left' : 'text-right'}`}>
-                  <button onClick={() => sortBy(key)} className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-slate-900 cursor-pointer">
+                  <button onClick={() => sortBy(key)} className="inline-flex items-center gap-1   hover:text-slate-900 cursor-pointer">
                     {label}{sort.key === key ? (sort.dir > 0 ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="opacity-40" />}
                   </button>
                 </th>
@@ -105,7 +105,7 @@ export function PagesCard({ pages, siteIssues }) {
                   <tr onClick={() => setOpen(isOpen ? null : r.url)} className={`cursor-pointer ${isOpen ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
                     <td className="pl-4 text-slate-400">{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</td>
                     <td className="px-3 py-2.5 max-w-[340px]">
-                      <div className="font-mono text-12 text-slate-900 truncate" title={r.url}>{r.path}</div>
+                      <div className=" text-12 text-slate-900 truncate" title={r.url}>{r.path}</div>
                       <div className="text-12 text-slate-500 truncate">{r.title || <span className="text-red-600">No title</span>}</div>
                     </td>
                     <td className="px-3 py-2.5 text-right">
@@ -137,12 +137,12 @@ export function PagesCard({ pages, siteIssues }) {
                             ))}
                           </div>
                           <div className="lg:col-span-2">
-                            <div className="text-12 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">What to fix on this page</div>
+                            <div className="text-12 font-semibold   text-slate-500 mb-1.5">What to fix on this page</div>
                             {r.issues.length ? (
                               <ul className="space-y-2">
                                 {[...r.issues].sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]).map((i, n) => (
                                   <li key={n} className="rounded-lg bg-white ring-1 ring-inset ring-slate-200 px-3 py-2">
-                                    <div className="flex items-center gap-2"><span className={`text-10 font-bold uppercase px-1.5 py-0.5 rounded ring-1 ring-inset ${SEVERITY_TONE[i.level]}`}>{i.level}</span><span className="text-12 font-medium text-slate-900">{i.title}</span></div>
+                                    <div className="flex items-center gap-2"><span className={`text-10 font-bold  px-1.5 py-0.5 rounded ring-1 ring-inset ${SEVERITY_TONE[i.level]}`}>{i.level}</span><span className="text-12 font-medium text-slate-900">{i.title}</span></div>
                                     <div className="text-12 text-slate-500 mt-1">{i.fix}</div>
                                   </li>
                                 ))}

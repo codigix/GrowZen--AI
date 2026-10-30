@@ -34,7 +34,7 @@ function Connections() {
               {SOURCES.map(([id, name, env, on, extra]) => (
                 <div key={id} className="flex flex-wrap items-center gap-3 py-3">
                   <span className="w-8 h-8 rounded bg-gray-100 text-gray-600 flex items-center justify-center"><Plug size={14} /></span>
-                  <div className="flex-1 min-w-[260px]"><div className="text-13 font-medium text-gray-900">{name}</div><div className="text-11 text-gray-500 font-mono">{env}</div></div>
+                  <div className="flex-1 min-w-[260px]"><div className="text-13 font-medium text-gray-900">{name}</div><div className="text-11 text-gray-500 ">{env}</div></div>
                   {extra && on(s) && <Badge tone="gray">{extra(s)}</Badge>}
                   {on(s) ? <StatusPill level="good">Connected</StatusPill> : <StatusPill level="warning">Not set up</StatusPill>}
                 </div>

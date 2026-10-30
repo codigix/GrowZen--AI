@@ -30,14 +30,20 @@ import { DomainOverviewPage, OrganicRankingsPage, TopPagesPage, KeywordGapPage, 
 export default function App() {
   // undefined = checking the session, null = signed out
   const [user, setUser] = useState(undefined);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const { pathname } = useLocation();
 
   const loadMe = useCallback(() => api('/me').then(setUser).catch(() => setUser(null)), []);
   useEffect(() => { loadMe(); }, [loadMe]);
   useEffect(() => {
     const out = () => setUser(null);
+    const openPwd = () => setShowChangePassword(true);
     window.addEventListener('seo:unauthorized', out);
-    return () => window.removeEventListener('seo:unauthorized', out);
+    window.addEventListener('seo:change-password', openPwd);
+    return () => {
+      window.removeEventListener('seo:unauthorized', out);
+      window.removeEventListener('seo:change-password', openPwd);
+    };
   }, []);
 
   const logout = async () => {
@@ -57,9 +63,15 @@ export default function App() {
 
   return (
     <>
-    {user.must_change_password && <PasswordGate user={user} onChanged={loadMe} />}
+    {showChangePassword && (
+      <PasswordGate
+        user={user}
+        onClose={() => setShowChangePassword(false)}
+        onChanged={() => { loadMe(); setShowChangePassword(false); }}
+      />
+    )}
     <Routes>
-      <Route element={<Layout user={user} onLogout={logout} />}>
+      <Route element={<Layout user={user} onLogout={logout} onChangePassword={() => setShowChangePassword(true)} />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<SeoOverviewPage />} />
         <Route path="onboarding" element={<BusinessOnboardingPage />} />

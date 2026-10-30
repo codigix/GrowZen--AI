@@ -21,8 +21,8 @@ const screen = (action) => SCREEN[action] || SCREEN.audit;
 
 function SourceBadge({ source }) {
   return source === 'ai'
-    ? <span className="inline-flex items-center gap-1 text-10.5 font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200"><Sparkles size={10} /> AI</span>
-    : <span className="text-10.5 font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200">Rules</span>;
+    ? <span className="inline-flex items-center gap-1 text-10.5 font-bold  tracking-wide px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200"><Sparkles size={10} /> AI</span>
+    : <span className="text-10.5 font-bold  tracking-wide px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200">Rules</span>;
 }
 
 export function ReportsModal({ open, onClose }) {
@@ -110,7 +110,7 @@ export function CopilotAlerts({ onOpenProject }) {
               <li key={a.id}>
                 <button type="button" onClick={() => onOpenProject(a.business_id, screen(a.action)[0])} className="w-full text-left rounded ring-1 ring-inset ring-slate-200 hover:ring-indigo-300 hover:bg-slate-50 px-3 py-2.5 cursor-pointer">
                   <div className="flex items-start gap-2">
-                    <span className={`mt-0.5 text-9.5 font-bold uppercase px-1.5 py-0.5 rounded ring-1 ring-inset shrink-0 ${LEVEL[a.level]}`}>{a.level}</span>
+                    <span className={`mt-0.5 text-9.5 font-bold  px-1.5 py-0.5 rounded ring-1 ring-inset shrink-0 ${LEVEL[a.level]}`}>{a.level}</span>
                     <div className="flex-1 min-w-0">
                       <div className="text-12.5 font-semibold text-slate-900">{a.title}</div>
                       <div className="text-11.5 text-slate-500"><span className="font-medium text-slate-700">{a.business}</span> · {a.why}</div>

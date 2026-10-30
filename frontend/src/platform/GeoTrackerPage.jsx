@@ -86,7 +86,7 @@ function Geo({ b, tab }) {
       {tab === 'sources' && (
         <Card title="Sources the engines cite" subtitle="Get listed or mentioned on these: they become outreach targets">
           {sov.top_sources.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No cited sources yet (engines with web search, like Perplexity, cite most).</div> : (
-            <div className="divide-y divide-gray-100">{sov.top_sources.map(s => <div key={s.host} className="flex justify-between py-2 text-13"><span className="font-mono text-12 text-gray-800">{s.host}</span><Badge tone="gray">{s.citations} citation{s.citations === 1 ? '' : 's'}</Badge></div>)}</div>
+            <div className="divide-y divide-gray-100">{sov.top_sources.map(s => <div key={s.host} className="flex justify-between py-2 text-13"><span className=" text-12 text-gray-800">{s.host}</span><Badge tone="gray">{s.citations} citation{s.citations === 1 ? '' : 's'}</Badge></div>)}</div>
           )}
           {results[0] && <p className="text-11 text-gray-500 mt-3">Latest run {fmtDateTime(results.map(r => r.created_at).sort().pop())}</p>}
         </Card>

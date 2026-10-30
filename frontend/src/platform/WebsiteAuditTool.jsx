@@ -111,7 +111,7 @@ function LiveScan({ audit, startedAt, strategy }) {
             <span className="flex gap-1"><i className="w-2.5 h-2.5 rounded-full bg-red-300" /><i className="w-2.5 h-2.5 rounded-full bg-amber-300" /><i className="w-2.5 h-2.5 rounded-full bg-emerald-300" /></span>
             <div className="flex-1 min-w-0 h-7 px-2.5 rounded-md bg-white ring-1 ring-inset ring-slate-200 flex items-center gap-1.5 text-11.5 text-slate-600">
               {prog.current ? <Loader2 size={11} className="animate-spin text-indigo-500 shrink-0" /> : <Globe size={11} className="text-slate-400 shrink-0" />}
-              <span className="truncate font-mono">{prog.current || shown?.url || latest?.url || audit.target}</span>
+              <span className="truncate ">{prog.current || shown?.url || latest?.url || audit.target}</span>
             </div>
           </div>
           <div className="relative h-[340px] bg-slate-50 overflow-hidden">
@@ -125,12 +125,12 @@ function LiveScan({ audit, startedAt, strategy }) {
               <div className="p-5">
                 <div className="text-11 text-slate-500">This site blocks being shown inside other pages, so here is what the scanner read:</div>
                 <div className="mt-3 rounded-lg bg-white ring-1 ring-slate-200 p-4">
-                  <div className="text-12 text-emerald-700 font-mono truncate">{latest.url}</div>
+                  <div className="text-12 text-emerald-700  truncate">{latest.url}</div>
                   <div className="text-17 text-indigo-700 font-medium leading-snug mt-0.5">{latest.title || 'No title'}</div>
                   <div className="text-12.5 text-slate-600 mt-1 line-clamp-2">{latest.meta_description || 'No meta description. Google will pick text from the page.'}</div>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  {[['H1', latest.h1 || '—'], ['Words', latest.word_count], ['Images', `${latest.images - latest.images_missing_alt}/${latest.images} with alt`]].map(([k, v]) => <div key={k} className="rounded-lg bg-white ring-1 ring-slate-200 px-2 py-2"><div className="text-10.5 uppercase tracking-wider text-slate-500">{k}</div><div className="text-12.5 font-semibold text-slate-900 truncate">{v}</div></div>)}
+                  {[['H1', latest.h1 || '—'], ['Words', latest.word_count], ['Images', `${latest.images - latest.images_missing_alt}/${latest.images} with alt`]].map(([k, v]) => <div key={k} className="rounded-lg bg-white ring-1 ring-slate-200 px-2 py-2"><div className="text-10.5   text-slate-500">{k}</div><div className="text-12.5 font-semibold text-slate-900 truncate">{v}</div></div>)}
                 </div>
               </div>
             ) : (
@@ -149,16 +149,16 @@ function LiveScan({ audit, startedAt, strategy }) {
             <Step state={done ? 'done' : prog.robots !== undefined ? 'running' : null} label="Crawling pages" detail={`${pages.length} checked${prog.queued ? `, ${prog.queued} queued` : ''}`} />
             <Step state={prog.lighthouse || 'running'} label="Google Lighthouse" detail={prog.lighthouse === 'done' ? 'scores ready' : prog.lighthouse === 'failed' ? 'unavailable' : 'measuring speed & SEO'} />
           </div>
-          <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Pages scanned</div>
+          <div className="text-11 font-semibold   text-slate-500 mb-1.5">Pages scanned</div>
           <div className="flex-1 max-h-[262px] overflow-y-auto rounded ring-1 ring-inset ring-slate-200 divide-y divide-slate-100">
             {prog.current && (
-              <div className="px-3 py-2 flex items-center gap-2 bg-indigo-50/60"><Loader2 size={13} className="animate-spin text-indigo-600 shrink-0" /><span className="font-mono text-11.5 text-indigo-800 truncate">{pathOf(prog.current)}</span></div>
+              <div className="px-3 py-2 flex items-center gap-2 bg-indigo-50/60"><Loader2 size={13} className="animate-spin text-indigo-600 shrink-0" /><span className=" text-11.5 text-indigo-800 truncate">{pathOf(prog.current)}</span></div>
             )}
             {[...pages].reverse().map(p => (
               <div key={p.url} className="px-3 py-2">
                 <div className="flex items-center gap-2">
                   {p.status >= 400 ? <XCircle size={13} className="text-red-600 shrink-0" /> : p.issues.length ? <span className={`text-10 font-bold px-1.5 rounded-full ring-1 ring-inset shrink-0 ${TONE[worst(p.issues)]}`}>{p.issues.length}</span> : <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />}
-                  <span className="font-mono text-11.5 text-slate-800 truncate">{pathOf(p.url)}</span>
+                  <span className=" text-11.5 text-slate-800 truncate">{pathOf(p.url)}</span>
                   <span className="ml-auto text-10.5 text-slate-400 shrink-0 tabular-nums">{p.status >= 400 ? `HTTP ${p.status}` : `${p.word_count} words`}</span>
                 </div>
                 {p.issues[0] && <div className="text-11 text-slate-500 truncate pl-5 mt-0.5">{p.issues[0].title.replace(/^\/\S*:?\s/, '')}{p.issues.length > 1 ? ` +${p.issues.length - 1} more` : ''}</div>}
@@ -201,7 +201,7 @@ function Vitals({ ps }) {
     <Card title="Core Web Vitals" subtitle={`Google Lighthouse lab test · ${ps.strategy === 'desktop' ? 'desktop' : 'mobile'}`}>
       {ps.filmstrip?.length > 0 && (
         <div className="mb-4">
-          <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">How the page loaded</div>
+          <div className="text-11 font-semibold   text-slate-500 mb-1.5">How the page loaded</div>
           <div className="flex gap-1.5 overflow-x-auto pb-1">
             {ps.filmstrip.map(f => (
               <figure key={f.ms} className="shrink-0 w-[58px]">
@@ -236,7 +236,7 @@ function Vitals({ ps }) {
       </div>
       {hasField && (
         <div className="mt-4 pt-3 border-t border-slate-100">
-          <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Real visitors (Chrome UX Report)</div>
+          <div className="text-11 font-semibold   text-slate-500 mb-1.5">Real visitors (Chrome UX Report)</div>
           <div className="flex flex-wrap gap-1.5">
             {[['lcp', 'LCP'], ['inp', 'INP'], ['cls', 'CLS']].map(([k, l]) => field[k] && (
               <span key={k} className={`text-11 font-semibold px-2 py-1 rounded-lg ring-1 ring-inset ${FIELD_WORD[field[k]]?.[1] === 'good' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : FIELD_WORD[field[k]]?.[1] === 'warning' ? 'bg-amber-50 text-amber-700 ring-amber-200' : 'bg-red-50 text-red-700 ring-red-200'}`}>{l}: {FIELD_WORD[field[k]]?.[0] || field[k]}</span>
@@ -246,7 +246,7 @@ function Vitals({ ps }) {
       )}
       {ps.opportunities?.length > 0 && (
         <div className="mt-4 pt-3 border-t border-slate-100">
-          <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Biggest speed wins</div>
+          <div className="text-11 font-semibold   text-slate-500 mb-1.5">Biggest speed wins</div>
           {ps.opportunities.map(o => (
             <div key={o.title} className="flex justify-between gap-3 py-1 text-12.5">
               <span className="text-slate-700">{o.title}</span>
@@ -398,7 +398,7 @@ function LatestReport({ report, history, onOpen }) {
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-11 font-semibold uppercase tracking-wider text-slate-500">Latest report</div>
+          <div className="text-11 font-semibold   text-slate-500">Latest report</div>
           <a href={report.target} target="_blank" rel="noreferrer" className="text-15 font-semibold text-slate-900 hover:text-indigo-700 inline-flex items-center gap-1.5 max-w-full"><span className="truncate">{siteKey(report.target)}</span><ExternalLink size={12} className="text-slate-400 shrink-0" /></a>
           <div className="text-12 text-slate-500">{fmtDateTime(report.finished_at)}{report.fromBusiness ? ' · scheduled audit' : ''}</div>
         </div>
@@ -427,7 +427,7 @@ function LatestReport({ report, history, onOpen }) {
         </div>
       </div>
       <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1.5">{LEVELS.map(l => counts[l] > 0 && <span key={l} className={`text-10.5 font-bold uppercase px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[l]}`}>{counts[l]} {l}</span>)}{!issues.length && <span className="text-12 text-emerald-700">No issues found</span>}</div>
+        <div className="flex flex-wrap gap-1.5">{LEVELS.map(l => counts[l] > 0 && <span key={l} className={`text-10.5 font-bold  px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[l]}`}>{counts[l]} {l}</span>)}{!issues.length && <span className="text-12 text-emerald-700">No issues found</span>}</div>
         <div className="flex items-center gap-2 text-11 text-slate-500"><span>Score history</span><Sparkline values={scores} /></div>
       </div>
     </Card>
@@ -655,7 +655,7 @@ export function ReportStep({ sa, business, onNext }) {
               <span className={`inline-block text-12 font-bold px-2.5 py-0.5 rounded-full ${LH_SOFT[lhLevel(a.score ?? 0)][2]}`}>{lhWord(a.score ?? 0)}</span>
               <div className="text-13 text-slate-600 mt-1.5 leading-snug">{verdict(a, issues)}</div>
               {delta !== null && delta !== 0 && <div className={`mt-1.5 text-12 font-semibold inline-flex items-center gap-1 ${delta > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{delta > 0 ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{Math.abs(delta)} since {fmtDateTime(prev.finished_at)}</div>}
-              <div className="mt-2 flex flex-wrap gap-1">{LEVELS.map(l => counts[l] > 0 && <span key={l} className={`text-10.5 font-bold uppercase px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[l]}`}>{counts[l]} {l}</span>)}</div>
+              <div className="mt-2 flex flex-wrap gap-1">{LEVELS.map(l => counts[l] > 0 && <span key={l} className={`text-10.5 font-bold  px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[l]}`}>{counts[l]} {l}</span>)}</div>
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-5 gap-3">

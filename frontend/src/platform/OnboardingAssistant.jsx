@@ -194,7 +194,7 @@ export function outsideFixes(form, res) {
 }
 
 export function SourceTag({ source }) {
-  return <span className={`text-10 font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset whitespace-nowrap ${source === 'AI' ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-slate-50 text-slate-500 ring-slate-200'}`}>{source === 'AI' ? 'AI' : `from ${source}`}</span>;
+  return <span className={`text-10 font-bold  tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset whitespace-nowrap ${source === 'AI' ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-slate-50 text-slate-500 ring-slate-200'}`}>{source === 'AI' ? 'AI' : `from ${source}`}</span>;
 }
 
 /**
@@ -389,7 +389,7 @@ export function AssistantPanel({ assist, form, setForm, onGo, onApplyAll, onUseN
       <div className="flex items-center gap-2">
         <ListTodo size={15} className="text-violet-600 shrink-0" />
         <h3 className="text-14 font-bold text-slate-900">What's missing</h3>
-        {res && <span className={`text-9.5 font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${res.ai ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-slate-50 text-slate-500 ring-slate-200'}`}>{res.ai ? 'AI' : 'Rules'}</span>}
+        {res && <span className={`text-9.5 font-bold  tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${res.ai ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-slate-50 text-slate-500 ring-slate-200'}`}>{res.ai ? 'AI' : 'Rules'}</span>}
         <button type="button" onClick={() => refetch(false)} disabled={busy || refetching || !res} title="Fetch the business again from Google Maps and its website"
           className="ml-auto inline-flex items-center gap-1 h-7 px-2 rounded-lg text-11.5 font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 cursor-pointer">
           <RefreshCw size={12} className={refetching ? 'animate-spin' : ''} /> Re-fetch

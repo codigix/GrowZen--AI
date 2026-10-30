@@ -1,4 +1,4 @@
-"""AI calls through an OpenAI-compatible API (DeepSeek, OpenAI or Gemini).
+"""AI calls through an OpenAI-compatible API (DeepSeek, OpenAI, Gemini) or Anthropic Claude.
 
 Every prompt is grounded in the business profile and carries the blueprint's rules: never
 invent reviews, prices, credentials or statistics; keep the owner's tone; follow Google's
@@ -8,6 +8,7 @@ import json
 import re
 from typing import Any
 
+import httpx
 from openai import OpenAI
 
 from ..config import get_settings
@@ -16,6 +17,8 @@ PROVIDERS = {
     "deepseek": ("https://api.deepseek.com", "deepseek_api_key", "deepseek-chat"),
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini_api_key", "gemini-1.5-flash"),
     "openai": (None, "openai_api_key", "gpt-4o"),
+    "claude": ("https://api.anthropic.com", "anthropic_api_key", "claude-haiku-5-5"),
+    "anthropic": ("https://api.anthropic.com", "anthropic_api_key", "claude-haiku-5-5"),
 }
 
 RULES = """Rules you must follow:
@@ -31,11 +34,20 @@ class AiUnavailable(RuntimeError):
 
 def _config() -> tuple[str | None, str, str]:
     s = get_settings()
-    base, key_attr, model = PROVIDERS.get(s.ai_provider.lower(), PROVIDERS["openai"])
+    prov = s.ai_provider.lower()
+    if prov in ("claude", "anthropic"):
+        return "https://api.anthropic.com", s.anthropic_api_key, "claude-haiku-5-5"
+    base, key_attr, model = PROVIDERS.get(prov, PROVIDERS["openai"])
     return base, getattr(s, key_attr), model
 
 
 def is_configured() -> bool:
+    s = get_settings()
+    prov = s.ai_provider.lower()
+    if prov in ("claude", "anthropic"):
+        return bool(s.anthropic_api_key)
+    if s.anthropic_api_key and not getattr(s, PROVIDERS.get(prov, ("", "openai_api_key", ""))[1], None):
+        return True
     return bool(_config()[1])
 
 
@@ -52,7 +64,44 @@ def _get_client() -> tuple[OpenAI, str]:
     return _client, model
 
 
+def _complete_anthropic(system: str, user: str, *, json_mode: bool = False, max_tokens: int = 1200) -> str:
+    s = get_settings()
+    key = s.anthropic_api_key
+    if not key:
+        raise AiUnavailable("Claude AI is not set up: add ANTHROPIC_API_KEY to .env")
+
+    sys_prompt = system
+    if json_mode:
+        sys_prompt += "\n\nCRITICAL: Respond ONLY with a valid JSON object. Do not include markdown code block syntax (like ```json), commentary, or other surrounding text."
+
+    headers = {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+    body = {
+        "model": "claude-haiku-5-5",
+        "max_tokens": max_tokens,
+        "system": sys_prompt,
+        "messages": [{"role": "user", "content": user}]
+    }
+    with httpx.Client(timeout=60) as http:
+        r = http.post("https://api.anthropic.com/v1/messages", headers=headers, json=body)
+        if r.status_code != 200:
+            raise AiUnavailable(f"Claude API error ({r.status_code}): {r.text}")
+        data = r.json()
+        for item in data.get("content", []):
+            if item.get("type") == "text":
+                return item.get("text", "").strip()
+        return ""
+
+
 def complete(system: str, user: str, *, json_mode: bool = False, temperature: float = 0.5, max_tokens: int = 1200) -> str:
+    s = get_settings()
+    prov = s.ai_provider.lower()
+    if prov in ("claude", "anthropic") or (s.anthropic_api_key and not getattr(s, PROVIDERS.get(prov, ("", "openai_api_key", ""))[1], None)):
+        return _complete_anthropic(system, user, json_mode=json_mode, max_tokens=max_tokens)
+
     client, model = _get_client()
     kwargs: dict[str, Any] = {"model": model, "temperature": temperature, "max_tokens": max_tokens,
                               "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}

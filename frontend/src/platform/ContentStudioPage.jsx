@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
-  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, PreviewNote, useUrlTab } from './SeoUi';
+  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, PreviewNote, useUrlTab
+} from './SeoUi';
 import { rng, shortDate, daysBack, ymd } from './seoMock';
 import { fmt } from './seoApi';
 
@@ -145,7 +146,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 text-11 text-slate-500 font-mono">
+        <div className="flex items-center gap-2 shrink-0 text-11 text-slate-500 ">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <span>Real-time Google Trends & Search Console Signals</span>
         </div>
@@ -160,10 +161,10 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
           >
             <div>
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-700 border border-blue-500/30 text-10 font-mono font-bold">
+                <span className="px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-700 border border-blue-500/30 text-10  font-bold">
                   {topic.category}
                 </span>
-                <span className="inline-flex items-center gap-1 text-11 font-bold text-emerald-700 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-full font-mono">
+                <span className="inline-flex items-center gap-1 text-11 font-bold text-emerald-700 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-full ">
                   <Flame size={12} className="text-amber-700 fill-amber-400" />
                   {topic.velocity}
                 </span>
@@ -175,23 +176,23 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
 
               <div className="mt-3 grid grid-cols-2 gap-2 text-11 text-slate-500">
                 <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 block text-10 uppercase font-mono">Search Volume:</span>
-                  <strong className="text-slate-800 font-mono">{topic.volume}</strong>
+                  <span className="text-slate-500 block text-10  ">Search Volume:</span>
+                  <strong className="text-slate-800 ">{topic.volume}</strong>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 block text-10 uppercase font-mono">Search Intent:</span>
-                  <strong className="text-cyan-700 font-mono">{topic.intent}</strong>
+                  <span className="text-slate-500 block text-10  ">Search Intent:</span>
+                  <strong className="text-cyan-700 ">{topic.intent}</strong>
                 </div>
               </div>
 
               <div className="mt-3 text-11 text-slate-500">
                 <span className="text-slate-500">Target Internal Link: </span>
-                <span className="text-indigo-700 font-mono font-semibold">{topic.internalLinkTarget}</span>
+                <span className="text-indigo-700  font-semibold">{topic.internalLinkTarget}</span>
               </div>
             </div>
 
             <div className="mt-4 pt-3.5 border-t border-slate-200 flex items-center justify-between gap-2">
-              <span className="text-10 text-slate-500 font-mono">
+              <span className="text-10 text-slate-500 ">
                 Source: {topic.source}
               </span>
               <Button
@@ -342,7 +343,7 @@ function BlogWriterTab({ b, selectedTopic, onScheduled, toast }) {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">Target Conversion URL:</span>
-                <span className="font-mono text-cyan-700">/cataract-surgery-in-pcmc</span>
+                <span className=" text-cyan-700">/cataract-surgery-in-pcmc</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">Suggested Format:</span>
@@ -356,31 +357,31 @@ function BlogWriterTab({ b, selectedTopic, onScheduled, toast }) {
         {step === 1 && (
           <div>
             <div className="flex flex-wrap gap-4 text-12 text-slate-700 mb-3">
-              <span>Avg Word Count Top 10: <strong className="text-slate-900 font-mono">{fmt(avgWords)} words</strong></span>
-              <span>FAQ Schema Present: <strong className="text-emerald-700 font-mono">8/10</strong></span>
+              <span>Avg Word Count Top 10: <strong className="text-slate-900 ">{fmt(avgWords)} words</strong></span>
+              <span>FAQ Schema Present: <strong className="text-emerald-700 ">8/10</strong></span>
               <StatusPill level="good">AI Overview Eligible for this query</StatusPill>
             </div>
             <div className="rounded border border-slate-200 overflow-hidden">
               <table className="w-full text-12">
                 <thead className="bg-white text-slate-500 border-b border-slate-200">
                   <tr>
-                    <th className="p-2.5 text-left font-mono">Rank</th>
+                    <th className="p-2.5 text-left ">Rank</th>
                     <th className="p-2.5 text-left">Competitor URL</th>
-                    <th className="p-2.5 text-right font-mono">Length</th>
-                    <th className="p-2.5 text-right font-mono">H2/H3</th>
+                    <th className="p-2.5 text-right ">Length</th>
+                    <th className="p-2.5 text-right ">H2/H3</th>
                     <th className="p-2.5 text-center">FAQ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-slate-50">
                   {serp.slice(0, 5).map(s => (
                     <tr key={s.pos}>
-                      <td className="p-2.5 font-mono text-slate-500 font-bold">{s.pos}</td>
+                      <td className="p-2.5  text-slate-500 font-bold">{s.pos}</td>
                       <td className="p-2.5">
                         <div className="text-slate-900 font-medium truncate max-w-[340px]">{s.title}</div>
-                        <div className="text-10 text-cyan-700 font-mono">{s.site}</div>
+                        <div className="text-10 text-cyan-700 ">{s.site}</div>
                       </td>
-                      <td className="p-2.5 text-right font-mono text-slate-700">{fmt(s.words)}</td>
-                      <td className="p-2.5 text-right font-mono text-slate-700">{s.headings}</td>
+                      <td className="p-2.5 text-right  text-slate-700">{fmt(s.words)}</td>
+                      <td className="p-2.5 text-right  text-slate-700">{s.headings}</td>
                       <td className="p-2.5 text-center">{s.faq ? <Check size={14} className="text-emerald-700 mx-auto" /> : <span className="text-slate-600">—</span>}</td>
                     </tr>
                   ))}
@@ -414,7 +415,7 @@ function BlogWriterTab({ b, selectedTopic, onScheduled, toast }) {
               <div><span className="text-slate-500">SEO Title:</span> Micro-Incision Cataract Surgery in PCMC: Cost, Lens Types & Recovery</div>
               <div><span className="text-slate-500">Meta Desc:</span> Complete 2026 guide to micro-incision cataract surgery at Moraya Hospital, Chinchwad. Costs, lens types, cashless insurance & recovery time.</div>
               <div><span className="text-slate-500">Target Word Count:</span> ~1,450 words</div>
-              <div><span className="text-slate-500">Internal Link:</span> <span className="text-cyan-700 font-mono">/cataract-surgery-in-pcmc</span></div>
+              <div><span className="text-slate-500">Internal Link:</span> <span className="text-cyan-700 ">/cataract-surgery-in-pcmc</span></div>
               <div><span className="text-slate-500">Schema:</span> MedicalWebPage + FAQPage + Hospital</div>
             </div>
           </div>
@@ -429,7 +430,7 @@ function BlogWriterTab({ b, selectedTopic, onScheduled, toast }) {
             </div>
             <textarea
               rows={16}
-              className={`${areaCls} font-mono text-12 leading-relaxed`}
+              className={`${areaCls}  text-12 leading-relaxed`}
               value={draft}
               onChange={e => setDraft(e.target.value)}
             />
@@ -475,7 +476,7 @@ function BlogWriterTab({ b, selectedTopic, onScheduled, toast }) {
                 <div key={l}>
                   <div className="flex justify-between text-11 mb-1">
                     <span className="text-slate-500">{l}</span>
-                    <span className="font-mono font-bold text-slate-900">{Math.min(100, v)}%</span>
+                    <span className=" font-bold text-slate-900">{Math.min(100, v)}%</span>
                   </div>
                   <Meter value={Math.min(100, v)} color={SERIES[i % 3]} />
                 </div>
@@ -536,7 +537,7 @@ function BlogWriterTab({ b, selectedTopic, onScheduled, toast }) {
             </div>
 
             {published && (
-              <div className="p-3.5 rounded bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 flex items-center justify-between text-11 font-mono">
+              <div className="p-3.5 rounded bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 flex items-center justify-between text-11 ">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 size={16} className="text-emerald-700" />
                   <span>Scheduled on {cms} for {new Date(scheduledDate).toLocaleString()}</span>
@@ -580,11 +581,11 @@ function CalendarTab({ b, scheduledItems }) {
         subtitle="Autonomous schedule across Google Business Profile, Hospital CMS, and local landing pages"
         action={
           <div className="flex items-center gap-2">
-            <span className="text-11 text-slate-500 font-mono">CMS Destination: GrowZen CMS</span>
+            <span className="text-11 text-slate-500 ">CMS Destination: GrowZen CMS</span>
           </div>
         }
       >
-        <div className="grid grid-cols-7 gap-1 text-11 font-mono text-slate-500 mb-1 text-center font-bold">
+        <div className="grid grid-cols-7 gap-1 text-11  text-slate-500 mb-1 text-center font-bold">
           {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <div key={d} className="py-1">{d}</div>)}
         </div>
         <div className="grid grid-cols-7 gap-1.5">
@@ -603,7 +604,7 @@ function CalendarTab({ b, scheduledItems }) {
               >
                 {valid && (
                   <>
-                    <div className="text-11 font-mono text-slate-500 font-bold mb-1">{day}</div>
+                    <div className="text-11  text-slate-500 font-bold mb-1">{day}</div>
                     <div className="space-y-1">
                       {events.map(ev => (
                         <div
@@ -688,7 +689,7 @@ function BacklinksTab({ b, toast }) {
       {/* Top Value Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="ai-glass-card rounded p-[18px] border border-emerald-500/20">
-          <div className="text-11 font-bold uppercase tracking-wider text-emerald-700 font-mono">
+          <div className="text-11 font-bold   text-emerald-700 ">
             Verified Referring Domains
           </div>
           <div className="text-3xl font-extrabold text-slate-900 mt-2 font-display">18 Domains</div>
@@ -696,17 +697,17 @@ function BacklinksTab({ b, toast }) {
         </div>
 
         <div className="ai-glass-card rounded p-[18px] border border-cyan-500/20">
-          <div className="text-11 font-bold uppercase tracking-wider text-cyan-700 font-mono">
+          <div className="text-11 font-bold   text-cyan-700 ">
             Key Anchor Target URL
           </div>
-          <div className="text-13 font-mono font-bold text-cyan-700 mt-2 truncate">
+          <div className="text-13  font-bold text-cyan-700 mt-2 truncate">
             /cataract-surgery-in-pcmc
           </div>
           <p className="text-11 text-slate-500 mt-1">Directing link equity to primary service page</p>
         </div>
 
         <div className="ai-glass-card rounded p-[18px] border border-purple-500/20">
-          <div className="text-11 font-bold uppercase tracking-wider text-purple-600 font-mono">
+          <div className="text-11 font-bold   text-purple-600 ">
             Ethical Outreach Guardrail
           </div>
           <div className="text-13 font-bold text-slate-900 mt-2">Zero Spam / PBN Safe</div>
@@ -725,7 +726,7 @@ function BacklinksTab({ b, toast }) {
               <tr>
                 <th className="p-3 text-left">Prospect / Publication</th>
                 <th className="p-3 text-left">Category</th>
-                <th className="p-3 text-center font-mono">Domain Auth</th>
+                <th className="p-3 text-center ">Domain Auth</th>
                 <th className="p-3 text-left">Anchor Text & Target</th>
                 <th className="p-3 text-left">Status</th>
                 <th className="p-3 text-right">Action</th>
@@ -736,16 +737,16 @@ function BacklinksTab({ b, toast }) {
                 <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                   <td className="p-3">
                     <div className="font-bold text-slate-900">{p.name}</div>
-                    <div className="text-10 text-cyan-700 font-mono">{p.domain}</div>
+                    <div className="text-10 text-cyan-700 ">{p.domain}</div>
                   </td>
                   <td className="p-3 text-slate-700 font-medium">{p.type}</td>
-                  <td className="p-3 text-center font-mono font-bold text-slate-800">DA {p.da}</td>
+                  <td className="p-3 text-center  font-bold text-slate-800">DA {p.da}</td>
                   <td className="p-3">
                     <div className="text-slate-900 font-medium">"{p.anchor}"</div>
-                    <div className="text-10 text-indigo-700 font-mono">{p.target}</div>
+                    <div className="text-10 text-indigo-700 ">{p.target}</div>
                   </td>
                   <td className="p-3">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-10 font-mono font-bold border ${p.status === 'Link Acquired'
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-10  font-bold border ${p.status === 'Link Acquired'
                       ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
                       : p.status === 'Outreach Sent'
                         ? 'bg-blue-500/15 text-blue-700 border-blue-500/30'
@@ -760,7 +761,7 @@ function BacklinksTab({ b, toast }) {
                         Draft Pitch
                       </Button>
                     ) : (
-                      <span className="text-emerald-700 font-mono text-11 font-bold flex items-center justify-end gap-1">
+                      <span className="text-emerald-700  text-11 font-bold flex items-center justify-end gap-1">
                         <CheckCircle2 size={13} /> Active
                       </span>
                     )}

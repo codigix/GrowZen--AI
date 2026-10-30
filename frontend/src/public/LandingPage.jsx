@@ -29,12 +29,12 @@ export const Logo = ({ light = true, className = '', iconSize = 'w-10 h-10', tex
         <span className={`font-display font-extrabold tracking-tight ${textSize} ${light ? 'text-white' : 'text-slate-900'}`}>
           Bevisiby
         </span>
-        <span className="text-10 font-black px-1.5 py-0.5 rounded-md text-slate-950 bg-gradient-to-r from-cyan-400 to-teal-300 shadow-sm tracking-wider uppercase">
+        <span className="text-10 font-black px-1.5 py-0.5 rounded-md text-slate-950 bg-gradient-to-r from-cyan-400 to-teal-300 shadow-sm  ">
           AI
         </span>
       </div>
       {showSubtitle && (
-        <span className="text-9.5 font-mono tracking-[0.18em] text-cyan-400 font-bold uppercase mt-1">
+        <span className="text-9.5  tracking-[0.18em] text-cyan-400 font-bold  mt-1">
           Autonomous Local SEO
         </span>
       )}
@@ -44,7 +44,7 @@ export const Logo = ({ light = true, className = '', iconSize = 'w-10 h-10', tex
 
 /* ── UI Badges & Buttons ──────────────────────────────────────────────── */
 const Eyebrow = ({ children, light = true }) => (
-  <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-12 font-bold uppercase tracking-[0.14em] ${light
+  <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-12 font-bold  tracking-[0.14em] ${light
     ? 'bg-gradient-to-r from-blue-500/15 via-cyan-500/15 to-teal-500/15 text-cyan-300 border border-cyan-400/30 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)]'
     : 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
     }`}>
@@ -84,7 +84,7 @@ function InteractiveShowcase() {
             <span className="w-3 h-3 rounded-full bg-amber-500/80 inline-block" />
             <span className="w-3 h-3 rounded-full bg-emerald-500/80 inline-block" />
           </div>
-          <div className="px-4 py-1 rounded-lg bg-ink-9 border border-slate-800 text-11.5 font-mono text-cyan-300 flex items-center gap-1.5 shadow-inner">
+          <div className="px-4 py-1 rounded-lg bg-ink-9 border border-slate-800 text-11.5  text-cyan-300 flex items-center gap-1.5 shadow-inner">
             <Lock size={11} className="text-emerald-400" />
             <span>https://app.bevisiby.ai/{activeTab}</span>
           </div>
@@ -147,7 +147,7 @@ function InteractiveShowcase() {
                     <Phone size={13} className="text-cyan-400" />
                     Direct Customer Calls from Google Maps
                   </span>
-                  <span className="text-cyan-400/80 font-mono text-10.5">Weekly Trend · Verified</span>
+                  <span className="text-cyan-400/80  text-10.5">Weekly Trend · Verified</span>
                 </div>
                 <svg viewBox="0 0 340 70" className="w-full h-16" preserveAspectRatio="none">
                   <defs>
@@ -163,7 +163,7 @@ function InteractiveShowcase() {
 
               {/* AI Proposed Tasks */}
               <div className="space-y-2">
-                <div className="text-11 font-bold uppercase tracking-wider text-slate-400">Autonomous Drafts Ready for Approval:</div>
+                <div className="text-11 font-bold   text-slate-400">Autonomous Drafts Ready for Approval:</div>
                 {[
                   { title: 'Personalized Reply to 5★ Review from Dr. Sharma', desc: 'Emphasized clinical safety & quick response · Low risk' },
                   { title: 'Sync Updated Holiday Hours & Emergency Line', desc: 'Pre-scheduled for Google Business Profile sync' }
@@ -532,7 +532,7 @@ export default function LandingPage({ user }) {
               <div className="lg:col-span-6 space-y-7 text-center lg:text-left">
                 <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-slate-900/90 border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.2)] backdrop-blur-xl">
                   <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                  <span className="text-12 font-bold uppercase tracking-[0.14em] text-cyan-300">
+                  <span className="text-12 font-bold  tracking-[0.14em] text-cyan-300">
                     Autonomous Local Growth & Maps SEO
                   </span>
                 </div>
@@ -598,7 +598,7 @@ export default function LandingPage({ user }) {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
               <div>
-                <span className="text-11.5 font-bold uppercase tracking-[0.18em] text-cyan-400 block mb-0.5">
+                <span className="text-11.5 font-bold  tracking-[0.18em] text-cyan-400 block mb-0.5">
                   Connected Directly
                 </span>
                 <span className="text-14.5 font-semibold text-slate-300">
@@ -681,7 +681,7 @@ export default function LandingPage({ user }) {
               {/* Old Traditional Way */}
               <div className="p-8 sm:p-10 rounded-3xl bg-slate-900/70 border border-slate-800/80 backdrop-blur-md flex flex-col justify-between">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wider text-rose-400 mb-2">Traditional Manual Agency</div>
+                  <div className="text-xs font-bold   text-rose-400 mb-2">Traditional Manual Agency</div>
                   <h3 className="text-2xl font-bold text-slate-200 mb-6 font-display">High Costs & Delayed Feedback</h3>
                   <ul className="space-y-4 text-15 text-slate-400">
                     {[
@@ -703,7 +703,7 @@ export default function LandingPage({ user }) {
               {/* The Bevisiby AI Way */}
               <div className="p-8 sm:p-10 rounded-3xl bg-gradient-to-br from-blue-950/60 via-cyan-950/40 to-teal-950/50 border border-cyan-400/40 backdrop-blur-md shadow-2xl shadow-cyan-900/20 flex flex-col justify-between">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wider text-cyan-300 mb-2">The Bevisiby AI Advantage</div>
+                  <div className="text-xs font-bold   text-cyan-300 mb-2">The Bevisiby AI Advantage</div>
                   <h3 className="text-2xl font-bold text-white mb-6 font-display">Continuous Real-Time Precision</h3>
                   <ul className="space-y-4 text-15 text-slate-100">
                     {[
@@ -805,7 +805,7 @@ export default function LandingPage({ user }) {
                     <h3 className="text-lg font-bold text-white font-display">{access.product}</h3>
                     <ShieldCheck size={20} className="text-cyan-400" />
                   </div>
-                  <code className="text-11.5 text-cyan-300 bg-ink-3 border border-slate-800 rounded-md px-2.5 py-1 font-mono block w-fit mb-3.5 break-all">
+                  <code className="text-11.5 text-cyan-300 bg-ink-3 border border-slate-800 rounded-md px-2.5 py-1  block w-fit mb-3.5 break-all">
                     {access.scope}
                   </code>
                   <p className="text-14.5 text-slate-300 leading-relaxed mb-3">
@@ -878,7 +878,7 @@ export default function LandingPage({ user }) {
                       }`}
                   >
                     {popular && (
-                      <span className={`absolute -top-3.5 left-1/2 -translate-x-1/2 text-11 font-extrabold uppercase tracking-wider px-3.5 py-1 rounded-full ${GRADIENT_BTN}`}>
+                      <span className={`absolute -top-3.5 left-1/2 -translate-x-1/2 text-11 font-extrabold   px-3.5 py-1 rounded-full ${GRADIENT_BTN}`}>
                         Most Popular
                       </span>
                     )}
@@ -893,7 +893,7 @@ export default function LandingPage({ user }) {
                       </div>
 
                       <div className="pt-5 border-t border-slate-800">
-                        <div className="text-11 font-bold uppercase tracking-wider text-slate-400 mb-3.5">Included Capabilities:</div>
+                        <div className="text-11 font-bold   text-slate-400 mb-3.5">Included Capabilities:</div>
                         <ul className="space-y-3 text-14 text-slate-300">
                           {plan.includes.map((feature, idx) => (
                             <li key={idx} className="flex items-start gap-2.5">
@@ -1025,7 +1025,7 @@ export default function LandingPage({ user }) {
 
             {/* Column 2: Product */}
             <div>
-              <div className="text-13 font-bold uppercase tracking-wider text-slate-200 mb-4 font-display">
+              <div className="text-13 font-bold   text-slate-200 mb-4 font-display">
                 Platform
               </div>
               <ul className="space-y-2.5 text-14 text-slate-400">
@@ -1039,7 +1039,7 @@ export default function LandingPage({ user }) {
 
             {/* Column 3: Legal & Compliance */}
             <div>
-              <div className="text-13 font-bold uppercase tracking-wider text-slate-200 mb-4 font-display">
+              <div className="text-13 font-bold   text-slate-200 mb-4 font-display">
                 Legal & Safety
               </div>
               <ul className="space-y-2.5 text-14 text-slate-400">
@@ -1052,7 +1052,7 @@ export default function LandingPage({ user }) {
 
             {/* Column 4: Contact & Access */}
             <div>
-              <div className="text-13 font-bold uppercase tracking-wider text-slate-200 mb-4 font-display">
+              <div className="text-13 font-bold   text-slate-200 mb-4 font-display">
                 Connect
               </div>
               <ul className="space-y-2.5 text-14 text-slate-400">

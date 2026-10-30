@@ -85,10 +85,10 @@ function Stepper({ step }) {
                 {i > 0 && <span className={`flex-1 h-0.5 rounded-full transition-colors ${i <= idx ? 'bg-indigo-400' : 'bg-slate-200'}`} />}
                 <li className="flex items-center gap-3 shrink-0" aria-current={state === 'current' ? 'step' : undefined}>
                   <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-[12px] font-bold transition-all ${state === 'current'
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25 ring-2 ring-indigo-200'
-                      : state === 'done'
-                        ? 'bg-emerald-500 text-white shadow-2xs'
-                        : 'bg-slate-100 text-slate-400 ring-1 ring-inset ring-slate-200'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25 ring-2 ring-indigo-200'
+                    : state === 'done'
+                      ? 'bg-emerald-500 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-400 ring-1 ring-inset ring-slate-200'
                     }`}>
                     {state === 'done' ? <Check size={15} /> : i + 1}
                   </span>
@@ -277,8 +277,8 @@ function CountrySelect({ value, onChange, className = '' }) {
               >
                 <span className="text-base leading-none" role="img" aria-label={r.name}>{countryFlag(r.code)}</span>
                 <span className="flex-1 truncate">{r.name}</span>
-                <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-slate-100 text-slate-500">{r.code}</span>
-                {r.dial && <span className="text-[11px] font-mono text-slate-400">+{r.dial}</span>}
+                <span className="text-[10px]  px-1 py-0.5 rounded bg-slate-100 text-slate-500">{r.code}</span>
+                {r.dial && <span className="text-[11px]  text-slate-400">+{r.dial}</span>}
                 {r.code === (value || 'IN') && <Check size={13} className="text-indigo-600 shrink-0" />}
               </button>
             ))}
@@ -371,7 +371,7 @@ function NameSearch({ value, onChange, city, country, onPick, onOpenExisting, on
                       <span className="block text-14 font-medium text-slate-900">{s.title}</span>
                       {s.subtitle && <span className="block text-12 text-slate-500 leading-snug">{s.subtitle}</span>}
                     </span>
-                    <span className={`shrink-0 mt-0.5 text-10 font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${badge[s.source] || ''}`}>{SOURCE_LABEL[s.source]}</span>
+                    <span className={`shrink-0 mt-0.5 text-10 font-semibold  tracking-wide px-1.5 py-0.5 rounded ${badge[s.source] || ''}`}>{SOURCE_LABEL[s.source]}</span>
                   </button>
                 </li>
               ))}
@@ -642,7 +642,7 @@ function AssistantPreview() {
       <div className="space-y-4">
         {/* Live Readiness Telemetry */}
         <div className="p-3 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200/80 space-y-2">
-          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+          <div className="text-[11px] font-bold text-slate-500   flex items-center justify-between">
             <span>Agent Readiness Telemetry</span>
             <span className="flex items-center gap-1.5 text-emerald-600 font-semibold lowercase">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -759,7 +759,7 @@ function LocationCard({ form, setForm, source, bare = false }) {
       <ErrorNote>{error}</ErrorNote>
       {matches.length > 0 && (
         <div className="mt-3 rounded ring-1 ring-inset ring-slate-200 divide-y divide-slate-100">
-          <div className="px-3 py-2 text-11 font-semibold uppercase tracking-wider text-slate-500">Other places matching this address</div>
+          <div className="px-3 py-2 text-11 font-semibold   text-slate-500">Other places matching this address</div>
           {matches.map((m, i) => (
             <button key={i} type="button" onClick={() => move(m.lat, m.lng)} className={`w-full text-left px-3 py-2 text-12 flex items-start gap-2 hover:bg-slate-50 cursor-pointer ${m.lat === form.lat && m.lng === form.lng ? 'bg-indigo-50/60' : ''}`}>
               <MapPin size={13} className="text-slate-400 mt-0.5 shrink-0" /><span className="text-slate-700">{m.label}</span>
@@ -897,7 +897,7 @@ function SearchableCountryMultiSelect({ selected = [], onChange, hostCountry, po
                 >
                   <span className="text-sm leading-none" role="img" aria-label={info.name}>{countryFlag(code)}</span>
                   <span>{info.name}</span>
-                  <span className="text-10 font-mono px-1 py-0.5 rounded bg-indigo-200/60 text-indigo-700">
+                  <span className="text-10  px-1 py-0.5 rounded bg-indigo-200/60 text-indigo-700">
                     {code}
                   </span>
                   <button
@@ -926,8 +926,8 @@ function SearchableCountryMultiSelect({ selected = [], onChange, hostCountry, po
           type="button"
           onClick={() => setOpen(!open)}
           className={`w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-white ring-1 ring-inset flex items-center justify-between gap-2 text-left cursor-pointer transition-all shadow-2xs ${open
-              ? 'ring-2 ring-indigo-500 shadow-md shadow-indigo-500/10'
-              : 'ring-slate-300 hover:ring-slate-400'
+            ? 'ring-2 ring-indigo-500 shadow-md shadow-indigo-500/10'
+            : 'ring-slate-300 hover:ring-slate-400'
             }`}
           aria-expanded={open}
           aria-haspopup="listbox"
@@ -1026,8 +1026,8 @@ function SearchableCountryMultiSelect({ selected = [], onChange, hostCountry, po
                       key={r.code}
                       onClick={() => toggle(r.code)}
                       className={`flex items-center gap-3 px-3 py-2 text-left cursor-pointer transition-colors select-none ${isChecked
-                          ? 'bg-indigo-50/80 text-indigo-950 font-medium'
-                          : 'hover:bg-slate-50 text-slate-700'
+                        ? 'bg-indigo-50/80 text-indigo-950 font-medium'
+                        : 'hover:bg-slate-50 text-slate-700'
                         }`}
                       role="checkbox"
                       aria-checked={isChecked}
@@ -1043,11 +1043,11 @@ function SearchableCountryMultiSelect({ selected = [], onChange, hostCountry, po
                       </span>
                       <span className="text-13 flex-1 truncate">{r.name}</span>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-10.5 font-mono font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                        <span className="text-10.5  font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
                           {r.code}
                         </span>
                         {r.dial && (
-                          <span className="text-11 font-mono text-slate-400">
+                          <span className="text-11  text-slate-400">
                             +{r.dial}
                           </span>
                         )}
@@ -1100,8 +1100,8 @@ function SearchableCountryMultiSelect({ selected = [], onChange, hostCountry, po
                 type="button"
                 onClick={() => toggle(code)}
                 className={`text-11.5 px-2 py-0.5 rounded-lg ring-1 ring-inset inline-flex items-center gap-1 cursor-pointer transition-all ${isChecked
-                    ? 'bg-indigo-600 text-white ring-indigo-600 shadow-2xs font-medium'
-                    : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 hover:ring-slate-300'
+                  ? 'bg-indigo-600 text-white ring-indigo-600 shadow-2xs font-medium'
+                  : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 hover:ring-slate-300'
                   }`}
               >
                 <span>{countryFlag(code)}</span>
@@ -1158,8 +1158,8 @@ export function TargetMarket({ form, setForm }) {
       type="button"
       onClick={() => setForm(x => ({ ...x, target_scope: id }))}
       className={`flex-1 text-left px-3.5 py-2.5 rounded-xl ring-1 ring-inset cursor-pointer transition-all ${scope === id
-          ? 'ring-2 ring-indigo-500 bg-indigo-50/70 shadow-2xs'
-          : 'ring-slate-200 bg-white hover:bg-slate-50 hover:ring-slate-300'
+        ? 'ring-2 ring-indigo-500 bg-indigo-50/70 shadow-2xs'
+        : 'ring-slate-200 bg-white hover:bg-slate-50 hover:ring-slate-300'
         }`}
     >
       <div className={`text-13 font-semibold ${scope === id ? 'text-indigo-900' : 'text-slate-800'}`}>{name}</div>
@@ -1320,8 +1320,8 @@ export function TargetMarket({ form, setForm }) {
                       }
                     }}
                     className={`text-11.5 px-2 py-0.5 rounded-lg ring-1 ring-inset inline-flex items-center gap-1 cursor-pointer transition-all ${isChecked
-                        ? 'bg-indigo-600 text-white ring-indigo-600 shadow-2xs font-medium'
-                        : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 hover:ring-slate-300'
+                      ? 'bg-indigo-600 text-white ring-indigo-600 shadow-2xs font-medium'
+                      : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 hover:ring-slate-300'
                       }`}
                   >
                     <MapPin size={10} className={isChecked ? 'text-white' : 'text-slate-400'} />
@@ -1738,7 +1738,7 @@ function SourcesPanel({ plan, plans, showPlan = false }) {
             {rows.map(([Icon, label, ok, hint]) => (
               <li key={label} className="flex items-start gap-2.5">
                 <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${ok ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}><Icon size={14} /></span>
-                <div className="min-w-0"><div className="text-12.5 font-medium text-slate-900 flex items-center gap-1.5">{label}{ok ? <CheckCircle2 size={12} className="text-emerald-600" /> : <span className="text-10 font-semibold uppercase text-slate-400">off</span>}</div><div className="text-11 text-slate-500">{hint}</div></div>
+                <div className="min-w-0"><div className="text-12.5 font-medium text-slate-900 flex items-center gap-1.5">{label}{ok ? <CheckCircle2 size={12} className="text-emerald-600" /> : <span className="text-10 font-semibold  text-slate-400">off</span>}</div><div className="text-11 text-slate-500">{hint}</div></div>
               </li>
             ))}
             <li><button type="button" onClick={() => navigate(path('google-integrations'))} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Manage integrations</button></li>

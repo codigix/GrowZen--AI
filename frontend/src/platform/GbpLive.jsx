@@ -30,12 +30,12 @@ function Tile({ icon: Icon, label, value, sub, tone = 'indigo' }) {
   return (
     <div className="ai-glass-card rounded p-3.5 flex items-center gap-3 min-w-0">
       <span className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${tones[tone]}`}><Icon size={17} /></span>
-      <div className="min-w-0"><div className="text-11.5 font-semibold uppercase tracking-wide text-slate-400 truncate">{label}</div><div className="text-20 leading-tight font-bold text-slate-900 tabular-nums">{value ?? '—'}</div>{sub && <div className="text-11.5 text-slate-500 truncate">{sub}</div>}</div>
+      <div className="min-w-0"><div className="text-11.5 font-semibold  tracking-wide text-slate-400 truncate">{label}</div><div className="text-20 leading-tight font-bold text-slate-900 tabular-nums">{value ?? '—'}</div>{sub && <div className="text-11.5 text-slate-500 truncate">{sub}</div>}</div>
     </div>
   );
 }
 
-const Label = ({ children }) => <div className="text-11 font-semibold uppercase tracking-wider text-slate-400 mb-1.5">{children}</div>;
+const Label = ({ children }) => <div className="text-11 font-semibold   text-slate-400 mb-1.5">{children}</div>;
 
 function Hours({ hours, special }) {
   const by = {};
@@ -196,7 +196,7 @@ export default function GbpLive({ b, toast, onConnect }) {
         <Card title="Searches that found the profile" subtitle="Last 3 full months, by monthly impressions" pad={false}>
           {keywords.length ? (
             <div className="max-h-80 overflow-auto">
-              <table className="w-full text-13"><thead className="sticky top-0 bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-2 text-left font-semibold">Search</th><th className="px-5 py-2 text-right font-semibold">Impressions</th></tr></thead>
+              <table className="w-full text-13"><thead className="sticky top-0 bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><th className="px-5 py-2 text-left font-semibold">Search</th><th className="px-5 py-2 text-right font-semibold">Impressions</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{keywords.slice(0, 40).map(k => <tr key={k.keyword}><td className="px-5 py-2 text-slate-800">{k.keyword}</td><td className="px-5 py-2 text-right tabular-nums">{k.impressions != null ? fmt(k.impressions) : <span className="text-slate-400">&lt; {k.below}</span>}</td></tr>)}</tbody></table>
             </div>
           ) : <p className="text-13 text-slate-500 px-5 py-8 text-center">{live?.errors?.search_keywords ? 'Google did not return the search keywords (see above).' : 'No search data yet.'}</p>}

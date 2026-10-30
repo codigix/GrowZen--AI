@@ -77,7 +77,7 @@ function Kpi({ icon: Icon, label, value, hint, tone }) {
     <div className="ai-glass-card rounded p-4 flex items-center gap-3.5 min-w-0">
       <span className={`w-12 h-12 rounded-full ${tones[tone] || tones.slate} flex items-center justify-center shrink-0`}><Icon size={20} /></span>
       <div className="min-w-0">
-        <div className="text-12 font-semibold uppercase tracking-wide text-slate-400 truncate">{label}</div>
+        <div className="text-12 font-semibold  tracking-wide text-slate-400 truncate">{label}</div>
         <div className="text-22 leading-tight font-bold text-slate-900 tabular-nums">{value}</div>
         {hint && <div className="text-11.5 text-slate-500 truncate" title={hint}>{hint}</div>}
       </div>
@@ -112,7 +112,7 @@ function ProjectCard({ p, onOpen }) {
       <div className="flex items-center gap-4">
         {p.health != null
           ? <ScoreRing score={p.health} size={76} label="health" />
-          : <div className="w-[76px] h-[76px] rounded-full border-[7px] border-slate-100 flex flex-col items-center justify-center text-slate-400 shrink-0"><span className="text-lg font-bold">—</span><span className="text-9 uppercase tracking-wider">no audit</span></div>}
+          : <div className="w-[76px] h-[76px] rounded-full border-[7px] border-slate-100 flex flex-col items-center justify-center text-slate-400 shrink-0"><span className="text-lg font-bold">—</span><span className="text-9  ">no audit</span></div>}
         <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1.5">
           {Object.entries(AREA_LABELS).map(([k, label]) => {
             const a = p.areas[k];
@@ -174,13 +174,13 @@ function Projects({ projects, onOpen }) {
         right={<Link to={path('onboarding')} className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm">+ New project</Link>} />
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {view === 'cards' && (<>
-        <div className="flex gap-0.5 p-0.5 rounded bg-slate-100 overflow-x-auto max-w-full">
-          {filters.map(([id, label, n]) => <button key={id} className={seg(filter === id)} onClick={() => setFilter(id)}>{label} <span className="opacity-60 tabular-nums">{n}</span></button>)}
-        </div>
-        <label className="relative flex-1 min-w-[180px] max-w-xs ml-auto">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search projects" className="w-full h-9 pl-8 pr-3 text-13 rounded bg-white ring-1 ring-inset ring-slate-200 focus:ring-indigo-400 outline-none text-slate-900 placeholder-slate-400" />
-        </label>
+          <div className="flex gap-0.5 p-0.5 rounded bg-slate-100 overflow-x-auto max-w-full">
+            {filters.map(([id, label, n]) => <button key={id} className={seg(filter === id)} onClick={() => setFilter(id)}>{label} <span className="opacity-60 tabular-nums">{n}</span></button>)}
+          </div>
+          <label className="relative flex-1 min-w-[180px] max-w-xs ml-auto">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search projects" className="w-full h-9 pl-8 pr-3 text-13 rounded bg-white ring-1 ring-inset ring-slate-200 focus:ring-indigo-400 outline-none text-slate-900 placeholder-slate-400" />
+          </label>
         </>)}
         <div className="flex gap-0.5 p-0.5 rounded bg-slate-100">
           <button className={seg(view === 'cards')} onClick={() => setView('cards')} aria-label="Card view" title="Cards"><LayoutGrid size={14} /></button>
@@ -234,7 +234,7 @@ function AgentSchedule({ upcoming }) {
         <div className="space-y-4">
           {Object.entries(groups).map(([day, items]) => (
             <div key={day}>
-              <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-1.5">{day}</div>
+              <div className="text-11 font-semibold   text-slate-500 mb-1.5">{day}</div>
               <ol className="relative border-l border-slate-200 ml-1.5 space-y-2.5">
                 {items.map((u, i) => (
                   <li key={i} className="pl-4 relative">
@@ -305,14 +305,14 @@ function Portfolio({ projects, totals }) {
           <ResponsiveContainer width="100%" height="100%">
             <PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={38} outerRadius={54} paddingAngle={data.length > 1 ? 3 : 0} stroke="none" isAnimationActive={false}>{data.map(d => <Cell key={d.name} fill={d.color} />)}</Pie></PieChart>
           </ResponsiveContainer>
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span className="text-xl font-bold text-slate-900">{totals.projects}</span><span className="text-9 uppercase tracking-wider text-slate-500">projects</span></div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span className="text-xl font-bold text-slate-900">{totals.projects}</span><span className="text-9   text-slate-500">projects</span></div>
         </div>
         <ul className="flex-1 space-y-1.5 text-13">
           {Object.entries(STATUS_META).map(([s, m]) => <li key={s} className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 text-slate-700"><span className="w-2.5 h-2.5 rounded-full" style={{ background: m.color }} />{m.label}</span><b className="tabular-nums text-slate-900">{totals.by_status[s] || 0}</b></li>)}
         </ul>
       </div>
       <div className="mt-4 pt-3 border-t border-slate-100">
-        <div className="text-11 font-semibold uppercase tracking-wider text-slate-500 mb-2">Plans</div>
+        <div className="text-11 font-semibold   text-slate-500 mb-2">Plans</div>
         <div className="flex flex-wrap gap-1.5">{plans.map(([plan, n]) => <span key={plan} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-violet-50 ring-1 ring-inset ring-violet-200 text-12 font-medium text-violet-800">{plan}<span className="text-violet-500 tabular-nums">{n}</span></span>)}</div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-12">
@@ -615,7 +615,7 @@ function Dashboard() {
       {outdated && (
         <div className="rounded bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-13 text-amber-900 flex items-start gap-2">
           <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-          <span>Some sections are hidden because the backend is running an older version. Restart it (<code className="font-mono text-12">python -m uvicorn app.main:app --port 8000</code> in <code className="font-mono text-12">backend</code>) and reload.</span>
+          <span>Some sections are hidden because the backend is running an older version. Restart it (<code className=" text-12">python -m uvicorn app.main:app --port 8000</code> in <code className=" text-12">backend</code>) and reload.</span>
         </div>
       )}
 

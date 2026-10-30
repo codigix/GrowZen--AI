@@ -35,7 +35,7 @@ function download(name, text) {
   setTimeout(() => URL.revokeObjectURL(href), 1000);
 }
 function Code({ text }) {
-  return <pre className="text-11.5 leading-relaxed font-mono text-slate-100 bg-slate-900 rounded p-4 overflow-auto max-h-[420px]">{text}</pre>;
+  return <pre className="text-11.5 leading-relaxed  text-slate-100 bg-slate-900 rounded p-4 overflow-auto max-h-[420px]">{text}</pre>;
 }
 
 function localBusiness(b, type) {
@@ -83,7 +83,7 @@ function FaqEditor({ b, toast }) {
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={draft}>Draft FAQs from the profile</Button>
         <Button icon={Plus} onClick={() => setFaqs(list => [...list, { q: '', a: '' }])}>Add question</Button>
-        {source && <span className={`text-10 font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${source === 'ai' ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-slate-50 text-slate-500 ring-slate-200'}`}>{source === 'ai' ? 'AI' : 'from the profile'}</span>}
+        {source && <span className={`text-10 font-bold  tracking-wide px-1.5 py-0.5 rounded ring-1 ring-inset ${source === 'ai' ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-slate-50 text-slate-500 ring-slate-200'}`}>{source === 'ai' ? 'AI' : 'from the profile'}</span>}
         <Button className="ml-auto" variant="primary" icon={Save} busy={busy === 'save'} disabled={!dirty} onClick={save}>Save to profile</Button>
       </div>
       <ErrorNote>{error}</ErrorNote>
@@ -184,13 +184,13 @@ export default function SchemaStudio({ b, report }) {
         <Card title="Found on the site" subtitle={report ? `${pages.length} pages from the latest audit` : 'No audit yet'}>
           {!report ? <div className="text-12.5 text-slate-500">Run an audit to see which structured data the site already has.</div>
             : Object.keys(found).length ? (
-              <ul className="space-y-2">{Object.entries(found).map(([t, urls]) => <li key={t} className="text-12"><span className="font-mono font-semibold text-slate-900 bg-slate-50 ring-1 ring-inset ring-slate-200 rounded px-1.5 py-0.5">{t}</span> <span className="text-slate-500">on {urls.slice(0, 3).map(pathOf).join(', ')}{urls.length > 3 ? ` +${urls.length - 3}` : ''}</span></li>)}</ul>
+              <ul className="space-y-2">{Object.entries(found).map(([t, urls]) => <li key={t} className="text-12"><span className=" font-semibold text-slate-900 bg-slate-50 ring-1 ring-inset ring-slate-200 rounded px-1.5 py-0.5">{t}</span> <span className="text-slate-500">on {urls.slice(0, 3).map(pathOf).join(', ')}{urls.length > 3 ? ` +${urls.length - 3}` : ''}</span></li>)}</ul>
             ) : <div className="text-12.5 text-amber-700">No structured data on any crawled page yet.</div>}
         </Card>
         <Card title="How to add it">
           <ol className="space-y-2 text-12.5 text-slate-700 list-decimal ml-4">
             <li>Copy the code.</li>
-            <li>Paste it inside <code className="font-mono text-11.5 bg-slate-100 px-1 rounded">&lt;head&gt;</code> on the home and contact pages (WordPress: a header-scripts or schema plugin).</li>
+            <li>Paste it inside <code className=" text-11.5 bg-slate-100 px-1 rounded">&lt;head&gt;</code> on the home and contact pages (WordPress: a header-scripts or schema plugin).</li>
             <li>Check it in the Rich Results Test, then re-run the website audit.</li>
           </ol>
           <div className="mt-2 text-11.5 text-slate-500 flex items-center gap-1.5"><FileCode size={12} /> The FAQ code goes on the page that shows those FAQs.</div>

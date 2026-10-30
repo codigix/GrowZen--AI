@@ -47,13 +47,13 @@ const Chips = ({ items, empty, tone = 'slate' }) => (
   ) : <p className="text-13 text-slate-500">{empty}</p>
 );
 
-const Label = ({ icon: Icon, children }) => <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2 flex items-center gap-1.5">{Icon && <Icon size={13} />}{children}</div>;
+const Label = ({ icon: Icon, children }) => <div className="text-12 font-semibold  tracking-wide text-slate-500 mb-2 flex items-center gap-1.5">{Icon && <Icon size={13} />}{children}</div>;
 
 /** A table that scrolls inside the page instead of making the page long. */
 const Table = ({ head, children, className = '' }) => (
   <div className={`overflow-auto max-h-[calc(100vh-390px)] min-h-[200px] ${className}`}>
     <table className="w-full text-13">
-      <thead className="sticky top-0 z-10 bg-slate-50 text-left text-11.5 uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_theme(colors.slate.200)]"><tr>{head}</tr></thead>
+      <thead className="sticky top-0 z-10 bg-slate-50 text-left text-11.5  tracking-wide text-slate-500 shadow-[0_1px_0_0_theme(colors.slate.200)]"><tr>{head}</tr></thead>
       <tbody className="divide-y divide-slate-100">{children}</tbody>
     </table>
   </div>
@@ -92,7 +92,7 @@ function SetupForm({ b, defaults, onStart, busy, error, setupInfo, hasRun }) {
     <div className="space-y-4">
       {!setupInfo.google_results && (
         <div className="text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded px-4 py-3">
-          Competitor research needs Google results. Add <code className="font-mono">SERPER_API_KEY</code> (from serper.dev) to the SEO backend's <code className="font-mono">.env</code> and restart it.
+          Competitor research needs Google results. Add <code className="">SERPER_API_KEY</code> (from serper.dev) to the SEO backend's <code className="">.env</code> and restart it.
         </div>
       )}
       <Field label={`Keywords (${keywords.length}/${MAX_KEYWORDS})`} hint="The searches your customers type. Put the area in, as customers do.">
@@ -123,7 +123,7 @@ function SetupForm({ b, defaults, onStart, busy, error, setupInfo, hasRun }) {
 function Tile({ label, value, sub, tone = 'text-slate-900' }) {
   return (
     <div className="ai-glass-card rounded px-4 py-3 min-w-0">
-      <div className="text-11 font-semibold uppercase tracking-wide text-slate-500 truncate">{label}</div>
+      <div className="text-11 font-semibold  tracking-wide text-slate-500 truncate">{label}</div>
       <div className={`text-22 font-bold tabular-nums leading-tight ${tone}`}>{value}</div>
       <div className="text-11.5 text-slate-500 truncate" title={sub}>{sub}</div>
     </div>
@@ -136,7 +136,7 @@ function Overview({ r, goto }) {
   const s = r.summary;
   const business = r.organic_competitors.filter(d => d.type === 'business').slice(0, 6);
   const bars = [{ label: `${r.business.name} (you)`, value: s.visibility, mine: true, sub: `${s.keywords_ranked} of ${s.keywords_total} keywords on page 1` },
-    ...business.map(d => ({ label: d.domain, value: d.visibility, sub: `${d.keywords_top10} keywords on page 1` }))].sort((a, b) => b.value - a.value);
+  ...business.map(d => ({ label: d.domain, value: d.visibility, sub: `${d.keywords_top10} keywords on page 1` }))].sort((a, b) => b.value - a.value);
   const maps = [{ label: `${r.business.name} (you)`, value: s.local_visibility, mine: true }, ...r.local_competitors.slice(0, 5).map(e => ({ label: e.name, value: e.visibility }))].sort((a, b) => b.value - a.value);
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -315,7 +315,7 @@ function PlanTab({ r }) {
             </tr>
           );
         })}
-        {r.gaps.keywords.length > 0 && <tr className="bg-slate-50"><td colSpan={5} className="px-4 py-2 text-11.5 font-semibold uppercase tracking-wide text-slate-500"><span className="inline-flex items-center gap-1.5"><ListChecks size={13} /> Keywords where competitors are on page 1 and you are not</span></td></tr>}
+        {r.gaps.keywords.length > 0 && <tr className="bg-slate-50"><td colSpan={5} className="px-4 py-2 text-11.5 font-semibold  tracking-wide text-slate-500"><span className="inline-flex items-center gap-1.5"><ListChecks size={13} /> Keywords where competitors are on page 1 and you are not</span></td></tr>}
         {r.gaps.keywords.map(g => (
           <tr key={g.keyword} className="hover:bg-slate-50">
             <td className="px-4 py-2.5" />
@@ -340,7 +340,7 @@ function LiveResults({ progress }) {
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] divide-y xl:divide-y-0 xl:divide-x divide-slate-200">
         <div className="overflow-auto max-h-64">
           <table className="w-full text-13">
-            <thead className="sticky top-0 bg-slate-50 text-left text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>Competitor on Google</Th><Th c="text-right">Visibility</Th><Th c="text-right">Page 1</Th><Th c="text-right">Top 3</Th><Th>Site</Th></tr></thead>
+            <thead className="sticky top-0 bg-slate-50 text-left text-11.5  tracking-wide text-slate-500"><tr><Th>Competitor on Google</Th><Th c="text-right">Visibility</Th><Th c="text-right">Page 1</Th><Th c="text-right">Top 3</Th><Th>Site</Th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {f.competitors.map(d => {
                 const site = f.sites?.[d.domain];
@@ -576,7 +576,7 @@ function Research({ b }) {
     const r = await api(`/businesses/${b.id}/competitor-research`, { method: 'POST', body: { keywords, location } });
     setState(s => ({ ...s, run: r }));
     setSettings(false);
-    if (!registered.length) findOnMaps().catch(() => {}); // the first run also registers the Maps competitors for audits
+    if (!registered.length) findOnMaps().catch(() => { }); // the first run also registers the Maps competitors for audits
   });
 
   const doCompare = async (c) => {

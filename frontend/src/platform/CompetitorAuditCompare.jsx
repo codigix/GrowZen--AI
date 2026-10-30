@@ -69,7 +69,7 @@ export function ComparisonResult({ c, bare = false }) {
           {!c.overall?.available && <p className="text-13 text-slate-500">No PageSpeed data on one side yet.</p>}
           <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="w-full">
-              <thead className="bg-slate-50 text-left text-11 uppercase tracking-wide text-slate-500">
+              <thead className="bg-slate-50 text-left text-11  tracking-wide text-slate-500">
                 <tr><th className="px-4 py-2 font-semibold">Metric</th><th className="px-3 py-2 font-semibold text-right">You</th><th className="px-3 py-2 font-semibold text-right">Competitor</th><th className="px-3 py-2 font-semibold text-right">Edge</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -80,7 +80,7 @@ export function ComparisonResult({ c, bare = false }) {
           </div>
           {(c.overall?.field_data || []).some(f => f.available) && (
             <div>
-              <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Real-user (CrUX field) data</div>
+              <div className="text-12 font-semibold  tracking-wide text-slate-500 mb-2">Real-user (CrUX field) data</div>
               <div className="flex flex-wrap gap-2">
                 {(c.overall.field_data || []).filter(f => f.available).map(f => (
                   <span key={f.key} className="text-12 px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50">{f.label}: <b>{f.ours || '—'}</b> vs <b>{f.competitor || '—'}</b></span>
@@ -95,7 +95,7 @@ export function ComparisonResult({ c, bare = false }) {
         <div className="overflow-x-auto">
           {!checks.length ? <p className="text-13 text-slate-500">No Lighthouse SEO checks on one side yet.</p> : (
             <table className="w-full text-13">
-              <thead className="bg-slate-50 text-left text-11 uppercase tracking-wide text-slate-500">
+              <thead className="bg-slate-50 text-left text-11  tracking-wide text-slate-500">
                 <tr><th className="px-4 py-2.5 font-semibold">Check</th><th className="px-3 py-2.5 font-semibold text-center">You</th><th className="px-3 py-2.5 font-semibold text-center">Competitor</th><th className="px-3 py-2.5 font-semibold">Status</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -122,13 +122,13 @@ export function ComparisonResult({ c, bare = false }) {
           {!pages.matched?.length ? <p className="text-13 text-slate-500">No matching pages found between the two crawls.</p> : (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-13">
-                <thead className="bg-slate-50 text-left text-11 uppercase tracking-wide text-slate-500">
+                <thead className="bg-slate-50 text-left text-11  tracking-wide text-slate-500">
                   <tr><th className="px-4 py-2.5 font-semibold">Page</th><th className="px-3 py-2.5 font-semibold">Your title</th><th className="px-3 py-2.5 font-semibold">Their title</th><th className="px-3 py-2.5 font-semibold text-right">Words (you / them)</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {pages.matched.map(m => (
                     <tr key={m.path}>
-                      <td className="px-4 py-2.5 font-mono text-12 text-slate-700">{m.path}</td>
+                      <td className="px-4 py-2.5  text-12 text-slate-700">{m.path}</td>
                       <td className="px-3 py-2.5 truncate max-w-[220px]" title={m.ours?.title}>{m.ours?.title || '(missing)'}</td>
                       <td className="px-3 py-2.5 truncate max-w-[220px]" title={m.competitor?.title}>{m.competitor?.title || '(missing)'}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums">{m.ours?.word_count ?? '—'} / {m.competitor?.word_count ?? '—'}</td>
@@ -148,7 +148,7 @@ export function ComparisonResult({ c, bare = false }) {
       {tab === 'keywords' && (
         <div className="space-y-6">
           <div>
-            <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">On-page keywords (from the crawled content, no external API)</div>
+            <div className="text-12 font-semibold  tracking-wide text-slate-500 mb-2">On-page keywords (from the crawled content, no external API)</div>
             {gaps.on_page?.available ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
@@ -170,7 +170,7 @@ export function ComparisonResult({ c, bare = false }) {
           </div>
 
           <div>
-            <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Google-search keyword gaps (from Competitor Research)</div>
+            <div className="text-12 font-semibold  tracking-wide text-slate-500 mb-2">Google-search keyword gaps (from Competitor Research)</div>
             {gaps.search?.available ? (
               <div className="space-y-3">
                 {gaps.search.note && <p className="text-12 text-slate-500">{gaps.search.note}</p>}

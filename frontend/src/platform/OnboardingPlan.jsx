@@ -155,7 +155,7 @@ export default function ActionPlan({ form, res, source, planName, jobs }) {
       <div className="px-4 py-3 grid grid-cols-2 lg:grid-cols-4 gap-2">
         {plan.goals.map(g => (
           <div key={g.label} className="rounded bg-slate-50 ring-1 ring-inset ring-slate-200 px-3 py-2 min-w-0">
-            <div className="flex items-center gap-1.5 text-10.5 font-bold uppercase tracking-wide text-slate-500"><g.icon size={11} /> {g.label}</div>
+            <div className="flex items-center gap-1.5 text-10.5 font-bold  tracking-wide text-slate-500"><g.icon size={11} /> {g.label}</div>
             <div className="text-14 font-bold text-slate-900 truncate" title={g.value}>{g.value}</div>
             <div className="text-11 text-slate-500 truncate" title={g.sub}>{g.sub}</div>
           </div>

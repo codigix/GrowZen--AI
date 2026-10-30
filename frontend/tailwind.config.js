@@ -29,7 +29,7 @@ export default {
         slate: { 50: '#f6f7fb', 100: '#eef2f7', 200: '#e7e9eb', 300: '#dbe0e5', 400: '#9ba6b7', 500: '#7b8a9c', 600: '#667787', 700: '#4c4c5c', 800: '#38414a', 900: '#313a46', 950: '#232b34' },
         gray: { 50: '#f6f7fb', 100: '#eef2f7', 200: '#e7e9eb', 300: '#dbe0e5', 400: '#9ba6b7', 500: '#7b8a9c', 600: '#667787', 700: '#4c4c5c', 800: '#38414a', 900: '#313a46', 950: '#232b34' },
         body: '#f5f6f8',
-        topbar: { DEFAULT: '#38414a', item: '#adb5bf', field: '#3f4952' },
+        topbar: { DEFAULT: '#ffff', item: '#adb5bf', field: '#ffff' },
         growzen: {
           50: '#f3f2fc',
           100: '#e3e1f9',
