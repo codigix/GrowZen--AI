@@ -42,7 +42,7 @@ CLAIM_PATTERNS = {
     "specific date": rf"\b(?:{_MONTHS})\s+\d{{1,2}}\b|\b\d{{1,2}}(?:st|nd|rd|th)?\s+(?:{_MONTHS})\b",
     "news claim": r"\b(?:announced|unveiled|reportedly|according to|breaking news|just launched|officially launched|press release)\b",
 }
-ALLOWED_TAGS = {"p", "h1", "h2", "h3", "h4", "ul", "ol", "li", "strong", "b", "em", "i", "br", "blockquote", "img", "figure", "figcaption", "div", "span", "script"}
+ALLOWED_TAGS = {"p", "h1", "h2", "h3", "h4", "ul", "ol", "li", "strong", "b", "em", "i", "br", "blockquote", "div", "span", "script"}
 PLACEHOLDER = re.compile(r"\[[^\]]{2,}\]|\b(?:lorem ipsum|write about|insert here|to be added|your text here)\b", re.I)
 
 
@@ -318,6 +318,8 @@ def sanitize_html(body: str) -> str:
     """Keep formatting tags, preserve schema script and img attributes."""
     scripts = re.findall(r'<script type="application/ld\+json">[\s\S]*?</script>', body, re.I)
     body = re.sub(r'<script type="application/ld\+json">[\s\S]*?</script>', "<!--SCHEMA_PLACEHOLDER-->", body, flags=re.I)
+    body = re.sub(r"<figure\b[\s\S]*?</figure>", "", body, flags=re.I)
+    body = re.sub(r"<img\b[^>]*>", "", body, flags=re.I)
     body = re.sub(r"<(script|style|iframe|object|embed)\b[\s\S]*?</\1\s*>", "", body, flags=re.I)
     body = re.sub(r"<!--(?!SCHEMA_PLACEHOLDER)[\s\S]*?-->", "", body)
     body = re.sub(r"<(?![a-zA-Z/])", "&lt;", body)
@@ -712,7 +714,7 @@ def _conclusion(primary: str, topic: str, b: Business) -> str:
 def write(primary: str, secondary: list[str], rising: list[str], b: Business, topic: str = "", progress=lambda text, body="", title="", meta="": None, length: str = "standard") -> dict:
     """Generate one complete blog article strictly adhering to the 10-part SEO Writing Structure:
     1. Blog Title (H1)
-    2. Introduction + 1 Image (min 500 chars)
+    2. Introduction (min 500 chars)
     3. Subheading 1 (H2): Paragraph 2 + Paragraph 3 (500+ chars each)
     4. Subheading 2 (H2): Paragraph 4 (500+ chars)
     5. WH Question (H2): Answer up to 750 chars
@@ -794,7 +796,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             progress(f"Starting article: {title}", "\n\n".join(parts), title=title, meta=meta)
 
             # ── 2. Introduction Paragraph (min 500 characters) + 1 Image ──
-            step("Writing Introduction (min 500 chars) & Featured Image...")
+            step("Writing Introduction (min 500 chars)...")
             loc_str = f" in {b.city}" if b.city else ""
             sec_kws_str = ", ".join(secondary[:3]) if secondary else primary
             intro_prompt = "\n".join([
@@ -818,11 +820,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 intro_p = intro_p + "\n" + _paras(supp_raw)
             parts.append(intro_p)
 
-            # Add Image with descriptive ALT text right after introduction
-            img_alt = html.escape(f"{title} - {primary} by {b.name}", quote=True)
-            img_html = f'<figure><img src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80" alt="{img_alt}" class="rounded-xl my-4 w-full object-cover max-h-96" /><figcaption class="text-xs text-slate-500 text-center mt-1">{html.escape(title, quote=False)}</figcaption></figure>'
-            parts.append(img_html)
-            progress("Introduction & Image complete.", "\n\n".join(parts), title=title, meta=meta)
+            progress("Introduction complete.", "\n\n".join(parts), title=title, meta=meta)
 
             # ── 3. First Subheading (H2): Paragraph 2 + Paragraph 3 (500+ chars each) ──
             step(f"Writing Subheading 1: {sub_1} (Paragraphs 2 & 3, 500+ chars each)...")

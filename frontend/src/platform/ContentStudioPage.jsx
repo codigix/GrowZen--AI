@@ -292,6 +292,13 @@ const ARTICLE_STATUS = { pending: ['Pending', 'gray'], generating: ['Generating'
  */
 function ArticlesList({ b, articles, reload, openId, onOpen }) {
   const working = articles.some(a => a.status === 'pending' || a.status === 'generating');
+  const handleOpen = (id) => {
+    onOpen(id);
+    setTimeout(() => {
+      const el = document.getElementById('eeat-pipeline-workspace');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
   usePoll(() => reload(true), working, 3000);
   const [busy, error, run] = useAction();
   const retry = (id) => run(`r-${id}`, async () => { await api(`/businesses/${b.id}/articles/${id}/retry`, { method: 'POST' }); reload(true); });
@@ -318,8 +325,8 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
               </div>
               {x.wp_url && <a href={x.wp_url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-700 hover:underline">WordPress draft</a>}
               {x.status === 'completed' && (openId === x.id
-                ? <span className="text-[11.5px] font-semibold text-emerald-700">Open below</span>
-                : <button type="button" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => onOpen(x.id)}>Review & edit</button>)}
+                ? <span className="text-[11.5px] font-semibold text-emerald-700">Open above in Pipeline</span>
+                : <button type="button" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => handleOpen(x.id)}>Review & edit</button>)}
               {x.status === 'failed' && <button type="button" disabled={busy === `r-${x.id}`} className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => retry(x.id)}>Retry</button>}
               <button type="button" disabled={busy === `d-${x.id}`} className="text-[11.5px] text-slate-400 hover:text-red-600 cursor-pointer" onClick={() => del(x.id)}>Delete</button>
             </li>
@@ -366,9 +373,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
   }, [articles, pendingId, setOpenId]);
 
   return (
-    <div className="space-y-4">
-      {articles.length > 0 && <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={setOpenId} />}
-            {pendingId && (
+    <div className="space-y-6">
+      {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
           <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
           <span className="font-bold">AI is writing your blog live with Claude ({pendingLength.label})</span>
@@ -380,6 +386,13 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
             onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
+
+      {/* Generated Articles History List - Below E-E-A-T Content Pipeline */}
+      {articles.length > 0 && (
+        <div className="pt-2">
+          <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={setOpenId} />
+        </div>
+      )}
     </div>
   );
 }
@@ -514,7 +527,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+    <div id="eeat-pipeline-workspace" className="grid grid-cols-1 xl:grid-cols-4 gap-4 scroll-mt-6">
       {/* Step Navigator */}
       <Card title="E-E-A-T Content Pipeline" className="xl:col-span-1">
         <ol className="space-y-1.5">
@@ -739,7 +752,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   {liveBody ? (
                     <div>
                       <div
-                        className="text-[13px] text-slate-800 leading-relaxed space-y-3 [&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-slate-100 [&_h2]:pb-1 [&_h3]:text-[13.5px] [&_h3]:font-semibold [&_h3]:text-slate-800 [&_h3]:mt-3 [&_p]:mt-2 [&_p]:text-slate-700 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mt-1"
+                        className="text-[13px] text-slate-800 leading-relaxed space-y-3 [&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-slate-100 [&_h2]:pb-1 [&_h3]:text-[13.5px] [&_h3]:font-semibold [&_h3]:text-slate-800 [&_h3]:mt-3 [&_p]:mt-2 [&_p]:text-slate-700 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mt-1 [&_figure]:hidden [&_img]:hidden"
                         dangerouslySetInnerHTML={{ __html: liveBody }}
                       />
                       {isGenerating && (
