@@ -425,6 +425,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   ]);
 
   const [draft, setDraft] = useState(selectedArticle ? selectedArticle.body || '' : '');
+  const [bodyTab, setBodyTab] = useState('editor'); // 'editor' | 'preview'
   const [meta, setMeta] = useState({
     keyword: selectedArticle?.keyword || '',
     secondary: (selectedArticle?.secondary_keywords || []).join(', '),
@@ -444,9 +445,9 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   }, [selectedArticle]);
   const isGenerating = Boolean(generating || (pendingArticle && pendingArticle.status === 'generating'));
   const activeArt = selectedArticle || pendingArticle;
-  const liveBody = activeArt?.body || draft || '';
-  const liveTitle = activeArt?.title || meta?.title || '';
-  const liveMetaDesc = activeArt?.meta_description || meta?.meta_description || '';
+  const liveBody = isGenerating ? (activeArt?.body || '') : (draft || activeArt?.body || '');
+  const liveTitle = isGenerating ? (activeArt?.title || '') : (meta?.title || activeArt?.title || '');
+  const liveMetaDesc = isGenerating ? (activeArt?.meta_description || '') : (meta?.meta_description || activeArt?.meta_description || '');
   const liveProgress = pendingArticle?.progress || (generating ? 'Connecting to Claude AI…' : '');
   const [wpBusy, setWpBusy] = useState(false);
   const [genBusy, setGenBusy] = useState(false);
@@ -744,9 +745,90 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 })()}
                 <Field label="SEO title" hint={`${meta.title.length} characters (aim for 60 or fewer)`}><input className={inputCls} value={meta.title} onChange={e => setMeta(m => ({ ...m, title: e.target.value }))} /></Field>
                 <Field label="Meta description" hint={`${meta.meta_description.length} characters (aim for 150-160)`}><textarea rows={2} className={areaCls} value={meta.meta_description} onChange={e => setMeta(m => ({ ...m, meta_description: e.target.value }))} /></Field>
-                <Field label="Article body (HTML: introduction, H2/H3 sections, FAQs, conclusion)">
-                  <textarea rows={18} className={`${areaCls} font-mono text-[12px] leading-relaxed`} value={draft} onChange={e => setDraft(e.target.value)} />
-                </Field>
+                {/* Article Body: HTML Editor & Live Preview */}
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-700">Article Body</div>
+                      <div className="text-[11px] text-slate-500">Edit raw HTML or switch to Preview to inspect the formatted blog layout</div>
+                    </div>
+                    <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setBodyTab('editor')}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${
+                          bodyTab === 'editor'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                        }`}
+                      >
+                        <Code size={13} />
+                        HTML Editor
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBodyTab('preview')}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${
+                          bodyTab === 'preview'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                        }`}
+                      >
+                        <Eye size={13} />
+                        Preview
+                      </button>
+                    </div>
+                  </div>
+
+                  {bodyTab === 'editor' ? (
+                    <div>
+                      <textarea
+                        rows={18}
+                        className={`${areaCls} font-mono text-[12px] leading-relaxed`}
+                        value={draft}
+                        onChange={e => setDraft(e.target.value)}
+                        placeholder="<h2>Introduction</h2><p>Article body HTML content...</p>"
+                      />
+                      <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Direct HTML edit mode: preserves &lt;h1&gt;, &lt;h2&gt;, &lt;h3&gt;, &lt;p&gt;, lists, FAQs, schema, and links.</span>
+                        <span>{draft.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length} words</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-slate-200 bg-white p-6 min-h-[380px] max-h-[640px] overflow-y-auto shadow-xs">
+                      {draft && draft.trim() ? (
+                        <article
+                          className="blog-preview-article text-[13.5px] text-slate-800 leading-relaxed space-y-4
+                            [&_h1]:text-[22px] [&_h1]:font-extrabold [&_h1]:text-slate-900 [&_h1]:mt-2 [&_h1]:mb-3 [&_h1]:leading-tight
+                            [&_h2]:text-[17px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-6 [&_h2]:mb-2.5 [&_h2]:border-b [&_h2]:border-slate-100 [&_h2]:pb-1.5
+                            [&_h3]:text-[14.5px] [&_h3]:font-semibold [&_h3]:text-slate-800 [&_h3]:mt-4 [&_h3]:mb-2
+                            [&_h4]:text-[13px] [&_h4]:font-semibold [&_h4]:text-slate-800 [&_h4]:mt-3 [&_h4]:mb-1
+                            [&_p]:text-slate-700 [&_p]:leading-relaxed [&_p]:my-2.5
+                            [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5 [&_ul]:my-3
+                            [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1.5 [&_ol]:my-3
+                            [&_li]:text-slate-700 [&_li]:leading-relaxed
+                            [&_strong]:font-semibold [&_strong]:text-slate-900
+                            [&_em]:italic [&_em]:text-slate-700
+                            [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-500 [&_blockquote]:bg-slate-50/60 [&_blockquote]:p-3.5 [&_blockquote]:my-3.5 [&_blockquote]:italic [&_blockquote]:text-slate-700 [&_blockquote]:rounded-r-lg
+                            [&_a]:text-indigo-600 [&_a]:underline [&_a]:hover:text-indigo-800
+                            [&_table]:w-full [&_table]:border-collapse [&_table]:my-4 [&_table]:text-[12.5px]
+                            [&_th]:border [&_th]:border-slate-200 [&_th]:bg-slate-50 [&_th]:p-2.5 [&_th]:text-left [&_th]:font-semibold
+                            [&_td]:border [&_td]:border-slate-200 [&_td]:p-2.5
+                            [&_figure]:my-4 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg
+                            [&_.faq]:p-4 [&_.faq]:rounded-xl [&_.faq]:bg-slate-50 [&_.faq]:border [&_.faq]:border-slate-200 [&_.faq]:my-3
+                            [&_.cta]:p-5 [&_.cta]:rounded-xl [&_.cta]:bg-gradient-to-r [&_.cta]:from-indigo-50 [&_.cta]:to-purple-50 [&_.cta]:border [&_.cta]:border-indigo-100 [&_.cta]:text-center [&_.cta]:my-4"
+                          dangerouslySetInnerHTML={{ __html: draft }}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400">
+                          <Eye size={28} className="opacity-40 mb-2" />
+                          <div className="text-[13px] font-semibold text-slate-600">Draft is empty</div>
+                          <div className="text-[11.5px] text-slate-400">Switch to the HTML Editor tab to add content or generate a new article.</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-slate-600">
                   <span>{(selectedArticle.suggested_keywords || []).length > 0 && <><span className="text-slate-500">Suggested tags:</span> {selectedArticle.suggested_keywords.join(', ')}</>}</span>
                   <Button size="sm" busy={saveBusy} onClick={saveArticle}>Save changes</Button>
