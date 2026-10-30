@@ -14,7 +14,10 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
-import httpx
+try:
+    import httpx
+except ImportError:
+    import requests as httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError

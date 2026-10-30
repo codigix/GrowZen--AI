@@ -1,0 +1,97 @@
+Created At: 2026-10-30T12:44:08+05:30
+Completed At: 2026-10-30T12:44:14+05:30
+Command exited with code 0.
+
+Command output:
+334: function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }) {
+335:   const list = useApi(`/businesses/${b.id}/articles`);
+336:   const articles = list.data?.articles || [];
+337:   const full = useApi(openId ? `/businesses/${b.id}/articles/${openId}` : null);
+338:   const article = openId && full.data?.id === openId ? full.data : null;
+339:   const [pendingId, setPendingId] = useState(null);  // an article started from the writer: opened as soon as it is written
+340:   const pending = pendingId ? articles.find(x => x.id === pendingId) : null;
+341:   const pendingFull = useApi(pendingId ? `/businesses/${b.id}/articles/${pendingId}` : null);  // the text written so far
+342:   usePoll(() => pendingFull.reload(true), Boolean(pendingId), 6000);
+343:   const [now, setNow] = useState(() => Date.now());
+344:   useEffect(() => {
+345:     if (!pendingId) return undefined;
+346:     const t = setInterval(() => setNow(Date.now()), 1000);
+347:     return () => clearInterval(t);
+348:   }, [pendingId]);
+349:   const pendingLength = ARTICLE_LENGTHS.find(l => l.id === pending?.length) || ARTICLE_LENGTHS[1];
+350:   const elapsed = pending?.created_at ? Math.max(0, (now - new Date(pending.created_at).getTime()) / 1000) : 0;
+351:   const preview = pendingFull.data?.id === pendingId ? pendingFull.data.body : '';
+352: 
+353:   const generate = async ({ topic, keywords, length }) => {
+354:     const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, keywords: keywords.map(k => ({ keyword: k })) } });
+355:     setPendingId(r.articles[0].id);
+356:     setOpenId(null);
+357:     list.reload(true);
+358:   };
+359:   useEffect(() => {
+360:     const a = pendingId && articles.find(x => x.id === pendingId);
+361:     if (!a) return;
+362:     if (a.status === 'completed') { setOpenId(a.id); setPendingId(null); }
+363:     else if (a.status === 'failed') setPendingId(null);
+364:   }, [articles, pendingId, setOpenId]);
+365: 
+366:   return (
+367:     <div className="space-y-4">
+368:       {articles.length > 0 && <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={setOpenId} />}
+369:             {pendingId && (
+370:         <div className="space-y-3">
+371:           {/* Status bar */}
+372:           <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200">
+373:             <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
+374:             <div className="flex-1 min-w-0">
+375:               <div className="text-[12.5px] font-bold text-indigo-900">
+376:                 AI is writing your blog… ({pendingLength.label})
+377:               </div>
+378:               <div className="text-[11.5px] text-indigo-700 truncate">
+379:                 {pending?.progress || 'Starting up Ollama — first words will appear shortly…'}
+380:               </div>
+381:             </div>
+382:             <span className="font-mono text-[11px] font-semibold text-slate-500 shrink-0">
+383:               {mins(elapsed)}
+384:             </span>
+385:           </div>
+386:           {/* Live preview — appears as sections finish */}
+387:           {preview ? (
+388:             <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+389:               <div className="px-4 py-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+390:                 <Sparkles size={12} className="text-indigo-600 shrink-0" />
+391:                 <span className="text-[11.5px] font-semibold text-slate-700">Live preview — updates as each section is written</span>
+392:                 <span className="text-[10.5px] text-slate-400 ml-auto">
+393:                   {preview.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length} words so far
+394:                 </span>
+395:               </div>
+396:               {/* built on the server from escaped text and a fixed set of tags (p, h2, h3, ul, li) */}
+397:               <div
+398:                 className="px-4 pb-3 pt-2 max-h-96 overflow-auto text-[13px] text-slate-800 leading-relaxed [&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:font-semibold [&_h3]:text-slate-800 [&_h3]:mt-3 [&_p]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mt-1"
+399:                 dangerouslySetInnerHTML={{ __html: preview }}
+400:               />
+401:               <div className="px-4 pb-3 flex items-center gap-1">
+402:                 <span className="inline-block w-2 h-4 bg-indigo-500 animate-pulse rounded-sm" />
+403:                 <span className="text-[11px] text-slate-400">Writing…</span>
+404:               </div>
+405:             </div>
+406:           ) : (
+407:             <div className="h-28 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 flex flex-col items-center justify-center gap-1.5 text-[12px] text-indigo-400">
+408:               <RefreshCw size={18} className="animate-spin opacity-50" />
+409:               <span>Ollama is thinking… first words will appear shortly</span>
+410:             </div>
+411:           )}
+412:         </div>
+413:       )}
+414:       {openId && !article
+415:         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
+416:         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} onGenerate={generate} generating={Boolean(pendingId)}
+417:             onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
+418:     </div>
+419:   );
+420: }
+421: /**
+422:  * 2. 7-Step AI Blog Writer & E-E-A-T Quality Gate
+423:  */
+424: function BlogWriterTab({ b, selectedTopic, selectedArticle, onGenerate, generating, onSaved, onScheduled, toast }) {
+425:   const [step, setStep] = useState(selectedArticle ? 1 : 0);
