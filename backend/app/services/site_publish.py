@@ -1,10 +1,12 @@
 """Publishing a blog article to the business's own website.
 
-1. detect(): fingerprint the site (WordPress, Next.js, Shopify, ...) from its headers and HTML and say how posts can reach it.
+1. detect(): read the site's technology (WordPress, Next.js, Shopify, Ghost, ...) and say how posts can reach it (services/site_stack.py).
 2. verify_*(): check the credentials before they are saved, one named step at a time (the page shows them as a checklist).
 3. publish(): send the article as a draft, a live post, or a post scheduled for later.
 
-WordPress uses its REST API with an Application Password. Next.js and custom sites receive a signed JSON webhook.
+Methods: WordPress (REST API + Application Password), Ghost (Admin API key), Shopify (custom-app token), GitHub (a Markdown file committed to the site's repository,
+for Next.js/Gatsby/Astro/Hugo/Jekyll and other code-based sites) and a signed webhook for anything else. GitHub cannot schedule by itself, so GrowZen holds
+those posts and publishes them at the chosen time (run_due_scheduled).
 """
 import hashlib
 import hmac
@@ -16,20 +18,10 @@ from urllib.parse import urlsplit
 import httpx
 
 from ..models import Article, SiteIntegration
-from . import crypto
+from . import crypto, site_adapters, site_stack
 from .net import site_client
 from .url_safety import SSRFValidationError, validate_url_shape
 
-PLATFORMS = {
-    "wordpress": ("WordPress", "wordpress"),
-    "nextjs": ("Next.js", "webhook"),
-    "shopify": ("Shopify", None),
-    "wix": ("Wix", None),
-    "squarespace": ("Squarespace", None),
-    "webflow": ("Webflow", None),
-    "static": ("Custom / static site", "webhook"),
-    "unknown": ("Unknown", None),
-}
 SIGNATURE_HEADER = "X-GrowZen-Signature"
 
 
@@ -57,68 +49,8 @@ def normalize_url(url: str) -> str:
 
 
 def detect(url: str) -> dict:
-    """Fingerprint a website. Returns {platform, label, method, confidence, evidence, server, reachable, wp_api}."""
-    url = normalize_url(url)
-    evidence: list[str] = []
-    found: dict[str, int] = {}
-
-    def hit(platform: str, weight: int, why: str) -> None:
-        found[platform] = found.get(platform, 0) + weight
-        evidence.append(why)
-
-    try:
-        with site_client(15) as c:
-            r = c.get(url)
-            html = r.text[:400_000]
-            h = {k.lower(): v for k, v in r.headers.items()}
-            wp_api = False
-            try:
-                probe = c.get(f"{url}/wp-json/")  # not r.url: the SSRF guard rewrites that to the pinned IP
-                wp_api = _is_wp_index(probe)
-            except httpx.HTTPError:
-                pass
-    except (httpx.HTTPError, SSRFValidationError) as exc:
-        return {"platform": "unknown", "label": "Unknown", "method": None, "confidence": "none", "evidence": [], "reachable": False,
-                "error": f"Could not open {url}: {str(exc)[:160]}", "server": None, "wp_api": False, "url": url}
-
-    server = h.get("server")
-    if "api.w.org" in h.get("link", ""):
-        hit("wordpress", 4, "WordPress REST API advertised in the response headers")
-    if wp_api:
-        hit("wordpress", 5, "/wp-json/ answers with the WordPress REST API")
-    if re.search(r'<meta[^>]+name=["\']generator["\'][^>]+content=["\']WordPress ([\d.]+)', html, re.I):
-        v = re.search(r'content=["\']WordPress ([\d.]+)', html, re.I).group(1)
-        hit("wordpress", 4, f"Generator tag: WordPress {v}")
-    if "/wp-content/" in html or "/wp-includes/" in html:
-        hit("wordpress", 3, "Loads files from /wp-content/")
-    if "/_next/static" in html or "__NEXT_DATA__" in html or h.get("x-powered-by", "").lower().startswith("next"):
-        hit("nextjs", 6, "Next.js build files (/_next/static)")
-    if "cdn.shopify.com" in html or "x-shopid" in h:
-        hit("shopify", 6, "Served by Shopify")
-    if "wixstatic.com" in html or "x-wix-request-id" in h:
-        hit("wix", 6, "Built with Wix")
-    if "squarespace" in html.lower()[:200_000] and "static1.squarespace.com" in html:
-        hit("squarespace", 6, "Built with Squarespace")
-    if "data-wf-site" in html or "assets.website-files.com" in html:
-        hit("webflow", 6, "Built with Webflow")
-
-    page_builder = "Elementor" if "elementor" in html.lower() else None
-    stack = [x for x in (page_builder, f"PHP ({h['x-powered-by']})" if "php" in h.get("x-powered-by", "").lower() else None,
-                         "ASP.NET" if "asp.net" in h.get("x-powered-by", "").lower() else None,
-                         "jQuery" if "jquery" in html.lower() else None, "Bootstrap" if "bootstrap" in html.lower() else None,
-                         "React" if "react" in html.lower() and "nextjs" not in found else None) if x]
-    if server:
-        stack.append(f"Server: {server}")
-
-    if found:
-        platform = max(found, key=found.get)
-        confidence = "high" if found[platform] >= 6 else "medium"
-    else:
-        platform, confidence = "static", "low"
-        evidence.append("No CMS signature found, so it looks like a hand-built site")
-    label, method = PLATFORMS[platform]
-    return {"platform": platform, "label": label, "method": method, "confidence": confidence, "evidence": evidence, "stack": stack,
-            "server": server, "reachable": True, "wp_api": wp_api, "url": url}
+    """Read a website's technology (CMS or framework, language, hosting, plugins) and say how posts can reach it. See services/site_stack.py."""
+    return site_stack.detect(normalize_url(url))
 
 
 # WordPress
@@ -205,10 +137,14 @@ def publish(row: SiteIntegration, a: Article, mode: str, when: datetime | None) 
     steps = [{"step": "Prepare the article", "ok": True, "detail": f"{len((a.body or '').split())} words, title: {a.title or a.keyword}"}]
     if mode == "schedule" and (not when or when <= datetime.now(timezone.utc)):
         raise PublishError("Pick a date and time in the future to schedule the post.")
+    if mode == "schedule" and row.method in LOCAL_SCHEDULE:
+        raise PublishError("This website has no way to publish later by itself: GrowZen schedules it and publishes at the chosen time.")
     if row.method == "wordpress":
         out = _publish_wordpress(row, a, mode, when, steps)
     elif row.method == "webhook":
         out = _publish_webhook(row, a, mode, when, steps)
+    elif row.method in ("github", "ghost", "shopify"):
+        out = _adapted(getattr(site_adapters, f"publish_{row.method}"), row, a, mode, when, steps)
     else:
         raise PublishError("This website is not connected yet.")
     out["steps"] = steps
@@ -270,3 +206,75 @@ def _publish_webhook(row: SiteIntegration, a: Article, mode: str, when: datetime
     except ValueError:
         d = {}
     return {"id": str(d.get("id", "")), "url": d.get("url", ""), "status": d.get("status") or {"draft": "draft", "publish": "publish", "schedule": "future"}[mode]}
+
+
+# ---- the other methods (services/site_adapters.py), with their errors mapped to PublishError
+METHODS = ("wordpress", "webhook", "github", "ghost", "shopify")
+LOCAL_SCHEDULE = frozenset({"github"})  # methods with no native "publish later": GrowZen publishes them at the chosen time
+
+
+def _adapted(fn, *args):
+    try:
+        return fn(*args)
+    except site_adapters.AdapterError as exc:
+        raise PublishError(str(exc)) from exc
+
+
+def verify_github(token: str, repo: str, branch: str | None, directory: str) -> tuple[list[dict], dict | None]:
+    return _adapted(site_adapters.verify_github, token, repo, branch, directory)
+
+
+def verify_ghost(url: str, key: str) -> tuple[list[dict], dict | None]:
+    return _adapted(site_adapters.verify_ghost, normalize_url(url), key)
+
+
+def verify_shopify(url: str, token: str, blog_id: str | None = None) -> tuple[list[dict], dict | None]:
+    return _adapted(site_adapters.verify_shopify, url, token, blog_id)
+
+
+def verify_saved(row: SiteIntegration) -> tuple[list[dict], dict | None]:
+    """Re-run the checks with a connection's saved credentials."""
+    secret = crypto.unseal(row.secret_enc)
+    cfg = row.config or {}
+    if row.method == "wordpress":
+        return verify_wordpress(row.base_url, row.username or "", secret)
+    if row.method == "github":
+        return verify_github(secret, cfg.get("repo", ""), cfg.get("branch"), cfg.get("directory", "content/blog"))
+    if row.method == "ghost":
+        return verify_ghost(row.base_url, secret)
+    if row.method == "shopify":
+        return verify_shopify(row.base_url, secret, cfg.get("blog_id"))
+    return verify_webhook(row.base_url, secret)
+
+
+def run_due_scheduled(db, now: datetime | None = None, limit: int = 20) -> int:
+    """Publish the posts GrowZen is holding whose time has come. A failure is retried (three tries, ten minutes apart) before it is marked failed."""
+    from datetime import timedelta
+
+    from sqlalchemy import select
+
+    from ..models import ScheduledPost
+    from .activity import log
+    now = now or datetime.now(timezone.utc)
+    done = 0
+    for sp_row in list(db.scalars(select(ScheduledPost).where(ScheduledPost.status == "pending", ScheduledPost.due_at <= now).order_by(ScheduledPost.due_at).limit(limit))):
+        a = db.get(Article, sp_row.article_id)
+        row = db.scalar(select(SiteIntegration).where(SiteIntegration.business_id == sp_row.business_id))
+        try:
+            if a is None or row is None or row.status != "connected" or row.method != sp_row.method:
+                raise PublishError("The website is no longer connected, or the article was deleted.")
+            out = publish(row, a, "publish", None)
+            sp_row.status, sp_row.result, sp_row.error, sp_row.finished_at = "published", {k: out.get(k) for k in ("id", "url", "status")}, None, now
+            a.wp_post_id, a.wp_url = out["id"] or None, out["url"] or None
+            log(db, "scheduler", "post_published", sp_row.business_id, article_id=sp_row.article_id, url=out.get("url"))
+            done += 1
+        except PublishError as exc:
+            sp_row.attempts += 1
+            sp_row.error = str(exc)[:500]
+            if sp_row.attempts >= 3 or "no longer connected" in str(exc):
+                sp_row.status, sp_row.finished_at = "failed", now
+                log(db, "scheduler", "post_publish_failed", sp_row.business_id, article_id=sp_row.article_id, error=str(exc)[:200])
+            else:
+                sp_row.due_at = now + timedelta(minutes=10)
+        db.commit()
+    return done

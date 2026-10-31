@@ -11,7 +11,7 @@ from ..deps import get_business, in_background
 from ..models import AgentTask, Audit, Business, InsightDay, Lead, Review, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
-from ..services import agent, audits, discovery, gbp, reports, schedules
+from ..services import agent, audits, discovery, gbp, reports, schedules, site_onboarding
 from ..services import analytics as analytics_service, portfolio as portfolio_service, site_health
 from ..services.activity import log
 from ..services.profile_score import score_profile
@@ -48,12 +48,14 @@ def portfolio(db: Session = Depends(get_db), _: User = Depends(current_user)):
 
 
 @router.post("", status_code=201)
-def create_business(body: BusinessIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def create_business(body: BusinessIn, background: BackgroundTasks, db: Session = Depends(get_db), user: User = Depends(current_user)):
     b = Business(**body.model_dump(), source="manual", created_by=user.name)
     db.add(b)
     db.commit()
     log(db, user.name, "business_created", b.id)
     db.commit()
+    if b.website and site_onboarding.autodetect_enabled():
+        background.add_task(in_background(site_onboarding.detect_in_background, b.id))  # reads the website's technology without making the user wait
     return row(b)
 
 
@@ -63,12 +65,15 @@ def get_one(b: Business = Depends(get_business)):
 
 
 @router.patch("/{business_id}")
-def update(body: BusinessPatch, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     changes = body.model_dump(exclude_unset=True)
+    old_site = b.website
     for k, v in changes.items():
         setattr(b, k, v)
     log(db, user.name, "business_updated", b.id, fields=list(changes))
     db.commit()
+    if b.website and b.website != old_site and site_onboarding.autodetect_enabled():
+        background.add_task(in_background(site_onboarding.detect_in_background, b.id))  # a new address means a possibly different technology
     return row(b)
 
 

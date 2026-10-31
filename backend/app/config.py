@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     ollama_prompt_persona: str = "You are an experienced SEO blog writer. Write clearly and helpfully, in simple English."
     ollama_prompt_requirements: str = "- Keep paragraphs short."
     # WordPress REST API (Application Password) for pushing a generated article as a draft; optional.
+    site_autodetect: bool = True  # read a website's technology in the background when a business is created or its website changes
     wordpress_url: str = ""
     wordpress_user: str = ""
     wordpress_app_password: str = ""

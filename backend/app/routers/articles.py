@@ -158,13 +158,31 @@ def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business
     if a.status != "completed":
         raise HTTPException(409, "Only a completed article can be published")
     when = body.scheduled_at.astimezone(timezone.utc) if body.scheduled_at and body.scheduled_at.tzinfo else None
+    target = _target(db, b)
+    if body.mode == "schedule" and target.method in sp.LOCAL_SCHEDULE:
+        return _hold_for_later(db, b, a, target, when)
     try:
-        out = sp.publish(_target(db, b), a, body.mode, when)
+        out = sp.publish(target, a, body.mode, when)
     except sp.PublishError as exc:
         raise HTTPException(502, str(exc))
     a.wp_post_id, a.wp_url = out["id"] or None, out["url"] or None
     db.commit()
     return {**out, "article": row(a)}
+
+
+def _hold_for_later(db: Session, b: Business, a: Article, target: SiteIntegration, when: datetime | None) -> dict:
+    """GitHub has no "publish later": GrowZen keeps the post and commits it at the chosen time (the scheduler checks every minute)."""
+    from ..models import ScheduledPost
+    if not when or when <= datetime.now(timezone.utc):
+        raise HTTPException(422, "Pick a date and time in the future to schedule the post.")
+    for old in db.scalars(select(ScheduledPost).where(ScheduledPost.article_id == a.id, ScheduledPost.status == "pending")):
+        old.status = "cancelled"  # scheduling the same article again replaces the earlier time
+    p = ScheduledPost(business_id=b.id, article_id=a.id, method=target.method, due_at=when)
+    db.add(p)
+    db.commit()
+    steps = [{"step": "Prepare the article", "ok": True, "detail": f"{len((a.body or '').split())} words, title: {a.title or a.keyword}"},
+             {"step": "Schedule it", "ok": True, "detail": f"GrowZen will publish it to your website at {when.strftime('%d %b %Y %H:%M')} UTC"}]
+    return {"id": None, "url": None, "status": "scheduled", "steps": steps, "scheduled_post_id": p.id, "due_at": when, "article": row(a)}
 
 
 @router.post("/{article_id}/publish-wordpress")

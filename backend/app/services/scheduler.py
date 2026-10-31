@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from ..config import get_settings
 from ..db import SessionLocal
-from . import intake, jobs, pipeline, schedules
+from . import intake, jobs, pipeline, schedules, site_publish
 
 log = logging.getLogger("seo.scheduler")
 _scheduler: BackgroundScheduler | None = None
@@ -19,7 +19,7 @@ LAST_TICK: dict[str, object] = {"at": None, "result": None}
 
 def tick() -> dict[str, int]:
     db = SessionLocal()
-    out = {"emails": 0, "onboarded": 0, "jobs": 0, "recovered": 0}
+    out = {"emails": 0, "onboarded": 0, "jobs": 0, "recovered": 0, "posts": 0}
     locked = False
     try:
         if db.bind.dialect.name == "postgresql":  # two processes must never run the same jobs twice
@@ -34,6 +34,7 @@ def tick() -> dict[str, int]:
             log.warning("IMAP poll failed: %s", exc)
         out["onboarded"] = pipeline.process_waiting(db)
         out["jobs"] = schedules.run_due(db)
+        out["posts"] = site_publish.run_due_scheduled(db)  # blog posts held for a chosen time
     finally:
         if locked:
             db.execute(text("select pg_advisory_unlock(7310042)"))

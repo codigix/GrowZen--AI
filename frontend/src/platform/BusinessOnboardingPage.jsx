@@ -1579,6 +1579,18 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
       await api(`/businesses/${b.id}`, { method: 'PATCH', repeat: true, body: Object.fromEntries(Object.entries(patch).filter(([k, v]) => v !== null || k === 'services' || k === 'attributes')) });
       mark('details', 'done', `${form.services.length} service${form.services.length === 1 ? '' : 's'}, contact and location saved`);
 
+      // Read the website's technology now, so the Blog tab already knows how to publish to it. A site we cannot read never stops onboarding.
+      if (patch.website) {
+        mark('stack', 'running');
+        try {
+          const d = (await api(`/businesses/${b.id}/site-integration/detect`, { method: 'POST', body: {} }))?.detected;
+          if (d?.reachable) {
+            const how = d.publishing?.method ? `can publish blogs directly (${d.publishing.method})` : 'blogs go in through a webhook';
+            mark('stack', 'done', `${d.version ? `${d.label} ${d.version}` : d.label}${d.stack?.length > 1 ? ` · ${d.stack.slice(1, 5).join(' · ')}` : ''}: ${how}`);
+          } else mark('stack', 'skipped', d?.error || 'The website could not be opened, so its technology is unknown');
+        } catch (e) { mark('stack', 'skipped', e.message || 'Could not read the website'); }
+      } else mark('stack', 'skipped', 'No website to read');
+
       // Step 1 of the process: research the competitors. Keyword discovery then starts from what it finds.
       mark('competitors', 'running');
       try {
@@ -1665,6 +1677,7 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
           <StepLine state={log.create?.state || 'todo'} label={(project ? !project.created : existing) ? 'Update the existing project' : 'Create the project'} detail={log.create?.detail} />
           <StepLine state={log.reviews?.state || 'todo'} label="Import recent Google reviews" detail={log.reviews?.detail} />
           <StepLine state={log.details?.state || 'todo'} label="Save details, services and plan" detail={log.details?.detail} />
+          <StepLine state={log.stack?.state || 'todo'} label="Read the website's technology (for publishing blogs)" detail={log.stack?.detail} />
           <StepLine state={log.competitors?.state || 'todo'} label="Research competitors (step 1)" detail={log.competitors?.detail} />
           <StepLine state={log.keywords?.state || 'todo'} label="Add seed keywords" detail={log.keywords?.detail} />
           <StepLine state={log.followups?.state || 'todo'} label="Add website & Google profile fixes to the to-do list" detail={log.followups?.detail || (followUps.length ? followUps.map(x => x.title).join(' · ') : null)} />
@@ -1699,6 +1712,7 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
               <>
                 <button onClick={onDone} className="h-10 px-4 rounded text-13 font-semibold bg-white ring-1 ring-inset ring-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer">Onboard another</button>
                 <button onClick={() => open('dashboard')} className="h-10 px-4 rounded text-13 font-semibold bg-white ring-1 ring-inset ring-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer">Command Center</button>
+                {log.stack?.state === 'done' && <button onClick={() => open('ai-content-generation?tab=blog')} className="h-10 px-4 rounded text-13 font-semibold bg-white ring-1 ring-inset ring-indigo-200 text-indigo-700 hover:bg-indigo-50 cursor-pointer">Set up blog publishing</button>}
                 <button onClick={() => open('gmb-profile')} className="h-10 px-4 rounded text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 inline-flex items-center gap-1.5 cursor-pointer">Open project <ArrowRight size={14} /></button>
               </>
             )}

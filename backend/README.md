@@ -156,6 +156,20 @@ Run `alembic upgrade head`: the migration history has a single head again (`0019
 
 ## AI layer
 
+### Publishing blogs to a customer's website
+
+1. **Onboarding reads the site's technology.** When a project is created (or its website changes) the platform fingerprints the site in the background
+   (`services/site_stack.py`): CMS or framework, language, hosting/CDN, plugins, analytics, and whether it has a blog. The onboarding run shows it as a step.
+2. **Blog tab > Publish & Schedule** uses that result: it recommends the method that fits the stack and explains it (the text comes from the server).
+3. **Methods** (`services/site_publish.py`, `services/site_adapters.py`): WordPress (Application Password), Ghost (Admin API key), Shopify (custom-app token),
+   GitHub (a Markdown file with front matter committed to the site's repo, for Next.js/Gatsby/Astro/Hugo/Jekyll and other code-based sites) and a signed webhook
+   (the way in for Wix, Squarespace, Webflow and other builders that have no write API we can use). Each connection is checked step by step before it is saved.
+4. **Scheduling**: WordPress, Ghost and Shopify schedule natively. GitHub has no "publish later", so GrowZen holds the post (`scheduled_posts`) and the scheduler
+   commits it at the chosen time (retries three times, ten minutes apart; cancel from the panel).
+
+Tested against simulated WordPress, GitHub, Ghost, Shopify and webhook servers (`tests/test_site_publish.py`, `test_site_adapters.py`, `test_site_stack.py`). A real
+customer's token or host rules are what the connect-time checks verify; set `SITE_AUTODETECT=false` to turn the background reading off.
+
 ### JavaScript pages and the weekly competitor watch
 
 - **Read JavaScript pages** (Discovery bot tab, off by default): pages that are an empty app shell until JavaScript runs are loaded in headless Chrome, at most 10 per run.
