@@ -132,6 +132,7 @@ class Settings(BaseSettings):
     # Scheduler
     scheduler_enabled: bool = True
     scheduler_tick_seconds: int = 300
+    backlink_bot_auto_enabled: bool = True  # set false to stop the 60s auto-tick; "Run now" in the UI still works
 
     # Lighthouse audits (/lighthouse/...): full Lighthouse reports from PageSpeed Insights (needs
     # PAGESPEED_API_KEY) or a local Lighthouse CLI (Node.js + `npm install -g lighthouse` + Chrome).

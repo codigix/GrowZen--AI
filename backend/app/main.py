@@ -22,7 +22,7 @@ from keyword_explorer.api.routes.keywords import router as keyword_explorer_rout
 from .competitors import audit_router as competitor_audits, intel_router as competitor_research, router as competitors
 from .auth import current_user
 from .backlinks import router as backlinks
-from .backlinks.router import outcomes_router, watch_router
+from .backlinks.router import finder_router, outcomes_router, watch_router
 from .config import get_settings
 from .db import SessionLocal, engine
 from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_trends, leads, lighthouse, profile, seo, site_integration, system, website
@@ -65,6 +65,7 @@ for r in (system, auth, businesses, profile, growth, seo, assistant, leads, inta
 
 app.include_router(outcomes_router, prefix=settings.api_prefix)
 app.include_router(watch_router, prefix=settings.api_prefix)
+app.include_router(finder_router, prefix=settings.api_prefix)
 
 # Keyword Explorer endpoints (/api/keywords)
 # Signed-in users only: it calls external suggestion engines on our server's behalf, so it must not be open to the internet.

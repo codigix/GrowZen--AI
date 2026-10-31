@@ -185,6 +185,34 @@ class BiBotConfig(TimestampMixin, Base):
     last_stats: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
+class BacklinkFinderTarget(TimestampMixin, Base):
+    """A domain, subdomain or exact URL a business wants watched for backlinks, independent of the tracked-competitor set."""
+    __tablename__ = "bi_finder_targets"
+    __table_args__ = (UniqueConstraint("business_id", "normalized_value"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    raw_value: Mapped[str] = mapped_column(String(500))  # exactly what the user typed
+    kind: Mapped[str] = mapped_column(String(10))  # domain | subdomain | url
+    host: Mapped[str] = mapped_column(String(255), index=True)
+    normalized_value: Mapped[str] = mapped_column(String(500))  # host (domain/subdomain) or normalized URL (url)
+    active: Mapped[bool] = mapped_column(default=True)
+
+
+class BacklinkFinderResult(Base):
+    """One link found by the crawler pointing at a finder target."""
+    __tablename__ = "bi_finder_results"
+    __table_args__ = (UniqueConstraint("target_id", "source_url", "target_url"),)
+    id: Mapped[int] = mapped_column(BigPK, primary_key=True)
+    target_id: Mapped[int] = mapped_column(ForeignKey("bi_finder_targets.id", ondelete="CASCADE"), index=True)
+    source_url: Mapped[str] = mapped_column(Text)
+    source_domain: Mapped[str] = mapped_column(String(255))
+    target_url: Mapped[str] = mapped_column(Text)
+    anchor_text: Mapped[str | None] = mapped_column(Text)
+    link_type: Mapped[str | None] = mapped_column(String(30))
+    rel_attributes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class BiDomainScore(TimestampMixin, Base):
     """How good a referring domain is for one business: relevance to its niche and spam risk, with the reason. Ours, not a third party's."""
     __tablename__ = "bi_domain_scores"

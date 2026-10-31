@@ -65,7 +65,8 @@ def start() -> None:
         return
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.add_job(tick, "interval", seconds=s.scheduler_tick_seconds, id="seo-tick", max_instances=1, coalesce=True)
-    _scheduler.add_job(bot_tick, "interval", seconds=60, id="backlink-bot", max_instances=1, coalesce=True)
+    if s.backlink_bot_auto_enabled:
+        _scheduler.add_job(bot_tick, "interval", seconds=60, id="backlink-bot", max_instances=1, coalesce=True)
     _scheduler.start()
     log.info("Scheduler started (every %ss)", s.scheduler_tick_seconds)
 
