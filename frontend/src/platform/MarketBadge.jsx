@@ -21,7 +21,7 @@ export const marketOf = (b) => {
 const STYLE = { local: ['bg-sky-50 text-sky-700 ring-sky-200', MapPin], national: ['bg-emerald-50 text-emerald-700 ring-emerald-200', Flag], international: ['bg-violet-50 text-violet-700 ring-violet-200', Globe] };
 
 /** "Local · Aundh, Pune" / "National · India" / "International · United States, Germany", linking to where it is changed. */
-export function MarketBadge({ business, to = '/gmb-profile?tab=profile' }) {
+export function MarketBadge({ business, to = '/gmb-profile?tab=profile&sub=edit' }) {
   if (!business) return null;
   const m = marketOf(business);
   const [cls, Icon] = STYLE[m.scope];

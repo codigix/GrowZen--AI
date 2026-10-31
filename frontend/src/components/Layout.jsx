@@ -118,7 +118,7 @@ const isActivePath = (pathname, search, to) => {
 function useConnections() {
   const { data } = useApi('/status');
   if (!data) return null;
-  const checks = [data.ai?.configured, data.google_oauth, data.pagespeed_key, data.dataforseo, data.smtp, data.intake_imap];
+  const checks = [data.ai?.configured, data.google_oauth, data.pagespeed_key, data.smtp, data.intake_imap];
   return { connected: checks.filter(Boolean).length, total: checks.length };
 }
 
@@ -179,7 +179,7 @@ export default function Layout({ user, onLogout, onChangePassword }) {
         <div className={`h-[70px] shrink-0 flex items-center bg-topbar ${rail ? 'justify-center px-2' : 'justify-between px-4'}`}>
           <NavLink to="/dashboard" className="flex items-center gap-2.5 min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" title="bevisibe AI">
             <div className="w-9 h-9 rounded bg-white p-1 flex items-center justify-center shrink-0">
-              <img src="/bevisibe-icon.png" alt="bevisibe" className="w-full h-full object-contain" />
+              <img src="/bevisibe-mark.png" alt="bevisibe" className="w-full h-full object-contain" />
             </div>
             {!rail && (
               <div className="min-w-0">
@@ -273,7 +273,7 @@ export default function Layout({ user, onLogout, onChangePassword }) {
               <Menu size={20} />
             </button>
             <div className="flex items-center gap-2">
-              <img src="/bevisibe-icon.png" alt="bevisibe" className="w-7 h-7 object-contain" />
+              <img src="/bevisibe-mark.png" alt="bevisibe" className="w-7 h-7 object-contain" />
               <span className="font-bold text-15 text-white">bevisibe</span>
               <span className="text-9 font-bold px-1.5 py-0.5 rounded bg-indigo-500 text-white ">AI</span>
             </div>

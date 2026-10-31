@@ -1,4 +1,4 @@
-"""Live Google data through Serper.dev (SERPER_API_KEY), used when DataForSEO isn't connected.
+"""Live Google data through Serper.dev (SERPER_API_KEY), used for rank grids, citations and link sources.
 
 - Rankings: a Google Maps search at each point of a grid around the business's pin (the `ll` parameter),
   finding where the business shows. Each point costs 3 Serper credits, so grids stay small.
@@ -76,7 +76,7 @@ class SerperBacklinks(BacklinkProvider):
         found = {d: s for d, s in found.items() if not (set(re.findall(r"[a-z]+", f"{s['title']} {s['url']}".lower())) & away)}
         top = [{"domain": s["domain"], "authority": None, "anchor": None, "toxic": False, "url": s["url"], "title": s["title"], "type": s["type"]} for s in found.values()]
         return {"referring_domains": len(top), "backlinks": None, "toxic": 0, "anchors": {}, "top": top, "source": "google_mentions",
-                "note": "Sites Google shows linking to or mentioning the business. Connect DataForSEO for full backlink counts."}
+                "note": "Sites Google shows linking to or mentioning the business. Google has no API for full backlink counts."}
 
 
 def listing_sites(category: str | None, country: str | None = None) -> list[tuple[str, str]]:

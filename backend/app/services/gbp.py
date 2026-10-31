@@ -240,7 +240,66 @@ class GbpClient:
                     days.setdefault(key, {})[s["dailyMetric"]] = int(v.get("value", 0))
         return days
 
-    # Write (approved tasks only)
+    # Write
+    def update_location(self, name: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Change the live profile. `body` holds Business Information fields; only those keys are sent (the update mask)."""
+        return self._req("PATCH", f"{INFO}/{name}", params={"updateMask": ",".join(sorted(_mask(body)))}, json=body)
+
+    # Categories
+    def search_categories(self, term: str, region: str = "IN", language: str = "en") -> list[dict[str, Any]]:
+        d = self._req("GET", f"{INFO}/categories", params={"regionCode": region, "languageCode": language, "searchTerm": term, "view": "BASIC", "pageSize": 20})
+        return [{"name": c["name"], "displayName": c.get("displayName", "")} for c in d.get("categories", [])]
+
+    # Attributes: what Google offers for this location, and setting them
+    def available_attributes(self, location: str, region: str = "IN", language: str = "en") -> list[dict[str, Any]]:
+        out, token = [], None
+        while True:
+            d = self._req("GET", f"{INFO}/attributes", params={"parent": location, "languageCode": language, "pageSize": 200, **({"pageToken": token} if token else {})})
+            out += d.get("attributeMetadata", [])
+            token = d.get("nextPageToken")
+            if not token:
+                return out
+
+    def set_attributes(self, location: str, values: dict[str, Any]) -> dict[str, Any]:
+        """values: {attribute id (e.g. has_wheelchair_accessible_entrance): True | False | 'ENUM_VALUE' | [..]}"""
+        attrs = [{"name": f"attributes/{k}" if not str(k).startswith("attributes/") else k, "values": v if isinstance(v, list) else [v]} for k, v in values.items()]
+        mask = ",".join(a["name"] for a in attrs)
+        return self._req("PATCH", f"{INFO}/{location}/attributes", params={"attributeMask": mask}, json={"name": f"{location}/attributes", "attributes": attrs})
+
+    # Media (photos): upload bytes or let Google fetch a public URL; delete
+    def add_media(self, account: str, location: str, category: str, url: str | None = None, data: bytes | None = None, content_type: str = "image/jpeg") -> dict[str, Any]:
+        body: dict[str, Any] = {"mediaFormat": "VIDEO" if content_type.startswith("video") else "PHOTO", "locationAssociation": {"category": category}}
+        if url:
+            body["sourceUrl"] = url
+        elif data is not None:
+            ref = self._req("POST", f"{V4}/{account}/{location}/media:startUpload")
+            r = httpx.post(f"https://mybusiness.googleapis.com/upload/v1/media/{ref['resourceName']}", params={"upload_type": "media"}, content=data,
+                           headers={"Authorization": f"Bearer {self._token()}", "Content-Type": content_type}, timeout=120)
+            if r.status_code >= 400:
+                raise GbpError(explain_google_error(r.status_code, r.text[:200], "media upload"))
+            body["dataRef"] = {"resourceName": ref["resourceName"]}
+        else:
+            raise GbpError("Give a photo file or a public image URL.")
+        return self._req("POST", f"{V4}/{account}/{location}/media", json=body)
+
+    def delete_media(self, name: str) -> None:
+        self._req("DELETE", f"{V4}/{name}")
+
+    # Posts: edit and delete a live one
+    def update_post(self, name: str, post: dict[str, Any]) -> dict[str, Any]:
+        body: dict[str, Any] = {"summary": post["body"], "languageCode": "en"}
+        mask = ["summary"]
+        if post.get("cta_type") and post.get("cta_url"):
+            body["callToAction"] = {"actionType": post["cta_type"], "url": post["cta_url"]}
+            mask.append("callToAction")
+        return self._req("PATCH", f"{V4}/{name}", params={"updateMask": ",".join(mask)}, json=body)
+
+    def delete_post(self, name: str) -> None:
+        self._req("DELETE", f"{V4}/{name}")
+
+    def delete_reply(self, account: str, location: str, review_id: str) -> None:
+        self._req("DELETE", f"{V4}/{account}/{location}/reviews/{review_id}/reply")
+
     def reply_review(self, account: str, location: str, review_id: str, text: str) -> None:
         self._req("PUT", f"{V4}/{account}/{location}/reviews/{review_id}/reply", json={"comment": text})
 
@@ -341,6 +400,69 @@ def listing_status(loc: dict[str, Any]) -> dict[str, Any]:
         "account_name": loc.get("account_name"), "account_role": loc.get("account_role"), "account_type": loc.get("account_type"),
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _mask(body: dict[str, Any]) -> set[str]:
+    out = set()
+    for k, v in body.items():
+        out |= {f"{k}.{c}" for c in v} if k in ("profile", "phoneNumbers") else {k}
+    return out
+
+
+def _time(hhmm: str | None) -> dict[str, int]:
+    h, m = (hhmm or "00:00").split(":")[:2]
+    return {"hours": int(h), "minutes": int(m)}
+
+
+def fields_to_location(changes: dict[str, Any]) -> dict[str, Any]:
+    """The Business columns that changed -> the Google location fields to patch (the inverse of location_to_fields).
+    Only fields Google accepts as plain values: categories and the address need Google's own ids, so they stay read-only."""
+    body: dict[str, Any] = {}
+    if changes.get("name"):
+        body["title"] = changes["name"]
+    if "phone" in changes and changes["phone"]:
+        body["phoneNumbers"] = {"primaryPhone": changes["phone"]}
+    if "website" in changes:
+        body["websiteUri"] = changes["website"] or ""
+    if "description" in changes:
+        body["profile"] = {"description": changes["description"] or ""}
+    if changes.get("hours") and changes["hours"].get("periods") is not None:
+        body["regularHours"] = {"periods": changes["hours"]["periods"]}
+    if "special_hours" in changes:
+        periods = []
+        for s in changes["special_hours"] or []:
+            y, mo, d = (int(x) for x in str(s["date"]).split("-"))
+            date_ = {"year": y, "month": mo, "day": d}
+            periods.append({"startDate": date_, "endDate": date_, "closed": True} if s.get("closed") else {"startDate": date_, "endDate": date_, "openTime": _time(s.get("open")), "closeTime": _time(s.get("close"))})
+        body["specialHours"] = {"specialHourPeriods": periods}
+    return body
+
+
+def address_body(current: dict[str, Any] | None, a: dict[str, Any]) -> dict[str, Any]:
+    """Merge the edited address onto the one Google holds (keeps its region and language)."""
+    cur = dict(current or {})
+    cur["addressLines"] = [x for x in a.get("address_lines", []) if x and x.strip()]
+    for k, f in (("locality", "locality"), ("postalCode", "postal_code"), ("administrativeArea", "administrative_area"), ("regionCode", "region_code")):
+        if a.get(f):
+            cur[k] = a[f]
+    cur.setdefault("languageCode", "en")
+    if not cur.get("regionCode") or not cur["addressLines"]:
+        raise GbpError("An address needs at least a country and one address line.")
+    return cur
+
+
+def service_items_body(services: list[dict[str, Any]], category: str | None) -> dict[str, Any]:
+    items = []
+    for s in services:
+        if not (s.get("name") or "").strip():
+            continue
+        item: dict[str, Any] = {"freeFormServiceItem": {"category": category, "label": {"displayName": s["name"].strip()[:140], "languageCode": "en", **({"description": s["description"][:300]} if s.get("description") else {})}}}
+        digits = "".join(ch for ch in str(s.get("price") or "") if ch.isdigit() or ch == ".")
+        if digits and digits != ".":
+            units, _, frac = digits.partition(".")
+            item["price"] = {"currencyCode": s.get("currency") or "INR", "units": units or "0", "nanos": int((frac + "000000000")[:9] or 0)}
+        items.append(item)
+    return {"serviceItems": items}
 
 
 def location_to_fields(loc: dict[str, Any]) -> dict[str, Any]:
@@ -466,6 +588,8 @@ def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
     # Google is the source of truth for a linked profile: bring its name, categories, contact, address and hours in.
     for k, v in location_to_fields(loc).items():
         if k not in ("gbp_status", "gbp_account", "gbp_location") and v not in (None, "", [], {}):
+            if k == "website" and ".grexa.site" in str(v) and b.website and ".grexa.site" not in b.website:
+                continue  # Grexa's auto-generated placeholder site on the profile must not replace the business's real website
             setattr(b, k, v)
     status = listing_status(loc) | {k: (b.gbp_status or {}).get(k) for k in ("account_name", "account_role", "account_type")}
     live = fetch_live(client, b, loc)

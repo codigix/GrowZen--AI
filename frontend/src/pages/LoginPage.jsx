@@ -99,6 +99,7 @@ export default function LoginPage({ onSignedIn }) {
   };
 
   const fillAdmin = () => {
+    if (!import.meta.env.DEV) return; // the demo account is a local-development helper only
     setEmail('info@codigixinfotech.com');
     setPassword('Seo@1d86f6a045');
     if (view !== 'login') {
@@ -129,7 +130,7 @@ export default function LoginPage({ onSignedIn }) {
           <div className="space-y-2">
             <div className="flex items-center gap-3.5">
               <div className="w-14 h-14 rounded bg-white border border-blue-500/20 p-2 flex items-center justify-center text-slate-900 shadow-xl shadow-blue-500/10 ring-1 ring-slate-200 shrink-0">
-                <img src="/bevisibe-icon.png" alt="bevisibe Logo" className="w-full h-full object-contain filter drop-shadow" />
+                <img src="/bevisibe-mark.png" alt="bevisibe Logo" className="w-full h-full object-contain filter drop-shadow" />
               </div>
               <div>
                 <h1 className="text-3xl lg:text-4xl font-extrabold tracking-tight font-display text-slate-900 flex items-center gap-2">
@@ -189,7 +190,7 @@ export default function LoginPage({ onSignedIn }) {
               <>
                 <div className="mb-6 text-center lg:text-left">
                   <div className="flex items-center justify-center lg:justify-start mb-4">
-                    <img src="/bevisibe-horizontal.png" alt="bevisibe" className="h-12 w-auto object-contain filter drop-shadow-md" />
+                    <img src="/bevisibe-mark.png" alt="bevisibe" className="h-14 w-14 object-contain" />
                   </div>
                   <h2 className="text-xl font-bold text-slate-900 font-display">Sign In</h2>
                   <p className="text-13 text-slate-500 mt-1">Access your agency dashboard and client portfolios</p>
@@ -279,7 +280,7 @@ export default function LoginPage({ onSignedIn }) {
                   </button>
                 </form>
 
-                {/* Quick Demo Credentials Helper */}
+                {import.meta.env.DEV && (
                 <div className="mt-6 pt-5 border-t border-slate-200">
                   <div className="flex items-center justify-between">
                     <span className="text-11 font-medium text-slate-500">Default Dev Account:</span>
@@ -296,6 +297,7 @@ export default function LoginPage({ onSignedIn }) {
                     <div><span className="text-slate-500">Password:</span> Seo@1d86f6a045</div>
                   </div>
                 </div>
+                )}
               </>
             )}
 

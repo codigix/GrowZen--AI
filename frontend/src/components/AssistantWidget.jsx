@@ -94,7 +94,7 @@ export default function AssistantWidget() {
       {open && (
         <section aria-label="bevisibe Assistant" className="fixed z-[65] right-4 bottom-24 sm:right-6 w-[calc(100vw-2rem)] sm:w-[400px] h-[min(640px,calc(100vh-8rem))] flex flex-col rounded-xl bg-white shadow-2xl ring-1 ring-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           <header className="bg-topbar text-white px-4 py-3 flex items-center gap-3 shrink-0">
-            <span className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1.5 shrink-0"><img src="/bevisibe-icon.png" alt="" className="w-full h-full object-contain" /></span>
+            <span className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1.5 shrink-0"><img src="/bevisibe-mark.png" alt="" className="w-full h-full object-contain" /></span>
             <div className="min-w-0 flex-1">
               <div className="text-14 font-bold leading-tight">bevisibe Assistant</div>
               <div className="text-11.5 text-topbar-item truncate flex items-center gap-1"><Lock size={10} className="shrink-0" />{bid ? <>Only <b className="text-white font-semibold truncate">{business.name}</b></> : 'Select a project'}</div>
@@ -121,7 +121,7 @@ export default function AssistantWidget() {
               <div key={i} className="flex justify-end"><div className="max-w-[85%] rounded-lg rounded-br-sm bg-indigo-500 text-white text-13 px-3.5 py-2 whitespace-pre-wrap">{m.text}</div></div>
             ) : (
               <div key={i} className="flex gap-2">
-                <span className="w-7 h-7 rounded-full bg-white shadow-card flex items-center justify-center p-1 shrink-0 mt-0.5"><img src="/bevisibe-icon.png" alt="" className="w-full h-full object-contain" /></span>
+                <span className="w-7 h-7 rounded-full bg-white shadow-card flex items-center justify-center p-1 shrink-0 mt-0.5"><img src="/bevisibe-mark.png" alt="" className="w-full h-full object-contain" /></span>
                 <div className={`min-w-0 max-w-[88%] rounded-lg rounded-tl-sm bg-white shadow-card px-3.5 py-2.5 ${m.error ? 'ring-1 ring-red-200' : ''}`}>
                   <Rich text={m.text} />
                   {m.links?.length > 0 && <div className="mt-2.5 flex flex-wrap gap-1.5">{m.links.map(l => <button key={l.to} type="button" onClick={() => go(l.to)} className="h-7 px-2.5 rounded text-12 font-semibold border border-indigo-200 text-indigo-600 hover:bg-indigo-50 inline-flex items-center gap-1 cursor-pointer">{l.label}<ArrowRight size={11} /></button>)}</div>}
@@ -153,7 +153,7 @@ export default function AssistantWidget() {
 
       <button type="button" onClick={() => setOpen(o => !o)} aria-label={open ? 'Close bevisibe Assistant' : 'Open bevisibe Assistant'} title="bevisibe Assistant"
         className="fixed z-[65] right-4 sm:right-6 bottom-6 w-14 h-14 rounded-full bg-topbar shadow-xl  ring-white flex items-center justify-center cursor-pointer hover:scale-105 transition-transform">
-        {open ? <X size={25} className="text-white" /> : <><img src="/bevisibe-icon.png" alt="" className="w-8 h-8 object-contain bg-white rounded-full p-1" /><span className="absolute -top-1 -right-1 text-9 font-bold px-1.5 py-0.5 rounded-full bg-indigo-500 text-white ring-2 ring-white">AI</span></>}
+        {open ? <X size={25} className="text-white" /> : <><img src="/bevisibe-mark.png" alt="" className="w-8 h-8 object-contain bg-white rounded-full p-1" /><span className="absolute -top-1 -right-1 text-9 font-bold px-1.5 py-0.5 rounded-full bg-indigo-500 text-white ring-2 ring-white">AI</span></>}
       </button>
     </>
   );

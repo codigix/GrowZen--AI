@@ -61,14 +61,6 @@ def checks(db: Session, b: Business, internal: bool, traffic: dict) -> list[dict
     elif state == "ok" and not internal and b.connection_id is None:
         add("google", "info", f"Traffic is read through the agency account {traffic.get('account')}. The client has no Google connection of their own saved.")
 
-    # Link and keyword index (DataForSEO)
-    if s.domain_intel_mock_on:
-        add("index", "info", "Authority, traffic, keywords, competitors, ads and backlinks are SAMPLE data (DOMAIN_INTEL_MOCK) for testing the page. They are not real.")
-    elif not s.dataforseo_enabled:
-        add("index", "warning" if internal else "info",
-            "Authority, backlinks, competitors and estimated keywords need DataForSEO: add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD to backend/.env and restart." if internal
-            else "Authority, backlinks and competitor data are not switched on yet. An admin has to add the data provider.")
-
     # Client-only: an unapproved client should not be analysed yet
     if not internal and b.status == "needs_approval":
         add("approval", "warning", "This client is waiting for approval. Approve them before spending data credits on their domain.")

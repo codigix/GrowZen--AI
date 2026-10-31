@@ -1,5 +1,4 @@
-"""Data behind adapters: DataForSEO when its login is set, else live Google results through Serper
-(SERPER_API_KEY), else sample data.
+"""Data behind adapters: live Google results through Serper (SERPER_API_KEY), else sample data.
 
 Every result says which it is ("live" or "sample") so the UI can label it.
 """
@@ -9,9 +8,6 @@ from .sample import SampleBacklinks, SampleCitations, SampleKeywords, SampleRank
 
 
 def rank_provider() -> RankProvider:
-    if get_settings().dataforseo_enabled:
-        from .dataforseo import DataForSeoRanks
-        return DataForSeoRanks()
     if get_settings().serper_api_key:
         from .serper import SerperRanks
         return SerperRanks()
@@ -19,16 +15,10 @@ def rank_provider() -> RankProvider:
 
 
 def keyword_provider() -> KeywordProvider:
-    if get_settings().dataforseo_enabled:
-        from .dataforseo import DataForSeoKeywords
-        return DataForSeoKeywords()
     return SampleKeywords()
 
 
 def backlink_provider() -> BacklinkProvider:
-    if get_settings().dataforseo_enabled:
-        from .dataforseo import DataForSeoBacklinks
-        return DataForSeoBacklinks()
     if get_settings().serper_api_key:
         from .serper import SerperBacklinks
         return SerperBacklinks()

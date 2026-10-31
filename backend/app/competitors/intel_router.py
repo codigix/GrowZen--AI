@@ -80,7 +80,7 @@ def latest(b: Business = Depends(get_business), db: Session = Depends(get_db)):
         "run": row(a) if a else None,
         "last_done": row(last_done) if last_done else None,
         "defaults": {"keywords": intel.default_keywords(b), "location": intel.default_location(b)},
-        "setup": {"google_results": intel.serper_enabled(), "backlinks": s.dataforseo_enabled},
+        "setup": {"google_results": intel.serper_enabled(), "backlinks": False},
     }
 
 

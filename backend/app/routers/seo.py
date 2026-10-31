@@ -17,7 +17,7 @@ from ..db import get_db
 from ..deps import get_business
 from ..models import Audit, Business, GeoPrompt, GeoResult, GoogleConnection, Keyword, KeywordRankLog
 from ..backlinks.summary import own_site_links
-from ..services import countries, domain_checks, domain_intel, geo, landscape as landscape_svc, top_pages as top_pages_svc, gsc, market, organic
+from ..services import countries, domain_checks, geo, landscape as landscape_svc, top_pages as top_pages_svc, gsc, google_intel, market, organic
 from ..services.gbp import GbpError
 from ..services.providers.base import intent_of
 from ..services.activity import log
@@ -225,31 +225,48 @@ def _brand_terms(b: Business, host: str) -> list[str]:
     return list(dict.fromkeys(t for t in (host.split(".")[0], name, name.replace(" ", "")) if len(t) >= 3))
 
 
+def _search_console(db: Session, b: Business, host: str):
+    """(state, message, SearchConsole, property) for the business's site, from a connected Google account that can see it."""
+    conns = [c for c in db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None))) if gsc.has_scope(c)]
+    conns.sort(key=lambda c: c.id != b.connection_id)
+    if not conns:
+        return "not_connected", "Connect a Google account that can see this site in Search Console (Integrations).", None, None
+    last = None
+    for conn in conns:
+        try:
+            sc = gsc.SearchConsole(conn)
+            site = gsc.match_property(sc.sites(), host)
+        except GbpError as exc:
+            last = str(exc)
+            continue
+        if site:
+            return "ok", conn.email, sc, site
+        last = f"{conn.email} has no verified Search Console property for {host}. Add and verify the site in Search Console, or connect the account that owns it."
+    return "no_property", last or "No verified Search Console property for this site.", None, None
+
+
 @router.get("/domain-intel")
 def domain_intel_report(country: str | None = None, refresh: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """Authority, estimated traffic, keywords, competitors, ads and backlinks from DataForSEO (cached; see services/domain_intel.py).
-    The size of the data set depends on whether the business is one of our own sites or a client."""
+    """The site's Google data (Search Console): organic clicks, queries, pages, countries and history, cached (see services/google_intel.py).
+    Figures Google has no API for (authority, backlinks, competitor traffic, ads) come back as unavailable sections."""
     host = gsc.host_of(b.website)
     internal = domain_checks.is_internal(b)
     limits = domain_checks.limits_for(internal)
     codes = market.target_countries(b)
     cc = countries.code(country) if country else codes[0]
     out: dict = {"domain": host or None, "internal": internal, "limits": limits, "country": cc, "country_name": countries.name(cc),
-                 "markets": [{"code": c, "name": countries.name(c)} for c in codes], "state": "ok"}
-    mocked = get_settings().domain_intel_mock_on
+                 "markets": [{"code": c, "name": countries.name(c)} for c in codes], "state": "ok", "source": "google_search_console"}
     out["brand"] = _brand_terms(b, host)
-    if not get_settings().dataforseo_enabled and not mocked:
-        return {**out, "state": "not_configured"}
     if not host or host in domain_checks.PLACEHOLDER_HOSTS:
         return {**out, "state": "no_website"}
-    if not internal and b.status == "needs_approval":
-        return {**out, "state": "needs_approval"}
-    if mocked:  # sample data for testing the page: never stored, never mixed with real results
-        return {**out, **domain_intel.mock(host, cc, limits, _brand_terms(b, host)), "by_country": domain_intel.mock_by_country(host, codes), "fetched_at": datetime.now(timezone.utc), "cached": False, "mock": True}
+    state, message, sc, site = _search_console(db, b, host)
+    if state != "ok":
+        return {**out, "state": state, "message": message}
+    out["account"] = message
     tier = "internal" if internal else "client"
-    brand = _brand_terms(b, host)
-    main = domain_intel.cached(db, f"v2:{cc}", host, tier, limits["cache_days"], refresh, lambda: domain_intel.fetch(host, cc, limits, brand))
-    table = domain_intel.cached(db, "countries:" + ",".join(codes[:6]), host, tier, limits["cache_days"], refresh, lambda: domain_intel.by_country(host, codes))
+    brand = out["brand"]
+    main = google_intel.cached(db, f"g1:{cc}", host, tier, limits["cache_days"], refresh, lambda: google_intel.fetch(sc, site, cc, limits, brand))
+    table = google_intel.cached(db, "g1-countries:" + ",".join(codes[:6]), host, tier, limits["cache_days"], refresh, lambda: google_intel.by_country(sc, site, codes))
     return {**out, **main["data"], "by_country": table["data"], "fetched_at": main["fetched_at"], "cached": main["cached"]}
 
 

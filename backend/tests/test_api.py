@@ -150,7 +150,7 @@ def test_playbook_and_status(client):
     assert pb["approval_rules"]["profile_edit"] is True
     assert client.put("/api/v1/playbook", json={"tone": "Warm"}).json()["tone"] == "Warm"
     st = client.get("/api/v1/status").json()
-    assert st["ai"]["configured"] is False and st["dataforseo"] is False
+    assert st["ai"]["configured"] is False and "dataforseo" not in st
 
 
 def test_website_audit_saves_live_progress(client, monkeypatch):

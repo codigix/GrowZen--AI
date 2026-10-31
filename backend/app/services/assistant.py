@@ -78,8 +78,8 @@ GUIDE: list[dict[str, Any]] = [
      "about": "Leads that came from calls, forms, directions and bookings, with their status.", "steps": ["Open Leads & Conversions to review and update lead status."]},
     {"id": "reports", "label": "Analytics & Client Reports", "to": "/reports", "words": "report reports analytics monthly client report pdf email",
      "about": "Monthly results reports for the client.", "steps": ["Open Analytics & Client Reports, generate or schedule the report."]},
-    {"id": "integrations", "label": "Integrations & APIs", "to": "/google-integrations", "words": "integrations api keys connect google serper dataforseo smtp setup",
-     "about": "What is connected (Google, Serper, PageSpeed, DataForSEO, email) and how to turn each on.", "steps": ["Open Integrations & APIs to see what is connected."]},
+    {"id": "integrations", "label": "Integrations & APIs", "to": "/google-integrations", "words": "integrations api keys connect google serper smtp setup",
+     "about": "What is connected (Google, Serper, PageSpeed, email) and how to turn each on.", "steps": ["Open Integrations & APIs to see what is connected."]},
 ]
 PROCESS = ["Business Onboarding (add the project)", "Site Audit (fix the website)", "Competitor Research (who you compete with)", "Keyword Magic Tool (keywords from that research)",
            "GBP Profile Manager (connect Google, live profile data)", "Autonomous AI Agents (approve the proposed changes)", "Reports (show the client results)"]

@@ -12,7 +12,7 @@ import { pathOnly as pathOf } from './siteUtils';
 /**
  * Keyword intelligence for the selected business. Discovery starts from what the platform knows
  * (category, services, area + nearby localities, the website audit, competitors) and pulls real
- * searches from Google Autocomplete; DataForSEO adds volumes and trends when it is connected.
+ * searches from Google Autocomplete; volumes need the Google Ads Keyword Planner API.
  */
 
 const INTENT_TONE = { local: 'blue', transactional: 'green', commercial: 'orange', informational: 'violet' };
@@ -91,7 +91,7 @@ function Discover({ b, tracked, onTracked }) {
   const trackedSet = new Set(tracked.map(k => k.keyword));
   const all = result?.keywords || [];
   const shown = all.filter(k => (group === 'all' || k.group === group) && (!onlyGaps || k.coverage?.status === 'gap') && (!q || k.keyword.includes(q.toLowerCase())));
-  const live = result?.data_source?.includes('dataforseo');
+  const live = result?.data_source?.includes('keyword_planner');
   const gaps = all.filter(k => k.coverage?.status === 'gap' && ['service', 'local'].includes(k.group)).slice(0, 8);
   const questions = all.filter(k => k.group === 'question').slice(0, 8);
 
@@ -199,7 +199,7 @@ function Discover({ b, tracked, onTracked }) {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             <div className="xl:col-span-2 min-w-0">
               <Card pad={false} title={`Keywords (${shown.length})`}
-                subtitle={live ? 'Real searches from Google Autocomplete, with monthly volume and 12-month trend from Google Ads (DataForSEO).' : 'Real searches from Google Autocomplete. Stars show how strongly Google suggests each one. Connect DataForSEO for monthly volumes.'}
+                subtitle={live ? 'Real searches from Google Autocomplete, with monthly volume and 12-month trend from the Google Ads Keyword Planner.' : 'Real searches from Google Autocomplete. Stars show how strongly Google suggests each one. Monthly volumes need the Google Ads Keyword Planner API.'}
                 action={<div className="flex gap-2"><Button size="sm" icon={Download} onClick={exportCsv} disabled={!shown.length}>CSV</Button><Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(all.filter(k => selected.includes(k.keyword)))}>Track {selected.length || ''}</Button></div>}>
                 <div className="px-6 py-3 border-b border-slate-100 space-y-2.5">
                   <div className="flex flex-wrap gap-1.5">

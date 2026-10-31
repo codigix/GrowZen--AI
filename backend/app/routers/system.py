@@ -33,10 +33,9 @@ def status(_: User = Depends(current_user)):
         "pagespeed_key": bool(s.pagespeed_api_key),
         "lighthouse_local": s.lighthouse_local_enabled and lighthouse.is_available(),
         "places_key": bool(s.google_places_api_key or s.google_api_key),
-        "dataforseo": s.dataforseo_enabled,
         "serper": bool(s.serper_api_key),
-        # Where rank grids, backlinks and citations come from: paid DataForSEO, live Google results (Serper) or sample data.
-        "rank_source": "dataforseo" if s.dataforseo_enabled else "serper" if s.serper_api_key else "sample",
+        # Where rank grids, backlinks and citations come from: live Google results (Serper) or sample data.
+        "rank_source": "serper" if s.serper_api_key else "sample",
         "intake_imap": s.imap_enabled,
         "intake_webhook": bool(s.intake_webhook_token),
         "smtp": bool(s.smtp_host and s.smtp_from),
@@ -82,5 +81,5 @@ def diagnostics(db: Session = Depends(get_db), user: User = Depends(require_admi
         problems.append("The database is missing tables or columns the app expects.")
     return {"problems": problems, "stuck_runs": stuck, "failing_schedules": failing, "tasks": tasks, "scheduler": {"enabled": s.scheduler_enabled, "last_tick": LAST_TICK},
             "providers": {"ai": ai.is_configured(), "serper": bool(s.serper_api_key), "pagespeed": bool(s.pagespeed_api_key), "places": bool(s.google_places_api_key or s.google_api_key),
-                          "google_oauth": s.google_oauth_enabled, "dataforseo": s.dataforseo_enabled, "smtp": bool(s.smtp_host and s.smtp_from)},
+                          "google_oauth": s.google_oauth_enabled, "smtp": bool(s.smtp_host and s.smtp_from)},
             "data": {"audits": audits_total, "sample_share": round(sample / audits_total * 100) if audits_total else 0}, "accounts_on_published_password": published, "schema_drift": drift}
