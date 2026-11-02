@@ -1,22 +1,28 @@
 """Backlink Intelligence API. Everything is scoped to a business: a backlink is visible only if it points at a domain that
 business tracks (its own site or a competitor), so one business never sees another's monitoring set."""
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from ..auth import current_user
 from ..db import get_db, utcnow
 from ..deps import get_business, in_background
 from ..models import Business
-from . import analytics, bot, engine, frontier, insights, outcomes, outreach, quality, sync, watch
+from . import analytics, bot, engine, finder, frontier, insights, outcomes, outreach, quality, sync, watch
 from .lifecycle import ALL_STATES, LIVE_STATES
-from .models import BiDomainReview, Backlink, BacklinkEvent, BacklinkObservation, BacklinkProvenance, BiDomain, BiPage, BiTrackedTarget
+from .models import (
+    BacklinkFinderResult, BacklinkFinderTarget, BiDomainReview, Backlink, BacklinkEvent, BacklinkObservation, BacklinkProvenance,
+    BiDomain, BiPage, BiTrackedTarget,
+)
 from .engine import aware
 from .urls import host_of, normalize_url, registrable_domain
+
+log = logging.getLogger("seo.backlinks.router")
 
 router = APIRouter(prefix="/businesses/{business_id}/backlink-intel", tags=["backlinks"], dependencies=[Depends(current_user)])
 
@@ -394,6 +400,65 @@ def bot_run(background: BackgroundTasks, b: Business = Depends(get_business), db
         raise HTTPException(409, "The bot is already running")
     background.add_task(in_background(_bot_job, b.id))
     return {"started": True}
+
+
+finder_router = APIRouter(prefix="/businesses/{business_id}/backlink-finder", tags=["Backlinks Finder"], dependencies=[Depends(current_user)])
+# Separate from Backlink Intelligence above: point it at any domain, subdomain or exact URL (not just a tracked competitor) and
+# it records every link the crawler finds to that target. It rides the same crawl; it does not run its own.
+
+
+class FinderTargetIn(BaseModel):
+    value: str = Field(min_length=3, max_length=500)  # domain, subdomain or exact URL
+
+
+def _finder_target_out(t: BacklinkFinderTarget, count: int | None = None) -> dict:
+    out = {"id": t.id, "value": t.raw_value, "kind": t.kind, "active": t.active}
+    if count is not None:
+        out["backlinks_found"] = count
+    return out
+
+
+@finder_router.post("", status_code=201)
+def finder_add_target(body: FinderTargetIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    try:
+        parsed = finder.parse_target(body.value)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    t = db.scalar(select(BacklinkFinderTarget).where(BacklinkFinderTarget.business_id == b.id, BacklinkFinderTarget.normalized_value == parsed.normalized_value))
+    if t is None:
+        t = BacklinkFinderTarget(business_id=b.id, raw_value=body.value, kind=parsed.kind, host=parsed.host, normalized_value=parsed.normalized_value)
+        db.add(t)
+        db.commit()
+        frontier.enqueue(db, f"https://{parsed.host}/", "finder_seed", 0, None, priority=75.0)
+        db.commit()
+        log.info("Finder target added: business=%s value=%r kind=%s host=%s (seeded https://%s/)", b.id, body.value, parsed.kind, parsed.host, parsed.host)
+    return _finder_target_out(t)
+
+
+@finder_router.get("")
+def finder_list_targets(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> list[dict]:
+    targets = list(db.scalars(select(BacklinkFinderTarget).where(BacklinkFinderTarget.business_id == b.id).order_by(BacklinkFinderTarget.id)))
+    counts = dict(db.execute(select(BacklinkFinderResult.target_id, func.count()).where(
+        BacklinkFinderResult.target_id.in_([t.id for t in targets])).group_by(BacklinkFinderResult.target_id)).all()) if targets else {}
+    return [_finder_target_out(t, counts.get(t.id, 0)) for t in targets]
+
+
+@finder_router.get("/{target_id}")
+def finder_target_backlinks(target_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db),
+                            cursor: int | None = None, limit: int = Query(default=50, ge=1, le=200)) -> dict:
+    t = db.get(BacklinkFinderTarget, target_id)
+    if not t or t.business_id != b.id:
+        raise HTTPException(404, "Finder target not found")
+    q = select(BacklinkFinderResult).where(BacklinkFinderResult.target_id == t.id)
+    if cursor:
+        q = q.where(BacklinkFinderResult.id > cursor)
+    rows = list(db.scalars(q.order_by(BacklinkFinderResult.id).limit(limit + 1)))
+    more = len(rows) > limit
+    rows = rows[:limit]
+    return {"target": _finder_target_out(t), "data": [{"id": r.id, "source_url": r.source_url, "source_domain": r.source_domain, "target_url": r.target_url,
+                                                        "anchor_text": r.anchor_text, "link_type": r.link_type, "rel_attributes": r.rel_attributes or [],
+                                                        "discovered_at": r.discovered_at} for r in rows],
+            "pagination": {"next_cursor": rows[-1].id if more and rows else None, "has_more": more}}
 
 
 outcomes_router = APIRouter(prefix="/businesses/{business_id}/outcomes", tags=["outcomes"], dependencies=[Depends(current_user)])

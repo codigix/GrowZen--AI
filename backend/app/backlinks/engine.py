@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from ..db import utcnow
 from ..services.url_safety import SSRFSafeTransport, SSRFValidationError
-from . import frontier, renderer, robots
+from . import finder, frontier, renderer, robots
 from .extract import PageExtract, extract_page
 from .lifecycle import FetchEvidence, LinkEvidence, apply_crawl_observation
 from .models import Backlink, BacklinkProvenance, BiDomain, BiPage, BiTrackedTarget, CrawlAttempt, FrontierUrl
@@ -193,7 +193,7 @@ def process_source_page(db: Session, page: BiPage, res: FetchResult, monitored: 
     now = now or utcnow()
     monitored = monitored if monitored is not None else tracked_domains(db)
     known = list(db.scalars(select(Backlink).where(Backlink.source_page_id == page.id)))
-    out = {"links_seen": 0, "new_backlinks": 0, "observed": 0, "links_to_monitored": 0}
+    out = {"links_seen": 0, "new_backlinks": 0, "observed": 0, "links_to_monitored": 0, "new_finder_matches": 0}
     extract: PageExtract | None = None
     readable = bool(res.complete and res.status is not None and (200 <= res.status < 300 or res.status in (404, 410)))
     if res.status is not None and 200 <= res.status < 300 and res.body and res.complete:
@@ -208,6 +208,7 @@ def process_source_page(db: Session, page: BiPage, res: FetchResult, monitored: 
         found = list(extract.links)
         out["links_seen"] = len(found)
         out["links_to_monitored"] = sum(1 for ln in found if not ln.internal and _reg(ln.target_url) in monitored)
+        out["new_finder_matches"] = finder.record_matches(db, page.normalized_url, _reg(page.normalized_url), found, now)
 
     # Pair the links we already track on this page with the links found now. Same target and same anchor wins first, so reordering the
     # links on a page does not swap their identities; whatever is left is paired in page order. Unpaired known links are absent from the
@@ -308,7 +309,9 @@ def crawl_row(db: Session, fetcher: PageFetcher, row: FrontierUrl, monitored: se
     if row.source == "sitemap":
         return crawl_sitemap(db, fetcher, row, monitored)
     page = get_page(db, row.url)
+    log.info("Crawling %s", row.url)
     res = fetcher.fetch(db, row.url, "verification" if row.queue == "verification" else "discovery", render)
+    log.info("Fetched %s -> status=%s error=%s", row.url, res.status, res.error_code)
     out = process_source_page(db, page, res, monitored)
     out.update(url=row.url, http_status=res.status, error_code=res.error_code, queued=0, rendered=res.rendered)
     hop = row.hop or 0
@@ -328,7 +331,7 @@ def crawl_row(db: Session, fetcher: PageFetcher, row: FrontierUrl, monitored: se
                 for sm in [*rules.sitemaps, f"{row.url.split('/')[0]}//{row.url.split('/')[2]}/sitemap.xml"]:
                     if frontier.enqueue(db, sm, "sitemap", 0, row.url, priority=70.0, hop=0):
                         out["queued"] += 1
-            if out["links_to_monitored"] and site not in monitored:  # a proven linker: it may well link again, so look at more of it
+            if (out["links_to_monitored"] or out["new_finder_matches"]) and site not in monitored:  # a proven linker: it may well link again, so look at more of it
                 for u in (f"{row.url.split('/')[0]}//{row.url.split('/')[2]}/", f"{row.url.split('/')[0]}//{row.url.split('/')[2]}/sitemap.xml"):
                     if frontier.enqueue(db, u, "sitemap" if u.endswith(".xml") else "linker", 0, row.url, priority=85.0, hop=0):
                         out["queued"] += 1
