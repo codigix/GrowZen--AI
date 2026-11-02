@@ -1562,7 +1562,7 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
         category: form.primary_category.trim() || (realCategory(source?.category) || null), description: form.description.trim() || null
       };
       // The audit waits until the details and keywords below are saved, so it audits the real business.
-      const b = await api('/discover/import', { method: 'POST', body: { email: form.contact_email.trim(), candidate, plan: form.plan, defer_audit: true } });
+      const b = await api('/discover/import', { method: 'POST', repeat: true, body: { email: form.contact_email.trim(), candidate, plan: form.plan, defer_audit: true } }); // matches the project it just made, so a repeat is safe
       setProject(b);
       mark('create', 'done', b.created ? `Created “${b.name}”` : `Matched the existing project “${b.name}”`);
       mark('reviews', b.imported_reviews ? 'done' : 'skipped', b.imported_reviews ? `${b.imported_reviews} recent Google reviews imported` : 'No Google Maps reviews to import');
@@ -1576,7 +1576,7 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
         attributes: form.attributes, lat: form.lat, lng: form.lng,
         target_scope: form.target_scope || 'local', target_countries: form.target_scope === 'international' ? form.target_countries : [], target_areas: (form.target_scope || 'local') === 'local' ? form.target_areas : []
       };
-      await api(`/businesses/${b.id}`, { method: 'PATCH', body: Object.fromEntries(Object.entries(patch).filter(([k, v]) => v !== null || k === 'services' || k === 'attributes')) });
+      await api(`/businesses/${b.id}`, { method: 'PATCH', repeat: true, body: Object.fromEntries(Object.entries(patch).filter(([k, v]) => v !== null || k === 'services' || k === 'attributes')) });
       mark('details', 'done', `${form.services.length} service${form.services.length === 1 ? '' : 's'}, contact and location saved`);
 
       // Step 1 of the process: research the competitors. Keyword discovery then starts from what it finds.
@@ -1592,13 +1592,13 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
 
       if (form.keywords.length) {
         mark('keywords', 'running');
-        const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: form.keywords.map(keyword => ({ keyword })) });
+        const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', repeat: true, body: form.keywords.map(keyword => ({ keyword })) });
         mark('keywords', 'done', `${r?.added ?? form.keywords.length} keyword${form.keywords.length === 1 ? '' : 's'} added for tracking`);
       } else mark('keywords', 'skipped', 'No seed keywords given');
 
       if (followUps.length) {
         mark('followups', 'running');
-        const r = await api(`/businesses/${b.id}/tasks`, { method: 'POST', body: followUps.map(({ kind, title, fix, code, impact }) => ({ kind, title, fix, code, impact })) });
+        const r = await api(`/businesses/${b.id}/tasks`, { method: 'POST', repeat: true, body: followUps.map(({ kind, title, fix, code, impact }) => ({ kind, title, fix, code, impact })) });
         mark('followups', 'done', r.added ? `${r.added} fix${r.added === 1 ? '' : 'es'} for the website and Google profile added to the to-do list` : 'Already on the to-do list');
       } else mark('followups', 'skipped', 'Nothing to change on the website or Google profile');
 

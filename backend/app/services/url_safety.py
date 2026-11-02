@@ -112,7 +112,8 @@ def _pin(request: httpx.Request) -> None:
     """Validate the request's URL and pin it to the validated IP, keeping Host and SNI."""
     validated = resolve_and_validate(str(request.url))
     request.headers.setdefault("Host", validated.hostname)
-    request.url = request.url.copy_with(host=validated.resolved_ips[0])
+    v4 = [ip for ip in validated.resolved_ips if ":" not in ip]  # site_client binds an IPv4 local address, which cannot reach an IPv6 one
+    request.url = request.url.copy_with(host=(v4 or validated.resolved_ips)[0])
     request.extensions["sni_hostname"] = validated.hostname
 
 

@@ -241,6 +241,34 @@ class Article(TimestampMixin, Base):
     wp_url: Mapped[str | None] = mapped_column(String(500))
 
 
+class SiteIntegration(TimestampMixin, Base):
+    """How a business's own website accepts blog posts: detected platform, and the credentials to publish to it (secrets encrypted)."""
+    __tablename__ = "site_integrations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), unique=True, index=True)
+    platform: Mapped[str] = mapped_column(String(20), default="unknown")  # wordpress | nextjs | webhook | static | unknown
+    method: Mapped[str | None] = mapped_column(String(20))  # wordpress | webhook: how posts are delivered
+    base_url: Mapped[str | None] = mapped_column(String(500))  # WordPress site URL, or the webhook endpoint
+    username: Mapped[str | None] = mapped_column(String(255))
+    secret_enc: Mapped[str | None] = mapped_column(Text)  # WordPress application password / webhook signing secret (Fernet)
+    detected: Mapped[dict | None] = mapped_column(JSON)  # what the detection found: platform, evidence, stack
+    status: Mapped[str] = mapped_column(String(20), default="not_connected")  # not_connected | connected | error
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class DomainIntelCache(Base):
+    """A Domain Overview fetched from the paid data provider, kept so a page view does not cost a new request."""
+    __tablename__ = "domain_intel_cache"
+    __table_args__ = (UniqueConstraint("domain", "key", "tier"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    domain: Mapped[str] = mapped_column(String(255), index=True)
+    key: Mapped[str] = mapped_column(String(80))  # a country code, or "countries:IN,OM" for the per-market table
+    tier: Mapped[str] = mapped_column(String(10))  # internal | client: the size of the data set fetched
+    payload: Mapped[dict | list] = mapped_column(JSON)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Keyword(TimestampMixin, Base):
     __tablename__ = "keywords"
     __table_args__ = (UniqueConstraint("business_id", "keyword"),)
@@ -388,3 +416,8 @@ class KeywordRankLog(Base):
     day: Mapped[date] = mapped_column(Date, index=True)
     rank: Mapped[int | None] = mapped_column(Integer)
     location: Mapped[str | None] = mapped_column(String(160))
+    url: Mapped[str | None] = mapped_column(String(500))  # the page that ranked
+    own_urls: Mapped[list[str] | None] = mapped_column(JSON)  # every page of the site in the results (more than one = cannibalization)
+    serp: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)  # [{d: domain, p: position}] of the results Google returned
+    features: Mapped[list[str] | None] = mapped_column(JSON)  # SERP features present on the results page
+    own_features: Mapped[list[str] | None] = mapped_column(JSON)  # of those, the ones the site appears in

@@ -19,17 +19,41 @@ const messageOf = (body, status) => {
   return body?.error || `Request failed (${status})`;
 };
 
-export async function api(path, { method = 'GET', body, raw = false } = {}) {
+// The dev backend restarts when a source file changes and is unreachable for a few seconds. Reads are simply retried; a write is
+// never re-sent (it might have arrived), but after a failure it first waits until the backend answers, so it is not lost to a restart.
+let lastNetworkFailure = 0;
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function waitUntilReachable(tries = 10) {
+  for (let i = 0; i < tries; i += 1) {
+    try { await fetch(`${SEO_API}/status`, { credentials: 'include' }); return true; } catch (e) { await sleep(700); } // any answer, even 401, means it is up
+  }
+  return false;
+}
+
+// `repeat: true` marks a write that gives the same result when sent twice (a PATCH, an upsert, a match-or-create); it is then retried
+// like a read when the backend restarts mid-request.
+export async function api(path, { method = 'GET', body, raw = false, repeat = false } = {}) {
+  const safeToRepeat = repeat || method === 'GET' || method === 'HEAD';
+  if (!safeToRepeat && Date.now() - lastNetworkFailure < 30000) await waitUntilReachable();
   let r;
-  try {
-    r = await fetch(`${SEO_API}${path}`, {
-      method,
-      credentials: 'include',
-      headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
-      body: body !== undefined ? JSON.stringify(body) : undefined
-    });
-  } catch (e) {
-    throw new SeoApiError(`The SEO backend is not reachable at ${SEO_API}. Is it running?`, 0);
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      r = await fetch(`${SEO_API}${path}`, {
+        method,
+        credentials: 'include',
+        headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+        body: body !== undefined ? JSON.stringify(body) : undefined
+      });
+      break;
+    } catch (e) {
+      lastNetworkFailure = Date.now();
+      if (safeToRepeat && attempt < 4) { // a restart takes a few seconds: wait until the backend answers, then send again
+        if (!(await waitUntilReachable(12))) await sleep(600 * (attempt + 1));
+        continue;
+      }
+      throw new SeoApiError(`The SEO backend is not reachable at ${SEO_API}. Is it running?`, 0);
+    }
   }
   if (!r.ok) {
     const b = await r.json().catch(() => ({}));

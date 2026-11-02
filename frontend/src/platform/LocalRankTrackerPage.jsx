@@ -4,7 +4,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Play, MapPin, Clock, Loader2, ArrowUp, ArrowDown, Crosshair, Layers, Target, Trophy, Search, RotateCw } from 'lucide-react';
-import { SeoShell, Card, Button, SourceTag, ErrorNote, STATUS, useToast, useAction, useModulePath } from './SeoUi';
+import { SeoShell, Card, Button, SourceTag, ErrorNote, STATUS, Tabs, useUrlTab, useToast, useAction, useModulePath } from './SeoUi';
+import PositionLandscape from './PositionLandscape';
 import { api, useApi, usePoll, fmtDateTime, fmtDate } from './seoApi';
 import { marketOf } from './MarketBadge';
 
@@ -274,10 +275,20 @@ function Tracker({ b }) {
   );
 }
 
+function Page({ b }) {
+  const [tab, setTab] = useUrlTab('landscape', ['landscape', 'geo']);
+  return (
+    <>
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'landscape', label: 'Landscape' }, { id: 'geo', label: 'Geo-grid (Maps pack)' }]} />
+      {tab === 'landscape' ? <PositionLandscape key={b.id} b={b} /> : <Tracker key={b.id} b={b} />}
+    </>
+  );
+}
+
 export default function LocalRankTrackerPage() {
   return (
-    <SeoShell title="Geo-Grid Rank Tracking" subtitle="How you rank in the Google Maps pack across your area, point by point, for every keyword">
-      {(b) => <Tracker key={b.id} b={b} />}
+    <SeoShell title="Position Tracking" subtitle="Visibility, estimated traffic and positions of your tracked keywords on Google, and how you rank in the Maps pack">
+      {(b) => <Page key={b.id} b={b} />}
     </SeoShell>
   );
 }

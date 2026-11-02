@@ -64,7 +64,7 @@ def _get_client() -> tuple[OpenAI, str]:
     return _client, model
 
 
-def _complete_anthropic(system: str, user: str, *, json_mode: bool = False, max_tokens: int = 1200) -> str:
+def _complete_anthropic(system: str, user: str, *, json_mode: bool = False, max_tokens: int = 1500) -> str:
     s = get_settings()
     key = s.anthropic_api_key
     if not key:
@@ -79,9 +79,11 @@ def _complete_anthropic(system: str, user: str, *, json_mode: bool = False, max_
         "anthropic-version": "2023-06-01",
         "content-type": "application/json"
     }
+    # Note: claude-haiku-5-5 requires thinking disabled for fast direct text completion without token exhaustion
     body = {
         "model": "claude-haiku-5-5",
         "max_tokens": max_tokens,
+        "thinking": {"type": "disabled"},
         "system": sys_prompt,
         "messages": [{"role": "user", "content": user}]
     }
@@ -90,13 +92,11 @@ def _complete_anthropic(system: str, user: str, *, json_mode: bool = False, max_
         if r.status_code != 200:
             raise AiUnavailable(f"Claude API error ({r.status_code}): {r.text}")
         data = r.json()
-        for item in data.get("content", []):
-            if item.get("type") == "text":
-                return item.get("text", "").strip()
-        return ""
+        parts = [c.get("text", "") for c in data.get("content", []) if c.get("type") == "text"]
+        return "".join(parts).strip()
 
 
-def complete(system: str, user: str, *, json_mode: bool = False, temperature: float = 0.5, max_tokens: int = 1200) -> str:
+def complete(system: str, user: str, *, json_mode: bool = False, temperature: float = 0.5, max_tokens: int = 1500) -> str:
     s = get_settings()
     prov = s.ai_provider.lower()
     if prov in ("claude", "anthropic") or (s.anthropic_api_key and not getattr(s, PROVIDERS.get(prov, ("", "openai_api_key", ""))[1], None)):

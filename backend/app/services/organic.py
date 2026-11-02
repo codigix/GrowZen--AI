@@ -2,6 +2,7 @@
 daily history row, so the change and the trend are real. Used by the Organic Rankings page and the scheduled
 rank job."""
 from datetime import date, datetime, timezone
+import re
 from urllib.parse import urlparse
 
 from sqlalchemy import select
@@ -16,9 +17,55 @@ class RankCheckError(RuntimeError):
     pass
 
 
+# Serper result keys that mark a SERP feature, and the name shown for it.
+FEATURES = {"answerBox": "Featured snippet", "knowledgeGraph": "Knowledge panel", "peopleAlsoAsk": "People also ask", "places": "Local pack", "videos": "Videos",
+            "images": "Images", "topStories": "Top stories", "shopping": "Shopping", "relatedSearches": "Related searches"}
+
+
+def serp_features(res: dict, me: str) -> tuple[list[str], list[str]]:
+    """(features on the page, those the site appears in)."""
+    on, own = [], []
+    for key, name in FEATURES.items():
+        v = res.get(key)
+        if not v:
+            continue
+        on.append(name)
+        items = v if isinstance(v, list) else [v]
+        if any(isinstance(i, dict) and host(i.get("link") or i.get("source") or "") == me for i in items):
+            own.append(name)
+    return on, own
+
+
 def host(url: str | None) -> str:
     h = urlparse(url if (url or "").startswith("http") else f"https://{url or ''}").netloc.lower()
     return h[4:] if h.startswith("www.") else h
+
+
+def _is_redirect(link: str) -> bool:
+    """Serper returns most results below the third as Google click-tracking links (google.com/goto?url=...), not the page's address."""
+    u = urlparse(link or "")
+    return u.netloc.lower().endswith("google.com") and u.path.startswith("/goto")
+
+
+def _shown(o: dict) -> tuple[str, str]:
+    """(host, url) of a result. For a redirect link the real site is read from the displayed address ("https://site.com › blog › post"):
+    the host is exact, the path may be shortened by Google."""
+    link = o.get("link") or ""
+    if not _is_redirect(link):
+        return host(link), link
+    parts = [x.strip(" .…") for x in re.split(r"\s*[›»]\s*", (o.get("displayedLink") or "").strip()) if x.strip(" .…")]
+    if not parts or not parts[0].startswith(("http://", "https://")):
+        return "", ""
+    path: list[str] = []
+    for seg in parts[1:]:  # a segment with spaces is a page title (breadcrumb), not a path: stop there
+        if " " in seg:
+            break
+        path.append(seg)
+    return host(parts[0]), "/".join([parts[0].split()[0], *path])
+
+
+def result_host(o: dict) -> str:
+    return _shown(o)[0]
 
 
 def check(db: Session, b: Business, only: list[str] | None = None, limit: int = 25) -> dict:
@@ -40,14 +87,21 @@ def check(db: Session, b: Business, only: list[str] | None = None, limit: int = 
             res = serper.search(k.keyword, location)
         except intel.IntelError as exc:
             raise RankCheckError(str(exc)) from exc
-        hit = next((o for o in res.get("organic", [])[:20] if host(o.get("link")) == me), None)
+        organic = res.get("organic", [])[:20]
+        hit = next((o for o in organic if result_host(o) == me), None)
+        mine = [_shown(o)[1] for o in organic if result_host(o) == me]
+        features, own_features = serp_features(res, me)
+        serp = [{"d": result_host(o), "p": o.get("position")} for o in organic if result_host(o)]
         k.prev_rank, k.rank, k.rank_checked_at = k.rank, hit.get("position") if hit else None, today
         log_row = db.scalar(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.keyword == k.keyword, KeywordRankLog.day == today))
+        detail = {"url": _shown(hit)[1] if hit else None, "own_urls": mine, "serp": serp, "features": features, "own_features": own_features}
         if log_row:
             log_row.rank = k.rank
+            for field, value in detail.items():
+                setattr(log_row, field, value)
         else:
-            db.add(KeywordRankLog(business_id=b.id, keyword=k.keyword, day=today, rank=k.rank, location=location))
-        out.append({"keyword": k.keyword, "rank": k.rank, "prev_rank": k.prev_rank, "url": hit.get("link") if hit else None})
+            db.add(KeywordRankLog(business_id=b.id, keyword=k.keyword, day=today, rank=k.rank, location=location, **detail))
+        out.append({"keyword": k.keyword, "rank": k.rank, "prev_rank": k.prev_rank, "url": _shown(hit)[1] if hit else None})
     db.commit()
     return {"checked": len(out), "credits": serper.credits, "results": out, "location": location}
 

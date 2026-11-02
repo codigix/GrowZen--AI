@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useAction, useToast } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
+import { IntelBar, IntelSections, headline } from './DomainIntel';
 
 /**
  * Domain Overview from real sources only: Google traffic (clicks, impressions, position, keywords, pages, countries,
@@ -44,7 +45,8 @@ function Metric({ label, value, change, icon: Icon, why, tone = 'text-slate-900'
 
 const Th = ({ children, c = 'text-left' }) => <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${c}`}>{children}</th>;
 
-function Overview({ d, r, setFilter, filters }) {
+function Overview({ d, r, setFilter, filters, intel }) {
+  const h = headline(intel);
   const t = r?.totals;
   const p = r?.previous;
   const ai = d.ai;
@@ -74,14 +76,14 @@ function Overview({ d, r, setFilter, filters }) {
         <Card className="xl:col-span-3" title={<span className="inline-flex items-center gap-2"><Search size={15} className="text-indigo-500" />SEO</span>}
           action={r && <span className="text-11.5 text-slate-400">{r.period.start} → {r.period.end}</span>}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-5">
-            <Metric label="Authority score" value={d.links.authority ?? null} why={d.links.authority == null ? 'Needs a link index (DataForSEO)' : null} />
-            <Metric label="Organic traffic" icon={MousePointerClick} value={t ? fmt(t.clicks) : null} change={t && <Change now={t.clicks} before={p.clicks} />} why={!t ? 'Needs Search Console' : null} tone="text-indigo-600" />
-            <Metric label="Paid traffic" value={null} why="Needs Google Ads or a paid index" />
-            <Metric label="Ref. domains" icon={Link2} value={d.links.referring_domains != null ? fmt(d.links.referring_domains) : null} why={d.links.referring_domains == null ? 'Needs a link index (DataForSEO)' : null} />
+            <Metric label="Authority score" value={h.authority ?? d.links.authority ?? null} why={h.authority == null && d.links.authority == null ? 'Needs a link index (DataForSEO)' : null} />
+            <Metric label={t ? 'Organic traffic (clicks)' : 'Organic traffic (est.)'} icon={MousePointerClick} value={t ? fmt(t.clicks) : h.organicTraffic != null ? fmt(Math.round(h.organicTraffic)) : null} change={t && <Change now={t.clicks} before={p.clicks} />} why={!t && h.organicTraffic == null ? 'Needs Search Console or DataForSEO' : null} tone="text-indigo-600" />
+            <Metric label="Paid traffic (est.)" value={h.paidTraffic != null ? fmt(Math.round(h.paidTraffic)) : null} why={h.paidTraffic == null ? 'Needs DataForSEO' : null} />
+            <Metric label="Ref. domains" icon={Link2} value={h.referring != null ? fmt(h.referring) : d.links.referring_domains != null ? fmt(d.links.referring_domains) : null} why={h.referring == null && d.links.referring_domains == null ? 'Needs a link index (DataForSEO)' : null} />
             <Metric label="Impressions" icon={Eye} value={t ? fmt(t.impressions) : null} change={t && <Change now={t.impressions} before={p.impressions} />} why={!t ? 'Needs Search Console' : null} tone="text-indigo-600" />
-            <Metric label="Organic keywords" icon={KeyRound} value={t ? `${fmt(t.keywords)}${r.keywords_capped ? '+' : ''}` : null} change={t && <Change now={t.keywords} before={p.keywords} />} why={!t ? 'Needs Search Console' : null} tone="text-indigo-600" />
-            <Metric label="Paid keywords" value={null} why="Needs Google Ads or a paid index" />
-            <Metric label="Backlinks" icon={Link2} value={d.links.backlinks != null ? fmt(d.links.backlinks) : null} why={d.links.backlinks == null ? 'Needs a link index (DataForSEO)' : null} />
+            <Metric label="Organic keywords" icon={KeyRound} value={h.organicKeywords != null ? fmt(h.organicKeywords) : t ? `${fmt(t.keywords)}${r.keywords_capped ? '+' : ''}` : null} change={h.organicKeywords == null && t && <Change now={t.keywords} before={p.keywords} />} why={!t && h.organicKeywords == null ? 'Needs Search Console or DataForSEO' : null} tone="text-indigo-600" />
+            <Metric label="Paid keywords" value={h.paidKeywords != null ? fmt(h.paidKeywords) : null} why={h.paidKeywords == null ? 'Needs DataForSEO' : null} />
+            <Metric label="Backlinks" icon={Link2} value={h.backlinks != null ? fmt(h.backlinks) : d.links.backlinks != null ? fmt(d.links.backlinks) : null} why={h.backlinks == null && d.links.backlinks == null ? 'Needs a link index (DataForSEO)' : null} />
           </div>
           {t && (
             <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-3 gap-4 text-center">
@@ -95,6 +97,7 @@ function Overview({ d, r, setFilter, filters }) {
 
       {r && <TrafficPanel d={d} r={r} filters={filters} setFilter={setFilter} />}
       {r && <KeywordsPanel r={r} />}
+      <IntelSections intel={intel.data} />
     </div>
   );
 }
@@ -244,9 +247,27 @@ function Compare({ r, setFilter }) {
   );
 }
 
-function Connect({ t, busy, onConnect }) {
+const CHECK_TONE = { error: 'bg-rose-50 ring-rose-200 text-rose-800', warning: 'bg-amber-50 ring-amber-200 text-amber-900', info: 'bg-slate-50 ring-slate-200 text-slate-700' };
+
+/** What is missing for real data and who has to fix it; the wording differs for our own site and for a client. */
+function Checks({ checks, internal }) {
+  if (!checks.length) return null;
+  return (
+    <div className="space-y-1.5">
+      {checks.map(c => (
+        <div key={c.id} className={`rounded ring-1 ring-inset px-4 py-2.5 text-12.5 flex items-start gap-2 ${CHECK_TONE[c.level]}`}>
+          <Info size={13} className="mt-0.5 shrink-0" />
+          <span><b className="capitalize">{c.level === 'info' ? 'Note' : c.level}</b> · {c.message}</span>
+        </div>
+      ))}
+      <p className="text-11 text-slate-400">{internal ? 'Internal site: deeper data (more keywords, competitors and links) and fresher results.' : 'Client site: a capped data set that is cached for a week, to keep data costs down.'}</p>
+    </div>
+  );
+}
+
+function Connect({ t, busy, onConnect, internal }) {
   const needs = ['not_connected', 'scope_missing'].includes(t.state);
-  const title = { not_connected: 'Connect Google Search Console to see real traffic', scope_missing: 'Allow Search Console access', no_property: 'This site isn\'t in the connected Search Console', error: 'Google didn\'t return the traffic', no_website: 'Add the website first' }[t.state];
+  const title = { not_connected: internal ? 'Connect our Google account to see this site\'s real traffic' : 'Connect Google Search Console to see the client\'s real traffic', scope_missing: 'Allow Search Console access', no_property: 'This site isn\'t in the connected Search Console', error: 'Google didn\'t return the traffic', no_website: 'Add the website first' }[t.state];
   return (
     <div className="rounded bg-indigo-50 ring-1 ring-inset ring-indigo-200 px-5 py-4 flex flex-wrap items-center gap-4">
       <span className="w-10 h-10 rounded-full bg-white text-indigo-500 flex items-center justify-center shrink-0"><PlugZap size={18} /></span>
@@ -268,6 +289,10 @@ function Page({ b }) {
   const set = (patch) => setFilters(f => ({ ...f, ...patch }));
   const qs = new URLSearchParams(Object.entries(filters).filter(([, v]) => v)).toString();
   const data = useApi(`/businesses/${b.id}/seo/domain?${qs}`);
+  const [market, setMarket] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const intel = useApi(`/businesses/${b.id}/seo/domain-intel${market ? `?country=${market}` : ''}`);
+  const refreshIntel = () => { setRefreshing(true); api(`/businesses/${b.id}/seo/domain-intel?refresh=true${market ? `&country=${market}` : ''}`).then(() => intel.reload(true)).catch(e => toast(e.message)).finally(() => setRefreshing(false)); };
   const connect = () => run('connect', async () => { const { url } = await api('/connections/google/start?purpose=gsc'); window.location.href = url; });
   const d = data.data;
   const r = d?.traffic?.state === 'ok' ? d.traffic.report : null;
@@ -279,7 +304,7 @@ function Page({ b }) {
     <div className="space-y-4">
       <div className="ai-glass-card rounded px-5 py-3.5 flex flex-wrap items-center gap-3">
         <span className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-500 flex items-center justify-center shrink-0"><Globe size={18} /></span>
-        <div className="min-w-0 flex-1"><div className="text-16 font-semibold text-slate-900 truncate">{d.domain || 'No website yet'}</div><div className="text-12 text-slate-500">{d.name} · {d.market.label}{d.traffic.account ? ` · Search Console: ${d.traffic.account}` : ''}</div></div>
+        <div className="min-w-0 flex-1"><div className="text-16 font-semibold text-slate-900 truncate flex items-center gap-2">{d.domain || 'No website yet'}<Badge tone={d.internal ? 'violet' : 'gray'} title={d.internal ? 'One of our own websites (INTERNAL_DOMAINS)' : 'A client website'}>{d.internal ? 'Internal' : 'Client'}</Badge></div><div className="text-12 text-slate-500">{d.name} · {d.market.label}{d.traffic.account ? ` · Search Console: ${d.traffic.account}` : ''}</div></div>
         {r && (
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded">
@@ -293,12 +318,14 @@ function Page({ b }) {
         )}
       </div>
       <ErrorNote>{error}</ErrorNote>
-      {d.traffic.state !== 'ok' && <Connect t={d.traffic} busy={busy === 'connect'} onConnect={connect} />}
+      <Checks checks={(d.checks || []).filter(c => !(c.id === 'google' && c.level !== 'error' && d.traffic.state !== 'ok' && d.traffic.state !== 'no_website'))} internal={d.internal} />
+      {d.traffic.state !== 'ok' && d.traffic.state !== 'no_website' && <Connect t={d.traffic} busy={busy === 'connect'} onConnect={connect} internal={d.internal} />}
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'overview', label: 'Overview' }, ...(r ? [{ id: 'growth', label: 'Growth report' }, { id: 'countries', label: 'Compare by countries' }] : [])]} />
-      {tab === 'overview' && <Overview d={d} r={r} setFilter={set} filters={filters} />}
+      {tab === 'overview' && <IntelBar intel={intel.data} loading={intel.loading} market={market} setMarket={setMarket} onRefresh={refreshIntel} refreshing={refreshing} />}
+      {tab === 'overview' && <Overview d={d} r={r} setFilter={set} filters={filters} intel={intel} />}
       {tab === 'growth' && r && <Growth r={r} />}
       {tab === 'countries' && r && <Compare r={r} setFilter={(p) => { set(p); setTab('overview'); }} />}
-      <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />{r ? `Traffic is from Google Search Console (${r.property}), ${r.period.days} days. ` : ''}Authority score, backlinks and referring domains need a link index (DataForSEO); paid traffic and keywords need Google Ads. They show as “—” instead of an estimate.</p>
+      <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />{r ? `Clicks and impressions are from Google Search Console (${r.property}), ${r.period.days} days. ` : ''}Authority, backlinks, keywords, competitors and ads come from DataForSEO (estimates). Anything a source does not provide shows as “—” or an empty card with the reason.</p>
       {toastNode}
     </div>
   );
