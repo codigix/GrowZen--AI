@@ -1615,7 +1615,11 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
       } else mark('followups', 'skipped', 'Nothing to change on the website or Google profile');
 
       mark('audit', 'running', 'Auditing all six areas, then planning fixes and setting the schedule');
-      await api(`/discover/onboard/${b.id}`, { method: 'POST' });
+      mark('backlinks', 'running');
+      const started = await api(`/discover/onboard/${b.id}`, { method: 'POST' });
+      const bl = started?.backlink_bot;
+      if (bl?.enabled) mark('backlinks', 'done', `Tracking ${bl.domains.join(', ')}. The discovery bot is exploring now and keeps running every ${Math.round((bl.interval_minutes || 60) / 60) || 1} h; results appear in Backlink Intelligence.`);
+      else mark('backlinks', 'skipped', bl?.reason || 'Backlink discovery needs the website address.');
       await refreshBusinesses();
       choose(b.id);
       setPhase('auditing');
@@ -1682,6 +1686,7 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
           <StepLine state={log.keywords?.state || 'todo'} label="Add seed keywords" detail={log.keywords?.detail} />
           <StepLine state={log.followups?.state || 'todo'} label="Add website & Google profile fixes to the to-do list" detail={log.followups?.detail || (followUps.length ? followUps.map(x => x.title).join(' · ') : null)} />
           <StepLine state={log.audit?.state || 'todo'} label="Baseline audit, AI fix plan and schedule" detail={log.audit?.detail} />
+          <StepLine state={log.backlinks?.state || 'todo'} label="Start the backlink discovery bot" detail={log.backlinks?.detail} />
         </ol>
         {(phase === 'auditing' || phase === 'finished') && (
           <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-2">

@@ -165,7 +165,8 @@ def gbp_live(b: Business = Depends(get_business), db: Session = Depends(get_db))
         "status": status, "verification": b.verification,
         "profile": {"name": b.name, "primary_category": b.primary_category, "secondary_categories": b.secondary_categories or [], "description": b.description, "phone": b.phone,
                     "website": b.website, "address": b.address, "area": b.area, "city": b.city, "lat": b.lat, "lng": b.lng, "hours": b.hours or {}, "special_hours": b.special_hours or [],
-                    "service_area": b.service_area, "place_id": b.place_id, "location": b.gbp_location, "account": b.gbp_account},
+                    "service_area": b.service_area, "place_id": b.place_id, "location": b.gbp_location, "account": b.gbp_account,
+                    "logo": b.logo, "cover_photo": b.cover_photo},
         "metrics": {"rating": b.rating, "review_count": b.review_count, "photo_count": b.photo_count, "unreplied_reviews": sum(1 for r in reviews if r.reply_status in ("none", "draft")),
                     "calls_30": int(totals[0]), "directions_30": int(totals[1]), "website_clicks_30": int(totals[2]), "views_search_30": int(totals[3]), "views_maps_30": int(totals[4]), "bookings_30": int(totals[5])},
         "rating_split": {str(n): sum(1 for r in reviews if r.rating == n) for n in (5, 4, 3, 2, 1)},
@@ -263,6 +264,12 @@ def set_schedule(body: ScheduleIn, b: Business = Depends(get_business), db: Sess
 @router.get("/{business_id}/report")
 def report(month: str | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     return reports.monthly_summary(db, b, month)
+
+
+@router.get("/{business_id}/report.csv")
+def report_csv(month: str | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    s = reports.monthly_summary(db, b, month)
+    return Response(reports.csv_bytes(s), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{b.name}-{s["month"]}.csv"'})
 
 
 @router.get("/{business_id}/report.pdf")

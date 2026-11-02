@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
+from ..backlinks import autostart as backlink_autostart
 from ..db import get_db
 from ..deps import in_background
 from ..models import Business, Review
@@ -177,9 +178,13 @@ def add(body: DiscoverImportIn, tasks: BackgroundTasks, db: Session = Depends(ge
 
     log(db, user.name, "business_found_by_email" if created else "business_updated_by_email", b.id, email=body.email, source=c.get("source"), place_id=b.place_id)
     db.commit()
+    bot = {"enabled": False}
     if not body.defer_audit:
+        bot = backlink_autostart.enable(db, b)  # track the site and switch the backlink discovery bot on
         tasks.add_task(in_background(_onboard, b.id))
-    return row(b) | {"created": created, "imported_reviews": imported_reviews}
+        if bot["enabled"]:
+            tasks.add_task(in_background(backlink_autostart.first_run, b.id))
+    return row(b) | {"created": created, "imported_reviews": imported_reviews, "backlink_bot": bot}
 
 
 @router.post("/onboard/{business_id}", status_code=202)
@@ -190,5 +195,11 @@ def start_onboarding(business_id: int, tasks: BackgroundTasks, db: Session = Dep
         raise HTTPException(404, "Business not found")
     log(db, user.name, "onboarding_started", b.id)
     db.commit()
+    # Backlink discovery starts with onboarding: the site and its competitors are tracked, the bot is switched on and explores right away.
+    bot = backlink_autostart.enable(db, b)
     tasks.add_task(in_background(_onboard, b.id))
-    return {"queued": True}
+    if bot["enabled"]:
+        log(db, user.name, "backlink_bot_started", b.id, domains=bot["domains"])
+        db.commit()
+        tasks.add_task(in_background(backlink_autostart.first_run, b.id))
+    return {"queued": True, "backlink_bot": bot}

@@ -17,7 +17,7 @@ export const shortDate = (d) => new Date(d).toLocaleDateString('en-GB', { day: '
 
 export const PLANS = [
   { name: 'Starter', who: 'Single shop, clinic, salon', price: '₹999 – 1,999', includes: ['GBP manager', 'Review replies', '4 posts / month', 'Monthly report'] },
-  { name: 'Growth', who: 'Business with a website', price: '₹2,999 – 4,999', includes: ['Everything in Starter', 'Local rank grid', '4 AI blogs / month', 'Site audit', 'WhatsApp bot'], popular: true },
-  { name: 'Pro', who: 'Competitive local markets', price: '₹7,999 – 14,999', includes: ['Everything in Growth', 'Backlinks & citations', 'GEO / AEO tracker', 'AI autopilot'] },
-  { name: 'Agency', who: 'Agencies and freelancers', price: 'Per location', includes: ['White-label reports', 'Client logins', 'Bulk tools', 'Volume discounts'] }
+  { name: 'Growth', who: 'Business with a website', price: '₹2,999 – 4,999', includes: ['Everything in Starter', 'Local rank grid', 'AI blog writing', 'Site audit'], popular: true },
+  { name: 'Pro', who: 'Competitive local markets', price: '₹7,999 – 14,999', includes: ['Everything in Growth', 'Backlink discovery bot', 'GEO / AEO tracker'] },
+  { name: 'Agency', who: 'Agencies and freelancers', price: 'Per location', includes: ['Multiple client locations', 'Monthly PDF report per client', 'Team members', 'Volume discounts'] }
 ];

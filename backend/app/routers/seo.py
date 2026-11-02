@@ -231,18 +231,21 @@ def _search_console(db: Session, b: Business, host: str):
     conns.sort(key=lambda c: c.id != b.connection_id)
     if not conns:
         return "not_connected", "Connect a Google account that can see this site in Search Console (Integrations).", None, None
-    last = None
+    notes: list[str] = []
     for conn in conns:
         try:
             sc = gsc.SearchConsole(conn)
-            site = gsc.match_property(sc.sites(), host)
+            sites = sc.sites()
+            site = gsc.match_property(sites, host)
         except GbpError as exc:
-            last = str(exc)
+            notes.append(f"{conn.email}: {str(exc)[:160]}")
             continue
         if site:
             return "ok", conn.email, sc, site
-        last = f"{conn.email} has no verified Search Console property for {host}. Add and verify the site in Search Console, or connect the account that owns it."
-    return "no_property", last or "No verified Search Console property for this site.", None, None
+        have = [x["siteUrl"] for x in sites if x.get("permissionLevel") != "siteUnverifiedUser"]
+        notes.append(f"{conn.email} has no verified property for {host}" + (f" (it has: {', '.join(have[:6])}{'…' if len(have) > 6 else ''})." if have else " (it has no verified properties at all)."))
+    msg = " ".join(notes) or "No verified Search Console property for this site."
+    return "no_property", msg + " Add and verify the site in Search Console, or connect the account that owns it.", None, None
 
 
 @router.get("/domain-intel")

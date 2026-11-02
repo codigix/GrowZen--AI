@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Play, Plus, Check, Minus, Trash2, Info, Copy, Loader2 } from 'lucide-react';
-import { SeoShell, Card, Tabs, Stat, Badge, Button, inputCls, Meter, SourceTag, ErrorNote, SERIES, useToast, useAction } from './SeoUi';
+import { SeoShell, Card, Tabs, Stat, Badge, Button, inputCls, Meter, SourceTag, ErrorNote, SERIES, useToast, useAction, useDoubleConfirm } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 
 function Geo({ b, tab }) {
@@ -26,7 +26,8 @@ function Geo({ b, tab }) {
   }, [results]);
 
   const add = () => run('add', async () => { await api(`/businesses/${b.id}/geo/prompts`, { method: 'POST', body: { prompt } }); setPrompt(''); geo.reload(true); });
-  const del = (id) => run(`d${id}`, async () => { await api(`/businesses/${b.id}/geo/prompts/${id}`, { method: 'DELETE' }); geo.reload(true); });
+  const [ask, confirmNode] = useDoubleConfirm();
+  const del = (id) => ask({ what: 'this prompt', effect: 'It is no longer asked to the AI engines. Past answers for it stay in your history.', onConfirm: () => run(`d${id}`, async () => { await api(`/businesses/${b.id}/geo/prompts/${id}`, { method: 'DELETE' }); geo.reload(true); }) });
   const runNow = () => run('run', async () => { await api(`/businesses/${b.id}/geo/run`, { method: 'POST' }); setWaiting(new Date(Date.now() - 2000).toISOString()); toast('Asking the AI engines… this takes a minute'); });
   const llms = `# ${b.name}\n> ${b.primaryCategory || 'Business'} in ${[b.area, b.city].filter(Boolean).join(', ')}.\n\n## Services\n${(b.services || []).filter(s => s.name).map(s => `- ${s.name}${s.price ? `: ${s.price}` : ''}`).join('\n') || '- [add services]'}\n\n## Contact\n- Phone: ${b.phone || '[add]'}\n- Address: ${b.address || 'Service-area business'}\n- Website: ${b.website || '[add]'}`;
 
@@ -34,6 +35,7 @@ function Geo({ b, tab }) {
   const sov = d.share_of_voice;
   return (
     <>
+      {confirmNode}
       <div className="mb-4 flex flex-wrap items-center gap-2 p-3 bg-blue-50/60 border border-blue-100 rounded text-12 text-gray-700">
         <Info size={14} className="text-blue-600 shrink-0" />
         <span className="flex-1">Each prompt is asked to every connected AI engine (OpenAI, Gemini, Perplexity, Claude, DeepSeek). API answers can differ from logged-in apps: read as a trend.</span>

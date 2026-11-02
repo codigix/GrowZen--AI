@@ -26,7 +26,7 @@ function Privacy() {
       ]} />
 
       <H>2. How we use information</H>
-      <L items={['To provide the Service: audits, keyword research, rank tracking, profile management, AI drafts, reports and alerts.', 'To publish changes you approve, such as review replies and posts, to the services you connected.', 'To keep the Service secure, prevent abuse and fix problems.', 'To contact you about your account and important changes to the Service.']} />
+      <L items={['To provide the Service: audits, keyword research, rank tracking, profile management, AI drafts, reports and alerts.', 'To publish items you approve, or that you have set to run automatically, such as review replies and posts, to the services you connected.', 'To keep the Service secure, prevent abuse and fix problems.', 'To contact you about your account and important changes to the Service.']} />
 
       <H>3. Google user data</H>
       <P>{SITE.name} requests access to Google data only when you connect a Google account, and only for these purposes:</P>
@@ -92,7 +92,7 @@ function Terms() {
       <P>You may connect only Google accounts, Business Profiles, ad accounts, inboxes and websites that you own or are authorised to manage. You are responsible for having your clients' permission to manage their profiles and data through the Service.</P>
 
       <H>4. Approvals and AI output</H>
-      <P>The Service drafts changes with AI and shows them to you before they are published, unless you choose to let low-risk items run automatically. You are responsible for reviewing and approving content and for what is published under your accounts. AI output can contain errors; review it before use.</P>
+      <P>The Service drafts changes with AI. By default, routine low-risk items (replies to 4-5 star reviews and the weekly post) are published automatically, while riskier items (replies to 1-3 star reviews, profile changes, website fixes and outreach) wait for your approval. You can change which items run automatically, or turn automatic publishing off, in the settings. You are responsible for reviewing content and for what is published under your accounts. AI output can contain errors; review it before use.</P>
 
       <H>5. Acceptable use</H>
       <L items={['Do not post fake reviews, offer incentives for reviews, or misrepresent a business.', 'Follow the policies of the services you connect, including Google Business Profile, Google Ads and Gmail policies.', 'Do not use the Service to send spam, break the law, infringe others\' rights, or attempt to access data you are not authorised to access.', 'Do not interfere with or reverse-engineer the Service.']} />

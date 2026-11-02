@@ -41,7 +41,7 @@ def fake_google(monkeypatch, vom_enabled=True):
         if url.endswith("/reviews"):
             return {"reviews": [{"reviewId": "r1", "starRating": "FIVE", "comment": "Great", "createTime": "2026-10-01T10:00:00Z"}]}
         if url.endswith("/media"):
-            return {"mediaItems": [{"name": f"m{i}", "mediaFormat": "PHOTO", "googleUrl": f"https://lh3.google.com/{i}", "thumbnailUrl": f"https://lh3.google.com/t{i}",
+            return {"mediaItems": [{"name": f"accounts/111/locations/1/media/m{i}", "mediaFormat": "PHOTO", "googleUrl": f"https://lh3.google.com/{i}", "thumbnailUrl": f"https://lh3.google.com/t{i}",
                                     "createTime": "2026-10-01T00:00:00Z", "locationAssociation": {"category": "EXTERIOR"}, "insights": {"viewCount": str(i * 10)}} for i in range(7)], "totalMediaItemCount": 7}
         if "fetchMultiDailyMetricsTimeSeries" in url:
             return {}
@@ -230,6 +230,79 @@ def test_changes_are_written_to_google(client, monkeypatch):
         monkeypatch.setattr(gbp.GbpClient, "_req", refuse)
         r = client.patch(f"/api/v1/businesses/{bid}", json={"description": "Refused text"})
         assert r.status_code == 502 and client.get(f"/api/v1/businesses/{bid}").json()["description"] == "New text"
+    finally:
+        db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
+
+
+# Replying to a review from the software: it is posted to Google, and a refusal is reported instead of showing as posted.
+def test_review_reply_goes_to_google_and_a_refusal_is_reported(client, monkeypatch):
+    from app.models import Review
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    db = SessionLocal()
+    rid = db.query(Review).filter(Review.business_id == bid).first().id
+    db.close()
+    sent = []
+    monkeypatch.setattr(gbp.GbpClient, "reply_review", lambda self, account, location, review_id, text: sent.append((account, location, review_id, text)))
+    try:
+        r = client.post(f"/api/v1/businesses/{bid}/reviews/{rid}/approve", json={"text": "Thank you!"})
+        assert r.status_code == 200 and r.json()["task"]["result"]["posted"] is True and sent[0][3] == "Thank you!"
+
+        def refuse(self, account, location, review_id, text):
+            raise gbp.GbpError("Reviews API is not enabled")
+        monkeypatch.setattr(gbp.GbpClient, "reply_review", refuse)
+        r = client.post(f"/api/v1/businesses/{bid}/reviews/{rid}/approve", json={"text": "Second try"})
+        assert r.status_code == 502 and "not enabled" in r.json()["detail"]
+    finally:
+        db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
+
+
+def test_logo_and_cover_come_from_the_profile_photos():
+    media = [{"type": "PHOTO", "category": "EXTERIOR", "url": "https://lh3/x"}, {"type": "VIDEO", "category": "PROFILE", "url": "https://lh3/v"},
+             {"type": "PHOTO", "category": "PROFILE", "url": "https://lh3/logo"}, {"type": "PHOTO", "category": "COVER", "url": "https://lh3/cover"}]
+    assert gbp.logo_and_cover(media) == ("https://lh3/logo", "https://lh3/cover")
+    assert gbp.logo_and_cover([{"type": "PHOTO", "category": "EXTERIOR", "url": "https://lh3/x"}]) == (None, None)
+
+
+def test_a_deleted_photo_is_removed_from_google_and_from_the_page(client, monkeypatch):
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    gone: list[str] = []
+    monkeypatch.setattr(gbp.GbpClient, "delete_media", lambda self, name: gone.append(name))
+    try:
+        media = client.get(f"/api/v1/businesses/{bid}/gbp/live").json()["live"]["media"]
+        assert media
+        name = media[0]["id"]
+        r = client.delete(f"/api/v1/businesses/{bid}/gbp/media", params={"name": name})
+        assert r.status_code == 204 and gone == [name]
+        after = client.get(f"/api/v1/businesses/{bid}/gbp/live").json()
+        assert name not in [m["id"] for m in after["live"]["media"]] and len(after["live"]["media"]) == len(media) - 1
+        assert client.delete(f"/api/v1/businesses/{bid}/gbp/media", params={"name": "accounts/999/locations/9/media/x"}).status_code == 400
+    finally:
+        db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
+
+
+def test_an_imported_client_gets_the_plans_recurring_jobs(client, monkeypatch):
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    try:
+        from app.models import Schedule
+        db = SessionLocal()  # read the table itself: listing the schedules would create them on demand and hide a missing import step
+        jobs = {r.job: r.every for r in db.query(Schedule).filter(Schedule.business_id == bid)}
+        db.close()
+        assert jobs["reviews"] == "daily" and jobs["posts"] == "weekly" and jobs["report"] == "monthly"
     finally:
         db = SessionLocal()
         db.query(Business).filter(Business.gbp_location == "locations/1").delete()

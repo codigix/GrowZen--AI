@@ -115,6 +115,14 @@ class Settings(BaseSettings):
     claude_model: str = "claude-haiku-5-5"
     claude_timeout_seconds: int = 90
 
+    # Google Ads Keyword Planner (keyword volume, competition, CPC bid ranges)
+    google_ads_developer_token: str = ""
+    google_ads_client_id: str = ""
+    google_ads_client_secret: str = ""
+    google_ads_refresh_token: str = ""
+    google_ads_customer_id: str = ""  # the Google Ads account id (digits only, no dashes)
+    google_ads_login_customer_id: str = ""  # manager (MCC) account id, only needed if the account is managed
+
     # Google search results (serper.dev): competitor research -- organic top 10 and Maps results per keyword
     serper_api_key: str = ""
     # Development only: the same for the Position Tracking landscape (generated rank checks).
@@ -125,6 +133,7 @@ class Settings(BaseSettings):
 
     # Scheduler
     scheduler_enabled: bool = True
+    backlink_autostart: bool = True  # onboarding starts the backlink discovery bot straight away (false: it only runs on its schedule)
     scheduler_tick_seconds: int = 300
 
     # Lighthouse audits (/lighthouse/...): full Lighthouse reports from PageSpeed Insights (needs
@@ -199,6 +208,16 @@ class Settings(BaseSettings):
         # The google_trends keyword planner now runs in-process (see services/google_trends_client.py),
         # so it's always available whenever this backend is.
         return True
+
+    @property
+    def google_ads_enabled(self) -> bool:
+        return bool(
+            self.google_ads_developer_token
+            and self.google_ads_client_id
+            and self.google_ads_client_secret
+            and self.google_ads_refresh_token
+            and self.google_ads_customer_id
+        )
 
 
 @lru_cache

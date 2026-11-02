@@ -74,6 +74,43 @@ def _plain_words(b: Business, s: dict[str, Any]) -> str:
         return fallback
 
 
+def csv_bytes(summary: dict[str, Any]) -> bytes:
+    """The monthly report as CSV: opens in Excel and Google Sheets (UTF-8 with a byte-order mark so ₹ and accents show correctly)."""
+    import csv
+    out = io.StringIO()
+    w = csv.writer(out)
+    cur, prev = summary["insights"], summary["previous"]
+    w.writerow([f"{summary['business']}: monthly report", summary["month"]])
+    w.writerow([])
+    w.writerow(["Metric", "This month", "Last month"])
+    for k in ("calls", "directions", "website_clicks", "views"):
+        w.writerow([k.replace("_", " ").capitalize(), cur[k], prev[k]])
+    w.writerow(["Leads", summary["leads"], ""])
+    w.writerow(["New reviews", summary["new_reviews"], ""])
+    if summary.get("backlinks"):
+        bl = summary["backlinks"]
+        w.writerow(["Backlinks (live)", bl["backlinks"], ""])
+        w.writerow(["Referring domains", bl["referring_domains"], ""])
+        w.writerow(["Links gained this month", bl["new_this_month"], ""])
+        w.writerow(["Links lost this month", bl["lost_this_month"], ""])
+    w.writerow([])
+    w.writerow(["Audit area", "Score"])
+    w.writerow(["Overall", summary["overall"] if summary["overall"] is not None else ""])
+    for k, v in summary["scores"].items():
+        w.writerow([k, v if v is not None else ""])
+    w.writerow([])
+    w.writerow(["Keyword", "Rank now", "Rank before"])
+    for k in summary["keywords"]:
+        w.writerow([k["keyword"], k["rank"], k["prev_rank"]])
+    w.writerow([])
+    w.writerow(["Next steps"])
+    for f in summary["top_fixes"]:
+        w.writerow([f["title"]])
+    w.writerow([])
+    w.writerow(["Summary", summary["plain_words"]])
+    return (chr(0xFEFF) + out.getvalue()).encode("utf-8")
+
+
 def pdf(summary: dict[str, Any], agency: str = "Codigix Infotech") -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, title=f"{summary['business']} report {summary['month']}")

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, XCircle, Loader2, RefreshCw, ExternalLink, Globe, KeyRound, Unplug, Send, Copy, Clock, Trash2, AlertTriangle } from 'lucide-react';
-import { Badge, Button, Field, inputCls } from './SeoUi';
+import { Badge, Button, Field, inputCls, useDoubleConfirm } from './SeoUi';
 import { api, fmtDateTime } from './seoApi';
 
 const METHODS = {
@@ -147,6 +147,7 @@ const canConnect = (method, f) => Boolean(f.secret && (method === 'github' ? f.r
 
 export default function SitePublishPanel({ b, article, toast, onPublished, defaultWhen }) {
   const [integ, setInteg] = useState(null);
+  const [ask, confirmNode] = useDoubleConfirm();
   const [loadError, setLoadError] = useState('');
   const [detecting, setDetecting] = useState(false);
   const [method, setMethod] = useState('wordpress');
@@ -206,11 +207,12 @@ export default function SitePublishPanel({ b, article, toast, onPublished, defau
       .finally(() => setConnecting(false));
   };
 
-  const disconnect = () => {
-    api(`/businesses/${b.id}/site-integration`, { method: 'DELETE' })
+  const disconnect = () => ask({
+    what: 'the website connection', effect: 'Publishing to your website stops until you connect it again. Posts already on the site stay.',
+    onConfirm: () => api(`/businesses/${b.id}/site-integration`, { method: 'DELETE' })
       .then(() => { setConnSteps([]); setResult(null); setPubSteps([]); return api(`/businesses/${b.id}/site-integration`).then(apply); })
-      .catch(e => toast(e.message));
-  };
+      .catch(e => toast(e.message))
+  });
 
   const publish = () => {
     if (!article) { toast('Generate or open an article first.'); return; }
@@ -226,7 +228,7 @@ export default function SitePublishPanel({ b, article, toast, onPublished, defau
       .finally(() => setPublishing(false));
   };
 
-  const cancel = (id) => api(`/businesses/${b.id}/site-integration/scheduled/${id}`, { method: 'DELETE' }).then(() => { loadScheduled(); toast('Scheduled post cancelled.'); }).catch(e => toast(e.message));
+  const cancel = (id) => ask({ what: 'this scheduled post', effect: 'It will not be published to your website.', onConfirm: () => api(`/businesses/${b.id}/site-integration/scheduled/${id}`, { method: 'DELETE' }).then(() => { loadScheduled(); toast('Scheduled post cancelled.'); }).catch(e => toast(e.message)) });
 
   const connected = integ?.status === 'connected';
   const det = integ?.detected;
@@ -244,6 +246,7 @@ export default function SitePublishPanel({ b, article, toast, onPublished, defau
 
   return (
     <div className="max-w-2xl space-y-5 text-[12px]">
+      {confirmNode}
       {/* 1 Detect */}
       <section className="space-y-2">
         <Num n={1} done={Boolean(det?.reachable)}>Your website&apos;s technology</Num>

@@ -14,7 +14,7 @@ os.environ.update({
     "DATABASE_URL": _test_url or f"sqlite:///{_db}",
     "CRM_JWT_SECRET": "test-secret-0123456789-abcdefghijklmnop",
     "CRM_API_URL": "",
-    "SCHEDULER_ENABLED": "false",
+    "SCHEDULER_ENABLED": "false", "BACKLINK_AUTOSTART": "false",
     "DEEPSEEK_API_KEY": "", "OPENAI_API_KEY": "", "GEMINI_API_KEY": "", "PERPLEXITY_API_KEY": "", "ANTHROPIC_API_KEY": "",
     "RANK_LANDSCAPE_MOCK": "false", "INTAKE_ALLOWED_SENDERS": "codigixinfotech.com", "INTAKE_WEBHOOK_TOKEN": "hook-token",
     "SITE_AUTODETECT": "false", "SMTP_HOST": "", "SECRET_KEY": "test-session-secret-0123456789-abcdef", "ADMIN_EMAIL": "", "ADMIN_PASSWORD": "",
