@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Search, X, Upload, Trash2, Save, Loader2, Pencil } from 'lucide-react';
-import { Card, Button, Field, ErrorNote, inputCls, Modal, Badge, useAction, refreshBusinesses } from './SeoUi';
+import { Card, Button, Field, ErrorNote, inputCls, Modal, Badge, useAction, refreshBusinesses, useDoubleConfirm } from './SeoUi';
 import { api, useApi } from './seoApi';
+import { BusinessAvatar } from './GbpWorkspace';
 
 /** True when the client's profile is linked to Google, so edits here are written to Google. */
 export const isLinked = (b) => Boolean(b.gbp_location && b.connection_id);
@@ -138,6 +139,14 @@ export function AttributesEditor({ b, toast }) {
   );
 }
 
+/** A photo thumbnail that tries Google's thumbnail, then the full image, then shows a neutral tile instead of raw alt text. */
+function Thumb({ m }) {
+  const sources = [m.thumb, m.url].filter(Boolean);
+  const [i, setI] = useState(0);
+  if (i >= sources.length) return <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-slate-400 text-11 text-center px-2"><Upload size={16} />Photo not available to preview</div>;
+  return <img src={sources[i]} alt="" referrerPolicy="no-referrer" loading="lazy" className="w-full h-full object-cover" onError={() => setI(i + 1)} />;
+}
+
 /** Photos on the profile: upload a file, or a public image link, in a Google category; delete any photo. */
 export function MediaManager({ b, toast }) {
   const live = useApi(isLinked(b) ? `/businesses/${b.id}/gbp/live` : null);
@@ -146,16 +155,20 @@ export function MediaManager({ b, toast }) {
   const [busy, error, run] = useAction();
   const fileRef = useRef(null);
   const media = live.data?.live?.media || [];
+  // A new photo only has its Google address after a sync, so pull the profile again to show it in the grid.
+  const refresh = async () => { try { await api(`/businesses/${b.id}/sync`, { method: 'POST' }); } catch (e) { /* the list still reloads */ } live.reload(true); await refreshBusinesses(); };
   const upload = (file) => file && run('up', async () => {
     if (file.size > 25 * 1024 * 1024) throw new Error('Photos must be under 25 MB');
     await api(`/businesses/${b.id}/gbp/media`, { method: 'POST', body: { category, data_base64: await readBase64(file), content_type: file.type || 'image/jpeg' } });
-    toast('Photo uploaded to your Google Business Profile'); live.reload(true); await refreshBusinesses();
+    toast('Photo uploaded to your Google Business Profile'); await refresh();
   });
-  const addUrl = () => run('url', async () => { await api(`/businesses/${b.id}/gbp/media`, { method: 'POST', body: { category, url: url.trim() } }); setUrl(''); toast('Photo sent to Google'); live.reload(true); await refreshBusinesses(); });
-  const del = (m) => window.confirm('Delete this photo from your Google Business Profile?') && run(`d${m.id}`, async () => { await api(`/businesses/${b.id}/gbp/media?name=${encodeURIComponent(m.id)}`, { method: 'DELETE' }); toast('Photo deleted'); live.reload(true); await refreshBusinesses(); });
+  const addUrl = () => run('url', async () => { await api(`/businesses/${b.id}/gbp/media`, { method: 'POST', body: { category, url: url.trim() } }); setUrl(''); toast('Photo sent to Google'); await refresh(); });
+  const [ask, confirmNode] = useDoubleConfirm();
+  const del = (m) => ask({ what: `this ${String(m.category || 'photo').replace(/_/g, ' ').toLowerCase()} photo`, effect: 'It is removed from your Google Business Profile and can no longer be shown on Google Search or Maps.', onConfirm: () => run(`d${m.id}`, async () => { await api(`/businesses/${b.id}/gbp/media?name=${encodeURIComponent(m.id)}`, { method: 'DELETE' }); toast('Photo deleted from your Google Business Profile'); live.reload(true); await refreshBusinesses(); }) });
   return (
     <Card title="Manage photos on Google" subtitle="Uploads go straight to the profile. Google may review new photos before showing them.">
       <Linked b={b}>
+        {confirmNode}
         <div className="flex flex-wrap gap-2 items-center mb-4">
           <select className={`${inputCls} w-44`} value={category} onChange={e => setCategory(e.target.value)} aria-label="Photo category">{MEDIA.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,video/mp4" className="hidden" onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
@@ -168,9 +181,9 @@ export function MediaManager({ b, toast }) {
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
             {media.map(m => (
               <div key={m.id} className="group relative aspect-square rounded overflow-hidden bg-slate-100">
-                <img src={m.thumb || m.url} alt={m.category || 'Photo'} loading="lazy" className="w-full h-full object-cover" />
+                <Thumb m={m} />
                 <span className="absolute left-1 bottom-1 px-1.5 py-0.5 rounded bg-slate-900/70 text-white text-10 font-semibold">{String(m.category || 'photo').replace(/_/g, ' ').toLowerCase()}</span>
-                <button type="button" aria-label="Delete photo" onClick={() => del(m)} className="absolute right-1 top-1 w-7 h-7 rounded-full bg-white/90 text-slate-600 hover:text-red-600 flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer">{busy === `d${m.id}` ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}</button>
+                <button type="button" aria-label="Delete photo" title="Delete this photo from Google" onClick={() => del(m)} className="absolute right-1 top-1 w-7 h-7 rounded-full bg-white shadow text-slate-600 hover:text-red-600 flex items-center justify-center cursor-pointer">{busy === `d${m.id}` ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}</button>
               </div>
             ))}
           </div>
@@ -185,14 +198,16 @@ export function LivePosts({ b, toast }) {
   const live = useApi(isLinked(b) ? `/businesses/${b.id}/gbp/live` : null);
   const [busy, error, run] = useAction();
   const posts = live.data?.live?.posts || [];
-  const del = (p) => window.confirm('Delete this post from your Google Business Profile?') && run(`d${p.id}`, async () => { await api(`/businesses/${b.id}/gbp/live-post?name=${encodeURIComponent(p.id)}`, { method: 'DELETE' }); toast('Post deleted from Google'); live.reload(true); });
+  const [ask, confirmNode] = useDoubleConfirm();
+  const del = (p) => ask({ what: 'this post', effect: 'It is removed from your Google Business Profile, so customers will no longer see it.', onConfirm: () => run(`d${p.id}`, async () => { await api(`/businesses/${b.id}/gbp/live-post?name=${encodeURIComponent(p.id)}`, { method: 'DELETE' }); toast('Post deleted from Google'); live.reload(true); }) });
   if (!isLinked(b)) return null;
   return (
     <Card title={`Live on Google (${posts.length})`} subtitle="Posts currently on the profile">
+      {confirmNode}
       <ErrorNote>{error}</ErrorNote>
       {posts.length === 0 ? <p className="text-13 text-slate-500 py-3 text-center">No posts on Google yet.</p> : (
         <ul className="divide-y divide-slate-100">{posts.map(p => (
-          <li key={p.id} className="py-2.5 flex items-start gap-3"><div className="min-w-0 flex-1"><div className="flex gap-1.5 items-center"><Badge tone="blue">{String(p.type || 'post').toLowerCase()}</Badge><Badge tone={p.state === 'LIVE' ? 'green' : 'amber'}>{String(p.state || '').toLowerCase()}</Badge></div><p className="text-13 text-slate-700 mt-1 line-clamp-2">{p.summary || p.title}</p></div>
+          <li key={p.id} className="py-2.5 flex items-start gap-3"><BusinessAvatar name={b.name} src={b.logo} size="w-8 h-8" /><div className="min-w-0 flex-1"><div className="flex gap-1.5 items-center"><Badge tone="blue">{String(p.type || 'post').toLowerCase()}</Badge><Badge tone={p.state === 'LIVE' ? 'green' : 'amber'}>{String(p.state || '').toLowerCase()}</Badge></div><p className="text-13 text-slate-700 mt-1 line-clamp-2">{p.summary || p.title}</p></div>
             <button type="button" aria-label="Delete post" onClick={() => del(p)} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer">{busy === `d${p.id}` ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}</button></li>
         ))}</ul>
       )}

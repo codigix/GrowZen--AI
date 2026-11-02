@@ -144,3 +144,7 @@
   font-weight: 900;
   font-style: italic;
 }
+
+/* Edit panels (drawers) are narrower than the page: wide-screen column layouts collapse to one column inside them. */
+.gbp-compact [class*="xl:grid-cols-"] { grid-template-columns: minmax(0, 1fr) !important; }
+.gbp-compact [class*="xl:col-span-"] { grid-column: auto !important; }

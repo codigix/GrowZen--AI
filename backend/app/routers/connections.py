@@ -4,7 +4,8 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..services import audits
+from ..backlinks import autostart as backlink_autostart
+from ..services import audits, schedules
 from ..auth import User, current_user, require_admin
 from ..config import get_settings
 from ..db import get_db
@@ -103,6 +104,8 @@ def import_locations(connection_id: int, body: ImportLocationsIn, db: Session = 
         except gbp.GbpError:
             pass
         audits.run(db, b, "gbp")
+        schedules.create_for_plan(db, b)  # the plan's recurring jobs (reviews, posts, audits, reports) start for an imported client too
+        backlink_autostart.enable(db, b)  # and so does backlink discovery (the scheduler's bot job runs it)
         log(db, user.name, "business_imported", b.id, location=name, email=c.email)
         db.commit()
         out.append(row(b))

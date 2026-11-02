@@ -4,8 +4,8 @@ import {
   LayoutDashboard, Store, BarChart3, Star, Newspaper, Image as ImageIcon, MapPinned, MessageCircleQuestion, Sparkles, Swords, Bot, FileText,
   ListTodo, History, Settings2, Loader2, ArrowRight, Phone, Navigation, MousePointerClick, Search, Eye, CalendarCheck, CheckCircle2, Clock, PlugZap
 } from 'lucide-react';
-import { Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill } from './SeoUi';
-import { useApi, fmt, fmtDateTime } from './seoApi';
+import { Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill, areaCls, useAction, useDoubleConfirm } from './SeoUi';
+import { api, useApi, fmt, fmtDateTime } from './seoApi';
 import { VerifyPill } from './GbpAccounts';
 
 /** Where every number on this page comes from, so a calculated or AI figure is never mistaken for Google's own. */
@@ -90,6 +90,17 @@ export function SectionNav({ value, onChange }) {
   );
 }
 
+/** The business logo from its Google profile, or its first letter when the profile has none. */
+export function BusinessAvatar({ name, src, size = 'w-11 h-11', className = '' }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => setFailed(false), [src]);
+  return (
+    <span className={`${size} shrink-0 rounded-full bg-white ring-1 ring-slate-200 overflow-hidden flex items-center justify-center text-slate-500 font-bold ${className}`}>
+      {src && !failed ? <img src={src} alt={`${name || 'Business'} logo`} className="w-full h-full object-cover" onError={() => setFailed(true)} /> : <span>{(name || '?').trim().charAt(0).toUpperCase()}</span>}
+    </span>
+  );
+}
+
 const ago = (iso) => {
   if (!iso) return 'never';
   const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -105,6 +116,7 @@ export function ClientBar({ b, onConnect, onSync }) {
   const connected = Boolean(d?.linked && d?.connection?.status === 'active');
   return (
     <div className="ai-glass-card rounded px-5 py-3.5 flex flex-wrap items-center gap-x-5 gap-y-2">
+      <BusinessAvatar name={b.name} src={d?.profile?.logo || b.logo} size="w-12 h-12" />
       <div className="min-w-[200px] flex-1">
         <div className="text-16 font-semibold text-slate-900">{b.name}</div>
         <div className="text-12 text-slate-500">{[b.primaryCategory || b.primary_category, [b.area, b.city].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || 'No category or address yet'}</div>
@@ -132,7 +144,7 @@ function Kpi({ icon: Icon, label, value, sub }) {
   );
 }
 
-export function OverviewSection({ b, go }) {
+export function OverviewSection({ b, go, onOpen }) {
   const live = useApi(`/businesses/${b.id}/gbp/live`);
   const score = useApi(`/businesses/${b.id}/gbp/score`);
   const d = live.data;
@@ -161,10 +173,10 @@ export function OverviewSection({ b, go }) {
               )}
             </Card>
           </div>
-          <Card title="Open a section" pad>
+          <Card title="Quick actions" subtitle="Edits open here and are sent straight to your Google profile" pad>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {[['profile', 'Edit profile and hours'], ['reviews', `Reviews${m.unreplied_reviews ? ` (${m.unreplied_reviews} unreplied)` : ''}`], ['posts', 'Create a post'], ['photos', 'Photos and media'], ['performance', 'Performance trends'], ['tasks', 'Tasks and activity'], ['reports', 'Reports'], ['settings', 'Connection settings']].map(([id, l]) => (
-                <button key={id} type="button" onClick={() => go(id)} className="flex items-center justify-between gap-2 px-3 py-2.5 rounded border border-slate-200 text-13 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/40 cursor-pointer text-left">{l}<ArrowRight size={13} className="text-slate-400 shrink-0" /></button>
+              {[['profile', 'Edit profile and hours', true], ['reviews', `Reply to reviews${m.unreplied_reviews ? ` (${m.unreplied_reviews} unreplied)` : ''}`, true], ['posts', 'Create a post', true], ['photos', 'Photos and media', true], ['performance', 'Performance trends'], ['tasks', 'Tasks and activity'], ['reports', 'Reports'], ['settings', 'Connection settings']].map(([id, l, panel]) => (
+                <button key={id} type="button" onClick={() => (panel && onOpen ? onOpen(id) : go(id))} className="flex items-center justify-between gap-2 px-3 py-2.5 rounded border border-slate-200 text-13 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/40 cursor-pointer text-left">{l}<ArrowRight size={13} className="text-slate-400 shrink-0" /></button>
               ))}
             </div>
           </Card>
@@ -203,45 +215,87 @@ export function PerformanceMetrics({ b }) {
   );
 }
 
-export function ReviewsSection({ b }) {
+/** One review with its reply written, edited and posted right here (the reply goes to Google when posted). */
+function ReviewRow({ b, r, toast, onChanged }) {
+  const [open, setOpen] = React.useState(false);
+  const [text, setText] = React.useState(r.reply || '');
+  const [busy, error, run] = useAction();
+  const draft = () => run('ai', async () => { const x = await api(`/businesses/${b.id}/reviews/${r.id}/draft`, { method: 'POST', body: { language: 'English' } }); setText(x.reply_text || ''); });
+  const post = () => run('post', async () => {
+    const out = await api(`/businesses/${b.id}/reviews/${r.id}/approve`, { method: 'POST', body: { text } });
+    toast(out.task?.result?.posted ? 'Reply posted on your Google Business Profile' : "Reply saved, but this client isn't linked to Google, so post it from Google");
+    setOpen(false); onChanged();
+  });
+  const [ask, confirmNode] = useDoubleConfirm();
+  const remove = () => ask({ what: `your reply to ${r.author || 'this reviewer'}`, effect: 'The reply is removed from your Google Business Profile. The review itself stays.', onConfirm: () => run('del', async () => { await api(`/businesses/${b.id}/gbp/reviews/${r.id}/reply`, { method: 'DELETE' }); toast('Reply deleted from Google'); setText(''); setOpen(false); onChanged(); }) });
+  return (
+    <li className="text-13">
+      {confirmNode}
+      <div className="flex flex-wrap items-center gap-2"><span className="font-semibold text-slate-900">{r.author || 'Google user'}</span><span className="text-amber-500">{'★'.repeat(r.rating)}</span><span className="text-11.5 text-slate-400">{r.date}</span>{!r.replied && <Badge tone="amber">No reply</Badge>}</div>
+      {r.body && <p className="text-slate-600 mt-0.5">{r.body}</p>}
+      {r.reply && !open && <p className="mt-1 pl-3 border-l-2 border-slate-200 text-12.5 text-slate-500">{r.reply}</p>}
+      {open ? (
+        <div className="mt-2 space-y-2">
+          <textarea rows={4} className={areaCls} value={text} onChange={e => setText(e.target.value)} placeholder="Write a reply, or let AI draft one and edit it" />
+          <ErrorNote>{error}</ErrorNote>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="ai" busy={busy === 'ai'} onClick={draft}>Write with AI</Button>
+            <Button size="sm" variant="primary" busy={busy === 'post'} disabled={!text.trim()} onClick={post}>{r.replied ? 'Update reply on Google' : 'Post reply to Google'}</Button>
+            <Button size="sm" onClick={() => { setOpen(false); setText(r.reply || ''); }}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-1.5 flex gap-3 text-12.5 font-semibold">
+          <button type="button" onClick={() => setOpen(true)} className="text-indigo-600 hover:underline cursor-pointer">{r.replied ? 'Edit reply' : 'Reply'}</button>
+          {r.replied && <button type="button" onClick={remove} className="text-slate-400 hover:text-red-600 cursor-pointer">Delete reply</button>}
+        </div>
+      )}
+    </li>
+  );
+}
+
+export function ReviewsSection({ b, toast = () => {} }) {
   const live = useApi(`/businesses/${b.id}/gbp/live`);
+  const all = useApi(`/businesses/${b.id}/reviews`);
+  const [onlyOpen, setOnlyOpen] = React.useState(true);
+  const [syncing, syncError, run] = useAction();
   const d = live.data;
-  if (!d) return <Loading />;
+  if (!d || !all.data) return all.error ? <ErrorNote>{all.error.message}</ErrorNote> : <Loading />;
   const m = d.metrics;
+  const sum = all.data.summary;
   const split = d.rating_split || {};
   const total = Object.values(split).reduce((a, v) => a + v, 0) || 0;
-  const recent = d.recent_reviews || [];
-  const replied = recent.filter(r => r.replied).length;
-  const rate = recent.length ? Math.round((replied / recent.length) * 100) : null;
-  const positive = [4, 5].reduce((s, n) => s + (split[String(n)] || 0), 0);
-  const negative = [1, 2].reduce((s, n) => s + (split[String(n)] || 0), 0);
+  const rows = all.data.reviews.map(r => ({ id: r.id, author: r.author, rating: r.rating, body: r.body, date: r.review_date, replied: r.reply_status === 'posted', reply: r.reply_text }));
+  const shown = onlyOpen ? rows.filter(r => !r.replied) : rows;
+  const positive = [4, 5].reduce((s2, n) => s2 + (split[String(n)] || 0), 0);
+  const negative = [1, 2].reduce((s2, n) => s2 + (split[String(n)] || 0), 0);
+  const changed = () => { all.reload(true); live.reload(true); };
+  const fetchNew = () => run('sync', async () => { const x = await api(`/businesses/${b.id}/sync`, { method: 'POST' }); toast(x.new_reviews ? `${x.new_reviews} new review${x.new_reviews === 1 ? '' : 's'} from Google` : 'No new reviews on Google'); changed(); });
   return (
     <div className="space-y-4">
-      <SectionHead title="Reviews & Reputation" subtitle="Rating, distribution and what still needs a reply" sources={['google', 'calc', 'ai']}>
-        <Link to="/reviews"><Button variant="primary" icon={Star}>Open review manager (reply, AI suggestions)</Button></Link>
-      </SectionHead>
+      <SectionHead title="Reviews & Reputation" subtitle="Rating, distribution, and replies you write here go to Google" sources={['google', 'calc', 'ai']} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi icon={Star} label="Average rating" value={m.rating ? `${m.rating}★` : '—'} sub="Google API" />
         <Kpi icon={Star} label="Total reviews" value={fmt(m.review_count || 0)} sub="Google API" />
-        <Kpi icon={Star} label="Unanswered" value={fmt(m.unreplied_reviews)} sub="Codigix calculated" />
-        <Kpi icon={Star} label="Response rate" value={rate == null ? '—' : `${rate}%`} sub={`Of the latest ${recent.length} · Codigix calculated`} />
+        <Kpi icon={Star} label="Unanswered" value={fmt(sum.awaiting_reply)} sub="Codigix calculated" />
+        <Kpi icon={Star} label="Response rate" value={sum.count ? `${sum.reply_rate}%` : '—'} sub={`Of ${sum.count} reviews · Codigix calculated`} />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <Card title="Rating distribution" action={<SourceBadge type="google" />}>
           <ul className="space-y-1.5">{[5, 4, 3, 2, 1].map(n => <li key={n} className="flex items-center gap-2 text-12"><span className="w-3 text-slate-500">{n}</span><span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full rounded-full bg-amber-400" style={{ width: `${total ? ((split[String(n)] || 0) / total) * 100 : 0}%` }} /></span><span className="w-8 text-right tabular-nums text-slate-500">{split[String(n)] || 0}</span></li>)}</ul>
-          <div className="mt-3 flex gap-2 text-12"><StatusPill level="good">{positive} positive (4-5★)</StatusPill><StatusPill level={negative ? 'critical' : 'good'}>{negative} negative (1-2★)</StatusPill></div>
-          <p className="text-11.5 text-slate-500 mt-2">Positive / negative is counted from star ratings. Text sentiment is AI generated in the review manager.</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-12"><StatusPill level="good">{positive} positive (4-5★)</StatusPill><StatusPill level={negative ? 'critical' : 'good'}>{negative} negative (1-2★)</StatusPill></div>
+          <p className="text-11.5 text-slate-500 mt-2">Positive / negative is counted from star ratings. AI only drafts a reply: you edit it and choose to post.</p>
         </Card>
-        <Card title="Latest reviews" className="xl:col-span-2" action={<SourceBadge type="google" />}>
-          {recent.length === 0 ? <p className="text-13 text-slate-500 py-6 text-center">No reviews yet.</p> : (
-            <ul className="space-y-3 max-h-96 overflow-y-auto pr-1">
-              {recent.map(r => (
-                <li key={r.id} className="text-13">
-                  <div className="flex flex-wrap items-center gap-2"><span className="font-semibold text-slate-900">{r.author || 'Google user'}</span><span className="text-amber-500">{'★'.repeat(r.rating)}</span><span className="text-11.5 text-slate-400">{r.date}</span>{!r.replied && <Badge tone="amber">No reply</Badge>}</div>
-                  {r.body && <p className="text-slate-600 mt-0.5">{r.body}</p>}
-                  {r.reply && <p className="mt-1 pl-3 border-l-2 border-slate-200 text-12.5 text-slate-500">{r.reply}</p>}
-                </li>
-              ))}
+        <Card title="Reviews" className="xl:col-span-2" action={<Button size="sm" busy={syncing === 'sync'} onClick={fetchNew}>Fetch new reviews from Google</Button>}>
+          <ErrorNote>{syncError}</ErrorNote>
+          <div className="flex gap-1 mb-3">
+            {[[true, `Unanswered (${sum.awaiting_reply})`], [false, `All (${sum.count})`]].map(([v, l]) => (
+              <button key={String(v)} type="button" onClick={() => setOnlyOpen(v)} className={`h-8 px-3 rounded text-12.5 font-semibold cursor-pointer ${onlyOpen === v ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>
+            ))}
+          </div>
+          {shown.length === 0 ? <p className="text-13 text-slate-500 py-6 text-center">{onlyOpen ? 'Every review has a reply.' : 'No reviews yet.'}</p> : (
+            <ul className="space-y-4 max-h-[32rem] overflow-y-auto pr-1">
+              {shown.map(r => <ReviewRow key={`${r.id}-${r.reply || ''}`} b={b} r={r} toast={toast} onChanged={changed} />)}
             </ul>
           )}
         </Card>

@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
-import { Play, Plus, Trash2, Download, RefreshCw, Loader2, Search, Crosshair, History, Sparkles } from 'lucide-react';
+import { Play, Plus, Trash2, Download, RefreshCw, Loader2, Search, Crosshair, History, Sparkles, Bot } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine, Legend } from 'recharts';
-import { SeoShell, Card, Tabs, Badge, Button, Meter, ErrorNote, Drawer, Field, Modal, inputCls, areaCls, SERIES, INK, useToast, useAction, useUrlTab } from './SeoUi';
+import { SeoShell, Card, Tabs, Badge, Button, Meter, ErrorNote, Drawer, Field, Modal, inputCls, areaCls, SERIES, INK, useToast, useAction, useUrlTab, useDoubleConfirm } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime, SEO_API } from './seoApi';
 
 const STATUS_TONE = {
@@ -460,7 +460,8 @@ function Targets({ base, targets, reload, onToast }) {
     await api(`${base}/targets`, { method: 'POST', body: { domain, is_competitor: comp } });
     setDomain(''); reload(true); onToast('Domain added');
   });
-  const remove = (id) => run('rm', async () => { await api(`${base}/targets/${id}`, { method: 'DELETE' }); reload(true); });
+  const [ask, confirmNode] = useDoubleConfirm();
+  const remove = (t) => ask({ what: `the tracked domain ${t.domain}`, effect: 'It stops being monitored. Backlinks already found for it stay in your records.', onConfirm: () => run('rm', async () => { await api(`${base}/targets/${t.id}`, { method: 'DELETE' }); reload(true); }) });
   return (
     <Card title="Tracked domains" subtitle="Your sites and competitors. Backlinks are collected and monitored for these.">
       <div className="flex flex-wrap items-end gap-2 mb-3">
@@ -473,11 +474,12 @@ function Targets({ base, targets, reload, onToast }) {
         <span className="text-12 text-gray-500">Adds your website and the competitors you saved elsewhere in the platform.</span>
       </div>
       <ErrorNote>{error}</ErrorNote>
+      {confirmNode}
       {targets.length === 0 ? <Empty>Nothing tracked yet.</Empty> : targets.map(t => (
         <div key={t.id} className="flex items-center gap-3 py-2 border-b border-gray-100 text-13">
           <span className="flex-1 text-gray-900">{t.domain}</span>
           <Badge tone={t.is_competitor ? 'amber' : 'green'}>{t.is_competitor ? 'Competitor' : 'Your site'}</Badge>
-          <button className="text-gray-400 hover:text-red-500 cursor-pointer" aria-label={`Remove ${t.domain}`} onClick={() => remove(t.id)}><Trash2 size={14} /></button>
+          <button className="text-gray-400 hover:text-red-500 cursor-pointer" aria-label={`Remove ${t.domain}`} onClick={() => remove(t)}><Trash2 size={14} /></button>
         </div>
       ))}
     </Card>
@@ -587,20 +589,33 @@ function Body({ b }) {
   const [toast, toastNode] = useToast();
   const reload = useCallback((q) => t.reload(q), [t.reload]);
   const targets = t.data || [];
+  // The bot runs in the background (started at onboarding, then on its schedule): keep an eye on it, and reload the data when a run ends.
+  const botState = useApi(`${base}/bot`);
+  const running = Boolean(botState.data?.running);
+  usePoll(() => botState.reload(true), true, running ? 3000 : 20000);
+  const lastRun = botState.data?.last_run_at || 'never';
+  const stats = botState.data?.last_stats;
   return (
     <>
+      {botState.data?.config?.enabled && targets.length > 0 && (
+        <div className={`mb-4 rounded px-4 py-2.5 text-12.5 flex flex-wrap items-center gap-x-3 gap-y-1 ring-1 ring-inset ${running ? 'bg-indigo-50 ring-indigo-200 text-indigo-800' : 'bg-slate-50 ring-slate-200 text-slate-600'}`}>
+          {running ? <Loader2 size={13} className="animate-spin" /> : <Bot size={13} />}
+          <span className="font-semibold">{running ? 'Discovery bot is running' : 'Discovery bot is on'}</span>
+          <span>{running ? 'New backlinks appear here as they are found.' : botState.data.last_run_at ? `Last run ${fmtDateTime(botState.data.last_run_at)}${stats && !stats.skipped ? `: ${stats.pages} pages, ${stats.new_backlinks} new backlink(s)` : ''}. It runs again every ${Math.round((botState.data.config.interval_minutes || 60) / 60) || 1} h.` : 'It starts shortly after onboarding.'}</span>
+        </div>
+      )}
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
         { id: 'bot', label: 'Discovery bot' }, { id: 'collect', label: 'Seeds & verify' }, { id: 'targets', label: 'Targets', count: targets.length }]} />
       <ErrorNote>{t.error?.message}</ErrorNote>
       {t.loading && !t.data ? <Spin /> : (
-        <>
+        <div key={`${lastRun}-${running}`}>
           {tab === 'overview' && <Overview base={base} targets={targets} biz={b} go={setTab} reload={reload} />}
           {tab === 'explorer' && <Explorer base={base} targets={targets} />}
           {tab === 'gap' && <Gap base={base} targets={targets} />}
           {tab === 'bot' && <BotPanel base={base} targets={targets} onToast={toast} />}
           {tab === 'collect' && <Collect base={base} targets={targets} onToast={toast} />}
           {tab === 'targets' && <Targets base={base} targets={targets} reload={reload} onToast={toast} />}
-        </>
+        </div>
       )}
       {toastNode}
     </>

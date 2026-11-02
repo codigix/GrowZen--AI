@@ -23,6 +23,12 @@ function Reports({ b, tab }) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${b.name}-${month}.pdf`; a.click(); URL.revokeObjectURL(a.href);
     toast('Report PDF downloaded');
   });
+  const csv = () => run('csv', async () => {
+    const r = await api(`/businesses/${b.id}/report.csv?month=${month}`, { raw: true });
+    const blob = await r.blob();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${b.name}-${month}.csv`; a.click(); URL.revokeObjectURL(a.href);
+    toast('Report downloaded: opens in Excel or Google Sheets');
+  });
   const addLead = () => run('add', async () => { await api(`/businesses/${b.id}/leads`, { method: 'POST', body: adding }); setAdding(null); leads.reload(true); toast('Lead added'); });
   const setStatus = (l, status) => run(`s${l.id}`, async () => { const out = await api(`/businesses/${b.id}/leads/${l.id}?status=${status}`, { method: 'PATCH' }); leads.setData(list => list.map(x => x.id === l.id ? out : x)); });
   const shown = (leads.data || []).filter(l => typeFilter === 'all' || l.lead_type === typeFilter);
@@ -35,6 +41,7 @@ function Reports({ b, tab }) {
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <label className="text-13 text-gray-600 flex items-center gap-2">Month <input type="month" className={`${inputCls} w-40`} value={month} max={thisMonth()} onChange={e => e.target.value && setMonth(e.target.value)} /></label>
             <Button variant="primary" icon={Download} busy={busy === 'pdf'} onClick={pdf}>Download PDF report</Button>
+            <Button icon={Download} busy={busy === 'csv'} onClick={csv}>Download Excel (CSV)</Button>
           </div>
           <ErrorNote>{error || rep.error?.message}</ErrorNote>
           {!s ? <div className="py-16 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : (

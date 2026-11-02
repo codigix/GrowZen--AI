@@ -25,7 +25,7 @@ export const GOOGLE_ACCESS = [
   {
     product: 'Google Business Profile', scope: 'https://www.googleapis.com/auth/business.manage',
     use: 'List the Business Profiles you own or manage and read their details, reviews, photos and performance insights. When you press Save, edits you make in the app (such as name, hours, phone, website, description, categories, address, services and photos) are sent to your profile, and review replies and posts you approve are published.',
-    never: 'AI-written drafts always wait for your approval, and nothing is changed on Google except what you save or approve.'
+    never: 'Routine items (replies to 4-5 star reviews and the weekly post) run automatically by default; replies to 1-3 star reviews, profile changes and website fixes wait for approval. This can be changed or switched off in settings.'
   },
   {
     product: 'Google Search Console', scope: 'https://www.googleapis.com/auth/webmasters.readonly',
