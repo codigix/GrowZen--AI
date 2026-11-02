@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, XCircle, Loader2, RefreshCw, ExternalLink, Globe, KeyRound, Unplug, Send, Copy, Clock, Trash2, AlertTriangle } from 'lucide-react';
 import { Badge, Button, Field, Modal, inputCls, useDoubleConfirm } from './SeoUi';
 import { api, fmtDateTime } from './seoApi';
+import { featuredSrc } from './FeaturedImageField';
 
 /** The article's post on the website: label + badge tone per stored wp_status. */
 export const POST_STATUS = {
@@ -192,7 +193,7 @@ function ConnectFields({ method, form, setForm, website, toast }) {
 
 const canConnect = (method, f) => Boolean(f.secret && (method === 'github' ? f.repo : f.url) && (method !== 'wordpress' || f.username));
 
-export default function SitePublishPanel({ b, article, toast, onPublished, onChanged, defaultWhen }) {
+export default function SitePublishPanel({ b, article, featured, toast, onPublished, onChanged, defaultWhen }) {
   const [integ, setInteg] = useState(null);
   // The article's post on the website (id, url, status), updated from publish/delete answers without a page reload
   const [post, setPost] = useState(article);
@@ -393,6 +394,16 @@ export default function SitePublishPanel({ b, article, toast, onPublished, onCha
           <Field label="Publish at" hint={heldByUs ? 'GrowZen holds the post and publishes it at this time (your computer\'s time zone).' : undefined}>
             <input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} className={inputCls} />
           </Field>
+        )}
+        {article && integ?.method === 'wordpress' && (
+          featured?.path ? (
+            <div className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 bg-white">
+              <img src={featuredSrc(b, article.id, featured.path)} alt={featured.alt || 'Featured image'} className="w-20 aspect-[1200/630] object-cover rounded-md ring-1 ring-slate-200" />
+              <span className="text-slate-700"><b>Featured image</b> · {featured.mediaId ? `already on your website (media #${featured.mediaId}); reused` : 'uploaded to your media library'} and set as the post&apos;s featured image{featured.alt ? <> · ALT: “{featured.alt}”</> : null}</span>
+            </div>
+          ) : (
+            <p className="flex items-start gap-1.5 text-amber-800"><AlertTriangle size={13} className="shrink-0 mt-0.5" /><span>No featured image: the post is published without one{onSite ? ' (a featured image already on the website post is kept)' : ''}. Add one in the editor, above the article body.</span></p>
+          )
         )}
         {onSite && integ?.method === 'wordpress' && (
           <p className="text-slate-600">This article is already on your website as post #{post.wp_post_id}. Publishing again updates that post instead of creating a duplicate.</p>

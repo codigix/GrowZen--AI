@@ -13,6 +13,7 @@ import { rng, shortDate, daysBack, ymd } from './seoMock';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
 import { api, fmt, useApi, usePoll } from './seoApi';
 import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } from './SitePublishPanel';
+import FeaturedImageField, { featuredOf } from './FeaturedImageField';
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
 
@@ -520,6 +521,9 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean),
     title: meta.title, meta_description: meta.meta_description, body: draft
   });
+  // Featured image: its own state, saved on its own (uploading never reloads or overwrites the unsaved title/meta/body)
+  const [featured, setFeatured] = useState(() => featuredOf(selectedArticle));
+  useEffect(() => { setFeatured(featuredOf(selectedArticle)); }, [selectedArticle?.id, selectedArticle?.featured_image_path, selectedArticle?.wp_media_id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [saveBusy, setSaveBusy] = useState(false);
   const saveArticle = () => {
     setSaveBusy(true);
@@ -749,6 +753,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 })()}
                 <Field label="SEO title" hint={`${meta.title.length} characters (aim for 60 or fewer)`}><input className={inputCls} value={meta.title} onChange={e => setMeta(m => ({ ...m, title: e.target.value }))} /></Field>
                 <Field label="Meta description" hint={`${meta.meta_description.length} characters (aim for 150-160)`}><textarea rows={2} className={areaCls} value={meta.meta_description} onChange={e => setMeta(m => ({ ...m, meta_description: e.target.value }))} /></Field>
+                {selectedArticle && <FeaturedImageField b={b} article={selectedArticle} value={featured} onChange={setFeatured} toast={toast} />}
                 {/* Article Body: HTML Editor & Live Preview */}
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -958,6 +963,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
           <SitePublishPanel
             b={b}
             article={selectedArticle}
+            featured={featured}
             toast={toast}
             defaultWhen={scheduledDate}
             onChanged={() => { if (onSaved) onSaved(); }}

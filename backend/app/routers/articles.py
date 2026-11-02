@@ -1,4 +1,5 @@
 """Blog articles generated from Google Keyword Planner keywords: one article per generation (primary + secondary keywords), saved separately."""
+import re
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
@@ -20,14 +21,14 @@ try:
     from ..deps import get_business, in_background
     from ..models import Article, Business, SiteIntegration
     from ..serialize import row, rows
-    from ..services import articles as svc, crypto, site_publish as sp
+    from ..services import articles as svc, crypto, featured_images as fi, site_publish as sp
 except (ImportError, ValueError):
     from app.config import get_settings
     from app.db import get_db
     from app.deps import get_business, in_background
     from app.models import Article, Business, SiteIntegration
     from app.serialize import row, rows
-    from app.services import articles as svc, crypto, site_publish as sp
+    from app.services import articles as svc, crypto, featured_images as fi, site_publish as sp
 
 router = APIRouter(prefix="/businesses/{business_id}/articles", tags=["articles"])
 
@@ -57,6 +58,14 @@ class ArticleEdit(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     meta_description: str | None = Field(default=None, max_length=500)
     body: str | None = None
+    featured_image_alt: str | None = Field(default=None, max_length=255)
+
+
+class FeaturedImageIn(BaseModel):
+    data_url: str = Field(min_length=20)  # data:...;base64,... (the format is detected from the actual bytes)
+    filename: str | None = Field(default=None, max_length=255)  # its extension must match the content
+    alt: str | None = Field(default=None, max_length=255)
+    page: int | None = Field(default=None, ge=1, le=500)  # PDF: the page to use (1 = first)
 
 
 def _get(db: Session, b: Business, article_id: int) -> Article:
@@ -64,6 +73,15 @@ def _get(db: Session, b: Business, article_id: int) -> Article:
     if not a or a.business_id != b.id:
         raise HTTPException(404, "Article not found")
     return a
+
+
+def _refresh_schema(a: Article, b: Business) -> None:
+    """Rebuild only the article's JSON-LD block from its current fields (one block, never duplicated)."""
+    if a.body:
+        a.body = svc.with_schema(a.body, svc.article_schema(
+            title=a.title or "", description=a.meta_description or "", body=a.body, primary=a.keyword,
+            secondary=a.secondary_keywords or [], b=b, url=a.wp_url, published=a.generated_at or a.created_at,
+            modified=datetime.now(timezone.utc), topic=a.topic, image_url=a.featured_image_url))
 
 
 @router.get("")
@@ -139,11 +157,7 @@ def edit(article_id: int, body: ArticleEdit, b: Business = Depends(get_business)
             v = svc.sanitize_html(v)
         setattr(a, f, v)
     a.secondary_keywords = [k for k in (a.secondary_keywords or []) if k != a.keyword]
-    if a.body:  # only the JSON-LD block is replaced (BlogPosting + FAQPage from the saved content); one block, never duplicated
-        a.body = svc.with_schema(a.body, svc.article_schema(
-            title=a.title or "", description=a.meta_description or "", body=a.body, primary=a.keyword,
-            secondary=a.secondary_keywords or [], b=b, url=a.wp_url, published=a.generated_at or a.created_at,
-            modified=datetime.now(timezone.utc), topic=a.topic))
+    _refresh_schema(a, b)  # only the JSON-LD block is replaced (BlogPosting + FAQPage from the saved content)
     a.headings = svc.headings_of(a.body or "")
     a.warnings = svc.validate(a.title or "", a.meta_description or "", a.body or "", a.keyword, a.secondary_keywords)  # re-checked on every save
     db.commit()
@@ -166,19 +180,86 @@ def _target(db: Session, b: Business) -> SiteIntegration:
     raise HTTPException(409, "Connect this business's website first (Publish & Schedule > Connect your website).")
 
 
+@router.put("/{article_id}/featured-image")
+def set_featured_image(article_id: int, body: FeaturedImageIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Upload (or replace) the article's featured image: JPG/PNG/WebP/GIF/BMP/TIFF/AVIF/HEIC/SVG/PDF up to 15 MB,
+    detected from the file's bytes and converted to one optimized WebP (PDF: the chosen page). A new image is
+    uploaded to the website again on the next publish; the old file is removed from GrowZen."""
+    a = _get(db, b, article_id)
+    try:
+        webp, info = fi.convert(fi.decode_upload(body.data_url), body.filename, body.page or 1)
+    except fi.ImageError as exc:
+        raise HTTPException(422, str(exc))
+    rel = fi.save(b.id, a.id, webp, "webp", old_rel=a.featured_image_path)
+    a.featured_image_info = info
+    if rel != a.featured_image_path:  # a different image: the website copy must be uploaded again
+        a.wp_media_id, a.featured_image_url = None, None
+    a.featured_image_path = rel
+    if body.alt is not None:
+        a.featured_image_alt = body.alt.strip() or None
+    elif not a.featured_image_alt:
+        a.featured_image_alt = (a.title or a.keyword or "")[:255] or None
+    _refresh_schema(a, b)
+    db.commit()
+    return row(a)
+
+
+@router.get("/{article_id}/featured-image")
+def get_featured_image(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from fastapi.responses import FileResponse
+    a = _get(db, b, article_id)
+    p = fi.path_of(a.featured_image_path)
+    if not p:
+        raise HTTPException(404, "This article has no featured image")
+    return FileResponse(p, media_type=fi.media_type(a.featured_image_path), headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.delete("/{article_id}/featured-image")
+def remove_featured_image(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Remove the image from the article in GrowZen. A post already on the website keeps its featured image
+    (nothing is deleted on the site); the next publish simply doesn't send one."""
+    a = _get(db, b, article_id)
+    fi.remove(a.featured_image_path)
+    a.featured_image_path, a.featured_image_url, a.wp_media_id, a.featured_image_info = None, None, None, None
+    _refresh_schema(a, b)
+    db.commit()
+    return row(a)
+
+
 @router.post("/{article_id}/publish")
 def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     a = _get(db, b, article_id)
     if a.status != "completed":
         raise HTTPException(409, "Only a completed article can be published")
+    if get_settings().blog_featured_image_required and not fi.path_of(a.featured_image_path):
+        raise HTTPException(422, "Add a featured image before publishing (Featured image section, above the article body).")
     when = body.scheduled_at.astimezone(timezone.utc) if body.scheduled_at and body.scheduled_at.tzinfo else None
     target = _target(db, b)
     if body.mode == "schedule" and target.method in sp.LOCAL_SCHEDULE:
         return _hold_for_later(db, b, a, target, when)
+    media_steps: list[dict] = []
     try:
-        out = sp.publish(target, a, body.mode, when)
+        if target.method == "wordpress" and fi.path_of(a.featured_image_path):
+            mid, url, media_steps = sp.ensure_wp_featured_media(target, a)
+            if mid and (mid != a.wp_media_id or url != a.featured_image_url):
+                a.wp_media_id, a.featured_image_url = mid, url
+                _refresh_schema(a, b)  # the schema's image now points at the public copy
+                db.commit()
+        ours = {x for x in db.scalars(select(Article.wp_post_id).where(Article.business_id == b.id, Article.wp_post_id.is_not(None)))}
+        out = sp.publish(target, a, body.mode, when, exclude_layout_ids=ours)
+        # The schema must carry the real permalink. Before the first publish it can only be predicted, so when the
+        # live URL differs, rebuild the schema with it and update the post once more (same post, nothing duplicated).
+        schema_url = re.search(r'"mainEntityOfPage":\s*\{[^}]*"@id":\s*"([^"]+)"', a.body or "")
+        if out.get("status") == "publish" and out.get("url") and (out["url"] != a.wp_url or not schema_url or schema_url.group(1) != out["url"]):
+            a.wp_post_id, a.wp_url = out["id"] or a.wp_post_id, out["url"]
+            a.wp_status, a.publish_method = "publish", target.method
+            _refresh_schema(a, b)
+            db.commit()
+            again = sp.publish(target, a, body.mode, when, exclude_layout_ids=ours | {a.wp_post_id})
+            out = {**again, "steps": out["steps"] + [{"step": "Set the permalink in the schema", "ok": True, "detail": out["url"]}]}
     except sp.PublishError as exc:
         raise HTTPException(502, str(exc))
+    out["steps"] = out["steps"][:1] + media_steps + out["steps"][1:]
     a.wp_post_id, a.wp_url = out["id"] or None, out["url"] or None
     a.wp_status = out.get("status") or {"draft": "draft", "publish": "publish", "schedule": "future"}[body.mode]
     a.publish_method, a.wp_deleted_at = target.method, None
