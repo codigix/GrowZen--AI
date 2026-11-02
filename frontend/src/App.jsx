@@ -27,6 +27,7 @@ import WebsiteBuilderPage from './platform/WebsiteBuilderPage';
 import BusinessOnboardingPage from './platform/BusinessOnboardingPage';
 import ConnectionsPage from './platform/ConnectionsPage';
 import ConnectResultPage from './platform/ConnectResultPage';
+import TrafficPage from './platform/TrafficPage';
 import { OrganicRankingsPage } from './platform/OrganicResearch';
 import { TopPagesPage } from './platform/TopPagesReport';
 import { DomainOverviewPage, KeywordGapPage, CompareDomainsPage, KeywordOverviewPage } from './platform/SeoToolkit';
@@ -90,6 +91,7 @@ export default function App() {
         <Route path="keyword-management" element={<KeywordResearchPage />} />
         <Route path="competitor-finder" element={<CompetitorFinderPage />} />
         <Route path="competitor-watch" element={<CompetitorWatchPage />} />
+        <Route path="traffic" element={<TrafficPage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
         <Route path="organic-rankings" element={<OrganicRankingsPage />} />
         <Route path="top-pages" element={<TopPagesPage />} />
