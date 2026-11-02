@@ -30,6 +30,8 @@ dist/
 
 # Databases and generated reports
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
 reports/
 **/reports/
