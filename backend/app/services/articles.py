@@ -534,7 +534,8 @@ def faqs_of(body: str) -> list[tuple[str, str]]:
 
 
 def article_schema(*, title: str, description: str, body: str, primary: str, secondary: list[str], b: Business,
-                   url: str | None = None, published=None, modified=None, topic: str | None = None) -> str:
+                   url: str | None = None, published=None, modified=None, topic: str | None = None,
+                   image_url: str | None = None) -> str:
     """The article's JSON-LD: a single @graph with a BlogPosting and (when the article has FAQs) a FAQPage.
     Fallbacks for missing data:
       url        -> the published post URL; else {business website}/blog/{slug of title}; else left out (with @id/mainEntityOfPage)
@@ -547,7 +548,8 @@ def article_schema(*, title: str, description: str, body: str, primary: str, sec
       inLanguage -> from the business country (IN -> en-IN, US -> en-US, ...); else "en"
       dates      -> datePublished = first generation time, dateModified = last save; else now
       author / publisher -> the business name and website; logo only when the profile has a logo URL
-      image      -> the profile's cover photo URL; left out when there is none
+      image      -> the featured image's public URL on the website (after publishing); else the profile's cover photo
+                    URL; left out when there is none
       FAQPage    -> @id + url of the article; each Question/Answer is a FAQ visible in the article with its full answer;
                     old keyword-template FAQs are left out; the FAQPage is left out when no FAQ remains (empty is invalid)"""
     from datetime import datetime, timezone
@@ -577,7 +579,8 @@ def article_schema(*, title: str, description: str, body: str, primary: str, sec
     post.update({
         "headline": headline[:110],
         "description": desc,
-        **({"image": b.cover_photo} if (b.cover_photo or "").startswith("http") else {}),
+        **({"image": image_url} if (image_url or "").startswith("http")
+           else {"image": b.cover_photo} if (b.cover_photo or "").startswith("http") else {}),
         "author": {"@type": "Organization", "name": b.name, **({"url": site} if site_ok else {})},
         "publisher": publisher,
         "inLanguage": lang,

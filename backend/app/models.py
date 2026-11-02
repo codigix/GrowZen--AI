@@ -244,6 +244,14 @@ class Article(TimestampMixin, Base):
     wp_status: Mapped[str | None] = mapped_column(String(20))
     publish_method: Mapped[str | None] = mapped_column(String(20))  # wordpress | ghost | shopify | github | webhook
     wp_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Featured image: the uploaded file is kept on the server (featured_image_path, relative to the uploads folder);
+    # on publishing it is uploaded once to the WordPress media library (wp_media_id) and set as the post's featured image.
+    featured_image_path: Mapped[str | None] = mapped_column(String(500))
+    featured_image_alt: Mapped[str | None] = mapped_column(String(255))
+    featured_image_url: Mapped[str | None] = mapped_column(String(500))  # the public URL on the website, once uploaded there
+    # what was uploaded and what it became: {original_name, original_format, original_size, width, height, size, saved_percent, page, page_count, ...}
+    featured_image_info: Mapped[dict | None] = mapped_column(JSON)
+    wp_media_id: Mapped[str | None] = mapped_column(String(40))
 
 
 class SiteIntegration(TimestampMixin, Base):

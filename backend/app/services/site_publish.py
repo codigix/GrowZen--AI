@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import re
+from html import escape as html_escape
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -132,6 +133,47 @@ def _post_signed(url: str, secret: str, payload: dict) -> httpx.Response:
 
 
 # Publishing
+def ensure_wp_featured_media(row: SiteIntegration, a: Article) -> tuple[str | None, str | None, list[dict]]:
+    """Make sure the article's featured image is in the WordPress media library: reuse wp_media_id when it still exists
+    (only its ALT text is refreshed), otherwise upload the file. Returns (media_id, public_url, steps); (None, None, [])
+    when the article has no featured image. Raises PublishError when WordPress refuses the upload."""
+    from . import featured_images as fi
+
+    p = fi.path_of(a.featured_image_path)
+    if row.method != "wordpress" or not p:
+        return None, None, []
+    steps: list[dict] = []
+    base = row.base_url.rstrip("/")
+    alt = (a.featured_image_alt or a.title or a.keyword or "").strip()[:255]
+    try:
+        with site_client(90) as c:
+            auth = _wp_auth(row)
+            if a.wp_media_id and str(a.wp_media_id).isdigit():
+                r = c.get(f"{base}/wp-json/wp/v2/media/{a.wp_media_id}", params={"context": "edit"}, auth=auth)
+                if r.status_code == 200:
+                    d = r.json()
+                    if (d.get("alt_text") or "") != alt:
+                        c.post(f"{base}/wp-json/wp/v2/media/{a.wp_media_id}", json={"alt_text": alt}, auth=auth)
+                    steps.append({"step": "Featured image", "ok": True, "detail": f"Using media #{a.wp_media_id} already on the site"})
+                    return str(a.wp_media_id), d.get("source_url"), steps
+            r = c.post(f"{base}/wp-json/wp/v2/media", content=p.read_bytes(), auth=auth,
+                       headers={"Content-Type": fi.media_type(a.featured_image_path), "Content-Disposition": f'attachment; filename="{fi.upload_filename(a, a.featured_image_path)}"'})
+            if r.status_code in (401, 403):
+                steps.append({"step": "Featured image", "ok": False, "detail": "WordPress refused the image upload (the user needs the upload_files permission)."})
+                raise PublishError("WordPress refused the featured image upload. The connected user needs permission to upload files.")
+            if r.status_code >= 400:
+                steps.append({"step": "Featured image", "ok": False, "detail": f"{r.status_code}: {r.text[:140]}"})
+                raise PublishError(f"WordPress could not store the featured image ({r.status_code}): {r.text[:200]}")
+            d = r.json()
+            mid = str(d.get("id", ""))
+            c.post(f"{base}/wp-json/wp/v2/media/{mid}", json={"alt_text": alt, "title": a.title or a.keyword}, auth=auth)
+            steps.append({"step": "Featured image", "ok": True, "detail": f"Uploaded to the media library as #{mid}"})
+            return mid, d.get("source_url"), steps
+    except (httpx.HTTPError, SSRFValidationError) as exc:
+        steps.append({"step": "Featured image", "ok": False, "detail": str(exc)[:140]})
+        raise PublishError(f"Could not upload the featured image to WordPress: {str(exc)[:160]}") from exc
+
+
 def existing_wp_post(row: SiteIntegration, a: Article) -> str | None:
     """The WordPress post this article already has on this site (publishing again updates it instead of creating a copy)."""
     if row.method != "wordpress" or not a.wp_post_id or a.wp_status == "deleted" or (a.publish_method or "wordpress") != "wordpress":
@@ -139,8 +181,16 @@ def existing_wp_post(row: SiteIntegration, a: Article) -> str | None:
     return a.wp_post_id if str(a.wp_post_id).isdigit() else None
 
 
-def publish(row: SiteIntegration, a: Article, mode: str, when: datetime | None) -> dict:
-    """mode: draft | publish | schedule. Returns {id, url, status, steps}."""
+def publish(row: SiteIntegration, a: Article, mode: str, when: datetime | None, exclude_layout_ids: set[str] | None = None) -> dict:
+    """mode: draft | publish | schedule. Returns {id, url, status, steps}.
+    exclude_layout_ids: post ids GrowZen published itself (never used as the design reference)."""
+    if row.method == "wordpress":
+        steps = [{"step": "Prepare the article", "ok": True, "detail": f"{len((a.body or '').split())} words, title: {a.title or a.keyword}"}]
+        if mode == "schedule" and (not when or when <= datetime.now(timezone.utc)):
+            raise PublishError("Pick a date and time in the future to schedule the post.")
+        out = _publish_wordpress(row, a, mode, when, steps, exclude_layout_ids)
+        out["steps"] = steps
+        return out
     steps = [{"step": "Prepare the article", "ok": True, "detail": f"{len((a.body or '').split())} words, title: {a.title or a.keyword}"}]
     if mode == "schedule" and (not when or when <= datetime.now(timezone.utc)):
         raise PublishError("Pick a date and time in the future to schedule the post.")
@@ -158,15 +208,38 @@ def publish(row: SiteIntegration, a: Article, mode: str, when: datetime | None) 
     return out
 
 
-def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: datetime | None, steps: list[dict]) -> dict:
+def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: datetime | None, steps: list[dict],
+                       exclude_layout_ids: set[str] | None = None) -> dict:
+    from . import articles as article_svc, elementor_layout as el
+
     wp_status = {"draft": "draft", "publish": "publish", "schedule": "future"}[mode]
-    payload = {"title": a.title or a.keyword, "content": a.body or "", "excerpt": a.meta_description or "", "status": wp_status}
+    body = el.clean_body(a.body or "")  # no duplicate H1, no inline styles or empty tags
+    payload = {"title": a.title or a.keyword, "content": body, "excerpt": a.meta_description or "", "status": wp_status}
+    if a.wp_media_id and str(a.wp_media_id).isdigit():  # the featured image shown on the blog cards and the post page
+        payload["featured_media"] = int(a.wp_media_id)
     if mode == "schedule":
         payload["date_gmt"] = when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     base = row.base_url.rstrip("/")
     existing = existing_wp_post(row, a)
     try:
         with site_client(45) as c:
+            # The site's own blog design: rebuild the article inside the layout of an Elementor-built blog post
+            try:
+                ref = el.find_reference(c, base, _wp_auth(row), preferred_id=(row.config or {}).get("layout_post_id"),
+                                        exclude_ids=(exclude_layout_ids or set()) | ({existing} if existing else set()))
+            except httpx.HTTPError:
+                ref = None
+            if ref:
+                faqs = [(q, f"<p>{html_escape(ans)}</p>") for q, ans in article_svc.faqs_of(body) if not article_svc._is_template_faq(q, ans)]
+                data, rep = el.build(ref["data"], article_key=f"growzen-{a.id}", body=body, faqs=faqs)
+                payload["template"] = ref["template"]
+                payload["meta"] = {"_elementor_edit_mode": "builder", "_elementor_template_type": "wp-post", "_elementor_data": json.dumps(data, ensure_ascii=False)}
+                if ref["categories"]:
+                    payload["categories"] = ref["categories"]
+                steps.append({"step": "Apply the blog layout", "ok": True,
+                              "detail": f"Site design from \"{ref['title'][:60]}\" (post #{ref['id']}): {rep['sections']} sections, {rep['faqs']} FAQs in the accordion"})
+            else:
+                steps.append({"step": "Apply the blog layout", "ok": True, "detail": "No Elementor-built blog post to copy the design from; sent as clean HTML (theme layout)"})
             r = None
             if existing:  # already on the site: update that post, never create a duplicate
                 r = c.post(f"{base}/wp-json/wp/v2/posts/{existing}", json=payload, auth=_wp_auth(row))
@@ -188,6 +261,16 @@ def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: dateti
                 steps.append({"step": "Confirm the post status", "ok": False, "detail": f"WordPress saved it as '{d.get('status')}'. The user may not have permission to publish."})
             else:
                 steps.append({"step": "Confirm the post status", "ok": True, "detail": {"draft": "Saved as a draft", "publish": "Published", "future": "Scheduled by WordPress"}[wp_status]})
+            if ref and existing:
+                # Elementor keeps rendered output and a CSS file per post that are only refreshed by its own editor;
+                # after a REST update they must be cleared, or the site keeps showing the old version
+                # (same as Elementor > Tools > Regenerate Files & Data; files are rebuilt on the next page view).
+                try:
+                    cr = c.delete(f"{base}/wp-json/elementor/v1/cache", auth=_wp_auth(row))
+                    steps.append({"step": "Refresh the site's Elementor cache", "ok": cr.status_code < 400,
+                                  "detail": "Cleared, so the update shows immediately" if cr.status_code < 400 else f"Could not clear it ({cr.status_code}); use Elementor > Tools > Regenerate Files & Data"})
+                except httpx.HTTPError:
+                    steps.append({"step": "Refresh the site's Elementor cache", "ok": False, "detail": "Could not clear it; use Elementor > Tools > Regenerate Files & Data"})
             if wp_status == "publish":
                 try:
                     live = c.get(d["link"])

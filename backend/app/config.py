@@ -109,6 +109,8 @@ class Settings(BaseSettings):
     wordpress_url: str = ""
     wordpress_user: str = ""
     wordpress_app_password: str = ""
+    # Blog featured images: refuse to publish an article without one when true (BLOG_FEATURED_IMAGE_REQUIRED=true)
+    blog_featured_image_required: bool = False
     # Extra engines for the GEO / AEO tracker (optional)
     perplexity_api_key: str = ""
     anthropic_api_key: str = ""
