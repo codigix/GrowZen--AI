@@ -22,7 +22,7 @@ const INTENT = { informational: ['Informational', '#6658dd'], navigational: ['Na
 const FEATURE_ICON = { 'Featured snippet': FileText, 'Knowledge panel': BookOpen, 'People also ask': HelpCircle, 'Local pack': MapPin, Videos: Video, Images: ImageIcon, 'Top stories': Newspaper, Shopping: ShoppingCart, 'Related searches': Search };
 const FEATURE_COLORS = ['#6658dd', '#1abc9c', '#f59e0b', '#ef4444', '#0ea5e9', '#a855f7', '#84cc16', '#ec4899', '#64748b'];
 const live = (research) => (research?.state === 'ok' ? research : null);
-const NO_FEATURES = 'Your Google results source returned only the organic list for these searches, so SERP features (people also ask, snippets, video, local pack…) are not available. A data provider such as DataForSEO reports them.';
+const NO_FEATURES = 'Your Google results source returned only the organic list for these searches, so SERP features (people also ask, snippets, video, local pack…) are not available. The Search Console API does not report them.';
 const FromTracked = ({ children }) => <p className="text-11.5 text-slate-400 mt-2 px-1">{children}</p>;
 const path = (u) => { try { const x = new URL(u); return x.pathname + x.search || '/'; } catch (e) { return u || '—'; } };
 const money = (n) => (n == null ? '—' : `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
@@ -39,7 +39,7 @@ function Empty({ children, icon: Icon = Inbox }) {
 }
 
 /** Why a section has no data: provider not connected, a failed call, or an honest "nothing found". */
-const whyIntel = (intel, s, noun) => (intel?.state === 'not_configured' ? 'Needs DataForSEO (see the note at the top).' : intel?.state === 'no_website' ? 'Needs a real website address.' : intel?.state === 'needs_approval' ? 'Approve this client first.'
+const whyIntel = (intel, s, noun) => (intel?.state === 'not_connected' || intel?.state === 'no_property' ? 'Connect Search Console (see the note at the top).' : intel?.state === 'no_website' ? 'Needs a real website address.' : intel?.state === 'needs_approval' ? 'Approve this client first.'
   : !intel ? 'Loading…' : s.why ? s.why : `No ${noun} found for this domain in ${intel.country_name}.`);
 
 function Spark({ values, color = '#6658dd', h = 34 }) {
@@ -81,7 +81,7 @@ function Headline({ intel, research }) {
           <Stat label="Average position" hint="Average of the positions where your site ranks in the top 10." value={t.avg_position ?? 'Not ranking'} tone="text-slate-900" />
           <Stat label="Competing domains" hint="Different domains seen in the top 10 results of your tracked keywords." value={fmt(t.domains)} tone="text-slate-900" />
         </div>
-        <FromTracked>Real Google results for your tracked keywords ({t.checks} check{t.checks !== 1 ? 's' : ''}). Domain-wide keywords, traffic and traffic cost need the data provider (DataForSEO).</FromTracked>
+        <FromTracked>Real Google results for your tracked keywords ({t.checks} check{t.checks !== 1 ? 's' : ''}). Domain-wide keywords, traffic and traffic cost need Google Search Console connected.</FromTracked>
       </Card>
     );
   }

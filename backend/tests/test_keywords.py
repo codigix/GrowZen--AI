@@ -2,7 +2,6 @@
 from types import SimpleNamespace
 
 from app.services import keywords as kw
-from app.services.providers import dataforseo
 
 SUGGEST = {
     "dentist": ["dentist near me", "dentist costume for kids", "dentist in mumbai", "dentist pune"],
@@ -58,13 +57,6 @@ def test_default_seeds_and_queries():
     assert kw.default_seeds(biz(secondary_categories=["Cosmetic dentist"], services=[{"name": "Root canal"}, "Braces"])) == ["dentist", "cosmetic dentist", "root canal", "braces"]
     qs = [q.lower() for q, _ in kw._queries(["dentist"], ["Aundh", "Baner"], "Pune")]
     assert {"dentist near me", "dentist in aundh", "dentist in baner", "dentist pune", "how dentist"} <= set(qs) and len(qs) == len(set(qs))
-
-
-def test_volumes_and_trend(monkeypatch):
-    months = [{"year": 2026, "month": m, "search_volume": v} for m, v in zip(range(1, 7), [100, 100, 100, 150, 150, 150])]
-    monkeypatch.setattr(dataforseo, "_post", lambda path, payload, timeout=60: {"result": [{"keyword": "Dentist Pune", "search_volume": 1300, "cpc": 0.4, "competition_index": 35, "monthly_searches": months}]})
-    v = dataforseo.keyword_volumes(["dentist pune"])["dentist pune"]
-    assert v["volume"] == 1300 and v["difficulty"] == 35 and v["trend"] == 50 and v["monthly"][-1] == 150
 
 
 def test_keyword_routes(client, monkeypatch):

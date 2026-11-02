@@ -223,7 +223,7 @@ function CompareDomains({ b }) {
             return <tr key={label} className="hover:bg-slate-50"><td className="px-4 py-2.5 text-slate-600">{label}</td>{vals.map((v, i) => <td key={i} className={`px-4 py-2.5 text-right tabular-nums ${v != null && v === best ? 'font-bold text-emerald-700 bg-emerald-50/60' : 'text-slate-900'}`}>{v == null ? <Minus size={12} className="inline text-slate-300" /> : fmtv(v)}</td>)}</tr>;
           })}</tbody></table></div>
       </Card>
-      <p className="text-11.5 text-slate-400">From the latest competitor research. A dash means that figure wasn't available for the site (for example, backlinks need DataForSEO).</p>
+      <p className="text-11.5 text-slate-400">From the latest competitor research. A dash means that figure wasn't available for the site (for example, full backlink totals: Google has no API for them).</p>
     </div>
   );
 }

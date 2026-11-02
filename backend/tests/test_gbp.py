@@ -8,7 +8,7 @@ ACC = "accounts/111"
 
 def location(n, **meta):
     return {"name": f"locations/{n}", "title": f"Clinic {n}", "storefrontAddress": {"addressLines": ["MG Road", "Aundh"], "locality": "Pune", "postalCode": "411007"},
-            "categories": {"primaryCategory": {"displayName": "Dentist"}}, "openInfo": {"status": meta.pop("open", "OPEN")},
+            "categories": {"primaryCategory": {"name": "categories/gcid:dentist", "displayName": "Dentist"}}, "openInfo": {"status": meta.pop("open", "OPEN")},
             "metadata": {"placeId": f"place{n}", "mapsUri": f"https://maps.google.com/?cid={n}", "newReviewUri": f"https://g.page/r/{n}/review", **meta}}
 
 
@@ -187,6 +187,49 @@ def test_a_part_google_refuses_does_not_stop_the_rest(client, monkeypatch):
         live = client.get(f"/api/v1/businesses/{bid}").json()["gbp_status"]["live"]
         assert live["posts"] == [] and "approved" in live["errors"]["posts"]
         assert len(live["media"]) == 7 and live["search_keywords"]
+    finally:
+        db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
+
+
+# Writes: whatever is changed in the software is sent to Google, and a refusal from Google saves nothing.
+def test_changes_are_written_to_google(client, monkeypatch):
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    sent = []
+    base = gbp.GbpClient._req
+
+    def req(self, method, url, **kw):
+        if method in ("PATCH", "POST", "PUT", "DELETE") and "/revoke" not in url:
+            sent.append((method, url.split("/v1/")[-1].split("/v4/")[-1], kw.get("params"), kw.get("json")))
+            return {"name": "accounts/111/locations/1/media/m1", "googleUrl": "https://lh3/x"}
+        return base(self, method, url, **kw)
+    monkeypatch.setattr(gbp.GbpClient, "_req", req)
+    try:
+        out = client.patch(f"/api/v1/businesses/{bid}", json={"phone": "+91 99999 00000", "description": "New text", "services": [{"name": "Crown", "price": "1500"}]}).json()
+        assert set(out["pushed_to_google"]) >= {"phoneNumbers", "profile", "serviceItems"}
+        m, url, params, body = sent[-1]
+        assert m == "PATCH" and url == "locations/1" and "profile.description" in params["updateMask"] and body["phoneNumbers"]["primaryPhone"] == "+91 99999 00000"
+        assert client.put(f"/api/v1/businesses/{bid}/gbp/categories", json={"primary": {"name": "categories/gcid:dentist", "displayName": "Dentist"}}).status_code == 200
+        assert sent[-1][3]["categories"]["primaryCategory"]["name"] == "categories/gcid:dentist"
+        assert client.put(f"/api/v1/businesses/{bid}/gbp/address", json={"address_lines": ["12 MG Road"], "locality": "Pune", "region_code": "IN"}).status_code == 200
+        assert client.put(f"/api/v1/businesses/{bid}/gbp/attributes", json={"values": {"has_wheelchair_accessible_entrance": True}}).status_code == 200
+        assert sent[-1][2]["attributeMask"] == "attributes/has_wheelchair_accessible_entrance"
+        r = client.post(f"/api/v1/businesses/{bid}/gbp/media", json={"category": "EXTERIOR", "url": "https://example.com/a.jpg"})
+        assert r.status_code == 201 and sent[-1][3]["locationAssociation"]["category"] == "EXTERIOR"
+        assert client.post(f"/api/v1/businesses/{bid}/gbp/media", json={"category": "NOPE"}).status_code == 400
+        assert client.delete(f"/api/v1/businesses/{bid}/gbp/media", params={"name": "accounts/999/locations/9/media/x"}).status_code == 400
+        # Google refuses: the app keeps its old value.
+        def refuse(self, method, url, **kw):
+            if method == "PATCH":
+                raise gbp.GbpError("nope")
+            return base(self, method, url, **kw)
+        monkeypatch.setattr(gbp.GbpClient, "_req", refuse)
+        r = client.patch(f"/api/v1/businesses/{bid}", json={"description": "Refused text"})
+        assert r.status_code == 502 and client.get(f"/api/v1/businesses/{bid}").json()["description"] == "New text"
     finally:
         db = SessionLocal()
         db.query(Business).filter(Business.gbp_location == "locations/1").delete()

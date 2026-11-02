@@ -67,12 +67,24 @@ export default function AssistantWidget() {
     try {
       const last = [...msgs].reverse().find(m => m.role === 'assistant');
       const r = await api(`/businesses/${bid}/assistant`, { method: 'POST', body: { message: q, history: msgs.slice(-8).map(m => ({ role: m.role, text: m.text })), topic: null } });
-      const done = [...next, { role: 'assistant', text: r.answer, links: r.links, sources: r.sources, topic: r.topic, mode: r.mode }];
+      const done = [...next, { role: 'assistant', text: r.answer, links: r.links, sources: r.sources, topic: r.topic, mode: r.mode, action: r.action }];
       setMsgs(done); save(bid, done);
     } catch (e) {
       const done = [...next, { role: 'assistant', text: `I couldn't answer that: ${e.message || 'the server did not respond'}. Try again in a moment.`, error: true }];
       setMsgs(done); save(bid, done);
     } finally { setBusy(false); }
+  };
+  // The assistant only proposes an action; it runs when the user presses the button, and the button can be pressed once.
+  const confirmAction = async (index, action) => {
+    setMsgs(cur => cur.map((m, i) => i === index ? { ...m, action: { ...m.action, state: 'running' } } : m));
+    let msg;
+    try {
+      const r = await api(`/businesses/${bid}/assistant/actions`, { method: 'POST', body: { action: action.id, params: action.params || {} } });
+      msg = { role: 'assistant', text: r.message, links: r.link ? [r.link] : [], error: !r.ok };
+    } catch (e) {
+      msg = { role: 'assistant', text: `That did not work: ${e.message || 'the server did not respond'}.`, error: true };
+    }
+    setMsgs(cur => { const done = [...cur.map((m, i) => i === index ? { ...m, action: { ...m.action, state: 'done' } } : m), msg]; save(bid, done); return done; });
   };
   const clear = () => { setMsgs([]); if (bid) save(bid, []); };
   const go = (to) => { navigate(to); if (window.innerWidth < 640) setOpen(false); };
@@ -82,7 +94,7 @@ export default function AssistantWidget() {
       {open && (
         <section aria-label="bevisibe Assistant" className="fixed z-[65] right-4 bottom-24 sm:right-6 w-[calc(100vw-2rem)] sm:w-[400px] h-[min(640px,calc(100vh-8rem))] flex flex-col rounded-xl bg-white shadow-2xl ring-1 ring-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           <header className="bg-topbar text-white px-4 py-3 flex items-center gap-3 shrink-0">
-            <span className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1.5 shrink-0"><img src="/bevisibe-icon.png" alt="" className="w-full h-full object-contain" /></span>
+            <span className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1.5 shrink-0"><img src="/bevisibe-mark.png" alt="" className="w-full h-full object-contain" /></span>
             <div className="min-w-0 flex-1">
               <div className="text-14 font-bold leading-tight">bevisibe Assistant</div>
               <div className="text-11.5 text-topbar-item truncate flex items-center gap-1"><Lock size={10} className="shrink-0" />{bid ? <>Only <b className="text-white font-semibold truncate">{business.name}</b></> : 'Select a project'}</div>
@@ -109,10 +121,19 @@ export default function AssistantWidget() {
               <div key={i} className="flex justify-end"><div className="max-w-[85%] rounded-lg rounded-br-sm bg-indigo-500 text-white text-13 px-3.5 py-2 whitespace-pre-wrap">{m.text}</div></div>
             ) : (
               <div key={i} className="flex gap-2">
-                <span className="w-7 h-7 rounded-full bg-white shadow-card flex items-center justify-center p-1 shrink-0 mt-0.5"><img src="/bevisibe-icon.png" alt="" className="w-full h-full object-contain" /></span>
+                <span className="w-7 h-7 rounded-full bg-white shadow-card flex items-center justify-center p-1 shrink-0 mt-0.5"><img src="/bevisibe-mark.png" alt="" className="w-full h-full object-contain" /></span>
                 <div className={`min-w-0 max-w-[88%] rounded-lg rounded-tl-sm bg-white shadow-card px-3.5 py-2.5 ${m.error ? 'ring-1 ring-red-200' : ''}`}>
                   <Rich text={m.text} />
                   {m.links?.length > 0 && <div className="mt-2.5 flex flex-wrap gap-1.5">{m.links.map(l => <button key={l.to} type="button" onClick={() => go(l.to)} className="h-7 px-2.5 rounded text-12 font-semibold border border-indigo-200 text-indigo-600 hover:bg-indigo-50 inline-flex items-center gap-1 cursor-pointer">{l.label}<ArrowRight size={11} /></button>)}</div>}
+                  {m.action && (
+                    <div className="mt-2.5 p-2.5 rounded border border-indigo-200 bg-indigo-50/60">
+                      <div className="text-12 text-slate-700 mb-1.5">{m.action.does}</div>
+                      <button type="button" disabled={m.action.state} onClick={() => confirmAction(i, m.action)}
+                        className="h-8 px-3 rounded text-12 font-semibold bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-60 cursor-pointer inline-flex items-center gap-1.5">
+                        {m.action.state === 'running' && <Loader2 size={12} className="animate-spin" />}{m.action.state === 'done' ? 'Done' : m.action.state === 'running' ? 'Working…' : `Confirm: ${m.action.label}`}
+                      </button>
+                    </div>
+                  )}
                   {m.sources?.length > 0 && <div className="mt-2 text-10.5 text-slate-400">Based on: {m.sources.join(', ')}{m.mode === 'ai' ? ' · AI' : ''}</div>}
                 </div>
               </div>
@@ -132,7 +153,7 @@ export default function AssistantWidget() {
 
       <button type="button" onClick={() => setOpen(o => !o)} aria-label={open ? 'Close bevisibe Assistant' : 'Open bevisibe Assistant'} title="bevisibe Assistant"
         className="fixed z-[65] right-4 sm:right-6 bottom-6 w-14 h-14 rounded-full bg-topbar shadow-xl  ring-white flex items-center justify-center cursor-pointer hover:scale-105 transition-transform">
-        {open ? <X size={25} className="text-white" /> : <><img src="/bevisibe-icon.png" alt="" className="w-8 h-8 object-contain bg-white rounded-full p-1" /><span className="absolute -top-1 -right-1 text-9 font-bold px-1.5 py-0.5 rounded-full bg-indigo-500 text-white ring-2 ring-white">AI</span></>}
+        {open ? <X size={25} className="text-white" /> : <><img src="/bevisibe-mark.png" alt="" className="w-8 h-8 object-contain bg-white rounded-full p-1" /><span className="absolute -top-1 -right-1 text-9 font-bold px-1.5 py-0.5 rounded-full bg-indigo-500 text-white ring-2 ring-white">AI</span></>}
       </button>
     </>
   );

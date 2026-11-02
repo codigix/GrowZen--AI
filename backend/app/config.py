@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     ollama_prompt_persona: str = "You are an experienced SEO blog writer. Write clearly and helpfully, in simple English."
     ollama_prompt_requirements: str = "- Keep paragraphs short."
     # WordPress REST API (Application Password) for pushing a generated article as a draft; optional.
+    site_autodetect: bool = True  # read a website's technology in the background when a business is created or its website changes
     wordpress_url: str = ""
     wordpress_user: str = ""
     wordpress_app_password: str = ""
@@ -116,12 +117,6 @@ class Settings(BaseSettings):
 
     # Google search results (serper.dev): competitor research -- organic top 10 and Maps results per keyword
     serper_api_key: str = ""
-    # Paid data (optional): DataForSEO for rank grids, keyword data, backlinks, citations.
-    dataforseo_login: str = ""
-    dataforseo_password: str = ""
-
-    # Development only: fill the Domain Overview with clearly labelled sample data instead of calling DataForSEO (ignored in production).
-    domain_intel_mock: bool = False
     # Development only: the same for the Position Tracking landscape (generated rank checks).
     rank_landscape_mock: bool = False
 
@@ -184,20 +179,12 @@ class Settings(BaseSettings):
         return self._csv(self.intake_allowed_senders)
 
     @property
-    def domain_intel_mock_on(self) -> bool:
-        return self.domain_intel_mock and self.environment.lower() != "production"
-
-    @property
     def rank_landscape_mock_on(self) -> bool:
         return self.rank_landscape_mock and self.environment.lower() != "production"
 
     @property
     def internal_domain_list(self) -> list[str]:
         return [d.strip().lower().removeprefix("www.") for d in self.internal_domains.split(",") if d.strip()]
-
-    @property
-    def dataforseo_enabled(self) -> bool:
-        return bool(self.dataforseo_login and self.dataforseo_password)
 
     @property
     def google_oauth_enabled(self) -> bool:

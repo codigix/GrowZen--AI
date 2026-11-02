@@ -5,14 +5,19 @@ import tempfile
 import time
 
 _db = os.path.join(tempfile.mkdtemp(), "test.db")
+# To run the suite on PostgreSQL:  TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost/seo_test  python -m pytest
+# The tables are created and DROPPED by the tests, so the database name must contain "test" or the run is refused.
+_test_url = os.environ.get("TEST_DATABASE_URL", "")
+if _test_url and "test" not in _test_url.rsplit("/", 1)[-1].lower():
+    raise RuntimeError("TEST_DATABASE_URL must point at a database whose name contains 'test': the suite drops every table when it finishes.")
 os.environ.update({
-    "DATABASE_URL": f"sqlite:///{_db}",
+    "DATABASE_URL": _test_url or f"sqlite:///{_db}",
     "CRM_JWT_SECRET": "test-secret-0123456789-abcdefghijklmnop",
     "CRM_API_URL": "",
     "SCHEDULER_ENABLED": "false",
     "DEEPSEEK_API_KEY": "", "OPENAI_API_KEY": "", "GEMINI_API_KEY": "", "PERPLEXITY_API_KEY": "", "ANTHROPIC_API_KEY": "",
-    "DATAFORSEO_LOGIN": "", "DOMAIN_INTEL_MOCK": "false", "RANK_LANDSCAPE_MOCK": "false", "INTAKE_ALLOWED_SENDERS": "codigixinfotech.com", "INTAKE_WEBHOOK_TOKEN": "hook-token",
-    "SMTP_HOST": "", "SECRET_KEY": "test-session-secret-0123456789-abcdef", "ADMIN_EMAIL": "", "ADMIN_PASSWORD": "",
+    "RANK_LANDSCAPE_MOCK": "false", "INTAKE_ALLOWED_SENDERS": "codigixinfotech.com", "INTAKE_WEBHOOK_TOKEN": "hook-token",
+    "SITE_AUTODETECT": "false", "SMTP_HOST": "", "SECRET_KEY": "test-session-secret-0123456789-abcdef", "ADMIN_EMAIL": "", "ADMIN_PASSWORD": "",
     "PAGESPEED_API_KEY": "", "GOOGLE_PLACES_API_KEY": "", "GOOGLE_API_KEY": "", "SERPER_API_KEY": "", "TOKEN_ENCRYPTION_KEY": "aGol6LzAESrBGxyWgYQb0ObDl04ajkjTg_snnQRslJ4=",  # test-only key
     "LIGHTHOUSE_REPORTS_DIR": os.path.join(os.path.dirname(_db), "reports"), "LIGHTHOUSE_RATE_LIMIT_PER_MINUTE": "1000",
 })

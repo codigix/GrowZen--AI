@@ -1,3 +1,4 @@
+import OutcomesPanel from './OutcomesPanel';
 import React, { useState, useMemo } from 'react';
 import {
   Sparkles, Check, X, Bot, ShieldCheck, Loader2, ArrowRight, CheckCircle2, TrendingUp,
@@ -632,6 +633,7 @@ export default function AiAgentPage() {
             { id: 'queue', label: 'Approval Queue', count: tasks.data?.length },
             { id: 'agents', label: 'Autonomous Agent Swarm', count: 7 },
             { id: 'playbook', label: 'Autopilot Playbook & Safety Rules' },
+            { id: 'results', label: 'What worked' },
             { id: 'log', label: 'Live Audit & Execution Stream' }
           ]}
         />
@@ -1040,6 +1042,8 @@ export default function AiAgentPage() {
           </div>
         </div>
       )}
+
+      {tab === 'results' && <OutcomesPanel />}
 
       {/* TAB 4: LIVE AUDIT & EXECUTION STREAM */}
       {tab === 'log' && (

@@ -7,7 +7,7 @@ they are listed and linked from, and -- against all that -- the business's own g
 do first.
 
 Sources: Serper.dev for Google results (SERPER_API_KEY), a short scan of each site, and
-DataForSEO for full backlink counts when it is connected. Without DataForSEO, "link sources"
+no backlink index (Google offers no API for one). "Link sources"
 are the sites Google shows listing or mentioning the competitor (directories, social, press) --
 not a full backlink index, and the result says so.
 """
@@ -550,15 +550,7 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
         my_sources = link_sources(serper, f"{b.name} {b.city or ''}".strip(), my_host or "-", brand_words_of(my_host, b.name))
     except IntelError:
         pass
-    backlinks: dict[str, Any] = {}
-    if settings.dataforseo_enabled:
-        progress("Backlink counts (DataForSEO)")
-        from ..services.providers import backlink_provider
-        for d in targets + ([{"domain": my_host}] if my_host else []):
-            try:
-                backlinks[d["domain"]] = backlink_provider().summary(d["domain"])
-            except Exception:  # noqa: BLE001 - optional data
-                pass
+    backlinks: dict[str, Any] = {}  # full backlink counts are not available from Google; only the listings it surfaces (link_sources)
 
     # 4. Per-competitor profile with its strategy in plain words.
     local_by_domain = {e["domain"]: e for e in local_competitors if e.get("domain")}
@@ -627,7 +619,7 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
                                                       if not set(k.split()) & away))[:20],
         },
         "actions": actions,
-        "sources": {"google": "serper", "backlinks": "dataforseo" if backlinks else "google_mentions", "credits": serper.credits},
+        "sources": {"google": "serper", "backlinks": "google_mentions", "credits": serper.credits},
         "analysed_at": datetime.now(timezone.utc).isoformat(),
     }
 

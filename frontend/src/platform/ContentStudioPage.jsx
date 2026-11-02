@@ -180,6 +180,9 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
         </div>
       )}
 
+      {trend.error && !trend.loading && (
+        <ErrorNote>Google Trends is not answering right now ({trend.error.message}). This is on Google's side; try again in a minute.</ErrorNote>
+      )}
       {trend.data && !trend.loading && (() => {
         const ts = trend.data.trend_summary || {};
         const pts = (trend.data.interest_over_time || []).map(p => ({ date: p.date, value: p.value }));
@@ -323,7 +326,7 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
                   </div>
                 )}
               </div>
-              {x.wp_url && <a href={x.wp_url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-700 hover:underline">WordPress draft</a>}
+              {x.wp_url && <a href={x.wp_url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-700 hover:underline">On your website</a>}
               {x.status === 'completed' && (openId === x.id
                 ? <span className="text-[11.5px] font-semibold text-emerald-700">Open above in Pipeline</span>
                 : <button type="button" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => handleOpen(x.id)}>Review & edit</button>)}

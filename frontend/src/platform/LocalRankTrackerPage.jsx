@@ -200,7 +200,7 @@ function Tracker({ b }) {
             <Tile icon={Target} tone="emerald" label="Top-3 coverage" value={`${topPct(shownScan)}%`} sub={`${shownScan.top3} of ${cellsOf(shownScan)} points`} delta={<Delta now={topPct(shownScan)} before={topPct(before)} better="up" unit="%" />} />
             <Tile icon={Trophy} tone="indigo" label="Average rank" value={shownScan.avg_rank ?? '—'} sub={Number.isFinite(best) ? `best #${best} · lower is better` : 'not found anywhere'} delta={<Delta now={shownScan.avg_rank} before={before?.avg_rank} better="down" />} />
             <Tile icon={MapPin} tone="sky" label="Found in top 20" value={`${foundPct(shownScan)}%`} sub={`${shownScan.found} of ${cellsOf(shownScan)} points`} delta={<Delta now={foundPct(shownScan)} before={foundPct(before)} better="up" unit="%" />} />
-            <div className="ai-glass-card rounded p-3.5 min-w-0"><div className="text-11.5 font-semibold  tracking-wide text-slate-400">Data</div><div className="mt-1.5"><SourceTag source={shownScan.data_source} /></div><div className="text-11.5 text-slate-500 mt-1">{shownScan.data_source === 'sample' ? 'Connect Serper or DataForSEO for live results.' : 'Live Google Maps results.'}</div></div>
+            <div className="ai-glass-card rounded p-3.5 min-w-0"><div className="text-11.5 font-semibold  tracking-wide text-slate-400">Data</div><div className="mt-1.5"><SourceTag source={shownScan.data_source} /></div><div className="text-11.5 text-slate-500 mt-1">{shownScan.data_source === 'sample' ? 'Connect Serper for live results.' : 'Live Google Maps results.'}</div></div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">

@@ -1,16 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Loader2, Save } from 'lucide-react';
 import { SeoShell, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useSeoBusiness, refreshBusinesses, useUrlTab } from './SeoUi';
 import GbpLive from './GbpLive';
+import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePosts, isLinked } from './GbpEditors';
 import { MarketCard } from './Market';
 import { GbpAccounts, GoogleSignIn, ListingStatus, VerifyPill } from './GbpAccounts';
 import { api, useApi, fmtDate } from './seoApi';
 import { useCountries } from './countries';
+import { SECTION_IDS, TAB_ALIAS, SectionNav, SectionHead, ClientBar, OverviewSection, PerformanceMetrics, ReviewsSection, ToolSection, TasksSection, SyncSection, SettingsSection } from './GbpWorkspace';
 
 const CTA = { BOOK: 'Book', ORDER: 'Order online', LEARN_MORE: 'Learn more', SIGN_UP: 'Sign up', CALL: 'Call now' };
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+const pushedMsg = (r, base = 'Saved') => (r?.pushed_to_google?.length ? `${base} and updated on your Google Business Profile` : `${base}. Not sent to Google: connect this client's Google account to publish changes there.`);
 const STUFFED = /[|]|\s-\s|\bbest\b|\bcheap\b|no\.?\s?1|\btop\s/i;
 
 function AuditTab({ b, onEditProfile }) {
@@ -54,12 +57,15 @@ function ProfileTab({ b, toast }) {
   const countryRows = useCountries();
   const [p, setP] = useState(() => ({ name: b.name, primary_category: b.primary_category || '', secondary_categories: b.secondary_categories || [], phone: b.phone || '', website: b.website || '', address: b.address || '', area: b.area || '', city: b.city || '', country: b.country || 'IN', description: b.description || '', services: b.services || [], attributes: b.attributes || [], booking_url: b.booking_url || '', lat: b.lat ?? '', lng: b.lng ?? '' }));
   const [attr, setAttr] = useState('');
+  const linked = isLinked(b);
   const [busy, error, run] = useAction();
   const set = (k, v) => setP(x => ({ ...x, [k]: v }));
   const save = () => run('save', async () => {
-    await api(`/businesses/${b.id}`, { method: 'PATCH', body: { ...p, lat: p.lat === '' ? null : Number(p.lat), lng: p.lng === '' ? null : Number(p.lng), services: p.services.filter(s => s.name) } });
+    const body = { ...p, lat: p.lat === '' ? null : Number(p.lat), lng: p.lng === '' ? null : Number(p.lng), services: p.services.filter(s => s.name) };
+    if (linked) ['primary_category', 'secondary_categories', 'address', 'area', 'city', 'lat', 'lng', 'country'].forEach(k => delete body[k]); // set on Google in the cards below
+    const r = await api(`/businesses/${b.id}`, { method: 'PATCH', body });
     await refreshBusinesses();
-    toast('Saved. Edits to the live Google profile go through approval.');
+    toast(pushedMsg(r));
   });
   const aiDesc = () => run('ai', async () => { const r = await api(`/businesses/${b.id}/ai/description`, { method: 'POST' }); set('description', r.text); toast('AI draft from your profile: check it, then save'); });
   return (
@@ -70,15 +76,16 @@ function ProfileTab({ b, toast }) {
             <input className={inputCls} value={p.name} onChange={e => set('name', e.target.value)} />
             {STUFFED.test(p.name) && <div className="mt-1"><StatusPill level="warning">Looks keyword-stuffed: a common cause of suspension</StatusPill></div>}
           </Field>
-          <Field label="Primary category"><input className={inputCls} value={p.primary_category} onChange={e => set('primary_category', e.target.value)} /></Field>
-          <Field label="Secondary categories" hint="Comma separated"><input className={inputCls} value={p.secondary_categories.join(', ')} onChange={e => set('secondary_categories', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} /></Field>
+          {!linked && <><Field label="Primary category"><input className={inputCls} value={p.primary_category} onChange={e => set('primary_category', e.target.value)} /></Field>
+          <Field label="Secondary categories" hint="Comma separated"><input className={inputCls} value={p.secondary_categories.join(', ')} onChange={e => set('secondary_categories', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} /></Field></>}
           <Field label="Phone"><input className={inputCls} value={p.phone} onChange={e => set('phone', e.target.value)} /></Field>
           <Field label="Website (landing page)"><input className={inputCls} value={p.website} onChange={e => set('website', e.target.value)} placeholder="https://" /></Field>
           <Field label="Booking link"><input className={inputCls} value={p.booking_url} onChange={e => set('booking_url', e.target.value)} placeholder="https://" /></Field>
-          <Field label="Address"><input className={inputCls} value={p.address} onChange={e => set('address', e.target.value)} /></Field>
+          {!linked && <><Field label="Address"><input className={inputCls} value={p.address} onChange={e => set('address', e.target.value)} /></Field>
           <div className="grid grid-cols-3 gap-2"><Field label="Area"><input className={inputCls} value={p.area} onChange={e => set('area', e.target.value)} /></Field><Field label="City"><input className={inputCls} value={p.city} onChange={e => set('city', e.target.value)} /></Field>
             <Field label="Country" hint="Google searches, phone checks and listing sites follow it."><select className={inputCls} value={p.country} onChange={e => set('country', e.target.value)} aria-label="Country">{countryRows.map(r => <option key={r.code} value={r.code}>{r.name}</option>)}</select></Field></div>
-          <div className="grid grid-cols-2 gap-2"><Field label="Map pin latitude"><input className={inputCls} value={p.lat} onChange={e => set('lat', e.target.value)} /></Field><Field label="Longitude"><input className={inputCls} value={p.lng} onChange={e => set('lng', e.target.value)} /></Field></div>
+          <div className="grid grid-cols-2 gap-2"><Field label="Map pin latitude"><input className={inputCls} value={p.lat} onChange={e => set('lat', e.target.value)} /></Field><Field label="Longitude"><input className={inputCls} value={p.lng} onChange={e => set('lng', e.target.value)} /></Field></div></>}
+          {linked && <p className="md:col-span-2 text-12 text-slate-500">Categories, address and map pin are managed in the Google cards below, because Google needs them in its own format.</p>}
         </div>
         <div className="mt-3">
           <Field label="Description" counter={<span className="text-gray-400">{p.description.length}/750</span>} hint="Aim for 600-750 characters. No URLs, phone numbers or promotions.">
@@ -109,6 +116,11 @@ function ProfileTab({ b, toast }) {
         <ErrorNote>{error}</ErrorNote>
         <div className="mt-4 flex justify-end"><Button variant="primary" icon={Save} busy={busy === 'save'} onClick={save}>Save changes</Button></div>
       </Card>
+      <div className="xl:col-span-3 grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <CategoryEditor b={b} toast={toast} />
+        <AddressEditor b={b} toast={toast} />
+        <div className="xl:col-span-2"><AttributesEditor b={b} toast={toast} /></div>
+      </div>
       <Card title="Preview on Google">
         <div className="border border-gray-200 rounded overflow-hidden">
           <div className="h-28 bg-gradient-to-br from-blue-100 to-emerald-100 flex items-center justify-center text-gray-400"><ImageIcon size={28} /></div>
@@ -130,11 +142,13 @@ function PostsTab({ b, toast }) {
   const [edit, setEdit] = useState(null);
   const [busy, error, run, setError] = useAction();
   const open = () => { setError(''); setEdit({ post_type: 'Update', title: '', body: '', cta_type: 'LEARN_MORE', cta_url: b.booking_url || b.website || '', scheduled_for: '' }); };
-  const save = () => run('save', async () => {
-    await api(`/businesses/${b.id}/posts`, { method: 'POST', body: { ...edit, scheduled_for: edit.scheduled_for ? `${edit.scheduled_for}T09:00:00` : null } });
+  const save = (now = false) => run(now ? 'now' : 'save', async () => {
+    const made = await api(`/businesses/${b.id}/posts`, { method: 'POST', body: { ...edit, scheduled_for: edit.scheduled_for ? `${edit.scheduled_for}T09:00:00` : null } });
+    if (now) await api(`/businesses/${b.id}/gbp/posts/${made.id}/publish`, { method: 'POST' });
     setEdit(null); posts.reload(true);
-    toast('Post saved and sent to the approval queue: it goes live on Google once approved');
+    toast(now ? 'Published on your Google Business Profile' : 'Post saved and sent to the approval queue: it goes live on Google once approved');
   });
+  const publish = (id) => run(`p${id}`, async () => { await api(`/businesses/${b.id}/gbp/posts/${id}/publish`, { method: 'POST' }); posts.reload(true); toast('Published on your Google Business Profile'); });
   const aiDraft = () => run('draft', async () => { await api(`/businesses/${b.id}/posts/draft`, { method: 'POST' }); posts.reload(true); toast('AI drafted this week\'s post (in the approval queue)'); });
   const del = (id) => run(`d${id}`, async () => { await api(`/businesses/${b.id}/posts/${id}`, { method: 'DELETE' }); posts.reload(true); });
   return (
@@ -152,13 +166,15 @@ function PostsTab({ b, toast }) {
                   <div className="text-11 text-gray-500 mt-1">{CTA[p.cta_type] || '—'} · {p.published_at ? `published ${fmtDate(p.published_at)}` : p.scheduled_for ? `for ${fmtDate(p.scheduled_for)}` : `created ${fmtDate(p.created_at)}`}</div>
                 </div>
                 <StatusPill level={p.status === 'published' ? 'good' : p.status === 'failed' ? 'critical' : 'warning'}>{p.status === 'published' ? 'Live' : p.status === 'failed' ? 'Failed' : 'Waiting for approval'}</StatusPill>
+                {p.status !== 'published' && isLinked(b) && <Button size="sm" variant="primary" busy={busy === `p${p.id}`} onClick={() => publish(p.id)}>Publish now</Button>}
                 {p.status !== 'published' && <button onClick={() => del(p.id)} className="p-1 text-gray-400 hover:text-red-600 cursor-pointer" aria-label="Delete"><Trash2 size={14} /></button>}
               </div>
             ))}
           </div>
         )}
       </Card>
-      <Modal open={Boolean(edit)} title="New post" onClose={() => setEdit(null)} width="max-w-3xl" footer={<><Button onClick={() => setEdit(null)}>Cancel</Button><Button variant="primary" icon={Send} busy={busy === 'save'} disabled={!edit?.body.trim()} onClick={save}>Send for approval</Button></>}>
+      <div className="mt-4"><LivePosts b={b} toast={toast} /></div>
+      <Modal open={Boolean(edit)} title="New post" onClose={() => setEdit(null)} width="max-w-3xl" footer={<><Button onClick={() => setEdit(null)}>Cancel</Button><Button icon={Send} busy={busy === 'save'} disabled={!edit?.body.trim()} onClick={() => save(false)}>Send for approval</Button>{isLinked(b) && <Button variant="primary" icon={Send} busy={busy === 'now'} disabled={!edit?.body.trim()} onClick={() => save(true)}>Publish now</Button>}</>}>
         {edit && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-3">
@@ -193,6 +209,7 @@ function PhotosTab({ b, toast }) {
   const save = () => run('save', async () => { await api(`/businesses/${b.id}`, { method: 'PATCH', body: { cover_photo: cover || null, logo: logo || null } }); await refreshBusinesses(); toast('Saved'); });
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="xl:col-span-2"><MediaManager b={b} toast={toast} /></div>
       <Card title="Photo checklist" subtitle="The photos themselves are on the Live from Google tab">
         <div className="text-3xl font-semibold text-gray-900">{b.photo_count ?? '—'}</div>
         <div className="text-12 text-gray-500 mt-1">{b.photo_count == null ? 'Connect the Google profile to count photos.' : b.photo_count >= 10 ? 'Good: keep adding real photos weekly.' : 'Aim for 10+ real photos: outside, inside, team, work. No stock images.'}</div>
@@ -201,14 +218,14 @@ function PhotosTab({ b, toast }) {
         </div>
         <p className="text-11 text-gray-500 mt-4">Upload photos in the Google Business Profile app; geo-relevant file names help (e.g. {`${(b.primaryCategory || 'business').toLowerCase().replace(/\s/g, '-')}-${(b.area || 'area').toLowerCase()}.webp`}).</p>
       </Card>
-      <Card title="Cover photo and logo">
+      {!isLinked(b) && <Card title="Cover photo and logo">
         <div className="space-y-3">
           <Field label="Cover photo URL"><input className={inputCls} value={cover} onChange={e => setCover(e.target.value)} placeholder="https://" /></Field>
           <Field label="Logo URL"><input className={inputCls} value={logo} onChange={e => setLogo(e.target.value)} placeholder="https://" /></Field>
           <ErrorNote>{error}</ErrorNote>
           <Button variant="primary" icon={Save} busy={busy === 'save'} onClick={save}>Save</Button>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }
@@ -224,7 +241,7 @@ function HoursTab({ b, toast }) {
   const [rows, setRows] = useState(() => hoursFrom(b.hours));
   const [special, setSpecial] = useState(() => b.special_hours || []);
   const [busy, error, run] = useAction();
-  const save = () => run('save', async () => { await api(`/businesses/${b.id}`, { method: 'PATCH', body: { hours: hoursTo(rows), special_hours: special } }); await refreshBusinesses(); toast('Hours saved'); });
+  const save = () => run('save', async () => { const r = await api(`/businesses/${b.id}`, { method: 'PATCH', body: { hours: hoursTo(rows), special_hours: special } }); await refreshBusinesses(); toast(pushedMsg(r, 'Hours saved')); });
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card title="Opening hours">
@@ -313,24 +330,56 @@ function InsightsTab({ b }) {
 }
 
 function Manager({ b, tab, setTab, toast, onConnect }) {
+  const [params, setParams] = useSearchParams();
+  const section = TAB_ALIAS[tab] || tab;
+  const sub = params.get('sub') || (tab === 'hours' || tab === 'faq' ? tab : 'live');
+  const setSub = (v) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', 'profile'); n.set('sub', v); return n; }, { replace: true });
+  const go = (id, s) => { if (id === 'profile' && s) setSub(s); else setTab(id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const [syncing, setSyncing] = useState(false);
+  const sync = async () => {
+    setSyncing(true);
+    try { const r = await api(`/businesses/${b.id}/sync`, { method: 'POST' }); toast(`Synced from Google: ${r.reviews} reviews, ${r.photos ?? 0} photos`); window.location.reload(); } catch (e) { toast(e.message || 'Sync failed'); } finally { setSyncing(false); }
+  };
   return (
-    <>
-      {!(b.gbp_location && b.connection_id) && <div className="mb-4"><ListingStatus b={b} toast={toast} onFind={() => { onConnect('email'); setTimeout(() => document.querySelector('input[aria-label="Business email"]')?.focus(), 400); }} /></div>}
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'live', label: 'Live from Google' }, { id: 'audit', label: 'Audit' }, { id: 'profile', label: 'Profile' }, { id: 'posts', label: 'Posts' }, { id: 'photos', label: 'Photos' }, { id: 'hours', label: 'Hours' }, { id: 'faq', label: 'Q&A / FAQs' }, { id: 'insights', label: 'Insights' }]} />
-      {tab === 'live' && <GbpLive b={b} toast={toast} onConnect={onConnect} />}
-      {tab === 'audit' && <AuditTab b={b} onEditProfile={() => setTab('profile')} />}
-      {tab === 'profile' && <div className="space-y-4"><ProfileTab b={b} toast={toast} /><MarketCard b={b} /></div>}
-      {tab === 'posts' && <PostsTab b={b} toast={toast} />}
-      {tab === 'photos' && <PhotosTab b={b} toast={toast} />}
-      {tab === 'hours' && <HoursTab b={b} toast={toast} />}
-      {tab === 'faq' && <FaqTab b={b} toast={toast} />}
-      {tab === 'insights' && <InsightsTab b={b} />}
-    </>
+    <div className="space-y-4">
+      <ClientBar b={b} onConnect={onConnect} onSync={sync} />
+      {!(b.gbp_location && b.connection_id) && <ListingStatus b={b} toast={toast} onFind={() => { onConnect('email'); setTimeout(() => document.querySelector('input[aria-label="Business email"]')?.focus(), 400); }} />}
+      <div className="grid grid-cols-1 lg:grid-cols-[230px_minmax(0,1fr)] gap-5 items-start">
+        <SectionNav value={section} onChange={(id) => go(id)} />
+        <div className="min-w-0">
+          {section === 'overview' && <OverviewSection b={b} go={go} />}
+          {section === 'profile' && (
+            <>
+              <SectionHead title="Business Profile" subtitle="Name, categories, address, contact, hours, services, attributes and verification" sources={['google', 'manual']} />
+              <Tabs value={sub} onChange={setSub} tabs={[{ id: 'live', label: 'Live from Google' }, { id: 'edit', label: 'Edit profile' }, { id: 'hours', label: 'Hours' }, { id: 'faq', label: 'Q&A / FAQs' }]} />
+              {sub === 'live' && <GbpLive b={b} toast={toast} onConnect={onConnect} />}
+              {sub === 'edit' && <div className="space-y-4"><ProfileTab b={b} toast={toast} /><MarketCard b={b} /></div>}
+              {sub === 'hours' && <HoursTab b={b} toast={toast} />}
+              {sub === 'faq' && <FaqTab b={b} toast={toast} />}
+            </>
+          )}
+          {section === 'performance' && (
+            <>
+              <SectionHead title="Performance" subtitle="How customers find and act on the profile" sources={['google']} />
+              <div className="space-y-4"><PerformanceMetrics b={b} /><InsightsTab b={b} /></div>
+            </>
+          )}
+          {section === 'reviews' && <ReviewsSection b={b} />}
+          {section === 'posts' && <><SectionHead title="Posts & Content" subtitle="What's New, Offer and Event posts with approval before publishing" sources={['google', 'ai']} /><PostsTab b={b} toast={toast} /></>}
+          {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><PhotosTab b={b} toast={toast} /></>}
+          {['local-seo', 'aeo', 'geo', 'competitors', 'reports'].includes(section) && <ToolSection id={section} go={go} />}
+          {section === 'ai' && <><SectionHead title="AI Recommendations" subtitle="Profile audit, health score and what to fix first" sources={['calc', 'ai']} /><AuditTab b={b} onEditProfile={() => go('profile', 'edit')} /></>}
+          {section === 'tasks' && <TasksSection b={b} />}
+          {section === 'sync' && <SyncSection b={b} onSync={sync} syncing={syncing} />}
+          {section === 'settings' && <SettingsSection b={b} onConnect={onConnect} />}
+        </div>
+      </div>
+    </div>
   );
 }
 
-export default function GbpManagerPage({ initialTab = 'live' }) {
-  const [tab, setTab] = useUrlTab(initialTab, ['live', 'audit', 'profile', 'posts', 'photos', 'hours', 'faq', 'insights']);
+export default function GbpManagerPage({ initialTab = 'overview' }) {
+  const [tab, setTab] = useUrlTab(initialTab, [...SECTION_IDS, ...Object.keys(TAB_ALIAS)]);
   const [, setBusiness] = useSeoBusiness();
   const location = useLocation();
   const navigate = useNavigate();
@@ -356,7 +405,7 @@ export default function GbpManagerPage({ initialTab = 'live' }) {
             </div>
             <div ref={addRef} className="scroll-mt-24">
               <GbpAccounts business={b} toast={toast} open={addOpen} onToggle={() => setAddOpen(false)}
-                onOpenBusiness={(id) => { setBusiness(id); setTab('live'); setAddOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
+                onOpenBusiness={(id) => { setBusiness(id); setTab('overview'); setAddOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
             </div>
             {b && <Manager key={b.id} b={b} tab={tab} setTab={setTab} toast={toast} onConnect={(mode) => (mode === 'email' ? openAdd() : setGoogleOpen(true))} />}
           </div>
@@ -364,7 +413,7 @@ export default function GbpManagerPage({ initialTab = 'live' }) {
       </SeoShell>
       <Modal open={googleOpen} onClose={() => setGoogleOpen(false)} width="max-w-3xl" title="Connect Google account">
         <GoogleSignIn initialAccount={account} toast={toast}
-          onOpenBusiness={(id) => { setBusiness(id); setTab('live'); setGoogleOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
+          onOpenBusiness={(id) => { setBusiness(id); setTab('overview'); setGoogleOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
       </Modal>
       {toastNode}
     </>

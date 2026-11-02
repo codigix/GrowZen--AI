@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useApi } from '../platform/seoApi';
 import AssistantWidget from './AssistantWidget';
+import ErrorBoundary from './ErrorBoundary';
 
 export const SIDEBAR_GROUPS = [
   {
@@ -30,6 +31,7 @@ export const SIDEBAR_GROUPS = [
       { to: '/domain-overview', label: 'Domain Overview', icon: Globe },
       { to: '/top-pages', label: 'Top Pages', icon: FileText },
       { to: '/competitor-finder', label: 'Competitor Research', icon: Swords },
+      { to: '/competitor-watch', label: 'Competitor Watch', icon: Radar, badge: 'New' },
       { to: '/compare-domains', label: 'Compare Domains', icon: Columns3 },
       { to: '/keyword-gap', label: 'Keyword Gap', icon: Target }
     ]
@@ -54,7 +56,7 @@ export const SIDEBAR_GROUPS = [
   {
     title: 'Link Building',
     items: [
-      { to: '/off-page-seo?tab=backlinks', label: 'Backlinks & Referring Domains', icon: Link2 },
+      { to: '/backlink-intelligence', label: 'Backlink Intelligence', icon: Link2, badge: 'New' },
       { to: '/off-page-seo?tab=outreach', label: 'Outreach', icon: Send }
     ]
   },
@@ -116,7 +118,7 @@ const isActivePath = (pathname, search, to) => {
 function useConnections() {
   const { data } = useApi('/status');
   if (!data) return null;
-  const checks = [data.ai?.configured, data.google_oauth, data.pagespeed_key, data.dataforseo, data.smtp, data.intake_imap];
+  const checks = [data.ai?.configured, data.google_oauth, data.pagespeed_key, data.smtp, data.intake_imap];
   return { connected: checks.filter(Boolean).length, total: checks.length };
 }
 
@@ -177,7 +179,7 @@ export default function Layout({ user, onLogout, onChangePassword }) {
         <div className={`h-[70px] shrink-0 flex items-center bg-topbar ${rail ? 'justify-center px-2' : 'justify-between px-4'}`}>
           <NavLink to="/dashboard" className="flex items-center gap-2.5 min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" title="bevisibe AI">
             <div className="w-9 h-9 rounded bg-white p-1 flex items-center justify-center shrink-0">
-              <img src="/bevisibe-icon.png" alt="bevisibe" className="w-full h-full object-contain" />
+              <img src="/bevisibe-mark.png" alt="bevisibe" className="w-full h-full object-contain" />
             </div>
             {!rail && (
               <div className="min-w-0">
@@ -271,7 +273,7 @@ export default function Layout({ user, onLogout, onChangePassword }) {
               <Menu size={20} />
             </button>
             <div className="flex items-center gap-2">
-              <img src="/bevisibe-icon.png" alt="bevisibe" className="w-7 h-7 object-contain" />
+              <img src="/bevisibe-mark.png" alt="bevisibe" className="w-7 h-7 object-contain" />
               <span className="font-bold text-15 text-white">bevisibe</span>
               <span className="text-9 font-bold px-1.5 py-0.5 rounded bg-indigo-500 text-white ">AI</span>
             </div>
@@ -288,7 +290,7 @@ export default function Layout({ user, onLogout, onChangePassword }) {
         </header>
 
         <main className="flex-1 min-w-0">
-          <Outlet />
+          <ErrorBoundary key={location.pathname}><Outlet /></ErrorBoundary>
         </main>
       </div>
       <AssistantWidget />

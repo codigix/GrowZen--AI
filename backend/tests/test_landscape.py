@@ -71,16 +71,6 @@ def test_organic_research_changes_and_serp_features():
     assert f["trend"]["People also ask"] == [1, 1] and f["trend"]["Videos"] == [0, 1]
 
 
-def test_organic_summary_splits_branded_traffic():
-    from app.services.domain_intel import organic_summary
-    out = {"overview": {"ok": True, "data": {"organic": {"count": 100, "traffic": 50.0, "traffic_cost": 120.0}, "paid": {}}},
-           "history": {"ok": True, "data": [{"keywords": 80, "traffic": 40.0}, {"keywords": 100, "traffic": 50.0}]},
-           "keywords": {"ok": True, "data": {"rows": [{"keyword": "acme pricing", "traffic": 10.0}, {"keyword": "trade software", "traffic": 20.0}]}}}
-    d = organic_summary(out, ["acme"])["data"]
-    assert d["keywords_change"] == 25.0 and d["traffic_change"] == 25.0 and d["branded"] == 10.0 and d["non_branded"] == 40.0 and d["traffic_cost"] == 120.0
-    assert organic_summary({"overview": {"ok": False, "error": "boom"}}, [])["ok"] is False
-
-
 def test_google_redirect_results_keep_their_real_domain():
     from app.services.organic import _shown, result_host
     goto = "https://www.google.com/goto?url=CAESabc"

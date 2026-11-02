@@ -76,14 +76,14 @@ function Overview({ d, r, setFilter, filters, intel }) {
         <Card className="xl:col-span-3" title={<span className="inline-flex items-center gap-2"><Search size={15} className="text-indigo-500" />SEO</span>}
           action={r && <span className="text-11.5 text-slate-400">{r.period.start} → {r.period.end}</span>}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-5">
-            <Metric label="Authority score" value={h.authority ?? d.links.authority ?? null} why={h.authority == null && d.links.authority == null ? 'Needs a link index (DataForSEO)' : null} />
-            <Metric label={t ? 'Organic traffic (clicks)' : 'Organic traffic (est.)'} icon={MousePointerClick} value={t ? fmt(t.clicks) : h.organicTraffic != null ? fmt(Math.round(h.organicTraffic)) : null} change={t && <Change now={t.clicks} before={p.clicks} />} why={!t && h.organicTraffic == null ? 'Needs Search Console or DataForSEO' : null} tone="text-indigo-600" />
-            <Metric label="Paid traffic (est.)" value={h.paidTraffic != null ? fmt(Math.round(h.paidTraffic)) : null} why={h.paidTraffic == null ? 'Needs DataForSEO' : null} />
-            <Metric label="Ref. domains" icon={Link2} value={h.referring != null ? fmt(h.referring) : d.links.referring_domains != null ? fmt(d.links.referring_domains) : null} why={h.referring == null && d.links.referring_domains == null ? 'Needs a link index (DataForSEO)' : null} />
+            <Metric label="Authority score" value={h.authority ?? d.links.authority ?? null} why={h.authority == null && d.links.authority == null ? 'Not available from Google' : null} />
+            <Metric label={t ? 'Organic traffic (clicks)' : 'Organic traffic (est.)'} icon={MousePointerClick} value={t ? fmt(t.clicks) : h.organicTraffic != null ? fmt(Math.round(h.organicTraffic)) : null} change={t && <Change now={t.clicks} before={p.clicks} />} why={!t && h.organicTraffic == null ? 'Connect Search Console' : null} tone="text-indigo-600" />
+            <Metric label="Paid traffic (est.)" value={h.paidTraffic != null ? fmt(Math.round(h.paidTraffic)) : null} why={h.paidTraffic == null ? 'Not available from Google' : null} />
+            <Metric label="Ref. domains" icon={Link2} value={h.referring != null ? fmt(h.referring) : d.links.referring_domains != null ? fmt(d.links.referring_domains) : null} why={h.referring == null && d.links.referring_domains == null ? 'Not available from Google' : null} />
             <Metric label="Impressions" icon={Eye} value={t ? fmt(t.impressions) : null} change={t && <Change now={t.impressions} before={p.impressions} />} why={!t ? 'Needs Search Console' : null} tone="text-indigo-600" />
-            <Metric label="Organic keywords" icon={KeyRound} value={h.organicKeywords != null ? fmt(h.organicKeywords) : t ? `${fmt(t.keywords)}${r.keywords_capped ? '+' : ''}` : null} change={h.organicKeywords == null && t && <Change now={t.keywords} before={p.keywords} />} why={!t && h.organicKeywords == null ? 'Needs Search Console or DataForSEO' : null} tone="text-indigo-600" />
-            <Metric label="Paid keywords" value={h.paidKeywords != null ? fmt(h.paidKeywords) : null} why={h.paidKeywords == null ? 'Needs DataForSEO' : null} />
-            <Metric label="Backlinks" icon={Link2} value={h.backlinks != null ? fmt(h.backlinks) : d.links.backlinks != null ? fmt(d.links.backlinks) : null} why={h.backlinks == null && d.links.backlinks == null ? 'Needs a link index (DataForSEO)' : null} />
+            <Metric label="Organic keywords" icon={KeyRound} value={h.organicKeywords != null ? fmt(h.organicKeywords) : t ? `${fmt(t.keywords)}${r.keywords_capped ? '+' : ''}` : null} change={h.organicKeywords == null && t && <Change now={t.keywords} before={p.keywords} />} why={!t && h.organicKeywords == null ? 'Connect Search Console' : null} tone="text-indigo-600" />
+            <Metric label="Paid keywords" value={h.paidKeywords != null ? fmt(h.paidKeywords) : null} why={h.paidKeywords == null ? 'Not available from Google' : null} />
+            <Metric label="Backlinks" icon={Link2} value={h.backlinks != null ? fmt(h.backlinks) : d.links.backlinks != null ? fmt(d.links.backlinks) : null} why={h.backlinks == null && d.links.backlinks == null ? 'Not available from Google' : null} />
           </div>
           {t && (
             <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-3 gap-4 text-center">
@@ -325,7 +325,7 @@ function Page({ b }) {
       {tab === 'overview' && <Overview d={d} r={r} setFilter={set} filters={filters} intel={intel} />}
       {tab === 'growth' && r && <Growth r={r} />}
       {tab === 'countries' && r && <Compare r={r} setFilter={(p) => { set(p); setTab('overview'); }} />}
-      <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />{r ? `Clicks and impressions are from Google Search Console (${r.property}), ${r.period.days} days. ` : ''}Authority, backlinks, keywords, competitors and ads come from DataForSEO (estimates). Anything a source does not provide shows as “—” or an empty card with the reason.</p>
+      <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />{r ? `Clicks and impressions are from Google Search Console (${r.property}), ${r.period.days} days. ` : ''}Clicks, impressions, keywords and pages come from Search Console. Authority, backlinks and paid figures are not available from Google. Anything a source does not provide shows as “—” or an empty card with the reason.</p>
       {toastNode}
     </div>
   );

@@ -11,7 +11,7 @@ from ..deps import get_business, in_background
 from ..models import AgentTask, Audit, Business, InsightDay, Lead, Review, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
-from ..services import agent, audits, discovery, gbp, reports, schedules
+from ..services import agent, audits, discovery, gbp, reports, schedules, site_onboarding
 from ..services import analytics as analytics_service, portfolio as portfolio_service, site_health
 from ..services.activity import log
 from ..services.profile_score import score_profile
@@ -48,12 +48,14 @@ def portfolio(db: Session = Depends(get_db), _: User = Depends(current_user)):
 
 
 @router.post("", status_code=201)
-def create_business(body: BusinessIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def create_business(body: BusinessIn, background: BackgroundTasks, db: Session = Depends(get_db), user: User = Depends(current_user)):
     b = Business(**body.model_dump(), source="manual", created_by=user.name)
     db.add(b)
     db.commit()
     log(db, user.name, "business_created", b.id)
     db.commit()
+    if b.website and site_onboarding.autodetect_enabled():
+        background.add_task(in_background(site_onboarding.detect_in_background, b.id))  # reads the website's technology without making the user wait
     return row(b)
 
 
@@ -63,13 +65,34 @@ def get_one(b: Business = Depends(get_business)):
 
 
 @router.patch("/{business_id}")
-def update(body: BusinessPatch, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     changes = body.model_dump(exclude_unset=True)
+    old_site = b.website
+    pushed: list[str] = []
+    changed = {k: v for k, v in changes.items() if getattr(b, k, None) != v}
+    patch = gbp.fields_to_location(changed)
+    if "services" in changed and b.connection and b.gbp_location:
+        try:  # services are filed under the profile's primary category, which Google reports
+            primary = ((gbp.GbpClient(b.connection).location(b.gbp_location).get("categories") or {}).get("primaryCategory") or {}).get("name")
+        except gbp.GbpError as exc:
+            raise HTTPException(502, f"Google did not accept the change, so nothing was saved: {exc}") from exc
+        if primary:
+            patch |= gbp.service_items_body(changed["services"] or [], primary)
+    if patch and b.connection and b.gbp_location:
+        # A profile linked to Google is edited on Google first; if Google refuses, nothing is saved here either,
+        # so the app never shows something the live profile does not have (and a sync cannot silently undo it).
+        try:
+            gbp.GbpClient(b.connection).update_location(b.gbp_location, patch)
+        except gbp.GbpError as exc:
+            raise HTTPException(502, f"Google did not accept the change, so nothing was saved: {exc}") from exc
+        pushed = sorted(patch)
     for k, v in changes.items():
         setattr(b, k, v)
-    log(db, user.name, "business_updated", b.id, fields=list(changes))
+    log(db, user.name, "business_updated", b.id, fields=list(changes), pushed_to_google=pushed)
     db.commit()
-    return row(b)
+    if b.website and b.website != old_site and site_onboarding.autodetect_enabled():
+        background.add_task(in_background(site_onboarding.detect_in_background, b.id))  # a new address means a possibly different technology
+    return row(b) | {"pushed_to_google": pushed}
 
 
 @router.delete("/{business_id}", status_code=204)

@@ -50,7 +50,6 @@ All settings go in `backend/.env`; see `backend/.env.example` for the full list.
 | `GOOGLE_PLACES_API_KEY` | "Find by email": finds a business on Google Maps from an email address and its website |
 | `PAGESPEED_API_KEY` | Technical SEO audit; Lighthouse audits (PageSpeed engine) |
 | Node.js + `npm install -g lighthouse` + Chrome/Edge (no setting) | Lighthouse audits (local engine, original Lighthouse HTML). Options: `LIGHTHOUSE_*` in `.env.example` |
-| `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD` | Live rank grid, keyword volumes, backlinks |
 | `AI_PROVIDER` + `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | AI drafts (posts, review replies, descriptions), email reading, reports |
 | `INTAKE_IMAP_*`, `SMTP_*` | Reading the onboarding mailbox; sending reports and replies |
 

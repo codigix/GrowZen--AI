@@ -4,7 +4,7 @@ localities around it, its website (from the latest on-page audit) and its compet
 Searches come from Google Autocomplete (real queries people type, free, no key): service, local,
 "near me", question and fresh/seasonal searches. Each keyword gets a suggest-strength signal (how high
 and how often Google suggests it), a group, an intent, and whether the website already covers it.
-With DataForSEO configured, keywords also get monthly volume, CPC, difficulty and a 12-month trend.
+Monthly volume, CPC and trend need the Google Ads Keyword Planner API.
 Nearby localities come from OpenStreetMap (Photon reverse search).
 """
 import re
@@ -167,7 +167,7 @@ def context(db: Session, b: Business) -> dict[str, Any]:
         "competitor_research": research and {"analysed_at": research.get("analysed_at"), "competitors": research["summary"].get("competitors"),
                                              "ideas": len(competitor_ideas(research)), "keywords": research.get("keywords", [])},
         "tracked": len(tracked),
-        "volumes": get_settings().dataforseo_enabled,
+        "volumes": False,  # monthly volume needs the Google Ads Keyword Planner API (not connected)
     }
 
 
@@ -279,15 +279,6 @@ def discover(db: Session, b: Business, seeds: list[str], areas: list[str]) -> di
         x["stars"] = 5 - (i * 5) // len(out)
 
     source = "google_autocomplete"
-    if out and get_settings().dataforseo_enabled:
-        from .providers.dataforseo import DataForSeoError, keyword_volumes
-        try:
-            data = keyword_volumes([x["keyword"] for x in out][:700], countries.name(countries.of(b)))
-            for x in out:
-                x.update({f: v for f, v in (data.get(x["keyword"]) or {}).items() if v is not None})
-            source = "google_autocomplete+dataforseo"
-        except (DataForSeoError, httpx.HTTPError):
-            pass
     return {"data_source": source, "seeds": seeds, "areas": areas, "queries": len(queries), "keywords": out,
             "counts": {g: sum(1 for x in out if x["group"] == g) for g in GROUPS},
             "gaps": sum(1 for x in out if x["coverage"] and x["coverage"]["status"] == "gap"),

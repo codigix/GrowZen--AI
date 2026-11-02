@@ -125,3 +125,14 @@ def test_text_from_websites_cannot_instruct_the_model():
     out = str(_clean(evil))
     assert "Ignore all previous instructions" not in out and "</CONTEXT>" not in out and "`" not in out and "[removed]" in out
     assert _clean("x" * 500, 100) == "x" * 100 and _clean(7) == 7
+
+
+def test_keyword_explorer_requires_sign_in(client):
+    """The Keyword Explorer was reachable without a session; every route of it (including its hidden aliases) must answer 401."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    anonymous = TestClient(app)
+    for method, path in (("post", "/api/keywords"), ("post", "/api/keyword"), ("post", "/api/v1/keywords"), ("get", "/api/keywords/platforms"), ("get", "/api/keywords/export")):
+        r = getattr(anonymous, method)(path, **({"json": {"keyword": "x"}} if method == "post" else {}))
+        assert r.status_code == 401, (method, path, r.status_code)
+    assert client.get("/api/keywords/platforms").status_code == 200  # a signed-in user still gets through

@@ -5,7 +5,7 @@ import { Card, Badge, Button } from './SeoUi';
 import { fmt } from './seoApi';
 
 /**
- * The Semrush-style sections of the Domain Overview, from DataForSEO (GET /businesses/{id}/seo/domain-intel).
+ * The sections of the Domain Overview, from Google Search Console (GET /businesses/{id}/seo/domain-intel).
  * A section whose call failed shows the provider's error; with no data source it shows what is needed. Figures are never estimated here.
  */
 
@@ -29,7 +29,7 @@ export function section(intel, key) {
 }
 
 function Empty({ intel, why, off, noun = 'data' }) {
-  const text = off ? (intel?.state === 'not_configured' ? 'Needs DataForSEO (see the note above).' : intel?.state === 'no_website' ? 'Needs a real website address.' : intel?.state === 'needs_approval' ? 'Approve this client first.' : 'Loading…')
+  const text = off ? (intel?.state === 'not_connected' || intel?.state === 'no_property' ? 'Connect Search Console (see the note above).' : intel?.state === 'no_website' ? 'Needs a real website address.' : intel?.state === 'needs_approval' ? 'Approve this client first.' : 'Loading…')
     : why ? why : `No ${noun} found for this domain in ${intel?.country_name || 'this market'}.`;
   const bad = !off && why;
   return (
@@ -63,7 +63,8 @@ export function IntelBar({ intel, loading, market, setMarket, onRefresh, refresh
   const when = intel.fetched_at ? new Date(intel.fetched_at).toLocaleString() : null;
   if (intel.state !== 'ok') {
     const msg = {
-      not_configured: ['Connect DataForSEO to fill the sections below', 'Authority score, estimated traffic, keywords, competitors, ads, backlinks and the history charts come from DataForSEO. Add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD to backend/.env and restart the backend.'],
+      not_connected: ['Connect Google Search Console to fill the sections below', intel.message || 'Connect a Google account that can see this site in Search Console.'],
+      no_property: ['This site is not in the connected Search Console account', intel.message || 'Add and verify the site in Search Console, or connect the account that owns it.'],
       no_website: ['Add the real website first', 'The sections below are looked up by domain, and this business has no real website address.'],
       needs_approval: ['Approve this client first', 'Data credits are not spent on a client that is waiting for approval.']
     }[intel.state] || ['Not available', ''];
@@ -76,7 +77,7 @@ export function IntelBar({ intel, loading, market, setMarket, onRefresh, refresh
   }
   return (
     <div className="flex flex-wrap items-center gap-3 text-12.5 text-slate-600">
-      {intel.mock ? <Badge tone="amber" title="DOMAIN_INTEL_MOCK is on in backend/.env"><AlertTriangle size={11} />Sample data: not real</Badge> : <span className="inline-flex items-center gap-1.5"><Database size={13} className="text-slate-400" />Source: DataForSEO</span>}
+      {intel.mock ? <Badge tone="amber" title="DOMAIN_INTEL_MOCK is on in backend/.env"><AlertTriangle size={11} />Sample data: not real</Badge> : <span className="inline-flex items-center gap-1.5"><Database size={13} className="text-slate-400" />Source: Google Search Console{intel.account ? ` (${intel.account})` : ''}</span>}
       {intel.markets.length > 1 && (
         <select value={market || intel.country} onChange={e => setMarket(e.target.value)} className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white cursor-pointer" aria-label="Market">
           {intel.markets.map(m => <option key={m.code} value={m.code}>{flag(m.code)} {m.name}</option>)}
@@ -344,11 +345,7 @@ export function IntelSections({ intel }) {
       <Markets intel={intel} />
       <Heading sub="From Google results in the selected market">Organic research</Heading>
       <OrganicResearch intel={intel} />
-      <Heading sub="Paid search: only when the domain runs Google Ads">Advertising research</Heading>
-      <Advertising intel={intel} />
-      <Heading sub="All links the index has found to this domain">Backlinks</Heading>
-      <Backlinks intel={intel} />
-      <p className="text-11.5 text-slate-400">{intel?.mock ? 'These figures are generated sample data for testing the layout. ' : ''}Traffic, paid figures and keyword positions are DataForSEO estimates built from Google results, so they will not match Search Console or another tool exactly. Authority score is DataForSEO&apos;s domain rank on a 0-100 scale.</p>
+      <p className="text-11.5 text-slate-400">{intel?.mock ? 'These figures are generated sample data for testing the layout. ' : ''}Clicks, impressions, queries, pages and countries are your site's own Search Console figures (average position, not a rank check). Authority score, backlinks, competitor traffic and other sites' ads are not shown: Google offers no API for them.</p>
     </div>
   );
 }
@@ -360,6 +357,6 @@ export function headline(intel) {
   return {
     authority: l ? l.authority : null, backlinks: l ? l.backlinks : null, referring: l ? l.referring_domains : null,
     organicTraffic: ov ? ov.organic.traffic : null, organicKeywords: ov ? ov.organic.count : null, paidTraffic: ov ? ov.paid.traffic : null, paidKeywords: ov ? ov.paid.count : null,
-    why: intel?.state === 'ok' ? null : intel?.state === 'not_configured' ? 'Needs DataForSEO' : null
+    why: intel?.state === 'ok' ? null : intel?.state === 'not_connected' || intel?.state === 'no_property' ? 'Needs Search Console' : null
   };
 }

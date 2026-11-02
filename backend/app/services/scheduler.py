@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from ..config import get_settings
 from ..db import SessionLocal
-from . import intake, jobs, pipeline, schedules
+from . import intake, jobs, pipeline, schedules, site_publish
 
 log = logging.getLogger("seo.scheduler")
 _scheduler: BackgroundScheduler | None = None
@@ -19,7 +19,7 @@ LAST_TICK: dict[str, object] = {"at": None, "result": None}
 
 def tick() -> dict[str, int]:
     db = SessionLocal()
-    out = {"emails": 0, "onboarded": 0, "jobs": 0, "recovered": 0}
+    out = {"emails": 0, "onboarded": 0, "jobs": 0, "recovered": 0, "posts": 0}
     locked = False
     try:
         if db.bind.dialect.name == "postgresql":  # two processes must never run the same jobs twice
@@ -34,12 +34,28 @@ def tick() -> dict[str, int]:
             log.warning("IMAP poll failed: %s", exc)
         out["onboarded"] = pipeline.process_waiting(db)
         out["jobs"] = schedules.run_due(db)
+        out["posts"] = site_publish.run_due_scheduled(db)  # blog posts held for a chosen time
     finally:
         if locked:
             db.execute(text("select pg_advisory_unlock(7310042)"))
         db.close()
         LAST_TICK.update(at=datetime.now(timezone.utc).isoformat(), result=out)
     return out
+
+
+def bot_tick() -> None:
+    """Run the backlink discovery bot for businesses whose interval has elapsed (separate job: a run can take minutes)."""
+    from ..backlinks import bot, router as bl_router
+    db = SessionLocal()
+    try:
+        bot.run_due(db, bl_router.get_fetcher())
+        from ..backlinks import outcomes, watch
+        outcomes.measure_due(db)
+        watch.run_due(db, bl_router.get_fetcher())  # weekly competitor visits (each business only when a week has passed)
+    except Exception as exc:
+        log.warning("Backlink bot tick failed: %s", exc)
+    finally:
+        db.close()
 
 
 def start() -> None:
@@ -49,6 +65,7 @@ def start() -> None:
         return
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.add_job(tick, "interval", seconds=s.scheduler_tick_seconds, id="seo-tick", max_instances=1, coalesce=True)
+    _scheduler.add_job(bot_tick, "interval", seconds=60, id="backlink-bot", max_instances=1, coalesce=True)
     _scheduler.start()
     log.info("Scheduler started (every %ss)", s.scheduler_tick_seconds)
 

@@ -1,27 +1,54 @@
-"""Domain Overview: internal versus client businesses, and the DataForSEO sections (provider stubbed, no network)."""
-from app.config import get_settings
-from app.services import domain_intel
+"""Domain Overview: internal versus client businesses, and the Google (Search Console) sections, with Search Console stubbed (no network)."""
+import pytest
 
-
-def _provider(calls):
-    def fake(path, payload, timeout=60):
-        calls.append(path)
-        if "domain_rank_overview" in path:
-            return {"result": [{"items": [{"metrics": {"organic": {"pos_1": 2, "pos_2_3": 3, "pos_4_10": 10, "pos_21_30": 5, "count": 98, "etv": 14.2}, "paid": {"count": 0}}}]}]}
-        if "ranked_keywords" in path:
-            return {"result": [{"total_count": 82, "items": [{"keyword_data": {"keyword": "customs automation", "keyword_info": {"search_volume": 70, "cpc": 4.58},
-                                                                                 "search_intent_info": {"main_intent": "informational"}},
-                                                              "ranked_serp_element": {"serp_item": {"rank_group": 5, "etv": 14.28}}}]}]}
-        if "backlinks/summary" in path:
-            return {"result": [{"rank": 90, "backlinks": 2200, "referring_domains": 1700, "referring_links_attributes": {"nofollow": 327}, "referring_links_types": {"anchor": 2200, "image": 4}}]}
-        return {"result": [{"items": []}]}
-    return fake
+from app.db import SessionLocal
+from app.models import GoogleConnection
+from app.services import crypto, gsc
 
 
 def _business(client, name, website, **extra):
     r = client.post("/api/v1/businesses", json={"name": name, "website": website, **extra})
     assert r.status_code == 201, r.text
     return r.json()["id"]
+
+
+@pytest.fixture()
+def google_account():
+    db = SessionLocal()
+    c = GoogleConnection(email="owner@codigix.co", refresh_token_enc=crypto.seal("rt"), scopes=f"openid {gsc.SCOPE}", status="active", connected_by="test")
+    db.add(c)
+    db.commit()
+    cid = c.id
+    db.close()
+    yield cid
+    db = SessionLocal()
+    db.query(GoogleConnection).filter(GoogleConnection.id == cid).delete()
+    db.commit()
+    db.close()
+
+
+def _stub(monkeypatch, calls, fail_dims=None):
+    monkeypatch.setattr(gsc.SearchConsole, "__init__", lambda self, conn: None)
+    monkeypatch.setattr(gsc.SearchConsole, "sites", lambda self: [{"siteUrl": "sc-domain:codigix.co", "permissionLevel": "siteOwner"}])
+
+    def query(self, site, body):
+        dims = tuple(body.get("dimensions") or ())
+        calls.append(dims)
+        if fail_dims and dims == fail_dims:
+            raise gsc.gbp.GbpError("Search Console unavailable")
+        if dims == ("query",):
+            return [{"keys": ["customs automation"], "clicks": 12, "impressions": 300, "ctr": 0.04, "position": 2.4},
+                    {"keys": ["codigix"], "clicks": 30, "impressions": 90, "ctr": 0.33, "position": 1.1},
+                    {"keys": ["trade software"], "clicks": 1, "impressions": 500, "ctr": 0.002, "position": 18.0}]
+        if dims == ("page",):
+            return [{"keys": ["https://codigix.co/"], "clicks": 40, "impressions": 700, "ctr": 0.05, "position": 5.0},
+                    {"keys": ["https://blog.codigix.co/post"], "clicks": 3, "impressions": 100, "ctr": 0.03, "position": 9.0}]
+        if dims == ("date",):
+            return [{"keys": ["2026-09-03"], "clicks": 10, "impressions": 50, "ctr": 0.2, "position": 4}, {"keys": ["2026-10-03"], "clicks": 33, "impressions": 80, "ctr": 0.4, "position": 3}]
+        if dims == ("country",):
+            return [{"keys": ["ind"], "clicks": 43, "impressions": 790, "ctr": 0.05, "position": 4}]
+        return [{"clicks": 43, "impressions": 790, "ctr": 0.05, "position": 4}]
+    monkeypatch.setattr(gsc.SearchConsole, "query", query)
 
 
 def test_internal_domain_gets_deeper_data_and_its_own_messages(client):
@@ -31,7 +58,6 @@ def test_internal_domain_gets_deeper_data_and_its_own_messages(client):
     c = client.get(f"/api/v1/businesses/{other}/seo/domain").json()
     assert a["internal"] is True and c["internal"] is False
     assert a["limits"]["keywords"] > c["limits"]["keywords"]
-    assert any("agency" in x["message"].lower() or "backend/.env" in x["message"] for x in a["checks"])
     assert not any(x["id"] == "approval" for x in a["checks"])  # a client-only check
 
 
@@ -41,43 +67,37 @@ def test_placeholder_website_is_an_error(client):
     assert any(x["id"] == "website" and x["level"] == "error" for x in checks)
 
 
-def test_intel_needs_the_provider(client):
+def test_intel_needs_a_google_account(client):
     bid = _business(client, "Codigix", "https://codigix.co")
-    assert client.get(f"/api/v1/businesses/{bid}/seo/domain-intel").json()["state"] == "not_configured"
+    j = client.get(f"/api/v1/businesses/{bid}/seo/domain-intel").json()
+    assert j["state"] in ("not_connected", "no_property") and j["message"]
 
 
-def test_intel_sections_cache_and_failures(client, monkeypatch):
-    s = get_settings()
-    monkeypatch.setattr(s, "dataforseo_login", "x")
-    monkeypatch.setattr(s, "dataforseo_password", "y")
-    calls: list[str] = []
-    monkeypatch.setattr(domain_intel, "_post", _provider(calls))
+def test_intel_comes_from_search_console_and_is_cached(client, monkeypatch, google_account):
+    calls: list = []
+    _stub(monkeypatch, calls)
     bid = _business(client, "Codigix", "https://codigix.co", country="IN")
     j = client.get(f"/api/v1/businesses/{bid}/seo/domain-intel?refresh=true").json()
-    assert j["state"] == "ok" and j["cached"] is False
-    assert j["overview"]["data"]["organic"]["top3"] == 5 and j["overview"]["data"]["organic"]["count"] == 98
-    assert j["links"]["data"]["authority"] == 9 and j["links"]["data"]["follow"] == 1873
-    assert j["keywords"]["data"]["rows"][0]["intent"] == "informational"
-    assert j["paid_keywords"]["data"] is None  # no paid keywords: no paid calls were made
-    assert calls.count("/dataforseo_labs/google/ranked_keywords/live") == 1  # organic only
+    assert j["state"] == "ok" and j["cached"] is False and j["source"] == "google_search_console"
+    o = j["overview"]["data"]["organic"]
+    assert o["count"] == 3 and o["traffic"] == 43 and o["top3"] == 2 and o["p11_20"] == 1
+    assert j["keywords"]["data"]["rows"][0]["keyword"] == "codigix" and j["keywords"]["data"]["rows"][0]["traffic"] == 30
+    assert j["organic"]["data"]["branded"] == 30 and j["organic"]["data"]["non_branded"] == 13
+    assert [p["subdomain"] for p in j["subdomains"]["data"]] == ["codigix.co", "blog.codigix.co"]
+    assert [h["date"] for h in j["history"]["data"]] == ["2026-09", "2026-10"] and j["history"]["data"][1]["traffic"] == 33
+    # What Google has no API for is reported as unavailable, never estimated.
+    for k in ("links", "backlinks", "competitors", "paid_keywords"):
+        assert j[k]["ok"] is False and "Google" in j[k]["error"]
     n = len(calls)
-    assert client.get(f"/api/v1/businesses/{bid}/seo/domain-intel").json()["cached"] is True and len(calls) == n  # no new requests
+    assert client.get(f"/api/v1/businesses/{bid}/seo/domain-intel").json()["cached"] is True and len(calls) == n
     assert client.get(f"/api/v1/businesses/{bid}/seo/domain-intel?refresh=true").json()["cached"] is False and len(calls) > n
 
 
-def test_a_failed_section_is_reported_and_not_cached(client, monkeypatch):
-    s = get_settings()
-    monkeypatch.setattr(s, "dataforseo_login", "x")
-    monkeypatch.setattr(s, "dataforseo_password", "y")
-    good = _provider([])
-
-    def flaky(path, payload, timeout=60):
-        if "backlinks/summary" in path:
-            raise domain_intel.DataForSeoError("Payment required")
-        return good(path, payload, timeout)
-    monkeypatch.setattr(domain_intel, "_post", flaky)
+def test_a_failed_google_section_is_reported_and_not_cached(client, monkeypatch, google_account):
+    calls: list = []
+    _stub(monkeypatch, calls, fail_dims=("page",))
     bid = _business(client, "Codigix", "https://codigix.co", country="IN")
     j = client.get(f"/api/v1/businesses/{bid}/seo/domain-intel?refresh=true").json()
-    assert j["links"] == {"ok": False, "error": "Payment required"} and j["overview"]["ok"] is True
-    monkeypatch.setattr(domain_intel, "_post", good)  # fixed: the next view fetches again instead of replaying the failure
-    assert client.get(f"/api/v1/businesses/{bid}/seo/domain-intel").json()["links"]["ok"] is True
+    assert j["pages"] == {"ok": False, "error": "Search Console unavailable"} and j["overview"]["ok"] is True
+    _stub(monkeypatch, [])  # fixed: the next view fetches again instead of replaying the failure
+    assert client.get(f"/api/v1/businesses/{bid}/seo/domain-intel").json()["pages"]["ok"] is True

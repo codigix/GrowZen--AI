@@ -272,6 +272,7 @@ function ListingsTab({ r, setupInfo }) {
           <span className="font-semibold text-slate-700 inline-flex items-center gap-1.5"><Link2 size={13} className="text-indigo-500" /> Listings to get:</span>
           {r.gaps.listings.map(g => <span key={g.domain} className="px-2 py-0.5 rounded-full bg-white border border-slate-200"><b className="text-slate-900">{g.domain}</b> <span className="text-slate-500">{g.seen}×</span></span>)}
           <Link to="/off-page-seo" className="ml-auto font-semibold text-indigo-700 hover:underline">Manage citations →</Link>
+          <Link to="/backlink-intelligence?tab=gap" className="font-semibold text-indigo-700 hover:underline ml-3">See who links to these competitors →</Link>
         </div>
       )}
       {sites.length === 0 ? <p className="px-6 py-10 text-center text-13 text-slate-500">No listings or mentions found.</p> : (
@@ -293,7 +294,7 @@ function ListingsTab({ r, setupInfo }) {
         </Table>
       )}
       <div className="px-5 py-2.5 border-t border-slate-200 text-11.5 text-slate-500">
-        {setupInfo.backlinks ? 'Backlink totals come from DataForSEO; the table shows the listings Google surfaces for each name.' : 'Links and listings Google shows for each name, not a full backlink index. Connect DataForSEO for total backlinks.'}
+        Links and listings Google shows for each name, not a full backlink index: Google has no API for backlink totals.
       </div>
     </Card>
   );
@@ -427,7 +428,7 @@ function ProfileModal({ c, r, onClose, onAudit, onCompare, auditMap }) {
                   <div className="flex flex-wrap gap-1.5">{p.link_sources.map(s => <a key={s.domain} href={s.url} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded-md text-12 border bg-white text-slate-700 border-slate-200 hover:border-indigo-300 hover:text-indigo-700">{baseSite(s.domain)}</a>)}</div>
                 </div>
               )}
-              {p.backlinks && <p className="text-12.5 text-slate-600">Backlinks: <b>{fmt(p.backlinks.backlinks)}</b> from <b>{fmt(p.backlinks.referring_domains)}</b> sites (DataForSEO).</p>}
+              {p.backlinks && <p className="text-12.5 text-slate-600">Backlinks: <b>{fmt(p.backlinks.backlinks)}</b> from <b>{fmt(p.backlinks.referring_domains)}</b> sites.</p>}
             </div>
           </div>
         </div>

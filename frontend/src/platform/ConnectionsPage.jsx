@@ -9,7 +9,6 @@ const SOURCES = [
   ['ai', 'AI (extraction, replies, posts, reports)', 'DEEPSEEK_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY + AI_PROVIDER', s => s.ai.configured, s => s.ai.provider],
   ['google_oauth', 'Google sign-in for Business Profiles', 'GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (Business Profile API approved)', s => s.google_oauth],
   ['pagespeed', 'PageSpeed Insights (technical SEO)', 'PAGESPEED_API_KEY', s => s.pagespeed_key],
-  ['dataforseo', 'DataForSEO (live rank grids, keyword volume, backlinks)', 'DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD', s => s.dataforseo],
   ['imap', 'Onboarding mailbox (IMAP)', 'INTAKE_IMAP_HOST / USER / PASSWORD', s => s.intake_imap],
   ['webhook', 'Onboarding webhook (mail-forwarding services)', 'INTAKE_WEBHOOK_TOKEN', s => s.intake_webhook],
   ['smtp', 'Email out (reports, “missing details” replies)', 'SMTP_HOST + SMTP_FROM', s => s.smtp],
@@ -85,7 +84,7 @@ function Connections() {
               ['No invented facts', 'AI prompts use only the saved profile; the email extractor keeps only values found in the email.'],
               ['No fake or incentivised reviews', 'AI only drafts replies; review requests go to every customer.'],
               ['Outreach drafts only', 'A person sends every outreach email. No paid links or link exchanges.'],
-              ['Licensed data only', 'Rankings come from a licensed provider (DataForSEO), never scraping Google.'],
+              ['Licensed data only', 'Rankings come from the Serper Google results API, never from scraping Google pages.'],
               ['Encrypted tokens', 'Google refresh tokens are stored encrypted; disconnecting deletes them.'],
               ['Allowed senders only', 'The onboarding mailbox processes emails from the team’s addresses only.']
             ].map(([t, d]) => <div key={t} className="p-3 rounded border border-gray-200"><div className="flex items-center gap-1.5 text-13 font-medium text-gray-900"><ShieldCheck size={14} className="text-emerald-600" />{t}</div><p className="text-12 text-gray-600 mt-1">{d}</p></div>)}

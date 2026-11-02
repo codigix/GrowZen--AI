@@ -65,7 +65,7 @@ def test_without_a_google_account_it_says_what_is_missing(client):
     bid = project(client)
     d = client.get(f"/api/v1/businesses/{bid}/seo/domain").json()
     assert d["domain"] == "mydental.in" and d["traffic"]["state"] == "not_connected" and "report" not in d["traffic"]
-    assert d["ai"]["measured"] is False and d["links"]["available"] is False and "DataForSEO" in d["links"]["reason"] and "paid" in d["unavailable"]
+    assert d["ai"]["measured"] is False and d["links"]["available"] is False and "Discovery bot" in d["links"]["reason"] and d["links"]["source"] == "codigix_bot" and "paid" in d["unavailable"]
 
 
 def test_an_account_without_the_search_console_permission_is_asked_to_reconnect(client):
@@ -154,3 +154,21 @@ def test_search_console_only_sign_in_asks_for_that_permission_alone(monkeypatch)
     assert gbp.read_purpose(s["state"][0]) == "gsc" and gbp.read_state(s["state"][0]) == "1"
 
     get_settings.cache_clear()
+
+
+def test_domain_overview_links_come_from_our_own_discovery_bot(client):
+    """The dashboard's backlink numbers are what our bot found for the business's own tracked site, not a paid index."""
+    from app.backlinks.models import BiTrackedTarget
+    from app.backlinks.repository import LinkRecord, upsert_imported_link
+    from app.db import SessionLocal
+    bid = client.post("/api/v1/businesses", json={"name": "Own Links Co", "website": "https://ownlinks.com"}).json()["id"]
+    db = SessionLocal()
+    db.add(BiTrackedTarget(business_id=bid, domain="ownlinks.com"))
+    for i in range(3):
+        upsert_imported_link(db, LinkRecord(f"https://site{i}.org/p", "https://ownlinks.com/", "x"), "manual_import")
+    db.commit()
+    db.close()
+    d = client.get(f"/api/v1/businesses/{bid}/seo/domain").json()
+    assert d["links"]["available"] is True and d["links"]["backlinks"] == 3 and d["links"]["referring_domains"] == 3 and d["links"]["authority"] is None
+    a = client.post(f"/api/v1/businesses/{bid}/assistant", json={"message": "how are my backlinks"}).json()
+    assert "3 live links from 3 referring domains" in a["answer"]

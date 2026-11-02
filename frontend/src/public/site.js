@@ -4,8 +4,8 @@
  * Set them with Vite env vars in frontend/.env (VITE_SUPPORT_EMAIL is required before submitting).
  */
 export const SITE = {
-  name: 'Bevisiby AI',
-  short: 'Bevisiby',
+  name: 'bevisibe AI',
+  short: 'bevisibe',
   company: import.meta.env.VITE_COMPANY_NAME || 'Codigix Infotech',
   email: import.meta.env.VITE_SUPPORT_EMAIL || '',
   address: import.meta.env.VITE_COMPANY_ADDRESS || '',
@@ -24,17 +24,12 @@ export const GOOGLE_ACCESS = [
   },
   {
     product: 'Google Business Profile', scope: 'https://www.googleapis.com/auth/business.manage',
-    use: 'List the Business Profiles you own or manage, read their details, reviews, photos and performance insights, and publish the review replies and posts you approve.',
-    never: 'Nothing is published or changed on Google without your approval.'
+    use: 'List the Business Profiles you own or manage and read their details, reviews, photos and performance insights. When you press Save, edits you make in the app (such as name, hours, phone, website, description, categories, address, services and photos) are sent to your profile, and review replies and posts you approve are published.',
+    never: 'AI-written drafts always wait for your approval, and nothing is changed on Google except what you save or approve.'
   },
   {
-    product: 'Google Ads: Keyword Planner', scope: 'https://www.googleapis.com/auth/adwords',
-    use: 'Read keyword ideas, monthly search volumes and trends from Keyword Planner to plan SEO for the businesses you manage.',
-    never: 'We never create, edit or pause campaigns, and never spend from your ad account.'
-  },
-  {
-    product: 'Gmail', scope: 'https://www.googleapis.com/auth/gmail.readonly',
-    use: 'Read client onboarding emails in the inbox you connect, so a new client\'s details are extracted and their onboarding starts automatically.',
-    never: 'We never send, delete or change email, and never use email content for advertising or AI model training.'
+    product: 'Google Search Console', scope: 'https://www.googleapis.com/auth/webmasters.readonly',
+    use: 'Read your website\'s search clicks, impressions, queries and pages for the sites you manage, to show real Google traffic in reports.',
+    never: 'Read-only: we cannot change anything in your Search Console.'
   }
 ];

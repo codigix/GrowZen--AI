@@ -57,7 +57,7 @@ function Summary({ d }) {
   return (
     <Card title="Summary" pad={false}>
       <div className="grid grid-cols-1 sm:grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
-        <Stat label="Organic traffic" value={s.traffic != null ? fmt(Math.round(s.traffic)) : null} change={s.traffic_change} why="Estimated monthly visits: needs the data provider (DataForSEO)." />
+        <Stat label="Organic traffic" value={s.traffic != null ? fmt(Math.round(s.traffic)) : null} change={s.traffic_change} why="Clicks come from Google Search Console: connect it to see them." />
         <Stat label={d.has.index ? 'Organic pages' : 'Pages ranking in Google'} value={s.organic_pages} why="No page ranks yet, or no position has been checked." />
         <Stat label="Cited pages" value={s.cited_pages} why={s.prompts ? 'No AI answer cites a page of this site yet.' : 'Run the AI check in the AI tracker to see which pages AI cites.'} />
       </div>
@@ -71,7 +71,7 @@ function Summary({ d }) {
               <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} /><XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={false} minTickGap={24} /><YAxis tick={AXIS} tickLine={false} axisLine={false} width={40} allowDecimals={false} /><Tooltip />
               <Area type="monotone" dataKey="traffic" name="Traffic" stroke="#6658dd" strokeWidth={2.2} fill="url(#tp-t)" dot={false} />
             </AreaChart></ResponsiveContainer></div>
-          ) : <Empty>Traffic history comes from the data provider (DataForSEO). Add its keys to see it.</Empty>}
+          ) : <Empty>Traffic history comes from Google Search Console. Connect an account that can see this site.</Empty>}
         </div>
         <div>
           <div className="flex items-center justify-between mb-2"><div className="text-13 font-semibold text-slate-800">Pages over time</div>
@@ -165,7 +165,7 @@ function Sources({ d }) {
   const items = [
     ['Site crawl', d.has.crawl, d.audited_at ? `Crawled ${new Date(d.audited_at).toLocaleDateString()}` : 'No crawl yet: run a website audit.', 'Words, issues, links and structured data'],
     ['Google positions', d.has.ranks, d.has.ranks ? 'From your saved rank checks' : 'No position checked yet: use “Check positions now” in Organic Rankings.', 'Position, keywords, new and lost'],
-    ['Data provider (DataForSEO)', d.has.index, d.has.index ? 'Connected' : 'Not connected: add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD.', 'Traffic, traffic %, referring domains'],
+    ['Google Search Console', d.has.index, d.has.index ? 'Connected' : 'Not connected: connect a Google account that can see this site.', 'Clicks per page, traffic history'],
     ['AI answers', d.has.ai, d.has.ai ? `${d.summary.prompts} prompts checked` : 'No AI check yet: run it in the AI tracker.', 'Cited pages and AI prompts'],
   ];
   return (

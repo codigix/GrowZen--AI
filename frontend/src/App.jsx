@@ -18,6 +18,8 @@ import CompetitorFinderPage from './platform/CompetitorFinderPage';
 import ContentStudioPage from './platform/ContentStudioPage';
 import SiteAuditPage from './platform/SiteAuditPage';
 import BacklinksCitationsPage from './platform/BacklinksCitationsPage';
+import BacklinkIntelPage from './platform/BacklinkIntelPage';
+import CompetitorWatchPage from './platform/CompetitorWatchPage';
 import GeoTrackerPage from './platform/GeoTrackerPage';
 import ReportsLeadsPage from './platform/ReportsLeadsPage';
 import AiAgentPage from './platform/AiAgentPage';
@@ -54,9 +56,11 @@ export default function App() {
   };
 
   // Public pages: the home page and policies open without signing in (Google's OAuth review needs them).
-  if (pathname === '/') return <LandingPage user={user} />;
-  if (pathname === '/privacy') return <LegalPage kind="privacy" />;
-  if (pathname === '/terms') return <LegalPage kind="terms" />;
+  // A trailing slash (/privacy/) must not turn a public page into the login screen.
+  const publicPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+  if (publicPath === '/') return <LandingPage user={user} />;
+  if (publicPath === '/privacy') return <LegalPage kind="privacy" />;
+  if (publicPath === '/terms') return <LegalPage kind="terms" />;
 
   if (user === undefined) {
     return <div className="min-h-screen flex items-center justify-center gap-2 text-13 text-gray-500"><Loader2 size={15} className="animate-spin" /> Loading…</div>;
@@ -85,6 +89,7 @@ export default function App() {
         <Route path="rank-tracking" element={<LocalRankTrackerPage />} />
         <Route path="keyword-management" element={<KeywordResearchPage />} />
         <Route path="competitor-finder" element={<CompetitorFinderPage />} />
+        <Route path="competitor-watch" element={<CompetitorWatchPage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
         <Route path="organic-rankings" element={<OrganicRankingsPage />} />
         <Route path="top-pages" element={<TopPagesPage />} />
@@ -96,6 +101,7 @@ export default function App() {
         <Route path="website-audit" element={<SiteAuditPage />} />
         <Route path="on-page-seo" element={<Navigate to="/website-audit?tab=site" replace />} />
         <Route path="off-page-seo" element={<BacklinksCitationsPage />} />
+        <Route path="backlink-intelligence" element={<BacklinkIntelPage />} />
         <Route path="geo-optimization" element={<GeoTrackerPage />} />
         <Route path="leads" element={<ReportsLeadsPage initialTab="leads" />} />
         <Route path="reports" element={<ReportsLeadsPage />} />

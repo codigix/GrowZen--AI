@@ -255,6 +255,22 @@ class SiteIntegration(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), default="not_connected")  # not_connected | connected | error
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
+    config: Mapped[dict | None] = mapped_column(JSON)  # method settings that are not secrets: GitHub repo/branch/folder, Shopify blog, Ghost version...
+
+
+class ScheduledPost(TimestampMixin, Base):
+    """A post GrowZen publishes itself at a chosen time, for sites that cannot schedule natively (a Git repository has no 'publish later')."""
+    __tablename__ = "scheduled_posts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    method: Mapped[str] = mapped_column(String(20))
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    status: Mapped[str] = mapped_column(String(12), default="pending")  # pending | published | failed | cancelled
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    result: Mapped[dict | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class DomainIntelCache(Base):
@@ -421,3 +437,6 @@ class KeywordRankLog(Base):
     serp: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)  # [{d: domain, p: position}] of the results Google returned
     features: Mapped[list[str] | None] = mapped_column(JSON)  # SERP features present on the results page
     own_features: Mapped[list[str] | None] = mapped_column(JSON)  # of those, the ones the site appears in
+
+
+from .backlinks import models as _backlink_models  # noqa: E402,F401  (registers the backlink graph tables)
