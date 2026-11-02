@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Sparkles, Check, ChevronRight, Globe, ShieldCheck, AlertTriangle, RefreshCw,
   FileText, MapPin, Instagram, Facebook, Linkedin, Copy, Plus, CalendarDays,
@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
-  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, useAction, useUrlTab, ErrorNote, PreviewNote
+  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, useAction, useUrlTab, useDoubleConfirm, ErrorNote, PreviewNote
 } from './SeoUi';
 import { rng, shortDate, daysBack, ymd } from './seoMock';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
@@ -43,7 +43,8 @@ const intentOf = (kw, b) => {
 };
 
 /**
- * 1. Trending Topics Discovery Module: Google Trends rising/top queries (same API as Keyword Intelligence)
+ * 1. Trending Topics Discovery Module: Google Ads Keyword Planner ideas, top by volume and rising by 3-month change
+ *    (same API as Keyword Intelligence → Google Planner)
  */
 function TrendingTopicsTab({ b, onSelectTopic }) {
   const [filter, setFilter] = useState('all');
@@ -64,41 +65,21 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
   const [picked, setPicked] = useState('');
   const seed = picked || seeds[0] || '';
   const doSearch = () => { const q = typed.trim().toLowerCase(); if (q) setPicked(q); };
-  const trend = useApi(seed ? `/keyword-trends/planner?keyword=${encodeURIComponent(seed)}&country=IN&timeframe=past_30_days&limit=20&regional_limit=10` : null);
+  // Google Ads Keyword Planner: keyword ideas for the seed with monthly volume, 3-month change and 12-month history.
+  const trend = useApi(seed ? `/keyword-planner/metrics?keyword=${encodeURIComponent(seed)}&limit=50&include_monthly=true` : null);
+  const noData = trend.error?.status === 404; // Planner has no ideas for this seed: an empty result, not a failure
+  const ideas = (!noData && trend.data?.keywords) || [];
+  const seedIdea = ideas.find(r => r.keyword.toLowerCase() === String(trend.data?.seed_keyword || '').toLowerCase());
 
-  const toTopic = (r) => ({ id: `${r.source_type}-${r.keyword}`, title: r.keyword, category: r.source_type, velocity: r.growth_indicator ?? extra[r.keyword]?.change, score: r.score ?? extra[r.keyword]?.interest, intent: intentOf(r.keyword, b), source: 'Google Trends' });
-  // Google's related-queries data has no "change" for top queries and no "interest" for rising ones:
-  // fill the gaps from each query's own trend (first 5 of each list, 2 at a time; the first failure stops the rest so Google is not hammered).
-  const [extra, setExtra] = useState({});
-  useEffect(() => {
-    setExtra({});
-    const d = trend.data;
-    if (!d) return undefined;
-    const todo = [
-      ...(d.related_keywords || []).filter(r => r.growth_indicator == null).slice(0, 5),
-      ...(d.rising_keywords || []).filter(r => r.score == null).slice(0, 5)
-    ].map(r => r.keyword);
-    let dead = false;
-    const next = async () => {
-      while (!dead && todo.length) {
-        const kw = todo.shift();
-        try {
-          const t = await api(`/keyword-trends/trends?keyword=${encodeURIComponent(kw)}&country=IN&timeframe=past_30_days`);
-          const ts = t.trend_summary || {};
-          const c = ts.change_percent;
-          if (!dead) setExtra(m => ({ ...m, [kw]: { interest: ts.latest_score ?? undefined, change: c == null ? undefined : `${c >= 0 ? '+' : ''}${Math.round(c)}%` } }));
-        } catch { todo.length = 0; /* Google is rate limiting: stop asking, the rest stay "—" */ }
-      }
-    };
-    next(); next();
-    return () => { dead = true; };
-  }, [trend.data]);
-  const topQueries = useMemo(() => (trend.data?.related_keywords || []).map(toTopic), [trend.data, b, extra]);
-  const risingQueries = useMemo(() => (trend.data?.rising_keywords || []).map(toTopic), [trend.data, b, extra]);
+  const pctLabel = (v) => (v == null ? null : `${v >= 0 ? '+' : '-'}${Math.abs(Math.round(v))}%`);
+  const toTopic = (r, category) => ({ id: `${category}-${r.keyword}`, title: r.keyword, category, velocity: pctLabel(r.three_month_change), score: r.avg_monthly_searches, competition: r.competition, intent: intentOf(r.keyword, b), source: 'Google Keyword Planner' });
+  // Top = most-searched ideas; Rising = ideas whose searches grew most over the last 3 months.
+  const topQueries = useMemo(() => [...ideas].sort((a, c) => (c.avg_monthly_searches || 0) - (a.avg_monthly_searches || 0)).slice(0, 20).map(r => toTopic(r, 'top')), [ideas, b]); // eslint-disable-line react-hooks/exhaustive-deps
+  const risingQueries = useMemo(() => ideas.filter(r => (r.three_month_change ?? 0) > 0).sort((a, c) => c.three_month_change - a.three_month_change).slice(0, 20).map(r => toTopic(r, 'rising')), [ideas, b]); // eslint-disable-line react-hooks/exhaustive-deps
   const topics = [...risingQueries, ...topQueries];
 
-  // Opening the writer: the topic becomes the first target keyword; Google Trends' related queries feed the keyword generator.
-  const relatedAll = topics.map(t => t.title);
+  // Opening the writer: the topic becomes the first target keyword; the Keyword Planner ideas feed the keyword generator.
+  const relatedAll = [...new Set(topics.map(t => t.title))];
   const openWriter = (t, others = []) => onSelectTopic({ ...t, related: relatedAll, selected: others });
   const createFromSelection = () => {
     const [first, ...rest] = Object.keys(selected);
@@ -151,7 +132,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
 
         <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-500 font-mono">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Google Trends · India · Last 30 days</span>
+          <span>Google Keyword Planner · India · Last 12 months</span>
         </div>
       </div>
 
@@ -180,20 +161,23 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
         </div>
       )}
 
-      {trend.error && !trend.loading && (
-        <ErrorNote>Google Trends is not answering right now ({trend.error.message}). This is on Google's side; try again in a minute.</ErrorNote>
+      {trend.error && !noData && !trend.loading && (
+        <ErrorNote>Google Keyword Planner is not answering right now ({trend.error.message}). Try again in a minute.</ErrorNote>
       )}
-      {trend.data && !trend.loading && (() => {
-        const ts = trend.data.trend_summary || {};
-        const pts = (trend.data.interest_over_time || []).map(p => ({ date: p.date, value: p.value }));
+      {trend.data && !noData && !trend.loading && (() => {
+        const MON = { JANUARY: 'Jan', FEBRUARY: 'Feb', MARCH: 'Mar', APRIL: 'Apr', MAY: 'May', JUNE: 'Jun', JULY: 'Jul', AUGUST: 'Aug', SEPTEMBER: 'Sep', OCTOBER: 'Oct', NOVEMBER: 'Nov', DECEMBER: 'Dec' };
+        const hist = seedIdea?.monthly_search_volumes || [];
+        const pts = hist.map(m => ({ date: `${MON[m.month] || String(m.month).slice(0, 3)} '${String(m.year).slice(2)}`, value: m.monthly_searches || 0 }));
+        const ch = seedIdea?.three_month_change;
+        const classification = ch == null ? null : ch >= 10 ? 'rising' : ch <= -10 ? 'declining' : 'stable';
         return (
           <div className="ai-glass-card rounded-2xl p-4 border border-slate-200">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div className="text-[13px] font-bold text-slate-900">Trend analysis: “{trend.data.seed_keyword}”</div>
-              {ts.classification && <span className="text-[11px] font-mono font-bold capitalize text-indigo-700">{ts.classification}</span>}
+              {classification && <span className="text-[11px] font-mono font-bold capitalize text-indigo-700">{classification}</span>}
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
-              {[['Latest interest', ts.latest_score], ['Average', ts.average_score], ['Change', ts.change_percent != null ? `${ts.change_percent > 0 ? '+' : ''}${ts.change_percent}%` : null], ['Topics found', topics.length]].map(([l, v]) => (
+              {[['Latest month searches', pts.length ? fmt(pts[pts.length - 1].value) : null], ['Avg monthly searches', seedIdea ? fmt(seedIdea.avg_monthly_searches) : null], ['3-month change', pctLabel(ch)], ['Topics found', relatedAll.length]].map(([l, v]) => (
                 <div key={l} className="p-2 rounded-lg bg-slate-50 border border-slate-200">
                   <span className="text-slate-500 block text-[10px] uppercase font-mono">{l}</span>
                   <strong className="text-slate-800 font-mono">{v ?? '—'}</strong>
@@ -205,9 +189,9 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={pts} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} minTickGap={24} />
-                    <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} domain={[0, 100]} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="value" name="Interest" stroke="#4f46e5" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} width={48} tickFormatter={v => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : v)} />
+                    <Tooltip formatter={(v) => [fmt(v), 'Searches']} />
+                    <Line type="monotone" dataKey="value" name="Searches" stroke="#4f46e5" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -216,19 +200,19 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
         );
       })()}
       {/* Trending Topics Cards */}
-      {trend.error ? (
+      {trend.error && !noData ? (
         <div className="py-10 text-center text-[13px] text-red-600">{trend.error.message}</div>
       ) : !seed ? (
         <div className="py-10 text-center text-[13px] text-slate-500">Add a primary category, a service or a tracked keyword to this business to load trending topics.</div>
       ) : trend.loading ? (
-        <div className="py-10 text-center text-[13px] text-slate-500">Fetching Google Trends for “{seed}”…</div>
+        <div className="py-10 text-center text-[13px] text-slate-500">Fetching Google Keyword Planner ideas for “{seed}”…</div>
       ) : !topics.length ? (
         <div className="py-10 text-center text-[13px] text-slate-500">No trending topics found for “{seed}”.</div>
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {[
-          ['Top queries', 'Most-searched related queries, scored 0-100 relative to the top one', topQueries],
-          ['Rising queries', 'Queries with the biggest increase in search interest', risingQueries]
+          ['Top queries', 'Most-searched related keywords, by average monthly searches', topQueries],
+          ['Rising queries', 'Keywords whose searches grew most over the last 3 months', risingQueries]
         ].map(([title, subtitle, rows]) => {
           const shown = rows.filter(passes);
           return (
@@ -238,7 +222,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
                   <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
                     <span className="w-4" />
                     <span className="flex-1">Query</span>
-                    <span className="w-8 text-right">Interest</span>
+                    <span className="w-16 text-right" title="Average monthly searches (Google Keyword Planner)">Searches</span>
                     <span className="w-16 text-right">Change</span>
                     <span className="w-14 text-right"> </span>
                   </div>
@@ -249,7 +233,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
                         <li key={t.id} className="flex items-center gap-2 text-[12.5px]">
                           <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[t.title])} onChange={() => toggle(t)} title="Select to generate an article" />
                           <span className="flex-1 text-slate-800">{t.title}</span>
-                          <span className="tabular-nums text-slate-500 w-8 text-right">{t.score ?? <span className="text-slate-300">—</span>}</span>
+                          <span className="tabular-nums text-slate-500 w-16 text-right">{t.score != null ? fmt(t.score) : <span className="text-slate-300">—</span>}</span>
                           <span className="w-16 text-right">
                             {t.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge>
                               : pct != null ? (
@@ -413,6 +397,17 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const [kwBusy, setKwBusy] = useState(false);
   const [kwError, setKwError] = useState('');
   const [kwNote, setKwNote] = useState('');
+  const [kwVolumes, setKwVolumes] = useState({}); // keyword -> avg monthly searches (Google Keyword Planner)
+  const volOf = (k) => kwVolumes[String(k || '').trim().toLowerCase()];
+  const VolTag = ({ k }) => {
+    const v = volOf(k);
+    if (v === undefined) return null;
+    return (
+      <span title="Average monthly searches · Google Keyword Planner" className={`shrink-0 h-9 px-2 inline-flex items-center rounded-lg border text-[11px] font-semibold tabular-nums whitespace-nowrap ${v ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+        {v == null ? '— /mo' : `${fmt(v)}/mo`}
+      </span>
+    );
+  };
   const [intent, setIntent] = useState('');
   const [related, setRelated] = useState(selectedTopic?.related || []);
   const [busy, run] = useSimulated();
@@ -460,9 +455,11 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const [articleLength, setArticleLength] = useState(() => { try { return localStorage.getItem('growzen.articleLength') || 'standard'; } catch { return 'standard'; } });
   const pickLength = (id) => { setArticleLength(id); try { localStorage.setItem('growzen.articleLength', id); } catch { /* remembered for this page only */ } };
 
-  // Primary + secondary keywords written by Ollama; the backend adds Google Trends' related queries when Google answers in time.
+  // Primary + secondary keywords written by Claude AI from Google Keyword Planner ideas; the backend returns each keyword's monthly searches.
   // Manual edits stay until this runs again.
+  const kwSeq = useRef(0); // only the latest keyword request may update the form (no races between overlapping calls)
   const suggestKeywords = async (regen) => {
+    const mine = ++kwSeq.current;
     setKwBusy(true); setKwError(''); setKwNote('');
     const keep = regen ? [] : selectedTopic?.selected || [];
     try {
@@ -470,21 +467,32 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         method: 'POST',
         body: { topic: topicText.trim(), related: [...(selectedTopic?.selected || []), ...related], avoid: regen ? [kw, ...secondaryList].filter(Boolean) : [] }
       });
+      if (mine !== kwSeq.current) return;
       setKw(r.primary);
       setSecondaryList([...new Set([...keep, ...r.secondary])].slice(0, 10));
       setIntent(r.intent || '');
-      setKwNote(r.trends === 'ok' || r.trends === 'cached' || r.trends === 'provided'
-        ? 'Keywords were written by Claude AI together with Google Trends related queries. They have no verified search volumes.'
-        : 'Google Trends is not available right now (rate limited), so Claude AI wrote these keywords on its own. They have no verified search volumes.');
+      const vols = Object.fromEntries(Object.entries(r.volumes || {}).map(([k, v]) => [k.toLowerCase(), v]));
+      setKwVolumes(vols);
+      const withVol = Object.values(vols).filter(v => v != null).length;
+      setKwNote(r.keywords_by === 'planner_fallback'
+        ? `Claude AI didn't answer usably this time, so these keywords are the most-searched Google Keyword Planner ideas for the topic.${withVol ? ` Monthly searches are shown for ${withVol} of them.` : ''} Edit them or click Regenerate Keywords.`
+        : r.trends === 'ok' || r.trends === 'cached' || r.trends === 'provided'
+        ? `Keywords were written by Claude AI from Google Keyword Planner ideas.${withVol ? ` Monthly searches from Keyword Planner are shown for ${withVol} of them ("— /mo" = no volume data).` : ' Keyword Planner returned no search volumes for these keywords.'}`
+        : r.trends === 'not_configured'
+          ? 'Google Keyword Planner is not set up on the server, so Claude AI wrote these keywords on its own. They have no verified search volumes.'
+          : 'Google Keyword Planner is not available right now, so Claude AI wrote these keywords on its own. They have no verified search volumes.');
     } catch (e) {
+      if (mine !== kwSeq.current) return;
       setKwError(`${e.message || e} You can type the keywords yourself below.`);
       if (!kw.trim()) setKw(topicText.trim().toLowerCase());
       if (!secondaryList.length) setSecondaryList(related.slice(0, 6));
     } finally {
-      setKwReady(true); setKwBusy(false);
+      if (mine === kwSeq.current) { setKwReady(true); setKwBusy(false); }
     }
   };
-  useEffect(() => { if (selectedTopic && !selectedArticle) suggestKeywords(false); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Auto-generate once when a topic arrives from the Radar (the ref stops React StrictMode's double effect from sending two requests).
+  const autoKw = useRef(false);
+  useEffect(() => { if (selectedTopic && !selectedArticle && !autoKw.current) { autoKw.current = true; suggestKeywords(false); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generateBlog = () => {
     const keywords = [kw, ...secondaryList].map(k => k.trim().toLowerCase()).filter(Boolean);
@@ -579,7 +587,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         {/* Step 0: Keyword & Intent */}
         {step === 0 && (
           <div className="space-y-4 max-w-2xl">
-            <Field label="Topic" hint="Picked from Google Trends, or type your own topic">
+            <Field label="Topic" hint="Picked from Trending Topics Radar, or type your own topic">
               <input className={inputCls} placeholder="e.g. social media marketing" value={topicText} onChange={e => setTopicText(e.target.value)} />
             </Field>
             {onGenerate && (
@@ -598,7 +606,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   <>
                     {intent && <div className="text-[11.5px] text-slate-600">Search intent: <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-semibold capitalize">{intent}</span></div>}
                     <Field label="Primary keyword" hint="Appears in the title, meta description and introduction">
-                      <input className={inputCls} value={kw} onChange={e => setKw(e.target.value)} />
+                      <div className="flex items-center gap-1.5">
+                        <input className={inputCls} value={kw} onChange={e => setKw(e.target.value)} />
+                        <VolTag k={kw} />
+                      </div>
                     </Field>
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Secondary keywords <span className="normal-case tracking-normal font-normal text-slate-400">({secondaryList.filter(k => k.trim()).length}, 5 to 10 works best; edit, add or remove)</span></div>
@@ -606,6 +617,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                         {secondaryList.map((k, i) => (
                           <div key={i} className="flex items-center gap-1.5">
                             <input className={inputCls} value={k} onChange={e => setSecondaryList(l => l.map((x, j) => (j === i ? e.target.value : x)))} />
+                            <VolTag k={k} />
                             <button type="button" title="Remove" className="h-9 w-9 shrink-0 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer" onClick={() => setSecondaryList(l => l.filter((_, j) => j !== i))}>×</button>
                           </div>
                         ))}

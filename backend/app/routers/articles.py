@@ -1,4 +1,4 @@
-"""Blog articles generated from Google Trends keywords: one article per generation (primary + secondary keywords), saved separately."""
+"""Blog articles generated from Google Keyword Planner keywords: one article per generation (primary + secondary keywords), saved separately."""
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
@@ -47,7 +47,7 @@ class GenerateIn(BaseModel):
 
 class KeywordSuggestIn(BaseModel):
     topic: str = Field(min_length=2, max_length=255)
-    related: list[str] = Field(default_factory=list, max_length=40)  # Google Trends related queries for the topic
+    related: list[str] = Field(default_factory=list, max_length=40)  # Keyword Planner ideas picked on the Trending Topics Radar
     avoid: list[str] = Field(default_factory=list, max_length=30)  # the set being replaced when regenerating
 
 
@@ -79,15 +79,24 @@ def get_article(article_id: int, b: Business = Depends(get_business), db: Sessio
 
 @router.post("/keywords")
 def suggest_keywords(body: KeywordSuggestIn, b: Business = Depends(get_business)):
-    """A primary keyword and 5-10 secondary keywords for a topic, written by Ollama. Google Trends' related queries are used when
-    they are available (sent by the page, or fetched here within a short deadline); when Google is rate-limited Ollama works alone."""
-    related, trends = body.related, "provided"
-    if not related:
-        related, trends = svc.trends_related(body.topic)
+    """A primary keyword and 5-10 secondary keywords for a topic, written by Claude from Google Keyword Planner ideas.
+    Ideas sent by the page (Trending Topics Radar picks) come first, then Planner ideas fetched here within a deadline; the
+    answer carries each final keyword's average monthly searches. When Google Ads is unavailable Claude works alone.
+    `trends` keeps its name for the page: provided | ok | cached | cooldown | not_configured | unavailable."""
+    ideas, status = svc.planner_related(body.topic)
+    volumes = {i["keyword"].lower(): i.get("avg_monthly_searches") for i in ideas}
+    related = list(dict.fromkeys([*body.related, *volumes]))[:40]
+    if body.related and status not in ("ok", "cached"):
+        status = "provided"
     try:
-        return {**svc.suggest_keywords(body.topic, related, b, body.avoid), "trends": trends}
+        out = svc.suggest_keywords(body.topic, related, b, body.avoid, volumes=volumes)
     except RuntimeError as exc:
         raise HTTPException(502, str(exc))
+    final = [out["primary"], *out["secondary"]]
+    missing = [k for k in final if k not in volumes]
+    if missing and status in ("ok", "cached", "provided"):
+        volumes.update(svc.planner_volumes(missing))
+    return {**out, "trends": status, "source": "google_keyword_planner", "volumes": {k: volumes.get(k) for k in final}}
 
 
 @router.post("/generate", status_code=202)

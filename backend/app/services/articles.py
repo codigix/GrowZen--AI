@@ -210,6 +210,66 @@ def trends_related(topic: str) -> tuple[list[str], str]:
     return found, "ok"
 
 
+# ── Google Ads Keyword Planner: related ideas + real monthly search volumes for the article keywords ──
+
+PLANNER_BUDGET_SECONDS = 20
+PLANNER_CACHE_SECONDS = 6 * 3600
+_planner_state = {"fails": 0, "blocked_until": 0.0}
+_planner_cache: dict[str, tuple[float, list[dict]]] = {}
+
+
+def _planner_call(seeds: list[str], limit: int) -> list[dict]:
+    """One Keyword Planner call with a hard deadline, so a slow Google Ads answer never blocks the writer."""
+    from . import google_ads_client as ads
+
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        return pool.submit(ads.keyword_ideas, seeds, limit=limit).result(timeout=PLANNER_BUDGET_SECONDS)
+    finally:
+        pool.shutdown(wait=False)
+
+
+def planner_related(topic: str) -> tuple[list[dict], str]:
+    """Keyword Planner ideas for a topic as [{keyword, avg_monthly_searches, competition, ...}], most searched first.
+    Status: ok | cached | cooldown | not_configured | unavailable. After a failure Google Ads is left alone for 5-30 minutes."""
+    from . import google_ads_client as ads
+
+    key, now = " ".join(topic.lower().split()), time.time()
+    hit = _planner_cache.get(key)
+    if hit and now - hit[0] < PLANNER_CACHE_SECONDS:
+        return hit[1], "cached"
+    if now < _planner_state["blocked_until"]:
+        return [], "cooldown"
+    try:
+        ideas = _planner_call([key], 40)
+    except ads.GoogleAdsNotConfigured as exc:
+        log.info("Keyword Planner not configured: %s", exc)
+        return [], "not_configured"
+    except (FutureTimeout, Exception) as exc:  # Google Ads errors, auth failures, timeouts: Claude carries on alone
+        _planner_state["fails"] += 1
+        _planner_state["blocked_until"] = now + min(300 * 2 ** (_planner_state["fails"] - 1), 1800)
+        log.warning("Keyword Planner unavailable for '%s' (%r); skipping it for %d min", key, exc, (_planner_state["blocked_until"] - now) // 60)
+        return [], "unavailable"
+    ideas = sorted(ideas, key=lambda i: i.get("avg_monthly_searches") or 0, reverse=True)
+    _planner_state["fails"] = 0
+    _planner_cache[key] = (now, ideas)
+    return ideas, "ok"
+
+
+def planner_volumes(keywords: list[str]) -> dict[str, int]:
+    """Average monthly searches for specific keywords (Keyword Planner returns the seeds among its ideas). Best effort: {} on failure."""
+    seeds = list(dict.fromkeys(" ".join(k.lower().split()) for k in keywords if k and k.strip()))[:20]  # API limit: 20 seeds
+    if not seeds or time.time() < _planner_state["blocked_until"]:
+        return {}
+    try:
+        ideas = _planner_call(seeds, 1000)
+    except Exception as exc:
+        log.warning("Keyword Planner volumes failed (%r)", exc)
+        return {}
+    wanted = set(seeds)
+    return {i["keyword"].lower(): i.get("avg_monthly_searches") for i in ideas if i["keyword"].lower() in wanted}
+
+
 # ── keyword suggestions ──────────────────────────────────────────────────────
 
 _STOP = {"the", "and", "for", "with", "how", "what", "best", "near", "you", "your", "are", "from", "that", "this", "can", "get"}
@@ -219,10 +279,12 @@ def _sig(text: str) -> set[str]:
     return {w for w in re.findall(r"\w+", text.lower()) if len(w) > 2 and w not in _STOP}
 
 
-def suggest_keywords(topic: str, related: list[str], b: Business, avoid: list[str] | None = None) -> dict:
-    """Primary + 5-10 secondary SEO keywords for a topic, from Ollama and the topic's Google Trends related queries."""
+def suggest_keywords(topic: str, related: list[str], b: Business, avoid: list[str] | None = None, volumes: dict[str, int] | None = None) -> dict:
+    """Primary + 5-10 secondary SEO keywords for a topic, from Claude and the topic's Google Keyword Planner ideas
+    (`volumes` = average monthly searches per idea, shown to the model so it prefers keywords people actually search)."""
     topic = " ".join(topic.split())
     related = list(dict.fromkeys(" ".join(r.lower().split()) for r in related if r and r.strip()))[:25]
+    volumes = volumes or {}
     avoid = [a.lower() for a in (avoid or [])]
     lines = [
         "You are an SEO keyword researcher. A business wants to write one blog article about the topic below.",
@@ -231,7 +293,8 @@ def suggest_keywords(topic: str, related: list[str], b: Business, avoid: list[st
         ai.profile_text(b),
     ]
     if related:
-        lines += ["", "Google Trends related queries for this topic (use the ones that are relevant, ignore the rest):", *[f"- {r}" for r in related]]
+        lines += ["", "Google Keyword Planner ideas for this topic, with average monthly searches where known (prefer relevant ones with real search volume, ignore the rest):",
+                  *[f"- {r}" + (f" ({volumes[r]:,} searches/month)" if volumes.get(r) is not None else "") for r in related]]
     if avoid:
         lines += ["", "A previous set was rejected. Do NOT reuse these keywords, give a clearly different set: " + ", ".join(avoid)]
     lines += [
@@ -239,7 +302,7 @@ def suggest_keywords(topic: str, related: list[str], b: Business, avoid: list[st
         "Rules:",
         '- "primary": ONE main SEO keyword of 2-5 words that closely matches the topic and is what people type into Google.',
         '- "secondary": 6 to 10 different related keywords or phrases of 2-6 words that fit the same article: the same topic, its sub-topics, questions and variations'
-        " readers search for, plus the relevant Google Trends related queries above.",
+        " readers search for, plus the relevant Google Keyword Planner ideas above.",
         "- Everything must stay on the topic. No unrelated subjects, no duplicates or near-duplicates, no keyword stuffing, lowercase, no punctuation.",
         '- "intent": the main search intent of the topic, one of: informational, commercial, transactional, local, navigational.',
         'Answer with ONE JSON object and nothing else: {"primary": "...", "secondary": ["...", "..."], "intent": "informational"}',
@@ -260,25 +323,54 @@ def suggest_keywords(topic: str, related: list[str], b: Business, avoid: list[st
                 keep.append(k)
         return prim, keep
 
-    for attempt_no in range(2 if avoid_set else 1):  # when regenerating, a model that repeats the rejected set gets one stricter second try
-        prompt = "\n".join(lines) + ("\n\nYour last answer repeated rejected keywords. Every secondary keyword must be NEW: use different wording, sub-topics, questions, audiences or locations." if attempt_no else "")
+    # Two tries: a second one when the answer was not usable JSON (or the API hiccuped), or when a regeneration
+    # repeated the rejected set. If the model still fails, the Keyword Planner ideas alone make the set.
+    retry_note = ""
+    model_error: Exception | None = None
+    for attempt_no in range(2):
+        prompt = "\n".join(lines) + retry_note
+        raw = ""
         try:
-            d = json.loads(re.search(r"\{[\s\S]*\}", _chat(prompt, num_predict=500, timeout=120, temperature=0.9 if avoid_set else 0.5)).group(0))
-        except (AttributeError, ValueError):
-            if attempt_no:
-                break
-            raise RuntimeError("The model did not return a usable keyword set. Try Regenerate Keywords.")
+            raw = _chat(prompt, num_predict=600, timeout=120, temperature=0.9 if avoid_set else 0.5)
+            parsed = json.loads(re.search(r"\{[\s\S]*\}", raw).group(0))
+            if not isinstance(parsed, dict):
+                raise ValueError("not a JSON object")
+        except (AttributeError, ValueError) as exc:
+            log.warning("Keyword answer was not usable JSON (try %d): %s | %r", attempt_no + 1, exc, raw[:300])
+            model_error = exc
+            retry_note = "\n\nYour last answer was not a valid JSON object. Answer with ONLY the JSON object, nothing before or after it."
+            continue
+        except RuntimeError as exc:  # Claude API error / timeout / rate limit
+            log.warning("Keyword request to the model failed (try %d): %s", attempt_no + 1, exc)
+            model_error = exc
+            retry_note = ""
+            continue
+        model_error = None
+        d = parsed
         primary, pool = collect(d)
         fresh = [k for k in pool if k not in avoid_set]
-        if len(fresh) >= 5:
+        if len(fresh) >= 5 or not avoid_set:
             break
+        retry_note = "\n\nYour last answer repeated rejected keywords. Every secondary keyword must be NEW: use different wording, sub-topics, questions, audiences or locations."
+
+    source = "model"
+    if not d:  # the model never gave a usable answer: fall back to the Keyword Planner ideas (most searched first)
+        if not related:
+            raise RuntimeError(f"The model did not return a usable keyword set ({model_error}). Try Regenerate Keywords.")
+        log.warning("Keyword set for '%s' built from Keyword Planner ideas only (model failed: %s)", topic, model_error)
+        source = "planner_fallback"
+        primary, pool = collect({"primary": topic})
+        if volumes:
+            pool.sort(key=lambda k: volumes.get(k) or 0, reverse=True)
+        fresh = [k for k in pool if k not in avoid_set]
     # a fresh set when there is one; otherwise top it up so the user always gets something usable to edit
-    pool = fresh + [k for k in (collect(d)[1] if d else []) if k not in fresh]
+    pool = fresh + [k for k in (collect(d)[1] if d else pool) if k not in fresh]
     secondary = [k for k in pool if k != primary][:10]
     if len(secondary) < 3:
         raise RuntimeError("Too few relevant keywords were found for this topic. Try Regenerate Keywords or edit the topic.")
     intent = str(d.get("intent") or "").lower().strip()
-    return {"primary": primary, "secondary": secondary, "intent": intent if intent in {"informational", "commercial", "transactional", "local", "navigational"} else "informational"}
+    return {"primary": primary, "secondary": secondary, "keywords_by": source,
+            "intent": intent if intent in {"informational", "commercial", "transactional", "local", "navigational"} else "informational"}
 
 def _plain(value) -> str:
     """Text only: no tags, markdown, labels or entities."""
@@ -639,7 +731,7 @@ def _plan(primary: str, secondary: list[str], rising: list[str], b: Business, to
         f"Topic: {topic or primary}",
         f'Primary keyword: "{primary}"',
         "Secondary keywords:" if secondary else "There are no secondary keywords.",
-        *[f'- "{k}"' + (" (rising on Google Trends)" if k in rising_set else "") for k in secondary],
+        *[f'- "{k}"' + (" (searches rising on Google)" if k in rising_set else "") for k in secondary],
         "",
         "Answer with ONE JSON object and nothing else:",
         "{",
