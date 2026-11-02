@@ -139,6 +139,11 @@ def edit(article_id: int, body: ArticleEdit, b: Business = Depends(get_business)
             v = svc.sanitize_html(v)
         setattr(a, f, v)
     a.secondary_keywords = [k for k in (a.secondary_keywords or []) if k != a.keyword]
+    if a.body:  # only the JSON-LD block is replaced (BlogPosting + FAQPage from the saved content); one block, never duplicated
+        a.body = svc.with_schema(a.body, svc.article_schema(
+            title=a.title or "", description=a.meta_description or "", body=a.body, primary=a.keyword,
+            secondary=a.secondary_keywords or [], b=b, url=a.wp_url, published=a.generated_at or a.created_at,
+            modified=datetime.now(timezone.utc), topic=a.topic))
     a.headings = svc.headings_of(a.body or "")
     a.warnings = svc.validate(a.title or "", a.meta_description or "", a.body or "", a.keyword, a.secondary_keywords)  # re-checked on every save
     db.commit()
