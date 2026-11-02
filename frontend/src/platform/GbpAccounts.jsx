@@ -3,7 +3,7 @@ import {
   Mail, Plug, RefreshCw, X, MapPin, Loader2, CheckCircle2, XCircle, AlertTriangle, Clock, ShieldAlert, ShieldCheck, Ban, UserX, ExternalLink,
   Copy, Check, Store, Search, PencilLine, Plus, Star, Globe, ChevronDown, ChevronRight, Info
 } from 'lucide-react';
-import { Card, Button, ErrorNote, useAction, refreshBusinesses } from './SeoUi';
+import { Card, Button, ErrorNote, useAction, refreshBusinesses, useDoubleConfirm } from './SeoUi';
 import { api, useApi, fmtDateTime } from './seoApi';
 
 /**
@@ -188,16 +188,18 @@ export function GoogleSignIn({ onOpenBusiness, toast, initialAccount }) {
   const active = (conns.data || []).filter(c => c.status === 'active');
   const conn = active.find(c => c.id === current) || active[0];
   const s = setup.data;
+  const [ask, confirmNode] = useDoubleConfirm();
   const connect = () => {
     if (!s?.configured) { setShowSetup(true); return; }
     run('connect', async () => { const { url } = await api('/connections/google/start'); window.location.href = url; });
   };
   const sync = (c) => run(`s${c.id}`, async () => { const r = await api(`/connections/${c.id}/sync`, { method: 'POST' }); toast(`Synced ${r.synced} business${r.synced === 1 ? '' : 'es'} from Google`); conns.reload(true); await refreshBusinesses(); });
-  const disconnect = (c) => { if (window.confirm(`Disconnect ${c.email}? Its businesses stay here but stop syncing with Google.`)) run(`d${c.id}`, async () => { await api(`/connections/${c.id}`, { method: 'DELETE' }); conns.reload(true); }); };
+  const disconnect = (c) => ask({ what: `the Google account ${c.email}`, effect: 'Its businesses stay here but stop syncing with Google, and the stored access is deleted. You can connect it again later.', onConfirm: () => run(`d${c.id}`, async () => { await api(`/connections/${c.id}`, { method: 'DELETE' }); conns.reload(true); }) });
   if (setup.error || conns.error) return <ErrorNote>{(setup.error || conns.error).message}</ErrorNote>;
   if (!s || !conns.data) return <div className="py-8 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={15} className="animate-spin" /> Loading your Google accounts…</div>;
   return (
     <div>
+      {confirmNode}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[240px]">
           <div className="text-13 font-semibold text-slate-900">{active.length ? 'Your Google accounts' : 'Connect a Google account'}</div>

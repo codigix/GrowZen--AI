@@ -125,6 +125,7 @@ class Settings(BaseSettings):
 
     # Scheduler
     scheduler_enabled: bool = True
+    backlink_autostart: bool = True  # onboarding starts the backlink discovery bot straight away (false: it only runs on its schedule)
     scheduler_tick_seconds: int = 300
 
     # Lighthouse audits (/lighthouse/...): full Lighthouse reports from PageSpeed Insights (needs

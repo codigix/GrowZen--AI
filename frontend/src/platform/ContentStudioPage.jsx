@@ -304,12 +304,14 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
   };
   usePoll(() => reload(true), working, 3000);
   const [busy, error, run] = useAction();
+  const [ask, confirmNode] = useDoubleConfirm();
   const retry = (id) => run(`r-${id}`, async () => { await api(`/businesses/${b.id}/articles/${id}/retry`, { method: 'POST' }); reload(true); });
-  const del = (id) => run(`d-${id}`, async () => { await api(`/businesses/${b.id}/articles/${id}`, { method: 'DELETE' }); if (openId === id) onOpen(null); reload(true); });
+  const del = (id) => ask({ what: 'this article', effect: 'The article and its generated content are deleted.', onConfirm: () => run(`d-${id}`, async () => { await api(`/businesses/${b.id}/articles/${id}`, { method: 'DELETE' }); if (openId === id) onOpen(null); reload(true); }) });
   const done = articles.filter(a => a.status === 'completed').length;
 
   return (
     <Card title="Generated articles" subtitle={`${done} of ${articles.length} written by Claude AI. Each article covers all the keywords you selected and is saved separately.`}>
+      {confirmNode}
       <ul className="divide-y divide-slate-100">
         {articles.map(x => {
           const [label, tone] = ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending;

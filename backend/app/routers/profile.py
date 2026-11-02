@@ -161,4 +161,6 @@ def approve_reply(review_id: int, body: ReplyIn, b: Business = Depends(get_busin
     task = agent._task(db, b, "review", "review_reply", f"Reply to {r.rating}★ review by {r.author or 'a customer'}", "Medium", review_id=r.id, rating=r.rating, text=text)
     db.commit()
     agent.decide(db, task, True, user.name)
+    if task.status == "failed":  # Google refused it: say so instead of reporting a posted reply
+        raise HTTPException(502, f"Google did not accept the reply, so it was not posted: {(task.result or {}).get('error') or 'unknown error'}")
     return row(r) | {"task": row(task)}

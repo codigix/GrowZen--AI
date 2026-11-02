@@ -645,6 +645,52 @@ export const Empty = ({ children }) => (
   </div>
 );
 
+/**
+ * Two-step permission before anything is deleted. `ask({ what, effect, onConfirm })` opens a dialog: step 1 asks whether to continue,
+ * step 2 repeats what will be lost and needs a tick before the red button works. Nothing is deleted until the second step.
+ */
+export const useDoubleConfirm = () => {
+  const [req, setReq] = useState(null);
+  const [step, setStep] = useState(1);
+  const [ack, setAck] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const ask = useCallback((r) => { setReq(r); setStep(1); setAck(false); }, []);
+  const close = () => { if (!busy) setReq(null); };
+  const confirm = async () => {
+    setBusy(true);
+    try { await req.onConfirm(); } finally { setBusy(false); setReq(null); }
+  };
+  const node = (
+    <Modal open={Boolean(req)} onClose={close} width="max-w-md" title={step === 1 ? `Delete ${req?.what || 'this'}?` : 'Final confirmation'}
+      footer={step === 1 ? (
+        <><Button onClick={close}>Cancel</Button><Button variant="danger" onClick={() => setStep(2)}>Yes, continue</Button></>
+      ) : (
+        <><Button onClick={() => setStep(1)} disabled={busy}>Go back</Button>
+          <Button busy={busy} disabled={!ack} onClick={confirm} className="!bg-rose-600 !text-white !border-rose-600 hover:!bg-rose-700">Delete permanently</Button></>
+      )}>
+      {step === 1 ? (
+        <div className="space-y-2 text-13 text-slate-700">
+          <p>You are about to delete <b>{req?.what}</b>.</p>
+          {req?.effect && <p className="text-slate-500">{req.effect}</p>}
+        </div>
+      ) : (
+        <div className="space-y-3 text-13 text-slate-700">
+          <div className="flex items-start gap-2 rounded bg-rose-50 ring-1 ring-inset ring-rose-200 px-3 py-2.5 text-rose-800">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+            <span>This permanently deletes <b>{req?.what}</b>. It cannot be undone.</span>
+          </div>
+          {req?.effect && <p className="text-slate-500">{req.effect}</p>}
+          <label className="flex items-start gap-2 cursor-pointer select-none">
+            <input type="checkbox" className="mt-0.5" checked={ack} onChange={e => setAck(e.target.checked)} />
+            <span>I understand this cannot be undone and I want to delete it.</span>
+          </label>
+        </div>
+      )}
+    </Modal>
+  );
+  return [ask, node];
+};
+
 export const useToast = () => {
   const [msg, setMsg] = useState('');
   const t = useRef(null);

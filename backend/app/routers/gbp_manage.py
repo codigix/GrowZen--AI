@@ -34,6 +34,16 @@ def _google(fn, *a, **kw):
         raise HTTPException(502, f"Google did not accept this: {exc}") from exc
 
 
+def _drop_from_snapshot(b: Business, part: str, item_id: str) -> None:
+    """The page reads the last synced copy of the profile; take a deleted photo or post out of it so the list is right at once."""
+    status = dict(b.gbp_status or {})
+    live = dict(status.get("live") or {})
+    if part in live:
+        live[part] = [x for x in live[part] if x.get("id") != item_id]
+        status["live"] = live
+        b.gbp_status = status
+
+
 def _refresh(b: Business, client: gbp.GbpClient) -> None:
     """Bring the saved copy in line with what Google now holds."""
     loc = _google(client.location, b.gbp_location)
@@ -166,6 +176,7 @@ def delete_media(name: str, b: Business = Depends(get_business), db: Session = D
     if not name.startswith(f"{b.gbp_account}/{b.gbp_location}/media/"):
         raise HTTPException(400, "That photo does not belong to this client's profile.")
     _google(_client(b).delete_media, name)
+    _drop_from_snapshot(b, "media", name)
     b.photo_count = max(0, (b.photo_count or 1) - 1)
     log(db, user.name, "gbp_media_deleted", b.id)
     db.commit()
@@ -229,6 +240,7 @@ def delete_google_post(name: str, b: Business = Depends(get_business), db: Sessi
     if not name.startswith(f"{b.gbp_account}/{b.gbp_location}/localPosts/"):
         raise HTTPException(400, "That post does not belong to this client's profile.")
     _google(_client(b).delete_post, name)
+    _drop_from_snapshot(b, "posts", name)
     for p in db.scalars(select(Post).where(Post.business_id == b.id, Post.external_id == name)):
         db.delete(p)
     log(db, user.name, "gbp_post_deleted", b.id)

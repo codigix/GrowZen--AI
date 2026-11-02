@@ -579,6 +579,16 @@ def fetch_live(client: "GbpClient", b: Business, loc: dict[str, Any]) -> dict[st
     return live
 
 
+def logo_and_cover(media: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+    """The business logo and cover photo among the profile's photos: Google files them under the PROFILE and COVER categories."""
+    def url_of(*cats: str) -> str | None:
+        for m in media:
+            if m.get("type") != "VIDEO" and m.get("category") in cats and m.get("url") and len(m["url"]) <= 500:
+                return m["url"]
+        return None
+    return url_of("PROFILE", "LOGO"), url_of("COVER")
+
+
 def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
     """Refresh the listing's status, then pull reviews, photo count and daily insights for one connected business."""
     if not (b.connection and b.gbp_account and b.gbp_location):
@@ -618,6 +628,11 @@ def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
     b.rating = round(sum(STAR.get(r.get("starRating"), 0) for r in reviews) / len(reviews), 1) if reviews else None
     if "media" not in live["errors"]:
         b.photo_count = len(live["media"])
+        logo, cover = logo_and_cover(live["media"])
+        if logo:
+            b.logo = logo
+        if cover:
+            b.cover_photo = cover
     end = date.today() - timedelta(days=2)  # performance data lags a few days
     for day, m in client.daily_metrics(b.gbp_location, end - timedelta(days=days), end).items():
         d = date.fromisoformat(day)

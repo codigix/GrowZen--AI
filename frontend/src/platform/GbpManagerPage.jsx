@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Loader2, Save } from 'lucide-react';
-import { SeoShell, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useSeoBusiness, refreshBusinesses, useUrlTab } from './SeoUi';
+import { SeoShell, Drawer, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useDoubleConfirm, useSeoBusiness, refreshBusinesses, useUrlTab } from './SeoUi';
 import GbpLive from './GbpLive';
 import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePosts, isLinked } from './GbpEditors';
 import { MarketCard } from './Market';
 import { GbpAccounts, GoogleSignIn, ListingStatus, VerifyPill } from './GbpAccounts';
 import { api, useApi, fmtDate } from './seoApi';
 import { useCountries } from './countries';
-import { SECTION_IDS, TAB_ALIAS, SectionNav, SectionHead, ClientBar, OverviewSection, PerformanceMetrics, ReviewsSection, ToolSection, TasksSection, SyncSection, SettingsSection } from './GbpWorkspace';
+import { BusinessAvatar, SECTION_IDS, TAB_ALIAS, SectionNav, SectionHead, ClientBar, OverviewSection, PerformanceMetrics, ReviewsSection, ToolSection, TasksSection, SyncSection, SettingsSection } from './GbpWorkspace';
 
 const CTA = { BOOK: 'Book', ORDER: 'Order online', LEARN_MORE: 'Learn more', SIGN_UP: 'Sign up', CALL: 'Call now' };
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
@@ -123,9 +123,9 @@ function ProfileTab({ b, toast }) {
       </div>
       <Card title="Preview on Google">
         <div className="border border-gray-200 rounded overflow-hidden">
-          <div className="h-28 bg-gradient-to-br from-blue-100 to-emerald-100 flex items-center justify-center text-gray-400"><ImageIcon size={28} /></div>
+          {b.cover_photo ? <img src={b.cover_photo} alt="Cover" className="h-28 w-full object-cover" /> : <div className="h-28 bg-gradient-to-br from-blue-100 to-emerald-100 flex items-center justify-center text-gray-400"><ImageIcon size={28} /></div>}
           <div className="p-3">
-            <div className="text-15 text-gray-900">{p.name}</div>
+            <div className="flex items-center gap-2.5"><BusinessAvatar name={p.name} src={b.logo} size="w-9 h-9" /><div className="text-15 text-gray-900">{p.name}</div></div>
             <div className="text-12 text-gray-600 mt-0.5">{b.rating ? <span className="text-amber-600">{b.rating} ★ </span> : null}({b.reviewCount}) · {p.primary_category || 'Category'}</div>
             <div className="flex gap-2 mt-3">{[['Directions', MapPin], ['Call', Phone], ['Website', Globe]].map(([l, I]) => <span key={l} className="flex-1 flex flex-col items-center gap-1 text-11 text-blue-700"><span className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center"><I size={14} /></span>{l}</span>)}</div>
             <p className="text-12 text-gray-700 mt-3 line-clamp-4">{p.description || 'No description yet.'}</p>
@@ -150,9 +150,11 @@ function PostsTab({ b, toast }) {
   });
   const publish = (id) => run(`p${id}`, async () => { await api(`/businesses/${b.id}/gbp/posts/${id}/publish`, { method: 'POST' }); posts.reload(true); toast('Published on your Google Business Profile'); });
   const aiDraft = () => run('draft', async () => { await api(`/businesses/${b.id}/posts/draft`, { method: 'POST' }); posts.reload(true); toast('AI drafted this week\'s post (in the approval queue)'); });
-  const del = (id) => run(`d${id}`, async () => { await api(`/businesses/${b.id}/posts/${id}`, { method: 'DELETE' }); posts.reload(true); });
+  const [ask, confirmNode] = useDoubleConfirm();
+  const del = (id) => ask({ what: 'this post', effect: 'The draft or scheduled post is deleted and will not be published.', onConfirm: () => run(`d${id}`, async () => { await api(`/businesses/${b.id}/posts/${id}`, { method: 'DELETE' }); posts.reload(true); }) });
   return (
     <>
+      {confirmNode}
       <Card title="Posts" subtitle="One or two Updates or Offers a week keeps the profile active. Every post is approved before it goes live."
         action={<div className="flex gap-2"><Button variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={aiDraft}>AI draft</Button><Button variant="primary" icon={Plus} onClick={open}>New post</Button></div>}>
         <ErrorNote>{!edit && error}</ErrorNote>
@@ -192,7 +194,7 @@ function PostsTab({ b, toast }) {
               <div className="text-12 text-gray-600 mb-1">Preview</div>
               <div className="border border-gray-200 rounded overflow-hidden">
                 <div className="h-32 flex items-center justify-center text-gray-500 bg-emerald-50"><ImageIcon size={24} /></div>
-                <div className="p-3"><div className="text-12 text-gray-500">{b.name} · just now</div>{edit.title && <div className="text-14 font-medium text-gray-900 mt-1">{edit.title}</div>}<p className="text-13 text-gray-700 mt-1 whitespace-pre-line">{edit.body || 'Your post text appears here.'}</p><div className="mt-3 text-13 font-medium text-blue-700">{CTA[edit.cta_type]}</div></div>
+                <div className="p-3"><div className="flex items-center gap-2"><BusinessAvatar name={b.name} src={b.logo} size="w-8 h-8" /><div className="text-12 text-gray-500">{b.name} · just now</div></div>{edit.title && <div className="text-14 font-medium text-gray-900 mt-1">{edit.title}</div>}<p className="text-13 text-gray-700 mt-1 whitespace-pre-line">{edit.body || 'Your post text appears here.'}</p><div className="mt-3 text-13 font-medium text-blue-700">{CTA[edit.cta_type]}</div></div>
               </div>
             </div>
           </div>
@@ -336,9 +338,12 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
   const setSub = (v) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', 'profile'); n.set('sub', v); return n; }, { replace: true });
   const go = (id, s) => { if (id === 'profile' && s) setSub(s); else setTab(id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const [syncing, setSyncing] = useState(false);
+  const [panel, setPanel] = useState(null); // an edit panel that opens on this page, so nothing navigates away
+  const [version, setVersion] = useState(0); // bumped after a save or sync: the sections reload their Google data in place
+  const closePanel = () => { setPanel(null); setVersion(v => v + 1); };
   const sync = async () => {
     setSyncing(true);
-    try { const r = await api(`/businesses/${b.id}/sync`, { method: 'POST' }); toast(`Synced from Google: ${r.reviews} reviews, ${r.photos ?? 0} photos`); window.location.reload(); } catch (e) { toast(e.message || 'Sync failed'); } finally { setSyncing(false); }
+    try { const r = await api(`/businesses/${b.id}/sync`, { method: 'POST' }); toast(`Synced from Google: ${r.reviews} reviews, ${r.photos ?? 0} photos`); await refreshBusinesses(); setVersion(v => v + 1); } catch (e) { toast(e.message || 'Sync failed'); } finally { setSyncing(false); }
   };
   return (
     <div className="space-y-4">
@@ -346,8 +351,8 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
       {!(b.gbp_location && b.connection_id) && <ListingStatus b={b} toast={toast} onFind={() => { onConnect('email'); setTimeout(() => document.querySelector('input[aria-label="Business email"]')?.focus(), 400); }} />}
       <div className="grid grid-cols-1 lg:grid-cols-[230px_minmax(0,1fr)] gap-5 items-start">
         <SectionNav value={section} onChange={(id) => go(id)} />
-        <div className="min-w-0">
-          {section === 'overview' && <OverviewSection b={b} go={go} />}
+        <div className="min-w-0" key={version}>
+          {section === 'overview' && <OverviewSection b={b} go={go} onOpen={setPanel} />}
           {section === 'profile' && (
             <>
               <SectionHead title="Business Profile" subtitle="Name, categories, address, contact, hours, services, attributes and verification" sources={['google', 'manual']} />
@@ -364,7 +369,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
               <div className="space-y-4"><PerformanceMetrics b={b} /><InsightsTab b={b} /></div>
             </>
           )}
-          {section === 'reviews' && <ReviewsSection b={b} />}
+          {section === 'reviews' && <ReviewsSection b={b} toast={toast} />}
           {section === 'posts' && <><SectionHead title="Posts & Content" subtitle="What's New, Offer and Event posts with approval before publishing" sources={['google', 'ai']} /><PostsTab b={b} toast={toast} /></>}
           {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><PhotosTab b={b} toast={toast} /></>}
           {['local-seo', 'aeo', 'geo', 'competitors', 'reports'].includes(section) && <ToolSection id={section} go={go} />}
@@ -374,6 +379,18 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
           {section === 'settings' && <SettingsSection b={b} onConnect={onConnect} />}
         </div>
       </div>
+      <Drawer open={panel === 'profile'} onClose={closePanel} width="max-w-4xl" title="Edit profile and hours" subtitle="Saved changes are sent straight to your Google Business Profile">
+        <div className="gbp-compact space-y-4"><ProfileTab b={b} toast={toast} /><HoursTab b={b} toast={toast} /></div>
+      </Drawer>
+      <Drawer open={panel === 'posts'} onClose={closePanel} width="max-w-3xl" title="Posts" subtitle="Write a post and publish it to Google, or send it for approval">
+        <div className="gbp-compact"><PostsTab b={b} toast={toast} /></div>
+      </Drawer>
+      <Drawer open={panel === 'photos'} onClose={closePanel} width="max-w-4xl" title="Photos and media" subtitle="Uploads go straight to your Google Business Profile">
+        <div className="gbp-compact"><MediaManager b={b} toast={toast} /></div>
+      </Drawer>
+      <Drawer open={panel === 'reviews'} onClose={closePanel} width="max-w-4xl" title="Reviews" subtitle="Replies you post here appear on Google">
+        <div className="gbp-compact"><ReviewsSection b={b} toast={toast} /></div>
+      </Drawer>
     </div>
   );
 }

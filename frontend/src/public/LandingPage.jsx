@@ -317,8 +317,8 @@ function InteractiveShowcase() {
           <ShieldCheck size={18} />
         </div>
         <div>
-          <div className="text-12.5 font-bold text-slate-900">You approve AI drafts</div>
-          <div className="text-11 text-slate-500">Posts and replies wait for you</div>
+          <div className="text-12.5 font-bold text-slate-900">Runs by itself</div>
+          <div className="text-11 text-slate-500">Risky items wait for your approval</div>
         </div>
       </div>
     </div>
@@ -336,8 +336,8 @@ const FEATURE_GROUPS = [
   {
     icon: Star, accent: 'from-amber-500 to-orange-500', badge: 'Reputation',
     title: 'Reviews & Reputation',
-    desc: 'Never miss a review, and reply faster with AI drafts you approve.',
-    points: ['All Google reviews with rating distribution and response rate', 'AI-drafted replies you edit and approve before they post', 'Unanswered-review tracking and sentiment', 'Rating and review-count trends']
+    desc: 'Never miss a review: AI answers positive reviews on its own and drafts the rest for you to approve.',
+    points: ['All Google reviews with rating distribution and response rate', 'Replies to 4-5★ reviews run automatically; replies to 1-3★ reviews wait for your approval', 'Unanswered-review tracking and sentiment', 'Rating and review-count trends']
   },
   {
     icon: MapPin, accent: 'from-teal-500 to-emerald-500', badge: 'Local SEO & Maps',
@@ -367,7 +367,7 @@ const FEATURE_GROUPS = [
     icon: Bot, accent: 'from-cyan-500 to-teal-500', badge: 'AI & Automation',
     title: 'AI Search Visibility & Agents',
     desc: 'Track visibility in AI answers and let agents prepare the routine work.',
-    points: ['AI search visibility (GEO / AEO) tracking', 'Autonomous agents that draft fixes, replies and posts for your approval', 'Automation pipeline and a website builder with local slugs', 'Approval queue and a full activity log']
+    points: ['AI search visibility (GEO / AEO) tracking', 'Autonomous agents that run routine work and queue anything risky for your approval', 'Automation pipeline and a website builder with local slugs', 'Approval queue and a full activity log']
   },
   {
     icon: FileBarChart, accent: 'from-emerald-500 to-cyan-500', badge: 'Results',
@@ -384,7 +384,7 @@ const FAQS = [
   },
   {
     q: 'Does bevisibe AI change my Google profile without my permission?',
-    a: 'AI-written drafts (review replies and posts) always wait for your approval first. Details you edit yourself, such as hours, phone or description, are saved and sent to your Google Business Profile when you press Save. Nothing is changed on Google behind your back.'
+    a: 'Routine, low-risk items run on their own by default: replies to 4-5★ reviews and the weekly post. Anything riskier waits for your approval first: replies to 1-3★ reviews, profile changes, website fixes and outreach. Details you edit yourself, such as hours, phone or description, are saved and sent to your Google Business Profile when you press Save. You can change which items run automatically, or switch autopilot off, in the Playbook.'
   },
   {
     q: 'How does bevisibe comply with Google OAuth & API Limited Use Policies?',
@@ -548,7 +548,7 @@ export default function LandingPage({ user }) {
                 </h1>
 
                 <p className="text-lg sm:text-xl text-slate-600 leading-relaxed max-w-xl mx-auto lg:mx-0 font-normal">
-                  Connect your clients' Google accounts and manage their Business Profiles, reviews, posts and photos, then run the whole SEO process on top: site audits, keywords, rankings, competitors, backlinks, AI content and reports. AI drafts the routine work; you approve it.
+                  Connect your clients' Google accounts and manage their Business Profiles, reviews, posts and photos, then run the whole SEO process on top: site audits, keywords, rankings, competitors, backlinks, AI content and reports. Routine work runs on its own, and anything risky waits for your approval.
                 </p>
 
                 {/* Primary CTA button group */}
@@ -578,7 +578,7 @@ export default function LandingPage({ user }) {
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={16} className="text-teal-600" />
-                    <span>AI drafts wait for your approval</span>
+                    <span>Routine tasks run automatically</span>
                   </div>
                 </div>
               </div>
@@ -701,7 +701,7 @@ export default function LandingPage({ user }) {
                     {[
                       'Every client\'s Google profile, reviews and rankings in one workspace',
                       'Profile edits, photos and posts sent to Google when you save',
-                      'AI-drafted review replies and posts that wait for your approval',
+                      'Routine tasks, such as positive-review replies and the weekly post, run by themselves',
                       'Site audits, keywords, competitors and backlinks alongside the profile',
                       'Client reports with PDF export, plus leads and conversions'
                     ].map(point => (
@@ -753,8 +753,8 @@ export default function LandingPage({ user }) {
                 {
                   num: '04',
                   icon: LineChart,
-                  title: 'Approve & Report',
-                  desc: 'Approve AI-drafted replies and posts, track rankings, calls and leads, and send clients a report.'
+                  title: 'Run & Report',
+                  desc: 'Routine work runs on its own, risky items wait in your approval queue, and the monthly report is built for each client.'
                 }
               ].map(step => {
                 const Icon = step.icon;
