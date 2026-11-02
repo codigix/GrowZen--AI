@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
   LogOut, Menu, X, KeyRound, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen,
-  TrendingUp, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send
+  TrendingUp, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send, Activity
 } from 'lucide-react';
 import { useApi } from '../platform/seoApi';
 import AssistantWidget from './AssistantWidget';
@@ -21,6 +21,7 @@ export const SIDEBAR_GROUPS = [
     title: 'Site Performance',
     items: [
       { to: '/website-audit', label: 'Site Audit', icon: ScanSearch },
+      { to: '/traffic', label: 'Website Traffic', icon: Activity, badge: 'New' },
       { to: '/organic-rankings', label: 'Organic Rankings', icon: TrendingUp },
       { to: '/rank-tracking', label: 'Position Tracking', icon: MapPin }
     ]

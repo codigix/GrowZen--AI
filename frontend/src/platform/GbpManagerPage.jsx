@@ -4,6 +4,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Loader2, Save } from 'lucide-react';
 import { SeoShell, Drawer, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useDoubleConfirm, useSeoBusiness, refreshBusinesses, useUrlTab } from './SeoUi';
 import GbpLive from './GbpLive';
+import { BusinessTraffic } from './TrafficPage';
 import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePosts, isLinked } from './GbpEditors';
 import { MarketCard } from './Market';
 import { GbpAccounts, GoogleSignIn, ListingStatus, VerifyPill } from './GbpAccounts';
@@ -366,7 +367,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
           {section === 'performance' && (
             <>
               <SectionHead title="Performance" subtitle="How customers find and act on the profile" sources={['google']} />
-              <div className="space-y-4"><PerformanceMetrics b={b} /><InsightsTab b={b} /></div>
+              <div className="space-y-4"><PerformanceMetrics b={b} /><InsightsTab b={b} /><BusinessTraffic b={b} /></div>
             </>
           )}
           {section === 'reviews' && <ReviewsSection b={b} toast={toast} />}
