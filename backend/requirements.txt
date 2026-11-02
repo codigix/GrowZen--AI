@@ -23,5 +23,5 @@ reportlab>=4.4,<5
 pytrends>=4.9.2,<5
 pandas>=2.0,<3
 # Google Ads Keyword Planner (keyword volume, competition, CPC bids)
-google-ads>=24,<25
+google-ads>=35,<36  # Google sunsets each API version after ~1 year; old libs fail with "GRPC target method can't be resolved"
 python-dotenv>=1.0,<2

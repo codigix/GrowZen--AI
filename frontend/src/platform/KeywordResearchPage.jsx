@@ -287,187 +287,335 @@ function Discover({ b, tracked, onTracked }) {
   );
 }
 
-/* ── Google Trends ────────────────────────────────────────────────────── */
+/* ── Google Keyword Planner ───────────────────────────────────────────── */
 
-const TREND_TIMEFRAMES = [
-  { id: 'past_day', label: 'Past day' },
-  { id: 'past_7_days', label: 'Past 7 days' },
-  { id: 'past_30_days', label: 'Past 30 days' },
-  { id: 'past_90_days', label: 'Past 90 days' },
-  { id: 'past_12_months', label: 'Past 12 months' }
+const COMPETITION = {
+  LOW: { label: 'Low', tone: 'green', bar: '#10b981' },
+  MEDIUM: { label: 'Medium', tone: 'amber', bar: '#f59e0b' },
+  HIGH: { label: 'High', tone: 'red', bar: '#f43f5e' },
+  UNSPECIFIED: { label: 'Unknown', tone: 'gray', bar: '#94a3b8' }
+};
+const compOf = (c) => COMPETITION[c] || COMPETITION.UNSPECIFIED;
+const MONTH_SHORT = { JANUARY: 'Jan', FEBRUARY: 'Feb', MARCH: 'Mar', APRIL: 'Apr', MAY: 'May', JUNE: 'Jun', JULY: 'Jul', AUGUST: 'Aug', SEPTEMBER: 'Sep', OCTOBER: 'Oct', NOVEMBER: 'Nov', DECEMBER: 'Dec' };
+const PLANNER_LIMITS = [25, 50, 100, 200];
+// Bids come back in the Google Ads account's currency.
+const money = (v) => (v ? `₹${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—');
+const bidRange = (k) => (k.low_top_of_page_bid || k.high_top_of_page_bid ? `${money(k.low_top_of_page_bid)} – ${money(k.high_top_of_page_bid)}` : '—');
+const monthLabel = (m) => `${MONTH_SHORT[m.month] || String(m.month).slice(0, 3)} '${String(m.year).slice(2)}`;
+
+function Change({ v }) {
+  if (v == null) return <span className="text-slate-300">—</span>;
+  if (v === 0) return <span className="text-11.5 tabular-nums text-slate-500">0%</span>;
+  const up = v > 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-11.5 font-semibold tabular-nums ${up ? 'text-emerald-700' : 'text-red-600'}`}>
+      {up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(Math.round(v))}%
+    </span>
+  );
+}
+
+function Sparkline({ points }) {
+  if (!points || points.length < 2) return <span className="text-slate-300">—</span>;
+  const vals = points.map(p => p.monthly_searches || 0);
+  const max = Math.max(...vals), min = Math.min(...vals), span = max - min || 1;
+  const w = 72, h = 22;
+  const d = vals.map((v, i) => `${i ? 'L' : 'M'}${((i / (vals.length - 1)) * w).toFixed(1)},${(h - 2 - ((v - min) / span) * (h - 4)).toFixed(1)}`).join(' ');
+  const up = vals[vals.length - 1] >= vals[0];
+  return <svg width={w} height={h} className="block" aria-hidden="true"><path d={d} fill="none" stroke={up ? '#10b981' : '#f43f5e'} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" /></svg>;
+}
+
+const PLANNER_COLS = [
+  { id: 'keyword', label: 'Keyword', align: 'left' },
+  { id: 'avg_monthly_searches', label: 'Searches / mo', align: 'right' },
+  { id: 'trend', label: '12-mo trend', align: 'left', sortable: false },
+  { id: 'three_month_change', label: '3-mo', align: 'right' },
+  { id: 'yoy_change', label: 'YoY', align: 'right' },
+  { id: 'competition_index', label: 'Competition', align: 'left' },
+  { id: 'high_top_of_page_bid', label: 'Top-of-page bid', align: 'right' }
 ];
 
-function GoogleTrends({ b, tracked, onTracked }) {
-  const [keyword, setKeyword] = useState('');
-  const [country, setCountry] = useState('IN');
-  const [timeframe, setTimeframe] = useState('past_30_days');
-  const [trend, setTrend] = useState(null);
-  const [busy, error, run] = useAction();
+function GooglePlanner({ b, tracked, onTracked }) {
+  const serviceSeeds = useMemo(() => [...new Set((b.services || []).map(s => String(s?.name || s || '').trim().toLowerCase()).filter(Boolean))].slice(0, 6), [b.services]);
+  const [keyword, setKeyword] = useState(serviceSeeds[0] || '');
+  const [limit, setLimit] = useState(50);
+  const [includeMonthly, setIncludeMonthly] = useState(true);
+  const [data, setData] = useState(null);
+  const [notFound, setNotFound] = useState('');
+  const [focus, setFocus] = useState(null);
+  const [q, setQ] = useState('');
+  const [comp, setComp] = useState('all');
+  const [sort, setSort] = useState({ key: 'avg_monthly_searches', dir: 'desc' });
+  const [selected, setSelected] = useState([]);
+  const [busy, error, run, setError] = useAction();
   const [toast, toastNode] = useToast();
 
+  const search = (seed = keyword, monthly = includeMonthly) => run('search', async () => {
+    const k = seed.trim().toLowerCase();
+    if (!k) return;
+    setKeyword(k); setNotFound('');
+    try {
+      const r = await api(`/keyword-planner/metrics?keyword=${encodeURIComponent(k)}&limit=${limit}&include_monthly=${monthly}`);
+      setData({ ...r, include_monthly: monthly }); setSelected([]); setQ(''); setComp('all');
+      const seedRow = r.keywords.find(x => x.keyword.toLowerCase() === k);
+      setFocus((seedRow || [...r.keywords].sort((a, c) => (c.avg_monthly_searches || 0) - (a.avg_monthly_searches || 0))[0])?.keyword || null);
+    } catch (e) {
+      if (e.status === 404) { setData(null); setNotFound(k); return; }
+      if (e.status === 503) throw new Error(`Google Ads Keyword Planner isn't set up on the server yet. ${e.message}`);
+      throw e;
+    }
+  });
+
   const trackedSet = new Set(tracked.map(k => k.keyword));
+  const rows = data?.keywords || [];
+  const seed = data?.seed_keyword?.toLowerCase();
+  const seedRow = rows.find(r => r.keyword.toLowerCase() === seed);
+  const focusRow = rows.find(r => r.keyword === focus) || seedRow || rows[0];
 
-  const search = () => run('search', async () => {
-    const q = keyword.trim().toLowerCase();
-    if (!q) return;
-    const qs = `keyword=${encodeURIComponent(q)}&country=${encodeURIComponent(country)}&timeframe=${timeframe}`;
-    const t = await api(`/keyword-trends/planner?${qs}&limit=20&regional_limit=10`);
-    setTrend(t);
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const list = rows.filter(r => (comp === 'all' || (COMPETITION[r.competition] ? r.competition : 'UNSPECIFIED') === comp) && (!needle || r.keyword.toLowerCase().includes(needle)));
+    const { key, dir } = sort;
+    const m = dir === 'asc' ? 1 : -1;
+    return [...list].sort((a, c) => {
+      const x = a[key], y = c[key];
+      if (key === 'keyword') return m * String(x).localeCompare(String(y));
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return m * (x - y);
+    });
+  }, [rows, q, comp, sort]);
+
+  const totalVolume = rows.reduce((s, r) => s + (r.avg_monthly_searches || 0), 0);
+  const bidRows = rows.filter(r => r.high_top_of_page_bid > 0);
+  const avgLow = bidRows.length ? bidRows.reduce((s, r) => s + r.low_top_of_page_bid, 0) / bidRows.length : 0;
+  const avgHigh = bidRows.length ? bidRows.reduce((s, r) => s + r.high_top_of_page_bid, 0) / bidRows.length : 0;
+  const compCounts = rows.reduce((acc, r) => { const c = COMPETITION[r.competition] ? r.competition : 'UNSPECIFIED'; acc[c] = (acc[c] || 0) + 1; return acc; }, {});
+  const easyWins = rows.filter(r => r.competition === 'LOW' && r.avg_monthly_searches > 0).sort((a, c) => c.avg_monthly_searches - a.avg_monthly_searches).slice(0, 6);
+  const rising = rows.filter(r => (r.three_month_change ?? 0) > 0 && r.avg_monthly_searches >= 10).sort((a, c) => c.three_month_change - a.three_month_change).slice(0, 6);
+
+  const chartData = (focusRow?.monthly_search_volumes || []).map(m => ({ month: monthLabel(m), searches: m.monthly_searches || 0 }));
+  const peak = chartData.reduce((p, m) => (!p || m.searches > p.searches ? m : p), null);
+  const low = chartData.reduce((p, m) => (!p || m.searches < p.searches ? m : p), null);
+
+  const toggleSort = (key) => setSort(s => (s.key === key ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: key === 'keyword' ? 'asc' : 'desc' }));
+  const selectable = shown.filter(r => !trackedSet.has(r.keyword));
+
+  const track = (list) => run('track', async () => {
+    const body = list.map(r => ({ keyword: r.keyword, volume: r.avg_monthly_searches ?? null, cpc: r.high_top_of_page_bid || null, priority: r.competition === 'LOW' ? 'High' : 'Medium' }));
+    const res = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body });
+    setSelected([]); onTracked();
+    const n = res?.added ?? list.length;
+    toast(`${n} keyword${n === 1 ? '' : 's'} added to tracking`);
   });
 
-  const track = (kw) => run(`t-${kw}`, async () => {
-    await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: kw }] });
-    onTracked(); toast(`"${kw}" added to tracking`);
-  });
-
-  const chartData = (trend?.interest_over_time || []).map(p => ({ date: p.date, value: p.value }));
-  const avg = chartData.length ? Math.round(chartData.reduce((s, p) => s + p.value, 0) / chartData.length) : null;
-  const peak = chartData.length ? Math.max(...chartData.map(p => p.value)) : null;
+  const exportCsv = () => {
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = [['Keyword', 'Avg monthly searches', 'Competition', 'Competition index', 'Top-of-page bid (low)', 'Top-of-page bid (high)', '3-month change %', 'YoY change %'],
+      ...shown.map(r => [r.keyword, r.avg_monthly_searches, compOf(r.competition).label, r.competition_index, r.low_top_of_page_bid, r.high_top_of_page_bid, r.three_month_change, r.yoy_change])].map(l => l.map(esc).join(','));
+    const href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+    Object.assign(document.createElement('a'), { href, download: `keyword-planner-${(data?.seed_keyword || 'ideas').replace(/[^a-z0-9]+/gi, '-')}.csv` }).click();
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
+  };
 
   return (
     <div className="space-y-5">
-      <Card title="Google Trends" subtitle="Live search interest and related queries from Google Trends.">
+      <Card title="Google Keyword Planner" subtitle="Monthly search volume, competition, top-of-page bids and 12-month trend for a keyword and related ideas, from Google Ads.">
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex-1 min-w-[220px]">
-            <div className="text-11 font-semibold   text-slate-500 mb-1">Keyword</div>
-            <input className={inputCls} placeholder="e.g. seo services" value={keyword} onChange={e => setKeyword(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} />
+            <div className="text-11 font-semibold text-slate-500 mb-1">Seed keyword</div>
+            <input className={inputCls} placeholder="e.g. dentist in pimpri" value={keyword} onChange={e => { setKeyword(e.target.value); setError(''); }} onKeyDown={e => e.key === 'Enter' && search()} />
           </label>
           <label>
-            <div className="text-11 font-semibold   text-slate-500 mb-1">Country</div>
-            <input className={`${inputCls} w-20 `} maxLength={2} value={country} onChange={e => setCountry(e.target.value.toUpperCase())} />
-          </label>
-          <label>
-            <div className="text-11 font-semibold   text-slate-500 mb-1">Timeframe</div>
-            <select className="h-9 px-2.5 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" value={timeframe} onChange={e => setTimeframe(e.target.value)}>
-              {TREND_TIMEFRAMES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            <div className="text-11 font-semibold text-slate-500 mb-1">Ideas</div>
+            <select className="h-9 px-2.5 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" value={limit} onChange={e => setLimit(Number(e.target.value))}>
+              {PLANNER_LIMITS.map(n => <option key={n} value={n}>Up to {n}</option>)}
             </select>
           </label>
-          <Button variant="primary" icon={Search} busy={busy === 'search'} disabled={!keyword.trim()} onClick={search}>Search</Button>
+          <label className="h-9 px-3 inline-flex items-center gap-2 rounded-lg ring-1 ring-inset ring-slate-200 bg-white text-12.5 text-slate-700 cursor-pointer select-none" title="Include per-month search volume history (larger payload). Needed for the 12-month chart and trend lines.">
+            <input type="checkbox" className="accent-indigo-600" checked={includeMonthly} onChange={e => setIncludeMonthly(e.target.checked)} />
+            Monthly history
+          </label>
+          <Button variant="primary" icon={Search} busy={busy === 'search'} disabled={!keyword.trim()} onClick={() => search()}>Get metrics</Button>
         </div>
+        <div className="mt-1.5 text-11.5 text-slate-500">Monthly history adds the per-month search volume for the last 12 months (larger response). On by default; turn it off for faster results.</div>
+        {serviceSeeds.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <span className="text-11.5 text-slate-500 mr-1">From {b.name}'s services:</span>
+            {serviceSeeds.map(s => <Chip key={s} on={data?.seed_keyword?.toLowerCase() === s} onClick={() => search(s)}>{s}</Chip>)}
+          </div>
+        )}
         <ErrorNote>{error}</ErrorNote>
       </Card>
 
-      {trend && (
-        <div className="space-y-5">
-          <Card title={`Interest over time: "${trend.seed_keyword}"`} subtitle={`${trend.country} · ${TREND_TIMEFRAMES.find(t => t.id === timeframe)?.label}`}>
-            {chartData.length > 1 ? (
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
-                    <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={{ stroke: '#cbd5e1' }} minTickGap={24} />
-                    <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} domain={[0, 100]} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="value" name="Interest" stroke="#4f46e5" strokeWidth={2} dot={false} isAnimationActive={false} />
-                  </LineChart>
-                </ResponsiveContainer>
+      {busy === 'search' && !data && <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Asking Google Keyword Planner…</div></Card>}
+
+      {notFound && !busy && (
+        <Card><div className="py-10 text-center text-13 text-slate-500">Keyword Planner has no data for <b className="text-slate-800">"{notFound}"</b>. Try a broader or more common phrase.</div></Card>
+      )}
+
+      {data && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[[Search, 'Keyword ideas', fmt(data.returned), `for "${data.seed_keyword}"`],
+            [BarChart2, 'Seed searches / mo', seedRow ? fmt(seedRow.avg_monthly_searches) : '—', seedRow ? `${compOf(seedRow.competition).label} competition` : 'seed not in results'],
+            [TrendingUp, 'Total searches / mo', fmt(totalVolume), 'across all ideas'],
+            [Tag, 'Avg top-of-page bid', bidRows.length ? `${money(avgLow)} – ${money(avgHigh)}` : '—', bidRows.length ? `from ${bidRows.length} keywords with bids` : 'no bid data']
+            ].map(([I, l, v, h]) => (
+              <div key={l} className="ai-glass-card rounded px-4 py-3.5 min-w-0">
+                <div className="text-12 font-semibold text-slate-500 flex items-center gap-1.5"><I size={13} /> {l}</div>
+                <div className="text-22 font-bold text-slate-900 tabular-nums mt-0.5 truncate">{v}</div>
+                <div className="text-11.5 text-slate-500 truncate">{h}</div>
               </div>
-            ) : <div className="py-10 text-center text-13 text-slate-500">Not enough data for this keyword.</div>}
-            <div className="mt-3 flex gap-4 text-12 text-slate-600">
-              {avg != null && <span>Average interest: <span className="font-semibold text-slate-900">{avg}</span></span>}
-              {peak != null && <span>Peak: <span className="font-semibold text-slate-900">{peak}</span></span>}
-            </div>
-          </Card>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <Card title="Top queries" subtitle="Most-searched related queries, scored 0-100 relative to the top one">
-              {trend.related_keywords?.length ? (
-                <>
-                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-10.5 font-semibold   text-slate-400">
-                    <span className="flex-1">Query</span>
-                    <span className="w-8 text-right">Interest</span>
-                    <span className="w-16 text-right">Change</span>
-                    <span className="w-14 text-right"> </span>
-                  </div>
-                  <ul className="space-y-2">
-                    {trend.related_keywords.map(r => {
-                      const isTracked = trackedSet.has(r.keyword);
-                      const pct = /^[+-]\d+%$/.test(r.growth_indicator || '') ? parseInt(r.growth_indicator, 10) : null;
-                      return (
-                        <li key={r.keyword} className="flex items-center gap-2 text-12.5">
-                          <span className="flex-1 text-slate-800">{r.keyword}</span>
-                          <span className="tabular-nums text-slate-500 w-8 text-right">{r.score}</span>
-                          <span className="w-16 text-right">
-                            {r.growth_indicator === 'Breakout' ? <Badge tone="blue">Breakout</Badge>
-                              : pct != null ? (
-                                <span className={`inline-flex items-center gap-0.5 text-11 font-semibold tabular-nums ${pct >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                                  {pct >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(pct)}%
-                                </span>
-                              ) : <span className="text-slate-300">—</span>}
-                          </span>
-                          <span className="w-14 text-right">
-                            {isTracked ? <span className="text-11 text-emerald-700 font-medium">Tracked</span>
-                              : <button type="button" onClick={() => track(r.keyword)} disabled={busy === `t-${r.keyword}`} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              ) : <div className="py-6 text-center text-13 text-slate-500">No top queries found.</div>}
-            </Card>
-
-            <Card title="Rising queries" subtitle="Queries with the biggest increase in search interest">
-              {trend.rising_keywords?.length ? (
-                <>
-                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-10.5 font-semibold   text-slate-400">
-                    <span className="flex-1">Query</span>
-                    <span className="w-8 text-right" title="Google Trends doesn't provide a 0-100 interest score for rising queries, only the % change">Interest</span>
-                    <span className="w-16 text-right">Change</span>
-                    <span className="w-14 text-right"> </span>
-                  </div>
-                  <ul className="space-y-2">
-                    {trend.rising_keywords.map(r => {
-                      const isTracked = trackedSet.has(r.keyword);
-                      const isBreakout = r.growth_indicator === 'Breakout';
-                      return (
-                        <li key={r.keyword} className="flex items-center gap-2 text-12.5">
-                          <span className="flex-1 text-slate-800">{r.keyword}</span>
-                          <span className="tabular-nums text-slate-300 w-8 text-right">—</span>
-                          <span className="w-16 text-right">
-                            {isBreakout ? <Badge tone="blue">Breakout</Badge>
-                              : r.growth_indicator ? (
-                                <span className="inline-flex items-center gap-0.5 text-11 font-semibold tabular-nums text-emerald-700">
-                                  <TrendingUp size={11} />{r.growth_indicator}
-                                </span>
-                              ) : <span className="text-slate-300">—</span>}
-                          </span>
-                          <span className="w-14 text-right">
-                            {isTracked ? <span className="text-11 text-emerald-700 font-medium">Tracked</span>
-                              : <button type="button" onClick={() => track(r.keyword)} disabled={busy === `t-${r.keyword}`} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              ) : <div className="py-6 text-center text-13 text-slate-500">No rising queries found.</div>}
-            </Card>
+            ))}
           </div>
 
-          <Card title="Interest by region" subtitle={`Where "${trend.seed_keyword}" is searched most, relative to its top region (100)`}>
-            {trend.regional_interest?.length ? (
-              <div className="divide-y divide-slate-100">
-                <div className="flex items-center gap-3 pb-2 text-10.5 font-semibold   text-slate-400">
-                  <span className="w-5" />
-                  <span className="w-44 shrink-0">Region</span>
-                  <span className="flex-1">Search interest</span>
-                  <span className="w-8" />
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+            <Card className="xl:col-span-2 min-w-0" title={focusRow ? `Monthly searches: "${focusRow.keyword}"` : 'Monthly searches'} subtitle={data.include_monthly ? 'Last 12 months from Google Ads. Click any keyword in the table to chart it.' : 'Turn on "Monthly history" to see the 12-month trend.'}>
+              {!data.include_monthly && focusRow && (
+                <div className="mb-4 flex flex-wrap gap-x-5 gap-y-1 text-12 text-slate-600">
+                  <span>Avg: <b className="text-slate-900 tabular-nums">{fmt(focusRow.avg_monthly_searches)}</b>/mo</span>
+                  <span className="inline-flex items-center gap-1">3-month: <Change v={focusRow.three_month_change} /></span>
+                  <span className="inline-flex items-center gap-1">YoY: <Change v={focusRow.yoy_change} /></span>
+                  <span className="inline-flex items-center gap-1">Competition: <Badge tone={compOf(focusRow.competition).tone}>{compOf(focusRow.competition).label}{focusRow.competition_index != null && ` · ${focusRow.competition_index}`}</Badge></span>
+                  <span>Bid: <b className="text-slate-900 tabular-nums">{bidRange(focusRow)}</b></span>
                 </div>
-                {trend.regional_interest.map((r, i) => (
-                  <div key={r.region} className={`flex items-center gap-3 py-2.5 ${i % 2 ? '' : 'bg-slate-50/60 -mx-2 px-2 rounded'}`}>
-                    <span className="w-5 text-12 text-slate-400 tabular-nums">{i + 1}</span>
-                    <span className="w-44 shrink-0 text-13 text-slate-800">{r.region}</span>
-                    <div className="flex-1 h-2.5 rounded-full bg-indigo-100 overflow-hidden">
-                      <div className="h-full rounded-full bg-indigo-600" style={{ width: `${r.score}%` }} />
-                    </div>
-                    <span className="w-8 text-right text-12 tabular-nums text-slate-600">{r.score}</span>
+              )}
+              {chartData.length > 1 ? (
+                <>
+                  <div className="h-60">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={{ stroke: '#cbd5e1' }} minTickGap={12} />
+                        <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} width={48} tickFormatter={v => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : v)} />
+                        <Tooltip formatter={(v) => [fmt(v), 'Searches']} />
+                        <Line type="monotone" dataKey="searches" name="Searches" stroke="#4f46e5" strokeWidth={2} dot={{ r: 2.5 }} activeDot={{ r: 4 }} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
                   </div>
+                  <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-12 text-slate-600">
+                    <span>Avg: <b className="text-slate-900 tabular-nums">{fmt(focusRow.avg_monthly_searches)}</b>/mo</span>
+                    {peak && <span>Peak: <b className="text-slate-900 tabular-nums">{fmt(peak.searches)}</b> ({peak.month})</span>}
+                    {low && <span>Lowest: <b className="text-slate-900 tabular-nums">{fmt(low.searches)}</b> ({low.month})</span>}
+                    <span className="inline-flex items-center gap-1">3-month: <Change v={focusRow.three_month_change} /></span>
+                    <span className="inline-flex items-center gap-1">YoY: <Change v={focusRow.yoy_change} /></span>
+                    <span className="inline-flex items-center gap-1">Competition: <Badge tone={compOf(focusRow.competition).tone}>{compOf(focusRow.competition).label}{focusRow.competition_index != null && ` · ${focusRow.competition_index}`}</Badge></span>
+                  </div>
+                </>
+              ) : !data.include_monthly ? (
+                <div className="py-10 flex flex-col items-center gap-3 text-center text-13 text-slate-500">
+                  <span>Monthly history wasn't requested, so the 12-month chart and trend lines are hidden.</span>
+                  <Button size="sm" icon={BarChart2} busy={busy === 'search'} onClick={() => { setIncludeMonthly(true); search(data.seed_keyword, true); }}>Load monthly history</Button>
+                </div>
+              ) : <div className="py-10 text-center text-13 text-slate-500">No monthly history for this keyword.</div>}
+            </Card>
+
+            <div className="space-y-5 min-w-0">
+              <Card title="Competition mix" subtitle="How hard advertisers compete for these ideas">
+                <div className="space-y-2.5">
+                  {['LOW', 'MEDIUM', 'HIGH', 'UNSPECIFIED'].filter(c => compCounts[c]).map(c => (
+                    <button key={c} type="button" onClick={() => setComp(comp === c ? 'all' : c)} className={`w-full flex items-center gap-3 text-12.5 rounded px-1.5 py-1 cursor-pointer ${comp === c ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>
+                      <span className="w-16 text-left text-slate-700">{COMPETITION[c].label}</span>
+                      <span className="flex-1"><Meter value={compCounts[c]} max={rows.length} color={COMPETITION[c].bar} /></span>
+                      <span className="w-8 text-right tabular-nums text-slate-600">{compCounts[c]}</span>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+              {easyWins.length > 0 && (
+                <Card title="Easy wins" subtitle="Low competition, highest search volume">
+                  <ul className="space-y-1.5">
+                    {easyWins.map(r => (
+                      <li key={r.keyword} className="flex items-center gap-2 text-12.5">
+                        <button type="button" onClick={() => setFocus(r.keyword)} className="flex-1 text-left text-slate-800 hover:text-indigo-700 truncate cursor-pointer">{r.keyword}</button>
+                        <span className="tabular-nums text-slate-600">{fmt(r.avg_monthly_searches)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+              {rising.length > 0 && (
+                <Card title="Rising now" subtitle="Biggest growth over the last 3 months">
+                  <ul className="space-y-1.5">
+                    {rising.map(r => (
+                      <li key={r.keyword} className="flex items-center gap-2 text-12.5">
+                        <button type="button" onClick={() => setFocus(r.keyword)} className="flex-1 text-left text-slate-800 hover:text-indigo-700 truncate cursor-pointer">{r.keyword}</button>
+                        <Change v={r.three_month_change} />
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </div>
+          </div>
+
+          <Card pad={false} title={`Keyword ideas (${shown.length})`} subtitle="Click a keyword to chart it. Click a column header to sort."
+            action={<div className="flex gap-2"><Button size="sm" icon={Download} onClick={exportCsv} disabled={!shown.length}>CSV</Button><Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(rows.filter(r => selected.includes(r.keyword)))}>Track {selected.length || ''}</Button></div>}>
+            <div className="px-6 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
+              <label className="relative flex-1 min-w-[180px] max-w-xs"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input className="w-full h-8 pl-8 pr-3 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" placeholder="Filter keywords" value={q} onChange={e => setQ(e.target.value)} /></label>
+              <div className="flex flex-wrap gap-1.5">
+                {['all', 'LOW', 'MEDIUM', 'HIGH'].map(c => (
+                  <button key={c} type="button" onClick={() => setComp(c)} className={`h-8 px-3 rounded-lg text-12 font-semibold ring-1 ring-inset cursor-pointer ${comp === c ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>
+                    {c === 'all' ? `All ${rows.length}` : `${COMPETITION[c].label} ${compCounts[c] || 0}`}
+                  </button>
                 ))}
               </div>
-            ) : <div className="py-6 text-center text-13 text-slate-500">No regional data found.</div>}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-13 min-w-[860px]">
+                <thead className="bg-slate-50 text-11 text-slate-500">
+                  <tr>
+                    <th className="pl-6 pr-2 py-2.5 w-8"><input type="checkbox" className="accent-indigo-600" aria-label="Select all" checked={selectable.length > 0 && selectable.every(r => selected.includes(r.keyword))} onChange={e => setSelected(e.target.checked ? selectable.map(r => r.keyword) : [])} /></th>
+                    {PLANNER_COLS.filter(col => col.id !== 'trend' || data.include_monthly).map(col => (
+                      <th key={col.id} className={`px-2 py-2.5 font-semibold whitespace-nowrap text-${col.align}`}>
+                        {col.sortable === false ? col.label : (
+                          <button type="button" onClick={() => toggleSort(col.id)} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-900 ${sort.key === col.id ? 'text-slate-900' : ''}`}>
+                            {col.label}{sort.key === col.id && <span aria-hidden="true">{sort.dir === 'desc' ? '↓' : '↑'}</span>}
+                          </button>
+                        )}
+                      </th>
+                    ))}
+                    <th className="px-2 pr-6 py-2.5 text-right font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {shown.map(r => {
+                    const isTracked = trackedSet.has(r.keyword);
+                    const c = compOf(r.competition);
+                    const isFocus = focusRow?.keyword === r.keyword;
+                    return (
+                      <tr key={r.keyword} className={isFocus ? 'bg-indigo-50/60' : selected.includes(r.keyword) ? 'bg-indigo-50/30' : 'hover:bg-slate-50'}>
+                        <td className="pl-6 pr-2 py-2"><input type="checkbox" className="accent-indigo-600" disabled={isTracked} checked={selected.includes(r.keyword)} onChange={() => setSelected(s => (s.includes(r.keyword) ? s.filter(x => x !== r.keyword) : [...s, r.keyword]))} aria-label={`Select ${r.keyword}`} /></td>
+                        <td className="px-2 py-2">
+                          <button type="button" onClick={() => setFocus(r.keyword)} className="text-left text-slate-900 hover:text-indigo-700 cursor-pointer">{r.keyword}</button>
+                          {r.keyword.toLowerCase() === seed && <span className="ml-1.5 text-10.5 font-semibold px-1.5 py-px rounded bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200">Seed</span>}
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums text-slate-900 font-medium">{fmt(r.avg_monthly_searches)}</td>
+                        {data.include_monthly && <td className="px-2 py-2"><Sparkline points={r.monthly_search_volumes} /></td>}
+                        <td className="px-2 py-2 text-right"><Change v={r.three_month_change} /></td>
+                        <td className="px-2 py-2 text-right"><Change v={r.yoy_change} /></td>
+                        <td className="px-2 py-2">
+                          <div className="flex items-center gap-2">
+                            <Badge tone={c.tone}>{c.label}</Badge>
+                            {r.competition_index != null && <span className="w-12"><Meter value={r.competition_index} max={100} color={c.bar} height={5} /></span>}
+                            {r.competition_index != null && <span className="text-11 tabular-nums text-slate-500">{r.competition_index}</span>}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums text-slate-700 whitespace-nowrap">{bidRange(r)}</td>
+                        <td className="px-2 pr-6 py-2 text-right whitespace-nowrap">
+                          {isTracked ? <span className="text-11.5 text-emerald-700 font-medium">Tracked</span>
+                            : <button type="button" onClick={() => track([r])} disabled={busy === 'track'} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {!shown.length && <div className="py-10 text-center text-13 text-slate-500">No keywords match these filters.</div>}
+            </div>
           </Card>
-        </div>
+        </>
       )}
       {toastNode}
     </div>
@@ -979,7 +1127,7 @@ function Keywords({ b, tab }) {
   return (
     <>
       {tab === 'discover' && <Discover b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
-      {tab === 'trends' && <GoogleTrends b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
+      {tab === 'planner' && <GooglePlanner b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
       {tab === 'explorer' && <KeywordExplorer b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
       {tab === 'tracked' && <Tracked b={b} kw={kw} />}
       {tab === 'topics' && <Topics b={b} kw={kw} />}
@@ -988,12 +1136,12 @@ function Keywords({ b, tab }) {
 }
 
 export default function KeywordResearchPage() {
-  const [tab, setTab] = useUrlTab('discover', ['discover', 'trends', 'explorer', 'tracked', 'topics']);
+  const [tab, setTab] = useUrlTab('discover', ['discover', 'planner', 'explorer', 'tracked', 'topics']);
   return (
     <SeoShell title="Keyword Intelligence" subtitle="Real searches for this business's services and area: local, near me, questions and fresh searches, checked against the website">
       {(b) => (
         <>
-          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'discover', label: 'Discover' }, { id: 'trends', label: 'Google Trends' }, { id: 'explorer', label: 'Keyword Explorer' }, { id: 'tracked', label: 'Tracked & pages' }, { id: 'topics', label: 'Topics' }]} />
+          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'discover', label: 'Discover' }, { id: 'planner', label: 'Google Planner' }, { id: 'explorer', label: 'Keyword Explorer' }, { id: 'tracked', label: 'Tracked & pages' }, { id: 'topics', label: 'Topics' }]} />
           <Keywords key={b.id} b={b} tab={tab} />
         </>
       )}

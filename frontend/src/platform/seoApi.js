@@ -16,6 +16,7 @@ const messageOf = (body, status) => {
   const d = body?.detail;
   if (typeof d === 'string') return d;
   if (Array.isArray(d)) return d.map(x => `${(x.loc || []).slice(1).join('.')}: ${x.msg}`).join('; ');
+  if (d && typeof d === 'object') return (Array.isArray(d.messages) && d.messages.length ? d.messages.join('; ') : d.error || d.message) || `Request failed (${status})`;
   return body?.error || `Request failed (${status})`;
 };
 

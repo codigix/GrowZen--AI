@@ -30,7 +30,10 @@ def _client():
     if not settings.google_ads_enabled:
         raise GoogleAdsNotConfigured("Google Ads is not configured (missing developer token, OAuth credentials, or customer id).")
 
-    from google.ads.googleads.client import GoogleAdsClient
+    try:
+        from google.ads.googleads.client import GoogleAdsClient
+    except ImportError as exc:
+        raise GoogleAdsNotConfigured("The google-ads package is not installed on the server (pip install -r requirements.txt).") from exc
 
     config = {
         "developer_token": settings.google_ads_developer_token,
@@ -41,7 +44,10 @@ def _client():
     }
     if settings.google_ads_login_customer_id:
         config["login_customer_id"] = settings.google_ads_login_customer_id
-    return GoogleAdsClient.load_from_dict(config), settings.google_ads_customer_id
+    try:
+        return GoogleAdsClient.load_from_dict(config), settings.google_ads_customer_id
+    except Exception as exc:  # malformed credentials in .env
+        raise GoogleAdsNotConfigured(f"Google Ads credentials are invalid: {exc}") from exc
 
 
 def _micros_to_currency(micros: int) -> float:
@@ -106,16 +112,18 @@ def keyword_ideas(
     request.historical_metrics_options.include_average_cpc = True
     request.keyword_seed.keywords.extend(seed_keywords)
 
+    results = []
     try:
         response = service.generate_keyword_ideas(request=request)
+        for idea in response:
+            results.append(_build_metrics(idea, include_monthly))
+            if limit and len(results) >= limit:
+                break
     except GoogleAdsException as exc:
         messages = [error.message for error in exc.failure.errors]
         log.warning("Google Ads request failed: %s", messages)
         raise GoogleAdsRequestError("Google Ads request failed", code=exc.error.code().name, details=messages) from exc
-
-    results = []
-    for idea in response:
-        results.append(_build_metrics(idea, include_monthly))
-        if limit and len(results) >= limit:
-            break
+    except Exception as exc:  # auth refresh failures, network errors, etc.
+        log.warning("Google Ads call failed: %r", exc)
+        raise GoogleAdsRequestError("Google Ads request failed", code=type(exc).__name__, details=[str(exc) or type(exc).__name__]) from exc
     return results
