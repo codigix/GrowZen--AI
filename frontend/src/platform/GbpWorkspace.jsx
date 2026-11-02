@@ -66,7 +66,15 @@ export const SECTION_IDS = SECTIONS.flatMap(g => g.items.map(i => i.id));
 // Older ?tab= links still land in the right place.
 export const TAB_ALIAS = { live: 'profile', hours: 'profile', faq: 'profile', audit: 'ai', insights: 'performance' };
 
-export function SectionNav({ value, onChange }) {
+/** Website traffic (Google Analytics 4) views, shown as an inner sidebar under the Performance item. */
+export const TRAFFIC_VIEWS = [
+  { id: 'snap', label: 'Reports snapshot' },
+  { id: 'overview', label: 'Overview' },
+  { id: 'rt', label: 'Realtime overview' },
+  { id: 'rtp', label: 'Realtime pages' },
+];
+
+export function SectionNav({ value, onChange, trafficView, onTrafficView }) {
   return (
     <nav aria-label="Client workspace" className="lg:sticky lg:top-24 lg:self-start">
       <div className="bg-white shadow-card rounded p-2 flex lg:block gap-1 overflow-x-auto no-scrollbar">
@@ -76,11 +84,28 @@ export function SectionNav({ value, onChange }) {
             {g.items.map(i => {
               const active = value === i.id;
               const Icon = i.icon;
+              const showSub = i.id === 'performance' && active && onTrafficView;
               return (
-                <button key={i.id} type="button" onClick={() => onChange(i.id)} aria-current={active ? 'page' : undefined}
-                  className={`w-full shrink-0 flex items-center gap-2.5 px-3 py-2 rounded text-13 font-medium whitespace-nowrap text-left cursor-pointer transition-colors ${active ? 'bg-indigo-500 text-white' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>
-                  <Icon size={15} className="shrink-0" />{i.label}
-                </button>
+                <div key={i.id} className="flex lg:block gap-1">
+                  <button type="button" onClick={() => onChange(i.id)} aria-current={active ? 'page' : undefined}
+                    className={`w-full shrink-0 flex items-center gap-2.5 px-3 py-2 rounded text-13 font-medium whitespace-nowrap text-left cursor-pointer transition-colors ${active ? 'bg-indigo-500 text-white' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>
+                    <Icon size={15} className="shrink-0" />{i.label}
+                  </button>
+                  {showSub && (
+                    <div className="flex lg:block gap-1 lg:ml-5 lg:pl-2 lg:my-1 lg:border-l lg:border-slate-200" role="group" aria-label="Website traffic (Google Analytics 4)">
+                      <div className="hidden lg:block px-2 pt-1 pb-1 text-11 font-semibold uppercase tracking-wide text-slate-400">Website traffic</div>
+                      {TRAFFIC_VIEWS.map(v => {
+                        const on = trafficView === v.id;
+                        return (
+                          <button key={v.id} type="button" onClick={() => onTrafficView(v.id)} aria-current={on ? 'true' : undefined}
+                            className={`w-full shrink-0 px-2.5 py-1.5 rounded text-12 whitespace-nowrap text-left cursor-pointer transition-colors ${on ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}>
+                            {v.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

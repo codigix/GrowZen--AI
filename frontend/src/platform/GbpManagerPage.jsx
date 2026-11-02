@@ -10,7 +10,7 @@ import { MarketCard } from './Market';
 import { GbpAccounts, GoogleSignIn, ListingStatus, VerifyPill } from './GbpAccounts';
 import { api, useApi, fmtDate } from './seoApi';
 import { useCountries } from './countries';
-import { BusinessAvatar, SECTION_IDS, TAB_ALIAS, SectionNav, SectionHead, ClientBar, OverviewSection, PerformanceMetrics, ReviewsSection, ToolSection, TasksSection, SyncSection, SettingsSection } from './GbpWorkspace';
+import { BusinessAvatar, SECTION_IDS, TAB_ALIAS, TRAFFIC_VIEWS, SectionNav, SectionHead, ClientBar, OverviewSection, PerformanceMetrics, ReviewsSection, ToolSection, TasksSection, SyncSection, SettingsSection } from './GbpWorkspace';
 
 const CTA = { BOOK: 'Book', ORDER: 'Order online', LEARN_MORE: 'Learn more', SIGN_UP: 'Sign up', CALL: 'Call now' };
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
@@ -337,6 +337,11 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
   const section = TAB_ALIAS[tab] || tab;
   const sub = params.get('sub') || (tab === 'hours' || tab === 'faq' ? tab : 'live');
   const setSub = (v) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', 'profile'); n.set('sub', v); return n; }, { replace: true });
+  const trafficView = TRAFFIC_VIEWS.some(v => v.id === params.get('view')) ? params.get('view') : 'snap';
+  const setTrafficView = (v) => {
+    setParams(p => { const n = new URLSearchParams(p); n.set('tab', 'performance'); n.set('view', v); return n; }, { replace: true });
+    setTimeout(() => document.getElementById('website-traffic')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
   const go = (id, s) => { if (id === 'profile' && s) setSub(s); else setTab(id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const [syncing, setSyncing] = useState(false);
   const [panel, setPanel] = useState(null); // an edit panel that opens on this page, so nothing navigates away
@@ -351,7 +356,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
       <ClientBar b={b} onConnect={onConnect} onSync={sync} />
       {!(b.gbp_location && b.connection_id) && <ListingStatus b={b} toast={toast} onFind={() => { onConnect('email'); setTimeout(() => document.querySelector('input[aria-label="Business email"]')?.focus(), 400); }} />}
       <div className="grid grid-cols-1 lg:grid-cols-[230px_minmax(0,1fr)] gap-5 items-start">
-        <SectionNav value={section} onChange={(id) => go(id)} />
+        <SectionNav value={section} onChange={(id) => go(id)} trafficView={trafficView} onTrafficView={setTrafficView} />
         <div className="min-w-0" key={version}>
           {section === 'overview' && <OverviewSection b={b} go={go} onOpen={setPanel} />}
           {section === 'profile' && (
@@ -367,7 +372,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
           {section === 'performance' && (
             <>
               <SectionHead title="Performance" subtitle="How customers find and act on the profile" sources={['google']} />
-              <div className="space-y-4"><PerformanceMetrics b={b} /><InsightsTab b={b} /><BusinessTraffic b={b} /></div>
+              <div className="space-y-4"><PerformanceMetrics b={b} /><InsightsTab b={b} /><BusinessTraffic b={b} view={trafficView} /></div>
             </>
           )}
           {section === 'reviews' && <ReviewsSection b={b} toast={toast} />}

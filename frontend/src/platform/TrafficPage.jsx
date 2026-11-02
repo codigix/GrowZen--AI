@@ -365,7 +365,7 @@ function Realtime({ email, property, name, pages }) {
   );
 }
 
-function Page({ defaultEmail = '', defaultWebsite = '', auto = false }) {
+function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: viewProp }) {
   const last = readLast();
   const [email, setEmail] = useState(defaultEmail || last.email || '');
   const [website, setWebsite] = useState(defaultWebsite || (defaultEmail ? '' : last.website) || '');
@@ -373,7 +373,8 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState('snap');
+  const [viewState, setView] = useState('snap');
+  const view = viewProp || viewState; // embedded in a workspace, the view comes from its inner sidebar
   const chosenProperty = useRef(null); // a property picked from the "No property matched" list stays picked while the period changes
   const requestNo = useRef(0); // only the latest request may update the page
 
@@ -469,7 +470,7 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false }) {
       {data?.matched && data.found_by === 'website' && <p className="text-12 text-slate-500">Found through the connected Google account <b>{data.email}</b>.</p>}
       {data?.matched && (
         <>
-          <Tabs tabs={[{ id: 'snap', label: 'Reports snapshot' }, { id: 'overview', label: 'Overview' }, { id: 'rt', label: 'Realtime overview' }, { id: 'rtp', label: 'Realtime pages' }]} value={view} onChange={setView} />
+          {!viewProp && <Tabs tabs={[{ id: 'snap', label: 'Reports snapshot' }, { id: 'overview', label: 'Overview' }, { id: 'rt', label: 'Realtime overview' }, { id: 'rtp', label: 'Realtime pages' }]} value={view} onChange={setView} />}
           {view === 'snap' && data.reports.map(r => <Snapshot key={r.property} r={r} />)}
           {view === 'overview' && data.reports.map(r => <Report key={r.property} r={r} />)}
           {(view === 'rt' || view === 'rtp') && data.reports.map(r => <Realtime key={`${r.property}-${view}`} email={data.email} property={r.property} name={r.property_name} pages={view === 'rtp'} />)}
@@ -482,14 +483,14 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false }) {
 }
 
 /** Website traffic for one client, inside its Business Profile workspace: uses the client's connected Google email and website. */
-export function BusinessTraffic({ b }) {
+export function BusinessTraffic({ b, view }) {
   const live = useApi(`/businesses/${b.id}/gbp/live`);
   if (!live.data) return <Empty>{live.error ? live.error.message : 'Loading…'}</Empty>;
   const email = live.data.connection?.email || '';
   return (
-    <div className="space-y-2">
+    <div id="website-traffic" className="space-y-2 scroll-mt-24">
       <h2 className="text-15 font-semibold text-slate-900 pt-2">Website traffic <span className="text-12 font-normal text-slate-400">· Google Analytics 4</span></h2>
-      <Page key={`${b.id}-${email}`} defaultEmail={email} defaultWebsite={b.website || ''} auto />
+      <Page key={`${b.id}-${email}`} defaultEmail={email} defaultWebsite={b.website || ''} auto view={view} />
     </div>
   );
 }
