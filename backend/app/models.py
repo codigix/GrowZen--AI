@@ -239,6 +239,11 @@ class Article(TimestampMixin, Base):
     generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     wp_post_id: Mapped[str | None] = mapped_column(String(40))
     wp_url: Mapped[str | None] = mapped_column(String(500))
+    # The post on the business's website: publish | draft | pending | future (scheduled by the site) | scheduled (held by
+    # GrowZen) | deleted. Post id and URL are kept after a delete so the history shows what was removed.
+    wp_status: Mapped[str | None] = mapped_column(String(20))
+    publish_method: Mapped[str | None] = mapped_column(String(20))  # wordpress | ghost | shopify | github | webhook
+    wp_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SiteIntegration(TimestampMixin, Base):

@@ -132,6 +132,13 @@ def _post_signed(url: str, secret: str, payload: dict) -> httpx.Response:
 
 
 # Publishing
+def existing_wp_post(row: SiteIntegration, a: Article) -> str | None:
+    """The WordPress post this article already has on this site (publishing again updates it instead of creating a copy)."""
+    if row.method != "wordpress" or not a.wp_post_id or a.wp_status == "deleted" or (a.publish_method or "wordpress") != "wordpress":
+        return None
+    return a.wp_post_id if str(a.wp_post_id).isdigit() else None
+
+
 def publish(row: SiteIntegration, a: Article, mode: str, when: datetime | None) -> dict:
     """mode: draft | publish | schedule. Returns {id, url, status, steps}."""
     steps = [{"step": "Prepare the article", "ok": True, "detail": f"{len((a.body or '').split())} words, title: {a.title or a.keyword}"}]
@@ -157,9 +164,17 @@ def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: dateti
     if mode == "schedule":
         payload["date_gmt"] = when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     base = row.base_url.rstrip("/")
+    existing = existing_wp_post(row, a)
     try:
         with site_client(45) as c:
-            r = c.post(f"{base}/wp-json/wp/v2/posts", json=payload, auth=_wp_auth(row))
+            r = None
+            if existing:  # already on the site: update that post, never create a duplicate
+                r = c.post(f"{base}/wp-json/wp/v2/posts/{existing}", json=payload, auth=_wp_auth(row))
+                if r.status_code in (404, 410):  # removed on the website in the meantime: create it again
+                    steps.append({"step": "Find the existing post", "ok": True, "detail": f"Post #{existing} no longer exists on the site; creating a new one"})
+                    existing, r = None, None
+            if r is None:
+                r = c.post(f"{base}/wp-json/wp/v2/posts", json=payload, auth=_wp_auth(row))
             if r.status_code in (401, 403):
                 steps.append({"step": "Send to WordPress", "ok": False, "detail": "WordPress refused the login. Reconnect the website."})
                 raise PublishError("WordPress refused the login. Reconnect the website.")
@@ -167,7 +182,7 @@ def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: dateti
                 steps.append({"step": "Send to WordPress", "ok": False, "detail": f"{r.status_code}: {r.text[:140]}"})
                 raise PublishError(f"WordPress refused the post ({r.status_code}): {r.text[:200]}")
             d = r.json()
-            steps.append({"step": "Send to WordPress", "ok": True, "detail": f"Post #{d.get('id')} created as {d.get('status')}"})
+            steps.append({"step": "Send to WordPress", "ok": True, "detail": f"Post #{d.get('id')} {'updated' if existing else 'created'} as {d.get('status')}"})
             # WordPress downgrades a post to draft or pending when the user lacks the publish permission.
             if d.get("status") != wp_status:
                 steps.append({"step": "Confirm the post status", "ok": False, "detail": f"WordPress saved it as '{d.get('status')}'. The user may not have permission to publish."})
@@ -183,6 +198,56 @@ def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: dateti
     except (httpx.HTTPError, SSRFValidationError) as exc:
         steps.append({"step": "Send to WordPress", "ok": False, "detail": str(exc)[:140]})
         raise PublishError(f"Could not reach WordPress: {str(exc)[:160]}") from exc
+
+
+def delete_wordpress(row: SiteIntegration, post_id: str) -> dict:
+    """Permanently delete ONE WordPress post by its id: DELETE /wp-json/wp/v2/posts/{id}?force=true (skips the Trash).
+    Success only when WordPress answers {"deleted": true, "previous": {"id": <the same id>}}. A post that no longer
+    exists (404 rest_post_invalid_id) counts as already deleted. Anything else raises PublishError with WordPress's message.
+    Returns {steps, already_gone}."""
+    steps: list[dict] = []
+    pid = str(post_id or "").strip()
+    if not pid.isdigit():
+        raise PublishError("This article has no WordPress post id, so there is nothing to delete on the website.")
+    if row.method != "wordpress":
+        raise PublishError("Deleting from the website is available for WordPress sites only.")
+    base = row.base_url.rstrip("/")
+
+    def wp_message(r: httpx.Response) -> str:
+        try:
+            d = r.json()
+            return f"{d.get('message') or r.text[:160]} ({d.get('code') or r.status_code})"
+        except ValueError:
+            return f"{r.status_code}: {r.text[:160]}"
+
+    try:
+        with site_client(30) as c:
+            r = c.delete(f"{base}/wp-json/wp/v2/posts/{pid}", params={"force": "true"}, auth=_wp_auth(row))
+    except (httpx.HTTPError, SSRFValidationError) as exc:
+        steps.append({"step": "Delete the post on WordPress", "ok": False, "detail": str(exc)[:140]})
+        raise PublishError(f"Could not reach WordPress: {str(exc)[:160]}") from exc
+
+    if r.status_code == 404:
+        try:
+            code = r.json().get("code")
+        except ValueError:
+            code = None
+        if code == "rest_post_invalid_id":
+            steps.append({"step": "Delete the post on WordPress", "ok": True, "detail": f"Post #{pid} was already removed from the website"})
+            return {"steps": steps, "already_gone": True}
+    if r.status_code in (401, 403):
+        raise PublishError(f"WordPress refused to delete post #{pid}: {wp_message(r)}. The connected user needs permission to delete posts; reconnect if the password changed.")
+    if r.status_code >= 400:
+        raise PublishError(f"WordPress could not delete post #{pid}: {wp_message(r)}")
+    try:
+        d = r.json()
+    except ValueError:
+        raise PublishError(f"WordPress answered {r.status_code} but not with JSON, so the delete could not be confirmed.") from None
+    prev_id = str((d.get("previous") or {}).get("id", ""))
+    if d.get("deleted") is not True or prev_id != pid:
+        raise PublishError(f"WordPress did not confirm deleting post #{pid} (answer: deleted={d.get('deleted')}, id={prev_id or '?'}). The post was left as it is.")
+    steps.append({"step": "Delete the post on WordPress", "ok": True, "detail": f"Post #{pid} permanently deleted"})
+    return {"steps": steps, "already_gone": False}
 
 
 def _publish_webhook(row: SiteIntegration, a: Article, mode: str, when: datetime | None, steps: list[dict]) -> dict:
@@ -266,6 +331,7 @@ def run_due_scheduled(db, now: datetime | None = None, limit: int = 20) -> int:
             out = publish(row, a, "publish", None)
             sp_row.status, sp_row.result, sp_row.error, sp_row.finished_at = "published", {k: out.get(k) for k in ("id", "url", "status")}, None, now
             a.wp_post_id, a.wp_url = out["id"] or None, out["url"] or None
+            a.wp_status, a.publish_method, a.wp_deleted_at = out.get("status") or "publish", row.method, None
             log(db, "scheduler", "post_published", sp_row.business_id, article_id=sp_row.article_id, url=out.get("url"))
             done += 1
         except PublishError as exc:

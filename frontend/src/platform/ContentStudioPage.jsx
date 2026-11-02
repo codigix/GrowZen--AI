@@ -12,7 +12,7 @@ import {
 import { rng, shortDate, daysBack, ymd } from './seoMock';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
 import { api, fmt, useApi, usePoll } from './seoApi';
-import SitePublishPanel from './SitePublishPanel';
+import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } from './SitePublishPanel';
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
 
@@ -290,18 +290,33 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
   const [busy, error, run] = useAction();
   const [ask, confirmNode] = useDoubleConfirm();
   const retry = (id) => run(`r-${id}`, async () => { await api(`/businesses/${b.id}/articles/${id}/retry`, { method: 'POST' }); reload(true); });
-  const del = (id) => ask({ what: 'this article', effect: 'The article and its generated content are deleted.', onConfirm: () => run(`d-${id}`, async () => { await api(`/businesses/${b.id}/articles/${id}`, { method: 'DELETE' }); if (openId === id) onOpen(null); reload(true); }) });
+  const del = (x) => ask({
+    what: 'this article',
+    effect: canDeletePost(x)
+      ? 'The article and its generated content are deleted from GrowZen. Its post stays on your website: use "Delete post" first to remove it there.'
+      : 'The article and its generated content are deleted.',
+    onConfirm: () => run(`d-${x.id}`, async () => { await api(`/businesses/${b.id}/articles/${x.id}`, { method: 'DELETE' }); if (openId === x.id) onOpen(null); reload(true); })
+  });
+  const [deletedNote, setDeletedNote] = useState('');
+  const [askDeletePost, deletePostNode] = useDeleteWebsitePost(b, (updated, r) => {
+    setDeletedNote(r.already_gone ? `"${updated.title || updated.keyword}" was already gone from your website; marked as deleted.` : `"${updated.title || updated.keyword}" was permanently deleted from your website.`);
+    reload(true);
+  });
   const done = articles.filter(a => a.status === 'completed').length;
 
   return (
     <Card title="Generated articles" subtitle={`${done} of ${articles.length} written by Claude AI. Each article covers all the keywords you selected and is saved separately.`}>
       {confirmNode}
+      {deletePostNode}
+      {deletedNote && <div className="mb-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[12px] text-emerald-800 flex items-center gap-2"><CheckCircle2 size={13} /> {deletedNote}<button type="button" className="ml-auto text-emerald-700 hover:underline cursor-pointer" onClick={() => setDeletedNote('')}>Dismiss</button></div>}
       <ul className="divide-y divide-slate-100">
         {articles.map(x => {
           const [label, tone] = ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending;
+          const site = postStatusOf(x);
           return (
             <li key={x.id} className={`py-2.5 flex flex-wrap items-center gap-3 text-[12.5px] ${openId === x.id ? 'bg-indigo-50/60 -mx-2 px-2 rounded-lg' : ''}`}>
               <Badge tone={tone}>{x.status === 'generating' && <RefreshCw size={11} className="animate-spin" />}{label}</Badge>
+              {site && <Badge tone={site[1]} title={x.wp_post_id ? `Website post #${x.wp_post_id}` : undefined}>{site[0]}</Badge>}
               <div className="flex-1 min-w-[200px]">
                 <div className="font-semibold text-slate-900">{x.title || x.keyword}</div>
                 <div className="text-[11px] text-slate-500">Keywords: {[x.keyword, ...(x.secondary_keywords || [])].join(', ')}{x.error ? <span className="text-red-600"> · {x.error}</span> : null}</div>
@@ -312,12 +327,13 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
                   </div>
                 )}
               </div>
-              {x.wp_url && <a href={x.wp_url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-700 hover:underline">On your website</a>}
+              {x.wp_url && x.wp_status !== 'deleted' && <a href={x.wp_url} target="_blank" rel="noreferrer" className="text-[11.5px] font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1">View website <ExternalLink size={10} /></a>}
+              {canDeletePost(x) && <button type="button" className="text-[11.5px] font-semibold text-rose-600 hover:underline cursor-pointer" onClick={() => askDeletePost(x)}>Delete post</button>}
               {x.status === 'completed' && (openId === x.id
                 ? <span className="text-[11.5px] font-semibold text-emerald-700">Open above in Pipeline</span>
                 : <button type="button" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => handleOpen(x.id)}>Review & edit</button>)}
               {x.status === 'failed' && <button type="button" disabled={busy === `r-${x.id}`} className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => retry(x.id)}>Retry</button>}
-              <button type="button" disabled={busy === `d-${x.id}`} className="text-[11.5px] text-slate-400 hover:text-red-600 cursor-pointer" onClick={() => del(x.id)}>Delete</button>
+              <button type="button" disabled={busy === `d-${x.id}`} className="text-[11.5px] text-slate-400 hover:text-red-600 cursor-pointer" title="Remove from GrowZen" onClick={() => del(x)}>Delete</button>
             </li>
           );
         })}
@@ -944,6 +960,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             article={selectedArticle}
             toast={toast}
             defaultWhen={scheduledDate}
+            onChanged={() => { if (onSaved) onSaved(); }}
             onPublished={(r, mode, when) => {
               if (mode === 'schedule' && onScheduled) {
                 onScheduled({

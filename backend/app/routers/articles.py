@@ -180,6 +180,33 @@ def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business
     except sp.PublishError as exc:
         raise HTTPException(502, str(exc))
     a.wp_post_id, a.wp_url = out["id"] or None, out["url"] or None
+    a.wp_status = out.get("status") or {"draft": "draft", "publish": "publish", "schedule": "future"}[body.mode]
+    a.publish_method, a.wp_deleted_at = target.method, None
+    db.commit()
+    return {**out, "article": row(a)}
+
+
+@router.delete("/{article_id}/website-post")
+def delete_website_post(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Permanently delete this article's post from the WordPress site (by its stored post id only; force=true).
+    The article stays in GrowZen with status 'deleted' and keeps the post id and URL for the history.
+    On any failure the post status is left unchanged and WordPress's error is returned."""
+    from ..models import ScheduledPost
+    a = _get(db, b, article_id)
+    if not a.wp_post_id or a.wp_status == "deleted":
+        raise HTTPException(409, "This article has no post on the website to delete.")
+    if (a.publish_method or "wordpress") != "wordpress":
+        raise HTTPException(409, "Deleting from the website is available for posts published to WordPress only.")
+    target = _target(db, b)
+    if target.method != "wordpress":
+        raise HTTPException(409, "The connected website is not WordPress, so the post cannot be deleted from here.")
+    try:
+        out = sp.delete_wordpress(target, a.wp_post_id)
+    except sp.PublishError as exc:
+        raise HTTPException(502, str(exc))
+    a.wp_status, a.wp_deleted_at = "deleted", datetime.now(timezone.utc)
+    for p in db.scalars(select(ScheduledPost).where(ScheduledPost.article_id == a.id, ScheduledPost.status == "pending")):
+        p.status = "cancelled"  # nothing held for later should bring it back
     db.commit()
     return {**out, "article": row(a)}
 
@@ -193,6 +220,8 @@ def _hold_for_later(db: Session, b: Business, a: Article, target: SiteIntegratio
         old.status = "cancelled"  # scheduling the same article again replaces the earlier time
     p = ScheduledPost(business_id=b.id, article_id=a.id, method=target.method, due_at=when)
     db.add(p)
+    if a.wp_status in (None, "deleted", "scheduled"):  # not on the site yet: show it as scheduled
+        a.wp_status, a.publish_method = "scheduled", target.method
     db.commit()
     steps = [{"step": "Prepare the article", "ok": True, "detail": f"{len((a.body or '').split())} words, title: {a.title or a.keyword}"},
              {"step": "Schedule it", "ok": True, "detail": f"GrowZen will publish it to your website at {when.strftime('%d %b %Y %H:%M')} UTC"}]

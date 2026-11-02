@@ -580,8 +580,6 @@ def article_schema(*, title: str, description: str, body: str, primary: str, sec
         **({"image": b.cover_photo} if (b.cover_photo or "").startswith("http") else {}),
         "author": {"@type": "Organization", "name": b.name, **({"url": site} if site_ok else {})},
         "publisher": publisher,
-        "datePublished": iso(published),
-        "dateModified": iso(modified or published),
         "inLanguage": lang,
         "keywords": keywords,
         "about": {"@type": "Thing", "name": main_topic[:1].upper() + main_topic[1:]},

@@ -1,7 +1,54 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, XCircle, Loader2, RefreshCw, ExternalLink, Globe, KeyRound, Unplug, Send, Copy, Clock, Trash2, AlertTriangle } from 'lucide-react';
-import { Badge, Button, Field, inputCls, useDoubleConfirm } from './SeoUi';
+import { Badge, Button, Field, Modal, inputCls, useDoubleConfirm } from './SeoUi';
 import { api, fmtDateTime } from './seoApi';
+
+/** The article's post on the website: label + badge tone per stored wp_status. */
+export const POST_STATUS = {
+  publish: ['Published', 'green'], draft: ['Draft', 'gray'], pending: ['Draft', 'gray'], private: ['Private', 'gray'],
+  future: ['Scheduled', 'amber'], scheduled: ['Scheduled', 'amber'], deleted: ['Deleted', 'red']
+};
+export const postStatusOf = (a) => (a?.wp_status ? POST_STATUS[a.wp_status] || [a.wp_status, 'gray'] : a?.wp_url ? POST_STATUS.publish : null);
+/** A post GrowZen can delete: it is on a WordPress site, has its post id, and is not deleted yet. */
+export const canDeletePost = (a) => Boolean(a?.wp_post_id && a.wp_status !== 'deleted' && a.wp_status !== 'scheduled' && (a.publish_method || 'wordpress') === 'wordpress');
+
+/**
+ * Permanently delete an article's WordPress post, after an explicit confirmation.
+ * Returns [askDelete(article), node]; node holds the confirmation dialog (render it once).
+ * On success onDeleted(updatedArticle) runs; on failure the dialog shows WordPress's error and nothing changes.
+ */
+export function useDeleteWebsitePost(b, onDeleted) {
+  const [target, setTarget] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const close = () => { if (!busy) { setTarget(null); setError(''); } };
+  const confirm = () => {
+    setBusy(true); setError('');
+    api(`/businesses/${b.id}/articles/${target.id}/website-post`, { method: 'DELETE' })
+      .then(r => { setTarget(null); if (onDeleted) onDeleted(r.article, r); })
+      .catch(e => setError(e.message || String(e)))
+      .finally(() => setBusy(false));
+  };
+  const node = (
+    <Modal open={Boolean(target)} onClose={close} width="max-w-md" title="Delete post from your website"
+      footer={<><Button onClick={close} disabled={busy}>Cancel</Button>
+        <Button busy={busy} onClick={confirm} className="!bg-rose-600 !text-white !border-rose-600 hover:!bg-rose-700">Permanently Delete</Button></>}>
+      <div className="space-y-3 text-13 text-slate-700">
+        <p className="font-semibold text-slate-900">Are you sure you want to permanently delete this article from your WordPress website?</p>
+        <div className="rounded bg-slate-50 ring-1 ring-inset ring-slate-200 px-3 py-2 text-12">
+          <div className="font-semibold text-slate-800">{target?.title || target?.keyword}</div>
+          <div className="text-slate-500">WordPress post #{target?.wp_post_id}{target?.wp_url ? ` · ${target.wp_url}` : ''}</div>
+        </div>
+        <div className="flex items-start gap-2 rounded bg-rose-50 ring-1 ring-inset ring-rose-200 px-3 py-2 text-12 text-rose-800">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+          <span>Only this post is removed, and it skips the WordPress Trash, so it cannot be restored there. The article stays in GrowZen.</span>
+        </div>
+        {error && <p className="text-12 text-rose-700">Not deleted: {error}</p>}
+      </div>
+    </Modal>
+  );
+  return [(a) => { setError(''); setTarget(a); }, node];
+}
 
 const METHODS = {
   wordpress: { label: 'WordPress', short: 'WordPress REST API', expect: ['Reach the website', 'Find the WordPress REST API', 'Sign in with the application password', 'Check permission to write posts'] },
@@ -145,8 +192,16 @@ function ConnectFields({ method, form, setForm, website, toast }) {
 
 const canConnect = (method, f) => Boolean(f.secret && (method === 'github' ? f.repo : f.url) && (method !== 'wordpress' || f.username));
 
-export default function SitePublishPanel({ b, article, toast, onPublished, defaultWhen }) {
+export default function SitePublishPanel({ b, article, toast, onPublished, onChanged, defaultWhen }) {
   const [integ, setInteg] = useState(null);
+  // The article's post on the website (id, url, status), updated from publish/delete answers without a page reload
+  const [post, setPost] = useState(article);
+  useEffect(() => { setPost(article); }, [article?.id, article?.wp_status, article?.wp_post_id, article?.wp_url]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [askDelete, deleteNode] = useDeleteWebsitePost(b, (updated, r) => {
+    setPost(updated); setResult(null); setPubSteps(r.steps || []);
+    toast(r.already_gone ? 'The post was already removed from your website; marked as deleted.' : 'Post permanently deleted from your website.');
+    if (onChanged) onChanged(updated);
+  });
   const [ask, confirmNode] = useDoubleConfirm();
   const [loadError, setLoadError] = useState('');
   const [detecting, setDetecting] = useState(false);
@@ -221,6 +276,7 @@ export default function SitePublishPanel({ b, article, toast, onPublished, defau
     api(`/businesses/${b.id}/articles/${article.id}/publish`, { method: 'POST', body })
       .then(r => {
         setPubSteps(r.steps); setResult(r); loadScheduled();
+        if (r.article) setPost(r.article);
         toast(mode === 'draft' ? 'Saved as a draft on your website.' : mode === 'publish' ? 'Published on your website.' : 'Scheduled.');
         if (onPublished) onPublished(r, mode, when);
       })
@@ -242,11 +298,14 @@ export default function SitePublishPanel({ b, article, toast, onPublished, defau
     { id: 'schedule', title: 'Schedule', hint: heldByUs ? 'GrowZen publishes it at the chosen time' : 'The website publishes it at the chosen time' }
   ];
   const pending = scheduled.filter(s => s.status === 'pending');
+  const postStatus = postStatusOf(post);
+  const onSite = Boolean(post?.wp_post_id && post.wp_status !== 'deleted' && (post.publish_method || 'wordpress') === 'wordpress');
   const order = [...new Set([rec, ...(pub?.alternatives || []), 'wordpress', 'github', 'ghost', 'shopify', 'webhook'].filter(m => METHODS[m]))];
 
   return (
     <div className="max-w-2xl space-y-5 text-[12px]">
       {confirmNode}
+      {deleteNode}
       {/* 1 Detect */}
       <section className="space-y-2">
         <Num n={1} done={Boolean(det?.reachable)}>Your website&apos;s technology</Num>
@@ -320,7 +379,7 @@ export default function SitePublishPanel({ b, article, toast, onPublished, defau
 
       {/* 3 Publish */}
       <section className={`space-y-2 ${connected ? '' : 'opacity-50 pointer-events-none'}`}>
-        <Num n={3} done={Boolean(result)}>Publish this article</Num>
+        <Num n={3} done={Boolean(result) || post?.wp_status === 'publish'}>Publish this article</Num>
         <div className="grid grid-cols-3 gap-2">
           {modes.map(m => (
             <button key={m.id} type="button" onClick={() => setMode(m.id)}
@@ -335,20 +394,46 @@ export default function SitePublishPanel({ b, article, toast, onPublished, defau
             <input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} className={inputCls} />
           </Field>
         )}
+        {onSite && integ?.method === 'wordpress' && (
+          <p className="text-slate-600">This article is already on your website as post #{post.wp_post_id}. Publishing again updates that post instead of creating a duplicate.</p>
+        )}
         <div className="flex items-center gap-2">
           <Button variant="primary" icon={Send} busy={publishing} disabled={!article || (mode === 'schedule' && !when)} onClick={publish}>
-            {mode === 'draft' ? 'Save draft to website' : mode === 'publish' ? 'Publish to website' : 'Schedule'}
+            {onSite && integ?.method === 'wordpress'
+              ? (mode === 'draft' ? 'Update post as draft' : mode === 'publish' ? 'Update and publish' : 'Update and schedule')
+              : (mode === 'draft' ? 'Save draft to website' : mode === 'publish' ? 'Publish to website' : 'Schedule')}
           </Button>
           {!article && <span className="text-slate-500">Generate an article in the earlier steps first.</span>}
         </div>
         <Checklist steps={pubSteps} expect={PUBLISH_EXPECT} busy={publishing} />
-        {result && (
-          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-800 flex flex-wrap items-center gap-2">
-            <CheckCircle2 size={16} />
-            <span className="font-semibold">{result.status === 'publish' ? 'Live' : result.status === 'scheduled' ? 'Scheduled by GrowZen' : result.status === 'future' ? 'Scheduled' : 'Draft saved'} on {site}</span>
-            {result.url && <a href={result.url} target="_blank" rel="noreferrer" className="ml-auto text-indigo-700 hover:underline inline-flex items-center gap-1">Open the post <ExternalLink size={11} /></a>}
-          </div>
-        )}
+        {postStatus && (() => {
+          const [label, tone] = postStatus;
+          const deleted = post.wp_status === 'deleted';
+          const live = post.wp_status === 'publish' || (!post.wp_status && post.wp_url);
+          const where = (post.publish_method || integ?.method) === 'wordpress' ? 'WordPress' : 'your website';
+          const box = deleted ? 'bg-slate-50 border-slate-200 text-slate-700' : live ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-800' : 'bg-amber-500/10 border-amber-500/25 text-amber-900';
+          return (
+            <div className={`p-3.5 rounded-xl border space-y-2 ${box}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                {deleted ? <Trash2 size={15} /> : <CheckCircle2 size={16} />}
+                <Badge tone={tone}>{label}</Badge>
+                <span className="font-semibold text-slate-900 truncate max-w-[340px]">{post.title || post.keyword}</span>
+              </div>
+              <div className="text-[11.5px]">
+                {deleted ? <>Permanently deleted from {where}{post.wp_deleted_at ? ` on ${fmtDateTime(post.wp_deleted_at)}` : ''} · post #{post.wp_post_id} · kept here in your history</>
+                  : live ? <>Live on {where}{result && result.status === 'publish' ? ' · Published successfully' : ''}{post.wp_post_id ? ` · post #${post.wp_post_id}` : ''}</>
+                    : post.wp_status === 'scheduled' ? <>Held by GrowZen and published at the chosen time</>
+                      : <>{label} on {where}{post.wp_post_id ? ` · post #${post.wp_post_id}` : ''}{post.wp_status === 'future' ? ' · WordPress publishes it at the chosen time' : ''}</>}
+              </div>
+              {!deleted && (post.wp_url || canDeletePost(post)) && (
+                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  {post.wp_url && <a href={post.wp_url} target="_blank" rel="noreferrer" className="h-8 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1.5 font-semibold"><ExternalLink size={12} /> View website</a>}
+                  {canDeletePost(post) && <button type="button" onClick={() => askDelete(post)} className="h-8 px-3 rounded-lg border border-rose-200 bg-white text-rose-700 hover:bg-rose-50 inline-flex items-center gap-1.5 font-semibold cursor-pointer"><Trash2 size={12} /> Delete post</button>}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {scheduled.length > 0 && (
           <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
             <div className="px-3 py-2 font-bold text-slate-700 flex items-center gap-1.5"><Clock size={13} /> Held by GrowZen for later</div>
