@@ -267,6 +267,53 @@ def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business
     return {**out, "article": row(a)}
 
 
+def _react_conn(db: Session, b: Business):
+    from ..models import ReactSiteConnection
+    conn = db.scalar(select(ReactSiteConnection).where(ReactSiteConnection.business_id == b.id))
+    if not conn or not conn.api_key_enc or conn.status != "connected":
+        raise HTTPException(409, "Connect the React.js website first (Publish & Schedule > React.js Website > Test Connection).")
+    return conn
+
+
+@router.post("/{article_id}/publish-react")
+def publish_react(article_id: int, body: PublishIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Publish (or update) this article on the React.js website through its blog API. WordPress publishing is unaffected."""
+    from ..services import react_site as rs
+    a = _get(db, b, article_id)
+    if a.status != "completed":
+        raise HTTPException(409, "Only a completed article can be published")
+    if get_settings().blog_featured_image_required and not fi.path_of(a.featured_image_path):
+        raise HTTPException(422, "Add a featured image before publishing (Featured image section, above the article body).")
+    conn = _react_conn(db, b)
+    when = body.scheduled_at.astimezone(timezone.utc) if body.scheduled_at and body.scheduled_at.tzinfo else None
+    try:
+        out = rs.publish(conn, a, body.mode, when)
+    except rs.ReactSiteError as exc:
+        raise HTTPException(502, str(exc))
+    a.react_post_id, a.react_url, a.react_status = out["id"], out["url"], out["status"]
+    if out.get("image_url"):
+        a.react_image_url, a.react_image_path = out["image_url"], a.featured_image_path
+    db.commit()
+    return {**out, "article": row(a)}
+
+
+@router.delete("/{article_id}/react-post")
+def delete_react_post(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Delete this article's post from the React.js website (by its stored id only). The article stays in GrowZen."""
+    from ..services import react_site as rs
+    a = _get(db, b, article_id)
+    if not a.react_post_id or a.react_status == "deleted":
+        raise HTTPException(409, "This article has no post on the React.js website to delete.")
+    conn = _react_conn(db, b)
+    try:
+        out = rs.delete(conn, a.react_post_id)
+    except rs.ReactSiteError as exc:
+        raise HTTPException(502, str(exc))
+    a.react_status = "deleted"
+    db.commit()
+    return {**out, "article": row(a)}
+
+
 @router.delete("/{article_id}/website-post")
 def delete_website_post(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Permanently delete this article's post from the WordPress site (by its stored post id only; force=true).

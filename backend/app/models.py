@@ -251,6 +251,12 @@ class Article(TimestampMixin, Base):
     featured_image_url: Mapped[str | None] = mapped_column(String(500))  # the public URL on the website, once uploaded there
     # what was uploaded and what it became: {original_name, original_format, original_size, width, height, size, saved_percent, page, page_count, ...}
     featured_image_info: Mapped[dict | None] = mapped_column(JSON)
+    # The same article on the React.js website (a separate destination; the wp_* fields stay WordPress-only)
+    react_post_id: Mapped[str | None] = mapped_column(String(80))
+    react_url: Mapped[str | None] = mapped_column(String(500))
+    react_status: Mapped[str | None] = mapped_column(String(20))  # draft | publish | scheduled | deleted
+    react_image_url: Mapped[str | None] = mapped_column(String(500))
+    react_image_path: Mapped[str | None] = mapped_column(String(500))  # which local image react_image_url is a copy of
     wp_media_id: Mapped[str | None] = mapped_column(String(40))
 
 
@@ -269,6 +275,28 @@ class SiteIntegration(TimestampMixin, Base):
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     config: Mapped[dict | None] = mapped_column(JSON)  # method settings that are not secrets: GitHub repo/branch/folder, Shopify blog, Ghost version...
+
+
+class ReactSiteConnection(TimestampMixin, Base):
+    """A second publishing destination next to WordPress: a custom (React.js) website with its own blog API.
+    The site's backend receives the article as JSON over an API key; the key is stored encrypted and never sent to the page."""
+    __tablename__ = "react_site_connections"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), unique=True, index=True)
+    website_name: Mapped[str | None] = mapped_column(String(160))
+    website_url: Mapped[str | None] = mapped_column(String(500))
+    blog_url: Mapped[str | None] = mapped_column(String(500))
+    api_base_url: Mapped[str | None] = mapped_column(String(500))
+    api_key_enc: Mapped[str | None] = mapped_column(Text)  # Fernet-encrypted
+    auth_scheme: Mapped[str] = mapped_column(String(20), default="bearer")  # bearer (Authorization: Bearer) | x-api-key
+    health_endpoint: Mapped[str | None] = mapped_column(String(300))  # GET, must need the key (checks it)
+    publish_endpoint: Mapped[str | None] = mapped_column(String(300))  # POST create, PUT/DELETE {endpoint}/{id}
+    image_endpoint: Mapped[str | None] = mapped_column(String(300))  # POST multipart "image" -> {"url": ...}
+    default_status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | publish | schedule
+    status: Mapped[str] = mapped_column(String(20), default="not_connected")  # not_connected | connected | failed
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ScheduledPost(TimestampMixin, Base):

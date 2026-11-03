@@ -14,6 +14,7 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'rec
 import { api, fmt, useApi, usePoll } from './seoApi';
 import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } from './SitePublishPanel';
 import FeaturedImageField, { featuredOf } from './FeaturedImageField';
+import ReactSitePanel from './ReactSitePanel';
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
 
@@ -317,7 +318,11 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
           return (
             <li key={x.id} className={`py-2.5 flex flex-wrap items-center gap-3 text-[12.5px] ${openId === x.id ? 'bg-indigo-50/60 -mx-2 px-2 rounded-lg' : ''}`}>
               <Badge tone={tone}>{x.status === 'generating' && <RefreshCw size={11} className="animate-spin" />}{label}</Badge>
-              {site && <Badge tone={site[1]} title={x.wp_post_id ? `Website post #${x.wp_post_id}` : undefined}>{site[0]}</Badge>}
+              {site && <Badge tone={site[1]} title={x.wp_post_id ? `WordPress post #${x.wp_post_id}` : undefined}>{site[0]}</Badge>}
+              {x.react_status && (() => {
+                const [l, t] = { publish: ['Published', 'green'], draft: ['Draft', 'gray'], scheduled: ['Scheduled', 'amber'], deleted: ['Deleted', 'red'] }[x.react_status] || [x.react_status, 'gray'];
+                return <Badge tone={t} title={`React.js website post ${x.react_post_id}`}>React · {l}</Badge>;
+              })()}
               <div className="flex-1 min-w-[200px]">
                 <div className="font-semibold text-slate-900">{x.title || x.keyword}</div>
                 <div className="text-[11px] text-slate-500">Keywords: {[x.keyword, ...(x.secondary_keywords || [])].join(', ')}{x.error ? <span className="text-red-600"> · {x.error}</span> : null}</div>
@@ -960,28 +965,71 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
 
         {/* Step 4: Publish & Schedule */}
         {step === 4 && (
-          <SitePublishPanel
-            b={b}
-            article={selectedArticle}
-            featured={featured}
-            toast={toast}
-            defaultWhen={scheduledDate}
-            onChanged={() => { if (onSaved) onSaved(); }}
-            onPublished={(r, mode, when) => {
-              if (mode === 'schedule' && onScheduled) {
-                onScheduled({
-                  title: kw,
-                  slug: kw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
-                  cms: 'Your website',
-                  date: when,
-                  status: 'Scheduled'
-                });
-              }
-              if (onSaved) onSaved();
-            }}
-          />
+          <PublishDestinations b={b}>
+            {(dest) => dest === 'react' ? (
+              <ReactSitePanel b={b} article={selectedArticle} featured={featured} toast={toast} defaultWhen={scheduledDate}
+                onChanged={() => { if (onSaved) onSaved(); }} />
+            ) : (
+              <SitePublishPanel
+                b={b}
+                article={selectedArticle}
+                featured={featured}
+                toast={toast}
+                defaultWhen={scheduledDate}
+                onChanged={() => { if (onSaved) onSaved(); }}
+                onPublished={(r, mode, when) => {
+                  if (mode === 'schedule' && onScheduled) {
+                    onScheduled({
+                      title: kw,
+                      slug: kw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+                      cms: 'Your website',
+                      date: when,
+                      status: 'Scheduled'
+                    });
+                  }
+                  if (onSaved) onSaved();
+                }}
+              />
+            )}
+          </PublishDestinations>
         )}
       </Card>
+    </div>
+  );
+}
+
+/** "Select Blog Publishing Destination": WordPress (the existing flow, unchanged) or the React.js website. */
+function PublishDestinations({ b, children }) {
+  const wp = useApi(`/businesses/${b.id}/site-integration`);
+  const react = useApi(`/businesses/${b.id}/react-site`);
+  const [dest, setDest] = useState(() => { try { return localStorage.getItem(`growzen.dest.${b.id}`) || ''; } catch { return ''; } });
+  const wpOn = wp.data?.status === 'connected';
+  const reactOn = react.data?.status === 'connected';
+  const chosen = dest || (!wpOn && reactOn ? 'react' : 'wordpress');
+  const pick = (d) => { setDest(d); try { localStorage.setItem(`growzen.dest.${b.id}`, d); } catch { /* this page only */ } };
+  const cards = [
+    { id: 'wordpress', title: 'WordPress', on: wpOn, loading: !wp.data && !wp.error, target: wp.data?.base_url || b.website },
+    { id: 'react', title: 'React.js Website', on: reactOn, loading: !react.data && !react.error, failed: react.data?.status === 'failed', target: react.data?.blog_url || react.data?.website_url }
+  ];
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Select blog publishing destination</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl">
+          {cards.map(c => (
+            <button key={c.id} type="button" onClick={() => pick(c.id)}
+              className={`text-left p-3 rounded-xl border cursor-pointer transition-colors ${chosen === c.id ? 'border-indigo-500 bg-indigo-500/10 ring-1 ring-indigo-500/30' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+              <span className="flex items-center gap-2">
+                <span className="font-bold text-slate-900 text-[13px]">{c.title}</span>
+                {c.loading ? <RefreshCw size={11} className="animate-spin text-slate-400" />
+                  : <Badge tone={c.on ? 'green' : c.failed ? 'red' : 'gray'}>{c.on ? 'Connected' : c.failed ? 'Failed' : 'Not connected'}</Badge>}
+              </span>
+              <span className="block text-[11px] text-slate-500 font-mono truncate mt-0.5">{c.target ? `Target: ${c.target.replace(/^https?:\/\//, '')}` : 'Not set up yet'}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      {children(chosen)}
     </div>
   );
 }
