@@ -395,10 +395,11 @@ function Realtime({ email, property, name, pages }) {
   );
 }
 
-function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: viewProp, initialView = 'snap' }) {
+function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: viewProp, initialView = 'snap', forBusiness = false }) {
   const last = readLast();
-  const [email, setEmail] = useState(defaultEmail || last.email || '');
-  const [website, setWebsite] = useState(defaultWebsite || (defaultEmail ? '' : last.website) || '');
+  // Tied to a business, the form starts from that business only, never from the last search (which may be another business's).
+  const [email, setEmail] = useState(defaultEmail || (forBusiness ? '' : last.email) || '');
+  const [website, setWebsite] = useState(defaultWebsite || (defaultEmail || forBusiness ? '' : last.website) || '');
   const [days, setDays] = useState(last.days || 28);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -450,7 +451,7 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: view
   };
 
   // Embedded in a client's workspace: load as soon as the client's Google account email is known.
-  useEffect(() => { if (auto && email.trim().length >= 3) load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (auto && (email.trim().length >= 3 || website.trim().length >= 3)) load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const needsConnect = error && (error.status === 409 || error.status === 404);
 
@@ -526,6 +527,14 @@ export function BusinessTraffic({ b, view, initialView }) {
   );
 }
 
+/** The standalone page follows the business picked in the top-bar switcher: its website and its connected Google account. */
+function SelectedBusinessTraffic({ b }) {
+  const live = useApi(`/businesses/${b.id}/gbp/live`);
+  if (!live.data && !live.error) return <SkPage header={false} />;
+  const email = live.data?.connection?.email || ''; // no Google Business Profile connection: search by the website alone
+  return <Page key={`${b.id}-${email}`} defaultEmail={email} defaultWebsite={b.website || ''} auto forBusiness />;
+}
+
 export default function TrafficPage() {
-  return <SeoShell title="Website Traffic" subtitle="Visitors, sessions, channels, countries and pages from Google Analytics 4" needsBusiness={false} hideSwitcher>{() => <Page />}</SeoShell>;
+  return <SeoShell title="Website Traffic" subtitle="Visitors, sessions, channels, countries and pages from Google Analytics 4">{(b) => <SelectedBusinessTraffic key={b.id} b={b} />}</SeoShell>;
 }
