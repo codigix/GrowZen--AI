@@ -18,7 +18,23 @@ publication_time, author, …`. GrowZen sends exactly these names.
 
 ## The contract
 
-All requests carry the API key, as chosen in the connection form:
+### Authentication: integration user (default in GrowZen)
+
+GrowZen signs in as a **dedicated integration user** (not the website's main admin) and uses the returned access token:
+
+```
+POST /api/integrations/login     {"username": "erp-integration@codigixinfotech.com", "email": "…", "password": "…"}
+→ 200 {"token": "<JWT>", "expiresIn": 3600}        (also accepted: accessToken / access_token / data.token; expires_in)
+```
+
+Every later request sends `Authorization: Bearer <token>`. GrowZen keeps the token (encrypted) until it expires and
+signs in again automatically when it expires or when the site answers 401. Wrong credentials should answer 401.
+On the website: store the integration user's password as a bcrypt hash, give the token a short expiry (e.g. 1 hour),
+and let that user's token reach only the blog endpoints below.
+
+### Alternative: fixed API key
+
+All requests carry the API key:
 
 ```
 Authorization: Bearer <API_KEY>        (default)

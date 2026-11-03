@@ -288,7 +288,13 @@ class ReactSiteConnection(TimestampMixin, Base):
     blog_url: Mapped[str | None] = mapped_column(String(500))
     api_base_url: Mapped[str | None] = mapped_column(String(500))
     api_key_enc: Mapped[str | None] = mapped_column(Text)  # Fernet-encrypted
-    auth_scheme: Mapped[str] = mapped_column(String(20), default="bearer")  # bearer (Authorization: Bearer) | x-api-key
+    auth_scheme: Mapped[str] = mapped_column(String(20), default="login")  # login (username+password -> token) | bearer / x-api-key (fixed key)
+    # Login authentication: the website's integration user. Password and the current access token are Fernet-encrypted.
+    login_username: Mapped[str | None] = mapped_column(String(255))
+    password_enc: Mapped[str | None] = mapped_column(Text)
+    auth_endpoint: Mapped[str | None] = mapped_column(String(300))  # POST {username/email, password} -> {token, expires_in?}
+    token_enc: Mapped[str | None] = mapped_column(Text)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     health_endpoint: Mapped[str | None] = mapped_column(String(300))  # GET, must need the key (checks it)
     publish_endpoint: Mapped[str | None] = mapped_column(String(300))  # POST create, PUT/DELETE {endpoint}/{id}
     image_endpoint: Mapped[str | None] = mapped_column(String(300))  # POST multipart "image" -> {"url": ...}

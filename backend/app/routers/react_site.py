@@ -1,5 +1,6 @@
 """React.js website connection: a second blog publishing destination next to WordPress (settings, test, disconnect).
-The API key is stored encrypted and never returned to the page (only whether one is saved and its last 4 characters)."""
+Authentication is the website's integration user (username + password -> access token, renewed automatically) or a
+fixed API key. Password, key and token are stored encrypted and never returned to the page."""
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -21,8 +22,11 @@ class ReactSiteIn(BaseModel):
     website_url: str | None = Field(default=None, max_length=500)
     blog_url: str | None = Field(default=None, max_length=500)
     api_base_url: str = Field(min_length=4, max_length=500)
-    api_key: str | None = Field(default=None, max_length=1000)  # empty: keep the saved key
-    auth_scheme: Literal["bearer", "x-api-key"] = "bearer"
+    auth_scheme: Literal["login", "bearer", "x-api-key"] = "login"
+    login_username: str | None = Field(default=None, max_length=255)
+    login_password: str | None = Field(default=None, max_length=500)  # empty: keep the saved password
+    auth_endpoint: str | None = Field(default=None, max_length=300)
+    api_key: str | None = Field(default=None, max_length=1000)  # key schemes only; empty: keep the saved key
     health_endpoint: str | None = Field(default=None, max_length=300)
     publish_endpoint: str = Field(min_length=1, max_length=300)
     image_endpoint: str | None = Field(default=None, max_length=300)
@@ -40,15 +44,19 @@ def get_conn(db: Session, b: Business) -> ReactSiteConnection | None:
 
 
 def public(conn: ReactSiteConnection | None) -> dict:
+    """What the page needs. Never includes the password, key or token."""
     if not conn:
-        return {"status": "not_connected", "has_key": False}
+        return {"status": "not_connected", "auth_scheme": "login", "has_password": False, "has_key": False}
     key = rs.key_of(conn) if conn.api_key_enc else None
     return {
         "status": conn.status, "website_name": conn.website_name, "website_url": conn.website_url, "blog_url": conn.blog_url,
-        "api_base_url": conn.api_base_url, "auth_scheme": conn.auth_scheme, "health_endpoint": conn.health_endpoint,
-        "publish_endpoint": conn.publish_endpoint, "image_endpoint": conn.image_endpoint, "default_status": conn.default_status,
-        "has_key": bool(key), "key_hint": f"••••{key[-4:]}" if key and len(key) >= 8 else ("••••" if key else None),
-        "last_error": conn.last_error, "last_checked_at": _utc(conn.last_checked_at), "last_success_at": _utc(conn.last_success_at),
+        "api_base_url": conn.api_base_url, "auth_scheme": conn.auth_scheme or "login", "login_username": conn.login_username,
+        "auth_endpoint": conn.auth_endpoint, "has_password": bool(conn.password_enc),
+        "has_key": bool(key), "key_hint": f"••••{key[-4:]}" if key and len(key) >= 8 else None,
+        "token_valid_until": _utc(conn.token_expires_at) if conn.token_enc else None,
+        "health_endpoint": conn.health_endpoint, "publish_endpoint": conn.publish_endpoint, "image_endpoint": conn.image_endpoint,
+        "default_status": conn.default_status, "last_error": conn.last_error,
+        "last_checked_at": _utc(conn.last_checked_at), "last_success_at": _utc(conn.last_success_at),
     }
 
 
@@ -60,17 +68,23 @@ def _apply(conn: ReactSiteConnection, body: ReactSiteIn) -> None:
         conn.health_endpoint = rs.normalize_path(body.health_endpoint)
         conn.publish_endpoint = rs.normalize_path(body.publish_endpoint)
         conn.image_endpoint = rs.normalize_path(body.image_endpoint)
+        conn.auth_endpoint = rs.normalize_path(body.auth_endpoint)
     except rs.ReactSiteError as exc:
         raise HTTPException(422, str(exc))
+    changed_login = (body.login_username or "").strip() != (conn.login_username or "") or bool(body.login_password)
     conn.website_name = (body.website_name or "").strip() or None
     conn.auth_scheme, conn.default_status = body.auth_scheme, body.default_status
+    conn.login_username = (body.login_username or "").strip() or None
+    if body.login_password:
+        conn.password_enc = crypto.seal(body.login_password)
     if body.api_key and body.api_key.strip():
         conn.api_key_enc = crypto.seal(body.api_key.strip())
+    if changed_login:  # new credentials: the cached token belongs to the old ones
+        conn.token_enc, conn.token_expires_at = None, None
 
 
 def _run_test(conn: ReactSiteConnection) -> list[dict]:
-    steps, ok = rs.test(website_url=conn.website_url, api_base_url=conn.api_base_url, api_key=rs.key_of(conn), auth_scheme=conn.auth_scheme,
-                        health_endpoint=conn.health_endpoint, publish_endpoint=conn.publish_endpoint)
+    steps, ok = rs.test(conn)
     now = datetime.now(timezone.utc)
     conn.last_checked_at = now
     conn.status = "connected" if ok else "failed"
@@ -87,42 +101,43 @@ def get_connection(b: Business = Depends(get_business), db: Session = Depends(ge
 
 @router.put("")
 def save_connection(body: ReactSiteIn, test: bool = True, b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """Save the configuration (the key encrypted) and, by default, test it right away."""
+    """Save the configuration (secrets encrypted) and, by default, test it right away."""
     conn = get_conn(db, b)
     if not conn:
         conn = ReactSiteConnection(business_id=b.id)
         db.add(conn)
     _apply(conn, body)
-    if not conn.api_key_enc:
-        raise HTTPException(422, "Enter the API authentication key issued by the website's backend.")
+    if not rs.has_credentials(conn):
+        raise HTTPException(422, "Enter the login username/email and password." if conn.auth_scheme == "login" else "Enter the API key issued by the website's backend.")
+    if conn.auth_scheme == "login" and not conn.auth_endpoint:
+        raise HTTPException(422, "Enter the authentication (login) endpoint, for example /api/integrations/login.")
     steps = _run_test(conn) if test else []
-    if not test and conn.status == "not_connected":
-        conn.status = "not_connected"
     db.commit()
     return {"ok": conn.status == "connected", "steps": steps, "connection": public(conn)}
 
 
 @router.post("/test")
 def test_connection(body: ReactSiteIn | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """Test with the form as it is now (nothing saved), or with the saved settings when no body is sent."""
+    """Test Login with the form as it is now (nothing saved), or with the saved settings when no body is sent."""
     saved = get_conn(db, b)
     if body is None:
-        if not saved or not saved.api_key_enc:
+        if not saved or not rs.has_credentials(saved):
             raise HTTPException(409, "Save the React.js website connection first.")
         steps = _run_test(saved)
         db.commit()
         return {"ok": saved.status == "connected", "steps": steps, "connection": public(saved)}
-    probe = ReactSiteConnection(business_id=b.id, api_key_enc=saved.api_key_enc if saved else None)
+    probe = ReactSiteConnection(business_id=b.id, password_enc=saved.password_enc if saved else None,
+                                api_key_enc=saved.api_key_enc if saved else None, login_username=saved.login_username if saved else None)
     _apply(probe, body)
-    steps, ok = rs.test(website_url=probe.website_url, api_base_url=probe.api_base_url, api_key=rs.key_of(probe) if probe.api_key_enc else None,
-                        auth_scheme=probe.auth_scheme, health_endpoint=probe.health_endpoint, publish_endpoint=probe.publish_endpoint)
+    steps, ok = rs.test(probe)
     return {"ok": ok, "steps": steps, "connection": public(saved)}
 
 
 @router.delete("", status_code=204)
 def disconnect(b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """Forget the key and mark the destination not connected (the other settings stay for reconnecting)."""
+    """Forget the password, key and token and mark the destination not connected (other settings stay for reconnecting)."""
     conn = get_conn(db, b)
     if conn:
-        conn.api_key_enc, conn.status, conn.last_error = None, "not_connected", None
+        conn.password_enc = conn.api_key_enc = conn.token_enc = conn.token_expires_at = conn.last_error = None
+        conn.status = "not_connected"
         db.commit()

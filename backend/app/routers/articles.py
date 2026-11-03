@@ -269,10 +269,19 @@ def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business
 
 def _react_conn(db: Session, b: Business):
     from ..models import ReactSiteConnection
+    from ..services import react_site as rs
     conn = db.scalar(select(ReactSiteConnection).where(ReactSiteConnection.business_id == b.id))
-    if not conn or not conn.api_key_enc or conn.status != "connected":
-        raise HTTPException(409, "Connect the React.js website first (Publish & Schedule > React.js Website > Test Connection).")
+    if not conn or not rs.has_credentials(conn) or conn.status != "connected":
+        raise HTTPException(409, "Connect the React.js website first (Publish & Schedule > React.js Website > Test Login).")
     return conn
+
+
+def _react_failed(db: Session, conn, exc) -> None:
+    """Keep the renewed token; a refused login marks the connection 'failed' (shown as Authentication Failed)."""
+    from ..services import react_site as rs
+    if isinstance(exc, rs.AuthFailed):
+        conn.status, conn.last_error = "failed", str(exc)[:500]
+    db.commit()
 
 
 @router.post("/{article_id}/publish-react")
@@ -289,6 +298,7 @@ def publish_react(article_id: int, body: PublishIn, b: Business = Depends(get_bu
     try:
         out = rs.publish(conn, a, body.mode, when)
     except rs.ReactSiteError as exc:
+        _react_failed(db, conn, exc)
         raise HTTPException(502, str(exc))
     a.react_post_id, a.react_url, a.react_status = out["id"], out["url"], out["status"]
     if out.get("image_url"):
@@ -308,6 +318,7 @@ def delete_react_post(article_id: int, b: Business = Depends(get_business), db: 
     try:
         out = rs.delete(conn, a.react_post_id)
     except rs.ReactSiteError as exc:
+        _react_failed(db, conn, exc)
         raise HTTPException(502, str(exc))
     a.react_status = "deleted"
     db.commit()

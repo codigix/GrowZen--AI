@@ -1,20 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, Loader2, Send, Save, Unplug, ExternalLink, Trash2, Settings2, KeyRound, AlertTriangle, Code2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Send, Save, Unplug, ExternalLink, Trash2, Settings2, KeyRound, AlertTriangle, Code2, Eye, EyeOff } from 'lucide-react';
 import { Badge, Button, Field, Modal, inputCls, useDoubleConfirm } from './SeoUi';
 import { api, fmtDateTime } from './seoApi';
 
-export const REACT_STATUS = { connected: ['Connected', 'green'], failed: ['Failed', 'red'], not_connected: ['Not connected', 'gray'] };
+export const REACT_STATUS = { connected: ['Connected', 'green'], failed: ['Authentication Failed', 'red'], not_connected: ['Not connected', 'gray'] };
 const POST_LABEL = { publish: ['Published', 'green'], draft: ['Draft', 'gray'], scheduled: ['Scheduled', 'amber'], deleted: ['Deleted', 'red'] };
 
 const emptyForm = (b) => {
   const site = (b.website || '').replace(/\/$/, '');
   return {
-    website_name: b.name || '', website_url: site, blog_url: site ? `${site}/blog` : '', api_base_url: site, api_key: '',
-    auth_scheme: 'bearer', health_endpoint: '/api/integrations/health', publish_endpoint: '/api/blogs', image_endpoint: '/api/uploads', default_status: 'draft'
+    website_name: b.name || '', website_url: site, blog_url: site ? `${site}/blog` : '', api_base_url: site,
+    auth_scheme: 'login', login_username: '', login_password: '', auth_endpoint: '/api/integrations/login',
+    health_endpoint: '', publish_endpoint: '/api/blogs', image_endpoint: '/api/uploads', default_status: 'draft'
   };
 };
+// The password is never sent back by the server: the field stays empty and an empty value keeps the saved one.
 const fromConn = (c, b) => ({
-  ...emptyForm(b), ...Object.fromEntries(Object.entries(c || {}).filter(([k, v]) => k in emptyForm(b) && v != null)), api_key: ''
+  ...emptyForm(b), ...Object.fromEntries(Object.entries(c || {}).filter(([k, v]) => k in emptyForm(b) && v != null)), login_password: ''
 });
 
 function Num({ n, done, children }) {
@@ -45,8 +47,10 @@ function Steps({ steps, busy }) {
  * Publishing destination: a custom React.js website with its own blog API.
  * 1) the connection (settings saved on the server; the API key is never sent back), 2) publish / update / delete the article.
  */
-export default function ReactSitePanel({ b, article, featured, toast, onChanged, defaultWhen }) {
-  const [conn, setConn] = useState(null);
+export default function ReactSitePanel({ b, article, featured, toast, onChanged, onConnection, defaultWhen }) {
+  const [conn, setConnState] = useState(null);
+  // every connection change (load, save, test, disconnect) is also reported up, so the destination cards stay current
+  const setConn = (c) => { setConnState(c); if (onConnection) onConnection(c); };
   const [form, setForm] = useState(() => emptyForm(b));
   const [editing, setEditing] = useState(false);
   const [steps, setSteps] = useState([]);
@@ -66,11 +70,17 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
   useEffect(() => { load(); }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
-  const body = () => ({ ...form, api_key: form.api_key.trim() || null, health_endpoint: form.health_endpoint || null, image_endpoint: form.image_endpoint || null });
+  const [showPassword, setShowPassword] = useState(false);
+  const [testedOk, setTestedOk] = useState(false);  // Test Login passed for the form as it is now (not saved yet)
+  useEffect(() => { setTestedOk(false); }, [form]);
+  const body = () => ({
+    ...form, auth_scheme: 'login', login_username: form.login_username.trim(), login_password: form.login_password || null,
+    health_endpoint: form.health_endpoint || null, image_endpoint: form.image_endpoint || null
+  });
   const testNow = () => {
     setBusy('test'); setError(''); setSteps([]);
     api(`/businesses/${b.id}/react-site/test`, { method: 'POST', body: body() })
-      .then(r => { setSteps(r.steps); toast(r.ok ? 'Connection works.' : 'The connection test failed: see the steps.'); })
+      .then(r => { setSteps(r.steps); setTestedOk(r.ok); toast(r.ok ? 'Login works. Click Save Configuration to connect.' : 'Authentication failed: see the steps.'); })
       .catch(e => setError(e.message)).finally(() => setBusy(''));
   };
   const save = () => {
@@ -78,12 +88,12 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
     api(`/businesses/${b.id}/react-site`, { method: 'PUT', body: body() })
       .then(r => {
         setSteps(r.steps); setConn(r.connection); setForm(fromConn(r.connection, b));
-        if (r.ok) { setEditing(false); toast('React.js website connected.'); } else toast('Saved, but the connection test failed: see the steps.');
+        if (r.ok) { setEditing(false); toast('React.js website connected.'); } else toast('Saved, but authentication failed: see the steps.');
       })
       .catch(e => setError(e.message)).finally(() => setBusy(''));
   };
   const disconnect = () => ask({
-    what: 'the React.js website connection', effect: 'The saved API key is removed and publishing to this website stops. Posts already on the website stay.',
+    what: 'the React.js website connection', effect: 'The saved login password and access token are removed and publishing to this website stops. Posts already on the website stay.',
     onConfirm: () => api(`/businesses/${b.id}/react-site`, { method: 'DELETE' }).then(() => { setSteps([]); load(); toast('React.js website disconnected.'); }).catch(e => toast(e.message))
   });
 
@@ -102,6 +112,7 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
   };
 
   const connected = conn?.status === 'connected';
+  const ready = Boolean(form.api_base_url && form.publish_endpoint && form.auth_endpoint && form.login_username.trim() && (form.login_password || conn?.has_password));
   const [stLabel, stTone] = REACT_STATUS[conn?.status] || REACT_STATUS.not_connected;
   const onSite = Boolean(post?.react_post_id && post.react_status !== 'deleted');
   const [pLabel, pTone] = POST_LABEL[post?.react_status] || [];
@@ -127,9 +138,9 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
             {conn.blog_url && <a href={conn.blog_url} target="_blank" rel="noreferrer" className="font-mono text-indigo-700 hover:underline truncate max-w-[260px]">{conn.blog_url.replace(/^https?:\/\//, '')}</a>}
             {!editing && (
               <span className="ml-auto flex gap-2">
-                <Button size="sm" icon={Send} busy={busy === 'retest'} onClick={() => { setBusy('retest'); setSteps([]); api(`/businesses/${b.id}/react-site/test`, { method: 'POST' }).then(r => { setSteps(r.steps); setConn(r.connection); }).catch(e => setError(e.message)).finally(() => setBusy('')); }}>Test connection</Button>
+                <Button size="sm" icon={Send} busy={busy === 'retest'} onClick={() => { setBusy('retest'); setSteps([]); api(`/businesses/${b.id}/react-site/test`, { method: 'POST' }).then(r => { setSteps(r.steps); setConn(r.connection); }).catch(e => setError(e.message)).finally(() => setBusy('')); }}>Test Login</Button>
                 <Button size="sm" icon={Settings2} onClick={() => setEditing(true)}>Edit settings</Button>
-                {conn.has_key && <Button size="sm" icon={Unplug} onClick={disconnect}>Disconnect</Button>}
+                {(conn.has_password || conn.has_key) && <Button size="sm" icon={Unplug} onClick={disconnect}>Disconnect</Button>}
               </span>
             )}
           </div>
@@ -151,22 +162,32 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
               </div>
             </div>
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">API connection details</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Login authentication</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <Field label="Login username / email" hint="The website's integration user (not the main admin)">
+                  <input className={inputCls} autoComplete="off" value={form.login_username} onChange={set('login_username')} placeholder="erp-integration@codigixinfotech.com" />
+                </Field>
+                <Field label="Login password" hint={conn.has_password ? 'Saved (encrypted); leave empty to keep it' : 'Stored encrypted on the ERP server, never shown again'}>
+                  <div className="relative">
+                    <KeyRound size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input type={showPassword ? 'text' : 'password'} autoComplete="new-password" className={`${inputCls} pl-8 pr-9`} value={form.login_password}
+                      onChange={set('login_password')} placeholder={conn.has_password ? '••••••••  (saved)' : 'Integration user password'} />
+                    <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer" aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                      {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </Field>
+                <Field label="Authentication endpoint" hint="POST username/email + password → access token"><input className={inputCls} value={form.auth_endpoint} onChange={set('auth_endpoint')} placeholder="/api/integrations/login" /></Field>
+                {conn.token_valid_until && conn.status === 'connected' && <div className="self-end pb-2 text-[11px] text-emerald-700">Access token valid until {fmtDateTime(conn.token_valid_until)} · renewed automatically</div>}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">API endpoints</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 <Field label="Backend API base URL"><input className={inputCls} value={form.api_base_url} onChange={set('api_base_url')} placeholder="https://codigixinfotech.com" /></Field>
-                <Field label="API authentication key" hint={conn.has_key ? `Saved (${conn.key_hint}); leave empty to keep it` : 'Issued by the website\'s backend; stored encrypted, never shown again'}>
-                  <div className="relative"><KeyRound size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input type="password" autoComplete="new-password" className={`${inputCls} pl-8`} value={form.api_key} onChange={set('api_key')} placeholder={conn.has_key ? conn.key_hint : 'Paste the API key'} /></div>
-                </Field>
-                <Field label="Key is sent as">
-                  <select className={inputCls} value={form.auth_scheme} onChange={set('auth_scheme')}>
-                    <option value="bearer">Authorization: Bearer &lt;key&gt;</option>
-                    <option value="x-api-key">X-API-Key: &lt;key&gt;</option>
-                  </select>
-                </Field>
-                <Field label="Health / test endpoint" hint="GET; must need the key"><input className={inputCls} value={form.health_endpoint} onChange={set('health_endpoint')} placeholder="/api/integrations/health" /></Field>
                 <Field label="Publishing endpoint" hint="POST create, PUT/DELETE …/{id}"><input className={inputCls} value={form.publish_endpoint} onChange={set('publish_endpoint')} placeholder="/api/blogs" /></Field>
                 <Field label="Image upload endpoint" hint="POST multipart field “image”"><input className={inputCls} value={form.image_endpoint} onChange={set('image_endpoint')} placeholder="/api/uploads" /></Field>
+                <Field label="Health endpoint (optional)" hint="GET with the token; checked by Test Login when set"><input className={inputCls} value={form.health_endpoint} onChange={set('health_endpoint')} placeholder="/api/integrations/health" /></Field>
               </div>
             </div>
             <div>
@@ -179,20 +200,31 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button icon={Send} busy={busy === 'test'} disabled={!form.api_base_url || !form.publish_endpoint} onClick={testNow}>Test Connection</Button>
-              <Button variant="primary" icon={Save} busy={busy === 'save'} disabled={!form.api_base_url || !form.publish_endpoint || (!form.api_key && !conn.has_key)} onClick={save}>Save Configuration</Button>
+              <Button icon={Send} busy={busy === 'test'} disabled={!ready} onClick={testNow}>Test Login</Button>
+              <Button variant="primary" icon={Save} busy={busy === 'save'} disabled={!ready} onClick={save}>Save Configuration</Button>
               {connected && <Button onClick={() => { setEditing(false); setForm(fromConn(conn, b)); setSteps([]); }}>Cancel</Button>}
-              {conn.has_key && <Button icon={Unplug} onClick={disconnect}>Disconnect</Button>}
+              {(conn.has_password || conn.has_key) && <Button icon={Unplug} onClick={disconnect}>Disconnect</Button>}
             </div>
             <p className="flex items-start gap-1.5 text-[11px] text-slate-500"><AlertTriangle size={12} className="shrink-0 mt-0.5" />
-              <span>The website&apos;s own backend must provide these endpoints and issue the API key. GrowZen sends the article as JSON (title, slug, body, SEO fields, image, status) — see docs/react-site-blog-api.md.</span></p>
+              <span>The website&apos;s backend must provide the login and blog endpoints for its integration user. GrowZen signs in, keeps the access token on the server and renews it automatically, then sends the article as JSON (title, slug, body, SEO fields, image, status) — see docs/react-site-blog-api.md.</span></p>
           </div>
         )}
         <Steps steps={steps} busy={busy === 'test' || busy === 'save' || busy === 'retest'} />
+        {testedOk && editing && !busy && (
+          <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900">
+            <CheckCircle2 size={15} className="text-emerald-600" />
+            <span className="flex-1 min-w-[200px]"><b>Login works.</b> Test Login does not save anything: click <b>Save Configuration</b> to connect and unlock publishing.</span>
+            <Button size="sm" variant="primary" icon={Save} onClick={save}>Save Configuration</Button>
+          </div>
+        )}
         {error && <p className="text-rose-700">{error}</p>}
       </section>
 
       {/* 2 Publish */}
+      {!connected && (
+        <p className="flex items-start gap-1.5 text-[12px] text-amber-800"><AlertTriangle size={13} className="shrink-0 mt-0.5" />
+          <span>Publishing unlocks after the connection is <b>saved</b> and shows <b>Connected</b> (Save Configuration in step 1).</span></p>
+      )}
       <section className={`space-y-2 ${connected ? '' : 'opacity-50 pointer-events-none'}`}>
         <Num n={2} done={post?.react_status === 'publish'}>Publish this article</Num>
         <div className="grid grid-cols-3 gap-2">

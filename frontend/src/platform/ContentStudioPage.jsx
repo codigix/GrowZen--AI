@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Sparkles, Check, ChevronRight, Globe, ShieldCheck, AlertTriangle, RefreshCw,
   FileText, MapPin, Instagram, Facebook, Linkedin, Copy, Plus, CalendarDays,
@@ -966,9 +966,9 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         {/* Step 4: Publish & Schedule */}
         {step === 4 && (
           <PublishDestinations b={b}>
-            {(dest) => dest === 'react' ? (
+            {(dest, setReactConn) => dest === 'react' ? (
               <ReactSitePanel b={b} article={selectedArticle} featured={featured} toast={toast} defaultWhen={scheduledDate}
-                onChanged={() => { if (onSaved) onSaved(); }} />
+                onChanged={() => { if (onSaved) onSaved(); }} onConnection={setReactConn} />
             ) : (
               <SitePublishPanel
                 b={b}
@@ -1002,6 +1002,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
 function PublishDestinations({ b, children }) {
   const wp = useApi(`/businesses/${b.id}/site-integration`);
   const react = useApi(`/businesses/${b.id}/react-site`);
+  const setReactConn = useCallback((c) => { if (c) react.setData(c); }, [react.setData]); // eslint-disable-line react-hooks/exhaustive-deps
   const [dest, setDest] = useState(() => { try { return localStorage.getItem(`growzen.dest.${b.id}`) || ''; } catch { return ''; } });
   const wpOn = wp.data?.status === 'connected';
   const reactOn = react.data?.status === 'connected';
@@ -1022,14 +1023,14 @@ function PublishDestinations({ b, children }) {
               <span className="flex items-center gap-2">
                 <span className="font-bold text-slate-900 text-[13px]">{c.title}</span>
                 {c.loading ? <RefreshCw size={11} className="animate-spin text-slate-400" />
-                  : <Badge tone={c.on ? 'green' : c.failed ? 'red' : 'gray'}>{c.on ? 'Connected' : c.failed ? 'Failed' : 'Not connected'}</Badge>}
+                  : <Badge tone={c.on ? 'green' : c.failed ? 'red' : 'gray'}>{c.on ? 'Connected' : c.failed ? (c.id === 'react' ? 'Authentication Failed' : 'Failed') : 'Not connected'}</Badge>}
               </span>
               <span className="block text-[11px] text-slate-500 font-mono truncate mt-0.5">{c.target ? `Target: ${c.target.replace(/^https?:\/\//, '')}` : 'Not set up yet'}</span>
             </button>
           ))}
         </div>
       </div>
-      {children(chosen)}
+      {children(chosen, setReactConn)}
     </div>
   );
 }
