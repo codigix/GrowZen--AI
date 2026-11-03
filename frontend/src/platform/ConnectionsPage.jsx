@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plug, CheckCircle2, ShieldCheck, Loader2, Mail } from 'lucide-react';
-import { SeoShell, Card, Tabs, StatusPill, Badge, useToast } from './SeoUi';
+import { SeoShell, Card, Tabs, StatusPill, Badge, useToast, SkList } from './SeoUi';
 import { useApi, fmtDateTime, SEO_API } from './seoApi';
 import { PLANS } from './seoMock';
 
@@ -28,7 +28,7 @@ function Connections() {
 
       {tab === 'connections' && (
         <Card title="What the SEO backend is connected to" subtitle={`Set in backend/.env · API ${SEO_API}`}>
-          {!s ? (status.error ? <div className="text-13 text-red-700">{status.error.message}</div> : <Loader2 size={16} className="animate-spin text-gray-400" />) : (
+          {!s ? (status.error ? <div className="text-13 text-red-700">{status.error.message}</div> : <SkList rows={4} />) : (
             <div className="divide-y divide-gray-100">
               {SOURCES.map(([id, name, env, on, extra]) => (
                 <div key={id} className="flex flex-wrap items-center gap-3 py-3">
@@ -46,7 +46,7 @@ function Connections() {
 
       {tab === 'google' && (
         <Card title="Connected Google accounts" subtitle="Add or sync them from GBP Manager">
-          {!conns.data ? <Loader2 size={16} className="animate-spin text-gray-400" /> : conns.data.length === 0 ? <div className="py-6 text-13 text-gray-500">None yet.</div> : (
+          {!conns.data ? <SkList rows={2} /> : conns.data.length === 0 ? <div className="py-6 text-13 text-gray-500">None yet.</div> : (
             <div className="divide-y divide-gray-100">
               {conns.data.map(c => (
                 <div key={c.id} className="flex flex-wrap items-center gap-3 py-2.5 text-13">

@@ -5,7 +5,7 @@ import {
   Sparkles, Loader2, Plus, X, Rocket, Clock, Cpu, Store, Gauge, Link2, PenLine, ShieldCheck, Check, Tags, Layers,
   ChevronDown, ChevronUp
 } from 'lucide-react';
-import { SeoShell, Card, Badge, Button, Field, inputCls, areaCls, ErrorNote, useAction, useBusinesses, refreshBusinesses, useSeoBusiness, useModulePath } from './SeoUi';
+import { SeoShell, Card, Badge, Button, Field, inputCls, areaCls, ErrorNote, useAction, useBusinesses, refreshBusinesses, useSeoBusiness, useModulePath, SkLines } from './SeoUi';
 import { api, useApi } from './seoApi';
 import LocationMap from './LocationMap';
 import { useAssist, AssistantPanel, FieldBadge, FieldFix, Suggestion, profileGaps, outsideFixes } from './OnboardingAssistant';
@@ -1766,7 +1766,7 @@ function SourcesPanel({ plan, plans, showPlan = false }) {
       </Card>
       {showPlan && (
         <Card title={`${plan} plan`} subtitle="Runs automatically after onboarding">
-          {!plans ? <div className="py-4 flex justify-center text-slate-400"><Loader2 size={16} className="animate-spin" /></div> : jobs.length ? (
+          {!plans ? <SkLines n={3} /> : jobs.length ? (
             <ul className="space-y-2">{jobs.map(([j, e]) => <li key={j} className="flex items-center justify-between gap-2 text-13"><span className="flex items-center gap-2 text-slate-800"><ShieldCheck size={14} className="text-indigo-500" />{JOB_LABELS[j] || j}</span><span className="text-12 text-slate-500 capitalize">{EVERY[e] || e}</span></li>)}</ul>
           ) : <div className="text-13 text-slate-500">No automatic services in this plan.</div>}
         </Card>

@@ -145,7 +145,7 @@ function NavItem({ to, label, icon: Icon, badge, collapsed, active, onNavigate }
   );
 }
 
-export default function Layout({ user, onLogout, onChangePassword }) {
+export default function Layout({ user, onLogout, onChangePassword, checking = false }) {
   const [open, setOpen] = useState(false); // mobile drawer
   const [collapsed, setCollapsed] = useState(readCollapsed); // desktop icon rail
   const location = useLocation();
@@ -238,12 +238,16 @@ export default function Layout({ user, onLogout, onChangePassword }) {
           )}
           <div className={`flex items-center rounded bg-slate-50 ring-1 ring-inset ring-slate-200 ${rail ? 'flex-col gap-2 p-2' : 'gap-3 p-2.5'}`}>
             <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-12 font-semibold text-white ring-2 ring-white" title={rail ? `${user?.name || ''} · ${user?.role || ''}` : undefined}>
-              {initials(user?.name)}
+              {checking ? '' : initials(user?.name)}
             </div>
             {!rail && (
               <div className="min-w-0 flex-1">
-                <div className="text-13 font-medium text-slate-900 truncate">{user?.name || 'Signed in'}</div>
-                <div className="text-11 text-slate-500 truncate capitalize">{user?.is_admin ? 'Administrator' : user?.role || user?.email}</div>
+                {checking ? <div className="space-y-1.5"><div className="h-3 w-20 rounded bg-slate-200 animate-pulse" /><div className="h-2.5 w-14 rounded bg-slate-200 animate-pulse" /></div> : (
+                  <>
+                    <div className="text-13 font-medium text-slate-900 truncate">{user?.name || 'Signed in'}</div>
+                    <div className="text-11 text-slate-500 truncate capitalize">{user?.is_admin ? 'Administrator' : user?.role || user?.email}</div>
+                  </>
+                )}
               </div>
             )}
             <div className="flex items-center gap-0.5">

@@ -15,6 +15,9 @@ def rank_provider() -> RankProvider:
 
 
 def keyword_provider() -> KeywordProvider:
+    if get_settings().google_ads_enabled:
+        from .ads import AdsKeywords
+        return AdsKeywords()
     return SampleKeywords()
 
 

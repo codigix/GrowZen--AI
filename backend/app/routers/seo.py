@@ -17,7 +17,7 @@ from ..db import get_db
 from ..deps import get_business
 from ..models import Audit, Business, GeoPrompt, GeoResult, GoogleConnection, Keyword, KeywordRankLog
 from ..backlinks.summary import own_site_links
-from ..services import countries, domain_checks, geo, landscape as landscape_svc, top_pages as top_pages_svc, gsc, google_intel, market, organic
+from ..services import countries, domain_checks, geo, landscape as landscape_svc, top_pages as top_pages_svc, gsc, google_intel, keyword_metrics, market, organic
 from ..services.gbp import GbpError
 from ..services.providers.base import intent_of
 from ..services.activity import log
@@ -156,14 +156,18 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
     local = [{"position": p.get("position"), "name": p.get("title"), "rating": p.get("rating"), "reviews": p.get("ratingCount") or 0, "category": p.get("category"), "address": p.get("address"),
               "mine": intel._is_me_place(p, b, host)} for p in plc.get("places", [])[:10]]
     saved = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == kw))
+    live_m, metrics_note = keyword_metrics.lookup([kw], market.serp_country(b))
+    lm = live_m.get(kw)
+    metrics = {"volume": lm["volume"] if lm else (saved.volume if saved else None), "difficulty": lm["difficulty"] if lm else (saved.difficulty if saved else None),
+               "cpc": lm["cpc"] if lm else (saved.cpc if saved else None), "tracked": bool(saved and saved.tracked)}
     return {
         "keyword": kw, "location": location, "intent": intent_of(kw), "credits": serper.credits,
         "you": {"organic": next((o["position"] for o in organic if o["mine"]), None), "local": next((p["position"] for p in local if p["mine"]), None)},
         "organic": organic, "local": local,
         "related": [q.get("query") for q in org.get("relatedSearches", []) if q.get("query")][:10], "questions": [q.get("question") for q in org.get("peopleAlsoAsk", []) if q.get("question")][:8],
         "serp_features": sorted({k for k in ("answerBox", "knowledgeGraph", "peopleAlsoAsk", "places", "topStories", "images", "videos", "shopping") if org.get(k)}),
-        "metrics": {"volume": saved.volume if saved else None, "difficulty": saved.difficulty if saved else None, "cpc": saved.cpc if saved else None, "tracked": bool(saved and saved.tracked)},
-        "volume_source": "saved keyword" if saved and saved.volume else None,
+        "metrics": metrics, "metrics_note": metrics_note,
+        "volume_source": "Google Ads Keyword Planner" if live_m else ("saved keyword" if saved and saved.volume is not None else None),
     }
 
 
@@ -243,8 +247,15 @@ def _search_console(db: Session, b: Business, host: str):
         if site:
             return "ok", conn.email, sc, site
         have = [x["siteUrl"] for x in sites if x.get("permissionLevel") != "siteUnverifiedUser"]
+        unverified = [x["siteUrl"] for x in sites if x.get("permissionLevel") == "siteUnverifiedUser" and host in x["siteUrl"]]
+        if unverified:
+            notes.append(f"{conn.email} is listed on {unverified[0]} only as an unverified user, and Google returns no data at that level. Ask the site's owner to add it as a Full user in Search Console (Settings > Users and permissions).")
+            continue
         notes.append(f"{conn.email} has no verified property for {host}" + (f" (it has: {', '.join(have[:6])}{'…' if len(have) > 6 else ''})." if have else " (it has no verified properties at all)."))
     msg = " ".join(notes) or "No verified Search Console property for this site."
+    revoked = [c.email for c in db.scalars(select(GoogleConnection).where(GoogleConnection.status != "active"))]
+    if revoked:
+        msg += f" Disconnected accounts that may own it: {', '.join(revoked[:4])}. Reconnect them in Integrations."
     return "no_property", msg + " Add and verify the site in Search Console, or connect the account that owns it.", None, None
 
 

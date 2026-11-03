@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import {
-  Loader2, ArrowUp, ArrowDown, ExternalLink, Search, Inbox, Info, Bot, FileText, BookOpen, HelpCircle, MapPin, Video, Image as ImageIcon, Newspaper, ShoppingCart, Sparkles, AlertTriangle
+  ArrowUp, ArrowDown, ExternalLink, Search, Inbox, Info, Bot, FileText, BookOpen, HelpCircle, MapPin, Video, Image as ImageIcon, Newspaper, ShoppingCart, Sparkles, AlertTriangle
 } from 'lucide-react';
-import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useUrlTab, useModulePath } from './SeoUi';
+import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useUrlTab, useModulePath, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 import { IntelBar, section } from './DomainIntel';
 import { TrackedPositions, Th } from './SeoToolkit';
@@ -471,7 +471,7 @@ function Competitors({ intel, research }) {
 
 function Topics({ b }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
-  if (!kw.data) return kw.error ? <ErrorNote>{kw.error.message}</ErrorNote> : <div className="py-12 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div>;
+  if (!kw.data) return kw.error ? <ErrorNote>{kw.error.message}</ErrorNote> : <SkCard title="Topics" subtitle="Your keywords grouped by topic (cluster), with how they rank" pad={false}><SkTable headers={["Topic", "Keywords", "Tracked", "Ranking", "Avg. position", "Volume"]} rows={6} bare /></SkCard>;
   const tracked = kw.data.keywords.filter(k => k.tracked);
   const rows = kw.data.clusters.map(c => {
     const ks = tracked.filter(k => (k.cluster || 'Not grouped') === c.name);

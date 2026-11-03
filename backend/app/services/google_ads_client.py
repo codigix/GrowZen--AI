@@ -127,3 +127,46 @@ def keyword_ideas(
         log.warning("Google Ads call failed: %r", exc)
         raise GoogleAdsRequestError("Google Ads request failed", code=type(exc).__name__, details=[str(exc) or type(exc).__name__]) from exc
     return results
+
+
+# Country code -> Google Ads geo target constant (the markets this platform serves; others fall back to the default).
+GEO_TARGETS = {"IN": 2356, "US": 2840, "GB": 2826, "UK": 2826, "AU": 2036, "CA": 2124, "AE": 2784, "SG": 2702, "DE": 2276, "FR": 2250,
+               "NZ": 2554, "ZA": 2710, "SA": 2682, "NG": 2566, "KE": 2404, "PK": 2586, "BD": 2050, "LK": 2144, "MY": 2458, "PH": 2608}
+
+
+def geo_target_for(country: str | None) -> str:
+    code = GEO_TARGETS.get((country or "").upper())
+    return f"geoTargetConstants/{code}" if code else DEFAULT_GEO_TARGET
+
+
+def historical_metrics(keywords: list[str], *, geo_target: str = DEFAULT_GEO_TARGET, language: str = DEFAULT_LANGUAGE) -> dict[str, dict]:
+    """Exact monthly search volume, competition and top-of-page bid for each given keyword (not related ideas)."""
+    from google.ads.googleads.errors import GoogleAdsException
+
+    client, customer_id = _client()
+    service = client.get_service("KeywordPlanIdeaService")
+    request = client.get_type("GenerateKeywordHistoricalMetricsRequest")
+    request.customer_id = customer_id
+    request.language = language
+    request.geo_target_constants.append(geo_target)
+    request.keyword_plan_network = client.enums.KeywordPlanNetworkEnum.GOOGLE_SEARCH
+    request.keywords.extend(keywords)
+    out: dict[str, dict] = {}
+    try:
+        response = service.generate_keyword_historical_metrics(request=request)
+        for res in response.results:
+            m = res.keyword_metrics
+            out[res.text.lower()] = {
+                "volume": int(m.avg_monthly_searches or 0),
+                "competition": m.competition.name,
+                "competition_index": int(m.competition_index or 0),
+                "cpc": round(_micros_to_currency(m.high_top_of_page_bid_micros) or 0, 2) or None,
+            }
+    except GoogleAdsException as exc:
+        messages = [error.message for error in exc.failure.errors]
+        log.warning("Google Ads metrics failed: %s", messages)
+        raise GoogleAdsRequestError("Google Ads request failed", code=exc.error.code().name, details=messages) from exc
+    except Exception as exc:
+        log.warning("Google Ads metrics call failed: %r", exc)
+        raise GoogleAdsRequestError("Google Ads request failed", code=type(exc).__name__, details=[str(exc) or type(exc).__name__]) from exc
+    return out

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Sparkles, RefreshCw, Copy, Check, ArrowRight, Loader2, Mail, Download, PenLine } from 'lucide-react';
-import { Card, Button, ErrorNote, useAction } from './SeoUi';
+import { Card, Button, ErrorNote, useAction, Sk, SkList, SkLines } from './SeoUi';
 import { api } from './seoApi';
 import { pathOf, SEVERITY_TONE } from './siteUtils';
 
@@ -37,7 +37,7 @@ export function AuditSummary({ report, ps, pages, issues, onTab }) {
     <Card title={<span className="inline-flex items-center gap-2"><Sparkles size={15} className="text-violet-600" /> What this audit means {res && <Badge ai={res.source === 'ai'} />}</span>}
       action={<div className="flex gap-1">{res && <Button size="sm" variant="ghost" icon={Mail} onClick={() => setShowMail(m => !m)}>{showMail ? 'Hide' : 'Client message'}</Button>}<Button size="sm" variant="ghost" icon={RefreshCw} busy={busy === 'load'} onClick={load} aria-label="Write again" /></div>}>
       <ErrorNote>{error}</ErrorNote>
-      {!res ? <div className="py-4 flex items-center gap-2 text-13 text-slate-500"><Loader2 size={15} className="animate-spin" /> Reading the audit…</div> : (
+      {!res ? <div className="space-y-3"><Sk w="w-2/3" h="h-4" /><SkLines n={2} /><SkList rows={3} avatar={false} trail={false} /></div> : (
         <div className="space-y-3">
           <div>
             <div className="text-14.5 font-semibold text-slate-900">{res.headline}</div>

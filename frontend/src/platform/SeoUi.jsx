@@ -266,14 +266,7 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
 
   let body;
   if (error && !list) body = <BackendDown error={error} onRetry={refresh} />;
-  else if (!list && needsBusiness) body = (
-    <div className="py-28 flex flex-col items-center justify-center gap-3.5 text-slate-500">
-      <div className="w-12 h-12 rounded bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-600 shadow-sm animate-pulse">
-        <Loader2 size={24} className="animate-spin text-cyan-700" />
-      </div>
-      <span className="text-14 font-semibold text-slate-700">Synchronizing neural pipelines…</span>
-    </div>
-  );
+  else if (!list && needsBusiness) body = <SkPage header={false} />; // the title, subtitle and breadcrumb above are static, so they stay on screen
   else if (needsBusiness && !business) body = <NoBusinesses onCreated={setBusiness} />;
   else body = typeof children === 'function' ? children(business) : children;
 
@@ -633,6 +626,142 @@ export const Legend = ({ items }) => (
         {name}
       </span>
     ))}
+  </div>
+);
+
+/** Placeholder shown while data is being fetched. variant "page" = stat tiles + chart + rows; "rows" = a few table-like lines; "line" = one short line. */
+export function Skeleton({ variant = 'rows', rows = 4, className = '' }) {
+  const bar = 'rounded bg-slate-100 animate-pulse';
+  return (
+    <div className={className} role="status" aria-busy="true" aria-label="Loading">
+      {variant === 'line' ? <div className={`${bar} h-4 w-40`} /> : (
+        <div className="space-y-3">
+          {variant === 'page' && (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[0, 1, 2, 3].map(n => <div key={n} className="rounded border border-slate-100 p-3.5 space-y-2" style={{ animationDelay: `${n * 80}ms` }}><div className={`${bar} h-3 w-2/3`} /><div className={`${bar} h-6 w-1/2`} /></div>)}
+              </div>
+              <div className="rounded border border-slate-100 p-4"><div className={`${bar} h-3 w-36 mb-3`} /><div className="flex items-end gap-1 h-24">{Array.from({ length: 24 }, (_, n) => <div key={n} className={`${bar} flex-1`} style={{ height: `${20 + ((n * 37) % 70)}%`, animationDelay: `${n * 40}ms` }} />)}</div></div>
+            </>
+          )}
+          <div className="space-y-2.5">
+            {Array.from({ length: rows }, (_, n) => (
+              <div key={n} className="flex items-center gap-3" style={{ opacity: 1 - n * 0.12 }}>
+                <div className={`${bar} h-8 w-8 rounded-full shrink-0`} style={{ animationDelay: `${n * 90}ms` }} />
+                <div className="flex-1 space-y-1.5"><div className={`${bar} h-3`} style={{ width: `${88 - ((n * 13) % 35)}%`, animationDelay: `${n * 90}ms` }} /><div className={`${bar} h-2.5`} style={{ width: `${55 - ((n * 7) % 20)}%`, animationDelay: `${n * 90}ms` }} /></div>
+                <div className={`${bar} h-5 w-14 shrink-0`} style={{ animationDelay: `${n * 90}ms` }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Layout-matched skeleton pieces: compose them to mirror the real stat tiles, cards, tables and lists they stand in for. */
+const SK = 'rounded bg-slate-100 animate-pulse';
+export const Sk = ({ w = 'w-full', h = 'h-3', className = '', delay = 0, style }) => <div className={`${SK} ${w} ${h} ${className}`} style={{ animationDelay: `${delay}ms`, ...style }} />;
+const pctW = (n, base = 85, step = 11) => `${Math.max(30, base - ((n * step) % 45))}%`;
+
+/** Row of stat tiles (icon circle + label + number), like Stat / Kpi. `labels` shows the real tile names; only the number is a skeleton. */
+export const SkStats = ({ n = 4, cols = 'grid-cols-2 lg:grid-cols-4', labels }) => (
+  <div className={`grid ${cols} gap-3`} role="status" aria-busy="true" aria-label="Loading">
+    {Array.from({ length: labels ? labels.length : n }, (_, i) => (
+      <div key={i} className="ai-glass-card rounded p-3.5 flex items-center gap-3 min-w-0">
+        <Sk w="w-10" h="h-10" className="!rounded-full shrink-0" delay={i * 80} />
+        <div className="flex-1 min-w-0 space-y-2">
+          {labels ? <div className="text-11.5 font-semibold text-slate-400 truncate">{labels[i]}</div> : <Sk w="w-2/3" h="h-2.5" delay={i * 80} />}
+          <Sk w="w-1/2" h="h-5" delay={i * 80} />
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+/** A table: header strip plus rows; `cols` can be widths like ['w-1/3','w-16'] to mirror a left text column and right-aligned numbers. */
+export const SkTable = ({ cols = 4, rows = 6, bare = false, headers }) => {
+  const widths = Array.isArray(cols) ? cols : ['w-3/4', ...Array.from({ length: (headers ? headers.length : cols) - 1 }, () => 'w-12')];
+  return (
+    <div className={bare ? '' : 'overflow-hidden'} role="status" aria-busy="true" aria-label="Loading">
+      <div className="flex items-center gap-4 px-5 py-2.5 bg-slate-50">{widths.map((w, i) => <div key={i} className={`flex-1 flex ${i ? 'justify-end' : ''}`}>{headers ? <span className="text-11.5 font-semibold text-slate-500 truncate">{headers[i]}</span> : <Sk w={w.startsWith('w-1/') || w.startsWith('w-3/') ? 'w-1/2' : w} h="h-2.5" />}</div>)}</div>
+      <div className="divide-y divide-slate-100">
+        {Array.from({ length: rows }, (_, r) => (
+          <div key={r} className="flex items-center gap-4 px-5 py-3" style={{ opacity: 1 - r * 0.07 }}>
+            {widths.map((w, i) => <div key={i} className={`flex-1 flex ${i ? 'justify-end' : ''}`}><Sk w={i ? w : ''} h="h-3" delay={r * 70} style={i ? undefined : { width: pctW(r + i) }} /></div>)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/** Chart area: bars (default) or an area/line sweep. */
+export const SkChart = ({ h = 'h-40', bars = 28 }) => (
+  <div className={`${h} flex items-end gap-1 px-1`} role="status" aria-busy="true" aria-label="Loading">
+    {Array.from({ length: bars }, (_, i) => <Sk key={i} w="flex-1" h="" className="!w-auto" style={{ height: `${25 + ((i * 37) % 65)}%` }} delay={i * 35} />)}
+  </div>
+);
+
+/** List rows with an optional avatar/thumbnail, two text lines and a trailing pill, like reviews, posts, accounts. */
+export const SkList = ({ rows = 4, avatar = true, trail = true, thumb = false, boxed = false }) => (
+  <div className={boxed ? 'space-y-2' : 'divide-y divide-slate-100'} role="status" aria-busy="true" aria-label="Loading">
+    {Array.from({ length: rows }, (_, i) => (
+      <div key={i} className={`flex items-center gap-3 ${boxed ? 'rounded ring-1 ring-inset ring-slate-200 px-3.5 py-2.5' : 'py-3'}`}>
+        {avatar && <Sk w={thumb ? 'w-14' : 'w-9'} h={thumb ? 'h-14' : 'h-9'} className={thumb ? '' : '!rounded-full'} delay={i * 80} />}
+        <div className="flex-1 space-y-2"><Sk h="h-3" delay={i * 80} style={{ width: pctW(i, 80) }} /><Sk h="h-2.5" delay={i * 80} style={{ width: pctW(i, 50, 7) }} /></div>
+        {trail && <Sk w="w-16" h="h-6" delay={i * 80} />}
+      </div>
+    ))}
+  </div>
+);
+
+/** Paragraph-like lines. */
+export const SkLines = ({ n = 3 }) => (
+  <div className="space-y-2" role="status" aria-busy="true" aria-label="Loading">
+    {Array.from({ length: n }, (_, i) => <Sk key={i} h="h-3" delay={i * 80} style={{ width: i === n - 1 ? '60%' : '100%' }} />)}
+  </div>
+);
+
+/** Score ring beside a few lines, like the health score and audit score cards. */
+export const SkScore = () => (
+  <div className="flex items-center gap-5" role="status" aria-busy="true" aria-label="Loading">
+    <Sk w="w-24" h="h-24" className="!rounded-full shrink-0" />
+    <div className="flex-1 space-y-2"><Sk w="w-1/2" h="h-4" /><Sk w="w-3/4" /><Sk w="w-2/3" /></div>
+  </div>
+);
+
+/** A card shell with its real heading (`title`, `subtitle` are static text, never fetched) and a skeleton body. */
+export const SkCard = ({ title, subtitle, action, className = '', pad = true, children }) => (
+  <section className={`ai-glass-card rounded ${className}`}>
+    {(title || action) && (
+      <header className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-slate-100">
+        <div className="min-w-0">
+          {title && <h2 className="text-15 font-semibold text-slate-900 tracking-tight">{title}</h2>}
+          {subtitle && <p className="text-12 text-slate-400 mt-0.5 font-normal">{subtitle}</p>}
+        </div>
+        {action}
+      </header>
+    )}
+    <div className={pad ? 'p-5' : ''}>{children}</div>
+  </section>
+);
+
+/** A page section heading (icon, title, subtitle), rendered for real while the section's data loads. */
+export const SkHead = ({ icon: Icon, title, subtitle }) => (
+  <div className="flex items-center gap-2.5 mb-3">
+    {Icon && <span className="w-8 h-8 rounded-lg bg-white ring-1 ring-inset ring-slate-200 shadow-sm flex items-center justify-center text-indigo-600"><Icon size={16} /></span>}
+    <div><h2 className="text-15 font-semibold text-slate-900 leading-tight">{title}</h2>{subtitle && <p className="text-12 text-slate-500">{subtitle}</p>}</div>
+  </div>
+);
+
+/** A whole dashboard-style page: header bar, stat tiles, chart card and table card. Turn parts off to match the real page. */
+export const SkPage = ({ header = true, stats = 4, statLabels, statCols, chart = true, chartTitle, tableTitle, tableHeaders, table = 5, tableCols = 5 }) => (
+  <div className="space-y-4" role="status" aria-busy="true" aria-label="Loading">
+    {header && <SkCard title={false}><div className="flex items-center gap-3"><Sk w="w-10" h="h-10" className="!rounded-full shrink-0" /><div className="flex-1 space-y-2"><Sk w="w-48" h="h-4" /><Sk w="w-32" h="h-2.5" /></div><Sk w="w-28" h="h-9" /></div></SkCard>}
+    {(statLabels || stats > 0) && <SkStats n={stats} labels={statLabels} cols={(statLabels?.length ?? stats) === 3 ? 'grid-cols-1 sm:grid-cols-3' : (statLabels?.length ?? stats) === 5 ? 'grid-cols-2 lg:grid-cols-5' : 'grid-cols-2 lg:grid-cols-4'} />}
+    {chart && <SkCard title={chartTitle}><SkChart /></SkCard>}
+    {table > 0 && <SkCard title={tableTitle}><SkTable cols={tableHeaders ? tableHeaders.length : tableCols} rows={table} headers={tableHeaders} bare /></SkCard>}
   </div>
 );
 

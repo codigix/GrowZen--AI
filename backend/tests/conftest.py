@@ -56,3 +56,10 @@ def client(monkeypatch):
     c = TestClient(app)
     c.cookies.set("crm_session", token)
     return c
+
+
+@pytest.fixture(autouse=True)
+def _offline_keyword_metrics(monkeypatch):
+    """Tests never call the Google Ads Keyword Planner, even when the developer's .env has its credentials."""
+    from app.services import keyword_metrics
+    monkeypatch.setattr(keyword_metrics, "lookup", lambda keywords, country=None: ({}, "offline in tests"))

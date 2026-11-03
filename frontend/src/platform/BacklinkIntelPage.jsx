@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Play, Plus, Trash2, Download, RefreshCw, Loader2, Search, Crosshair, History, Sparkles, Bot } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine, Legend } from 'recharts';
-import { SeoShell, Card, Tabs, Badge, Button, Meter, ErrorNote, Drawer, Field, Modal, inputCls, areaCls, SERIES, INK, useToast, useAction, useUrlTab, useDoubleConfirm } from './SeoUi';
+import { SeoShell, Card, Tabs, Badge, Button, Meter, ErrorNote, Drawer, Field, Modal, inputCls, areaCls, SERIES, INK, useToast, useAction, useUrlTab, useDoubleConfirm, SkStats, SkTable, SkChart, SkList, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime, SEO_API } from './seoApi';
 
 const STATUS_TONE = {
@@ -21,7 +21,6 @@ const Quality = ({ q }) => q
 const SourceBadge = ({ source }) => <Badge tone={source === 'ai' ? 'blue' : 'gray'}>{source === 'ai' ? 'Written by AI' : 'Rule-based'}</Badge>;
 
 const Empty = ({ children }) => <div className="py-8 text-center text-13 text-gray-500">{children}</div>;
-const Spin = () => <div className="py-8 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div>;
 const Th = ({ children, right }) => <th className={`p-2 font-medium ${right ? 'text-right' : 'text-left'}`}>{children}</th>;
 
 function HistoryDrawer({ base, id, onClose }) {
@@ -30,7 +29,7 @@ function HistoryDrawer({ base, id, onClose }) {
   const l = link.data;
   return (
     <Drawer open={Boolean(id)} onClose={onClose} title="Backlink history" subtitle={l?.source_url}>
-      {!l || !hist.data ? <Spin /> : (
+      {!l || !hist.data ? <div className="space-y-4"><SkStats n={2} cols="grid-cols-2" /><SkList rows={4} avatar={false} /></div> : (
         <div className="space-y-4 text-13">
           <div className="grid grid-cols-2 gap-2">
             <div><div className="text-12 text-gray-500">Target</div><div className="break-all">{l.target_url}</div></div>
@@ -93,7 +92,7 @@ function Explorer({ base, targets }) {
         <Button icon={RefreshCw} onClick={() => res.reload()}>Refresh</Button>
       </div>
       <ErrorNote>{res.error?.message}</ErrorNote>
-      {res.loading && !res.data ? <Spin /> : rows.length === 0 ? <Empty>No backlinks yet. Run the discovery bot, or queue pages that should link to a tracked domain and run the crawler.</Empty> : (
+      {res.loading && !res.data ? <SkTable cols={7} rows={8} /> : rows.length === 0 ? <Empty>No backlinks yet. Run the discovery bot, or queue pages that should link to a tracked domain and run the crawler.</Empty> : (
         <div className="overflow-x-auto">
           <table className="w-full text-13">
             <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Source page</Th><Th>Target</Th><Th>Anchor</Th><Th>Attr</Th><Th>Status</Th><Th>Evidence</Th><Th>Last seen</Th><Th /></tr></thead>
@@ -226,7 +225,7 @@ function Overview({ base, targets, biz, go, reload }) {
         <Button className="ml-auto" icon={RefreshCw} onClick={() => res.reload()}>Refresh</Button>
       </div>
       <ErrorNote>{res.error?.message || error}</ErrorNote>
-      {!o ? <Spin /> : o.backlinks.total === 0 && o.backlinks.lost === 0 ? (
+      {!o ? <div className="space-y-4"><SkStats labels={["Backlinks", "Referring domains", "Lost links", "Verified"]} /><SkCard title="Backlink report" subtitle="Links found by the crawler and by Google results"><SkChart /></SkCard></div> : o.backlinks.total === 0 && o.backlinks.lost === 0 ? (
         <Card title={`No backlinks collected for ${o.domain} yet`} subtitle="The report fills in as soon as links are imported or the crawler finds them">
           <ol className="text-13 text-gray-700 list-decimal pl-5 space-y-1.5 mb-3">
             <li>Open <b>Discovery bot</b> and click <b>Run now</b>, or open <b>Seeds &amp; verify</b>, paste pages that should link to you and click <b>Run crawler now</b>.</li>
@@ -442,7 +441,7 @@ function Gap({ base, targets }) {
       {!own.length || !hasComp ? <Empty>Add your own domain and at least one competitor under “Targets”.</Empty> : (
         <>
           <select className={`${inputCls} !w-auto mb-3`} value={c} onChange={(e) => setClient(e.target.value)}>{own.map(t => <option key={t.id}>{t.domain}</option>)}</select>
-          {!g.data ? <Spin /> : g.data.gap.length === 0 ? <Empty>No gap found in the data collected so far.</Empty> : (
+          {!g.data ? <SkTable cols={['w-1/3','w-1/3','w-12','w-12']} rows={6} /> : g.data.gap.length === 0 ? <Empty>No gap found in the data collected so far.</Empty> : (
             <table className="w-full text-13"><thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Domain</Th><Th>Links to</Th><Th right>Links</Th><Th right>Verified</Th></tr></thead>
               <tbody className="divide-y divide-gray-100">{g.data.gap.map(x => <tr key={x.domain}><td className="p-2 text-gray-900">{x.domain}</td><td className="p-2 text-gray-600">{x.competitors.join(', ')}</td><td className="p-2 text-right tabular-nums">{x.backlinks}</td><td className="p-2 text-right tabular-nums">{x.crawler_verified}</td></tr>)}</tbody></table>
           )}
@@ -536,7 +535,7 @@ function BotPanel({ base, targets, onToast }) {
   usePoll(() => st.reload(true), running, 2500);
   const save = (patch) => run('save', async () => { await api(`${base}/bot`, { method: 'PUT', body: patch }); st.reload(true); });
   const start = () => run('start', async () => { await api(`${base}/bot/run`, { method: 'POST' }); onToast('Bot started'); setTimeout(() => st.reload(true), 800); });
-  if (!s) return <Card><Spin /></Card>;
+  if (!s) return <SkCard title="Discovery bot" subtitle="Our own crawler. It starts from your tracked sites and competitors, explores the pages around them, and records every link it finds to them."><SkList rows={4} avatar={false} /></SkCard>;
   const c = s.config;
   const queued = Object.values(s.frontier || {}).reduce((n, q) => n + (q.pending || 0), 0);
   const last = s.last_stats;
@@ -607,7 +606,7 @@ function Body({ b }) {
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
         { id: 'bot', label: 'Discovery bot' }, { id: 'collect', label: 'Seeds & verify' }, { id: 'targets', label: 'Targets', count: targets.length }]} />
       <ErrorNote>{t.error?.message}</ErrorNote>
-      {t.loading && !t.data ? <Spin /> : (
+      {t.loading && !t.data ? <div className="space-y-4"><SkStats labels={["Backlinks", "Referring domains", "Lost links", "Verified"]} /><SkCard title="Backlinks"><SkTable headers={["Source page", "Target", "Anchor", "Status", "Last seen"]} rows={5} bare /></SkCard></div> : (
         <div key={`${lastRun}-${running}`}>
           {tab === 'overview' && <Overview base={base} targets={targets} biz={b} go={setTab} reload={reload} />}
           {tab === 'explorer' && <Explorer base={base} targets={targets} />}

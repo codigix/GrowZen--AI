@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Download, Phone, MessageCircle, FileText, Navigation, CalendarCheck, Plus, Loader2 } from 'lucide-react';
-import { SeoShell, Card, Tabs, Stat, Badge, Button, Modal, Field, inputCls, ErrorNote, StatusPill, useToast, useAction } from './SeoUi';
+import { Download, Phone, MessageCircle, FileText, Navigation, CalendarCheck, Plus } from 'lucide-react';
+import { SeoShell, Card, Tabs, Stat, Badge, Button, Modal, Field, inputCls, ErrorNote, StatusPill, useToast, useAction, SkTable, SkPage } from './SeoUi';
 import { api, useApi, fmtDate } from './seoApi';
 
 const TYPE_ICON = { call: Phone, whatsapp: MessageCircle, form: FileText, direction: Navigation, booking: CalendarCheck, other: FileText };
@@ -44,7 +44,7 @@ function Reports({ b, tab }) {
             <Button icon={Download} busy={busy === 'csv'} onClick={csv}>Download Excel (CSV)</Button>
           </div>
           <ErrorNote>{error || rep.error?.message}</ErrorNote>
-          {!s ? <div className="py-16 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : (
+          {!s ? <SkPage header={false} statLabels={["Calls", "Directions", "Website clicks", "Profile views", "Leads"]} chart={false} tableTitle="Leads" tableHeaders={["Name", "Source", "Status", "Date"]} /> : (
             <>
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4 mt-2">
                 <Stat icon={Phone} label="Calls" value={s.insights.calls} delta={change(s.insights.calls, s.previous.calls)} hint="vs last month" />
@@ -76,7 +76,7 @@ function Reports({ b, tab }) {
         <Card title={`Leads (${shown.length})`} action={<Button size="sm" variant="primary" icon={Plus} onClick={() => setAdding({ lead_type: 'call', name: '', contact: '', message: '', source: 'Google Business Profile' })}>Add lead</Button>}>
           <div className="flex flex-wrap gap-1 mb-3">{['all', 'call', 'whatsapp', 'form', 'direction', 'booking'].map(t => <button key={t} onClick={() => setTypeFilter(t)} className={`h-7 px-2.5 text-xs rounded border capitalize cursor-pointer ${typeFilter === t ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-300 text-gray-700'}`}>{t}</button>)}</div>
           <ErrorNote>{error}</ErrorNote>
-          {!leads.data ? <div className="py-8 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : shown.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No leads yet.</div> : (
+          {!leads.data ? <SkTable cols={['w-1/3','w-1/4','w-16','w-16']} rows={6} /> : shown.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No leads yet.</div> : (
             <div className="divide-y divide-gray-100">
               {shown.map(l => { const I = TYPE_ICON[l.lead_type] || Phone; return (
                 <div key={l.id} className="flex flex-wrap items-center gap-3 py-2">

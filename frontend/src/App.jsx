@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Sk, SkPage } from './platform/SeoUi';
 import { api } from './platform/seoApi';
 import Layout from './components/Layout';
 import PasswordGate from './components/PasswordGate';
@@ -32,16 +32,30 @@ import { OrganicRankingsPage } from './platform/OrganicResearch';
 import { TopPagesPage } from './platform/TopPagesReport';
 import { DomainOverviewPage, KeywordGapPage, CompareDomainsPage, KeywordOverviewPage } from './platform/SeoToolkit';
 
+/** Page-shaped placeholder: top bar, title and subtitle, then tiles, a chart card and a table card, inside the usual page margins. */
+function PageLoading() {
+  return (
+    <div role="status" aria-busy="true" aria-label="Loading">
+      <div className="h-[88px] px-6 flex items-center justify-end gap-3"><Sk w="w-9" h="h-9" className="!rounded-full" /><Sk w="w-48" h="h-9" /></div>
+      <div className="max-w-[1520px] mx-auto px-6 pb-6 space-y-5">
+        <div className="space-y-2"><Sk w="w-56" h="h-6" /><Sk w="w-96 max-w-full" h="h-3" /></div>
+        <SkPage header={false} />
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   // undefined = checking the session, null = signed out
-  const [user, setUser] = useState(undefined);
+  // A returning user's last known profile (name and role only, no secrets) renders the app at once while /me confirms the session.
+  const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem('seo:user') || 'null') || undefined; } catch (e) { return undefined; } });
   const [showChangePassword, setShowChangePassword] = useState(false);
   const { pathname } = useLocation();
 
-  const loadMe = useCallback(() => api('/me').then(setUser).catch(() => setUser(null)), []);
+  const loadMe = useCallback(() => api('/me').then(u => { setUser(u); try { localStorage.setItem('seo:user', JSON.stringify({ id: u.id, name: u.name, email: u.email, role: u.role, is_admin: u.is_admin, must_change_password: u.must_change_password })); } catch (e) { /* private mode */ } }).catch(() => { try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ } setUser(null); }), []);
   useEffect(() => { loadMe(); }, [loadMe]);
   useEffect(() => {
-    const out = () => setUser(null);
+    const out = () => { try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ } setUser(null); };
     const openPwd = () => setShowChangePassword(true);
     window.addEventListener('seo:unauthorized', out);
     window.addEventListener('seo:change-password', openPwd);
@@ -53,6 +67,7 @@ export default function App() {
 
   const logout = async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => {});
+    try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ }
     setUser(null);
   };
 
@@ -64,7 +79,14 @@ export default function App() {
   if (publicPath === '/terms') return <LegalPage kind="terms" />;
 
   if (user === undefined) {
-    return <div className="min-h-screen flex items-center justify-center gap-2 text-13 text-gray-500"><Loader2 size={15} className="animate-spin" /> Loading…</div>;
+    // Keep the sidebar on screen while the session is checked; the page area is a neutral skeleton laid out like a real page.
+    return (
+      <Routes>
+        <Route element={<Layout user={null} checking onLogout={() => {}} onChangePassword={() => {}} />}>
+          <Route path="*" element={<PageLoading />} />
+        </Route>
+      </Routes>
+    );
   }
   if (!user) return <LoginPage onSignedIn={loadMe} />;
 

@@ -6,7 +6,7 @@ import {
   Search, CheckCircle2, XCircle, ArrowUp, ArrowDown, ArrowRight, Phone, Navigation, MousePointerClick,
   Settings2, LayoutGrid, List, ScanSearch, Globe, Store, Star, Send, User, ChevronRight, FileText, HeartPulse, BarChart3
 } from 'lucide-react';
-import { SeoShell, Card, Badge, Button, ScoreRing, ChartTooltip, ErrorNote, SERIES, scoreLevel, scoreWord, useModulePath, useSeoBusiness, useAction, useToast, Drawer, Tabs } from './SeoUi';
+import { SeoShell, Card, Badge, Button, ScoreRing, ChartTooltip, ErrorNote, SERIES, scoreLevel, scoreWord, useModulePath, useSeoBusiness, useAction, useToast, Drawer, Tabs, Sk, SkStats, SkTable, SkChart, SkList, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 import { ReportsModal } from './CopilotPanel';
 import SiteAuditTable from './SiteAuditTable';
@@ -522,7 +522,7 @@ function GrowthAnalytics() {
   const a = useApi('/businesses/analytics?weeks=12');
   const [tab, setTab] = useState('health');
   if (a.error) return null;
-  if (!a.data) return <div className="ai-glass-card rounded h-[360px] animate-pulse" />;
+  if (!a.data) return <GrowthSkeleton />;
   const m = METRICS.find(x => x.id === tab);
   const rows = a.data.series.map(p => ({ ...p, label: weekLabel(p.week) }));
   const values = rows.map(p => p[m.headline]).filter(v => v != null);
@@ -599,14 +599,7 @@ function Dashboard() {
   const openProject = (id, screen = 'gmb-profile') => { choose(id); navigate(path(screen)); };
 
   if (pf.error) return <Card><ErrorNote>{pf.error.message}</ErrorNote></Card>;
-  if (!t) {
-    return (
-      <div className="py-24 flex flex-col items-center gap-3 text-13 text-slate-500">
-        <span className="w-12 h-12 rounded bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center shadow-lg"><Sparkles size={20} className="animate-pulse" /></span>
-        Preparing your briefing…
-      </div>
-    );
-  }
+  if (!t) return <DashboardSkeleton />;
   const { insights, areas, coverage, upcoming, ai } = pf.data;
   const outdated = !insights || !areas || !coverage || !upcoming || !ai;
 
@@ -665,6 +658,68 @@ function Dashboard() {
         </div>
       </Drawer>
       <ReportsModal open={reports} onClose={() => setReports(false)} />
+    </div>
+  );
+}
+
+/** What shows while the briefing loads: the page's real headings, tabs, tile names and column titles, with only the data as skeleton. */
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6" role="status" aria-busy="true" aria-label="Loading the dashboard">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-0.5 p-0.5 rounded bg-slate-100">
+          {[['Overview', LayoutGrid], ['Projects', Briefcase]].map(([label, Icon], i) => <span key={label} className={`h-9 px-4 rounded-lg text-13 font-semibold inline-flex items-center gap-2 ${i === 0 ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500'}`}><Icon size={14} />{label}</span>)}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {Object.values(PANELS).map(x => <span key={x.label} className="h-9 px-3 rounded ring-1 ring-inset ring-slate-200 bg-white text-12 font-semibold text-slate-700 inline-flex items-center gap-1.5"><x.icon size={13} className="text-indigo-500" />{x.label.split(' & ')[0]}</span>)}
+          <span className="h-9 px-3 rounded ring-1 ring-inset ring-slate-200 bg-white text-12 font-semibold text-slate-700 inline-flex items-center gap-1.5"><FileText size={13} className="text-indigo-500" />Reports</span>
+        </div>
+      </div>
+
+      <SkStats labels={['Projects', 'Average health', 'Need attention', 'Leads · 30 days']} cols="grid-cols-2 xl:grid-cols-4" />
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-stretch">
+        <div className="xl:col-span-2 min-w-0"><GrowthSkeleton /></div>
+        <SkCard className="h-full" title="Needs your attention" subtitle="Fix these first"><SkList rows={5} boxed trail={false} /></SkCard>
+      </div>
+
+      <section>
+        <SectionHeader icon={ScanSearch} title="Site audit" subtitle="Every project's site health, broken down, with the change since the previous audit" />
+        <div className="ai-glass-card rounded overflow-hidden"><SkTable cols={['w-1/3', 'w-20', 'w-16', 'w-16', 'w-16', 'w-16']} headers={['Project', 'Last update', 'Pages crawled', 'Site health', 'AI search health', 'Errors']} rows={5} bare /></div>
+      </section>
+
+      <section>
+        <SectionHeader icon={Star} title="Featured projects" subtitle="Healthiest clients right now" />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="ai-glass-card rounded p-5 space-y-3">
+              <div className="flex items-center gap-3"><Sk w="w-11" h="h-11" className="!rounded-full shrink-0" delay={i * 80} /><div className="flex-1 space-y-2"><Sk w="w-2/3" h="h-3.5" delay={i * 80} /><Sk w="w-1/2" h="h-2.5" delay={i * 80} /></div><Sk w="w-12" h="h-12" className="!rounded-full" delay={i * 80} /></div>
+              <div className="grid grid-cols-3 gap-2">{[0, 1, 2].map(j => <Sk key={j} h="h-10" delay={i * 80 + j * 40} />)}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <SectionHeader icon={Layers} title="Services" subtitle="One number per part of the software. Click to open." />
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">{[0, 1, 2, 3].map(i => <div key={i} className="ai-glass-card rounded px-3 py-2.5 flex items-center gap-2.5"><Sk w="w-8" h="h-8" className="!rounded shrink-0" delay={i * 70} /><div className="flex-1 space-y-1.5"><Sk w="w-2/3" h="h-3" delay={i * 70} /><Sk w="w-1/3" h="h-2.5" delay={i * 70} /></div></div>)}</div>
+      </section>
+    </div>
+  );
+}
+
+/** The growth chart card while its numbers load: real metric tabs and caption, skeleton chart. */
+function GrowthSkeleton() {
+  return (
+    <div className="ai-glass-card rounded p-5 min-w-0 h-full" role="status" aria-busy="true" aria-label="Loading growth analytics">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-0.5 p-0.5 rounded bg-slate-100 overflow-x-auto max-w-full">
+          {METRICS.map((x, i) => <span key={x.id} className={`h-8 px-3 rounded-lg text-12 font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${i === 0 ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500'}`}><x.icon size={13} />{x.label}</span>)}
+        </div>
+        <span className="text-11 text-slate-500">Last 12 weeks · all projects</span>
+      </div>
+      <div className="mt-4 space-y-2"><Sk w="w-48" h="h-3" /><Sk w="w-24" h="h-8" /></div>
+      <div className="mt-4"><SkChart h="h-56" bars={36} /></div>
     </div>
   );
 }

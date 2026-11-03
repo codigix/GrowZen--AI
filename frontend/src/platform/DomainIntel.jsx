@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, ScatterChart, Scatter, PieChart, Pie, Cell, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { Loader2, RefreshCw, ExternalLink, PlugZap, Database, Download, AlertTriangle, Inbox } from 'lucide-react';
-import { Card, Badge, Button } from './SeoUi';
+import { RefreshCw, ExternalLink, PlugZap, Database, Download, AlertTriangle, Inbox } from 'lucide-react';
+import { Card, Badge, Button, Sk, SkCard } from './SeoUi';
 import { fmt } from './seoApi';
 
 /**
@@ -59,7 +59,7 @@ const csv = (name, head, rows) => {
 
 /** Source banner: what is connected, the market, when it was fetched. */
 export function IntelBar({ intel, loading, market, setMarket, onRefresh, refreshing }) {
-  if (!intel) return <div className="py-6 flex justify-center text-slate-400"><Loader2 size={16} className="animate-spin" /></div>;
+  if (!intel) return <SkCard title="Google data for this site" subtitle="Search Console figures for the selected domain"><Sk h="h-8" w="w-2/3" /></SkCard>;
   const when = intel.fetched_at ? new Date(intel.fetched_at).toLocaleString() : null;
   if (intel.state !== 'ok') {
     const msg = {

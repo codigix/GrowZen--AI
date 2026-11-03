@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from . import countries, market
 from ..models import Audit, Business, Keyword, RankScan
+from . import keyword_metrics
 from .providers.base import intent_of
 from .suggest import UA, _cached
 
@@ -278,8 +279,14 @@ def discover(db: Session, b: Business, seeds: list[str], areas: list[str]) -> di
     for i, x in enumerate(sorted(out, key=lambda y: -y["strength"])):
         x["stars"] = 5 - (i * 5) // len(out)
 
-    source = "google_autocomplete"
-    return {"data_source": source, "seeds": seeds, "areas": areas, "queries": len(queries), "keywords": out,
+    # Real monthly volume, CPC and difficulty from the Google Ads Keyword Planner (left empty, with the reason, when unavailable).
+    metrics, metrics_note = keyword_metrics.lookup([x["keyword"] for x in out], countries.of(b))
+    for x in out:
+        m = metrics.get(x["keyword"])
+        if m:
+            x["volume"], x["cpc"], x["difficulty"] = m["volume"], m["cpc"], m["difficulty"]
+    source = "google_autocomplete+google_ads" if metrics else "google_autocomplete"
+    return {"data_source": source, "metrics_note": metrics_note, "seeds": seeds, "areas": areas, "queries": len(queries), "keywords": out,
             "counts": {g: sum(1 for x in out if x["group"] == g) for g in GROUPS},
             "gaps": sum(1 for x in out if x["coverage"] and x["coverage"]["status"] == "gap"),
             "website_checked": bool(pages), "competitor_based": bool(research), "competitor_ideas": len(rival_ideas), "trending_today": trending_today(seed_core, countries.of(b))}

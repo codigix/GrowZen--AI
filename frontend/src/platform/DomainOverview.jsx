@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import {
-  Loader2, Globe, Sparkles, ArrowUp, ArrowDown, Download, PlugZap, ExternalLink, Info, Monitor, Smartphone, Tablet, Search, Bot, Link2, MousePointerClick, Eye, KeyRound, FileText, Gauge
+  Globe, Sparkles, ArrowUp, ArrowDown, Download, PlugZap, ExternalLink, Info, Monitor, Smartphone, Tablet, Search, Bot, Link2, MousePointerClick, Eye, KeyRound, FileText, Gauge
 } from 'lucide-react';
-import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useAction, useToast } from './SeoUi';
+import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useAction, useToast, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 import { IntelBar, IntelSections, headline } from './DomainIntel';
 
@@ -275,8 +275,10 @@ function Connect({ t, busy, onConnect, internal }) {
         <div className="text-14 font-semibold text-indigo-900">{title}</div>
         <p className="text-12.5 text-indigo-800 mt-0.5">{t.message} Organic traffic, impressions, keywords, pages, countries and the history all come from Search Console: nothing is estimated.</p>
       </div>
-      {needs ? <Button variant="primary" icon={PlugZap} busy={busy} onClick={onConnect}>{t.state === 'scope_missing' ? 'Reconnect with Search Console' : 'Connect Search Console'}</Button>
-        : <a href="https://search.google.com/search-console" target="_blank" rel="noreferrer" className="h-9 px-4 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-white ring-1 ring-inset ring-indigo-200 text-indigo-700 hover:bg-indigo-100">Open Search Console <ExternalLink size={12} /></a>}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="primary" icon={PlugZap} busy={busy} onClick={onConnect}>{t.state === 'scope_missing' ? 'Reconnect with Search Console' : needs ? 'Connect Search Console' : 'Connect another Google account'}</Button>
+        {!needs && <a href="https://search.google.com/search-console" target="_blank" rel="noreferrer" className="h-9 px-4 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-white ring-1 ring-inset ring-indigo-200 text-indigo-700 hover:bg-indigo-100">Open Search Console <ExternalLink size={12} /></a>}
+      </div>
     </div>
   );
 }
@@ -298,7 +300,7 @@ function Page({ b }) {
   const r = d?.traffic?.state === 'ok' ? d.traffic.report : null;
   const top = (r?.countries || []).slice(0, 3);
   React.useEffect(() => { if (new URLSearchParams(window.location.search).get('gsc') === 'connected') { toast('Google Search Console connected'); window.history.replaceState({}, '', window.location.pathname); data.reload(true); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!d) return data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <div className="py-16 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div>;
+  if (!d) return data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <SkPage statLabels={["Clicks", "Impressions", "Organic keywords", "Authority score"]} chartTitle="Clicks by month" tableTitle="Keywords & pages" tableHeaders={["Keyword", "Clicks", "Impressions", "Position"]} />;
   const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
   return (
     <div className="space-y-4">

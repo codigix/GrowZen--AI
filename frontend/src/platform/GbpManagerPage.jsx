@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Loader2, Save } from 'lucide-react';
-import { SeoShell, Drawer, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useDoubleConfirm, useSeoBusiness, refreshBusinesses, useUrlTab } from './SeoUi';
+import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Save } from 'lucide-react';
+import { SeoShell, Drawer, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useDoubleConfirm, useSeoBusiness, refreshBusinesses, useUrlTab, SkChart, SkList, SkLines, SkScore, SkCard } from './SeoUi';
 import GbpLive from './GbpLive';
 import { BusinessTraffic } from './TrafficPage';
 import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePosts, isLinked } from './GbpEditors';
@@ -19,7 +19,7 @@ const STUFFED = /[|]|\s-\s|\bbest\b|\bcheap\b|no\.?\s?1|\btop\s/i;
 
 function AuditTab({ b, onEditProfile }) {
   const s = useApi(`/businesses/${b.id}/gbp/score`);
-  if (!s.data) return s.error ? <ErrorNote>{s.error.message}</ErrorNote> : <div className="py-10 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div>;
+  if (!s.data) return s.error ? <ErrorNote>{s.error.message}</ErrorNote> : <div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><SkCard title="Profile score" subtitle="Google ranks local results on relevance, distance and prominence"><SkScore /></SkCard><SkCard title="Profile checklist" subtitle="Sorted by impact: category, reviews, proximity, website, then activity." className="xl:col-span-2"><SkLines n={6} /></SkCard></div>;
   const d = s.data;
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -159,7 +159,7 @@ function PostsTab({ b, toast }) {
       <Card title="Posts" subtitle="One or two Updates or Offers a week keeps the profile active. Every post is approved before it goes live."
         action={<div className="flex gap-2"><Button variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={aiDraft}>AI draft</Button><Button variant="primary" icon={Plus} onClick={open}>New post</Button></div>}>
         <ErrorNote>{!edit && error}</ErrorNote>
-        {!posts.data ? <div className="py-8 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : posts.data.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No posts yet.</div> : (
+        {!posts.data ? <SkList rows={4} thumb /> : posts.data.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No posts yet.</div> : (
           <div className="divide-y divide-gray-100">
             {posts.data.map(p => (
               <div key={p.id} className="flex items-start gap-3 py-3">
@@ -314,7 +314,7 @@ function InsightsTab({ b }) {
   }, [ins.data]);
   return (
     <Card title="Profile views per week" subtitle="From the Business Profile Performance API (synced daily)" action={<Legend items={[['Google Search', SERIES[0]], ['Google Maps', SERIES[1]]]} />}>
-      {!ins.data ? <div className="py-10 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : weekly.length === 0 ? <div className="py-12 text-center text-13 text-gray-500">No insights yet: they arrive once the Google profile is connected and synced.</div> : (
+      {!ins.data ? <SkChart h="h-64" /> : weekly.length === 0 ? <div className="py-12 text-center text-13 text-gray-500">No insights yet: they arrive once the Google profile is connected and synced.</div> : (
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={weekly} margin={{ top: 8, right: 8, left: -14, bottom: 0 }}>
@@ -334,14 +334,10 @@ function InsightsTab({ b }) {
 
 function Manager({ b, tab, setTab, toast, onConnect }) {
   const [params, setParams] = useSearchParams();
-  const section = TAB_ALIAS[tab] || tab;
+  const section = (tab === 'performance' && params.get('view')) ? 'traffic' : (TAB_ALIAS[tab] || tab); // old ?tab=performance&view=… links
   const sub = params.get('sub') || (tab === 'hours' || tab === 'faq' ? tab : 'live');
   const setSub = (v) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', 'profile'); n.set('sub', v); return n; }, { replace: true });
   const trafficView = TRAFFIC_VIEWS.some(v => v.id === params.get('view')) ? params.get('view') : 'snap';
-  const setTrafficView = (v) => {
-    setParams(p => { const n = new URLSearchParams(p); n.set('tab', 'performance'); n.set('view', v); return n; }, { replace: true });
-    setTimeout(() => document.getElementById('website-traffic')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-  };
   const go = (id, s) => { if (id === 'profile' && s) setSub(s); else setTab(id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const [syncing, setSyncing] = useState(false);
   const [panel, setPanel] = useState(null); // an edit panel that opens on this page, so nothing navigates away
@@ -356,7 +352,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
       <ClientBar b={b} onConnect={onConnect} onSync={sync} />
       {!(b.gbp_location && b.connection_id) && <ListingStatus b={b} toast={toast} onFind={() => { onConnect('email'); setTimeout(() => document.querySelector('input[aria-label="Business email"]')?.focus(), 400); }} />}
       <div className="grid grid-cols-1 lg:grid-cols-[230px_minmax(0,1fr)] gap-5 items-start">
-        <SectionNav value={section} onChange={(id) => go(id)} trafficView={trafficView} onTrafficView={setTrafficView} />
+        <SectionNav value={section} onChange={(id) => go(id)} />
         <div className="min-w-0" key={version}>
           {section === 'overview' && <OverviewSection b={b} go={go} onOpen={setPanel} />}
           {section === 'profile' && (
@@ -372,7 +368,13 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
           {section === 'performance' && (
             <>
               <SectionHead title="Performance" subtitle="How customers find and act on the profile" sources={['google']} />
-              <div className="space-y-4"><PerformanceMetrics b={b} /><InsightsTab b={b} /><BusinessTraffic b={b} view={trafficView} /></div>
+              <div className="space-y-4"><PerformanceMetrics b={b} /><InsightsTab b={b} /></div>
+            </>
+          )}
+          {section === 'traffic' && (
+            <>
+              <SectionHead title="Website traffic" subtitle="Visitors, sessions, channels and pages from Google Analytics 4" />
+              <BusinessTraffic b={b} initialView={trafficView} />
             </>
           )}
           {section === 'reviews' && <ReviewsSection b={b} toast={toast} />}

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Search, X, Upload, Trash2, Save, Loader2, Pencil } from 'lucide-react';
-import { Card, Button, Field, ErrorNote, inputCls, Modal, Badge, useAction, refreshBusinesses, useDoubleConfirm } from './SeoUi';
+import { Card, Button, Field, ErrorNote, inputCls, Modal, Badge, useAction, refreshBusinesses, useDoubleConfirm, Sk, SkList } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { BusinessAvatar } from './GbpWorkspace';
 
@@ -87,7 +87,7 @@ export function AddressEditor({ b, toast }) {
   return (
     <Card title="Address" subtitle="Changing the address can send the profile for re-verification on Google.">
       <Linked b={b}>
-        {!f ? <div className="py-4 flex justify-center text-slate-400"><Loader2 size={16} className="animate-spin" /></div> : (
+        {!f ? <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{[0, 1, 2, 3, 4, 5].map(i => <div key={i} className="space-y-1.5"><Sk w="w-24" h="h-2.5" /><Sk h="h-9" /></div>)}</div> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="Address line 1"><input className={inputCls} value={f.address_lines[0] || ''} onChange={e => set('address_lines', [e.target.value, ...f.address_lines.slice(1)])} /></Field>
             <Field label="Address line 2"><input className={inputCls} value={f.address_lines[1] || ''} onChange={e => set('address_lines', [f.address_lines[0] || '', e.target.value])} /></Field>
@@ -114,7 +114,7 @@ export function AttributesEditor({ b, toast }) {
   return (
     <Card title="Attributes" subtitle="Accessibility, amenities, payments and more, exactly as Google offers them for your category.">
       <Linked b={b}>
-        {!list.data ? (list.error ? <ErrorNote>{list.error.message}</ErrorNote> : <div className="py-4 flex justify-center text-slate-400"><Loader2 size={16} className="animate-spin" /></div>) : list.data.length === 0 ? <p className="text-13 text-slate-500">Google offers no editable attributes for this category.</p> : (
+        {!list.data ? (list.error ? <ErrorNote>{list.error.message}</ErrorNote> : <SkList rows={4} avatar={false} />) : list.data.length === 0 ? <p className="text-13 text-slate-500">Google offers no editable attributes for this category.</p> : (
           <div className="space-y-4 max-h-96 overflow-auto pr-1">
             {Object.entries(groups).map(([g, items]) => (
               <div key={g}><div className="text-11 font-semibold text-slate-400 mb-1.5">{g}</div>

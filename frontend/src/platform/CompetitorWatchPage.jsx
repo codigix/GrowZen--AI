@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Play, Loader2, FilePlus2, Pencil, FileX2 } from 'lucide-react';
-import { SeoShell, Card, Badge, Button, ErrorNote, useAction, useToast } from './SeoUi';
+import { SeoShell, Card, Badge, Button, ErrorNote, useAction, useToast, SkList, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 
 const KIND = {
@@ -39,7 +39,7 @@ function Body({ b }) {
   usePoll(() => w.reload(true), running, 3000);
   const start = () => run('run', async () => { await api(`${base}/run`, { method: 'POST' }); toast('Visiting your competitors now'); setTimeout(() => w.reload(true), 800); });
   const toggle = (enabled) => run('cfg', async () => { await api(base, { method: 'PUT', body: { enabled } }); w.reload(true); });
-  if (!d) return <div className="py-10 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div>;
+  if (!d) return <SkCard title="Weekly competitor watch" subtitle="Each week we visit your competitors' websites and tell you what is new, what changed and what disappeared"><SkList rows={4} /></SkCard>;
   const none = d.competitors.length === 0;
   return (
     <>

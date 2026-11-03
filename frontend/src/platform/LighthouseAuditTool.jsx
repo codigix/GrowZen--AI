@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Gauge, Smartphone, Monitor, FileText, Globe, Download, RotateCw, History, Loader2, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, XCircle, Cloud, Cpu, Sparkles } from 'lucide-react';
-import { Card, Button, StatusPill, Badge, ScoreRing, Meter, Tabs, inputCls, ErrorNote, useToast, useAction, SERIES } from './SeoUi';
+import { Card, Button, StatusPill, Badge, ScoreRing, Meter, Tabs, inputCls, ErrorNote, useToast, useAction, SERIES, SkList, SkScore, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 
 /**
@@ -255,7 +255,7 @@ function SiteAudit({ id, current, onOpenPage, onRerun, rerunning, onSettled }) {
   usePoll(() => summary.reload(true), Boolean(running), 3000);
   useEffect(() => { if (s && !running) onSettled(); }, [s?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!s) return <Card><div className="py-8 flex justify-center text-slate-500"><Loader2 size={18} className="animate-spin text-cyan-700" /></div></Card>;
+  if (!s) return <SkCard title="Lighthouse audit" subtitle="Performance, accessibility, best practices and SEO scores"><SkScore /></SkCard>;
 
   const done = s.completed_count + s.failed_count;
   const ok = s.pages.filter(p => p.status === 'completed');
@@ -346,7 +346,7 @@ function HistoryCard({ mode, current, currentSite, refresh, onOpen, onOpenSite, 
       action={<History size={15} className="text-slate-500" />}
     >
       {list.error ? <ErrorNote>{list.error.message}</ErrorNote> : !list.data ? (
-        <div className="py-6 flex justify-center text-slate-500"><Loader2 size={16} className="animate-spin text-cyan-700" /></div>
+        <SkList rows={3} avatar={false} />
       ) : items.length === 0 ? (
         <div className="py-6 text-center text-13 text-slate-500">No {mode === 'site' ? 'site' : 'page'} audits yet.</div>
       ) : (

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, CheckCircle2, Loader2, Circle, AlertTriangle, Inbox, Plus, Trash2, RefreshCw, Play, ArrowRight, CalendarClock, Save } from 'lucide-react';
-import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ErrorNote, useToast, useAction, useBusinesses, useSeoBusiness, refreshBusinesses, useModulePath } from './SeoUi';
+import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ErrorNote, useToast, useAction, useBusinesses, useSeoBusiness, refreshBusinesses, useModulePath, Sk, SkTable, SkList, SkLines, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 
 const STEP_LABEL = {
@@ -93,7 +93,7 @@ function PipelineTab({ emails, toast }) {
         )}
       </Card>
       <Card title="Recent emails">
-        {!emails.data ? <Loader2 size={16} className="animate-spin text-gray-400" /> : emails.data.length === 0 ? <div className="text-13 text-gray-500">None yet.</div> : (
+        {!emails.data ? <SkList rows={5} /> : emails.data.length === 0 ? <div className="text-13 text-gray-500">None yet.</div> : (
           <div className="divide-y divide-gray-100">
             {emails.data.slice(0, 12).map(e => (
               <button key={e.id} onClick={() => setSelected(e.id)} className={`w-full flex items-center gap-2 py-2 px-1 text-left cursor-pointer ${e.id === selected ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}>
@@ -118,7 +118,7 @@ function InboxTab({ emails, toast }) {
   const d = detail.data;
   return (
     <Card title="Onboarding inbox" subtitle="Every email received (mailbox, webhook or pasted)">
-      {!emails.data ? <Loader2 size={16} className="animate-spin text-gray-400" /> : emails.data.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No emails yet.</div> : (
+      {!emails.data ? <SkList rows={6} /> : emails.data.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No emails yet.</div> : (
         <div className="divide-y divide-gray-100">
           {emails.data.map(e => (
             <button key={e.id} onClick={() => setOpen(e.id)} className="w-full flex items-center gap-3 py-2.5 text-left hover:bg-gray-50 px-1 cursor-pointer">
@@ -132,7 +132,7 @@ function InboxTab({ emails, toast }) {
       )}
       <Modal open={Boolean(open)} title={d?.subject || 'Email'} onClose={() => setOpen(null)} width="max-w-3xl"
         footer={<>{d && !['processing', 'rejected'].includes(d.status) && <Button icon={Play} busy={busy === 're'} onClick={reprocess}>Run pipeline again</Button>}<Button onClick={() => setOpen(null)}>Close</Button></>}>
-        {!d ? <Loader2 size={16} className="animate-spin text-gray-400" /> : (
+        {!d ? <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div className="space-y-2"><Sk w="w-12" h="h-2.5" /><Sk h="h-48" /></div><div className="space-y-2"><Sk w="w-16" h="h-2.5" /><SkLines n={7} /></div></div> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div><div className="text-12 text-gray-500 mb-1">Email</div><pre className="whitespace-pre-wrap text-12 text-gray-800 bg-gray-50 border border-gray-200 rounded p-3  max-h-80 overflow-auto">{d.body}</pre></div>
             <div>
@@ -157,7 +157,7 @@ function ScheduleModal({ business, onClose, toast }) {
   const setJob = (job, every) => run(job, async () => { const out = await api(`/businesses/${business.id}/schedules`, { method: 'PUT', body: { job, every } }); sch.setData(list => list.map(s => s.job === job ? out : s)); toast('Schedule saved'); });
   return (
     <Modal open={Boolean(business)} title={business ? `${business.name}: automatic schedule` : ''} onClose={onClose} width="max-w-xl" footer={<Button onClick={onClose}>Close</Button>}>
-      {!sch.data ? <Loader2 size={16} className="animate-spin text-gray-400" /> : (
+      {!sch.data ? <SkList rows={4} avatar={false} /> : (
         <div className="divide-y divide-gray-100">
           {JOBS.map(([job, label]) => {
             const s = sch.data.find(x => x.job === job);
@@ -182,7 +182,7 @@ function ProfilesTab({ toast }) {
   const { list } = useBusinesses();
   return (
     <Card title={`Client profiles (${rows.data?.length ?? '…'})`} subtitle="Each profile runs on its own schedule">
-      {!rows.data ? <Loader2 size={16} className="animate-spin text-gray-400" /> : (
+      {!rows.data ? <SkTable cols={5} rows={5} /> : (
         <div className="overflow-x-auto">
           <table className="w-full text-13">
             <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><th className="p-2 text-left font-medium">Business</th><th className="p-2 text-left font-medium">Plan</th><th className="p-2 text-left font-medium">Source</th><th className="p-2 text-right font-medium">Score</th><th className="p-2 text-left font-medium">Status</th><th className="p-2 text-right font-medium">Waiting tasks</th><th className="p-2 text-left font-medium">Next job</th><th className="p-2" /></tr></thead>
@@ -214,7 +214,7 @@ function PlaybookTab({ toast }) {
   const [newStep, setNewStep] = useState('');
   const [busy, error, run] = useAction();
   useEffect(() => { if (pb.data && !draft) setDraft({ steps: pb.data.steps || [], tone: pb.data.tone || '', languages: pb.data.languages || '', plan_schedules: pb.data.plan_schedules || {} }); }, [pb.data, draft]);
-  if (!draft) return <Loader2 size={16} className="animate-spin text-gray-400" />;
+  if (!draft) return <div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><SkCard title="Standard process the AI follows" subtitle="Your SOP, in order" className="xl:col-span-2"><SkList rows={5} avatar={false} trail={false} /></SkCard><SkCard title="Tone and languages"><SkLines n={5} /></SkCard></div>;
   const save = () => run('save', async () => { const out = await api('/playbook', { method: 'PUT', body: draft }); pb.setData(out); toast('Playbook saved: applies to the next runs'); });
   const plans = Object.keys(draft.plan_schedules);
   return (

@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { Play, MapPin, Clock, Loader2, ArrowUp, ArrowDown, Crosshair, Layers, Target, Trophy, Search, RotateCw } from 'lucide-react';
-import { SeoShell, Card, Button, SourceTag, ErrorNote, STATUS, Tabs, useUrlTab, useToast, useAction, useModulePath } from './SeoUi';
+import { Play, MapPin, Clock, ArrowUp, ArrowDown, Crosshair, Layers, Target, Trophy, Search, RotateCw } from 'lucide-react';
+import { SeoShell, Card, Button, SourceTag, ErrorNote, STATUS, Tabs, useUrlTab, useToast, useAction, useModulePath, SkPage } from './SeoUi';
 import PositionLandscape from './PositionLandscape';
 import { api, useApi, usePoll, fmtDateTime, fmtDate } from './seoApi';
 import { marketOf } from './MarketBadge';
@@ -192,7 +192,7 @@ function Tracker({ b }) {
         </div>
       )}
 
-      {!scans.data ? <div className="py-16 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div> : !shownScan ? (
+      {!scans.data ? <SkPage header={false} statLabels={["Top-3 coverage", "Average rank", "Found in top 20"]} chartTitle="Average rank over time" tableTitle="Keywords" tableHeaders={["Keyword", "Average rank", "Top 3", "Change"]} /> : !shownScan ? (
         <Card><div className="py-12 text-center text-13 text-slate-500"><Crosshair size={26} className="mx-auto mb-2 text-slate-300" />No scan for “{kwNow || '—'}” yet. Run one to see how you rank street by street.</div></Card>
       ) : (
         <>

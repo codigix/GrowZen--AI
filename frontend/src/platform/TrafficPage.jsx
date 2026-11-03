@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend as ChartLegend } from 'recharts';
 import { Activity, Users, UserPlus, MousePointerClick, Zap, Eye, Clock, Gauge, PlugZap, RefreshCw, Radio, Search } from 'lucide-react';
-import { SeoShell, Card, Stat, Badge, Button, ErrorNote, Field, Empty, Tabs, inputCls, SERIES, INK } from './SeoUi';
+import { SeoShell, Card, Stat, Badge, Button, ErrorNote, Field, Empty, Tabs, inputCls, SERIES, INK, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 
 /**
@@ -283,6 +283,36 @@ function Snapshot({ r }) {
   );
 }
 
+/** Shown while Google Analytics answers (it can take several seconds): a radar pulse, rotating status lines and skeleton cards. */
+function LiveLoader({ steps, pages }) {
+  const [i, setI] = useState(0);
+  useEffect(() => { const t = setInterval(() => setI(n => (n + 1) % steps.length), 1800); return () => clearInterval(t); }, [steps.length]);
+  const bar = 'rounded bg-slate-100 animate-pulse';
+  return (
+    <div className="space-y-4" role="status" aria-live="polite">
+      <style>{`@keyframes gz-sweep{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}@keyframes gz-rise{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}`}</style>
+      <div className="ai-glass-card rounded px-5 py-6 flex flex-col items-center text-center">
+        <div className="relative w-16 h-16 flex items-center justify-center">
+          <span className="absolute inset-0 rounded-full bg-indigo-400/30 animate-ping" />
+          <span className="absolute inset-2 rounded-full bg-indigo-400/30 animate-ping" style={{ animationDelay: '.5s' }} />
+          <span className="relative w-10 h-10 rounded-full bg-indigo-500 text-white flex items-center justify-center"><Radio size={18} /></span>
+        </div>
+        <div className="mt-4 flex items-end gap-1 h-6" aria-hidden="true">
+          {[0, 1, 2, 3, 4, 5, 6].map(n => <span key={n} className="w-1.5 h-full rounded-sm bg-indigo-400 origin-bottom" style={{ animation: 'gz-rise 1.1s ease-in-out infinite', animationDelay: `${n * 0.12}s` }} />)}
+        </div>
+        <div className="mt-3 text-14 font-semibold text-slate-800">Fetching live data from Google Analytics</div>
+        <div key={i} className="text-12.5 text-slate-500 mt-1 min-h-[18px] transition-opacity">{steps[i]}…</div>
+        <div className="mt-4 h-1 w-56 max-w-full rounded-full bg-slate-100 overflow-hidden"><div className="h-full w-1/3 rounded-full bg-indigo-500" style={{ animation: 'gz-sweep 1.4s ease-in-out infinite' }} /></div>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        {[0, 1].map(n => <div key={n} className="ai-glass-card rounded p-4 space-y-2"><div className={`${bar} h-3 w-2/3`} /><div className={`${bar} h-7 w-1/3`} /></div>)}
+      </div>
+      <div className="ai-glass-card rounded p-4"><div className={`${bar} h-3 w-40 mb-3`} /><div className="flex items-end gap-1 h-28">{Array.from({ length: 30 }, (_, n) => <div key={n} className={`${bar} flex-1`} style={{ height: `${20 + ((n * 37) % 70)}%`, animationDelay: `${n * 40}ms` }} />)}</div></div>
+      {pages && <div className="ai-glass-card rounded p-4 space-y-2">{[0, 1, 2, 3].map(n => <div key={n} className={`${bar} h-4`} style={{ width: `${95 - n * 12}%` }} />)}</div>}
+    </div>
+  );
+}
+
 /** GA4 "Realtime overview" and "Realtime pages" for one property; refreshes every 30 seconds while the tab is visible. */
 function Realtime({ email, property, name, pages }) {
   const [d, setD] = useState(null);
@@ -299,7 +329,7 @@ function Realtime({ email, property, name, pages }) {
   }, [email, id]);
 
   if (err && !d) return <ErrorNote>{err.message}</ErrorNote>;
-  if (!d) return <Empty>Loading realtime data…</Empty>;
+  if (!d) return <LiveLoader pages={pages} steps={['Connecting to your Analytics property', 'Counting active users right now', 'Reading the last 30 minutes of activity', pages ? 'Collecting page views' : 'Collecting locations and events']} />;
   const bars = (d.per_minute || []).map(m => ({ label: `-${m.minutes_ago + 1} min`, active_users: m.active_users }));
   const totalViews = (d.screens || []).reduce((a, x) => a + x.views, 0);
   const totalEvents = (d.events || []).reduce((a, x) => a + x.count, 0);
@@ -365,7 +395,7 @@ function Realtime({ email, property, name, pages }) {
   );
 }
 
-function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: viewProp }) {
+function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: viewProp, initialView = 'snap' }) {
   const last = readLast();
   const [email, setEmail] = useState(defaultEmail || last.email || '');
   const [website, setWebsite] = useState(defaultWebsite || (defaultEmail ? '' : last.website) || '');
@@ -373,7 +403,7 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: view
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [viewState, setView] = useState('snap');
+  const [viewState, setView] = useState(initialView);
   const view = viewProp || viewState; // embedded in a workspace, the view comes from its inner sidebar
   const chosenProperty = useRef(null); // a property picked from the "No property matched" list stays picked while the period changes
   const requestNo = useRef(0); // only the latest request may update the page
@@ -477,20 +507,21 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: view
         </>
       )}
 
+      {!data && busy && <LiveLoader pages steps={['Finding your Analytics property', 'Checking access for the connected Google account', 'Loading traffic reports']} />}
       {!data && !error && !busy && <Empty>Enter a website or an email and press "Show traffic" to see users, sessions, channels, countries and top pages.</Empty>}
     </div>
   );
 }
 
 /** Website traffic for one client, inside its Business Profile workspace: uses the client's connected Google email and website. */
-export function BusinessTraffic({ b, view }) {
+export function BusinessTraffic({ b, view, initialView }) {
   const live = useApi(`/businesses/${b.id}/gbp/live`);
-  if (!live.data) return <Empty>{live.error ? live.error.message : 'Loading…'}</Empty>;
+  if (!live.data) return live.error ? <Empty>{live.error.message}</Empty> : <SkPage header={false} statLabels={["Active users", "New users", "Sessions", "Engaged sessions", "Engagement rate", "Avg engagement time", "Event count", "Page views"]} chartTitle="Users and sessions per day" tableTitle="Pages" tableHeaders={["Page title", "Views", "Active users", "Event count", "Bounce rate"]} />;
   const email = live.data.connection?.email || '';
   return (
     <div id="website-traffic" className="space-y-2 scroll-mt-24">
       <h2 className="text-15 font-semibold text-slate-900 pt-2">Website traffic <span className="text-12 font-normal text-slate-400">· Google Analytics 4</span></h2>
-      <Page key={`${b.id}-${email}`} defaultEmail={email} defaultWebsite={b.website || ''} auto view={view} />
+      <Page key={`${b.id}-${email}`} defaultEmail={email} defaultWebsite={b.website || ''} auto view={view} initialView={initialView} />
     </div>
   );
 }

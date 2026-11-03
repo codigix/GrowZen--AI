@@ -10,7 +10,7 @@ from ..deps import get_business, in_background
 from ..models import Business, GeoPrompt, GeoResult, Keyword, RankScan
 from ..schemas import GeoPromptIn, KeywordDiscoverIn, KeywordIdeasIn, KeywordIn, RankScanIn
 from ..serialize import row, rows
-from ..services import ai, audits, geo, keywords, providers
+from ..services import ai, audits, geo, keyword_metrics, keywords, market, providers
 from ..services.providers.base import intent_of
 
 router = APIRouter(prefix="/businesses/{business_id}", tags=["growth"])
@@ -20,6 +20,9 @@ router = APIRouter(prefix="/businesses/{business_id}", tags=["growth"])
 @router.get("/keywords")
 def list_keywords(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     found = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id).order_by(Keyword.cluster, Keyword.volume.desc().nullslast())))
+    if any(k.volume is None for k in found) and keyword_metrics.enabled():  # saved before Google Ads was connected: fill once, cached for a day
+        keyword_metrics.fill(found[:300], market.serp_country(b))
+        db.commit()
     clusters: dict[str, dict] = {}
     for k in found:
         c = clusters.setdefault(k.cluster or "Not grouped", {"name": k.cluster or "Not grouped", "keywords": 0, "volume": 0, "mapped": 0})
@@ -43,8 +46,10 @@ def add_keywords(body: list[KeywordIn], b: Business = Depends(get_business), db:
                 setattr(row_, f, v)
         row_.intent = row_.intent or intent_of(text)
         db.add(row_)
+    db.flush()
+    note = keyword_metrics.fill([r for r in (db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == " ".join(k.keyword.lower().split()))) for k in body) if r], market.serp_country(b))
     db.commit()
-    return {"added": added, "total": len(body)}
+    return {"added": added, "total": len(body), "metrics_note": note}
 
 
 @router.patch("/keywords/{keyword_id}")
@@ -69,7 +74,11 @@ def delete_keyword(keyword_id: int, b: Business = Depends(get_business), db: Ses
 @router.post("/keywords/ideas")
 def keyword_ideas(body: KeywordIdeasIn, b: Business = Depends(get_business)):
     prov = providers.keyword_provider()
-    return {"data_source": prov.source, "ideas": prov.ideas(body.seed, body.location or ", ".join(x for x in [b.area, b.city] if x), b)}
+    try:
+        ideas = prov.ideas(body.seed, body.location or ", ".join(x for x in [b.area, b.city] if x), b)
+    except Exception as exc:  # Google Ads refused or is unreachable: say so rather than return invented numbers
+        raise HTTPException(502, f"Google Ads Keyword Planner did not answer: {str(exc)[:200]}") from exc
+    return {"data_source": prov.source, "ideas": ideas}
 
 
 @router.get("/keywords/context")
