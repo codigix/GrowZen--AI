@@ -111,6 +111,42 @@ def get_article(article_id: int, b: Business = Depends(get_business), db: Sessio
     return {**row(a), **asch.state_of(a, asch.latest_by_article(db, b.id, a.id).get(a.id))}
 
 
+class RegenerateIn(BaseModel):
+    part: Literal["full", "intro", "section", "conclusion", "faqs", "title", "meta"]
+    section_id: str | None = Field(default=None, max_length=20)  # for "section": an id from /regenerate/sections
+    body: str | None = None  # the editor's current (maybe unsaved) HTML; the saved body when omitted
+    # the editor's current (maybe unsaved) fields, for "title" / "meta"; the saved values when omitted
+    title: str | None = Field(default=None, max_length=255)
+    meta_description: str | None = Field(default=None, max_length=500)
+    keyword: str | None = Field(default=None, max_length=255)
+    secondary_keywords: list[str] | None = Field(default=None, max_length=20)
+
+
+class SectionsIn(BaseModel):
+    body: str | None = None
+
+
+@router.post("/{article_id}/regenerate/sections")
+def regenerate_sections(article_id: int, body: SectionsIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The H2/H3 sections of the article that can be regenerated one by one."""
+    from ..services import article_regenerate as rg
+    a = _get(db, b, article_id)
+    return {"sections": rg.sections(body.body if body.body is not None else a.body or "")}
+
+
+@router.post("/{article_id}/regenerate")
+def regenerate_part(article_id: int, body: RegenerateIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Write a new version of one part (or the whole article) with Claude. NOTHING is saved: the answer has the current
+    and the new HTML of that part and the whole new body; the editor applies it only when the user accepts."""
+    from ..services import article_regenerate as rg
+    a = _get(db, b, article_id)
+    try:
+        return rg.regenerate(a, b, body.part, body.body, body.section_id,
+                             fields=body.model_dump(include={"title", "meta_description", "keyword", "secondary_keywords"}))
+    except rg.RegenError as exc:
+        raise HTTPException(exc.code, str(exc))
+
+
 class ScheduleIn(BaseModel):
     date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")  # in the publishing time zone (default Asia/Kolkata)
     time: str = Field(pattern=r"^\d{2}:\d{2}$")

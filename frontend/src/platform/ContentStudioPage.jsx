@@ -15,6 +15,7 @@ import { api, fmt, useApi, usePoll } from './seoApi';
 import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } from './SitePublishPanel';
 import FeaturedImageField, { featuredOf } from './FeaturedImageField';
 import ReactSitePanel from './ReactSitePanel';
+import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
@@ -275,6 +276,11 @@ const ARTICLE_LENGTHS = [
 const mins = (sec) => (sec >= 60 ? `${Math.floor(sec / 60)}m ${Math.round(sec % 60)}s` : `${Math.round(sec)}s`);
 
 const ARTICLE_STATUS = { pending: ['Pending', 'gray'], generating: ['Generating', 'blue'], completed: ['Completed', 'green'], failed: ['Failed', 'red'] };
+// Generated articles list: the filter an article falls under, its accent colour, and the filter chips
+const listKey = (x) => (x.status === 'completed' ? (x.publishing_status === 'publishing' ? 'scheduled' : x.publishing_status || 'draft') : x.status === 'failed' ? 'failed' : 'writing');
+const ACCENT = { draft: 'bg-slate-300', scheduled: 'bg-amber-400', published: 'bg-emerald-500', failed: 'bg-rose-500', writing: 'bg-indigo-400' };
+const LIST_FILTERS = [['all', 'All'], ['draft', 'Drafts'], ['scheduled', 'Scheduled'], ['published', 'Published'], ['failed', 'Failed'], ['writing', 'Writing']];
+const DEST_NAME = { wordpress: 'WordPress', ghost: 'Ghost', shopify: 'Shopify', github: 'GitHub', webhook: 'Website' };
 
 /**
  * 1b. Articles generated from the selected Google Trends keywords: one Ollama draft per keyword, each saved
@@ -287,7 +293,7 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => {} })
     setTimeout(() => {
       const el = document.getElementById('eeat-pipeline-workspace');
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 50);
+    }, 350);  // the writer tab opens first, then the article loads
   };
   usePoll(() => reload(true), working, 3000);
   const [busy, error, run] = useAction();
@@ -320,66 +326,171 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => {} })
     toast('Published.');
   });
 
+  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const counts = articles.reduce((acc, x) => ({ ...acc, [listKey(x)]: (acc[listKey(x)] || 0) + 1 }), {});
+  const q = query.trim().toLowerCase();
+  const shown = articles.filter(x => (filter === 'all' || listKey(x) === filter)
+    && (!q || [x.title, x.keyword, ...(x.secondary_keywords || [])].some(s => (s || '').toLowerCase().includes(q))));
+
   return (
     <Card title="Generated articles" subtitle={`${done} of ${articles.length} written by Claude AI. Each article covers all the keywords you selected and is saved separately.`}>
       {confirmNode}
       {deletePostNode}
       {scheduling && <ScheduleModal b={b} article={scheduling.article} mode={scheduling.mode} toast={toast} onClose={() => setScheduling(null)} onDone={() => reload(true)} />}
-      {deletedNote && <div className="mb-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[12px] text-emerald-800 flex items-center gap-2"><CheckCircle2 size={13} /> {deletedNote}<button type="button" className="ml-auto text-emerald-700 hover:underline cursor-pointer" onClick={() => setDeletedNote('')}>Dismiss</button></div>}
-      <ul className="divide-y divide-slate-100">
-        {articles.map(x => {
-          const [label, tone] = ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending;
-          const site = postStatusOf(x);
+      {deletedNote && <div className="mb-3 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[12px] text-emerald-800 flex items-center gap-2"><CheckCircle2 size={13} /> {deletedNote}<button type="button" className="ml-auto text-emerald-700 hover:underline cursor-pointer" onClick={() => setDeletedNote('')}>Dismiss</button></div>}
+
+      {/* status filters (with counts) + search */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex flex-wrap gap-1.5">
+          {LIST_FILTERS.filter(([id]) => id === 'all' || counts[id] || filter === id).map(([id, lbl]) => (
+            <button key={id} type="button" onClick={() => setFilter(id)}
+              className={`h-8 px-3 rounded-full border text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${filter === id ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-700'}`}>
+              {id !== 'all' && <span className={`w-1.5 h-1.5 rounded-full ${filter === id ? 'bg-white' : ACCENT[id]}`} />}
+              {lbl}
+              <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10.5px] inline-flex items-center justify-center ${filter === id ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{id === 'all' ? articles.length : counts[id] || 0}</span>
+            </button>
+          ))}
+        </div>
+        <label className="relative ml-auto w-full sm:w-64">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input className={`${inputCls} pl-8`} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search title or keyword" />
+        </label>
+      </div>
+
+      <div className="space-y-3">
+        {shown.map(x => {
+          const key = listKey(x);
           const ps = x.status === 'completed' ? x.publishing_status : null;  // draft | scheduled | publishing | published | failed
-          const [pl, pt] = PUB_STATUS[ps] || [];
+          const [label, tone] = ps ? PUB_STATUS[ps] || PUB_STATUS.draft : x.status === 'failed' ? ['Writing failed', 'red'] : ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending;
+          const site = postStatusOf(x);
+          const isOpen = openId === x.id;
+          const kws = x.secondary_keywords || [];
+          const views = [
+            x.react_url && x.react_status !== 'deleted' && ['React.js website', x.react_url],
+            x.wp_url && x.wp_status !== 'deleted' && [DEST_NAME[x.publish_method] || 'Website', x.wp_url]
+          ].filter(Boolean);
           return (
-            <li key={x.id} className={`py-2.5 flex flex-wrap items-center gap-3 text-[12.5px] ${openId === x.id ? 'bg-indigo-50/60 -mx-2 px-2 rounded-lg' : ''}`}>
-              {ps
-                ? <Badge tone={pt} title="Publishing status in GrowZen">{ps === 'publishing' && <RefreshCw size={11} className="animate-spin" />}{pl}</Badge>
-                : <Badge tone={tone}>{x.status === 'generating' && <RefreshCw size={11} className="animate-spin" />}{label}</Badge>}
-              {site && <Badge tone={site[1]} title={x.wp_post_id ? `WordPress post #${x.wp_post_id}` : undefined}>{site[0]}</Badge>}
-              {x.react_status && (() => {
-                const [l, t] = { publish: ['Published', 'green'], draft: ['Draft', 'gray'], scheduled: ['Scheduled', 'amber'], deleted: ['Deleted', 'red'] }[x.react_status] || [x.react_status, 'gray'];
-                return <Badge tone={t} title={`React.js website post ${x.react_post_id}`}>React · {l}</Badge>;
-              })()}
-              <div className="flex-1 min-w-[200px]">
-                <div className="font-semibold text-slate-900">{x.title || x.keyword}</div>
-                <div className="text-[11px] text-slate-500">Keywords: {[x.keyword, ...(x.secondary_keywords || [])].join(', ')}{x.error ? <span className="text-red-600"> · {x.error}</span> : null}</div>
-                <div className="text-[10.5px] text-slate-400 mt-0.5">
-                  Created {x.created_at ? new Date(x.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                  {x.schedule && ['scheduled', 'publishing', 'failed'].includes(ps) && <span className={ps === 'failed' ? 'text-rose-600' : 'text-amber-700'}> · {ps === 'failed' ? 'Was due' : 'Publishes'} {scheduleText(x.schedule)}</span>}
+            <article key={x.id} className={`relative rounded-2xl border bg-white overflow-hidden transition-shadow hover:shadow-md ${isOpen ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
+              <span className={`absolute left-0 inset-y-0 w-1 ${ACCENT[key]}`} aria-hidden="true" />
+              <div className="pl-5 pr-4 pt-3.5 pb-3">
+                {/* badges + date */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge tone={tone} title={ps ? 'Publishing status in GrowZen' : 'Writing status'}>
+                    {(ps === 'publishing' || x.status === 'generating') && <RefreshCw size={11} className="animate-spin" />}{label}
+                  </Badge>
+                  {site && <Badge tone={site[1]} title={x.wp_post_id ? `Post #${x.wp_post_id}` : undefined}><Globe size={10} /> {DEST_NAME[x.publish_method] || 'WordPress'} · {site[0]}</Badge>}
+                  {x.react_status && (() => {
+                    const [l, t] = { publish: ['Published', 'green'], draft: ['Draft', 'gray'], scheduled: ['Scheduled', 'amber'], deleted: ['Deleted', 'red'] }[x.react_status] || [x.react_status, 'gray'];
+                    return <Badge tone={t} title={`React.js website post ${x.react_post_id}`}><Code size={10} /> React · {l}</Badge>;
+                  })()}
+                  {isOpen && <Badge tone="blue">Open in the writer</Badge>}
+                  <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-slate-400"><CalendarDays size={11} /> {x.created_at ? new Date(x.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
                 </div>
-                {ps === 'failed' && x.schedule?.error && <div className="text-[11px] text-rose-600 mt-0.5">{x.schedule.error}</div>}
-                {x.status === 'generating' && x.progress && <div className="text-[11px] text-indigo-700 font-semibold mt-0.5">{x.progress}…</div>}
+
+                {/* title + facts */}
+                <h3 className="mt-2 text-[14.5px] font-bold text-slate-900 leading-snug">
+                  {x.status === 'completed'
+                    ? <button type="button" className="text-left hover:text-indigo-700 cursor-pointer" onClick={() => handleOpen(x.id)}>{x.title || x.keyword}</button>
+                    : x.title || x.keyword}
+                </h3>
                 {x.status === 'completed' && x.stats && (
-                  <div className="text-[10.5px] text-slate-400 mt-0.5" title={(x.stats.steps || []).map(st => `${st.step}: ${mins(st.seconds)}, ${st.calls} call${st.calls === 1 ? '' : 's'}`).join('\n')}>
-                    {ARTICLE_LENGTHS.find(l => l.id === x.stats.length)?.label || 'Standard'} · {x.stats.words} words · written in {mins(x.stats.total_seconds)} · {x.stats.ollama_calls || x.stats.calls || 1} Claude AI calls
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-slate-500" title={(x.stats.steps || []).map(st => `${st.step}: ${mins(st.seconds)}, ${st.calls} call${st.calls === 1 ? '' : 's'}`).join('\n')}>
+                    <span className="inline-flex items-center gap-1"><FileText size={12} /> {fmt(x.stats.words)} words</span>
+                    <span className="inline-flex items-center gap-1"><Layers size={12} /> {ARTICLE_LENGTHS.find(l => l.id === x.stats.length)?.label || 'Standard'}</span>
+                    <span className="inline-flex items-center gap-1"><Clock size={12} /> written in {mins(x.stats.total_seconds)}</span>
+                    <span className="inline-flex items-center gap-1"><Sparkles size={12} /> {x.stats.ollama_calls || x.stats.calls || 1} Claude AI calls</span>
                   </div>
                 )}
+
+                {/* keywords */}
+                <div className="mt-2.5 flex flex-wrap gap-1.5" title={[x.keyword, ...kws].join(', ')}>
+                  <span className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-[11px] font-semibold text-indigo-800">{x.keyword}</span>
+                  {kws.slice(0, 5).map(k => <span key={k} className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-[11px] text-slate-600">{k}</span>)}
+                  {kws.length > 5 && <span className="px-2 py-0.5 rounded-md text-[11px] text-slate-500">+{kws.length - 5} more</span>}
+                </div>
+
+                {/* what is happening with it */}
+                {x.status === 'generating' && (
+                  <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-100 text-[12px] text-indigo-800">
+                    <RefreshCw size={12} className="animate-spin shrink-0" /> {x.progress ? `${x.progress}…` : 'Claude AI is writing this article…'}
+                  </div>
+                )}
+                {x.status === 'pending' && <div className="mt-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-[12px] text-slate-600">Waiting to start writing…</div>}
+                {x.status === 'failed' && x.error && <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-[12px] text-rose-800"><AlertTriangle size={13} className="shrink-0 mt-0.5" /> {x.error}</div>}
+                {x.schedule && (ps === 'scheduled' || ps === 'publishing') && (
+                  <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[12px] text-amber-900">
+                    <Clock size={13} className="shrink-0" /> <span>{ps === 'publishing' ? 'Publishing now to ' : 'Publishes automatically: '}<b>{scheduleText(x.schedule)}</b></span>
+                  </div>
+                )}
+                {ps === 'failed' && (
+                  <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-[12px] text-rose-800">
+                    <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                    <span>Scheduled publishing failed{x.schedule ? ` (was due ${scheduleText(x.schedule)})` : ''}.{x.schedule?.error ? <span className="block text-rose-700/90 mt-0.5">{x.schedule.error}</span> : null}</span>
+                  </div>
+                )}
+                {ps === 'draft' && <div className="mt-3 text-[11.5px] text-slate-500">Saved in GrowZen only: schedule it or publish it now when it is ready.</div>}
               </div>
-              {x.wp_url && x.wp_status !== 'deleted' && <a href={x.wp_url} target="_blank" rel="noreferrer" className="text-[11.5px] font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1">View website <ExternalLink size={10} /></a>}
-              {canDeletePost(x) && <button type="button" className="text-[11.5px] font-semibold text-rose-600 hover:underline cursor-pointer" onClick={() => askDeletePost(x)}>Delete post</button>}
-              {x.status === 'completed' && (openId === x.id
-                ? <span className="text-[11.5px] font-semibold text-emerald-700">Open above in Pipeline</span>
-                : <button type="button" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => handleOpen(x.id)}>Review & edit</button>)}
-              {ps === 'draft' && <button type="button" className="text-[11.5px] font-semibold text-amber-700 hover:underline cursor-pointer" onClick={() => setScheduling({ article: x, mode: 'schedule' })}>Schedule</button>}
-              {ps === 'draft' && <button type="button" className="text-[11.5px] font-semibold text-emerald-700 hover:underline cursor-pointer" onClick={() => setScheduling({ article: x, mode: 'publish' })}>Publish now</button>}
-              {(ps === 'scheduled' || ps === 'failed') && <button type="button" className="text-[11.5px] font-semibold text-amber-700 hover:underline cursor-pointer" onClick={() => setScheduling({ article: x, mode: 'schedule' })}>Reschedule</button>}
-              {ps === 'failed' && <button type="button" disabled={busy === `t-${x.id}`} className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => retrySched(x)}>{busy === `t-${x.id}` ? 'Publishing…' : 'Retry'}</button>}
-              {(ps === 'scheduled' || ps === 'failed') && <button type="button" disabled={busy === `c-${x.id}`} className="text-[11.5px] font-semibold text-slate-500 hover:text-slate-800 hover:underline cursor-pointer" onClick={() => cancelSched(x)}>Cancel schedule</button>}
-              {x.status === 'failed' && <button type="button" disabled={busy === `r-${x.id}`} className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => retry(x.id)}>Retry</button>}
-              <button type="button" disabled={busy === `d-${x.id}`} className="text-[11.5px] text-slate-400 hover:text-red-600 cursor-pointer" title="Remove from GrowZen" onClick={() => del(x)}>Delete</button>
-            </li>
+
+              {/* actions */}
+              <div className="pl-5 pr-3 py-2.5 border-t border-slate-100 bg-slate-50/60 flex flex-wrap items-center gap-2">
+                {x.status === 'completed' && (isOpen
+                  ? <span className="h-[30px] px-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700"><CheckCircle2 size={13} /> Open in the writer</span>
+                  : <Button size="sm" icon={Eye} onClick={() => handleOpen(x.id)}>Review &amp; edit</Button>)}
+                {ps === 'draft' && <Button size="sm" icon={CalendarDays} onClick={() => setScheduling({ article: x, mode: 'schedule' })}>Schedule</Button>}
+                {ps === 'draft' && <Button size="sm" variant="primary" icon={Send} onClick={() => setScheduling({ article: x, mode: 'publish' })}>Publish now</Button>}
+                {ps === 'failed' && <Button size="sm" variant="primary" icon={RefreshCw} busy={busy === `t-${x.id}`} onClick={() => retrySched(x)}>Retry now</Button>}
+                {(ps === 'scheduled' || ps === 'failed') && <Button size="sm" icon={CalendarDays} onClick={() => setScheduling({ article: x, mode: 'schedule' })}>Reschedule</Button>}
+                {(ps === 'scheduled' || ps === 'failed') && <Button size="sm" variant="ghost" busy={busy === `c-${x.id}`} onClick={() => cancelSched(x)}>Cancel schedule</Button>}
+                {x.status === 'failed' && <Button size="sm" variant="primary" icon={RefreshCw} busy={busy === `r-${x.id}`} onClick={() => retry(x.id)}>Retry writing</Button>}
+                {views.map(([where, url]) => (
+                  <a key={url} href={url} target="_blank" rel="noreferrer" title={url}
+                    className="h-[30px] px-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-xs font-semibold inline-flex items-center gap-1.5">
+                    <ExternalLink size={12} /> View on {views.length > 1 ? where : 'website'}
+                  </a>
+                ))}
+                <span className="ml-auto flex items-center gap-1">
+                  {canDeletePost(x) && <Button size="sm" variant="ghost" className="!text-rose-600" onClick={() => askDeletePost(x)}>Delete post</Button>}
+                  <Button size="sm" variant="ghost" className="!text-slate-500 hover:!text-rose-600" busy={busy === `d-${x.id}`} title="Remove from GrowZen" onClick={() => del(x)}>Delete</Button>
+                </span>
+              </div>
+            </article>
           );
         })}
-      </ul>
+        {!shown.length && (
+          <div className="py-10 text-center rounded-2xl border border-dashed border-slate-200 text-[12.5px] text-slate-500">
+            No {filter === 'all' ? '' : `${(LIST_FILTERS.find(([id]) => id === filter) || [])[1]?.toLowerCase()} `}articles{q ? ` match "${query.trim()}"` : ''}.
+            {(filter !== 'all' || q) && <button type="button" className="ml-1 font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => { setFilter('all'); setQuery(''); }}>Show all</button>}
+          </div>
+        )}
+      </div>
       <ErrorNote>{error}</ErrorNote>
     </Card>
   );
 }
 
+/** "Generated Articles" tab: every article of this account, with its status and actions. */
+function GeneratedArticlesTab({ b, openId, onOpen, onWrite, toast }) {
+  const list = useApi(`/businesses/${b.id}/articles`);
+  const articles = list.data?.articles || [];
+  if (!list.data && !list.error) return <div className="py-10 text-center text-[13px] text-slate-500"><RefreshCw size={14} className="inline animate-spin mr-1.5" />Loading articles…</div>;
+  if (list.error) return <ErrorNote>{list.error.message || String(list.error)}</ErrorNote>;
+  if (!articles.length) {
+    return (
+      <Card title="Generated articles">
+        <div className="py-10 text-center">
+          <FileText size={28} className="mx-auto text-slate-300" />
+          <p className="mt-2 text-[13px] text-slate-600">No articles yet. Write your first blog with Claude AI.</p>
+          <div className="mt-3"><Button variant="primary" icon={Sparkles} onClick={onWrite}>Write an article</Button></div>
+        </div>
+      </Card>
+    );
+  }
+  return <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={onOpen} toast={toast} />;
+}
+
 /** The single "AI Blog & Article Writer" tab: the generated articles on top, the E-E-A-T pipeline for the open one below. */
-function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }) {
+function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, onShowArticles, toast }) {
   const list = useApi(`/businesses/${b.id}/articles`);
   const articles = list.data?.articles || [];
   const full = useApi(openId ? `/businesses/${b.id}/articles/${openId}` : null);
@@ -427,12 +538,24 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
             onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
 
-      {/* Generated Articles History List - Below E-E-A-T Content Pipeline */}
-      {articles.length > 0 && (
-        <div className="pt-2">
-          <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={setOpenId} toast={toast} />
-        </div>
-      )}
+      {/* the full list lives on the Generated Articles tab; here only a summary with a shortcut */}
+      {articles.length > 0 && (() => {
+        const c = articles.reduce((acc, x) => ({ ...acc, [listKey(x)]: (acc[listKey(x)] || 0) + 1 }), {});
+        return (
+          <div className="flex flex-wrap items-center gap-3 p-4 rounded-2xl border border-slate-200 bg-white">
+            <span className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center"><FileText size={17} /></span>
+            <div className="flex-1 min-w-[200px]">
+              <div className="text-[13px] font-bold text-slate-900">{articles.length} generated article{articles.length === 1 ? '' : 's'}</div>
+              <div className="flex flex-wrap gap-x-3 text-[11.5px] text-slate-500 mt-0.5">
+                {LIST_FILTERS.filter(([id]) => id !== 'all' && c[id]).map(([id, lbl]) => (
+                  <span key={id} className="inline-flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${ACCENT[id]}`} />{c[id]} {lbl.toLowerCase()}</span>
+                ))}
+              </div>
+            </div>
+            {onShowArticles && <Button size="sm" icon={ArrowUpRight} onClick={onShowArticles}>View all articles</Button>}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -555,6 +678,18 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean),
     title: meta.title, meta_description: meta.meta_description, body: draft
   });
+  // SEO title / meta description: typed by hand or written by AI (✨); every regeneration uses what is in the boxes now
+  const regenRef = useRef(null);
+  const [fieldBusy, setFieldBusy] = useState('');
+  const h1Raw = (draft.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i) || [])[1];
+  const h1Text = h1Raw ? (() => { const t = document.createElement('textarea'); t.innerHTML = h1Raw.replace(/<[^>]+>/g, ''); return t.value.trim(); })() : '';
+  const titleNow = meta.title.trim();
+  const h1Differs = Boolean(selectedArticle && h1Text && titleNow && h1Text !== titleNow);
+  const updateH1 = () => {
+    const esc = titleNow.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    setDraft(d => d.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, `<h1>${esc}</h1>`));
+    toast('The article heading now matches the SEO title. Click "Save changes" to keep it.');
+  };
   // Featured image: its own state, saved on its own (uploading never reloads or overwrites the unsaved title/meta/body)
   const [featured, setFeatured] = useState(() => featuredOf(selectedArticle));
   useEffect(() => { setFeatured(featuredOf(selectedArticle)); }, [selectedArticle?.id, selectedArticle?.featured_image_path, selectedArticle?.wp_media_id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -785,8 +920,18 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     </div>
                   );
                 })()}
-                <Field label="SEO title" hint={`${meta.title.length} characters (aim for 60 or fewer)`}><input className={inputCls} value={meta.title} onChange={e => setMeta(m => ({ ...m, title: e.target.value }))} /></Field>
-                <Field label="Meta description" hint={`${meta.meta_description.length} characters (aim for 150-160)`}><textarea rows={2} className={areaCls} value={meta.meta_description} onChange={e => setMeta(m => ({ ...m, meta_description: e.target.value }))} /></Field>
+                <SeoField kind="title" value={meta.title} onChange={v => setMeta(m => ({ ...m, title: v }))}
+                  onRegenerate={selectedArticle ? () => regenRef.current?.run('title') : null} busy={fieldBusy === 'title'} disabled={Boolean(fieldBusy)} />
+                {h1Differs && (
+                  <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-[12px] text-indigo-900">
+                    <Sparkles size={13} className="text-indigo-500 shrink-0" />
+                    <span className="flex-1 min-w-[220px]">The SEO title changed. The article heading still says <b>“{h1Text}”</b>.</span>
+                    <Button size="sm" onClick={updateH1}>Update heading only</Button>
+                    <Button size="sm" variant="ai" icon={Sparkles} onClick={() => regenRef.current?.run('full')}>Regenerate article for this title</Button>
+                  </div>
+                )}
+                <SeoField kind="meta" value={meta.meta_description} onChange={v => setMeta(m => ({ ...m, meta_description: v }))}
+                  onRegenerate={selectedArticle ? () => regenRef.current?.run('meta') : null} busy={fieldBusy === 'meta'} disabled={Boolean(fieldBusy)} />
                 {selectedArticle && <FeaturedImageField b={b} article={selectedArticle} value={featured} onChange={setFeatured} toast={toast} />}
                 {/* Article Body: HTML Editor & Live Preview */}
                 <div className="space-y-2">
@@ -795,6 +940,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-700">Article Body</div>
                       <div className="text-[11px] text-slate-500">Edit raw HTML or switch to Preview to inspect the formatted blog layout</div>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                    {selectedArticle && <RegenerateContent ref={regenRef} b={b} article={selectedArticle} body={draft} onAccept={setDraft} toast={toast} onFieldBusy={setFieldBusy}
+                      fields={{ title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean) }}
+                      onField={(field, value) => setMeta(m => ({ ...m, [field]: value }))} />}
                     <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
                       <button
                         type="button"
@@ -820,6 +969,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                         <Eye size={13} />
                         Preview
                       </button>
+                    </div>
                     </div>
                   </div>
 
@@ -1216,7 +1366,8 @@ function BacklinksTab({ b, toast }) {
  * Main AI Content Studio Component
  */
 export default function ContentStudioPage() {
-  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'calendar', 'backlinks']);
+  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'articles', 'calendar', 'backlinks']);
+  const openInWriter = (id) => { if (!id) { setOpenArticleId(null); return; } setActiveTopic(null); setOpenArticleId(id); setTab('blog'); };
   const [activeTopic, setActiveTopic] = useState(null);
   const [openArticleId, setOpenArticleId] = useState(null);
 
@@ -1239,15 +1390,17 @@ export default function ContentStudioPage() {
             tabs={[
               { id: 'trends', label: 'Trending Topics Radar' },
               { id: 'blog', label: 'AI Blog & Article Writer (E-E-A-T)' },
+              { id: 'articles', label: 'Generated Articles' },
               { id: 'calendar', label: 'Publishing Calendar & CMS Queue' },
               { id: 'backlinks', label: 'Backlink & Digital PR Hub' }
             ]}
           />
 
           {tab === 'trends' && <TrendingTopicsTab b={b} onSelectTopic={handleSelectTopic} />}
-          {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} toast={window.__seoToast || console.log} />}
-          {tab === 'calendar' && <PublishingCalendar b={b} toast={window.__seoToast || console.log}
-            onOpenArticle={(id) => { setActiveTopic(null); setOpenArticleId(id); setTab('blog'); }} />}
+          {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} onShowArticles={() => setTab('articles')} toast={window.__seoToast || console.log} />}
+          {tab === 'articles' && <GeneratedArticlesTab b={b} openId={openArticleId} onOpen={openInWriter} toast={window.__seoToast || console.log}
+            onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
+          {tab === 'calendar' && <PublishingCalendar b={b} toast={window.__seoToast || console.log} onOpenArticle={openInWriter} />}
           {tab === 'backlinks' && <BacklinksTab b={b} toast={window.__seoToast || console.log} />}
         </div>
       )}

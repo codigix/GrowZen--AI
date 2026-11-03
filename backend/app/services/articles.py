@@ -1091,7 +1091,8 @@ def _conclusion(primary: str, topic: str, b: Business) -> str:
     return _conclusion_html(_json(prompt, num_predict=400).get("conclusion"))
 
 
-def write(primary: str, secondary: list[str], rising: list[str], b: Business, topic: str = "", progress=lambda text, body="", title="", meta="": None, length: str = "standard") -> dict:
+def write(primary: str, secondary: list[str], rising: list[str], b: Business, topic: str = "", progress=lambda text, body="", title="", meta="": None, length: str = "standard",
+          title_hint: str | None = None, meta_hint: str | None = None) -> dict:
     """Generate one complete blog article strictly adhering to the 10-part SEO Writing Structure:
     1. Blog Title (H1)
     2. Introduction (min 500 chars)
@@ -1150,6 +1151,9 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 f'Primary keyword: "{primary}"',
                 f"Secondary keywords: {json.dumps(clean_secondary) if clean_secondary else 'None'}",
                 f"Business name: {b.name} (Location: {', '.join(x for x in [b.area, b.city] if x) or 'Local'})",
+                # Regenerating an existing article: its SEO title (and meta description) are fixed; plan to deliver them
+                *([f'The SEO title is fixed: "{title_hint}". Plan the article to deliver exactly what this title promises; repeat it unchanged as "title".'] if title_hint else []),
+                *([f'The meta description promises the reader: "{meta_hint}". Make sure the article covers it.'] if meta_hint else []),
                 "",
                 "Answer with ONE JSON object and nothing else:",
                 "{",
@@ -1181,6 +1185,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 title = f"{primary.title()}: A Complete Guide"
                 if len(title) > TITLE_MAX:
                     title = primary.title()[:TITLE_MAX].rsplit(" ", 1)[0]
+            if title_hint and title_hint.strip():
+                title = title_hint.strip()  # regenerating: the editor's SEO title is kept as the H1
             meta = _plain(d_plan.get("meta") or f"Learn everything about {primary} with expert guidance from {b.name}. Discover proven strategies, tips, and actionable insights.")
             if len(meta) > META_MAX:
                 meta = fit_meta(meta)
