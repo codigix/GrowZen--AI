@@ -965,7 +965,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
 
         {/* Step 4: Publish & Schedule */}
         {step === 4 && (
-          <PublishDestinations b={b}>
+          <PublishDestinations key={b.id} b={b}>
             {(dest, setReactConn) => dest === 'react' ? (
               <ReactSitePanel b={b} article={selectedArticle} featured={featured} toast={toast} defaultWhen={scheduledDate}
                 onChanged={() => { if (onSaved) onSaved(); }} onConnection={setReactConn} />

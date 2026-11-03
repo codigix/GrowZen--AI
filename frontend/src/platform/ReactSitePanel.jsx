@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, Loader2, Send, Save, Unplug, ExternalLink, Trash2, Settings2, KeyRound, AlertTriangle, Code2, Eye, EyeOff, Upload } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Send, Save, Unplug, ExternalLink, Trash2, Settings2, KeyRound, AlertTriangle, Code2, Eye, EyeOff, Upload, Globe, Lock } from 'lucide-react';
 import { Badge, Button, Field, Modal, inputCls, useDoubleConfirm } from './SeoUi';
 import { api, fmtDateTime } from './seoApi';
 
@@ -68,10 +68,20 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
   const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => { setPost(article); }, [article?.id, article?.react_status, article?.react_post_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const load = () => api(`/businesses/${b.id}/react-site`).then(c => {
-    setConn(c); setForm(fromConn(c, b)); setMode(c.default_status || 'draft'); setEditing(c.status !== 'connected');
-  }).catch(e => setError(e.message));
-  useEffect(() => { load(); }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const bizRef = React.useRef(b.id);
+  bizRef.current = b.id;
+  const load = () => {
+    const forBiz = b.id;
+    return api(`/businesses/${forBiz}/react-site`).then(c => {
+      if (bizRef.current !== forBiz) return;  // the account was switched meanwhile: never show another account's connection
+      setConn(c); setForm(fromConn(c, b)); setMode(c.default_status || 'draft'); setEditing(c.status !== 'connected');
+    }).catch(e => { if (bizRef.current === forBiz) setError(e.message); });
+  };
+  useEffect(() => {
+    // switching accounts: drop everything shown for the previous one before loading this account's own connection
+    setConn(null); setForm(emptyForm(b)); setEditing(false); setSteps([]); setPubSteps([]); setUploadSteps([]); setError('');
+    load();
+  }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
   const setMap = (k) => (e) => setForm(f => ({ ...f, mapping: { ...f.mapping, [k]: e.target.value } }));
@@ -171,7 +181,14 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
               <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Website details</div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <Field label="Website name"><input className={inputCls} value={form.website_name} onChange={set('website_name')} placeholder="My Company" /></Field>
-                <Field label="Website URL"><input className={inputCls} value={form.website_url} onChange={set('website_url')} placeholder="https://example.com" /></Field>
+                <Field label="Website URL" hint="This account's registered website">
+                  <div className="w-full h-9 flex items-center gap-2 px-3 rounded border border-indigo-200 bg-gradient-to-r from-indigo-50 to-white cursor-not-allowed select-text"
+                    title="The website URL comes from this account's business profile and cannot be changed here" aria-readonly="true">
+                    <Globe size={14} className="text-indigo-500 shrink-0" />
+                    <span className="flex-1 min-w-0 truncate text-[13px] font-medium text-slate-800">{form.website_url || 'No website on this account'}</span>
+                    <Lock size={12} className="text-slate-400 shrink-0" />
+                  </div>
+                </Field>
                 <Field label="Blog URL"><input className={inputCls} value={form.blog_url} onChange={set('blog_url')} placeholder="https://example.com/blog" /></Field>
               </div>
             </div>

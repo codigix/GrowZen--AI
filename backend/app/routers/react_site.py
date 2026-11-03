@@ -87,6 +87,30 @@ def _apply(conn: ReactSiteConnection, body: ReactSiteIn) -> None:
         conn.token_enc, conn.token_expires_at = None, None
 
 
+def _host(u: str | None) -> str:
+    from urllib.parse import urlparse
+    h = (urlparse(u if "//" in (u or "") else f"https://{u or ''}").hostname or "").lower()
+    return h[4:] if h.startswith("www.") else h
+
+
+def _hosts(*urls) -> set[str]:
+    return {_host(u) for u in urls if u} - {""}
+
+
+def _guard_owner(db: Session, b: Business, conn: ReactSiteConnection) -> None:
+    """A website belongs to one account: refuse to save a website that another account already connected, unless it is
+    this account's own registered website (then the other account's copy is the stray one)."""
+    mine = _hosts(conn.website_url, conn.api_base_url)
+    if not mine or mine & _hosts(b.website):
+        return
+    for other in db.scalars(select(ReactSiteConnection).where(ReactSiteConnection.business_id != b.id)):
+        if mine & _hosts(other.website_url, other.api_base_url):
+            owner = db.get(Business, other.business_id)
+            raise HTTPException(409, f"{', '.join(sorted(mine))} is already connected to the account "
+                                     f"'{owner.name if owner else other.business_id}'. Enter {b.name}'s own website here"
+                                     f"{f' ({b.website})' if b.website else ''}.")
+
+
 def _run_test(conn: ReactSiteConnection) -> list[dict]:
     steps, ok = rs.test(conn)
     now = datetime.now(timezone.utc)
@@ -109,8 +133,10 @@ def save_connection(body: ReactSiteIn, test: bool = True, b: Business = Depends(
     conn = get_conn(db, b)
     if not conn:
         conn = ReactSiteConnection(business_id=b.id)
-        db.add(conn)
     _apply(conn, body)
+    _guard_owner(db, b, conn)
+    if conn not in db:
+        db.add(conn)
     if not rs.has_credentials(conn):
         raise HTTPException(422, "Enter the login username/email and password." if conn.auth_scheme == "login" else "Enter the API key issued by the website's backend.")
     if conn.auth_scheme == "login" and not conn.auth_endpoint:
@@ -133,6 +159,7 @@ def test_connection(body: ReactSiteIn | None = None, b: Business = Depends(get_b
     probe = ReactSiteConnection(business_id=b.id, password_enc=saved.password_enc if saved else None,
                                 api_key_enc=saved.api_key_enc if saved else None, login_username=saved.login_username if saved else None)
     _apply(probe, body)
+    _guard_owner(db, b, probe)
     steps, ok = rs.test(probe)
     return {"ok": ok, "steps": steps, "connection": public(saved)}
 
