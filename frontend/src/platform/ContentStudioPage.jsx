@@ -15,6 +15,7 @@ import { api, fmt, useApi, usePoll } from './seoApi';
 import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } from './SitePublishPanel';
 import FeaturedImageField, { featuredOf } from './FeaturedImageField';
 import ReactSitePanel from './ReactSitePanel';
+import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
 
@@ -279,7 +280,7 @@ const ARTICLE_STATUS = { pending: ['Pending', 'gray'], generating: ['Generating'
  * 1b. Articles generated from the selected Google Trends keywords: one Ollama draft per keyword, each saved
  * separately. Opening one loads it into the E-E-A-T pipeline below.
  */
-function ArticlesList({ b, articles, reload, openId, onOpen }) {
+function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => {} }) {
   const working = articles.some(a => a.status === 'pending' || a.status === 'generating');
   const handleOpen = (id) => {
     onOpen(id);
@@ -305,19 +306,37 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
     reload(true);
   });
   const done = articles.filter(a => a.status === 'completed').length;
+  const [scheduling, setScheduling] = useState(null);  // { article, mode: 'schedule' | 'publish' }
+  // the backend scheduler publishes; this only refreshes the list so a status change shows up
+  usePoll(() => reload(true), articles.some(a => a.publishing_status === 'publishing' || a.publishing_status === 'scheduled'), 30000);
+  const cancelSched = (x) => ask({
+    what: 'this schedule', effect: 'The article goes back to Draft and will not be published automatically. Nothing on the website changes.',
+    onConfirm: () => run(`c-${x.id}`, async () => { await cancelSchedule(b, x.id); toast('Schedule cancelled: the article is a draft again.'); reload(true); })
+  });
+  const retrySched = (x) => run(`t-${x.id}`, async () => {
+    const r = await retrySchedule(b, x.id);
+    reload(true);
+    if (r.article.publishing_status !== 'published') throw new Error(r.error || 'Publishing failed again: see the error on the article.');
+    toast('Published.');
+  });
 
   return (
     <Card title="Generated articles" subtitle={`${done} of ${articles.length} written by Claude AI. Each article covers all the keywords you selected and is saved separately.`}>
       {confirmNode}
       {deletePostNode}
+      {scheduling && <ScheduleModal b={b} article={scheduling.article} mode={scheduling.mode} toast={toast} onClose={() => setScheduling(null)} onDone={() => reload(true)} />}
       {deletedNote && <div className="mb-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[12px] text-emerald-800 flex items-center gap-2"><CheckCircle2 size={13} /> {deletedNote}<button type="button" className="ml-auto text-emerald-700 hover:underline cursor-pointer" onClick={() => setDeletedNote('')}>Dismiss</button></div>}
       <ul className="divide-y divide-slate-100">
         {articles.map(x => {
           const [label, tone] = ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending;
           const site = postStatusOf(x);
+          const ps = x.status === 'completed' ? x.publishing_status : null;  // draft | scheduled | publishing | published | failed
+          const [pl, pt] = PUB_STATUS[ps] || [];
           return (
             <li key={x.id} className={`py-2.5 flex flex-wrap items-center gap-3 text-[12.5px] ${openId === x.id ? 'bg-indigo-50/60 -mx-2 px-2 rounded-lg' : ''}`}>
-              <Badge tone={tone}>{x.status === 'generating' && <RefreshCw size={11} className="animate-spin" />}{label}</Badge>
+              {ps
+                ? <Badge tone={pt} title="Publishing status in GrowZen">{ps === 'publishing' && <RefreshCw size={11} className="animate-spin" />}{pl}</Badge>
+                : <Badge tone={tone}>{x.status === 'generating' && <RefreshCw size={11} className="animate-spin" />}{label}</Badge>}
               {site && <Badge tone={site[1]} title={x.wp_post_id ? `WordPress post #${x.wp_post_id}` : undefined}>{site[0]}</Badge>}
               {x.react_status && (() => {
                 const [l, t] = { publish: ['Published', 'green'], draft: ['Draft', 'gray'], scheduled: ['Scheduled', 'amber'], deleted: ['Deleted', 'red'] }[x.react_status] || [x.react_status, 'gray'];
@@ -326,6 +345,11 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
               <div className="flex-1 min-w-[200px]">
                 <div className="font-semibold text-slate-900">{x.title || x.keyword}</div>
                 <div className="text-[11px] text-slate-500">Keywords: {[x.keyword, ...(x.secondary_keywords || [])].join(', ')}{x.error ? <span className="text-red-600"> · {x.error}</span> : null}</div>
+                <div className="text-[10.5px] text-slate-400 mt-0.5">
+                  Created {x.created_at ? new Date(x.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                  {x.schedule && ['scheduled', 'publishing', 'failed'].includes(ps) && <span className={ps === 'failed' ? 'text-rose-600' : 'text-amber-700'}> · {ps === 'failed' ? 'Was due' : 'Publishes'} {scheduleText(x.schedule)}</span>}
+                </div>
+                {ps === 'failed' && x.schedule?.error && <div className="text-[11px] text-rose-600 mt-0.5">{x.schedule.error}</div>}
                 {x.status === 'generating' && x.progress && <div className="text-[11px] text-indigo-700 font-semibold mt-0.5">{x.progress}…</div>}
                 {x.status === 'completed' && x.stats && (
                   <div className="text-[10.5px] text-slate-400 mt-0.5" title={(x.stats.steps || []).map(st => `${st.step}: ${mins(st.seconds)}, ${st.calls} call${st.calls === 1 ? '' : 's'}`).join('\n')}>
@@ -338,6 +362,11 @@ function ArticlesList({ b, articles, reload, openId, onOpen }) {
               {x.status === 'completed' && (openId === x.id
                 ? <span className="text-[11.5px] font-semibold text-emerald-700">Open above in Pipeline</span>
                 : <button type="button" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => handleOpen(x.id)}>Review & edit</button>)}
+              {ps === 'draft' && <button type="button" className="text-[11.5px] font-semibold text-amber-700 hover:underline cursor-pointer" onClick={() => setScheduling({ article: x, mode: 'schedule' })}>Schedule</button>}
+              {ps === 'draft' && <button type="button" className="text-[11.5px] font-semibold text-emerald-700 hover:underline cursor-pointer" onClick={() => setScheduling({ article: x, mode: 'publish' })}>Publish now</button>}
+              {(ps === 'scheduled' || ps === 'failed') && <button type="button" className="text-[11.5px] font-semibold text-amber-700 hover:underline cursor-pointer" onClick={() => setScheduling({ article: x, mode: 'schedule' })}>Reschedule</button>}
+              {ps === 'failed' && <button type="button" disabled={busy === `t-${x.id}`} className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => retrySched(x)}>{busy === `t-${x.id}` ? 'Publishing…' : 'Retry'}</button>}
+              {(ps === 'scheduled' || ps === 'failed') && <button type="button" disabled={busy === `c-${x.id}`} className="text-[11.5px] font-semibold text-slate-500 hover:text-slate-800 hover:underline cursor-pointer" onClick={() => cancelSched(x)}>Cancel schedule</button>}
               {x.status === 'failed' && <button type="button" disabled={busy === `r-${x.id}`} className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => retry(x.id)}>Retry</button>}
               <button type="button" disabled={busy === `d-${x.id}`} className="text-[11.5px] text-slate-400 hover:text-red-600 cursor-pointer" title="Remove from GrowZen" onClick={() => del(x)}>Delete</button>
             </li>
@@ -401,7 +430,7 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, toast }
       {/* Generated Articles History List - Below E-E-A-T Content Pipeline */}
       {articles.length > 0 && (
         <div className="pt-2">
-          <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={setOpenId} />
+          <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={setOpenId} toast={toast} />
         </div>
       )}
     </div>
@@ -1036,85 +1065,6 @@ function PublishDestinations({ b, children }) {
 }
 
 /**
- * 3. Content Calendar & Scheduled Publishing Queue
- */
-function CalendarTab({ b, scheduledItems }) {
-  const allEvents = useMemo(() => {
-    const base = [
-      { id: 1, d: 2, title: 'GBP Post: 24/7 Emergency Eye Trauma Care', kind: 'gbp', status: 'Published' },
-      { id: 2, d: 6, title: 'Blog: Micro-Incision Cataract Surgery (MICS) in PCMC', kind: 'blog', status: 'Scheduled' },
-      { id: 3, d: 10, title: 'Location Page: Eye Clinic in Chinchwad Station', kind: 'page', status: 'Approved' },
-      { id: 4, d: 14, title: 'GBP Post: Free Cataract Screening Camp Sunday', kind: 'gbp', status: 'Scheduled' },
-      { id: 5, d: 18, title: 'Blog: Cashless Mediclaim & TPA Insurance Guide', kind: 'blog', status: 'Draft' },
-      { id: 6, d: 24, title: 'GBP Post: Doctor Consultation Hours Update', kind: 'gbp', status: 'Scheduled' },
-      { id: 7, d: 28, title: 'Blog Refresh: Femto Laser vs Phacoemulsification', kind: 'refresh', status: 'In Review' }
-    ];
-    return base;
-  }, []);
-
-  const tone = { gbp: 'blue', blog: 'violet', page: 'green', refresh: 'amber' };
-  const start = new Date();
-  start.setDate(1);
-  const offset = (start.getDay() + 6) % 7;
-
-  return (
-    <div className="space-y-5">
-      <Card
-        title={`${start.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} Publishing Calendar`}
-        subtitle="Autonomous schedule across Google Business Profile, Hospital CMS, and local landing pages"
-        action={
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-500 font-mono">CMS Destination: GrowZen CMS</span>
-          </div>
-        }
-      >
-        <div className="grid grid-cols-7 gap-1 text-[11px] font-mono text-slate-500 mb-1 text-center font-bold">
-          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <div key={d} className="py-1">{d}</div>)}
-        </div>
-        <div className="grid grid-cols-7 gap-1.5">
-          {Array.from({ length: 35 }, (_, i) => {
-            const day = i - offset + 1;
-            const valid = day >= 1 && day <= new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
-            const events = allEvents.filter(x => x.d === day);
-
-            return (
-              <div
-                key={i}
-                className={`min-h-[85px] rounded-xl border p-2 transition-all ${
-                  valid
-                    ? 'border-slate-200 bg-slate-50 hover:border-indigo-500/30'
-                    : 'border-transparent bg-transparent opacity-20'
-                }`}
-              >
-                {valid && (
-                  <>
-                    <div className="text-[11px] font-mono text-slate-500 font-bold mb-1">{day}</div>
-                    <div className="space-y-1">
-                      {events.map(ev => (
-                        <div
-                          key={ev.id}
-                          className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] truncate text-slate-700 font-medium"
-                          title={ev.title}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full inline-block mr-1 ${
-                            ev.kind === 'blog' ? 'bg-purple-400' : ev.kind === 'gbp' ? 'bg-blue-400' : 'bg-emerald-400'
-                          }`} />
-                          {ev.title}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-/**
  * 4. Contextual Backlink & Digital PR Outreach Hub
  */
 function BacklinksTab({ b, toast }) {
@@ -1296,7 +1246,8 @@ export default function ContentStudioPage() {
 
           {tab === 'trends' && <TrendingTopicsTab b={b} onSelectTopic={handleSelectTopic} />}
           {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} toast={window.__seoToast || console.log} />}
-          {tab === 'calendar' && <CalendarTab b={b} />}
+          {tab === 'calendar' && <PublishingCalendar b={b} toast={window.__seoToast || console.log}
+            onOpenArticle={(id) => { setActiveTopic(null); setOpenArticleId(id); setTab('blog'); }} />}
           {tab === 'backlinks' && <BacklinksTab b={b} toast={window.__seoToast || console.log} />}
         </div>
       )}

@@ -396,34 +396,8 @@ def verify_saved(row: SiteIntegration) -> tuple[list[dict], dict | None]:
 
 
 def run_due_scheduled(db, now: datetime | None = None, limit: int = 20) -> int:
-    """Publish the posts GrowZen is holding whose time has come. A failure is retried (three tries, ten minutes apart) before it is marked failed."""
-    from datetime import timedelta
-
-    from sqlalchemy import select
-
-    from ..models import ScheduledPost
-    from .activity import log
-    now = now or datetime.now(timezone.utc)
-    done = 0
-    for sp_row in list(db.scalars(select(ScheduledPost).where(ScheduledPost.status == "pending", ScheduledPost.due_at <= now).order_by(ScheduledPost.due_at).limit(limit))):
-        a = db.get(Article, sp_row.article_id)
-        row = db.scalar(select(SiteIntegration).where(SiteIntegration.business_id == sp_row.business_id))
-        try:
-            if a is None or row is None or row.status != "connected" or row.method != sp_row.method:
-                raise PublishError("The website is no longer connected, or the article was deleted.")
-            out = publish(row, a, "publish", None)
-            sp_row.status, sp_row.result, sp_row.error, sp_row.finished_at = "published", {k: out.get(k) for k in ("id", "url", "status")}, None, now
-            a.wp_post_id, a.wp_url = out["id"] or None, out["url"] or None
-            a.wp_status, a.publish_method, a.wp_deleted_at = out.get("status") or "publish", row.method, None
-            log(db, "scheduler", "post_published", sp_row.business_id, article_id=sp_row.article_id, url=out.get("url"))
-            done += 1
-        except PublishError as exc:
-            sp_row.attempts += 1
-            sp_row.error = str(exc)[:500]
-            if sp_row.attempts >= 3 or "no longer connected" in str(exc):
-                sp_row.status, sp_row.finished_at = "failed", now
-                log(db, "scheduler", "post_publish_failed", sp_row.business_id, article_id=sp_row.article_id, error=str(exc)[:200])
-            else:
-                sp_row.due_at = now + timedelta(minutes=10)
-        db.commit()
-    return done
+    """Publish the posts GrowZen is holding whose time has come (any destination: GitHub, WordPress, the React.js
+    website ...). A failure is retried (three tries, ten minutes apart) before it is marked failed. The one runner is
+    services/article_schedule.run_due; this name is kept for the scheduler tick and existing callers."""
+    from .article_schedule import run_due
+    return run_due(db, now, limit)

@@ -785,11 +785,25 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
     url = _find(d, ("url", "link", "permalink"))
     if not url:
         blog = (conn.blog_url or "").rstrip("/") or normalize_base(conn.website_url or conn.api_base_url) + "/blog"
-        url = f"{blog}/{slug}"
+        url = f"{blog}/{_page_key(conn, base, path, str(slug), str(pid))}"
     steps.append({"step": "Send to the website", "ok": True, "detail": f"Post {pid} {'updated' if existing else 'created'} as {data.get('status', STATUS_OUT[mode])}"})
     if image_url:
         _verify_image(conn, base, path, str(pid), image_url, steps, img_field)
     return {"id": str(pid), "url": url, "status": {"draft": "draft", "publish": "publish", "schedule": "scheduled"}[mode], "image_url": image_url, "steps": steps}
+
+
+def _page_key(conn: ReactSiteConnection, base: str, path: str, slug: str, pid: str) -> str:
+    """What follows /blog/ in the post's public address. A React blog page usually loads the post with the value from
+    its address (GET {publish_endpoint}/{value}), so use the slug only when the site's API finds the post by slug;
+    otherwise the post id (e.g. /blog/19), which the API always answers."""
+    try:
+        with site_client(15) as c:
+            r = _send(c, conn, "GET", f"{base}{path}/{slug}")
+            if r.status_code == 200:
+                return slug
+    except (httpx.HTTPError, SSRFValidationError, ReactSiteError):
+        pass
+    return pid
 
 
 def delete(conn: ReactSiteConnection, post_id: str) -> dict:
