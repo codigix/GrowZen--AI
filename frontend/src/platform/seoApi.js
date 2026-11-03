@@ -27,7 +27,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function waitUntilReachable(tries = 10) {
   for (let i = 0; i < tries; i += 1) {
-    try { await fetch(`${SEO_API}/status`, { credentials: 'include' }); return true; } catch (e) { await sleep(700); } // any answer, even 401, means it is up
+    try { await fetch(`${SEO_API}/status`, { credentials: 'include', cache: 'no-store' }); return true; } catch (e) { await sleep(700); } // any answer, even 401, means it is up
   }
   return false;
 }
@@ -43,6 +43,7 @@ export async function api(path, { method = 'GET', body, raw = false, repeat = fa
       r = await fetch(`${SEO_API}${path}`, {
         method,
         credentials: 'include',
+        cache: 'no-store', // never reuse a cached API answer: a copy cached for another origin carries that origin's CORS header and is refused
         headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
         body: body !== undefined ? JSON.stringify(body) : undefined
       });

@@ -22,7 +22,7 @@ from keyword_explorer.api.routes.keywords import router as keyword_explorer_rout
 from .competitors import audit_router as competitor_audits, intel_router as competitor_research, router as competitors
 from .auth import current_user
 from .backlinks import router as backlinks
-from .backlinks.router import outcomes_router, watch_router
+from .backlinks.router import lookup_router, outcomes_router, watch_router
 from .config import get_settings
 from .db import SessionLocal, engine
 from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website
@@ -63,8 +63,15 @@ app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_crede
 for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, competitors, competitor_audits, competitor_research, backlinks):
     app.include_router(r.router, prefix=settings.api_prefix)
 
+app.include_router(lookup_router, prefix=settings.api_prefix)
 app.include_router(outcomes_router, prefix=settings.api_prefix)
 app.include_router(watch_router, prefix=settings.api_prefix)
+
+from .routers import analytics_by_email  # noqa: E402
+app.include_router(analytics_by_email.router, prefix=settings.api_prefix)
+
+from .routers import ga4_by_email  # noqa: E402
+app.include_router(ga4_by_email.router, prefix=settings.api_prefix)
 
 # Keyword Explorer endpoints (/api/keywords)
 # Signed-in users only: it calls external suggestion engines on our server's behalf, so it must not be open to the internet.

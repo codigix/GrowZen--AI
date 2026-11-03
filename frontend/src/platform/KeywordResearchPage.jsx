@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction, useUrlTab, useDoubleConfirm } from './SeoUi';
+import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction, useUrlTab, useDoubleConfirm, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmtDateTime, fmt, SEO_API } from './seoApi';
 import { pathOnly as pathOf } from './siteUtils';
 
@@ -645,7 +645,7 @@ function Tracked({ b, kw }) {
       {confirmNode}
       <ErrorNote>{error}</ErrorNote>
       <Card title="Tracked keywords and their pages" subtitle="Give each keyword one target page, so your pages don't compete with each other. Ranks update with each rank scan.">
-        {!kw.data ? <div className="py-10 flex justify-center text-slate-400"><Loader2 size={16} className="animate-spin" /></div> : !tracked.length ? <div className="py-10 text-center text-13 text-slate-500">No tracked keywords yet. Pick some in Discover.</div> : (
+        {!kw.data ? <SkTable cols={['w-1/3','w-12','w-12','w-12','w-16']} rows={8} /> : !tracked.length ? <div className="py-10 text-center text-13 text-slate-500">No tracked keywords yet. Pick some in Discover.</div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-13 min-w-[640px]">
               <thead className="text-11   text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-semibold">Keyword</th><th className="p-2 text-right font-semibold">Searches</th><th className="p-2 text-left font-semibold">Target page</th><th className="p-2 text-right font-semibold">Rank</th><th className="p-2 text-left font-semibold">Priority</th><th className="p-2" /></tr></thead>
@@ -683,7 +683,7 @@ function Topics({ b, kw }) {
         <Button variant="ai" icon={Sparkles} busy={busy === 'cluster'} disabled={!tracked.length} onClick={cluster}>Group into topics with AI</Button>
       </div>
       <ErrorNote>{error}</ErrorNote>
-      {!kw.data ? <div className="py-10 flex justify-center text-slate-400"><Loader2 size={16} className="animate-spin" /></div> : !kw.data.clusters.length ? <Card><div className="py-10 text-center text-13 text-slate-500">Track some keywords first.</div></Card> : (
+      {!kw.data ? <SkCard title="Topic clusters" subtitle="Keywords grouped into topics, one page per topic"><SkTable headers={["Keyword", "Volume", "Difficulty", "Rank"]} rows={5} bare /></SkCard> : !kw.data.clusters.length ? <Card><div className="py-10 text-center text-13 text-slate-500">Track some keywords first.</div></Card> : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {kw.data.clusters.map(cl => {
             const list = tracked.filter(k => (k.cluster || 'Not grouped') === cl.name);

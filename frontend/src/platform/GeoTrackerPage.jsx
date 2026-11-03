@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Play, Plus, Check, Minus, Trash2, Info, Copy, Loader2 } from 'lucide-react';
-import { SeoShell, Card, Tabs, Stat, Badge, Button, inputCls, Meter, SourceTag, ErrorNote, SERIES, useToast, useAction, useDoubleConfirm } from './SeoUi';
+import { Play, Plus, Check, Minus, Trash2, Info, Copy } from 'lucide-react';
+import { SeoShell, Card, Tabs, Stat, Badge, Button, inputCls, Meter, SourceTag, ErrorNote, SERIES, useToast, useAction, useDoubleConfirm, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 
 function Geo({ b, tab }) {
@@ -31,7 +31,7 @@ function Geo({ b, tab }) {
   const runNow = () => run('run', async () => { await api(`/businesses/${b.id}/geo/run`, { method: 'POST' }); setWaiting(new Date(Date.now() - 2000).toISOString()); toast('Asking the AI engines… this takes a minute'); });
   const llms = `# ${b.name}\n> ${b.primaryCategory || 'Business'} in ${[b.area, b.city].filter(Boolean).join(', ')}.\n\n## Services\n${(b.services || []).filter(s => s.name).map(s => `- ${s.name}${s.price ? `: ${s.price}` : ''}`).join('\n') || '- [add services]'}\n\n## Contact\n- Phone: ${b.phone || '[add]'}\n- Address: ${b.address || 'Service-area business'}\n- Website: ${b.website || '[add]'}`;
 
-  if (!d) return geo.error ? <ErrorNote>{geo.error.message}</ErrorNote> : <div className="py-16 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div>;
+  if (!d) return geo.error ? <ErrorNote>{geo.error.message}</ErrorNote> : <div className="space-y-4"><SkStats cols="grid-cols-2 lg:grid-cols-6" labels={["AI share of voice", "OpenAI", "Gemini", "Perplexity", "Claude", "DeepSeek"]} /><SkCard title="Prompts" subtitle="Questions real customers ask. Aim for 30–100."><SkTable headers={["Prompt", "OpenAI", "Gemini", "Perplexity", "Claude"]} rows={6} bare /></SkCard></div>;
   const sov = d.share_of_voice;
   return (
     <>

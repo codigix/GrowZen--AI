@@ -67,7 +67,7 @@ def auth_url(user_id: str, purpose: str = "gbp") -> str:
         raise GbpError("Add TOKEN_ENCRYPTION_KEY to the backend settings first: it encrypts the stored Google access.")
     state = jwt.encode({"sub": user_id, "purpose": purpose, "nonce": secrets.token_urlsafe(8), "exp": int(time.time()) + 600}, _state_secret(), algorithm="HS256")
     scope = GSC_SCOPES if purpose == "gsc" else f"{SCOPES} https://www.googleapis.com/auth/webmasters.readonly"  # a Business Profile sign-in also grants Search Console
-    return f"{AUTH_URL}?{urlencode({'client_id': s.google_client_id, 'redirect_uri': _redirect_uri(), 'response_type': 'code', 'scope': scope, 'access_type': 'offline', 'prompt': 'consent', 'include_granted_scopes': 'true', 'state': state})}"
+    return f"{AUTH_URL}?{urlencode({'client_id': s.google_client_id, 'redirect_uri': _redirect_uri(), 'response_type': 'code', 'scope': scope, 'access_type': 'offline', 'prompt': 'select_account consent', 'include_granted_scopes': 'true', 'state': state})}"
 
 
 def read_purpose(state: str) -> str:

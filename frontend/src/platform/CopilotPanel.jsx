@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Sparkles, RefreshCw, AlertTriangle, ArrowRight, Download, Loader2, Siren, Lightbulb } from 'lucide-react';
-import { Card, Button, Modal, ErrorNote, useAction, useToast } from './SeoUi';
+import { Sparkles, RefreshCw, AlertTriangle, ArrowRight, Download, Siren, Lightbulb } from 'lucide-react';
+import { Card, Button, Modal, ErrorNote, useAction, useToast, SkList } from './SeoUi';
 import { api, useApi, fmtDateTime } from './seoApi';
 
 /**
@@ -75,7 +75,7 @@ export function CopilotPriorities({ onOpenProject }) {
       subtitle={brief.data ? brief.data.headline : 'Planning…'}
       action={<Button size="sm" variant="ghost" icon={RefreshCw} busy={busy === 'brief'} onClick={regenerate}>Re-plan</Button>}>
       <ErrorNote>{error || brief.error?.message}</ErrorNote>
-      {!brief.data ? <div className="py-6 flex justify-center text-slate-400"><Loader2 size={16} className="animate-spin" /></div>
+      {!brief.data ? <SkList rows={3} boxed trail={false} />
         : !brief.data.priorities.length ? <div className="py-6 text-center text-13 text-slate-500">Nothing urgent today. Every client is on track.</div> : (
           <ol className="space-y-2">
             {brief.data.priorities.map((p, i) => (
@@ -103,7 +103,7 @@ export function CopilotAlerts({ onOpenProject }) {
     <Card title={<span className="inline-flex items-center gap-2"><Siren size={15} className="text-red-600" /> Alerts {alerts.data && <SourceBadge source={alerts.data.source} />}</span>}
       subtitle={alerts.data ? (list.length ? `${list.length} to look at this week` : 'Nothing unusual this week') : 'Checking…'}>
       <ErrorNote>{alerts.error?.message}</ErrorNote>
-      {!alerts.data ? <div className="py-6 flex justify-center text-slate-400"><Loader2 size={16} className="animate-spin" /></div>
+      {!alerts.data ? <SkList rows={3} boxed trail={false} />
         : !list.length ? <div className="py-4 text-center text-12.5 text-slate-500">No drops in calls, rankings or scores, no unanswered bad reviews, no listing problems.</div> : (
           <ul className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
             {list.map(a => (

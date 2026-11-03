@@ -4,7 +4,7 @@ import {
   Search, Smartphone, Monitor, Download, CheckCircle2, XCircle, CircleDashed, History, ArrowUp, ArrowDown, Loader2, Globe, Gauge,
   FileText, ShieldCheck, RotateCw, ExternalLink, Accessibility, BadgeCheck, Sparkles, Clock, ArrowRight
 } from 'lucide-react';
-import { Card, Button, Badge, ScoreRing, Tabs, inputCls, ErrorNote, useToast, useAction } from './SeoUi';
+import { Card, Button, Badge, ScoreRing, Tabs, inputCls, ErrorNote, useToast, useAction, SkList } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 import Improvements from './OnPageImprovements';
 import { PagesCard } from './SitePages';
@@ -345,7 +345,7 @@ function RecentSites({ history, business, current, running, onView, onRerun }) {
   return (
     <Card title="Audit history" subtitle={!history.data ? 'Loading…' : host ? `${runs.length} audit${runs.length === 1 ? '' : 's'} of ${host}` : 'This project has no website yet'}
       action={runs[0] && <Button size="sm" icon={RotateCw} disabled={running} onClick={() => onRerun(runs[0])}>Audit again</Button>}>
-      {!history.data ? <div className="py-6 flex justify-center text-slate-400"><Loader2 size={16} className="animate-spin" /></div>
+      {!history.data ? <SkList rows={3} />
         : !host ? <div className="py-6 text-center text-13 text-slate-500">Add the website in Business Onboarding to audit it here.</div>
           : !runs.length ? <div className="py-6 text-center text-13 text-slate-500">No audits of {host} yet. Run the first one.</div> : (
             <>

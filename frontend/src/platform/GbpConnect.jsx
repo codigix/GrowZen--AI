@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, MapPin } from 'lucide-react';
-import { Button, StatusPill, Badge, ErrorNote, useAction, refreshBusinesses } from './SeoUi';
+import { Button, StatusPill, Badge, ErrorNote, useAction, refreshBusinesses, SkList } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { VerifyPill } from './GbpAccounts';
 
@@ -11,7 +11,7 @@ export function LocationPicker({ connectionId, onImported }) {
   const [selected, setSelected] = useState([]);
   const [busy, error, run] = useAction();
   useEffect(() => { if (locs.data) setSelected(locs.data.filter(l => !l.imported).map(l => l.gbp_location)); }, [locs.data]);
-  if (locs.loading) return <div className="py-8 flex items-center justify-center gap-2 text-13 text-gray-600"><Loader2 size={15} className="animate-spin text-blue-600" /> Fetching the businesses this account manages…</div>;
+  if (locs.loading) return <SkList rows={4} />;
   if (locs.error) return <ErrorNote>{locs.error.message}</ErrorNote>;
   if (!locs.data?.length) return <div className="py-6 text-center text-13 text-gray-600">This account doesn't own or manage any Business Profile. Ask the owner to add it as a manager, or sign in with the owner's account.</div>;
   const importNow = () => run('import', async () => {

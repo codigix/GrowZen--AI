@@ -3,7 +3,7 @@ import {
   Mail, Plug, RefreshCw, X, MapPin, Loader2, CheckCircle2, XCircle, AlertTriangle, Clock, ShieldAlert, ShieldCheck, Ban, UserX, ExternalLink,
   Copy, Check, Store, Search, PencilLine, Plus, Star, Globe, ChevronDown, ChevronRight, Info
 } from 'lucide-react';
-import { Card, Button, ErrorNote, useAction, refreshBusinesses, useDoubleConfirm } from './SeoUi';
+import { Card, Button, ErrorNote, useAction, refreshBusinesses, useDoubleConfirm, SkList } from './SeoUi';
 import { api, useApi, fmtDateTime } from './seoApi';
 
 /**
@@ -147,7 +147,7 @@ function Listings({ connection, onOpenBusiness, toast, onChanged }) {
     const out = await api(`/connections/${connection.id}/import`, { method: 'POST', body: { locations: [l.gbp_location] } });
     await refreshBusinesses(); locs.reload(true); onChanged(); toast(`${out[0]?.name || 'Business'} added: synced and audited`);
   });
-  if (locs.loading && !locs.data) return <div className="py-6 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={15} className="animate-spin" /> Reading every business on {connection.email}…</div>;
+  if (locs.loading && !locs.data) return <SkList rows={5} />;
   if (locs.error) return <div className="rounded bg-red-50 ring-1 ring-inset ring-red-200 px-4 py-3 text-13 text-red-800">{locs.error.message} <Button size="sm" className="ml-2" icon={RefreshCw} onClick={() => locs.reload(true)}>Try again</Button></div>;
   if (!all.length) return <div className="py-5 text-center text-13 text-slate-600">{connection.email} doesn't own or manage any Business Profile.</div>;
   const chip = (id, label, n) => <button key={id} type="button" onClick={() => setFilter(id)} className={`h-8 px-3 rounded-lg text-12 font-semibold ring-1 ring-inset cursor-pointer ${filter === id ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>{label} <span className="opacity-60">{n}</span></button>;
@@ -196,7 +196,7 @@ export function GoogleSignIn({ onOpenBusiness, toast, initialAccount }) {
   const sync = (c) => run(`s${c.id}`, async () => { const r = await api(`/connections/${c.id}/sync`, { method: 'POST' }); toast(`Synced ${r.synced} business${r.synced === 1 ? '' : 'es'} from Google`); conns.reload(true); await refreshBusinesses(); });
   const disconnect = (c) => ask({ what: `the Google account ${c.email}`, effect: 'Its businesses stay here but stop syncing with Google, and the stored access is deleted. You can connect it again later.', onConfirm: () => run(`d${c.id}`, async () => { await api(`/connections/${c.id}`, { method: 'DELETE' }); conns.reload(true); }) });
   if (setup.error || conns.error) return <ErrorNote>{(setup.error || conns.error).message}</ErrorNote>;
-  if (!s || !conns.data) return <div className="py-8 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={15} className="animate-spin" /> Loading your Google accounts…</div>;
+  if (!s || !conns.data) return <SkList rows={3} />;
   return (
     <div>
       {confirmNode}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Star, Sparkles, Send, MessageCircle, Mail, Smartphone, Copy, ShieldCheck, Check, Pencil, Loader2, RefreshCw } from 'lucide-react';
-import { SeoShell, Card, Tabs, Stat, Badge, StatusPill, Button, Field, inputCls, areaCls, Meter, ErrorNote, SERIES, useToast, useAction } from './SeoUi';
+import { Star, Sparkles, Send, MessageCircle, Mail, Smartphone, Copy, ShieldCheck, Check, Pencil, RefreshCw } from 'lucide-react';
+import { SeoShell, Card, Tabs, Stat, Badge, StatusPill, Button, Field, inputCls, areaCls, Meter, ErrorNote, SERIES, useToast, useAction, SkStats, SkList, SkCard } from './SeoUi';
 import { api, useApi, fmtDate } from './seoApi';
 
 const Stars = ({ n, size = 13 }) => (
@@ -57,7 +57,7 @@ function Reviews({ b, tab }) {
   const [toast, toastNode] = useToast();
   const [busy, error, run] = useAction();
   const [form, setForm] = useState({ name: '', contact: '', channel: 'WhatsApp' });
-  if (!rv.data) return rv.error ? <ErrorNote>{rv.error.message}</ErrorNote> : <div className="py-16 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div>;
+  if (!rv.data) return rv.error ? <ErrorNote>{rv.error.message}</ErrorNote> : <div className="space-y-4"><SkStats labels={["Average rating", "Reviews here", "Reply rate", "Waiting for a reply"]} /><SkCard title="Reviews"><SkList rows={5} /></SkCard></div>;
   const { reviews, summary } = rv.data;
   const n = summary.count;
   const shown = reviews.filter(r => filter === 'all' ? true : filter === 'unreplied' ? r.reply_status !== 'posted' : filter === 'negative' ? r.rating <= 2 : r.rating >= 4);

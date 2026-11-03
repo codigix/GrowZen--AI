@@ -2,9 +2,9 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import {
   LayoutDashboard, Store, BarChart3, Star, Newspaper, Image as ImageIcon, MapPinned, MessageCircleQuestion, Sparkles, Swords, Bot, FileText,
-  ListTodo, History, Settings2, Loader2, ArrowRight, Phone, Navigation, MousePointerClick, Search, Eye, CalendarCheck, CheckCircle2, Clock, PlugZap
+  ListTodo, History, Settings2, ArrowRight, Phone, Navigation, MousePointerClick, Search, Eye, CalendarCheck, CheckCircle2, Clock, PlugZap, Globe
 } from 'lucide-react';
-import { Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill, areaCls, useAction, useDoubleConfirm } from './SeoUi';
+import { Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill, areaCls, useAction, useDoubleConfirm, Sk, SkStats, SkTable, SkList, SkScore, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
 import { VerifyPill } from './GbpAccounts';
 
@@ -44,6 +44,7 @@ export const SECTIONS = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'profile', label: 'Business Profile', icon: Store },
     { id: 'performance', label: 'Performance', icon: BarChart3 },
+    { id: 'traffic', label: 'Website traffic', icon: Globe },
     { id: 'reviews', label: 'Reviews & Reputation', icon: Star },
     { id: 'posts', label: 'Posts & Content', icon: Newspaper },
     { id: 'photos', label: 'Photos & Media', icon: ImageIcon },
@@ -66,6 +67,14 @@ export const SECTION_IDS = SECTIONS.flatMap(g => g.items.map(i => i.id));
 // Older ?tab= links still land in the right place.
 export const TAB_ALIAS = { live: 'profile', hours: 'profile', faq: 'profile', audit: 'ai', insights: 'performance' };
 
+/** Website traffic (Google Analytics 4) views, shown as an inner sidebar under the Performance item. */
+export const TRAFFIC_VIEWS = [
+  { id: 'snap', label: 'Reports snapshot' },
+  { id: 'overview', label: 'Overview' },
+  { id: 'rt', label: 'Realtime overview' },
+  { id: 'rtp', label: 'Realtime pages' },
+];
+
 export function SectionNav({ value, onChange }) {
   return (
     <nav aria-label="Client workspace" className="lg:sticky lg:top-24 lg:self-start">
@@ -77,10 +86,12 @@ export function SectionNav({ value, onChange }) {
               const active = value === i.id;
               const Icon = i.icon;
               return (
-                <button key={i.id} type="button" onClick={() => onChange(i.id)} aria-current={active ? 'page' : undefined}
-                  className={`w-full shrink-0 flex items-center gap-2.5 px-3 py-2 rounded text-13 font-medium whitespace-nowrap text-left cursor-pointer transition-colors ${active ? 'bg-indigo-500 text-white' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>
-                  <Icon size={15} className="shrink-0" />{i.label}
-                </button>
+                <div key={i.id} className="flex lg:block gap-1">
+                  <button type="button" onClick={() => onChange(i.id)} aria-current={active ? 'page' : undefined}
+                    className={`w-full shrink-0 flex items-center gap-2.5 px-3 py-2 rounded text-13 font-medium whitespace-nowrap text-left cursor-pointer transition-colors ${active ? 'bg-indigo-500 text-white' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>
+                    <Icon size={15} className="shrink-0" />{i.label}
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -107,7 +118,7 @@ const ago = (iso) => {
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 };
 
-const Loading = () => <div className="py-12 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div>;
+const Loading = () => <SkList rows={3} />;
 
 /** Client header: who this workspace is for and the state of its Google connection. */
 export function ClientBar({ b, onConnect, onSync }) {
@@ -121,7 +132,7 @@ export function ClientBar({ b, onConnect, onSync }) {
         <div className="text-16 font-semibold text-slate-900">{b.name}</div>
         <div className="text-12 text-slate-500">{[b.primaryCategory || b.primary_category, [b.area, b.city].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || 'No category or address yet'}</div>
       </div>
-      {!d ? <Loader2 size={14} className="animate-spin text-slate-400" /> : (
+      {!d ? <Sk w="w-40" h="h-4" /> : (
         <>
           <div className="text-12 text-slate-600">
             <div className="flex items-center gap-1.5">{connected ? <CheckCircle2 size={13} className="text-emerald-500" /> : <PlugZap size={13} className="text-amber-500" />}<b className="font-semibold text-slate-800">{connected ? 'Connected' : d.linked ? 'Needs attention' : 'Not connected'}</b>{d.connection?.email && <span className="text-slate-500">· {d.connection.email}</span>}</div>
@@ -154,7 +165,7 @@ export function OverviewSection({ b, go, onOpen }) {
   return (
     <div className="space-y-4">
       <SectionHead title="Overview" subtitle="This client's Google Business Profile at a glance" sources={['google', 'calc']} />
-      {!d ? <Loading /> : (
+      {!d ? <div className="space-y-4"><SkStats labels={["Average rating", "Search views · 30 days", "Calls · 30 days", "Website clicks · 30 days"]} /><div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><SkCard title="Profile health score" subtitle="Calculated by Codigix from the profile; not a Google score"><SkScore /></SkCard><SkCard title="Fix next" subtitle="Highest-impact gaps first" className="xl:col-span-2"><SkList rows={4} avatar={false} /></SkCard></div></div> : (
         <>
           {!linked && <div className="rounded bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-13 text-amber-900">This client has no Google account connected, so the numbers below are empty. Use <b>Connect Google account</b> above.</div>}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -165,10 +176,10 @@ export function OverviewSection({ b, go, onOpen }) {
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
             <Card title="Profile health score" subtitle="Calculated by Codigix from the profile; not a Google score" action={<SourceBadge type="calc" />}>
-              {!score.data ? <Loading /> : <div className="flex items-center gap-5"><ScoreRing score={score.data.score} label={scoreWord(score.data.score)} /><div className="text-13 text-slate-600">{score.data.alerts.length ? `${score.data.alerts.length} alert${score.data.alerts.length > 1 ? 's' : ''} need attention.` : 'No alerts.'}<button type="button" onClick={() => go('ai')} className="block mt-1 text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">See all recommendations</button></div></div>}
+              {!score.data ? <SkScore /> : <div className="flex items-center gap-5"><ScoreRing score={score.data.score} label={scoreWord(score.data.score)} /><div className="text-13 text-slate-600">{score.data.alerts.length ? `${score.data.alerts.length} alert${score.data.alerts.length > 1 ? 's' : ''} need attention.` : 'No alerts.'}<button type="button" onClick={() => go('ai')} className="block mt-1 text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">See all recommendations</button></div></div>}
             </Card>
             <Card title="Fix next" subtitle="Highest-impact gaps first" className="xl:col-span-2" action={<SourceBadge type="calc" />}>
-              {!score.data ? <Loading /> : missing.length === 0 ? <p className="text-13 text-slate-500 py-3">Nothing missing. The profile checklist is complete.</p> : (
+              {!score.data ? <SkList rows={4} avatar={false} /> : missing.length === 0 ? <p className="text-13 text-slate-500 py-3">Nothing missing. The profile checklist is complete.</p> : (
                 <ul className="divide-y divide-slate-100">{missing.map(i => <li key={i.key} className="py-2 flex items-start gap-3"><div className="flex-1 min-w-0"><div className="text-13 text-slate-900">{i.label}</div><div className="text-12 text-slate-500">{i.fix}</div></div><Badge tone="gray">{i.factor}</Badge></li>)}</ul>
               )}
             </Card>
@@ -192,7 +203,7 @@ export function PerformanceMetrics({ b }) {
   const d = live.data;
   const m = d?.metrics;
   const kws = d?.live?.search_keywords || [];
-  if (!d) return <Loading />;
+  if (!d) return <div className="space-y-4"><SkStats cols="grid-cols-2 lg:grid-cols-4" labels={["Google Search impressions", "Google Maps impressions", "Website clicks", "Phone call clicks", "Direction requests", "Booking interactions", "Total profile views"]} /><SkCard title="Monthly search keywords" subtitle="Searches that showed the profile, by monthly impressions" pad={false}><SkTable headers={["Keyword", "Impressions"]} rows={6} bare /></SkCard></div>;
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -260,7 +271,7 @@ export function ReviewsSection({ b, toast = () => {} }) {
   const [onlyOpen, setOnlyOpen] = React.useState(true);
   const [syncing, syncError, run] = useAction();
   const d = live.data;
-  if (!d || !all.data) return all.error ? <ErrorNote>{all.error.message}</ErrorNote> : <Loading />;
+  if (!d || !all.data) return all.error ? <ErrorNote>{all.error.message}</ErrorNote> : <div className="space-y-4"><SkStats labels={["Average rating", "Total reviews", "Unanswered", "Response rate"]} /><SkCard title="Reviews"><SkList rows={4} /></SkCard></div>;
   const m = d.metrics;
   const sum = all.data.summary;
   const split = d.rating_split || {};
@@ -405,7 +416,7 @@ export function SettingsSection({ b, onConnect }) {
   return (
     <div className="space-y-4">
       <SectionHead title="Settings & Integrations" subtitle="Google account, permissions and mapped location for this client" sources={['google', 'manual']} />
-      {!d ? <Loading /> : (
+      {!d ? <SkList rows={4} avatar={false} /> : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
           <Card title="Connected Google account">
             {d.linked ? (

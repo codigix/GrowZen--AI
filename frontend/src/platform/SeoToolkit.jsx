@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Search, Star, Loader2, ArrowUp, ArrowDown, Plus, RefreshCw, KeyRound, ScanSearch, Swords, Sparkles, Link2, MapPin, Gauge, Layers, FileText, ExternalLink,
+  Search, Star, ArrowUp, ArrowDown, Plus, RefreshCw, KeyRound, ScanSearch, Swords, Sparkles, Link2, MapPin, Gauge, Layers, FileText, ExternalLink,
   AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot
 } from 'lucide-react';
-import { SeoShell, Card, Badge, Button, ErrorNote, ScoreRing, scoreLevel, useAction, useToast, useModulePath } from './SeoUi';
+import { SeoShell, Card, Badge, Button, ErrorNote, ScoreRing, scoreLevel, useAction, useToast, useModulePath, Sk, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
 
 /**
@@ -91,7 +91,7 @@ export function TrackedPositions({ b }) {
     toast(`Checked ${r.checked} keyword${r.checked === 1 ? '' : 's'} on Google (${r.credits} Serper credits)`);
   });
   const chip = (id, label, n) => <button key={id} type="button" onClick={() => setFilter(id)} className={`h-8 px-3 rounded text-12 font-semibold cursor-pointer ${filter === id ? 'bg-indigo-500 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>{label} <span className="opacity-70">{n}</span></button>;
-  if (!kw.data) return kw.error ? <ErrorNote>{kw.error.message}</ErrorNote> : <div className="py-16 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div>;
+  if (!kw.data) return kw.error ? <ErrorNote>{kw.error.message}</ErrorNote> : <div className="space-y-4"><SkStats cols="grid-cols-2 xl:grid-cols-4" labels={["Tracked keywords", "Top 3", "Improved", "Dropped"]} /><SkCard title="Tracked keywords" pad={false}><SkTable headers={["Keyword", "Volume", "Position", "Change", "Page"]} rows={8} bare /></SkCard></div>;
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
@@ -149,7 +149,7 @@ function KeywordGap({ b }) {
     });
     return { comps, rows, untapped: r.result.ideas.competitor_keywords.filter(k => !r.result.keywords.includes(k)) };
   }, [r.result]);
-  if (r.loading) return <div className="py-16 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div>;
+  if (r.loading) return <div className="space-y-4"><div className="flex gap-2">{[0, 1, 2].map(i => <Sk key={i} w="w-32" h="h-9" />)}</div><SkCard title="Keyword gap" subtitle="Keywords competitors' pages target that you don't" pad={false}><SkTable headers={["Keyword", "You", "Competitor", "Best competitor"]} rows={8} bare /></SkCard></div>;
   if (!model) return <NeedResearch path={path} what="The keyword gap" />;
   const count = (s) => model.rows.filter(x => x.state === s).length;
   const tabs = [['missing', 'Missing', count('missing'), 'Competitors rank, you don’t'], ['weak', 'Weak', count('weak'), 'You rank below a competitor'], ['strong', 'Strong', count('strong'), 'You rank above every competitor'], ['shared', 'Shared', count('shared'), 'Same position'], ['untapped', 'Untapped', model.untapped.length, 'Keywords competitors’ pages target that you don’t track']];
@@ -194,7 +194,7 @@ function KeywordGap({ b }) {
 function CompareDomains({ b }) {
   const path = useModulePath();
   const r = useResearch(b);
-  if (r.loading) return <div className="py-16 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div>;
+  if (r.loading) return <SkCard title="Side by side" subtitle="The best figure in each row is highlighted" pad={false}><SkTable headers={["Measure", "You", "Competitor 1", "Competitor 2", "Competitor 3"]} rows={6} bare /></SkCard>;
   if (!r.result) return <NeedResearch path={path} what="The comparison" />;
   const x = r.result;
   const comps = x.profiles.slice(0, 4);

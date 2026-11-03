@@ -136,7 +136,13 @@ class Settings(BaseSettings):
     # Scheduler
     scheduler_enabled: bool = True
     backlink_autostart: bool = True  # onboarding starts the backlink discovery bot straight away (false: it only runs on its schedule)
+    # Backlink discovery rotation: businesses take turns in batches. Each batch runs in parallel for a window, then the next batch starts;
+    # after the last batch it wraps to the first, carrying on where each business stopped (pages already crawled are not fetched again).
+    backlink_rotation_enabled: bool = True  # false: the old behaviour, each enabled business runs whenever its interval has passed
+    backlink_batch_size: int = 5  # businesses crawling at the same time
+    backlink_batch_minutes: int = 60  # how long one batch runs before the next batch gets its turn
     scheduler_tick_seconds: int = 300
+    backlink_bot_auto_enabled: bool = True  # set false to stop the 60s auto-tick; "Run now" in the UI still works
 
     # Lighthouse audits (/lighthouse/...): full Lighthouse reports from PageSpeed Insights (needs
     # PAGESPEED_API_KEY) or a local Lighthouse CLI (Node.js + `npm install -g lighthouse` + Chrome).

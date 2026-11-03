@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Sparkles, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Loader2, Plus } from 'lucide-react';
-import { Card, ErrorNote, useModulePath, useSeoBusiness } from './SeoUi';
+import { Search, Sparkles, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { Card, ErrorNote, useModulePath, useSeoBusiness, SkTable } from './SeoUi';
 import { useApi } from './seoApi';
 
 /**
@@ -83,7 +83,7 @@ export default function SiteAuditTable({ onNew }) {
         {onNew && <button type="button" onClick={onNew} className="h-9 px-3.5 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800 cursor-pointer"><Plus size={14} /> Create project</button>}
       </div>
       <ErrorNote>{data.error?.message}</ErrorNote>
-      {!data.data && !data.error ? <div className="py-12 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div> : (
+      {!data.data && !data.error ? <SkTable cols={['w-1/3', 'w-20', 'w-16', 'w-16', 'w-16', 'w-16']} headers={['Project', 'Last update', 'Pages crawled', ...COLUMNS.slice(0, 3).map(c => c.label)]} rows={6} /> : (
         <div className="overflow-x-auto border-t border-slate-100">
           <table className="w-full min-w-[1280px] text-13">
             <thead className="bg-slate-50 text-12 text-slate-500">

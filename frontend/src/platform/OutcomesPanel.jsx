@@ -1,6 +1,6 @@
 import React from 'react';
-import { Loader2, TrendingUp, TrendingDown, Minus, Clock } from 'lucide-react';
-import { Card, Badge, Stat, ErrorNote, useSeoBusiness } from './SeoUi';
+import { TrendingUp, TrendingDown, Minus, Clock } from 'lucide-react';
+import { Card, Badge, Stat, ErrorNote, useSeoBusiness, SkStats } from './SeoUi';
 import { useApi, fmtDate } from './seoApi';
 
 const KIND = { outreach_email: 'Outreach', website_fix: 'Website fix', blog_draft: 'Blog draft', gbp_post: 'Google post', review_reply: 'Review reply', profile_edit: 'Profile edit', removal_request: 'Link removal' };
@@ -26,7 +26,7 @@ export default function OutcomesPanel() {
   return (
     <>
       <ErrorNote>{res.error?.message}</ErrorNote>
-      {!d ? <div className="py-8 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : (
+      {!d ? <SkStats n={4} /> : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             <Stat label="Measured" value={d.summary.measured} hint="actions with a 14 or 30 day result" />

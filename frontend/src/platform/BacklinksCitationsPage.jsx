@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Play, Loader2 } from 'lucide-react';
-import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, SourceTag, ErrorNote, SERIES, useToast, useAction, useUrlTab } from './SeoUi';
+import { Play } from 'lucide-react';
+import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, SourceTag, ErrorNote, SERIES, useToast, useAction, useUrlTab, SkTable, SkList } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 
 function Links({ b, tab }) {
@@ -37,7 +37,7 @@ function Links({ b, tab }) {
 
       {tab === 'citations' && (
         <Card title="Local citations" subtitle="Name, address and phone (NAP) must match the Business Profile everywhere" action={<SourceTag source={ct.data?.data_source} />}>
-          {!ct.data ? <div className="py-8 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : !dirs.length ? <div className="py-8 text-center text-13 text-gray-500">{ct.data.note || 'No citations data yet.'}</div> : (
+          {!ct.data ? <SkTable cols={['w-1/3','w-20','w-20','w-16']} rows={6} /> : !dirs.length ? <div className="py-8 text-center text-13 text-gray-500">{ct.data.note || 'No citations data yet.'}</div> : (
             <div className="overflow-x-auto">
               <table className="w-full text-13">
                 <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><th className="p-2 text-left font-medium">Directory</th><th className="p-2 text-left font-medium">Status</th><th className="p-2 text-left font-medium">Name</th><th className="p-2 text-left font-medium">Phone</th><th className="p-2 text-left font-medium">Address</th></tr></thead>
@@ -59,7 +59,7 @@ function Links({ b, tab }) {
 
       {tab === 'outreach' && (
         <Card title="Outreach tasks" subtitle="The AI drafts outreach; a person approves and sends it. No bought links or link exchanges.">
-          {!tasks.data ? <div className="py-8 flex justify-center text-gray-400"><Loader2 size={16} className="animate-spin" /></div> : outreach.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No outreach tasks yet. They're created from backlink and citation issues after an audit.</div> : (
+          {!tasks.data ? <SkList rows={4} avatar={false} /> : outreach.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No outreach tasks yet. They're created from backlink and citation issues after an audit.</div> : (
             <div className="divide-y divide-gray-100">
               {outreach.map(t => (
                 <div key={t.id} className="flex flex-wrap items-center gap-3 py-2.5">

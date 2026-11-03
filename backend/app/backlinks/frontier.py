@@ -1,9 +1,11 @@
 """Persistent URL frontier (PRD 9.2): dedupe by URL hash, separate queues, per-domain fairness, bounded retries, dead letters."""
 import random
 import re
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..db import utcnow
@@ -41,10 +43,21 @@ def is_crawl_trap(url: str) -> bool:
     return query.count("&") + (1 if query else 0) > MAX_QUERY_PARAMS
 
 
+def _upgrade(row: FrontierUrl, priority: float, queue: str, now: datetime, business_id: int | None) -> FrontierUrl:
+    if priority > row.priority:
+        row.priority = priority
+    if queue == "verification" and row.queue != "verification" and row.status in ("pending", "done"):
+        row.queue, row.status, row.next_eligible_at = "verification", "pending", now
+    if row.business_id is None and business_id is not None:  # a shared row is adopted by the first business that reaches it
+        row.business_id = business_id
+    return row
+
+
 def enqueue(db: Session, url: str, source: str = "link", depth: int = 0, discovered_from: str | None = None, priority: float = 0.0,
-            queue: str = "discovery", now: datetime | None = None, hop: int = 0) -> FrontierUrl | None:
-    """Add a URL unless it is already known, too deep, a likely trap, or its domain is over budget. A known URL keeps one row;
-    a higher priority or the verification queue upgrades it."""
+            queue: str = "discovery", now: datetime | None = None, hop: int = 0, business_id: int | None = None) -> FrontierUrl | None:
+    """Add a URL unless it is already known, too deep, a likely trap, or its domain is over budget. A known URL keeps one row (it is never
+    fetched twice for discovery, whichever business reaches it); a higher priority or the verification queue upgrades it.
+    `business_id` is the business whose exploration found it: that business's runs work through it."""
     now = now or utcnow()
     try:
         norm = normalize_url(url)
@@ -55,39 +68,56 @@ def enqueue(db: Session, url: str, source: str = "link", depth: int = 0, discove
     h = url_hash(norm)
     row = db.scalar(select(FrontierUrl).where(FrontierUrl.url_hash == h))
     if row is not None:
-        if priority > row.priority:
-            row.priority = priority
-        if queue == "verification" and row.queue != "verification" and row.status in ("pending", "done"):
-            row.queue, row.status, row.next_eligible_at = "verification", "pending", now
-        return row
+        return _upgrade(row, priority, queue, now, business_id)
     domain = get_domain(db, norm, now)
     if db.scalar(select(func.count()).select_from(FrontierUrl).where(FrontierUrl.domain_id == domain.id)) >= MAX_URLS_PER_DOMAIN:
         return None
     row = FrontierUrl(domain_id=domain.id, url=norm, url_hash=h, queue=queue, source=source, discovered_from=discovered_from, priority=priority, depth=depth,
-                      hop=hop, discovered_at=now, next_eligible_at=now)
-    db.add(row)
-    db.flush()
+                      hop=hop, business_id=business_id, discovered_at=now, next_eligible_at=now)
+    try:
+        with db.begin_nested():  # several businesses crawl at once: another run may have queued the same URL a moment ago
+            db.add(row)
+            db.flush()
+    except IntegrityError:
+        row = db.scalar(select(FrontierUrl).where(FrontierUrl.url_hash == h))
+        return _upgrade(row, priority, queue, now, business_id) if row is not None else None
     return row
 
 
-def take_next(db: Session, limit: int = 10, queues: tuple[str, ...] = QUEUE_ORDER, now: datetime | None = None) -> list[FrontierUrl]:
+def claimable(business_id: int, tracked: Iterable[str] = ()):
+    """Which frontier rows one business's run may take (needs a join to BiDomain): its own, shared ones, and any row on a domain it tracks.
+    The last part matters when businesses overlap (a client is another client's competitor): each can crawl its own site on its own turn."""
+    cond = (FrontierUrl.business_id == business_id) | (FrontierUrl.business_id.is_(None))
+    tracked = list(tracked)
+    return cond | BiDomain.registrable_domain.in_(tracked) if tracked else cond
+
+
+def take_next(db: Session, limit: int = 10, queues: tuple[str, ...] = QUEUE_ORDER, now: datetime | None = None,
+              business_id: int | None = None, tracked: Iterable[str] = ()) -> list[FrontierUrl]:
     """Claim up to `limit` ready URLs: queues in priority order, best priority first, at most one URL per domain per call
-    (fairness) and only for domains whose politeness delay has passed. Claimed rows become in_progress."""
+    (fairness) and only for domains whose politeness delay has passed. Claimed rows become in_progress.
+    With `business_id`, only rows that business may take are claimed (see `claimable`), and a claimed row becomes that business's,
+    so the pages found on it are explored on that business's turns."""
     now = now or utcnow()
     picked: list[FrontierUrl] = []
     domains: set[int] = set()
     for q in queues:
         if len(picked) >= limit:
             break
-        rows = db.scalars(select(FrontierUrl).join(BiDomain, BiDomain.id == FrontierUrl.domain_id)
-                          .where(FrontierUrl.queue == q, FrontierUrl.status == "pending", FrontierUrl.next_eligible_at <= now,
-                                 (BiDomain.next_crawl_at.is_(None)) | (BiDomain.next_crawl_at <= now))
-                          .order_by(FrontierUrl.priority.desc(), FrontierUrl.id).limit(limit * 5))
+        stmt = (select(FrontierUrl).join(BiDomain, BiDomain.id == FrontierUrl.domain_id)
+                .where(FrontierUrl.queue == q, FrontierUrl.status == "pending", FrontierUrl.next_eligible_at <= now,
+                       (BiDomain.next_crawl_at.is_(None)) | (BiDomain.next_crawl_at <= now)))
+        if business_id is not None:
+            stmt = stmt.where(claimable(business_id, tracked))
+        # PostgreSQL: rows another run is claiming right now are skipped instead of claimed twice (SQLite ignores this; it has one writer)
+        rows = db.scalars(stmt.order_by(FrontierUrl.priority.desc(), FrontierUrl.id).limit(limit * 5).with_for_update(skip_locked=True, of=FrontierUrl))
         for r in rows:
             if r.domain_id in domains:
                 continue
             domains.add(r.domain_id)
             r.status, r.next_eligible_at = "in_progress", now  # next_eligible_at doubles as the claim time for stale detection
+            if business_id is not None:
+                r.business_id = business_id
             picked.append(r)
             if len(picked) >= limit:
                 break
@@ -121,8 +151,14 @@ def recover_stale(db: Session, now: datetime | None = None) -> int:
     return n
 
 
-def stats(db: Session) -> dict[str, dict[str, int]]:
+def stats(db: Session, business_id: int | None = None, tracked: Iterable[str] = ()) -> dict[str, dict[str, int]]:
+    """Row counts by queue and status: the whole shared frontier, or with `business_id` only that business's rows and rows on the domains it tracks."""
     out: dict[str, dict[str, int]] = {}
-    for q, s, n in db.execute(select(FrontierUrl.queue, FrontierUrl.status, func.count()).group_by(FrontierUrl.queue, FrontierUrl.status)):
+    stmt = select(FrontierUrl.queue, FrontierUrl.status, func.count())
+    if business_id is not None:
+        tracked = list(tracked)
+        cond = FrontierUrl.business_id == business_id
+        stmt = stmt.join(BiDomain, BiDomain.id == FrontierUrl.domain_id).where(cond | BiDomain.registrable_domain.in_(tracked) if tracked else cond)
+    for q, s, n in db.execute(stmt.group_by(FrontierUrl.queue, FrontierUrl.status)):
         out.setdefault(q, {})[s] = n
     return out

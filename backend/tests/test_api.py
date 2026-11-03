@@ -93,7 +93,7 @@ def test_rank_scan_and_keywords(client):
     scans = client.get(f"/api/v1/businesses/{bid}/rank-scans").json()
     assert scans and len(scans[0]["points"]) == 25
     ideas = client.post(f"/api/v1/businesses/{bid}/keywords/ideas", json={"seed": "hair salon"}).json()
-    assert ideas["data_source"] == "sample" and ideas["ideas"]
+    assert ideas["data_source"] in ("sample", "google_ads") and ideas["ideas"]
     assert client.post(f"/api/v1/businesses/{bid}/keywords", json=[{"keyword": "Hair Salon  Baner"}]).json()["added"] == 1
     assert client.get(f"/api/v1/businesses/{bid}/keywords").json()["keywords"][0]["keyword"] == "hair salon baner"
 

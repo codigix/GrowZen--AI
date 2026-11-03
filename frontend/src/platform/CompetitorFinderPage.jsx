@@ -4,7 +4,7 @@ import {
   Search, MapPin, Star, Globe, ExternalLink, Loader2, AlertTriangle, Lightbulb, Plus, X, Link2, FileText, Gauge, Settings2, Play,
   CheckCircle2, Minus, Layers, ArrowRight, BookOpen, Code2, ListChecks, HelpCircle, Sparkles, ShieldCheck, Smartphone, Monitor, RotateCcw, Eye
 } from 'lucide-react';
-import { SeoShell, Card, Badge, Button, Field, Tabs, Modal, inputCls, ErrorNote, useToast, useAction } from './SeoUi';
+import { SeoShell, Card, Badge, Button, Field, Tabs, Modal, inputCls, ErrorNote, useToast, useAction, Sk, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
 
@@ -335,7 +335,7 @@ function PlanTab({ r }) {
 /** What the research has found so far, filling in while it runs: competitors, Maps businesses and sites appear one by one. */
 function LiveResults({ progress }) {
   const f = progress?.found;
-  if (!f) return <div className="ai-glass-card rounded px-5 py-4 text-13 text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin text-indigo-600" /> Asking Google for the first keyword…</div>;
+  if (!f) return <SkCard title="Live results" subtitle="Keywords searched so far. New competitors appear as they are found." pad={false}><SkTable headers={["Competitor", "Keywords", "Best position"]} rows={4} bare /></SkCard>;
   return (
     <Card title="Live results" subtitle={`${f.keywords.length} keyword${f.keywords.length === 1 ? '' : 's'} searched so far. New competitors appear as they are found.`} pad={false}>
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] divide-y xl:divide-y-0 xl:divide-x divide-slate-200">
@@ -491,7 +491,7 @@ function IdeasModal({ open, r, onClose }) {
 function CompareModal({ state, onClose }) {
   return (
     <Modal open={Boolean(state)} onClose={onClose} width="max-w-5xl" title={state ? `Compare with ${state.competitor.name}` : ''}>
-      {state?.loading && <div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Comparing the latest audits…</div>}
+      {state?.loading && <div className="space-y-4"><SkStats n={3} cols="grid-cols-3" /><SkTable cols={4} rows={5} /></div>}
       {state?.error && <ErrorNote>{state.error}</ErrorNote>}
       {state?.result && <div className="max-h-[72vh] overflow-y-auto pr-1"><ComparisonResult c={state.result} bare /></div>}
     </Modal>
@@ -606,7 +606,7 @@ function Research({ b }) {
     return [...byHost.values()].sort((x, y) => (y.profile?.visibility ?? -1) - (x.profile?.visibility ?? -1));
   }, [result, registered]);
 
-  if (!state) return loadError ? <ErrorNote>{loadError}</ErrorNote> : <div className="flex items-center gap-2 text-13 text-slate-500"><Loader2 size={15} className="animate-spin" /> Loading…</div>;
+  if (!state) return loadError ? <ErrorNote>{loadError}</ErrorNote> : <div className="space-y-4"><SkCard title="Competitor research" subtitle="Who ranks for your keywords on Google and Maps"><Sk h="h-9" w="w-2/3" /></SkCard><SkCard title="Competitors found" pad={false}><SkTable headers={["Competitor", "Type", "Keywords", "Best position"]} rows={6} bare /></SkCard></div>;
   const p = current?.result?.progress;
   const s = result?.summary;
 

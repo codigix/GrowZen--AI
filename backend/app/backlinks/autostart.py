@@ -2,6 +2,7 @@
 domains, the discovery bot is switched on (so the scheduler keeps running it), and a first run can start straight away. Everything the bot
 finds is stored in the backlink tables and shown on Backlink Intelligence, the Domain Overview and Top Pages."""
 import logging
+import threading
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -27,6 +28,21 @@ def enable(db: Session, b: Business) -> dict:
     db.commit()
     return {"enabled": True, "targets": len(targets), "domains": [t.domain for t in targets], "added": [a["domain"] for a in out["added"]],
             "interval_minutes": cfg.interval_minutes}
+
+
+def first_run_in_background(business_id: int) -> None:
+    """Start the first run on its own thread and session, for callers that are not a web request (the email onboarding pipeline)."""
+    if not get_settings().backlink_autostart:
+        return
+
+    def job() -> None:
+        from ..db import SessionLocal
+        db = SessionLocal()
+        try:
+            first_run(db, business_id)
+        finally:
+            db.close()
+    threading.Thread(target=job, daemon=True, name=f"backlink-first-run-{business_id}").start()
 
 
 def first_run(db: Session, business_id: int) -> None:

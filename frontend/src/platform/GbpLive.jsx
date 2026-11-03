@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  RefreshCw, Star, Image as ImageIcon, MessageSquare, Phone, Navigation, MousePointerClick, Search, Eye, MapPin, Globe, Clock, Loader2, ExternalLink,
+  RefreshCw, Star, Image as ImageIcon, MessageSquare, Phone, Navigation, MousePointerClick, Search, Eye, MapPin, Globe, Clock, ExternalLink,
   CheckCircle2, AlertTriangle, PlugZap, Newspaper, ListChecks, Tag, CalendarX
 } from 'lucide-react';
-import { Card, Badge, Button, ErrorNote, useAction } from './SeoUi';
+import { Card, Badge, Button, ErrorNote, useAction, SkPage } from './SeoUi';
 import { api, useApi, fmtDateTime, fmt } from './seoApi';
 import { VerifyPill } from './GbpAccounts';
 
@@ -79,7 +79,7 @@ export default function GbpLive({ b, toast, onConnect }) {
     return () => clearInterval(t);
   }, [connected, b.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!d) return data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <div className="py-12 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div>;
+  if (!d) return data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <SkPage statLabels={["Rating", "Photos", "Calls · 30 days", "Directions · 30 days", "Website clicks", "Search views", "Maps views", "Bookings"]} chart={false} table={0} />;
 
   if (!d.linked) {
     return (

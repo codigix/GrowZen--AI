@@ -44,11 +44,15 @@ def tick() -> dict[str, int]:
 
 
 def bot_tick() -> None:
-    """Run the backlink discovery bot for businesses whose interval has elapsed (separate job: a run can take minutes)."""
-    from ..backlinks import bot, router as bl_router
+    """Run the backlink discovery bot (separate job). With rotation on, businesses crawl in batches that take turns (backlinks/rotation.py);
+    the tick only starts or checks the batch's threads, so it returns at once. Without rotation, each business whose interval has elapsed runs here."""
+    from ..backlinks import bot, rotation, router as bl_router
     db = SessionLocal()
     try:
-        bot.run_due(db, bl_router.get_fetcher())
+        if get_settings().backlink_rotation_enabled:
+            rotation.tick(db)
+        else:
+            bot.run_due(db, bl_router.get_fetcher())
         from ..backlinks import outcomes, watch
         outcomes.measure_due(db)
         watch.run_due(db, bl_router.get_fetcher())  # weekly competitor visits (each business only when a week has passed)
@@ -65,7 +69,8 @@ def start() -> None:
         return
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.add_job(tick, "interval", seconds=s.scheduler_tick_seconds, id="seo-tick", max_instances=1, coalesce=True)
-    _scheduler.add_job(bot_tick, "interval", seconds=60, id="backlink-bot", max_instances=1, coalesce=True)
+    if s.backlink_bot_auto_enabled:
+        _scheduler.add_job(bot_tick, "interval", seconds=60, id="backlink-bot", max_instances=1, coalesce=True)
     _scheduler.start()
     log.info("Scheduler started (every %ss)", s.scheduler_tick_seconds)
 

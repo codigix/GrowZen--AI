@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { Loader2, ArrowUp, ArrowDown, ExternalLink, Search, Inbox, Info, Sparkles, FileText, Download, AlertTriangle, ChevronLeft, ChevronRight, ScanSearch } from 'lucide-react';
-import { SeoShell, Card, Badge, Button, ErrorNote, useModulePath } from './SeoUi';
+import { ArrowUp, ArrowDown, ExternalLink, Search, Inbox, Info, Sparkles, FileText, Download, AlertTriangle, ChevronLeft, ChevronRight, ScanSearch } from 'lucide-react';
+import { SeoShell, Card, Badge, Button, ErrorNote, useModulePath, SkPage } from './SeoUi';
 import { useApi, fmt } from './seoApi';
 import { IntelBar } from './DomainIntel';
 
@@ -186,7 +186,7 @@ function Page({ b }) {
   const data = useApi(`/businesses/${b.id}/seo/top-pages-report?days=${days}`);
   const d = data.data;
   const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
-  if (!d) return data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <div className="py-16 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div>;
+  if (!d) return data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <SkPage statLabels={["Cited pages", "Organic traffic"]} chart={false} tableTitle="Top Pages" tableHeaders={["Page", "Source", "Position", "Traffic", "Issues"]} table={6} />;
   if (d.state === 'no_website') return <Card><Empty icon={Info}>Add the business&apos;s website first: pages are matched by its domain.</Empty></Card>;
   const nothing = !d.total;
   return (

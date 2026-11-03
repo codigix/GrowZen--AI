@@ -136,6 +136,9 @@ class FrontierUrl(Base):
     depth: Mapped[int] = mapped_column(Integer, default=0)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     hop: Mapped[int | None] = mapped_column(Integer, default=0)  # external-link hops from a tracked domain; bounds how far the bot wanders
+    # The business whose exploration queued this URL, so each business's run works through its own share of the frontier.
+    # NULL = shared (older rows, manual seeds): any business's run may take it.
+    business_id: Mapped[int | None] = mapped_column(ForeignKey("businesses.id", ondelete="SET NULL"), index=True)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     next_eligible_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(String(200))
@@ -183,6 +186,17 @@ class BiBotConfig(TimestampMixin, Base):
     run_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_stats: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+
+class BiRotationState(TimestampMixin, Base):
+    """Where the batch rotation of the discovery bot stands (one row): which businesses are in the current window, when it started,
+    and the last business served, so the next batch carries on from there and a restart resumes the same window."""
+    __tablename__ = "bi_rotation_state"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch: Mapped[list[int] | None] = mapped_column(JSON)
+    window_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cursor: Mapped[int] = mapped_column(Integer, default=0)  # business id of the last business in the latest batch
+    pass_number: Mapped[int] = mapped_column(Integer, default=1)  # goes up each time the rotation wraps back to the first businesses
 
 
 class BiDomainScore(TimestampMixin, Base):

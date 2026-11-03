@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, ScatterChart, Scatter, PieChart, Pie, Cell, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { Loader2, ArrowUp, ArrowDown, RefreshCw, ExternalLink, AlertTriangle, Search, Inbox, Info } from 'lucide-react';
-import { Card, Badge, Button, ErrorNote, useAction, useToast, useModulePath } from './SeoUi';
+import { ArrowUp, ArrowDown, RefreshCw, ExternalLink, AlertTriangle, Search, Inbox, Info } from 'lucide-react';
+import { Card, Badge, Button, ErrorNote, useAction, useToast, useModulePath, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 
 /**
@@ -308,7 +308,7 @@ export default function PositionLandscape({ b }) {
         <Button variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={d && !d.serper} onClick={check} title={d && !d.serper ? 'Set SERPER_API_KEY to check positions' : 'Check Google now for every tracked keyword'}>Check positions now</Button>
       </div>
       <ErrorNote>{error}</ErrorNote>
-      {!d ? (data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <div className="py-16 flex justify-center text-slate-400"><Loader2 size={18} className="animate-spin" /></div>)
+      {!d ? (data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <SkPage statLabels={["Visibility", "Estimated traffic", "Average position"]} chartTitle="Rankings distribution" tableTitle="Top keywords" tableHeaders={["Keyword", "Position", "Change", "Volume"]} />)
         : d.state === 'ok' ? <Landscape d={d} />
           : (
             <Card>
