@@ -452,4 +452,58 @@ class KeywordRankLog(Base):
     own_features: Mapped[list[str] | None] = mapped_column(JSON)  # of those, the ones the site appears in
 
 
+
+class SiteProfile(TimestampMixin, Base):
+    """What the onboarding research learnt about a client's website: its technology, the metadata found on every crawled page,
+    the site-wide checks, and the improvements that follow from them. One row per business, refreshed by each research run."""
+    __tablename__ = "site_profiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="queued")  # queued | running | done | failed
+    stack: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # site_stack.detect() result
+    site_checks: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # robots, sitemap, llms.txt, security headers, favicon
+    metadata_audit: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # per-page metadata + coverage figures
+    suggested_metadata: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{url, title, description, og_*...}]
+    recommendations: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{key, area, title, why, how, impact, effort, source}]
+    summary: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WorkItem(TimestampMixin, Base):
+    """One piece of work for one client in one week: a fix from an audit, an improvement from the site research, a recurring operation, or something added by hand."""
+    __tablename__ = "work_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    week_start: Mapped[date] = mapped_column(Date, index=True)  # the Monday of the week it is planned for
+    key: Mapped[str] = mapped_column(String(200), index=True)  # stable identity (e.g. "rec:add-og-tags"), so the same work is never planned twice
+    area: Mapped[str] = mapped_column(String(30))  # gmb | seo | technical | metadata | content | backlinks | rankings | reviews | other
+    title: Mapped[str] = mapped_column(String(500))
+    detail: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # why, how, links to the audit issue / site recommendation / agent task
+    source: Mapped[str] = mapped_column(String(20), default="manual")  # audit | research | operation | agent | manual
+    priority: Mapped[int] = mapped_column(Integer, default=3)  # 1 (do first) .. 4
+    impact: Mapped[str] = mapped_column(String(10), default="Medium")
+    status: Mapped[str] = mapped_column(String(20), default="todo")  # todo | doing | done | skipped | backlog
+    assignee: Mapped[str | None] = mapped_column(String(120))
+    due_date: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)  # what was done / why it was skipped
+    carried_from: Mapped[int | None] = mapped_column(Integer)  # id of the item in the previous week this one continues
+    carry_count: Mapped[int] = mapped_column(Integer, default=0)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified: Mapped[bool] = mapped_column(Boolean, default=False)  # closed because the next audit no longer reports the issue
+
+
+class WeeklyReport(TimestampMixin, Base):
+    """A saved weekly or monthly report: what was done compared with the period before, what is planned next, and the future scope."""
+    __tablename__ = "weekly_reports"
+    __table_args__ = (UniqueConstraint("business_id", "period", "period_start"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    period: Mapped[str] = mapped_column(String(10))  # week | month
+    period_start: Mapped[date] = mapped_column(Date, index=True)
+    period_end: Mapped[date] = mapped_column(Date)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    narrative: Mapped[str | None] = mapped_column(Text)
+    final: Mapped[bool] = mapped_column(Boolean, default=False)  # false while the period is still running
+
 from .backlinks import models as _backlink_models  # noqa: E402,F401  (registers the backlink graph tables)

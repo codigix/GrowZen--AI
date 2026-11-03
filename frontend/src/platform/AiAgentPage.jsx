@@ -10,9 +10,9 @@ import {
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, ErrorNote, Modal,
-  Field, inputCls, areaCls, useToast, useAction, useBusinesses
+  Field, inputCls, areaCls, useToast, useAction, useBusinesses, LoadMore
 } from './SeoUi';
-import { api, useApi, fmtDateTime } from './seoApi';
+import { api, useApi, usePaged, fmtDateTime } from './seoApi';
 
 // 7 Specialized AI Agents with Full Telemetry and Deep Specs
 const AGENT_SWARM = [
@@ -428,8 +428,9 @@ export default function AiAgentPage() {
   const [isScanning, setIsScanning] = useState(false);
 
   const { list } = useBusinesses();
-  const tasks = useApi('/tasks?status=pending');
-  const done = useApi('/tasks?status=applied');
+  const tasks = usePaged('/tasks?status=pending', 40); // slabs of 40; the totals come from /tasks/counts
+  const done = usePaged('/tasks?status=applied', 40);
+  const counts = useApi('/tasks/counts');
   const activity = useApi(tab === 'log' ? '/activity?limit=200' : null);
   const playbook = useApi('/playbook');
   const [busy, error, run] = useAction();
@@ -440,6 +441,7 @@ export default function AiAgentPage() {
   const finished = (out, approve) => {
     tasks.setData(ts => ts.filter(x => x.id !== out.id));
     done.reload(true);
+    counts.reload(true);
     toast(
       approve
         ? (out.status === 'applied' ? `Applied: ${out.result?.note || 'Executed successfully'}` : `Approved: Task queued for deployment`)
@@ -460,7 +462,7 @@ export default function AiAgentPage() {
     toast('Triggering multi-agent scan across PCMC Google Search, Maps, and Hospital CMS nodes…');
     setTimeout(() => {
       setIsScanning(false);
-      tasks.reload(true);
+      tasks.reload(true); counts.reload(true);
       done.reload(true);
       if (tab === 'log') activity.reload(true);
       toast('Agent cycle finished. Real-time tasks and SERP signals synchronized.');
@@ -486,7 +488,7 @@ export default function AiAgentPage() {
   const lowRiskCount = (tasks.data || []).filter(t => t.detail?.risk === 'low').length;
   const handleApproveLowRisk = () => run('low_risk', async () => {
     const r = await api('/tasks/approve-low-risk', { method: 'POST' });
-    tasks.reload(true);
+    tasks.reload(true); counts.reload(true);
     done.reload(true);
     toast(`${r.approved} low-risk change${r.approved === 1 ? '' : 's'} approved`);
   });
@@ -508,7 +510,7 @@ export default function AiAgentPage() {
           // continue
         }
       }
-      tasks.reload(true);
+      tasks.reload(true); counts.reload(true);
       done.reload(true);
       toast(`Successfully approved and applied ${approvedCount} high impact tasks!`);
     });
@@ -554,7 +556,7 @@ export default function AiAgentPage() {
             </div>
           </div>
           <div className="text-3xl font-extrabold text-slate-900 mt-2 font-display tracking-tight flex items-baseline gap-2">
-            {tasks.data?.length ?? '—'}
+            {counts.data ? (counts.data.pending ?? 0) : '—'}
             <span className="text-12 font-medium text-amber-700">pending</span>
           </div>
           <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
@@ -574,7 +576,7 @@ export default function AiAgentPage() {
             </div>
           </div>
           <div className="text-3xl font-extrabold text-slate-900 mt-2 font-display tracking-tight flex items-baseline gap-2">
-            {done.data?.length ?? 1}
+            {counts.data ? (counts.data.applied ?? 0) : '—'}
             <span className="text-12 font-medium text-emerald-700">completed</span>
           </div>
           <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
@@ -630,7 +632,7 @@ export default function AiAgentPage() {
           value={tab}
           onChange={setTab}
           tabs={[
-            { id: 'queue', label: 'Approval Queue', count: tasks.data?.length },
+            { id: 'queue', label: 'Approval Queue', count: counts.data ? (counts.data.pending ?? 0) : undefined },
             { id: 'agents', label: 'Autonomous Agent Swarm', count: 7 },
             { id: 'playbook', label: 'Autopilot Playbook & Safety Rules' },
             { id: 'results', label: 'What worked' },
@@ -744,6 +746,7 @@ export default function AiAgentPage() {
                   onDone={finished}
                 />
               ))}
+              <LoadMore list={tasks} label={`Show more (${Math.max(0, (counts.data?.pending ?? 0) - (tasks.data?.length ?? 0))} left)`} />
             </div>
           )}
         </div>

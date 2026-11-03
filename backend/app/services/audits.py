@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from sqlalchemy import case, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from ..config import get_settings
 from ..db import SessionLocal
@@ -137,16 +137,38 @@ def run_all(db: Session, b: Business, kinds: list[str] | None = None) -> list[Au
     return done
 
 
-def latest(db: Session, b: Business) -> dict[str, Audit]:
+def page(db: Session, query: Any, limit: int, offset: int = 0, slim: bool = False) -> list[dict[str, Any]]:
+    """One slab of an audit list, newest first. `slim` leaves out the crawl/Lighthouse `result` and the `issues` list (both large) and sends `issue_count` instead,
+    which is all a history list shows; opening one audit loads it whole."""
+    from ..serialize import row  # local import: serialize is tiny, but audits is imported very early
+    q = query.order_by(Audit.created_at.desc(), Audit.id.desc()).offset(max(0, offset)).limit(min(max(1, limit), 200))
+    if not slim:
+        return [row(a, exclude={"result"}) for a in db.scalars(q)]
+    count = func.coalesce(func.json_array_length(Audit.issues), 0).label("issue_count")
+    out = []
+    for a, n in db.execute(q.with_only_columns(Audit, count).options(defer(Audit.result), defer(Audit.issues))):
+        out.append(row(a, exclude={"result", "issues"}) | {"issue_count": int(n)})
+    return out
+
+
+def latest(db: Session, b: Business, with_result: bool = True) -> dict[str, Audit]:
+    """The newest finished audit of each kind. `with_result=False` leaves out the large `result` JSON (crawl pages, Lighthouse) for callers that only read the score and issues."""
+    # Only the newest finished audit of each kind is read (a window function), not every audit ever run with its large result: this is called by
+    # most screens, and a client with a long history made each of them load hundreds of kilobytes of JSON.
+    rank = func.row_number().over(partition_by=Audit.kind, order_by=(Audit.finished_at.desc(), Audit.id.desc())).label("rn")
+    newest = select(Audit.id, rank).where(Audit.business_id == b.id, Audit.status == "done").subquery()
     out: dict[str, Audit] = {}
-    for a in db.scalars(select(Audit).where(Audit.business_id == b.id, Audit.status == "done").order_by(Audit.finished_at.desc())):
+    q = select(Audit).join(newest, newest.c.id == Audit.id).where(newest.c.rn == 1).order_by(Audit.finished_at.desc())
+    if not with_result:
+        q = q.options(defer(Audit.result))
+    for a in db.scalars(q):
         out.setdefault(a.kind, a)
     return out
 
 
 def overall(db: Session, b: Business) -> int | None:
     """Average of the latest score per area (areas that don't apply, e.g. no website, left out)."""
-    scores = [a.score for k, a in latest(db, b).items() if a.score is not None and a.data_source != "sample" and not (k in ("technical", "onpage") and not b.website)]  # sample data is never part of the health
+    scores = [a.score for k, a in latest(db, b, with_result=False).items() if a.score is not None and a.data_source != "sample" and not (k in ("technical", "onpage") and not b.website)]  # sample data is never part of the health
     return round(mean(scores)) if scores else None
 
 

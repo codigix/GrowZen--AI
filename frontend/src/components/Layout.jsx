@@ -1,11 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
   LogOut, Menu, X, KeyRound, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen,
-  TrendingUp, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send, Activity
+  TrendingUp, ClipboardList, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send, Activity
 } from 'lucide-react';
 import { useApi } from '../platform/seoApi';
+import { SkPage } from '../platform/SeoUi';
 import AssistantWidget from './AssistantWidget';
 import ErrorBoundary from './ErrorBoundary';
 
@@ -14,7 +15,8 @@ export const SIDEBAR_GROUPS = [
     title: 'Overview',
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { to: '/onboarding', label: 'Business Onboarding', icon: Building2, badge: 'Phase 1' }
+      { to: '/onboarding', label: 'Business Onboarding', icon: Building2, badge: 'Phase 1' },
+      { to: '/work-plan', label: 'Work Plan & Reports', icon: ClipboardList, badge: 'New' }
     ]
   },
   {
@@ -295,7 +297,7 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
         </header>
 
         <main className="flex-1 min-w-0">
-          <ErrorBoundary key={location.pathname}><Outlet /></ErrorBoundary>
+          <ErrorBoundary key={location.pathname}><Suspense fallback={<SkPage />}><Outlet /></Suspense></ErrorBoundary>
         </main>
       </div>
       <AssistantWidget />

@@ -33,6 +33,14 @@ def test_visibility_traffic_movers_and_competitors():
     assert r["cannibal"]["affected"] == 1 and r["cannibal"]["pages"] == 2 and r["cannibal"]["health"] == 67
     assert {p["url"] for p in r["pages"]["top"]} == {"https://mysite.com/a", "https://mysite.com/b", "https://mysite.com/c"}
     assert any("improved for 2" in s for s in r["summary"])
+    # the detail tabs
+    me = next(c for c in r["competitors_all"] if c["you"])
+    assert me["top3"]["count"] == 1 and me["top10"]["count"] == 3 and me["top3"]["new"] == 1 and me["improved"] == 1 and me["declined"] == 1
+    assert r["cannibal"]["rows"][0]["keyword"] == "b" and len(r["cannibal"]["rows"][0]["urls"]) == 2
+    assert {p["url"] for p in r["pages"]["all"]} == {"https://mysite.com/a", "https://mysite.com/b", "https://mysite.com/c"} and r["pages"]["lost"] == []
+    assert next(p for p in r["pages"]["all"] if p["url"].endswith("/b"))["new"] is True
+    assert r["snippets"][0]["keyword"] == "a" and r["snippets"][0]["yours"] and r["snippets"][0]["potential"] == round(1000 * CTR[0], 1)
+    assert next(x for x in r["all_keywords"] if x["keyword"] == "a")["traffic"] == round(1000 * CTR[0], 2)
 
 
 def test_one_check_has_no_changes_and_empty_period_has_no_data():

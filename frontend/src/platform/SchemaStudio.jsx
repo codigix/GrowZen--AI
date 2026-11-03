@@ -25,6 +25,18 @@ const DAY = { MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday', THUR
 const hhmm = (o) => `${String(o?.hours ?? 0).padStart(2, '0')}:${String(o?.minutes ?? 0).padStart(2, '0')}`;
 const script = (json) => `<script type="application/ld+json">\n${json}\n</script>`;
 
+/** A small copy icon pinned to the top-right corner of a code block. */
+function IconCopy({ text }) {
+  const [done, setDone] = useState(false);
+  const copy = () => navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); });
+  return (
+    <button type="button" onClick={copy} aria-label={done ? 'Copied' : 'Copy code'} title={done ? 'Copied' : 'Copy code'}
+      className="absolute top-2.5 right-5 z-10 w-8 h-8 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-slate-200 cursor-pointer transition-colors">
+      {done ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+    </button>
+  );
+}
+
 function CopyBtn({ text, label = 'Copy code' }) {
   const [done, setDone] = useState(false);
   return <Button size="sm" variant="primary" icon={done ? Check : Copy} onClick={() => navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); })}>{done ? 'Copied' : label}</Button>;
@@ -35,7 +47,12 @@ function download(name, text) {
   setTimeout(() => URL.revokeObjectURL(href), 1000);
 }
 function Code({ text }) {
-  return <pre className="text-11.5 leading-relaxed  text-slate-100 bg-slate-900 rounded p-4 overflow-auto max-h-[420px]">{text}</pre>;
+  return (
+    <div className="relative group">
+      <IconCopy text={text} />
+      <pre className="text-11.5 leading-relaxed  text-slate-100 bg-slate-900 rounded p-4 pr-14 overflow-auto max-h-[420px]">{text}</pre>
+    </div>
+  );
 }
 
 function localBusiness(b, type) {
@@ -101,7 +118,7 @@ function FaqEditor({ b, toast }) {
       {dirty && valid.length > 0 && <p className="text-12 text-amber-700 flex items-center gap-1.5"><Info size={13} /> Save to keep these FAQs on the profile (they also feed Google Q&A).</p>}
       {json && (
         <div>
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-2"><span className="text-12 font-semibold text-slate-700">FAQ code ({valid.length} question{valid.length === 1 ? '' : 's'})</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2"><span className="text-12 font-semibold text-slate-700">FAQPage schema code ({valid.length} question{valid.length === 1 ? '' : 's'})</span>
             <div className="flex gap-2"><Button size="sm" icon={Download} onClick={() => download('faq-schema.html', script(json))}>Download</Button><CopyBtn text={script(json)} /></div></div>
           <Code text={script(json)} />
         </div>
@@ -174,7 +191,7 @@ export default function SchemaStudio({ b, report }) {
             </div>
           </Card>
         )}
-        {tab === 'faq' && <Card title="FAQ code" subtitle="Questions and answers for the website (FAQPage) and the Google profile's Q&A."><FaqEditor key={b.id} b={b} toast={toast} /></Card>}
+        {tab === 'faq' && <Card title="FAQs" subtitle="Write the questions customers ask. They become the FAQPage code below for the website and feed the Google profile's Q&A."><FaqEditor key={b.id} b={b} toast={toast} /></Card>}
       </div>
 
       <aside className="space-y-5 min-w-0 xl:sticky xl:top-24">

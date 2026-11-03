@@ -15,9 +15,9 @@ from ..competitors import intel
 from ..config import get_settings
 from ..db import get_db
 from ..deps import get_business
-from ..models import Audit, Business, GeoPrompt, GeoResult, GoogleConnection, Keyword, KeywordRankLog
+from ..models import Audit, Business, GeoPrompt, GeoResult, GoogleConnection, Keyword, KeywordRankLog, Competitor
 from ..backlinks.summary import own_site_links
-from ..services import countries, domain_checks, geo, landscape as landscape_svc, top_pages as top_pages_svc, gsc, google_intel, keyword_metrics, market, organic
+from ..services import countries, domain_checks, geo, landscape as landscape_svc, rank_report as rank_report_svc, top_pages as top_pages_svc, gsc, google_intel, keyword_metrics, market, organic
 from ..services.gbp import GbpError
 from ..services.providers.base import intent_of
 from ..services.activity import log
@@ -79,6 +79,43 @@ def check_ranks(body: CheckIn, b: Business = Depends(get_business), db: Session 
     return out
 
 
+@router.post("/seed-keywords")
+def seed_keywords(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Start tracking the searches a customer would type to find this business (services and category + area/city), so positions can be checked at once."""
+    from ..competitors.intel import default_keywords
+    added = 0
+    for text in default_keywords(b):
+        text = " ".join(text.lower().split())
+        row_ = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == text))
+        if not row_:
+            db.add(Keyword(business_id=b.id, keyword=text, tracked=True, intent=intent_of(text)))
+            added += 1
+        elif not row_.tracked:
+            row_.tracked = True
+    log(db, user.name, "keywords_seeded", b.id, added=added)
+    db.commit()
+    return {"added": added}
+
+
+class CompetitorDomainIn(BaseModel):
+    domain: str = Field(min_length=3, max_length=255)
+
+
+@router.post("/track-competitor")
+def track_competitor(body: CompetitorDomainIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Register a domain from the Google results as a competitor of this business (for audits and comparisons)."""
+    domain = organic.host(body.domain)
+    if not domain or domain == organic.host(b.website):
+        raise HTTPException(400, "Enter a competitor's domain, not your own.")
+    site = f"https://{domain}"
+    row_ = db.scalar(select(Competitor).where(Competitor.business_id == b.id, Competitor.website == site))
+    if not row_:
+        db.add(Competitor(business_id=b.id, name=domain, website=site, source="manual"))
+        log(db, user.name, "competitor_added", b.id, domain=domain)
+        db.commit()
+    return {"website": site}
+
+
 @router.get("/rank-history")
 def rank_history(days: int = 90, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Each tracked keyword's checked positions over time."""
@@ -105,7 +142,32 @@ def position_landscape(days: int = 30, b: Business = Depends(get_business), db: 
     logs = list(db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= start)))
     meta = {k.keyword: {"volume": k.volume, "tag": k.cluster} for k in tracked}
     out = landscape_svc.landscape(landscape_svc.from_logs([r for r in logs if r.keyword in meta]), meta, me, start, today)
-    return {**base, **out}
+    registered = [c.website for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id))]
+    return {**base, **out, "location": next((r.location for r in sorted(logs, key=lambda r: r.day, reverse=True) if r.location), None) or intel.default_location(b),
+            "country": market.serp_country(b), "device": "desktop", "tracked_competitors": registered}
+
+
+@router.get("/rank-report")
+def rank_report(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Per tracked keyword: Google position, the page that ranks, who is ahead and what to do to move up
+    (services/rank_report.py). Uses the saved rank checks and the latest on-page crawl."""
+    me = organic.host(b.website)
+    tracked = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
+    base = {"domain": me or None, "tracked": len(tracked), "serper": intel.serper_enabled()}
+    if not me:
+        return {**base, "state": "no_website", "rows": []}
+    if not tracked:
+        return {**base, "state": "no_keywords", "rows": []}
+    since = date.fromordinal(datetime.now(timezone.utc).date().toordinal() - 60)
+    names = {k.keyword for k in tracked}
+    logs = [r for r in db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= since)) if r.keyword in names]
+    onpage = _latest(db, b, "onpage")
+    pages = {}
+    for p in ((onpage.result or {}).get("pages", []) if onpage else []):
+        pages[_path(p["url"])] = {"title": p.get("title"), "h1": p.get("h1"), "words": p.get("word_count"), "inbound": p.get("inbound"), "status": p.get("status"),
+                                  "noindex": bool(p.get("noindex")), "images_missing_alt": p.get("images_missing_alt"), "schema": p.get("schema_types") or []}
+    out = rank_report_svc.report(logs, tracked, me, pages)
+    return {**base, "state": "ok" if any(r["checked"] for r in out["rows"]) else "no_data", "crawled": bool(onpage), **out}
 
 
 @router.get("/organic-research")

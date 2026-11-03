@@ -11,7 +11,7 @@ from ..deps import get_business, in_background
 from ..models import AgentTask, Audit, Business, InsightDay, Lead, Review, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
-from ..services import agent, audits, discovery, gbp, reports, schedules, site_onboarding
+from ..services import agent, audits, discovery, gbp, reports, schedules, site_onboarding, workplan
 from ..services import analytics as analytics_service, portfolio as portfolio_service, site_health
 from ..services.activity import log
 from ..services.profile_score import score_profile
@@ -21,11 +21,16 @@ router = APIRouter(prefix="/businesses", tags=["businesses"])
 
 @router.get("")
 def list_businesses(db: Session = Depends(get_db), _: User = Depends(current_user)):
+    # Two grouped queries for every client instead of two per client, and no raw Google payload (gbp_status.live, ~6 KB per client, read by the
+    # /gbp/live endpoint only): this list loads on every page, and each database round trip is slow on a hosted database.
+    pending = dict(db.execute(select(AgentTask.business_id, func.count(AgentTask.id)).where(AgentTask.status == "pending").group_by(AgentTask.business_id)).all())
+    nxt = dict(db.execute(select(Schedule.business_id, func.min(Schedule.next_run_at)).where(Schedule.every != "off").group_by(Schedule.business_id)).all())
     out = []
     for b in db.scalars(select(Business).order_by(Business.name)):
-        pending = db.scalar(select(func.count(AgentTask.id)).where(AgentTask.business_id == b.id, AgentTask.status == "pending")) or 0
-        nxt = db.scalar(select(func.min(Schedule.next_run_at)).where(Schedule.business_id == b.id, Schedule.every != "off"))
-        out.append(row(b) | {"pending_tasks": pending, "next_run_at": nxt.isoformat() if nxt else None})
+        r = row(b)
+        r["gbp_status"] = {k: v for k, v in (r.get("gbp_status") or {}).items() if k != "live"}
+        n = nxt.get(b.id)
+        out.append(r | {"pending_tasks": pending.get(b.id, 0), "next_run_at": n.isoformat() if n else None})
     return out
 
 
@@ -54,8 +59,9 @@ def create_business(body: BusinessIn, background: BackgroundTasks, db: Session =
     db.commit()
     log(db, user.name, "business_created", b.id)
     db.commit()
-    if b.website and site_onboarding.autodetect_enabled():
-        background.add_task(in_background(site_onboarding.detect_in_background, b.id))  # reads the website's technology without making the user wait
+    if site_onboarding.autodetect_enabled():
+        # Onboarding without making the user wait: full audit, website research (tech stack, metadata, improvements), schedules and the first week's plan.
+        background.add_task(in_background(workplan.start_in_background, b.id))
     return row(b)
 
 
@@ -91,7 +97,7 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
     log(db, user.name, "business_updated", b.id, fields=list(changes), pushed_to_google=pushed)
     db.commit()
     if b.website and b.website != old_site and site_onboarding.autodetect_enabled():
-        background.add_task(in_background(site_onboarding.detect_in_background, b.id))  # a new address means a possibly different technology
+        background.add_task(in_background(workplan.refresh_research_in_background, b.id))  # a new address means a possibly different technology, metadata and plan
     return row(b) | {"pushed_to_google": pushed}
 
 
@@ -106,19 +112,20 @@ def delete(b: Business = Depends(get_business), db: Session = Depends(get_db), u
 def _latest_failures(db: Session, b: Business) -> dict:
     """Kinds whose most recent run failed, with the reason."""
     seen, out = set(), {}
-    for a in db.scalars(select(Audit).where(Audit.business_id == b.id, Audit.status.in_(["done", "failed"])).order_by(Audit.created_at.desc()).limit(60)):
-        if a.kind in seen:
+    # Only the three columns that are read: loading 60 whole audits (each with its crawl/Lighthouse JSON) took seconds.
+    for kind, status, error in db.execute(select(Audit.kind, Audit.status, Audit.error).where(Audit.business_id == b.id, Audit.status.in_(["done", "failed"])).order_by(Audit.created_at.desc()).limit(60)):
+        if kind in seen:
             continue
-        seen.add(a.kind)
-        if a.status == "failed":
-            out[a.kind] = a.error
+        seen.add(kind)
+        if status == "failed":
+            out[kind] = error
     return out
 
 
 @router.get("/{business_id}/overview")
 def overview(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Everything the Overview screen needs in one call."""
-    latest = audits.latest(db, b)
+    latest = audits.latest(db, b, with_result=False)
     gbp_score = score_profile(b, audits.profile_stats(db, b))
     since = date.today() - timedelta(days=30)
     prev = since - timedelta(days=30)
@@ -228,11 +235,11 @@ def run_audits(body: AuditRunIn, tasks: BackgroundTasks, b: Business = Depends(g
 
 
 @router.get("/{business_id}/audits")
-def list_audits(kind: str | None = None, limit: int = 30, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+def list_audits(kind: str | None = None, limit: int = 30, offset: int = 0, slim: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     q = select(Audit).where(Audit.business_id == b.id)
     if kind:
         q = q.where(Audit.kind == kind)
-    return rows(db.scalars(q.order_by(Audit.created_at.desc()).limit(min(limit, 200))), exclude={"result"})
+    return audits.page(db, q, limit, offset, slim)
 
 
 @router.get("/{business_id}/audits/{audit_id}")
@@ -247,7 +254,11 @@ def get_audit(audit_id: int, b: Business = Depends(get_business), db: Session = 
 @router.get("/{business_id}/schedules")
 def get_schedules(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     found = list(db.scalars(select(Schedule).where(Schedule.business_id == b.id)))
-    return rows(found or schedules.create_for_plan(db, b))
+    if not found:
+        return rows(schedules.create_for_plan(db, b))
+    if schedules.ensure_jobs(db, b):
+        found = list(db.scalars(select(Schedule).where(Schedule.business_id == b.id)))
+    return rows(found)
 
 
 @router.put("/{business_id}/schedules")

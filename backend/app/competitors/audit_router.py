@@ -79,7 +79,7 @@ def start(body: CompetitorAuditIn, tasks: BackgroundTasks, db: Session = Depends
 
 @router.get("")
 def history(business_id: int | None = None, competitor_id: int | None = None, status: str | None = None,
-            limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+            limit: int = 100, offset: int = 0, slim: bool = False, db: Session = Depends(get_db)):
     q = select(Audit).where(Audit.kind == "competitor")
     if business_id is not None:
         q = q.where(Audit.business_id == business_id)
@@ -87,8 +87,7 @@ def history(business_id: int | None = None, competitor_id: int | None = None, st
         q = q.where(Audit.competitor_id == competitor_id)
     if status is not None:
         q = q.where(Audit.status == status)
-    q = q.order_by(Audit.created_at.desc()).offset(max(0, offset)).limit(min(max(1, limit), 200))
-    return rows(db.scalars(q), exclude={"result"})
+    return audits.page(db, q, limit, offset, slim)
 
 
 @router.post("/compare")

@@ -88,6 +88,47 @@ export function useApi(path) {
   return { ...state, reload: load, setData };
 }
 
+/**
+ * Load a list in slabs. `path` is an endpoint that takes `limit` and `offset` and returns an array. Starts with `size` rows;
+ * `loadMore()` appends the next slab. `reload()` refreshes what is already shown (as many rows as are loaded, up to 200), so a list does not collapse.
+ * Returns { data, error, loading, reload, setData, loadMore, hasMore, loadingMore }.
+ */
+export function usePaged(path, size = 25) {
+  const [state, setState] = useState({ data: null, error: null, loading: Boolean(path), hasMore: false, loadingMore: false });
+  const seq = useRef(0);
+  const shown = useRef(0);
+  const url = useCallback((limit, offset) => `${path}${path.includes('?') ? '&' : '?'}limit=${limit}&offset=${offset}`, [path]);
+  const load = useCallback(async (quiet = false) => {
+    if (!path) return;
+    const mine = ++seq.current;
+    if (!quiet) setState(s => ({ ...s, loading: true, error: null }));
+    const want = quiet ? Math.min(200, Math.max(size, shown.current)) : size;
+    try {
+      const rows = await api(url(want, 0));
+      if (mine !== seq.current) return;
+      shown.current = rows.length;
+      setState(s => ({ ...s, data: rows, error: null, loading: false, hasMore: rows.length >= want }));
+    } catch (e) {
+      if (mine === seq.current) setState(s => ({ ...s, error: e, loading: false }));
+    }
+  }, [path, size, url]);
+  useEffect(() => { shown.current = 0; load(); }, [load]);
+  const loadMore = useCallback(async () => {
+    const mine = seq.current;
+    setState(s => ({ ...s, loadingMore: true }));
+    try {
+      const rows = await api(url(size, shown.current));
+      if (mine !== seq.current) return;
+      shown.current += rows.length;
+      setState(s => ({ ...s, data: [...(s.data || []), ...rows], hasMore: rows.length >= size, loadingMore: false }));
+    } catch (e) {
+      setState(s => ({ ...s, error: e, loadingMore: false }));
+    }
+  }, [size, url]);
+  const setData = useCallback((fn) => setState(s => ({ ...s, data: typeof fn === 'function' ? fn(s.data) : fn })), []);
+  return { ...state, reload: load, setData, loadMore };
+}
+
 /** Re-run `fn` every `ms` while `active`; stops on unmount. */
 export function usePoll(fn, active, ms = 2500) {
   const saved = useRef(fn);

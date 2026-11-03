@@ -58,3 +58,13 @@ def test_rank_checks_explain_a_missing_key_or_website(client, monkeypatch):
     r = client.post(f"/api/v1/businesses/{bid}/seo/check-ranks", json={})
     assert r.status_code == 400 and "SERPER_API_KEY" in r.json()["detail"]
     assert client.post(f"/api/v1/businesses/{bid}/seo/keyword-overview", json={"keyword": "dentist"}).status_code == 400
+
+
+def test_seed_keywords_then_rank_report_gives_advice_per_keyword(client):
+    bid = client.post("/api/v1/businesses", json={"name": "Acme Dental", "website": "https://acme.example", "primary_category": "Dentist", "city": "Pune"}).json()["id"]
+    assert client.get(f"/api/v1/businesses/{bid}/seo/rank-report").json()["state"] == "no_keywords"
+    added = client.post(f"/api/v1/businesses/{bid}/seo/seed-keywords").json()["added"]
+    assert added >= 1
+    assert client.post(f"/api/v1/businesses/{bid}/seo/seed-keywords").json()["added"] == 0  # idempotent
+    rep = client.get(f"/api/v1/businesses/{bid}/seo/rank-report").json()
+    assert rep["tracked"] == added and rep["rows"][0]["advice"][0]["level"] == "fix"
