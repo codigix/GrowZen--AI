@@ -31,6 +31,8 @@ class ReactSiteIn(BaseModel):
     publish_endpoint: str = Field(min_length=1, max_length=300)
     image_endpoint: str | None = Field(default=None, max_length=300)
     default_status: Literal["draft", "publish", "schedule"] = "draft"
+    # image upload + field mapping (see services/react_site.DEFAULT_MAPPING); missing keys keep their saved/default value
+    mapping: dict | None = None
 
 
 def _utc(d: datetime | None) -> str | None:
@@ -46,7 +48,7 @@ def get_conn(db: Session, b: Business) -> ReactSiteConnection | None:
 def public(conn: ReactSiteConnection | None) -> dict:
     """What the page needs. Never includes the password, key or token."""
     if not conn:
-        return {"status": "not_connected", "auth_scheme": "login", "has_password": False, "has_key": False}
+        return {"status": "not_connected", "auth_scheme": "login", "has_password": False, "has_key": False, "mapping": dict(rs.DEFAULT_MAPPING)}
     key = rs.key_of(conn) if conn.api_key_enc else None
     return {
         "status": conn.status, "website_name": conn.website_name, "website_url": conn.website_url, "blog_url": conn.blog_url,
@@ -55,7 +57,7 @@ def public(conn: ReactSiteConnection | None) -> dict:
         "has_key": bool(key), "key_hint": f"••••{key[-4:]}" if key and len(key) >= 8 else None,
         "token_valid_until": _utc(conn.token_expires_at) if conn.token_enc else None,
         "health_endpoint": conn.health_endpoint, "publish_endpoint": conn.publish_endpoint, "image_endpoint": conn.image_endpoint,
-        "default_status": conn.default_status, "last_error": conn.last_error,
+        "default_status": conn.default_status, "last_error": conn.last_error, "mapping": rs.mapping_of(conn),
         "last_checked_at": _utc(conn.last_checked_at), "last_success_at": _utc(conn.last_success_at),
     }
 
@@ -69,6 +71,8 @@ def _apply(conn: ReactSiteConnection, body: ReactSiteIn) -> None:
         conn.publish_endpoint = rs.normalize_path(body.publish_endpoint)
         conn.image_endpoint = rs.normalize_path(body.image_endpoint)
         conn.auth_endpoint = rs.normalize_path(body.auth_endpoint)
+        if body.mapping is not None:
+            conn.mapping = {**(conn.mapping or {}), **rs.clean_mapping(body.mapping)}
     except rs.ReactSiteError as exc:
         raise HTTPException(422, str(exc))
     changed_login = (body.login_username or "").strip() != (conn.login_username or "") or bool(body.login_password)
@@ -131,6 +135,17 @@ def test_connection(body: ReactSiteIn | None = None, b: Business = Depends(get_b
     _apply(probe, body)
     steps, ok = rs.test(probe)
     return {"ok": ok, "steps": steps, "connection": public(saved)}
+
+
+@router.post("/test-upload")
+def test_image_upload(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Upload one small labelled test image with the saved settings (independent of any article) and report the URL."""
+    conn = get_conn(db, b)
+    if not conn or not rs.has_credentials(conn):
+        raise HTTPException(409, "Save the React.js website connection first.")
+    steps, url = rs.test_upload(conn)
+    db.commit()  # keep a renewed access token
+    return {"ok": bool(url) and all(s["ok"] for s in steps), "url": url, "steps": steps}
 
 
 @router.delete("", status_code=204)

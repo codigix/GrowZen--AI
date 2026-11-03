@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, Loader2, Send, Save, Unplug, ExternalLink, Trash2, Settings2, KeyRound, AlertTriangle, Code2, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Send, Save, Unplug, ExternalLink, Trash2, Settings2, KeyRound, AlertTriangle, Code2, Eye, EyeOff, Upload } from 'lucide-react';
 import { Badge, Button, Field, Modal, inputCls, useDoubleConfirm } from './SeoUi';
 import { api, fmtDateTime } from './seoApi';
 
@@ -11,12 +11,16 @@ const emptyForm = (b) => {
   return {
     website_name: b.name || '', website_url: site, blog_url: site ? `${site}/blog` : '', api_base_url: site,
     auth_scheme: 'login', login_username: '', login_password: '', auth_endpoint: '/api/integrations/login',
-    health_endpoint: '', publish_endpoint: '/api/blogs', image_endpoint: '/api/uploads', default_status: 'draft'
+    health_endpoint: '', publish_endpoint: '/api/blogs', image_endpoint: '/api/uploads', default_status: 'draft',
+    mapping: { ...DEFAULT_MAPPING }
   };
 };
+// Mirrors services/react_site.DEFAULT_MAPPING (the server validates and applies it)
+const DEFAULT_MAPPING = { image_delivery: 'upload', upload_format: 'multipart', upload_field: 'image', alt_field: 'alt', response_url_path: '', image_field: 'image', image_alt_field: 'image_alt', max_upload_mb: 5 };
 // The password is never sent back by the server: the field stays empty and an empty value keeps the saved one.
 const fromConn = (c, b) => ({
-  ...emptyForm(b), ...Object.fromEntries(Object.entries(c || {}).filter(([k, v]) => k in emptyForm(b) && v != null)), login_password: ''
+  ...emptyForm(b), ...Object.fromEntries(Object.entries(c || {}).filter(([k, v]) => k in emptyForm(b) && v != null)), login_password: '',
+  mapping: { ...DEFAULT_MAPPING, ...(c?.mapping || {}) }
 });
 
 function Num({ n, done, children }) {
@@ -70,12 +74,21 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
   useEffect(() => { load(); }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  const setMap = (k) => (e) => setForm(f => ({ ...f, mapping: { ...f.mapping, [k]: e.target.value } }));
+  const [uploadSteps, setUploadSteps] = useState([]);
+  const testUpload = () => {
+    setBusy('upload'); setUploadSteps([]); setError('');
+    api(`/businesses/${b.id}/react-site/test-upload`, { method: 'POST' })
+      .then(r => { setUploadSteps(r.steps); toast(r.ok ? 'Image upload works.' : 'Image upload failed: see the steps.'); })
+      .catch(e => setUploadSteps([{ step: 'Test image upload', ok: false, detail: e.message || String(e) }])).finally(() => setBusy(''));
+  };
   const [showPassword, setShowPassword] = useState(false);
   const [testedOk, setTestedOk] = useState(false);  // Test Login passed for the form as it is now (not saved yet)
   useEffect(() => { setTestedOk(false); }, [form]);
   const body = () => ({
     ...form, auth_scheme: 'login', login_username: form.login_username.trim(), login_password: form.login_password || null,
-    health_endpoint: form.health_endpoint || null, image_endpoint: form.image_endpoint || null
+    health_endpoint: form.health_endpoint || null, image_endpoint: form.image_endpoint || null,
+    mapping: { ...form.mapping, max_upload_mb: Number(form.mapping.max_upload_mb) || 5 }
   });
   const testNow = () => {
     setBusy('test'); setError(''); setSteps([]);
@@ -139,6 +152,7 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
             {!editing && (
               <span className="ml-auto flex gap-2">
                 <Button size="sm" icon={Send} busy={busy === 'retest'} onClick={() => { setBusy('retest'); setSteps([]); api(`/businesses/${b.id}/react-site/test`, { method: 'POST' }).then(r => { setSteps(r.steps); setConn(r.connection); }).catch(e => setError(e.message)).finally(() => setBusy('')); }}>Test Login</Button>
+                {(conn.image_endpoint || conn.mapping?.image_delivery === 'inline') && conn.mapping?.image_delivery !== 'inline' && <Button size="sm" icon={Upload} busy={busy === 'upload'} onClick={testUpload}>Test image upload</Button>}
                 <Button size="sm" icon={Settings2} onClick={() => setEditing(true)}>Edit settings</Button>
                 {(conn.has_password || conn.has_key) && <Button size="sm" icon={Unplug} onClick={disconnect}>Disconnect</Button>}
               </span>
@@ -156,16 +170,16 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Website details</div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <Field label="Website name"><input className={inputCls} value={form.website_name} onChange={set('website_name')} placeholder="Codigix Infotech" /></Field>
-                <Field label="Website URL"><input className={inputCls} value={form.website_url} onChange={set('website_url')} placeholder="https://codigixinfotech.com" /></Field>
-                <Field label="Blog URL"><input className={inputCls} value={form.blog_url} onChange={set('blog_url')} placeholder="https://codigixinfotech.com/blog" /></Field>
+                <Field label="Website name"><input className={inputCls} value={form.website_name} onChange={set('website_name')} placeholder="My Company" /></Field>
+                <Field label="Website URL"><input className={inputCls} value={form.website_url} onChange={set('website_url')} placeholder="https://example.com" /></Field>
+                <Field label="Blog URL"><input className={inputCls} value={form.blog_url} onChange={set('blog_url')} placeholder="https://example.com/blog" /></Field>
               </div>
             </div>
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Login authentication</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 <Field label="Login username / email" hint="The website's integration user (not the main admin)">
-                  <input className={inputCls} autoComplete="off" value={form.login_username} onChange={set('login_username')} placeholder="erp-integration@codigixinfotech.com" />
+                  <input className={inputCls} autoComplete="off" value={form.login_username} onChange={set('login_username')} placeholder="erp-integration@example.com" />
                 </Field>
                 <Field label="Login password" hint={conn.has_password ? 'Saved (encrypted); leave empty to keep it' : 'Stored encrypted on the ERP server, never shown again'}>
                   <div className="relative">
@@ -184,10 +198,45 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">API endpoints</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <Field label="Backend API base URL"><input className={inputCls} value={form.api_base_url} onChange={set('api_base_url')} placeholder="https://codigixinfotech.com" /></Field>
+                <Field label="Backend API base URL"><input className={inputCls} value={form.api_base_url} onChange={set('api_base_url')} placeholder="https://example.com" /></Field>
                 <Field label="Publishing endpoint" hint="POST create, PUT/DELETE …/{id}"><input className={inputCls} value={form.publish_endpoint} onChange={set('publish_endpoint')} placeholder="/api/blogs" /></Field>
-                <Field label="Image upload endpoint" hint="POST multipart field “image”"><input className={inputCls} value={form.image_endpoint} onChange={set('image_endpoint')} placeholder="/api/uploads" /></Field>
                 <Field label="Health endpoint (optional)" hint="GET with the token; checked by Test Login when set"><input className={inputCls} value={form.health_endpoint} onChange={set('health_endpoint')} placeholder="/api/integrations/health" /></Field>
+              </div>
+            </div>
+            {/* Featured image upload settings are hidden: the Blog Content Editor is the single place to manage the
+                featured image. The mapping values stay in the form state and are still saved and used when publishing. */}
+            <div className="hidden" aria-hidden="true">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Featured image upload</div>
+              <p className="text-[11px] text-slate-500 mb-2">
+                {form.mapping.image_delivery === 'inline'
+                  ? 'The optimized WebP is sent inside the blog post itself, into the blog field below (as a data URL). No separate upload API is used and nothing is created on the website.'
+                  : 'GrowZen sends the optimized WebP to this website\'s own upload API (signed in), reads the image URL from the answer and stores it in the blog field below. Nothing is created on the website.'}
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <Field label="Image delivery" hint="How the image reaches the website">
+                  <select className={inputCls} value={form.mapping.image_delivery} onChange={setMap('image_delivery')}>
+                    <option value="upload">Upload endpoint (stores the image address)</option>
+                    <option value="inline">Inside the blog post (image field)</option>
+                  </select>
+                </Field>
+                <Field label="Blog image field" hint="Blog record field for the image"><input className={inputCls} value={form.mapping.image_field} onChange={setMap('image_field')} placeholder="image" /></Field>
+                <Field label="Blog image ALT field" hint="Empty = don't send"><input className={inputCls} value={form.mapping.image_alt_field} onChange={setMap('image_alt_field')} placeholder="image_alt" /></Field>
+                <Field label={form.mapping.image_delivery === 'inline' ? 'Maximum image size (MB)' : 'Maximum upload size (MB)'}
+                  hint={form.mapping.image_delivery === 'inline' ? 'Every blog read returns the image: keep it small (0.2–0.5)' : 'Larger images are re-compressed to fit'}>
+                  <input type="number" min="0.1" max="100" step="0.1" className={inputCls} value={form.mapping.max_upload_mb} onChange={setMap('max_upload_mb')} />
+                </Field>
+                {form.mapping.image_delivery !== 'inline' && (<>
+                  <Field label="Image upload endpoint" hint="POST on the API base URL"><input className={inputCls} value={form.image_endpoint} onChange={set('image_endpoint')} placeholder="/api/uploads" /></Field>
+                  <Field label="Request format">
+                    <select className={inputCls} value={form.mapping.upload_format} onChange={setMap('upload_format')}>
+                      <option value="multipart">multipart/form-data (file)</option>
+                      <option value="json_base64">JSON with base64 image</option>
+                    </select>
+                  </Field>
+                  <Field label="File field name" hint="The field the upload API reads"><input className={inputCls} value={form.mapping.upload_field} onChange={setMap('upload_field')} placeholder="image" /></Field>
+                  <Field label="ALT text field" hint="Sent with the upload; empty = none"><input className={inputCls} value={form.mapping.alt_field} onChange={setMap('alt_field')} placeholder="alt" /></Field>
+                  <Field label="Response URL path" hint="e.g. url or data.file.url; empty = detect"><input className={inputCls} value={form.mapping.response_url_path} onChange={setMap('response_url_path')} placeholder="(auto)" /></Field>
+                </>)}
               </div>
             </div>
             <div>
@@ -210,6 +259,7 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
           </div>
         )}
         <Steps steps={steps} busy={busy === 'test' || busy === 'save' || busy === 'retest'} />
+        <Steps steps={uploadSteps} busy={busy === 'upload'} />
         {testedOk && editing && !busy && (
           <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900">
             <CheckCircle2 size={15} className="text-emerald-600" />

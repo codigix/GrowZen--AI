@@ -298,6 +298,9 @@ class ReactSiteConnection(TimestampMixin, Base):
     health_endpoint: Mapped[str | None] = mapped_column(String(300))  # GET, must need the key (checks it)
     publish_endpoint: Mapped[str | None] = mapped_column(String(300))  # POST create, PUT/DELETE {endpoint}/{id}
     image_endpoint: Mapped[str | None] = mapped_column(String(300))  # POST multipart "image" -> {"url": ...}
+    # Per-website image upload + field mapping (services/react_site.py DEFAULT_MAPPING): request format, file field,
+    # response URL path, blog image/alt fields, max upload size. Lets one integration serve any site's backend.
+    mapping: Mapped[dict | None] = mapped_column(JSON)
     default_status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | publish | schedule
     status: Mapped[str] = mapped_column(String(20), default="not_connected")  # not_connected | connected | failed
     last_error: Mapped[str | None] = mapped_column(Text)

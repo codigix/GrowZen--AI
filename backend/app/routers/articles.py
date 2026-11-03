@@ -301,7 +301,7 @@ def publish_react(article_id: int, body: PublishIn, b: Business = Depends(get_bu
         _react_failed(db, conn, exc)
         raise HTTPException(502, str(exc))
     a.react_post_id, a.react_url, a.react_status = out["id"], out["url"], out["status"]
-    if out.get("image_url"):
+    if out.get("image_url") and not out["image_url"].startswith("data:"):  # an embedded image is not an address to remember
         a.react_image_url, a.react_image_path = out["image_url"], a.featured_image_path
     db.commit()
     return {**out, "article": row(a)}
