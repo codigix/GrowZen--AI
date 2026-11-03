@@ -76,23 +76,118 @@ def _get(db: Session, b: Business, article_id: int) -> Article:
 
 
 def _refresh_schema(a: Article, b: Business) -> None:
-    """Rebuild only the article's JSON-LD block from its current fields (one block, never duplicated)."""
-    if a.body:
-        a.body = svc.with_schema(a.body, svc.article_schema(
-            title=a.title or "", description=a.meta_description or "", body=a.body, primary=a.keyword,
-            secondary=a.secondary_keywords or [], b=b, url=a.wp_url, published=a.generated_at or a.created_at,
-            modified=datetime.now(timezone.utc), topic=a.topic, image_url=a.featured_image_url))
+    from ..services import article_publishing as ap
+    ap.refresh_schema(a, b)
 
 
 @router.get("")
 def list_articles(b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    found = db.scalars(select(Article).where(Article.business_id == b.id).order_by(Article.id.desc()))
-    return {"articles": rows(found, exclude={"body"})}
+    from ..services import article_schedule as asch
+    found = list(db.scalars(select(Article).where(Article.business_id == b.id).order_by(Article.id.desc())))
+    latest = asch.latest_by_article(db, b.id)
+    return {"articles": [{**row(a, exclude={"body"}), **asch.state_of(a, latest.get(a.id))} for a in found]}
+
+
+@router.get("/calendar")
+def calendar(month: str | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The Publishing Calendar: every article scheduled in GrowZen (and what became of it) in one month (YYYY-MM)."""
+    from ..services import article_schedule as asch
+    try:
+        return asch.calendar(db, b, month)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.get("/destinations")
+def publishing_destinations(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import article_publishing as ap, article_schedule as asch
+    return {"destinations": ap.destinations(db, b), "timezone": asch.tz_name()}
 
 
 @router.get("/{article_id}")
 def get_article(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    return row(_get(db, b, article_id))
+    from ..services import article_schedule as asch
+    a = _get(db, b, article_id)
+    return {**row(a), **asch.state_of(a, asch.latest_by_article(db, b.id, a.id).get(a.id))}
+
+
+class RegenerateIn(BaseModel):
+    part: Literal["full", "intro", "section", "conclusion", "faqs", "title", "meta"]
+    section_id: str | None = Field(default=None, max_length=20)  # for "section": an id from /regenerate/sections
+    body: str | None = None  # the editor's current (maybe unsaved) HTML; the saved body when omitted
+    # the editor's current (maybe unsaved) fields, for "title" / "meta"; the saved values when omitted
+    title: str | None = Field(default=None, max_length=255)
+    meta_description: str | None = Field(default=None, max_length=500)
+    keyword: str | None = Field(default=None, max_length=255)
+    secondary_keywords: list[str] | None = Field(default=None, max_length=20)
+
+
+class SectionsIn(BaseModel):
+    body: str | None = None
+
+
+@router.post("/{article_id}/regenerate/sections")
+def regenerate_sections(article_id: int, body: SectionsIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The H2/H3 sections of the article that can be regenerated one by one."""
+    from ..services import article_regenerate as rg
+    a = _get(db, b, article_id)
+    return {"sections": rg.sections(body.body if body.body is not None else a.body or "")}
+
+
+@router.post("/{article_id}/regenerate")
+def regenerate_part(article_id: int, body: RegenerateIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Write a new version of one part (or the whole article) with Claude. NOTHING is saved: the answer has the current
+    and the new HTML of that part and the whole new body; the editor applies it only when the user accepts."""
+    from ..services import article_regenerate as rg
+    a = _get(db, b, article_id)
+    try:
+        return rg.regenerate(a, b, body.part, body.body, body.section_id,
+                             fields=body.model_dump(include={"title", "meta_description", "keyword", "secondary_keywords"}))
+    except rg.RegenError as exc:
+        raise HTTPException(exc.code, str(exc))
+
+
+class ScheduleIn(BaseModel):
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")  # in the publishing time zone (default Asia/Kolkata)
+    time: str = Field(pattern=r"^\d{2}:\d{2}$")
+    destination: str = Field(min_length=2, max_length=20)  # wordpress (or the connected site's method) | react
+
+
+@router.put("/{article_id}/schedule")
+def schedule_article(article_id: int, body: ScheduleIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Schedule (or reschedule) a draft: GrowZen keeps it and publishes it to the chosen destination at that time.
+    Nothing is sent to the website now; scheduling again moves the same schedule (never a second article or post)."""
+    from ..services import article_schedule as asch
+    a = _get(db, b, article_id)
+    try:
+        p = asch.schedule(db, b, a, body.date, body.time, body.destination)
+    except asch.ScheduleError as exc:
+        raise HTTPException(exc.code, str(exc))
+    return {"article": {**row(a, exclude={"body"}), **asch.state_of(a, p)}}
+
+
+@router.delete("/{article_id}/schedule")
+def cancel_article_schedule(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Cancel the schedule: the article goes back to Draft (nothing on the website changes)."""
+    from ..services import article_schedule as asch
+    a = _get(db, b, article_id)
+    try:
+        p = asch.cancel(db, a)
+    except asch.ScheduleError as exc:
+        raise HTTPException(exc.code, str(exc))
+    return {"article": {**row(a, exclude={"body"}), **asch.state_of(a, p)}}
+
+
+@router.post("/{article_id}/schedule/retry")
+def retry_article_schedule(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Publish a failed scheduled article again now (same schedule, same destination; updates the post if it exists)."""
+    from ..services import article_schedule as asch
+    a = _get(db, b, article_id)
+    try:
+        p = asch.retry(db, b, a)
+    except asch.ScheduleError as exc:
+        raise HTTPException(exc.code, str(exc))
+    return {"article": {**row(a, exclude={"body"}), **asch.state_of(a, p)}, "result": p.result, "error": p.error}
 
 
 @router.post("/keywords")
@@ -171,12 +266,10 @@ class PublishIn(BaseModel):
 
 def _target(db: Session, b: Business) -> SiteIntegration:
     """The business's connected website; falls back to the WORDPRESS_* settings in .env for a WordPress site."""
-    row = db.scalar(select(SiteIntegration).where(SiteIntegration.business_id == b.id))
-    if row and row.status == "connected" and row.method:
-        return row
-    s = get_settings()
-    if s.wordpress_url and s.wordpress_user and s.wordpress_app_password:
-        return SiteIntegration(business_id=b.id, method="wordpress", base_url=s.wordpress_url, username=s.wordpress_user, secret_enc=crypto.seal(s.wordpress_app_password), status="connected")
+    from ..services import article_publishing as ap
+    t = ap.site_target(db, b)
+    if t:
+        return t
     raise HTTPException(409, "Connect this business's website first (Publish & Schedule > Connect your website).")
 
 
@@ -237,32 +330,64 @@ def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business
     target = _target(db, b)
     if body.mode == "schedule" and target.method in sp.LOCAL_SCHEDULE:
         return _hold_for_later(db, b, a, target, when)
-    media_steps: list[dict] = []
+    from ..services import article_publishing as ap
     try:
-        if target.method == "wordpress" and fi.path_of(a.featured_image_path):
-            mid, url, media_steps = sp.ensure_wp_featured_media(target, a)
-            if mid and (mid != a.wp_media_id or url != a.featured_image_url):
-                a.wp_media_id, a.featured_image_url = mid, url
-                _refresh_schema(a, b)  # the schema's image now points at the public copy
-                db.commit()
-        ours = {x for x in db.scalars(select(Article.wp_post_id).where(Article.business_id == b.id, Article.wp_post_id.is_not(None)))}
-        out = sp.publish(target, a, body.mode, when, exclude_layout_ids=ours)
-        # The schema must carry the real permalink. Before the first publish it can only be predicted, so when the
-        # live URL differs, rebuild the schema with it and update the post once more (same post, nothing duplicated).
-        schema_url = re.search(r'"mainEntityOfPage":\s*\{[^}]*"@id":\s*"([^"]+)"', a.body or "")
-        if out.get("status") == "publish" and out.get("url") and (out["url"] != a.wp_url or not schema_url or schema_url.group(1) != out["url"]):
-            a.wp_post_id, a.wp_url = out["id"] or a.wp_post_id, out["url"]
-            a.wp_status, a.publish_method = "publish", target.method
-            _refresh_schema(a, b)
-            db.commit()
-            again = sp.publish(target, a, body.mode, when, exclude_layout_ids=ours | {a.wp_post_id})
-            out = {**again, "steps": out["steps"] + [{"step": "Set the permalink in the schema", "ok": True, "detail": out["url"]}]}
+        out = ap.publish_site(db, b, a, target, body.mode, when)
     except sp.PublishError as exc:
         raise HTTPException(502, str(exc))
-    out["steps"] = out["steps"][:1] + media_steps + out["steps"][1:]
-    a.wp_post_id, a.wp_url = out["id"] or None, out["url"] or None
-    a.wp_status = out.get("status") or {"draft": "draft", "publish": "publish", "schedule": "future"}[body.mode]
-    a.publish_method, a.wp_deleted_at = target.method, None
+    return {**out, "article": row(a)}
+
+
+def _react_conn(db: Session, b: Business):
+    from ..models import ReactSiteConnection
+    from ..services import react_site as rs
+    conn = db.scalar(select(ReactSiteConnection).where(ReactSiteConnection.business_id == b.id))
+    if not conn or not rs.has_credentials(conn) or conn.status != "connected":
+        raise HTTPException(409, "Connect the React.js website first (Publish & Schedule > React.js Website > Test Login).")
+    return conn
+
+
+def _react_failed(db: Session, conn, exc) -> None:
+    """Keep the renewed token; a refused login marks the connection 'failed' (shown as Authentication Failed)."""
+    from ..services import react_site as rs
+    if isinstance(exc, rs.AuthFailed):
+        conn.status, conn.last_error = "failed", str(exc)[:500]
+    db.commit()
+
+
+@router.post("/{article_id}/publish-react")
+def publish_react(article_id: int, body: PublishIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Publish (or update) this article on the React.js website through its blog API. WordPress publishing is unaffected."""
+    from ..services import react_site as rs
+    a = _get(db, b, article_id)
+    if a.status != "completed":
+        raise HTTPException(409, "Only a completed article can be published")
+    if get_settings().blog_featured_image_required and not fi.path_of(a.featured_image_path):
+        raise HTTPException(422, "Add a featured image before publishing (Featured image section, above the article body).")
+    conn = _react_conn(db, b)
+    when = body.scheduled_at.astimezone(timezone.utc) if body.scheduled_at and body.scheduled_at.tzinfo else None
+    from ..services import article_publishing as ap
+    try:
+        out = ap.publish_react(db, a, conn, body.mode, when)  # a refused login marks the connection failed there
+    except rs.ReactSiteError as exc:
+        raise HTTPException(502, str(exc))
+    return {**out, "article": row(a)}
+
+
+@router.delete("/{article_id}/react-post")
+def delete_react_post(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Delete this article's post from the React.js website (by its stored id only). The article stays in GrowZen."""
+    from ..services import react_site as rs
+    a = _get(db, b, article_id)
+    if not a.react_post_id or a.react_status == "deleted":
+        raise HTTPException(409, "This article has no post on the React.js website to delete.")
+    conn = _react_conn(db, b)
+    try:
+        out = rs.delete(conn, a.react_post_id)
+    except rs.ReactSiteError as exc:
+        _react_failed(db, conn, exc)
+        raise HTTPException(502, str(exc))
+    a.react_status = "deleted"
     db.commit()
     return {**out, "article": row(a)}
 

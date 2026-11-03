@@ -69,6 +69,19 @@ def bot_tick() -> None:
         db.close()
 
 
+def posts_tick() -> int:
+    """Articles scheduled in GrowZen, checked every minute (the main tick is slower). Rows are claimed one by one, so
+    this and the main tick can never publish the same post twice."""
+    db = SessionLocal()
+    try:
+        return site_publish.run_due_scheduled(db)
+    except Exception as exc:
+        log.warning("Scheduled posts tick failed: %s", exc)
+        return 0
+    finally:
+        db.close()
+
+
 def start() -> None:
     global _scheduler
     s = get_settings()
@@ -76,6 +89,7 @@ def start() -> None:
         return
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.add_job(tick, "interval", seconds=s.scheduler_tick_seconds, id="seo-tick", max_instances=1, coalesce=True)
+    _scheduler.add_job(posts_tick, "interval", seconds=s.scheduled_posts_tick_seconds, id="scheduled-posts", max_instances=1, coalesce=True)
     if s.backlink_bot_auto_enabled:
         _scheduler.add_job(bot_tick, "interval", seconds=60, id="backlink-bot", max_instances=1, coalesce=True)
     _scheduler.start()

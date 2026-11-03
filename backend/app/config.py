@@ -142,6 +142,8 @@ class Settings(BaseSettings):
     backlink_batch_size: int = 5  # businesses crawling at the same time
     backlink_batch_minutes: int = 60  # how long one batch runs before the next batch gets its turn
     scheduler_tick_seconds: int = 300
+    scheduled_posts_tick_seconds: int = 60  # how often articles scheduled in GrowZen are checked and published when due
+    publish_timezone: str = "Asia/Kolkata"  # the time zone schedule dates/times are entered in (PUBLISH_TIMEZONE)
     backlink_bot_auto_enabled: bool = True  # set false to stop the 60s auto-tick; "Run now" in the UI still works
 
     # Lighthouse audits (/lighthouse/...): full Lighthouse reports from PageSpeed Insights (needs

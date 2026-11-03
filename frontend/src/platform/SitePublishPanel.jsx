@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, XCircle, Loader2, RefreshCw, ExternalLink, Globe, KeyRound, Unplug, Send, Copy, Clock, Trash2, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, RefreshCw, ExternalLink, Globe, KeyRound, Unplug, Send, Copy, Clock, Trash2, AlertTriangle, Lock } from 'lucide-react';
 import { Badge, Button, Field, Modal, inputCls, useDoubleConfirm } from './SeoUi';
 import { api, fmtDateTime } from './seoApi';
 import { featuredSrc } from './FeaturedImageField';
@@ -118,7 +118,14 @@ function ConnectFields({ method, form, setForm, website, toast }) {
           <li>Under <b>Application Passwords</b> type <b>GrowZen</b> and click <b>Add New Application Password</b>.</li>
           <li>Copy the password WordPress shows (it appears only once) and paste it below.</li>
         </ol>
-        <Field label="WordPress site address"><input className={inputCls} value={form.url} onChange={set('url')} placeholder="https://yoursite.com" /></Field>
+        <Field label="WordPress site address" hint="This account's registered website">
+          <div className="w-full h-9 flex items-center gap-2 px-3 rounded border border-indigo-200 bg-gradient-to-r from-indigo-50 to-white cursor-not-allowed select-text"
+            title="The site address comes from this account's business profile and cannot be changed here" aria-readonly="true">
+            <Globe size={14} className="text-indigo-500 shrink-0" />
+            <span className="flex-1 min-w-0 truncate text-[13px] font-medium text-slate-800">{form.url || 'No website on this account'}</span>
+            <Lock size={12} className="text-slate-400 shrink-0" />
+          </div>
+        </Field>
         <Field label="WordPress username"><input className={inputCls} value={form.username} onChange={set('username')} autoComplete="off" /></Field>
         <Field label="Application password" hint="Stored encrypted. It is never shown again."><input className={inputCls} type="password" value={form.secret} onChange={set('secret')} autoComplete="new-password" /></Field>
       </>
