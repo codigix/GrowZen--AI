@@ -120,8 +120,10 @@ def onboard(db: Session, em: IntakeEmail, actor: str = "pipeline") -> IntakeEmai
         _step(db, em, "schedule", "done", ", ".join(f"{r.job} {r.every}" for r in rows if r.every != "off"))
 
         try:
-            bl = backlink_autostart.enable(db, b)  # backlink discovery starts with the client; the bot job runs it on its schedule
+            bl = backlink_autostart.enable(db, b)  # backlink discovery starts with the client: a first run now, then its turns in the rotation
             log(db, "pipeline", "backlink_bot_enabled" if bl["enabled"] else "backlink_bot_skipped", b.id, **({"domains": bl["domains"]} if bl["enabled"] else {"reason": bl["reason"]}))
+            if bl["enabled"]:
+                backlink_autostart.first_run_in_background(b.id)
         except Exception:  # noqa: BLE001 - never blocks onboarding
             db.rollback()
 
