@@ -29,7 +29,9 @@ def link_hash(source_url: str, target_key: str) -> str:
 
 # ---- seeds ---------------------------------------------------------------
 
-def _seed_row(url: str, source: str) -> dict | None:
+def _seed_row(url: str, source: str, keep_path: bool = False) -> dict | None:
+    """keep_path: the crawl of this site starts at the exact page given (a listing page, a page known to link to a
+    target) instead of at its home page. Sites the crawler discovers itself always start at the home page."""
     norm = normalize_url(url)
     if norm is None:
         return None
@@ -39,7 +41,7 @@ def _seed_row(url: str, source: str) -> dict | None:
         return None
     home = f"{urlsplit(norm).scheme}://{urlsplit(norm).netloc}/"
     now = utcnow()
-    return {"url": home, "site_key": key, "source": source, "status": "pending",
+    return {"url": norm if keep_path else home, "site_key": key, "source": source, "status": "pending",
             "next_crawl_at": now, "created_at": now, "crawl_count": 0, "pages_crawled": 0}
 
 
@@ -65,31 +67,42 @@ def add_seeds(db: Database, urls: list[str], source: str, max_total: int | None 
 
 
 def add_user_seeds(db: Database, urls: list[str]) -> dict:
-    """Seeds given by a user. New sites are due for crawling at once; a site the crawler had only discovered
-    becomes a seed (read deeply) and is due again. Returns counts and the URLs that are not valid seeds."""
+    """Seeds given by a user. The crawl of a site starts at the exact address given. New sites are due at once; a site
+    the crawler had only discovered becomes a seed (read deeply); a seed whose start page differs is moved to the new
+    address. In each of these cases the site is due again. Returns counts and the URLs that are not valid seeds."""
     rows, rejected = {}, []
     for url in urls:
         raw = url.strip()
-        row = _seed_row(raw if "://" in raw else f"https://{raw}", "seed")  # a bare domain is fine
+        row = _seed_row(raw if "://" in raw else f"https://{raw}", "seed", keep_path=True)  # a bare domain is fine
         if row is None:
             rejected.append(url)
         else:
             rows.setdefault(row["site_key"], row)
-    added = promoted = 0
+    added = promoted = updated = 0
     if rows:
         with db.session() as s:
             existing = {x.site_key: x for x in s.scalars(select(Seed).where(Seed.site_key.in_(list(rows))))}
             for key, seed in existing.items():
-                if seed.source != "seed":
+                given = urlsplit(rows[key]["url"])
+                is_page = given.path not in ("", "/") or bool(given.query)  # a page, not just the home page
+                moved = is_page and seed.url != rows[key]["url"]
+                was_discovered = seed.source != "seed"
+                if not (moved or was_discovered):
+                    continue
+                if was_discovered:
                     seed.source, promoted = "seed", promoted + 1
-                    if seed.status != "crawling":
-                        seed.status, seed.next_crawl_at = "pending", utcnow()
+                else:
+                    updated += 1
+                if moved:
+                    seed.url = rows[key]["url"]
+                if seed.status != "crawling":
+                    seed.status, seed.next_crawl_at, seed.last_error = "pending", utcnow(), None
             new = [r for key, r in rows.items() if key not in existing]
             if new:
                 s.execute(_insert(db)(Seed).values(new).on_conflict_do_nothing(index_elements=["site_key"]))
             added = len(new)
-    return {"added": added, "promoted": promoted, "already_existing": len(rows) - added - promoted,
-            "rejected": rejected}
+    return {"added": added, "promoted": promoted, "updated": updated,
+            "already_existing": len(rows) - added - promoted - updated, "rejected": rejected}
 
 
 def load_seed_file(db: Database, path) -> int:
@@ -133,14 +146,20 @@ def reset_interrupted(db: Database) -> None:
         s.execute(update(Seed).where(Seed.status == "crawling").values(status="pending"))
 
 
+# https://host/ has three slashes; a start URL with more is an exact page (works in PostgreSQL and SQLite)
+_start_is_a_page = (func.length(Seed.url) - func.length(func.replace(Seed.url, "/", ""))) > 3
+
+
 def claim_seed(db: Database) -> Seed | None:
-    """Take the next site that is due: own seeds first, then discovered ones, oldest due first.
+    """Take the next site that is due: seeds given as an exact page first (the user pointed at a page that links to a
+    target), then other own seeds, then discovered ones, never-read and oldest first.
     FOR UPDATE SKIP LOCKED lets several workers (or processes) claim without handing out the same site."""
     with db.session() as s:
         seed = s.scalars(
             select(Seed)
             .where(Seed.status.in_(("pending", "done", "failed")), Seed.next_crawl_at <= utcnow())
-            .order_by(case((Seed.source == "seed", 0), else_=1), Seed.last_crawled_at.asc().nulls_first(), Seed.next_crawl_at, Seed.id)
+            .order_by(case((_start_is_a_page, 0), else_=1), case((Seed.source == "seed", 0), else_=1),
+                      Seed.last_crawled_at.asc().nulls_first(), Seed.next_crawl_at, Seed.id)
             .limit(1).with_for_update(skip_locked=True)
         ).first()
         if seed is None:
@@ -149,7 +168,8 @@ def claim_seed(db: Database) -> Seed | None:
         return seed
 
 
-def finish_seed(db: Database, seed_id: int, pages: int, error: str | None, recrawl_after: float, retry_after: float) -> None:
+def finish_seed(db: Database, seed_id: int, pages: int, error: str | None, recrawl_after: float, retry_after: float,
+                started_url: str | None = None) -> None:
     now = utcnow()
     with db.session() as s:
         seed = s.get(Seed, seed_id)
@@ -161,6 +181,9 @@ def finish_seed(db: Database, seed_id: int, pages: int, error: str | None, recra
         seed.crawl_count += 1
         seed.last_crawled_at = now
         seed.next_crawl_at = now + timedelta(seconds=retry_after if seed.status == "failed" else recrawl_after)
+        if started_url is not None and seed.url != started_url:
+            # the start page was changed while the site was being read: read it again from the new page
+            seed.status, seed.next_crawl_at = "pending", now
 
 
 def recrawl_all(db: Database) -> None:

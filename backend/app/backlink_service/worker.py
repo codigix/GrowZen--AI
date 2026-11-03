@@ -201,7 +201,7 @@ class Worker:
             raise
         except Exception:  # whatever happens here, the site must leave the 'crawling' state
             log.exception("steps after the crawl of %s failed", seed.site_key)
-        await asyncio.to_thread(repo.finish_seed, self.db, seed.id, pages, error, recrawl, s.retry_after)
+        await asyncio.to_thread(repo.finish_seed, self.db, seed.id, pages, error, recrawl, s.retry_after, seed.url)
         self._say(f"DONE   {seed.site_key}: {pages} pages, {result.backlinks if result else 0} backlink(s)"
                   + (f", error: {error}" if error else ""))
         return True

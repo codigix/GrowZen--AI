@@ -122,7 +122,7 @@ def test_crawl_stores_backlinks_and_discovers_seeds(db, settings):
 def test_user_seeds_bulk(db):
     repo.add_seeds(db, ["https://found-site.net/"], "discovered")
     out = repo.add_user_seeds(db, ["a-site.com", "https://www.a-site.com/x", "b-site.org ", "https://found-site.net", "nonsense", "pinterest.com"])
-    assert out == {"added": 2, "promoted": 1, "already_existing": 0, "rejected": ["nonsense", "pinterest.com"]}
+    assert out == {"added": 2, "promoted": 1, "updated": 0, "already_existing": 0, "rejected": ["nonsense", "pinterest.com"]}
     with db.session() as s:
         assert {x.site_key: x.source for x in s.query(Seed)} == {"a-site.com": "seed", "b-site.org": "seed", "found-site.net": "seed"}
     assert repo.add_user_seeds(db, ["a-site.com"])["already_existing"] == 1
@@ -623,3 +623,72 @@ def test_link_context_is_only_computed_for_links_that_are_saved():
     rows = page_backlinks(page, [TargetMatcher("codigix.co")], 0)
     assert len(rows) == 1 and "Designed by" in rows[0]["context"]
     assert page.links[1].context == ""  # the other link never paid for it
+
+
+def test_a_seed_crawl_starts_at_the_exact_page_given(db, settings):
+    out = repo.add_user_seeds(db, ["https://spam-site.com/post/123?utm_source=x", "bare-site.org"])
+    assert out["added"] == 2
+    with db.session() as s:
+        urls = {x.site_key: x.url for x in s.query(Seed)}
+    assert urls == {"spam-site.com": "https://spam-site.com/post/123", "bare-site.org": "https://bare-site.org/"}  # tracking param gone, page kept
+
+    repo.finish_seed(db, repo.claim_seed(db).id, 3, "boom", 86400, 3600)  # one site was read (and failed)
+    repo.finish_seed(db, repo.claim_seed(db).id, 3, None, 86400, 3600)
+    out = repo.add_user_seeds(db, ["https://spam-site.com/another/page", "https://bare-site.org/"])
+    assert (out["updated"], out["already_existing"]) == (1, 1)  # a new page moves the start; just a home page changes nothing
+    with db.session() as s:
+        seed = s.query(Seed).filter_by(site_key="spam-site.com").one()
+        assert seed.url == "https://spam-site.com/another/page" and seed.status == "pending" and seed.last_error is None
+        assert s.query(Seed).filter_by(site_key="bare-site.org").one().status == "done"
+    repo.add_user_seeds(db, ["https://spam-site.com/"])
+    with db.session() as s:
+        assert s.query(Seed).filter_by(site_key="spam-site.com").one().url == "https://spam-site.com/another/page"  # a home page never replaces a page
+
+
+def test_a_link_on_the_exact_page_is_found_even_when_the_home_page_has_none(db, settings):
+    pages = {("deep-site.com", "/listing/42"): '<p>visit <a rel="nofollow" href="https://codigix.co">codigix.co</a></p>',
+             ("deep-site.com", "/"): "<p>nothing here</p>"}
+
+    def h(request):
+        body = pages.get((request.url.host.removeprefix("www."), request.url.path))
+        if request.url.path == "/robots.txt" or body is None:
+            return httpx.Response(404)
+        return httpx.Response(200, text=body, headers={"content-type": "text/html"})
+
+    repo.add_user_seeds(db, ["https://deep-site.com/listing/42"])
+    repo.add_targets(db, ["codigix.co"])
+    repo.set_crawl_enabled(db, True)
+    settings.discover_seeds = False
+
+    async def go():
+        worker = Worker(db, settings, httpx.MockTransport(h))
+        await worker.fetcher.start()
+        try:
+            return await worker.process_one()
+        finally:
+            await worker.fetcher.close()
+    assert asyncio.run(go()) is True
+    _, found = repo.search_backlinks(db, "codigix.co")
+    assert [(b.source_url, b.link_type) for b in found] == [("https://deep-site.com/listing/42", "nofollow")]
+
+
+def test_exact_page_seeds_are_claimed_before_everything_else(db):
+    repo.add_seeds(db, ["https://big-directory.com/"], "seed")
+    repo.add_seeds(db, ["https://found-site.net/"], "discovered")
+    repo.add_user_seeds(db, ["https://spam-site.com/post/1", "bare-seed.org"])
+    order = [repo.claim_seed(db).site_key for _ in range(4)]
+    assert order[0] == "spam-site.com" and order.index("found-site.net") == 3  # page first, discovered last
+
+
+def test_a_seed_moved_while_it_is_being_read_is_read_again_from_the_new_page(db):
+    repo.add_user_seeds(db, ["https://moving-site.com/"])
+    seed = repo.claim_seed(db)  # being read from the home page
+    repo.add_user_seeds(db, ["https://moving-site.com/the/page/that/links"])  # the user points at the real page meanwhile
+    repo.finish_seed(db, seed.id, 40, None, 86400, 3600, started_url=seed.url)
+    with db.session() as s:
+        row = s.query(Seed).one()
+        assert row.url == "https://moving-site.com/the/page/that/links" and row.status == "pending"  # not "done for 24 h"
+    again = repo.claim_seed(db)
+    repo.finish_seed(db, again.id, 1, None, 86400, 3600, started_url=again.url)
+    with db.session() as s:
+        assert s.query(Seed).one().status == "done"
