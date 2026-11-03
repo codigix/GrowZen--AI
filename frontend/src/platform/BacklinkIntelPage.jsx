@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Play, Plus, Trash2, Download, RefreshCw, Loader2, Search, Crosshair, History, Sparkles, Bot } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine, Legend } from 'recharts';
-import { SeoShell, Card, Tabs, Badge, Button, Meter, ErrorNote, Drawer, Field, Modal, inputCls, areaCls, SERIES, INK, useToast, useAction, useUrlTab, useDoubleConfirm, SkStats, SkTable, SkChart, SkList, SkCard } from './SeoUi';
+import { SeoShell, Card, Tabs, Badge, Button, Meter, ErrorNote, Drawer, Field, Modal, Stat, inputCls, areaCls, SERIES, INK, useToast, useAction, useUrlTab, useDoubleConfirm, SkStats, SkTable, SkChart, SkList, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime, SEO_API } from './seoApi';
 
 const STATUS_TONE = {
@@ -661,8 +661,71 @@ function BotPanel({ base, targets, onToast }) {
   );
 }
 
+const hostOf = (site) => {
+  const raw = (site || '').trim();
+  if (!raw) return '';
+  try { return new URL(raw.includes('://') ? raw : `https://${raw}`).hostname.replace(/^www\./, ''); } catch { return ''; }
+};
+
+// GET /backlinks?query=: the backlinks our seed crawler (Seed Backlink Finder) stored in PostgreSQL. Reads the database only; the crawler keeps adding rows.
+function SeedBacklinks({ biz }) {
+  const own = hostOf(biz.website);
+  const [query, setQuery] = useState(own);
+  const [shown, setShown] = useState(100);
+  const r = useApi(query ? `/backlinks?${new URLSearchParams({ query })}` : null);
+  usePoll(() => r.reload(true), Boolean(query), 15000); // new backlinks appear while the crawler runs
+  const rows = r.data?.backlinks || [];
+  const sites = new Set(rows.map(x => x.source_site)).size;
+  const follow = rows.filter(x => x.link_type === 'dofollow').length;
+  const search = (e) => { e.preventDefault(); setShown(100); r.reload(); };
+  return (
+    <>
+      <Card className="mb-4" title="Backlinks found by the Seed Backlink Finder" subtitle={`Saved in the database by the crawler that reads the seed sites. ${own ? `Showing links to ${own}.` : 'This project has no website: enter a domain below.'}`}>
+        <form className="flex flex-wrap gap-2" onSubmit={search}>
+          <div className="relative"><Search size={13} className="absolute left-2.5 top-3 text-gray-400" /><input className={`${inputCls} !w-80 !pl-8`} placeholder="codigix.co or https://site.com/page" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
+          <Button type="submit" variant="primary" icon={Search} busy={r.loading}>Search</Button>
+          {own && query !== own && <Button onClick={() => setQuery(own)}>This project</Button>}
+        </form>
+        <ErrorNote>{r.error?.message}</ErrorNote>
+      </Card>
+      {r.loading && !r.data ? <SkCard title="Backlinks"><SkTable headers={['Source page', 'Anchor', 'Type', 'Found in', 'Last seen']} rows={5} bare /></SkCard> : r.data && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <Stat label="Backlinks" value={r.data.total} />
+            <Stat label="Referring sites" value={sites} />
+            <Stat label="Dofollow" value={follow} />
+            <Stat label="Nofollow" value={rows.length - follow} />
+          </div>
+          <Card title="Backlinks" subtitle={`Newest first · ${r.data.match_mode === 'exact' ? 'links to this exact page' : 'links to the domain and its subdomains'}`}>
+            {rows.length === 0 ? <Empty>No backlinks stored yet for “{r.data.query}”. The crawler adds them as it reads the seed sites.</Empty> : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-13">
+                  <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Source page</Th><Th>Target</Th><Th>Anchor</Th><Th>Type</Th><Th>Found in</Th><Th>Last seen</Th></tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rows.slice(0, shown).map(x => (
+                      <tr key={`${x.source_url}|${x.target_url}`}>
+                        <td className="p-2 max-w-[280px] truncate" title={x.source_title ? `${x.source_title}\n${x.source_url}` : x.source_url}><a className="text-indigo-600 hover:underline" href={x.source_url} target="_blank" rel="noreferrer noopener nofollow">{x.source_url.replace(/^https?:\/\//, '')}</a></td>
+                        <td className="p-2 max-w-[200px] truncate text-gray-600" title={x.target_url}>{x.target_url.replace(/^https?:\/\//, '')}</td>
+                        <td className="p-2 max-w-[180px] truncate text-gray-700" title={x.context || x.anchor_text || ''}>{x.anchor_text || '—'}</td>
+                        <td className="p-2"><Badge tone={x.link_type === 'dofollow' ? 'green' : 'amber'} title={x.rel.length ? x.rel.join(', ') : ''}>{x.link_type}</Badge></td>
+                        <td className="p-2 text-12 text-gray-600">{x.found_in}</td>
+                        <td className="p-2 text-12 text-gray-500">{fmtDateTime(x.last_seen_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {rows.length > shown && <div className="flex justify-center mt-3"><Button onClick={() => setShown(n => n + 100)}>Show more ({rows.length - shown} left)</Button></div>}
+          </Card>
+        </>
+      )}
+    </>
+  );
+}
+
 function Body({ b }) {
-  const [tab, setTab] = useUrlTab('overview', ['overview', 'explorer', 'gap', 'bot', 'collect', 'targets']);
+  const [tab, setTab] = useUrlTab('seed', ['seed', 'overview', 'explorer', 'gap', 'bot', 'collect', 'targets']);
   const base = `/businesses/${b.id}/backlink-intel`;
   const t = useApi(`${base}/targets`);
   const [toast, toastNode] = useToast();
@@ -683,11 +746,12 @@ function Body({ b }) {
           <span>{running ? 'New backlinks appear here as they are found.' : botState.data.last_run_at ? `Last run ${fmtDateTime(botState.data.last_run_at)}${stats && !stats.skipped ? `: ${stats.pages} pages read, ${stats.new_backlinks} new backlink(s) to your sites` : ''}. ${botSchedule(botState.data)}` : 'It starts shortly after onboarding.'}</span>
         </div>
       )}
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'seed', label: 'Seed backlinks' }, { id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
         { id: 'bot', label: 'Discovery bot' }, { id: 'collect', label: 'Seeds & verify' }, { id: 'targets', label: 'Targets', count: targets.length }]} />
       <ErrorNote>{t.error?.message}</ErrorNote>
       {t.loading && !t.data ? <div className="space-y-4"><SkStats labels={["Backlinks", "Referring domains", "Lost links", "Verified"]} /><SkCard title="Backlinks"><SkTable headers={["Source page", "Target", "Anchor", "Status", "Last seen"]} rows={5} bare /></SkCard></div> : (
         <div key={`${lastRun}-${running}`}>
+          {tab === 'seed' && <SeedBacklinks biz={b} />}
           {tab === 'overview' && <Overview base={base} targets={targets} biz={b} go={setTab} reload={reload} />}
           {tab === 'explorer' && <><Lookup /><Explorer base={base} targets={targets} /></>}
           {tab === 'gap' && <Gap base={base} targets={targets} />}

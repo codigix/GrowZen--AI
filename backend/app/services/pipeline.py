@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..backlinks import autostart as backlink_autostart
+from ..backlink_service import trigger as backlink_service_trigger
 from ..models import Business, GoogleConnection, IntakeEmail
 from . import agent, audits, extraction, gbp, reports, schedules
 from .activity import log
@@ -126,6 +127,7 @@ def onboard(db: Session, em: IntakeEmail, actor: str = "pipeline") -> IntakeEmai
                 backlink_autostart.first_run_in_background(b.id)
         except Exception:  # noqa: BLE001 - never blocks onboarding
             db.rollback()
+        backlink_service_trigger.start_for_website(b.website)  # Seed Backlink Finder: the business's site becomes a target now
 
         _step(db, em, "notify", "running")
         sent = send_email(em.from_addr, f"Onboarded: {b.name}", f"{b.name} is audited and scheduled.\n\n{summary['plain_words']}", [(f"{b.name}-audit.pdf", reports.pdf(summary), "application/pdf")])
