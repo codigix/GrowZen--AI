@@ -122,6 +122,67 @@ function Explorer({ base, targets }) {
   );
 }
 
+const DIRECTION_TONE = { inbound: 'green', outbound: 'blue', other: 'gray' };
+const DIRECTION_LABEL = { inbound: 'Links to it', outbound: 'Links from it', other: 'Other match' };
+
+// GET /backlink-intel/lookup: fuzzy search by domain, URL or word over every backlink stored (all projects, not only this one). Reads the database only.
+function Lookup() {
+  const [q, setQ] = useState('');
+  const [limit, setLimit] = useState(25);
+  const [res, setRes] = useState(null);
+  const [busy, error, run] = useAction();
+  const search = (e) => {
+    e?.preventDefault();
+    run('lookup', async () => setRes(await api(`/backlink-intel/lookup?${new URLSearchParams({ q: q.trim(), limit: String(limit) })}`)));
+  };
+  const s = res?.summary;
+  const matched = res ? [...(res.matched_domains?.as_target || []), ...(res.matched_domains?.as_source || [])] : [];
+  const domains = [...new Map(matched.map(m => [m.domain, m])).values()].slice(0, 12);
+  return (
+    <Card className="mb-4" title="Search all backlinks" subtitle="Find links by a domain, URL or word (typos allowed): codigix finds codigix.co and codigixinfotech.com. Searches every project's stored backlinks; leave empty or use * to list everything.">
+      <form className="flex flex-wrap gap-2 mb-3" onSubmit={search}>
+        <div className="relative"><Search size={13} className="absolute left-2.5 top-3 text-gray-400" /><input className={`${inputCls} !w-80 !pl-8`} placeholder="codigix.co, https://site.com/blog or a word" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <select className={`${inputCls} !w-auto`} value={limit} onChange={(e) => setLimit(Number(e.target.value))} aria-label="Results">{[25, 100, 500].map(n => <option key={n} value={n}>{n} results</option>)}</select>
+        <Button type="submit" variant="primary" icon={Search} busy={busy === 'lookup'}>Search</Button>
+      </form>
+      <ErrorNote>{error}</ErrorNote>
+      {s && (
+        <>
+          <div className="text-12 text-gray-500 mb-2">
+            {s.total_backlinks} matching backlink(s) from {s.referring_domains} domain(s)
+            {s.inbound != null && <> · {s.inbound} link to it · {s.outbound} link from it</>}
+            {' '}· showing {s.returned}{res.interpreted_as?.type !== 'all' ? ` · read as a ${res.interpreted_as.type}: ${res.interpreted_as.term}${res.interpreted_as.path || ''}` : ''}
+          </div>
+          {domains.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">{domains.map(m => <Badge key={m.domain} tone={m.score === 100 ? 'green' : m.score >= 92 ? 'blue' : 'gray'}>{m.domain} · {m.backlinks}</Badge>)}</div>
+          )}
+          {res.data.length === 0 ? <Empty>No stored backlinks match “{res.query}”.</Empty> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-13">
+                <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Direction</Th><Th>Source page</Th><Th>Target</Th><Th>Anchor</Th><Th>Attr</Th><Th>Status</Th><Th>Last seen</Th><Th right>Match</Th></tr></thead>
+                <tbody className="divide-y divide-gray-100">
+                  {res.data.map(r => (
+                    <tr key={r.id}>
+                      <td className="p-2"><Badge tone={DIRECTION_TONE[r.direction] || 'gray'}>{DIRECTION_LABEL[r.direction] || 'All'}</Badge></td>
+                      <td className="p-2 max-w-[240px] truncate" title={r.source_url}><a className="text-indigo-600 hover:underline" href={r.source_url} target="_blank" rel="noreferrer noopener nofollow">{r.source_url.replace(/^https?:\/\//, '')}</a></td>
+                      <td className="p-2 max-w-[220px] truncate text-gray-600" title={r.target_url}>{r.target_url.replace(/^https?:\/\//, '')}</td>
+                      <td className="p-2 max-w-[160px] truncate text-gray-700" title={r.anchor_text || ''}>{r.anchor_text || '—'}</td>
+                      <td className="p-2 text-12 text-gray-600">{r.rel_attributes.length ? r.rel_attributes.join(', ') : 'follow'}</td>
+                      <td className="p-2"><Badge tone={STATUS_TONE[r.status] || 'gray'}>{r.status}</Badge></td>
+                      <td className="p-2 text-12 text-gray-500">{fmtDateTime(r.last_seen_at)}</td>
+                      <td className="p-2 text-12 text-right text-gray-500" title={(r.matched_on || []).join(', ')}>{r.match_score ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 const ANCHOR_LABEL = { money: 'Money', compound: 'Compound', branded: 'Branded', organic: 'Organic', other: 'Other', naked: 'Naked', empty: 'Empty' };
 const TYPE_COLOR = { text: SERIES[0], image: SERIES[2], other: SERIES[3] };
 const C = { red: '#f1556c', amber: '#f7b84b', green: '#1abc9c', gray: '#94a3b8' };
@@ -505,7 +566,9 @@ function Collect({ base, targets, onToast }) {
     const r = await api(`${base}/verify`, { method: 'POST', body: { all_due: true } });
     onToast(`${r.queued} source page(s) queued for verification`); status.reload(true);
   });
-  const counts = Object.entries(status.data?.frontier || {}).map(([q, s]) => `${q}: ${Object.entries(s).map(([k, v]) => `${v} ${k}`).join(', ')}`);
+  const fmtQueues = (f) => Object.entries(f || {}).map(([q, s]) => `${q}: ${Object.entries(s).map(([k, v]) => `${v} ${k}`).join(', ')}`).join(' · ');
+  const counts = fmtQueues(status.data?.frontier);
+  const mineCounts = fmtQueues(status.data?.mine);
   return (
     <div className="grid grid-cols-1 gap-4">
       <Card title="Seeds and verification" subtitle="Give the bot places to look (pages that should link to you), or re-check links it already found. It respects robots.txt and rate limits.">
@@ -515,16 +578,30 @@ function Collect({ base, targets, onToast }) {
           <Button variant="primary" icon={Play} busy={busy === 'crawl'} disabled={!targets.length} onClick={crawl}>Run crawler now</Button>
           <Button icon={Crosshair} busy={busy === 'verify'} onClick={verify}>Re-check all known links</Button>
         </div>
-        <div className="text-12 text-gray-500 mt-3">{counts.length ? counts.join(' · ') : 'Queue is empty.'}</div>
+        <div className="text-12 text-gray-500 mt-3">This project: {mineCounts || 'nothing queued.'}</div>
+        <div className="text-12 text-gray-400 mt-1">Shared queue, all projects: {counts || 'empty.'}</div>
         {result && (
           <div className="mt-2 text-12">{result.results.map((x, i) => (
-            <div key={i} className="py-1 border-b border-gray-100 break-all">{x.url} → {x.error_code ? <Badge tone="amber">{x.error_code}</Badge> : `HTTP ${x.http_status}`} · {x.links_seen} links · {x.new_backlinks} new backlink(s)</div>))}
+            <div key={i} className="py-1 border-b border-gray-100 break-all">{x.url} → {x.error_code ? <Badge tone="amber">{x.error_code}</Badge> : `HTTP ${x.http_status}`} · {x.links_seen} links · {x.new_backlinks} new backlink(s) to tracked projects</div>))}
           </div>
         )}
       </Card>
       <ErrorNote>{error}</ErrorNote>
     </div>
   );
+}
+
+const fmtMinutes = (m) => (m < 60 ? `${m} min` : `${+(m / 60).toFixed(1)} h`);
+
+// When this project crawls next. With rotation on (the default), projects take turns in batches and the "Every" setting is not used.
+function botSchedule(s) {
+  const r = s?.rotation;
+  if (!r?.enabled) return `It runs again every ${fmtMinutes(s?.config?.interval_minutes || 30)}.`;
+  if (r.in_current_batch && r.window_ends_at) return `It is crawling in the current batch until ${fmtDateTime(r.window_ends_at)}.`;
+  if (!r.window_ends_at) return 'It starts with the next crawl batch, within a minute.';
+  if (r.batches_before_turn == null) return 'It joins the rotation once the bot is on and a domain is tracked.';
+  const next = new Date(new Date(r.window_ends_at).getTime() + r.batches_before_turn * r.batch_minutes * 60000);
+  return `Its next turn starts by about ${fmtDateTime(next.toISOString())} (projects take turns, ${r.batch_size} at a time for ${fmtMinutes(r.batch_minutes)}; ${r.batches_before_turn} batch(es) ahead).`;
 }
 
 function BotPanel({ base, targets, onToast }) {
@@ -538,7 +615,9 @@ function BotPanel({ base, targets, onToast }) {
   if (!s) return <SkCard title="Discovery bot" subtitle="Our own crawler. It starts from your tracked sites and competitors, explores the pages around them, and records every link it finds to them."><SkList rows={4} avatar={false} /></SkCard>;
   const c = s.config;
   const queued = Object.values(s.frontier || {}).reduce((n, q) => n + (q.pending || 0), 0);
+  const mine = s.mine || {};
   const last = s.last_stats;
+  const rotating = Boolean(s.rotation?.enabled);
   return (
     <>
       <Card className="mb-4" title="Discovery bot" subtitle="Our own crawler. It starts from your tracked sites and competitors, explores the pages around them, and records every link it finds to them. No third-party index is used."
@@ -546,12 +625,13 @@ function BotPanel({ base, targets, onToast }) {
         {!targets.length ? <Empty>Add your site and your competitors under “Targets” first. The bot starts from the domains you track.</Empty> : (
           <>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-              {[['Pages fetched', s.totals.pages_fetched], ['Pages known', s.totals.pages_known], ['Domains discovered', s.totals.domains_known], ['Backlinks found by the bot', s.totals.backlinks_found_by_bot]].map(([k, v]) => (
+              {[['Backlinks found by the bot', mine.backlinks ?? s.totals.backlinks_found_by_bot], ['Linking domains', mine.linking_domains ?? 0], ['Pages crawled on your sites', mine.pages_crawled ?? 0], ['Pages queued for this project', mine.queue_pending ?? 0]].map(([k, v]) => (
                 <div key={k}><div className="text-12 text-gray-500">{k}</div><div className="text-[24px] font-semibold text-indigo-600 tabular-nums">{v}</div></div>))}
             </div>
+            <div className="text-12 text-gray-500 mb-4">Shared crawler, all projects: {s.totals.pages_fetched} pages fetched · {s.totals.pages_known} pages known · {s.totals.domains_known} domains discovered · {queued} pages waiting. Every page it reads is checked for links to all tracked projects.</div>
             <div className="flex flex-wrap items-end gap-3 mb-3">
               <label className="flex items-center gap-2 text-13 pb-2"><input type="checkbox" checked={c.enabled} onChange={(e) => save({ enabled: e.target.checked })} /> Run automatically</label>
-              <Field label="Every"><select className={`${inputCls} !w-auto`} value={c.interval_minutes} onChange={(e) => save({ interval_minutes: Number(e.target.value) })}>{[15, 30, 60, 180, 360, 1440].map(m => <option key={m} value={m}>{m >= 60 ? `${m / 60} h` : `${m} min`}</option>)}</select></Field>
+              {!rotating && <Field label="Every"><select className={`${inputCls} !w-auto`} value={c.interval_minutes} onChange={(e) => save({ interval_minutes: Number(e.target.value) })}>{[15, 30, 60, 180, 360, 1440].map(m => <option key={m} value={m}>{fmtMinutes(m)}</option>)}</select></Field>}
               <Field label="Pages per run"><select className={`${inputCls} !w-auto`} value={c.pages_per_run} onChange={(e) => save({ pages_per_run: Number(e.target.value) })}>{[...new Set([25, 50, 100, 250, 500, c.pages_per_run])].sort((x, y) => x - y).map(n => <option key={n}>{n}</option>)}</select></Field>
               <Field label="How far to explore" hint="Links followed away from your tracked sites"><select className={`${inputCls} !w-auto`} value={c.max_hops} onChange={(e) => save({ max_hops: Number(e.target.value) })}>
                 <option value={0}>Only your own sites</option><option value={1}>1 step out (recommended)</option><option value={2}>2 steps out</option><option value={3}>3 steps out (slow, wide)</option></select></Field>
@@ -562,14 +642,14 @@ function BotPanel({ base, targets, onToast }) {
             </div>
             <ErrorNote>{error}</ErrorNote>
             <div className="text-12 text-gray-500">
-              {queued} page(s) waiting in the queue
-              {s.last_run_at && <> · last run {fmtDateTime(s.last_run_at)}{last && !last.skipped ? `: ${last.pages} pages, ${last.new_backlinks} new backlink(s), ${last.queued} queued, ${last.errors} error(s), ${last.blocked} blocked by robots.txt${last.rendered ? `, ${last.rendered} read in a browser` : ''}${last.handoff ? `; scored ${last.handoff.scored} linking domain(s), ${last.handoff.tasks} removal request(s) waiting for approval in Autonomous AI Agents` : ''}` : ''}</>}
+              {c.enabled ? botSchedule(s) : 'Automatic runs are off.'}
+              {s.last_run_at && <> · last run {fmtDateTime(s.last_run_at)}{last && !last.skipped ? `: ${last.pages} pages read, ${last.new_backlinks} new backlink(s) to your sites, ${last.queued} queued, ${last.errors} error(s), ${last.blocked} blocked by robots.txt${last.rendered ? `, ${last.rendered} read in a browser` : ''}${last.handoff ? `; scored ${last.handoff.scored} linking domain(s), ${last.handoff.tasks} removal request(s) waiting for approval in Autonomous AI Agents` : ''}` : ''}</>}
             </div>
             <p className="text-11 text-gray-400 mt-3">The bot follows public links only, obeys robots.txt, waits between requests to the same site, and stays inside the page budget above. It finds links on pages it can reach from your sites, so coverage grows with each run but is smaller than a commercial index. Raise “how far to explore” to widen it.</p>
           </>
         )}
       </Card>
-      <Card title="What it just fetched" subtitle="Most recent requests">
+      <Card title="What it just fetched" subtitle="Most recent requests by the shared crawler, for all projects">
         {s.recent.length === 0 ? <Empty>Nothing yet. Click “Run now”.</Empty> : s.recent.map((r, i) => (
           <div key={i} className="flex gap-2 text-12 py-1 border-b border-gray-100">
             <Badge tone={r.error_code ? 'amber' : r.http_status && r.http_status < 400 ? 'green' : 'gray'}>{r.error_code || `HTTP ${r.http_status}`}</Badge>
@@ -600,7 +680,7 @@ function Body({ b }) {
         <div className={`mb-4 rounded px-4 py-2.5 text-12.5 flex flex-wrap items-center gap-x-3 gap-y-1 ring-1 ring-inset ${running ? 'bg-indigo-50 ring-indigo-200 text-indigo-800' : 'bg-slate-50 ring-slate-200 text-slate-600'}`}>
           {running ? <Loader2 size={13} className="animate-spin" /> : <Bot size={13} />}
           <span className="font-semibold">{running ? 'Discovery bot is running' : 'Discovery bot is on'}</span>
-          <span>{running ? 'New backlinks appear here as they are found.' : botState.data.last_run_at ? `Last run ${fmtDateTime(botState.data.last_run_at)}${stats && !stats.skipped ? `: ${stats.pages} pages, ${stats.new_backlinks} new backlink(s)` : ''}. It runs again every ${Math.round((botState.data.config.interval_minutes || 60) / 60) || 1} h.` : 'It starts shortly after onboarding.'}</span>
+          <span>{running ? 'New backlinks appear here as they are found.' : botState.data.last_run_at ? `Last run ${fmtDateTime(botState.data.last_run_at)}${stats && !stats.skipped ? `: ${stats.pages} pages read, ${stats.new_backlinks} new backlink(s) to your sites` : ''}. ${botSchedule(botState.data)}` : 'It starts shortly after onboarding.'}</span>
         </div>
       )}
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
@@ -609,7 +689,7 @@ function Body({ b }) {
       {t.loading && !t.data ? <div className="space-y-4"><SkStats labels={["Backlinks", "Referring domains", "Lost links", "Verified"]} /><SkCard title="Backlinks"><SkTable headers={["Source page", "Target", "Anchor", "Status", "Last seen"]} rows={5} bare /></SkCard></div> : (
         <div key={`${lastRun}-${running}`}>
           {tab === 'overview' && <Overview base={base} targets={targets} biz={b} go={setTab} reload={reload} />}
-          {tab === 'explorer' && <Explorer base={base} targets={targets} />}
+          {tab === 'explorer' && <><Lookup /><Explorer base={base} targets={targets} /></>}
           {tab === 'gap' && <Gap base={base} targets={targets} />}
           {tab === 'bot' && <BotPanel base={base} targets={targets} onToast={toast} />}
           {tab === 'collect' && <Collect base={base} targets={targets} onToast={toast} />}

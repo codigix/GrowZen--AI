@@ -295,7 +295,8 @@ def crawl_sitemap(db: Session, fetcher: PageFetcher, row: FrontierUrl, monitored
                     continue  # a sitemap may only vouch for its own site
             except (ValueError, IndexError):
                 continue
-            if frontier.enqueue(db, loc, "sitemap" if child else "sitemap_url", 1 if child else row.depth + 1, row.url, priority=OWN_SITE_PRIORITY if site in (monitored or ()) else max(0.0, row.priority - 10), hop=row.hop or 0):
+            if frontier.enqueue(db, loc, "sitemap" if child else "sitemap_url", 1 if child else row.depth + 1, row.url, priority=OWN_SITE_PRIORITY if site in (monitored or ()) else max(0.0, row.priority - 10), hop=row.hop or 0,
+                                business_id=row.business_id):
                 out["queued"] += 1
     return out
 
@@ -329,21 +330,23 @@ def crawl_row(db: Session, fetcher: PageFetcher, row: FrontierUrl, monitored: se
             if row.source == "seed" and row.depth == 0:  # a tracked site's front door: find its sitemaps
                 rules = fetcher.rules_for(db, get_domain(db, row.url), row.url.split(":", 1)[0])
                 for sm in [*rules.sitemaps, f"{row.url.split('/')[0]}//{row.url.split('/')[2]}/sitemap.xml"]:
-                    if frontier.enqueue(db, sm, "sitemap", 0, row.url, priority=70.0, hop=0):
+                    if frontier.enqueue(db, sm, "sitemap", 0, row.url, priority=70.0, hop=0, business_id=row.business_id):
                         out["queued"] += 1
             if (out["links_to_monitored"] or out["new_finder_matches"]) and site not in monitored:  # a proven linker: it may well link again, so look at more of it
                 for u in (f"{row.url.split('/')[0]}//{row.url.split('/')[2]}/", f"{row.url.split('/')[0]}//{row.url.split('/')[2]}/sitemap.xml"):
-                    if frontier.enqueue(db, u, "sitemap" if u.endswith(".xml") else "linker", 0, row.url, priority=85.0, hop=0):
+                    if frontier.enqueue(db, u, "sitemap" if u.endswith(".xml") else "linker", 0, row.url, priority=85.0, hop=0, business_id=row.business_id):
                         out["queued"] += 1
             if not ex.nofollow_all:
                 for ln in ex.links:
                     if ln.internal:
                         if row.depth < follow_depth and frontier.enqueue(db, ln.target_url, "link", row.depth + 1, row.url,
-                                                                         priority=OWN_SITE_PRIORITY if site in monitored else max(0.0, row.priority - 5), hop=hop):
+                                                                         priority=OWN_SITE_PRIORITY if site in monitored else max(0.0, row.priority - 5), hop=hop,
+                                                                         business_id=row.business_id):
                             out["queued"] += 1
                     elif hop < max_hops:
                         tgt = _reg(ln.target_url)
-                        if tgt not in monitored and tgt not in SKIP_DOMAINS and frontier.enqueue(db, ln.target_url, "link", 0, row.url, priority=max(0.0, OUTWARD_PRIORITY - 10 * hop), hop=hop + 1):
+                        if tgt not in monitored and tgt not in SKIP_DOMAINS and frontier.enqueue(db, ln.target_url, "link", 0, row.url, priority=max(0.0, OUTWARD_PRIORITY - 10 * hop), hop=hop + 1,
+                                                                                                 business_id=row.business_id):
                             out["queued"] += 1
     return out
 

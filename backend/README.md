@@ -124,7 +124,12 @@ No third-party link index is used. The bot lives in `app/backlinks/` and the pag
 
 Flow, start to end:
 
-1. **Targets**: add your site and your competitors (`POST /businesses/{id}/backlink-intel/targets`).
+1. **Targets**: add your site and your competitors (`POST /businesses/{id}/backlink-intel/targets`). Onboarding does this for you and starts discovery.
+
+> **Looking up what was found**: `GET /backlink-intel/lookup?q=codigix` searches every stored backlink (all businesses, no business id needed) by domain, URL or word with
+> fuzzy matching (`codigix` finds `codigix.co`, `codigixinfotech.com`, `blog.codigix.co`; `codigx` still finds `codigix.co`). It returns the total, the
+> number of referring domains, which domains matched and the best matches first. Only two inputs: `q` (the query) and `limit` (how many top results, default 10).
+> It searches links to and from the matching domains, reads the database only and never crawls.
 2. **Discovery bot** tab: *Run now*, or tick *Run automatically* (the scheduler runs it every N minutes). It starts at each tracked site, reads
    `robots.txt` and sitemaps, follows links outward (0 to 3 steps), and records every link it finds to a tracked domain. It obeys
    `robots.txt`, waits between requests to the same host, refuses private addresses (SSRF guard), skips giant platforms, and stops at the

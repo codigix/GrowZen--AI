@@ -1,28 +1,22 @@
 """Backlink Intelligence API. Everything is scoped to a business: a backlink is visible only if it points at a domain that
 business tracks (its own site or a competitor), so one business never sees another's monitoring set."""
-import logging
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import case, distinct, false, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from ..auth import current_user
 from ..db import get_db, utcnow
 from ..deps import get_business, in_background
 from ..models import Business
-from . import analytics, bot, engine, finder, frontier, insights, outcomes, outreach, quality, sync, watch
+from . import analytics, bot, engine, frontier, insights, lookup, outcomes, outreach, quality, sync, watch
 from .lifecycle import ALL_STATES, LIVE_STATES
-from .models import (
-    BacklinkFinderResult, BacklinkFinderTarget, BiDomainReview, Backlink, BacklinkEvent, BacklinkObservation, BacklinkProvenance,
-    BiDomain, BiPage, BiTrackedTarget,
-)
+from .models import BiDomainReview, Backlink, BacklinkEvent, BacklinkObservation, BacklinkProvenance, BiDomain, BiPage, BiTrackedTarget
 from .engine import aware
 from .urls import host_of, normalize_url, registrable_domain
-
-log = logging.getLogger("seo.backlinks.router")
 
 router = APIRouter(prefix="/businesses/{business_id}/backlink-intel", tags=["backlinks"], dependencies=[Depends(current_user)])
 
@@ -144,6 +138,116 @@ def search(b: Business = Depends(get_business), db: Session = Depends(get_db), t
     more = len(rows) > limit
     rows = rows[:limit]
     return {"data": [_backlink_out(*r) for r in rows], "pagination": {"next_cursor": rows[-1][0].id if more and rows else None, "has_more": more}}
+
+
+lookup_router = APIRouter(prefix="/backlink-intel", tags=["backlinks"], dependencies=[Depends(current_user)])
+
+
+@lookup_router.get("/lookup")
+def lookup_backlinks(q: str = Query(default="", max_length=300, description="A domain, URL or word, e.g. codigix, codigix.co or https://codigix.co/blog. Leave empty or use * to list every backlink"),
+                     limit: int = Query(default=10, ge=1, le=lookup.MAX_LIMIT, description="How many top results to return (up to 5000)"),
+                     db: Session = Depends(get_db)) -> dict:
+    """Search every backlink stored in the database (all businesses, no scoping) by domain, URL or word with fuzzy matching: `codigix` returns the
+    best-matching backlinks to or from codigix.co, codigixinfotech.com, blog.codigix.co and so on. Each result says whether it is `inbound` (the link
+    points at what you searched for) or `outbound` (it comes from it), and inbound results come first. Leave `q` empty or use `*` to list every backlink.
+    Reads the database only."""
+    list_all = q.strip() in ("", "*")
+    pq = None
+    if not list_all:
+        try:
+            pq = lookup.parse_query(q)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        if len(pq.term) < lookup.MIN_TERM:
+            raise HTTPException(422, "Enter at least 2 characters, or leave the query empty (or *) to list everything")
+
+    TD, SD = aliased(BiDomain), aliased(BiDomain)  # the whole table: every backlink with its source page and both domains
+    base = (select(Backlink, BiPage, SD).join(BiPage, BiPage.id == Backlink.source_page_id).join(SD, SD.id == Backlink.source_domain_id)
+            .join(TD, TD.id == Backlink.target_domain_id))
+    esc = {"escape": "\\"}
+    tconds, sconds, oconds, tmatch, smatch = [], [], [], {}, {}  # conditions on the link's target side, source side, and anchor text
+    if list_all:
+        sel = base
+    else:
+        if pq.kind == "url":  # a URL with a path: matched as text against the stored URLs
+            like = lookup.like_pattern(pq.term + pq.path)
+            tconds.append(Backlink.target_url.ilike(like, **esc))
+            sconds.append(BiPage.normalized_url.ilike(like, **esc))
+        else:
+            like = lookup.like_pattern(pq.term)
+            tmatch = lookup.match_domains(pq.term, set(db.scalars(base.with_only_columns(TD.registrable_domain, maintain_column_froms=True).distinct())), lookup.MIN_SCORE)
+            smatch = lookup.match_domains(pq.term, set(db.scalars(base.with_only_columns(SD.registrable_domain, maintain_column_froms=True).distinct())), lookup.MIN_SCORE)
+            if tmatch:
+                tconds.append(TD.registrable_domain.in_(list(tmatch)))
+            if smatch:
+                sconds.append(SD.registrable_domain.in_(list(smatch)))
+            tconds.append(Backlink.target_url.ilike(like, **esc))
+            sconds.append(BiPage.normalized_url.ilike(like, **esc))
+            oconds.append(Backlink.anchor_text.ilike(lookup.like_pattern(pq.phrase), **esc))
+        sel = base.where(or_(*tconds, *sconds, *oconds))
+
+    total = db.scalar(sel.with_only_columns(func.count(Backlink.id), maintain_column_froms=True)) or 0
+    referring = db.scalar(sel.with_only_columns(func.count(distinct(SD.id)), maintain_column_froms=True)) or 0
+    by_status = dict(db.execute(sel.with_only_columns(Backlink.current_status, func.count(Backlink.id), maintain_column_froms=True).group_by(Backlink.current_status)).all())
+    summary = {"total_backlinks": total, "returned": 0, "referring_domains": referring, "by_status": by_status}
+    order = [Backlink.id.desc()]
+    if not list_all:
+        # inbound = the link points at what was searched: its target domain matches, or its target URL contains the text and it does not come from a matching domain
+        # (so codigix.co linking to facebook.com/codigix.infotech is outbound, not inbound). outbound = anything else that matched on the source side.
+        t_dom = TD.registrable_domain.in_(list(tmatch)) if tmatch else false()
+        s_dom = SD.registrable_domain.in_(list(smatch)) if smatch else false()
+        t_cond = t_dom | (~s_dom & tconds[-1])
+        s_cond = or_(*sconds)
+        n_in, n_out = db.execute(sel.with_only_columns(func.sum(case((t_cond, 1), else_=0)), func.sum(case((s_cond & ~t_cond, 1), else_=0)), maintain_column_froms=True)).one()
+        summary |= {"inbound": int(n_in or 0), "outbound": int(n_out or 0)}  # inbound = points at what you searched; outbound = comes from it
+        strong = [d for d, sc in {**tmatch, **smatch}.items() if sc >= 92]  # exact or "contains" matches next
+        order = [case((t_cond, 0), else_=1)] + ([case((or_(TD.registrable_domain.in_(strong), SD.registrable_domain.in_(strong)), 0), else_=1)] if strong else []) + order
+    page = sel.add_columns(TD.registrable_domain).order_by(*order).limit(limit)
+
+    data = []
+    needle = "" if list_all else ((pq.term + pq.path) if pq.kind == "url" else pq.term)
+    for bl, src, sd, target_domain in db.execute(page).all():
+        on, score, direction = [], None, None
+        if not list_all:
+            score = 0
+            if target_domain in tmatch:
+                on.append("target_domain")
+                score = max(score, tmatch[target_domain])
+            if sd.registrable_domain in smatch:
+                on.append("source_domain")
+                score = max(score, smatch[sd.registrable_domain])
+            if needle in (bl.target_url or "").lower():
+                on.append("target_url")
+                score = max(score, 100 if pq.kind == "url" else 90)
+            if needle in (src.normalized_url or "").lower():
+                on.append("source_url")
+                score = max(score, 100 if pq.kind == "url" else 90)
+            if pq.kind != "url" and pq.phrase in (bl.anchor_text or "").lower():
+                on.append("anchor_text")
+                score = max(score, 85)
+            inbound = "target_domain" in on or ("source_domain" not in on and "target_url" in on)
+            direction = "inbound" if inbound else "outbound" if {"source_domain", "source_url"} & set(on) else "other"
+        data.append(_backlink_out(bl, src, sd) | {"target_domain": target_domain, "direction": direction, "matched_on": on, "match_score": score})
+    summary["returned"] = len(data)
+
+    def _counts(col, found: dict[str, int]) -> list[dict]:
+        if not found:
+            return []
+        rows = db.execute(base.with_only_columns(col, func.count(Backlink.id), maintain_column_froms=True).where(col.in_(list(found))).group_by(col)).all()
+        return sorted(({"domain": d, "score": found[d], "backlinks": n} for d, n in rows), key=lambda x: (-x["score"], -x["backlinks"], x["domain"]))
+
+    as_target, as_source = _counts(TD.registrable_domain, tmatch), _counts(SD.registrable_domain, smatch)
+    print(f"\n[backlink lookup] query={q!r} read as {'ALL' if list_all else pq.kind} {'' if list_all else repr(pq.term) + (pq.path or '')} | limit={limit}", flush=True)
+    print(f"[backlink lookup] {summary}", flush=True)
+    print(f"[backlink lookup] matched as target: {[(m['domain'], m['score'], m['backlinks']) for m in as_target]}", flush=True)
+    print(f"[backlink lookup] matched as source: {[(m['domain'], m['score'], m['backlinks']) for m in as_source]}", flush=True)
+    for i, d in enumerate(data[:50], 1):
+        print(f"[backlink lookup] {i}. [{d['direction']}] {d['source_url']} -> {d['target_url']} | anchor={d['anchor_text']!r} | rel={d['rel_attributes']} | status={d['status']} "
+              f"| score={d['match_score']}", flush=True)
+    if len(data) > 50:
+        print(f"[backlink lookup] ... and {len(data) - 50} more in the response", flush=True)
+    return {"query": q, "interpreted_as": {"type": "all" if list_all else pq.kind, "term": None if list_all else pq.term, "path": None if list_all else (pq.path or None)},
+            "summary": summary, "matched_domains": {"as_target": as_target, "as_source": as_source}, "data": data}
 
 
 def _one(db: Session, b: Business, backlink_id: int):
@@ -330,7 +434,7 @@ def verify(body: VerifyIn, b: Business = Depends(get_business), db: Session = De
     for bl, page, _dom in db.execute(q).all():
         if body.all_due and not body.backlink_ids and bl.next_verify_at and aware(bl.next_verify_at) > utcnow():
             continue
-        if frontier.enqueue(db, page.normalized_url, "user", 0, priority=90.0, queue="verification"):
+        if frontier.enqueue(db, page.normalized_url, "user", 0, priority=90.0, queue="verification", business_id=b.id):
             queued += 1
     db.commit()
     return {"queued": queued}
@@ -344,7 +448,7 @@ def seed(body: SeedIn, b: Business = Depends(get_business), db: Session = Depend
             normalize_url(u)
         except ValueError:
             continue
-        if frontier.enqueue(db, u, "user", 0, priority=50.0):
+        if frontier.enqueue(db, u, "user", 0, priority=50.0, business_id=b.id):
             added += 1
     db.commit()
     return {"queued": added}
@@ -361,7 +465,7 @@ def crawl_run(body: CrawlRunIn, b: Business = Depends(get_business), db: Session
 
 @router.get("/crawl/status")
 def crawl_status(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
-    return {"frontier": frontier.stats(db)}
+    return {"frontier": frontier.stats(db), "mine": frontier.stats(db, business_id=b.id, tracked=[t.domain for t in _targets(db, b)])}
 
 
 class BotConfigIn(BaseModel):
@@ -400,65 +504,6 @@ def bot_run(background: BackgroundTasks, b: Business = Depends(get_business), db
         raise HTTPException(409, "The bot is already running")
     background.add_task(in_background(_bot_job, b.id))
     return {"started": True}
-
-
-finder_router = APIRouter(prefix="/businesses/{business_id}/backlink-finder", tags=["Backlinks Finder"], dependencies=[Depends(current_user)])
-# Separate from Backlink Intelligence above: point it at any domain, subdomain or exact URL (not just a tracked competitor) and
-# it records every link the crawler finds to that target. It rides the same crawl; it does not run its own.
-
-
-class FinderTargetIn(BaseModel):
-    value: str = Field(min_length=3, max_length=500)  # domain, subdomain or exact URL
-
-
-def _finder_target_out(t: BacklinkFinderTarget, count: int | None = None) -> dict:
-    out = {"id": t.id, "value": t.raw_value, "kind": t.kind, "active": t.active}
-    if count is not None:
-        out["backlinks_found"] = count
-    return out
-
-
-@finder_router.post("", status_code=201)
-def finder_add_target(body: FinderTargetIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
-    try:
-        parsed = finder.parse_target(body.value)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc))
-    t = db.scalar(select(BacklinkFinderTarget).where(BacklinkFinderTarget.business_id == b.id, BacklinkFinderTarget.normalized_value == parsed.normalized_value))
-    if t is None:
-        t = BacklinkFinderTarget(business_id=b.id, raw_value=body.value, kind=parsed.kind, host=parsed.host, normalized_value=parsed.normalized_value)
-        db.add(t)
-        db.commit()
-        frontier.enqueue(db, f"https://{parsed.host}/", "finder_seed", 0, None, priority=75.0)
-        db.commit()
-        log.info("Finder target added: business=%s value=%r kind=%s host=%s (seeded https://%s/)", b.id, body.value, parsed.kind, parsed.host, parsed.host)
-    return _finder_target_out(t)
-
-
-@finder_router.get("")
-def finder_list_targets(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> list[dict]:
-    targets = list(db.scalars(select(BacklinkFinderTarget).where(BacklinkFinderTarget.business_id == b.id).order_by(BacklinkFinderTarget.id)))
-    counts = dict(db.execute(select(BacklinkFinderResult.target_id, func.count()).where(
-        BacklinkFinderResult.target_id.in_([t.id for t in targets])).group_by(BacklinkFinderResult.target_id)).all()) if targets else {}
-    return [_finder_target_out(t, counts.get(t.id, 0)) for t in targets]
-
-
-@finder_router.get("/{target_id}")
-def finder_target_backlinks(target_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db),
-                            cursor: int | None = None, limit: int = Query(default=50, ge=1, le=200)) -> dict:
-    t = db.get(BacklinkFinderTarget, target_id)
-    if not t or t.business_id != b.id:
-        raise HTTPException(404, "Finder target not found")
-    q = select(BacklinkFinderResult).where(BacklinkFinderResult.target_id == t.id)
-    if cursor:
-        q = q.where(BacklinkFinderResult.id > cursor)
-    rows = list(db.scalars(q.order_by(BacklinkFinderResult.id).limit(limit + 1)))
-    more = len(rows) > limit
-    rows = rows[:limit]
-    return {"target": _finder_target_out(t), "data": [{"id": r.id, "source_url": r.source_url, "source_domain": r.source_domain, "target_url": r.target_url,
-                                                        "anchor_text": r.anchor_text, "link_type": r.link_type, "rel_attributes": r.rel_attributes or [],
-                                                        "discovered_at": r.discovered_at} for r in rows],
-            "pagination": {"next_cursor": rows[-1].id if more and rows else None, "has_more": more}}
 
 
 outcomes_router = APIRouter(prefix="/businesses/{business_id}/outcomes", tags=["outcomes"], dependencies=[Depends(current_user)])
