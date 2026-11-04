@@ -9,7 +9,7 @@ Checks read the top 10 results (Serper), so "not ranking" means "not in the top 
 """
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from statistics import mean
+from statistics import mean, pstdev
 
 from ..models import KeywordRankLog
 from .organic import FEATURES
@@ -112,8 +112,10 @@ def landscape(obs: list[Obs], meta: dict[str, dict], me: str, start: date, end: 
     for k in kws:
         a, z = first[k].rank, last[k].rank
         gain = (ctr(z) - ctr(a)) / (n * CTR[0]) * 100
-        rows.append({"keyword": k, "rank": z, "was": a, "change": (a or OUT) - (z or OUT) if comparable else None, "visibility": _r1(ctr(z) / (n * CTR[0]) * 100, 2), "gain": _r1(gain, 2),
-                     "volume": vol(k) or None, "traffic": _r1(vol(k) * ctr(z), 2) if vol(k) else None, "tag": (meta.get(k) or {}).get("tag"), "url": last[k].url})
+        rows.append({"keyword": k, "rank": z, "was": a, "change": (a or OUT) - (z or OUT) if comparable else None, "visibility": _r1(ctr(z) / (n * CTR[0]) * 100, 3), "gain": _r1(gain, 2),
+                     "volume": vol(k) or None, "traffic": _r1(vol(k) * ctr(z), 2) if vol(k) else None, "traffic_was": _r1(vol(k) * ctr(a), 2) if vol(k) else None,
+                     "visibility_was": _r1(ctr(a) / (n * CTR[0]) * 100, 3), "tag": (meta.get(k) or {}).get("tag"), "intent": (meta.get(k) or {}).get("intent"),
+                     "id": (meta.get(k) or {}).get("id"), "kd": (meta.get(k) or {}).get("difficulty"), "cpc": (meta.get(k) or {}).get("cpc"), "sf": len(last[k].features), "checked": last[k].day.isoformat(), "url": last[k].url})
     improved = sum(1 for r in rows if r["change"] and r["change"] > 0)
     declined = sum(1 for r in rows if r["change"] and r["change"] < 0)
     top = sorted(rows, key=lambda r: (r["rank"] or 99, -(r["volume"] or 0), r["keyword"]))[:5]
@@ -167,6 +169,7 @@ def landscape(obs: list[Obs], meta: dict[str, dict], me: str, start: date, end: 
         t_was = sum(vol(k) * ctr(p) for k, p in was_ps.items())
         comp.append({"domain": d, "you": d == me, "visibility": _r1(v, 2), "change": _delta(v, w, 2) if comparable else None, "keywords": len(ps), "avg_position": _r1(mean(ps.values()), 1),
                      "avg_position_change": _delta(mean(ps.values()), mean(was_ps.values()), 1) if was_ps and comparable else None,
+                     "avg_position_sd": _r1(pstdev(ps.values()), 2) if len(ps) > 1 else 0.0, "kw": sorted(ps, key=lambda k: ps[k])[:60],
                      "traffic": _r1(t_now, 2), "traffic_change": _delta(t_now, t_was, 2) if comparable else None, **dist,
                      "improved": sum(1 for k in both if ps[k] < was_ps[k]) if comparable else None, "declined": sum(1 for k in both if ps[k] > was_ps[k]) if comparable else None})
     if not any(c["you"] for c in comp):  # not in the top 20 for any tracked keyword yet: still shown, with zeros
@@ -185,6 +188,51 @@ def landscape(obs: list[Obs], meta: dict[str, dict], me: str, start: date, end: 
         shown = comp[:9] + [c for c in comp if c["you"]]
     for i, c in enumerate(comp, 1):
         c["rank"] = i
+
+    # Each domain's day-by-day visibility, traffic, average position and share of voice (the Overview chart compares them)
+    domain_series: dict[str, list[dict]] = {}
+    wanted = [c["domain"] for c in comp[:15]]
+    if me not in wanted:
+        wanted.append(me)
+    for dom in wanted:
+        domain_series[dom] = []
+    for d in days:
+        cur = by_day[d]
+        per: dict[str, dict[str, int]] = {}
+        for k, o in cur.items():
+            best: dict[str, int] = {}
+            for x in o.serp:
+                if x.get("d") and x.get("p"):
+                    best[x["d"]] = min(best.get(x["d"], 99), x["p"])
+            if o.rank:
+                best[me] = min(best.get(me, 99), o.rank)
+            for dm, p in best.items():
+                per.setdefault(dm, {})[k] = p
+        nk = len(cur)
+        vis_of = {dm: _vis(list(ps.values()), nk) for dm, ps in per.items()}
+        total_day = sum(v for dm, v in vis_of.items() if dm == me or dm in keep or not is_directory(dm))  # businesses only, as in the Competitors lists
+        for dom in wanted:
+            ps = per.get(dom, {})
+            v = vis_of.get(dom, 0.0)
+            domain_series[dom].append({"date": d.isoformat(), "visibility": _r1(v, 2), "traffic": _r1(sum(vol(k) * ctr(p) for k, p in ps.items()), 2) if has_volume else None,
+                                       "avg_position": _r1(mean(ps.values()), 2) if ps else None, "sov": _r1(v / total_day * 100, 2) if total_day else 0.0})
+    for i, row_ in enumerate(series):
+        row_["sov"] = domain_series[me][i]["sov"]
+    # Each keyword's position over time for your domain and the others (the row's chart)
+    for r in rows:
+        hist = []
+        for d in days:
+            o = by_day[d].get(r["keyword"])
+            if not o:
+                continue
+            at: dict[str, int] = {}
+            for x in o.serp:
+                if x.get("d") in domain_series and x.get("p"):
+                    at[x["d"]] = min(at.get(x["d"], 99), x["p"])
+            if o.rank:
+                at[me] = min(at.get(me, 99), o.rank)
+            hist.append({"date": d.isoformat(), "ranks": at})
+        r["history"] = hist
 
     # SERP features at the latest check
     feats = {}
@@ -292,7 +340,7 @@ def landscape(obs: list[Obs], meta: dict[str, dict], me: str, start: date, end: 
         "state": "ok", "domain": me, "period": {"start": days[0].isoformat(), "end": days[-1].isoformat(), "checks": len(days)}, "tracked": n, "has_volume": has_volume, "comparable": comparable,
         "cards": cards, "summary": summary, "distribution": series, "keywords": keywords, "movers": movers, "top": top,
         "positive": {"total": _r1(sum(r["gain"] for r in pos), 2), "count": len(pos), "rows": pos[:5]}, "negative": {"total": _r1(sum(r["gain"] for r in neg), 2), "count": len(neg), "rows": neg[:5]},
-        "all_keywords": sorted(rows, key=lambda r: (r["rank"] or 99, r["keyword"])), "tags": tags, "competitors": shown, "competitors_all": comp[:99] + [c for c in comp[99:] if c["you"]], "competitor_total": len(comp), "platforms": platforms[:50], "platform_total": len(platforms),
+        "all_keywords": sorted(rows, key=lambda r: (r["rank"] or 99, r["keyword"])), "tags": tags, "competitors": shown, "domain_series": domain_series, "competitors_all": comp[:99] + [c for c in comp[99:] if c["you"]], "competitor_total": len(comp), "platforms": platforms[:50], "platform_total": len(platforms),
         "serp_features": sorted(feats.values(), key=lambda f: -f["keywords"]), "pages": {"top": by_traffic[:8], "improved": [p for p in by_traffic if (p["traffic_change"] or 0) > 0][:8],
                                                                                    "declined": [p for p in by_traffic if (p["traffic_change"] or 0) < 0][:8], "total": len(pages),
                                                                                    "all": by_traffic[:200], "lost": lost_pages[:100]},

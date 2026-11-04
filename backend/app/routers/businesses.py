@@ -46,6 +46,32 @@ def site_audit_table(db: Session = Depends(get_db), _: User = Depends(current_us
     return site_health.table(db)
 
 
+@router.get("/{business_id}/audit-overview")
+def audit_overview(business_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """The Overview page of the project's Site Audit: health, issues by type, pages to improve, trend and thematic scores."""
+    from ..services import audit_overview as ov
+    b = db.get(Business, business_id)
+    if not b:
+        raise HTTPException(404, "Business not found")
+    out = ov.for_project(db, b)
+    if not out:
+        raise HTTPException(404, "This project has no finished audit yet")
+    return out
+
+
+@router.get("/{business_id}/audit-report")
+def audit_report(business_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """The Site Audit tabs (Issues, Crawled Pages, Statistics, Compare Crawls, Progress, JS Impact) for the project's latest crawl and its history."""
+    from ..services import audit_overview as ov
+    b = db.get(Business, business_id)
+    if not b:
+        raise HTTPException(404, "Business not found")
+    out = ov.report_for_project(db, b)
+    if not out:
+        raise HTTPException(404, "This project has no finished crawl yet")
+    return out
+
+
 @router.get("/portfolio")
 def portfolio(db: Session = Depends(get_db), _: User = Depends(current_user)):
     """Every client with its status, plan, health, running services and what needs attention (dashboard)."""

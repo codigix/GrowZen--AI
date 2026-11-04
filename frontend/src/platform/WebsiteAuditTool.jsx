@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import {
   Search, Smartphone, Monitor, Download, CheckCircle2, XCircle, CircleDashed, History, ArrowUp, ArrowDown, Loader2, Globe, Gauge,
-  FileText, ShieldCheck, RotateCw, ListChecks, ExternalLink, Accessibility, BadgeCheck, Sparkles, Clock, ArrowRight
+  FileText, Layers, X, ShieldCheck, RotateCw, ListChecks, ExternalLink, Accessibility, BadgeCheck, Sparkles, Clock, ArrowRight
 } from 'lucide-react';
 import { Card, Button, Badge, ScoreRing, Tabs, inputCls, ErrorNote, useToast, useAction, SkList, LoadMore } from './SeoUi';
 import { api, useApi, usePaged, usePoll, fmtDateTime } from './seoApi';
@@ -45,6 +45,8 @@ function TechStack({ url }) {
 }
 
 const WeeklyTasks = lazy(() => import('./WorkPlanPage').then(m => ({ default: m.ThisWeek }))); // loaded only when the tab opens
+const SiteResearch = lazy(() => import('./WorkPlanPage').then(m => ({ default: m.Research })));
+const SITE_AREAS = ['technical', 'metadata', 'content', 'seo'];
 import { AuditSummary, PageRewrites } from './AuditAI';
 
 /**
@@ -477,7 +479,7 @@ function LatestReport({ report, history, onOpen }) {
  */
 export function useSiteAudit(business) {
   const site = business?.website || '';
-  const [url, setUrl] = useState(site);
+  const [url, setUrl] = useState(() => new URLSearchParams(window.location.search).get('url') || site); // ?url=… audits that address first
   const [strategy, setStrategy] = useState('mobile');
   const [crawlPages, setCrawlPages] = useState(10);
   const [current, setCurrent] = useState(null);
@@ -537,9 +539,14 @@ export function AuditStep({ sa, business, onOpenReport }) {
   const { url, setUrl, strategy, setStrategy, crawlPages, setCrawlPages, busy, error, running, audit, report } = sa;
   const chip = (on) => `h-9 px-3 flex items-center gap-1.5 text-12 font-semibold rounded-lg cursor-pointer transition-colors ${on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-900'}`;
   const own = business?.website && hostOf(normalise(url)) === hostOf(business.website);
+  const [drawer, setDrawer] = useState(null); // tech | recent: a panel on the right, opened on click
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
-      <div className="xl:col-span-2 space-y-5 min-w-0">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button size="sm" icon={Layers} onClick={() => setDrawer('tech')}>Tech stack</Button>
+        <Button size="sm" icon={History} onClick={() => setDrawer('recent')}>Recent audits</Button>
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start min-w-0">
         <Card>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-500/20"><Globe size={18} /></div>
@@ -571,10 +578,10 @@ export function AuditStep({ sa, business, onOpenReport }) {
           <ErrorNote>{error || audit.error?.message}</ErrorNote>
         </Card>
 
-        {running && <LiveScan audit={audit.data} startedAt={sa.startedAt} strategy={strategy} />}
+        {running && <div className="xl:col-span-2"><LiveScan audit={audit.data} startedAt={sa.startedAt} strategy={strategy} /></div>}
 
         {!running && audit.data?.status === 'failed' && (
-          <Card>
+          <Card className="xl:col-span-2">
             <div className="flex items-start gap-3">
               <XCircle size={18} className="text-red-600 shrink-0 mt-0.5" />
               <div className="min-w-0">
@@ -589,7 +596,7 @@ export function AuditStep({ sa, business, onOpenReport }) {
         {!running && report && <LatestReport report={report} history={sa.history} onOpen={onOpenReport} />}
 
         {!running && !report && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="xl:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
             {[[ShieldCheck, 'Technical health', 'HTTPS, robots.txt, sitemap, indexing, broken pages and structured data.'], [FileText, 'Every page checked', 'Titles, meta descriptions, headings, content depth and image alt text.'], [Sparkles, 'Fixes, not just scores', 'Problems ranked by impact, with ready-to-paste code and copy.']].map(([I, t, d]) => (
               <Card key={t}><div className="flex items-start gap-3"><div className="w-9 h-9 rounded bg-slate-50 ring-1 ring-inset ring-slate-200 flex items-center justify-center text-slate-600 shrink-0"><I size={16} /></div><div><div className="text-14 font-semibold text-slate-900">{t}</div><div className="text-12.5 text-slate-500 mt-0.5">{d}</div></div></div></Card>
             ))}
@@ -597,11 +604,17 @@ export function AuditStep({ sa, business, onOpenReport }) {
         )}
       </div>
 
-      <aside className="min-w-0">
-        <RecentSites history={sa.history} business={business} current={sa.current} running={running || busy === 'start'}
-          onView={h => { sa.setCurrent(h.id); if (h.status === 'done') onOpenReport(); }} onRerun={h => { setUrl(h.target); sa.launch(h.target); }} />
-        <TechStack url={business?.website || null} />
-      </aside>
+      {drawer && (
+        <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={drawer === 'tech' ? 'Tech stack' : 'Recent audits'}>
+          <button type="button" aria-label="Close" onClick={() => setDrawer(null)} className="absolute inset-0 bg-slate-900/30 cursor-default" />
+          <aside className="relative w-full sm:w-[440px] h-full bg-slate-50 shadow-2xl overflow-y-auto p-5">
+            <button type="button" onClick={() => setDrawer(null)} aria-label="Close panel" className="absolute top-4 right-4 w-8 h-8 rounded flex items-center justify-center text-slate-500 hover:bg-slate-200 cursor-pointer"><X size={16} /></button>
+            {drawer === 'recent' && <RecentSites history={sa.history} business={business} current={sa.current} running={running || busy === 'start'}
+              onView={h => { setDrawer(null); sa.setCurrent(h.id); if (h.status === 'done') onOpenReport(); }} onRerun={h => { setDrawer(null); setUrl(h.target); sa.launch(h.target); }} />}
+            {drawer === 'tech' && <TechStack url={business?.website || null} />}
+          </aside>
+        </div>
+      )}
     </div>
   );
 }
@@ -729,12 +742,14 @@ export function ReportStep({ sa, business, onNext }) {
             <Tabs value={tab} onChange={setTab} tabs={[
               { id: 'fixes', label: 'Fixes', count: issues.length },
               { id: 'tasks', label: 'Weekly tasks' },
+              { id: 'research', label: 'Website R&D' },
               { id: 'pages', label: 'Pages', count: pages.length },
               { id: 'speed', label: 'Speed' },
               { id: 'google', label: 'Google checks', count: (ps?.seo_checks || []).filter(c => c.status === 'fail').length }
             ]} />
           </div>
-          {tab === 'tasks' && (business ? <Suspense fallback={<SkList rows={4} />}><WeeklyTasks key={`${business.id}-${tasksKey}`} b={business} /></Suspense> : <Card><div className="py-8 text-center text-13 text-slate-500">Weekly tasks are kept for saved projects. Add this website as a project first.</div></Card>)}
+          {tab === 'tasks' && (business ? <Suspense fallback={<SkList rows={4} />}><WeeklyTasks key={`${business.id}-${tasksKey}`} b={business} areas={SITE_AREAS} /></Suspense> : <Card><div className="py-8 text-center text-13 text-slate-500">Weekly tasks are kept for saved projects. Add this website as a project first.</div></Card>)}
+          {tab === 'research' && (business ? <Suspense fallback={<SkList rows={4} />}><SiteResearch key={business.id} b={business} /></Suspense> : null)}
           {tab === 'fixes' && <Improvements issues={issues} pages={pages} business={subject} score={crawl?.score} technical={ps} onRecheck={rerun} rechecking={sa.busy === 'start' || sa.running} />}
           {tab === 'pages' && (pages.length ? <><PageRewrites pages={pages} subject={subject} /><PagesCard pages={pages} siteIssues={issues} /></> : <Card><div className="py-8 text-center text-13 text-slate-500">No pages were crawled in this audit.</div></Card>)}
           {tab === 'speed' && (ps ? <Vitals ps={ps} /> : <Card><div className="py-8 text-center text-13 text-slate-500">Google Lighthouse didn't finish for this audit, so there are no speed results. Re-run the audit.</div></Card>)}

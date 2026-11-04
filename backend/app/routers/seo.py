@@ -140,7 +140,7 @@ def position_landscape(days: int = 30, b: Business = Depends(get_business), db: 
     if not tracked:
         return {**base, "state": "no_keywords"}
     logs = list(db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= start)))
-    meta = {k.keyword: {"volume": k.volume, "tag": k.cluster} for k in tracked}
+    meta = {k.keyword: {"volume": k.volume, "tag": k.cluster, "intent": k.intent, "difficulty": k.difficulty, "cpc": k.cpc, "id": k.id} for k in tracked}
     registered = [c.website for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id))]
     keep = {u.lower().replace("https://", "").replace("http://", "").removeprefix("www.").split("/")[0] for u in registered if u}
     out = landscape_svc.landscape(landscape_svc.from_logs([r for r in logs if r.keyword in meta]), meta, me, start, today, keep)
@@ -258,6 +258,23 @@ def _crawl_running(db: Session, b: Business) -> bool:
     return bool(db.scalar(select(func.count()).select_from(Audit).where(Audit.business_id == b.id, Audit.kind == "onpage", Audit.status == "running", Audit.started_at >= cutoff)))
 
 
+class LinkAccountIn(BaseModel):
+    connection_id: int | None = None
+
+
+@router.post("/link-account")
+def link_account(body: LinkAccountIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Choose which connected Google account this project uses for Search Console (or none)."""
+    if body.connection_id is not None:
+        c = db.get(GoogleConnection, body.connection_id)
+        if not c or c.status != "active":
+            raise HTTPException(404, "That Google account is not connected.")
+    b.connection_id = body.connection_id
+    log(db, user.name, "google_account_linked", b.id, connection=body.connection_id)
+    db.commit()
+    return {"connection_id": b.connection_id}
+
+
 @router.get("/subdomains")
 def subdomains(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Every subdomain of the site we can find (certificate logs, the crawl's links, Google results), each checked live."""
@@ -293,7 +310,7 @@ def top_pages_report(days: int = 30, b: Business = Depends(get_business), db: Se
         return s["data"] if s and s.get("ok") else None
     index = {"pages": sec("pages"), "indexed": sec("indexed_pages"), "history": sec("history")}
     tracked = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
-    meta = {k.keyword: {"volume": k.volume, "intent": k.intent} for k in tracked}
+    meta = {k.keyword: {"volume": k.volume, "intent": k.intent, "difficulty": k.difficulty, "cpc": k.cpc} for k in tracked}
     if get_settings().rank_landscape_mock_on:
         obs, meta = landscape_svc.mock_obs(me, days, today)
     else:
@@ -332,10 +349,30 @@ def _brand_terms(b: Business, host: str) -> list[str]:
     return list(dict.fromkeys(t for t in (host.split(".")[0], name, name.replace(" ", "")) if len(t) >= 3))
 
 
-def _own_connections(db: Session, b: Business, only: int | None = None) -> list[GoogleConnection]:
+def _find_owner(db: Session, b: Business, host: str) -> GoogleConnection | None:
+    """A project with no linked account: the connected account that owns this site's Search Console property, if there is one. Having the
+    verified property proves the account belongs to this site, so it is linked to the project and used from then on."""
+    for c in db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None)).order_by(GoogleConnection.id)):
+        if not gsc.has_scope(c):
+            continue
+        try:
+            if gsc.match_property(gsc.SearchConsole(c).sites(), host):
+                b.connection_id = c.id
+                db.commit()
+                return c
+        except GbpError:
+            continue
+    return None
+
+
+def _own_connections(db: Session, b: Business, only: int | None = None, host: str | None = None) -> list[GoogleConnection]:
     """The Google account(s) this project may use: the one linked to it, nothing else. Another project's account is never tried, so one
-    client's Search Console data cannot show up under another. `only` is an account the user picked on purpose for this request."""
+    client's Search Console data cannot show up under another. `only` is an account the user picked on purpose for this request; `host` lets a
+    project with no linked account find the one that owns its site (see _find_owner)."""
     pick = only or b.connection_id
+    if not pick and host:
+        owner = _find_owner(db, b, host)
+        return [owner] if owner else []
     if not pick:
         return []
     c = db.get(GoogleConnection, pick)
@@ -344,7 +381,7 @@ def _own_connections(db: Session, b: Business, only: int | None = None) -> list[
 
 def _search_console(db: Session, b: Business, host: str):
     """(state, message, SearchConsole, property) for the business's site, from a connected Google account that can see it."""
-    conns = [c for c in _own_connections(db, b) if gsc.has_scope(c)]
+    conns = [c for c in _own_connections(db, b, host=host) if gsc.has_scope(c)]
     if not conns:
         linked = db.get(GoogleConnection, b.connection_id) if b.connection_id else None
         if linked and linked.status != "active":
@@ -406,7 +443,7 @@ def domain(range: str = "3m", country: str | None = None, device: str | None = N
     internal = domain_checks.is_internal(b)
     out: dict = {"domain": host or None, "name": b.name, "internal": internal, "limits": domain_checks.limits_for(internal), "market": market.summary(b), "range": range if range in gsc.RANGES else "3m",
                  "ai": _ai_search(db, b, host), "traffic": {"state": "not_connected"}, "unavailable": {}}
-    conns = _own_connections(db, b, connection_id)
+    conns = _own_connections(db, b, connection_id, host=host)
     # The accounts offered to pick from are only listed while the project has none of its own.
     pickable = [] if conns else list(db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None)).order_by(GoogleConnection.email)))
     out["traffic"]["accounts"] = [{"id": c.id, "email": c.email, "search_console": gsc.has_scope(c)} for c in (conns or pickable)]

@@ -1,6 +1,9 @@
+import { useCrumb } from './crumbs';
 import React, { useState } from 'react';
 import { Download, Phone, MessageCircle, FileText, Navigation, CalendarCheck, Plus } from 'lucide-react';
-import { SeoShell, Card, Tabs, Stat, Badge, Button, Modal, Field, inputCls, ErrorNote, StatusPill, useToast, useAction, SkTable, SkPage } from './SeoUi';
+import { Reports as ProgressReports } from './WorkPlanPage';
+import ProcessTasks from './ProcessTasks';
+import { useUrlTab, SeoShell, Card, Tabs, Stat, Badge, Button, Modal, Field, inputCls, ErrorNote, StatusPill, useToast, useAction, SkTable, SkPage } from './SeoUi';
 import { api, useApi, fmtDate } from './seoApi';
 
 const TYPE_ICON = { call: Phone, whatsapp: MessageCircle, form: FileText, direction: Navigation, booking: CalendarCheck, other: FileText };
@@ -108,13 +111,14 @@ function Reports({ b, tab }) {
 }
 
 export default function ReportsLeadsPage() {
-  const [tab, setTab] = useState('report');
+  const [tab, setTab] = useUrlTab('report', ['report', 'tasks', 'progress', 'leads']);
+  useCrumb({ report: 'Monthly report', tasks: 'All tasks', progress: 'Weekly & monthly progress', leads: 'Leads' }[tab]);
   return (
     <SeoShell title="Reports & leads" subtitle="Calls, directions, clicks and leads in one place, plus the monthly PDF">
       {(b) => (
         <>
-          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'report', label: 'Monthly report' }, { id: 'leads', label: 'Leads' }]} />
-          <Reports key={b.id} b={b} tab={tab} />
+          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'report', label: 'Monthly report' }, { id: 'tasks', label: 'All tasks' }, { id: 'progress', label: 'Weekly & monthly progress' }, { id: 'leads', label: 'Leads' }]} />
+          {tab === 'tasks' ? <ProcessTasks b={b} /> : tab === 'progress' ? <ProgressReports key={b.id} b={b} /> : <Reports key={b.id} b={b} tab={tab} />}
         </>
       )}
     </SeoShell>

@@ -23,7 +23,7 @@ def norm(url: str | None) -> str:
 
 def _blank(url: str) -> dict:
     return {"url": url, "key": norm(url), "sources": [], "traffic": None, "traffic_share": None, "index_keywords": None, "tracked": [], "avg_position": None, "position_change": None,
-            "status": None, "llm_prompts": 0, "ai_engines": [], "ref_domains": None, "backlinks": None, "top_keyword": None, "intent": None, "words": None, "issues": None,
+            "status": None, "llm_prompts": 0, "ai_engines": [], "ref_domains": None, "backlinks": None, "top_keyword": None, "intent": None, "volume": None, "kd": None, "cpc": None, "words": None, "issues": None,
             "schema": [], "noindex": False, "http": None, "title": None, "inbound": None}
 
 
@@ -90,7 +90,8 @@ def build(crawl: list[dict], obs: list[Obs], meta: dict[str, dict], geo: list[di
         r["tracked"].sort(key=lambda t: t["rank"])
         if r["tracked"]:
             best = r["tracked"][0]["keyword"]
-            r["top_keyword"], r["intent"] = best, (meta.get(best) or {}).get("intent")
+            m = meta.get(best) or {}
+            r["top_keyword"], r["intent"], r["volume"], r["kd"], r["cpc"] = best, m.get("intent"), m.get("volume"), m.get("difficulty"), m.get("cpc")
 
     # AI: pages the answers cite
     prompts: dict[str, set] = {}

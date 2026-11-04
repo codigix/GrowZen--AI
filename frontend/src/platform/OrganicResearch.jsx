@@ -1,3 +1,4 @@
+import { useCrumb } from './crumbs';
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
@@ -545,6 +546,7 @@ const TABS = [['overview', 'Overview'], ['positions', 'Positions'], ['changes', 
 
 function Page({ b }) {
   const [tab, setTab] = useUrlTab('overview', TABS.map(t => t[0]));
+  useCrumb(TABS.find(t => t[0] === tab)?.[1]);
   const [market, setMarket] = useState('');
   const [days, setDays] = useState(30);
   const [refreshing, setRefreshing] = useState(false);

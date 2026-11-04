@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Play, Plus, Check, Minus, Trash2, Info, Copy } from 'lucide-react';
-import { SeoShell, Card, Tabs, Stat, Badge, Button, inputCls, Meter, SourceTag, ErrorNote, SERIES, useToast, useAction, useDoubleConfirm, SkStats, SkTable, SkCard } from './SeoUi';
+import { SeoShell, Card, Tabs, Stat, Badge, Button, inputCls, Meter, SourceTag, ErrorNote, SERIES, useToast, useAction, useDoubleConfirm, SkStats, SkTable, SkCard, useUrlTab } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 
 function Geo({ b, tab }) {
@@ -106,7 +106,7 @@ function Geo({ b, tab }) {
 }
 
 export default function GeoTrackerPage() {
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useUrlTab('overview', ['overview', 'prompts', 'sources', 'files']);
   return (
     <SeoShell title="GEO / AEO tracker" subtitle="How often AI engines name the business when customers ask">
       {(b) => (

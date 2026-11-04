@@ -141,6 +141,7 @@ def analyse_html(url: str, status: int, html: str) -> dict[str, Any]:
         "h1": h1s[0].get_text(" ", strip=True)[:160] if h1s else "",
         "images_without_alt": [urljoin(url, i.get("src") or "") for i in images if not (i.get("alt") or "").strip() and i.get("src")][:8],
         "word_count": len(text.split()),
+        "html_bytes": len(html or ""), "text_ratio": round(len(text) / max(1, len(html or "")) * 100, 1),
         "canonical": canonical.get("href") if canonical else None,
         "noindex": bool(robots and "noindex" in (robots.get("content") or "").lower()),
         "images": len(images),
@@ -245,7 +246,7 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
     start = homepage(start_url)  # always the first page, so the crawl and the site-wide checks begin at the homepage
     host = _norm_host(urlparse(start).netloc)
     client = site_client(timeout)
-    site: dict[str, Any] = {"start_url": start, "host": host}
+    site: dict[str, Any] = {"start_url": start, "host": host, "max_pages": max_pages}
     try:
         robots = client.get(urljoin(start, "/robots.txt"))
         site["robots_txt"] = robots.status_code == 200
@@ -258,6 +259,7 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
         report({"step": "sitemap", "found": site["sitemap"]})
         listed = _sitemap_urls(client, sitemap_urls[0] if sitemap_urls else urljoin(start, "/sitemap.xml"), host, max_pages * 2) if site["sitemap"] else []
         site["sitemap_pages"] = len(listed)
+        site["sitemap_urls"] = listed[:300]
         seen: set[str] = set()  # URLs already queued or dequeued, so the same link isn't crawled twice
         fetched: set[str] = set()  # resolved (post-redirect) URLs of pages already captured
         queue = deque([start, *listed])  # the homepage first, then every page the sitemap lists; links found on pages are added behind them
@@ -296,14 +298,29 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
         # Internal linking: how many other crawled pages link to each page (0 = an orphan), and links going out.
         keys = {_norm_url(p["url"]) for p in pages}
         inbound: dict[str, set[str]] = {}
+        graph: dict[str, set[str]] = {}
         for p in pages:
             me = _norm_url(p["url"])
             same = {_norm_url(link["href"]) for link in p.get("links", []) if _norm_host(urlparse(link["href"]).netloc) == host}
             p["internal_out"] = len(same - {me})
-            for t in (same & keys) - {me}:
+            graph[me] = (same & keys) - {me}
+            for t in graph[me]:
                 inbound.setdefault(t, set()).add(me)
+        # Crawl depth: clicks from the homepage (the first page crawled); pages no crawled page links to have no depth
+        depth: dict[str, int] = {}
+        if pages:
+            root = _norm_url(pages[0]["url"])
+            depth[root] = 0
+            todo = deque([root])
+            while todo:
+                cur = todo.popleft()
+                for nxt in graph.get(cur, ()):
+                    if nxt not in depth:
+                        depth[nxt] = depth[cur] + 1
+                        todo.append(nxt)
         for p in pages:
             p["inbound"] = len(inbound.get(_norm_url(p["url"]), ()))
+            p["depth"] = depth.get(_norm_url(p["url"]))
         for p in pages:
             p.pop("links", None)
         site.update(pages=pages, broken=broken, crawled=len(pages))

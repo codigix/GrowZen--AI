@@ -1,5 +1,7 @@
+import { useCrumb } from './crumbs';
 import React, { useState } from 'react';
 import { Star, Sparkles, Send, MessageCircle, Mail, Smartphone, Copy, ShieldCheck, Check, Pencil, RefreshCw } from 'lucide-react';
+import ProcessTasks from './ProcessTasks';
 import { SeoShell, Card, Tabs, Stat, Badge, StatusPill, Button, Field, inputCls, areaCls, Meter, ErrorNote, SERIES, useToast, useAction, SkStats, SkList, SkCard } from './SeoUi';
 import { api, useApi, fmtDate } from './seoApi';
 
@@ -147,12 +149,13 @@ function Reviews({ b, tab }) {
 
 export default function ReviewManagerPage() {
   const [tab, setTab] = useState('inbox');
+  useCrumb({ inbox: 'Review inbox', requests: 'Review requests', tasks: 'Tasks' }[tab]);
   return (
     <SeoShell title="Reviews" subtitle="Reply to every review within 24 hours, ask every customer for one, and see what people talk about">
       {(b) => (
         <>
-          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'inbox', label: 'Review inbox' }, { id: 'requests', label: 'Review requests' }]} />
-          <Reviews key={b.id} b={b} tab={tab} />
+          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'inbox', label: 'Review inbox' }, { id: 'requests', label: 'Review requests' }, { id: 'tasks', label: 'Tasks' }]} />
+          {tab === 'tasks' ? <ProcessTasks b={b} areas={['reviews']} /> : <Reviews key={b.id} b={b} tab={tab} />}
         </>
       )}
     </SeoShell>
