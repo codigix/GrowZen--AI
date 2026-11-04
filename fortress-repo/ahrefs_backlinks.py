@@ -5,16 +5,32 @@ Usage:
 
 Prints JSON: domain rating, backlinks, linking websites and the referring-pages table.
 """
-import argparse, json, re, shutil, socket, subprocess, sys, tempfile, time, urllib.request
+import argparse, json, os, re, shutil, socket, subprocess, sys, tempfile, time, urllib.request
 from contextlib import contextmanager
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
+import setup_fortress
+
 HERE = Path(__file__).parent
-# Engine and profile both live inside this folder, not ~/.cache.
-CHROME = HERE / "browsers" / "153.0.8010.36" / "win-x64" / "fortress-v153-win-x64" / "chrome.exe"
+# Engine and profile both live inside this folder, not ~/.cache. setup_fortress.py downloads the engine for this OS.
 PROFILES = HERE / "browsers" / "profiles"
+
+
+def _browser() -> Path:
+    chrome = setup_fortress.find_browser()
+    if chrome is None:
+        raise RuntimeError(f"The Fortress browser is not installed in {setup_fortress.browser_root()}; run: python fortress-repo/setup_fortress.py")
+    return chrome
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:  # Chromium's helper processes exit on their own when the main process dies
+        proc.kill()
+    proc.wait()
 URL = "https://ahrefs.com/backlink-checker/?input={domain}&mode={mode}"
 
 
@@ -36,7 +52,7 @@ def fortress(headless: bool = True, wait_s: int = 120):
     PROFILES.mkdir(parents=True, exist_ok=True)
     profile = tempfile.mkdtemp(prefix="run-", dir=PROFILES)
     port = _free_port()
-    args = [str(CHROME), f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
+    args = [str(_browser()), f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
             "--uxr-webrtc-policy=disable_non_proxied_udp", "--no-first-run"]  # tillion.cmd default
     if headless:
         args += ["--headless=new", "--no-sandbox"]
@@ -53,9 +69,8 @@ def fortress(headless: bool = True, wait_s: int = 120):
                 time.sleep(0.5)
         yield f"http://127.0.0.1:{port}"
     finally:
-        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        # Child processes can hold profile files for a moment after taskkill.
+        _kill_tree(proc)
+        # Child processes can hold profile files for a moment after they are killed.
         for _ in range(10):
             shutil.rmtree(profile, ignore_errors=True)
             if not Path(profile).exists():

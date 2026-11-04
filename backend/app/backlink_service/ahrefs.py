@@ -24,7 +24,9 @@ import json
 import logging
 import os
 import re
+import signal
 import subprocess
+import sys
 import threading
 import time
 from datetime import timedelta
@@ -124,10 +126,45 @@ def _clean(text) -> str:
 # ---- the browser lookup ---------------------------------------------------------
 
 def _kill_tree(proc: subprocess.Popen) -> None:
-    if os.name == "nt":  # the scraper launches chrome.exe; killing only python would orphan it
+    # The scraper launches the browser; killing only python would orphan it.
+    if os.name == "nt":
         subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        proc.kill()
+    else:  # the scraper runs in its own process group (start_new_session), which the browser joins
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def auto_setup_enabled() -> bool:
+    return os.environ.get("AHREFS_AUTO_SETUP", "1") == "1"
+
+
+_setup_lock = threading.Lock()
+
+
+def ensure_fortress(folder: Path) -> None:
+    """A fresh clone has the scraper but not its .venv or browser (they are not in git): run setup_fortress.py once to download them.
+    Raises RuntimeError with the reason if Fortress still is not usable."""
+    python = folder / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    setup = folder / "setup_fortress.py"
+    if not (folder / "ahrefs_backlinks.py").is_file() or not setup.is_file():
+        raise RuntimeError(f"Fortress is not at {folder} (needs ahrefs_backlinks.py and setup_fortress.py); set AHREFS_FORTRESS_DIR")
+    check = [str(python), str(setup), "--check"]
+    with _setup_lock:
+        if python.is_file() and subprocess.run(check, cwd=str(folder), capture_output=True).returncode == 0:
+            return
+        if not auto_setup_enabled():
+            raise RuntimeError(f"Fortress is not set up at {folder}; run: python {setup}")
+        log.info("Setting up Fortress in %s (first Ahrefs lookup on this machine: downloads about 250 MB)", folder)
+        try:
+            done = subprocess.run([sys.executable, str(setup)], cwd=str(folder), capture_output=True, text=True, timeout=1800)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("Setting up Fortress took longer than 30 minutes") from None
+        if done.returncode != 0:
+            lines = (done.stderr or done.stdout).strip().splitlines()
+            raise RuntimeError("Setting up Fortress failed: " + (lines[-1][:300] if lines else f"exit code {done.returncode}"))
+        log.info("Fortress is set up")
 
 
 _current_proc: subprocess.Popen | None = None  # the lookup running now, so a shutdown can stop it instead of waiting minutes
@@ -145,12 +182,11 @@ def run_scraper(domain: str, mode: str, timeout: int | None = None) -> dict:
     folder = fortress_dir()
     python = folder / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     script = folder / "ahrefs_backlinks.py"
-    if not python.is_file() or not script.is_file():
-        raise RuntimeError(f"Fortress is not set up at {folder} (needs ahrefs_backlinks.py and .venv); set AHREFS_FORTRESS_DIR")
+    ensure_fortress(folder)
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}  # page titles hold emoji; a pipe would otherwise use the Windows code page
     global _current_proc
     proc = subprocess.Popen([str(python), str(script), domain, "--mode", mode], cwd=str(folder), env=env, text=True, encoding="utf-8", errors="replace",
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=os.name != "nt")
     _current_proc = proc
     try:
         out, err = proc.communicate(timeout=timeout)
