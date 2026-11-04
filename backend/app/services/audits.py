@@ -77,10 +77,10 @@ def _run_technical(db: Session, b: Business) -> tuple[int, list[dict[str, Any]],
     return round(mean(scores)) if scores else 0, pagespeed.issues_from(result), result, "live"
 
 
-def _run_onpage(db: Session, b: Business) -> tuple[int, list[dict[str, Any]], dict[str, Any], str]:
+def _run_onpage(db: Session, b: Business, max_pages: int = 25) -> tuple[int, list[dict[str, Any]], dict[str, Any], str]:
     if not b.website:
         return 0, [], {}, "live"
-    site = crawler.crawl(b.website, max_pages=25)
+    site = crawler.crawl(b.website, max_pages=max_pages)
     score, issues = crawler.summarise(site)
     return score, issues, {k: v for k, v in site.items() if k != "pages"} | {"pages": site.get("pages", [])}, "live"
 
@@ -116,12 +116,12 @@ def _run_citations(db: Session, b: Business) -> tuple[int, list[dict[str, Any]],
 RUNNERS = {"gbp": _run_gbp, "rankings": _run_rankings, "technical": _run_technical, "onpage": _run_onpage, "backlinks": _run_backlinks, "citations": _run_citations}
 
 
-def run(db: Session, b: Business, kind: str) -> Audit:
+def run(db: Session, b: Business, kind: str, **options: Any) -> Audit:
     audit = Audit(business_id=b.id, kind=kind, target=b.website, status="running", started_at=_now())
     db.add(audit)
     db.commit()
     try:
-        score, issues, result, source = RUNNERS[kind](db, b)
+        score, issues, result, source = RUNNERS[kind](db, b, **options)
         audit.score, audit.issues, audit.result, audit.data_source, audit.status = score, issues, result, source, "done"
     except Exception as exc:  # one failed area must not stop the others
         audit.status, audit.error = "failed", str(exc)[:1000]

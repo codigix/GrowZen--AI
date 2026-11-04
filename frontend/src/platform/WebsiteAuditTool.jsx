@@ -483,7 +483,7 @@ export function useSiteAudit(business) {
   const [current, setCurrent] = useState(null);
   const [startedAt, setStartedAt] = useState(null);
   const audit = useApi(current ? `/website-audits/${current}` : null);
-  const history = usePaged('/website-audits?slim=true', 20); // slabs of 20, without each audit's large issue lists
+  const history = usePaged(`/website-audits?slim=true${business?.id ? `&workspace_id=${business.id}` : ''}`, 20); // slabs of 20, without each audit's large issue lists
   const [busy, error, run] = useAction();
   const techList = useApi(business ? `/businesses/${business.id}/audits?kind=technical&limit=1&slim=true` : null);
   const onpageList = useApi(business ? `/businesses/${business.id}/audits?kind=onpage&limit=1&slim=true` : null);
@@ -506,7 +506,7 @@ export function useSiteAudit(business) {
 
   const launch = (target, pages = crawlPages) => run('start', async () => {
     const own = site && hostOf(target) === hostOf(site);
-    const r = await api('/website-audits', { method: 'POST', body: { url: target, strategy, crawl_pages: pages, ...(own ? { business_id: business.id } : {}) } });
+    const r = await api('/website-audits', { method: 'POST', body: { url: target, strategy, crawl_pages: pages, ...(business?.id ? { workspace_id: business.id } : {}), ...(own ? { business_id: business.id } : {}) } });
     setStartedAt(Date.now());
     setCurrent(r.id);
     history.reload(true);

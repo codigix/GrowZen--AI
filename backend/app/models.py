@@ -114,6 +114,7 @@ class Audit(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     business_id: Mapped[int | None] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
     competitor_id: Mapped[int | None] = mapped_column(ForeignKey("competitors.id", ondelete="SET NULL"), index=True)
+    workspace_id: Mapped[int | None] = mapped_column(Integer, index=True)  # the project a website scan was run from (history only; it does not feed that project's scores)
     kind: Mapped[str] = mapped_column(String(20))  # gbp | technical | onpage | rankings | backlinks | citations | geo | website
     target: Mapped[str | None] = mapped_column(String(500))  # URL for website audits
     status: Mapped[str] = mapped_column(String(20), default="queued")  # queued | running | done | failed

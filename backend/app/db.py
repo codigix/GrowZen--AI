@@ -25,7 +25,9 @@ _settings = get_settings()
 # PostgreSQL: give up after 10 s instead of waiting forever (an unreachable host would otherwise
 # hang start-up before the server ever listens).
 _connect_args = {"check_same_thread": False} if _settings.database_url.startswith("sqlite") else {"connect_timeout": 10}
-engine = create_engine(_settings.database_url, pool_pre_ping=True, connect_args=_connect_args)
+# pool_pre_ping would cost one extra round trip to the database on every request; recycling idle connections after 5 minutes avoids stale ones instead.
+_pool = {} if _settings.database_url.startswith("sqlite") else {"pool_recycle": 300, "pool_size": 10, "max_overflow": 20}
+engine = create_engine(_settings.database_url, pool_pre_ping=False, connect_args=_connect_args, **_pool)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

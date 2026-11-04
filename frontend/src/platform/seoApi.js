@@ -34,7 +34,24 @@ async function waitUntilReachable(tries = 10) {
 
 // `repeat: true` marks a write that gives the same result when sent twice (a PATCH, an upsert, a match-or-create); it is then retried
 // like a read when the backend restarts mid-request.
-export async function api(path, { method = 'GET', body, raw = false, repeat = false } = {}) {
+// Identical GETs that are in flight at the same time share one request (React StrictMode and several components asking for the same data),
+// and the last answers are kept for a short while so going back to a page shows its data at once while it refreshes in the background.
+const inflight = new Map();
+const answers = new Map();
+const FRESH_MS = 30000;
+export const cached = (path) => { const a = answers.get(path); return a && Date.now() - a.at < FRESH_MS ? a.data : undefined; };
+
+export function api(path, opts = {}) {
+  const { method = 'GET', raw = false } = opts;
+  if (method !== 'GET' && method !== 'HEAD') answers.clear(); // a change may alter anything that was read before
+  if (method !== 'GET' || raw) return request(path, opts);
+  if (inflight.has(path)) return inflight.get(path);
+  const p = request(path, opts).then(data => { answers.set(path, { data, at: Date.now() }); return data; }).finally(() => inflight.delete(path));
+  inflight.set(path, p);
+  return p;
+}
+
+async function request(path, { method = 'GET', body, raw = false, repeat = false } = {}) {
   const safeToRepeat = repeat || method === 'GET' || method === 'HEAD';
   if (!safeToRepeat && Date.now() - lastNetworkFailure < 30000) await waitUntilReachable();
   let r;
@@ -70,20 +87,24 @@ export async function api(path, { method = 'GET', body, raw = false, repeat = fa
 
 /** Load `path` (null = don't load). Returns { data, error, loading, reload, setData }. */
 export function useApi(path) {
-  const [state, setState] = useState({ data: null, error: null, loading: Boolean(path) });
+  const [state, setState] = useState(() => { const hit = path ? cached(path) : undefined; return { data: hit ?? null, error: null, loading: Boolean(path) && hit === undefined }; });
   const seq = useRef(0);
   const load = useCallback(async (quiet = false) => {
     if (!path) return;
     const mine = ++seq.current;
     if (!quiet) setState(s => ({ ...s, loading: true, error: null }));
     try {
+      if (quiet) answers.delete(path); // an explicit reload must hit the server
       const data = await api(path);
       if (mine === seq.current) setState({ data, error: null, loading: false });
     } catch (e) {
       if (mine === seq.current) setState(s => ({ ...s, error: e, loading: false }));
     }
   }, [path]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const hit = path ? cached(path) : undefined;
+    if (hit !== undefined) { setState(s => (s.data === hit ? s : { data: hit, error: null, loading: false })); load(true); } else load();
+  }, [load, path]);
   const setData = useCallback((fn) => setState(s => ({ ...s, data: typeof fn === 'function' ? fn(s.data) : fn })), []);
   return { ...state, reload: load, setData };
 }

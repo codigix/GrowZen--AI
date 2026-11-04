@@ -136,6 +136,7 @@ class WebsiteAuditIn(BaseModel):
     strategy: Literal["mobile", "desktop"] = "mobile"
     crawl_pages: int = Field(default=10, ge=1, le=300)
     business_id: int | None = None  # set when this is the business's own site: the scan also updates its audits
+    workspace_id: int | None = None  # the project the scan is run from: only that project lists it in its history
 
 
 class CompetitorAuditIn(BaseModel):

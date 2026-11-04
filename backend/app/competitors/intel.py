@@ -53,6 +53,7 @@ DIRECTORIES = {
     "yellowpages.com.om", "yellowpages-uae.com", "connect.ae", "dubizzle.com", "bayut.com", "propertyfinder.ae", "daleeli.com", "yellowpages.com.sa",
     "qatcom.com", "yellowpages.com.kw", "bahrainyellowpages.com", "talabat.com", "deliveroo.co.uk", "ubereats.com", "doordash.com", "opentable.com",
     "doctoralia.com", "healthgrades.com", "zocdoc.com", "fresha.com", "booksy.com", "edarabia.com", "foursquare.com", "apple.com", "bing.com",
+    "holidify.com", "lbb.in", "medium.com", "tiktok.com", "threads.net", "slideshare.net", "indeed.com", "wikihow.com", "tripadvisor.co.uk", "mapquest.com", "waze.com",
     "yellowpages.com.sg", "yellowpages.my", "brabys.com", "snupit.co.za", "alibaba.com", "kompass.com",
 }
 GENERIC_LINKS = {

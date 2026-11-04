@@ -25,7 +25,7 @@ from .backlinks import router as backlinks
 from .backlinks.router import lookup_router, outcomes_router, watch_router
 from .config import get_settings
 from .db import SessionLocal, engine
-from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website
+from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website, workplan
 from .services import jobs, lighthouse_runner, schema, scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -39,8 +39,9 @@ settings = get_settings()
 async def lifespan(_: FastAPI):
     db = SessionLocal()
     try:
-        if settings.schema_auto_sync:
+        if settings.schema_auto_sync and not schema.is_current(engine):
             schema.sync(engine)
+            schema.mark_current(engine)
         auth.seed_admin(db, settings)
         lighthouse_runner.recover_interrupted(db)
         jobs.recover_stale(db, startup=True)
@@ -58,9 +59,11 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 # max_age is short on purpose: browsers cache a preflight answer, and a stale one (from another process that held this port) would keep failing PATCH for 10 minutes.
+from starlette.middleware.gzip import GZipMiddleware  # noqa: E402
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # JSON compresses ~10x: far less to send on every page
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"], max_age=30)
 
-for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, competitors, competitor_audits, competitor_research, backlinks):
+for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, competitors, competitor_audits, competitor_research, backlinks, workplan):
     app.include_router(r.router, prefix=settings.api_prefix)
 
 app.include_router(lookup_router, prefix=settings.api_prefix)

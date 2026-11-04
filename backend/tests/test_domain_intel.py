@@ -2,14 +2,20 @@
 import pytest
 
 from app.db import SessionLocal
-from app.models import GoogleConnection
+from app.models import Business, GoogleConnection
 from app.services import crypto, gsc
 
 
-def _business(client, name, website, **extra):
+def _business(client, name, website, link=None, **extra):
     r = client.post("/api/v1/businesses", json={"name": name, "website": website, **extra})
     assert r.status_code == 201, r.text
-    return r.json()["id"]
+    bid = r.json()["id"]
+    if link:  # a project only uses the Google account linked to it
+        db = SessionLocal()
+        db.query(Business).filter(Business.id == bid).update({"connection_id": link})
+        db.commit()
+        db.close()
+    return bid
 
 
 @pytest.fixture()
@@ -76,7 +82,7 @@ def test_intel_needs_a_google_account(client):
 def test_intel_comes_from_search_console_and_is_cached(client, monkeypatch, google_account):
     calls: list = []
     _stub(monkeypatch, calls)
-    bid = _business(client, "Codigix", "https://codigix.co", country="IN")
+    bid = _business(client, "Codigix", "https://codigix.co", link=google_account, country="IN")
     j = client.get(f"/api/v1/businesses/{bid}/seo/domain-intel?refresh=true").json()
     assert j["state"] == "ok" and j["cached"] is False and j["source"] == "google_search_console"
     o = j["overview"]["data"]["organic"]
@@ -96,7 +102,7 @@ def test_intel_comes_from_search_console_and_is_cached(client, monkeypatch, goog
 def test_a_failed_google_section_is_reported_and_not_cached(client, monkeypatch, google_account):
     calls: list = []
     _stub(monkeypatch, calls, fail_dims=("page",))
-    bid = _business(client, "Codigix", "https://codigix.co", country="IN")
+    bid = _business(client, "Codigix", "https://codigix.co", link=google_account, country="IN")
     j = client.get(f"/api/v1/businesses/{bid}/seo/domain-intel?refresh=true").json()
     assert j["pages"] == {"ok": False, "error": "Search Console unavailable"} and j["overview"]["ok"] is True
     _stub(monkeypatch, [])  # fixed: the next view fetches again instead of replaying the failure

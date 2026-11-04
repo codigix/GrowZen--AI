@@ -21,6 +21,8 @@ export default defineConfig({
       }
     }
   },
+  // Pre-bundle the big libraries once so the dev server does not load hundreds of small files on every page.
+  optimizeDeps: { include: ['react', 'react-dom', 'react-router-dom', 'recharts', 'lucide-react', 'leaflet'] },
   server: { port: 3100, strictPort: true },
   preview: { port: 3100 }
 });

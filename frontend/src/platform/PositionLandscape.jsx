@@ -185,7 +185,7 @@ export function Landscape({ d }) {
                   <td className="px-4 py-2 text-right tabular-nums">{c.visibility}% <Chg v={c.change} /></td>
                 </tr>))}</tbody>
             </table>
-            <p className="text-11.5 text-slate-400 mt-2">{d.competitor_total} domains appear in the results.</p>
+            <p className="text-11.5 text-slate-400 mt-2">{d.competitor_total} competing businesses appear in the results.{d.platform_total ? ` ${d.platform_total} directories and social sites (like Instagram or Tripadvisor) are left out: see Competitors Discovery.` : ''}</p>
           </div>
         </div>
       </Card>
@@ -296,8 +296,8 @@ export default function PositionLandscape({ b }) {
             {tab === 'overview' && <Overview d={d} />}
             {tab === 'distribution' && <Distribution d={d} />}
             {tab === 'tags' && <TagsTab d={d} />}
-            {tab === 'pages' && <PagesTab d={d} />}
-            {tab === 'cannibal' && <Cannibalization d={d} />}
+            {tab === 'pages' && <PagesTab b={b} />}
+            {tab === 'cannibal' && <Cannibalization d={d} b={b} />}
             {tab === 'competitors' && <Competitors d={d} b={b} onChanged={() => data.reload(true)} />}
             {tab === 'devices' && <DevicesLocations d={d} />}
             {tab === 'snippets' && <Snippets d={d} />}

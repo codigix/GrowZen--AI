@@ -2,22 +2,22 @@
 Google results from Serper, the competitor research and the backlink provider. Each response says where its figures
 come from; what needs a paid index (organic traffic, backlink totals) is left out, never estimated."""
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..competitors import intel
 from ..config import get_settings
 from ..db import get_db
-from ..deps import get_business
+from ..deps import get_business, in_background
 from ..models import Audit, Business, GeoPrompt, GeoResult, GoogleConnection, Keyword, KeywordRankLog, Competitor
 from ..backlinks.summary import own_site_links
-from ..services import countries, domain_checks, geo, landscape as landscape_svc, rank_report as rank_report_svc, top_pages as top_pages_svc, gsc, google_intel, keyword_metrics, market, organic
+from ..services import countries, domain_checks, geo, landscape as landscape_svc, rank_report as rank_report_svc, top_pages as top_pages_svc, gsc, google_intel, keyword_metrics, market, organic, audits
 from ..services.gbp import GbpError
 from ..services.providers.base import intent_of
 from ..services.activity import log
@@ -141,8 +141,9 @@ def position_landscape(days: int = 30, b: Business = Depends(get_business), db: 
         return {**base, "state": "no_keywords"}
     logs = list(db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= start)))
     meta = {k.keyword: {"volume": k.volume, "tag": k.cluster} for k in tracked}
-    out = landscape_svc.landscape(landscape_svc.from_logs([r for r in logs if r.keyword in meta]), meta, me, start, today)
     registered = [c.website for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id))]
+    keep = {u.lower().replace("https://", "").replace("http://", "").removeprefix("www.").split("/")[0] for u in registered if u}
+    out = landscape_svc.landscape(landscape_svc.from_logs([r for r in logs if r.keyword in meta]), meta, me, start, today, keep)
     return {**base, **out, "location": next((r.location for r in sorted(logs, key=lambda r: r.day, reverse=True) if r.location), None) or intel.default_location(b),
             "country": market.serp_country(b), "device": "desktop", "tracked_competitors": registered}
 
@@ -233,6 +234,46 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
     }
 
 
+def _crawl_job(db: Session, business_id: int, max_pages: int) -> None:
+    b = db.get(Business, business_id)
+    if b:
+        audits.run(db, b, "onpage", max_pages=max_pages)
+
+
+@router.post("/crawl-pages", status_code=202)
+def crawl_pages(background: BackgroundTasks, pages: int = 150, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Crawl the whole site in the background (sitemap first, then links) and save every page for Top Pages and Position Tracking."""
+    if not b.website:
+        raise HTTPException(400, "Add the project's website first.")
+    if _crawl_running(db, b):
+        return {"status": "running"}
+    log(db, user.name, "site_crawl_started", b.id)
+    db.commit()
+    background.add_task(in_background(_crawl_job, b.id, max(10, min(pages, 300))))
+    return {"status": "queued"}
+
+
+def _crawl_running(db: Session, b: Business) -> bool:
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
+    return bool(db.scalar(select(func.count()).select_from(Audit).where(Audit.business_id == b.id, Audit.kind == "onpage", Audit.status == "running", Audit.started_at >= cutoff)))
+
+
+@router.get("/subdomains")
+def subdomains(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Every subdomain of the site we can find (certificate logs, the crawl's links, Google results), each checked live."""
+    from ..services import subdomains as sub
+    me = organic.host(b.website)
+    if not me:
+        raise HTTPException(400, "Add the project's website first.")
+    parts = me.split(".")
+    root = ".".join(parts[-3:]) if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net", "ac", "gov") else ".".join(parts[-2:])
+    onpage = _latest(db, b, "onpage")
+    links = [l.get("href", "") for p in (onpage.result or {}).get("pages", []) if onpage for l in (p.get("links") or [])] + [p["url"] for p in (onpage.result or {}).get("pages", [])] if onpage else []
+    logs = db.scalars(select(KeywordRankLog.serp).where(KeywordRankLog.business_id == b.id).order_by(KeywordRankLog.day.desc()).limit(200))
+    ranking = {x.get("d") for serp in logs for x in (serp or []) if x.get("d")}
+    return sub.discover(root, links, sorted(ranking), [])
+
+
 @router.get("/top-pages-report")
 def top_pages_report(days: int = 30, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Every page of the site any real source knows, one row each: crawl facts, Google positions (saved rank checks) and traffic and
@@ -261,7 +302,7 @@ def top_pages_report(days: int = 30, b: Business = Depends(get_business), db: Se
     geo_rows = [{"prompt_id": g.prompt_id, "engine": g.engine, "urls": g.cited_urls or [], "day": g.created_at.date().isoformat() if g.created_at else None} for g in results]
     out = top_pages_svc.build(crawl["pages"], obs, meta, geo_rows, index, me, start, today, db.query(GeoPrompt).filter(GeoPrompt.business_id == b.id).count())
     return {**base, "state": "ok", "intel_state": payload.get("state"), "internal": payload.get("internal"), "country_name": payload.get("country_name"), "markets": payload.get("markets"),
-            "audited_at": crawl.get("audited_at"), "serper": intel.serper_enabled(), "mock": bool(payload.get("mock")) or get_settings().rank_landscape_mock_on, "geo_source": results[0].data_source if results else None, **out}
+            "audited_at": crawl.get("audited_at"), "crawling": _crawl_running(db, b), "serper": intel.serper_enabled(), "mock": bool(payload.get("mock")) or get_settings().rank_landscape_mock_on, "geo_source": results[0].data_source if results else None, **out}
 
 
 def _ai_search(db: Session, b: Business, host: str) -> dict:
@@ -291,12 +332,24 @@ def _brand_terms(b: Business, host: str) -> list[str]:
     return list(dict.fromkeys(t for t in (host.split(".")[0], name, name.replace(" ", "")) if len(t) >= 3))
 
 
+def _own_connections(db: Session, b: Business, only: int | None = None) -> list[GoogleConnection]:
+    """The Google account(s) this project may use: the one linked to it, nothing else. Another project's account is never tried, so one
+    client's Search Console data cannot show up under another. `only` is an account the user picked on purpose for this request."""
+    pick = only or b.connection_id
+    if not pick:
+        return []
+    c = db.get(GoogleConnection, pick)
+    return [c] if c and c.status == "active" and c.refresh_token_enc else []
+
+
 def _search_console(db: Session, b: Business, host: str):
     """(state, message, SearchConsole, property) for the business's site, from a connected Google account that can see it."""
-    conns = [c for c in db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None))) if gsc.has_scope(c)]
-    conns.sort(key=lambda c: c.id != b.connection_id)
+    conns = [c for c in _own_connections(db, b) if gsc.has_scope(c)]
     if not conns:
-        return "not_connected", "Connect a Google account that can see this site in Search Console (Integrations).", None, None
+        linked = db.get(GoogleConnection, b.connection_id) if b.connection_id else None
+        if linked and linked.status != "active":
+            return "not_connected", f"The Google account linked to this project ({linked.email}) is disconnected. Reconnect it in Integrations.", None, None
+        return "not_connected", "No Google account is linked to this project. Connect the account that owns this site in Search Console (Integrations) and link it to the project.", None, None
     notes: list[str] = []
     for conn in conns:
         try:
@@ -315,10 +368,7 @@ def _search_console(db: Session, b: Business, host: str):
             continue
         notes.append(f"{conn.email} has no verified property for {host}" + (f" (it has: {', '.join(have[:6])}{'…' if len(have) > 6 else ''})." if have else " (it has no verified properties at all)."))
     msg = " ".join(notes) or "No verified Search Console property for this site."
-    revoked = [c.email for c in db.scalars(select(GoogleConnection).where(GoogleConnection.status != "active"))]
-    if revoked:
-        msg += f" Disconnected accounts that may own it: {', '.join(revoked[:4])}. Reconnect them in Integrations."
-    return "no_property", msg + " Add and verify the site in Search Console, or connect the account that owns it.", None, None
+    return "no_property", msg + " Add and verify the site in Search Console, or link the account that owns it to this project.", None, None
 
 
 @router.get("/domain-intel")
@@ -356,15 +406,15 @@ def domain(range: str = "3m", country: str | None = None, device: str | None = N
     internal = domain_checks.is_internal(b)
     out: dict = {"domain": host or None, "name": b.name, "internal": internal, "limits": domain_checks.limits_for(internal), "market": market.summary(b), "range": range if range in gsc.RANGES else "3m",
                  "ai": _ai_search(db, b, host), "traffic": {"state": "not_connected"}, "unavailable": {}}
-    conns = list(db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None))))
-    if connection_id:
-        conns = [c for c in conns if c.id == connection_id]
-    conns.sort(key=lambda c: (c.id != b.connection_id, not gsc.has_scope(c)))
-    out["traffic"]["accounts"] = [{"id": c.id, "email": c.email, "search_console": gsc.has_scope(c)} for c in conns]
+    conns = _own_connections(db, b, connection_id)
+    # The accounts offered to pick from are only listed while the project has none of its own.
+    pickable = [] if conns else list(db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None)).order_by(GoogleConnection.email)))
+    out["traffic"]["accounts"] = [{"id": c.id, "email": c.email, "search_console": gsc.has_scope(c)} for c in (conns or pickable)]
+    out["traffic"]["linked"] = bool(b.connection_id)
     if not host:
         out["traffic"] = {"state": "no_website", "message": "Add the project's website first: Search Console is matched by its domain."}
     elif not conns:
-        out["traffic"].update(message="Connect a Google account that can see this site in Search Console.")
+        out["traffic"].update(message="No Google account is linked to this project. Connect the account that owns this site in Search Console (Integrations) and link it to the project.")
     elif not any(gsc.has_scope(c) for c in conns):
         out["traffic"].update(state="scope_missing", message="The connected Google account hasn't granted Search Console access. Connect it again to add it.")
     else:
