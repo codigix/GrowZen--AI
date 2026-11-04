@@ -58,7 +58,7 @@ class Fetcher:
         self._host_locks: dict[str, asyncio.Lock] = {}
         self._host_next: dict[str, float] = {}
         self._host_delay: dict[str, float] = {}
-        self._public_hosts: dict[str, bool] = {}
+        self._public_hosts: dict[str, tuple[bool, float]] = {}  # host -> (resolves to a public address, when that was looked up)
 
     def _say(self, msg: str, level: int = 1) -> None:
         if self.settings.verbose >= level:
@@ -135,12 +135,15 @@ class Fetcher:
         if has_skipped_extension(url):
             return "file type is not an HTML page"
         host = urlsplit(url).hostname or ""
+        self._trim()
         if is_blocked_host(host):
             return "private/internal host is not crawled"
         if self.settings.dns_check:
-            if host not in self._public_hosts:
-                self._public_hosts[host] = await resolves_to_public(host)
-            if not self._public_hosts[host]:
+            now = asyncio.get_running_loop().time()
+            known = self._public_hosts.get(host)
+            if known is None or now - known[1] > self.settings.dns_ttl:  # the answer expires: a host's DNS can change during a crawl that runs for days
+                known = self._public_hosts[host] = (await resolves_to_public(host), now)
+            if not known[0]:
                 return "host does not resolve to a public address"
         rp = await self._robots_for(url)  # may raise RobotsUnreachable
         if rp.disallow_all:
@@ -196,6 +199,42 @@ class Fetcher:
     def _origin(url: str) -> str:
         parts = urlsplit(url)
         return f"{parts.scheme}://{parts.netloc}"
+
+    # ---- bounded caches --------------------------------------------------
+
+    def _trim(self) -> None:
+        """The per-host and per-origin dictionaries only ever grew, and the crawler runs for days over up to 100,000 sites.
+        Once any of them passes `max_cache_entries`, entries that no longer do anything are dropped: elapsed politeness gaps, idle locks,
+        expired robots rules and DNS answers, and finished failure back-offs. If that is not enough, the oldest half goes. All of it is a
+        cache: a dropped entry costs one repeated lookup, never a skipped check. Synchronous, so no other task can interleave."""
+        s = self.settings
+        cap = s.max_cache_entries
+        if max(len(self._host_next), len(self._host_locks), len(self._robots), len(self._robots_locks), len(self._robots_fail),
+               len(self._public_hosts), len(self._slash_hosts), len(self._host_delay)) <= cap:
+            return
+        now = asyncio.get_running_loop().time()
+        for host in [h for h, t in self._host_next.items() if t <= now]:  # the politeness gap has passed: nothing left to wait for
+            del self._host_next[host]
+        for host in [h for h, lock in self._host_locks.items() if not lock.locked() and h not in self._host_next]:
+            del self._host_locks[host]
+        for origin in [o for o, (_, loaded) in self._robots.items() if now - loaded >= s.robots_ttl]:
+            del self._robots[origin]
+            self._host_delay.pop(urlsplit(origin).hostname or "", None)
+        for origin in [o for o, lock in self._robots_locks.items() if not lock.locked() and o not in self._robots]:
+            del self._robots_locks[origin]
+        for origin in [o for o, (_, retry_at) in self._robots_fail.items() if now > retry_at + 900.0]:  # past the longest back-off
+            del self._robots_fail[origin]
+        for host in [h for h, (_, looked_up) in self._public_hosts.items() if now - looked_up > s.dns_ttl]:
+            del self._public_hosts[host]
+        # still too many live entries: keep the newest half
+        for cache, age in ((self._robots, lambda v: v[1]), (self._public_hosts, lambda v: v[1]), (self._host_next, lambda v: v)):
+            if len(cache) > cap:
+                for key in sorted(cache, key=lambda k: age(cache[k]))[: len(cache) - cap // 2]:
+                    del cache[key]
+        if len(self._slash_hosts) > cap:
+            self._slash_hosts.clear()  # re-learned from the next redirect: one extra request per site
+        if len(self._host_delay) > cap:
+            self._host_delay.clear()   # re-read with the next robots.txt
 
     # ---- robots.txt ------------------------------------------------------
 

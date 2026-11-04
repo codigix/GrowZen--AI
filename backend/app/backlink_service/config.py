@@ -109,6 +109,8 @@ class Settings:
     max_query_variants: int = 5        # pages that differ only by ?query are read this many times per path
     robots_ttl: float = 6 * 3600.0     # robots.txt is read again after this long (the crawler runs for days)
     dns_check: bool = True
+    dns_ttl: float = 3600.0            # a host's "resolves to a public address" answer is checked again after this long
+    max_cache_entries: int = 20_000    # per-host/per-origin caches in the fetcher: above this, idle and expired entries are dropped
     verbose: int = field(default_factory=lambda: _int("BACKLINK_DB_VERBOSE", 1))  # 0 off, 1 pages + backlinks
 
 

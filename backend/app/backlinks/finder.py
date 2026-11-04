@@ -17,6 +17,23 @@ from .urls import host_of, normalize_url, registrable_domain
 log = logging.getLogger("seo.backlinks.finder")
 
 
+@dataclass(frozen=True)
+class TargetSnapshot:
+    """A finder target as plain, immutable data: safe to keep for a whole crawl run and to share between sessions or threads
+    (an ORM row is bound to the session that loaded it and would be expired by the next commit)."""
+    id: int
+    kind: str
+    host: str
+    normalized_value: str
+
+
+def load_targets(db: Session) -> tuple[TargetSnapshot, ...]:
+    """Every active target (any business), read once. Pass the result as `targets=` to `record_matches` (via the engine) for each page of a run
+    instead of reading the table per page; take a new snapshot at the start of the next run, which is when changes to the targets are picked up."""
+    return tuple(TargetSnapshot(t.id, t.kind, t.host, t.normalized_value)
+                 for t in db.scalars(select(BacklinkFinderTarget).where(BacklinkFinderTarget.active.is_(True)).order_by(BacklinkFinderTarget.id)))
+
+
 @dataclass
 class ParsedTarget:
     kind: str  # domain | subdomain | url
@@ -40,7 +57,7 @@ def parse_target(raw: str) -> ParsedTarget:
     return ParsedTarget(kind=("domain" if host == reg else "subdomain"), host=host, normalized_value=host)
 
 
-def matches(target: BacklinkFinderTarget, link_target_url: str) -> bool:
+def matches(target: "BacklinkFinderTarget | TargetSnapshot", link_target_url: str) -> bool:
     if target.kind == "url":
         try:
             return normalize_url(link_target_url) == target.normalized_value
@@ -54,11 +71,15 @@ def matches(target: BacklinkFinderTarget, link_target_url: str) -> bool:
     return host == target.host  # subdomain: exact host only, not its own children
 
 
-def record_matches(db: Session, source_url: str, source_domain: str, found_links: list, now: datetime | None = None) -> int:
+def record_matches(db: Session, source_url: str, source_domain: str, found_links: list, now: datetime | None = None,
+                   targets: "tuple[TargetSnapshot, ...] | None" = None) -> int:
     """Check every link found on a crawled page against active finder targets (any business). Stores new matches.
-    Returns how many new matches were stored, so the caller can decide whether this source site is worth exploring further."""
-    targets = list(db.scalars(select(BacklinkFinderTarget).where(BacklinkFinderTarget.active.is_(True))))
-    if not targets or not found_links:
+    Returns how many new matches were stored, so the caller can decide whether this source site is worth exploring further.
+    `targets` is a snapshot from `load_targets`; without one the table is read now (one query per call)."""
+    if not found_links:
+        return 0
+    targets = load_targets(db) if targets is None else targets
+    if not targets:
         return 0
     now = now or utcnow()
     new = 0
