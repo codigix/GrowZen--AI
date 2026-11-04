@@ -213,6 +213,7 @@ export default function SitePublishPanel({ b, article, featured, toast, onPublis
   const [ask, confirmNode] = useDoubleConfirm();
   const [loadError, setLoadError] = useState('');
   const [detecting, setDetecting] = useState(false);
+  const [detectUrl, setDetectUrl] = useState('');  // the address to read the technology from (editable; the account's website is not changed)
   const [method, setMethod] = useState('wordpress');
   const [form, setForm] = useState(EMPTY_FORM);
   const [connSteps, setConnSteps] = useState([]);
@@ -229,6 +230,7 @@ export default function SitePublishPanel({ b, article, featured, toast, onPublis
 
   const apply = (d) => {
     setInteg(d);
+    setDetectUrl(u => u || d.detected?.url || d.website || '');
     const m = d.method || d.publishing?.method || d.detected?.method;
     if (m && METHODS[m]) setMethod(m);
     setForm(f => ({ ...f, url: f.url || d.base_url || d.detected?.url || d.website || '', username: f.username || d.username || '' }));
@@ -236,7 +238,8 @@ export default function SitePublishPanel({ b, article, featured, toast, onPublis
 
   const detect = () => {
     setDetecting(true); setLoadError('');
-    return api(`/businesses/${b.id}/site-integration/detect`, { method: 'POST', body: {} })
+    const url = detectUrl.trim();
+    return api(`/businesses/${b.id}/site-integration/detect`, { method: 'POST', body: url ? { url } : {} })
       .then(apply).catch(e => setLoadError(e.message || String(e))).finally(() => setDetecting(false));
   };
 
@@ -319,10 +322,14 @@ export default function SitePublishPanel({ b, article, featured, toast, onPublis
         <Num n={1} done={Boolean(det?.reachable)}>Your website&apos;s technology</Num>
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <Globe size={14} className="text-slate-500" />
-            <span className="font-mono text-slate-700">{b.website || 'No website on this business'}</span>
-            <Button size="sm" icon={RefreshCw} busy={detecting} onClick={detect} disabled={!b.website} className="ml-auto">{det ? 'Detect again' : 'Detect'}</Button>
+            <label className="relative flex-1 min-w-[220px]">
+              <Globe size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input className={`${inputCls} pl-8 font-mono`} value={detectUrl} onChange={e => setDetectUrl(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && detectUrl.trim() && !detecting) detect(); }} placeholder="https://yourwebsite.com" aria-label="Website address to check" />
+            </label>
+            <Button size="sm" icon={RefreshCw} busy={detecting} onClick={detect} disabled={!detectUrl.trim()}>{det ? 'Detect again' : 'Detect'}</Button>
           </div>
+          <p className="text-[11px] text-slate-500">Change the address to check another one (e.g. https://sachspune.com instead of an IP address). Only the technology check uses it; your account&apos;s registered website stays the same.</p>
           {detecting && !det && <p className="text-slate-500 flex items-center gap-2"><Loader2 size={13} className="animate-spin" /> Reading your homepage, headers and API…</p>}
           {loadError && <p className="text-rose-700">{loadError}</p>}
           {det && !det.reachable && <p className="text-rose-700">{det.error}</p>}

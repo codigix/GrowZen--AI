@@ -43,3 +43,6 @@ backend/uploads/
 .DS_Store
 Thumbs.db
 *.log
+
+# HTML website deployment targets and credentials (server side only; see docs/html-site-deployment.md)
+backend/html_deploy.json

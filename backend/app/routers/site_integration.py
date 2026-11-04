@@ -38,7 +38,7 @@ def public(row: SiteIntegration | None, b: Business) -> dict:
         return {"status": "not_connected", "website": b.website, "platform": None, "method": None, "detected": None, "config": None, "publishing": None}
     detected = row.detected or {}
     return {"status": row.status, "website": b.website, "platform": row.platform, "method": row.method, "base_url": row.base_url, "username": row.username,
-            "config": {k: v for k, v in (row.config or {}).items() if k not in ("token",)} or None, "detected": row.detected, "publishing": detected.get("publishing"),
+            "config": {k: v for k, v in (row.config or {}).items() if k not in ("token", "html_site")} or None, "detected": row.detected, "publishing": detected.get("publishing"),
             "last_checked_at": _utc(row.last_checked_at), "last_error": row.last_error}
 
 
@@ -107,7 +107,8 @@ def connect(body: ConnectIn, b: Business = Depends(get_business), db: Session = 
         row.method, row.base_url = body.method, (info.get("base") if body.method == "shopify" else sp.normalize_url(body.url))
         row.username = body.username if body.method == "wordpress" else None
         row.secret_enc = crypto.seal(" ".join((body.secret or "").split()) if body.method in ("wordpress", "shopify") else body.secret.strip())
-        row.config = keep or None
+        html = (row.config or {}).get("html_site")  # the HTML Website settings share this row: never dropped here
+        row.config = ({**keep, "html_site": html} if html else keep) or None
         row.platform = row.platform if row.platform not in (None, "unknown") else body.method
         row.status, row.last_error = "connected", None
     elif not ok:
@@ -135,7 +136,9 @@ def recheck(b: Business = Depends(get_business), db: Session = Depends(get_db)):
 def disconnect(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     row = get_row(db, b)
     if row:
+        html = (row.config or {}).get("html_site")  # disconnecting WordPress & co. keeps the HTML Website settings
         row.method = row.base_url = row.username = row.secret_enc = row.last_error = row.config = None
+        row.config = {"html_site": html} if html else None
         row.status = "not_connected"
         db.commit()
 
