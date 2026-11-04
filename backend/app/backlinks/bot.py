@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, aliased
 
 from ..db import utcnow
 from ..models import Business
-from . import engine, frontier, renderer, stop, sync, tasks
+from . import engine, finder, frontier, renderer, stop, sync, tasks
 from .models import Backlink, BacklinkProvenance, BiBotConfig, BiDomain, BiPage, BiTrackedTarget, CrawlAttempt, FrontierUrl
 from .urls import registrable_domain
 
@@ -96,6 +96,7 @@ def run_cycle(db: Session, fetcher: engine.PageFetcher, business_id: int, budget
         stats["seeded"] = seed_targets(db, business_id)
         frontier.recover_stale(db)
         monitored = engine.tracked_domains(db)
+        finder_targets = finder.load_targets(db)  # one read per run; a target added meanwhile is picked up by the next run
         mine = list(db.scalars(select(BiTrackedTarget.domain).where(BiTrackedTarget.business_id == business_id, BiTrackedTarget.monitoring_enabled.is_(True))))
         while stats["pages"] < cfg.pages_per_run and clock() < deadline and not stop.stopping():
             rows = frontier.take_next(db, min(10, cfg.pages_per_run - stats["pages"]), business_id=business_id, tracked=mine)
@@ -111,7 +112,7 @@ def run_cycle(db: Session, fetcher: engine.PageFetcher, business_id: int, budget
             idle = 0
             for row in rows:
                 try:
-                    out = engine.crawl_row(db, fetcher, row, monitored, max_hops=cfg.max_hops, render=budget)
+                    out = engine.crawl_row(db, fetcher, row, monitored, max_hops=cfg.max_hops, render=budget, finder_targets=finder_targets)
                     stats["pages"] += 1
                     stats["queued"] += out.get("queued", 0)
                     stats["new_backlinks_all"] += out.get("new_backlinks", 0)

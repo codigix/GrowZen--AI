@@ -5,13 +5,15 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..db import utcnow
 from .models import BiDomain, FrontierUrl
 from .repository import get_domain
-from .urls import normalize_url, url_hash
+from .urls import host_of, normalize_url, url_hash
 
 MAX_DEPTH = 5
 MAX_URL_LENGTH = 2000
@@ -82,6 +84,79 @@ def enqueue(db: Session, url: str, source: str = "link", depth: int = 0, discove
         row = db.scalar(select(FrontierUrl).where(FrontierUrl.url_hash == h))
         return _upgrade(row, priority, queue, now, business_id) if row is not None else None
     return row
+
+
+_LOOKUP_CHUNK = 500  # URL hashes per IN (...) lookup: well under every driver's bind-parameter limit
+_DOMAIN_LOCK_NAMESPACE = 7_274_002  # first key of the two-key advisory lock taken per domain (see enqueue_many)
+
+
+def _domain_capacity_locks(db: Session, domain_ids: Iterable[int]) -> None:
+    """Serialise capacity checks per domain across concurrent transactions (PostgreSQL advisory locks, released at commit/rollback).
+    Without it two workers can both count 4,999 rows and both insert, passing MAX_URLS_PER_DOMAIN. Locks are taken in id order so two
+    batches touching the same domains can never deadlock. SQLite has a single writer, so nothing is needed there."""
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    for did in sorted(set(domain_ids)):
+        db.execute(select(func.pg_advisory_xact_lock(_DOMAIN_LOCK_NAMESPACE, did)))
+
+
+def enqueue_many(db: Session, urls: Iterable[str], source: str = "link", depth: int = 0, discovered_from: str | None = None, priority: float = 0.0,
+                 queue: str = "discovery", now: datetime | None = None, hop: int = 0, business_id: int | None = None) -> list[FrontierUrl]:
+    """`enqueue` for many URLs sharing one set of attributes, in a constant number of queries instead of several per URL.
+
+    Same rules as `enqueue`: a known URL keeps its one row (upgraded by a higher priority or the verification queue), a new one is dropped when it
+    is too deep, a likely trap, or its domain is at MAX_URLS_PER_DOMAIN. Returns the row of every URL that is queued afterwards (known or new), in
+    input order, so `len(result)` is what a per-URL `if enqueue(...)` loop would have counted.
+
+    1. normalise and drop duplicates in memory; 2. one lookup for the rows that already exist; 3. one lookup (plus creation of the missing ones)
+    for the domains; 4. under a per-domain lock, one GROUP BY for how full each domain is; 5. one INSERT ... ON CONFLICT DO NOTHING per batch."""
+    now = now or utcnow()
+    candidates: dict[bytes, str] = {}
+    for url in urls:
+        try:
+            norm = normalize_url(url)
+        except ValueError:
+            continue
+        if depth > MAX_DEPTH or (is_crawl_trap(norm) and source != "user"):
+            continue
+        candidates.setdefault(url_hash(norm), norm)
+    if not candidates:
+        return []
+
+    existing: dict[bytes, FrontierUrl] = {}
+    hashes = list(candidates)
+    for i in range(0, len(hashes), _LOOKUP_CHUNK):
+        for row in db.scalars(select(FrontierUrl).where(FrontierUrl.url_hash.in_(hashes[i:i + _LOOKUP_CHUNK]))):
+            existing[row.url_hash] = _upgrade(row, priority, queue, now, business_id)
+    fresh = {h: u for h, u in candidates.items() if h not in existing}
+
+    if fresh:
+        by_host: dict[str, list[bytes]] = {}
+        for h, u in fresh.items():
+            by_host.setdefault(host_of(u), []).append(h)
+        domains = {d.host: d for d in db.scalars(select(BiDomain).where(BiDomain.host.in_(list(by_host))))}
+        for host in by_host:
+            if host not in domains:
+                domains[host] = get_domain(db, host, now)
+        _domain_capacity_locks(db, (d.id for d in domains.values()))
+        used = dict(db.execute(select(FrontierUrl.domain_id, func.count()).where(FrontierUrl.domain_id.in_([d.id for d in domains.values()]))
+                               .group_by(FrontierUrl.domain_id)).all())  # counted after the lock: other batches' committed rows are included
+        values = []
+        for host, host_hashes in by_host.items():
+            domain = domains[host]
+            for h in host_hashes[:max(0, MAX_URLS_PER_DOMAIN - used.get(domain.id, 0))]:
+                values.append({"domain_id": domain.id, "url": fresh[h], "url_hash": h, "queue": queue, "source": source, "discovered_from": discovered_from,
+                               "priority": priority, "depth": depth, "hop": hop, "business_id": business_id, "attempts": 0, "status": "pending",
+                               "discovered_at": now, "next_eligible_at": now})
+        if values:
+            dialect = db.get_bind().dialect.name
+            insert = pg_insert if dialect == "postgresql" else sqlite_insert
+            for i in range(0, len(values), _LOOKUP_CHUNK):
+                db.execute(insert(FrontierUrl).values(values[i:i + _LOOKUP_CHUNK]).on_conflict_do_nothing(index_elements=["url_hash"]))
+            for i in range(0, len(values), _LOOKUP_CHUNK):  # the ORM rows, so callers see what a single enqueue() returns
+                for row in db.scalars(select(FrontierUrl).where(FrontierUrl.url_hash.in_([v["url_hash"] for v in values[i:i + _LOOKUP_CHUNK]]))):
+                    existing[row.url_hash] = row
+    return [existing[h] for h in candidates if h in existing]
 
 
 def claimable(business_id: int, tracked: Iterable[str] = ()):

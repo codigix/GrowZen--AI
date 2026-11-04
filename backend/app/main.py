@@ -23,6 +23,8 @@ from .competitors import audit_router as competitor_audits, intel_router as comp
 from .auth import current_user
 from .backlinks import router as backlinks
 from .backlinks.router import lookup_router, outcomes_router, watch_router
+from .backlink_service import lifecycle as backlink_service
+from .backlink_service.api import router as backlink_service_router
 from .config import get_settings
 from .db import SessionLocal, engine
 from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website, workplan, tools
@@ -50,7 +52,9 @@ async def lifespan(_: FastAPI):
     finally:
         db.close()
     scheduler.start()
+    await backlink_service.start()
     yield
+    await backlink_service.stop()
     from .backlinks import stop as backlink_stop
     backlink_stop.STOP.set()  # let a running crawl finish its current page and leave, so shutdown does not hang
     scheduler.stop()
@@ -69,6 +73,7 @@ for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant,
 app.include_router(lookup_router, prefix=settings.api_prefix)
 app.include_router(outcomes_router, prefix=settings.api_prefix)
 app.include_router(watch_router, prefix=settings.api_prefix)
+app.include_router(backlink_service_router, prefix=settings.api_prefix)
 
 from .routers import analytics_by_email  # noqa: E402
 app.include_router(analytics_by_email.router, prefix=settings.api_prefix)

@@ -56,6 +56,7 @@ class FetchResult:
     ms: int = 0
     rendered: bool = False  # the body is the page after JavaScript ran (headless Chrome), not the raw HTML
     render_error: str | None = None
+    extract: PageExtract | None = None  # the parse of `body`, when the fetcher already had to make it (rendering check), so nobody parses it again
 
     @property
     def redirected(self) -> bool:
@@ -162,8 +163,15 @@ class PageFetcher:
         if render is not None and res.complete and res.body and res.status and 200 <= res.status < 300 and renderer.looks_js_rendered(res.body) and render.take():
             try:  # a JavaScript app shell: let a real browser build the page, and keep the result only if it actually has more links
                 html = (self._render or renderer.render)(norm)
-                if len(extract_page(html, norm).links) > len(extract_page(res.body, norm).links):
-                    res.body, res.rendered = html, True
+                raw_ex, rendered_ex = extract_page(res.body, norm), extract_page(html, norm)
+                chosen = raw_ex
+                if len(rendered_ex.links) > len(raw_ex.links):
+                    res.body, res.rendered, chosen = html, True, rendered_ex
+                try:
+                    if res.final_url is None or normalize_url(res.final_url) == norm:  # parsed against the right base URL only (no redirect)
+                        res.extract = chosen
+                except ValueError:
+                    pass
             except renderer.RenderError as exc:
                 res.render_error = str(exc)[:200]
                 log.info("Not rendered %s: %s", norm, exc)
@@ -183,21 +191,28 @@ def tracked_domains(db: Session, only_enabled: bool = True) -> set[str]:
     return set(db.scalars(q))
 
 
+def parse_result(res: FetchResult, page_url: str) -> PageExtract | None:
+    """The links and metadata of a fetched page, parsed once: reuses the parse the fetcher made, else makes it. None when there is no readable HTML."""
+    if res.status is not None and 200 <= res.status < 300 and res.body and res.complete:
+        return res.extract or extract_page(res.body, res.final_url or page_url)
+    return None
+
+
 def process_source_page(db: Session, page: BiPage, res: FetchResult, monitored: set[str] | None = None, now: datetime | None = None,
-                        discover: bool = True) -> dict:
+                        discover: bool = True, parsed: PageExtract | None = None, finder_targets: "tuple[finder.TargetSnapshot, ...] | None" = None) -> dict:
     """Apply one fetch of `page` to the graph. Returns counts. Caller commits.
 
     - Known backlinks on the page get an observation: found, absent (on a complete fetch), or no evidence (fetch failed).
     - With `discover`, links on the page to monitored target domains that we did not know yet are added as crawler-sourced backlinks.
+    `parsed` is the page's extract when the caller already has it (the page is then parsed once); `finder_targets` a snapshot from `finder.load_targets`.
     """
     now = now or utcnow()
     monitored = monitored if monitored is not None else tracked_domains(db)
     known = list(db.scalars(select(Backlink).where(Backlink.source_page_id == page.id)))
     out = {"links_seen": 0, "new_backlinks": 0, "observed": 0, "links_to_monitored": 0, "new_finder_matches": 0}
-    extract: PageExtract | None = None
+    extract = parsed if parsed is not None else parse_result(res, page.normalized_url)
     readable = bool(res.complete and res.status is not None and (200 <= res.status < 300 or res.status in (404, 410)))
-    if res.status is not None and 200 <= res.status < 300 and res.body and res.complete:
-        extract = extract_page(res.body, res.final_url or page.normalized_url)
+    if extract is not None:
         page.title = extract.title
         page.snippet = extract.snippet
         page.content_hash = hashlib.sha256(res.body.encode("utf-8", "ignore")).hexdigest()
@@ -208,7 +223,7 @@ def process_source_page(db: Session, page: BiPage, res: FetchResult, monitored: 
         found = list(extract.links)
         out["links_seen"] = len(found)
         out["links_to_monitored"] = sum(1 for ln in found if not ln.internal and _reg(ln.target_url) in monitored)
-        out["new_finder_matches"] = finder.record_matches(db, page.normalized_url, _reg(page.normalized_url), found, now)
+        out["new_finder_matches"] = finder.record_matches(db, page.normalized_url, _reg(page.normalized_url), found, now, finder_targets)
 
     # Pair the links we already track on this page with the links found now. Same target and same anchor wins first, so reordering the
     # links on a page does not swap their identities; whatever is left is paired in page order. Unpaired known links are absent from the
@@ -289,19 +304,22 @@ def crawl_sitemap(db: Session, fetcher: PageFetcher, row: FrontierUrl, monitored
         site = _reg(row.url)
         locs = [t.get_text(strip=True) for t in soup.find_all("loc")]
         child = bool(soup.find("sitemap"))
+        own: list[str] = []
         for loc in locs[: MAX_SITEMAP_CHILDREN if child else MAX_SITEMAP_URLS]:
             try:
                 if _reg(normalize_url(loc)) != site:
                     continue  # a sitemap may only vouch for its own site
             except (ValueError, IndexError):
                 continue
-            if frontier.enqueue(db, loc, "sitemap" if child else "sitemap_url", 1 if child else row.depth + 1, row.url, priority=OWN_SITE_PRIORITY if site in (monitored or ()) else max(0.0, row.priority - 10), hop=row.hop or 0,
-                                business_id=row.business_id):
-                out["queued"] += 1
+            own.append(loc)
+        out["queued"] += len(frontier.enqueue_many(db, own, "sitemap" if child else "sitemap_url", 1 if child else row.depth + 1, row.url,
+                                                   priority=OWN_SITE_PRIORITY if site in (monitored or ()) else max(0.0, row.priority - 10), hop=row.hop or 0,
+                                                   business_id=row.business_id))
     return out
 
 
-def crawl_row(db: Session, fetcher: PageFetcher, row: FrontierUrl, monitored: set[str] | None = None, follow_depth: int = 2, max_hops: int = 0, render=None) -> dict:
+def crawl_row(db: Session, fetcher: PageFetcher, row: FrontierUrl, monitored: set[str] | None = None, follow_depth: int = 2, max_hops: int = 0, render=None,
+              finder_targets: "tuple[finder.TargetSnapshot, ...] | None" = None) -> dict:
     """Process one claimed frontier row: fetch, update graph, enqueue what to explore next, and finish or retry the row.
 
     Exploration, in priority order: pages that link to a monitored domain (their whole site is worth a look), a tracked site's own pages and
@@ -313,7 +331,8 @@ def crawl_row(db: Session, fetcher: PageFetcher, row: FrontierUrl, monitored: se
     log.info("Crawling %s", row.url)
     res = fetcher.fetch(db, row.url, "verification" if row.queue == "verification" else "discovery", render)
     log.info("Fetched %s -> status=%s error=%s", row.url, res.status, res.error_code)
-    out = process_source_page(db, page, res, monitored)
+    ex = parse_result(res, page.normalized_url)  # the only parse of this page: matching, history and discovery below all use it
+    out = process_source_page(db, page, res, monitored, parsed=ex, finder_targets=finder_targets)
     out.update(url=row.url, http_status=res.status, error_code=res.error_code, queued=0, rendered=res.rendered)
     hop = row.hop or 0
     if res.error_code == "robots_disallowed":
@@ -324,8 +343,7 @@ def crawl_row(db: Session, fetcher: PageFetcher, row: FrontierUrl, monitored: se
         frontier.fail(db, row, res.error_code or f"http_{res.status}", retry_after=res.retry_after)
     else:
         frontier.complete(db, row)
-        if res.status < 300 and res.body and res.complete:
-            ex = extract_page(res.body, res.final_url or row.url)
+        if ex is not None:
             site = _reg(row.url)
             if row.source == "seed" and row.depth == 0:  # a tracked site's front door: find its sitemaps
                 rules = fetcher.rules_for(db, get_domain(db, row.url), row.url.split(":", 1)[0])
@@ -337,17 +355,20 @@ def crawl_row(db: Session, fetcher: PageFetcher, row: FrontierUrl, monitored: se
                     if frontier.enqueue(db, u, "sitemap" if u.endswith(".xml") else "linker", 0, row.url, priority=85.0, hop=0, business_id=row.business_id):
                         out["queued"] += 1
             if not ex.nofollow_all:
+                inside: list[str] = []
+                outside: list[str] = []
                 for ln in ex.links:
                     if ln.internal:
-                        if row.depth < follow_depth and frontier.enqueue(db, ln.target_url, "link", row.depth + 1, row.url,
-                                                                         priority=OWN_SITE_PRIORITY if site in monitored else max(0.0, row.priority - 5), hop=hop,
-                                                                         business_id=row.business_id):
-                            out["queued"] += 1
+                        if row.depth < follow_depth:
+                            inside.append(ln.target_url)
                     elif hop < max_hops:
                         tgt = _reg(ln.target_url)
-                        if tgt not in monitored and tgt not in SKIP_DOMAINS and frontier.enqueue(db, ln.target_url, "link", 0, row.url, priority=max(0.0, OUTWARD_PRIORITY - 10 * hop), hop=hop + 1,
-                                                                                                 business_id=row.business_id):
-                            out["queued"] += 1
+                        if tgt not in monitored and tgt not in SKIP_DOMAINS:
+                            outside.append(ln.target_url)
+                out["queued"] += len(frontier.enqueue_many(db, inside, "link", row.depth + 1, row.url, hop=hop, business_id=row.business_id,
+                                                           priority=OWN_SITE_PRIORITY if site in monitored else max(0.0, row.priority - 5)))
+                out["queued"] += len(frontier.enqueue_many(db, outside, "link", 0, row.url, priority=max(0.0, OUTWARD_PRIORITY - 10 * hop), hop=hop + 1,
+                                                           business_id=row.business_id))
     return out
 
 
@@ -355,12 +376,13 @@ def run_batch(db: Session, fetcher: PageFetcher, limit: int = 10, max_hops: int 
     """One worker tick: claim fair work from the frontier and process it. Commits after each URL so a crash loses at most one."""
     frontier.recover_stale(db)
     monitored = tracked_domains(db)
+    finder_targets = finder.load_targets(db)  # once per tick, not once per page
     rows = frontier.take_next(db, limit)
     db.commit()
     results = []
     for row in rows:
         try:
-            results.append(crawl_row(db, fetcher, row, monitored, max_hops=max_hops))
+            results.append(crawl_row(db, fetcher, row, monitored, max_hops=max_hops, finder_targets=finder_targets))
         except Exception as exc:  # one bad page must not stop the batch; the row is retried
             db.rollback()
             row = db.merge(row)

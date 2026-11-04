@@ -43,3 +43,6 @@ backend/uploads/
 .DS_Store
 Thumbs.db
 *.log
+
+# Downloaded browser binaries (too large for git)
+fortress-repo/browsers/
