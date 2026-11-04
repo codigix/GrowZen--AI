@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from ..config import get_settings
 from ..db import SessionLocal
@@ -33,6 +33,13 @@ def tick() -> dict[str, int]:
         except Exception as exc:
             log.warning("IMAP poll failed: %s", exc)
         out["onboarded"] = pipeline.process_waiting(db)
+        try:  # projects created before a job type existed get its schedule row (weekly plan, monthly site research)
+            from ..models import Business
+            for b in db.scalars(select(Business).where(Business.status != "paused")):
+                schedules.ensure_jobs(db, b)
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            log.warning("Schedule backfill failed: %s", exc)
         out["jobs"] = schedules.run_due(db)
         out["posts"] = site_publish.run_due_scheduled(db)  # blog posts held for a chosen time
     finally:
@@ -62,6 +69,19 @@ def bot_tick() -> None:
         db.close()
 
 
+def posts_tick() -> int:
+    """Articles scheduled in GrowZen, checked every minute (the main tick is slower). Rows are claimed one by one, so
+    this and the main tick can never publish the same post twice."""
+    db = SessionLocal()
+    try:
+        return site_publish.run_due_scheduled(db)
+    except Exception as exc:
+        log.warning("Scheduled posts tick failed: %s", exc)
+        return 0
+    finally:
+        db.close()
+
+
 def start() -> None:
     global _scheduler
     s = get_settings()
@@ -69,6 +89,7 @@ def start() -> None:
         return
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.add_job(tick, "interval", seconds=s.scheduler_tick_seconds, id="seo-tick", max_instances=1, coalesce=True)
+    _scheduler.add_job(posts_tick, "interval", seconds=s.scheduled_posts_tick_seconds, id="scheduled-posts", max_instances=1, coalesce=True)
     if s.backlink_bot_auto_enabled:
         _scheduler.add_job(bot_tick, "interval", seconds=60, id="backlink-bot", max_instances=1, coalesce=True)
     _scheduler.start()

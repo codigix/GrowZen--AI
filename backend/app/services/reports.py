@@ -40,7 +40,7 @@ def monthly_summary(db: Session, b: Business, month: str | None = None) -> dict[
     cur, prev = _sums(db, b, start, end), _sums(db, b, pstart, pend)
     leads = db.scalar(select(func.count(Lead.id)).where(Lead.business_id == b.id, Lead.lead_date.between(start, end))) or 0
     new_reviews = db.scalar(select(func.count(Review.id)).where(Review.business_id == b.id, Review.review_date.between(start, end))) or 0
-    latest = audits.latest(db, b)
+    latest = audits.latest(db, b, with_result=False)
     scores = {k: a.score for k, a in latest.items()}
     fixes = sorted((i for a in latest.values() for i in a.issues), key=lambda i: {"critical": 0, "serious": 1, "warning": 2}.get(i.get("level"), 3))[:5]
     kws = [{"keyword": k.keyword, "rank": k.rank, "prev_rank": k.prev_rank} for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.rank.is_not(None)).limit(10))]

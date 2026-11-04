@@ -122,5 +122,12 @@ class SSRFSafeTransport(httpx.HTTPTransport):
     (httpx calls the transport once per hop when follow_redirects=True)."""
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
+        original = request.url
         _pin(request)
-        return super().handle_request(request)
+        try:
+            return super().handle_request(request)
+        finally:
+            # The pinned IP is only for the connection. Leaving it on the request made `response.url` the bare IP, so callers took the
+            # IP for the site's address: relative redirects and links resolved to it, and a later request to that IP (with the IP as
+            # Host) was answered by the server's default site, often a different customer's.
+            request.url = original

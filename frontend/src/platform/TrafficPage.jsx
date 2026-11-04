@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend as ChartLegend } from 'recharts';
 import { Activity, Users, UserPlus, MousePointerClick, Zap, Eye, Clock, Gauge, PlugZap, RefreshCw, Radio, Search } from 'lucide-react';
-import { SeoShell, Card, Stat, Badge, Button, ErrorNote, Field, Empty, Tabs, inputCls, SERIES, INK, SkPage } from './SeoUi';
+import { SeoShell, useBusinesses, Card, Stat, Badge, Button, ErrorNote, Field, Empty, Tabs, inputCls, SERIES, INK, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 
 /**
@@ -395,11 +395,180 @@ function Realtime({ email, property, name, pages }) {
   );
 }
 
-function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: viewProp, initialView = 'snap', forBusiness = false }) {
+/**
+ * Right-hand panel. Everything is computed from the loaded report, so it changes as the site grows:
+ *  - stage (starter / growing / established) from sessions in the period, with different advice for each
+ *  - "Based on your data": rules that quote your own numbers, pages, cities and sources, each with an example
+ *  - "Today's focus": 3 actions that rotate every day (by date) and can be ticked off; ticks are remembered per day
+ *  - "Since your last check": change against the snapshot saved the last time this site was viewed
+ */
+const SNAP_KEY = 'traffic.snapshot';
+const DONE_KEY = 'traffic.done';
+const today = () => new Date().toISOString().slice(0, 10);
+const dayNo = () => Math.floor(Date.now() / 86400000);
+const safeGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d; } catch (e) { return d; } };
+const safeSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage may be blocked */ } };
+
+const STAGES = {
+  starter: { label: 'Getting started', tone: 'amber', next: 'Goal: 500 sessions per month. Focus on being found: Google Business Profile, core pages, and getting indexed.' },
+  growing: { label: 'Growing', tone: 'blue', next: 'Goal: 5,000 sessions per month. Focus on more content, local pages and reviews.' },
+  established: { label: 'Established', tone: 'green', next: 'Focus on conversions, repeat visitors and pages that rank 5-15 so they reach the top 3.' }
+};
+
+// Daily action pool. `stage` limits who sees it; `ex` is a concrete example. {city} and {page} are filled from the report.
+const POOL = [
+  { id: 'gbp-post', stage: ['starter', 'growing', 'established'], t: 'Publish one Google Business Profile post', ex: 'Example: "Free ENT check-up camp this Sunday in {city} - call to book".' },
+  { id: 'review', stage: ['starter', 'growing', 'established'], t: 'Ask 3 recent patients or customers for a Google review', ex: 'Example: send a WhatsApp message with your review link right after a visit.' },
+  { id: 'city-page', stage: ['starter', 'growing'], t: 'Write one page for a service in {city}', ex: 'Example: "Best <service> in {city}" with prices, doctors or team, address and a booking button.' },
+  { id: 'index', stage: ['starter'], t: 'Check that your main pages are indexed', ex: 'Example: search "site:yourdomain.com" on Google, then submit missing pages in Search Console.' },
+  { id: 'directories', stage: ['starter', 'growing'], t: 'Add or fix one directory listing', ex: 'Example: Justdial, Practo, Sulekha or IndiaMART with the same name, address and phone number.' },
+  { id: 'faq', stage: ['starter', 'growing', 'established'], t: 'Add 3 real customer questions as FAQs on "{page}"', ex: 'Example: "How much does it cost?", "How long does it take?", "Is it covered by insurance?".' },
+  { id: 'internal', stage: ['growing', 'established'], t: 'Add internal links to "{page}" from 3 related pages', ex: 'Example: link the words "cochlear implant" or your service name to the matching page.' },
+  { id: 'title', stage: ['growing', 'established'], t: 'Rewrite one page title to include a search phrase and the city', ex: 'Example: "ENT Surgeon in Pimpri Chinchwad | Hospital Name" (under 60 characters).' },
+  { id: 'video', stage: ['growing', 'established'], t: 'Post one short video that answers a common question', ex: 'Example: a 40-second Reel "3 signs your child needs a hearing test", linked to the page.' },
+  { id: 'speed', stage: ['starter', 'growing', 'established'], t: 'Run PageSpeed Insights on "{page}"', ex: 'Example: compress images over 200 KB and remove unused scripts to pass the mobile test.' },
+  { id: 'update', stage: ['growing', 'established'], t: 'Update your oldest blog post with new facts and the current date', ex: 'Example: refresh costs, add a new FAQ and change the "last updated" line.' },
+  { id: 'backlink', stage: ['growing', 'established'], t: 'Ask one partner to link to you', ex: 'Example: an NGO, college, sponsor or local news site that you worked with.' },
+  { id: 'conv', stage: ['growing', 'established'], t: 'Check that call, WhatsApp and form clicks are tracked as key events', ex: 'Example: in GA4, mark "click_to_call" and "form_submit" as key events.' },
+  { id: 'story', stage: ['established'], t: 'Publish one customer story (with consent)', ex: 'Example: what the problem was, how it was solved, and a quote.' },
+  { id: 'reengage', stage: ['established'], t: 'Message past customers about a new service or offer', ex: 'Example: WhatsApp broadcast with one link to the relevant page.' }
+];
+
+function Suggestions({ data }) {
+  const r = data?.matched ? data.reports?.[0] : null;
+  const [done, setDone] = useState(() => { const d = safeGet(DONE_KEY, {}); return d.date === today() ? d : { date: today(), ids: [] }; });
+  const [since, setSince] = useState(null);
+
+  const m = useMemo(() => {
+    if (!r) return null;
+    const t = r.totals || {};
+    const channels = r.channels || [];
+    const total = channels.reduce((a, c) => a + (c.sessions || 0), 0);
+    const chan = (re) => channels.find(c => re.test(c.channel));
+    const share = (c) => (total && c ? (c.sessions / total) * 100 : 0);
+    const devs = r.devices || [];
+    const devTotal = devs.reduce((a, d) => a + (d.sessions || 0), 0);
+    const mobile = devs.find(d => /mobile/i.test(d.device));
+    const pages = shown(r.pages);
+    const cities = shown(r.cities);
+    const sessions = t.sessions || 0;
+    const days = Math.max(1, r.period?.days || 28);
+    const perMonth = (sessions / days) * 30;
+    const stage = perMonth < 500 ? 'starter' : perMonth < 5000 ? 'growing' : 'established';
+    const nvr = r.new_vs_returning || [];
+    return {
+      t, ch: r.change_percent || {}, stage, sessions, perMonth, days, pages, cities,
+      organic: share(chan(/organic search/i)), social: share(chan(/social/i)), referral: share(chan(/referral/i)),
+      mobilePct: devTotal && mobile ? (mobile.sessions / devTotal) * 100 : 0,
+      topCity: cities[0]?.city, topPage: pages[0],
+      weakPage: pages.filter(p => p.views >= 10 && p.bounce_rate > 70).sort((a, b) => b.views - a.views)[0],
+      returning: nvr.filter(p => p.kind === 'returning').reduce((a, p) => a + p.active_users, 0),
+      newUsers: nvr.filter(p => p.kind === 'new').reduce((a, p) => a + p.active_users, 0),
+      keyEvents: t.keyEvents || 0
+    };
+  }, [r]);
+
+  // Compare with the snapshot from the last day this site was checked, then save today's numbers (once per day).
+  useEffect(() => {
+    if (!m) return;
+    const all = safeGet(SNAP_KEY, {});
+    const prev = all[r.property];
+    if (prev && prev.date !== today()) setSince(prev);
+    else if (prev && prev.since) setSince(prev.since);
+    if (!prev || prev.date !== today()) {
+      all[r.property] = {
+        date: today(), days: m.days, sessions: m.sessions, organic: m.organic,
+        since: prev ? { date: prev.date, days: prev.days, sessions: prev.sessions, organic: prev.organic } : undefined
+      };
+      safeSet(SNAP_KEY, all);
+    }
+  }, [m, r]);
+
+  const toggle = (id) => {
+    const ids = done.ids.includes(id) ? done.ids.filter(x => x !== id) : [...done.ids, id];
+    const next = { date: today(), ids };
+    setDone(next); safeSet(DONE_KEY, next);
+  };
+
+  if (!m) {
+    return (
+      <aside className="space-y-4 lg:sticky lg:top-24 self-start">
+        <Card title="Suggestions"><p className="text-13 text-slate-500">Load a website's traffic to see suggestions based on its own numbers. They change as the site grows and rotate every day.</p></Card>
+      </aside>
+    );
+  }
+
+  const fill = (txt) => txt.replace(/\{city\}/g, m.topCity || 'your city').replace(/\{page\}/g, m.topPage?.title || 'your main service page');
+
+  // Tips from the data, most important first. Each says what was seen, what to do, and an example.
+  const tips = [];
+  const { ch, organic, social, referral, mobilePct, topPage, weakPage, stage, keyEvents, returning, newUsers } = m;
+  if (m.sessions === 0) tips.push({ tone: 'red', h: 'No visits in this period', t: 'Check that the Analytics tag is on every page and that the website in this form is correct.', ex: 'Example: open your site, then look at "Realtime overview" here; your own visit should appear within a minute.' });
+  if (ch.sessions != null && ch.sessions <= -10) tips.push({ tone: 'red', h: `Sessions fell ${Math.abs(ch.sessions).toFixed(0)}%`, t: 'Find which channel dropped, then refresh the pages that lost traffic.', ex: 'Example: if Organic Search fell, open Search Console > Performance, compare dates and update the pages that lost clicks.' });
+  if (ch.sessions != null && ch.sessions >= 10) tips.push({ tone: 'green', h: `Sessions grew ${ch.sessions.toFixed(0)}%`, t: 'Find what worked and repeat it.', ex: topPage ? `Example: "${topPage.title}" is your top page; write 2 related posts and link them to it.` : 'Example: check which channel grew most and publish more in it.' });
+  if (organic < 30 && m.sessions > 0) tips.push({ tone: 'amber', h: `Organic search is ${organic.toFixed(0)}% of visits`, t: 'Too few people find you on Google.', ex: `Example: create "Best <service> in ${m.topCity || 'your city'}" pages and add the city and service to titles and headings.` });
+  if (organic >= 50) tips.push({ tone: 'green', h: `Organic search is ${organic.toFixed(0)}% of visits`, t: 'Good: Google is your main source. Protect it.', ex: 'Example: keep updating your top pages every few months and add FAQ schema.' });
+  if (social < 3 && stage !== 'starter') tips.push({ tone: 'blue', h: 'Almost no social traffic', t: 'Share every new page and link it from your profiles.', ex: 'Example: post a 30-second video each week with the page link in the bio and the caption.' });
+  if (referral < 3 && stage !== 'starter') tips.push({ tone: 'blue', h: 'Few other sites link to you', t: 'Build links from trusted local sites.', ex: 'Example: get listed in local business directories and ask partners for an "Our partners" link.' });
+  if (mobilePct > 60) tips.push({ tone: 'blue', h: `${mobilePct.toFixed(0)}% of visits are on mobile`, t: 'Make the phone experience the main one.', ex: 'Example: a sticky "Call now" and WhatsApp button, and text that is readable without zooming.' });
+  if (m.t.engagementRate != null && m.t.engagementRate < 50) tips.push({ tone: 'amber', h: `Engagement rate is ${Number(m.t.engagementRate).toFixed(0)}%`, t: 'Visitors leave fast.', ex: 'Example: move the booking or contact button above the fold and cut slow images.' });
+  if (weakPage) tips.push({ tone: 'amber', h: `"${weakPage.title}" has a ${Number(weakPage.bounce_rate).toFixed(0)}% bounce rate`, t: `${weakPage.views} views but most people leave.`, ex: 'Example: add a clear next step (button), related links and a short FAQ.' });
+  if (keyEvents === 0 && m.sessions > 50) tips.push({ tone: 'amber', h: 'No key events recorded', t: 'You cannot see what brings enquiries.', ex: 'Example: in GA4 mark call clicks and form submits as key events.' });
+  if (returning + newUsers > 30 && returning / (returning + newUsers) < 0.1) tips.push({ tone: 'blue', h: 'Few returning visitors', t: 'People visit once and do not return.', ex: 'Example: start a monthly health tips post and share it by WhatsApp or email.' });
+  if (m.topCity) tips.push({ tone: 'gray', h: `Most visitors come from ${m.topCity}`, t: 'Build more content for that area.', ex: `Example: add a "How to reach us from ${m.topCity}" section and Google Business Profile posts mentioning it.` });
+
+  // 3 daily actions: the pool for this stage, rotated by the date; ticked ones are kept for today.
+  const pool = POOL.filter(x => x.stage.includes(m.stage));
+  const start = dayNo() % pool.length;
+  const todays = [0, 1, 2].map(i => pool[(start + i * 4) % pool.length]).filter((x, i, a) => a.indexOf(x) === i);
+  const doneCount = todays.filter(x => done.ids.includes(x.id)).length;
+
+  const sincePct = since && since.days === m.days && since.sessions ? `${m.sessions >= since.sessions ? '+' : ''}${(((m.sessions - since.sessions) / since.sessions) * 100).toFixed(0)}%` : null;
+  const st = STAGES[m.stage];
+  return (
+    <aside className="space-y-4 lg:sticky lg:top-24 self-start">
+      <Card title="Your stage" action={<Badge tone={st.tone}>{st.label}</Badge>}>
+        <p className="text-13 text-slate-600">About {fmt(Math.round(m.perMonth))} sessions per month. {st.next}</p>
+        {sincePct && <p className="text-12 text-slate-500 mt-2">Since your last check ({since.date}): sessions {sincePct}{since.organic != null ? `, organic share ${since.organic.toFixed(0)}% to ${m.organic.toFixed(0)}%` : ''}.</p>}
+      </Card>
+
+      <Card title="Today's focus" subtitle={`${doneCount} of ${todays.length} done · new actions tomorrow`}>
+        <ul className="space-y-3">
+          {todays.map(x => (
+            <li key={x.id} className="text-13">
+              <label className="flex gap-2 cursor-pointer">
+                <input type="checkbox" className="mt-1" checked={done.ids.includes(x.id)} onChange={() => toggle(x.id)} />
+                <span>
+                  <span className={`font-semibold ${done.ids.includes(x.id) ? 'line-through text-slate-400' : 'text-slate-800'}`}>{fill(x.t)}</span><br />
+                  <span className="text-slate-500">{fill(x.ex)}</span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      <Card title="Based on your data" subtitle="Updates whenever the numbers change">
+        {tips.length ? (
+          <ul className="space-y-3.5">
+            {tips.slice(0, 6).map((x, i) => (
+              <li key={i} className="text-13">
+                <div className="flex items-start gap-2"><Badge tone={x.tone}>{x.tone === 'green' ? 'Good' : x.tone === 'red' ? 'Fix' : 'Tip'}</Badge><span className="font-semibold text-slate-800">{x.h}</span></div>
+                <div className="text-slate-600 mt-1">{x.t}</div>
+                <div className="text-slate-500 mt-0.5">{x.ex}</div>
+              </li>
+            ))}
+          </ul>
+        ) : <Empty>No issues found. Keep publishing and check again tomorrow.</Empty>}
+      </Card>
+    </aside>
+  );
+}
+
+function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: viewProp, initialView = 'snap' }) {
   const last = readLast();
-  // Tied to a business, the form starts from that business only, never from the last search (which may be another business's).
-  const [email, setEmail] = useState(defaultEmail || (forBusiness ? '' : last.email) || '');
-  const [website, setWebsite] = useState(defaultWebsite || (defaultEmail || forBusiness ? '' : last.website) || '');
+  const [email, setEmail] = useState(defaultEmail || last.email || '');
+  const [website, setWebsite] = useState(defaultWebsite || (defaultEmail ? '' : last.website) || '');
   const [days, setDays] = useState(last.days || 28);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -456,7 +625,8 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: view
   const needsConnect = error && (error.status === 409 || error.status === 404);
 
   return (
-    <div className="space-y-4">
+    <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4 items-start">
+    <div className="space-y-4 min-w-0">
       <Card title="Find website traffic" subtitle="Enter a website or domain, or the Google account that can open the site's Google Analytics. With only a website, every connected Google account is searched.">
         <form className="grid md:grid-cols-[1.4fr_1fr_140px_auto] gap-3 items-end" onSubmit={(e) => { e.preventDefault(); chosenProperty.current = null; load(); }}>
           <Field label="Website or domain" hint="https://example.com or example.com"><input className={inputCls} placeholder="example.com" value={website} onChange={(e) => setWebsite(e.target.value)} /></Field>
@@ -511,6 +681,8 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: view
       {!data && busy && <LiveLoader pages steps={['Finding your Analytics property', 'Checking access for the connected Google account', 'Loading traffic reports']} />}
       {!data && !error && !busy && <Empty>Enter a website or an email and press "Show traffic" to see users, sessions, channels, countries and top pages.</Empty>}
     </div>
+    <Suggestions data={data} />
+    </div>
   );
 }
 
@@ -527,14 +699,7 @@ export function BusinessTraffic({ b, view, initialView }) {
   );
 }
 
-/** The standalone page follows the business picked in the top-bar switcher: its website and its connected Google account. */
-function SelectedBusinessTraffic({ b }) {
-  const live = useApi(`/businesses/${b.id}/gbp/live`);
-  if (!live.data && !live.error) return <SkPage header={false} />;
-  const email = live.data?.connection?.email || ''; // no Google Business Profile connection: search by the website alone
-  return <Page key={`${b.id}-${email}`} defaultEmail={email} defaultWebsite={b.website || ''} auto forBusiness />;
-}
-
 export default function TrafficPage() {
-  return <SeoShell title="Website Traffic" subtitle="Visitors, sessions, channels, countries and pages from Google Analytics 4">{(b) => <SelectedBusinessTraffic key={b.id} b={b} />}</SeoShell>;
+  const { list } = useBusinesses();
+  return <SeoShell title="Website Traffic" subtitle="Visitors, sessions, channels, countries and pages from Google Analytics 4" needsBusiness={false} hideSwitcher>{(business) => (!list ? <SkPage header={false} /> : business ? <BusinessTraffic key={business.id} b={business} /> : <Page />)}</SeoShell>;
 }

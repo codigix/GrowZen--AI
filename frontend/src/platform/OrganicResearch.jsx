@@ -7,7 +7,8 @@ import {
 import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useUrlTab, useModulePath, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 import { IntelBar, section } from './DomainIntel';
-import { TrackedPositions, Th } from './SeoToolkit';
+import { Th } from './SeoToolkit';
+import OrganicPositions from './OrganicPositions';
 
 /**
  * Organic Rankings, laid out like an organic research report.
@@ -348,6 +349,32 @@ function PagesCard({ intel, research, onAll }) {
   );
 }
 
+/** Every subdomain of the site that could be found (certificate logs, the site's links, Google results), each checked live. */
+function DiscoveredSubdomains({ b }) {
+  const data = useApi(`/businesses/${b.id}/seo/subdomains`);
+  const d = data.data;
+  const tone = (s) => (s >= 200 && s < 300 ? 'green' : s >= 300 && s < 400 ? 'amber' : 'red');
+  return (
+    <Card title={d ? `Subdomains of ${d.root} (${d.total})` : 'Subdomains'} subtitle={d ? `${d.live} resolve and answer live. Found in certificate logs, your site's links and Google results.` : 'Searching certificate logs, the site and Google results…'} pad={false}
+      action={<Button size="sm" onClick={() => data.reload(true)} busy={data.loading && !!d}>Scan again</Button>}>
+      {data.error ? <p className="px-5 py-4 text-13 text-rose-600">{data.error.message}</p>
+        : !d ? <p className="px-5 py-8 text-13 text-slate-500">Finding subdomains and checking each one. This takes up to half a minute.</p>
+          : d.rows.length ? (
+            <div className="overflow-x-auto"><table className="w-full text-13 min-w-[760px]">
+              <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Subdomain</Th><Th>Status</Th><Th>Page title</Th><Th>Found in</Th></tr></thead>
+              <tbody className="divide-y divide-slate-100">{d.rows.map(x => (
+                <tr key={x.subdomain} className="hover:bg-slate-50">
+                  <td className="px-4 py-2.5"><a href={`https://${x.subdomain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{x.subdomain}<ExternalLink size={10} /></a>{x.main && <span className="ml-2 text-11 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">main</span>}</td>
+                  <td className="px-4 py-2.5">{!x.resolves ? <Badge>Not live</Badge> : x.status ? <Badge tone={tone(x.status)}>{x.status}</Badge> : <Badge tone="amber">No answer</Badge>}</td>
+                  <td className="px-4 py-2.5 text-slate-600 max-w-[320px] truncate" title={x.title || ''}>{x.title || '—'}</td>
+                  <td className="px-4 py-2.5 text-slate-500">{x.sources.join(', ')}</td>
+                </tr>))}</tbody>
+            </table></div>
+          ) : <p className="px-5 py-8 text-13 text-slate-500">No subdomain was found.</p>}
+    </Card>
+  );
+}
+
 function SubdomainsCard({ intel, research, full }) {
   const s = section(intel, 'subdomains');
   const rows = s.data || [];
@@ -392,7 +419,7 @@ function Overview({ intel, research, ai, days, setDays, go }) {
   );
 }
 
-function Positions({ b, intel }) {
+function Positions({ intel, research, days, setDays }) {
   const s = section(intel, 'keywords');
   const [q, setQ] = useState('');
   const [intent, setIntent] = useState('');
@@ -400,7 +427,7 @@ function Positions({ b, intel }) {
   const rows = (s.data?.rows || []).filter(r => (!q || r.keyword.toLowerCase().includes(q.toLowerCase())) && (!intent || r.intent === intent));
   return (
     <div className="space-y-4">
-      <TrackedPositions b={b} />
+      <OrganicPositions research={research} days={days} setDays={setDays} />
       <Card title={`Organic keywords ${s.data ? `(${fmt(s.data.total)})` : ''}`} subtitle="Every keyword the domain ranks for, from the data provider (the highest-traffic ones are listed)" pad={false}
         action={<div className="flex gap-2"><select value={intent} onChange={e => setIntent(e.target.value)} className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white cursor-pointer" aria-label="Intent"><option value="">All intents</option>{Object.entries(INTENT).filter(([k]) => k !== 'unknown').map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</select>
           <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter" className="h-8 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white outline-none focus:border-indigo-400" /></label></div>}>
@@ -544,12 +571,12 @@ function Page({ b }) {
       <ErrorNote>{err || (intel.error && intel.error.message)}</ErrorNote>
       <Tabs value={tab} onChange={setTab} tabs={TABS.map(([id, label]) => ({ id, label }))} />
       {tab === 'overview' && <Overview intel={d} research={research.data} ai={domain.data?.ai} days={days} setDays={setDays} go={setTab} />}
-      {tab === 'positions' && <Positions b={b} intel={d} />}
+      {tab === 'positions' && <Positions intel={d} research={research.data} days={days} setDays={setDays} />}
       {tab === 'changes' && <ChangesTab research={research.data} />}
       {tab === 'competitors' && <Competitors intel={d} research={research.data} />}
       {tab === 'topics' && <Topics b={b} />}
       {tab === 'pages' && <PagesTab intel={d} research={research.data} />}
-      {tab === 'subdomains' && <SubdomainsCard intel={d} research={research.data} full />}
+      {tab === 'subdomains' && <><DiscoveredSubdomains b={b} /><SubdomainsCard intel={d} research={research.data} full /></>}
       <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />Domain-wide figures (keywords, traffic, trend, pages, subdomains, competitors) are estimates from the data provider. Position changes and SERP features come from the Google rank checks of your tracked keywords (top 10 results). Nothing is filled in where a source has no data.</p>
     </div>
   );

@@ -58,3 +58,56 @@ def test_rank_checks_explain_a_missing_key_or_website(client, monkeypatch):
     r = client.post(f"/api/v1/businesses/{bid}/seo/check-ranks", json={})
     assert r.status_code == 400 and "SERPER_API_KEY" in r.json()["detail"]
     assert client.post(f"/api/v1/businesses/{bid}/seo/keyword-overview", json={"keyword": "dentist"}).status_code == 400
+
+
+def test_seed_keywords_then_rank_report_gives_advice_per_keyword(client):
+    bid = client.post("/api/v1/businesses", json={"name": "Acme Dental", "website": "https://acme.example", "primary_category": "Dentist", "city": "Pune"}).json()["id"]
+    assert client.get(f"/api/v1/businesses/{bid}/seo/rank-report").json()["state"] == "no_keywords"
+    added = client.post(f"/api/v1/businesses/{bid}/seo/seed-keywords").json()["added"]
+    assert added >= 1
+    assert client.post(f"/api/v1/businesses/{bid}/seo/seed-keywords").json()["added"] == 0  # idempotent
+    rep = client.get(f"/api/v1/businesses/{bid}/seo/rank-report").json()
+    assert rep["tracked"] == added and rep["rows"][0]["advice"][0]["level"] == "fix"
+
+
+def test_crawl_pages_needs_a_website_and_runs_in_the_background(client, monkeypatch):
+    from app.services import audits
+    seen = {}
+    monkeypatch.setattr(audits, "run", lambda db, b, kind, **o: seen.update(kind=kind, **o))
+    no_site = client.post("/api/v1/businesses", json={"name": "No Site Co"}).json()["id"]
+    assert client.post(f"/api/v1/businesses/{no_site}/seo/crawl-pages").status_code == 400
+    bid = client.post("/api/v1/businesses", json={"name": "Site Co", "website": "https://site-co.example"}).json()["id"]
+    assert client.post(f"/api/v1/businesses/{bid}/seo/crawl-pages?pages=999").status_code == 202
+    assert seen == {"kind": "onpage", "max_pages": 300}  # capped
+    assert "crawling" in client.get(f"/api/v1/businesses/{bid}/seo/top-pages-report").json()
+
+
+def test_subdomains_are_discovered_and_checked(client, monkeypatch):
+    from app.services import subdomains as sub
+    monkeypatch.setattr(sub, "from_certificates", lambda root: ["blog.site-co.example", "shop.site-co.example", "evil.other.com"])
+    monkeypatch.setattr(sub, "_probe", lambda h: {"subdomain": h, "resolves": True, "status": 200, "final_url": None, "title": None})
+    bid = client.post("/api/v1/businesses", json={"name": "Sub Co", "website": "https://www.site-co.example"}).json()["id"]
+    r = client.get(f"/api/v1/businesses/{bid}/seo/subdomains").json()
+    assert {x["subdomain"] for x in r["rows"]} == {"site-co.example", "blog.site-co.example", "shop.site-co.example"}
+    assert r["rows"][0]["main"] and r["root"] == "site-co.example"
+
+
+def test_projects_do_not_share_google_accounts_or_audit_history(client):
+    from app.db import SessionLocal
+    from app.models import GoogleConnection
+    a = client.post("/api/v1/businesses", json={"name": "Iso A", "website": "https://iso-a.example"}).json()["id"]
+    b = client.post("/api/v1/businesses", json={"name": "Iso B", "website": "https://iso-b.example"}).json()["id"]
+    db = SessionLocal()
+    conn = GoogleConnection(email="owner-of-a@example.com", status="active", refresh_token_enc="x", scopes="")
+    db.add(conn); db.commit(); db.refresh(conn)
+    db.close()
+    # B has no linked account: it is never tried against A's (or any) account, and no other account's address is named
+    r = client.get(f"/api/v1/businesses/{b}/seo/domain").json()
+    assert r["traffic"]["state"] != "ok" and "owner-of-a@example.com" not in r["traffic"].get("message", "")
+    # audit history is per project
+    from app.models import Audit
+    db = SessionLocal()
+    db.add_all([Audit(kind="website", target="https://iso-a.example/", status="done", workspace_id=a), Audit(kind="website", target="https://iso-b.example/", status="done", workspace_id=b)])
+    db.commit(); db.close()
+    ha = client.get(f"/api/v1/website-audits?workspace_id={a}").json()
+    assert {x["target"] for x in ha} == {"https://iso-a.example/"}

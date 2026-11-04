@@ -114,6 +114,7 @@ class Audit(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     business_id: Mapped[int | None] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
     competitor_id: Mapped[int | None] = mapped_column(ForeignKey("competitors.id", ondelete="SET NULL"), index=True)
+    workspace_id: Mapped[int | None] = mapped_column(Integer, index=True)  # the project a website scan was run from (history only; it does not feed that project's scores)
     kind: Mapped[str] = mapped_column(String(20))  # gbp | technical | onpage | rankings | backlinks | citations | geo | website
     target: Mapped[str | None] = mapped_column(String(500))  # URL for website audits
     status: Mapped[str] = mapped_column(String(20), default="queued")  # queued | running | done | failed
@@ -251,6 +252,12 @@ class Article(TimestampMixin, Base):
     featured_image_url: Mapped[str | None] = mapped_column(String(500))  # the public URL on the website, once uploaded there
     # what was uploaded and what it became: {original_name, original_format, original_size, width, height, size, saved_percent, page, page_count, ...}
     featured_image_info: Mapped[dict | None] = mapped_column(JSON)
+    # The same article on the React.js website (a separate destination; the wp_* fields stay WordPress-only)
+    react_post_id: Mapped[str | None] = mapped_column(String(80))
+    react_url: Mapped[str | None] = mapped_column(String(500))
+    react_status: Mapped[str | None] = mapped_column(String(20))  # draft | publish | scheduled | deleted
+    react_image_url: Mapped[str | None] = mapped_column(String(500))
+    react_image_path: Mapped[str | None] = mapped_column(String(500))  # which local image react_image_url is a copy of
     wp_media_id: Mapped[str | None] = mapped_column(String(40))
 
 
@@ -269,6 +276,37 @@ class SiteIntegration(TimestampMixin, Base):
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     config: Mapped[dict | None] = mapped_column(JSON)  # method settings that are not secrets: GitHub repo/branch/folder, Shopify blog, Ghost version...
+
+
+class ReactSiteConnection(TimestampMixin, Base):
+    """A second publishing destination next to WordPress: a custom (React.js) website with its own blog API.
+    The site's backend receives the article as JSON over an API key; the key is stored encrypted and never sent to the page."""
+    __tablename__ = "react_site_connections"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), unique=True, index=True)
+    website_name: Mapped[str | None] = mapped_column(String(160))
+    website_url: Mapped[str | None] = mapped_column(String(500))
+    blog_url: Mapped[str | None] = mapped_column(String(500))
+    api_base_url: Mapped[str | None] = mapped_column(String(500))
+    api_key_enc: Mapped[str | None] = mapped_column(Text)  # Fernet-encrypted
+    auth_scheme: Mapped[str] = mapped_column(String(20), default="login")  # login (username+password -> token) | bearer / x-api-key (fixed key)
+    # Login authentication: the website's integration user. Password and the current access token are Fernet-encrypted.
+    login_username: Mapped[str | None] = mapped_column(String(255))
+    password_enc: Mapped[str | None] = mapped_column(Text)
+    auth_endpoint: Mapped[str | None] = mapped_column(String(300))  # POST {username/email, password} -> {token, expires_in?}
+    token_enc: Mapped[str | None] = mapped_column(Text)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    health_endpoint: Mapped[str | None] = mapped_column(String(300))  # GET, must need the key (checks it)
+    publish_endpoint: Mapped[str | None] = mapped_column(String(300))  # POST create, PUT/DELETE {endpoint}/{id}
+    image_endpoint: Mapped[str | None] = mapped_column(String(300))  # POST multipart "image" -> {"url": ...}
+    # Per-website image upload + field mapping (services/react_site.py DEFAULT_MAPPING): request format, file field,
+    # response URL path, blog image/alt fields, max upload size. Lets one integration serve any site's backend.
+    mapping: Mapped[dict | None] = mapped_column(JSON)
+    default_status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | publish | schedule
+    status: Mapped[str] = mapped_column(String(20), default="not_connected")  # not_connected | connected | failed
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ScheduledPost(TimestampMixin, Base):
@@ -451,5 +489,59 @@ class KeywordRankLog(Base):
     features: Mapped[list[str] | None] = mapped_column(JSON)  # SERP features present on the results page
     own_features: Mapped[list[str] | None] = mapped_column(JSON)  # of those, the ones the site appears in
 
+
+
+class SiteProfile(TimestampMixin, Base):
+    """What the onboarding research learnt about a client's website: its technology, the metadata found on every crawled page,
+    the site-wide checks, and the improvements that follow from them. One row per business, refreshed by each research run."""
+    __tablename__ = "site_profiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="queued")  # queued | running | done | failed
+    stack: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # site_stack.detect() result
+    site_checks: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # robots, sitemap, llms.txt, security headers, favicon
+    metadata_audit: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # per-page metadata + coverage figures
+    suggested_metadata: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{url, title, description, og_*...}]
+    recommendations: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{key, area, title, why, how, impact, effort, source}]
+    summary: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WorkItem(TimestampMixin, Base):
+    """One piece of work for one client in one week: a fix from an audit, an improvement from the site research, a recurring operation, or something added by hand."""
+    __tablename__ = "work_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    week_start: Mapped[date] = mapped_column(Date, index=True)  # the Monday of the week it is planned for
+    key: Mapped[str] = mapped_column(String(200), index=True)  # stable identity (e.g. "rec:add-og-tags"), so the same work is never planned twice
+    area: Mapped[str] = mapped_column(String(30))  # gmb | seo | technical | metadata | content | backlinks | rankings | reviews | other
+    title: Mapped[str] = mapped_column(String(500))
+    detail: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # why, how, links to the audit issue / site recommendation / agent task
+    source: Mapped[str] = mapped_column(String(20), default="manual")  # audit | research | operation | agent | manual
+    priority: Mapped[int] = mapped_column(Integer, default=3)  # 1 (do first) .. 4
+    impact: Mapped[str] = mapped_column(String(10), default="Medium")
+    status: Mapped[str] = mapped_column(String(20), default="todo")  # todo | doing | done | skipped | backlog
+    assignee: Mapped[str | None] = mapped_column(String(120))
+    due_date: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)  # what was done / why it was skipped
+    carried_from: Mapped[int | None] = mapped_column(Integer)  # id of the item in the previous week this one continues
+    carry_count: Mapped[int] = mapped_column(Integer, default=0)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified: Mapped[bool] = mapped_column(Boolean, default=False)  # closed because the next audit no longer reports the issue
+
+
+class WeeklyReport(TimestampMixin, Base):
+    """A saved weekly or monthly report: what was done compared with the period before, what is planned next, and the future scope."""
+    __tablename__ = "weekly_reports"
+    __table_args__ = (UniqueConstraint("business_id", "period", "period_start"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    period: Mapped[str] = mapped_column(String(10))  # week | month
+    period_start: Mapped[date] = mapped_column(Date, index=True)
+    period_end: Mapped[date] = mapped_column(Date)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    narrative: Mapped[str | None] = mapped_column(Text)
+    final: Mapped[bool] = mapped_column(Boolean, default=False)  # false while the period is still running
 
 from .backlinks import models as _backlink_models  # noqa: E402,F401  (registers the backlink graph tables)

@@ -524,7 +524,7 @@ function Research({ b }) {
   const loadRegistered = async () => {
     const list = await api(`/competitors?business_id=${b.id}`).catch(() => []);
     setRegistered(list);
-    const hist = await api(`/audit/competitors?business_id=${b.id}&limit=200`).catch(() => []);
+    const hist = await api(`/audit/competitors?business_id=${b.id}&limit=200&slim=true`).catch(() => []);
     const by = {};
     for (const a of hist) if (a.competitor_id && !by[a.competitor_id]) by[a.competitor_id] = { id: a.id, status: a.status };
     setAuditMap(m => ({ ...by, ...m }));

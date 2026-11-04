@@ -50,3 +50,34 @@ def sync(engine: Engine) -> dict[str, Any]:
             done["added_columns"].append(f"{table_name}.{col_name}")
             log.warning("Added missing column %s.%s", table_name, col_name)
     return done
+
+
+def _fingerprint(engine: Engine) -> str:
+    """The shape of every model table plus which database this is: unchanged means there is nothing to compare."""
+    import hashlib
+    parts = [str(engine.url.render_as_string(hide_password=True))]
+    for name in sorted(Base.metadata.tables):
+        t = Base.metadata.tables[name]
+        parts.append(name + ":" + ",".join(f"{c.name}/{c.type}" for c in t.columns))
+    return hashlib.sha1("|".join(parts).encode()).hexdigest()
+
+
+def _marker() -> "Path":
+    from pathlib import Path
+    return Path(__file__).resolve().parents[2] / ".schema_ok"
+
+
+def is_current(engine: Engine) -> bool:
+    """True when the models have not changed since the last successful sync on this database. Reading the whole database
+    structure takes seconds on every start (and every auto-reload), so it is skipped then."""
+    try:
+        return _marker().read_text().strip() == _fingerprint(engine)
+    except OSError:
+        return False
+
+
+def mark_current(engine: Engine) -> None:
+    try:
+        _marker().write_text(_fingerprint(engine))
+    except OSError:
+        pass

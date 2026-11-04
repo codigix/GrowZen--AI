@@ -4,6 +4,9 @@ import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, ScatterChart, Scat
 import { ArrowUp, ArrowDown, RefreshCw, ExternalLink, AlertTriangle, Search, Inbox, Info } from 'lucide-react';
 import { Card, Badge, Button, ErrorNote, useAction, useToast, useModulePath, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
+import { TrackingHeader, ExportButtons, ShareOfVoice, DevicesLocations, TabBar } from './PositionExtras';
+import { Overview, Distribution, PagesTab, Cannibalization, Competitors, Snippets } from './PositionTabs';
+import { AXIS, PALETTE, Th, path, sign, Chg, Spark, Empty } from './PositionUi';
 
 /**
  * Position Tracking "Landscape": visibility, estimated traffic, average position, distribution, movers, tags, competitors,
@@ -11,40 +14,9 @@ import { api, useApi, fmt } from './seoApi';
  * Google rank checks (GET /businesses/{id}/seo/position-landscape, services/landscape.py).
  */
 
-const AXIS = { fontSize: 11, fill: '#64748b' };
 const BUCKETS = [['top3', '1-3', '#f59e0b'], ['p4_10', '4-10', '#4338ca'], ['p11_20', '11-20', '#818cf8'], ['out', 'Not in top 10', '#e2e8f0']];
-const PALETTE = ['#6658dd', '#1abc9c', '#a855f7', '#f59e0b', '#ef4444', '#0ea5e9', '#84cc16', '#ec4899', '#14b8a6', '#64748b'];
 const RANGES = [[30, 'Last 30 days'], [60, 'Last 60 days'], [90, 'Last 90 days']];
-const Th = ({ children, c = 'text-left' }) => <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${c}`}>{children}</th>;
-const path = (u) => { try { const x = new URL(u); return x.pathname + x.search || '/'; } catch (e) { return u; } };
-const sign = (v, d = 2) => (v == null ? '' : `${v > 0 ? '+' : ''}${Number(v.toFixed(d))}`);
 
-/** A change: green when it is good. better = which direction is good. */
-function Chg({ v, better = 'up', unit = '', d = 2 }) {
-  if (v == null) return null;
-  if (!v) return <span className="text-11.5 text-slate-400">no change</span>;
-  const good = (v > 0) === (better === 'up');
-  return <span className={`inline-flex items-center gap-0.5 text-11.5 font-semibold ${good ? 'text-emerald-600' : 'text-red-500'}`}>{v > 0 ? <ArrowUp size={11} /> : <ArrowDown size={11} />}{Math.abs(Number(v.toFixed(d)))}{unit}</span>;
-}
-
-function Spark({ values, color = '#6658dd', h = 44 }) {
-  const data = values.map((v, i) => ({ i, v })).filter(x => x.v != null);
-  if (data.length < 2) return <div style={{ height: h }} />;
-  return (
-    <div style={{ height: h }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
-          <defs><linearGradient id={`sp-${color.slice(1)}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity={0.3} /><stop offset="100%" stopColor={color} stopOpacity={0.02} /></linearGradient></defs>
-          <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2} fill={`url(#sp-${color.slice(1)})`} dot={false} isAnimationActive={false} />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function Empty({ icon: Icon = Inbox, children }) {
-  return <div className="py-10 flex flex-col items-center text-center gap-2 text-13 text-slate-500"><Icon size={22} className="text-slate-300" /><span className="max-w-sm">{children}</span></div>;
-}
 
 function Metric({ label, hint, value, unit = '', change, better, series, d = 2 }) {
   return (
@@ -187,22 +159,6 @@ export function Landscape({ d }) {
         </Card>
       )}
 
-      <Card title={`Tags (${d.tags.length})`} subtitle="Keywords grouped by their cluster" pad={false}>
-        {d.tags.length ? (
-          <table className="w-full text-13">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Tag</Th><Th c="text-right">Keywords</Th><Th c="text-right">Visibility</Th><Th c="text-right">Est. traffic</Th><Th c="text-right">Avg. pos.</Th><Th c="text-right">Volume</Th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{d.tags.map(t => (
-              <tr key={t.tag} className="hover:bg-slate-50">
-                <td className="px-4 py-2.5"><span className="px-2.5 py-0.5 rounded-full border border-slate-200 text-12 text-slate-700">{t.tag}</span></td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{t.keywords}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{t.visibility}% <Chg v={t.visibility_change} /></td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{d.has_volume ? <>{t.traffic} <Chg v={t.traffic_change} /></> : '—'}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{t.avg_position ?? '—'} <Chg v={t.avg_position_change} better="down" d={1} /></td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{t.volume != null ? fmt(t.volume) : '—'}</td>
-              </tr>))}</tbody>
-          </table>
-        ) : <Empty>No keyword has a tag yet. Group keywords into clusters in Keyword Strategy Builder and they show up here.</Empty>}
-      </Card>
 
       <Card title="Market traffic vs. selected domains" subtitle="Domains in the Google results of your tracked keywords. Across: keywords they appear for. Up: better average position. Size: visibility.">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
@@ -229,7 +185,7 @@ export function Landscape({ d }) {
                   <td className="px-4 py-2 text-right tabular-nums">{c.visibility}% <Chg v={c.change} /></td>
                 </tr>))}</tbody>
             </table>
-            <p className="text-11.5 text-slate-400 mt-2">{d.competitor_total} domains appear in the results.</p>
+            <p className="text-11.5 text-slate-400 mt-2">{d.competitor_total} competing businesses appear in the results.{d.platform_total ? ` ${d.platform_total} directories and social sites (like Instagram or Tripadvisor) are left out: see Competitors Discovery.` : ''}</p>
           </div>
         </div>
       </Card>
@@ -280,13 +236,36 @@ export function Landscape({ d }) {
         {d.cannibal.affected > 0 && <div className="mt-4 text-12.5 text-slate-600">Merge or differentiate the competing pages so one page owns each keyword. Open the affected keywords in <b>All keywords</b> to see which URLs rank.</div>}
       </Card>
       <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />Visibility and estimated traffic are modelled from your saved Google rank checks (top 10 results) with a standard click-through curve and the keyword volumes you track. They will not match another tool exactly.</p>
+      <ShareOfVoice d={d} />
     </div>
+  );
+}
+
+function TagsTab({ d }) {
+  return (
+      <Card title={`Tags (${d.tags.length})`} subtitle="Keywords grouped by their cluster" pad={false}>
+        {d.tags.length ? (
+          <table className="w-full text-13">
+            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Tag</Th><Th c="text-right">Keywords</Th><Th c="text-right">Visibility</Th><Th c="text-right">Est. traffic</Th><Th c="text-right">Avg. pos.</Th><Th c="text-right">Volume</Th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{d.tags.map(t => (
+              <tr key={t.tag} className="hover:bg-slate-50">
+                <td className="px-4 py-2.5"><span className="px-2.5 py-0.5 rounded-full border border-slate-200 text-12 text-slate-700">{t.tag}</span></td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{t.keywords}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{t.visibility}% <Chg v={t.visibility_change} /></td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{d.has_volume ? <>{t.traffic} <Chg v={t.traffic_change} /></> : '—'}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{t.avg_position ?? '—'} <Chg v={t.avg_position_change} better="down" d={1} /></td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{t.volume != null ? fmt(t.volume) : '—'}</td>
+              </tr>))}</tbody>
+          </table>
+        ) : <Empty>No keyword has a tag yet. Group keywords into clusters in Keyword Strategy Builder and they show up here.</Empty>}
+      </Card>
   );
 }
 
 export default function PositionLandscape({ b }) {
   const path_ = useModulePath();
   const [days, setDays] = useState(30);
+  const [tab, setTab] = useState('landscape');
   const data = useApi(`/businesses/${b.id}/seo/position-landscape?days=${days}`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
@@ -309,7 +288,20 @@ export default function PositionLandscape({ b }) {
       </div>
       <ErrorNote>{error}</ErrorNote>
       {!d ? (data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <SkPage statLabels={["Visibility", "Estimated traffic", "Average position"]} chartTitle="Rankings distribution" tableTitle="Top keywords" tableHeaders={["Keyword", "Position", "Change", "Volume"]} />)
-        : d.state === 'ok' ? <Landscape d={d} />
+        : d.state === 'ok' ? (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3"><TrackingHeader d={d} /><ExportButtons d={d} toast={toast} /></div>
+            <TabBar value={tab} onChange={setTab} />
+            {tab === 'landscape' && <Landscape d={d} />}
+            {tab === 'overview' && <Overview d={d} />}
+            {tab === 'distribution' && <Distribution d={d} />}
+            {tab === 'tags' && <TagsTab d={d} />}
+            {tab === 'pages' && <PagesTab b={b} />}
+            {tab === 'cannibal' && <Cannibalization d={d} b={b} />}
+            {tab === 'competitors' && <Competitors d={d} b={b} onChanged={() => data.reload(true)} />}
+            {tab === 'devices' && <DevicesLocations d={d} />}
+            {tab === 'snippets' && <Snippets d={d} />}
+          </div>)
           : (
             <Card>
               <Empty icon={Search}>

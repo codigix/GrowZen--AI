@@ -7,10 +7,10 @@ import re
 from statistics import mean
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Audit, Business
+from ..models import Audit, Business, GeoResult
 from . import geo, market
 
 KEYS = ["site_health", "ai_search", "errors", "warnings", "crawlability", "https", "int_seo", "performance", "internal_linking", "markups", "core_web_vitals"]
@@ -70,11 +70,25 @@ def _of(rows: list[Audit], i: int) -> Audit | None:
     return rows[i] if len(rows) > i else None
 
 
+def _latest_two_all(db: Session) -> dict[tuple[int, str], list[Audit]]:
+    """The two newest finished on-page and technical audits of every project, in one query (a window function) instead of two queries per project."""
+    rank = func.row_number().over(partition_by=(Audit.business_id, Audit.kind), order_by=Audit.id.desc()).label("rn")
+    sub = select(Audit.id, rank).where(Audit.business_id.is_not(None), Audit.kind.in_(("onpage", "technical")), Audit.status == "done").subquery()
+    out: dict[tuple[int, str], list[Audit]] = {}
+    for a in db.scalars(select(Audit).join(sub, sub.c.id == Audit.id).where(sub.c.rn <= 2).order_by(Audit.id.desc())):
+        out.setdefault((a.business_id, a.kind), []).append(a)
+    return out
+
+
 def table(db: Session) -> list[dict[str, Any]]:
     """One row per project, newest audit first: the figures, and the change against the audit before."""
     rows = []
+    audits_by = _latest_two_all(db)
+    geo_by: dict[int, list] = {}
+    for g in db.scalars(select(GeoResult).order_by(GeoResult.created_at.desc())):
+        geo_by.setdefault(g.business_id, []).append(g)
     for b in db.scalars(select(Business).order_by(Business.name)):
-        onpage, technical = _latest_two(db, b, "onpage"), _latest_two(db, b, "technical")
+        onpage, technical = audits_by.get((b.id, "onpage"), []), audits_by.get((b.id, "technical"), [])
 
         def figures(i: int) -> dict[str, Any]:
             op, te = _of(onpage, i), _of(technical, i)
@@ -82,7 +96,7 @@ def table(db: Session) -> list[dict[str, Any]]:
 
         now = figures(0)
         before = figures(1) if len(onpage) > 1 or len(technical) > 1 else None
-        sov = geo.share_of_voice(db, b)
+        sov = geo.share_of_voice(db, b, geo_by.get(b.id, []))
         now["ai_search"] = sov["overall"] if sov.get("data_source") else None
         metrics = {}
         for k in KEYS:

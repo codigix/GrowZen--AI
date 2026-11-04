@@ -5,12 +5,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Business, Schedule
-from . import agent, audits, gbp, geo, reports, organic
+from . import agent, audits, gbp, geo, reports, organic, workplan
 from .activity import log
 from .playbook import get_playbook
 
 INTERVALS = {"daily": 1, "weekly": 7, "fortnightly": 14, "monthly": 30}
-JOBS = ["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo"]
+JOBS = ["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo", "weekly_plan", "site_research"]
+# Jobs every plan gets even when the playbook saved before they existed has no entry for them.
+JOB_DEFAULTS = {"weekly_plan": "weekly", "site_research": "monthly"}
 
 
 def _now() -> datetime:
@@ -26,7 +28,7 @@ def create_for_plan(db: Session, b: Business) -> list[Schedule]:
     plan = get_playbook(db).plan_schedules.get(b.plan or "Starter") or get_playbook(db).plan_schedules["Starter"]
     rows = []
     for job in JOBS:
-        every = plan.get(job, "off")
+        every = plan.get(job, JOB_DEFAULTS.get(job, "off"))
         row = db.scalar(select(Schedule).where(Schedule.business_id == b.id, Schedule.job == job)) or Schedule(business_id=b.id, job=job)
         row.every = every
         row.next_run_at = next_run(every)
@@ -34,6 +36,21 @@ def create_for_plan(db: Session, b: Business) -> list[Schedule]:
         rows.append(row)
     db.commit()
     return rows
+
+
+def ensure_jobs(db: Session, b: Business) -> int:
+    """Add the schedule rows a project lacks (new job types, older projects) without touching the ones a person already changed."""
+    plan = get_playbook(db).plan_schedules.get(b.plan or "Starter") or get_playbook(db).plan_schedules["Starter"]
+    have = {j for (j,) in db.execute(select(Schedule.job).where(Schedule.business_id == b.id))}
+    n = 0
+    for job in JOBS:
+        if job not in have:
+            every = plan.get(job, JOB_DEFAULTS.get(job, "off"))
+            db.add(Schedule(business_id=b.id, job=job, every=every, next_run_at=_now() if job in JOB_DEFAULTS and every != "off" else next_run(every)))
+            n += 1
+    if n:
+        db.commit()
+    return n
 
 
 def run_job(db: Session, s: Schedule) -> None:
@@ -62,6 +79,10 @@ def run_job(db: Session, s: Schedule) -> None:
         reports.send_monthly(db, b)
     elif s.job == "geo":
         geo.run_prompts(db, b)
+    elif s.job == "weekly_plan":
+        workplan.weekly_cycle(db, b)
+    elif s.job == "site_research":
+        workplan.research_cycle(db, b)
 
 
 def run_due(db: Session, limit: int = 20) -> int:

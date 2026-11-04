@@ -3,7 +3,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
@@ -16,6 +16,15 @@ from ..services import activity as activity_log, agent, copilot
 from ..services.playbook import get_playbook
 
 router = APIRouter(tags=["agent"])
+
+
+@router.get("/tasks/counts")
+def task_counts(business_id: int | None = None, db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """How many tasks there are in each status. The list is loaded in slabs, so its length is no longer the total."""
+    q = select(AgentTask.status, func.count(AgentTask.id)).group_by(AgentTask.status)
+    if business_id:
+        q = q.where(AgentTask.business_id == business_id)
+    return {s: n for s, n in db.execute(q).all()}
 
 
 @router.get("/tasks")

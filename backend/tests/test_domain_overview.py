@@ -2,7 +2,7 @@
 from urllib.parse import parse_qs, urlparse
 
 from app.db import SessionLocal
-from app.models import GeoPrompt, GeoResult, GoogleConnection
+from app.models import Business, GeoPrompt, GeoResult, GoogleConnection
 from app.services import crypto, gbp, gsc
 
 SITES = [{"siteUrl": "sc-domain:mydental.in", "permissionLevel": "siteOwner"}, {"siteUrl": "https://other.com/", "permissionLevel": "siteOwner"}]
@@ -39,13 +39,16 @@ def fake(monkeypatch, sites=SITES):
     return calls
 
 
-def connect(scope=True):
+def connect(scope=True, bid=None):
     db = SessionLocal()
     c = db.query(GoogleConnection).filter_by(email="owner@mydental.in").first() or GoogleConnection(email="owner@mydental.in")
     c.refresh_token_enc, c.status = crypto.seal("rt"), "active"
     c.scopes = ("openid email " + gsc.SCOPE) if scope else "openid email https://www.googleapis.com/auth/business.manage"
     db.add(c)
     db.commit()
+    if bid:  # a project only uses the Google account linked to it
+        db.query(Business).filter(Business.id == bid).update({"connection_id": c.id})
+        db.commit()
     db.close()
 
 
@@ -70,7 +73,7 @@ def test_without_a_google_account_it_says_what_is_missing(client):
 
 def test_an_account_without_the_search_console_permission_is_asked_to_reconnect(client):
     bid = project(client)
-    connect(scope=False)
+    connect(scope=False, bid=bid)
     try:
         assert client.get(f"/api/v1/businesses/{bid}/seo/domain").json()["traffic"]["state"] == "scope_missing"
     finally:
@@ -80,7 +83,7 @@ def test_an_account_without_the_search_console_permission_is_asked_to_reconnect(
 def test_real_traffic_from_search_console(client, monkeypatch):
     calls = fake(monkeypatch)
     bid = project(client)
-    connect()
+    connect(bid=bid)
     try:
         t = client.get(f"/api/v1/businesses/{bid}/seo/domain?range=3m").json()["traffic"]
         assert t["state"] == "ok" and t["account"] == "owner@mydental.in" and t["report"]["property"] == "sc-domain:mydental.in"
@@ -103,7 +106,7 @@ def test_real_traffic_from_search_console(client, monkeypatch):
 def test_no_property_for_the_site_is_explained(client, monkeypatch):
     fake(monkeypatch, sites=[{"siteUrl": "https://other.com/", "permissionLevel": "siteOwner"}])
     bid = project(client)
-    connect()
+    connect(bid=bid)
     try:
         t = client.get(f"/api/v1/businesses/{bid}/seo/domain").json()["traffic"]
         assert t["state"] == "no_property" and "mydental.in" in t["message"]
@@ -118,7 +121,7 @@ def test_google_errors_are_shown_not_hidden(client, monkeypatch):
     monkeypatch.setattr(gbp.GbpClient, "_token", lambda self: "tok")
     gsc._cache.clear()
     bid = project(client)
-    connect()
+    connect(bid=bid)
     try:
         t = client.get(f"/api/v1/businesses/{bid}/seo/domain").json()["traffic"]
         assert t["state"] == "error" and "not enabled" in t["message"]

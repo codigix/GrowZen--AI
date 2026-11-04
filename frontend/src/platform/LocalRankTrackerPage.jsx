@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Play, MapPin, Clock, ArrowUp, ArrowDown, Crosshair, Layers, Target, Trophy, Search, RotateCw } from 'lucide-react';
+import PagePositions from './PagePositions';
 import { SeoShell, Card, Button, SourceTag, ErrorNote, STATUS, Tabs, useUrlTab, useToast, useAction, useModulePath, SkPage } from './SeoUi';
 import PositionLandscape from './PositionLandscape';
 import { api, useApi, usePoll, fmtDateTime, fmtDate } from './seoApi';
@@ -276,11 +277,11 @@ function Tracker({ b }) {
 }
 
 function Page({ b }) {
-  const [tab, setTab] = useUrlTab('landscape', ['landscape', 'geo']);
+  const [tab, setTab] = useUrlTab('pages', ['pages', 'landscape', 'geo']);
   return (
     <>
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'landscape', label: 'Landscape' }, { id: 'geo', label: 'Geo-grid (Maps pack)' }]} />
-      {tab === 'landscape' ? <PositionLandscape key={b.id} b={b} /> : <Tracker key={b.id} b={b} />}
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'pages', label: 'Page positions' }, { id: 'landscape', label: 'Landscape' }, { id: 'geo', label: 'Geo-grid (Maps pack)' }]} />
+      {tab === 'pages' ? <PagePositions key={b.id} b={b} /> : tab === 'landscape' ? <PositionLandscape key={b.id} b={b} /> : <Tracker key={b.id} b={b} />}
     </>
   );
 }
