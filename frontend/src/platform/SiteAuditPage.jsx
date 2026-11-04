@@ -1,9 +1,12 @@
-import React, { useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCrumb } from './crumbs';
+import React, { useEffect, useRef, useState } from 'react';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { Check, ChevronRight, ScanSearch, FileBarChart, Braces, Loader2 } from 'lucide-react';
 import { SeoShell, Card } from './SeoUi';
 import { useSiteAudit, AuditStep, ReportStep } from './WebsiteAuditTool';
 import SchemaStudio from './SchemaStudio';
+import SiteAuditTable from './SiteAuditTable';
+import SiteAuditOverview from './SiteAuditOverview';
 
 const STEPS = [
   { id: 'audit', label: 'Audit website', hint: 'Scan it live', icon: ScanSearch },
@@ -41,6 +44,10 @@ function Stepper({ step, onStep, hasReport, running }) {
 
 function SiteAudit({ b, step, setStep }) {
   const sa = useSiteAudit(b);
+  const [overview, setOverview] = useState(null); // {id, initial}: that project's audit Overview (on the tab the click asked for) replaces the page until closed
+  const location = useLocation();
+  useCrumb(overview ? 'Overview' : STEPS.find(x => x.id === step)?.label);
+  useEffect(() => { setOverview(null); }, [location.key]); // clicking Site Audit in the sidebar again goes back to the page itself
   // When a scan finishes, move on to its report.
   const wasRunning = useRef(false);
   useEffect(() => {
@@ -50,11 +57,13 @@ function SiteAudit({ b, step, setStep }) {
   // Opens on the latest report when there is one; while it loads, a short wait instead of a flash of step 1.
   const loading = !sa.history.data || (sa.current && !sa.audit.data);
   const current = step === 'report' && !sa.report ? (loading ? 'loading' : 'audit') : step;
+  if (overview) return <SiteAuditOverview key={`${overview.id}-${overview.initial?.tab}-${overview.initial?.category || overview.initial?.severity || ''}`} projectId={overview.id} initial={overview.initial} onBack={() => setOverview(null)} />;
   return (
     <div className="space-y-5">
       <Stepper step={current === 'loading' ? 'report' : current} onStep={setStep} hasReport={Boolean(sa.report)} running={sa.running} />
       {current === 'loading' && <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Opening the latest report…</div></Card>}
       {current === 'audit' && <AuditStep sa={sa} business={b} onOpenReport={() => setStep('report')} />}
+      {current === 'audit' && !sa.running && <SiteAuditTable onOverview={(id, initial) => setOverview({ id, initial })} />}
       {current === 'report' && <ReportStep sa={sa} business={b} onNext={setStep} />}
       {current === 'schema' && <SchemaStudio b={b} report={sa.report} />}
     </div>

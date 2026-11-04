@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..backlinks import autostart as backlink_autostart
 from ..models import Business, GoogleConnection, IntakeEmail
-from . import agent, audits, extraction, gbp, reports, schedules
+from . import agent, audits, extraction, gbp, reports, schedules, site_research, workplan
 from .activity import log
 from .match import is_same_business, phone_digits as _digits, site_domain as _domain
 from .notify import send_email
@@ -23,6 +23,7 @@ STEPS = [
     ("gbp_match", "Google Business Profile matched"),
     ("audits", "GBP, rankings, technical, on-page, backlinks and citations audited"),
     ("plan", "Fixes planned as agent tasks"),
+    ("research", "Website research: tech stack, metadata and improvements"),
     ("report", "Audit report written"),
     ("schedule", "Schedule created for the plan"),
     ("notify", "Team and client notified"),
@@ -111,6 +112,14 @@ def onboard(db: Session, em: IntakeEmail, actor: str = "pipeline") -> IntakeEmai
         tasks = agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues], audited=[a.kind for a in found if a.status == "done"])
         _step(db, em, "plan", "done", f"{len(tasks)} tasks ({sum(1 for t in tasks if t.requires_approval)} need approval)")
 
+        _step(db, em, "research", "running")
+        try:
+            prof = site_research.run(db, b)
+            _step(db, em, "research", "done" if prof.status == "done" else "failed", prof.summary or prof.error or "")
+        except Exception as exc:  # noqa: BLE001 - research never blocks onboarding
+            db.rollback()
+            _step(db, em, "research", "failed", str(exc)[:200])
+
         _step(db, em, "report", "running")
         summary = reports.monthly_summary(db, b)
         _step(db, em, "report", "done", summary["plain_words"][:300])
@@ -118,6 +127,10 @@ def onboard(db: Session, em: IntakeEmail, actor: str = "pipeline") -> IntakeEmai
         _step(db, em, "schedule", "running")
         rows = schedules.create_for_plan(db, b)
         _step(db, em, "schedule", "done", ", ".join(f"{r.job} {r.every}" for r in rows if r.every != "off"))
+        try:  # the first week's work plan, built from the audits and the research above
+            workplan.generate_week(db, b)
+        except Exception:  # noqa: BLE001
+            db.rollback()
 
         try:
             bl = backlink_autostart.enable(db, b)  # backlink discovery starts with the client: a first run now, then its turns in the rotation

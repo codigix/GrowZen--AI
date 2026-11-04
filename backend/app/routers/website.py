@@ -34,7 +34,7 @@ def start(body: WebsiteAuditIn, tasks: BackgroundTasks, db: Session = Depends(ge
         validate_url_shape(url)
     except SSRFValidationError as exc:
         raise HTTPException(400, str(exc)) from exc
-    queued = Audit(kind="website", target=url, status="queued")
+    queued = Audit(kind="website", target=url, status="queued", workspace_id=body.workspace_id or body.business_id)
     db.add(queued)
     if body.business_id is not None:
         log(db, user.name, "audit_started", body.business_id, kinds=["technical", "onpage"])
@@ -43,12 +43,50 @@ def start(body: WebsiteAuditIn, tasks: BackgroundTasks, db: Session = Depends(ge
     return {"id": queued.id, "status": "queued", "url": url}  # poll GET /website-audits/{id}
 
 
+@router.get("/overview")
+def overview(workspace_id: int | None = None, limit: int = 20, db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """The audited websites (a project sees only its own), each with its latest finished audit's figures and the change since the audit before."""
+    from ..services import audit_overview
+    q = select(Audit).where(Audit.kind == "website", Audit.status == "done").order_by(Audit.finished_at.desc(), Audit.id.desc())
+    if workspace_id is not None:
+        q = q.where(Audit.workspace_id == workspace_id)
+    seen: dict[str, list[Audit]] = {}
+    for a in db.scalars(q.limit(300)):
+        seen.setdefault(a.target, [])
+        if len(seen[a.target]) < 2:
+            seen[a.target].append(a)
+    rows = [audit_overview.row(v[0], v[1] if len(v) > 1 else None) for v in seen.values()][:max(1, min(limit, 50))]
+    return rows
+
+
+@router.get("/tech-stack")
+def tech_stack(url: str, _: User = Depends(current_user)):
+    """The technology behind any website (CMS or framework, language, hosting, CDN, plugins, analytics), read from its homepage, headers and cookies."""
+    from ..services import site_publish
+    try:
+        return site_publish.detect(crawler.homepage(url))
+    except (site_publish.PublishError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.get("")
-def history(url: str | None = None, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def history(url: str | None = None, workspace_id: int | None = None, limit: int = 50, offset: int = 0, slim: bool = False, db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """Audits of websites, newest first, in slabs (`limit`/`offset`). `slim=true` drops the large per-audit lists and sends `issue_count`."""
     q = select(Audit).where(Audit.kind == "website")
+    if workspace_id is not None:  # a project sees only the scans it ran itself
+        q = q.where(Audit.workspace_id == workspace_id)
     if url:
         q = q.where(Audit.target == crawler.homepage(url))
-    return rows(db.scalars(q.order_by(Audit.created_at.desc()).limit(50)), exclude={"result"})
+    return audits.page(db, q, limit, offset, slim)
+
+
+@router.get("/{audit_id}/overview")
+def audit_overview_page(audit_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+    from ..services import audit_overview
+    a = db.get(Audit, audit_id)
+    if not a or a.kind != "website" or a.status != "done":
+        raise HTTPException(404, "Audit not found")
+    return audit_overview.detail(db, a)
 
 
 @router.get("/{audit_id}")

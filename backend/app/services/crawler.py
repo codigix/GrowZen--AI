@@ -118,7 +118,19 @@ def analyse_html(url: str, status: int, html: str) -> dict[str, Any]:
     images = soup.find_all("img")
     h1s = soup.find_all("h1")
     html_tag = soup.find("html")
+
+    def _meta(attr: str, name: str) -> str:
+        tag = soup.find("meta", attrs={attr: re.compile(f"^{re.escape(name)}$", re.I)})
+        return (tag.get("content") or "").strip()[:300] if tag else ""
+
+    icon = soup.find("link", rel=lambda v: v and any("icon" in x.lower() for x in (v if isinstance(v, list) else [v])))
     return {
+        "og_title": _meta("property", "og:title"), "og_description": _meta("property", "og:description"), "og_image": _meta("property", "og:image"),
+        "og_type": _meta("property", "og:type"), "og_url": _meta("property", "og:url"),
+        "twitter_card": _meta("name", "twitter:card"), "theme_color": _meta("name", "theme-color"),
+        "robots_meta": (robots.get("content") or "").strip() if robots else "",
+        "favicon": bool(icon and icon.get("href")),
+        "h2_count": len(soup.find_all("h2")),
         "lang": ((html_tag.get("lang") or "").strip() if html_tag else ""),
         "hreflang": len(soup.find_all("link", rel=lambda v: v and "alternate" in (v if isinstance(v, list) else [v]), hreflang=True)),
         "url": url, "status": status,
@@ -129,6 +141,7 @@ def analyse_html(url: str, status: int, html: str) -> dict[str, Any]:
         "h1": h1s[0].get_text(" ", strip=True)[:160] if h1s else "",
         "images_without_alt": [urljoin(url, i.get("src") or "") for i in images if not (i.get("alt") or "").strip() and i.get("src")][:8],
         "word_count": len(text.split()),
+        "html_bytes": len(html or ""), "text_ratio": round(len(text) / max(1, len(html or "")) * 100, 1),
         "canonical": canonical.get("href") if canonical else None,
         "noindex": bool(robots and "noindex" in (robots.get("content") or "").lower()),
         "images": len(images),
@@ -201,6 +214,31 @@ def homepage(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}/"
 
 
+def _sitemap_urls(client: httpx.Client, first: str, host: str, limit: int) -> list[str]:
+    """Page URLs listed in the sitemap (following sitemap indexes one level deep). A single-page app has almost no links in its HTML, but its sitemap still lists every page."""
+    found: list[str] = []
+    queue = [first]
+    seen: set[str] = set()
+    while queue and len(found) < limit and len(seen) < 15:
+        sm = queue.pop(0)
+        if sm in seen:
+            continue
+        seen.add(sm)
+        try:
+            r = client.get(sm)
+        except httpx.HTTPError:
+            continue
+        if r.status_code != 200:
+            continue
+        for loc in re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", r.text):
+            loc = loc.replace("&amp;", "&")
+            if loc.lower().endswith(".xml") or "sitemap" in urlparse(loc).path.lower() and loc.lower().endswith((".xml", ".xml.gz")):
+                queue.append(loc)
+            elif _norm_host(urlparse(loc).netloc) == host and not SKIP_EXT.search(loc):
+                found.append(loc)
+    return list(dict.fromkeys(found))[:limit]
+
+
 def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
     """`on_progress` (optional) gets an event per step so a caller can show the scan live:
     {"step": "robots" | "sitemap" | "fetching" | "page", ...}."""
@@ -208,7 +246,7 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
     start = homepage(start_url)  # always the first page, so the crawl and the site-wide checks begin at the homepage
     host = _norm_host(urlparse(start).netloc)
     client = site_client(timeout)
-    site: dict[str, Any] = {"start_url": start, "host": host}
+    site: dict[str, Any] = {"start_url": start, "host": host, "max_pages": max_pages}
     try:
         robots = client.get(urljoin(start, "/robots.txt"))
         site["robots_txt"] = robots.status_code == 200
@@ -219,9 +257,12 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
         site["sitemap"] = sm.status_code == 200 and ("<urlset" in sm.text or "<sitemapindex" in sm.text)
         site["https"] = start.startswith("https")
         report({"step": "sitemap", "found": site["sitemap"]})
+        listed = _sitemap_urls(client, sitemap_urls[0] if sitemap_urls else urljoin(start, "/sitemap.xml"), host, max_pages * 2) if site["sitemap"] else []
+        site["sitemap_pages"] = len(listed)
+        site["sitemap_urls"] = listed[:300]
         seen: set[str] = set()  # URLs already queued or dequeued, so the same link isn't crawled twice
         fetched: set[str] = set()  # resolved (post-redirect) URLs of pages already captured
-        queue = deque([start])
+        queue = deque([start, *listed])  # the homepage first, then every page the sitemap lists; links found on pages are added behind them
         pages: list[dict[str, Any]] = []
         broken: list[dict[str, str]] = []
         while queue and len(pages) < max_pages:
@@ -257,14 +298,29 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
         # Internal linking: how many other crawled pages link to each page (0 = an orphan), and links going out.
         keys = {_norm_url(p["url"]) for p in pages}
         inbound: dict[str, set[str]] = {}
+        graph: dict[str, set[str]] = {}
         for p in pages:
             me = _norm_url(p["url"])
             same = {_norm_url(link["href"]) for link in p.get("links", []) if _norm_host(urlparse(link["href"]).netloc) == host}
             p["internal_out"] = len(same - {me})
-            for t in (same & keys) - {me}:
+            graph[me] = (same & keys) - {me}
+            for t in graph[me]:
                 inbound.setdefault(t, set()).add(me)
+        # Crawl depth: clicks from the homepage (the first page crawled); pages no crawled page links to have no depth
+        depth: dict[str, int] = {}
+        if pages:
+            root = _norm_url(pages[0]["url"])
+            depth[root] = 0
+            todo = deque([root])
+            while todo:
+                cur = todo.popleft()
+                for nxt in graph.get(cur, ()):
+                    if nxt not in depth:
+                        depth[nxt] = depth[cur] + 1
+                        todo.append(nxt)
         for p in pages:
             p["inbound"] = len(inbound.get(_norm_url(p["url"]), ()))
+            p["depth"] = depth.get(_norm_url(p["url"]))
         for p in pages:
             p.pop("links", None)
         site.update(pages=pages, broken=broken, crawled=len(pages))

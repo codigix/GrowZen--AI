@@ -131,3 +131,12 @@ def test_a_blocked_or_unreachable_site_is_reported_honestly(monkeypatch):
     assert d["reachable"] is False and "Could not open" in d["error"] and d["platform"] == "unknown"
     with pytest.raises(ValueError):
         st.detect("http://user:pw@example.org")
+
+
+def test_tech_stack_endpoint_for_any_url(client, monkeypatch):
+    from app.services import site_publish
+    blocked = client.get("/api/v1/website-audits/tech-stack?url=http://localhost").json()  # internal addresses are never fetched
+    assert blocked["reachable"] is False and blocked["error"]
+    monkeypatch.setattr(site_publish, "detect", lambda url: {"platform": "wordpress", "label": "WordPress", "url": url, "details": {"plugins": ["Yoast SEO"]}, "stack": ["WordPress"]})
+    r = client.get("/api/v1/website-audits/tech-stack?url=acme.example/about")
+    assert r.status_code == 200 and r.json()["url"] == "https://acme.example/" and r.json()["details"]["plugins"] == ["Yoast SEO"]

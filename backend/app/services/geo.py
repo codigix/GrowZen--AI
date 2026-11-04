@@ -107,10 +107,11 @@ def run_prompts(db: Session, b: Business, competitors: list[str] | None = None) 
     return share_of_voice(db, b)
 
 
-def share_of_voice(db: Session, b: Business) -> dict[str, Any]:
-    """Share of prompts naming the business, per engine, from the latest result per prompt+engine."""
+def share_of_voice(db: Session, b: Business, results: list[GeoResult] | None = None) -> dict[str, Any]:
+    """Share of prompts naming the business, per engine, from the latest result per prompt+engine.
+    `results` (this business's results, newest first) saves the query when a caller has already loaded them for many businesses."""
     latest: dict[tuple[int, str], GeoResult] = {}
-    for g in db.scalars(select(GeoResult).where(GeoResult.business_id == b.id).order_by(GeoResult.created_at.desc())):
+    for g in (results if results is not None else db.scalars(select(GeoResult).where(GeoResult.business_id == b.id).order_by(GeoResult.created_at.desc()))):
         latest.setdefault((g.prompt_id, g.engine), g)
     by_engine: dict[str, list[bool]] = {}
     for (_, engine), g in latest.items():

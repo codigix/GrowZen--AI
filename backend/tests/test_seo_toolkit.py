@@ -58,3 +58,149 @@ def test_rank_checks_explain_a_missing_key_or_website(client, monkeypatch):
     r = client.post(f"/api/v1/businesses/{bid}/seo/check-ranks", json={})
     assert r.status_code == 400 and "SERPER_API_KEY" in r.json()["detail"]
     assert client.post(f"/api/v1/businesses/{bid}/seo/keyword-overview", json={"keyword": "dentist"}).status_code == 400
+
+
+def test_seed_keywords_then_rank_report_gives_advice_per_keyword(client):
+    bid = client.post("/api/v1/businesses", json={"name": "Acme Dental", "website": "https://acme.example", "primary_category": "Dentist", "city": "Pune"}).json()["id"]
+    assert client.get(f"/api/v1/businesses/{bid}/seo/rank-report").json()["state"] == "no_keywords"
+    added = client.post(f"/api/v1/businesses/{bid}/seo/seed-keywords").json()["added"]
+    assert added >= 1
+    assert client.post(f"/api/v1/businesses/{bid}/seo/seed-keywords").json()["added"] == 0  # idempotent
+    rep = client.get(f"/api/v1/businesses/{bid}/seo/rank-report").json()
+    assert rep["tracked"] == added and rep["rows"][0]["advice"][0]["level"] == "fix"
+
+
+def test_crawl_pages_needs_a_website_and_runs_in_the_background(client, monkeypatch):
+    from app.services import audits
+    seen = {}
+    monkeypatch.setattr(audits, "run", lambda db, b, kind, **o: seen.update(kind=kind, **o))
+    no_site = client.post("/api/v1/businesses", json={"name": "No Site Co"}).json()["id"]
+    assert client.post(f"/api/v1/businesses/{no_site}/seo/crawl-pages").status_code == 400
+    bid = client.post("/api/v1/businesses", json={"name": "Site Co", "website": "https://site-co.example"}).json()["id"]
+    assert client.post(f"/api/v1/businesses/{bid}/seo/crawl-pages?pages=999").status_code == 202
+    assert seen == {"kind": "onpage", "max_pages": 300}  # capped
+    assert "crawling" in client.get(f"/api/v1/businesses/{bid}/seo/top-pages-report").json()
+
+
+def test_subdomains_are_discovered_and_checked(client, monkeypatch):
+    from app.services import subdomains as sub
+    monkeypatch.setattr(sub, "from_certificates", lambda root: ["blog.site-co.example", "shop.site-co.example", "evil.other.com"])
+    monkeypatch.setattr(sub, "_probe", lambda h: {"subdomain": h, "resolves": True, "status": 200, "final_url": None, "title": None})
+    bid = client.post("/api/v1/businesses", json={"name": "Sub Co", "website": "https://www.site-co.example"}).json()["id"]
+    r = client.get(f"/api/v1/businesses/{bid}/seo/subdomains").json()
+    assert {x["subdomain"] for x in r["rows"]} == {"site-co.example", "blog.site-co.example", "shop.site-co.example"}
+    assert r["rows"][0]["main"] and r["root"] == "site-co.example"
+
+
+def test_projects_do_not_share_google_accounts_or_audit_history(client):
+    from app.db import SessionLocal
+    from app.models import GoogleConnection
+    a = client.post("/api/v1/businesses", json={"name": "Iso A", "website": "https://iso-a.example"}).json()["id"]
+    b = client.post("/api/v1/businesses", json={"name": "Iso B", "website": "https://iso-b.example"}).json()["id"]
+    db = SessionLocal()
+    conn = GoogleConnection(email="owner-of-a@example.com", status="active", refresh_token_enc="x", scopes="")
+    db.add(conn); db.commit(); db.refresh(conn)
+    db.close()
+    # B has no linked account: it is never tried against A's (or any) account, and no other account's address is named
+    r = client.get(f"/api/v1/businesses/{b}/seo/domain").json()
+    assert r["traffic"]["state"] != "ok" and "owner-of-a@example.com" not in r["traffic"].get("message", "")
+    # audit history is per project
+    from app.models import Audit
+    db = SessionLocal()
+    db.add_all([Audit(kind="website", target="https://iso-a.example/", status="done", workspace_id=a), Audit(kind="website", target="https://iso-b.example/", status="done", workspace_id=b)])
+    db.commit(); db.close()
+    ha = client.get(f"/api/v1/website-audits?workspace_id={a}").json()
+    assert {x["target"] for x in ha} == {"https://iso-a.example/"}
+
+
+def test_site_audit_overview_computes_each_figure_from_the_saved_audit(client):
+    from app.db import SessionLocal
+    from app.models import Audit
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    page = lambda u, **k: {"url": u, "status": 200, "noindex": False, "title_length": 50, "meta_description_length": 140, "h1_count": 1, "schema_types": ["Organization"], "canonical": u, "inbound": 2, **k}
+    crawl = {"start_url": "https://ov.example/", "robots_txt": True, "sitemap": True, "https": True, "crawled": 2, "max_pages": 100,
+             "pages": [page("https://ov.example/"), page("https://ov.example/a", noindex=True, hreflang=1)]}
+    db = SessionLocal()
+    db.add(Audit(kind="website", target="https://ov.example/", status="done", score=80, workspace_id=777, finished_at=now,
+                 issues=[{"level": "serious"}, {"level": "warning"}, {"level": "warning"}, {"level": "info"}],
+                 result={"crawl": crawl, "pagespeed": {"scores": {"performance": 90}, "metrics": {"lcp": "2.0 s", "cls": "0.2", "tbt": "100 ms"}}}))
+    db.commit()
+    db.close()
+    r = client.get("/api/v1/website-audits/overview?workspace_id=777").json()
+    assert len(r) == 1
+    x = r[0]
+    assert (x["pages"], x["limit"], x["health"], x["errors"], x["warnings"], x["crawlability"], x["https"], x["intl"], x["performance"], x["markups"]) == (2, 100, 80, 1, 2, 50, 100, 50, 90, 100)
+    assert x["vitals"]["pass"] == 2 and x["vitals"]["of"] == 3 and x["diff"]["health"] is None
+    assert client.get("/api/v1/website-audits/overview?workspace_id=778").json() == []
+
+
+def test_project_audit_overview_uses_the_same_figures_as_the_site_audit_table(client):
+    from app.db import SessionLocal
+    from app.models import Audit
+    from datetime import datetime, timezone
+    bid = client.post("/api/v1/businesses", json={"name": "Ovw Co", "website": "https://ovw.example"}).json()["id"]
+    assert client.get(f"/api/v1/businesses/{bid}/audit-overview").status_code == 404  # nothing audited yet
+    pg = lambda u, **k: {"url": u, "status": 200, "noindex": False, "title_length": 50, "meta_description_length": 140, "h1_count": 1, "word_count": 500, "images_missing_alt": 0,
+                         "has_viewport": True, "schema_types": ["Organization"], "inbound": 1, "internal_out": 2, "lang": "en", **k}
+    db = SessionLocal()
+    db.add(Audit(business_id=bid, kind="onpage", target="https://ovw.example", status="done", score=80, finished_at=datetime.now(timezone.utc),
+                 issues=[{"code": "h1_count", "area": "On-page", "level": "warning", "title": "/a has 0 H1 headings"}],
+                 result={"https": True, "sitemap": True, "robots_txt": True, "pages": [pg("https://ovw.example/"), pg("https://ovw.example/a", h1_count=0)]}))
+    db.commit()
+    db.close()
+    r = client.get(f"/api/v1/businesses/{bid}/audit-overview").json()
+    row = next(x for x in client.get("/api/v1/businesses/site-audit").json() if x["id"] == bid)
+    assert r["health"] == row["metrics"]["site_health"]["value"] and r["crawlability"] == row["metrics"]["crawlability"]["value"] and r["pages"] == row["pages_crawled"] == 2
+    assert r["top_issues"][0]["code"] == "h1_count" and r["with_issues"] == 1 and r["warnings"] == 1
+
+
+def test_a_project_with_no_linked_account_finds_the_one_that_owns_its_site(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import Business, GoogleConnection
+    from app.services import crypto, gsc
+    db = SessionLocal()
+    other = GoogleConnection(email="other-owner@example.com", refresh_token_enc=crypto.seal("rt"), scopes=f"openid {gsc.SCOPE}", status="active")
+    owner = GoogleConnection(email="auto-owner@example.com", refresh_token_enc=crypto.seal("rt"), scopes=f"openid {gsc.SCOPE}", status="active")
+    db.add_all([other, owner])
+    db.commit()
+    ids = (other.id, owner.id)
+    db.close()
+    monkeypatch.setattr(gsc.SearchConsole, "sites", lambda self: [{"siteUrl": "sc-domain:auto.example", "permissionLevel": "siteOwner"}] if self.client.conn.id == ids[1] else [{"siteUrl": "sc-domain:else.example", "permissionLevel": "siteOwner"}])
+    monkeypatch.setattr(gsc, "report", lambda *a, **k: {"totals": {}})
+    bid = client.post("/api/v1/businesses", json={"name": "Auto Co", "website": "https://auto.example"}).json()["id"]
+    r = client.get(f"/api/v1/businesses/{bid}/seo/domain").json()
+    assert r["traffic"]["state"] == "ok" and r["traffic"]["account"] == "auto-owner@example.com"
+    db = SessionLocal()
+    assert db.get(Business, bid).connection_id == ids[1]  # linked for next time
+    db.close()
+    # choosing an account by hand, or none
+    assert client.post(f"/api/v1/businesses/{bid}/seo/link-account", json={"connection_id": ids[0]}).json() == {"connection_id": ids[0]}
+    assert client.post(f"/api/v1/businesses/{bid}/seo/link-account", json={"connection_id": 999999}).status_code == 404
+    assert client.post(f"/api/v1/businesses/{bid}/seo/link-account", json={"connection_id": None}).json() == {"connection_id": None}
+
+
+def test_working_tools_check_platform_limits_and_use_live_results(client, monkeypatch):
+    from app.competitors import intel
+    from app.services import ai
+    monkeypatch.setattr(ai, "is_configured", lambda: True)
+    monkeypatch.setattr(intel, "serper_enabled", lambda: True)
+    monkeypatch.setattr(intel.Serper, "search", lambda self, q, loc: {"organic": [{"position": 1, "title": "Top", "link": "https://x.example", "snippet": "s"}], "peopleAlsoAsk": [{"question": "How much?", "link": "https://q.example"}], "relatedSearches": [{"query": "near me"}]})
+    monkeypatch.setattr(intel.Serper, "__init__", lambda self, country=None: None)
+    bid = client.post("/api/v1/businesses", json={"name": "Tool Co", "website": "https://tool.example", "city": "Pune"}).json()["id"]
+
+    monkeypatch.setattr(ai, "complete_json", lambda *a, **k: {"title_tag": "T" * 80, "meta_description": "M" * 300, "outline": [{"h2": "A", "points": [], "h3": []}]})
+    r = client.post(f"/api/v1/businesses/{bid}/tools/seo-brief", json={"keyword": "dental clinic pune"}).json()
+    assert len(r["brief"]["title_tag"]) == 60 and len(r["brief"]["meta_description"]) == 155 and r["live_results"] and r["questions"] == ["How much?"]
+
+    monkeypatch.setattr(ai, "complete_json", lambda *a, **k: {"posts": [{"platform": "x", "text": "x" * 400, "hashtags": ["a"]}, {"platform": "linkedin", "text": "hi"}]})
+    r = client.post(f"/api/v1/businesses/{bid}/tools/social-posts", json={"topic": "Diwali offer", "platforms": ["x"]}).json()
+    assert [p["platform"] for p in r["posts"]] == ["x"] and r["posts"][0]["length"] == 280 and r["posts"][0]["trimmed"]  # linkedin was not asked for
+
+    monkeypatch.setattr(ai, "complete_json", lambda *a, **k: {"campaign_name": "C", "ad_groups": [{"name": "g", "keywords": [], "headlines": ["Short", "H" * 40], "descriptions": ["D" * 100, "Fine"]}]})
+    r = client.post(f"/api/v1/businesses/{bid}/tools/ads-plan", json={"goal": "calls"}).json()
+    g = r["plan"]["ad_groups"][0]
+    assert g["headlines"] == ["Short"] and g["descriptions"] == ["Fine"] and r["dropped_over_limit"] == 2
+
+    r = client.post(f"/api/v1/businesses/{bid}/tools/questions", json={"keywords": ["a", "b"]}).json()
+    assert [i["question"] for i in r["items"]] == ["How much?", "near me"] and r["credits"] == 2

@@ -98,7 +98,7 @@ const csv = (name, rows) => {
   setTimeout(() => URL.revokeObjectURL(href), 1000);
 };
 
-function AllPages({ d }) {
+export function AllPages({ d }) {
   const [q, setQ] = useState('');
   const [view, setView] = useState('all');
   const [source, setSource] = useState('');
@@ -122,34 +122,38 @@ function AllPages({ d }) {
         {!d.comparable && <span className="text-11.5 text-slate-400 ml-auto">New / Lost need two position checks.</span>}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-13 min-w-[1180px]">
+        <table className="w-full text-13 min-w-[1700px]">
           <thead className="bg-slate-50 text-11.5 text-slate-500">
-            <tr><Th>Source</Th><Th>URL</Th><Th c="text-right" hint="Estimated monthly visits (data provider)">Traffic</Th><Th c="text-right">Traffic %</Th><Th c="text-right" hint="Keywords the page ranks for: the provider's count, else your tracked keywords that rank">Keywords</Th>
-              <Th c="text-right" hint="Saved AI answers that cite the page">AI prompts</Th><Th c="text-right" hint="Referring domains (data provider)">Ref. domains</Th><Th c="text-right" hint="Average Google position of your tracked keywords on this page">Avg. pos.</Th><Th>Top keyword</Th><Th>Intent</Th><Th c="text-right">Words</Th><Th c="text-right">Issues</Th></tr>
+            <tr><Th>Page</Th><Th>Top keyword</Th><Th c="text-right" hint="Keyword difficulty of the top keyword">KD %</Th><Th c="text-right" hint="Cost per click of the top keyword (USD)">CPC</Th><Th c="text-right" hint="Monthly searches of the top keyword">Vol.</Th><Th c="text-right" hint="Average Google position of your tracked keywords on this page">Avg. pos.</Th><Th c="text-right" hint="Estimated monthly visits (data provider)">Traffic</Th><Th c="text-right">Traffic %</Th><Th c="text-right" hint="Keywords the page ranks for">Keywords</Th><Th>Intent</Th><Th c="text-right">Issues</Th><Th c="text-right" hint="Saved AI answers that cite the page">AI prompts</Th><Th c="text-right" hint="Referring domains (data provider)">Ref. domains</Th><Th c="text-right">Words</Th><Th c="text-right" hint="Pages of the site that link to this one">Inbound links</Th><Th hint="Structured data found on the page">Schema</Th><Th>Source</Th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {shown.map(r => (
-              <tr key={r.key} className="hover:bg-slate-50 align-top">
-                <td className="px-3 py-3"><Source sources={r.sources} /></td>
-                <td className="px-3 py-3 max-w-[340px]">
+              <tr key={r.key} className="hover:bg-slate-50 align-middle">
+                <td className="px-3 py-3.5 max-w-[320px]">
                   <a href={r.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1 break-all" title={r.url}>{short(r.url)}<ExternalLink size={10} className="shrink-0" /></a>
                   {r.status === 'new' && <span className="ml-2 align-middle"><Badge tone="green">new</Badge></span>}{r.status === 'lost' && <span className="ml-2 align-middle"><Badge tone="red">lost</Badge></span>}
                   {r.noindex && <span className="ml-2 align-middle"><Badge tone="amber">noindex</Badge></span>}{r.http >= 400 && <span className="ml-2 align-middle"><Badge tone="red">{r.http}</Badge></span>}
                   {r.title && <div className="text-12 text-slate-500 truncate" title={r.title}>{r.title}</div>}
                 </td>
-                <td className="px-3 py-3 text-right tabular-nums">{r.traffic != null ? (r.traffic >= 100 ? fmt(Math.round(r.traffic)) : r.traffic) : dash}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{r.traffic_share != null ? (r.traffic_share < 0.01 ? '< 0.01' : r.traffic_share.toFixed(2)) : dash}</td>
-                <td className="px-3 py-3 text-right tabular-nums text-indigo-700">{r.keywords || (r.keywords === 0 && (has.ranks || has.index) ? 0 : dash)}</td>
-                <td className="px-3 py-3 text-right tabular-nums" title={r.ai_engines.join(', ')}>{r.llm_prompts || (has.ai ? 0 : dash)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{r.ref_domains != null ? fmt(r.ref_domains) : dash}</td>
-                <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap">{r.avg_position != null ? <>{r.avg_position}{r.position_change ? <span className={`ml-1 text-11.5 font-semibold ${r.position_change > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{r.position_change > 0 ? '↑' : '↓'}{Math.abs(r.position_change)}</span> : null}</> : dash}</td>
-                <td className="px-3 py-3 max-w-[180px]">{r.top_keyword ? <span className="text-indigo-700">{r.top_keyword}</span> : <span className="text-slate-400">n/a</span>}</td>
-                <td className="px-3 py-3">{r.intent && INTENT[r.intent] ? <span title={r.intent} className="inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center text-white" style={{ background: INTENT[r.intent][1] }}>{INTENT[r.intent][0]}</span> : r.intent ? <Badge tone="gray">{r.intent}</Badge> : <span className="text-slate-400">n/a</span>}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{r.words != null ? fmt(r.words) : dash}</td>
-                <td className="px-3 py-3 text-right">{r.issues == null ? dash : r.issues ? <Badge tone="amber">{r.issues}</Badge> : <span className="text-emerald-600">0</span>}</td>
+                <td className="px-3 py-3.5 max-w-[200px] truncate">{r.top_keyword ? <span className="text-slate-900">{r.top_keyword}</span> : <span className="text-slate-400">n/a</span>}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums">{r.kd != null ? r.kd : dash}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums">{r.cpc != null ? `$${r.cpc}` : dash}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : <span className="text-slate-400">n/a</span>}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums whitespace-nowrap">{r.avg_position != null ? <>{r.avg_position}{r.position_change ? <span className={`ml-1 text-11.5 font-semibold ${r.position_change > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{r.position_change > 0 ? '↑' : '↓'}{Math.abs(r.position_change)}</span> : null}</> : dash}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums">{r.traffic != null ? (r.traffic >= 100 ? fmt(Math.round(r.traffic)) : r.traffic) : dash}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums">{r.traffic_share != null ? (r.traffic_share < 0.01 ? '< 0.01' : r.traffic_share.toFixed(2)) : dash}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums text-indigo-700">{r.keywords || (r.keywords === 0 && (has.ranks || has.index) ? 0 : dash)}</td>
+                <td className="px-3 py-3.5">{r.intent && INTENT[r.intent] ? <span title={r.intent} className="inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center text-white" style={{ background: INTENT[r.intent][1] }}>{INTENT[r.intent][0]}</span> : r.intent ? <Badge tone="gray">{r.intent}</Badge> : <span className="text-slate-400">n/a</span>}</td>
+                <td className="px-3 py-3.5 text-right">{r.issues == null ? dash : r.issues ? <Badge tone="amber">{r.issues}</Badge> : <span className="text-emerald-600">0</span>}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums" title={r.ai_engines.join(', ')}>{r.llm_prompts || (has.ai ? 0 : dash)}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums">{r.ref_domains != null ? fmt(r.ref_domains) : dash}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums">{r.words != null ? fmt(r.words) : dash}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums">{r.inbound != null ? r.inbound : dash}</td>
+                <td className="px-3 py-3.5 max-w-[140px] truncate text-12 text-slate-600" title={(r.schema || []).join(', ')}>{r.schema?.length ? r.schema.join(', ') : (r.words != null ? <span className="text-amber-600">none</span> : dash)}</td>
+                <td className="px-3 py-3.5"><Source sources={r.sources} /></td>
               </tr>
             ))}
-            {!shown.length && <tr><td colSpan={12} className="px-5 py-10 text-center text-slate-500">No page matches these filters.</td></tr>}
+            {!shown.length && <tr><td colSpan={17} className="px-5 py-10 text-center text-slate-500">No page matches these filters.</td></tr>}
           </tbody>
         </table>
       </div>

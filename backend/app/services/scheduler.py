@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from ..config import get_settings
 from ..db import SessionLocal
@@ -33,6 +33,13 @@ def tick() -> dict[str, int]:
         except Exception as exc:
             log.warning("IMAP poll failed: %s", exc)
         out["onboarded"] = pipeline.process_waiting(db)
+        try:  # projects created before a job type existed get its schedule row (weekly plan, monthly site research)
+            from ..models import Business
+            for b in db.scalars(select(Business).where(Business.status != "paused")):
+                schedules.ensure_jobs(db, b)
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            log.warning("Schedule backfill failed: %s", exc)
         out["jobs"] = schedules.run_due(db)
         out["posts"] = site_publish.run_due_scheduled(db)  # blog posts held for a chosen time
     finally:

@@ -20,7 +20,7 @@ from . import ai, geo, market, site_health
 
 LEVELS = ["critical", "serious", "warning", "info"]
 JOB_LABELS = {"full_audit": "full SEO audit", "rank_scan": "rank tracking", "reviews": "review sync and replies", "posts": "Google posts", "technical": "technical SEO check",
-              "report": "monthly report", "geo": "AI search visibility check"}
+              "report": "monthly report", "geo": "AI search visibility check", "weekly_plan": "weekly work plan and report", "site_research": "website research refresh"}
 
 # What each page of the platform is for and how to use it: the assistant's knowledge of the system.
 GUIDE: list[dict[str, Any]] = [

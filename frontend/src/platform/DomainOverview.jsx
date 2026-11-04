@@ -265,8 +265,13 @@ function Checks({ checks, internal }) {
   );
 }
 
-function Connect({ t, busy, onConnect, internal }) {
+function Connect({ t, busy, onConnect, internal, domain, businessId, onLinked }) {
+  const [linking, linkErr, runLink] = useAction();
+  const link = (id) => runLink(`link${id}`, async () => { await api(`/businesses/${businessId}/seo/link-account`, { method: 'POST', body: { connection_id: id } }); onLinked(); });
+  const choices = !t.linked ? (t.accounts || []).filter(a => a.search_console) : [];
   const needs = ['not_connected', 'scope_missing'].includes(t.state);
+  // Open Search Console on THIS project's property (and the account linked to it), not on whichever property the browser used last
+  const gsc = `https://search.google.com/search-console${domain ? `?resource_id=${encodeURIComponent(`sc-domain:${domain.replace(/^www\./, '')}`)}` : ''}${t.account ? `${domain ? '&' : '?'}authuser=${encodeURIComponent(t.account)}` : ''}`;
   const title = { not_connected: internal ? 'Connect our Google account to see this site\'s real traffic' : 'Connect Google Search Console to see the client\'s real traffic', scope_missing: 'Allow Search Console access', no_property: 'This site isn\'t in the connected Search Console', error: 'Google didn\'t return the traffic', no_website: 'Add the website first' }[t.state];
   return (
     <div className="rounded bg-indigo-50 ring-1 ring-inset ring-indigo-200 px-5 py-4 flex flex-wrap items-center gap-4">
@@ -275,9 +280,19 @@ function Connect({ t, busy, onConnect, internal }) {
         <div className="text-14 font-semibold text-indigo-900">{title}</div>
         <p className="text-12.5 text-indigo-800 mt-0.5">{t.message} Organic traffic, impressions, keywords, pages, countries and the history all come from Search Console: nothing is estimated.</p>
       </div>
+      {choices.length > 0 && (
+        <div className="basis-full pt-1">
+          <div className="text-12.5 font-semibold text-indigo-900 mb-1.5">Already connected: use one of these accounts for this project</div>
+          <div className="flex flex-wrap gap-2">{choices.map(a => <Button key={a.id} size="sm" busy={linking === `link${a.id}`} onClick={() => link(a.id)}>Use {a.email}</Button>)}</div>
+          <p className="text-12 text-indigo-800 mt-1.5">Pick the account that owns {domain || 'this site'} in Search Console. It stays linked to this project only.</p>
+          {linkErr && <p className="text-12 text-rose-600 mt-1">{linkErr}</p>}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="primary" icon={PlugZap} busy={busy} onClick={onConnect}>{t.state === 'scope_missing' ? 'Reconnect with Search Console' : needs ? 'Connect Search Console' : 'Connect another Google account'}</Button>
-        {!needs && <a href="https://search.google.com/search-console" target="_blank" rel="noreferrer" className="h-9 px-4 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-white ring-1 ring-inset ring-indigo-200 text-indigo-700 hover:bg-indigo-100">Open Search Console <ExternalLink size={12} /></a>}
+        {t.state === 'no_property' && domain
+          ? <a href={`https://search.google.com/search-console/welcome${t.account ? `?authuser=${encodeURIComponent(t.account)}` : ''}`} target="_blank" rel="noreferrer" title={`Add ${domain} as a Domain property, then verify it with the DNS TXT record`} className="h-9 px-4 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-white ring-1 ring-inset ring-indigo-200 text-indigo-700 hover:bg-indigo-100">Add {domain} to Search Console <ExternalLink size={12} /></a>
+          : !needs && <a href={gsc} target="_blank" rel="noreferrer" title={domain ? `Opens Search Console on ${domain}` : undefined} className="h-9 px-4 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-white ring-1 ring-inset ring-indigo-200 text-indigo-700 hover:bg-indigo-100">Open Search Console{domain ? ` for ${domain}` : ''} <ExternalLink size={12} /></a>}
       </div>
     </div>
   );
@@ -321,7 +336,7 @@ function Page({ b }) {
       </div>
       <ErrorNote>{error}</ErrorNote>
       <Checks checks={(d.checks || []).filter(c => !(c.id === 'google' && c.level !== 'error' && d.traffic.state !== 'ok' && d.traffic.state !== 'no_website'))} internal={d.internal} />
-      {d.traffic.state !== 'ok' && d.traffic.state !== 'no_website' && <Connect t={d.traffic} busy={busy === 'connect'} onConnect={connect} internal={d.internal} />}
+      {d.traffic.state !== 'ok' && d.traffic.state !== 'no_website' && <Connect t={d.traffic} busy={busy === 'connect'} onConnect={connect} internal={d.internal} domain={d.domain} businessId={b.id} onLinked={() => { data.reload(true); intel.reload(true); }} />}
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'overview', label: 'Overview' }, ...(r ? [{ id: 'growth', label: 'Growth report' }, { id: 'countries', label: 'Compare by countries' }] : [])]} />
       {tab === 'overview' && <IntelBar intel={intel.data} loading={intel.loading} market={market} setMarket={setMarket} onRefresh={refreshIntel} refreshing={refreshing} />}
       {tab === 'overview' && <Overview d={d} r={r} setFilter={set} filters={filters} intel={intel} />}

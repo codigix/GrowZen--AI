@@ -1,36 +1,45 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Sk, SkPage } from './platform/SeoUi';
 import { api } from './platform/seoApi';
 import Layout from './components/Layout';
 import PasswordGate from './components/PasswordGate';
-import LandingPage from './public/LandingPage';
-import LegalPage from './public/LegalPage';
+const LandingPage = lazy(() => import('./public/LandingPage'));
+const LegalPage = lazy(() => import('./public/LegalPage'));
 import LoginPage from './pages/LoginPage';
-import UsersPage from './pages/UsersPage';
-import SeoOverviewPage from './platform/SeoOverviewPage';
-import AutomationPipelinePage from './platform/AutomationPipelinePage';
-import GbpManagerPage from './platform/GbpManagerPage';
-import ReviewManagerPage from './platform/ReviewManagerPage';
-import LocalRankTrackerPage from './platform/LocalRankTrackerPage';
-import KeywordResearchPage from './platform/KeywordResearchPage';
-import CompetitorFinderPage from './platform/CompetitorFinderPage';
-import ContentStudioPage from './platform/ContentStudioPage';
-import SiteAuditPage from './platform/SiteAuditPage';
-import BacklinksCitationsPage from './platform/BacklinksCitationsPage';
-import BacklinkIntelPage from './platform/BacklinkIntelPage';
-import CompetitorWatchPage from './platform/CompetitorWatchPage';
-import GeoTrackerPage from './platform/GeoTrackerPage';
-import ReportsLeadsPage from './platform/ReportsLeadsPage';
-import AiAgentPage from './platform/AiAgentPage';
-import WebsiteBuilderPage from './platform/WebsiteBuilderPage';
-import BusinessOnboardingPage from './platform/BusinessOnboardingPage';
-import ConnectionsPage from './platform/ConnectionsPage';
-import ConnectResultPage from './platform/ConnectResultPage';
-import TrafficPage from './platform/TrafficPage';
-import { OrganicRankingsPage } from './platform/OrganicResearch';
-import { TopPagesPage } from './platform/TopPagesReport';
-import { DomainOverviewPage, KeywordGapPage, CompareDomainsPage, KeywordOverviewPage } from './platform/SeoToolkit';
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const SeoOverviewPage = lazy(() => import('./platform/SeoOverviewPage'));
+const AutomationPipelinePage = lazy(() => import('./platform/AutomationPipelinePage'));
+const GbpManagerPage = lazy(() => import('./platform/GbpManagerPage'));
+const ReviewManagerPage = lazy(() => import('./platform/ReviewManagerPage'));
+const LocalRankTrackerPage = lazy(() => import('./platform/LocalRankTrackerPage'));
+const KeywordResearchPage = lazy(() => import('./platform/KeywordResearchPage'));
+const CompetitorFinderPage = lazy(() => import('./platform/CompetitorFinderPage'));
+const ContentStudioPage = lazy(() => import('./platform/ContentStudioPage'));
+const SiteAuditPage = lazy(() => import('./platform/SiteAuditPage'));
+const BacklinksCitationsPage = lazy(() => import('./platform/BacklinksCitationsPage'));
+const BacklinkIntelPage = lazy(() => import('./platform/BacklinkIntelPage'));
+const CompetitorWatchPage = lazy(() => import('./platform/CompetitorWatchPage'));
+const GeoTrackerPage = lazy(() => import('./platform/GeoTrackerPage'));
+const ReportsLeadsPage = lazy(() => import('./platform/ReportsLeadsPage'));
+const AiAgentPage = lazy(() => import('./platform/AiAgentPage'));
+const WebsiteBuilderPage = lazy(() => import('./platform/WebsiteBuilderPage'));
+const BusinessOnboardingPage = lazy(() => import('./platform/BusinessOnboardingPage'));
+const ConnectionsPage = lazy(() => import('./platform/ConnectionsPage'));
+const ConnectResultPage = lazy(() => import('./platform/ConnectResultPage'));
+const TrafficPage = lazy(() => import('./platform/TrafficPage'));
+const SeoBriefPage = lazy(() => import('./platform/ToolPages').then(m => ({ default: m.SeoBriefPage })));
+const SocialPosterPage = lazy(() => import('./platform/ToolPages').then(m => ({ default: m.SocialPosterPage })));
+const AdsAssistantPage = lazy(() => import('./platform/ToolPages').then(m => ({ default: m.AdsAssistantPage })));
+const AiQuestionsPage = lazy(() => import('./platform/ToolPages').then(m => ({ default: m.AiQuestionsPage })));
+const FeaturePage = lazy(() => import('./platform/ToolPages').then(m => ({ default: m.FeaturePage })));
+const OrganicRankingsPage = lazy(() => import('./platform/OrganicResearch').then(m => ({ default: m.OrganicRankingsPage })));
+const TopPagesPage = lazy(() => import('./platform/TopPagesReport').then(m => ({ default: m.TopPagesPage })));
+const toolkit = (name) => lazy(() => import('./platform/SeoToolkit').then(m => ({ default: m[name] })));
+const DomainOverviewPage = toolkit('DomainOverviewPage');
+const KeywordGapPage = toolkit('KeywordGapPage');
+const CompareDomainsPage = toolkit('CompareDomainsPage');
+const KeywordOverviewPage = toolkit('KeywordOverviewPage');
 
 /** Page-shaped placeholder: top bar, title and subtitle, then tiles, a chart card and a table card, inside the usual page margins. */
 function PageLoading() {
@@ -74,9 +83,9 @@ export default function App() {
   // Public pages: the home page and policies open without signing in (Google's OAuth review needs them).
   // A trailing slash (/privacy/) must not turn a public page into the login screen.
   const publicPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
-  if (publicPath === '/') return <LandingPage user={user} />;
-  if (publicPath === '/privacy') return <LegalPage kind="privacy" />;
-  if (publicPath === '/terms') return <LegalPage kind="terms" />;
+  if (publicPath === '/') return <Suspense fallback={<PageLoading />}><LandingPage user={user} /></Suspense>;
+  if (publicPath === '/privacy') return <Suspense fallback={<PageLoading />}><LegalPage kind="privacy" /></Suspense>;
+  if (publicPath === '/terms') return <Suspense fallback={<PageLoading />}><LegalPage kind="terms" /></Suspense>;
 
   if (user === undefined) {
     // Keep the sidebar on screen while the session is checked; the page area is a neutral skeleton laid out like a real page.
@@ -104,6 +113,7 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<SeoOverviewPage />} />
         <Route path="onboarding" element={<BusinessOnboardingPage />} />
+        <Route path="work-plan" element={<Navigate to="/dashboard" replace />} />
         <Route path="automation-pipeline" element={<AutomationPipelinePage />} />
         <Route path="gmb-profile" element={<GbpManagerPage />} />
         <Route path="google-posts" element={<GbpManagerPage initialTab="posts" />} />
@@ -114,6 +124,11 @@ export default function App() {
         <Route path="competitor-finder" element={<CompetitorFinderPage />} />
         <Route path="competitor-watch" element={<CompetitorWatchPage />} />
         <Route path="traffic" element={<TrafficPage />} />
+        <Route path="seo-brief" element={<SeoBriefPage />} />
+        <Route path="social-poster" element={<SocialPosterPage />} />
+        <Route path="ads-assistant" element={<AdsAssistantPage />} />
+        <Route path="ai-questions" element={<AiQuestionsPage />} />
+        <Route path="feature/:slug" element={<FeaturePage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
         <Route path="organic-rankings" element={<OrganicRankingsPage />} />
         <Route path="top-pages" element={<TopPagesPage />} />

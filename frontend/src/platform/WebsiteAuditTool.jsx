@@ -1,15 +1,52 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { jsPDF } from 'jspdf';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import {
   Search, Smartphone, Monitor, Download, CheckCircle2, XCircle, CircleDashed, History, ArrowUp, ArrowDown, Loader2, Globe, Gauge,
-  FileText, ShieldCheck, RotateCw, ExternalLink, Accessibility, BadgeCheck, Sparkles, Clock, ArrowRight
+  FileText, Layers, X, ShieldCheck, RotateCw, ListChecks, ExternalLink, Accessibility, BadgeCheck, Sparkles, Clock, ArrowRight
 } from 'lucide-react';
-import { Card, Button, Badge, ScoreRing, Tabs, inputCls, ErrorNote, useToast, useAction, SkList } from './SeoUi';
-import { api, useApi, usePoll, fmtDateTime } from './seoApi';
+import { Card, Button, Badge, ScoreRing, Tabs, inputCls, ErrorNote, useToast, useAction, SkList, LoadMore } from './SeoUi';
+import { api, useApi, usePaged, usePoll, fmtDateTime } from './seoApi';
 import Improvements from './OnPageImprovements';
 import { PagesCard } from './SitePages';
 import { pathOnly as pathOf, hostOf, LEVEL_ORDER, SEVERITY_TONE as TONE } from './siteUtils';
 import LighthouseDetails from './LighthouseDetails';
+const STACK_ORDER = [['framework', 'Framework'], ['language', 'Language'], ['libraries', 'Libraries'], ['theme', 'Theme'], ['plugins', 'Plugins'], ['ecommerce', 'E-commerce'],
+  ['hosting', 'Hosting'], ['cdn', 'CDN'], ['server', 'Web server'], ['analytics', 'Analytics & tags']];
+
+/** What the website is built with, read live from its homepage, headers and cookies. A compact card for the side column. */
+function TechStack({ url }) {
+  const t = useApi(url ? `/website-audits/tech-stack?url=${encodeURIComponent(url)}` : null);
+  const d = t.data;
+  const main = d && d.platform && !['unknown', 'static'].includes(d.platform) ? `${d.label}${d.version ? ` ${d.version}` : ''}` : null;
+  const groups = d ? STACK_ORDER.filter(([k]) => d.details?.[k]?.length) : [];
+  return (
+    <Card title="Tech stack" subtitle={url ? hostOf(url) : 'Add a website to read its technology'} className="mt-5"
+      action={url && <Button size="sm" icon={RotateCw} busy={t.loading} aria-label="Re-detect" onClick={() => t.reload()} />}>
+      {!url ? <p className="text-13 text-slate-500">This project has no website yet.</p>
+        : t.error ? <ErrorNote>{t.error.message}</ErrorNote>
+          : !d ? <SkList rows={3} />
+            : d.reachable === false ? <p className="text-13 text-slate-500">{d.error || 'The site could not be opened.'}</p> : (
+              <div className="grid gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="w-10 h-10 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 flex items-center justify-center shrink-0"><Globe size={18} /></span>
+                  <div className="min-w-0"><div className="text-14 font-bold text-slate-900 truncate">{main || (d.platform === 'static' ? 'Custom / static site' : 'Not recognised')}</div>
+                    <div className="text-11.5 text-slate-500">{d.platform === 'unknown' ? 'The site did not reveal its platform.' : `Confidence: ${d.confidence || 'n/a'}`}</div></div>
+                </div>
+                {groups.map(([k, label]) => (
+                  <div key={k}><div className="text-10.5 font-semibold text-slate-400 uppercase tracking-wide mb-1">{label}</div>
+                    <div className="flex flex-wrap gap-1.5">{d.details[k].map(v => <Badge key={v} tone="blue">{v}</Badge>)}</div></div>
+                ))}
+                {d.server && <div><div className="text-10.5 font-semibold text-slate-400 uppercase tracking-wide mb-1">Server header</div><Badge>{d.server}</Badge></div>}
+                {!groups.length && !main && !d.server && <p className="text-13 text-slate-500">No technologies could be read from the homepage.</p>}
+                {d.evidence?.length > 0 && <details className="text-12 text-slate-500"><summary className="cursor-pointer font-semibold">How we know ({d.evidence.length})</summary><ul className="list-disc pl-5 mt-1.5 grid gap-1">{d.evidence.map((e, i) => <li key={i}>{e}</li>)}</ul></details>}
+              </div>
+            )}
+    </Card>
+  );
+}
+
+const WeeklyTasks = lazy(() => import('./WorkPlanPage').then(m => ({ default: m.ThisWeek }))); // loaded only when the tab opens
+const SiteResearch = lazy(() => import('./WorkPlanPage').then(m => ({ default: m.Research })));
+const SITE_AREAS = ['technical', 'metadata', 'content', 'seo'];
 import { AuditSummary, PageRewrites } from './AuditAI';
 
 /**
@@ -367,7 +404,7 @@ function RecentSites({ history, business, current, running, onView, onRerun }) {
                       <span className="flex-1 min-w-0">
                         <span className="block text-13 text-slate-800">{fmtDateTime(r.finished_at || r.created_at)}</span>
                         <span className="block text-11.5 text-slate-500">
-                          {busyRun ? 'Running…' : r.status === 'failed' ? 'Failed' : `${(r.issues || []).length} issues`}
+                          {busyRun ? 'Running…' : r.status === 'failed' ? 'Failed' : `${r.issue_count ?? (r.issues || []).length} issues`}
                           {delta ? <span className={`ml-1.5 font-semibold ${delta > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{delta > 0 ? '▲' : '▼'}{Math.abs(delta)}</span> : null}
                         </span>
                       </span>
@@ -376,6 +413,7 @@ function RecentSites({ history, business, current, running, onView, onRerun }) {
                   );
                 })}
               </ul>
+              <LoadMore list={history} label="Load older audits" />
               {runs.length > 8 && <button type="button" onClick={() => setAll(v => !v)} className="mt-2 text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">{all ? 'Show fewer' : `Show all ${runs.length} audits`}</button>}
             </>
           )}
@@ -441,16 +479,16 @@ function LatestReport({ report, history, onOpen }) {
  */
 export function useSiteAudit(business) {
   const site = business?.website || '';
-  const [url, setUrl] = useState(site);
+  const [url, setUrl] = useState(() => new URLSearchParams(window.location.search).get('url') || site); // ?url=… audits that address first
   const [strategy, setStrategy] = useState('mobile');
   const [crawlPages, setCrawlPages] = useState(10);
   const [current, setCurrent] = useState(null);
   const [startedAt, setStartedAt] = useState(null);
   const audit = useApi(current ? `/website-audits/${current}` : null);
-  const history = useApi('/website-audits');
+  const history = usePaged(`/website-audits?slim=true${business?.id ? `&workspace_id=${business.id}` : ''}`, 20); // slabs of 20, without each audit's large issue lists
   const [busy, error, run] = useAction();
-  const techList = useApi(business ? `/businesses/${business.id}/audits?kind=technical&limit=1` : null);
-  const onpageList = useApi(business ? `/businesses/${business.id}/audits?kind=onpage&limit=1` : null);
+  const techList = useApi(business ? `/businesses/${business.id}/audits?kind=technical&limit=1&slim=true` : null);
+  const onpageList = useApi(business ? `/businesses/${business.id}/audits?kind=onpage&limit=1&slim=true` : null);
   const tech = useApi(techList.data?.[0]?.status === 'done' ? `/businesses/${business.id}/audits/${techList.data[0].id}` : null);
   const onpage = useApi(onpageList.data?.[0]?.status === 'done' ? `/businesses/${business.id}/audits/${onpageList.data[0].id}` : null);
 
@@ -470,7 +508,7 @@ export function useSiteAudit(business) {
 
   const launch = (target, pages = crawlPages) => run('start', async () => {
     const own = site && hostOf(target) === hostOf(site);
-    const r = await api('/website-audits', { method: 'POST', body: { url: target, strategy, crawl_pages: pages, ...(own ? { business_id: business.id } : {}) } });
+    const r = await api('/website-audits', { method: 'POST', body: { url: target, strategy, crawl_pages: pages, ...(business?.id ? { workspace_id: business.id } : {}), ...(own ? { business_id: business.id } : {}) } });
     setStartedAt(Date.now());
     setCurrent(r.id);
     history.reload(true);
@@ -501,9 +539,14 @@ export function AuditStep({ sa, business, onOpenReport }) {
   const { url, setUrl, strategy, setStrategy, crawlPages, setCrawlPages, busy, error, running, audit, report } = sa;
   const chip = (on) => `h-9 px-3 flex items-center gap-1.5 text-12 font-semibold rounded-lg cursor-pointer transition-colors ${on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-900'}`;
   const own = business?.website && hostOf(normalise(url)) === hostOf(business.website);
+  const [drawer, setDrawer] = useState(null); // tech | recent: a panel on the right, opened on click
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
-      <div className="xl:col-span-2 space-y-5 min-w-0">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button size="sm" icon={Layers} onClick={() => setDrawer('tech')}>Tech stack</Button>
+        <Button size="sm" icon={History} onClick={() => setDrawer('recent')}>Recent audits</Button>
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start min-w-0">
         <Card>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-500/20"><Globe size={18} /></div>
@@ -524,7 +567,7 @@ export function AuditStep({ sa, business, onOpenReport }) {
               {[['mobile', Smartphone, 'Mobile'], ['desktop', Monitor, 'Desktop']].map(([s, I, l]) => <button key={s} type="button" onClick={() => setStrategy(s)} className={chip(strategy === s)}><I size={14} /> {l}</button>)}
             </div>
             <select value={crawlPages} onChange={e => setCrawlPages(Number(e.target.value))} className="h-10 px-2.5 rounded text-12 font-semibold text-slate-700 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer" aria-label="Pages to crawl">
-              {[5, 10, 25, 50].map(n => <option key={n} value={n}>Crawl {n} pages</option>)}
+              {[5, 10, 25, 50, 100, 300].map(n => <option key={n} value={n}>{n === 300 ? 'Crawl all pages (up to 300)' : `Crawl ${n} pages`}</option>)}
             </select>
             <span className="text-12 text-slate-500 min-w-0">
               {own ? <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-600 shrink-0" /> Updates this business's scores, dashboard and AI tasks</span>
@@ -535,10 +578,10 @@ export function AuditStep({ sa, business, onOpenReport }) {
           <ErrorNote>{error || audit.error?.message}</ErrorNote>
         </Card>
 
-        {running && <LiveScan audit={audit.data} startedAt={sa.startedAt} strategy={strategy} />}
+        {running && <div className="xl:col-span-2"><LiveScan audit={audit.data} startedAt={sa.startedAt} strategy={strategy} /></div>}
 
         {!running && audit.data?.status === 'failed' && (
-          <Card>
+          <Card className="xl:col-span-2">
             <div className="flex items-start gap-3">
               <XCircle size={18} className="text-red-600 shrink-0 mt-0.5" />
               <div className="min-w-0">
@@ -553,7 +596,7 @@ export function AuditStep({ sa, business, onOpenReport }) {
         {!running && report && <LatestReport report={report} history={sa.history} onOpen={onOpenReport} />}
 
         {!running && !report && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="xl:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
             {[[ShieldCheck, 'Technical health', 'HTTPS, robots.txt, sitemap, indexing, broken pages and structured data.'], [FileText, 'Every page checked', 'Titles, meta descriptions, headings, content depth and image alt text.'], [Sparkles, 'Fixes, not just scores', 'Problems ranked by impact, with ready-to-paste code and copy.']].map(([I, t, d]) => (
               <Card key={t}><div className="flex items-start gap-3"><div className="w-9 h-9 rounded bg-slate-50 ring-1 ring-inset ring-slate-200 flex items-center justify-center text-slate-600 shrink-0"><I size={16} /></div><div><div className="text-14 font-semibold text-slate-900">{t}</div><div className="text-12.5 text-slate-500 mt-0.5">{d}</div></div></div></Card>
             ))}
@@ -561,10 +604,17 @@ export function AuditStep({ sa, business, onOpenReport }) {
         )}
       </div>
 
-      <aside className="min-w-0 xl:sticky xl:top-24">
-        <RecentSites history={sa.history} business={business} current={sa.current} running={running || busy === 'start'}
-          onView={h => { sa.setCurrent(h.id); if (h.status === 'done') onOpenReport(); }} onRerun={h => { setUrl(h.target); sa.launch(h.target); }} />
-      </aside>
+      {drawer && (
+        <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={drawer === 'tech' ? 'Tech stack' : 'Recent audits'}>
+          <button type="button" aria-label="Close" onClick={() => setDrawer(null)} className="absolute inset-0 bg-slate-900/30 cursor-default" />
+          <aside className="relative w-full sm:w-[440px] h-full bg-slate-50 shadow-2xl overflow-y-auto p-5">
+            <button type="button" onClick={() => setDrawer(null)} aria-label="Close panel" className="absolute top-4 right-4 w-8 h-8 rounded flex items-center justify-center text-slate-500 hover:bg-slate-200 cursor-pointer"><X size={16} /></button>
+            {drawer === 'recent' && <RecentSites history={sa.history} business={business} current={sa.current} running={running || busy === 'start'}
+              onView={h => { setDrawer(null); sa.setCurrent(h.id); if (h.status === 'done') onOpenReport(); }} onRerun={h => { setDrawer(null); setUrl(h.target); sa.launch(h.target); }} />}
+            {drawer === 'tech' && <TechStack url={business?.website || null} />}
+          </aside>
+        </div>
+      )}
     </div>
   );
 }
@@ -573,6 +623,8 @@ export function AuditStep({ sa, business, onOpenReport }) {
 export function ReportStep({ sa, business, onNext }) {
   const [toast, toastNode] = useToast();
   const [tab, setTab] = useState('fixes'); // fixes | pages | speed | google
+  const [planning, setPlanning] = useState(false);
+  const [tasksKey, setTasksKey] = useState(0);
   const a = sa.report;
   const ps = a?.result?.pagespeed;
   const crawl = a?.result?.crawl;
@@ -591,7 +643,18 @@ export function ReportStep({ sa, business, onNext }) {
   if (!a) return <Card><div className="py-12 text-center text-13 text-slate-500">{sa.running ? 'The audit is still running. The report opens here when it finishes.' : 'Run an audit first to get the report.'}</div></Card>;
   if (a.status === 'failed') return <Card><ErrorNote>The audit failed: {a.error || 'the site could not be reached.'}</ErrorNote></Card>;
 
-  const downloadPdf = () => {
+  const createTasks = async () => {
+    setPlanning(true);
+    try {
+      const r = await api(`/businesses/${business.id}/workplan/generate`, { method: 'POST' });
+      toast(`Weekly tasks ready: ${r.added} new, ${r.carried} carried over.`);
+      setTasksKey(k => k + 1);
+      showTab('tasks');
+    } catch (e) { toast(e.message || 'Could not create the tasks'); } finally { setPlanning(false); }
+  };
+
+  const downloadPdf = async () => {
+    const { jsPDF } = await import('jspdf'); // the PDF library (~800 KB) is fetched only when a report is exported
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
     const H = doc.internal.pageSize.getHeight();
@@ -642,6 +705,7 @@ export function ReportStep({ sa, business, onNext }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {business && <Button size="sm" icon={ListChecks} busy={planning} onClick={createTasks}>Create weekly tasks</Button>}
             <Button size="sm" icon={Download} onClick={downloadPdf}>PDF report</Button>
             <Button size="sm" variant="primary" icon={RotateCw} busy={sa.busy === 'start' || sa.running} onClick={rerun}>Re-check</Button>
           </div>
@@ -677,11 +741,15 @@ export function ReportStep({ sa, business, onNext }) {
           <div id="report-tabs" className="scroll-mt-24">
             <Tabs value={tab} onChange={setTab} tabs={[
               { id: 'fixes', label: 'Fixes', count: issues.length },
+              { id: 'tasks', label: 'Weekly tasks' },
+              { id: 'research', label: 'Website R&D' },
               { id: 'pages', label: 'Pages', count: pages.length },
               { id: 'speed', label: 'Speed' },
               { id: 'google', label: 'Google checks', count: (ps?.seo_checks || []).filter(c => c.status === 'fail').length }
             ]} />
           </div>
+          {tab === 'tasks' && (business ? <Suspense fallback={<SkList rows={4} />}><WeeklyTasks key={`${business.id}-${tasksKey}`} b={business} areas={SITE_AREAS} /></Suspense> : <Card><div className="py-8 text-center text-13 text-slate-500">Weekly tasks are kept for saved projects. Add this website as a project first.</div></Card>)}
+          {tab === 'research' && (business ? <Suspense fallback={<SkList rows={4} />}><SiteResearch key={business.id} b={business} /></Suspense> : null)}
           {tab === 'fixes' && <Improvements issues={issues} pages={pages} business={subject} score={crawl?.score} technical={ps} onRecheck={rerun} rechecking={sa.busy === 'start' || sa.running} />}
           {tab === 'pages' && (pages.length ? <><PageRewrites pages={pages} subject={subject} /><PagesCard pages={pages} siteIssues={issues} /></> : <Card><div className="py-8 text-center text-13 text-slate-500">No pages were crawled in this audit.</div></Card>)}
           {tab === 'speed' && (ps ? <Vitals ps={ps} /> : <Card><div className="py-8 text-center text-13 text-slate-500">Google Lighthouse didn't finish for this audit, so there are no speed results. Re-run the audit.</div></Card>)}

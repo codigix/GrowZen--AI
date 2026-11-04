@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { api, toUi, SEO_API } from './seoApi';
 import { MarketBadge } from './MarketBadge';
+import Breadcrumbs from './Breadcrumbs';
 
 // Categorical palette, tuned for white surfaces
 export const SERIES = ['#6658dd', '#4a81d4', '#1abc9c', '#f7b84b', '#f1556c', '#43bfe5', '#313a46', '#9ba6b7'];
@@ -204,55 +205,67 @@ const NoBusinesses = ({ onCreated }) => {
     onCreated(b.id);
   });
 
+  const STEPS = [
+    ['Full audit', 'Google profile, rankings, technical, on-page, backlinks and citations.'],
+    ['Website research', 'Tech stack, metadata on every page, and a list of improvements.'],
+    ['Weekly work plan', 'Tasks for each week, carried over until done, with a backlog for later.'],
+    ['Weekly & monthly reports', 'Last period vs this period, and what comes next.']
+  ];
+  const OPTIONS = [
+    [Store, 'Connect Google Account', 'Import Business Profiles, locations and live reviews directly.', () => navigate(`${path('gmb-profile')}?connect=1`), 'bg-blue-500/10 text-blue-600 border-blue-500/20'],
+    [Mail, 'Onboarding Email Pipeline', 'Paste an onboarding brief; AI extracts the details and starts the audit.', () => navigate(path('automation-pipeline')), 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20']
+  ];
+  const FIELDS = [['name', 'Business name *'], ['primary_category', 'Category (e.g. Multispeciality Hospital)'], ['phone', 'Phone number'], ['website', 'Website URL'], ['area', 'Area (e.g. Chinchwad)'], ['city', 'City (e.g. PCMC)']];
+
   return (
-    <div className="bg-white backdrop-blur-xl rounded-3xl border border-slate-300 p-8 max-w-3xl shadow-2xl text-slate-900">
-      <div className="flex items-center gap-3.5">
-        <div className="w-12 h-12 rounded bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-600 shadow-sm">
-          <Building2 size={24} />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 font-display">No Managed Businesses Found</h2>
-          <p className="text-13 text-slate-500 mt-0.5">Initialize the first client to activate the autonomous SEO pipeline.</p>
-        </div>
-      </div>
-
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <button
-          onClick={() => navigate(`${path('gmb-profile')}?connect=1`)}
-          className="text-left p-5 rounded border border-slate-200 hover:border-indigo-400 hover:bg-slate-50 transition-all cursor-pointer group bg-slate-50"
-        >
-          <div className="w-9 h-9 rounded bg-blue-500/10 border border-blue-500/20 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-            <Store size={18} />
+    <div className="w-full grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-5 text-slate-900">
+      <div className="grid gap-5">
+        <section className="ai-glass-card rounded p-6 flex flex-wrap items-center gap-4">
+          <div className="w-14 h-14 rounded bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-600"><Building2 size={26} /></div>
+          <div className="flex-1 min-w-[240px]">
+            <h2 className="text-xl font-bold text-slate-900 font-display">Add your first client</h2>
+            <p className="text-13 text-slate-500 mt-0.5">No businesses are managed yet. Add one and the autonomous SEO pipeline starts by itself.</p>
           </div>
-          <div className="text-14 font-bold text-slate-900 group-hover:text-cyan-700 transition-colors">Connect Google Account</div>
-          <div className="text-12 text-slate-500 mt-1">Import Business Profiles, locations, and live reviews directly.</div>
-        </button>
-        <button
-          onClick={() => navigate(path('automation-pipeline'))}
-          className="text-left p-5 rounded border border-slate-200 hover:border-indigo-400 hover:bg-slate-50 transition-all cursor-pointer group bg-slate-50"
-        >
-          <div className="w-9 h-9 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-            <Mail size={18} />
-          </div>
-          <div className="text-14 font-bold text-slate-900 group-hover:text-cyan-700 transition-colors">Onboarding Email Pipeline</div>
-          <div className="text-12 text-slate-500 mt-1">Paste onboarding briefing; autonomous AI parses attributes and starts audit.</div>
-        </button>
-      </div>
+        </section>
 
-      <div className="mt-8 pt-6 border-t border-slate-200">
-        <h3 className="text-14 font-bold text-slate-900">Or Register Client Manually</h3>
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-          {[['name', 'Business name *'], ['primary_category', 'Category (e.g. Multispeciality Hospital)'], ['phone', 'Phone Number'], ['website', 'Website URL'], ['area', 'Area (e.g. Chinchwad)'], ['city', 'City (e.g. PCMC)']].map(([k, l]) => (
-            <input key={k} className={inputCls} placeholder={l} value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {OPTIONS.map(([Icon, title, text, go, tone]) => (
+            <button key={title} type="button" onClick={go} className="ai-glass-card rounded p-6 text-left cursor-pointer group hover:ring-2 hover:ring-indigo-300 transition-all">
+              <div className={`w-11 h-11 rounded border flex items-center justify-center mb-4 group-hover:scale-105 transition-transform ${tone}`}><Icon size={20} /></div>
+              <div className="text-15 font-bold text-slate-900">{title}</div>
+              <div className="text-13 text-slate-500 mt-1">{text}</div>
+              <div className="text-12 font-semibold text-indigo-600 mt-4 flex items-center gap-1">Start <ExternalLink size={12} /></div>
+            </button>
           ))}
         </div>
-        <ErrorNote>{error}</ErrorNote>
-        <div className="mt-5 flex justify-end">
-          <Button variant="primary" icon={Plus} busy={busy === 'create'} disabled={!form.name.trim()} onClick={create}>
-            Create Business
-          </Button>
-        </div>
+
+        <section className="ai-glass-card rounded p-6">
+          <h3 className="text-15 font-bold text-slate-900">Or register a client manually</h3>
+          <p className="text-12 text-slate-400 mt-0.5">Only the name is required. You can complete the profile later in Business Onboarding.</p>
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {FIELDS.map(([k, l]) => (
+              <input key={k} aria-label={l} className={inputCls} placeholder={l} value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} />
+            ))}
+          </div>
+          <ErrorNote>{error}</ErrorNote>
+          <div className="mt-5 flex justify-end">
+            <Button variant="primary" icon={Plus} busy={busy === 'create'} disabled={!form.name.trim()} onClick={create}>Create Business</Button>
+          </div>
+        </section>
       </div>
+
+      <aside className="ai-glass-card rounded p-6 self-start">
+        <div className="flex items-center gap-2 text-indigo-600"><Sparkles size={16} /><span className="text-12 font-bold uppercase tracking-wide">What happens next</span></div>
+        <h3 className="text-15 font-bold text-slate-900 mt-2">Everything starts automatically</h3>
+        <ol className="mt-5 grid gap-5">
+          {STEPS.map(([title, text], i) => (
+            <li key={title} className="flex gap-3">
+              <span className="w-7 h-7 rounded-full bg-indigo-500 text-white text-12 font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+              <div><div className="text-13 font-semibold text-slate-900">{title}</div><div className="text-12 text-slate-500 mt-0.5">{text}</div></div>
+            </li>
+          ))}
+        </ol>
+      </aside>
     </div>
   );
 };
@@ -298,16 +311,25 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
         {/* Page title with breadcrumb */}
         <div className="py-5 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
+            <Breadcrumbs title={title} />
             <h1 className="text-18 font-semibold text-slate-900 tracking-tight flex flex-wrap items-center gap-2">{title}{business && needsBusiness && <MarketBadge business={business} />}</h1>
             {subtitle && <p className="text-12 text-slate-400 mt-0.5 max-w-3xl">{subtitle}</p>}
           </div>
-          <nav className="text-12 text-slate-400 flex items-center gap-1.5" aria-label="Breadcrumb"><span>bevisibe</span><span>›</span><span className="text-slate-600">{title}</span></nav>
         </div>
         {body}
       </div>
     </div>
   );
 };
+
+/** "Show more" under a list loaded with usePaged. Renders nothing when everything is already shown. */
+export const LoadMore = ({ list, label = 'Show more' }) => (
+  list?.hasMore ? (
+    <div className="flex justify-center pt-3">
+      <Button size="sm" busy={list.loadingMore} onClick={list.loadMore}>{label}</Button>
+    </div>
+  ) : null
+);
 
 export const ErrorNote = ({ children }) => (
   children ? (
@@ -367,7 +389,7 @@ export const Stat = ({ label, value, delta, deltaGoodWhenUp = true, hint, icon: 
   return (
     <div className="ai-glass-card rounded p-5 min-w-0 relative overflow-hidden group">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-11 font-bold   text-slate-500  truncate">{label}</span>
+        <span className="text-xs text-slate-500  truncate">{label}</span>
         {Icon && (
           <div className="w-8 h-8 rounded bg-slate-100 group-hover:bg-indigo-500/20 border border-slate-200 group-hover:border-indigo-500/30 flex items-center justify-center text-slate-500 group-hover:text-cyan-700 transition-all shrink-0">
             <Icon size={16} />

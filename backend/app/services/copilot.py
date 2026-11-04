@@ -148,24 +148,39 @@ def alerts(db: Session, today: date | None = None) -> list[dict[str, Any]]:
     """Problems worth acting on this week, found by rules across every active business."""
     today = today or date.today()
     out: list[dict[str, Any]] = []
-    for b in db.scalars(select(Business).where(Business.status != "paused")):
-        week = db.execute(select(func.coalesce(func.sum(InsightDay.calls + InsightDay.directions + InsightDay.website_clicks), 0))
-                          .where(InsightDay.business_id == b.id, InsightDay.day > today - timedelta(days=7), InsightDay.day <= today)).scalar_one()
-        before = db.execute(select(func.coalesce(func.sum(InsightDay.calls + InsightDay.directions + InsightDay.website_clicks), 0))
-                            .where(InsightDay.business_id == b.id, InsightDay.day > today - timedelta(days=35), InsightDay.day <= today - timedelta(days=7))).scalar_one() / 4
+    businesses = list(db.scalars(select(Business).where(Business.status != "paused")))
+    ids = [b.id for b in businesses]
+    # One grouped query per rule for every client (this used to be five to seven queries per client, and each database round trip is slow when it is hosted).
+    actions = func.coalesce(func.sum(InsightDay.calls + InsightDay.directions + InsightDay.website_clicks), 0)
+    week_by = dict(db.execute(select(InsightDay.business_id, actions).where(InsightDay.day > today - timedelta(days=7), InsightDay.day <= today).group_by(InsightDay.business_id)).all())
+    before_by = dict(db.execute(select(InsightDay.business_id, actions).where(InsightDay.day > today - timedelta(days=35), InsightDay.day <= today - timedelta(days=7)).group_by(InsightDay.business_id)).all())
+    reviews_by: dict[int, list[Review]] = {}
+    for r in db.scalars(select(Review).where(Review.business_id.in_(ids), Review.rating <= 2, Review.reply_status != "posted", Review.review_date >= today - timedelta(days=14))):
+        reviews_by.setdefault(r.business_id, []).append(r)
+    keywords_by: dict[int, list[Keyword]] = {}
+    for k in db.scalars(select(Keyword).where(Keyword.business_id.in_(ids), Keyword.rank.is_not(None), Keyword.prev_rank.is_not(None))):
+        keywords_by.setdefault(k.business_id, []).append(k)
+    rn = func.row_number().over(partition_by=(Audit.business_id, Audit.kind), order_by=Audit.finished_at.desc()).label("rn")
+    recent = select(Audit.id, rn).where(Audit.business_id.in_(ids), Audit.kind.in_(("gbp", "technical", "onpage")), Audit.status == "done", Audit.score.is_not(None)).subquery()
+    audits_by: dict[tuple[int, str], list[Audit]] = {}
+    for au in db.execute(select(Audit.business_id, Audit.kind, Audit.score).join(recent, recent.c.id == Audit.id).where(recent.c.rn <= 2).order_by(Audit.finished_at.desc())).all():
+        audits_by.setdefault((au.business_id, au.kind), []).append(au)
+    for b in businesses:
+        week = int(week_by.get(b.id, 0))  # Postgres sums come back as Decimal
+        before = int(before_by.get(b.id, 0)) / 4
         if before >= 10 and week < before * 0.7:
             drop = round((1 - week / before) * 100)
             out.append({"type": "actions_drop", "level": "serious" if drop >= 50 else "warning", "business_id": b.id, "business": b.name,
                         "title": f"Customer actions down {drop}% this week ({week} vs about {round(before)} a week)", "action": "insights"})
-        for r in db.scalars(select(Review).where(Review.business_id == b.id, Review.rating <= 2, Review.reply_status != "posted", Review.review_date >= today - timedelta(days=14))):
+        for r in reviews_by.get(b.id, []):
             out.append({"type": "bad_review", "level": "serious", "business_id": b.id, "business": b.name,
                         "title": f"{r.rating}★ review by {r.author or 'a customer'} has no reply yet", "action": "reviews"})
-        for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.rank.is_not(None), Keyword.prev_rank.is_not(None))):
+        for k in keywords_by.get(b.id, []):
             if k.rank - k.prev_rank >= 3 or (k.prev_rank <= 10 < k.rank):
                 out.append({"type": "rank_drop", "level": "serious" if k.prev_rank <= 10 < k.rank else "warning", "business_id": b.id, "business": b.name,
                             "title": f'"{k.keyword}" fell from #{k.prev_rank} to #{k.rank}', "action": "rank"})
         for kind in ("gbp", "technical", "onpage"):
-            last = list(db.scalars(select(Audit).where(Audit.business_id == b.id, Audit.kind == kind, Audit.status == "done", Audit.score.is_not(None)).order_by(Audit.finished_at.desc()).limit(2)))
+            last = audits_by.get((b.id, kind), [])
             if len(last) == 2 and last[1].score - last[0].score >= 10:
                 label = {"gbp": "Profile", "technical": "Technical", "onpage": "On-page"}[kind]
                 out.append({"type": "score_drop", "level": "warning", "business_id": b.id, "business": b.name,

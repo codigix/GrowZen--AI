@@ -7,6 +7,22 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   envDir: '.',
+  build: {
+    rollupOptions: {
+      output: {
+        // Heavy libraries get their own files: they download only when a page that needs them opens, and stay cached when app code changes.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('recharts') || id.includes('d3-') || id.includes('victory-vendor')) return 'charts';
+          if (id.includes('leaflet')) return 'maps';
+          if (id.includes('react-router') || id.includes('/react/') || id.includes('react-dom') || id.includes('scheduler')) return 'react';
+          return undefined;
+        }
+      }
+    }
+  },
+  // Pre-bundle the big libraries once so the dev server does not load hundreds of small files on every page.
+  optimizeDeps: { include: ['react', 'react-dom', 'react-router-dom', 'recharts', 'lucide-react', 'leaflet'] },
   server: { port: 3100, strictPort: true },
   preview: { port: 3100 }
 });

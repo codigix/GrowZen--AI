@@ -134,8 +134,9 @@ class AuditRunIn(BaseModel):
 class WebsiteAuditIn(BaseModel):
     url: HttpUrl
     strategy: Literal["mobile", "desktop"] = "mobile"
-    crawl_pages: int = Field(default=10, ge=1, le=50)
+    crawl_pages: int = Field(default=10, ge=1, le=300)
     business_id: int | None = None  # set when this is the business's own site: the scan also updates its audits
+    workspace_id: int | None = None  # the project the scan is run from: only that project lists it in its history
 
 
 class CompetitorAuditIn(BaseModel):
@@ -143,7 +144,7 @@ class CompetitorAuditIn(BaseModel):
     set them to tie the audit to a business and a registered competitor for later comparison."""
     urls: list[HttpUrl] = Field(min_length=1, max_length=20)
     strategy: Literal["mobile", "desktop"] = "mobile"
-    crawl_pages: int = Field(default=10, ge=1, le=50)
+    crawl_pages: int = Field(default=10, ge=1, le=300)
     business_id: int | None = None
     competitor_id: int | None = None
     reuse_existing: bool = Field(default=True, description="Skip queuing a URL that already has a finished audit of the same strategy, newer than max_age_hours")
@@ -196,7 +197,7 @@ class ImportLocationsIn(BaseModel):
 
 
 class ScheduleIn(BaseModel):
-    job: Literal["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo"]
+    job: Literal["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo", "weekly_plan", "site_research"]
     every: Literal["daily", "weekly", "fortnightly", "monthly", "off"]
 
 

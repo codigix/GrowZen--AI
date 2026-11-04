@@ -38,7 +38,7 @@ def test_onboarding_pipeline_end_to_end(client):
     assert r.status_code == 201
     em = client.get(f"/api/v1/intake/emails/{r.json()['id']}").json()
     assert em["status"] == "done", em.get("error")
-    assert [s["id"] for s in em["steps"]] == ["extract", "profile", "gbp_match", "audits", "plan", "report", "schedule", "notify"]
+    assert [s["id"] for s in em["steps"]] == ["extract", "profile", "gbp_match", "audits", "plan", "research", "report", "schedule", "notify"]
     assert all(s["status"] == "done" for s in em["steps"])
     bid = em["business_id"]
 
