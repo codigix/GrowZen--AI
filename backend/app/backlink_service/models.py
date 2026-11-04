@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, String, Text
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -89,3 +89,42 @@ class Backlink(Base):
     __table_args__ = (
         Index("ix_bl_backlinks_target_host", "target_host"),
     )
+
+
+class AhrefsReport(Base):
+    """One lookup of a domain on the Ahrefs free Backlink Checker (run through the Fortress browser). A new row per lookup, so earlier
+    snapshots stay as history. The numbers are kept as Ahrefs shows them (text) and as parsed numbers (for sorting and filtering)."""
+    __tablename__ = "bl_ahrefs_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    domain: Mapped[str] = mapped_column(String(255))                      # without www.
+    mode: Mapped[str] = mapped_column(String(12), default="subdomains")   # subdomains | exact | prefix | domain
+    status: Mapped[str] = mapped_column(String(10), default="queued")     # queued | running | done | failed
+    error: Mapped[str | None] = mapped_column(Text)
+    domain_rating: Mapped[float | None] = mapped_column(Float)
+    backlinks_value: Mapped[str | None] = mapped_column(String(20))       # as shown, e.g. "883" or "1.2K"
+    backlinks_count: Mapped[int | None] = mapped_column(BigInteger)
+    backlinks_dofollow_pct: Mapped[int | None] = mapped_column(Integer)
+    linking_websites_value: Mapped[str | None] = mapped_column(String(20))
+    linking_websites_count: Mapped[int | None] = mapped_column(BigInteger)
+    linking_websites_dofollow_pct: Mapped[int | None] = mapped_column(Integer)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("ix_bl_ahrefs_reports_lookup", "domain", "mode", "status"),)
+
+
+class AhrefsPage(Base):
+    """One row of the referring-pages table of an Ahrefs report (a page that links to the domain)."""
+    __tablename__ = "bl_ahrefs_pages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("bl_ahrefs_reports.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer)                        # order in Ahrefs' table
+    dr: Mapped[int | None] = mapped_column(Integer)                       # Ahrefs Domain Rating of the linking site
+    page_title: Mapped[str] = mapped_column(Text, default="")
+    page_url: Mapped[str | None] = mapped_column(Text)
+    anchor_text: Mapped[str] = mapped_column(Text, default="")
+    target_url: Mapped[str | None] = mapped_column(Text)
+    redirects: Mapped[list] = mapped_column(JsonType, default=list)

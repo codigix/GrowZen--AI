@@ -4,7 +4,7 @@ It does the same as POST /backlinks/crawl, but as a direct call inside the platf
 problem here can never break onboarding."""
 import logging
 
-from . import business_sync, lifecycle
+from . import ahrefs, business_sync, lifecycle
 from . import repository as repo
 
 log = logging.getLogger("seo")
@@ -15,6 +15,7 @@ def start_for_website(website: str | None) -> dict:
         db, cfg = lifecycle.state.db, lifecycle.state.settings
         if db is None or cfg is None:
             return {"started": False, "reason": "The backlink service is not running."}
+        ahrefs.queue_for_website(db, website)  # the Ahrefs report of the site, saved in the database (never raises)
         targets = business_sync.domain_targets([website])
         if not targets:
             return {"started": False, "reason": "The business has no website to find backlinks for."}

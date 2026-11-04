@@ -724,8 +724,124 @@ function SeedBacklinks({ biz }) {
   );
 }
 
+const drTone = (dr) => (dr >= 50 ? 'green' : dr >= 20 ? 'blue' : dr >= 5 ? 'gray' : 'amber');
+const IN_PROGRESS = ['queued', 'running'];
+
+// GET /backlinks/ahrefs?domain=: the Ahrefs report saved in PostgreSQL. Made at onboarding and refreshed daily by the backend; this only reads
+// the database. While a refresh runs, the previous report stays on screen. "Refresh now" queues a new lookup (POST /backlinks/ahrefs).
+// competitors: the same report for a competitor's domain the user types (Competitor gap tab). It starts empty and offers the tracked competitors.
+function AhrefsReport({ biz, competitors = null }) {
+  const forCompetitor = competitors !== null;
+  const own = forCompetitor ? '' : hostOf(biz.website);
+  const [domain, setDomain] = useState(own);
+  const [input, setInput] = useState(own);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+  const [shown, setShown] = useState(50);
+  const r = useApi(domain ? `/backlinks/ahrefs?${new URLSearchParams({ domain })}` : null);
+  const d = r.data;
+  const missing = r.error?.status === 404;
+  const working = Boolean(d && (IN_PROGRESS.includes(d.status) || IN_PROGRESS.includes(d.refresh?.status)));
+  usePoll(() => r.reload(true), working || busy, 5000); // a lookup takes about a minute: show the result as soon as it is saved
+  const hasData = d?.status === 'done';
+  const pages = d?.referring_pages || [];
+
+  const lookUp = async (refresh) => {
+    setBusy(true); setNote('');
+    try {
+      const res = await api('/backlinks/ahrefs', { method: 'POST', body: { domain, refresh } });
+      if (res.state === 'cached') setNote('A report from the last day is already saved, so it was not looked up again.');
+      await r.reload(true);
+    } catch (e) {
+      setNote(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const search = (e) => { e.preventDefault(); setShown(50); setNote(''); setDomain(hostOf(input) || input.trim()); };
+
+  return (
+    <>
+      <Card className="mb-4" title={forCompetitor ? 'Competitor backlinks (Ahrefs)' : 'Ahrefs backlink report'}
+        subtitle={forCompetitor
+          ? `Enter a competitor's domain to see its Domain Rating, backlinks and top referring pages from Ahrefs, saved in our database. ${domain ? `Showing ${domain}.` : ''}`
+          : `Domain Rating, backlinks and top referring pages from Ahrefs, saved in our database and refreshed every day. ${own ? `Showing ${domain || own}.` : 'This project has no website: enter a domain below.'}`}
+        action={domain && (hasData || d?.status === 'failed') && <Button icon={RefreshCw} busy={busy || working} disabled={working} onClick={() => lookUp(true)}>{working ? 'Updating…' : 'Refresh now'}</Button>}>
+        <form className="flex flex-wrap gap-2" onSubmit={search}>
+          <div className="relative"><Search size={13} className="absolute left-2.5 top-3 text-gray-400" /><input className={`${inputCls} !w-80 !pl-8`} placeholder={forCompetitor ? 'competitor.com' : 'codigix.co'} value={input} onChange={(e) => setInput(e.target.value)} /></div>
+          <Button type="submit" variant="primary" icon={Search} busy={r.loading}>Show</Button>
+          {own && domain !== own && <Button onClick={() => { setInput(own); setDomain(own); }}>This project</Button>}
+        </form>
+        {forCompetitor && competitors.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-12 text-gray-500">
+            <span>Your tracked competitors:</span>
+            {competitors.map(c => <Button key={c} size="sm" onClick={() => { setInput(c); setShown(50); setNote(''); setDomain(c); }}>{c}</Button>)}
+          </div>
+        )}
+        {hasData && d.refresh && IN_PROGRESS.includes(d.refresh.status) && (
+          <div className="mt-3 text-12.5 text-indigo-700 flex items-center gap-2"><Loader2 size={13} className="animate-spin" />Updating from Ahrefs. Showing the report from {fmtDateTime(d.finished_at)} until the new one is saved.</div>
+        )}
+        {hasData && d.refresh?.status === 'failed' && (
+          <div className="mt-3 text-12.5 text-amber-700">The latest update did not work ({d.refresh.error}). Showing the report from {fmtDateTime(d.finished_at)}; it is tried again automatically.</div>
+        )}
+        {note && <div className="mt-3 text-12.5 text-gray-600">{note}</div>}
+        <ErrorNote>{!missing && r.error?.message}</ErrorNote>
+      </Card>
+
+      {r.loading && !d && !missing ? <><SkStats labels={['Domain Rating', 'Backlinks', 'Linking websites', 'Updated']} /><SkCard title="Top referring pages"><SkTable headers={['DR', 'Referring page', 'Anchor', 'Target']} rows={5} bare /></SkCard></>
+        : missing ? (
+          <Card><Empty>
+            No Ahrefs report saved for {domain} yet.{own === domain ? ' It is made automatically after onboarding and then every day.' : ''}
+            <div className="mt-3"><Button variant="primary" icon={Play} busy={busy} onClick={() => lookUp(false)}>Look it up now</Button></div>
+          </Empty></Card>
+        ) : d && !hasData ? (
+          <Card><Empty>
+            {IN_PROGRESS.includes(d.status)
+              ? <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Looking up {d.domain} on Ahrefs ({d.status}). This takes about a minute.</span>
+              : <>The Ahrefs lookup for {d.domain} did not work: {d.error}<div className="mt-3"><Button icon={RefreshCw} busy={busy} onClick={() => lookUp(true)}>Try again</Button></div></>}
+          </Empty></Card>
+        ) : hasData && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <Stat label="Domain Rating" value={d.domain_rating ?? '—'} hint="Ahrefs' 0-100 score of the site's link strength" />
+              <Stat label="Backlinks" value={d.backlinks?.value ?? '—'} hint={d.backlinks?.dofollow ? `${d.backlinks.dofollow} dofollow` : undefined} />
+              <Stat label="Linking websites" value={d.linking_websites?.value ?? '—'} hint={d.linking_websites?.dofollow ? `${d.linking_websites.dofollow} dofollow` : undefined} />
+              <Stat label="Updated" value={fmtDateTime(d.finished_at)} />
+            </div>
+            <Card title="Top referring pages" subtitle={`The ${pages.length} pages Ahrefs lists first; the totals above count every backlink. Data from Ahrefs, saved ${fmtDateTime(d.finished_at)}.`}>
+              {pages.length === 0 ? <Empty>Ahrefs listed no referring pages for {d.domain}.</Empty> : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-13">
+                    <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>DR</Th><Th>Referring page</Th><Th>Anchor</Th><Th>Target</Th></tr></thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {pages.slice(0, shown).map((p, i) => (
+                        <tr key={`${i}|${p.referring_page_url}`}>
+                          <td className="p-2">{p.dr !== '' ? <Badge tone={drTone(Number(p.dr))}>{p.dr}</Badge> : '—'}</td>
+                          <td className="p-2 max-w-[340px]">
+                            <div className="truncate text-gray-800" title={p.referring_page_title}>{p.referring_page_title || '—'}</div>
+                            {p.referring_page_url && <a className="block truncate text-12 text-indigo-600 hover:underline" title={p.referring_page_url} href={p.referring_page_url} target="_blank" rel="noreferrer noopener nofollow">{p.referring_page_url.replace(/^https?:\/\//, '')}</a>}
+                          </td>
+                          <td className="p-2 max-w-[260px] truncate text-gray-700" title={p.anchor_text}>{p.anchor_text || '—'}</td>
+                          <td className="p-2 max-w-[240px] text-12 text-gray-600">
+                            <div className="truncate" title={p.target_url || ''}>{(p.target_url || '—').replace(/^https?:\/\//, '')}</div>
+                            {p.redirects.length > 0 && <span title={p.redirects.join('\n')}><Badge tone="amber">{p.redirects.length} redirect{p.redirects.length > 1 ? 's' : ''}</Badge></span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {pages.length > shown && <div className="flex justify-center mt-3"><Button onClick={() => setShown(n => n + 50)}>Show more ({pages.length - shown} left)</Button></div>}
+            </Card>
+          </>
+        )}
+    </>
+  );
+}
+
 function Body({ b }) {
-  const [tab, setTab] = useUrlTab('seed', ['seed', 'overview', 'explorer', 'gap', 'bot', 'collect', 'targets']);
+  const [tab, setTab] = useUrlTab('ahrefs', ['ahrefs', 'seed', 'overview', 'explorer', 'gap', 'bot', 'collect', 'targets']);
   const base = `/businesses/${b.id}/backlink-intel`;
   const t = useApi(`${base}/targets`);
   const [toast, toastNode] = useToast();
@@ -746,15 +862,16 @@ function Body({ b }) {
           <span>{running ? 'New backlinks appear here as they are found.' : botState.data.last_run_at ? `Last run ${fmtDateTime(botState.data.last_run_at)}${stats && !stats.skipped ? `: ${stats.pages} pages read, ${stats.new_backlinks} new backlink(s) to your sites` : ''}. ${botSchedule(botState.data)}` : 'It starts shortly after onboarding.'}</span>
         </div>
       )}
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'seed', label: 'Seed backlinks' }, { id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'ahrefs', label: 'Ahrefs report' }, { id: 'seed', label: 'Seed backlinks' }, { id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
         { id: 'bot', label: 'Discovery bot' }, { id: 'collect', label: 'Seeds & verify' }, { id: 'targets', label: 'Targets', count: targets.length }]} />
       <ErrorNote>{t.error?.message}</ErrorNote>
       {t.loading && !t.data ? <div className="space-y-4"><SkStats labels={["Backlinks", "Referring domains", "Lost links", "Verified"]} /><SkCard title="Backlinks"><SkTable headers={["Source page", "Target", "Anchor", "Status", "Last seen"]} rows={5} bare /></SkCard></div> : (
         <div key={`${lastRun}-${running}`}>
+          {tab === 'ahrefs' && <AhrefsReport biz={b} />}
           {tab === 'seed' && <SeedBacklinks biz={b} />}
           {tab === 'overview' && <Overview base={base} targets={targets} biz={b} go={setTab} reload={reload} />}
           {tab === 'explorer' && <><Lookup /><Explorer base={base} targets={targets} /></>}
-          {tab === 'gap' && <Gap base={base} targets={targets} />}
+          {tab === 'gap' && <><div className="mb-4"><AhrefsReport biz={b} competitors={targets.filter(t => t.is_competitor).map(t => t.domain)} /></div><Gap base={base} targets={targets} /></>}
           {tab === 'bot' && <BotPanel base={base} targets={targets} onToast={toast} />}
           {tab === 'collect' && <Collect base={base} targets={targets} onToast={toast} />}
           {tab === 'targets' && <Targets base={base} targets={targets} reload={reload} onToast={toast} />}
