@@ -77,10 +77,11 @@ def _run_technical(db: Session, b: Business) -> tuple[int, list[dict[str, Any]],
     return round(mean(scores)) if scores else 0, pagespeed.issues_from(result), result, "live"
 
 
-def _run_onpage(db: Session, b: Business, max_pages: int = 25) -> tuple[int, list[dict[str, Any]], dict[str, Any], str]:
+def _run_onpage(db: Session, b: Business, max_pages: int | None = None) -> tuple[int, list[dict[str, Any]], dict[str, Any], str]:
     if not b.website:
         return 0, [], {}, "live"
-    site = crawler.crawl(b.website, max_pages=max_pages)
+    cfg = b.audit_config or {}  # the project's Site Audit settings (limit, pages to crawl, rules)
+    site = crawler.crawl(b.website, max_pages=max_pages or int(cfg.get("limit") or 25), options=cfg)
     score, issues = crawler.summarise(site)
     return score, issues, {k: v for k, v in site.items() if k != "pages"} | {"pages": site.get("pages", [])}, "live"
 
@@ -218,7 +219,7 @@ def record_for_business(db: Session, b: Business, web: Audit) -> list[Audit]:
     return saved
 
 
-def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: int = 10, audit: Audit | None = None) -> Audit:
+def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: int = 10, audit: Audit | None = None, options: dict[str, Any] | None = None) -> Audit:
     """One-off audit of any URL (no business needed): PageSpeed + a short crawl. Always starts from the site's homepage."""
     url = crawler.homepage(url)
     audit = audit or Audit(kind="website", target=url)
@@ -253,7 +254,7 @@ def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: 
 
     try:
         try:
-            site = crawler.crawl(url, max_pages=crawl_pages, on_progress=save)
+            site = crawler.crawl(url, max_pages=crawl_pages, on_progress=save, options=options)
             crawl_score, crawl_issues = crawler.summarise(site)
             result["crawl"] = site | {"score": crawl_score}
             issues += crawl_issues

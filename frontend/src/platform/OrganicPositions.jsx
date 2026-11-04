@@ -23,7 +23,7 @@ function download(name, rows) {
 }
 
 /** Position of one keyword over time, with the page that ranked on each check. */
-function RankedUrls({ r }) {
+export function RankedUrls({ r }) {
   const data = r.history.map(h => ({ date: h.date.slice(5), rank: h.rank }));
   const urls = r.history.reduce((acc, h) => (h.url && acc[acc.length - 1]?.url !== h.url ? [...acc, h] : acc), []);
   return (
@@ -121,24 +121,28 @@ export default function OrganicPositions({ research, days, setDays }) {
 
       <Card title={<span>Organic Search Positions: <b>{rows.length}</b></span>} pad={false} action={<Button size="sm" icon={Download} onClick={() => download(`${r.domain}-positions.csv`, rows)}>Export</Button>}>
         <div className="overflow-x-auto">
-          <table className="w-full text-13 min-w-[1000px]">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th>Keyword</Th><Th>Intent</Th><Th c="text-right">Position</Th><Th c="text-right">SF</Th><Th c="text-right">Traffic</Th><Th c="text-right">Volume</Th><Th>URL</Th><Th>Updated</Th></tr></thead>
+          <table className="w-full text-13 min-w-[1300px]">
+            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th>Keyword</Th><Th c="text-right">KD, %</Th><Th c="text-right">Vol.</Th><Th c="text-right">Traffic Change</Th><Th c="text-right">Comp.</Th><Th c="text-right">CPC</Th><Th>Crawled Time</Th><Th c="text-right">Position</Th><Th c="text-right">Results</Th><Th c="text-right">SF</Th><Th>Intent</Th><Th>URL</Th></tr></thead>
             <tbody className="divide-y divide-slate-100">{slice.map(x => (
               <React.Fragment key={x.keyword}>
                 <tr className="hover:bg-slate-50 align-top">
                   <td className="pl-3 w-8 pt-2.5"><button type="button" aria-label="Show details" onClick={() => toggle(x.keyword)} className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"><ChevronRight size={14} className={`transition-transform ${open.has(x.keyword) ? 'rotate-90' : ''}`} /></button></td>
                   <td className="px-4 py-2.5 font-medium text-indigo-700">{x.keyword}</td>
-                  <td className="px-4 py-2.5">{x.intent ? <span title={x.intent} className="inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center bg-indigo-100 text-indigo-700">{INTENT[x.intent] || '?'}</span> : dash}</td>
-                  <td className="px-4 py-2.5 text-right whitespace-nowrap tabular-nums"><b>{x.rank ?? <span className="text-slate-400 font-normal">&gt;20</span>}</b> <Chg v={x.change} d={0} /></td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{x.feature_list.length ? <span className="inline-flex items-center gap-1 text-slate-700" title={x.feature_list.join(', ')}><Sparkles size={12} className="text-emerald-500" />{x.feature_list.length}</span> : dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{x.traffic ?? dash}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{x.kd ?? dash}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{x.volume != null ? fmt(x.volume) : dash}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{x.traffic != null && x.traffic_was != null ? (() => { const d = Math.round((x.traffic - x.traffic_was) * 100) / 100; return d ? <Chg v={d} /> : <span className="text-slate-500">0</span>; })() : dash}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums" title="Competition needs Google Keyword Planner data, which is not connected">{dash}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{x.cpc ?? dash}</td>
+                  <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{x.checked ? new Date(`${x.checked}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: '2-digit', year: 'numeric' }) : dash}</td>
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap tabular-nums"><b>{x.rank ?? <span className="text-slate-400 font-normal">&gt;20</span>}</b> <Chg v={x.change} d={0} /></td>
+                  <td className="px-4 py-2.5 text-right tabular-nums" title="Google's total result count is not reported by our results source">{dash}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{x.feature_list.length ? <span className="inline-flex items-center gap-1 text-slate-700" title={x.feature_list.join(', ')}><Sparkles size={12} className="text-emerald-500" />{x.feature_list.length}</span> : dash}</td>
+                  <td className="px-4 py-2.5">{x.intent ? <span title={x.intent} className="inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center bg-indigo-100 text-indigo-700">{INTENT[x.intent] || '?'}</span> : dash}</td>
                   <td className="px-4 py-2.5 max-w-[300px]">{x.url ? <a href={x.url} target="_blank" rel="noreferrer" title={x.url} className="text-indigo-700 hover:underline inline-flex items-center gap-1 break-all">{path(x.url)}<ExternalLink size={10} className="shrink-0" /></a> : dash}</td>
-                  <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{x.checked ? new Date(x.checked).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }) : dash}</td>
                 </tr>
-                {open.has(x.keyword) && <tr className="bg-slate-50/60"><td /><td colSpan={8} className="px-4 py-3"><RankedUrls r={x} /></td></tr>}
+                {open.has(x.keyword) && <tr className="bg-slate-50/60"><td /><td colSpan={12} className="px-4 py-3"><RankedUrls r={x} /></td></tr>}
               </React.Fragment>))}
-              {!slice.length && <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-500">No keyword matches these filters.</td></tr>}
+              {!slice.length && <tr><td colSpan={13} className="px-5 py-10 text-center text-slate-500">No keyword matches these filters.</td></tr>}
             </tbody>
           </table>
         </div>

@@ -3,13 +3,14 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import {
-  ArrowUp, ArrowDown, ExternalLink, Search, Inbox, Info, Bot, FileText, BookOpen, HelpCircle, MapPin, Video, Image as ImageIcon, Newspaper, ShoppingCart, Sparkles, AlertTriangle
+  ArrowUp, ArrowDown, ExternalLink, Search, Inbox, Info, Bot, FileText, BookOpen, HelpCircle, MapPin, Video, Image as ImageIcon, Newspaper, ShoppingCart, Sparkles, AlertTriangle, Quote, MessageSquare, PlayCircle, ShoppingBag, List as ListIcon, Link2, Star, PanelTop
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useUrlTab, useModulePath, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 import { IntelBar, section } from './DomainIntel';
 import { Th } from './SeoToolkit';
 import OrganicPositions from './OrganicPositions';
+import PositionChanges from './PositionChanges';
 
 /**
  * Organic Rankings, laid out like an organic research report.
@@ -131,57 +132,76 @@ function KeywordsTrend({ intel, research }) {
   );
 }
 
+const SF_ICON = {
+  'Featured snippet': Quote, 'Knowledge panel': Info, 'People also ask': MessageSquare, 'Local pack': MapPin, Videos: PlayCircle, Video: PlayCircle,
+  Images: ImageIcon, 'Top stories': Newspaper, Shopping: ShoppingBag, 'Related searches': ListIcon, Sitelinks: Link2, 'AI Overview': Sparkles, Reviews: Star
+};
+
+/** The number of SERP features on a keyword's results page; clicking it lists them (yours are marked). */
+function FeatureCount({ list = [], mine = [] }) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, [open]);
+  if (!list.length) return <span className="text-slate-300">—</span>;
+  return (
+    <span ref={ref} className="relative inline-block" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} className="underline decoration-dotted underline-offset-4 text-slate-800 tabular-nums cursor-pointer">{list.length}</button>
+      {open && (
+        <span role="dialog" aria-label="SERP Features on SERP" className="absolute right-0 top-full mt-1 z-30 w-60 rounded bg-white shadow-lg ring-1 ring-slate-200 p-4 text-left whitespace-normal">
+          <span className="block text-14 font-bold text-slate-900 mb-2">SERP Features on SERP</span>
+          <span className="block space-y-2.5">{list.map(f => { const I = SF_ICON[f] || Info; return (
+            <span key={f} className={`flex items-center gap-2.5 text-14 ${mine.includes(f) ? 'text-emerald-700 font-semibold' : 'text-slate-700'}`}><I size={16} className={mine.includes(f) ? 'text-emerald-600' : 'text-slate-400'} />{f}{mine.includes(f) && <span className="text-11 font-normal">(you)</span>}</span>); })}</span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 function TopKeywords({ intel, research, onAll }) {
   const s = section(intel, 'keywords');
   const [tab, setTab] = useState('all');
-  const total = section(intel, 'organic').data?.traffic || 0;
-  const terms = (intel?.brand || []).map(t => t.toLowerCase());
-  const all = s.data?.rows || [];
+  const [sort, setSort] = useState(-1);
   const r = live(research);
-  const chip = (id, l) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-7 px-3 text-12 font-semibold rounded border cursor-pointer ${tab === id ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 bg-white'}`}>{l}</button>;
-  if (!all.length && r) {
-    const rows = [...r.tracked_rows].sort((a, c) => (a.rank || 99) - (c.rank || 99) || a.keyword.localeCompare(c.keyword));
-    return (
-      <Card title="Your tracked keywords" subtitle="Where your site stands on Google, and who is first" pad={false}>
-        <table className="w-full text-13">
-          <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th c="text-right">Position</Th><Th>Ranks first</Th></tr></thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.slice(0, 6).map(x => (
-              <tr key={x.keyword} className="hover:bg-slate-50">
-                <td className="px-4 py-2.5 max-w-[250px] truncate text-indigo-700 font-medium" title={x.keyword}>{x.keyword}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{x.rank ?? <span className="text-slate-400" title="Not in Google's top 10">&gt;10</span>}</td>
-                <td className="px-4 py-2.5 text-slate-600 max-w-[170px] truncate" title={x.leader}>{x.leader || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="p-4"><Button size="sm" onClick={onAll}>View all {rows.length} keywords</Button></div>
-      </Card>
-    );
-  }
-  const rows = (tab === 'top10' ? all.filter(x => x.position && x.position <= 10) : tab === 'branded' ? all.filter(x => terms.some(t => x.keyword.toLowerCase().includes(t))) : all);
+  const tracked = r?.tracked_rows || [];
+  const featuresOf = Object.fromEntries(tracked.map(x => [x.keyword, x]));
+  const provider = s.data?.rows || [];
+  const total = section(intel, 'organic').data?.traffic || 0;
+  // The domain-wide list from the data provider when there is one, else your tracked keywords; the SERP features come from the saved Google checks either way.
+  const base = provider.length
+    ? provider.map(x => ({ keyword: x.keyword, position: x.position ?? null, volume: x.volume, share: total ? x.traffic / total * 100 : null, features: featuresOf[x.keyword]?.feature_list || [], mine: featuresOf[x.keyword]?.own_feature_list || [] }))
+    : (() => { const t = tracked.reduce((a, x) => a + (x.traffic || 0), 0); return tracked.map(x => ({ keyword: x.keyword, position: x.rank ?? null, volume: x.volume, share: t ? (x.traffic || 0) / t * 100 : null, features: x.feature_list || [], mine: x.own_feature_list || [] })); })();
+  const count = provider.length ? (s.data?.total ?? provider.length) : base.length;
+  const shown = (tab === 'organic' ? base.filter(x => x.position) : tab === 'serp' ? base.filter(x => x.features.length) : base)
+    .sort((a, c) => (sort * ((a.share ?? -1) - (c.share ?? -1))) || (a.position || 999) - (c.position || 999));
+  const chip = (id, l) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-9 px-3 text-13 border-r last:border-r-0 border-slate-200 cursor-pointer ${tab === id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{l}</button>;
+  if (!base.length) return <Card title="Top Keywords" pad={false}><Empty>{whyIntel(intel, s, 'organic keywords')}</Empty></Card>;
   return (
-    <Card title="Top keywords" pad={false}>
-      <div className="px-5 py-3 flex gap-2 border-b border-slate-100">{chip('all', 'All positions')}{chip('top10', 'Top 10')}{chip('branded', 'Branded')}</div>
-      {all.length ? (
-        <>
-          <table className="w-full text-13">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th c="text-right">Position</Th><Th c="text-right">Volume</Th><Th c="text-right">Traffic %</Th></tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.slice(0, 5).map(x => (
-                <tr key={x.keyword + x.position} className="hover:bg-slate-50">
-                  <td className="px-4 py-2.5 max-w-[260px] truncate text-indigo-700 font-medium" title={x.keyword}>{x.keyword}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{x.position ?? '—'}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{x.volume != null ? fmt(x.volume) : '—'}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{total ? (x.traffic / total * 100).toFixed(2) : '—'}</td>
-                </tr>
-              ))}
-              {!rows.length && <tr><td colSpan={4} className="px-5 py-8 text-center text-slate-500">No keyword in this view.</td></tr>}
-            </tbody>
-          </table>
-          <div className="p-4"><Button size="sm" onClick={onAll}>View all {fmt(s.data.total)} keywords</Button></div>
-        </>
-      ) : <Empty>{whyIntel(intel, s, 'organic keywords')}</Empty>}
+    <Card title="Top Keywords" pad={false}>
+      <div className="px-5 pt-4 pb-3 border-t border-slate-100"><div className="inline-flex rounded border border-slate-200 overflow-hidden">{chip('all', 'All Positions')}{chip('organic', 'Organic')}{chip('serp', 'SERP Features')}</div></div>
+      <table className="w-full text-14">
+        <thead className="text-12.5 text-slate-600 border-b border-slate-200">
+          <tr><th className="px-5 py-3 text-left font-normal">Keyword</th><th className="px-3 py-3 text-right font-normal">Position</th><th className="px-3 py-3 text-right font-normal">SF</th><th className="px-3 py-3 text-right font-normal">Volume</th>
+            <th className="px-5 py-3 text-right font-normal whitespace-nowrap"><button type="button" onClick={() => setSort(v => -v)} className="cursor-pointer">Traffic % {sort < 0 ? '↓' : '↑'}</button></th></tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {shown.slice(0, 5).map(x => (
+            <tr key={x.keyword} className="align-top">
+              <td className="px-5 py-3 max-w-[260px]"><a href={`https://www.google.com/search?q=${encodeURIComponent(x.keyword)}`} target="_blank" rel="noreferrer" title="Open this search on Google" className="text-indigo-700 hover:underline">{x.keyword}</a>
+                <a href={`https://www.google.com/search?q=${encodeURIComponent(x.keyword)}`} target="_blank" rel="noreferrer" aria-label={`See the results page for ${x.keyword}`} className="ml-1.5 inline-block align-middle text-slate-400 hover:text-slate-700"><PanelTop size={14} /></a></td>
+              <td className="px-3 py-3 text-right tabular-nums">{x.position ?? <span className="text-slate-300">—</span>}</td>
+              <td className="px-3 py-3 text-right"><FeatureCount list={x.features} mine={x.mine} /></td>
+              <td className="px-3 py-3 text-right tabular-nums">{x.volume != null ? fmt(x.volume) : <span className="text-slate-300">—</span>}</td>
+              <td className="px-5 py-3 text-right tabular-nums">{x.share == null ? <span className="text-slate-300">—</span> : x.share < 0.01 ? '< 0.01' : x.share.toFixed(2)}</td>
+            </tr>))}
+          {!shown.length && <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-500">No keyword in this view.</td></tr>}
+        </tbody>
+      </table>
+      <div className="p-4"><button type="button" onClick={onAll} className="h-9 px-3.5 rounded text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800 cursor-pointer">View all {fmt(count)} keywords</button></div>
     </Card>
   );
 }
@@ -454,12 +474,7 @@ function Positions({ intel, research, days, setDays }) {
 }
 
 function ChangesTab({ research }) {
-  return (
-    <div className="space-y-4">
-      <Changes research={research} title="Position changes in organic" kinds={[['new', 'New'], ['lost', 'Lost'], ['improved', 'Improved'], ['declined', 'Declined']]} limit={50} />
-      <FeatureChanges research={research} limit={50} />
-    </div>
-  );
+  return <PositionChanges research={research} />;
 }
 
 function Competitors({ intel, research }) {

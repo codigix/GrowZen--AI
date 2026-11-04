@@ -1,7 +1,10 @@
 """Client profiles, their audits, schedules and reports."""
 from datetime import date, timedelta
 
+from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -12,7 +15,7 @@ from ..models import AgentTask, Audit, Business, InsightDay, Lead, Review, Sched
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
 from ..services import agent, audits, discovery, gbp, reports, schedules, site_onboarding, workplan
-from ..services import analytics as analytics_service, portfolio as portfolio_service, site_health
+from ..services import analytics as analytics_service, portfolio as portfolio_service, site_health, track_table
 from ..services.activity import log
 from ..services.profile_score import score_profile
 
@@ -44,6 +47,49 @@ def analytics(weeks: int = 12, db: Session = Depends(get_db), _: User = Depends(
 def site_audit_table(db: Session = Depends(get_db), _: User = Depends(current_user)):
     """Every project's site health broken into crawlability, HTTPS, performance, markups, Core Web Vitals and more."""
     return site_health.table(db)
+
+
+@router.get("/rank-tracking")
+def rank_tracking_table(db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """The Position Tracking home: every project with its visibility, change, improved and declined keywords, for Google and for AI answers."""
+    return track_table.table(db)
+
+
+AUDIT_DEFAULTS = {"limit": 100, "pages_to_crawl": "website", "subdomains": True, "user_agent": "desktop", "allow": [], "disallow": [], "ignore_params": [], "schedule": "off", "email": False}
+
+
+class AuditConfigIn(BaseModel):
+    """The Site Audit settings: how many pages, which pages, the rules, and whether it repeats."""
+    limit: int = Field(default=100, ge=10, le=300)
+    pages_to_crawl: Literal["website", "sitemap", "subfolder"] = "website"
+    subdomains: bool = True
+    user_agent: Literal["desktop", "mobile"] = "desktop"
+    allow: list[str] = Field(default_factory=list, max_length=50)
+    disallow: list[str] = Field(default_factory=list, max_length=50)
+    ignore_params: list[str] = Field(default_factory=list, max_length=50)
+    schedule: Literal["off", "daily", "weekly", "monthly"] = "off"
+    email: bool = False
+
+
+@router.get("/{business_id}/audit-config")
+def get_audit_config(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The project's Site Audit settings (the defaults until it has saved some), with its schedule as it stands."""
+    sched = db.scalar(select(Schedule).where(Schedule.business_id == b.id, Schedule.job == "site_crawl"))
+    return {**AUDIT_DEFAULTS, **(b.audit_config or {}), "schedule": sched.every if sched else (b.audit_config or {}).get("schedule", "off"), "website": b.website}
+
+
+@router.put("/{business_id}/audit-config")
+def put_audit_config(body: AuditConfigIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    clean = {k: [x.strip()[:200] for x in v if x.strip()] if isinstance(v, list) else v for k, v in body.model_dump().items()}
+    b.audit_config = clean
+    schedules.ensure_jobs(db, b)
+    s = db.scalar(select(Schedule).where(Schedule.business_id == b.id, Schedule.job == "site_crawl"))
+    if s:
+        s.every = clean["schedule"]
+        s.next_run_at = schedules.next_run(clean["schedule"])
+    log(db, user.name, "audit_settings_saved", b.id, schedule=clean["schedule"], limit=clean["limit"])
+    db.commit()
+    return {**AUDIT_DEFAULTS, **clean}
 
 
 @router.get("/{business_id}/audit-overview")

@@ -104,11 +104,27 @@ export const SIDEBAR_SECTIONS = [
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { items: [page('/dashboard')] },
-      { title: 'Site Performance', items: [page('/website-audit'), page('/rank-tracking'), page('/traffic'), page('/organic-rankings')] },
-      { title: 'Competitive Analysis', items: [page('/domain-overview'), page('/top-pages'), page('/competitor-finder'), page('/competitor-watch'), page('/compare-domains'), page('/keyword-gap'), link('/backlink-intelligence?tab=gap', 'Backlink Gap')] },
+      { title: 'Site Performance', items: [page('/website-audit'), page('/rank-tracking'), page('/traffic')] },
+      { title: 'Competitive Analysis', items: [page('/domain-overview'), page('/organic-rankings'), page('/top-pages'), page('/competitor-finder'), page('/competitor-watch'), page('/compare-domains'), page('/keyword-gap'), link('/backlink-intelligence?tab=gap', 'Backlink Gap')] },
       { title: 'Keyword Research', items: [page('/keyword-overview'), page('/keyword-management?tab=discover'), page('/keyword-management?tab=topics'), page('/keyword-management?tab=tracked')] },
       { title: 'Content Ideas', items: [page('/ai-content-generation?tab=blog'), page('/ai-content-generation?tab=trends'), link('/seo-brief', 'SEO Brief Generator')] },
       { title: 'Link Building', items: [page('/backlink-intelligence'), link('/backlink-intelligence?tab=explorer', 'Backlinks'), soon('referring-domains'), soon('backlink-audit'), page('/off-page-seo?tab=outreach')] }
+    ]
+  },
+  {
+    id: 'GMB', label: 'GMB', title: 'GMB', icon: MapPin, groups: [
+      {
+        items: [link('/gmb-profile?tab=overview', 'Dashboard'), page('/off-page-seo?tab=citations', { label: 'Listing Management' }), page('/reviews', { label: 'Review Management' }),
+        link('/gmb-profile?tab=profile', 'GBP Optimization'), page('/google-posts', { label: 'Posts' }), page('/media-management', { label: 'Photos' })]
+      },
+      { title: 'Automations', items: [page('/automation', { label: 'GBP AI Agent' })] },
+      { title: 'Competitive Analysis', items: [link('/rank-tracking?tab=geo', 'Map Rank Tracker')] }
+    ]
+  },
+  {
+    id: 'Blogs', label: 'Blogs', title: 'Blogs', icon: FileText, groups: [
+      { items: [link('/ai-content-generation?tab=blog', 'AI Article Generator'), link('/website-audit', 'Content Optimizer'), link('/ai-content-generation?tab=trends', 'Topic Finder'), link('/seo-brief', 'SEO Brief Generator')] },
+      { items: [link('/ai-content-generation?tab=articles', 'My Content'), link('/ai-content-generation?tab=calendar', 'Content Calendar'), page('/website-builder')] }
     ]
   },
   {
@@ -129,20 +145,8 @@ export const SIDEBAR_SECTIONS = [
       { title: 'Advanced', items: ['tm-daily', 'tm-industry', 'tm-api', 'tm-trending'].map(soon) }
     ]
   },
-  {
-    id: 'local', label: 'Local', title: 'Local', icon: MapPin, groups: [
-      { items: [link('/gmb-profile?tab=overview', 'Dashboard'), page('/off-page-seo?tab=citations', { label: 'Listing Management' }), page('/reviews', { label: 'Review Management' }),
-        link('/gmb-profile?tab=profile', 'GBP Optimization'), page('/google-posts', { label: 'Posts' }), page('/media-management', { label: 'Photos' })] },
-      { title: 'Automations', items: [page('/automation', { label: 'GBP AI Agent' })] },
-      { title: 'Competitive Analysis', items: [link('/rank-tracking?tab=geo', 'Map Rank Tracker')] }
-    ]
-  },
-  {
-    id: 'content', label: 'Content', title: 'Content', icon: FileText, groups: [
-      { items: [link('/ai-content-generation?tab=blog', 'AI Article Generator'), link('/website-audit', 'Content Optimizer'), link('/ai-content-generation?tab=trends', 'Topic Finder'), link('/seo-brief', 'SEO Brief Generator')] },
-      { items: [link('/ai-content-generation?tab=articles', 'My Content'), link('/ai-content-generation?tab=calendar', 'Content Calendar'), page('/website-builder')] }
-    ]
-  },
+
+
   {
     id: 'ad', label: 'Ad', title: 'Advertising', icon: Megaphone, groups: [
       { items: [soon('ads-start')] },

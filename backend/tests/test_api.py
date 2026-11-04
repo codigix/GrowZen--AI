@@ -157,7 +157,7 @@ def test_website_audit_saves_live_progress(client, monkeypatch):
     from app.services import crawler
     seen = []
 
-    def crawl(url, max_pages=25, timeout=15, on_progress=None):
+    def crawl(url, max_pages=25, timeout=15, on_progress=None, options=None):
         page = crawler.analyse_html(url, 200, "<html><head><title>Home</title></head><body><h1>Hi</h1></body></html>") | {"frameable": True}
         on_progress({"step": "robots", "found": True, "blocks_all": False})
         on_progress({"step": "fetching", "url": url, "done": 0, "queued": 0})

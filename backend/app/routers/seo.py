@@ -2,6 +2,7 @@
 Google results from Serper, the competitor research and the backlink provider. Each response says where its figures
 come from; what needs a paid index (organic traffic, backlink totals) is left out, never estimated."""
 import re
+from typing import Literal
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlparse
 
@@ -258,6 +259,65 @@ def _crawl_running(db: Session, b: Business) -> bool:
     return bool(db.scalar(select(func.count()).select_from(Audit).where(Audit.business_id == b.id, Audit.kind == "onpage", Audit.status == "running", Audit.started_at >= cutoff)))
 
 
+TRACK_DEFAULTS = {"engines": ["google"], "device": "desktop", "location": None, "language": "en", "map_name": None}
+
+
+class TrackCampaignIn(BaseModel):
+    """A Position Tracking campaign: where and how a project's keywords are checked, and the keywords."""
+    engines: list[Literal["google", "chatgpt", "gemini"]] = Field(default_factory=lambda: ["google"], min_length=1)
+    device: Literal["desktop", "mobile", "tablet"] = "desktop"
+    location: str | None = Field(default=None, max_length=160)
+    language: str = Field(default="en", max_length=5)
+    map_name: str | None = Field(default=None, max_length=160)
+    keywords: list[str] = Field(default_factory=list, max_length=100)
+    check_now: bool = False
+
+
+@router.get("/track-config")
+def get_track_config(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The project's tracking targeting, and suggested keywords to start with (what a customer would type, with the place in it)."""
+    cfg = {**TRACK_DEFAULTS, **(b.track_config or {})}
+    have = {k.keyword for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)))}
+    return {**cfg, "location": cfg["location"] or intel.default_location(b), "website": b.website, "name": b.name, "tracked": sorted(have),
+            "suggestions": [k for k in intel.default_keywords(b)[:24] if k not in have], "serper": intel.serper_enabled(),
+            "ai_engines": [e for e in ("ChatGPT", "Gemini") if e in geo._engines()]}
+
+
+@router.put("/track-campaign")
+def track_campaign(body: TrackCampaignIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Save the targeting, track the chosen keywords and, when asked, check their positions now."""
+    b.track_config = {"engines": body.engines, "device": body.device, "location": (body.location or "").strip() or None, "language": body.language or "en", "map_name": (body.map_name or "").strip() or None}
+    added = 0
+    for text in body.keywords:
+        text = " ".join(text.lower().split())
+        if len(text) < 2:
+            continue
+        k = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == text))
+        if not k:
+            db.add(Keyword(business_id=b.id, keyword=text, tracked=True))
+            added += 1
+        elif not k.tracked:
+            k.tracked = True
+            added += 1
+    log(db, user.name, "tracking_set_up", b.id, keywords=added, engines=body.engines)
+    db.commit()
+    out: dict = {"saved": True, "keywords_added": added, "note": None, "checked": None}
+    notes = []
+    if body.device != "desktop":
+        notes.append("Google results are read for desktop only for now: the device is saved, but positions are still desktop positions.")
+    if any(e != "google" for e in body.engines):
+        notes.append("ChatGPT and Gemini answers are tracked as prompts in AI Search Visibility, not as positions.")
+    if body.check_now:
+        try:
+            res = organic.check(db, b, None)
+            out["checked"] = {"keywords": res["checked"], "credits": res["credits"]}
+        except organic.RankCheckError as exc:
+            notes.append(f"Positions could not be checked yet: {exc}")
+        db.commit()
+    out["note"] = " ".join(notes) or None
+    return out
+
+
 class LinkAccountIn(BaseModel):
     connection_id: int | None = None
 
@@ -460,7 +520,14 @@ def domain(range: str = "3m", country: str | None = None, device: str | None = N
             sc = gsc.SearchConsole(conn)
             site = gsc.match_property(sc.sites(), host)
             if not site:
-                out["traffic"].update(state="no_property", account=conn.email, message=f"{conn.email} has no verified Search Console property for {host}. Add and verify the site in Search Console, or connect the account that owns it.")
+                sites = sc.sites()
+                unverified = [x["siteUrl"] for x in sites if x.get("permissionLevel") == "siteUnverifiedUser" and host in x["siteUrl"]]
+                if unverified:
+                    msg = (f"{conn.email} is listed on {unverified[0]} only as an unverified user, and Google returns no data at that level. Ask the site's owner to add it as a Full user in Search Console "
+                           "(Settings > Users and permissions), or verify ownership of the property with this account.")
+                else:
+                    msg = f"{conn.email} has no verified Search Console property for {host}. Add and verify the site in Search Console, or link the account that owns it."
+                out["traffic"].update(state="no_property", account=conn.email, message=msg)
             else:
                 out["traffic"].update(state="ok", account=conn.email, report=gsc.report(sc, site, out["range"], country, device))
         except GbpError as exc:

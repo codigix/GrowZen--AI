@@ -11,6 +11,9 @@ from .url_safety import SSRFSafeTransport
 UA = "Mozilla/5.0 (compatible; CodigixSEOAuditBot/1.0; +https://codigixinfotech.com)"
 
 
-def site_client(timeout: float = 15) -> httpx.Client:
-    return httpx.Client(transport=SSRFSafeTransport(local_address="0.0.0.0", retries=1), headers={"User-Agent": UA},
+MOBILE_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36 (compatible; CodigixSEOAuditBot/1.0; +https://codigixinfotech.com)"
+
+
+def site_client(timeout: float = 15, user_agent: str | None = None) -> httpx.Client:
+    return httpx.Client(transport=SSRFSafeTransport(local_address="0.0.0.0", retries=1), headers={"User-Agent": user_agent or UA},
                         follow_redirects=True, timeout=timeout)
