@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Copy, ExternalLink, ChevronLeft, ChevronRight, Plus, RefreshCw, Download, Check, Play, SkipForward, RotateCcw, ShieldCheck, Cpu, Globe } from 'lucide-react';
-import { SeoShell, Card, Tabs, Badge, Button, Meter, Modal, Field, inputCls, areaCls, ErrorNote, useAction, useToast, useUrlTab, SkPage, Stat } from './SeoUi';
+import { SeoShell, Card, Tabs, Badge, Button, Meter, Modal, Drawer, Field, inputCls, areaCls, ErrorNote, useAction, useToast, useUrlTab, SkPage, Stat } from './SeoUi';
 import { api, useApi, usePoll, fmtDate } from './seoApi';
 
 const AREA = { gmb: 'Google Business', seo: 'On-page & content SEO', technical: 'Technical', metadata: 'Metadata', content: 'Content', backlinks: 'Backlinks, listings & off-site', rankings: 'Rankings', reviews: 'Reviews', other: 'Other' };
@@ -64,8 +64,23 @@ function TaskRow({ it, onChange, editable }) {
         )}
         {editable && it.status === 'skipped' && <Button size="sm" icon={RotateCcw} onClick={() => set({ status: 'todo' })}>Restore</Button>}
       </div>
-      {open && (
-        <div className="mt-3 pl-8 grid gap-3 text-12 text-slate-600">
+      <Drawer open={open} onClose={() => setOpen(false)} title={it.title} subtitle={`${AREA[it.area] || it.area} · ${src}`} width="max-w-xl">
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <Badge tone={PRIORITY_TONE[it.priority]}>{it.detail?.priority_label || `P${it.priority}`}</Badge>
+          <Badge tone={STATUS_TONE[it.status]}>{it.status === 'todo' ? 'to do' : it.status}</Badge>
+          {it.impact && it.source !== 'operation' && <Badge tone={IMPACT_TONE[it.impact]}>{it.impact} impact</Badge>}
+          {it.due_date && <Badge tone={new Date(`${it.due_date}T23:59:59`) < new Date() && it.status !== 'done' ? 'red' : 'gray'}>due {fmtDate(it.due_date)}</Badge>}
+          {it.carry_count > 0 && <Badge tone="orange">carried over ×{it.carry_count}</Badge>}
+          {it.verified && <Badge tone="green"><ShieldCheck size={11} /> confirmed by audit</Badge>}
+        </div>
+        {editable && it.status !== 'done' && (
+          <div className="flex gap-2 mb-4">
+            {it.status !== 'doing' && <Button size="sm" icon={Play} onClick={() => set({ status: 'doing' })}>Start</Button>}
+            <Button size="sm" variant="primary" icon={Check} onClick={() => set({ status: 'done', note })}>Mark done</Button>
+            <Button size="sm" variant="ghost" icon={SkipForward} onClick={() => set({ status: 'skipped', note })}>Skip</Button>
+          </div>
+        )}
+        <div className="grid gap-4 text-13 text-slate-600">
           {it.detail?.description
             ? <p className="whitespace-pre-line leading-relaxed">{it.detail.description}</p>
             : <>
@@ -94,34 +109,42 @@ function TaskRow({ it, onChange, editable }) {
             </div>
           )}
         </div>
-      )}
+      </Drawer>
     </li>
   );
 }
 
-export function ThisWeek({ b }) {
+/**
+ * The week's tasks for a project. `areas` limits them to one process (e.g. only Google Business tasks on the Google Business page);
+ * without it every area is shown.
+ */
+export function ThisWeek({ b, areas }) {
   const [week, setWeek] = useState(iso(monday()));
   const plan = useApi(`/businesses/${b.id}/workplan?week=${week}`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ title: '', area: 'other', how: '' });
+  const [draft, setDraft] = useState({ title: '', area: areas?.[0] || 'other', how: '' });
   const d = plan.data;
+  const inScope = (i) => !areas || areas.includes(i.area);
+  const scoped = useMemo(() => (plan.data?.items || []).filter(inScope), [plan.data, areas]); // eslint-disable-line react-hooks/exhaustive-deps
   const current = d && d.week_start === d.current_week;
   const groups = useMemo(() => {
     const g = {};
-    (d?.items || []).filter(i => i.status !== 'carried' && i.status !== 'backlog').forEach(i => { (g[i.area] = g[i.area] || []).push(i); });
+    scoped.filter(i => i.status !== 'carried' && i.status !== 'backlog').forEach(i => { (g[i.area] = g[i.area] || []).push(i); });
     return AREA_ORDER.filter(a => g[a]).map(a => [a, g[a]]);
-  }, [d]);
-  const waiting = (d?.items || []).filter(i => i.status === 'backlog').concat(d?.backlog_elsewhere || []);
-  const carriedOut = (d?.items || []).filter(i => i.status === 'carried');
+  }, [scoped]);
+  const waiting = scoped.filter(i => i.status === 'backlog').concat((d?.backlog_elsewhere || []).filter(inScope));
+  const carriedOut = scoped.filter(i => i.status === 'carried');
 
   const change = (id, patch) => run('save', async () => { await api(`/businesses/${b.id}/workplan/items/${id}`, { method: 'PATCH', body: patch, repeat: true }); plan.reload(true); });
   const generate = () => run('plan', async () => { const r = await api(`/businesses/${b.id}/workplan/generate?week=${week}`, { method: 'POST' }); toast(`Planned: ${r.added} new, ${r.carried} carried over, ${r.verified} confirmed fixed`); plan.reload(); });
-  const add = () => run('add', async () => { await api(`/businesses/${b.id}/workplan/items`, { method: 'POST', body: { ...draft, week } }); setAdding(false); setDraft({ title: '', area: 'other', how: '' }); plan.reload(); });
+  const add = () => run('add', async () => { await api(`/businesses/${b.id}/workplan/items`, { method: 'POST', body: { ...draft, week } }); setAdding(false); setDraft({ title: '', area: areas?.[0] || 'other', how: '' }); plan.reload(); });
 
   if (!d) return plan.error ? <ErrorNote>{plan.error.message}</ErrorNote> : <SkPage header={false} />;
-  const p = d.progress;
+  const live = scoped.filter(i => i.status !== 'carried' && i.status !== 'backlog');
+  const p = areas ? { planned: live.length, done: live.filter(i => i.status === 'done').length, doing: live.filter(i => i.status === 'doing').length, skipped: live.filter(i => i.status === 'skipped').length,
+    carried_out: carriedOut.length, completion_pct: live.length ? Math.round(live.filter(i => i.status === 'done').length / live.length * 100) : 0 } : d.progress;
   return (
     <div className="grid gap-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -167,7 +190,7 @@ export function ThisWeek({ b }) {
       <Modal open={adding} title="Add a task" onClose={() => setAdding(false)} footer={<Button variant="primary" busy={busy === 'add'} disabled={draft.title.trim().length < 3} onClick={add}>Add to this week</Button>}>
         <div className="grid gap-3">
           <Field label="Task"><input className={inputCls} value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} /></Field>
-          <Field label="Area"><select className={inputCls} value={draft.area} onChange={e => setDraft({ ...draft, area: e.target.value })}>{AREA_ORDER.map(a => <option key={a} value={a}>{AREA[a]}</option>)}</select></Field>
+          <Field label="Area"><select className={inputCls} value={draft.area} onChange={e => setDraft({ ...draft, area: e.target.value })}>{AREA_ORDER.filter(a => !areas || areas.includes(a)).map(a => <option key={a} value={a}>{AREA[a]}</option>)}</select></Field>
           <Field label="How (optional)"><textarea className={areaCls} rows={3} value={draft.how} onChange={e => setDraft({ ...draft, how: e.target.value })} /></Field>
         </div>
       </Modal>
@@ -179,7 +202,7 @@ export function ThisWeek({ b }) {
 // ---------------------------------------------------------------- Reports
 const ItemList = ({ items, empty }) => (items?.length ? <ul className="grid gap-1 text-13 text-slate-700">{items.map(i => <li key={i.id} className="flex gap-2"><span className="text-slate-300">•</span><span>{i.title}{i.verified && <span className="text-emerald-600"> ✓ confirmed by audit</span>}{i.note ? <span className="text-slate-400"> — {i.note}</span> : ''}</span></li>)}</ul> : <p className="text-13 text-slate-400">{empty}</p>);
 
-function Reports({ b }) {
+export function Reports({ b }) {
   const [period, setPeriod] = useState('week');
   const history = useApi(`/businesses/${b.id}/reports/history?period=${period}`);
   const [start, setStart] = useState('');
@@ -255,7 +278,7 @@ function Reports({ b }) {
 const COVER_LABEL = { title: 'Titles (25-60 chars, unique)', description: 'Meta descriptions (70-160, unique)', canonical: 'Canonical tags', open_graph: 'Open Graph (title, text, image)', twitter_card: 'Twitter/X card', schema: 'Structured data', language: 'Page language', single_h1: 'Exactly one H1' };
 const tone = (v) => (v >= 80 ? '#1abc9c' : v >= 50 ? '#f7b84b' : '#f1556c');
 
-function Research({ b }) {
+export function Research({ b }) {
   const r = useApi(`/businesses/${b.id}/research`);
   const [busy, error, run] = useAction();
   const running = r.data && ['queued', 'running'].includes(r.data.status);
@@ -316,40 +339,5 @@ function Research({ b }) {
           </li>))}</ul>
       </Card>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------- All projects
-function AllProjects({ onOpen }) {
-  const o = useApi('/workplan/overview');
-  if (!o.data) return o.error ? <ErrorNote>{o.error.message}</ErrorNote> : <SkPage header={false} />;
-  return (
-    <Card title={`All projects · week of ${fmtDate(o.data.week_start)}`} subtitle="Where every project stands this week.">
-      <div className="overflow-x-auto"><table className="w-full text-13 text-left"><thead className="text-12 text-slate-400"><tr><th className="py-2 pr-4">Project</th><th className="pr-4">Plan</th><th className="pr-4">Done</th><th className="pr-4 w-48">Progress</th><th className="pr-4">In progress</th><th className="pr-4">Overdue</th><th>Carried in</th></tr></thead>
-        <tbody>{o.data.projects.map(p => (
-          <tr key={p.business_id} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => onOpen(p.business_id)}>
-            <td className="py-2.5 pr-4 font-semibold text-slate-800">{p.name}</td><td className="pr-4">{p.plan || '—'}</td><td className="pr-4">{p.done}/{p.planned}</td>
-            <td className="pr-4"><Meter value={p.completion_pct || 0} color="#1abc9c" /></td><td className="pr-4">{p.doing}</td><td className={`pr-4 ${p.overdue ? 'text-rose-600 font-semibold' : ''}`}>{p.overdue}</td><td>{p.carried_in}</td>
-          </tr>))}</tbody></table></div>
-    </Card>
-  );
-}
-
-const TABS = [{ id: 'week', label: 'This week' }, { id: 'reports', label: 'Weekly & monthly reports' }, { id: 'research', label: 'Website R&D' }, { id: 'all', label: 'All projects' }];
-
-export default function WorkPlanPage() {
-  const [tab, setTab] = useUrlTab('week', TABS.map(t => t.id));
-  return (
-    <SeoShell title="Work Plan & Reports" subtitle="Website research at onboarding, a weekly task plan for every project, and weekly and monthly reports: last period, this period, and what comes next.">
-      {(business) => (
-        <>
-          <Tabs tabs={TABS} value={tab} onChange={setTab} />
-          {tab === 'week' && <ThisWeek key={business.id} b={business} />}
-          {tab === 'reports' && <Reports key={business.id} b={business} />}
-          {tab === 'research' && <Research key={business.id} b={business} />}
-          {tab === 'all' && <AllProjects onOpen={(id) => { try { localStorage.setItem('seoBusinessId', String(id)); } catch (e) { /* private window */ } window.dispatchEvent(new Event('seo-business')); setTab('week'); }} />}
-        </>
-      )}
-    </SeoShell>
   );
 }

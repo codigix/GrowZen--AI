@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Sparkles, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Card, ErrorNote, useModulePath, useSeoBusiness, SkTable } from './SeoUi';
 import { useApi } from './seoApi';
+import SiteAuditOverview from './SiteAuditOverview';
 
 /**
  * Site Audit overview: one row per project with its site health broken into the parameters an SEO tool
@@ -23,6 +24,14 @@ const COLUMNS = [
   { key: 'markups', label: 'Markups', tip: 'Pages with structured data (schema.org)' },
   { key: 'core_web_vitals', label: 'Core Web Vitals', tip: 'Lab LCP, CLS and TBT that pass Google’s “good” limits' }
 ];
+
+// Where a click on each figure leads: the Overview, or the Issues tab filtered to what that figure measures
+const GO = {
+  site_health: { tab: 'overview' }, ai_search: { tab: 'overview' }, performance: { tab: 'overview' }, core_web_vitals: { tab: 'overview' },
+  errors: { tab: 'issues', severity: 'error' }, warnings: { tab: 'issues', severity: 'warning' }, crawlability: { tab: 'issues', category: 'Crawlability' },
+  https: { tab: 'issues', category: 'HTTPS' }, int_seo: { tab: 'issues', category: 'Meta tags' }, internal_linking: { tab: 'issues', category: 'Links' }, markups: { tab: 'issues', category: 'Markup' },
+  pages_crawled: { tab: 'pages' }, last_update: { tab: 'progress' }, name: { tab: 'overview' }
+};
 
 const ago = (iso) => {
   if (!iso) return 'never';
@@ -46,7 +55,7 @@ function Metric({ m, count }) {
   );
 }
 
-export default function SiteAuditTable({ onNew }) {
+export default function SiteAuditTable({ onNew, onOverview }) {
   const data = useApi('/businesses/site-audit');
   const [, choose] = useSeoBusiness();
   const navigate = useNavigate();
@@ -65,6 +74,8 @@ export default function SiteAuditTable({ onNew }) {
   const pages = Math.max(1, Math.ceil(rows.length / size));
   const shown = rows.slice((page - 1) * size, page * size);
   const open = (id) => { choose(id); navigate(`${path('website-audit')}?tab=report`); };
+  const [overviewOf, setOverviewOf] = useState(null); // {id, initial}: that project's audit Overview replaces the table until closed
+  const go = (id, key) => { choose(id); const initial = GO[key]; if (onOverview) onOverview(id, initial); else setOverviewOf({ id, initial }); };
   const th = (key, label, extra = {}) => (
     <th key={key} className={`px-4 py-3 font-semibold whitespace-nowrap ${extra.right ? 'text-right' : 'text-left'}`} title={extra.tip}>
       <button type="button" onClick={() => { setSort(s => ({ key, dir: s.key === key ? -s.dir : -1 })); setPage(1); }} className="inline-flex items-center gap-1 cursor-pointer hover:text-slate-900">
@@ -73,6 +84,7 @@ export default function SiteAuditTable({ onNew }) {
     </th>
   );
 
+  if (overviewOf) return <SiteAuditOverview key={`${overviewOf.id}-${overviewOf.initial?.tab}-${overviewOf.initial?.category || overviewOf.initial?.severity || ''}`} projectId={overviewOf.id} initial={overviewOf.initial} onBack={() => setOverviewOf(null)} />;
   return (
     <Card pad={false}>
       <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3">
@@ -98,14 +110,16 @@ export default function SiteAuditTable({ onNew }) {
               {shown.map(r => (
                 <tr key={r.id} className="hover:bg-slate-50/70 align-top">
                   <td className="px-4 py-3 min-w-[210px]">
-                    <button type="button" onClick={() => open(r.id)} className="text-left cursor-pointer group">
+                    <button type="button" onClick={() => (r.last_update ? go(r.id, 'name') : open(r.id))} className="text-left cursor-pointer group">
                       <span className="block font-semibold text-indigo-600 group-hover:underline">{r.name}</span>
                       <span className="block text-12 text-slate-500">{r.domain || 'No website'}{r.market && <span className="ml-1.5 text-slate-400">· {r.market.scope}</span>}</span>
                     </button>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-slate-700">{ago(r.last_update)}</td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums"><span className="text-14 font-semibold text-slate-900">{r.pages_crawled || '—'}</span>{r.pages_crawled ? <span className="text-slate-400"> pages</span> : null}</td>
-                  {COLUMNS.map(c => <td key={c.key} className="px-4 py-3 whitespace-nowrap"><Metric m={r.metrics[c.key]} count={c.count} /></td>)}
+                  <td className="px-4 py-3 whitespace-nowrap text-slate-700">{r.last_update ? <button type="button" onClick={() => go(r.id, 'last_update')} title="See how the audits progressed" className="cursor-pointer hover:text-indigo-600 hover:underline">{ago(r.last_update)}</button> : ago(r.last_update)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums">{r.pages_crawled ? <button type="button" onClick={() => go(r.id, 'pages_crawled')} title="Open the crawled pages" className="cursor-pointer rounded px-1 hover:bg-indigo-50 hover:underline"><span className="text-14 font-semibold text-slate-900">{r.pages_crawled}</span><span className="text-slate-400"> pages</span></button> : <span className="text-slate-300">—</span>}</td>
+                  {COLUMNS.map(c => <td key={c.key} className="px-4 py-3 whitespace-nowrap">{r.metrics[c.key]?.value != null
+                    ? <button type="button" onClick={() => go(r.id, c.key)} title={`Open ${c.label.toLowerCase()} details`} className="block w-full cursor-pointer rounded hover:bg-indigo-50"><Metric m={r.metrics[c.key]} count={c.count} /></button>
+                    : <Metric m={r.metrics[c.key]} count={c.count} />}</td>)}
                 </tr>
               ))}
               {!shown.length && <tr><td colSpan={COLUMNS.length + 3} className="px-5 py-12 text-center text-13 text-slate-500">{q ? 'No project matches.' : 'No projects yet.'}</td></tr>}

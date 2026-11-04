@@ -5,7 +5,9 @@ import { ArrowUp, ArrowDown, RefreshCw, ExternalLink, AlertTriangle, Search, Inb
 import { Card, Badge, Button, ErrorNote, useAction, useToast, useModulePath, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 import { TrackingHeader, ExportButtons, ShareOfVoice, DevicesLocations, TabBar } from './PositionExtras';
-import { Overview, Distribution, PagesTab, Cannibalization, Competitors, Snippets } from './PositionTabs';
+import PositionOverview from './PositionOverview';
+import PositionCompetitors from './PositionCompetitors';
+import { Distribution, PagesTab, Cannibalization, Snippets } from './PositionTabs';
 import { AXIS, PALETTE, Th, path, sign, Chg, Spark, Empty } from './PositionUi';
 
 /**
@@ -79,7 +81,8 @@ function Impact({ title, tone, block, onAll, allLabel }) {
   );
 }
 
-export function Landscape({ d }) {
+export function Landscape({ d, onTab, b }) {
+  const path_ = useModulePath();
   const [kwView, setKwView] = useState(null);
   const [showOut, setShowOut] = useState(false);
   const [pagesTab, setPagesTab] = useState('top');
@@ -160,6 +163,25 @@ export function Landscape({ d }) {
       )}
 
 
+      <Card title="Tags" subtitle="Keywords grouped by their cluster" pad={false}
+        action={d.tags.length > 0 && <Button size="sm" onClick={() => onTab?.('tags')}>View all {d.tags.length} tags</Button>}>
+        {d.tags.length ? (
+          <table className="w-full text-13">
+            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Tag</Th><Th c="text-right">Keywords</Th><Th c="text-right">Visibility</Th><Th c="text-right">Avg. pos.</Th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{d.tags.slice(0, 5).map(t => (
+              <tr key={t.tag}><td className="px-4 py-2.5"><span className="px-2.5 py-0.5 rounded-full border border-slate-200 text-12 text-slate-700">{t.tag}</span></td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{t.keywords}</td><td className="px-4 py-2.5 text-right tabular-nums">{t.visibility}% <Chg v={t.visibility_change} /></td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{t.avg_position ?? '—'}</td></tr>))}</tbody>
+          </table>
+        ) : (
+          <div className="py-10 flex flex-col items-center text-center gap-2">
+            <div className="text-15 font-semibold text-slate-900">Add your first tag</div>
+            <p className="max-w-sm text-13 text-slate-500">Tags help you track the performance of any keyword group.</p>
+            <Link to={path_('keyword-management')} className="mt-2 h-9 px-4 rounded inline-flex items-center text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800">Tag keywords</Link>
+          </div>
+        )}
+      </Card>
+
       <Card title="Market traffic vs. selected domains" subtitle="Domains in the Google results of your tracked keywords. Across: keywords they appear for. Up: better average position. Size: visibility.">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
           <div className="h-72">
@@ -185,6 +207,16 @@ export function Landscape({ d }) {
                   <td className="px-4 py-2 text-right tabular-nums">{c.visibility}% <Chg v={c.change} /></td>
                 </tr>))}</tbody>
             </table>
+            {!(d.tracked_competitors || []).length && (
+              <div className="mt-3 rounded bg-slate-50 p-4">
+                <div className="text-14 font-semibold text-slate-900">We&apos;ve found your competitors on the Google results</div>
+                <p className="text-13 text-slate-600 mt-0.5">Add domains to your competitors list and track their positions with ease.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => onTab?.('competitors')} className="h-9 px-4 rounded text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800 cursor-pointer">Add competitors</button>
+                  <Link to={path_('competitor-finder')} className="h-9 px-4 rounded inline-flex items-center text-13 font-semibold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">Find more competitors</Link>
+                </div>
+              </div>
+            )}
             <p className="text-11.5 text-slate-400 mt-2">{d.competitor_total} competing businesses appear in the results.{d.platform_total ? ` ${d.platform_total} directories and social sites (like Instagram or Tripadvisor) are left out: see Competitors Discovery.` : ''}</p>
           </div>
         </div>
@@ -221,7 +253,17 @@ export function Landscape({ d }) {
               </tr>))}</tbody>
           </table>
         ) : <Empty>{pagesTab === 'top' ? 'No page of this site ranked in the top 10 for a tracked keyword.' : `No ${pagesTab} pages in this period.`}</Empty>}
-        {d.pages.total > 8 && <p className="px-4 py-3 text-12 text-slate-400">Showing 8 of {d.pages.total} ranking pages.</p>}
+        <div className="p-4 border-t border-slate-100"><Button size="sm" onClick={() => onTab?.('pages')}>View all {d.pages.total || 'landing'} {d.pages.total === 1 ? 'landing page' : 'landing pages'}</Button></div>
+      </Card>
+
+      <Card title="Visibility by locations" subtitle="How visible the site is in each place and on each device it is checked">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded border border-slate-200 p-4"><div className="text-12 text-slate-500">Location</div><div className="text-15 font-semibold text-slate-900">{d.location || 'Google'}{d.country ? ` · ${d.country}` : ''}</div></div>
+          <div className="rounded border border-slate-200 p-4"><div className="text-12 text-slate-500">Device</div><div className="text-15 font-semibold text-slate-900">Desktop</div></div>
+          <div className="rounded border border-slate-200 p-4"><div className="text-12 text-slate-500">Visibility</div><div className="text-15 font-semibold text-indigo-700 tabular-nums">{d.cards.visibility.value}%</div></div>
+        </div>
+        <p className="text-12 text-slate-500 mt-3">Positions are read for one location and the desktop device. Other locations and mobile are not tracked yet.</p>
+        <div className="mt-3"><Button size="sm" onClick={() => onTab?.('devices')}>View devices &amp; locations</Button></div>
       </Card>
 
       <Card title="Cannibalization health" subtitle="Keywords where more than one page of your site shows in the results">
@@ -233,6 +275,7 @@ export function Landscape({ d }) {
             <div className="flex-1 h-28"><Spark values={d.cannibal.series.map(x => x.health)} h={110} color="#6658dd" /></div>
           </div>
         </div>
+        <div className="mt-4"><Button size="sm" onClick={() => onTab?.('cannibal')}>View Cannibalization report</Button></div>
         {d.cannibal.affected > 0 && <div className="mt-4 text-12.5 text-slate-600">Merge or differentiate the competing pages so one page owns each keyword. Open the affected keywords in <b>All keywords</b> to see which URLs rank.</div>}
       </Card>
       <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />Visibility and estimated traffic are modelled from your saved Google rank checks (top 10 results) with a standard click-through curve and the keyword volumes you track. They will not match another tool exactly.</p>
@@ -262,10 +305,12 @@ function TagsTab({ d }) {
   );
 }
 
-export default function PositionLandscape({ b }) {
+/** `tab` lets the page that hosts it own the tab row (Position Tracking lists these views among its own tabs); without it the component shows its own. */
+export default function PositionLandscape({ b, tab: forced, onTab }) {
   const path_ = useModulePath();
   const [days, setDays] = useState(30);
-  const [tab, setTab] = useState('landscape');
+  const [own, setTab] = useState('landscape');
+  const tab = forced || own;
   const data = useApi(`/businesses/${b.id}/seo/position-landscape?days=${days}`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
@@ -291,14 +336,14 @@ export default function PositionLandscape({ b }) {
         : d.state === 'ok' ? (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3"><TrackingHeader d={d} /><ExportButtons d={d} toast={toast} /></div>
-            <TabBar value={tab} onChange={setTab} />
-            {tab === 'landscape' && <Landscape d={d} />}
-            {tab === 'overview' && <Overview d={d} />}
+            {!forced && <TabBar value={tab} onChange={setTab} />}
+            {tab === 'landscape' && <Landscape d={d} b={b} onTab={onTab || setTab} />}
+            {tab === 'overview' && <PositionOverview d={d} b={b} onChanged={() => data.reload(true)} />}
             {tab === 'distribution' && <Distribution d={d} />}
             {tab === 'tags' && <TagsTab d={d} />}
             {tab === 'pages' && <PagesTab b={b} />}
             {tab === 'cannibal' && <Cannibalization d={d} b={b} />}
-            {tab === 'competitors' && <Competitors d={d} b={b} onChanged={() => data.reload(true)} />}
+            {tab === 'competitors' && <PositionCompetitors d={d} b={b} onChanged={() => data.reload(true)} />}
             {tab === 'devices' && <DevicesLocations d={d} />}
             {tab === 'snippets' && <Snippets d={d} />}
           </div>)

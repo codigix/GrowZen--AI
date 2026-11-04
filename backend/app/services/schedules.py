@@ -5,12 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Business, Schedule
-from . import agent, audits, gbp, geo, reports, organic, workplan
+from . import agent, notify, audits, gbp, geo, reports, organic, workplan
 from .activity import log
 from .playbook import get_playbook
 
 INTERVALS = {"daily": 1, "weekly": 7, "fortnightly": 14, "monthly": 30}
-JOBS = ["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo", "weekly_plan", "site_research"]
+JOBS = ["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo", "weekly_plan", "site_research", "site_crawl"]
 # Jobs every plan gets even when the playbook saved before they existed has no entry for them.
 JOB_DEFAULTS = {"weekly_plan": "weekly", "site_research": "monthly"}
 
@@ -83,6 +83,11 @@ def run_job(db: Session, s: Schedule) -> None:
         workplan.weekly_cycle(db, b)
     elif s.job == "site_research":
         workplan.research_cycle(db, b)
+    elif s.job == "site_crawl":  # the Site Audit settings' own schedule
+        a = audits.run(db, b, "onpage")
+        if (b.audit_config or {}).get("email") and a.status == "done" and b.contact_email:
+            n = len(a.issues or [])
+            notify.send_email(b.contact_email, f"Site audit finished: {b.name}", f"The scheduled site audit of {b.website} is complete.\nScore: {a.score}/100. Issues found: {n}.\nOpen Site Audit to see them.")
 
 
 def run_due(db: Session, limit: int = 20) -> int:

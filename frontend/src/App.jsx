@@ -28,7 +28,11 @@ const BusinessOnboardingPage = lazy(() => import('./platform/BusinessOnboardingP
 const ConnectionsPage = lazy(() => import('./platform/ConnectionsPage'));
 const ConnectResultPage = lazy(() => import('./platform/ConnectResultPage'));
 const TrafficPage = lazy(() => import('./platform/TrafficPage'));
-const WorkPlanPage = lazy(() => import('./platform/WorkPlanPage'));
+const SeoBriefPage = lazy(() => import('./platform/ToolPages').then(m => ({ default: m.SeoBriefPage })));
+const SocialPosterPage = lazy(() => import('./platform/ToolPages').then(m => ({ default: m.SocialPosterPage })));
+const AdsAssistantPage = lazy(() => import('./platform/ToolPages').then(m => ({ default: m.AdsAssistantPage })));
+const AiQuestionsPage = lazy(() => import('./platform/ToolPages').then(m => ({ default: m.AiQuestionsPage })));
+const FeaturePage = lazy(() => import('./platform/ToolPages').then(m => ({ default: m.FeaturePage })));
 const OrganicRankingsPage = lazy(() => import('./platform/OrganicResearch').then(m => ({ default: m.OrganicRankingsPage })));
 const TopPagesPage = lazy(() => import('./platform/TopPagesReport').then(m => ({ default: m.TopPagesPage })));
 const toolkit = (name) => lazy(() => import('./platform/SeoToolkit').then(m => ({ default: m[name] })));
@@ -109,7 +113,7 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<SeoOverviewPage />} />
         <Route path="onboarding" element={<BusinessOnboardingPage />} />
-        <Route path="work-plan" element={<WorkPlanPage />} />
+        <Route path="work-plan" element={<Navigate to="/dashboard" replace />} />
         <Route path="automation-pipeline" element={<AutomationPipelinePage />} />
         <Route path="gmb-profile" element={<GbpManagerPage />} />
         <Route path="google-posts" element={<GbpManagerPage initialTab="posts" />} />
@@ -120,6 +124,11 @@ export default function App() {
         <Route path="competitor-finder" element={<CompetitorFinderPage />} />
         <Route path="competitor-watch" element={<CompetitorWatchPage />} />
         <Route path="traffic" element={<TrafficPage />} />
+        <Route path="seo-brief" element={<SeoBriefPage />} />
+        <Route path="social-poster" element={<SocialPosterPage />} />
+        <Route path="ads-assistant" element={<AdsAssistantPage />} />
+        <Route path="ai-questions" element={<AiQuestionsPage />} />
+        <Route path="feature/:slug" element={<FeaturePage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
         <Route path="organic-rankings" element={<OrganicRankingsPage />} />
         <Route path="top-pages" element={<TopPagesPage />} />

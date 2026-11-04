@@ -1,12 +1,16 @@
+import { useCrumb } from './crumbs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import PositionTrackingHome from './PositionTrackingHome';
 import L from 'leaflet';
+import ProcessTasks from './ProcessTasks';
 import 'leaflet/dist/leaflet.css';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Play, MapPin, Clock, ArrowUp, ArrowDown, Crosshair, Layers, Target, Trophy, Search, RotateCw } from 'lucide-react';
 import PagePositions from './PagePositions';
 import { SeoShell, Card, Button, SourceTag, ErrorNote, STATUS, Tabs, useUrlTab, useToast, useAction, useModulePath, SkPage } from './SeoUi';
 import PositionLandscape from './PositionLandscape';
+import { TABS as LANDSCAPE_TABS } from './PositionExtras';
 import { api, useApi, usePoll, fmtDateTime, fmtDate } from './seoApi';
 import { marketOf } from './MarketBadge';
 
@@ -277,16 +281,29 @@ function Tracker({ b }) {
 }
 
 function Page({ b }) {
-  const [tab, setTab] = useUrlTab('pages', ['pages', 'landscape', 'geo']);
+  // One row of tabs: the page positions, every Landscape view (Overview, Rankings Distribution, Tags, Pages...), the Maps grid and the tasks
+  const views = LANDSCAPE_TABS.map(([id, label]) => ({ id, label }));
+  const all = [{ id: 'positions', label: 'Page positions' }, ...views, { id: 'geo', label: 'Geo-grid (Maps pack)' }, { id: 'tasks', label: 'Tasks' }];
+  const [tab, setTab] = useUrlTab('positions', all.map(t => t.id));
+  useCrumb(all.find(t => t.id === tab)?.label);
   return (
     <>
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'pages', label: 'Page positions' }, { id: 'landscape', label: 'Landscape' }, { id: 'geo', label: 'Geo-grid (Maps pack)' }]} />
-      {tab === 'pages' ? <PagePositions key={b.id} b={b} /> : tab === 'landscape' ? <PositionLandscape key={b.id} b={b} /> : <Tracker key={b.id} b={b} />}
+      <Link to="/rank-tracking" className="inline-block mb-2 text-13 font-semibold text-indigo-600 hover:underline">← All projects</Link>
+      <Tabs value={tab} onChange={setTab} tabs={all} />
+      {tab === 'positions' ? <PagePositions key={b.id} b={b} />
+        : tab === 'geo' ? <Tracker key={b.id} b={b} />
+          : tab === 'tasks' ? <ProcessTasks b={b} areas={['rankings']} />
+            : <PositionLandscape key={b.id} b={b} tab={tab} onTab={setTab} />}
     </>
   );
 }
 
 export default function LocalRankTrackerPage() {
+  const [params] = useSearchParams();
+  // Without a tab the page is the list of projects; a tab opens that project's view
+  if (!params.get('tab')) {
+    return <SeoShell title="Position Tracking" subtitle="Every project's visibility on Google and in AI answers: open one to see its positions, landscape and competitors" needsBusiness={false}><PositionTrackingHome /></SeoShell>;
+  }
   return (
     <SeoShell title="Position Tracking" subtitle="Visibility, estimated traffic and positions of your tracked keywords on Google, and how you rank in the Maps pack">
       {(b) => <Page key={b.id} b={b} />}

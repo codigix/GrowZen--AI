@@ -109,3 +109,24 @@ def test_directories_and_social_sites_are_not_competitors():
     assert {c["domain"] for c in r["platforms"]} == {"instagram.com", "justdial.com"} and r["platform_total"] == 2
     kept = landscape(obs, {"a": {}}, ME, D1, D2, keep={"justdial.com"})  # a directory the user chose to track counts as a competitor
     assert "justdial.com" in {c["domain"] for c in kept["competitors_all"]}
+
+
+def test_overview_has_a_series_per_domain_and_the_keyword_details():
+    obs = [_o("a", D1, 5, "https://mysite.com/a", serp=[("rival.com", 1), ("mysite.com", 5)], features=["People also ask"]), _o("a", D2, 2, "https://mysite.com/a", serp=[("rival.com", 1), ("mysite.com", 2)]),
+           _o("b", D1, None, serp=[("rival.com", 2)]), _o("b", D2, 9, "https://mysite.com/b", serp=[("rival.com", 2), ("mysite.com", 9)])]
+    meta = {"a": {"volume": 1000, "intent": "commercial", "difficulty": 40, "cpc": 1.5}, "b": {"volume": 100}}
+    r = landscape(obs, meta, ME, D1, D2)
+    me_s = r["domain_series"][ME]
+    assert [x["date"] for x in me_s] == [D1.isoformat(), D2.isoformat()] and me_s[0]["visibility"] < me_s[1]["visibility"]
+    assert r["distribution"][0]["sov"] == me_s[0]["sov"] and 0 < me_s[1]["sov"] < 100 and "rival.com" in r["domain_series"]
+    a = next(x for x in r["all_keywords"] if x["keyword"] == "a")
+    assert (a["intent"], a["kd"], a["cpc"], a["sf"]) == ("commercial", 40, 1.5, 0) and a["traffic_was"] == round(1000 * CTR[4], 2) and a["traffic"] == round(1000 * CTR[1], 2)
+    assert a["visibility_was"] < a["visibility"]
+
+
+def test_each_keyword_row_carries_its_position_history_for_the_domains():
+    obs = [_o("a", D1, 5, "https://mysite.com/a", serp=[("rival.com", 1), ("mysite.com", 5)]), _o("a", D2, 2, "https://mysite.com/a", serp=[("rival.com", 3), ("mysite.com", 2)])]
+    r = landscape(obs, {"a": {"id": 7}}, ME, D1, D2)
+    a = r["all_keywords"][0]
+    assert a["id"] == 7 and [h["date"] for h in a["history"]] == [D1.isoformat(), D2.isoformat()]
+    assert a["history"][0]["ranks"] == {"rival.com": 1, ME: 5} and a["history"][1]["ranks"] == {"rival.com": 3, ME: 2}

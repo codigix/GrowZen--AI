@@ -16,8 +16,8 @@ from ..services.url_safety import SSRFValidationError, validate_url_shape
 router = APIRouter(prefix="/website-audits", tags=["website"])
 
 
-def _run(db: Session, audit_id: int, url: str, strategy: str, pages: int, business_id: int | None = None) -> None:
-    web = audits.website_audit(db, url, strategy, pages, audit=db.get(Audit, audit_id))
+def _run(db: Session, audit_id: int, url: str, strategy: str, pages: int, business_id: int | None = None, options: dict | None = None) -> None:
+    web = audits.website_audit(db, url, strategy, pages, audit=db.get(Audit, audit_id), options=options)
     b = db.get(Business, business_id) if business_id else None
     if b and web.status == "done":
         # The business's own site: the same scan becomes its technical + on-page audits and plans the fixes.
@@ -39,8 +39,24 @@ def start(body: WebsiteAuditIn, tasks: BackgroundTasks, db: Session = Depends(ge
     if body.business_id is not None:
         log(db, user.name, "audit_started", body.business_id, kinds=["technical", "onpage"])
     db.commit()
-    tasks.add_task(in_background(_run, queued.id, url, body.strategy, body.crawl_pages, body.business_id))
+    tasks.add_task(in_background(_run, queued.id, url, body.strategy, body.crawl_pages, body.business_id, body.options))
     return {"id": queued.id, "status": "queued", "url": url}  # poll GET /website-audits/{id}
+
+
+@router.get("/overview")
+def overview(workspace_id: int | None = None, limit: int = 20, db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """The audited websites (a project sees only its own), each with its latest finished audit's figures and the change since the audit before."""
+    from ..services import audit_overview
+    q = select(Audit).where(Audit.kind == "website", Audit.status == "done").order_by(Audit.finished_at.desc(), Audit.id.desc())
+    if workspace_id is not None:
+        q = q.where(Audit.workspace_id == workspace_id)
+    seen: dict[str, list[Audit]] = {}
+    for a in db.scalars(q.limit(300)):
+        seen.setdefault(a.target, [])
+        if len(seen[a.target]) < 2:
+            seen[a.target].append(a)
+    rows = [audit_overview.row(v[0], v[1] if len(v) > 1 else None) for v in seen.values()][:max(1, min(limit, 50))]
+    return rows
 
 
 @router.get("/tech-stack")
@@ -62,6 +78,15 @@ def history(url: str | None = None, workspace_id: int | None = None, limit: int 
     if url:
         q = q.where(Audit.target == crawler.homepage(url))
     return audits.page(db, q, limit, offset, slim)
+
+
+@router.get("/{audit_id}/overview")
+def audit_overview_page(audit_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+    from ..services import audit_overview
+    a = db.get(Audit, audit_id)
+    if not a or a.kind != "website" or a.status != "done":
+        raise HTTPException(404, "Audit not found")
+    return audit_overview.detail(db, a)
 
 
 @router.get("/{audit_id}")

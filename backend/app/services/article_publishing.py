@@ -49,7 +49,21 @@ def destinations(db: Session, b: Business) -> list[dict]:
     c = react_target(db, b)
     if c:
         out.append({"id": REACT, "label": "React.js Website", "target": c.blog_url or c.website_url})
+    h = html_target(db, b)
+    if h:
+        out.append({"id": HTML, "label": "HTML Website", "target": h.get("website_url")})
     return out
+
+
+HTML = "html"  # the HTML website destination (services/html_publisher.py)
+
+
+def html_target(db: Session, b: Business) -> dict | None:
+    """The HTML website settings when publishing there is connected (site checks passed and a test deployment succeeded)."""
+    from . import html_publisher as hp  # noqa: PLC0415
+    row = db.scalar(select(SiteIntegration).where(SiteIntegration.business_id == b.id))
+    s = hp.settings_of(row)
+    return s if s.get("status") == "connected" and hp.deploy_ready(s) else None
 
 
 def record_published(db: Session, a: Article, destination: str, out: dict, at: datetime | None = None) -> None:

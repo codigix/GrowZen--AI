@@ -49,7 +49,7 @@ def client(monkeypatch):
     # Website scans run Lighthouse through the Lighthouse engine; here it is the canned PageSpeed result.
     from app.services import audits
     monkeypatch.setattr(audits, "run_lighthouse", lambda url, strategy="mobile": pagespeed.run(url, strategy))
-    monkeypatch.setattr(crawler, "crawl", lambda url, max_pages=25, timeout=15, on_progress=None: {
+    monkeypatch.setattr(crawler, "crawl", lambda url, max_pages=25, timeout=15, on_progress=None, options=None: {
         "start_url": url, "host": "example.in", "https": True, "robots_txt": True, "robots_blocks_all": False, "sitemap": False, "crawled": 1, "broken": [],
         "pages": [crawler.analyse_html(url, 200, "<html><head><title>Home</title></head><body><h1>Hi</h1><p>short</p></body></html>")]})
     token = jwt.encode({"sub": "48", "exp": int(time.time()) + 3600}, "test-secret-0123456789-abcdefghijklmnop", algorithm="HS256")

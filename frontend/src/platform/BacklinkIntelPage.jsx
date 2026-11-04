@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Play, Plus, Trash2, Download, RefreshCw, Loader2, Search, Crosshair, History, Sparkles, Bot } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine, Legend } from 'recharts';
 import { SeoShell, Card, Tabs, Badge, Button, Meter, ErrorNote, Drawer, Field, Modal, Stat, inputCls, areaCls, SERIES, INK, useToast, useAction, useUrlTab, useDoubleConfirm, SkStats, SkTable, SkChart, SkList, SkCard } from './SeoUi';
@@ -127,7 +127,8 @@ const DIRECTION_LABEL = { inbound: 'Links to it', outbound: 'Links from it', oth
 
 // GET /backlink-intel/lookup: fuzzy search by domain, URL or word over every backlink stored (all projects, not only this one). Reads the database only.
 function Lookup() {
-  const [q, setQ] = useState('');
+  const fromLink = new URLSearchParams(window.location.search).get('q') || ''; // ?q=domain opens the search already filled in and run
+  const [q, setQ] = useState(fromLink);
   const [limit, setLimit] = useState(25);
   const [res, setRes] = useState(null);
   const [busy, error, run] = useAction();
@@ -135,6 +136,7 @@ function Lookup() {
     e?.preventDefault();
     run('lookup', async () => setRes(await api(`/backlink-intel/lookup?${new URLSearchParams({ q: q.trim(), limit: String(limit) })}`)));
   };
+  useEffect(() => { if (fromLink) search(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const s = res?.summary;
   const matched = res ? [...(res.matched_domains?.as_target || []), ...(res.matched_domains?.as_source || [])] : [];
   const domains = [...new Map(matched.map(m => [m.domain, m])).values()].slice(0, 12);

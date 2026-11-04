@@ -17,74 +17,6 @@ const withPlatforms = (d, on) => (on ? [...(d.competitors_all || []), ...(d.plat
 const Dash = <span className="text-slate-300">—</span>;
 const Url = ({ u }) => u ? <a href={u} target="_blank" rel="noreferrer" title={u} className="text-indigo-700 hover:underline inline-flex items-center gap-1 max-w-[360px] truncate">{path(u)}<ExternalLink size={10} /></a> : Dash;
 
-/** Overview: one metric over time, and every tracked keyword with where it stood and where it is now. */
-export function Overview({ d }) {
-  const [metric, setMetric] = useState('visibility');
-  const [q, setQ] = useState('');
-  const [tag, setTag] = useState('');
-  const defs = {
-    visibility: { label: 'Visibility', unit: '%', card: d.cards.visibility, rev: false },
-    traffic: { label: 'Est. Traffic', unit: '', card: d.cards.traffic, rev: false },
-    avg_position: { label: 'Avg. Position', unit: '', card: d.cards.avg_position, rev: true },
-  };
-  const m = defs[metric];
-  const chart = d.distribution.map(x => ({ date: x.date.slice(5), v: x[metric] })).filter(x => x.v != null);
-  const tags = [...new Set(d.all_keywords.map(r => r.tag).filter(Boolean))];
-  const rows = useMemo(() => d.all_keywords.filter(r => (!q || r.keyword.toLowerCase().includes(q.toLowerCase())) && (!tag || r.tag === tag)), [d, q, tag]);
-  const [slice, footer] = usePager(rows, 25);
-  const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
-  return (
-    <div className="space-y-4">
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <Segmented value={metric} onChange={setMetric} options={[['visibility', 'Visibility'], ['traffic', 'Est. Traffic'], ['avg_position', 'Avg. Position']]} />
-          <span className="text-12 text-slate-500">{d.domain} · {d.period.start} → {d.period.end}</span>
-        </div>
-        <div className="flex items-baseline gap-2 mb-2"><span className="text-26 font-bold tabular-nums text-slate-900">{m.card.value == null ? '—' : `${metric === 'traffic' ? fmt(Math.round(m.card.value)) : m.card.value}${m.unit}`}</span><Chg v={m.card.change} better={m.rev ? 'down' : 'up'} /></div>
-        {chart.length > 1 ? (
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chart} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
-                <defs><linearGradient id="ov-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6658dd" stopOpacity={0.25} /><stop offset="100%" stopColor="#6658dd" stopOpacity={0.02} /></linearGradient></defs>
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} />
-                <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={false} minTickGap={24} />
-                <YAxis tick={AXIS} tickLine={false} axisLine={false} width={40} reversed={m.rev} domain={m.rev ? [1, 'dataMax + 1'] : [0, 'auto']} />
-                <Tooltip />
-                <Area type="monotone" dataKey="v" name={m.label} stroke="#6658dd" strokeWidth={2} fill="url(#ov-g)" dot={{ r: 3 }} isAnimationActive={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        ) : <Empty>One check so far. The chart draws a line once there are two or more checks.</Empty>}
-      </Card>
-
-      <Card title={`Rankings overview (${rows.length})`} subtitle="Every tracked keyword: position at the start and end of the period, and what that is worth" pad={false}
-        action={<div className="flex flex-wrap gap-2"><Filter value={q} onChange={setQ} placeholder="Filter by keyword" />{tags.length > 0 && <select className={sel} value={tag} onChange={e => setTag(e.target.value)} aria-label="Tag"><option value="">All tags</option>{tags.map(t => <option key={t}>{t}</option>)}</select>}</div>}>
-        <div className="overflow-auto">
-          <table className="w-full text-13">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th>Tag</Th><Th c="text-right">Pos. {d.period.start.slice(5)}</Th><Th c="text-right">Pos. {d.period.end.slice(5)}</Th><Th c="text-right">Diff</Th><Th c="text-right">Visibility</Th><Th c="text-right">Est. traffic</Th><Th c="text-right">Volume</Th><Th>URL</Th></tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              {slice.map(r => (
-                <tr key={r.keyword} className="hover:bg-slate-50">
-                  <td className="px-4 py-2.5 font-medium text-indigo-700 max-w-[260px] truncate" title={r.keyword}>{r.keyword}</td>
-                  <td className="px-4 py-2.5 text-slate-500">{r.tag || Dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{r.was ?? <span className="text-slate-400">&gt;20</span>}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{r.rank ?? <span className="text-slate-400 font-normal">&gt;20</span>}</td>
-                  <td className="px-4 py-2.5 text-right"><Chg v={r.change} d={0} />{r.change == null && Dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{r.visibility}%</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{r.traffic != null ? r.traffic : Dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : Dash}</td>
-                  <td className="px-4 py-2.5"><Url u={r.url} /></td>
-                </tr>))}
-              {!slice.length && <tr><td colSpan={9} className="px-5 py-8 text-center text-slate-500">No keyword matches this filter.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        {footer}
-      </Card>
-    </div>
-  );
-}
-
 /** Rankings distribution: visibility, and how many keywords each domain has in the top 3 / 10 / 20, with what changed. */
 export function Distribution({ d }) {
   const [scope, setScope] = useState('all');
@@ -169,23 +101,36 @@ export function PagesTab({ b }) {
 
 /** Position of a page's affected keywords over time (lower is better). */
 function KeywordTrend({ keywords }) {
+  const [smart, setSmart] = useState(true);
+  const [hidden, setHidden] = useState(() => new Set());
   const top = keywords.slice(0, 5);
   const dates = [...new Set(top.flatMap(k => (k.history || []).map(h => h.date)))].sort();
-  if (dates.length < 2) return <p className="text-12 text-slate-500 mb-3">The position chart draws after the second position check.</p>;
+  if (!dates.length) return <p className="text-12 text-slate-500 mb-3">No check is saved for these keywords in the period.</p>;
   const data = dates.map(dt => Object.fromEntries([['date', dt.slice(5)], ...top.map(k => [k.keyword, (k.history || []).find(h => h.date === dt)?.position ?? null])]));
+  const last = new Date(`${dates[dates.length - 1]}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: '2-digit', year: 'numeric' });
   return (
-    <div className="mb-3 rounded border border-slate-200 bg-white p-3">
-      <div className="text-13 font-semibold text-slate-800 mb-1">Top affected keywords</div>
-      <div className="h-48">
+    <div className="mb-4 rounded border border-slate-200 bg-white px-5 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-16 font-bold text-slate-900">Top Affected Keywords <span className="text-slate-500 font-normal">{last}</span></div>
+        <label className="inline-flex items-center gap-2 text-13 text-slate-800 cursor-pointer"><input type="checkbox" checked={smart} onChange={e => setSmart(e.target.checked)} />Smart zoom</label>
+      </div>
+      <div className="h-52 mt-2">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
+          <LineChart data={data} margin={{ top: 8, right: 16, left: -6, bottom: 0 }}>
             <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} />
             <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={false} minTickGap={24} />
-            <YAxis tick={AXIS} tickLine={false} axisLine={false} width={36} reversed domain={[1, 'dataMax + 2']} allowDecimals={false} />
-            <Tooltip /><Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-            {top.map((k, i) => <Line key={k.keyword} type="monotone" dataKey={k.keyword} stroke={PALETTE[i % PALETTE.length]} strokeWidth={2} dot={{ r: 3 }} connectNulls isAnimationActive={false} />)}
+            <YAxis tick={AXIS} tickLine={false} axisLine={false} width={40} reversed domain={smart ? [(min) => Math.max(1, Math.floor(min) - 1), (max) => Math.ceil(max) + 1] : [1, 20]} />
+            <Tooltip formatter={(v, n) => [v == null ? 'not in top 20' : v, n]} />
+            {top.filter(k => !hidden.has(k.keyword)).map(k => <Line key={k.keyword} type="monotone" dataKey={k.keyword} stroke={PALETTE[top.indexOf(k) % PALETTE.length]} strokeWidth={2} dot={{ r: 4 }} connectNulls isAnimationActive={false} />)}
           </LineChart>
         </ResponsiveContainer>
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-1.5 mt-1">
+        {top.map((k, i) => (
+          <label key={k.keyword} className="inline-flex items-center gap-2 text-13 text-slate-800 cursor-pointer">
+            <input type="checkbox" checked={!hidden.has(k.keyword)} style={{ accentColor: PALETTE[i % PALETTE.length] }} onChange={() => setHidden(h => { const n = new Set(h); n.has(k.keyword) ? n.delete(k.keyword) : n.add(k.keyword); return n; })} />{k.keyword}
+            <span className="text-slate-500 tabular-nums">{k.position ? `pos. ${k.position}` : ''}</span>
+          </label>))}
       </div>
     </div>
   );
@@ -321,66 +266,6 @@ export function Cannibalization({ d, b }) {
           </div>
         )) : <Empty>{c.affected ? 'Nothing matches these filters.' : 'No keyword has two of your pages competing in Google. Nothing to merge.'}</Empty>}
         {footer}
-      </Card>
-    </div>
-  );
-}
-
-/** Competitors discovery: the domains in the results of your keywords, with a depth, a map and one-click tracking. */
-export function Competitors({ d, b, onChanged }) {
-  const [depth, setDepth] = useState('top20');
-  const [q, setQ] = useState('');
-  const [busy, error, run] = useAction();
-  const tracked = new Set((d.tracked_competitors || []).map(host));
-  const [plat, setPlat] = useState(false);
-  const all = withPlatforms(d, plat);
-  const rows = all.filter(c => (!q || c.domain.includes(q.toLowerCase())) && (c[depth].count > 0 || c.you)).sort((a, z) => z[depth].count - a[depth].count || (z.visibility || 0) - (a.visibility || 0));
-  const [slice, footer, off] = usePager(rows, 10);
-  const maxVis = Math.max(1, ...rows.map(c => c.visibility || 0));
-  const add = (domain) => run(domain, async () => { await api(`/businesses/${b.id}/seo/track-competitor`, { method: 'POST', body: { domain } }); onChanged(); });
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-12.5 text-slate-500 font-semibold">Depth</span>
-        <Segmented value={depth} onChange={setDepth} options={[['top20', 'Top 20'], ['top10', 'Top 10'], ['top3', 'Top 3']]} />
-        <Filter value={q} onChange={setQ} placeholder="Filter by domain" />
-        <PlatformToggle d={d} on={plat} set={setPlat} />
-      </div>
-      <Card title="Competition map" subtitle="Across: keywords the domain appears for. Up: better average position. Size: visibility.">
-        <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart margin={{ top: 10, right: 16, left: -4, bottom: 8 }}>
-              <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" />
-              <XAxis type="number" dataKey="keywords" name="Keywords" tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} domain={[0, 'dataMax + 2']} />
-              <YAxis type="number" dataKey="avg_position" name="Avg. position" reversed tick={AXIS} tickLine={false} axisLine={false} width={40} domain={[1, 'dataMax + 1']} />
-              <ZAxis type="number" dataKey="visibility" range={[160, 1400]} />
-              <Tooltip cursor={{ strokeDasharray: '3 3' }} content={({ payload }) => payload?.[0] ? <div className="bg-white border border-slate-200 rounded px-2.5 py-1.5 text-12"><b>{payload[0].payload.domain}{payload[0].payload.you ? ' (you)' : ''}</b><div>{payload[0].payload.keywords} keywords · avg position {payload[0].payload.avg_position}</div><div>Visibility {payload[0].payload.visibility}%</div></div> : null} />
-              {rows.filter(c => c.avg_position != null).slice(0, 15).map((c, i) => <Scatter key={c.domain} name={c.domain} data={[c]} fill={PALETTE[i % PALETTE.length]} fillOpacity={0.55} />)}
-            </ScatterChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
-      <Card title={`Competitors (${rows.length})`} subtitle={`${d.competitor_total} competing business${d.competitor_total !== 1 ? 'es' : ''} appear in the results of your tracked keywords${d.platform_total ? ` (${d.platform_total} directories and social sites left out)` : ''}`} pad={false}>
-        <div className="overflow-auto">
-          <table className="w-full text-13">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>#</Th><Th>Domain</Th><Th c="text-right">Visibility</Th><Th> </Th><Th c="text-right">Diff</Th><Th c="text-right">Est. traffic</Th><Th c="text-right">Keywords</Th><Th c="text-right">Avg. pos.</Th><Th> </Th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{slice.map((c, i) => (
-              <tr key={c.domain} className={c.you ? 'bg-indigo-50/40' : 'hover:bg-slate-50'}>
-                <td className="px-4 py-2.5 text-slate-500 tabular-nums">{off + i + 1}</td>
-                <td className="px-4 py-2.5"><a href={`https://${c.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{c.domain}<ExternalLink size={10} /></a>{c.you && <span className="ml-2 text-11 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">You</span>}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{c.visibility}%</td><td className="px-2"><Bar v={c.visibility || 0} max={maxVis} /></td>
-                <td className="px-4 py-2.5 text-right"><Chg v={c.change} />{c.change == null && Dash}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{d.has_volume ? c.traffic : Dash}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{c.keywords}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{c.avg_position ?? Dash} {c.avg_position_change != null && <span className="text-11 text-slate-400">±{Math.abs(c.avg_position_change)}</span>}</td>
-                <td className="px-4 py-2.5 text-right">{c.you ? null : tracked.has(c.domain) ? <Badge tone="green"><Check size={11} /> Tracked</Badge> : <Button size="sm" icon={Plus} busy={busy === c.domain} onClick={() => add(c.domain)}>Track</Button>}</td>
-              </tr>))}
-              {!slice.length && <tr><td colSpan={9} className="px-5 py-8 text-center text-slate-500">No domain matches. Competitors appear after the first position check.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        {footer}
-        {error && <p className="px-4 pb-3 text-12 text-rose-600">{error}</p>}
       </Card>
     </div>
   );

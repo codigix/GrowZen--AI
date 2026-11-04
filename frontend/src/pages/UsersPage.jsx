@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserPlus, Shield, UserCheck, Key, UserX, Users as UsersIcon, Mail, Calendar } from 'lucide-react';
 import { api, useApi, fmtDateTime } from '../platform/seoApi';
+import Breadcrumbs from '../platform/Breadcrumbs';
 import { Card, Badge, Button, Modal, Field, inputCls, ErrorNote, Empty, useToast } from '../platform/SeoUi';
 
 const ROLES = ['admin', 'editor', 'viewer'];
@@ -53,6 +54,7 @@ export default function UsersPage({ me }) {
               <UsersIcon size={20} />
             </div>
             <div>
+              <Breadcrumbs title="Team & Access Control" />
               <h1 className="text-xl font-bold text-slate-900 tracking-tight font-display">Team & Access Control</h1>
               <p className="text-13 text-slate-500 mt-0.5">Manage teammates, administrative roles, and platform permissions</p>
             </div>

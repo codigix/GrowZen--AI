@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { api, toUi, SEO_API } from './seoApi';
 import { MarketBadge } from './MarketBadge';
+import Breadcrumbs from './Breadcrumbs';
 
 // Categorical palette, tuned for white surfaces
 export const SERIES = ['#6658dd', '#4a81d4', '#1abc9c', '#f7b84b', '#f1556c', '#43bfe5', '#313a46', '#9ba6b7'];
@@ -310,10 +311,10 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
         {/* Page title with breadcrumb */}
         <div className="py-5 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
+            <Breadcrumbs title={title} />
             <h1 className="text-18 font-semibold text-slate-900 tracking-tight flex flex-wrap items-center gap-2">{title}{business && needsBusiness && <MarketBadge business={business} />}</h1>
             {subtitle && <p className="text-12 text-slate-400 mt-0.5 max-w-3xl">{subtitle}</p>}
           </div>
-          <nav className="text-12 text-slate-400 flex items-center gap-1.5" aria-label="Breadcrumb"><span>bevisibe</span><span>›</span><span className="text-slate-600">{title}</span></nav>
         </div>
         {body}
       </div>

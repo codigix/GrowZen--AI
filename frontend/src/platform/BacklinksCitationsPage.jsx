@@ -1,6 +1,8 @@
+import { useCrumb } from './crumbs';
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Play } from 'lucide-react';
+import ProcessTasks from './ProcessTasks';
 import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, SourceTag, ErrorNote, SERIES, useToast, useAction, useUrlTab, SkTable, SkList } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 
@@ -77,15 +79,16 @@ function Links({ b, tab }) {
 }
 
 export default function BacklinksCitationsPage() {
-  const [tab, setTab] = useUrlTab('citations', ['citations', 'backlinks', 'outreach']);
+  const [tab, setTab] = useUrlTab('citations', ['citations', 'backlinks', 'outreach', 'tasks']);
+  useCrumb({ citations: 'Citations & NAP', outreach: 'Outreach', tasks: 'Tasks' }[tab]);
   // Backlinks moved to Backlink Intelligence (our own discovery bot); old bookmarks and links keep working.
   if (tab === 'backlinks') return <Navigate to="/backlink-intelligence" replace />;
   return (
     <SeoShell title="Citations & outreach" subtitle="Consistent listings everywhere, and outreach for the links worth earning, never bought">
       {(b) => (
         <>
-          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'citations', label: 'Citations & NAP' }, { id: 'outreach', label: 'Outreach' }]} />
-          <Links key={b.id} b={b} tab={tab} />
+          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'citations', label: 'Citations & NAP' }, { id: 'outreach', label: 'Outreach' }, { id: 'tasks', label: 'Tasks' }]} />
+          {tab === 'tasks' ? <ProcessTasks b={b} areas={['backlinks']} /> : <Links key={b.id} b={b} tab={tab} />}
         </>
       )}
     </SeoShell>

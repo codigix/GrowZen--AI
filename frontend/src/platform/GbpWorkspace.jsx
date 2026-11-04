@@ -1,3 +1,4 @@
+import ProcessTasks from './ProcessTasks';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -383,6 +384,7 @@ export function TasksSection({ b }) {
           )}
         </Card>
       </div>
+      <ProcessTasks b={b} areas={['gmb']} />
       <ErrorNote>{pending.error?.message || activity.error?.message}</ErrorNote>
     </div>
   );

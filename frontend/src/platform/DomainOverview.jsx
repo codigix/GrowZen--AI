@@ -16,6 +16,8 @@ import { IntelBar, IntelSections, headline } from './DomainIntel';
  */
 
 const RANGES = [['28d', 'Last 28 days'], ['3m', 'Last 3 months'], ['6m', 'Last 6 months'], ['12m', 'Last 12 months'], ['16m', 'Last 16 months']];
+const PLATFORMS = [['chatgpt', 'ChatGPT', '#10a37f'], ['gemini', 'Gemini', '#4285f4'], ['perplexity', 'Perplexity', '#20808d'], ['claude', 'Claude', '#d97757'], ['deepseek', 'DeepSeek', '#4d6bfe'], ['copilot', 'Copilot', '#0078d4'], ['grok', 'Grok', '#111827'], ['aio', 'AI Overview', '#ea4335'], ['aimode', 'AI Mode', '#fbbc04']];
+const platformKey = (name) => { const n = String(name || '').toLowerCase().replace(/[^a-z]/g, ''); return n === 'anthropic' ? 'claude' : n === 'google' || n === 'aioverview' ? 'aio' : n === 'aimode' ? 'aimode' : n; };
 const ENGINES = { chatgpt: 'ChatGPT', gemini: 'Gemini', perplexity: 'Perplexity', claude: 'Claude', anthropic: 'Claude', aio: 'AI Overview', google: 'AI Overview', copilot: 'Copilot', grok: 'Grok' };
 const flag = (code) => (/^[A-Z]{2}$/.test(code || '') ? String.fromCodePoint(...[...code].map(c => 127397 + c.charCodeAt(0))) : '🌐');
 let names; try { names = new Intl.DisplayNames(['en'], { type: 'region' }); } catch (e) { names = null; }
@@ -45,7 +47,53 @@ function Metric({ label, value, change, icon: Icon, why, tone = 'text-slate-900'
 
 const Th = ({ children, c = 'text-left' }) => <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${c}`}>{children}</th>;
 
-function Overview({ d, r, setFilter, filters, intel }) {
+/** Backlinks to the site, from the links our own discovery bot found and verified: sample links, follow and nofollow, link types, anchors, referring domains, linked pages. */
+function BacklinksSection({ businessId }) {
+  const data = useApi(`/businesses/${businessId}/backlink-intel/domain-overview`);
+  const d = data.data;
+  if (!d || d.state !== 'ok') return null;
+  const total = d.follow + d.nofollow || 1;
+  const pct = Math.round(d.follow / total * 100);
+  const short = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '');
+  const Table = ({ title, head, rows, empty }) => (
+    <Card title={title} pad={false} action={<Link to="/backlink-intelligence" className="text-12.5 font-semibold text-indigo-600 hover:underline">View details →</Link>}>
+      <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 text-slate-500"><tr>{head.map((h, i) => <th key={h} className={`px-4 py-2.5 font-semibold ${i ? 'text-right' : 'text-left'}`}>{h}</th>)}</tr></thead>
+        <tbody className="divide-y divide-slate-100">{rows.length ? rows : <tr><td colSpan={head.length} className="px-4 py-6 text-center text-slate-500">{empty}</td></tr>}</tbody></table>
+    </Card>
+  );
+  return (
+    <section className="space-y-4">
+      <h2 className="text-18 font-bold text-slate-900 flex items-center gap-2"><Link2 size={17} className="text-indigo-500" />Backlinks <span className="text-12 font-normal text-slate-500">found by our discovery bot · {fmt(d.verified)} of {fmt(d.backlinks)} verified by crawl</span></h2>
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 items-start">
+        <Card className="xl:col-span-3" title="Backlinks" pad={false} action={<Link to="/backlink-intelligence?tab=explorer" className="text-12.5 font-semibold text-indigo-600 hover:underline">Open the explorer →</Link>}>
+          <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-4 py-2.5 text-left font-semibold">Referring page</th><th className="px-4 py-2.5 text-left font-semibold">Anchor</th><th className="px-4 py-2.5 text-right font-semibold">Type</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{d.sample.map(x => (
+              <tr key={x.id}><td className="px-4 py-2.5 max-w-[280px] truncate"><a href={x.source_url} target="_blank" rel="noreferrer" title={x.source_url} className="text-indigo-700 hover:underline">{short(x.source_url)}</a></td>
+                <td className="px-4 py-2.5 max-w-[200px] truncate text-slate-700" title={x.anchor_text}>{x.anchor_text || '—'}</td>
+                <td className="px-4 py-2.5 text-right"><Badge tone="gray">{(x.rel_attributes || []).some(r => /nofollow|ugc|sponsored/i.test(r)) ? 'nofollow' : 'follow'}</Badge></td></tr>))}</tbody></table>
+        </Card>
+        <div className="xl:col-span-2 space-y-4">
+          <Card title="Follow vs Nofollow">
+            <div className="flex items-center gap-5">
+              <div className="relative w-24 h-24 shrink-0 rounded-full" style={{ background: `conic-gradient(#6658dd ${pct * 3.6}deg, #c4b5fd 0)` }} role="img" aria-label={`${pct}% follow links`}><div className="absolute inset-3 rounded-full bg-white flex items-center justify-center text-15 font-bold text-slate-900">{pct}%</div></div>
+              <ul className="text-13 space-y-1.5"><li className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />Follow links <b className="ml-auto pl-4 tabular-nums">{fmt(d.follow)}</b></li><li className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-violet-300" />Nofollow links <b className="ml-auto pl-4 tabular-nums">{fmt(d.nofollow)}</b></li></ul>
+            </div>
+          </Card>
+          <Card title="Backlink types">
+            <ul className="space-y-2.5">{d.types.map(t => <li key={t.type} className="flex items-center gap-3 text-13"><span className="w-14 capitalize text-slate-700">{t.type}</span><div className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-violet-300" style={{ width: `${t.share}%` }} /></div><span className="w-10 text-right tabular-nums text-slate-500">{t.share}%</span><span className="w-12 text-right tabular-nums text-indigo-700 font-semibold">{fmt(t.backlinks)}</span></li>)}</ul>
+          </Card>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <Table title="Top anchors" head={['Anchor', 'Domains', 'Backlinks']} empty="No anchors yet." rows={d.anchors.map(a => <tr key={a.anchor}><td className="px-4 py-2.5 max-w-[260px] truncate text-slate-800" title={a.anchor}>{a.anchor}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(a.domains)}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(a.backlinks)}</td></tr>)} />
+        <Table title="Referring domains" head={['Root domain', 'Verified', 'Backlinks']} empty="No referring domains yet." rows={d.domains.map(x => <tr key={x.domain}><td className="px-4 py-2.5 max-w-[260px] truncate"><a href={`https://${x.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">{x.domain}</a></td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(x.verified)}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(x.backlinks)}</td></tr>)} />
+      </div>
+      <Table title="Pages that receive links" head={['Page', 'Domains', 'Backlinks']} empty="No linked pages yet." rows={d.pages.map(x => <tr key={x.url}><td className="px-4 py-2.5 max-w-[420px] truncate"><a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">{short(x.url)}</a></td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(x.domains)}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(x.backlinks)}</td></tr>)} />
+    </section>
+  );
+}
+
+function Overview({ d, r, setFilter, filters, intel, businessId }) {
   const h = headline(intel);
   const t = r?.totals;
   const p = r?.previous;
@@ -53,23 +101,26 @@ function Overview({ d, r, setFilter, filters, intel }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-        {/* AI Search */}
+        {/* AI Search: every AI platform, 0 where nothing was found */}
         <Card className="xl:col-span-2" title={<span className="inline-flex items-center gap-2"><Sparkles size={15} className="text-violet-500" />AI Search</span>}
           action={<Link to="/geo-optimization" className="text-12.5 font-semibold text-indigo-600 hover:underline">Open →</Link>}>
-          {ai.measured ? (
-            <>
-              <div className="grid grid-cols-3 gap-4">
-                <Metric label="AI visibility" value={`${ai.visibility}%`} tone="text-indigo-600" />
-                <Metric label="Mentions" value={fmt(ai.mentions)} tone="text-indigo-600" />
-                <Metric label="Cited pages" value={fmt(ai.cited_pages)} tone="text-indigo-600" />
-              </div>
-              <table className="w-full text-13 mt-4"><thead className="text-11.5  tracking-wide text-slate-400"><tr><th className="py-1 text-left font-semibold">Engine</th><th className="py-1 text-right font-semibold">Visibility</th><th className="py-1 text-right font-semibold">Mentions</th><th className="py-1 text-right font-semibold">Cited pages</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{ai.engines.map(e => <tr key={e.engine}><td className="py-2 flex items-center gap-2 text-slate-800"><Bot size={13} className="text-slate-400" />{ENGINES[e.engine] || e.engine}</td><td className="py-2 text-right tabular-nums">{e.visibility}%</td><td className="py-2 text-right tabular-nums text-indigo-600">{e.mentions}</td><td className="py-2 text-right tabular-nums text-indigo-600">{e.cited}</td></tr>)}</tbody></table>
-              <p className="text-11 text-slate-400 mt-2">From the latest AI checks ({ai.data_source}): the share of questions where the AI names the business, and the pages of this domain it cites.</p>
-            </>
-          ) : (
-            <div className="py-4 text-center text-13 text-slate-500">AI visibility hasn't been measured for this project ({ai.prompts} prompts saved). <Link to="/geo-optimization" className="text-indigo-600 font-semibold hover:underline">Run the AI check</Link> to see mentions and cited pages per engine.</div>
-          )}
+          <div className="grid grid-cols-3 gap-4">
+            <Metric label="AI visibility" value={`${ai.measured ? ai.visibility : 0}%`} tone="text-indigo-600" />
+            <Metric label="Mentions" value={fmt(ai.measured ? ai.mentions : 0)} tone="text-indigo-600" />
+            <Metric label="Cited pages" value={fmt(ai.measured ? ai.cited_pages : 0)} tone="text-indigo-600" />
+          </div>
+          <table className="w-full text-13 mt-4"><thead className="text-11.5 text-slate-400"><tr><th className="py-1 text-left font-semibold">Platform</th><th className="py-1 text-right font-semibold">Visibility</th><th className="py-1 text-right font-semibold">Mentions</th><th className="py-1 text-right font-semibold">Cited pages</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{PLATFORMS.map(([key, label, color]) => {
+              const e = (ai.engines || []).find(x => platformKey(x.engine) === key);
+              return (
+                <tr key={key} title={e ? undefined : 'Not checked yet: add prompts and run the AI check'}>
+                  <td className="py-2 flex items-center gap-2 text-slate-800"><span className="w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center" style={{ background: color }}>{label[0]}</span>{label}</td>
+                  <td className="py-2 text-right tabular-nums text-indigo-600">{e ? `${e.visibility}%` : '0%'}</td>
+                  <td className="py-2 text-right tabular-nums text-indigo-600">{e ? fmt(e.mentions) : 0}</td>
+                  <td className="py-2 text-right tabular-nums text-indigo-600">{e ? fmt(e.cited) : 0}</td>
+                </tr>);
+            })}</tbody></table>
+          <p className="text-11 text-slate-400 mt-2">{ai.measured ? `From the latest AI checks (${ai.data_source}): the share of questions where the AI names the business, and the pages of this domain it cites.` : `Not measured yet (${ai.prompts ?? 0} prompts saved), so every platform shows 0.`} <Link to="/geo-optimization" className="text-indigo-600 font-semibold hover:underline">{ai.measured ? 'Open AI Search Visibility' : 'Run the AI check'}</Link></p>
         </Card>
 
         {/* SEO */}
@@ -98,6 +149,7 @@ function Overview({ d, r, setFilter, filters, intel }) {
       {r && <TrafficPanel d={d} r={r} filters={filters} setFilter={setFilter} />}
       {r && <KeywordsPanel r={r} />}
       <IntelSections intel={intel.data} />
+      <BacklinksSection businessId={businessId} />
     </div>
   );
 }
@@ -265,8 +317,13 @@ function Checks({ checks, internal }) {
   );
 }
 
-function Connect({ t, busy, onConnect, internal }) {
+function Connect({ t, busy, onConnect, internal, domain, businessId, onLinked }) {
+  const [linking, linkErr, runLink] = useAction();
+  const link = (id) => runLink(`link${id}`, async () => { await api(`/businesses/${businessId}/seo/link-account`, { method: 'POST', body: { connection_id: id } }); onLinked(); });
+  const choices = !t.linked ? (t.accounts || []).filter(a => a.search_console) : [];
   const needs = ['not_connected', 'scope_missing'].includes(t.state);
+  // Open Search Console on THIS project's property (and the account linked to it), not on whichever property the browser used last
+  const gsc = `https://search.google.com/search-console${domain ? `?resource_id=${encodeURIComponent(`sc-domain:${domain.replace(/^www\./, '')}`)}` : ''}${t.account ? `${domain ? '&' : '?'}authuser=${encodeURIComponent(t.account)}` : ''}`;
   const title = { not_connected: internal ? 'Connect our Google account to see this site\'s real traffic' : 'Connect Google Search Console to see the client\'s real traffic', scope_missing: 'Allow Search Console access', no_property: 'This site isn\'t in the connected Search Console', error: 'Google didn\'t return the traffic', no_website: 'Add the website first' }[t.state];
   return (
     <div className="rounded bg-indigo-50 ring-1 ring-inset ring-indigo-200 px-5 py-4 flex flex-wrap items-center gap-4">
@@ -275,9 +332,19 @@ function Connect({ t, busy, onConnect, internal }) {
         <div className="text-14 font-semibold text-indigo-900">{title}</div>
         <p className="text-12.5 text-indigo-800 mt-0.5">{t.message} Organic traffic, impressions, keywords, pages, countries and the history all come from Search Console: nothing is estimated.</p>
       </div>
+      {choices.length > 0 && (
+        <div className="basis-full pt-1">
+          <div className="text-12.5 font-semibold text-indigo-900 mb-1.5">Already connected: use one of these accounts for this project</div>
+          <div className="flex flex-wrap gap-2">{choices.map(a => <Button key={a.id} size="sm" busy={linking === `link${a.id}`} onClick={() => link(a.id)}>Use {a.email}</Button>)}</div>
+          <p className="text-12 text-indigo-800 mt-1.5">Pick the account that owns {domain || 'this site'} in Search Console. It stays linked to this project only.</p>
+          {linkErr && <p className="text-12 text-rose-600 mt-1">{linkErr}</p>}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="primary" icon={PlugZap} busy={busy} onClick={onConnect}>{t.state === 'scope_missing' ? 'Reconnect with Search Console' : needs ? 'Connect Search Console' : 'Connect another Google account'}</Button>
-        {!needs && <a href="https://search.google.com/search-console" target="_blank" rel="noreferrer" className="h-9 px-4 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-white ring-1 ring-inset ring-indigo-200 text-indigo-700 hover:bg-indigo-100">Open Search Console <ExternalLink size={12} /></a>}
+        {t.state === 'no_property' && domain
+          ? <a href={`https://search.google.com/search-console/welcome${t.account ? `?authuser=${encodeURIComponent(t.account)}` : ''}`} target="_blank" rel="noreferrer" title={`Add ${domain} as a Domain property, then verify it with the DNS TXT record`} className="h-9 px-4 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-white ring-1 ring-inset ring-indigo-200 text-indigo-700 hover:bg-indigo-100">Add {domain} to Search Console <ExternalLink size={12} /></a>
+          : !needs && <a href={gsc} target="_blank" rel="noreferrer" title={domain ? `Opens Search Console on ${domain}` : undefined} className="h-9 px-4 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-white ring-1 ring-inset ring-indigo-200 text-indigo-700 hover:bg-indigo-100">Open Search Console{domain ? ` for ${domain}` : ''} <ExternalLink size={12} /></a>}
       </div>
     </div>
   );
@@ -321,10 +388,10 @@ function Page({ b }) {
       </div>
       <ErrorNote>{error}</ErrorNote>
       <Checks checks={(d.checks || []).filter(c => !(c.id === 'google' && c.level !== 'error' && d.traffic.state !== 'ok' && d.traffic.state !== 'no_website'))} internal={d.internal} />
-      {d.traffic.state !== 'ok' && d.traffic.state !== 'no_website' && <Connect t={d.traffic} busy={busy === 'connect'} onConnect={connect} internal={d.internal} />}
+      {d.traffic.state !== 'ok' && d.traffic.state !== 'no_website' && <Connect t={d.traffic} busy={busy === 'connect'} onConnect={connect} internal={d.internal} domain={d.domain} businessId={b.id} onLinked={() => { data.reload(true); intel.reload(true); }} />}
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'overview', label: 'Overview' }, ...(r ? [{ id: 'growth', label: 'Growth report' }, { id: 'countries', label: 'Compare by countries' }] : [])]} />
-      {tab === 'overview' && <IntelBar intel={intel.data} loading={intel.loading} market={market} setMarket={setMarket} onRefresh={refreshIntel} refreshing={refreshing} />}
-      {tab === 'overview' && <Overview d={d} r={r} setFilter={set} filters={filters} intel={intel} />}
+      {tab === 'overview' && d.traffic.state === 'ok' && <IntelBar intel={intel.data} loading={intel.loading} market={market} setMarket={setMarket} onRefresh={refreshIntel} refreshing={refreshing} />}
+      {tab === 'overview' && <Overview d={d} r={r} setFilter={set} filters={filters} intel={intel} businessId={b.id} />}
       {tab === 'growth' && r && <Growth r={r} />}
       {tab === 'countries' && r && <Compare r={r} setFilter={(p) => { set(p); setTab('overview'); }} />}
       <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />{r ? `Clicks and impressions are from Google Search Console (${r.property}), ${r.period.days} days. ` : ''}Clicks, impressions, keywords and pages come from Search Console. Authority, backlinks and paid figures are not available from Google. Anything a source does not provide shows as “—” or an empty card with the reason.</p>
