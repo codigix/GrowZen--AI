@@ -29,3 +29,4 @@ python-dotenv>=1.0,<2
 pillow>=13,<14  # JPG/PNG/WebP/GIF/BMP/TIFF/AVIF decoding + WebP encoding
 pillow-heif>=1.8,<2  # HEIC / HEIF (iPhone photos)
 pymupdf>=2.0,<3  # PDF pages and SVG rendered to pixels (no scripts are run)
+paramiko>=3.4,<5  # SFTP deployment of HTML websites (services/html_deploy.py)

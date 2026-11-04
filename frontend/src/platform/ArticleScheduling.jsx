@@ -18,7 +18,7 @@ const CHIP = {
   published: 'bg-emerald-50 border-emerald-200 text-emerald-900 hover:bg-emerald-100',
   failed: 'bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100'
 };
-const DEST_LABEL = { react: 'React.js Website', wordpress: 'WordPress', github: 'GitHub', ghost: 'Ghost', shopify: 'Shopify', webhook: 'Signed webhook' };
+const DEST_LABEL = { react: 'React.js Website', html: 'HTML Website', wordpress: 'WordPress', github: 'GitHub', ghost: 'Ghost', shopify: 'Shopify', webhook: 'Signed webhook' };
 
 export const tzShort = (tz) => (tz === 'Asia/Kolkata' ? 'IST' : tz || '');
 const fmtDay = (ymd) => new Date(`${ymd}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });

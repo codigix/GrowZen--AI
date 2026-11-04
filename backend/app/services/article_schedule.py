@@ -218,6 +218,11 @@ def _run_one(db: Session, p: ScheduledPost, now: datetime) -> int:
             if not conn:
                 raise _Gone("The React.js website is no longer connected.")
             out = ap.publish_react(db, a, conn, "publish", None, record=False)  # this row is the record
+        elif p.method == ap.HTML:
+            from . import html_publisher as hp  # noqa: PLC0415
+            if not ap.html_target(db, b):
+                raise _Gone("The HTML website is no longer connected for publishing (its test deployment must pass).")
+            out = hp.publish_sync(b.id, a.id, record=False)  # uploads, then verifies the live site; raises when not live
         else:
             row = ap.site_target(db, b)
             if row is None or row.method != p.method:
@@ -239,7 +244,7 @@ def _run_one(db: Session, p: ScheduledPost, now: datetime) -> int:
         p.status, p.error, p.finished_at = "failed", str(exc), now
     except Exception as exc:  # noqa: BLE001 - publish errors are retried; a row must never stay "publishing"
         db.rollback()
-        if not isinstance(exc, (sp.PublishError, rs.ReactSiteError)):
+        if not isinstance(exc, (sp.PublishError, rs.ReactSiteError)) and type(exc).__name__ not in ("PublishError", "DeployError"):
             log.exception("Scheduled post %s failed unexpectedly", p.id)
         p.attempts += 1
         p.error = str(exc)[:500] or exc.__class__.__name__

@@ -144,6 +144,9 @@ class Settings(BaseSettings):
     scheduler_tick_seconds: int = 300
     scheduled_posts_tick_seconds: int = 60  # how often articles scheduled in GrowZen are checked and published when due
     publish_timezone: str = "Asia/Kolkata"  # the time zone schedule dates/times are entered in (PUBLISH_TIMEZONE)
+    # HTML websites: each site's deployment adapter and credentials (server side only, git-ignored; relative paths are
+    # inside backend/). See docs/html-site-deployment.md.
+    html_deploy_config: str = "html_deploy.json"
     backlink_bot_auto_enabled: bool = True  # set false to stop the 60s auto-tick; "Run now" in the UI still works
 
     # Lighthouse audits (/lighthouse/...): full Lighthouse reports from PageSpeed Insights (needs
