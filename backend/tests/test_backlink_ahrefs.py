@@ -206,6 +206,44 @@ def test_clients_keep_seeing_the_last_report_while_it_refreshes(db):
     assert ahrefs.client_view(db, "never.com") is None
 
 
+def test_run_report_runs_concurrently_up_to_the_cap(db):
+    """Several lookups started at once (as real users would trigger them) must actually overlap in time, not run one after another, but never
+    more of them at once than AHREFS_MAX_CONCURRENT."""
+    import threading
+    import time
+
+    cap = ahrefs.max_concurrent()
+    n = cap + 2  # more jobs than the cap, so some are forced to wait for a slot
+    active, max_active = 0, 0
+    state_lock = threading.Lock()
+
+    def slow_runner(d, m):
+        nonlocal active, max_active
+        with state_lock:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.3)
+        with state_lock:
+            active -= 1
+        return SAMPLE | {"domain": d}
+
+    reports = [ahrefs.request_report(db, f"site{i}.example", "subdomains")[0] for i in range(n)]
+    threads = [threading.Thread(target=ahrefs.run_report, args=(db, r.id, slow_runner)) for r in reports]
+    start = time.monotonic()
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    elapsed = time.monotonic() - start
+
+    assert max_active == cap, f"expected exactly {cap} lookups running at once at the peak, saw {max_active}"
+    # fully serial would take n * 0.3s; running `cap` at a time takes about ceil(n / cap) * 0.3s
+    assert elapsed < (n - 1) * 0.3, f"took {elapsed:.2f}s, no faster than running them one at a time"
+    for r in reports:
+        view = ahrefs.report_view(db, r.id)
+        assert view["status"] == "done" and view["domain"] == r.domain  # every concurrent write landed on the right row
+
+
 def test_scheduler_queues_businesses_and_runs_them(db, monkeypatch):
     import asyncio
     monkeypatch.setattr(ahrefs, "business_domains", lambda: ["one.com", "two.com"])

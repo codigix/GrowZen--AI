@@ -18,6 +18,7 @@ Settings (environment variables, all optional):
     AHREFS_REFRESH_HOURS      a business is looked up again when its report is this old (default: 24)
     AHREFS_RETRY_HOURS        after a failed lookup, wait this long before trying that business again (default: 6)
     AHREFS_PAUSE_SECONDS      pause between two lookups of the scheduler            (default: 20)
+    AHREFS_MAX_CONCURRENT     how many browser lookups may run at the same time     (default: 3)
 """
 import asyncio
 import json
@@ -43,7 +44,6 @@ log = logging.getLogger("seo.backlinks.ahrefs")
 
 MODES = ("subdomains", "exact", "prefix", "domain")
 ACTIVE = ("queued", "running")
-_run_lock = threading.Lock()  # one browser lookup at a time: Ahrefs throttles and a captcha is likelier under load
 
 _HOST = re.compile(r"^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$")
 
@@ -70,6 +70,14 @@ def retry_hours() -> float:
 
 def pause_seconds() -> float:
     return float(os.environ.get("AHREFS_PAUSE_SECONDS", "20"))
+
+
+def max_concurrent() -> int:
+    return max(1, int(os.environ.get("AHREFS_MAX_CONCURRENT", "3")))
+
+
+_run_sem = threading.Semaphore(max_concurrent())  # how many browser lookups run at once; each gets its own port and profile, but Ahrefs
+                                                   # still throttles and shows a captcha sooner under heavy load, so keep this modest
 
 
 def fortress_dir() -> Path:
@@ -167,13 +175,16 @@ def ensure_fortress(folder: Path) -> None:
         log.info("Fortress is set up")
 
 
-_current_proc: subprocess.Popen | None = None  # the lookup running now, so a shutdown can stop it instead of waiting minutes
+_current_procs: set[subprocess.Popen] = set()  # every lookup running now, so a shutdown can stop them instead of waiting minutes
+_procs_lock = threading.Lock()
 
 
 def abort_running() -> None:
-    proc = _current_proc
-    if proc is not None and proc.poll() is None:
-        _kill_tree(proc)
+    with _procs_lock:
+        procs = list(_current_procs)
+    for proc in procs:
+        if proc.poll() is None:
+            _kill_tree(proc)
 
 
 def run_scraper(domain: str, mode: str, timeout: int | None = None) -> dict:
@@ -184,10 +195,10 @@ def run_scraper(domain: str, mode: str, timeout: int | None = None) -> dict:
     script = folder / "ahrefs_backlinks.py"
     ensure_fortress(folder)
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}  # page titles hold emoji; a pipe would otherwise use the Windows code page
-    global _current_proc
     proc = subprocess.Popen([str(python), str(script), domain, "--mode", mode], cwd=str(folder), env=env, text=True, encoding="utf-8", errors="replace",
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=os.name != "nt")
-    _current_proc = proc
+    with _procs_lock:
+        _current_procs.add(proc)
     try:
         out, err = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -195,7 +206,8 @@ def run_scraper(domain: str, mode: str, timeout: int | None = None) -> dict:
         proc.communicate()
         raise RuntimeError(f"The Ahrefs lookup took longer than {timeout} seconds") from None
     finally:
-        _current_proc = None
+        with _procs_lock:
+            _current_procs.discard(proc)
     start = out.find("{")
     if proc.returncode != 0 or start < 0:
         lines = err.strip().splitlines()
@@ -246,7 +258,7 @@ def request_report(db: Database, domain: str, mode: str, refresh: bool = False, 
 def run_report(db: Database, report_id: int, runner: Callable[[str, str], dict] | None = None) -> None:
     """The background job: run the lookup for a queued report and store what it found (or why it failed). Never raises."""
     runner = runner or run_scraper
-    with _run_lock:
+    with _run_sem:
         try:
             with db.session() as s:
                 # Claim it: only a queued report is run, so the scheduler and a route's background task never run the same one twice.
@@ -433,8 +445,9 @@ async def _sleep(stop: asyncio.Event, seconds: float) -> None:
 
 
 async def scheduler(db: Database, stop: asyncio.Event, look_every: float = 60.0, sync_every: float = 600.0) -> None:
-    """Runs in the platform process: every `sync_every` seconds it queues the businesses that are due (daily refresh), and it runs the queued
-    reports one after another with a pause between them. Only one process runs it (advisory lock); the others leave it to that one."""
+    """Runs in the platform process: every `sync_every` seconds it queues the businesses that are due (daily refresh), and it runs up to
+    AHREFS_MAX_CONCURRENT queued reports in parallel (run_report's semaphore is the real cap; a route's background task for a user-triggered
+    lookup shares that same cap). Only one process runs this loop (advisory lock); the others leave it to that one."""
     lock = None
     while not stop.is_set():  # another API process may hold the lock; take over when it stops
         lock = await asyncio.to_thread(_acquire_lock, db)
@@ -443,8 +456,9 @@ async def scheduler(db: Database, stop: asyncio.Event, look_every: float = 60.0,
         await _sleep(stop, 300)
     if lock is None:
         return
-    log.info("Ahrefs scheduler running: every business is looked up again after %g h", refresh_hours())
+    log.info("Ahrefs scheduler running: every business is looked up again after %g h, up to %d lookups at once", refresh_hours(), max_concurrent())
     last_sync = float("-inf")
+    running: set[asyncio.Task] = set()
     try:
         while not stop.is_set():
             try:
@@ -452,13 +466,19 @@ async def scheduler(db: Database, stop: asyncio.Event, look_every: float = 60.0,
                     last_sync = time.monotonic()
                     await asyncio.to_thread(lambda: queue_due(db, business_domains()))
                 _wake.clear()
-                report_id = await asyncio.to_thread(next_queued_id, db)
-                if report_id is not None:
-                    await asyncio.to_thread(run_report, db, report_id)
-                    await _sleep(stop, pause_seconds())
+                while len(running) < max_concurrent():
+                    report_id = await asyncio.to_thread(next_queued_id, db)
+                    if report_id is None:
+                        break
+                    running.add(asyncio.create_task(asyncio.to_thread(run_report, db, report_id)))
+                    await _sleep(stop, pause_seconds())  # stagger launches so a burst of queued reports doesn't all hit Ahrefs in the same instant
+                if running:
+                    _, running = await asyncio.wait(running, timeout=look_every, return_when=asyncio.FIRST_COMPLETED)
                     continue
             except Exception:  # noqa: BLE001 - e.g. the database is briefly unreachable: try again at the next look
                 log.exception("Ahrefs scheduler step failed")
             await _sleep(stop, look_every)
     finally:
+        for t in running:
+            t.cancel()
         await asyncio.to_thread(_release_lock, lock)
