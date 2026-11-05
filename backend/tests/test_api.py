@@ -1,5 +1,6 @@
 """API: login, business CRUD, the onboarding pipeline end to end, approvals, reports."""
 import time
+from statistics import mean
 
 import jwt
 from fastapi.testclient import TestClient
@@ -169,7 +170,8 @@ def test_website_audit_saves_live_progress(client, monkeypatch):
     r = client.post("/api/v1/website-audits", json={"url": "https://example.in/", "crawl_pages": 5})
     assert r.status_code == 202
     a = client.get(f"/api/v1/website-audits/{r.json()['id']}").json()
-    assert seen and a["status"] == "done" and a["score"] is not None
+    assert seen and a["status"] == "done"
+    assert a["score"] == round(mean([83, 54, 88, 92, a["result"]["crawl"]["score"]]))
     assert a["result"]["pagespeed"]["scores"]["seo"] == 83 and a["result"]["crawl"]["pages"][0]["frameable"]
     assert a["issues"][0]["area"] == "Technical"  # Lighthouse findings first, then the crawl's
 

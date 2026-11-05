@@ -269,8 +269,8 @@ def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: 
             errors.append(f"Lighthouse: {exc}")
     finally:
         pool.shutdown(wait=False)
-    seo = (result.get("pagespeed") or {}).get("scores", {}).get("seo")
-    parts = [x for x in [seo, (result.get("crawl") or {}).get("score")] if x is not None]
+    lighthouse_scores = list(((result.get("pagespeed") or {}).get("scores") or {}).values())
+    parts = [x for x in [*lighthouse_scores, (result.get("crawl") or {}).get("score")] if x is not None]
     audit.score = round(mean(parts)) if parts else None
     audit.result, audit.issues = result, issues
     audit.status = "done" if parts else "failed"
