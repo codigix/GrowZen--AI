@@ -8,6 +8,7 @@ the read-only scope below granted by the account (connect it with GET /analytics
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
@@ -89,6 +90,15 @@ class Ga4:
         d = self._req("GET", f"{ADMIN}/{prop}/dataStreams", params={"pageSize": 50})
         return sorted({host_of((s.get("webStreamData") or {}).get("defaultUri")) for s in d.get("dataStreams", []) if (s.get("webStreamData") or {}).get("defaultUri")})
 
+    def timezone(self, prop: str) -> ZoneInfo:
+        """The property's reporting time zone (Admin > Property Settings). GA4's own UI buckets "today"/"last N days" by
+        this zone, not the caller's; using the wrong one shifts day boundaries and can change totals near midnight."""
+        try:
+            tz_name = self._req("GET", ADMIN + "/" + prop).get("timeZone") or "UTC"
+            return ZoneInfo(tz_name)
+        except (Ga4Error, ZoneInfoNotFoundError):
+            return ZoneInfo("UTC")
+
     # Data
     def run(self, prop: str, body: dict[str, Any]) -> list[dict[str, Any]]:
         d = self._req("POST", f"{DATA}/{prop}:runReport", json=body)
@@ -148,7 +158,7 @@ def _change(now: dict[str, Any], prev: dict[str, Any]) -> dict[str, float | None
 def report(ga: Ga4, prop: str, days: int = 28) -> dict[str, Any]:
     """The GA4 overview for one property: totals with the previous period, timeline, channels, countries, pages, devices, sources, realtime.
     A part Google refuses is recorded under `errors` and the rest still loads."""
-    end = date.today() - timedelta(days=1)  # GA4's "last N days" stop at yesterday: today is still incomplete
+    end = datetime.now(ga.timezone(prop)).date() - timedelta(days=1)  # GA4's "last N days" stop at yesterday, in the property's own time zone
     start = end - timedelta(days=days - 1)
     p_end, p_start = start - timedelta(days=1), start - timedelta(days=days)
     parts = {
