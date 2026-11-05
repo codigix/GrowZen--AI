@@ -27,7 +27,7 @@ from .backlink_service import lifecycle as backlink_service
 from .backlink_service.api import router as backlink_service_router
 from .config import get_settings
 from .db import SessionLocal, engine
-from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website, workplan, tools
+from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, serp_search, site_integration, system, website, workplan, tools
 # from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, html_site, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website
 from .services import jobs, lighthouse_runner, schema, scheduler
 
@@ -68,7 +68,7 @@ from starlette.middleware.gzip import GZipMiddleware  # noqa: E402
 app.add_middleware(GZipMiddleware, minimum_size=1000)  # JSON compresses ~10x: far less to send on every page
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"], max_age=30)
 
-for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, competitors, competitor_audits, competitor_research, backlinks, workplan, tools):
+for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, competitors, competitor_audits, competitor_research, backlinks, workplan, tools, serp_search):
 # for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, html_site, competitors, competitor_audits, competitor_research, backlinks):
     app.include_router(r.router, prefix=settings.api_prefix)
 
