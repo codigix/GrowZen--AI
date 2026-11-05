@@ -314,7 +314,7 @@ function NameSearch({ value, onChange, city, country, onPick, onOpenExisting, on
         if (mine === seq.current) { setData(d); setActive(0); }
       } catch (e) { if (mine === seq.current) setData({ suggestions: [], notes: [e.message], sources: {} }); }
       if (mine === seq.current) setLoading(false);
-    }, 300);
+    }, 150);
     return () => clearTimeout(t);
   }, [value, city, country]);
 
