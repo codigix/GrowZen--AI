@@ -96,7 +96,9 @@ def ga4_by_email(email: str | None = Query(None, max_length=255), website: str |
         raise HTTPException(409, "This Google account has not granted Analytics access yet. Open the URL from GET /analytics/ga4/start?email=... and approve it.")
 
     businesses = list(db.scalars(select(Business).where(Business.connection_id == conn.id).order_by(Business.name)))
-    hosts = {h for h in (host_of(website), *(host_of(b.website) for b in businesses)) if h} if not property_id else set()
+    # A website the user typed is exactly what they want: do not add the account's other businesses' sites, or their properties show up too.
+    typed = host_of(website)
+    hosts = set() if property_id else ({typed} if typed else {h for h in (host_of(b.website) for b in businesses) if h})
     try:
         ga = ga4.Ga4(conn)
         if property_id:
