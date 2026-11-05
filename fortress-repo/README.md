@@ -15,6 +15,12 @@ python fortress-repo/setup_fortress.py
 
 Supported: Windows x64, Linux x64, macOS Apple Silicon. Needs Python 3.10+ and internet access to github.com and pypi.org.
 
+On Windows, the first launch of a new, unrecognized `.exe` that uses the network normally pops up a "allow this app through the
+firewall" dialog — fine on your own laptop, but nobody is there to click it on a server. If `setup_fortress.py` runs as
+Administrator, it pre-approves the exact Fortress binary with a Windows Firewall rule so that popup never appears; run it as
+Administrator once (`python fortress-repo/setup_fortress.py`) on a server before anything else uses it. Linux and macOS have no
+such prompt, so this only matters on Windows.
+
 Test one lookup by hand: `fortress-repo/.venv/Scripts/python fortress-repo/ahrefs_backlinks.py codigix.co` (Linux/macOS: `.venv/bin/python`).
 
 Production use by organizations above Fortress' free limits needs a Tilion subscription; see `LICENSE` and `SUBSCRIPTION-TERMS.md`.
