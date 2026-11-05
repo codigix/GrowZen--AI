@@ -13,7 +13,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from .net import site_client
+from .net import MOBILE_UA, site_client
 
 UA = "CodigixSEOAuditBot/1.0 (+https://codigixinfotech.com)"
 SKIP_EXT = re.compile(r"\.(jpg|jpeg|png|gif|webp|svg|pdf|zip|mp4|mp3|css|js|ico|woff2?)$", re.I)
@@ -214,7 +214,7 @@ def homepage(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}/"
 
 
-def _sitemap_urls(client: httpx.Client, first: str, host: str, limit: int) -> list[str]:
+def _sitemap_urls(client: httpx.Client, first: str, host: str, limit: int, host_ok: Callable[[str], bool] | None = None) -> list[str]:
     """Page URLs listed in the sitemap (following sitemap indexes one level deep). A single-page app has almost no links in its HTML, but its sitemap still lists every page."""
     found: list[str] = []
     queue = [first]
@@ -234,19 +234,58 @@ def _sitemap_urls(client: httpx.Client, first: str, host: str, limit: int) -> li
             loc = loc.replace("&amp;", "&")
             if loc.lower().endswith(".xml") or "sitemap" in urlparse(loc).path.lower() and loc.lower().endswith((".xml", ".xml.gz")):
                 queue.append(loc)
-            elif _norm_host(urlparse(loc).netloc) == host and not SKIP_EXT.search(loc):
+            elif (host_ok(_norm_host(urlparse(loc).netloc)) if host_ok else _norm_host(urlparse(loc).netloc) == host) and not SKIP_EXT.search(loc):
                 found.append(loc)
     return list(dict.fromkeys(found))[:limit]
 
 
-def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
+def _root(host: str) -> str:
+    """The registrable part of a host ("blog.example.co.uk" -> "example.co.uk"): what "including all subdomains" is matched against."""
+    parts = host.split(".")
+    return ".".join(parts[-3:]) if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net", "ac", "gov", "edu") else ".".join(parts[-2:])
+
+
+def _pattern(p: str) -> "re.Pattern[str]":
+    """A rule from the audit settings: plain text matches anywhere in the address, and * stands for any characters."""
+    return re.compile(".*".join(re.escape(x) for x in p.strip().split("*")), re.I)
+
+
+def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress: Callable[[dict[str, Any]], None] | None = None, options: dict[str, Any] | None = None) -> dict[str, Any]:
     """`on_progress` (optional) gets an event per step so a caller can show the scan live:
-    {"step": "robots" | "sitemap" | "fetching" | "page", ...}."""
+    {"step": "robots" | "sitemap" | "fetching" | "page", ...}.
+    `options` (the audit settings): pages_to_crawl website | sitemap | subfolder, subdomains, allow / disallow (address rules), ignore_params (query
+    parameters that do not make a different page), user_agent desktop | mobile."""
+    opts = options or {}
     report = on_progress or (lambda event: None)
+    mode = opts.get("pages_to_crawl") or "website"
+    raw = start_url if (start_url or "").startswith("http") else f"https://{start_url}"
     start = homepage(start_url)  # always the first page, so the crawl and the site-wide checks begin at the homepage
+    prefix = urlparse(raw).path.rstrip("/") if mode == "subfolder" else ""
+    if prefix:  # a subfolder audit begins inside the folder
+        start = start.rstrip("/") + prefix + "/"
     host = _norm_host(urlparse(start).netloc)
-    client = site_client(timeout)
-    site: dict[str, Any] = {"start_url": start, "host": host, "max_pages": max_pages}
+    root = _root(host)
+    host_ok = (lambda h: h == host or h.endswith("." + root) or h == root) if opts.get("subdomains") else (lambda h: h == host)
+    allow = [_pattern(x) for x in opts.get("allow") or [] if x.strip()]
+    disallow = [_pattern(x) for x in opts.get("disallow") or [] if x.strip()]
+    ignored = {x.strip().lower() for x in opts.get("ignore_params") or [] if x.strip()}
+
+    def clean(url: str) -> str:
+        """Without the query parameters the settings say do not change the page, so ?utm_source=x is not crawled as another page."""
+        if not ignored or "?" not in url:
+            return url
+        parts = urlparse(url)
+        kept = [q for q in parts.query.split("&") if q and q.split("=")[0].lower() not in ignored]
+        return parts._replace(query="&".join(kept)).geturl()
+
+    def permitted(url: str) -> bool:
+        path = urlparse(url).path or "/"
+        if prefix and not (path == prefix or path.startswith(prefix + "/")):
+            return False
+        return (not allow or any(p.search(url) for p in allow)) and not any(p.search(url) for p in disallow)
+
+    client = site_client(timeout, MOBILE_UA if opts.get("user_agent") == "mobile" else None)
+    site: dict[str, Any] = {"start_url": start, "host": host, "max_pages": max_pages, "options": opts}
     try:
         robots = client.get(urljoin(start, "/robots.txt"))
         site["robots_txt"] = robots.status_code == 200
@@ -257,7 +296,7 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
         site["sitemap"] = sm.status_code == 200 and ("<urlset" in sm.text or "<sitemapindex" in sm.text)
         site["https"] = start.startswith("https")
         report({"step": "sitemap", "found": site["sitemap"]})
-        listed = _sitemap_urls(client, sitemap_urls[0] if sitemap_urls else urljoin(start, "/sitemap.xml"), host, max_pages * 2) if site["sitemap"] else []
+        listed = [clean(u) for u in _sitemap_urls(client, sitemap_urls[0] if sitemap_urls else urljoin(start, "/sitemap.xml"), host, max_pages * 2, host_ok) if permitted(u)] if site["sitemap"] else []
         site["sitemap_pages"] = len(listed)
         site["sitemap_urls"] = listed[:300]
         seen: set[str] = set()  # URLs already queued or dequeued, so the same link isn't crawled twice
@@ -290,9 +329,9 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
             if r.status_code >= 400:
                 broken.append({"url": url, "error": str(r.status_code)})
             pages.append(p)
-            for link in p["links"]:
-                href = link["href"]
-                if _norm_host(urlparse(href).netloc) == host and _norm_url(href) not in seen and not SKIP_EXT.search(href):
+            for link in p["links"] if mode != "sitemap" else []:  # sitemap-only: the pages the sitemap lists, not the links found on them
+                href = clean(link["href"])
+                if host_ok(_norm_host(urlparse(href).netloc)) and _norm_url(href) not in seen and not SKIP_EXT.search(href) and permitted(href):
                     queue.append(href)
             report({"step": "page", "page": {k: v for k, v in p.items() if k != "links"}, "queued": len(queue)})
         # Internal linking: how many other crawled pages link to each page (0 = an orphan), and links going out.

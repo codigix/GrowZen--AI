@@ -122,8 +122,9 @@ _lock = threading.Lock()
 class Serper:
     """Serper.dev calls with a 12-hour cache (same query + place = same answer), counting credits."""
 
-    def __init__(self, country: str | None = None) -> None:
+    def __init__(self, country: str | None = None, language: str | None = None) -> None:
         self.key = get_settings().serper_api_key
+        self.hl = (language or "en")[:5]
         self.gl = countries.gl(country)  # Google's results for the business's country
         if not self.key:
             raise IntelError("Competitor research needs Google results: set SERPER_API_KEY on the SEO backend (serper.dev).")
@@ -152,7 +153,7 @@ class Serper:
         return data
 
     def search(self, q: str, location: str | None) -> dict[str, Any]:
-        body = {"q": q, "gl": self.gl, "hl": "en", "num": 10}
+        body = {"q": q, "gl": self.gl, "hl": self.hl, "num": 10}
         if location:
             body["location"] = location
         return self.call("/search", body)

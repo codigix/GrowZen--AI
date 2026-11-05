@@ -18,6 +18,9 @@ from .models import BiDomainReview, Backlink, BacklinkEvent, BacklinkObservation
 from .engine import aware
 from .urls import host_of, normalize_url, registrable_domain
 
+from .lifecycle import LIVE_STATES  # noqa: E402
+from .summary import own_site_links  # noqa: E402
+
 router = APIRouter(prefix="/businesses/{business_id}/backlink-intel", tags=["backlinks"], dependencies=[Depends(current_user)])
 
 _fetcher: engine.PageFetcher | None = None
@@ -381,6 +384,47 @@ def disavow_file(domain: str, b: Business = Depends(get_business), db: Session =
     doms = sorted(x.source_domain for x in db.scalars(select(BiDomainReview).where(BiDomainReview.business_id == b.id, BiDomainReview.target_domain == reg,
                                                                                     BiDomainReview.status == "disavow")))
     return f"# Disavow file for {reg}\n# Generated {datetime.now().date().isoformat()}\n" + "".join(f"domain:{d}\n" for d in doms)
+
+
+@router.get("/domain-overview")
+def domain_overview(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """The Backlinks part of Domain Overview for the project's own site: sample links, follow and nofollow, link types, top anchors, referring domains and the
+    pages that receive links. Built from the links our discovery bot has found and verified: not an index of the whole web."""
+    from collections import defaultdict
+
+    own = own_site_links(db, b.id)
+    if not own:
+        return {"state": "no_target"}
+    q, TD, SD = _scoped(db, b)
+    rows = db.execute(q.where(TD.registrable_domain == own["domain"], Backlink.current_status.in_(LIVE_STATES)).order_by(Backlink.id.desc()).limit(5000)).all()
+    follow = nofollow = 0
+    types: dict[str, int] = defaultdict(int)
+    anchors: dict[str, dict] = {}
+    doms: dict[str, dict] = {}
+    pages: dict[str, dict] = {}
+    for bl, src, sd in rows:
+        rel = [x.lower() for x in (bl.rel_attributes or [])]
+        if any(x in ("nofollow", "ugc", "sponsored") for x in rel):
+            nofollow += 1
+        else:
+            follow += 1
+        types[bl.link_type or "other"] += 1
+        a = anchors.setdefault(" ".join((bl.anchor_text or "").lower().split()) or "(no anchor)", {"backlinks": 0, "domains": set()})
+        a["backlinks"] += 1
+        a["domains"].add(sd.registrable_domain)
+        d = doms.setdefault(sd.registrable_domain, {"backlinks": 0, "verified": 0})
+        d["backlinks"] += 1
+        d["verified"] += 1 if bl.verification_status == "CRAWLER_VERIFIED" else 0
+        p = pages.setdefault(bl.target_url, {"backlinks": 0, "domains": set()})
+        p["backlinks"] += 1
+        p["domains"].add(sd.registrable_domain)
+    total = len(rows) or 1
+    return {"state": "ok", "domain": own["domain"], "backlinks": own["backlinks"], "referring_domains": own["referring_domains"], "verified": own["crawler_verified"],
+            "follow": follow, "nofollow": nofollow, "types": [{"type": k, "backlinks": n, "share": round(n / total * 100)} for k, n in sorted(types.items(), key=lambda kv: -kv[1])],
+            "sample": [_backlink_out(*r) for r in rows[:5]],
+            "anchors": [{"anchor": k, "backlinks": v["backlinks"], "domains": len(v["domains"])} for k, v in sorted(anchors.items(), key=lambda kv: -kv[1]["backlinks"])[:6]],
+            "domains": [{"domain": k, **v} for k, v in sorted(doms.items(), key=lambda kv: -kv[1]["backlinks"])[:6]],
+            "pages": [{"url": k, "backlinks": v["backlinks"], "domains": len(v["domains"])} for k, v in sorted(pages.items(), key=lambda kv: (-len(kv[1]["domains"]), -kv[1]["backlinks"]))[:6]]}
 
 
 @router.get("/anchors")

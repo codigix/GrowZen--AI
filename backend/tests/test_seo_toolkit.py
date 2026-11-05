@@ -204,3 +204,16 @@ def test_working_tools_check_platform_limits_and_use_live_results(client, monkey
 
     r = client.post(f"/api/v1/businesses/{bid}/tools/questions", json={"keywords": ["a", "b"]}).json()
     assert [i["question"] for i in r["items"]] == ["How much?", "near me"] and r["credits"] == 2
+
+
+def test_domain_overview_backlinks_summary_counts_follow_types_anchors_and_domains(client):
+    from app.backlinks import models as bm
+    from app.backlinks.lifecycle import LIVE_STATES
+    from app.db import SessionLocal
+    bid = client.post("/api/v1/businesses", json={"name": "Bl Co", "website": "https://blco.example"}).json()["id"]
+    assert client.get(f"/api/v1/businesses/{bid}/backlink-intel/domain-overview").json() == {"state": "no_target"}
+    r = client.post(f"/api/v1/businesses/{bid}/backlink-intel/targets", json={"domain": "blco.example"})
+    assert r.status_code in (200, 201), r.text
+    out = client.get(f"/api/v1/businesses/{bid}/backlink-intel/domain-overview").json()
+    assert out["state"] == "ok" and out["domain"] == "blco.example" and out["backlinks"] == 0 and out["follow"] == 0 and out["anchors"] == [] and out["sample"] == []
+    assert LIVE_STATES and bm  # the live states the counts use

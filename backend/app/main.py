@@ -23,9 +23,13 @@ from .competitors import audit_router as competitor_audits, intel_router as comp
 from .auth import current_user
 from .backlinks import router as backlinks
 from .backlinks.router import lookup_router, outcomes_router, watch_router
+from .backlink_service import lifecycle as backlink_service
+from .backlink_service.api import router as backlink_service_router
 from .config import get_settings
 from .db import SessionLocal, engine
 from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, html_site, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website, workplan, tools
+from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website, workplan, tools
+# from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, html_site, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website
 from .services import jobs, lighthouse_runner, schema, scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -50,7 +54,9 @@ async def lifespan(_: FastAPI):
     finally:
         db.close()
     scheduler.start()
+    await backlink_service.start()
     yield
+    await backlink_service.stop()
     from .backlinks import stop as backlink_stop
     backlink_stop.STOP.set()  # let a running crawl finish its current page and leave, so shutdown does not hang
     scheduler.stop()
@@ -64,11 +70,14 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)  # JSON compresses ~10x: f
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"], max_age=30)
 
 for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, html_site, competitors, competitor_audits, competitor_research, backlinks, workplan, tools):
+for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, competitors, competitor_audits, competitor_research, backlinks, workplan, tools):
+# for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, html_site, competitors, competitor_audits, competitor_research, backlinks):
     app.include_router(r.router, prefix=settings.api_prefix)
 
 app.include_router(lookup_router, prefix=settings.api_prefix)
 app.include_router(outcomes_router, prefix=settings.api_prefix)
 app.include_router(watch_router, prefix=settings.api_prefix)
+app.include_router(backlink_service_router, prefix=settings.api_prefix)
 
 from .routers import analytics_by_email  # noqa: E402
 app.include_router(analytics_by_email.router, prefix=settings.api_prefix)

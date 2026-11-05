@@ -44,5 +44,11 @@ backend/uploads/
 Thumbs.db
 *.log
 
+# Downloaded browser binaries (too large for git)
+fortress-repo/browsers/
+
+# Screenshots the Ahrefs lookup saves when it fails
+fortress-repo/ahrefs_*_fail.png
+
 # HTML website deployment targets and credentials (server side only; see docs/html-site-deployment.md)
 backend/html_deploy.json

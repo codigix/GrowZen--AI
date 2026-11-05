@@ -29,7 +29,7 @@ def biz(db, monkeypatch):
     db.add(b)
     db.commit()
     pages = [crawler.analyse_html("https://acme.example/", 200, HOME), crawler.analyse_html("https://acme.example/whitening", 200, GOOD)]
-    monkeypatch.setattr(site_research.audits.crawler, "crawl", lambda url, max_pages=25, timeout=15, on_progress=None: {
+    monkeypatch.setattr(site_research.audits.crawler, "crawl", lambda url, max_pages=25, timeout=15, on_progress=None, options=None: {
         "start_url": url, "host": "acme.example", "https": True, "robots_txt": True, "robots_blocks_all": False, "sitemap": False, "crawled": 2, "broken": [], "pages": pages})
     monkeypatch.setattr(site_research, "site_checks", lambda url, crawl: {"https": True, "robots_txt": True, "sitemap": False, "llms_txt": False, "reachable": True,
                                                                           "security_headers": {"strict-transport-security": False, "x-content-type-options": False, "referrer-policy": False,

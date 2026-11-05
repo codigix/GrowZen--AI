@@ -129,7 +129,7 @@ def test_onpage_keyword_gap_from_crawled_content(client, monkeypatch):
     from app.services import crawler
 
     def crawl_for(title, h1, body):
-        return lambda url, max_pages=25, timeout=15, on_progress=None: {
+        return lambda url, max_pages=25, timeout=15, on_progress=None, options=None: {
             "start_url": url, "host": "x", "https": True, "robots_txt": True, "robots_blocks_all": False, "sitemap": False, "crawled": 1, "broken": [],
             "pages": [crawler.analyse_html(url, 200, f"<html><head><title>{title}</title></head><body><h1>{h1}</h1><p>{body}</p></body></html>")]}
 

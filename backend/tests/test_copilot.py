@@ -116,6 +116,9 @@ def test_bulk_reports_and_status(client):
     seed_business("000 Report Dental")
     r = client.post("/api/v1/copilot/reports").json()
     rep = next(x for x in r["reports"] if x["business"] == "000 Report Dental")
+    seed_business("Aaa Report Dental")
+    r = client.post("/api/v1/copilot/reports").json()
+    rep = next(x for x in r["reports"] if x["business"] == "Aaa Report Dental")
     assert r["ai"] is False and rep["summary"] and rep["pdf"].startswith(f"/businesses/{rep['business_id']}/report.pdf")
     s = client.get("/api/v1/copilot/status").json()
     assert s["ai"] is False and "deepseek" in s["providers"]

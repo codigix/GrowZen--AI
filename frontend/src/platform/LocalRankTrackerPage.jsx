@@ -1,6 +1,7 @@
 import { useCrumb } from './crumbs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import PositionTrackingHome from './PositionTrackingHome';
 import L from 'leaflet';
 import ProcessTasks from './ProcessTasks';
 import 'leaflet/dist/leaflet.css';
@@ -287,6 +288,7 @@ function Page({ b }) {
   useCrumb(all.find(t => t.id === tab)?.label);
   return (
     <>
+      <Link to="/rank-tracking" className="inline-block mb-2 text-13 font-semibold text-indigo-600 hover:underline">← All projects</Link>
       <Tabs value={tab} onChange={setTab} tabs={all} />
       {tab === 'positions' ? <PagePositions key={b.id} b={b} />
         : tab === 'geo' ? <Tracker key={b.id} b={b} />
@@ -297,6 +299,11 @@ function Page({ b }) {
 }
 
 export default function LocalRankTrackerPage() {
+  const [params] = useSearchParams();
+  // Without a tab the page is the list of projects; a tab opens that project's view
+  if (!params.get('tab')) {
+    return <SeoShell title="Position Tracking" subtitle="Every project's visibility on Google and in AI answers: open one to see its positions, landscape and competitors" needsBusiness={false}><PositionTrackingHome /></SeoShell>;
+  }
   return (
     <SeoShell title="Position Tracking" subtitle="Visibility, estimated traffic and positions of your tracked keywords on Google, and how you rank in the Maps pack">
       {(b) => <Page key={b.id} b={b} />}

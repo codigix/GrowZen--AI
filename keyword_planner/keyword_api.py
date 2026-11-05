@@ -98,6 +98,7 @@ def keyword_metrics(
         False, description="Include per-month search volume history (large payload)"
     ),
 ):
+
     try:
         ideas = get_keyword_ideas([keyword], limit=limit, include_monthly=include_monthly)
     except GoogleAdsException as ex:

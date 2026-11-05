@@ -78,8 +78,9 @@ def check(db: Session, b: Business, only: list[str] | None = None, limit: int = 
     if only:
         rows = [k for k in rows if k.keyword in set(only)]
     rows = rows[:limit]
-    location = intel.default_location(b)
-    serper = intel.Serper(market.serp_country(b))
+    cfg = b.track_config or {}  # Position Tracking targeting: where and in which language Google is asked
+    location = cfg.get("location") or intel.default_location(b)
+    serper = intel.Serper(market.serp_country(b), cfg.get("language"))
     today = datetime.now(timezone.utc).date()
     out = []
     for k in rows:

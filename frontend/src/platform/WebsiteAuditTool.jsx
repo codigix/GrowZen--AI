@@ -6,6 +6,7 @@ import {
 import { Card, Button, Badge, ScoreRing, Tabs, inputCls, ErrorNote, useToast, useAction, SkList, LoadMore } from './SeoUi';
 import { api, useApi, usePaged, usePoll, fmtDateTime } from './seoApi';
 import Improvements from './OnPageImprovements';
+import NewAuditModal from './NewAuditModal';
 import { PagesCard } from './SitePages';
 import { pathOnly as pathOf, hostOf, LEVEL_ORDER, SEVERITY_TONE as TONE } from './siteUtils';
 import LighthouseDetails from './LighthouseDetails';
@@ -506,9 +507,9 @@ export function useSiteAudit(business) {
     if (audit.data && !running) { history.reload(true); techList.reload(true); onpageList.reload(true); }
   }, [audit.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const launch = (target, pages = crawlPages) => run('start', async () => {
+  const launch = (target, pages = crawlPages, options = undefined) => run('start', async () => {
     const own = site && hostOf(target) === hostOf(site);
-    const r = await api('/website-audits', { method: 'POST', body: { url: target, strategy, crawl_pages: pages, ...(business?.id ? { workspace_id: business.id } : {}), ...(own ? { business_id: business.id } : {}) } });
+    const r = await api('/website-audits', { method: 'POST', body: { url: target, strategy, crawl_pages: pages, ...(options ? { options } : {}), ...(business?.id ? { workspace_id: business.id } : {}), ...(own ? { business_id: business.id } : {}) } });
     setStartedAt(Date.now());
     setCurrent(r.id);
     history.reload(true);
@@ -540,6 +541,16 @@ export function AuditStep({ sa, business, onOpenReport }) {
   const chip = (on) => `h-9 px-3 flex items-center gap-1.5 text-12 font-semibold rounded-lg cursor-pointer transition-colors ${on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-900'}`;
   const own = business?.website && hostOf(normalise(url)) === hostOf(business.website);
   const [drawer, setDrawer] = useState(null); // tech | recent: a panel on the right, opened on click
+  const [setup, setSetup] = useState(false); // the "New audit" window
+  const openSetup = () => { const t = normalise(url); if (!t) { sa.start(); return; } setSetup(true); };
+  const begin = async (cfg) => {
+    const target = normalise(url);
+    try {
+      if (own && business?.id) await api(`/businesses/${business.id}/audit-config`, { method: 'PUT', body: cfg, repeat: true }); // saved for this project's scheduled audits
+    } catch (e) { /* the audit still runs with these settings; the schedule is not saved */ }
+    setSetup(false);
+    sa.launch(target, cfg.limit, { pages_to_crawl: cfg.pages_to_crawl, subdomains: cfg.subdomains, allow: cfg.allow, disallow: cfg.disallow, ignore_params: cfg.ignore_params, user_agent: cfg.user_agent });
+  };
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -560,7 +571,7 @@ export function AuditStep({ sa, business, onOpenReport }) {
               <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input className={`${inputCls} pl-10 h-11 text-14`} placeholder="https://yourbusiness.com" value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && sa.start()} aria-label="Website address" />
             </div>
-            <Button variant="primary" className="h-11 px-5" icon={Search} busy={busy === 'start' || running} onClick={sa.start}>{running ? 'Auditing…' : 'Run audit'}</Button>
+            <Button variant="primary" className="h-11 px-5" icon={Search} busy={busy === 'start' || running} onClick={openSetup}>{running ? 'Auditing…' : 'Run audit'}</Button>
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
             <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded">
@@ -604,6 +615,7 @@ export function AuditStep({ sa, business, onOpenReport }) {
         )}
       </div>
 
+      <NewAuditModal open={setup} onClose={() => setSetup(false)} target={normalise(url)} host={hostOf(normalise(url) || url)} business={business} own={Boolean(own)} strategy={strategy} setStrategy={setStrategy} busy={busy === 'start'} onStart={begin} />
       {drawer && (
         <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={drawer === 'tech' ? 'Tech stack' : 'Recent audits'}>
           <button type="button" aria-label="Close" onClick={() => setDrawer(null)} className="absolute inset-0 bg-slate-900/30 cursor-default" />
