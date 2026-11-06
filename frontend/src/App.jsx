@@ -2,11 +2,14 @@ import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Sk, SkPage, resetBusinessesStore } from './platform/SeoUi';
 import { api, clearApiCache } from './platform/seoApi';
+import ProjectCodeHost from './platform/ProjectCodeModal';
+import { resetProjectCode } from './platform/projectCode';
 
 // Everything remembered about the previous account or project: cached answers, the project list, the selected project, and per-site
 // traffic notes. Run on sign-out, when the session ends, and when a different account signs in.
 const wipeClientState = () => {
   clearApiCache();
+  resetProjectCode();
   resetBusinessesStore();
   try {
     ['traffic.last', 'traffic.snapshot', 'traffic.done'].forEach(k => localStorage.removeItem(k));
@@ -37,6 +40,7 @@ const ReportsLeadsPage = lazy(() => import('./platform/ReportsLeadsPage'));
 const AiAgentPage = lazy(() => import('./platform/AiAgentPage'));
 const WebsiteBuilderPage = lazy(() => import('./platform/WebsiteBuilderPage'));
 const BusinessOnboardingPage = lazy(() => import('./platform/BusinessOnboardingPage'));
+const ProjectsPage = lazy(() => import('./platform/ProjectsPage'));
 const ConnectionsPage = lazy(() => import('./platform/ConnectionsPage'));
 const ConnectResultPage = lazy(() => import('./platform/ConnectResultPage'));
 const TrafficPage = lazy(() => import('./platform/TrafficPage'));
@@ -114,6 +118,7 @@ export default function App() {
 
   return (
     <>
+    <ProjectCodeHost />
     {showChangePassword && (
       <PasswordGate
         user={user}
@@ -126,6 +131,7 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<SeoOverviewPage />} />
         <Route path="onboarding" element={<BusinessOnboardingPage />} />
+        <Route path="projects" element={<ProjectsPage />} />
         <Route path="work-plan" element={<Navigate to="/dashboard" replace />} />
         <Route path="automation-pipeline" element={<AutomationPipelinePage />} />
         <Route path="gmb-profile" element={<GbpManagerPage />} />

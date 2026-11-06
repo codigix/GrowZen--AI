@@ -1497,7 +1497,7 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
     return () => { stop = true; };
   }, [phase, project, baseline]);
 
-  const open = (screen) => { choose(project.id); navigate(path(screen)); };
+  const open = (screen) => { choose(project.id).then(ok => ok && navigate(path(screen))); };
 
   return (
     <div className="space-y-4">
@@ -1674,7 +1674,7 @@ export default function BusinessOnboardingPage() {
   return (
     <SeoShell title="Business Onboarding" subtitle="Add a client: connect its website, Google Business Profile and Meta Business Suite, confirm the details, and let the AI agents audit and plan the work" hideSwitcher needsBusiness={false}>
       <Stepper step={step} />
-      {step === 'find' && <SourcesStep query={query} setQuery={setQuery} sources={sources} setSources={setSources} onContinue={continueFromSources} list={list} onOpenExisting={(id) => { choose(id); navigate(path('gmb-profile')); }} />}
+      {step === 'find' && <SourcesStep query={query} setQuery={setQuery} sources={sources} setSources={setSources} onContinue={continueFromSources} list={list} onOpenExisting={(id) => { choose(id).then(ok => ok && navigate(path('gmb-profile'))); }} />}
       {step === 'review' && <ReviewStep form={form} setForm={setForm} source={source} plans={plans} existing={existing} onFollowUps={setFollowUps} onBack={() => setStep('find')} onNext={() => setStep('launch')} />}
       {step === 'launch' && (
         <StepLayout side={<SourcesPanel plan={form.plan} plans={plans} showPlan />}>

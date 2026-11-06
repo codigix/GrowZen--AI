@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { KeyRound, Loader2, X, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { api } from '../platform/seoApi';
+import { TwoFactorCard } from '../platform/ProjectCodeModal';
 
 export default function PasswordGate({ user, onClose, onChanged }) {
   const [form, setForm] = useState({ current: '', next: '', again: '' });
@@ -190,6 +191,7 @@ export default function PasswordGate({ user, onClose, onChanged }) {
             </button>
           </div>
         </form>
+        <TwoFactorCard />
       </div>
     </div>
   );

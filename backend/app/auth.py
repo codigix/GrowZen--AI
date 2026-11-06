@@ -25,6 +25,9 @@ class User:
     role: str = ""
     department: str = ""
     source: str = "seo"  # seo | crm
+    needs_project_code: bool = False  # two-step verification is on: opening a project needs a fresh authenticator code (deps.owned_business)
+    totp_enabled: bool = False
+    verified_project: int | None = None  # the one project the last accepted code opened (cookie seo_project)
 
     @property
     def is_admin(self) -> bool:
@@ -46,6 +49,29 @@ def issue_session(response: Response, user_id: int, settings: Settings) -> None:
 
 def clear_session(response: Response, settings: Settings) -> None:
     response.delete_cookie(settings.session_cookie, path="/")
+    response.delete_cookie(PROJECT_COOKIE, path="/")
+
+
+PROJECT_COOKIE = "seo_project"
+PROJECT_HOURS = 8
+
+
+def issue_project_claim(response: Response, user_id: int, business_id: int, settings: Settings) -> None:
+    """After a correct authenticator code: this session may open this one project. A new claim replaces the old one, so every switch needs a fresh code."""
+    exp = datetime.now(timezone.utc) + timedelta(hours=PROJECT_HOURS)
+    token = jwt.encode({"sub": str(user_id), "kind": "project", "bid": business_id, "exp": exp}, settings.secret_key, algorithm="HS256")
+    response.set_cookie(PROJECT_COOKIE, token, httponly=True, samesite="lax", secure=settings.secure_cookies, max_age=PROJECT_HOURS * 3600, path="/")
+
+
+def _project_claim(request: Request, user_id: int, settings: Settings) -> int | None:
+    token = request.cookies.get(PROJECT_COOKIE)
+    if not token:
+        return None
+    try:
+        c = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        return None
+    return int(c["bid"]) if c.get("kind") == "project" and c.get("sub") == str(user_id) and str(c.get("bid", "")).isdigit() else None
 
 
 def _seo_user(token: str, db: Session, settings: Settings) -> User | None:
@@ -59,7 +85,8 @@ def _seo_user(token: str, db: Session, settings: Settings) -> User | None:
     u = db.get(AppUser, int(claims.get("sub", 0)))
     if not u or not u.active:
         return None
-    return User(id=str(u.id), name=u.name, email=u.email, role=u.role, department="SEO Platform", source="seo")
+    on = bool(u.totp_enabled)
+    return User(id=str(u.id), name=u.name, email=u.email, role=u.role, department="SEO Platform", source="seo", needs_project_code=on, totp_enabled=on)
 
 
 # ── CRM sessions (optional) ────────────────────────────────────────────────────
@@ -99,7 +126,7 @@ def _crm_user(token: str, settings: Settings) -> User | None:
 
 
 # POSTs that only read or compute (search, ask, look up): a viewer may use them. Everything else that writes is for editors and admins.
-READ_ONLY_POSTS = ("/assistant", "/seo/keyword-overview", "/discover", "/discover/assist", "/discover/resolve", "/auth/logout", "/auth/change-password", "/ai/preview")
+READ_ONLY_POSTS = ("/assistant", "/seo/keyword-overview", "/discover", "/discover/assist", "/discover/resolve", "/auth/logout", "/auth/change-password", "/ai/preview", "/auth/switch-project", "/auth/2fa/setup", "/auth/2fa/enable", "/auth/2fa/disable")
 
 
 def _enforce_role(request: Request, user: User) -> User:
@@ -116,6 +143,8 @@ def current_user(request: Request, db: Session = Depends(get_db), settings: Sett
     bearer = auth[7:] if auth.lower().startswith("bearer ") else None
     for token in (request.cookies.get(settings.session_cookie), bearer):
         if token and (u := _seo_user(token, db, settings)):
+            if u.needs_project_code:
+                u.verified_project = _project_claim(request, int(u.id), settings)
             return _enforce_role(request, u)
     for token in (request.cookies.get(settings.crm_session_cookie), bearer):
         if token and (u := _crm_user(token, settings)):

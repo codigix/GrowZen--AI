@@ -596,7 +596,7 @@ function Dashboard() {
   usePoll(() => pf.reload(true), projects.some(p => p.audit_running), 5000);
 
   // Open a project: make it the selected business everywhere, then go to the right screen.
-  const openProject = (id, screen = 'gmb-profile') => { choose(id); navigate(path(screen)); };
+  const openProject = (id, screen = 'gmb-profile') => { choose(id).then(ok => ok && navigate(path(screen))); };
 
   if (pf.error) return <Card><ErrorNote>{pf.error.message}</ErrorNote></Card>;
   if (!t) return <DashboardSkeleton />;

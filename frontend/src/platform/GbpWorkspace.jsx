@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill, areaCls, useAction, useDoubleConfirm, Sk, SkStats, SkTable, SkList, SkScore, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
+import { useGbpLive } from './AccessGate';
 import { VerifyPill } from './GbpAccounts';
 
 /** Where every number on this page comes from, so a calculated or AI figure is never mistaken for Google's own. */
@@ -70,8 +71,8 @@ export const TAB_ALIAS = { live: 'profile', hours: 'profile', faq: 'profile', au
 
 /** Website traffic (Google Analytics 4) views, shown as an inner sidebar under the Performance item. */
 export const TRAFFIC_VIEWS = [
-  { id: 'snap', label: 'Reports snapshot' },
   { id: 'overview', label: 'Overview' },
+  { id: 'snap', label: 'Reports snapshot' },
   { id: 'rt', label: 'Realtime overview' },
   { id: 'rtp', label: 'Realtime pages' },
 ];
@@ -123,7 +124,7 @@ const Loading = () => <SkList rows={3} />;
 
 /** Client header: who this workspace is for and the state of its Google connection. */
 export function ClientBar({ b, onConnect, onSync }) {
-  const live = useApi(`/businesses/${b.id}/gbp/live`);
+  const live = useGbpLive(b);  // the Business Profile data once the project's access steps are done; until then only what the checklist knows
   const d = live.data;
   const connected = Boolean(d?.linked && d?.connection?.status === 'active');
   return (
@@ -391,7 +392,7 @@ export function TasksSection({ b }) {
 }
 
 export function SyncSection({ b, onSync, syncing }) {
-  const live = useApi(`/businesses/${b.id}/gbp/live`);
+  const live = useGbpLive(b);
   const activity = useApi(`/activity?business_id=${b.id}&limit=200`);
   const d = live.data;
   const events = (activity.data || []).filter(a => /sync|connect|import/i.test(String(a.action || a.kind || '')));
@@ -413,7 +414,7 @@ export function SyncSection({ b, onSync, syncing }) {
 }
 
 export function SettingsSection({ b, onConnect }) {
-  const live = useApi(`/businesses/${b.id}/gbp/live`);
+  const live = useGbpLive(b);
   const d = live.data;
   return (
     <div className="space-y-4">

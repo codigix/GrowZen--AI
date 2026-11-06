@@ -23,6 +23,10 @@ class AppUser(TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(20), default="editor")  # admin | editor | viewer
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Two-step verification (authenticator app). The secret is sealed (services/crypto); while totp_enabled is false it is only a pending setup.
+    totp_secret: Mapped[str | None] = mapped_column(Text)
+    totp_enabled: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    totp_last_step: Mapped[int | None] = mapped_column(Integer)  # the last accepted 30-second step: a code works once
 
 
 class GoogleConnection(TimestampMixin, Base):
@@ -88,6 +92,7 @@ class Business(TimestampMixin, Base):
     cover_photo: Mapped[str | None] = mapped_column(String(500))
     logo: Mapped[str | None] = mapped_column(String(500))
     booking_url: Mapped[str | None] = mapped_column(String(500))
+    modules: Mapped[list[str] | None] = mapped_column(JSON)  # services the project is onboarded for: subset of seo/geo/aeo/gmb; NULL = derive (services/project_services.py)
     social_accounts: Mapped[dict | None] = mapped_column(JSON)  # {facebook, instagram, meta_business_id}: linked by address (no Meta login yet), normalised by schemas.clean_social
     created_by: Mapped[str | None] = mapped_column(String(120))
     owner_id: Mapped[str | None] = mapped_column(String(64), index=True)  # the signed-in user (User.id) whose project this is; others never see it, admins see all (deps.can_access)

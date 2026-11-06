@@ -9,6 +9,7 @@ import {
 import { api, toUi, SEO_API } from './seoApi';
 import { MarketBadge } from './MarketBadge';
 import Breadcrumbs from './Breadcrumbs';
+import { needsSwitchCode, verifyProjectSwitch } from './projectCode';
 
 // Categorical palette, tuned for white surfaces
 export const SERIES = ['#6658dd', '#4a81d4', '#1abc9c', '#f7b84b', '#f1556c', '#43bfe5', '#313a46', '#9ba6b7'];
@@ -59,10 +60,18 @@ export const useSeoBusiness = () => {
     window.addEventListener('seo-business', on);
     return () => window.removeEventListener('seo-business', on);
   }, []);
-  const choose = useCallback((next) => {
-    try { localStorage.setItem(KEY, String(next)); } catch (e) { /* private window */ }
-    setId(Number(next));
+  // Switching to another project needs an authenticator code (two-step verification). Resolves true when the project was switched, false when
+  // the code was not given (cancel): callers that navigate afterwards wait for it: `choose(id).then(ok => ok && navigate(...))`.
+  const choose = useCallback(async (next) => {
+    const n = Number(next);
+    let current = null;
+    try { current = Number(localStorage.getItem(KEY)) || null; } catch (e) { /* private window */ }
+    current = current || store.list?.[0]?.id || null;
+    if (n !== current && (store.list?.length || 0) > 0 && await needsSwitchCode(store.list.length) && !(await verifyProjectSwitch(n))) return false;
+    try { localStorage.setItem(KEY, String(n)); } catch (e) { /* private window */ }
+    setId(n);
     window.dispatchEvent(new Event('seo-business'));
+    return true;
   }, []);
   // A remembered project that is not in this account's list (someone else's, or deleted) falls back to the first one the account owns.
   const business = list ? (list.find(b => b.id === id) || list[0] || null) : null;

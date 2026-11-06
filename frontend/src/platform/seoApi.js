@@ -53,7 +53,12 @@ export function api(path, opts = {}) {
   return p;
 }
 
-async function request(path, { method = 'GET', body, raw = false, repeat = false } = {}) {
+// Two-step verification: a project's data answers 403 {code:'project_code_required'} until an authenticator code was accepted for it.
+// projectCode.js registers a handler that asks for the code; the request is then sent once more.
+let codeHandler = null;
+export const setProjectCodeHandler = (fn) => { codeHandler = fn; };
+
+async function request(path, { method = 'GET', body, raw = false, repeat = false, codeTried = false } = {}) {
   const safeToRepeat = repeat || method === 'GET' || method === 'HEAD';
   if (!safeToRepeat && Date.now() - lastNetworkFailure < 30000) await waitUntilReachable();
   let r;
@@ -80,6 +85,9 @@ async function request(path, { method = 'GET', body, raw = false, repeat = false
     const b = await r.json().catch(() => ({}));
     // Session ended: the app shell listens for this and shows the login page.
     if (r.status === 401 && !path.startsWith('/auth/')) window.dispatchEvent(new Event('seo:unauthorized'));
+    if (r.status === 403 && b?.detail?.code === 'project_code_required' && codeHandler && !codeTried && await codeHandler(b.detail.business_id)) {
+      return request(path, { method, body, raw, repeat, codeTried: true });
+    }
     throw new SeoApiError(messageOf(b, r.status), r.status);
   }
   if (raw) return r;

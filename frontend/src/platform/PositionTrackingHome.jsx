@@ -44,7 +44,7 @@ export default function PositionTrackingHome() {
   }, [rows, q, target, sort]);
   const without = rows.filter(r => !r.seo && !r.ai && (!q || `${r.name} ${r.domain || ''}`.toLowerCase().includes(q.toLowerCase())));
 
-  const open = (r, to) => { choose(r.id); navigate(to); };
+  const open = (r, to) => { choose(r.id).then(ok => ok && navigate(to)); };
   const link = (r, key, children, cls = 'text-indigo-600') => <button type="button" onClick={() => open(r, (r.kind === 'ai' ? AI : SEO)[key])} className={`${cls} hover:underline cursor-pointer text-left`}>{children}</button>;
   const num = (v) => (v == null ? <span className="text-slate-300">—</span> : v);
   const Th = ({ children, c = 'text-left', onClick }) => <th className={`px-4 py-3 font-semibold text-slate-700 whitespace-nowrap ${c}`}>{onClick ? <button type="button" onClick={onClick} className="inline-flex items-center gap-1 cursor-pointer">{children}<ArrowDownUp size={12} className="text-slate-400" /></button> : children}</th>;
@@ -94,7 +94,7 @@ export default function PositionTrackingHome() {
         <div className="px-5 py-3 border-t border-slate-100 text-14 text-slate-600">Page: <b className="text-slate-900">1</b> of 1</div>
       </Card>
       <NewTrackingModal open={Boolean(creating)} onClose={() => setCreating(false)} projects={rows} initialId={typeof creating === 'number' ? creating : undefined}
-        onDone={(id) => { setCreating(false); data.reload(true); choose(id); navigate('/rank-tracking?tab=positions'); }} />
+        onDone={(id) => { setCreating(false); data.reload(true); choose(id).then(ok => ok && navigate('/rank-tracking?tab=positions')); }} />
     </div>
   );
 }

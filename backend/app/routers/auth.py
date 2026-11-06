@@ -12,11 +12,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..auth import User, clear_session, current_user, issue_session, require_admin
+from ..auth import User, clear_session, current_user, issue_project_claim, issue_session, require_admin
 from ..config import Settings, get_settings
 from ..db import get_db
 from ..models import AppUser
 from ..serialize import row
+from ..services import crypto, totp
 from ..services.passwords import hash_password, is_known_default, verify_password
 
 router = APIRouter(tags=["auth"])
@@ -40,6 +41,7 @@ class UserPatch(BaseModel):
     role: str | None = None
     active: bool | None = None
     password: str | None = Field(default=None, min_length=10)
+    reset_2fa: bool | None = None  # an admin switches off a user's two-step verification (lost phone); the user sets it up again
 
 
 def public(u: AppUser) -> dict:
@@ -82,7 +84,7 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
     u.last_login_at = datetime.now(timezone.utc)
     db.commit()
     issue_session(response, u.id, settings)
-    return public(u) | {"must_change_password": is_known_default(u.password_hash)}
+    return public(u) | {"must_change_password": is_known_default(u.password_hash), "totp_enabled": bool(u.totp_enabled)}
 
 
 class PasswordIn(BaseModel):
@@ -180,6 +182,102 @@ def change_password(body: PasswordIn, db: Session = Depends(get_db), user: User 
     return {"ok": True}
 
 
+# ── two-step verification (authenticator app) ──────────────────────────────────
+class CodeIn(BaseModel):
+    code: str = Field(min_length=1, max_length=20)
+    business_id: int | None = None  # enable: also open this project right away (the code just used cannot be used again)
+
+
+class DisableIn(BaseModel):
+    code: str = Field(min_length=1, max_length=20)
+    password: str
+
+
+class SwitchIn(BaseModel):
+    business_id: int
+    code: str = Field(min_length=1, max_length=20)
+
+
+def _own_account(db: Session, user: User) -> AppUser:
+    u = db.get(AppUser, int(user.id)) if user.source == "seo" and str(user.id).isdigit() else None
+    if not u:
+        raise HTTPException(400, "This account signs in through the CRM, so two-step verification is not available for it.")
+    return u
+
+
+def _check_code(db: Session, u: AppUser, code: str, settings: Settings, secret: str | None = None) -> None:
+    """A wrong code counts against the account (locked for a while after too many); a right one works once."""
+    key = f"2fa|{u.id}"
+    _throttle(key, settings)
+    secret = secret or (crypto.unseal(u.totp_secret) if u.totp_secret else "")
+    step = totp.verify(secret, code) if secret else None
+    if step is None or (u.totp_last_step is not None and step <= u.totp_last_step):
+        _throttle(key, settings, record=True)
+        raise HTTPException(400, "That code is not right or was already used. Wait for the next code in your app and try again.")
+    _throttle(key, settings, reset=True)
+    u.totp_last_step = step
+
+
+@router.post("/auth/2fa/setup")
+def two_factor_setup(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Start enrolling an authenticator app: a new secret, shown once as a QR code and a manual key. Nothing is switched on until /enable."""
+    u = _own_account(db, user)
+    if u.totp_enabled:
+        raise HTTPException(400, "Two-step verification is already on. Turn it off first to set it up again.")
+    secret = totp.new_secret()
+    u.totp_secret = crypto.seal(secret)
+    db.commit()
+    uri = totp.otpauth_uri(secret, u.email)
+    return {"secret": secret, "uri": uri, "qr": totp.qr_data_uri(uri)}
+
+
+@router.post("/auth/2fa/enable")
+def two_factor_enable(body: CodeIn, response: Response, db: Session = Depends(get_db), user: User = Depends(current_user), settings: Settings = Depends(get_settings)):
+    u = _own_account(db, user)
+    if u.totp_enabled:
+        raise HTTPException(400, "Two-step verification is already on.")
+    if not u.totp_secret:
+        raise HTTPException(400, "Start the setup first.")
+    _check_code(db, u, body.code, settings)
+    u.totp_enabled = True
+    db.commit()
+    if body.business_id is not None:
+        from ..deps import can_access
+        from ..models import Business
+        if can_access(user, db.get(Business, body.business_id), db):
+            issue_project_claim(response, u.id, body.business_id, settings)
+    return {"ok": True, "totp_enabled": True}
+
+
+@router.post("/auth/2fa/disable")
+def two_factor_disable(body: DisableIn, response: Response, db: Session = Depends(get_db), user: User = Depends(current_user), settings: Settings = Depends(get_settings)):
+    u = _own_account(db, user)
+    if not u.totp_enabled:
+        raise HTTPException(400, "Two-step verification is not on.")
+    if not verify_password(body.password, u.password_hash):
+        raise HTTPException(403, "The password is wrong.")
+    _check_code(db, u, body.code, settings)
+    u.totp_enabled, u.totp_secret, u.totp_last_step = False, None, None
+    db.commit()
+    return {"ok": True, "totp_enabled": False}
+
+
+@router.post("/auth/switch-project")
+def switch_project(body: SwitchIn, response: Response, db: Session = Depends(get_db), user: User = Depends(current_user), settings: Settings = Depends(get_settings)):
+    """Switching the active project needs a fresh authenticator code. The answer is a cookie that opens that one project (and no other)."""
+    from ..deps import can_access
+    from ..models import Business
+    u = _own_account(db, user)
+    if not can_access(user, db.get(Business, body.business_id), db):
+        raise HTTPException(404, "Business not found")
+    if not u.totp_enabled:
+        raise HTTPException(409, detail={"code": "totp_not_enabled", "message": "Set up your authenticator app first."})
+    _check_code(db, u, body.code, settings)
+    db.commit()
+    issue_project_claim(response, u.id, body.business_id, settings)
+    return {"ok": True, "business_id": body.business_id}
+
+
 @router.post("/auth/logout")
 def logout(response: Response, settings: Settings = Depends(get_settings)):
     clear_session(response, settings)
@@ -220,6 +318,8 @@ def update_user(user_id: int, body: UserPatch, db: Session = Depends(get_db), me
         u.active = body.active
     if body.password:
         u.password_hash = hash_password(body.password)
+    if body.reset_2fa:
+        u.totp_enabled, u.totp_secret, u.totp_last_step = False, None, None
     db.commit()
     return public(u)
 

@@ -55,6 +55,9 @@ def owned_business(db: Session, user: User, business_id: int | None) -> Business
     b = db.get(Business, business_id)
     if not can_access(user, b, db):
         raise HTTPException(404, "Business not found")
+    if user.needs_project_code and user.verified_project != business_id:
+        # Two-step verification: opening (switching to) a project needs a fresh authenticator code. The UI asks for it and retries.
+        raise HTTPException(403, detail={"code": "project_code_required", "business_id": business_id, "message": "Enter your authenticator code to open this project."})
     return b
 
 

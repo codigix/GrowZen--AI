@@ -1,12 +1,13 @@
 """Website traffic (Google Analytics 4) for a connected Google account / website.
 
 GET /analytics/ga4/start?email=...        -> Google sign-in URL that grants the Analytics permission (needed once per account)
-GET /analytics/ga4/by-email?email=...     -> the GA4 overview (users, sessions, channels, countries, pages, devices, sources, realtime)
-      optional: website=example.com  property_id=123456789  days=28
+GET /analytics/ga4/by-email?business_id=...  -> the GA4 overview of ONE project's own website (users, sessions, channels, countries, pages, devices, sources)
+      optional: property_id=123456789  days=28
+GET /analytics/ga4/realtime?business_id=...&property_id=...
 
-The GA4 property is found by matching the website of the businesses imported under that account (or `website`)
-with the websites the account's GA4 properties measure. If none matches, the response lists the properties the
-account can see so one can be chosen with `property_id`.
+Only a project whose access checklist is complete (see app/access.py) gets data: its website, the Google account linked to it, the Analytics
+and Search Console permissions, a GA4 property that measures the site, and the site verified in Search Console. The website and the account
+are the project's own: they cannot be typed in, so nothing about another site can be read through this route.
 """
 import re
 import secrets
@@ -23,20 +24,14 @@ from ..auth import User, current_user
 from ..config import get_settings
 from ..conn_access import only_my_connections, owns_connection
 from ..db import get_db
-from ..deps import only_mine
+from ..deps import only_mine, owned_business
+from .. import access
 from ..models import Business, GoogleConnection
 from ..serialize import row
 from ..services import ga4, gbp
 from ..services.gsc import host_of
 
 router = APIRouter(prefix="/analytics/ga4", tags=["ga4-by-email"])
-
-
-def _connection(db: Session, email: str, user: User) -> GoogleConnection:
-    conn = db.scalar(only_my_connections(select(GoogleConnection), user).where(func.lower(GoogleConnection.email) == email.strip().lower()))  # only the user's own Google accounts
-    if not conn:
-        raise HTTPException(404, "No connected Google account has this email. Connect it first (GET /analytics/ga4/start).")
-    return conn
 
 
 @router.get("/start")
@@ -56,80 +51,33 @@ def start(email: str | None = None, user: User = Depends(current_user)):
     return {"url": f"{gbp.AUTH_URL}?{urlencode(params)}"}
 
 
-def _by_website(db: Session, host: str, days: int, user: User) -> dict[str, Any]:
-    """No email given: look through every connected Google account that has Analytics access for the property that measures `host`."""
-    conns = [c for c in db.scalars(only_my_connections(select(GoogleConnection), user).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None)).order_by(GoogleConnection.email)) if ga4.has_scope(c)]
-    checked: list[str] = []
-    skipped: dict[str, str] = {}
-    for conn in conns:
-        try:
-            ga = ga4.Ga4(conn)
-            chosen, _seen = ga4.match_properties(ga, {host})
-            checked.append(conn.email)
-            if not chosen:
-                continue
-            reports = [{"property_name": p["name"], "account": p["account"], "websites": p["hosts"]} | ga4.report(ga, p["property"], days) for p in chosen[:5]]
-        except ga4.Ga4Error as exc:
-            skipped[conn.email] = str(exc)[:200]
-            continue
-        businesses = list(db.scalars(only_mine(select(Business), user).where(Business.connection_id == conn.id).order_by(Business.name)))
-        return {"email": conn.email, "matched": True, "found_by": "website", "accounts_checked": checked,
-                "connection": {k: v for k, v in row(conn).items() if k in ("id", "email", "display_name", "status", "last_sync_at")},
-                "businesses": [{"id": b.id, "name": b.name, "website": b.website} for b in businesses], "reports": reports}
-    return {"email": None, "matched": False, "found_by": "website", "websites_looked_for": [host], "accounts_checked": checked, "accounts_skipped": skipped,
-            "message": (f"None of the {len(checked)} connected Google account(s) with Analytics access has a property for {host}. "
-                        "Traffic can only be shown for sites whose Google Analytics a connected account can open: connect that account, or enter its email."
-                        if checked else "No connected Google account has Analytics access yet. Connect the account that owns the site's Google Analytics first."),
-            "properties_available": []}
-
-
 @router.get("/by-email")
-def ga4_by_email(email: str | None = Query(None, max_length=255), website: str | None = None, property_id: str | None = Query(None, pattern=r"^\d{3,20}$"),
-                 days: int = Query(28, ge=7, le=365), db: Session = Depends(get_db), user: User = Depends(current_user)):
-    if not (email or "").strip():
-        host = host_of(website)
-        if not host or property_id:
-            raise HTTPException(400, "Give the Google account email, or a website / domain to search the connected accounts.")
-        return _by_website(db, host, days, user)
-    conn = _connection(db, email, user)
-    if conn.status != "active" or not conn.refresh_token_enc:
-        raise HTTPException(409, "This Google account is disconnected. Connect it again (GET /analytics/ga4/start).")
-    if not ga4.has_scope(conn):
-        raise HTTPException(409, "This Google account has not granted Analytics access yet. Open the URL from GET /analytics/ga4/start?email=... and approve it.")
-
-    businesses = list(db.scalars(only_mine(select(Business), user).where(Business.connection_id == conn.id).order_by(Business.name)))
-    # A website the user typed is exactly what they want: do not add the account's other businesses' sites, or their properties show up too.
-    typed = host_of(website)
-    hosts = set() if property_id else ({typed} if typed else {h for h in (host_of(b.website) for b in businesses) if h})
+def ga4_by_email(business_id: int = Query(ge=1), property_id: str | None = Query(None, pattern=r"^\d{3,20}$"), days: int = Query(28, ge=7, le=365),
+                 db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The Google Analytics 4 report of the project's own website (a property that measures it), once the project's access checklist is complete."""
+    b = owned_business(db, user, business_id)
+    props = access.ga4_properties(db, user, b)  # 409 access_incomplete until every website step is done
+    if property_id:
+        props = [p for p in props if p["property"] == f"properties/{property_id}"]
+        if not props:
+            raise HTTPException(404, "That Analytics property does not measure this project's website.")
+    conn = b.connection
     try:
         ga = ga4.Ga4(conn)
-        if property_id:
-            chosen, seen = [{"property": f"properties/{property_id}", "name": None, "account": None, "hosts": []}], []
-        else:
-            chosen, seen = ga4.match_properties(ga, hosts)
-        if not chosen:
-            return {"email": conn.email, "matched": False, "websites_looked_for": sorted(hosts),
-                    "message": "No GA4 property of this account measures that website. Pass property_id (or website) to choose one.",
-                    "properties_available": seen}
-        reports: list[dict[str, Any]] = []
-        for p in chosen[:5]:
-            reports.append({"property_name": p["name"], "account": p["account"], "websites": p["hosts"]} | ga4.report(ga, p["property"], days))
+        reports = [{"property_name": p["name"], "account": p["account"], "websites": p["hosts"]} | ga4.report(ga, p["property"], days) for p in props[:5]]
     except ga4.Ga4Error as exc:
         raise HTTPException(502, str(exc)) from exc
     return {"email": conn.email, "matched": True, "connection": {k: v for k, v in row(conn).items() if k in ("id", "email", "display_name", "status", "last_sync_at")},
-            "businesses": [{"id": b.id, "name": b.name, "website": b.website} for b in businesses], "reports": reports}
+            "businesses": [{"id": b.id, "name": b.name, "website": b.website}], "reports": reports}
 
 
 @router.get("/realtime")
-def ga4_realtime(email: str = Query(min_length=3, max_length=255), property_id: str = Query(pattern=r"^\d{3,20}$"), db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """GA4 Realtime overview + Realtime pages for one property of a connected account (the property id comes from /by-email)."""
-    conn = _connection(db, email, user)
-    if conn.status != "active" or not conn.refresh_token_enc:
-        raise HTTPException(409, "This Google account is disconnected. Connect it again.")
-    if not ga4.has_scope(conn):
-        raise HTTPException(409, "This Google account has not granted Analytics access yet.")
+def ga4_realtime(business_id: int = Query(ge=1), property_id: str = Query(pattern=r"^\d{3,20}$"), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """GA4 Realtime overview + Realtime pages for one property of the project's website (the property id comes from /by-email)."""
+    b = owned_business(db, user, business_id)
+    if f"properties/{property_id}" not in {p["property"] for p in access.ga4_properties(db, user, b)}:
+        raise HTTPException(404, "That Analytics property does not measure this project's website.")
     try:
-        return ga4.realtime_report(ga4.Ga4(conn), f"properties/{property_id}")
+        return ga4.realtime_report(ga4.Ga4(b.connection), f"properties/{property_id}")
     except ga4.Ga4Error as exc:
         raise HTTPException(502, str(exc)) from exc
-

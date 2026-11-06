@@ -1,17 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend as ChartLegend } from 'recharts';
-import { Activity, Users, UserPlus, MousePointerClick, Zap, Eye, Clock, Gauge, PlugZap, RefreshCw, Radio, Search } from 'lucide-react';
-import { SeoShell, useBusinesses, Card, Stat, Badge, Button, ErrorNote, Field, Empty, Tabs, inputCls, SERIES, INK, SkPage } from './SeoUi';
+import { Activity, Users, UserPlus, MousePointerClick, Zap, Eye, Clock, Gauge, RefreshCw, Radio, ExternalLink, ShieldCheck } from 'lucide-react';
+import { SeoShell, useBusinesses, Card, Stat, Badge, Button, ErrorNote, Empty, Tabs, SERIES, INK, SkPage, refreshBusinesses } from './SeoUi';
+import AccessGate from './AccessGate';
 import { api, useApi, fmt } from './seoApi';
 
 /**
  * Website traffic from Google Analytics 4 for a connected Google account / website.
- * Data: GET /analytics/ga4/by-email (needs the account connected once through GET /analytics/ga4/start).
+ * Data: GET /analytics/ga4/by-email?business_id=... (the project's own website, after its access checklist is complete: see AccessGate).
  */
 
-const KEY = 'traffic.last';
-const readLast = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } };
-const saveLast = (v) => { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) { /* storage may be blocked */ } };
 
 const dur = (s) => { const t = Math.floor(s || 0); const m = Math.floor(t / 60); return m ? `${m}m ${t % 60}s` : `${t}s`; };
 const pct = (n) => (n == null ? '—' : `${Number(n).toFixed(2).replace(/\.00$/, '')}%`);
@@ -314,19 +312,19 @@ function LiveLoader({ steps, pages }) {
 }
 
 /** GA4 "Realtime overview" and "Realtime pages" for one property; refreshes every 30 seconds while the tab is visible. */
-function Realtime({ email, property, name, pages }) {
+function Realtime({ businessId, property, name, pages }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const id = String(property).split('/').pop();
   useEffect(() => {
     let alive = true;
     const pull = async () => {
-      try { const x = await api(`/analytics/ga4/realtime?email=${encodeURIComponent(email)}&property_id=${id}`); if (alive) { setD(x); setErr(null); } } catch (e) { if (alive) setErr(e); }
+      try { const x = await api(`/analytics/ga4/realtime?business_id=${businessId}&property_id=${id}`); if (alive) { setD(x); setErr(null); } } catch (e) { if (alive) setErr(e); }
     };
     pull();
     const t = setInterval(() => { if (document.visibilityState === 'visible') pull(); }, 30000);
     return () => { alive = false; clearInterval(t); };
-  }, [email, id]);
+  }, [businessId, id]);
 
   if (err && !d) return <ErrorNote>{err.message}</ErrorNote>;
   if (!d) return <LiveLoader pages={pages} steps={['Connecting to your Analytics property', 'Counting active users right now', 'Reading the last 30 minutes of activity', pages ? 'Collecting page views' : 'Collecting locations and events']} />;
@@ -565,142 +563,111 @@ function Suggestions({ data }) {
   );
 }
 
-function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: viewProp, initialView = 'snap' }) {
-  // Inside a project (auto) the form is that project's website and nothing else: never the last site typed for another project.
-  const last = auto ? {} : readLast();
-  const [email, setEmail] = useState(auto ? defaultEmail : (defaultEmail || last.email || ''));
-  const [website, setWebsite] = useState(auto ? defaultWebsite : (defaultWebsite || (defaultEmail ? '' : last.website) || ''));
-  const [days, setDays] = useState(last.days || 28);
+const PERIODS = [[7, 'Last 7 days'], [28, 'Last 28 days'], [90, 'Last 3 months'], [180, 'Last 6 months'], [365, 'Last 12 months']];
+
+/** The project's own site, its Google account and the period; below it the report. Only rendered once the access checklist is complete. */
+function TrafficDashboard({ b, access, view: viewProp, initialView = 'overview' }) {
+  const host = access.data?.website?.host || '';
+  const conns = useApi('/connections');
+  const [days, setDays] = useState(28);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [viewState, setView] = useState(initialView);
-  const view = viewProp || viewState; // embedded in a workspace, the view comes from its inner sidebar
-  const chosenProperty = useRef(null); // a property picked from the "No property matched" list stays picked while the period changes
+  const [busy, setBusy] = useState(true);
+  const [linking, setLinking] = useState(false);
+  const [view, setView] = useState(initialView);
+  const shownView = viewProp || view;
   const requestNo = useRef(0); // only the latest request may update the page
 
-  const load = async (propertyId, daysOverride) => {
-    if (email.trim().length < 3 && website.trim().length < 3) { setError({ message: 'Enter a website or domain, or the Google account email.' }); return; }
-    if (propertyId) chosenProperty.current = propertyId;
-    const pid = propertyId || chosenProperty.current;
-    const period = daysOverride || days;
+  const load = async (period = days) => {
     const mine = ++requestNo.current;
     setBusy(true); setError(null);
     try {
-      const qs = new URLSearchParams({ days: String(period) });
-      if (email.trim()) qs.set('email', email.trim());
-      if (website.trim()) qs.set('website', website.trim());
-      if (pid) qs.set('property_id', String(pid));
-      const result = await api(`/analytics/ga4/by-email?${qs}`);
-      if (mine !== requestNo.current) return;
-      setData(result);
-      if (!auto) saveLast({ email: email.trim(), website: website.trim(), days: period });
+      const result = await api(`/analytics/ga4/by-email?business_id=${b.id}&days=${period}`);
+      if (mine === requestNo.current) setData(result);
     } catch (e) {
       if (mine !== requestNo.current) return;
       setData(null);
-      const raw = String(e.message || '');
-      // The API's 409 texts point at its own URLs: say the same thing in terms of this page.
-      setError(e.status === 409 ? Object.assign(new Error(/disconnected/i.test(raw)
-        ? 'This Google account is disconnected. Click "Connect / reconnect this Google account" below and sign in again.'
-        : 'Analytics access has not been approved for this Google account yet. Click "Connect / reconnect this Google account" below and approve it.'), { status: 409 }) : e);
+      if (e.status === 409) access.recheck(); // access changed on Google's side: show the checklist again
+      else setError(e);
     } finally { if (mine === requestNo.current) setBusy(false); }
   };
+  useEffect(() => { load(); }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Choosing a period fetches at once; nothing to press. Does nothing on an empty form, so no error pops up.
-  const changePeriod = (n) => {
-    setDays(n);
-    if (data || email.trim().length >= 3 || website.trim().length >= 3) load(undefined, n);
-  };
-
-  const connect = async () => {
-    setBusy(true); setError(null);
+  const changePeriod = (n) => { setDays(n); load(n); };
+  const changeAccount = async (id) => {
+    if (!id || id === access.data?.connection?.id) return;
+    setLinking(true);
     try {
-      const { url } = await api(`/analytics/ga4/start${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`);
-      window.location.href = url;
-    } catch (e) { setError(e); setBusy(false); }
+      await api(`/businesses/${b.id}/seo/link-account`, { method: 'POST', body: { connection_id: id } });
+      await refreshBusinesses();
+      setData(null);
+      access.recheck(); // the new account must pass the same checklist before any data shows
+    } catch (e) { setError(e); } finally { setLinking(false); }
   };
 
-  // Embedded in a client's workspace: load as soon as the client's Google account email is known.
-  useEffect(() => { if (auto && (email.trim().length >= 3 || website.trim().length >= 3)) load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const needsConnect = error && (error.status === 409 || error.status === 404);
+  const account = access.data?.connection;
+  const accounts = (conns.data || []).filter(c => c.status === 'active' || c.id === account?.id);
+  const sel = 'h-10 px-3 rounded text-13 bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900';
 
   return (
-    <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4 items-start">
     <div className="space-y-4 min-w-0">
-      <Card title="Find website traffic" subtitle="Enter a website or domain, or the Google account that can open the site's Google Analytics. With only a website, every connected Google account is searched.">
-        <form className="grid md:grid-cols-[1.4fr_1fr_140px_auto] gap-3 items-end" onSubmit={(e) => { e.preventDefault(); chosenProperty.current = null; load(); }}>
-          <Field label="Website or domain" hint="https://example.com or example.com"><input className={inputCls} placeholder="example.com" value={website} readOnly={auto} title={auto ? "This project's website" : undefined} onChange={(e) => setWebsite(e.target.value)} /></Field>
-          <Field label="Google account email (optional)" hint="Leave empty to search all connected accounts"><input className={inputCls} type="email" placeholder="name@gmail.com" value={email} readOnly={auto} onChange={(e) => setEmail(e.target.value)} /></Field>
-          <Field label="Period">
-            <select className={inputCls} value={days} onChange={(e) => changePeriod(Number(e.target.value))}>
-              {[[7, 'Last 7 days'], [28, 'Last 28 days'], [90, 'Last 3 months'], [180, 'Last 6 months'], [365, 'Last 12 months']].map(([n, label]) => <option key={n} value={n}>{label}</option>)}
-            </select>
-          </Field>
-          <Button variant="primary" icon={data ? RefreshCw : Search} busy={busy} type="submit">{data ? 'Refresh' : 'Show traffic'}</Button>
-        </form>
-        <div className="mt-3 flex flex-wrap items-center gap-3 text-12 text-slate-500">
-          <Button size="sm" icon={PlugZap} onClick={connect} disabled={busy}>Connect / reconnect this Google account</Button>
-          <span>Needed once per account, to allow read-only Analytics access.</span>
+      <div className="ai-glass-card rounded p-4 sm:p-5 flex flex-wrap items-center gap-x-5 gap-y-4">
+        <div className="flex items-center gap-3 min-w-0 flex-1 basis-64">
+          <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`} alt="" width="40" height="40" className="w-10 h-10 rounded bg-slate-50 ring-1 ring-slate-200 p-1.5 shrink-0" />
+          <div className="min-w-0">
+            <div className="text-15 font-semibold text-slate-900 truncate">{b.name}</div>
+            <a href={b.website?.startsWith('http') ? b.website : `https://${host}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-12.5 text-indigo-600 hover:underline max-w-full"><span className="truncate">{host}</span><ExternalLink size={12} className="shrink-0" /></a>
+            <div className="mt-1 flex flex-wrap gap-1.5"><Badge tone="green"><ShieldCheck size={11} className="inline -mt-0.5 mr-0.5" />Access complete</Badge><Badge tone="blue">Google Analytics 4</Badge></div>
+          </div>
         </div>
-        {error && <ErrorNote>{error.message}</ErrorNote>}
-        {needsConnect && <p className="text-12 text-slate-500 mt-2">Use the connect button above, then sign in with exactly that Google account.</p>}
-      </Card>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block">
+            <span className="block text-12 font-semibold text-slate-600 mb-1">Google account</span>
+            <select className={`${sel} min-w-[200px] max-w-[260px]`} value={account?.id || ''} disabled={linking || accounts.length < 2} onChange={(e) => changeAccount(Number(e.target.value))} title={accounts.length < 2 ? 'Only one Google account is connected' : 'Switching account re-checks access before showing data'}>
+              {accounts.length ? accounts.map(c => <option key={c.id} value={c.id}>{c.email}</option>) : <option value="">{account?.email || '—'}</option>}
+            </select>
+          </label>
+          <label className="block">
+            <span className="block text-12 font-semibold text-slate-600 mb-1">Period</span>
+            <select className={sel} value={days} onChange={(e) => changePeriod(Number(e.target.value))}>{PERIODS.map(([n, label]) => <option key={n} value={n}>{label}</option>)}</select>
+          </label>
+          <Button variant="primary" icon={RefreshCw} busy={busy} onClick={() => load()}>Refresh</Button>
+        </div>
+      </div>
 
-      {data && data.matched === false && (
-        <Card title="No property matched" subtitle={data.message}>
-          {data.websites_looked_for?.length > 0 && <p className="text-12 text-slate-500 mb-3">Looked for: {data.websites_looked_for.join(', ')}</p>}
-          {data.found_by === 'website' && (
-            <div className="text-12 text-slate-500 space-y-1">
-              <p>Accounts searched: {data.accounts_checked?.length ? data.accounts_checked.join(', ') : 'none'}</p>
-              {Object.entries(data.accounts_skipped || {}).map(([k, v]) => <p key={k} className="text-amber-700">Skipped {k}: {v}</p>)}
-            </div>
-          )}
-          {data.found_by !== 'website' && <Table
-            cols={[
-              { label: 'Property', render: p => p.name || p.property },
-              { label: 'Account', render: p => p.account || '—' },
-              { label: 'Websites', render: p => (p.hosts?.length ? p.hosts.join(', ') : '—') },
-              { label: '', right: true, render: p => <Button size="sm" onClick={() => load(p.property.split('/').pop())}>View traffic</Button> }
-            ]}
-            rows={data.properties_available}
-            empty="This Google account can't see any Analytics property. Connect the account that owns or has been given access to the property."
-          />}
-        </Card>
-      )}
+      {error && <ErrorNote>{error.message}</ErrorNote>}
 
-      {data?.matched && data.found_by === 'website' && <p className="text-12 text-slate-500">Found through the connected Google account <b>{data.email}</b>.</p>}
       {data?.matched && (
-        <>
-          {!viewProp && <Tabs tabs={[{ id: 'snap', label: 'Reports snapshot' }, { id: 'overview', label: 'Overview' }, { id: 'rt', label: 'Realtime overview' }, { id: 'rtp', label: 'Realtime pages' }]} value={view} onChange={setView} />}
-          {view === 'snap' && data.reports.map(r => <Snapshot key={r.property} r={r} />)}
-          {view === 'overview' && data.reports.map(r => <Report key={r.property} r={r} />)}
-          {(view === 'rt' || view === 'rtp') && data.reports.map(r => <Realtime key={`${r.property}-${view}`} email={data.email} property={r.property} name={r.property_name} pages={view === 'rtp'} />)}
-        </>
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-4 items-start">
+          <div className="space-y-4 min-w-0">
+            {!viewProp && <Tabs tabs={[{ id: 'overview', label: 'Overview' }, { id: 'snap', label: 'Reports snapshot' }, { id: 'rt', label: 'Realtime overview' }, { id: 'rtp', label: 'Realtime pages' }]} value={view} onChange={setView} />}
+            {!data.reports?.length && <Empty>Google Analytics returned no report for this property and period.</Empty>}
+            {shownView === 'snap' && data.reports.map(r => <Snapshot key={r.property} r={r} />)}
+            {shownView === 'overview' && data.reports.map(r => <Report key={r.property} r={r} />)}
+            {(shownView === 'rt' || shownView === 'rtp') && data.reports.map(r => <Realtime key={`${r.property}-${shownView}`} property={r.property} name={r.property_name} pages={shownView === 'rtp'} businessId={b.id} />)}
+          </div>
+          <div className="min-w-0"><Suggestions data={data} /></div>
+        </div>
       )}
 
-      {!data && busy && <LiveLoader pages steps={['Finding your Analytics property', 'Checking access for the connected Google account', 'Loading traffic reports']} />}
-      {!data && !error && !busy && <Empty>Enter a website or an email and press "Show traffic" to see users, sessions, channels, countries and top pages.</Empty>}
-    </div>
-    <Suggestions data={data} />
+      {!data && busy && <LiveLoader pages steps={["Reading the project's Analytics property", 'Loading users, sessions and channels', 'Loading pages, countries and devices']} />}
+      {!data && !busy && !error && <Empty>No traffic data yet for {host}.</Empty>}
     </div>
   );
 }
 
-/** Website traffic for one client, inside its Business Profile workspace: uses the client's connected Google email and website. */
+/** Website traffic for one project: its own website only, shown after the project's access checklist (website, Google account, Analytics, Search Console) is complete. */
 export function BusinessTraffic({ b, view, initialView }) {
-  const live = useApi(`/businesses/${b.id}/gbp/live`);
-  if (!live.data && !live.error) return <SkPage header={false} statLabels={["Active users", "New users", "Sessions", "Engaged sessions", "Engagement rate", "Avg engagement time", "Event count", "Page views"]} chartTitle="Users and sessions per day" tableTitle="Pages" tableHeaders={["Page title", "Views", "Active users", "Event count", "Bounce rate"]} />;
-  const email = live.data?.connection?.email || ''; // a project with no Google link still shows its own website's traffic
   return (
-    <div id="website-traffic" className="space-y-2 scroll-mt-24">
-      <h2 className="text-15 font-semibold text-slate-900 pt-2">Website traffic <span className="text-12 font-normal text-slate-400">· Google Analytics 4</span></h2>
-      <Page key={`${b.id}-${email}-${b.website || ''}`} defaultEmail={email} defaultWebsite={b.website || ''} auto view={view} initialView={initialView} />
+    <div id="website-traffic" className="space-y-3 scroll-mt-24">
+      <AccessGate b={b} kind="website" title={`Finish the access steps to see ${b.name}'s website traffic`}>
+        {(access) => <TrafficDashboard key={`${b.id}-${access.data?.connection?.id}`} b={b} access={access} view={view} initialView={initialView} />}
+      </AccessGate>
     </div>
   );
 }
 
 export default function TrafficPage() {
   const { list } = useBusinesses();
-  return <SeoShell title="Website Traffic" subtitle="Visitors, sessions, channels, countries and pages from Google Analytics 4" needsBusiness={false} hideSwitcher>{(business) => (!list ? <SkPage header={false} /> : business ? <BusinessTraffic key={business.id} b={business} /> : <Empty>Add a project first: website traffic is shown for the selected project's website only.</Empty>)}</SeoShell>;
+  return <SeoShell title="Website Traffic" subtitle="Visitors, sessions, channels, countries and pages from Google Analytics 4, for the selected project's website only" needsBusiness={false} hideSwitcher>{(business) => (!list ? <SkPage header={false} /> : business ? <BusinessTraffic key={business.id} b={business} /> : <Empty>Add a project first: website traffic is shown for the selected project's website only.</Empty>)}</SeoShell>;
 }

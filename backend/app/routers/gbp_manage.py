@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import access
 from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business
@@ -113,7 +114,8 @@ def set_address(body: AddressIn, b: Business = Depends(get_business), db: Sessio
 
 # Attributes
 @router.get("/attributes")
-def attributes(b: Business = Depends(get_business)):
+def attributes(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    access.require(db, user, b, "gmb")
     c = _client(b)
     current = {a["name"].split("/")[-1]: a.get("values") for a in _google(c.attributes, b.gbp_location)}
     out = []

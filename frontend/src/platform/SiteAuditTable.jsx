@@ -73,9 +73,9 @@ export default function SiteAuditTable({ onNew, onOverview, projectId }) { // pr
   }, [data.data, q, sort, projectId]);
   const pages = Math.max(1, Math.ceil(rows.length / size));
   const shown = rows.slice((page - 1) * size, page * size);
-  const open = (id) => { choose(id); navigate(`${path('website-audit')}?tab=report`); };
+  const open = (id) => { choose(id).then(ok => ok && navigate(`${path('website-audit')}?tab=report`)); };
   const [overviewOf, setOverviewOf] = useState(null); // {id, initial}: that project's audit Overview replaces the table until closed
-  const go = (id, key) => { choose(id); const initial = GO[key]; if (onOverview) onOverview(id, initial); else setOverviewOf({ id, initial }); };
+  const go = (id, key) => { const initial = GO[key]; choose(id).then(ok => { if (!ok) return; if (onOverview) onOverview(id, initial); else setOverviewOf({ id, initial }); }); };
   const th = (key, label, extra = {}) => (
     <th key={key} className={`px-4 py-3 font-semibold whitespace-nowrap ${extra.right ? 'text-right' : 'text-left'}`} title={extra.tip}>
       <button type="button" onClick={() => { setSort(s => ({ key, dir: s.key === key ? -s.dir : -1 })); setPage(1); }} className="inline-flex items-center gap-1 cursor-pointer hover:text-slate-900">

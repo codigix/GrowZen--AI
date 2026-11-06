@@ -10,11 +10,12 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user, require_admin
 from ..db import get_db
+from .. import access
 from ..deps import get_business, in_background, my_business_ids, only_mine, owned_business
 from ..models import AgentTask, Audit, Business, BusinessManager, InsightDay, Lead, Review, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
-from ..services import agent, audits, discovery, gbp, reports, schedules, site_onboarding, workplan
+from ..services import project_services, agent, audits, discovery, gbp, reports, schedules, site_onboarding, workplan
 from ..services import analytics as analytics_service, portfolio as portfolio_service, site_health, track_table
 from ..services.activity import log
 from ..services.profile_score import score_profile
@@ -53,6 +54,52 @@ def site_audit_table(db: Session = Depends(get_db), user: User = Depends(current
 def rank_tracking_table(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """The Position Tracking home: every project with its visibility, change, improved and declined keywords, for Google and for AI answers."""
     return track_table.table(db, ids=my_business_ids(db, user))
+
+
+@router.get("/services")
+def project_services_table(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The Projects page: every project the user may open, the services (SEO, GEO, AEO, GMB) it is onboarded for, and what is stored for each."""
+    out = []
+    for b in db.scalars(only_mine(select(Business), user).order_by(Business.name)):
+        r = project_services.row_for(db, b)
+        r["can_manage"] = user.sees_all or b.owner_id == user.id
+        out.append(r)
+    return out
+
+
+class ServiceIn(BaseModel):
+    enabled: bool
+
+
+def _manage(b: Business, user: User, module: str) -> None:
+    if module not in project_services.MODULES:
+        raise HTTPException(404, "Unknown service")
+    if not (user.sees_all or b.owner_id == user.id):
+        raise HTTPException(403, "Only the project's owner or an admin can change its services.")
+
+
+@router.put("/{business_id}/services/{module}")
+def set_service(module: str, body: ServiceIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Turn a service on for the project again (or off without deleting anything stored: use DELETE to remove its data)."""
+    _manage(b, user, module)
+    if body.enabled:
+        project_services.add(db, b, module)
+        schedules.ensure_jobs(db, b)
+    else:
+        b.modules = [m for m in project_services.enabled(b) if m != module]
+    log(db, user.name, "service_enabled" if body.enabled else "service_disabled", b.id, service=module)
+    db.commit()
+    return project_services.row_for(db, b)
+
+
+@router.delete("/{business_id}/services/{module}")
+def remove_service(module: str, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Remove one service from the project and delete only its stored data. The project, its other services and Google itself are untouched."""
+    _manage(b, user, module)
+    gone = project_services.remove(db, b, module)
+    log(db, user.name, "service_removed", b.id, service=module, deleted=gone)
+    db.commit()
+    return {"deleted": gone, "project": project_services.row_for(db, b)}
 
 
 AUDIT_DEFAULTS = {"limit": 100, "pages_to_crawl": "website", "subdomains": True, "user_agent": "desktop", "allow": [], "disallow": [], "ignore_params": [], "schedule": "off", "email": False}
@@ -170,8 +217,13 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
 
 
 @router.delete("/{business_id}", status_code=204)
-def delete(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(require_admin)):
+def delete(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Delete the project and everything stored for it. Its owner or an admin may (viewers are read-only; a manager added by email may not)."""
+    if not (user.sees_all or b.owner_id == user.id):
+        raise HTTPException(403, "Only the project's owner or an admin can delete it.")
     log(db, user.name, "business_deleted", None, name=b.name, id=b.id)
+    # Rows that point at the project without a foreign key (the database cascades the rest): website scans run from it.
+    db.query(Audit).filter(Audit.workspace_id == b.id).delete(synchronize_session=False)
     db.delete(b)
     db.commit()
     return Response(status_code=204)
@@ -222,10 +274,20 @@ def gbp_score(b: Business = Depends(get_business), db: Session = Depends(get_db)
     return {"score": r.score, "factors": r.factors, "items": r.items, "alerts": r.alerts, "top_fixes": r.top_fixes}
 
 
+@router.get("/{business_id}/access-status")
+def access_status(refresh: bool = False, kind: Literal["website", "gmb"] | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The project's access checklist: which of the steps that must be done before its website traffic and Google Business Profile data
+    show are done, with what to do about each one that is not (see app/access.py)."""
+    if refresh:
+        access.forget()
+    return access.evaluate(db, user, b, refresh=refresh, only=kind)
+
+
 @router.get("/{business_id}/gbp/live")
-def gbp_live(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+def gbp_live(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Everything read live from this project's Google Business Profile, in one call: the connection, the
     profile as Google holds it, the last 30 days of customer actions, reviews, photos, posts and search keywords."""
+    access.require(db, user, b, "gmb")
     since = date.today() - timedelta(days=30)
     totals = db.execute(select(func.coalesce(func.sum(InsightDay.calls), 0), func.coalesce(func.sum(InsightDay.directions), 0), func.coalesce(func.sum(InsightDay.website_clicks), 0),
                                 func.coalesce(func.sum(InsightDay.views_search), 0), func.coalesce(func.sum(InsightDay.views_maps), 0), func.coalesce(func.sum(InsightDay.bookings), 0))
@@ -275,6 +337,7 @@ def maps_refresh(b: Business = Depends(get_business), db: Session = Depends(get_
 
 @router.post("/{business_id}/sync")
 def sync(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    access.require(db, user, b, "gmb")
     try:
         out = gbp.sync_business(db, b)
     except gbp.GbpError as exc:

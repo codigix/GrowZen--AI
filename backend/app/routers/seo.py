@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .. import access
 from ..auth import User, current_user
 from ..competitors import intel
 from ..config import get_settings
@@ -332,6 +333,7 @@ def link_account(body: LinkAccountIn, b: Business = Depends(get_business), db: S
         if not c or c.status != "active" or not owns_connection(user, c):
             raise HTTPException(404, "That Google account is not connected.")
     b.connection_id = body.connection_id
+    access.forget()  # the checklist's remembered Google look-ups belonged to the old link
     log(db, user.name, "google_account_linked", b.id, connection=body.connection_id)
     db.commit()
     return {"connection_id": b.connection_id}

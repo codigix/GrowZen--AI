@@ -1,4 +1,5 @@
 import { useCrumb } from './crumbs';
+import AccessGate from './AccessGate';
 import React, { useState } from 'react';
 import { Star, Sparkles, Send, MessageCircle, Mail, Smartphone, Copy, ShieldCheck, Check, Pencil, RefreshCw } from 'lucide-react';
 import ProcessTasks from './ProcessTasks';
@@ -155,7 +156,7 @@ export default function ReviewManagerPage() {
       {(b) => (
         <>
           <Tabs value={tab} onChange={setTab} tabs={[{ id: 'inbox', label: 'Review inbox' }, { id: 'requests', label: 'Review requests' }, { id: 'tasks', label: 'Tasks' }]} />
-          {tab === 'tasks' ? <ProcessTasks b={b} areas={['reviews']} /> : <Reviews key={b.id} b={b} tab={tab} />}
+          {tab === 'tasks' ? <ProcessTasks b={b} areas={['reviews']} /> : <AccessGate b={b} kind="gmb"><Reviews key={b.id} b={b} tab={tab} /></AccessGate>}
         </>
       )}
     </SeoShell>

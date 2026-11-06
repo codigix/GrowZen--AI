@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import access
 from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business
@@ -114,7 +115,8 @@ def ai_faqs(b: Business = Depends(get_business)):
 
 # Reviews
 @router.get("/reviews")
-def list_reviews(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+def list_reviews(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    access.require(db, user, b, "gmb")  # Google reviews: only once the project's Google access is complete
     found = list(db.scalars(select(Review).where(Review.business_id == b.id).order_by(Review.review_date.desc().nullslast())))
     n = len(found)
     topics: dict[str, int] = {}

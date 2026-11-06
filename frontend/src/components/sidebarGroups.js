@@ -6,6 +6,7 @@ export const SIDEBAR_GROUPS = [
     title: 'Overview',
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/projects', label: 'Projects', icon: Layers },
       { to: '/onboarding', label: 'Business Onboarding', icon: Building2, badge: 'Phase 1' }
     ]
   },
@@ -100,7 +101,7 @@ const page = (to, extra = {}) => ({ ...(BY_TO[to] || { to, label: to }), ...extr
 const link = (to, label) => ({ to, label });
 
 export const SIDEBAR_SECTIONS = [
-  { id: 'home', label: 'Home', title: 'Home', icon: House, groups: [{ items: [page('/dashboard'), page('/onboarding')] }] },
+  { id: 'home', label: 'Home', title: 'Home', icon: House, groups: [{ items: [page('/dashboard'), page('/projects'), page('/onboarding')] }] },
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { items: [page('/dashboard')] },

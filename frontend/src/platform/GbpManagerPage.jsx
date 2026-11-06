@@ -5,6 +5,7 @@ import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Image as
 import { SeoShell, Drawer, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useDoubleConfirm, useSeoBusiness, refreshBusinesses, useUrlTab, SkChart, SkList, SkLines, SkScore, SkCard } from './SeoUi';
 import GbpLive from './GbpLive';
 import { BusinessTraffic } from './TrafficPage';
+import AccessGate from './AccessGate';
 import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePosts, isLinked } from './GbpEditors';
 import { MarketCard } from './Market';
 import { GbpAccounts, GoogleSignIn, ListingStatus, VerifyPill } from './GbpAccounts';
@@ -337,7 +338,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
   const section = (tab === 'performance' && params.get('view')) ? 'traffic' : (TAB_ALIAS[tab] || tab); // old ?tab=performance&view=… links
   const sub = params.get('sub') || (tab === 'hours' || tab === 'faq' ? tab : 'live');
   const setSub = (v) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', 'profile'); n.set('sub', v); return n; }, { replace: true });
-  const trafficView = TRAFFIC_VIEWS.some(v => v.id === params.get('view')) ? params.get('view') : 'snap';
+  const trafficView = TRAFFIC_VIEWS.some(v => v.id === params.get('view')) ? params.get('view') : 'overview';
   const go = (id, s) => { if (id === 'profile' && s) setSub(s); else setTab(id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const [syncing, setSyncing] = useState(false);
   const [panel, setPanel] = useState(null); // an edit panel that opens on this page, so nothing navigates away
@@ -354,12 +355,12 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
       <div className="grid grid-cols-1 lg:grid-cols-[230px_minmax(0,1fr)] gap-5 items-start">
         <SectionNav value={section} onChange={(id) => go(id)} />
         <div className="min-w-0" key={version}>
-          {section === 'overview' && <OverviewSection b={b} go={go} onOpen={setPanel} />}
+          {section === 'overview' && <AccessGate b={b} kind="gmb"><OverviewSection b={b} go={go} onOpen={setPanel} /></AccessGate>}
           {section === 'profile' && (
             <>
               <SectionHead title="Business Profile" subtitle="Name, categories, address, contact, hours, services, attributes and verification" sources={['google', 'manual']} />
               <Tabs value={sub} onChange={setSub} tabs={[{ id: 'live', label: 'Live from Google' }, { id: 'edit', label: 'Edit profile' }, { id: 'hours', label: 'Hours' }, { id: 'faq', label: 'Q&A / FAQs' }]} />
-              {sub === 'live' && <GbpLive b={b} toast={toast} onConnect={onConnect} />}
+              {sub === 'live' && <AccessGate b={b} kind="gmb"><GbpLive b={b} toast={toast} onConnect={onConnect} /></AccessGate>}
               {sub === 'edit' && <div className="space-y-4"><ProfileTab b={b} toast={toast} /><MarketCard b={b} /></div>}
               {sub === 'hours' && <HoursTab b={b} toast={toast} />}
               {sub === 'faq' && <FaqTab b={b} toast={toast} />}
@@ -368,7 +369,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
           {section === 'performance' && (
             <>
               <SectionHead title="Performance" subtitle="How customers find and act on the profile" sources={['google']} />
-              <div className="space-y-4"><PerformanceMetrics b={b} /><InsightsTab b={b} /></div>
+              <AccessGate b={b} kind="gmb"><div className="space-y-4"><PerformanceMetrics b={b} /><InsightsTab b={b} /></div></AccessGate>
             </>
           )}
           {section === 'traffic' && (
@@ -377,9 +378,9 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
               <BusinessTraffic b={b} initialView={trafficView} />
             </>
           )}
-          {section === 'reviews' && <ReviewsSection b={b} toast={toast} />}
-          {section === 'posts' && <><SectionHead title="Posts & Content" subtitle="What's New, Offer and Event posts with approval before publishing" sources={['google', 'ai']} /><PostsTab b={b} toast={toast} /></>}
-          {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><PhotosTab b={b} toast={toast} /></>}
+          {section === 'reviews' && <AccessGate b={b} kind="gmb"><ReviewsSection b={b} toast={toast} /></AccessGate>}
+          {section === 'posts' && <><SectionHead title="Posts & Content" subtitle="What's New, Offer and Event posts with approval before publishing" sources={['google', 'ai']} /><AccessGate b={b} kind="gmb"><PostsTab b={b} toast={toast} /></AccessGate></>}
+          {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><AccessGate b={b} kind="gmb"><PhotosTab b={b} toast={toast} /></AccessGate></>}
           {['local-seo', 'aeo', 'geo', 'competitors', 'reports'].includes(section) && <ToolSection id={section} go={go} />}
           {section === 'ai' && <><SectionHead title="AI Recommendations" subtitle="Profile audit, health score and what to fix first" sources={['calc', 'ai']} /><AuditTab b={b} onEditProfile={() => go('profile', 'edit')} /></>}
           {section === 'tasks' && <TasksSection b={b} />}

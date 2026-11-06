@@ -53,6 +53,7 @@ def connection():
     db = SessionLocal()
     c = db.query(GoogleConnection).filter_by(email="owner@saidental.in").first() or GoogleConnection(email="owner@saidental.in", display_name="Sai Owner")
     c.refresh_token_enc, c.status = crypto.seal("refresh-token"), "active"
+    c.scopes = "openid email https://www.googleapis.com/auth/business.manage"  # the Business Profile permission: part of the access checklist
     db.add(c)
     db.commit()
     cid = c.id

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Business, Schedule
-from . import agent, notify, audits, gbp, geo, reports, organic, workplan
+from . import agent, notify, project_services, audits, gbp, geo, reports, organic, workplan
 from .activity import log
 from .playbook import get_playbook
 
@@ -28,6 +28,8 @@ def create_for_plan(db: Session, b: Business) -> list[Schedule]:
     plan = get_playbook(db).plan_schedules.get(b.plan or "Starter") or get_playbook(db).plan_schedules["Starter"]
     rows = []
     for job in JOBS:
+        if not project_services.job_enabled(b, job):
+            continue  # a service removed from the project
         every = plan.get(job, JOB_DEFAULTS.get(job, "off"))
         row = db.scalar(select(Schedule).where(Schedule.business_id == b.id, Schedule.job == job)) or Schedule(business_id=b.id, job=job)
         row.every = every
@@ -44,7 +46,7 @@ def ensure_jobs(db: Session, b: Business) -> int:
     have = {j for (j,) in db.execute(select(Schedule.job).where(Schedule.business_id == b.id))}
     n = 0
     for job in JOBS:
-        if job not in have:
+        if job not in have and project_services.job_enabled(b, job):
             every = plan.get(job, JOB_DEFAULTS.get(job, "off"))
             db.add(Schedule(business_id=b.id, job=job, every=every, next_run_at=_now() if job in JOB_DEFAULTS and every != "off" else next_run(every)))
             n += 1
@@ -55,7 +57,7 @@ def ensure_jobs(db: Session, b: Business) -> int:
 
 def run_job(db: Session, s: Schedule) -> None:
     b = db.get(Business, s.business_id)
-    if not b or b.status == "paused":
+    if not b or b.status == "paused" or not project_services.job_enabled(b, s.job):
         return
     if s.job == "full_audit":
         found = audits.run_all(db, b)
