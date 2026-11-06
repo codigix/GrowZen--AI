@@ -111,6 +111,11 @@ def test_briefing_rules_then_ai_and_cached(client, monkeypatch):
 
 
 def test_bulk_reports_and_status(client):
+    # The report lists the first 50 active businesses by name; "000 " keeps this one in that list however many
+    # businesses earlier test files left in the shared test database.
+    seed_business("000 Report Dental")
+    r = client.post("/api/v1/copilot/reports").json()
+    rep = next(x for x in r["reports"] if x["business"] == "000 Report Dental")
     seed_business("Aaa Report Dental")
     r = client.post("/api/v1/copilot/reports").json()
     rep = next(x for x in r["reports"] if x["business"] == "Aaa Report Dental")
