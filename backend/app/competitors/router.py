@@ -1,6 +1,8 @@
 """Find competitors near a location (Google Maps). When `business_id` is set, competitors that
 have a website are also saved against that business (deduped by website) so they can be audited
 and compared later; without `business_id` this is read-only, same as before."""
+from urllib.parse import urlsplit
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,8 +10,10 @@ from sqlalchemy.orm import Session
 from ..auth import current_user
 from ..db import get_db
 from ..models import Business, Competitor
-from ..schemas import CompetitorRegisterIn
-from ..serialize import rows
+from ..schemas import CompetitorManualIn, CompetitorRegisterIn
+from ..serialize import row, rows
+from ..services.crawler import homepage
+from ..services.url_safety import SSRFValidationError, validate_url_shape
 from . import service
 
 router = APIRouter(prefix="/competitors", tags=["competitors"], dependencies=[Depends(current_user)])
@@ -54,6 +58,37 @@ def find(body: CompetitorRegisterIn, db: Session = Depends(get_db)):
         saved = _upsert(db, body.business_id, results)
         out["registered"] = rows(saved)
     return out
+
+
+def _host(url: str | None) -> str:
+    host = (urlsplit(url or "").hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+@router.post("/manual", status_code=201)
+def add_manual(body: CompetitorManualIn, db: Session = Depends(get_db)):
+    """Register a competitor from a URL or domain the user typed. Returns the existing one when
+    a competitor with the same host is already registered for this business."""
+    b = db.get(Business, body.business_id)
+    if not b:
+        raise HTTPException(404, "Business not found")
+    try:
+        website = validate_url_shape(homepage(body.url.strip().lower()))  # homepage() keeps only scheme + host, so lowercasing is safe
+    except SSRFValidationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    host = _host(website)
+    if "." not in host:
+        raise HTTPException(400, "Enter a full domain, e.g. example.com")
+    if b.website and _host(homepage(b.website)) == host:
+        raise HTTPException(400, "That is your own website")
+    for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)):
+        if _host(c.website) == host:
+            return row(c)
+    c = Competitor(business_id=b.id, website=website, name=body.name.strip() or host, source="manual")
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return row(c)
 
 
 @router.get("")

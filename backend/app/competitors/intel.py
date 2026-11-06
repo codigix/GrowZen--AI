@@ -35,7 +35,7 @@ CACHE_SECONDS = 12 * 3600
 
 # Share of clicks by position (industry averages): turns positions into "visibility".
 CTR = {1: 0.28, 2: 0.15, 3: 0.11, 4: 0.08, 5: 0.07, 6: 0.05, 7: 0.04, 8: 0.03, 9: 0.025, 10: 0.02}
-LOCAL_CTR = {1: 0.35, 2: 0.2, 3: 0.15, 4: 0.08, 5: 0.06}
+LOCAL_CTR = {1: 0.35, 2: 0.2, 3: 0.15, 4: 0.08, 5: 0.06, 6: 0.04, 7: 0.03, 8: 0.02, 9: 0.015, 10: 0.01}
 
 # Listing sites, marketplaces and social networks: they rank, but they are places to be listed on,
 # not businesses to outrank.
@@ -55,6 +55,10 @@ DIRECTORIES = {
     "doctoralia.com", "healthgrades.com", "zocdoc.com", "fresha.com", "booksy.com", "edarabia.com", "foursquare.com", "apple.com", "bing.com",
     "holidify.com", "lbb.in", "medium.com", "tiktok.com", "threads.net", "slideshare.net", "indeed.com", "wikihow.com", "tripadvisor.co.uk", "mapquest.com", "waze.com",
     "yellowpages.com.sg", "yellowpages.my", "brabys.com", "snupit.co.za", "alibaba.com", "kompass.com",
+    # news, jobs/education and city portals: they rank, but they are not businesses to outrank
+    "indiatimes.com", "hindustantimes.com", "ndtv.com", "news18.com", "thehindu.com", "indianexpress.com", "lokmat.com",
+    "internshala.com", "shine.com", "foundit.in", "apna.co", "workindia.in", "timesjobs.com", "upwork.com", "fiverr.com",
+    "pimprichinchwadonline.in",
 }
 GENERIC_LINKS = {
     "home", "about", "about us", "contact", "contact us", "blog", "blogs", "gallery", "careers", "privacy policy", "terms", "terms and conditions",

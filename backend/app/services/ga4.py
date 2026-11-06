@@ -64,7 +64,18 @@ class Ga4:
             token = self.client._token()
         except gbp.GbpError as exc:
             raise Ga4Error(str(exc)) from exc
-        r = httpx.request(method, url, headers={"Authorization": f"Bearer {token}"}, timeout=40, **kw)
+        # A heavy report (a wide date range, or a dimension like audienceName that Google evaluates per session) can be
+        # genuinely slow, and up to 16 of these run at once per request (see report()), competing for the property's
+        # concurrent-query quota. One retry with a longer timeout clears most of these without the caller re-asking.
+        for timeout in (40, 90):
+            try:
+                r = httpx.request(method, url, headers={"Authorization": f"Bearer {token}"}, timeout=timeout, **kw)
+                break
+            except httpx.TimeoutException as exc:
+                if timeout == 90:
+                    raise Ga4Error("Google Analytics did not respond in time. Try again.") from exc
+            except httpx.HTTPError as exc:
+                raise Ga4Error(f"Could not reach Google Analytics: {exc}") from exc
         if r.status_code >= 400:
             try:
                 msg = r.json().get("error", {}).get("message") or ""

@@ -1,5 +1,6 @@
 """Backlink Intelligence API. Everything is scoped to a business: a backlink is visible only if it points at a domain that
 business tracks (its own site or a competitor), so one business never sees another's monitoring set."""
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -20,6 +21,8 @@ from .urls import host_of, normalize_url, registrable_domain
 
 from .lifecycle import LIVE_STATES  # noqa: E402
 from .summary import own_site_links  # noqa: E402
+
+log = logging.getLogger("seo.backlinks")
 
 router = APIRouter(prefix="/businesses/{business_id}/backlink-intel", tags=["backlinks"], dependencies=[Depends(current_user)])
 
@@ -146,14 +149,36 @@ def search(b: Business = Depends(get_business), db: Session = Depends(get_db), t
 lookup_router = APIRouter(prefix="/backlink-intel", tags=["backlinks"], dependencies=[Depends(current_user)])
 
 
+def _ahrefs_fallback(term: str, background: BackgroundTasks) -> dict | None:
+    """When nothing is stored locally for a domain-like query, fall back to Fortress/Ahrefs: reuse a cached report, or queue a live lookup
+    (run in the background) and tell the caller to check back. Returns None if the term is not a usable domain or the Ahrefs service is not
+    running in this process."""
+    from ..backlink_service import ahrefs as ahrefs_service, lifecycle as backlink_lifecycle
+
+    bdb = backlink_lifecycle.state.db
+    if bdb is None:
+        return None
+    try:
+        domain = ahrefs_service.normalize_domain(term)
+    except ValueError:
+        return None
+    report, kind = ahrefs_service.request_report(bdb, domain, "subdomains")
+    if kind == "queued":
+        background.add_task(ahrefs_service.run_report, bdb, report.id)
+    view = ahrefs_service.report_view(bdb, report.id)
+    return {"state": kind, **(view or {})}
+
+
 @lookup_router.get("/lookup")
-def lookup_backlinks(q: str = Query(default="", max_length=300, description="A domain, URL or word, e.g. codigix, codigix.co or https://codigix.co/blog. Leave empty or use * to list every backlink"),
+def lookup_backlinks(background: BackgroundTasks,
+                     q: str = Query(default="", max_length=300, description="A domain, URL or word, e.g. codigix, codigix.co or https://codigix.co/blog. Leave empty or use * to list every backlink"),
                      limit: int = Query(default=10, ge=1, le=lookup.MAX_LIMIT, description="How many top results to return (up to 5000)"),
                      db: Session = Depends(get_db)) -> dict:
     """Search every backlink stored in the database (all businesses, no scoping) by domain, URL or word with fuzzy matching: `codigix` returns the
     best-matching backlinks to or from codigix.co, codigixinfotech.com, blog.codigix.co and so on. Each result says whether it is `inbound` (the link
     points at what you searched for) or `outbound` (it comes from it), and inbound results come first. Leave `q` empty or use `*` to list every backlink.
-    Reads the database only."""
+    Reads the database only, except when a domain or URL query has no stored matches: then it also starts (or reuses) a live Ahrefs lookup via
+    Fortress for that domain and returns its state/result as `ahrefs_fallback`."""
     list_all = q.strip() in ("", "*")
     pq = None
     if not list_all:
@@ -233,6 +258,13 @@ def lookup_backlinks(q: str = Query(default="", max_length=300, description="A d
         data.append(_backlink_out(bl, src, sd) | {"target_domain": target_domain, "direction": direction, "matched_on": on, "match_score": score})
     summary["returned"] = len(data)
 
+    ahrefs_fallback = None
+    if not list_all and not data and pq.kind in ("domain", "url"):
+        try:
+            ahrefs_fallback = _ahrefs_fallback(pq.term, background)
+        except Exception:  # noqa: BLE001 - the fallback must never break a search that otherwise succeeded
+            log.exception("Ahrefs fallback for backlink lookup %r failed", q)
+
     def _counts(col, found: dict[str, int]) -> list[dict]:
         if not found:
             return []
@@ -250,7 +282,7 @@ def lookup_backlinks(q: str = Query(default="", max_length=300, description="A d
     if len(data) > 50:
         print(f"[backlink lookup] ... and {len(data) - 50} more in the response", flush=True)
     return {"query": q, "interpreted_as": {"type": "all" if list_all else pq.kind, "term": None if list_all else pq.term, "path": None if list_all else (pq.path or None)},
-            "summary": summary, "matched_domains": {"as_target": as_target, "as_source": as_source}, "data": data}
+            "summary": summary, "matched_domains": {"as_target": as_target, "as_source": as_source}, "data": data, "ahrefs_fallback": ahrefs_fallback}
 
 
 def _one(db: Session, b: Business, backlink_id: int):

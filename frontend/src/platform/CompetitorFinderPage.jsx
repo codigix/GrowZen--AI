@@ -22,6 +22,9 @@ const running = (s) => s === 'queued' || s === 'running';
 const baseSite = (d) => String(d || '').replace(/^(www|in|en|m)\./, '');
 const hostOf = (u) => { try { return baseSite(new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname); } catch (e) { return ''; } };
 const AUDIT_LABEL = { queued: 'Queued…', running: 'Auditing…', done: 'Audited', failed: 'Failed' };
+const canCompare = (c, a) => Boolean(c?.reg && a && !running(a.status));
+const compareHint = (c, a) => !c?.reg ? 'Register it first with Find more on Maps or Add a competitor'
+  : !a ? 'Audit this competitor first' : running(a.status) ? 'Wait for the audit to finish' : 'Compare its audit with your site';
 const PRIORITY = { high: ['red', 'Do first'], medium: ['amber', 'Next'], low: ['gray', 'Later'] };
 
 /** A Google position as a chip: the number is always shown, colour only backs it up. */
@@ -158,7 +161,28 @@ function Overview({ r, goto }) {
   );
 }
 
-function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, onAuditOur, hasSite, onDetail, onAudit, onCompare, comparing, onFindMaps, findBusy }) {
+/** Register a competitor by its website and audit it straight away. */
+function AddCompetitorForm({ onAdd, busy, error }) {
+  const [url, setUrl] = useState('');
+  const [name, setName] = useState('');
+  const submit = async (e) => {
+    e.preventDefault();
+    if (await onAdd(url.trim(), name.trim())) { setUrl(''); setName(''); }
+  };
+  return (
+    <form onSubmit={submit} className="px-5 py-3 border-b border-slate-200 bg-slate-50/60">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-12.5 font-semibold text-slate-700 inline-flex items-center gap-1.5 mr-1"><Plus size={13} className="text-indigo-500" />Add a competitor</span>
+        <input className={`${inputCls} flex-1 min-w-[200px]`} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Website or domain, e.g. competitor.com" aria-label="Competitor website or domain" />
+        <input className={`${inputCls} w-full sm:w-52`} value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" aria-label="Competitor name" />
+        <Button type="submit" variant="primary" icon={Gauge} busy={busy} disabled={url.trim().length < 3}>Add & audit</Button>
+      </div>
+      {error && <div className="mt-2"><ErrorNote>{error}</ErrorNote></div>}
+    </form>
+  );
+}
+
+function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, onAuditOur, hasSite, onDetail, onAudit, onCompare, comparing, onFindMaps, findBusy, onAddManual, addBusy, addError }) {
   return (
     <Card pad={false}>
       <div className="px-5 py-3 border-b border-slate-200 flex flex-wrap items-center gap-3">
@@ -176,6 +200,7 @@ function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, 
           <Button size="sm" variant="secondary" icon={MapPin} busy={findBusy} onClick={onFindMaps}>Find more on Maps</Button>
         </div>
       </div>
+      <AddCompetitorForm onAdd={onAddManual} busy={addBusy} error={addError} />
       <Table head={<><Th>Competitor</Th><Th c="text-right">Google visibility</Th><Th c="text-right">Page-1 keywords</Th><Th c="text-center">Maps</Th><Th>Site audit</Th><Th c="text-right">Actions</Th></>}>
         {rows.map(c => {
           const a = auditMap[c.reg?.id];
@@ -199,7 +224,7 @@ function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, 
                 <div className="inline-flex gap-1.5">
                   <Button size="sm" icon={Eye} onClick={() => onDetail(c)}>Profile</Button>
                   <Button size="sm" icon={Gauge} disabled={!c.reg || !c.reg.website || running(a?.status)} onClick={() => onAudit(c.reg)} title={c.reg ? 'Run PageSpeed + crawl on their site' : 'Register it first with Find more on Maps'}>{a ? 'Re-audit' : 'Audit'}</Button>
-                  <Button size="sm" variant="primary" icon={ShieldCheck} busy={comparing === c.reg?.id} disabled={!c.reg} onClick={() => onCompare(c.reg)}>Compare</Button>
+                  <Button size="sm" variant="primary" icon={ShieldCheck} busy={comparing === c.reg?.id} disabled={!canCompare(c, a)} onClick={() => onCompare(c.reg)} title={compareHint(c, a)}>Compare</Button>
                 </div>
               </td>
             </tr>
@@ -391,7 +416,7 @@ function ProfileModal({ c, r, onClose, onAudit, onCompare, auditMap }) {
       footer={c && <>
         {c.website && <a href={c.website} target="_blank" rel="noreferrer" className="mr-auto inline-flex items-center gap-1 text-12.5 font-semibold text-indigo-700 hover:underline"><ExternalLink size={13} /> Visit site</a>}
         <Button icon={Gauge} disabled={!c.reg || running(a?.status)} onClick={() => onAudit(c.reg)}>{a ? 'Re-audit site' : 'Audit site'}</Button>
-        <Button variant="primary" icon={ShieldCheck} disabled={!c.reg} onClick={() => { onClose(); onCompare(c.reg); }}>Compare with my site</Button>
+        <Button variant="primary" icon={ShieldCheck} disabled={!canCompare(c, a)} title={compareHint(c, a)} onClick={() => { onClose(); onCompare(c.reg); }}>Compare with my site</Button>
       </>}>
       {c && !p && <p className="text-13 text-slate-600">This business was found on Google Maps but did not appear in the research results, so there is no ranking data yet. Run the research again to include it.</p>}
       {c && p && (
@@ -504,6 +529,7 @@ function Research({ b }) {
   const [toast, toastNode] = useToast();
   const [busy, error, run] = useAction();
   const [mapsBusy, mapsError, runMaps] = useAction();
+  const [addBusy, addError, runAdd] = useAction();
   const [state, setState] = useState(null); // { run, defaults, setup }
   const [loadError, setLoadError] = useState('');
   const [tab, setTab] = useState('overview');
@@ -530,7 +556,12 @@ function Research({ b }) {
     setAuditMap(m => ({ ...by, ...m }));
     return list;
   };
-  useEffect(() => { load(); loadRegistered(); }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const loadOurAudit = async () => {
+    if (!b.website) return;
+    const [latest] = await api(`/website-audits?url=${encodeURIComponent(b.website)}&limit=1&slim=true`).catch(() => []);
+    if (latest) setOurAudit({ id: latest.id, status: latest.status });
+  };
+  useEffect(() => { load(); loadRegistered(); loadOurAudit(); }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const current = state?.run;
   usePoll(async () => {
@@ -571,6 +602,15 @@ function Research({ b }) {
     auditOurSite();
     (r.registered || list).filter(c => c.website && !running(auditMap[c.id]?.status) && auditMap[c.id]?.status !== 'done').forEach(auditCompetitor);
     return r;
+  });
+
+  const addManual = (url, name) => runAdd('add', async () => {
+    const c = await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url, name } });
+    await loadRegistered();
+    if (!running(auditMap[c.id]?.status)) auditCompetitor(c);
+    if (!ourAudit && b.website) auditOurSite(); // Compare needs our own audit too
+    toast(`${c.name} added. Auditing its site…`);
+    return c;
   });
 
   const start = (keywords, location) => run('start', async () => {
@@ -642,7 +682,7 @@ function Research({ b }) {
             <Tile label="Google visibility" value={`${s.visibility}%`} sub={s.leader ? `leader ${s.leader.domain}: ${s.leader.visibility}%` : ''} tone={s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600'} />
             <Tile label="Keywords on page 1" value={`${s.keywords_ranked}/${s.keywords_total}`} sub={`${s.keywords_top3} in the top 3`} />
             <Tile label="Maps visibility" value={`${s.local_visibility}%`} sub={`in Maps for ${s.local_ranked} of ${s.keywords_total}`} />
-            <Tile label="Competing businesses" value={s.competitors} sub={s.local_leader ? `Maps leader: ${s.local_leader.name}` : ''} />
+            <Tile label="Competing websites" value={s.competitors} sub={s.leader ? `Google leader: ${s.leader.domain}` : ''} />
           </div>
           <div>
             <Tabs value={tab} onChange={setTab} tabs={[
@@ -656,7 +696,8 @@ function Research({ b }) {
             {tab === 'overview' && <Overview r={result} goto={setTab} />}
             {tab === 'competitors' && <>
               <CompetitorsTable rows={rows} r={result} strategy={strategy} setStrategy={setStrategy} auditMap={auditMap} ourAudit={ourAudit} onAuditOur={auditOurSite} hasSite={Boolean(b.website)}
-                onDetail={setDetail} onAudit={auditCompetitor} onCompare={doCompare} comparing={comparing} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'} />
+                onDetail={setDetail} onAudit={auditCompetitor} onCompare={doCompare} comparing={comparing} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'}
+                onAddManual={addManual} addBusy={addBusy === 'add'} addError={addError} />
               <ErrorNote>{mapsError}</ErrorNote>
             </>}
             {tab === 'keywords' && <KeywordsTab r={result} onKeyword={setSerp} onIdeas={() => setIdeas(true)} />}

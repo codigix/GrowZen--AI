@@ -161,6 +161,13 @@ class CompetitorRegisterIn(BaseModel):
     business_id: int | None = Field(default=None, description="When set, found competitors are saved against this business (deduped by website)")
 
 
+class CompetitorManualIn(BaseModel):
+    """Register a competitor by hand from its website URL or bare domain."""
+    business_id: int
+    url: str = Field(min_length=3, max_length=500)
+    name: str = Field(default="", max_length=255)
+
+
 class CompetitorCompareIn(BaseModel):
     """Compare the business's own audit against one or more competitor audits. Either pass the
     audit ids directly, or a business_id (+ optional strategy) to use each side's latest finished audit."""
