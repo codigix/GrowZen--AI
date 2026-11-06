@@ -219,8 +219,14 @@ def record_for_business(db: Session, b: Business, web: Audit) -> list[Audit]:
     return saved
 
 
+DEVICES = ("mobile", "desktop")  # every website audit scans both; `strategy` only picks which one scores the audit and is shown by default
+
+
 def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: int = 10, audit: Audit | None = None, options: dict[str, Any] | None = None) -> Audit:
-    """One-off audit of any URL (no business needed): PageSpeed + a short crawl. Always starts from the site's homepage."""
+    """One-off audit of any URL (no business needed): PageSpeed (both mobile and desktop) + a short crawl. Always starts from the site's homepage.
+    `strategy` chooses which device's Lighthouse run is the audit's primary one (used for `audit.score` and wherever a single `pagespeed`
+    result is expected); both devices' results are kept under `result["pagespeed_devices"]` so the report can switch between them without
+    re-auditing."""
     url = crawler.homepage(url)
     audit = audit or Audit(kind="website", target=url)
     audit.target = url
@@ -230,9 +236,9 @@ def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: 
     result: dict[str, Any] = {}
     issues: list[dict[str, Any]] = []
     errors = []
-    # Lighthouse (an HTTP call, no DB) runs beside the crawl; the crawl saves live progress after each step.
-    pool = ThreadPoolExecutor(max_workers=1)
-    psi = pool.submit(run_lighthouse, url, strategy)
+    # Lighthouse (HTTP calls, no DB) runs beside the crawl, one device per worker; the crawl saves live progress after each step.
+    pool = ThreadPoolExecutor(max_workers=len(DEVICES))
+    lh_futures = {d: pool.submit(run_lighthouse, url, d) for d in DEVICES}
     progress: dict[str, Any] = {"lighthouse": "running", "current": url, "pages": [], "queued": 0, "max_pages": crawl_pages}
 
     def save(event: dict[str, Any] | None = None) -> None:
@@ -247,11 +253,12 @@ def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: 
             progress["pages"].append({k: p.get(k) for k in ("url", "status", "title", "meta_description", "h1", "word_count", "images", "images_missing_alt", "has_viewport", "noindex", "frameable", "schema_types")}
                                      | {"issues": [{"level": i["level"], "title": i["title"]} for i in found]})
             progress["queued"] = event["queued"]
-        if progress["lighthouse"] == "running" and psi.done():
-            progress["lighthouse"] = "failed" if psi.exception() else "done"
+        if progress["lighthouse"] == "running" and all(f.done() for f in lh_futures.values()):
+            progress["lighthouse"] = "done" if any(not f.exception() for f in lh_futures.values()) else "failed"
         audit.result = {"progress": dict(progress)}  # a new dict, so SQLAlchemy sees the JSON change
         db.commit()
 
+    crawl_issues: list[dict[str, Any]] = []
     try:
         try:
             site = crawler.crawl(url, max_pages=crawl_pages, on_progress=save, options=options)
@@ -262,11 +269,30 @@ def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: 
             errors.append(f"Crawl: {exc}")
         progress.update(current=None, crawl="done")
         save()
-        try:
-            result["pagespeed"] = psi.result()
-            issues = pagespeed.issues_from(result["pagespeed"]) + issues
-        except Exception as exc:
-            errors.append(f"Lighthouse: {exc}")
+        pagespeed_devices: dict[str, Any] = {}
+        for device, fut in lh_futures.items():
+            try:
+                pagespeed_devices[device] = fut.result()
+            except Exception as exc:
+                errors.append(f"Lighthouse ({device}): {exc}")
+        if pagespeed_devices:
+            result["pagespeed_devices"] = pagespeed_devices
+            # So the report can switch device without re-auditing: each device's own issue list and overall score
+            # (its Lighthouse scores + the one shared crawl score), not just the primary device's.
+            crawl_score_val = (result.get("crawl") or {}).get("score")
+            issues_by_device = {d: pagespeed.issues_from(p) for d, p in pagespeed_devices.items()}
+            result["issues_by_device"] = issues_by_device
+            result["crawl_issues"] = crawl_issues
+            result["score_by_device"] = {}
+            for d, p in pagespeed_devices.items():
+                parts_d = [v for v in p["scores"].values() if v is not None]
+                if crawl_score_val is not None:
+                    parts_d.append(crawl_score_val)
+                result["score_by_device"][d] = round(mean(parts_d)) if parts_d else None
+            primary_device = strategy if strategy in pagespeed_devices else next(iter(pagespeed_devices))
+            primary = pagespeed_devices[primary_device]
+            result["pagespeed"] = primary
+            issues = issues_by_device[primary_device] + issues
     finally:
         pool.shutdown(wait=False)
     lighthouse_scores = list(((result.get("pagespeed") or {}).get("scores") or {}).values())

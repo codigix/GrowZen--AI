@@ -18,7 +18,7 @@ const lines = (t) => t.split('\n').map(x => x.trim()).filter(Boolean);
  * "New audit": asked whenever a website is audited. The scope, how many pages, which pages, how often and whether to email; then optional crawler
  * choices and the rules that decide which addresses are crawled. For the project's own site the choices are saved and used by its scheduled audits.
  */
-export default function NewAuditModal({ open, onClose, target, host, business, own, strategy, setStrategy, busy, onStart }) {
+export default function NewAuditModal({ open, onClose, target, host, business, own, busy, onStart }) {
   const [step, setStep] = useState('general');
   const [cfg, setCfg] = useState(DEFAULTS);
   const [text, setText] = useState({ allow: '', disallow: '', ignore_params: '' });
@@ -67,10 +67,7 @@ export default function NewAuditModal({ open, onClose, target, host, business, o
           <Row label="Crawl as" hint="The crawler identifies itself as a phone or a computer, which can show different pages on sites that adapt to the device.">
             <div className="inline-flex rounded border border-slate-300 overflow-hidden">{[['desktop', 'Desktop'], ['mobile', 'Mobile']].map(([id, l]) => <button key={id} type="button" onClick={() => set('user_agent', id)} className={`h-10 px-5 text-14 border-r last:border-r-0 border-slate-300 cursor-pointer ${cfg.user_agent === id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{l}</button>)}</div>
           </Row>
-          <Row label="Speed test device" hint="The device Google Lighthouse measures the homepage on.">
-            <div className="inline-flex rounded border border-slate-300 overflow-hidden">{[['mobile', 'Mobile'], ['desktop', 'Desktop']].map(([id, l]) => <button key={id} type="button" onClick={() => setStrategy(id)} className={`h-10 px-5 text-14 border-r last:border-r-0 border-slate-300 cursor-pointer ${strategy === id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{l}</button>)}</div>
-          </Row>
-          <p className="text-14 text-slate-500 mt-3">The crawler always follows robots.txt. Pages behind a login can't be audited.</p>
+          <p className="text-14 text-slate-500 mt-3">Google Lighthouse always measures the homepage on both mobile and desktop. The crawler always follows robots.txt. Pages behind a login can't be audited.</p>
         </div>
       )}
       {step === 'rules' && (

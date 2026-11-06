@@ -37,6 +37,26 @@ def test_register_dedupes_and_skips_no_website(client, monkeypatch):
     assert _register(client, monkeypatch, 999999, FOUND).status_code == 404  # unknown business
 
 
+def test_add_competitor_manually_by_domain(client, monkeypatch):
+    bid = _business(client)
+    _register(client, monkeypatch, bid, FOUND)
+    add = lambda url, name="": client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": url, "name": name})
+
+    r = add("Other-Clinic.example/services/teeth", "Other Clinic")
+    assert r.status_code == 201
+    c = r.json()
+    assert c["website"] == "https://other-clinic.example/" and c["name"] == "Other Clinic" and c["source"] == "manual"
+    assert add("https://www.other-clinic.example").json()["id"] == c["id"]  # same host: no duplicate
+    assert add("rival.example").json()["source"] == "google_places"  # already found on Maps: that row is reused
+    assert add("https://www.example.in/about").status_code == 400  # our own site
+    assert add("localhost").status_code == 400
+    assert client.post("/api/v1/competitors/manual", json={"business_id": 999999, "url": "x.example"}).status_code == 404
+    assert len(client.get(f"/api/v1/competitors?business_id={bid}").json()) == 2
+
+    audit = client.post("/api/v1/audit/competitors", json={"urls": [c["website"]], "business_id": bid, "competitor_id": c["id"]}).json()[0]
+    assert client.get(f"/api/v1/audit/competitors/{audit['id']}").json()["status"] == "done"
+
+
 def test_competitor_audit_reuses_recent_result(client, monkeypatch):
     bid = _business(client)
     comp_id = _register(client, monkeypatch, bid, FOUND).json()["registered"][0]["id"]
@@ -110,6 +130,17 @@ def test_compare_strategy_mismatch_is_flagged(client, monkeypatch):
     r = client.post("/api/v1/audit/competitors/compare", json={"our_audit_id": our, "competitor_ids": [comp_id]})
     comparison = r.json()["comparisons"][0]
     assert comparison["compatibility"]["compatible"] is False
+
+
+def test_compare_by_business_falls_back_to_an_audit_of_the_other_strategy(client, monkeypatch):
+    """The page asks for its mobile/desktop toggle; a competitor audited only on the other one is still compared, with the mismatch flagged."""
+    bid = _business(client)
+    comp_id = _register(client, monkeypatch, bid, FOUND).json()["registered"][0]["id"]
+    client.post("/api/v1/website-audits", json={"url": "https://example.in/", "business_id": bid, "strategy": "mobile"})
+    client.post("/api/v1/audit/competitors", json={"urls": ["https://rival.example/"], "business_id": bid, "competitor_id": comp_id, "strategy": "desktop"})
+
+    comparison = client.post("/api/v1/audit/competitors/compare", json={"business_id": bid, "competitor_ids": [comp_id], "strategy": "mobile"}).json()["comparisons"][0]
+    assert "error" not in comparison and comparison["compatibility"]["compatible"] is False
 
 
 def test_compare_missing_audit_reports_error_without_failing_whole_request(client, monkeypatch):

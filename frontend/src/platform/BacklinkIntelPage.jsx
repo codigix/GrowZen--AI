@@ -125,7 +125,65 @@ function Explorer({ base, targets }) {
 const DIRECTION_TONE = { inbound: 'green', outbound: 'blue', other: 'gray' };
 const DIRECTION_LABEL = { inbound: 'Links to it', outbound: 'Links from it', other: 'Other match' };
 
-// GET /backlink-intel/lookup: fuzzy search by domain, URL or word over every backlink stored (all projects, not only this one). Reads the database only.
+// Shown when no stored backlink matches a domain/URL query: the backend starts (or reuses) a live Ahrefs lookup via Fortress and we show its state.
+function AhrefsFallback({ query, af }) {
+  if (!af) return <Empty>No stored backlinks match “{query}”.</Empty>;
+  if (af.state === 'queued' || af.state === 'in_progress' || af.status === 'queued' || af.status === 'running') {
+    return (
+      <div className="py-6 text-center">
+        <Loader2 size={16} className="inline-block animate-spin text-indigo-500 mb-2" />
+        <div className="text-13 text-gray-700">No stored backlinks for “{query}” yet. Looking it up live on Ahrefs now…</div>
+        <div className="text-12 text-gray-500 mt-1">This takes about 30-120 seconds; the search refreshes itself.</div>
+      </div>
+    );
+  }
+  if (af.status === 'failed') {
+    return (
+      <div className="py-6 text-center">
+        <div className="text-13 text-gray-700">No stored backlinks for “{query}”, and the live Ahrefs lookup failed.</div>
+        <div className="text-12 text-gray-500 mt-1 break-all">{af.error}</div>
+      </div>
+    );
+  }
+  if (af.status === 'done') {
+    return (
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <Badge tone="blue">From Ahrefs (live lookup)</Badge>
+          <span className="text-12 text-gray-500">No stored backlinks for “{query}”; here is Ahrefs' public report for {af.domain}.</span>
+        </div>
+        <div className="flex flex-wrap gap-4 mb-3 text-13">
+          {af.domain_rating != null && <div><span className="text-gray-500">Domain rating </span><b className="text-indigo-600">{af.domain_rating}</b></div>}
+          {af.backlinks && <div><span className="text-gray-500">Backlinks </span><b className="text-indigo-600">{af.backlinks.value}</b> <span className="text-gray-400">({af.backlinks.dofollow} dofollow)</span></div>}
+          {af.linking_websites && <div><span className="text-gray-500">Linking websites </span><b className="text-indigo-600">{af.linking_websites.value}</b> <span className="text-gray-400">({af.linking_websites.dofollow} dofollow)</span></div>}
+        </div>
+        {!af.referring_pages?.length ? <Empty>Ahrefs returned no referring pages.</Empty> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-13">
+              <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Referring page</Th><Th>Anchor</Th><Th>Target</Th><Th right>DR</Th></tr></thead>
+              <tbody className="divide-y divide-gray-100">
+                {af.referring_pages.map((p, i) => (
+                  <tr key={i}>
+                    <td className="p-2 max-w-[280px] truncate" title={p.referring_page_title}>
+                      {p.referring_page_url ? <a className="text-indigo-600 hover:underline" href={p.referring_page_url} target="_blank" rel="noreferrer noopener nofollow">{p.referring_page_url.replace(/^https?:\/\//, '')}</a> : p.referring_page_title || '—'}
+                    </td>
+                    <td className="p-2 max-w-[200px] truncate text-gray-700" title={p.anchor_text || ''}>{p.anchor_text || '—'}</td>
+                    <td className="p-2 max-w-[220px] truncate text-gray-600" title={p.target_url || ''}>{(p.target_url || '').replace(/^https?:\/\//, '') || '—'}</td>
+                    <td className="p-2 text-right tabular-nums">{p.dr || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+  return <Empty>No stored backlinks match “{query}”.</Empty>;
+}
+
+// GET /backlink-intel/lookup: fuzzy search by domain, URL or word over every backlink stored (all projects, not only this one). Falls back to a
+// live Ahrefs lookup via Fortress when a domain/URL query has no stored matches.
 function Lookup() {
   const fromLink = new URLSearchParams(window.location.search).get('q') || ''; // ?q=domain opens the search already filled in and run
   const [q, setQ] = useState(fromLink);
@@ -140,6 +198,8 @@ function Lookup() {
   const s = res?.summary;
   const matched = res ? [...(res.matched_domains?.as_target || []), ...(res.matched_domains?.as_source || [])] : [];
   const domains = [...new Map(matched.map(m => [m.domain, m])).values()].slice(0, 12);
+  const af = res?.ahrefs_fallback;
+  usePoll(() => search(), Boolean(af && ['queued', 'in_progress', 'running'].includes(af.state)), 5000);
   return (
     <Card className="mb-4" title="Search all backlinks" subtitle="Find links by a domain, URL or word (typos allowed): codigix finds codigix.co and codigixinfotech.com. Searches every project's stored backlinks; leave empty or use * to list everything.">
       <form className="flex flex-wrap gap-2 mb-3" onSubmit={search}>
@@ -158,7 +218,7 @@ function Lookup() {
           {domains.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-3">{domains.map(m => <Badge key={m.domain} tone={m.score === 100 ? 'green' : m.score >= 92 ? 'blue' : 'gray'}>{m.domain} · {m.backlinks}</Badge>)}</div>
           )}
-          {res.data.length === 0 ? <Empty>No stored backlinks match “{res.query}”.</Empty> : (
+          {res.data.length === 0 ? <AhrefsFallback query={res.query} af={af} /> : (
             <div className="overflow-x-auto">
               <table className="w-full text-13">
                 <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Direction</Th><Th>Source page</Th><Th>Target</Th><Th>Anchor</Th><Th>Attr</Th><Th>Status</Th><Th>Last seen</Th><Th right>Match</Th></tr></thead>

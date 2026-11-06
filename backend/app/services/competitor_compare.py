@@ -94,6 +94,15 @@ def _resolve(audit: Audit, competitor_id: int | None = None) -> ResolvedAudit:
                           target=audit.target, strategy=strategy, status=audit.status, finished_at=audit.finished_at, payload=payload)
 
 
+def _pick(audits: list[Audit], strategy: str | None) -> Audit | None:
+    """The newest audit run with `strategy`, else the newest at all: a scan whose Lighthouse half failed has no
+    strategy but still has its crawl, and a mobile/desktop mismatch is flagged by compare() rather than hidden."""
+    if not audits:
+        return None
+    matching = next((a for a in audits if ((a.result or {}).get("pagespeed") or {}).get("strategy") == strategy), None) if strategy else None
+    return matching or audits[0]
+
+
 def resolve_our_side(db: Session, *, audit_id: int | None = None, business_id: int | None = None, strategy: str | None = None) -> ResolvedAudit:
     if audit_id is not None:
         audit = db.get(Audit, audit_id)
@@ -118,7 +127,7 @@ def resolve_our_side(db: Session, *, audit_id: int | None = None, business_id: i
     if not b:
         raise CompareError(f"Business {business_id} not found")
     q = select(Audit).where(Audit.business_id == business_id, Audit.kind == "website", Audit.status == "done").order_by(Audit.finished_at.desc())
-    web_audit = next((a for a in db.scalars(q) if not strategy or ((a.result or {}).get("pagespeed") or {}).get("strategy") == strategy), None)
+    web_audit = _pick(list(db.scalars(q)), strategy)
     if web_audit:
         return _resolve(web_audit)
     # Fall back to the technical + on-page audits recorded for the business's own site.
@@ -148,9 +157,11 @@ def resolve_competitor_side(db: Session, *, audit_id: int | None = None, competi
     if not comp or (business_id is not None and comp.business_id != business_id):
         raise CompareError(f"Competitor {competitor_id} not found" + (f" for business {business_id}" if business_id else ""))
     q = select(Audit).where(Audit.kind == "competitor", Audit.competitor_id == competitor_id, Audit.status == "done").order_by(Audit.finished_at.desc())
-    audit = next((a for a in db.scalars(q) if not strategy or ((a.result or {}).get("pagespeed") or {}).get("strategy") == strategy), None)
+    audit = _pick(list(db.scalars(q)), strategy)
     if not audit:
-        raise CompareError(f"Competitor {comp.name} ({comp.website}) has no finished audit yet; start one with POST /audit/competitors")
+        running = db.scalar(select(Audit.id).where(Audit.kind == "competitor", Audit.competitor_id == competitor_id, Audit.status.in_(("queued", "running"))))
+        raise CompareError(f"{comp.name}'s audit is still running. Compare again when it shows Audited." if running
+                           else f"{comp.name} ({comp.website}) has no finished audit yet. Click Audit on its row first.")
     return _resolve(audit, competitor_id=competitor_id)
 
 
