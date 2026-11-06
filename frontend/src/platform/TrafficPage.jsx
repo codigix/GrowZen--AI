@@ -640,8 +640,9 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: view
           <Button variant="primary" icon={data ? RefreshCw : Search} busy={busy} type="submit">{data ? 'Refresh' : 'Show traffic'}</Button>
         </form>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-12 text-slate-500">
-          <Button size="sm" icon={PlugZap} onClick={connect} disabled={busy}>Connect / reconnect this Google account</Button>
-          <span>Needed once per account, to allow read-only Analytics access.</span>
+          {data?.matched && data.email && <Badge tone="green">Google Analytics connected · {data.email}</Badge>}
+          <Button size="sm" icon={PlugZap} onClick={connect} disabled={busy}>{data?.matched ? 'Reconnect or switch Google account' : 'Connect / reconnect this Google account'}</Button>
+          <span>{data?.matched ? 'Already connected, with read-only Analytics access. Reconnect only to switch accounts or renew access.' : 'Needed once per account, to allow read-only Analytics access.'}</span>
         </div>
         {error && <ErrorNote>{error.message}</ErrorNote>}
         {needsConnect && <p className="text-12 text-slate-500 mt-2">Use the connect button above, then sign in with exactly that Google account.</p>}
