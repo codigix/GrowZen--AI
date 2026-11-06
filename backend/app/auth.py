@@ -84,12 +84,17 @@ def _crm_user(token: str, settings: Settings) -> User | None:
                 user = User(id=f"crm:{user_id}", name=name, email=d.get("email") or "", role=d.get("role_name") or d.get("role") or "", department=d.get("department") or "", source="crm")
             elif r.status_code in (401, 403):
                 return None
-        except httpx.HTTPError:
-            pass
+            else:
+                raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Could not verify your CRM account right now. Try again shortly.")
+        except httpx.HTTPError as exc:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Could not verify your CRM account right now. Try again shortly.") from exc
     dept = user.department.lower()
     if (user.role or user.department) and not (user.role.lower() in settings.allowed_role_list or any(x in dept for x in settings.allowed_department_list)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your CRM account has no access to the SEO platform.")
-    _cache[token] = (time.time() + 300, user)
+    now = time.time()
+    for k in [k for k, v in _cache.items() if v[0] <= now]:  # drop entries that expired since they were cached
+        del _cache[k]
+    _cache[token] = (now + 300, user)
     return user
 
 

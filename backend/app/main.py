@@ -36,6 +36,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 settings = get_settings()
+if settings.environment.lower() == "production" and settings.secret_key == "change-me":
+    raise RuntimeError("SECRET_KEY is still the default 'change-me'. Set a real SECRET_KEY before running in production.")
 
 
 @asynccontextmanager
