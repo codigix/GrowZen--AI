@@ -543,13 +543,12 @@ export function AuditStep({ sa, business, onOpenReport }) {
   const [drawer, setDrawer] = useState(null); // tech | recent: a panel on the right, opened on click
   const [setup, setSetup] = useState(false); // the "New audit" window
   const openSetup = () => { const t = normalise(url); if (!t) { sa.start(); return; } setSetup(true); };
-  const begin = async (cfg) => {
+  const begin = (cfg) => {
     const target = normalise(url);
-    try {
-      if (own && business?.id) await api(`/businesses/${business.id}/audit-config`, { method: 'PUT', body: cfg, repeat: true }); // saved for this project's scheduled audits
-    } catch (e) { /* the audit still runs with these settings; the schedule is not saved */ }
     setSetup(false);
+    // Start the audit at once; saving the settings for scheduled audits happens in the background and can never hold the audit back.
     sa.launch(target, cfg.limit, { pages_to_crawl: cfg.pages_to_crawl, subdomains: cfg.subdomains, allow: cfg.allow, disallow: cfg.disallow, ignore_params: cfg.ignore_params, user_agent: cfg.user_agent });
+    if (own && business?.id) api(`/businesses/${business.id}/audit-config`, { method: 'PUT', body: cfg, repeat: true }).catch(() => { /* the schedule is not saved; the audit still runs */ });
   };
   return (
     <div className="space-y-5">
