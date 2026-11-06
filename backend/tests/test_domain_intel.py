@@ -21,7 +21,7 @@ def _business(client, name, website, link=None, **extra):
 @pytest.fixture()
 def google_account():
     db = SessionLocal()
-    c = GoogleConnection(email="owner@codigix.co", refresh_token_enc=crypto.seal("rt"), scopes=f"openid {gsc.SCOPE}", status="active", connected_by="test")
+    c = GoogleConnection(email="owner@codigix.co", refresh_token_enc=crypto.seal("rt"), scopes=f"openid {gsc.SCOPE}", status="active", connected_by="user crm:48")
     db.add(c)
     db.commit()
     cid = c.id

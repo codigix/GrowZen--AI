@@ -56,8 +56,9 @@ def _ai_summary(db: Session, since: date) -> dict[str, Any]:
     }
 
 
-def summary(db: Session) -> dict[str, Any]:
-    businesses = list(db.scalars(select(Business).order_by(Business.name)))
+def summary(db: Session, ids: list[int] | None = None) -> dict[str, Any]:
+    """`ids`: the projects of the signed-in user (None = all, for admins)."""
+    businesses = list(db.scalars(select(Business).where(*([Business.id.in_(ids)] if ids is not None else [])).order_by(Business.name)))
     since = date.today() - timedelta(days=30)
 
     def per_business(stmt) -> dict[int, int]:
@@ -78,7 +79,7 @@ def summary(db: Session) -> dict[str, Any]:
     actions_now, actions_before = actions(since, today), actions(since - timedelta(days=30), since)
     daily = [{"day": d.isoformat(), "calls": int(c or 0), "directions": int(r or 0), "website_clicks": int(w or 0)} for d, c, r, w in db.execute(
         select(InsightDay.day, func.sum(InsightDay.calls), func.sum(InsightDay.directions), func.sum(InsightDay.website_clicks))
-        .where(InsightDay.day > since).group_by(InsightDay.day).order_by(InsightDay.day))]
+        .where(InsightDay.day > since, *([InsightDay.business_id.in_(ids)] if ids is not None else [])).group_by(InsightDay.day).order_by(InsightDay.day))]
 
     schedules: dict[int, list[Schedule]] = {}
     for s in db.scalars(select(Schedule)):

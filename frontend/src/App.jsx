@@ -1,7 +1,19 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Sk, SkPage } from './platform/SeoUi';
-import { api } from './platform/seoApi';
+import { Sk, SkPage, resetBusinessesStore } from './platform/SeoUi';
+import { api, clearApiCache } from './platform/seoApi';
+
+// Everything remembered about the previous account or project: cached answers, the project list, the selected project, and per-site
+// traffic notes. Run on sign-out, when the session ends, and when a different account signs in.
+const wipeClientState = () => {
+  clearApiCache();
+  resetBusinessesStore();
+  try {
+    ['traffic.last', 'traffic.snapshot', 'traffic.done'].forEach(k => localStorage.removeItem(k));
+    Object.keys(localStorage).filter(k => /^(growzen\.dest\.|growzen\.ignored)/.test(k)).forEach(k => localStorage.removeItem(k));
+    Object.keys(sessionStorage).forEach(k => sessionStorage.removeItem(k));
+  } catch (e) { /* storage blocked */ }
+};
 import Layout from './components/Layout';
 import PasswordGate from './components/PasswordGate';
 const LandingPage = lazy(() => import('./public/LandingPage'));
@@ -61,10 +73,10 @@ export default function App() {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const { pathname } = useLocation();
 
-  const loadMe = useCallback(() => api('/me').then(u => { setUser(u); try { localStorage.setItem('seo:user', JSON.stringify({ id: u.id, name: u.name, email: u.email, role: u.role, is_admin: u.is_admin, must_change_password: u.must_change_password })); } catch (e) { /* private mode */ } }).catch(() => { try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ } setUser(null); }), []);
+  const loadMe = useCallback(() => api('/me').then(u => { try { const prev = JSON.parse(localStorage.getItem('seo:user') || 'null'); if (prev && String(prev.id) !== String(u.id)) wipeClientState(); } catch (e) { /* ignore */ } setUser(u); try { localStorage.setItem('seo:user', JSON.stringify({ id: u.id, name: u.name, email: u.email, role: u.role, is_admin: u.is_admin, must_change_password: u.must_change_password })); } catch (e) { /* private mode */ } }).catch(() => { try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ } setUser(null); }), []);
   useEffect(() => { loadMe(); }, [loadMe]);
   useEffect(() => {
-    const out = () => { try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ } setUser(null); };
+    const out = () => { try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ } wipeClientState(); setUser(null); };
     const openPwd = () => setShowChangePassword(true);
     window.addEventListener('seo:unauthorized', out);
     window.addEventListener('seo:change-password', openPwd);
@@ -77,6 +89,7 @@ export default function App() {
   const logout = async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => {});
     try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ }
+    wipeClientState();
     setUser(null);
   };
 

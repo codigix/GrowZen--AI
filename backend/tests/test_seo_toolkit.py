@@ -98,7 +98,7 @@ def test_projects_do_not_share_google_accounts_or_audit_history(client):
     a = client.post("/api/v1/businesses", json={"name": "Iso A", "website": "https://iso-a.example"}).json()["id"]
     b = client.post("/api/v1/businesses", json={"name": "Iso B", "website": "https://iso-b.example"}).json()["id"]
     db = SessionLocal()
-    conn = GoogleConnection(email="owner-of-a@example.com", status="active", refresh_token_enc="x", scopes="")
+    conn = GoogleConnection(email="owner-of-a@example.com", status="active", refresh_token_enc="x", scopes="", connected_by="user crm:48")
     db.add(conn); db.commit(); db.refresh(conn)
     db.close()
     # B has no linked account: it is never tried against A's (or any) account, and no other account's address is named
@@ -118,21 +118,22 @@ def test_site_audit_overview_computes_each_figure_from_the_saved_audit(client):
     from app.models import Audit
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
+    ws = client.post("/api/v1/businesses", json={"name": "Overview Co"}).json()["id"]  # a scan belongs to a real project of the signed-in user
     page = lambda u, **k: {"url": u, "status": 200, "noindex": False, "title_length": 50, "meta_description_length": 140, "h1_count": 1, "schema_types": ["Organization"], "canonical": u, "inbound": 2, **k}
     crawl = {"start_url": "https://ov.example/", "robots_txt": True, "sitemap": True, "https": True, "crawled": 2, "max_pages": 100,
              "pages": [page("https://ov.example/"), page("https://ov.example/a", noindex=True, hreflang=1)]}
     db = SessionLocal()
-    db.add(Audit(kind="website", target="https://ov.example/", status="done", score=80, workspace_id=777, finished_at=now,
+    db.add(Audit(kind="website", target="https://ov.example/", status="done", score=80, workspace_id=ws, finished_at=now,
                  issues=[{"level": "serious"}, {"level": "warning"}, {"level": "warning"}, {"level": "info"}],
                  result={"crawl": crawl, "pagespeed": {"scores": {"performance": 90}, "metrics": {"lcp": "2.0 s", "cls": "0.2", "tbt": "100 ms"}}}))
     db.commit()
     db.close()
-    r = client.get("/api/v1/website-audits/overview?workspace_id=777").json()
+    r = client.get(f"/api/v1/website-audits/overview?workspace_id={ws}").json()
     assert len(r) == 1
     x = r[0]
     assert (x["pages"], x["limit"], x["health"], x["errors"], x["warnings"], x["crawlability"], x["https"], x["intl"], x["performance"], x["markups"]) == (2, 100, 80, 1, 2, 50, 100, 50, 90, 100)
     assert x["vitals"]["pass"] == 2 and x["vitals"]["of"] == 3 and x["diff"]["health"] is None
-    assert client.get("/api/v1/website-audits/overview?workspace_id=778").json() == []
+    assert client.get(f"/api/v1/website-audits/overview?workspace_id={ws + 999}").status_code == 404
 
 
 def test_project_audit_overview_uses_the_same_figures_as_the_site_audit_table(client):
@@ -160,8 +161,8 @@ def test_a_project_with_no_linked_account_finds_the_one_that_owns_its_site(clien
     from app.models import Business, GoogleConnection
     from app.services import crypto, gsc
     db = SessionLocal()
-    other = GoogleConnection(email="other-owner@example.com", refresh_token_enc=crypto.seal("rt"), scopes=f"openid {gsc.SCOPE}", status="active")
-    owner = GoogleConnection(email="auto-owner@example.com", refresh_token_enc=crypto.seal("rt"), scopes=f"openid {gsc.SCOPE}", status="active")
+    other = GoogleConnection(email="other-owner@example.com", refresh_token_enc=crypto.seal("rt"), scopes=f"openid {gsc.SCOPE}", status="active", connected_by="user crm:48")
+    owner = GoogleConnection(email="auto-owner@example.com", refresh_token_enc=crypto.seal("rt"), scopes=f"openid {gsc.SCOPE}", status="active", connected_by="user crm:48")
     db.add_all([other, owner])
     db.commit()
     ids = (other.id, owner.id)

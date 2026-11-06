@@ -17,7 +17,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
+from ..conn_access import only_my_connections
 from ..db import get_db
+from ..deps import only_mine
 from ..models import Business, GoogleConnection, InsightDay, Lead, Review
 from ..serialize import row, rows
 from ..services import audits, gbp
@@ -70,13 +72,13 @@ def _business_report(db: Session, b: Business, days: int) -> dict[str, Any]:
 
 @router.get("/by-email")
 def analytics_by_email(email: str = Query(min_length=3, max_length=255), days: int = Query(30, ge=7, le=365), refresh: bool = False,
-                       db: Session = Depends(get_db), _: User = Depends(current_user)):
+                       db: Session = Depends(get_db), user: User = Depends(current_user)):
     addr = email.strip().lower()
-    conn = db.scalar(select(GoogleConnection).where(func.lower(GoogleConnection.email) == addr))
+    conn = db.scalar(only_my_connections(select(GoogleConnection), user).where(func.lower(GoogleConnection.email) == addr))
     if conn:
-        found, matched_by = list(db.scalars(select(Business).where(Business.connection_id == conn.id).order_by(Business.name))), "google_account"
+        found, matched_by = list(db.scalars(only_mine(select(Business), user).where(Business.connection_id == conn.id).order_by(Business.name))), "google_account"
     else:
-        found, matched_by = list(db.scalars(select(Business).where(func.lower(Business.contact_email) == addr).order_by(Business.name))), "contact_email"
+        found, matched_by = list(db.scalars(only_mine(select(Business), user).where(func.lower(Business.contact_email) == addr).order_by(Business.name))), "contact_email"
     if not conn and not found:
         raise HTTPException(404, "No connected Google account or business is registered with this email.")
 

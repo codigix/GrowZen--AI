@@ -30,6 +30,11 @@ class User:
     def is_admin(self) -> bool:
         return self.role.lower() in ("admin", "super admin")
 
+    @property
+    def sees_all(self) -> bool:
+        """Admins (and a CRM session with no role, which keeps the access it always had) can open every project; everyone else only their own."""
+        return self.is_admin or (self.source == "crm" and not self.role)
+
 
 # ── own sessions ───────────────────────────────────────────────────────────────
 def issue_session(response: Response, user_id: int, settings: Settings) -> None:

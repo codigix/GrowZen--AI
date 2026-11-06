@@ -39,11 +39,37 @@ def test_routes_that_spend_quota_or_leak_data_need_a_sign_in():
         assert getattr(c, method)(url).status_code == 401, url
 
 
+def assign(business_id, email):
+    """Give a project to a team member (what an admin does through PUT /businesses/{id}/owner)."""
+    from app.db import SessionLocal
+    from app.models import AppUser, Business
+    db = SessionLocal()
+    db.get(Business, business_id).owner_id = str(db.query(AppUser).filter_by(email=email).one().id)
+    db.commit()
+    db.close()
+
+
+def test_a_user_never_sees_another_users_project(client):
+    user("a@x.in", "editor")
+    user("b@x.in", "editor")
+    a, _ = login("a@x.in")
+    b, _ = login("b@x.in")
+    bid = a.post("/api/v1/businesses", json={"name": "Private Co"}).json()["id"]
+    assert [x["id"] for x in a.get("/api/v1/businesses").json()] == [bid]
+    assert b.get("/api/v1/businesses").json() == []
+    for url in (f"/api/v1/businesses/{bid}", f"/api/v1/businesses/{bid}/audits", f"/api/v1/businesses/{bid}/audit-config", f"/api/v1/businesses/{bid}/overview"):
+        assert b.get(url).status_code == 404, url
+    assert b.patch(f"/api/v1/businesses/{bid}", json={"name": "Hijack"}).status_code == 404
+    assert client.get(f"/api/v1/businesses/{bid}").status_code == 200  # the CRM/admin session sees everything
+
+
 def test_a_viewer_reads_but_cannot_change(client):
     user("viewer@x.in", "viewer")
     v, r = login("viewer@x.in")
     assert r.status_code == 200
     bid = client.post("/api/v1/businesses", json={"name": "Read Only Co", "city": "Pune"}).json()["id"]
+    assert v.get(f"/api/v1/businesses/{bid}").status_code == 404  # someone else's project is invisible, not merely read-only
+    assign(bid, "viewer@x.in")
     assert v.get(f"/api/v1/businesses/{bid}").status_code == 200
     for method, url, body in [("post", "/api/v1/businesses", {"name": "X"}), ("patch", f"/api/v1/businesses/{bid}", {"name": "Y"}), ("post", f"/api/v1/businesses/{bid}/keywords", [{"keyword": "k"}]),
                               ("delete", f"/api/v1/businesses/{bid}", None)]:
@@ -57,6 +83,7 @@ def test_only_an_admin_can_delete_a_project(client):
     user("boss@x.in", "admin")
     bid = client.post("/api/v1/businesses", json={"name": "Delete Me Co"}).json()["id"]
     e, _ = login("editor@x.in")
+    assign(bid, "editor@x.in")
     assert e.patch(f"/api/v1/businesses/{bid}", json={"name": "Renamed"}).status_code == 200  # editors still edit
     assert e.delete(f"/api/v1/businesses/{bid}").status_code == 403
     a, _ = login("boss@x.in")
@@ -136,3 +163,19 @@ def test_keyword_explorer_requires_sign_in(client):
         r = getattr(anonymous, method)(path, **({"json": {"keyword": "x"}} if method == "post" else {}))
         assert r.status_code == 401, (method, path, r.status_code)
     assert client.get("/api/keywords/platforms").status_code == 200  # a signed-in user still gets through
+
+
+def test_an_email_with_manager_access_can_open_the_project(client):
+    user("owner2@x.in", "editor")
+    user("mgr@x.in", "viewer")
+    user("stranger@x.in", "editor")
+    o, _ = login("owner2@x.in")
+    m, _ = login("mgr@x.in")
+    s, _ = login("stranger@x.in")
+    bid = o.post("/api/v1/businesses", json={"name": "Managed Co", "contact_email": "Client@Managed.in"}).json()["id"]
+    assert m.get(f"/api/v1/businesses/{bid}").status_code == 404
+    assert o.put(f"/api/v1/businesses/{bid}/managers", json={"emails": ["MGR@x.in"]}).json()["managers"] == ["mgr@x.in"]
+    assert m.get(f"/api/v1/businesses/{bid}").status_code == 200 and [x["id"] for x in m.get("/api/v1/businesses").json()] == [bid]
+    assert m.get(f"/api/v1/businesses/{bid}/audits").status_code == 200
+    assert m.put(f"/api/v1/businesses/{bid}/managers", json={"emails": []}).status_code == 403  # a manager cannot hand it on
+    assert s.get(f"/api/v1/businesses/{bid}").status_code == 404

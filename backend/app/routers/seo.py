@@ -23,6 +23,8 @@ from ..services.gbp import GbpError
 from ..services.providers.base import intent_of
 from ..services.activity import log
 
+from ..conn_access import owns_connection  # noqa: E402
+
 router = APIRouter(prefix="/businesses/{business_id}/seo", tags=["seo"])
 
 
@@ -327,7 +329,7 @@ def link_account(body: LinkAccountIn, b: Business = Depends(get_business), db: S
     """Choose which connected Google account this project uses for Search Console (or none)."""
     if body.connection_id is not None:
         c = db.get(GoogleConnection, body.connection_id)
-        if not c or c.status != "active":
+        if not c or c.status != "active" or not owns_connection(user, c):
             raise HTTPException(404, "That Google account is not connected.")
     b.connection_id = body.connection_id
     log(db, user.name, "google_account_linked", b.id, connection=body.connection_id)
@@ -412,7 +414,7 @@ def _brand_terms(b: Business, host: str) -> list[str]:
 def _find_owner(db: Session, b: Business, host: str) -> GoogleConnection | None:
     """A project with no linked account: the connected account that owns this site's Search Console property, if there is one. Having the
     verified property proves the account belongs to this site, so it is linked to the project and used from then on."""
-    for c in db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None)).order_by(GoogleConnection.id)):
+    for c in db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None), GoogleConnection.connected_by == f"user {b.owner_id}").order_by(GoogleConnection.id)):  # only the project owner's own accounts
         if not gsc.has_scope(c):
             continue
         try:
@@ -436,6 +438,8 @@ def _own_connections(db: Session, b: Business, only: int | None = None, host: st
     if not pick:
         return []
     c = db.get(GoogleConnection, pick)
+    if c and pick != b.connection_id and c.connected_by != f"user {b.owner_id}":
+        return []  # (the account explicitly linked to the project is trusted: linking checked who owns it)  # another account's Google connection is never used for this project
     return [c] if c and c.status == "active" and c.refresh_token_enc else []
 
 
@@ -505,7 +509,7 @@ def domain(range: str = "3m", country: str | None = None, device: str | None = N
                  "ai": _ai_search(db, b, host), "traffic": {"state": "not_connected"}, "unavailable": {}}
     conns = _own_connections(db, b, connection_id, host=host)
     # The accounts offered to pick from are only listed while the project has none of its own.
-    pickable = [] if conns else list(db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None)).order_by(GoogleConnection.email)))
+    pickable = [] if conns else list(db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None), GoogleConnection.connected_by == f"user {b.owner_id}").order_by(GoogleConnection.email)))
     out["traffic"]["accounts"] = [{"id": c.id, "email": c.email, "search_console": gsc.has_scope(c)} for c in (conns or pickable)]
     out["traffic"]["linked"] = bool(b.connection_id)
     if not host:

@@ -481,7 +481,7 @@ function LatestReport({ report, history, onOpen }) {
  */
 export function useSiteAudit(business) {
   const site = business?.website || '';
-  const [url, setUrl] = useState(() => new URLSearchParams(window.location.search).get('url') || site); // ?url=… audits that address first
+  const [url, setUrl] = useState(() => { const q = new URLSearchParams(window.location.search).get('url'); return q && (!site || hostOf(normalise(q)) === hostOf(normalise(site))) ? q : site; }); // ?url=… audits that address first, but only when it is this project's own site
   const [crawlPages, setCrawlPages] = useState(10);
   const [current, setCurrent] = useState(null);
   const [startedAt, setStartedAt] = useState(null);

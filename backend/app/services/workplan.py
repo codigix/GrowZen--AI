@@ -529,14 +529,14 @@ def refresh_research_in_background(db: Session, business_id: int) -> None:
         logger.exception("Research refresh failed for business %s", business_id)
 
 
-def overview(db: Session, wk: date | None = None) -> list[dict[str, Any]]:
+def overview(db: Session, wk: date | None = None, ids: list[int] | None = None) -> list[dict[str, Any]]:
     """Every project's progress for one week (the cross-project view), from one query for all the week's items."""
     wk = week_start(wk)
     by_business: dict[int, list[WorkItem]] = {}
     for it in db.scalars(select(WorkItem).where(WorkItem.week_start == wk)):
         by_business.setdefault(it.business_id, []).append(it)
     out = []
-    for b in db.scalars(select(Business).where(Business.status != "paused").order_by(Business.name)):
+    for b in db.scalars(select(Business).where(Business.status != "paused", *([Business.id.in_(ids)] if ids is not None else [])).order_by(Business.name)):
         items = by_business.get(b.id, [])
         late = sum(1 for i in items if i.status in ("todo", "doing") and i.due_date and i.due_date < date.today())
         out.append({"business_id": b.id, "name": b.name, "plan": b.plan, **progress(items), "overdue": late, "carried_in": sum(1 for i in items if i.carried_from)})

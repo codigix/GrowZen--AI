@@ -19,6 +19,13 @@ export const INK = { primary: '#0f172a', secondary: '#475569', muted: '#64748b',
 const store = { list: null, error: null, loading: false, listeners: new Set() };
 const notify = () => store.listeners.forEach(fn => fn());
 
+/** Drop the project list and the remembered selection (sign-out / another account). */
+export const resetBusinessesStore = () => {
+  store.list = null; store.error = null; store.loading = false; notify();
+  try { localStorage.removeItem('seoBusinessId'); } catch (e) { /* ignore */ }
+  window.dispatchEvent(new Event('seo-business'));
+};
+
 export const refreshBusinesses = async () => {
   store.loading = true; notify();
   try {
@@ -57,6 +64,7 @@ export const useSeoBusiness = () => {
     setId(Number(next));
     window.dispatchEvent(new Event('seo-business'));
   }, []);
+  // A remembered project that is not in this account's list (someone else's, or deleted) falls back to the first one the account owns.
   const business = list ? (list.find(b => b.id === id) || list[0] || null) : null;
   return [business, choose];
 };

@@ -80,14 +80,14 @@ def _latest_two_all(db: Session) -> dict[tuple[int, str], list[Audit]]:
     return out
 
 
-def table(db: Session) -> list[dict[str, Any]]:
+def table(db: Session, ids: list[int] | None = None) -> list[dict[str, Any]]:
     """One row per project, newest audit first: the figures, and the change against the audit before."""
     rows = []
     audits_by = _latest_two_all(db)
     geo_by: dict[int, list] = {}
     for g in db.scalars(select(GeoResult).order_by(GeoResult.created_at.desc())):
         geo_by.setdefault(g.business_id, []).append(g)
-    for b in db.scalars(select(Business).order_by(Business.name)):
+    for b in db.scalars(select(Business).where(*([Business.id.in_(ids)] if ids is not None else [])).order_by(Business.name)):
         onpage, technical = audits_by.get((b.id, "onpage"), []), audits_by.get((b.id, "technical"), [])
 
         def figures(i: int) -> dict[str, Any]:

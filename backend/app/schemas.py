@@ -4,6 +4,37 @@ from typing import Annotated, Any, Literal
 from pydantic import AnyUrl, BaseModel, Field, HttpUrl, field_validator
 
 
+def clean_social(v: Any) -> dict[str, str] | None:
+    """facebook: a facebook.com page address; instagram: a handle (an instagram.com link or @name is reduced to the name); meta_business_id: digits.
+    Empty values are dropped; None/{} means 'none linked'. Raises ValueError for something that is not that kind of address."""
+    import re
+    if v is None:
+        return None
+    if not isinstance(v, dict):
+        raise ValueError("social_accounts must be an object")
+    out: dict[str, str] = {}
+    fb = str(v.get("facebook") or "").strip()
+    if fb:
+        if not re.match(r"^https?://", fb, re.I):
+            fb = "https://" + fb
+        if not re.match(r"^https?://([a-z0-9-]+\.)?(facebook|fb)\.com/\S+", fb, re.I):
+            raise ValueError("Facebook page must be a facebook.com address")
+        out["facebook"] = fb.split("?")[0].rstrip("/") if "profile.php" not in fb else fb
+    ig = str(v.get("instagram") or "").strip()
+    if ig:
+        m = re.match(r"^(?:https?://)?(?:www\.)?instagram\.com/([A-Za-z0-9._]+)/?", ig, re.I)
+        handle = (m.group(1) if m else ig.lstrip("@")).strip()
+        if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", handle):
+            raise ValueError("Instagram must be a handle like @yourbrand or an instagram.com link")
+        out["instagram"] = handle
+    mb = str(v.get("meta_business_id") or "").strip()
+    if mb:
+        if not re.fullmatch(r"\d{5,25}", mb):
+            raise ValueError("Meta Business ID is a number")
+        out["meta_business_id"] = mb
+    return out
+
+
 class BusinessIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     primary_category: str | None = None
@@ -30,6 +61,12 @@ class BusinessIn(BaseModel):
     contact_name: str | None = None
     contact_email: str | None = None
     booking_url: str | None = None
+    social_accounts: dict[str, Any] | None = None
+
+    @field_validator("social_accounts")
+    @classmethod
+    def _social(cls, v):
+        return clean_social(v)
 
 
 class BusinessPatch(BaseModel):
@@ -64,6 +101,12 @@ class BusinessPatch(BaseModel):
     booking_url: str | None = None
     cover_photo: str | None = None
     logo: str | None = None
+    social_accounts: dict[str, Any] | None = None
+
+    @field_validator("social_accounts")
+    @classmethod
+    def _social(cls, v):
+        return clean_social(v)
 
 
 class DiscoverIn(BaseModel):

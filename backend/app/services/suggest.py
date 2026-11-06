@@ -93,7 +93,7 @@ def _address_parts(a: dict[str, Any]) -> dict[str, Any]:
 
 
 # ── suggestions ──────────────────────────────────────────────────────────────
-def suggest(db: Session, q: str, near: str = "", session: str = "", country: str = "IN") -> dict[str, Any]:
+def suggest(db: Session, q: str, near: str = "", session: str = "", country: str = "IN", owner_ids: list[int] | None = None) -> dict[str, Any]:
     """Business names while typing, from existing projects, then Google Maps and OpenStreetMap in `country`."""
     country = countries.code(country)
     q = " ".join((q or "").split())
@@ -102,7 +102,7 @@ def suggest(db: Session, q: str, near: str = "", session: str = "", country: str
                            "sources": {"projects": True, "google_maps": places_enabled(), "openstreetmap": s.osm_lookup_enabled}}
     if len(q) < 2:
         return out
-    for b in db.scalars(select(Business).where(func.lower(Business.name).contains(q.lower())).order_by(Business.name).limit(4)):
+    for b in db.scalars(select(Business).where(func.lower(Business.name).contains(q.lower()), *([Business.id.in_(owner_ids)] if owner_ids is not None else [])).order_by(Business.name).limit(4)):
         out["suggestions"].append({"source": "project", "ref": str(b.id), "title": b.name,
                                    "subtitle": ", ".join(x for x in (b.primary_category, b.area, b.city) if x) or "Existing project"})
     text = f"{q} {near}".strip()

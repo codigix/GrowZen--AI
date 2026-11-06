@@ -42,7 +42,7 @@ def fake(monkeypatch, sites=SITES):
 def connect(scope=True, bid=None):
     db = SessionLocal()
     c = db.query(GoogleConnection).filter_by(email="owner@mydental.in").first() or GoogleConnection(email="owner@mydental.in")
-    c.refresh_token_enc, c.status = crypto.seal("rt"), "active"
+    c.refresh_token_enc, c.status, c.connected_by = crypto.seal("rt"), "active", "user crm:48"
     c.scopes = ("openid email " + gsc.SCOPE) if scope else "openid email https://www.googleapis.com/auth/business.manage"
     db.add(c)
     db.commit()

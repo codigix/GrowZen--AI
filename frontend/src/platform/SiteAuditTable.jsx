@@ -55,7 +55,7 @@ function Metric({ m, count }) {
   );
 }
 
-export default function SiteAuditTable({ onNew, onOverview }) {
+export default function SiteAuditTable({ onNew, onOverview, projectId }) { // projectId: show only that project's row
   const data = useApi('/businesses/site-audit');
   const [, choose] = useSeoBusiness();
   const navigate = useNavigate();
@@ -67,10 +67,10 @@ export default function SiteAuditTable({ onNew, onOverview }) {
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
-    const list = (data.data || []).filter(r => !term || `${r.name} ${r.domain || ''}`.toLowerCase().includes(term));
+    const list = (data.data || []).filter(r => (projectId == null || r.id === projectId) && (!term || `${r.name} ${r.domain || ''}`.toLowerCase().includes(term)));
     const val = (r) => (sort.key === 'last_update' ? r.last_update || '' : sort.key === 'pages_crawled' ? r.pages_crawled : sort.key === 'name' ? r.name.toLowerCase() : r.metrics[sort.key]?.value ?? -1);
     return [...list].sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sort.dir);
-  }, [data.data, q, sort]);
+  }, [data.data, q, sort, projectId]);
   const pages = Math.max(1, Math.ceil(rows.length / size));
   const shown = rows.slice((page - 1) * size, page * size);
   const open = (id) => { choose(id); navigate(`${path('website-audit')}?tab=report`); };

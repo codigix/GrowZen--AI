@@ -11,7 +11,7 @@ from ..auth import User, current_user
 from ..backlinks import autostart as backlink_autostart
 from ..backlink_service import trigger as backlink_service_trigger
 from ..db import get_db
-from ..deps import in_background
+from ..deps import in_background, my_business_ids, only_mine, owned_business
 from ..models import Business, Review
 from ..schemas import DiscoverImportIn, DiscoverIn, OnboardAssistIn, SuggestionIn
 from ..serialize import row
@@ -23,13 +23,13 @@ router = APIRouter(prefix="/discover", tags=["discover"])
 
 
 @router.post("")
-def find(body: DiscoverIn, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def find(body: DiscoverIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     try:
         out = discovery.discover(body.email.strip(), body.name.strip(), body.city.strip(), body.website.strip(), body.country.strip().upper())
     except discovery.DiscoveryError as exc:
         raise HTTPException(400, str(exc)) from exc
     for c in out["candidates"]:  # already a business here: the page offers Manage instead of Add
-        b = _existing(db, c)
+        b = _existing(db, c, user)
         c["business_id"] = b.id if b else None
     return out
 
@@ -50,10 +50,10 @@ def country_list(_: User = Depends(current_user)):
 
 
 @router.get("/suggest")
-def suggestions(q: str = "", near: str = "", session: str = "", country: str = "IN", db: Session = Depends(get_db), _: User = Depends(current_user)):
+def suggestions(q: str = "", near: str = "", session: str = "", country: str = "IN", db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Business names while typing: existing projects, Google Maps and OpenStreetMap. `session` is the
     browser's Autocomplete session token (one per search, ended by /resolve)."""
-    return suggest.suggest(db, q[:120], near[:80], session[:64], country[:2])
+    return suggest.suggest(db, q[:120], near[:80], session[:64], country[:2], my_business_ids(db, user))
 
 
 @router.post("/resolve")
@@ -100,14 +100,14 @@ def reverse_geocode(lat: float, lng: float, _: User = Depends(current_user)):
         raise HTTPException(502, f"OpenStreetMap did not answer: {exc}") from exc
 
 
-def _existing(db: Session, c: dict) -> Business | None:
+def _existing(db: Session, c: dict, user: User) -> Business | None:
     """The project this candidate already is: the same Google place, or the same phone / website with a
-    matching name. Anything weaker creates a new project rather than overwriting another business."""
+    matching name, among the user's own projects only (never another account's). Anything weaker creates a new project rather than overwriting another business."""
     if c.get("place_id"):
-        b = db.scalar(select(Business).where(Business.place_id == c["place_id"]))
+        b = db.scalar(only_mine(select(Business), user).where(Business.place_id == c["place_id"]))
         if b:
             return b
-    for b in db.scalars(select(Business)):
+    for b in db.scalars(only_mine(select(Business), user)):
         if is_same_business(b, c.get("place_id"), c.get("name"), c.get("phone"), c.get("website")):
             return b
     return None
@@ -130,9 +130,9 @@ def add(body: DiscoverImportIn, tasks: BackgroundTasks, db: Session = Depends(ge
     c = body.candidate
     if not c.get("name"):
         raise HTTPException(400, "The chosen result has no business name.")
-    b = _existing(db, c)
+    b = _existing(db, c, user)
     created = b is None
-    b = b or Business(name=c["name"], source="email", created_by=user.name)
+    b = b or Business(name=c["name"], source="email", created_by=user.name, owner_id=user.id)
     fields = {"name": c.get("name"), "address": c.get("address"), "phone": c.get("phone"), "website": c.get("website"), "lat": c.get("lat"), "lng": c.get("lng"),
               "primary_category": c.get("category"), "place_id": c.get("place_id"), "rating": c.get("rating"), "review_count": c.get("review_count"),
               "description": (c.get("description") or None)}
@@ -192,9 +192,7 @@ def add(body: DiscoverImportIn, tasks: BackgroundTasks, db: Session = Depends(ge
 @router.post("/onboard/{business_id}", status_code=202)
 def start_onboarding(business_id: int, tasks: BackgroundTasks, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Start the onboarding run (audit, fix plan, schedule) once all details and keywords are saved."""
-    b = db.get(Business, business_id)
-    if not b:
-        raise HTTPException(404, "Business not found")
+    b = owned_business(db, user, business_id)
     log(db, user.name, "onboarding_started", b.id)
     db.commit()
     # Backlink discovery starts with onboarding: the site and its competitors are tracked, the bot is switched on and explores right away.

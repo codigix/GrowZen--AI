@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, distinct, false, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
-from ..auth import current_user
+from ..auth import User, current_user
 from ..db import get_db, utcnow
-from ..deps import get_business, in_background
+from ..deps import get_business, in_background, my_business_ids
 from ..models import Business
 from . import analytics, bot, engine, frontier, insights, lookup, outcomes, outreach, quality, sync, watch
 from .lifecycle import ALL_STATES, LIVE_STATES
@@ -173,8 +173,8 @@ def _ahrefs_fallback(term: str, background: BackgroundTasks) -> dict | None:
 def lookup_backlinks(background: BackgroundTasks,
                      q: str = Query(default="", max_length=300, description="A domain, URL or word, e.g. codigix, codigix.co or https://codigix.co/blog. Leave empty or use * to list every backlink"),
                      limit: int = Query(default=10, ge=1, le=lookup.MAX_LIMIT, description="How many top results to return (up to 5000)"),
-                     db: Session = Depends(get_db)) -> dict:
-    """Search every backlink stored in the database (all businesses, no scoping) by domain, URL or word with fuzzy matching: `codigix` returns the
+                     db: Session = Depends(get_db), user: User = Depends(current_user)) -> dict:
+    """Search every backlink stored in the database (admins: all businesses; everyone else: only links to the domains their own projects track) by domain, URL or word with fuzzy matching: `codigix` returns the
     best-matching backlinks to or from codigix.co, codigixinfotech.com, blog.codigix.co and so on. Each result says whether it is `inbound` (the link
     points at what you searched for) or `outbound` (it comes from it), and inbound results come first. Leave `q` empty or use `*` to list every backlink.
     Reads the database only, except when a domain or URL query has no stored matches: then it also starts (or reuses) a live Ahrefs lookup via
@@ -192,6 +192,10 @@ def lookup_backlinks(background: BackgroundTasks,
     TD, SD = aliased(BiDomain), aliased(BiDomain)  # the whole table: every backlink with its source page and both domains
     base = (select(Backlink, BiPage, SD).join(BiPage, BiPage.id == Backlink.source_page_id).join(SD, SD.id == Backlink.source_domain_id)
             .join(TD, TD.id == Backlink.target_domain_id))
+    ids = my_business_ids(db, user)
+    if ids is not None:  # a signed-in user sees backlinks to their own projects' tracked domains, never another account's
+        own = list(db.scalars(select(BiTrackedTarget.domain).where(BiTrackedTarget.business_id.in_(ids))))
+        base = base.where(TD.registrable_domain.in_(own or [""]))
     esc = {"escape": "\\"}
     tconds, sconds, oconds, tmatch, smatch = [], [], [], {}, {}  # conditions on the link's target side, source side, and anchor text
     if list_all:

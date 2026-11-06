@@ -24,7 +24,7 @@ import { useCountries, countryInfo, countryFlag, phoneOk, LAST_COUNTRY_KEY } fro
  */
 
 const STEPS = [
-  ['find', '1. Discovery & Scope', 'Find business & target reach'],
+  ['find', '1. Connect sources', 'Website, Google profile & Meta'],
   ['review', '2. Review & Enrich', 'Verify NAP, categories & hours'],
   ['launch', '3. Launch SEO Agents', 'Audits & automated playbook']
 ];
@@ -34,7 +34,7 @@ const JOB_LABELS = { full_audit: 'Full SEO audit', rank_scan: 'Rank tracking', t
 const EVERY = { daily: 'daily', weekly: 'weekly', fortnightly: 'every 2 weeks', monthly: 'monthly' };
 const CATEGORIES = ['Dentist', 'Hospital', 'Eye care center', 'Medical clinic', 'Physiotherapist', 'Dermatologist', 'Restaurant', 'Cafe', 'Bakery', 'Hotel', 'Gym', 'Beauty salon',
   'Real estate agency', 'Lawyer', 'Accountant', 'School', 'Coaching center', 'Car repair', 'Interior designer', 'Software company', 'Manufacturer', 'Store'];
-const EMPTY = { name: '', primary_category: '', description: '', phone: '', website: '', address: '', area: '', city: '', country: 'IN', target_scope: 'local', target_countries: [], target_areas: [], contact_name: '', contact_email: '', booking_url: '', plan: 'Growth', services: [], keywords: [], attributes: [], lat: null, lng: null };
+const EMPTY = { name: '', primary_category: '', description: '', phone: '', website: '', address: '', area: '', city: '', country: 'IN', target_scope: 'local', target_countries: [], target_areas: [], contact_name: '', contact_email: '', booking_url: '', plan: 'Growth', services: [], keywords: [], attributes: [], lat: null, lng: null, social_accounts: { facebook: '', instagram: '', meta_business_id: '' } };
 
 // Google Maps and schema.org placeholders when they don't know the real category: never a category to keep.
 const realCategory = (c) => (/^(services?|organization|local ?business|corporation|business|point of interest|establishment|store|company|professional ?services?)$/i.test(String(c || '').trim()) ? '' : String(c || '').trim());
@@ -167,43 +167,6 @@ function Chips({ values, onChange, placeholder, suggestions = [], max = 6 }) {
 }
 
 /* ── Step 1: find ─────────────────────────────────────────────────────── */
-
-function CandidateCard({ c, existing, onUse, onOpenExisting }) {
-  const fromMaps = c.source === 'google_maps';
-  return (
-    <div className={`rounded ring-1 ring-inset p-4 flex flex-col gap-3 bg-white ${c.confidence === 'high' ? 'ring-emerald-300 shadow-sm' : 'ring-slate-200'}`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5 mb-1">
-            <Badge tone={fromMaps ? 'blue' : 'violet'}>{fromMaps ? <><Store size={11} /> Google Maps</> : <><Globe size={11} /> Website</>}</Badge>
-            {c.confidence === 'high' && <Badge tone="green"><CheckCircle2 size={11} /> Best match</Badge>}
-            {c.status && c.status !== 'OPERATIONAL' && <Badge tone="red">{c.status.toLowerCase().replace(/_/g, ' ')}</Badge>}
-          </div>
-          <div className="text-15 font-semibold text-slate-900">{c.name}</div>
-          {c.category && <div className="text-12 text-slate-500">{c.category}</div>}
-        </div>
-        {c.rating != null && <div className="text-right shrink-0"><div className="text-15 font-bold text-slate-900 inline-flex items-center gap-1"><Star size={14} className="fill-amber-400 text-amber-400" />{c.rating}</div>{c.review_count != null && <div className="text-11 text-slate-500">{c.review_count} reviews</div>}</div>}
-      </div>
-      <ul className="space-y-1 text-12 text-slate-700">
-        {c.address && <li className="flex gap-2"><MapPin size={13} className="text-slate-400 mt-0.5 shrink-0" />{c.address}</li>}
-        {c.phone && <li className="flex gap-2"><Phone size={13} className="text-slate-400 mt-0.5 shrink-0" />{c.phone}</li>}
-        {c.website && <li className="flex gap-2"><Globe size={13} className="text-slate-400 mt-0.5 shrink-0" /><span className="truncate">{c.website}</span></li>}
-        {c.hours?.length > 0 && <li className="flex gap-2"><Clock size={13} className="text-slate-400 mt-0.5 shrink-0" />Opening hours for {c.hours.length} days</li>}
-      </ul>
-      <div className="text-11 text-slate-500">Matched by {c.match}{c.lat != null ? ' · map pin included' : ''}</div>
-      {existing && (
-        <div className="rounded bg-amber-50 ring-1 ring-inset ring-amber-200 px-3 py-2 text-12 text-amber-900 flex items-start gap-2">
-          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-          <span>Already a project: <b>{existing.name}</b>. Using it updates that project's missing details instead of creating a duplicate. <button onClick={() => onOpenExisting(existing.id)} className="font-semibold underline cursor-pointer">Open it</button></span>
-        </div>
-      )}
-      <div className="mt-auto flex items-center justify-between gap-2">
-        {c.maps_url ? <a href={c.maps_url} target="_blank" rel="noreferrer" className="text-12 font-medium text-indigo-700 hover:underline inline-flex items-center gap-1">View on Google Maps <ExternalLink size={11} /></a> : <span />}
-        <button onClick={() => onUse(c)} className="h-9 px-3.5 rounded text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 inline-flex items-center gap-1.5 cursor-pointer">Use this <ArrowRight size={14} /></button>
-      </div>
-    </div>
-  );
-}
 
 const SOURCE_LABEL = { project: 'Existing project', google_maps: 'Google Maps', openstreetmap: 'OpenStreetMap', website: 'Website' };
 
@@ -392,314 +355,175 @@ function NameSearch({ value, onChange, city, country, onPick, onOpenExisting, on
   );
 }
 
-function FindStep({ query, setQuery, result, setResult, onUse, onManual, list, onOpenExisting }) {
-  const [busy, error, run] = useAction();
-  const [mode, setMode] = useState('name'); // name | website | email
-  const find = () => run('find', async () => {
-    const body = {
-      website: mode === 'website' ? query.website.trim() : '',
-      email: mode === 'email' ? query.email.trim() : '',
-      name: mode === 'email' ? query.name.trim() : '',
-      city: query.city.trim(),
-      country: query.country
-    };
-    if (!body.website && !body.email) {
-      throw new Error(mode === 'website' ? 'Enter the website address.' : 'Enter the client\'s email.');
-    }
-    setResult(await api('/discover', { method: 'POST', body }));
-  });
+// Meta Business Suite links: checked here the same way the server checks them (schemas.clean_social).
+function metaErrors(m = {}) {
+  const e = {};
+  const fb = String(m.facebook || '').trim();
+  if (fb && !/^(https?:\/\/)?([a-z0-9-]+\.)?(facebook|fb)\.com\/\S+/i.test(fb)) e.facebook = 'Use the Facebook page address, e.g. facebook.com/yourbusiness';
+  const ig = String(m.instagram || '').trim();
+  if (ig && !/^(?:(?:https?:\/\/)?(?:www\.)?instagram\.com\/)?@?[A-Za-z0-9._]{1,30}\/?$/i.test(ig)) e.instagram = 'Use a handle like @yourbusiness or an instagram.com link';
+  const id = String(m.meta_business_id || '').trim();
+  if (id && !/^\d{5,25}$/.test(id)) e.meta_business_id = 'The Meta Business ID is a number (Business settings → Business info)';
+  return e;
+}
+const hasMeta = (m = {}) => Boolean((m.facebook || '').trim() || (m.instagram || '').trim() || (m.meta_business_id || '').trim());
 
+const STATUS_UI = {
+  idle: ['gray', 'Not added'],
+  added: ['green', 'Added'],
+  skipped: ['amber', 'Skipped']
+};
+
+/** One source on the connect page: its own title, status and Skip, nothing shared with the other two. */
+function SourceCard({ icon: Icon, title, hint, status, onSkip, onUndo, children }) {
+  const [tone, label] = STATUS_UI[status] || STATUS_UI.idle;
+  return (
+    <section aria-label={title} className={`rounded-xl bg-white ring-1 ring-inset p-4 flex flex-col gap-3 min-w-0 ${status === 'added' ? 'ring-emerald-300' : 'ring-slate-200'}`}>
+      <header className="flex items-start gap-2.5">
+        <span className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><Icon size={17} /></span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5"><h3 className="text-[14px] font-bold text-slate-900">{title}</h3><Badge tone={tone}>{status === 'added' && <Check size={11} />} {label}</Badge></div>
+          <p className="text-[12px] text-slate-500 mt-0.5">{hint}</p>
+        </div>
+      </header>
+      {status === 'skipped' ? (
+        <div className="text-[12.5px] text-slate-500 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-3">
+          <span>Skipped. You can connect this later from the project.</span>
+          <button type="button" onClick={onUndo} className="font-semibold text-indigo-600 hover:underline cursor-pointer shrink-0">Add it now</button>
+        </div>
+      ) : children}
+      {status !== 'skipped' && onSkip && <button type="button" onClick={onSkip} className="self-start text-[12px] font-medium text-slate-400 hover:text-slate-700 cursor-pointer">Skip this source</button>}
+    </section>
+  );
+}
+
+/**
+ * Step 1: connect the project's sources. The Website, the Google Business Profile and Meta Business Suite are three separate cards:
+ * each is added (or skipped) on its own and none fills in or waits for another. They are only tied together once the project exists.
+ */
+function SourcesStep({ query, setQuery, sources, setSources, onContinue, list, onOpenExisting }) {
+  const [busy, error, run] = useAction();
+  const [siteError, setSiteError] = useState('');
   const set = (k) => (e) => setQuery({ ...query, [k]: e.target.value });
-  const onEnter = (e) => e.key === 'Enter' && find();
+  const mark = (k, patch) => setSources(x => ({ ...x, [k]: { ...x[k], ...patch } }));
+  const meta = query.social_accounts || {};
+  const setMeta = (k) => (e) => setQuery({ ...query, social_accounts: { ...meta, [k]: e.target.value } });
+  const mErr = metaErrors(meta);
+  const [metaTried, setMetaTried] = useState(false);
+  const site = sources.website, gbp = sources.gbp, mt = sources.meta;
   const freeMail = /@(gmail|googlemail|yahoo|outlook|hotmail|live|icloud|rediffmail|rediff|aol|proton|zoho)\./i.test(query.email);
 
-  const big = 'w-full h-12 pl-10 pr-3 text-[14px] rounded-xl bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 placeholder-slate-400 shadow-2xs';
+  const siteOk = () => {
+    const u = query.website.trim();
+    if (!u) { setSiteError('Enter the website address.'); return false; }
+    if (!domainOf(u).includes('.')) { setSiteError('This does not look like a website address.'); return false; }
+    setSiteError('');
+    return true;
+  };
+  const addSite = () => { if (siteOk()) mark('website', { status: 'added' }); };
+  // Reads the website's own details (name, phone, address, services). Only the website's own findings: Google Maps results are not used here.
+  const detect = () => run('detect', async () => {
+    if (!siteOk()) return;
+    const r = await api('/discover', { method: 'POST', body: { website: query.website.trim(), email: '', name: '', city: query.city.trim(), country: query.country } });
+    const found = (r.candidates || []).find(c => c.source === 'website');
+    mark('website', { status: 'added', detected: found || null, detectNote: found ? `Read “${found.name || domainOf(query.website)}” from the website` : (r.notes?.[0] || 'Nothing readable on the website; you can fill the details in next.') });
+  });
+  const addMeta = () => {
+    setMetaTried(true);
+    if (!hasMeta(meta) || Object.keys(mErr).length) return;
+    mark('meta', { status: 'added' });
+  };
+
+  const ready = site.status === 'added' || gbp.status === 'added';
+  const linked = [site.status === 'added' && 'Website', gbp.status === 'added' && 'Google Business Profile', mt.status === 'added' && 'Meta Business Suite'].filter(Boolean);
+  const big = 'w-full h-10 px-3 text-[13px] rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 placeholder-slate-400';
+  const existingOf = gbp.candidate ? findExisting(list, gbp.candidate) : null;
 
   return (
     <div className="space-y-5">
-      {/* Unified Business Onboarding & Reach Card */}
-      <Card>
-        <div className="max-w-2xl mx-auto space-y-4">
-          <div className="text-center pt-1">
-            <h2 className="text-[20px] font-bold text-slate-900 tracking-tight">Which business are you onboarding?</h2>
-            <p className="mt-1 text-[13px] text-slate-500">
-              Locate the business profile to automatically import contact details, photos, opening hours, and reviews.
-            </p>
-          </div>
+      <Card title="Connect the project's sources" subtitle="Add each one on its own: they don't need each other. Once the project is created they are linked to it and share their data.">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          {/* Website */}
+          <SourceCard icon={Globe} title="Website" hint="Audits, traffic and rankings run on this address." status={site.status}
+            onSkip={() => mark('website', { status: 'skipped', detected: null })} onUndo={() => mark('website', { status: 'idle' })}>
+            <div className="space-y-2.5">
+              <input className={big} placeholder="https://clientwebsite.com" aria-label="Website" value={query.website} inputMode="url"
+                onChange={(e) => { set('website')(e); if (site.status === 'added') mark('website', { status: 'idle', detected: null }); }} onKeyDown={(e) => e.key === 'Enter' && addSite()} />
+              <div className="flex flex-wrap gap-2">
+                <Button variant="primary" icon={Check} onClick={addSite} className="h-9 px-3 text-[12.5px]">{site.status === 'added' ? 'Website added' : 'Add website'}</Button>
+                <Button variant="secondary" icon={Search} busy={busy === 'detect'} onClick={detect} className="h-9 px-3 text-[12.5px]">Detect details</Button>
+              </div>
+              {siteError && <ErrorNote>{siteError}</ErrorNote>}
+              <ErrorNote>{error}</ErrorNote>
+              {site.status === 'added' && <p className="text-[12px] text-emerald-700">{site.detectNote || `${domainOf(query.website)} will be audited and tracked.`}</p>}
+              <p className="text-[11.5px] text-slate-400">“Detect details” only reads this website (meta tags, schema.org). It never searches Google.</p>
+            </div>
+          </SourceCard>
 
-          {/* Discovery Method Selector Tabs */}
-          <div role="tablist" className="p-1 rounded-xl bg-slate-100 flex gap-1 justify-center max-w-xl mx-auto">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'name'}
-              onClick={() => setMode('name')}
-              className={`flex-1 h-9 px-3 rounded-lg text-[12.5px] font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-all ${mode === 'name' ? 'bg-white text-indigo-900 shadow-xs ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'
-                }`}
-            >
-              <Search size={14} className={mode === 'name' ? 'text-indigo-600' : 'text-slate-400'} />
-              Google Maps Search
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'website'}
-              onClick={() => setMode('website')}
-              className={`flex-1 h-9 px-3 rounded-lg text-[12.5px] font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-all ${mode === 'website' ? 'bg-white text-indigo-900 shadow-xs ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'
-                }`}
-            >
-              <Globe size={14} className={mode === 'website' ? 'text-indigo-600' : 'text-slate-400'} />
-              Website URL
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'email'}
-              onClick={() => setMode('email')}
-              className={`flex-1 h-9 px-3 rounded-lg text-[12.5px] font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-all ${mode === 'email' ? 'bg-white text-indigo-900 shadow-xs ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'
-                }`}
-            >
-              <Mail size={14} className={mode === 'email' ? 'text-indigo-600' : 'text-slate-400'} />
-              Client Email
-            </button>
-          </div>
-
-          {/* Search Inputs based on mode */}
-          <div className="pt-1">
-            {mode === 'name' ? (
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-                  <div className="sm:col-span-3">
-                    <NameSearch
-                      value={query.name}
-                      onChange={v => setQuery({ ...query, name: v })}
-                      city={query.city}
-                      country={query.country}
-                      onPick={onUse}
-                      onOpenExisting={onOpenExisting}
-                      onManual={onManual}
-                    />
-                  </div>
-                  <div className="relative">
-                    <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                    <input
-                      value={query.city}
-                      onChange={set('city')}
-                      placeholder="City (optional)"
-                      aria-label="City"
-                      className={`${big} h-14 pl-9 text-[13px]`}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[12px] text-slate-500">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-600">Search Region / Google Index:</span>
-                    <CountrySelect
-                      value={query.country}
-                      onChange={v => setQuery({ ...query, country: v })}
-                    />
-                  </div>
-                  <span className="text-slate-400 text-[11.5px]">Type 2+ letters to search live</span>
-                </div>
+          {/* Google Business Profile */}
+          <SourceCard icon={Store} title="Google Business Profile" hint="Import the verified listing: details, hours, photos and reviews." status={gbp.status}
+            onSkip={() => mark('gbp', { status: 'skipped', candidate: null })} onUndo={() => mark('gbp', { status: 'idle' })}>
+            {gbp.status === 'added' && gbp.candidate ? (
+              <div className="rounded-lg bg-emerald-50/60 ring-1 ring-inset ring-emerald-200 p-3 text-[12.5px] space-y-1">
+                <div className="font-semibold text-slate-900">{gbp.candidate.name}</div>
+                {gbp.candidate.category && <div className="text-slate-500">{gbp.candidate.category}</div>}
+                {gbp.candidate.address && <div className="text-slate-600 flex gap-1.5"><MapPin size={12} className="mt-0.5 shrink-0 text-slate-400" />{gbp.candidate.address}</div>}
+                {existingOf && <div className="text-amber-800 flex gap-1.5"><AlertTriangle size={12} className="mt-0.5 shrink-0" /><span>Already a project: {existingOf.name}. <button type="button" onClick={() => onOpenExisting(existingOf.id)} className="underline font-semibold cursor-pointer">Open it</button></span></div>}
+                <button type="button" onClick={() => mark('gbp', { status: 'idle', candidate: null })} className="font-semibold text-indigo-600 hover:underline cursor-pointer">Choose a different listing</button>
               </div>
             ) : (
-              <div className="space-y-3">
-                <div className="relative">
-                  {mode === 'website' ? (
-                    <Globe size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  ) : (
-                    <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  )}
-                  {mode === 'website' ? (
-                    <input
-                      className={`${big} h-14 text-[14px]`}
-                      placeholder="https://clientwebsite.com"
-                      value={query.website}
-                      onChange={set('website')}
-                      onKeyDown={onEnter}
-                      aria-label="Website"
-                    />
-                  ) : (
-                    <input
-                      className={`${big} h-14 text-[14px]`}
-                      placeholder="owner@clientbusiness.com"
-                      value={query.email}
-                      onChange={set('email')}
-                      onKeyDown={onEnter}
-                      aria-label="Client's email"
-                    />
-                  )}
-                </div>
-
-                {mode === 'email' && freeMail && (
-                  <input
-                    className={`${big} pl-3.5 h-11 text-[13px]`}
-                    placeholder="Business name (required for Gmail/Yahoo/personal emails)"
-                    value={query.name}
-                    onChange={set('name')}
-                    onKeyDown={onEnter}
-                    aria-label="Business name"
-                  />
-                )}
-
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="primary"
-                      icon={Search}
-                      busy={busy === 'find'}
-                      onClick={find}
-                      className="h-10 px-4 text-[13px]"
-                    >
-                      {busy === 'find' ? 'Analyzing Website & Google Maps…' : mode === 'website' ? 'Scan & Find Business' : 'Find via Email'}
-                    </Button>
-                    <CountrySelect
-                      value={query.country}
-                      onChange={v => setQuery({ ...query, country: v })}
-                    />
-                  </div>
-                  <span className="text-[11.5px] text-slate-400">
-                    {mode === 'website' ? 'Scrapes meta tags, schema.org & Maps' : 'Extracts corporate domain automatically'}
-                  </span>
-                </div>
+              <div className="space-y-2">
+                <NameSearch value={query.name} onChange={v => setQuery({ ...query, name: v })} city={query.city} country={query.country}
+                  onPick={(c) => mark('gbp', { status: 'added', candidate: c })} onOpenExisting={onOpenExisting} onManual={() => mark('gbp', { status: 'skipped', candidate: null })} />
+                <p className="text-[11.5px] text-slate-400">Search by business name; the city and country below narrow the search.</p>
               </div>
             )}
-            <ErrorNote>{error}</ErrorNote>
-          </div>
+          </SourceCard>
 
-          {/* Merged Target Market & Scope Section */}
-          <div className="pt-4 border-t border-slate-200/80">
-            <TargetMarket
-              form={{ target_scope: 'local', target_countries: [], target_areas: [], ...query }}
-              setForm={(fn) => setQuery(typeof fn === 'function' ? fn({ target_scope: 'local', target_countries: [], target_areas: [], ...query }) : fn)}
-            />
-          </div>
-
-          {/* Unified Card Footer: Manual Entry Fallback */}
-          <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[12px] text-slate-500">
-            <span className="inline-flex items-center gap-1.5">
-              <PenLine size={13} className="text-slate-400" />
-              Setting up a brand-new business without an online listing?
-            </span>
-            <button
-              type="button"
-              onClick={onManual}
-              className="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer inline-flex items-center gap-1"
-            >
-              Enter details manually <ArrowRight size={13} />
-            </button>
-          </div>
+          {/* Meta Business Suite */}
+          <SourceCard icon={Link2} title="Meta Business Suite" hint="Facebook Page and Instagram account." status={mt.status}
+            onSkip={() => mark('meta', { status: 'skipped' })} onUndo={() => mark('meta', { status: 'idle' })}>
+            <div className="space-y-2.5">
+              <div><input className={big} placeholder="facebook.com/yourbusiness" aria-label="Facebook page" value={meta.facebook || ''} onChange={setMeta('facebook')} />{metaTried && mErr.facebook && <span className="block text-11 text-red-600 mt-1">{mErr.facebook}</span>}</div>
+              <div><input className={big} placeholder="@instagram_handle" aria-label="Instagram handle" value={meta.instagram || ''} onChange={setMeta('instagram')} />{metaTried && mErr.instagram && <span className="block text-11 text-red-600 mt-1">{mErr.instagram}</span>}</div>
+              <div><input className={big} placeholder="Meta Business ID (optional)" aria-label="Meta Business ID" value={meta.meta_business_id || ''} onChange={setMeta('meta_business_id')} inputMode="numeric" />{metaTried && mErr.meta_business_id && <span className="block text-11 text-red-600 mt-1">{mErr.meta_business_id}</span>}</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="primary" icon={Check} onClick={addMeta} className="h-9 px-3 text-[12.5px]">{mt.status === 'added' ? 'Update links' : 'Add links'}</Button>
+                <span className="text-[11.5px] text-slate-400 inline-flex items-center gap-1"><Clock size={11} /> Connect with Meta login — coming soon</span>
+              </div>
+              <p className="text-[11.5px] text-slate-400">Saved as links with the project. No Meta data is fetched yet.</p>
+            </div>
+          </SourceCard>
         </div>
       </Card>
 
-      {/* Candidate Matches Card */}
-      {result && (
-        <Card
-          title={result.candidates.length ? `Found ${result.candidates.length} possible match${result.candidates.length === 1 ? '' : 'es'}` : 'Nothing found'}
-          subtitle={result.candidates.length ? 'Pick the exact listing to import verified NAP data, reviews, and photos.' : 'Try adjusting the search criteria or enter the business details manually.'}
-        >
-          {result.notes?.length > 0 && (
-            <div className="mb-4 space-y-2">
-              {result.notes.map(n => (
-                <div key={n} className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-3 py-2 text-[12px] text-amber-900 flex gap-2">
-                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                  {n}
-                </div>
-              ))}
-            </div>
-          )}
-          {result.candidates.length ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-              {result.candidates.map((c, i) => (
-                <CandidateCard
-                  key={c.place_id || `${c.source}-${i}`}
-                  c={c}
-                  existing={findExisting(list, c)}
-                  onUse={onUse}
-                  onOpenExisting={onOpenExisting}
-                />
-              ))}
-            </div>
-          ) : (
-            <Button variant="primary" icon={PenLine} onClick={onManual}>
-              Enter details by hand
-            </Button>
-          )}
-        </Card>
-      )}
+      <Card title="Client & reach" subtitle="Who the client is and where they want customers. Used for reports, local rankings and the Google search above.">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <Field label="Business name" hint="Used if no source provides one."><input className={inputCls} value={query.bizName || ''} onChange={set('bizName')} placeholder="e.g. Sai Dental Clinic" /></Field>
+          <Field label="Client email" hint="Reports are sent here."><input className={inputCls} value={query.email} onChange={set('email')} placeholder="owner@clientbusiness.com" inputMode="email" /></Field>
+          <Field label="City"><input className={inputCls} value={query.city} onChange={set('city')} placeholder="e.g. Pune" /></Field>
+          <Field label="Country"><CountrySelect value={query.country} onChange={v => setQuery({ ...query, country: v })} className={inputCls} /></Field>
+        </div>
+        {freeMail && <p className="mt-2 text-[11.5px] text-slate-400">A personal mailbox: the business name above is what identifies the business.</p>}
+        <div className="pt-4 mt-4 border-t border-slate-200/80">
+          <TargetMarket form={{ target_scope: 'local', target_countries: [], target_areas: [], ...query }}
+            setForm={(fn) => setQuery(typeof fn === 'function' ? fn({ target_scope: 'local', target_countries: [], target_areas: [], ...query }) : fn)} />
+        </div>
+      </Card>
+
+      <div className="rounded-xl bg-indigo-50/60 ring-1 ring-inset ring-indigo-100 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[12.5px] text-slate-700 min-w-0">
+          {linked.length ? <><b className="text-slate-900">Will be linked to this project:</b> {linked.join(' · ')}<span className="text-slate-400"> · they connect with each other once the project is created</span></> : <span className="text-slate-500">Add the website or the Google Business Profile to continue.</span>}
+        </div>
+        <Button variant="primary" icon={ArrowRight} disabled={!ready} onClick={() => onContinue(false)} className="h-10 px-5 text-[13px]">Continue to review</Button>
+      </div>
+      <div className="text-[12px] text-slate-500 flex flex-wrap items-center gap-2">
+        <PenLine size={13} className="text-slate-400" /> A brand-new business with no website or listing yet?
+        <button type="button" onClick={() => onContinue(true)} className="font-semibold text-indigo-600 hover:underline cursor-pointer inline-flex items-center gap-1">Enter details manually <ArrowRight size={13} /></button>
+      </div>
     </div>
   );
 }
-
-/** Before a business is picked: what happens next. */
-function AssistantPreview() {
-  return (
-    <Card
-      title={<span className="inline-flex items-center gap-2"><Sparkles size={16} className="text-violet-600" /> Autonomous SEO Assistant</span>}
-      subtitle="Runs automatically as soon as the business is selected"
-    >
-      <div className="space-y-4">
-        {/* Live Readiness Telemetry */}
-        <div className="p-3 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200/80 space-y-2">
-          <div className="text-[11px] font-bold text-slate-500   flex items-center justify-between">
-            <span>Agent Readiness Telemetry</span>
-            <span className="flex items-center gap-1.5 text-emerald-600 font-semibold lowercase">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              active
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-[11.5px]">
-            <div className="flex items-center gap-1.5 text-slate-700">
-              <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
-              <span>Google Places API</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-slate-700">
-              <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
-              <span>PageSpeed Insights</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-slate-700">
-              <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
-              <span>SERP Rank Grid</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-slate-700">
-              <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
-              <span>NAP Cross-Checker</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Process Steps */}
-        <ul className="space-y-3">
-          {[
-            [ShieldCheck, '1. Cross-checks & Verifies NAP', 'Audits name, phone, address, website and categories across Google Maps & schema.'],
-            [AlertTriangle, '2. Flags Risks & Inconsistencies', 'Detects duplicate listings, closed flags, wrong phone formats or missing postcodes.'],
-            [Sparkles, '3. Fills Gaps Automatically', 'Pre-populates opening hours, photo assets, service descriptions, and primary categories.'],
-            [Search, '4. Discovers High-Intent Keywords', 'Extracts real local and international search queries customers type into Google.']
-          ].map(([I, t, d]) => (
-            <li key={t} className="flex items-start gap-2.5">
-              <span className="w-7 h-7 rounded-lg bg-violet-50 text-violet-600 ring-1 ring-inset ring-violet-200/60 flex items-center justify-center shrink-0 mt-0.5">
-                <I size={14} />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[13px] font-bold text-slate-800">{t}</span>
-                <span className="block text-[12px] text-slate-500 leading-snug">{d}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-
-        {/* Estimation pill */}
-        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11.5px] text-slate-400">
-          <span>Average execution: ~2 mins</span>
-          <span className="font-semibold text-indigo-600">Phase 1 of Onboarding</span>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-/* ── Step 2: review ───────────────────────────────────────────────────── */
 
 function PlanPicker({ value, onChange, plans }) {
   return (
@@ -780,7 +604,7 @@ function LocationCard({ form, setForm, source, bare = false }) {
 }
 
 const SECTIONS = [['business', 'Business', Building2], ['contact', 'Contact', Phone], ['location', 'Location', MapPin], ['services', 'Services & keywords', Tags], ['plan', 'Plan', Layers]];
-const ERROR_SECTION = { name: 'business', phone: 'contact', website: 'contact', contact_email: 'contact' };
+const ERROR_SECTION = { name: 'business', primary_category: 'business', phone: 'contact', website: 'contact', contact_email: 'contact', city: 'location', country: 'location', services: 'services', facebook: 'contact', instagram: 'contact', meta_business_id: 'contact' };
 
 /**
  * Customizable searchable select with checkboxes to select multiple international target locations (countries).
@@ -1387,8 +1211,14 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
   const errors = {
     name: !form.name.trim() && 'The business name is required.',
     phone: !digits(form.phone) ? 'A phone number is needed for the Google profile and citations.' : !phoneOk(form.phone, form.country) && `This phone number doesn't look complete for ${countryInfo(form.country).name}.`,
-    website: form.website && !domainOf(form.website).includes('.') && 'This doesn\'t look like a website address.',
-    contact_email: form.contact_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.contact_email) && 'This doesn\'t look like an email address.'
+    // Everything the project needs is asked for here, once: its audits, traffic and rank tracking all run on this website, city and category.
+    primary_category: !form.primary_category.trim() && 'Pick the main category so audits and keywords fit the business.',
+    website: !form.website.trim() ? (!source?.place_id && 'The website is required (or link a Google Business Profile): audits, traffic and rankings are shown for this site.') : !domainOf(form.website).includes('.') && 'This doesn\'t look like a website address.',
+    contact_email: !form.contact_email.trim() ? 'A contact email is needed for reports and access.' : !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.contact_email) && 'This doesn\'t look like an email address.',
+    city: !form.city.trim() && 'The city is needed to track local rankings.',
+    country: !form.country && 'Choose the country.',
+    services: !form.services.length && 'Add at least one service.',
+    ...metaErrors(form.social_accounts)
   };
   const keywordIdeas = useMemo(() => {
     const where = (form.area || form.city || '').split(',')[0].trim().toLowerCase();
@@ -1403,7 +1233,7 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
   const conflict = (...keys) => keys.some(k => f[k]?.status === 'conflict');
   const status = {
     business: (tried && errors.name) || conflict('name', 'primary_category') ? 'attention' : form.name.trim() && form.primary_category.trim() && form.description.trim().length >= 250 ? 'done' : 'todo',
-    contact: (tried && (errors.phone || errors.website || errors.contact_email)) || conflict('phone', 'website') ? 'attention' : phoneOk(form.phone, form.country) && form.website.trim() && form.contact_email.trim() ? 'done' : 'todo',
+    contact: (tried && (errors.phone || errors.website || errors.contact_email || errors.facebook || errors.instagram || errors.meta_business_id)) || conflict('phone', 'website') ? 'attention' : phoneOk(form.phone, form.country) && (form.website.trim() || source?.place_id) && form.contact_email.trim() ? 'done' : 'todo',
     location: conflict('address') ? 'attention' : /\b[1-9]\d{5}\b/.test(form.address) && form.city.trim() && form.lat != null ? 'done' : 'todo',
     services: form.services.length >= 3 && form.keywords.length >= 3 ? 'done' : 'todo',
     plan: 'done'
@@ -1413,7 +1243,8 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
   const next = () => {
     if (idx < SECTIONS.length - 1) { go(SECTIONS[idx + 1][0]); return; }
     setTried(true);
-    const bad = Object.entries(errors).find(([, v]) => v);
+    const order = Object.keys(ERROR_SECTION);
+    const bad = Object.entries(errors).filter(([, v]) => v).sort((a, b) => SECTIONS.findIndex(x => x[0] === ERROR_SECTION[a[0]]) - SECTIONS.findIndex(x => x[0] === ERROR_SECTION[b[0]]) || order.indexOf(a[0]) - order.indexOf(b[0]))[0];
     if (bad) { go(ERROR_SECTION[bad[0]]); return; }
     onNext();
   };
@@ -1457,7 +1288,7 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
                 {s?.name && <Suggestion label="Registered name" value={s.name.value} source={s.name.source} inUse={form.name === s.name.value} onUse={() => setForm(x => ({ ...x, name: s.name.value }))} />}
               </div>
               <div>
-                <Field label={label('Primary category', 'primary_category')} hint="The main Google Business Profile category."><input data-field="primary_category" className={inputCls + hl('primary_category')} list="gz-categories" value={form.primary_category} onChange={set('primary_category')} placeholder="e.g. Dentist" /><datalist id="gz-categories">{CATEGORIES.map(c => <option key={c} value={c} />)}</datalist></Field>
+                <Field label={label('Primary category *', 'primary_category')} hint="The main Google Business Profile category."><input data-field="primary_category" className={inputCls + hl('primary_category')} list="gz-categories" value={form.primary_category} onChange={set('primary_category')} placeholder="e.g. Dentist" /><datalist id="gz-categories">{CATEGORIES.map(c => <option key={c} value={c} />)}</datalist>{err('primary_category')}</Field>
                 {s?.category.value && <Suggestion label="Suggested category" value={s.category.value} source={s.category.source} inUse={form.primary_category === s.category.value} onUse={() => setForm(x => ({ ...x, primary_category: s.category.value }))} />}
               </div>
               <div>
@@ -1469,10 +1300,19 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
           {section === 'contact' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><Field label={label('Phone *', 'phone')}><input data-field="phone" className={inputCls + hl('phone')} value={form.phone} onChange={set('phone')} placeholder={countryInfo(form.country).dial ? `+${countryInfo(form.country).dial} …` : 'Phone with country code'} inputMode="tel" />{err('phone')}</Field><FieldFix field="phone" check={f.phone} value={form.phone} onPick={pick} /></div>
-              <div><Field label={label('Website', 'website')}><input data-field="website" className={inputCls + hl('website')} value={form.website} onChange={set('website')} placeholder="https://…" inputMode="url" />{err('website')}</Field><FieldFix field="website" check={f.website} value={form.website} onPick={pick} /></div>
+              <div><Field label={label('Website *', 'website')}><input data-field="website" className={inputCls + hl('website')} value={form.website} onChange={set('website')} placeholder="https://…" inputMode="url" />{err('website')}</Field><FieldFix field="website" check={f.website} value={form.website} onPick={pick} /></div>
               <Field label="Booking link"><input className={inputCls} value={form.booking_url} onChange={set('booking_url')} placeholder="Appointment / order URL" /></Field>
               <Field label="Contact person"><input className={inputCls} value={form.contact_name} onChange={set('contact_name')} placeholder="Owner or manager" /></Field>
-              <div className="md:col-span-2"><Field label="Contact email" hint="Reports are emailed here."><input data-field="contact_email" className={inputCls + hl('contact_email')} value={form.contact_email} onChange={set('contact_email')} placeholder="owner@…" inputMode="email" />{err('contact_email')}</Field></div>
+              <div className="md:col-span-2"><Field label="Contact email *" hint="Reports are emailed here."><input data-field="contact_email" className={inputCls + hl('contact_email')} value={form.contact_email} onChange={set('contact_email')} placeholder="owner@…" inputMode="email" />{err('contact_email')}</Field></div>
+              <div className="md:col-span-2 pt-3 border-t border-slate-100">
+                <div className="text-13 font-semibold text-slate-800">Online presence · Meta Business Suite</div>
+                <p className="text-12 text-slate-500 mb-3">Optional. Saved as links with the project; Meta login is coming soon.</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Field label="Facebook page"><input data-field="facebook" className={inputCls + hl('facebook')} value={form.social_accounts?.facebook || ''} onChange={e => setForm({ ...form, social_accounts: { ...form.social_accounts, facebook: e.target.value } })} placeholder="facebook.com/yourbusiness" />{err('facebook')}</Field>
+                  <Field label="Instagram"><input data-field="instagram" className={inputCls + hl('instagram')} value={form.social_accounts?.instagram || ''} onChange={e => setForm({ ...form, social_accounts: { ...form.social_accounts, instagram: e.target.value } })} placeholder="@handle" />{err('instagram')}</Field>
+                  <Field label="Meta Business ID"><input data-field="meta_business_id" className={inputCls + hl('meta_business_id')} value={form.social_accounts?.meta_business_id || ''} onChange={e => setForm({ ...form, social_accounts: { ...form.social_accounts, meta_business_id: e.target.value } })} placeholder="Optional" inputMode="numeric" />{err('meta_business_id')}</Field>
+                </div>
+              </div>
               {(s?.hours?.length > 0 || source?.hours?.length > 0) && <div className="md:col-span-2 rounded-lg bg-slate-50 ring-1 ring-inset ring-slate-200 px-3 py-2 text-12 text-slate-600 flex gap-2"><Clock size={13} className="text-slate-400 mt-0.5 shrink-0" /><span><b className="text-slate-700">Opening hours from Google Maps:</b> {(s?.hours?.length ? s.hours : source.hours).join(' · ')}</span></div>}
             </div>
           )}
@@ -1481,7 +1321,7 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
               <div><Field label={label('Street address', 'address')}><input data-field="address" className={inputCls + hl('address')} value={form.address} onChange={set('address')} placeholder="Shop / building, street, area, city, PIN" /></Field><FieldFix field="address" check={f.address} value={form.address} onPick={pick} /></div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Field label="Area / locality"><input data-field="area" className={inputCls + hl('area')} value={form.area} onChange={set('area')} placeholder="e.g. Aundh" /></Field>
-                <Field label="City"><input className={inputCls} value={form.city} onChange={set('city')} placeholder="e.g. Pune" /></Field>
+                <Field label="City *"><input data-field="city" className={inputCls + hl('city')} value={form.city} onChange={set('city')} placeholder="e.g. Pune" />{err('city')}</Field>
                 <Field label="Country" hint="Google is searched here; phone and address checks follow it."><CountrySelect value={form.country} onChange={v => setForm(x => ({ ...x, country: v }))} className={inputCls} /></Field>
               </div>
               {form.lat == null && s?.pin && <Suggestion label="Map pin" value={`${s.pin.lat.toFixed(5)}, ${s.pin.lng.toFixed(5)}`} source="Google Maps" inUse={false} onUse={() => setForm(x => ({ ...x, lat: s.pin.lat, lng: s.pin.lng }))} />}
@@ -1491,7 +1331,7 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
           )}
           {section === 'services' && (
             <div className="space-y-4">
-              <div data-field="services" className={box('services')}><Field label="Services offered" hint="Press Enter after each service."><Chips values={form.services} onChange={v => setForm({ ...form, services: v })} placeholder="e.g. Dental implants, Root canal" suggestions={s?.services.values || []} max={10} /></Field></div>
+              <div data-field="services" className={box('services')}><Field label="Services offered *" hint="Press Enter after each service."><Chips values={form.services} onChange={v => setForm({ ...form, services: v })} placeholder="e.g. Dental implants, Root canal" suggestions={s?.services.values || []} max={10} /></Field>{err('services')}</div>
               <div data-field="keywords" className={box('keywords')}><Field label="Keywords to track" hint="Suggestions are real Google searches in the area. Rank tracking starts with these."><Chips values={form.keywords} onChange={v => setForm({ ...form, keywords: v })} placeholder="e.g. dentist in aundh" suggestions={keywordIdeas} max={10} /></Field></div>
               <Field label="Attributes" hint="Shown on the Google profile, e.g. wheelchair accessible."><Chips values={form.attributes} onChange={v => setForm({ ...form, attributes: v })} placeholder="e.g. Wheelchair accessible" suggestions={ATTRIBUTE_IDEAS} /></Field>
             </div>
@@ -1574,6 +1414,7 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
         description: form.description.trim() || null, contact_name: form.contact_name.trim() || null, contact_email: form.contact_email.trim() || null,
         booking_url: normaliseUrl(form.booking_url) || null, plan: form.plan, services: form.services.map(name => ({ name })),
         attributes: form.attributes, lat: form.lat, lng: form.lng,
+        social_accounts: Object.fromEntries(Object.entries(form.social_accounts || {}).map(([k, v]) => [k, String(v || '').trim()]).filter(([, v]) => v)),
         target_scope: form.target_scope || 'local', target_countries: form.target_scope === 'international' ? form.target_countries : [], target_areas: (form.target_scope || 'local') === 'local' ? form.target_areas : []
       };
       await api(`/businesses/${b.id}`, { method: 'PATCH', repeat: true, body: Object.fromEntries(Object.entries(patch).filter(([k, v]) => v !== null || k === 'services' || k === 'attributes')) });
@@ -1663,7 +1504,7 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
       <Card title="Ready to launch" subtitle="Check the summary. Launching creates the project and starts its onboarding run.">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-13">
           <dl className="space-y-1.5">
-            {[['Business', form.name], ['Category', form.primary_category || '—'], ['Phone', form.phone], ['Website', form.website || '—'], ['Map pin', form.lat != null ? `${form.lat.toFixed(5)}, ${form.lng.toFixed(5)}` : 'Not set'], ['Location', [form.area, form.city].filter(Boolean).join(', ') || form.address || '—'], ['Contact', [form.contact_name, form.contact_email].filter(Boolean).join(' · ') || '—']].map(([k, v]) => (
+            {[['Business', form.name], ['Category', form.primary_category || '—'], ['Phone', form.phone], ['Website', form.website || '—'], ['Map pin', form.lat != null ? `${form.lat.toFixed(5)}, ${form.lng.toFixed(5)}` : 'Not set'], ['Location', [form.area, form.city].filter(Boolean).join(', ') || form.address || '—'], ['Contact', [form.contact_name, form.contact_email].filter(Boolean).join(' · ') || '—'], ['Meta', [form.social_accounts?.facebook && 'Facebook', form.social_accounts?.instagram && `@${form.social_accounts.instagram.replace(/^@/, '')}`, form.social_accounts?.meta_business_id && `ID ${form.social_accounts.meta_business_id}`].filter(Boolean).join(' · ') || 'Not linked']].map(([k, v]) => (
               <div key={k} className="flex gap-3"><dt className="w-20 shrink-0 text-slate-500">{k}</dt><dd className="text-slate-900 font-medium min-w-0 break-words">{v}</dd></div>
             ))}
           </dl>
@@ -1785,44 +1626,59 @@ export default function BusinessOnboardingPage() {
   const playbook = useApi('/playbook');
   const plans = playbook.data?.plan_schedules;
   const [step, setStep] = useState('find');
+  const NO_SOURCES = { website: { status: 'idle' }, gbp: { status: 'idle' }, meta: { status: 'idle' } };
+  const [sources, setSources] = useState(NO_SOURCES);
   const lastCountry = () => { try { return localStorage.getItem(LAST_COUNTRY_KEY) || 'IN'; } catch (e) { return 'IN'; } };
-  const [query, setQueryState] = useState(() => ({ website: '', email: '', name: '', city: '', country: lastCountry(), target_scope: 'local', target_countries: [], target_areas: [] }));
+  const [query, setQueryState] = useState(() => ({ website: '', email: '', name: '', city: '', country: lastCountry(), target_scope: 'local', target_countries: [], target_areas: [], bizName: '', social_accounts: { facebook: '', instagram: '', meta_business_id: '' } }));
   const setQuery = (q) => { setQueryState(q); try { localStorage.setItem(LAST_COUNTRY_KEY, q.country || 'IN'); } catch (e) { /* private window */ } };
-  const [result, setResult] = useState(null);
   const [source, setSource] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [followUps, setFollowUps] = useState([]);
 
   const existing = useMemo(() => findExisting(list, { ...source, name: form.name, phone: form.phone, website: form.website }), [list, source, form.name, form.phone, form.website]);
 
-  const useCandidate = (c) => {
+  // Each source stands alone; they are merged here only, filling blanks (the Google listing first, then what the website itself says).
+  // The address typed in the Website card always wins, and a listing never overwrites it.
+  const fromCandidate = (c) => {
+    if (!c) return {};
     const parts = String(c.address || '').split(',').map(p => p.trim()).filter(Boolean);
-    const city = c.city || parts.slice().reverse().find(p => !/\d/.test(p) && !/^(india|maharashtra)$/i.test(p)) || query.city;
-    setSource(c);
+    const city = c.city || parts.slice().reverse().find(p => !/\d/.test(p) && !/^(india|maharashtra)$/i.test(p)) || '';
+    return {
+      name: c.name || '', primary_category: realCategory(c.category), description: c.description || '', phone: c.phone || '', website: c.website || '',
+      address: c.address || '', city, area: c.area || (parts.length >= 3 ? parts[parts.length - 3] : ''), lat: c.lat ?? null, lng: c.lng ?? null, country: c.country || '',
+      attributes: c.attributes || [], services: c.services || []
+    };
+  };
+  const isEmpty = (v) => v === '' || v == null || (Array.isArray(v) && !v.length);
+  const continueFromSources = (manualOnly) => {
+    const gbp = manualOnly ? null : sources.gbp.status === 'added' ? sources.gbp.candidate : null;
+    const det = manualOnly ? null : sources.website.status === 'added' ? sources.website.detected : null;
+    const merged = {};
+    for (const part of [fromCandidate(gbp), fromCandidate(det)]) {
+      for (const [k, v] of Object.entries(part)) if (!isEmpty(v) && isEmpty(merged[k])) merged[k] = v;
+    }
+    const typedSite = !manualOnly && sources.website.status === 'added' ? query.website.trim() : '';
+    const meta = !manualOnly && sources.meta.status === 'added' ? query.social_accounts : EMPTY.social_accounts;
+    setSource(gbp || det || null);
     setForm({
-      ...EMPTY,
-      name: c.name || query.name, primary_category: realCategory(c.category), description: c.description || '', phone: c.phone || '',
-      website: c.website || query.website, address: c.address || '', city: city || '', area: c.area || (parts.length >= 3 ? parts[parts.length - 3] : ''),
-      contact_email: query.email || c.email || '', plan: 'Growth', lat: c.lat ?? null, lng: c.lng ?? null, country: c.country || query.country || 'IN',
-      attributes: c.attributes || [], services: c.services || [],
+      ...EMPTY, ...merged,
+      name: merged.name || query.bizName || query.name || '', website: typedSite || merged.website || (manualOnly ? query.website : ''),
+      city: merged.city || query.city || '', country: merged.country || query.country || 'IN', contact_email: query.email || '', plan: 'Growth',
+      social_accounts: { ...EMPTY.social_accounts, ...meta },
       target_scope: query.target_scope, target_countries: query.target_countries, target_areas: query.target_areas
     });
     setStep('review');
   };
-  const manual = () => {
-    setSource(null);
-    setForm({ ...EMPTY, name: query.name, website: query.website, contact_email: query.email, city: query.city, country: query.country || 'IN', target_scope: query.target_scope, target_countries: query.target_countries, target_areas: query.target_areas });
-    setStep('review');
-  };
-  const reset = () => { setStep('find'); setResult(null); setSource(null); setForm(EMPTY); setFollowUps([]); setQuery({ website: '', email: '', name: '', city: '', country: query.country || 'IN', target_scope: 'local', target_countries: [], target_areas: [] }); };
+  const reset = () => { setStep('find'); setSources(NO_SOURCES); setSource(null); setForm(EMPTY); setFollowUps([]); setQuery({ website: '', email: '', name: '', bizName: '', city: '', country: query.country || 'IN', target_scope: 'local', target_countries: [], target_areas: [], social_accounts: { facebook: '', instagram: '', meta_business_id: '' } }); };
 
   return (
-    <SeoShell title="Business Onboarding" subtitle="Add a client: find its real details, confirm them, and let the AI agents audit and plan the work" hideSwitcher needsBusiness={false}>
+    <SeoShell title="Business Onboarding" subtitle="Add a client: connect its website, Google Business Profile and Meta Business Suite, confirm the details, and let the AI agents audit and plan the work" hideSwitcher needsBusiness={false}>
       <Stepper step={step} />
-      {step === 'review' ? <ReviewStep form={form} setForm={setForm} source={source} plans={plans} existing={existing} onFollowUps={setFollowUps} onBack={() => setStep('find')} onNext={() => setStep('launch')} /> : (
-        <StepLayout side={<>{step === 'find' && <AssistantPreview />}<SourcesPanel plan={form.plan} plans={plans} showPlan={step === 'launch'} /></>}>
-          {step === 'find' && <FindStep query={query} setQuery={setQuery} result={result} setResult={setResult} onUse={useCandidate} onManual={manual} list={list} onOpenExisting={(id) => { choose(id); navigate(path('gmb-profile')); }} />}
-          {step === 'launch' && <LaunchStep form={form} source={source} existing={existing} plans={plans} followUps={followUps} onBack={() => setStep('review')} onDone={reset} />}
+      {step === 'find' && <SourcesStep query={query} setQuery={setQuery} sources={sources} setSources={setSources} onContinue={continueFromSources} list={list} onOpenExisting={(id) => { choose(id); navigate(path('gmb-profile')); }} />}
+      {step === 'review' && <ReviewStep form={form} setForm={setForm} source={source} plans={plans} existing={existing} onFollowUps={setFollowUps} onBack={() => setStep('find')} onNext={() => setStep('launch')} />}
+      {step === 'launch' && (
+        <StepLayout side={<SourcesPanel plan={form.plan} plans={plans} showPlan />}>
+          <LaunchStep form={form} source={source} existing={existing} plans={plans} followUps={followUps} onBack={() => setStep('review')} onDone={reset} />
         </StepLayout>)}
     </SeoShell>
   );

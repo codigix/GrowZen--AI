@@ -566,9 +566,10 @@ function Suggestions({ data }) {
 }
 
 function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: viewProp, initialView = 'snap' }) {
-  const last = readLast();
-  const [email, setEmail] = useState(defaultEmail || last.email || '');
-  const [website, setWebsite] = useState(defaultWebsite || (defaultEmail ? '' : last.website) || '');
+  // Inside a project (auto) the form is that project's website and nothing else: never the last site typed for another project.
+  const last = auto ? {} : readLast();
+  const [email, setEmail] = useState(auto ? defaultEmail : (defaultEmail || last.email || ''));
+  const [website, setWebsite] = useState(auto ? defaultWebsite : (defaultWebsite || (defaultEmail ? '' : last.website) || ''));
   const [days, setDays] = useState(last.days || 28);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -593,7 +594,7 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: view
       const result = await api(`/analytics/ga4/by-email?${qs}`);
       if (mine !== requestNo.current) return;
       setData(result);
-      saveLast({ email: email.trim(), website: website.trim(), days: period });
+      if (!auto) saveLast({ email: email.trim(), website: website.trim(), days: period });
     } catch (e) {
       if (mine !== requestNo.current) return;
       setData(null);
@@ -629,8 +630,8 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: view
     <div className="space-y-4 min-w-0">
       <Card title="Find website traffic" subtitle="Enter a website or domain, or the Google account that can open the site's Google Analytics. With only a website, every connected Google account is searched.">
         <form className="grid md:grid-cols-[1.4fr_1fr_140px_auto] gap-3 items-end" onSubmit={(e) => { e.preventDefault(); chosenProperty.current = null; load(); }}>
-          <Field label="Website or domain" hint="https://example.com or example.com"><input className={inputCls} placeholder="example.com" value={website} onChange={(e) => setWebsite(e.target.value)} /></Field>
-          <Field label="Google account email (optional)" hint="Leave empty to search all connected accounts"><input className={inputCls} type="email" placeholder="name@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+          <Field label="Website or domain" hint="https://example.com or example.com"><input className={inputCls} placeholder="example.com" value={website} readOnly={auto} title={auto ? "This project's website" : undefined} onChange={(e) => setWebsite(e.target.value)} /></Field>
+          <Field label="Google account email (optional)" hint="Leave empty to search all connected accounts"><input className={inputCls} type="email" placeholder="name@gmail.com" value={email} readOnly={auto} onChange={(e) => setEmail(e.target.value)} /></Field>
           <Field label="Period">
             <select className={inputCls} value={days} onChange={(e) => changePeriod(Number(e.target.value))}>
               {[[7, 'Last 7 days'], [28, 'Last 28 days'], [90, 'Last 3 months'], [180, 'Last 6 months'], [365, 'Last 12 months']].map(([n, label]) => <option key={n} value={n}>{label}</option>)}
@@ -689,17 +690,17 @@ function Page({ defaultEmail = '', defaultWebsite = '', auto = false, view: view
 /** Website traffic for one client, inside its Business Profile workspace: uses the client's connected Google email and website. */
 export function BusinessTraffic({ b, view, initialView }) {
   const live = useApi(`/businesses/${b.id}/gbp/live`);
-  if (!live.data) return live.error ? <Empty>{live.error.message}</Empty> : <SkPage header={false} statLabels={["Active users", "New users", "Sessions", "Engaged sessions", "Engagement rate", "Avg engagement time", "Event count", "Page views"]} chartTitle="Users and sessions per day" tableTitle="Pages" tableHeaders={["Page title", "Views", "Active users", "Event count", "Bounce rate"]} />;
-  const email = live.data.connection?.email || '';
+  if (!live.data && !live.error) return <SkPage header={false} statLabels={["Active users", "New users", "Sessions", "Engaged sessions", "Engagement rate", "Avg engagement time", "Event count", "Page views"]} chartTitle="Users and sessions per day" tableTitle="Pages" tableHeaders={["Page title", "Views", "Active users", "Event count", "Bounce rate"]} />;
+  const email = live.data?.connection?.email || ''; // a project with no Google link still shows its own website's traffic
   return (
     <div id="website-traffic" className="space-y-2 scroll-mt-24">
       <h2 className="text-15 font-semibold text-slate-900 pt-2">Website traffic <span className="text-12 font-normal text-slate-400">· Google Analytics 4</span></h2>
-      <Page key={`${b.id}-${email}`} defaultEmail={email} defaultWebsite={b.website || ''} auto view={view} initialView={initialView} />
+      <Page key={`${b.id}-${email}-${b.website || ''}`} defaultEmail={email} defaultWebsite={b.website || ''} auto view={view} initialView={initialView} />
     </div>
   );
 }
 
 export default function TrafficPage() {
   const { list } = useBusinesses();
-  return <SeoShell title="Website Traffic" subtitle="Visitors, sessions, channels, countries and pages from Google Analytics 4" needsBusiness={false} hideSwitcher>{(business) => (!list ? <SkPage header={false} /> : business ? <BusinessTraffic key={business.id} b={business} /> : <Page />)}</SeoShell>;
+  return <SeoShell title="Website Traffic" subtitle="Visitors, sessions, channels, countries and pages from Google Analytics 4" needsBusiness={false} hideSwitcher>{(business) => (!list ? <SkPage header={false} /> : business ? <BusinessTraffic key={business.id} b={business} /> : <Empty>Add a project first: website traffic is shown for the selected project's website only.</Empty>)}</SeoShell>;
 }

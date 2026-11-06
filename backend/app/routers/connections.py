@@ -8,7 +8,9 @@ from ..backlinks import autostart as backlink_autostart
 from ..services import audits, schedules
 from ..auth import User, current_user, require_admin
 from ..config import get_settings
+from ..conn_access import my_connection, only_my_connections
 from ..db import get_db
+from ..deps import only_mine
 from ..models import Business, GoogleConnection
 from ..schemas import ImportLocationsIn
 from ..serialize import row
@@ -18,18 +20,15 @@ from ..services.activity import log
 router = APIRouter(prefix="/connections", tags=["connections"])
 
 
-def _conn(db: Session, connection_id: int) -> GoogleConnection:
-    c = db.get(GoogleConnection, connection_id)
-    if not c:
-        raise HTTPException(404, "Connection not found")
-    return c
+def _conn(db: Session, connection_id: int, user: User) -> GoogleConnection:
+    return my_connection(db, user, connection_id)  # 404 for another account's connection
 
 
 @router.get("")
-def list_connections(db: Session = Depends(get_db), _: User = Depends(current_user)):
+def list_connections(db: Session = Depends(get_db), user: User = Depends(current_user)):
     out = []
-    for c in db.scalars(select(GoogleConnection).order_by(GoogleConnection.email)):
-        n = len(list(db.scalars(select(Business.id).where(Business.connection_id == c.id))))
+    for c in db.scalars(only_my_connections(select(GoogleConnection), user).order_by(GoogleConnection.email)):
+        n = len(list(db.scalars(only_mine(select(Business.id), user).where(Business.connection_id == c.id))))
         out.append(row(c) | {"businesses": n})
     return out
 
@@ -68,10 +67,10 @@ def google_callback(code: str = "", state: str = "", error: str = "", db: Sessio
 
 
 @router.get("/{connection_id}/locations")
-def locations(connection_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def locations(connection_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Every business location the account owns or manages, with its live status (verification, open,
     pending edits) and, when already imported, the business it became."""
-    c = _conn(db, connection_id)
+    c = _conn(db, connection_id, user)
     try:
         found = gbp.GbpClient(c).all_locations()
     except gbp.GbpError as exc:
@@ -80,14 +79,14 @@ def locations(connection_id: int, db: Session = Depends(get_db), _: User = Depen
         raise HTTPException(502, str(exc)) from exc
     c.last_error = None
     db.commit()
-    imported = dict(db.execute(select(Business.gbp_location, Business.id).where(Business.gbp_location.is_not(None))).all())
+    imported = dict(db.execute(select(Business.gbp_location, Business.id).where(Business.gbp_location.is_not(None), *([Business.owner_id == user.id] if not user.sees_all else []))).all())
     return [gbp.location_to_fields(l) | {"imported": l.get("name") in imported, "business_id": imported.get(l.get("name")), "account_role": l.get("account_role")} for l in found]
 
 
 @router.post("/{connection_id}/import")
 def import_locations(connection_id: int, body: ImportLocationsIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Import the chosen locations as businesses, sync them and run the GBP audit."""
-    c = _conn(db, connection_id)
+    c = _conn(db, connection_id, user)
     try:
         wanted = {l["name"]: l for l in gbp.GbpClient(c).all_locations() if l.get("name") in set(body.locations)}
     except gbp.GbpError as exc:
@@ -97,7 +96,10 @@ def import_locations(connection_id: int, body: ImportLocationsIn, db: Session = 
         loc = wanted.get(name)
         if not loc:
             continue
-        b = gbp.import_location(db, c, loc, user.name)
+        taken = db.scalar(select(Business).where(Business.gbp_location == name))
+        if taken and not (user.sees_all or taken.owner_id == user.id):
+            continue  # already another account's project: never taken over or shown
+        b = gbp.import_location(db, c, loc, user.name, owner_id=user.id)
         db.commit()
         try:
             gbp.sync_business(db, b)
@@ -114,9 +116,9 @@ def import_locations(connection_id: int, body: ImportLocationsIn, db: Session = 
 
 @router.post("/{connection_id}/sync")
 def sync_connection(connection_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    c = _conn(db, connection_id)
+    c = _conn(db, connection_id, user)
     done, failed = 0, []
-    for b in db.scalars(select(Business).where(Business.connection_id == c.id)):
+    for b in db.scalars(only_mine(select(Business), user).where(Business.connection_id == c.id)):
         try:
             gbp.sync_business(db, b)
             done += 1
@@ -129,7 +131,7 @@ def sync_connection(connection_id: int, db: Session = Depends(get_db), user: Use
 
 @router.delete("/{connection_id}", status_code=204)
 def disconnect(connection_id: int, db: Session = Depends(get_db), user: User = Depends(require_admin)):
-    c = _conn(db, connection_id)
+    c = _conn(db, connection_id, user)
     c.status, c.refresh_token_enc = "revoked", None
     log(db, user.name, "google_disconnected", None, email=c.email)
     db.commit()

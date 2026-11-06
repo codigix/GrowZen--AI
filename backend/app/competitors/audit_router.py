@@ -13,9 +13,9 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import current_user
+from ..auth import User, current_user
 from ..db import get_db
-from ..deps import in_background
+from ..deps import can_access, in_background, my_business_ids, owned_business
 from ..models import Audit, Business, Competitor, LighthouseAudit
 from ..schemas import CompetitorAuditIn, CompetitorCompareIn
 from ..serialize import row, rows
@@ -48,14 +48,22 @@ def _reusable(db: Session, url: str, strategy: str, max_age_hours: int, business
     return None
 
 
+def _check_audit(db: Session, user: User, a: Audit | None) -> Audit:
+    """An audit tied to a project is visible only to that project's owner (404 otherwise); one tied to none is a one-off public-site audit."""
+    if not a or a.kind != "competitor" or (a.business_id is not None and not can_access(user, db.get(Business, a.business_id))):
+        raise HTTPException(404, "Competitor audit not found")
+    return a
+
+
 @router.post("", status_code=202)
-def start(body: CompetitorAuditIn, tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def start(body: CompetitorAuditIn, tasks: BackgroundTasks, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Queue one audit per URL; poll GET /audit/competitors/{id} for each, or GET /audit/competitors for the list.
     A URL with a recent finished audit of the same strategy is reused instead of re-queued, unless `reuse_existing=false`."""
-    if body.business_id is not None and not db.get(Business, body.business_id):
-        raise HTTPException(404, "Business not found")
+    owned_business(db, user, body.business_id)
     if body.competitor_id is not None:
         comp = db.get(Competitor, body.competitor_id)
+        if comp and not can_access(user, db.get(Business, comp.business_id)):
+            comp = None
         if not comp or (body.business_id is not None and comp.business_id != body.business_id):
             raise HTTPException(404, "Competitor not found for this business")
     for url in body.urls:
@@ -79,9 +87,13 @@ def start(body: CompetitorAuditIn, tasks: BackgroundTasks, db: Session = Depends
 
 @router.get("")
 def history(business_id: int | None = None, competitor_id: int | None = None, status: str | None = None,
-            limit: int = 100, offset: int = 0, slim: bool = False, db: Session = Depends(get_db)):
+            limit: int = 100, offset: int = 0, slim: bool = False, db: Session = Depends(get_db), user: User = Depends(current_user)):
     q = select(Audit).where(Audit.kind == "competitor")
+    ids = my_business_ids(db, user)
+    if ids is not None:
+        q = q.where(Audit.business_id.in_(ids))  # a non-admin sees only audits of their own projects
     if business_id is not None:
+        owned_business(db, user, business_id)
         q = q.where(Audit.business_id == business_id)
     if competitor_id is not None:
         q = q.where(Audit.competitor_id == competitor_id)
@@ -91,11 +103,24 @@ def history(business_id: int | None = None, competitor_id: int | None = None, st
 
 
 @router.post("/compare")
-def compare(body: CompetitorCompareIn, db: Session = Depends(get_db)):
+def compare(body: CompetitorCompareIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Compare our website's existing audit against one or more competitors' existing audits.
     Does not run or re-run any audit -- only stored, finished audits are compared."""
     if not body.competitor_audit_ids and not body.competitor_ids:
         raise HTTPException(400, "Pass competitor_audit_ids or competitor_ids")
+    owned_business(db, user, body.business_id)
+    if body.our_audit_id is not None:
+        a = db.get(Audit, body.our_audit_id)
+        if a and a.business_id is not None:
+            owned_business(db, user, a.business_id)
+    for audit_id in body.competitor_audit_ids:
+        a = db.get(Audit, audit_id)
+        if a and a.business_id is not None:
+            owned_business(db, user, a.business_id)
+    for competitor_id in body.competitor_ids:
+        c = db.get(Competitor, competitor_id)
+        if c:
+            owned_business(db, user, c.business_id)
     try:
         ours = competitor_compare.resolve_our_side(db, audit_id=body.our_audit_id, business_id=body.business_id, strategy=body.strategy)
     except competitor_compare.CompareError as exc:
@@ -118,20 +143,15 @@ def compare(body: CompetitorCompareIn, db: Session = Depends(get_db)):
 
 
 @router.get("/{audit_id}")
-def get_one(audit_id: int, db: Session = Depends(get_db)):
-    a = db.get(Audit, audit_id)
-    if not a or a.kind != "competitor":
-        raise HTTPException(404, "Competitor audit not found")
-    return row(a)
+def get_one(audit_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return row(_check_audit(db, user, db.get(Audit, audit_id)))
 
 
 @router.get("/{audit_id}/html")
-def get_html(audit_id: int, db: Session = Depends(get_db)):
+def get_html(audit_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """One report page for this competitor: the Lighthouse scores plus every page the crawl
     visited (title, meta, H1, word count, images, issues) -- all `crawl_pages` worth, not just one."""
-    a = db.get(Audit, audit_id)
-    if not a or a.kind != "competitor":
-        raise HTTPException(404, "Competitor audit not found")
+    a = _check_audit(db, user, db.get(Audit, audit_id))
     if a.status != "done":
         raise HTTPException(409, f"This audit is still {a.status}; try again once it finishes.")
     if not (a.result or {}).get("crawl"):

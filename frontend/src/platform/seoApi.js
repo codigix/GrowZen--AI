@@ -39,6 +39,8 @@ async function waitUntilReachable(tries = 10) {
 const inflight = new Map();
 const answers = new Map();
 const FRESH_MS = 30000;
+/** Forget every cached answer: called on sign-out / account switch so the next user never sees the previous one's projects or data. */
+export const clearApiCache = () => { answers.clear(); inflight.clear(); };
 export const cached = (path) => { const a = answers.get(path); return a && Date.now() - a.at < FRESH_MS ? a.data : undefined; };
 
 export function api(path, opts = {}) {

@@ -88,10 +88,21 @@ class Business(TimestampMixin, Base):
     cover_photo: Mapped[str | None] = mapped_column(String(500))
     logo: Mapped[str | None] = mapped_column(String(500))
     booking_url: Mapped[str | None] = mapped_column(String(500))
+    social_accounts: Mapped[dict | None] = mapped_column(JSON)  # {facebook, instagram, meta_business_id}: linked by address (no Meta login yet), normalised by schemas.clean_social
     created_by: Mapped[str | None] = mapped_column(String(120))
+    owner_id: Mapped[str | None] = mapped_column(String(64), index=True)  # the signed-in user (User.id) whose project this is; others never see it, admins see all (deps.can_access)
     last_audit_score: Mapped[int | None] = mapped_column(Integer)
 
     connection: Mapped[GoogleConnection | None] = relationship()
+
+
+class BusinessManager(TimestampMixin, Base):
+    """An email address with manager access to a project: whoever signs in with it can open and fetch all of that project's data."""
+    __tablename__ = "business_managers"
+    __table_args__ = (UniqueConstraint("business_id", "email"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    email: Mapped[str] = mapped_column(String(255), index=True)  # lower-case
 
 
 class IntakeEmail(TimestampMixin, Base):

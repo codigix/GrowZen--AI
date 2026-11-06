@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..auth import User, current_user
 from ..config import get_settings
 from ..db import get_db
-from ..deps import get_business, in_background
+from ..deps import can_access, get_business, in_background
 from ..models import Audit, Business
 from ..serialize import row
 from . import intel
@@ -100,8 +100,10 @@ def start(body: ResearchIn, tasks: BackgroundTasks, b: Business = Depends(get_bu
 
 
 @router.get("/competitor-research/{run_id}")
-def get_run(run_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def get_run(run_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     a = _expire_stale(db, db.get(Audit, run_id))
-    if not a or a.kind != "intel":
+    # the run belongs to the project named in its target ("business:<id>"): only that project's owner may read it
+    owner = db.get(Business, int(a.target.split(":")[1])) if a and a.target and a.target.startswith("business:") and a.target.split(":")[1].isdigit() else None
+    if not a or a.kind != "intel" or not can_access(user, owner):
         raise HTTPException(404, "Competitor research not found")
     return row(a)

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..db import get_db
-from ..deps import get_business, in_background
+from ..deps import get_business, in_background, my_business_ids
 from ..models import Business, SiteProfile, WeeklyReport, WorkItem
 from ..serialize import row
 from ..services import site_research, workplan
@@ -79,9 +79,9 @@ def run_research(background: BackgroundTasks, b: Business = Depends(get_business
 
 # Weekly plan -------------------------------------------------------------------------------------------------------------------------------------
 @router.get("/workplan/overview")
-def all_projects(week: date | None = None, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def all_projects(week: date | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
     wk = workplan.week_start(week)
-    return {"week_start": wk.isoformat(), "projects": workplan.overview(db, wk)}
+    return {"week_start": wk.isoformat(), "projects": workplan.overview(db, wk, my_business_ids(db, user))}
 
 
 @router.get("/businesses/{business_id}/workplan")

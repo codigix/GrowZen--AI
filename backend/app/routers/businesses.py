@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user, require_admin
 from ..db import get_db
-from ..deps import get_business, in_background
-from ..models import AgentTask, Audit, Business, InsightDay, Lead, Review, Schedule
+from ..deps import get_business, in_background, my_business_ids, only_mine, owned_business
+from ..models import AgentTask, Audit, Business, BusinessManager, InsightDay, Lead, Review, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
 from ..services import agent, audits, discovery, gbp, reports, schedules, site_onboarding, workplan
@@ -23,13 +23,13 @@ router = APIRouter(prefix="/businesses", tags=["businesses"])
 
 
 @router.get("")
-def list_businesses(db: Session = Depends(get_db), _: User = Depends(current_user)):
+def list_businesses(db: Session = Depends(get_db), user: User = Depends(current_user)):
     # Two grouped queries for every client instead of two per client, and no raw Google payload (gbp_status.live, ~6 KB per client, read by the
     # /gbp/live endpoint only): this list loads on every page, and each database round trip is slow on a hosted database.
     pending = dict(db.execute(select(AgentTask.business_id, func.count(AgentTask.id)).where(AgentTask.status == "pending").group_by(AgentTask.business_id)).all())
     nxt = dict(db.execute(select(Schedule.business_id, func.min(Schedule.next_run_at)).where(Schedule.every != "off").group_by(Schedule.business_id)).all())
     out = []
-    for b in db.scalars(select(Business).order_by(Business.name)):
+    for b in db.scalars(only_mine(select(Business), user).order_by(Business.name)):
         r = row(b)
         r["gbp_status"] = {k: v for k, v in (r.get("gbp_status") or {}).items() if k != "live"}
         n = nxt.get(b.id)
@@ -38,21 +38,21 @@ def list_businesses(db: Session = Depends(get_db), _: User = Depends(current_use
 
 
 @router.get("/analytics")
-def analytics(weeks: int = 12, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def analytics(weeks: int = 12, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Weekly growth across every client (health, rankings, customer actions, leads, reviews, AI work, projects)."""
-    return analytics_service.summary(db, weeks)
+    return analytics_service.summary(db, weeks, my_business_ids(db, user))
 
 
 @router.get("/site-audit")
-def site_audit_table(db: Session = Depends(get_db), _: User = Depends(current_user)):
+def site_audit_table(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Every project's site health broken into crawlability, HTTPS, performance, markups, Core Web Vitals and more."""
-    return site_health.table(db)
+    return site_health.table(db, my_business_ids(db, user))
 
 
 @router.get("/rank-tracking")
-def rank_tracking_table(db: Session = Depends(get_db), _: User = Depends(current_user)):
+def rank_tracking_table(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """The Position Tracking home: every project with its visibility, change, improved and declined keywords, for Google and for AI answers."""
-    return track_table.table(db)
+    return track_table.table(db, ids=my_business_ids(db, user))
 
 
 AUDIT_DEFAULTS = {"limit": 100, "pages_to_crawl": "website", "subdomains": True, "user_agent": "desktop", "allow": [], "disallow": [], "ignore_params": [], "schedule": "off", "email": False}
@@ -93,12 +93,10 @@ def put_audit_config(body: AuditConfigIn, b: Business = Depends(get_business), d
 
 
 @router.get("/{business_id}/audit-overview")
-def audit_overview(business_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def audit_overview(business_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """The Overview page of the project's Site Audit: health, issues by type, pages to improve, trend and thematic scores."""
     from ..services import audit_overview as ov
-    b = db.get(Business, business_id)
-    if not b:
-        raise HTTPException(404, "Business not found")
+    b = owned_business(db, user, business_id)
     out = ov.for_project(db, b)
     if not out:
         raise HTTPException(404, "This project has no finished audit yet")
@@ -106,12 +104,10 @@ def audit_overview(business_id: int, db: Session = Depends(get_db), _: User = De
 
 
 @router.get("/{business_id}/audit-report")
-def audit_report(business_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def audit_report(business_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """The Site Audit tabs (Issues, Crawled Pages, Statistics, Compare Crawls, Progress, JS Impact) for the project's latest crawl and its history."""
     from ..services import audit_overview as ov
-    b = db.get(Business, business_id)
-    if not b:
-        raise HTTPException(404, "Business not found")
+    b = owned_business(db, user, business_id)
     out = ov.report_for_project(db, b)
     if not out:
         raise HTTPException(404, "This project has no finished crawl yet")
@@ -119,14 +115,14 @@ def audit_report(business_id: int, db: Session = Depends(get_db), _: User = Depe
 
 
 @router.get("/portfolio")
-def portfolio(db: Session = Depends(get_db), _: User = Depends(current_user)):
+def portfolio(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Every client with its status, plan, health, running services and what needs attention (dashboard)."""
-    return portfolio_service.summary(db)
+    return portfolio_service.summary(db, my_business_ids(db, user))
 
 
 @router.post("", status_code=201)
 def create_business(body: BusinessIn, background: BackgroundTasks, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    b = Business(**body.model_dump(), source="manual", created_by=user.name)
+    b = Business(**body.model_dump(), source="manual", created_by=user.name, owner_id=user.id)
     db.add(b)
     db.commit()
     log(db, user.name, "business_created", b.id)
@@ -359,3 +355,47 @@ def report_csv(month: str | None = None, b: Business = Depends(get_business), db
 def report_pdf(month: str | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     s = reports.monthly_summary(db, b, month)
     return Response(reports.pdf(s), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{b.name}-{s["month"]}.pdf"'})
+
+
+class OwnerIn(BaseModel):
+    user_id: str  # the User.id (platform account id, or "crm:<id>") who will own and see this project
+
+
+@router.put("/{business_id}/owner")
+def set_owner(body: OwnerIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    """Admins hand a project to a team member: only the owner (and admins) can open it."""
+    b.owner_id = body.user_id.strip()
+    log(db, user.name, "business_owner_changed", b.id, owner=b.owner_id)
+    db.commit()
+    return {"id": b.id, "owner_id": b.owner_id}
+
+
+class ManagersIn(BaseModel):
+    emails: list[str] = Field(default_factory=list, max_length=50)
+
+
+def _managers(db: Session, b: Business) -> dict:
+    return {"managers": sorted(db.scalars(select(BusinessManager.email).where(BusinessManager.business_id == b.id))),
+            "also_has_access": sorted({e.lower() for e in (b.contact_email, b.connection.email if b.connection else None) if e})}
+
+
+@router.get("/{business_id}/managers")
+def get_managers(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Emails with manager access: whoever signs in with one can open and fetch all of this project's data. The project's contact email and the email of its linked Google account always have it."""
+    return _managers(db, b)
+
+
+@router.put("/{business_id}/managers")
+def set_managers(body: ManagersIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    if not (user.sees_all or b.owner_id == user.id):
+        raise HTTPException(403, "Only the project's owner or an admin can change who manages it.")
+    want = {e.strip().lower() for e in body.emails if "@" in e}
+    have = {m.email: m for m in db.scalars(select(BusinessManager).where(BusinessManager.business_id == b.id))}
+    for e, m in have.items():
+        if e not in want:
+            db.delete(m)
+    for e in want - set(have):
+        db.add(BusinessManager(business_id=b.id, email=e))
+    log(db, user.name, "business_managers_changed", b.id, count=len(want))
+    db.commit()
+    return _managers(db, b)

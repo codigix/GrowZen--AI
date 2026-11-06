@@ -39,19 +39,27 @@ def _step(db: Session, em: IntakeEmail, key: str, status: str, note: str = "") -
     db.commit()
 
 
-def find_existing(db: Session, f: dict[str, Any]) -> Business | None:
-    """Same business already on file? The same phone or website with a matching name, else the exact name."""
-    for b in db.scalars(select(Business)):
+def default_owner(db: Session) -> str | None:
+    """Mailbox emails belong to no signed-in user: their projects go to the first admin account."""
+    from ..models import AppUser
+    a = db.scalar(select(AppUser).where(AppUser.role == "admin", AppUser.active.is_(True)).order_by(AppUser.id))
+    return str(a.id) if a else None
+
+
+def find_existing(db: Session, f: dict[str, Any], owner_id: str | None = None) -> Business | None:
+    """Same business already on file (among the owner's own projects)? The same phone or website with a matching name, else the exact name."""
+    mine = [Business.owner_id == owner_id] if owner_id else []
+    for b in db.scalars(select(Business).where(*mine)):
         if is_same_business(b, f.get("place_id"), f.get("name"), f.get("phone"), f.get("website")):
             return b
-    return db.scalar(select(Business).where(Business.name == f.get("name"))) if f.get("name") else None
+    return db.scalar(select(Business).where(Business.name == f.get("name"), *mine)) if f.get("name") else None
 
 
 def match_gbp(db: Session, b: Business) -> str:
     """Link the business to a location under a connected Google account (by phone, then name)."""
     if b.gbp_location:
         return f"Already linked ({b.gbp_location})"
-    for conn in db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active")):
+    for conn in db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.connected_by == f"user {b.owner_id}")):  # only the project owner's own Google accounts
         try:
             for loc in gbp.GbpClient(conn).all_locations():
                 f = gbp.location_to_fields(loc)
@@ -72,7 +80,7 @@ def match_gbp(db: Session, b: Business) -> str:
     return "No connected Google account manages it yet: ask the owner to add us as a manager"
 
 
-def onboard(db: Session, em: IntakeEmail, actor: str = "pipeline") -> IntakeEmail:
+def onboard(db: Session, em: IntakeEmail, actor: str = "pipeline", owner_id: str | None = None) -> IntakeEmail:
     em.status, em.error = "processing", None
     db.commit()
     try:
@@ -88,7 +96,8 @@ def onboard(db: Session, em: IntakeEmail, actor: str = "pipeline") -> IntakeEmai
         _step(db, em, "extract", "done", f"Read by {method}")
 
         _step(db, em, "profile", "running")
-        b = find_existing(db, fields) or Business(source="email", created_by=actor)
+        owner_id = owner_id or default_owner(db)
+        b = find_existing(db, fields, owner_id) or Business(source="email", created_by=actor, owner_id=owner_id)
         for src, dst in [("name", "name"), ("website", "website"), ("phone", "phone"), ("address", "address"), ("area", "area"), ("city", "city"),
                          ("category", "primary_category"), ("contact_name", "contact_name"), ("contact_email", "contact_email"), ("plan", "plan")]:
             if fields.get(src) and not getattr(b, dst, None):

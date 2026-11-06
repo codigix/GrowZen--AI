@@ -42,12 +42,25 @@ function Stepper({ step, onStep, hasReport, running }) {
   );
 }
 
+let lastProject = null; // the project this page was last opened for
+
 function SiteAudit({ b, step, setStep }) {
   const sa = useSiteAudit(b);
   const [overview, setOverview] = useState(null); // {id, initial}: that project's audit Overview (on the tab the click asked for) replaces the page until closed
   const location = useLocation();
   useCrumb(overview ? 'Overview' : STEPS.find(x => x.id === step)?.label);
   useEffect(() => { setOverview(null); }, [location.key]); // clicking Site Audit in the sidebar again goes back to the page itself
+  // Editing the project (a different project, or a new website address) starts over from the first step.
+  const first = useRef(true);
+  useEffect(() => {
+    // The page remounts per project, so a different project than last time shows up as a mount; a new website address as a change.
+    const switched = lastProject !== null && lastProject !== b.id;
+    lastProject = b.id;
+    if (first.current && !switched) { first.current = false; return; }
+    first.current = false;
+    setStep('audit');
+    setOverview(null);
+  }, [b.id, b.website]); // eslint-disable-line react-hooks/exhaustive-deps
   // When a scan finishes, move on to its report.
   const wasRunning = useRef(false);
   useEffect(() => {
@@ -63,7 +76,7 @@ function SiteAudit({ b, step, setStep }) {
       <Stepper step={current === 'loading' ? 'report' : current} onStep={setStep} hasReport={Boolean(sa.report)} running={sa.running} />
       {current === 'loading' && <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Opening the latest report…</div></Card>}
       {current === 'audit' && <AuditStep sa={sa} business={b} onOpenReport={() => setStep('report')} />}
-      {current === 'audit' && !sa.running && <SiteAuditTable onOverview={(id, initial) => setOverview({ id, initial })} />}
+      {current === 'audit' && !sa.running && <SiteAuditTable projectId={b.id} onOverview={(id, initial) => setOverview({ id, initial })} />}
       {current === 'report' && <ReportStep sa={sa} business={b} onNext={setStep} />}
       {current === 'schema' && <SchemaStudio b={b} report={sa.report} />}
     </div>
@@ -77,7 +90,7 @@ function SiteAudit({ b, step, setStep }) {
 export default function SiteAuditPage() {
   const [params, setParams] = useSearchParams();
   const raw = params.get('tab');
-  const step = STEPS.some(s => s.id === raw) ? raw : OLD_TABS[raw] || 'report'; // the latest report; step 1 when there isn't one
+  const step = STEPS.some(s => s.id === raw) ? raw : OLD_TABS[raw] || 'audit'; // always opens on step 1; the report is one click away once there is one
   const setStep = (t) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
   return (
     <SeoShell title="Website & On-Page SEO" subtitle="Audit the website, read the report, then fix and re-check: page by page, with ready-made fixes.">

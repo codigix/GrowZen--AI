@@ -493,9 +493,9 @@ def location_to_fields(loc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def import_location(db: Session, conn: GoogleConnection, loc: dict[str, Any], actor: str) -> Business:
+def import_location(db: Session, conn: GoogleConnection, loc: dict[str, Any], actor: str, owner_id: str | None = None) -> Business:
     fields = location_to_fields(loc)
-    b = db.scalar(select(Business).where(Business.gbp_location == fields["gbp_location"])) or Business(source="google", created_by=actor)
+    b = db.scalar(select(Business).where(Business.gbp_location == fields["gbp_location"])) or Business(source="google", created_by=actor, owner_id=owner_id)
     for k, v in fields.items():
         if v not in (None, "", [], {}):
             setattr(b, k, v)

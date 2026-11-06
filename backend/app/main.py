@@ -48,6 +48,8 @@ async def lifespan(_: FastAPI):
             schema.sync(engine)
             schema.mark_current(engine)
         auth.seed_admin(db, settings)
+        from .deps import backfill_owners
+        backfill_owners(db)
         lighthouse_runner.recover_interrupted(db)
         jobs.recover_stale(db, startup=True)
     except Exception as exc:  # e.g. migrations not run yet

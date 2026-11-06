@@ -7,8 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import current_user
+from ..auth import User, current_user
 from ..db import get_db
+from ..deps import owned_business
 from ..models import Business, Competitor
 from ..schemas import CompetitorManualIn, CompetitorRegisterIn
 from ..serialize import row, rows
@@ -44,7 +45,7 @@ def _upsert(db: Session, business_id: int, found: list[dict]) -> list[Competitor
 
 
 @router.post("")
-def find(body: CompetitorRegisterIn, db: Session = Depends(get_db)):
+def find(body: CompetitorRegisterIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Top competitors on Google Maps for a type of business near a location. Pass `business_id`
     to also register the ones with a website against that business."""
     try:
@@ -53,8 +54,7 @@ def find(body: CompetitorRegisterIn, db: Session = Depends(get_db)):
         raise HTTPException(400, str(exc)) from exc
     out = {"business_type": body.business_type, "location": body.location, "count": len(results), "competitors": results}
     if body.business_id is not None:
-        if not db.get(Business, body.business_id):
-            raise HTTPException(404, "Business not found")
+        owned_business(db, user, body.business_id)
         saved = _upsert(db, body.business_id, results)
         out["registered"] = rows(saved)
     return out
@@ -66,12 +66,10 @@ def _host(url: str | None) -> str:
 
 
 @router.post("/manual", status_code=201)
-def add_manual(body: CompetitorManualIn, db: Session = Depends(get_db)):
+def add_manual(body: CompetitorManualIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Register a competitor from a URL or domain the user typed. Returns the existing one when
     a competitor with the same host is already registered for this business."""
-    b = db.get(Business, body.business_id)
-    if not b:
-        raise HTTPException(404, "Business not found")
+    b = owned_business(db, user, body.business_id)
     try:
         website = validate_url_shape(homepage(body.url.strip().lower()))  # homepage() keeps only scheme + host, so lowercasing is safe
     except SSRFValidationError as exc:
@@ -92,9 +90,8 @@ def add_manual(body: CompetitorManualIn, db: Session = Depends(get_db)):
 
 
 @router.get("")
-def list_for_business(business_id: int, db: Session = Depends(get_db)):
+def list_for_business(business_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Competitors already registered against a business, for picking one to audit or compare."""
-    if not db.get(Business, business_id):
-        raise HTTPException(404, "Business not found")
+    owned_business(db, user, business_id)
     q = select(Competitor).where(Competitor.business_id == business_id).order_by(Competitor.name)
     return rows(db.scalars(q))
