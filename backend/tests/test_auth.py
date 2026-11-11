@@ -1,7 +1,11 @@
 """The platform's own login: seeded admin, sign in/out, user management, password hashing."""
+import jwt
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app.config import get_settings
+from app.auth import _crm_user
+from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.main import app
 from app.routers.auth import seed_admin
@@ -41,3 +45,12 @@ def test_login_flow():
 
     c.post("/api/v1/auth/logout")
     assert c.get("/api/v1/me").status_code == 401
+
+
+def test_crm_user_fails_closed_when_crm_is_unreachable():
+    """A CRM outage must not fall back to a trusted, role-less (effectively admin) user."""
+    settings = Settings(crm_jwt_secret="crm-secret", crm_api_url="http://127.0.0.1:1")  # nothing listens there
+    token = jwt.encode({"sub": "42"}, settings.crm_jwt_secret, algorithm="HS256")
+    with pytest.raises(HTTPException) as exc:
+        _crm_user(token, settings)
+    assert exc.value.status_code == 503
