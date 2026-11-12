@@ -33,6 +33,7 @@ const KeywordResearchPage = lazy(() => import('./platform/KeywordResearchPage'))
 const CompetitorFinderPage = lazy(() => import('./platform/CompetitorFinderPage'));
 const ContentStudioPage = lazy(() => import('./platform/ContentStudioPage'));
 const SiteAuditPage = lazy(() => import('./platform/SiteAuditPage'));
+const PageXRayPage = lazy(() => import('./platform/PageXRayPage'));
 const BacklinksCitationsPage = lazy(() => import('./platform/BacklinksCitationsPage'));
 const BacklinkIntelPage = lazy(() => import('./platform/BacklinkIntelPage'));
 const CompetitorWatchPage = lazy(() => import('./platform/CompetitorWatchPage'));
@@ -164,6 +165,7 @@ export default function App() {
         <Route path="ai-content-generation/:tab" element={<ContentStudioPage />} />
         <Route path="content-calendar" element={<Navigate to="/ai-content-generation/calendar" replace />} />
         <Route path="website-audit" element={<SiteAuditPage />} />
+        <Route path="page-xray" element={<PageXRayPage />} />
         <Route path="on-page-seo" element={<Navigate to="/website-audit?tab=site" replace />} />
         <Route path="off-page-seo" element={<BacklinksCitationsPage />} />
         <Route path="off-page-seo/:tab" element={<BacklinksCitationsPage />} />

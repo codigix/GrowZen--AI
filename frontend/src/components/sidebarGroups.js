@@ -1,4 +1,4 @@
-import { MessageSquare, BarChart3, House, Settings, Megaphone, Newspaper, MessageCircle, LayoutGrid, Activity, Award, Bookmark, Bot, Building2, CalendarDays, Columns3, FileBarChart, FileText, Globe, Layers, LayoutDashboard, Lightbulb, Link2, MapPin, Plug, Radar, ScanSearch, Search, Send, Sparkles, Star, Store, Swords, Target, TrendingUp, Users, Wand2, Workflow } from 'lucide-react';
+import { ScanLine, MessageSquare, BarChart3, House, Settings, Megaphone, Newspaper, MessageCircle, LayoutGrid, Activity, Award, Bookmark, Bot, Building2, CalendarDays, Columns3, FileBarChart, FileText, Globe, Layers, LayoutDashboard, Lightbulb, Link2, MapPin, Plug, Radar, ScanSearch, Search, Send, Sparkles, Star, Store, Swords, Target, TrendingUp, Users, Wand2, Workflow } from 'lucide-react';
 
 // The sidebar's sections and pages. Kept apart from Layout so the breadcrumbs can read the same map without a circular import.
 export const SIDEBAR_GROUPS = [
@@ -14,6 +14,7 @@ export const SIDEBAR_GROUPS = [
     title: 'Site Performance',
     items: [
       { to: '/website-audit', label: 'Site Audit', icon: ScanSearch },
+      { to: '/page-xray', label: 'Page X-Ray', icon: ScanLine },
       { to: '/rank-tracking', label: 'Position Tracking', icon: MapPin },
       { to: '/traffic', label: 'Website Traffic', icon: Activity, badge: 'New' },
 
@@ -104,7 +105,7 @@ export const SIDEBAR_SECTIONS = [
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { items: [page('/dashboard')] },
-      { title: 'Site Performance', items: [page('/website-audit'), page('/rank-tracking'), page('/traffic')] },
+      { title: 'Site Performance', items: [page('/website-audit'), page('/page-xray'), page('/rank-tracking'), page('/traffic')] },
       { title: 'Competitive Analysis', items: [page('/domain-overview'), page('/organic-rankings'), page('/top-pages'), page('/competitor-finder'), page('/competitor-watch'), page('/compare-domains'), page('/keyword-gap'), link('/backlink-intelligence/gap', 'Backlink Gap')] },
       { title: 'Keyword Research', items: [page('/keyword-overview'), page('/keyword-management/discover'), link('/keyword-management/planner', 'Google Keyword Planner'), link('/keyword-management/explorer', 'Keyword Explorer'), page('/keyword-management/topics'), page('/keyword-management/tracked')] },
       { title: 'Content Ideas', items: [page('/ai-content-generation/blog'), page('/ai-content-generation/trends'), link('/seo-brief', 'SEO Brief Generator')] },
