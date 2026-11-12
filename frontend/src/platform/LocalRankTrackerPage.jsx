@@ -1,6 +1,6 @@
 import { useCrumb } from './crumbs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import PositionTrackingHome from './PositionTrackingHome';
 import L from 'leaflet';
 import ProcessTasks from './ProcessTasks';
@@ -301,8 +301,9 @@ function Page({ b }) {
 
 export default function LocalRankTrackerPage() {
   const [params] = useSearchParams();
+  const { tab: routeTab } = useParams();
   // Without a tab the page is the list of projects; a tab opens that project's view
-  if (!params.get('tab')) {
+  if (!routeTab && !params.get('tab')) {
     return <SeoShell title="Position Tracking" subtitle="Every project's visibility on Google and in AI answers: open one to see its positions, landscape and competitors" needsBusiness={false}><PositionTrackingHome /></SeoShell>;
   }
   return (

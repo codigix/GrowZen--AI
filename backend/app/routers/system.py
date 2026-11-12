@@ -35,7 +35,7 @@ def status(_: User = Depends(current_user)):
         "places_key": bool(s.google_places_api_key or s.google_api_key),
         "serper": bool(s.serper_api_key),
         # Where rank grids, backlinks and citations come from: live Google results (Serper) or sample data.
-        "rank_source": "serper" if s.serper_api_key else "sample",
+        "rank_source": "serper" if s.serper_api_key else ("sample" if s.allow_sample_data else "unavailable"),
         "intake_imap": s.imap_enabled,
         "intake_webhook": bool(s.intake_webhook_token),
         "smtp": bool(s.smtp_host and s.smtp_from),

@@ -191,6 +191,8 @@ def default_keywords(b: Any) -> list[str]:
         out = [f"{seeds[0]} in {n}" for n in names] if seeds else []
         return (out + ([f"best {seeds[0]}"] if seeds else []))[:6]
     area = (b.area or "").split(",")[0].strip()
+    if len(area) > 40:  # a whole address line pasted into the area field is not a place name
+        area = ""
     city = (b.city or "").strip()
     out: list[str] = []
     for i, s in enumerate(seeds):

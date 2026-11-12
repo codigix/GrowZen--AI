@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Plug, CheckCircle2, ShieldCheck, Loader2, Mail } from 'lucide-react';
 import { SeoShell, Card, Tabs, StatusPill, Badge, useToast, SkList } from './SeoUi';
 import { useApi, fmtDateTime, SEO_API } from './seoApi';
-import { PLANS } from './seoMock';
+import { PLANS } from './plans';
 
 // What each backend setting switches on (names match backend/.env).
 const SOURCES = [
@@ -65,10 +65,10 @@ function Connections() {
       {tab === 'plans' && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {PLANS.map(p => (
-            <div key={p.name} className={`bg-white rounded border p-4 ${p.popular ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200'}`}>
+            <div key={p.name} className={`bg-white rounded border p-4 border-gray-200`}>
               <div className="text-15 font-semibold text-gray-900">{p.name}</div>
               <div className="text-12 text-gray-500 mt-0.5">{p.who}</div>
-              <div className="text-xl font-semibold text-gray-900 mt-3">{p.price}<span className="text-12 font-normal text-gray-500">{p.name === 'Agency' ? '' : ' / month'}</span></div>
+              <div className="text-13 font-medium text-gray-600 mt-3">{p.price}</div>
               <ul className="mt-3 space-y-1.5">{p.includes.map(i => <li key={i} className="flex gap-1.5 text-12 text-gray-700"><CheckCircle2 size={13} className="text-emerald-600 shrink-0 mt-px" />{i}</li>)}</ul>
             </div>
           ))}

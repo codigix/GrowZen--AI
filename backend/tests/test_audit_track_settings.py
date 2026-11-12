@@ -65,7 +65,7 @@ def test_subdomain_scope(monkeypatch):
 def test_audit_settings_are_saved_per_project_and_set_the_schedule(client):
     bid = client.post("/api/v1/businesses", json={"name": "Cfg Co", "website": "https://cfg.example"}).json()["id"]
     d = client.get(f"/api/v1/businesses/{bid}/audit-config").json()
-    assert d["limit"] == 100 and d["pages_to_crawl"] == "website" and d["schedule"] == "off" and d["email"] is False
+    assert d["limit"] == 300 and d["pages_to_crawl"] == "website" and d["subdomains"] is False and d["schedule"] == "off" and d["email"] is False  # all the pages of this website, nothing else
     body = {"limit": 40, "pages_to_crawl": "sitemap", "subdomains": False, "user_agent": "mobile", "allow": [" /blog* "], "disallow": ["", "/admin"], "ignore_params": ["utm_source"], "schedule": "weekly", "email": True}
     saved = client.put(f"/api/v1/businesses/{bid}/audit-config", json=body).json()
     assert saved["allow"] == ["/blog*"] and saved["disallow"] == ["/admin"] and saved["schedule"] == "weekly"

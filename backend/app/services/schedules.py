@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..errors import DataUnavailable
 from ..models import Business, Schedule
 from . import agent, notify, project_services, audits, gbp, geo, reports, organic, workplan
 from .activity import log
@@ -99,6 +100,10 @@ def run_due(db: Session, limit: int = 20) -> int:
         try:
             run_job(db, s)
             s.last_status, s.last_error = "ok", None
+        except DataUnavailable as exc:  # a key is not set up: the job is skipped (and says why), never run on invented data
+            db.rollback()
+            s.last_status, s.last_error = "skipped", exc.message[:500]
+            log(db, "scheduler", "job_skipped", s.business_id, job=s.job, reason=exc.message[:200])
         except Exception as exc:
             db.rollback()
             s.last_status, s.last_error = "failed", str(exc)[:500]

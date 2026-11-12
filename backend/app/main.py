@@ -38,12 +38,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 settings = get_settings()
-if settings.environment.lower() == "production" and settings.secret_key == "change-me":
-    raise RuntimeError("SECRET_KEY is still the default 'change-me'. Set a real SECRET_KEY before running in production.")
+from . import security_headers  # noqa: E402
+security_headers.startup_checks(settings)  # weak SECRET_KEY / wildcard CORS stop the server in every environment
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    with SessionLocal() as _db:
+        security_headers.check_encryption_key(_db, settings)  # outside the try below on purpose: this one must stop the start
     db = SessionLocal()
     try:
         if settings.schema_auto_sync and not schema.is_current(engine):
@@ -68,11 +70,23 @@ async def lifespan(_: FastAPI):
     lighthouse_runner.stop()
 
 
-app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan, **security_headers.docs_kwargs(settings))
+
+
+from fastapi.responses import JSONResponse  # noqa: E402
+from .errors import DataUnavailable  # noqa: E402
+
+
+@app.exception_handler(DataUnavailable)
+async def _data_unavailable(_request, exc: DataUnavailable):
+    """A real data source is not set up: say what to set up (503), never answer with invented numbers."""
+    return JSONResponse(status_code=503, content={"detail": exc.message, "code": "data_unavailable"})
+
 # max_age is short on purpose: browsers cache a preflight answer, and a stale one (from another process that held this port) would keep failing PATCH for 10 minutes.
 from starlette.middleware.gzip import GZipMiddleware  # noqa: E402
 app.add_middleware(GZipMiddleware, minimum_size=1000)  # JSON compresses ~10x: far less to send on every page
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"], max_age=30)
+security_headers.install(app, settings)  # security headers + cross-site request check (outside CORS)
 
 for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, competitors, competitor_audits, competitor_research, backlinks, workplan, tools, serp_search):
 # for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, html_site, competitors, competitor_audits, competitor_research, backlinks, workplan, tools):
@@ -86,6 +100,16 @@ app.include_router(watch_router, prefix=settings.api_prefix)
 app.include_router(backlink_service_router, prefix=settings.api_prefix)
 
 from .routers import review_link  # noqa: E402
+from .routers import serp_benchmark  # noqa: E402
+app.include_router(serp_benchmark.router, prefix=settings.api_prefix)
+from .routers import gbp_reports  # noqa: E402
+app.include_router(gbp_reports.router, prefix=settings.api_prefix)
+from .routers import gbp_local_seo  # noqa: E402
+app.include_router(gbp_local_seo.router, prefix=settings.api_prefix)
+from .routers import gbp_competitors  # noqa: E402
+app.include_router(gbp_competitors.router, prefix=settings.api_prefix)
+from .routers import citations_manage  # noqa: E402
+app.include_router(citations_manage.router, prefix=settings.api_prefix)
 from .routers import notifications  # noqa: E402
 app.include_router(notifications.router, prefix=settings.api_prefix)
 from .routers import gbp_create  # noqa: E402
@@ -94,6 +118,8 @@ from .routers import gbp_location  # noqa: E402
 app.include_router(gbp_location.router, prefix=settings.api_prefix)
 app.include_router(review_link.router, prefix=settings.api_prefix)
 app.include_router(review_link.public_router, prefix=settings.api_prefix)
+from .routers import chatgpt_business  # noqa: E402
+for _r in (chatgpt_business.router, chatgpt_business.overview_router, chatgpt_business.public_router, chatgpt_business.alias_router): app.include_router(_r, prefix=settings.api_prefix)
 from .routers import gbp_admin  # noqa: E402
 app.include_router(gbp_admin.router, prefix=settings.api_prefix)
 

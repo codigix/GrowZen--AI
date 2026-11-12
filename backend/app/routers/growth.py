@@ -127,6 +127,7 @@ def _scan(db: Session, business_id: int, keyword: str, size: int, radius: float)
 
 @router.post("/rank-scans", status_code=202)
 def rank_scan(body: RankScanIn, tasks: BackgroundTasks, b: Business = Depends(get_business)):
+    providers.rank_provider()  # no live Google results key: 503 data_unavailable now, not a scan that fails in the background
     tasks.add_task(in_background(_scan, b.id, body.keyword, body.grid_size, body.radius_km))
     return {"queued": True, "points": body.grid_size ** 2}
 
@@ -146,7 +147,7 @@ def geo_overview(b: Business = Depends(get_business), db: Session = Depends(get_
     latest = {}
     for g in db.scalars(select(GeoResult).where(GeoResult.business_id == b.id).order_by(GeoResult.created_at.desc()).limit(2000)):
         latest.setdefault((g.prompt_id, g.engine), row(g))
-    return {"share_of_voice": geo.share_of_voice(db, b), "prompts": prompts, "results": list(latest.values())}
+    return {"share_of_voice": geo.share_of_voice(db, b), "prompts": prompts, "results": list(latest.values()), "engines": geo.engine_status()}
 
 
 @router.post("/geo/prompts", status_code=201)
@@ -167,6 +168,7 @@ def delete_prompt(prompt_id: int, b: Business = Depends(get_business), db: Sessi
 
 @router.post("/geo/run", status_code=202)
 def geo_run(tasks: BackgroundTasks, b: Business = Depends(get_business)):
+    geo.require_engines()  # no AI engine key: 503 data_unavailable now, not a run that stores nothing
     tasks.add_task(in_background(lambda db, bid: geo.run_prompts(db, db.get(Business, bid)), b.id))
     return {"queued": True}
 

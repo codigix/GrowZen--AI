@@ -14,7 +14,9 @@ export default function Breadcrumbs({ title }) {
   let group = null; // the rail section that holds this page (the first, when several do)
   let item = null;
   for (const sec of SIDEBAR_SECTIONS) {
-    const hits = sec.groups.flatMap(g => g.items).filter(i => { const [p] = split(i.to); return p === pathname; });
+    const all = sec.groups.flatMap(g => g.items);
+    let hits = all.filter(i => { const [p] = split(i.to); return p === pathname; });
+    if (!hits.length) hits = all.filter(i => { const [p] = split(i.to); return p !== '/' && pathname.startsWith(`${p}/`); }); // /<page>/<view> with no entry of its own
     if (hits.length) { group = { title: sec.title, items: sec.groups[0].items }; item = hits.find(i => split(i.to)[1] === tab) || hits.find(i => !split(i.to)[1]) || hits[0]; break; }
   }
   const trail = [{ label: 'Home', to: '/dashboard', home: true }];

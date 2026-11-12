@@ -77,8 +77,8 @@ export function buildPlan({ form, res, source, planName, jobs }) {
         { text: `Add every service to the Google profile${services.length ? `: ${services.join(', ')}` : ''}`, owner: 'you', done: false, to: '/gmb-profile' },
         { text: has('posts') ? `Google posts ${EVERY[jobs.posts] || jobs.posts} (offers, updates, tips)` : 'Publish a Google post every week (offers, updates, tips)', owner: has('posts') ? 'ai' : 'you', detail: has('posts') ? 'Drafted by the AI agent; you approve' : null, done: false, to: '/google-posts' },
         ...(services.length
-          ? services.map(sv => ({ text: `Website page: "${sv}${where ? ` in ${where}` : ''}"`, owner: 'you', detail: 'Service and area in the title, heading and first paragraph; photos, price range, FAQs', done: false, to: '/website-builder' }))
-          : [{ text: 'Website: one page per service, each naming the area', owner: 'you', done: false, to: '/website-builder' }]),
+          ? services.map(sv => ({ text: `Website page: "${sv}${where ? ` in ${where}` : ''}"`, owner: 'you', detail: 'Service and area in the title, heading and first paragraph; photos, price range, FAQs', done: false, to: '/ai-content-generation/blog' }))
+          : [{ text: 'Website: one page per service, each naming the area', owner: 'you', done: false, to: '/ai-content-generation/blog' }]),
         { text: 'Fix the page titles, descriptions and headings found by the audit', owner: 'ai', detail: 'Drafted as low-risk fixes you can approve in bulk', done: false, to: '/automation' }
       ]
     },

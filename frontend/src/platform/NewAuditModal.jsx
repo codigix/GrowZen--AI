@@ -11,7 +11,7 @@ const STEPS = [
   { id: 'rules', label: 'Allow/disallow rules', hint: 'optional' },
   { id: 'params', label: 'URL parameter rules', hint: 'optional' }
 ];
-const DEFAULTS = { limit: 100, pages_to_crawl: 'website', subdomains: true, user_agent: 'desktop', allow: [], disallow: [], ignore_params: [], schedule: 'off', email: false };
+const DEFAULTS = { limit: 300, pages_to_crawl: 'website', subdomains: false, user_agent: 'desktop', allow: [], disallow: [], ignore_params: [], schedule: 'off', email: false };
 const WHICH = { website: 'Internally linked pages, starting from the homepage.', sitemap: 'Only the pages listed in the sitemap; links on them are not followed.', subfolder: 'Only the pages inside the folder in the address, starting from it.' };
 const lines = (t) => t.split('\n').map(x => x.trim()).filter(Boolean);
 
@@ -53,7 +53,7 @@ export default function NewAuditModal({ open, onClose, target, host, business, o
             <div className="rounded-lg bg-slate-50 px-4 py-3 flex flex-wrap items-center gap-2 text-15"><Globe size={15} className="text-slate-400" /><b className="text-slate-900">{host}</b><span className="text-slate-400">•</span>
               <label className="inline-flex items-center gap-2 text-slate-600 cursor-pointer"><input type="checkbox" checked={cfg.subdomains} onChange={e => set('subdomains', e.target.checked)} />including all subdomains</label></div>
           </Row>
-          <Row label="Limit per audit"><span className="inline-flex items-center gap-3"><input type="number" min={10} max={300} value={cfg.limit} onChange={e => set('limit', Math.max(10, Math.min(300, Number(e.target.value) || 10)))} className={`${fieldCls} w-28`} aria-label="Pages per audit" /><span className="text-15 text-slate-700">pages</span></span></Row>
+          <Row label="Limit per audit"><span className="inline-flex items-center gap-3"><input type="number" min={10} max={300} value={cfg.limit} onChange={e => set('limit', Math.max(10, Math.min(300, Number(e.target.value) || 10)))} className={`${fieldCls} w-28`} aria-label="Pages per audit" /><span className="text-15 text-slate-700">pages</span><span className="text-12.5 text-slate-400">300 covers every page of most websites</span></span></Row>
           <Row label="Pages to crawl" hint={WHICH[cfg.pages_to_crawl]}>
             <Select className={`${fieldCls} w-48`} value={cfg.pages_to_crawl} onChange={e => set('pages_to_crawl', e.target.value)} aria-label="Pages to crawl"><option value="website">Website</option><option value="sitemap">Sitemap</option><option value="subfolder">Subfolder</option></Select>
           </Row>

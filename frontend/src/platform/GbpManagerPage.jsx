@@ -11,6 +11,10 @@ import { MarketCard } from './Market';
 import { GbpAccounts, GoogleSignIn, ListingStatus, VerifyPill } from './GbpAccounts';
 import { hoursFrom, hoursTo, isAllDay, WeekEditor, StatusCard, MoreHoursCard, QuickHoursActions, LabelsField, ServiceAreaCard } from './GbpLocationExtras';
 import CreateOnGoogle from './GbpCreate';
+import CompetitorSection from './GbpCompetitors';
+import LocalSeoSection from './GbpLocalSeo';
+import GbpReportsSection from './GbpReports';
+import { viewPath } from './tabPages';
 import { api, useApi, fmtDate } from './seoApi';
 import { useCountries } from './countries';
 import { BusinessAvatar, SECTION_IDS, TAB_ALIAS, TRAFFIC_VIEWS, SectionHead, ClientBar, OverviewSection, PerformanceMetrics, ReviewsSection, ToolSection, TasksSection, SyncSection, SettingsSection } from './GbpWorkspace';
@@ -759,10 +763,12 @@ function InsightsTab({ b }) {
 }
 
 function Manager({ b, tab, setTab, toast, onConnect }) {
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const section = (tab === 'performance' && params.get('view')) ? 'traffic' : (TAB_ALIAS[tab] || tab); // old ?tab=performance&view=… links
   const sub = params.get('sub') || (tab === 'hours' || tab === 'faq' ? tab : 'live');
-  const setSub = (v) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', 'profile'); n.set('sub', v); return n; }, { replace: true });
+  const setSub = (v) => { const n = new URLSearchParams(params); n.delete('tab'); n.set('sub', v); navigate(`${viewPath(location.pathname, 'profile')}?${n.toString()}`, { replace: true }); };
   const trafficView = TRAFFIC_VIEWS.some(v => v.id === params.get('view')) ? params.get('view') : 'overview';
   const go = (id, s) => { if (id === 'profile' && s) setSub(s); else setTab(id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const [syncing, setSyncing] = useState(false);
@@ -805,7 +811,10 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
           {section === 'reviews' && <AccessGate b={b} kind="gmb"><ReviewsSection b={b} toast={toast} /></AccessGate>}
           {section === 'posts' && <><SectionHead title="Posts & Content" subtitle="What's New, Offer and Event posts with approval before publishing" sources={['google', 'ai']} /><AccessGate b={b} kind="gmb"><PostsTab b={b} toast={toast} /></AccessGate></>}
           {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><AccessGate b={b} kind="gmb"><PhotosTab b={b} toast={toast} /></AccessGate></>}
-          {['local-seo', 'aeo', 'geo', 'competitors', 'reports'].includes(section) && <ToolSection id={section} go={go} />}
+          {section === 'competitors' && <CompetitorSection b={b} />}
+          {section === 'local-seo' && <LocalSeoSection b={b} />}
+          {section === 'reports' && <GbpReportsSection b={b} toast={toast} />}
+          {['aeo', 'geo'].includes(section) && <ToolSection id={section} go={go} />}
           {section === 'ai' && <><SectionHead title="AI Recommendations" subtitle="Profile audit, health score and what to fix first" sources={['calc', 'ai']} /><AuditTab b={b} onEditProfile={() => go('profile', 'edit')} /></>}
           {section === 'tasks' && <TasksSection b={b} />}
           {section === 'sync' && <SyncSection b={b} onSync={sync} syncing={syncing} />}
@@ -855,6 +864,7 @@ export default function GbpManagerPage({ initialTab = 'overview' }) {
       <SeoShell title="Google Business Profile" subtitle="Each project's Google Business Profile, read live: profile, photos, posts, reviews and search data, plus its audit, hours and insights" needsBusiness={false}>
         {(b) => (
           <div className="space-y-5">
+            {b && isLinked(b) && <div className="flex justify-end"><Button size="sm" icon={Plus} onClick={() => setCreateOpen(true)}>Create new profile</Button></div>}
             {!(b && isLinked(b)) && (
               <div className="ai-glass-card rounded px-5 py-3 flex flex-wrap items-center gap-3">
                 <span className="flex-1 min-w-[200px] text-13 text-slate-600">Add a project's Google Business Profile.</span>

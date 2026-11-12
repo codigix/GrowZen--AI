@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { TAB_BASES, HIDE_STRIP, LIST_BASES } from './tabPages';
 import {
   ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, CheckCircle2, Info, MapPin,
   Plug, ServerCrash, Plus, Mail, Store, RefreshCw, Sparkles, Building2, ExternalLink, Cpu,
@@ -79,17 +80,6 @@ export const useSeoBusiness = () => {
   return [business, choose];
 };
 
-export const useSimulated = () => {
-  const [busy, setBusy] = useState('');
-  const timer = useRef(null);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const run = useCallback((label, fn, ms = 1100) => {
-    setBusy(label);
-    timer.current = setTimeout(() => { setBusy(''); fn(); }, ms);
-  }, []);
-  return [busy, run];
-};
-
 export const useAction = () => {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -130,7 +120,7 @@ const BusinessSwitcher = ({ business, onChange, list }) => {
             {business.name}
           </div>
           <div className="text-10 text-slate-500 truncate leading-tight mt-0.5">
-            {[business.city, business.area].filter(Boolean).join(', ') || 'PCMC, Pune'} ▾
+            {[business.city, business.area].filter(Boolean).join(', ') || 'No location set'} ▾
           </div>
         </div>
       </button>
@@ -367,15 +357,6 @@ export const SourceTag = ({ source }) => (
   ) : null
 );
 
-export const PreviewNote = ({ children }) => (
-  <div className="mb-5 p-4 rounded border border-indigo-500/25 bg-gradient-to-r from-indigo-50 via-purple-50 to-white text-13 text-indigo-800 flex items-start gap-3 shadow-lg">
-    <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-cyan-700 shrink-0 mt-0.5">
-      <Sparkles size={15} />
-    </div>
-    <div className="flex-1 font-medium leading-relaxed">{children}</div>
-  </div>
-);
-
 /**
  * Modern AI Glassmorphism Card
  */
@@ -506,13 +487,32 @@ export const Meter = ({ value, max = 100, color = SERIES[0], height = 7 }) => (
 /** A tab kept in the address (?tab=), so sidebar links can open a page on a given tab. */
 export const useUrlTab = (fallback, valid) => {
   const [params, setParams] = useSearchParams();
-  const raw = params.get('tab');
-  const tab = raw && (!valid || valid.includes(raw)) ? raw : fallback;
-  const setTab = (t) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
+  const { tab: routeTab } = useParams();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const clean = pathname.replace(/\/+$/, '') || '/';
+  const base = routeTab ? clean.replace(/\/[^/]+$/, '') : clean;
+  const paged = TAB_BASES.includes(base); // a page whose views have their own addresses: /<page>/<view>
+  const ok = (t) => Boolean(t) && (!valid || valid.includes(t));
+  const queryTab = routeTab ? null : params.get('tab');
+  const raw = routeTab || queryTab;
+  const tab = ok(raw) ? raw : fallback;
+  const goTab = (t, replace = false) => {
+    const n = new URLSearchParams(params); n.delete('tab');
+    const q = n.toString();
+    navigate(`${base}/${t}${q ? `?${q}` : ''}`, { replace });
+  };
+  useEffect(() => { // an old ?tab= link, or the bare page, becomes the view's own address
+    if (!paged || routeTab) return;
+    if (ok(queryTab)) goTab(queryTab, true);
+    else if (!LIST_BASES.includes(base)) goTab(fallback, true);
+  }, [paged, routeTab, queryTab, base]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setTab = paged ? (t) => goTab(t) : (t) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
+  setTab.locked = paged && HIDE_STRIP.includes(base); // the sidebar is the menu: no second row of tabs
   return [tab, setTab];
 };
 
-export const Tabs = ({ tabs, value, onChange }) => (
+export const Tabs = ({ tabs, value, onChange }) => (onChange && onChange.locked ? null : (
   <div className="flex gap-1 p-1 bg-white shadow-card rounded mb-5 overflow-x-auto no-scrollbar w-fit max-w-full">
     {tabs.map(t => {
       const id = typeof t === 'string' ? t : t.id;
@@ -538,7 +538,7 @@ export const Tabs = ({ tabs, value, onChange }) => (
       );
     })}
   </div>
-);
+));
 
 export const Button = ({ variant = 'secondary', size = 'md', icon: Icon, busy, children, className = '', ...rest }) => {
   const v = {

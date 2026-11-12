@@ -37,9 +37,9 @@ const BacklinksCitationsPage = lazy(() => import('./platform/BacklinksCitationsP
 const BacklinkIntelPage = lazy(() => import('./platform/BacklinkIntelPage'));
 const CompetitorWatchPage = lazy(() => import('./platform/CompetitorWatchPage'));
 const GeoTrackerPage = lazy(() => import('./platform/GeoTrackerPage'));
+const ChatGPTBusinessPage = lazy(() => import('./platform/ChatGPTBusinessPage'));
 const ReportsLeadsPage = lazy(() => import('./platform/ReportsLeadsPage'));
 const AiAgentPage = lazy(() => import('./platform/AiAgentPage'));
-const WebsiteBuilderPage = lazy(() => import('./platform/WebsiteBuilderPage'));
 const BusinessOnboardingPage = lazy(() => import('./platform/BusinessOnboardingPage'));
 const ProjectsPage = lazy(() => import('./platform/ProjectsPage'));
 const ConnectionsPage = lazy(() => import('./platform/ConnectionsPage'));
@@ -137,11 +137,14 @@ export default function App() {
         <Route path="work-plan" element={<Navigate to="/dashboard" replace />} />
         <Route path="automation-pipeline" element={<AutomationPipelinePage />} />
         <Route path="gmb-profile" element={<GbpManagerPage />} />
+        <Route path="gmb-profile/:tab" element={<GbpManagerPage />} />
         <Route path="google-posts" element={<GbpManagerPage initialTab="posts" />} />
         <Route path="media-management" element={<GbpManagerPage initialTab="photos" />} />
         <Route path="reviews" element={<ReviewManagerPage />} />
         <Route path="rank-tracking" element={<LocalRankTrackerPage />} />
+        <Route path="rank-tracking/:tab" element={<LocalRankTrackerPage />} />
         <Route path="keyword-management" element={<KeywordResearchPage />} />
+        <Route path="keyword-management/:tab" element={<KeywordResearchPage />} />
         <Route path="competitor-finder" element={<CompetitorFinderPage />} />
         <Route path="competitor-watch" element={<CompetitorWatchPage />} />
         <Route path="traffic" element={<TrafficPage />} />
@@ -152,21 +155,29 @@ export default function App() {
         <Route path="feature/:slug" element={<FeaturePage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
         <Route path="organic-rankings" element={<OrganicRankingsPage />} />
+        <Route path="organic-rankings/:tab" element={<OrganicRankingsPage />} />
         <Route path="top-pages" element={<TopPagesPage />} />
         <Route path="keyword-gap" element={<KeywordGapPage />} />
         <Route path="compare-domains" element={<CompareDomainsPage />} />
         <Route path="keyword-overview" element={<KeywordOverviewPage />} />
         <Route path="ai-content-generation" element={<ContentStudioPage />} />
-        <Route path="content-calendar" element={<Navigate to="/ai-content-generation?tab=calendar" replace />} />
+        <Route path="ai-content-generation/:tab" element={<ContentStudioPage />} />
+        <Route path="content-calendar" element={<Navigate to="/ai-content-generation/calendar" replace />} />
         <Route path="website-audit" element={<SiteAuditPage />} />
         <Route path="on-page-seo" element={<Navigate to="/website-audit?tab=site" replace />} />
         <Route path="off-page-seo" element={<BacklinksCitationsPage />} />
+        <Route path="off-page-seo/:tab" element={<BacklinksCitationsPage />} />
         <Route path="backlink-intelligence" element={<BacklinkIntelPage />} />
+        <Route path="backlink-intelligence/:tab" element={<BacklinkIntelPage />} />
         <Route path="geo-optimization" element={<GeoTrackerPage />} />
+        <Route path="geo-optimization/:tab" element={<GeoTrackerPage />} />
+        <Route path="chatgpt-business" element={<ChatGPTBusinessPage />} />
+        <Route path="chatgpt-business/:tab" element={<ChatGPTBusinessPage />} />
         <Route path="leads" element={<ReportsLeadsPage initialTab="leads" />} />
         <Route path="reports" element={<ReportsLeadsPage />} />
+        <Route path="reports/:tab" element={<ReportsLeadsPage />} />
         <Route path="automation" element={<AiAgentPage />} />
-        <Route path="website-builder" element={<WebsiteBuilderPage />} />
+        <Route path="website-builder" element={<Navigate to="/ai-content-generation/publishing" replace />} />
         <Route path="google-integrations" element={<ConnectionsPage />} />
         <Route path="connect-result" element={<ConnectResultPage />} />
         {user.is_admin && <Route path="users" element={<UsersPage me={user} />} />}

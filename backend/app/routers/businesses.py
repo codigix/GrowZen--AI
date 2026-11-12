@@ -102,14 +102,14 @@ def remove_service(module: str, b: Business = Depends(get_business), db: Session
     return {"deleted": gone, "project": project_services.row_for(db, b)}
 
 
-AUDIT_DEFAULTS = {"limit": 100, "pages_to_crawl": "website", "subdomains": True, "user_agent": "desktop", "allow": [], "disallow": [], "ignore_params": [], "schedule": "off", "email": False}
+AUDIT_DEFAULTS = {"limit": 300, "pages_to_crawl": "website", "subdomains": False, "user_agent": "desktop", "allow": [], "disallow": [], "ignore_params": [], "schedule": "off", "email": False}
 
 
 class AuditConfigIn(BaseModel):
     """The Site Audit settings: how many pages, which pages, the rules, and whether it repeats."""
-    limit: int = Field(default=100, ge=10, le=300)
+    limit: int = Field(default=300, ge=10, le=300)
     pages_to_crawl: Literal["website", "sitemap", "subfolder"] = "website"
-    subdomains: bool = True
+    subdomains: bool = False
     user_agent: Literal["desktop", "mobile"] = "desktop"
     allow: list[str] = Field(default_factory=list, max_length=50)
     disallow: list[str] = Field(default_factory=list, max_length=50)

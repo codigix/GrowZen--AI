@@ -31,6 +31,8 @@ const splitTo = (to) => { const [path, query = ''] = to.split('?'); return [path
 const isActivePath = (pathname, search, to) => {
   const [path, tab] = splitTo(to);
   if (!(pathname === path || (path !== '/dashboard' && pathname.startsWith(`${path}/`)))) return false;
+  const all = SIDEBAR_SECTIONS.flatMap(sec => sec.groups.flatMap(grp => grp.items.map(i => splitTo(i.to)[0])));
+  if (!tab && path !== pathname && all.includes(pathname)) return false; // a sibling entry is this exact page (the entry for a page's default view is active only on its own address)
   const current = new URLSearchParams(search).get('tab');
   if (tab) return current ? current === tab : SIDEBAR_GROUPS.flatMap(g => g.items).find(i => splitTo(i.to)[0] === path)?.to === to;
   if (current && SIDEBAR_SECTIONS.some(sec => sec.groups.some(grp => grp.items.some(i => { const [p, t] = splitTo(i.to); return p === path && t === current; })))) return false; // another entry owns this tab

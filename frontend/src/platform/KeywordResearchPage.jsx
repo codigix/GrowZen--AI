@@ -270,7 +270,7 @@ function Discover({ b, tracked, onTracked }) {
                       {gaps.map(k => <li key={k.keyword} className="flex items-start gap-2 text-12.5"><AlertTriangle size={13} className="text-red-500 mt-0.5 shrink-0" /><span className="flex-1 text-slate-800">{k.keyword}</span><Stars n={k.stars} /></li>)}
                     </ul>
                   ) : <div className="text-12.5 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> The site covers the main service and local searches.</div>}
-                  {gaps.length > 0 && <Link to="/website-builder" className="mt-3 inline-flex items-center gap-1 text-12 font-semibold text-indigo-700 hover:underline">Build pages in Website Builder <ExternalLink size={11} /></Link>}
+                  {gaps.length > 0 && <Link to="/ai-content-generation/blog" className="mt-3 inline-flex items-center gap-1 text-12 font-semibold text-indigo-700 hover:underline">Write an article for these searches <ExternalLink size={11} /></Link>}
                 </Card>
               )}
               {questions.length > 0 && (

@@ -423,6 +423,11 @@ def organic_research(obs: list[Obs], meta: dict[str, dict], me: str, start: date
 
 # Sample data (RANK_LANDSCAPE_MOCK, development only): generated checks run through the same code as real ones.
 def mock_obs(me: str, days: int, today: date) -> tuple[list[Obs], dict[str, dict]]:
+    from ..config import get_settings
+    from ..errors import DataUnavailable
+    cfg = get_settings()
+    if cfg.environment.lower() == "production" or not cfg.allow_sample_data:  # generated ranks are never shown as real: not in production, not without the explicit switch
+        raise DataUnavailable("Sample rank data is switched off. Rank checks use live Google results (SERPER_API_KEY).")
     import random
     rnd = random.Random(me)
     topics = {

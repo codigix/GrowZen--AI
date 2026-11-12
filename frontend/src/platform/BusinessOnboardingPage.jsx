@@ -24,9 +24,9 @@ import { useCountries, countryInfo, countryFlag, phoneOk, LAST_COUNTRY_KEY } fro
  */
 
 const STEPS = [
-  ['find', '1. Connect sources', 'Website, Google profile & Meta'],
-  ['review', '2. Review & Enrich', 'Verify NAP, categories & hours'],
-  ['launch', '3. Launch SEO Agents', 'Audits & automated playbook']
+  ['find', '1. Find the business', 'Name and city'],
+  ['confirm', '2. Check the details', 'A few quick fields'],
+  ['launch', '3. Start', 'Audits and the plan']
 ];
 const AREAS = [['gbp', 'Google profile'], ['rankings', 'Local rankings'], ['technical', 'Technical SEO'], ['onpage', 'On-page SEO'], ['backlinks', 'Backlinks'], ['citations', 'Citations']];
 const PLANS = ['Starter', 'Growth', 'Pro', 'Agency'];
@@ -66,7 +66,7 @@ function findExisting(list, c) {
 }
 
 function Stepper({ step }) {
-  const idx = STEPS.findIndex(([id]) => id === step);
+  const idx = Math.max(0, STEPS.findIndex(([id]) => id === (step === 'review' ? 'confirm' : step))); // the detailed form is still step 2
   return (
     <nav aria-label="Onboarding progress" className="mb-6">
       <div className="bg-white/90 backdrop-blur rounded-2xl ring-1 ring-slate-200/90 shadow-2xs p-3.5">
@@ -1558,7 +1558,6 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
               <>
                 <button onClick={onDone} className="h-10 px-4 rounded text-13 font-semibold bg-white ring-1 ring-inset ring-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer">Onboard another</button>
                 <button onClick={() => open('dashboard')} className="h-10 px-4 rounded text-13 font-semibold bg-white ring-1 ring-inset ring-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer">Command Center</button>
-                {log.stack?.state === 'done' && <button onClick={() => open('ai-content-generation?tab=blog')} className="h-10 px-4 rounded text-13 font-semibold bg-white ring-1 ring-inset ring-indigo-200 text-indigo-700 hover:bg-indigo-50 cursor-pointer">Set up blog publishing</button>}
                 <button onClick={() => open('gmb-profile')} className="h-10 px-4 rounded text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 inline-flex items-center gap-1.5 cursor-pointer">Open project <ArrowRight size={14} /></button>
               </>
             )}
@@ -1618,6 +1617,141 @@ function SourcesPanel({ plan, plans, showPlan = false }) {
 
 /* ── Page ─────────────────────────────────────────────────────────────── */
 
+/**
+ * The short way in. Step 1: say which business it is (Google finds it and fills the rest). Step 2: check a handful of details and add it.
+ * Everything else (services, where customers are, Meta links, the plan) is optional and tucked under "More options".
+ * The detailed forms below still exist: "Use the detailed form".
+ */
+function QuickFind({ query, setQuery, sources, setSources, onContinue, onOpenExisting, onAdvanced, onManual, busy }) {
+  const gbp = sources.gbp;
+  const mark = (patch) => setSources(x => ({ ...x, gbp: { ...x.gbp, ...patch } }));
+  const set = (k) => (e) => setQuery({ ...query, [k]: e.target.value });
+  const chosen = gbp.status === 'added' && gbp.candidate;
+  const [tried, setTried] = useState(false);
+  const ready = Boolean(chosen || (query.name.trim() && query.city.trim()) || query.website.trim());
+  const go = () => { setTried(true); if (ready) onContinue(); };
+  return (
+    <div className="max-w-3xl mx-auto space-y-4">
+      <Card>
+        <div className="text-center pt-2 pb-4">
+          <span className="inline-flex w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 items-center justify-center"><Store size={22} /></span>
+          <h2 className="text-20 font-semibold text-slate-900 mt-3">Which business are you adding?</h2>
+          <p className="text-13 text-slate-500 mt-1">Type its name and city. We look it up on Google and fill in the details for you.</p>
+        </div>
+
+        {chosen ? (
+          <div className="rounded-xl bg-emerald-50/70 ring-1 ring-inset ring-emerald-200 p-4 space-y-1.5">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 size={20} className="text-emerald-600 mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-15 font-semibold text-slate-900">{gbp.candidate.name}</div>
+                {gbp.candidate.category && <div className="text-13 text-slate-600">{gbp.candidate.category}</div>}
+                {gbp.candidate.address && <div className="text-13 text-slate-600 flex gap-1.5 mt-1"><MapPin size={13} className="mt-0.5 shrink-0 text-slate-400" />{gbp.candidate.address}</div>}
+                {gbp.candidate.rating != null && <div className="text-12.5 text-slate-500 mt-1"><Star size={12} className="inline text-amber-400 fill-amber-400 mr-0.5" />{gbp.candidate.rating}{gbp.candidate.review_count ? ` · ${gbp.candidate.review_count} reviews` : ''}</div>}
+              </div>
+              <button type="button" onClick={() => mark({ status: 'idle', candidate: null })} className="text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer shrink-0">Not this one</button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_200px] gap-3">
+              <div>
+                <div className="text-12 font-medium text-slate-600 mb-1">Business name</div>
+                <NameSearch value={query.name} onChange={v => setQuery({ ...query, name: v })} city={query.city} country={query.country}
+                  onPick={(c) => mark({ status: 'added', candidate: c })} onOpenExisting={onOpenExisting} onManual={onManual} />
+              </div>
+              <Field label="City"><input className={inputCls} value={query.city} onChange={set('city')} placeholder="e.g. Pune" aria-label="City" /></Field>
+            </div>
+            <Field label="Website (optional)" hint="If you have one, we read its details and audit it."><input className={inputCls} value={query.website} onChange={set('website')} placeholder="https://yourbusiness.com" inputMode="url" onKeyDown={e => e.key === 'Enter' && go()} /></Field>
+            {tried && !ready && <p className="text-12.5 text-red-600">Type the business name and city, or a website address.</p>}
+          </div>
+        )}
+
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <Button variant="primary" icon={ArrowRight} busy={busy} disabled={!ready && tried} onClick={go} className="h-11 px-6 text-14">Continue</Button>
+          <span className="text-12.5 text-slate-500">Takes about a minute. You can change everything after.</span>
+        </div>
+      </Card>
+
+      <div className="text-12.5 text-slate-500 flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
+        <button type="button" onClick={onManual} className="font-semibold text-indigo-600 hover:underline cursor-pointer inline-flex items-center gap-1"><PenLine size={13} />Not on Google yet? Enter the details yourself</button>
+        <button type="button" onClick={onAdvanced} className="hover:text-slate-700 hover:underline cursor-pointer">Use the detailed source form (Meta, several sources)</button>
+      </div>
+    </div>
+  );
+}
+
+function QuickConfirm({ form, setForm, source, plans, existing, onBack, onNext, onDetailed }) {
+  const rows = useCountries();
+  const [tried, setTried] = useState(false);
+  const [more, setMore] = useState(false);
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const errors = {
+    name: !form.name.trim() && 'Enter the business name.',
+    city: !form.city.trim() && 'Enter the city: it is used to track local rankings.',
+    country: !form.country && 'Choose the country.',
+    phone: form.phone.trim() && !phoneOk(form.phone, form.country) && `This phone number does not look complete for ${countryInfo(form.country)?.name || 'this country'}.`,
+    website: form.website.trim() && !domainOf(form.website).includes('.') && 'This does not look like a website address.',
+    contact_email: form.contact_email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.contact_email.trim()) && 'This does not look like an email address.'
+  };
+  const bad = Object.values(errors).some(Boolean);
+  const err = (k) => (tried && errors[k] ? <span className="block text-11.5 text-red-600 mt-1">{errors[k]}</span> : null);
+  const next = () => { setTried(true); if (!bad) onNext(); };
+  const missing = [!form.phone.trim() && 'phone', !form.website.trim() && 'website', !form.primary_category.trim() && 'category'].filter(Boolean);
+  const meta = form.social_accounts || {};
+  const setMeta = (k) => (e) => setForm({ ...form, social_accounts: { ...meta, [k]: e.target.value } });
+  return (
+    <div className="max-w-3xl mx-auto space-y-4">
+      {source && (
+        <div className="rounded-xl bg-emerald-50/70 ring-1 ring-inset ring-emerald-200 px-4 py-2.5 flex flex-wrap items-center gap-x-3 text-13 text-slate-700">
+          <CheckCircle2 size={16} className="text-emerald-600" />
+          <span>Details filled in from <b>{{ google_maps: 'Google Maps', openstreetmap: 'OpenStreetMap', website: 'the website' }[source.source] || 'what you entered'}</b>. Check them and fix anything that is wrong.</span>
+          {source.maps_url && <a href={source.maps_url} target="_blank" rel="noreferrer" className="ml-auto font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1">View listing <ExternalLink size={12} /></a>}
+        </div>
+      )}
+      {existing && <div className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-2.5 text-13 text-amber-900 flex gap-2"><AlertTriangle size={16} className="shrink-0 mt-0.5" /><span>This looks like the existing project <b>{existing.name}</b>. Adding it updates that project instead of making a copy.</span></div>}
+
+      <Card title="Check the details" subtitle="Only the first three are needed. The rest makes the audits and the Google profile better.">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+          <div className="md:col-span-2"><Field label="Business name *" hint="The real name on the signboard, without keywords."><input className={inputCls} value={form.name} onChange={set('name')} autoFocus />{err('name')}</Field></div>
+          <Field label="City *"><input className={inputCls} value={form.city} onChange={set('city')} placeholder="e.g. Pune" />{err('city')}</Field>
+          <Field label="Country *"><CountrySelect value={form.country} onChange={v => setForm({ ...form, country: v })} className={inputCls} />{err('country')}</Field>
+          <Field label="What kind of business is it?" hint="Pick or type, e.g. Dentist, Restaurant, Clothing rental.">
+            <input className={inputCls} list="onb-categories" value={form.primary_category} onChange={set('primary_category')} placeholder="e.g. Clothing rental service" />
+            <datalist id="onb-categories">{CATEGORIES.map(c => <option key={c} value={c} />)}</datalist>
+          </Field>
+          <Field label="Phone"><input type="tel" className={inputCls} value={form.phone} onChange={set('phone')} placeholder="+91 …" />{err('phone')}</Field>
+          <Field label="Website"><input className={inputCls} value={form.website} onChange={set('website')} placeholder="https://" inputMode="url" />{err('website')}</Field>
+          <Field label="Email for reports" hint="Monthly reports are sent here."><input className={inputCls} value={form.contact_email} onChange={set('contact_email')} placeholder="owner@business.com" inputMode="email" />{err('contact_email')}</Field>
+          <div className="md:col-span-2"><Field label="Address"><input className={inputCls} value={form.address} onChange={set('address')} placeholder="Shop number, street, area" /></Field></div>
+        </div>
+        {missing.length > 0 && <p className="mt-3 text-12.5 text-slate-500">You can add the {missing.join(', ')} later. The audits start with what you have.</p>}
+      </Card>
+
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 overflow-hidden">
+        <button type="button" onClick={() => setMore(m => !m)} aria-expanded={more} className="w-full px-4 py-3 flex items-center gap-2 text-left cursor-pointer hover:bg-slate-50">
+          <Layers size={16} className="text-slate-400" /><span className="flex-1"><span className="text-14 font-semibold text-slate-800">More options</span><span className="text-12.5 text-slate-500"> · services, where your customers are, Facebook and Instagram, plan. All optional.</span></span>
+          {more ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+        </button>
+        {more && (
+          <div className="px-4 pb-4 pt-1 space-y-5 border-t border-slate-100">
+            <Field label="Services you offer" hint="Press Enter after each one. They go on the Google profile and shape the keywords."><Chips values={form.services} onChange={v => setForm({ ...form, services: v })} placeholder="e.g. Lehenga rental" max={12} /></Field>
+            <TargetMarket form={form} setForm={setForm} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Field label="Facebook page"><input className={inputCls} value={meta.facebook || ''} onChange={setMeta('facebook')} placeholder="facebook.com/yourbusiness" /></Field>
+              <Field label="Instagram"><input className={inputCls} value={meta.instagram || ''} onChange={setMeta('instagram')} placeholder="@yourbusiness" /></Field>
+            </div>
+            <div><div className="text-12.5 font-semibold text-slate-700 mb-2">Plan <span className="font-normal text-slate-400">(you can change it later)</span></div><PlanPicker value={form.plan} onChange={p => setForm({ ...form, plan: p })} plans={plans} /></div>
+          </div>
+        )}
+      </div>
+
+      <div className="text-12.5 text-slate-500 text-center"><button type="button" onClick={onDetailed} className="hover:text-slate-700 hover:underline cursor-pointer">Want every field? Use the detailed form</button></div>
+      <ActionBar onBack={onBack} backLabel="Back" onNext={next} nextLabel="Add this business" nextIcon={Rocket} hint={bad && tried ? 'Fix the highlighted fields to continue' : 'Next we start the audits and build the plan'} />
+    </div>
+  );
+}
+
 export default function BusinessOnboardingPage() {
   const navigate = useNavigate();
   const path = useModulePath();
@@ -1626,6 +1760,8 @@ export default function BusinessOnboardingPage() {
   const playbook = useApi('/playbook');
   const plans = playbook.data?.plan_schedules;
   const [step, setStep] = useState('find');
+  const [advanced, setAdvanced] = useState(false); // the old three-card source form
+  const [finding, setFinding] = useState(false);
   const NO_SOURCES = { website: { status: 'idle' }, gbp: { status: 'idle' }, meta: { status: 'idle' } };
   const [sources, setSources] = useState(NO_SOURCES);
   const lastCountry = () => { try { return localStorage.getItem(LAST_COUNTRY_KEY) || 'IN'; } catch (e) { return 'IN'; } };
@@ -1669,16 +1805,45 @@ export default function BusinessOnboardingPage() {
     });
     setStep('review');
   };
+  const continueQuick = async (manualOnly = false) => {
+    let gbp = !manualOnly && sources.gbp.status === 'added' ? sources.gbp.candidate : null;
+    let det = null;
+    const site = query.website.trim();
+    if (!manualOnly && !gbp && site && domainOf(site).includes('.')) { // no listing chosen: read what the website itself says
+      setFinding(true);
+      try {
+        const r = await api('/discover', { method: 'POST', body: { website: site, email: '', name: '', city: query.city.trim(), country: query.country } });
+        det = (r.candidates || []).find(c => c.source === 'website') || null;
+      } catch (e) { /* a site that cannot be read never blocks adding the business */ }
+      setFinding(false);
+    }
+    const merged = {};
+    for (const part of [fromCandidate(gbp), fromCandidate(det)]) {
+      for (const [k, v] of Object.entries(part)) if (!isEmpty(v) && isEmpty(merged[k])) merged[k] = v;
+    }
+    setSource(gbp || det || null);
+    setForm({
+      ...EMPTY, ...merged,
+      name: merged.name || query.name.trim(), website: site || merged.website || '', city: merged.city || query.city.trim(), country: merged.country || query.country || 'IN',
+      contact_email: query.email || '', plan: 'Growth', target_scope: 'local', target_countries: [], target_areas: []
+    });
+    setStep('confirm');
+  };
   const reset = () => { setStep('find'); setSources(NO_SOURCES); setSource(null); setForm(EMPTY); setFollowUps([]); setQuery({ website: '', email: '', name: '', bizName: '', city: '', country: query.country || 'IN', target_scope: 'local', target_countries: [], target_areas: [], social_accounts: { facebook: '', instagram: '', meta_business_id: '' } }); };
 
   return (
-    <SeoShell title="Business Onboarding" subtitle="Add a client: connect its website, Google Business Profile and Meta Business Suite, confirm the details, and let the AI agents audit and plan the work" hideSwitcher needsBusiness={false}>
+    <SeoShell title="Business Onboarding" subtitle="Add a business in two quick steps. We find it on Google, you check the details, and the AI starts the audits and the plan." hideSwitcher needsBusiness={false}>
       <Stepper step={step} />
-      {step === 'find' && <SourcesStep query={query} setQuery={setQuery} sources={sources} setSources={setSources} onContinue={continueFromSources} list={list} onOpenExisting={(id) => { choose(id).then(ok => ok && navigate(path('gmb-profile'))); }} />}
-      {step === 'review' && <ReviewStep form={form} setForm={setForm} source={source} plans={plans} existing={existing} onFollowUps={setFollowUps} onBack={() => setStep('find')} onNext={() => setStep('launch')} />}
+      {step === 'find' && !advanced && <QuickFind query={query} setQuery={setQuery} sources={sources} setSources={setSources} busy={finding} onContinue={() => continueQuick(false)} onManual={() => continueQuick(true)}
+        onAdvanced={() => setAdvanced(true)} onOpenExisting={(id) => { choose(id).then(ok => ok && navigate(path('gmb-profile'))); }} />}
+      {step === 'find' && advanced && <>
+        <div className="mb-3"><button type="button" onClick={() => setAdvanced(false)} className="text-13 font-semibold text-indigo-600 hover:underline cursor-pointer inline-flex items-center gap-1"><ArrowLeft size={13} />Back to the short form</button></div>
+        <SourcesStep query={query} setQuery={setQuery} sources={sources} setSources={setSources} onContinue={continueFromSources} list={list} onOpenExisting={(id) => { choose(id).then(ok => ok && navigate(path('gmb-profile'))); }} /></>}
+      {step === 'confirm' && <QuickConfirm form={form} setForm={setForm} source={source} plans={plans} existing={existing} onBack={() => setStep('find')} onNext={() => setStep('launch')} onDetailed={() => setStep('review')} />}
+      {step === 'review' && <ReviewStep form={form} setForm={setForm} source={source} plans={plans} existing={existing} onFollowUps={setFollowUps} onBack={() => setStep('confirm')} onNext={() => setStep('launch')} />}
       {step === 'launch' && (
         <StepLayout side={<SourcesPanel plan={form.plan} plans={plans} showPlan />}>
-          <LaunchStep form={form} source={source} existing={existing} plans={plans} followUps={followUps} onBack={() => setStep('review')} onDone={reset} />
+          <LaunchStep form={form} source={source} existing={existing} plans={plans} followUps={followUps} onBack={() => setStep('confirm')} onDone={reset} />
         </StepLayout>)}
     </SeoShell>
   );

@@ -4,6 +4,7 @@ The platform has its own users (email + password, session cookie `seo_session`).
 cookie is also accepted when CRM_JWT_SECRET is set, so CRM users can open it without a second
 account; their name/role come from the CRM's /auth/me over HTTP (never its database).
 """
+import hashlib
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -40,16 +41,23 @@ class User:
 
 
 # ── own sessions ───────────────────────────────────────────────────────────────
-def issue_session(response: Response, user_id: int, settings: Settings) -> None:
-    exp = datetime.now(timezone.utc) + timedelta(hours=settings.session_hours)
-    token = jwt.encode({"sub": str(user_id), "kind": "seo", "exp": exp}, settings.secret_key, algorithm="HS256")
+def pw_fingerprint(password_hash: str | None) -> str:
+    """A short fingerprint of the stored password hash. A session and a password-reset token carry it, so both stop working the moment the password changes."""
+    return hashlib.sha256(f"pv:{password_hash or ''}".encode()).hexdigest()[:16]
+
+
+def issue_session(response: Response, user_id: int, settings: Settings, password_hash: str | None = None) -> None:
+    now = datetime.now(timezone.utc)
+    exp = now + timedelta(hours=settings.session_hours)
+    token = jwt.encode({"sub": str(user_id), "kind": "seo", "iat": now, "exp": exp, "pv": pw_fingerprint(password_hash)}, settings.secret_key, algorithm="HS256")
+    # SameSite=Lax, not Strict: the session must survive the redirect back from Google sign-in (a cross-site navigation). Cross-site POSTs are refused separately (security_headers.OriginCheckMiddleware).
     response.set_cookie(settings.session_cookie, token, httponly=True, samesite="lax", secure=settings.secure_cookies,
                         max_age=settings.session_hours * 3600, path="/")
 
 
 def clear_session(response: Response, settings: Settings) -> None:
-    response.delete_cookie(settings.session_cookie, path="/")
-    response.delete_cookie(PROJECT_COOKIE, path="/")
+    response.delete_cookie(settings.session_cookie, path="/", httponly=True, samesite="lax", secure=settings.secure_cookies)
+    response.delete_cookie(PROJECT_COOKIE, path="/", httponly=True, samesite="strict", secure=settings.secure_cookies)
 
 
 PROJECT_COOKIE = "seo_project"
@@ -60,7 +68,7 @@ def issue_project_claim(response: Response, user_id: int, business_id: int, sett
     """After a correct authenticator code: this session may open this one project. A new claim replaces the old one, so every switch needs a fresh code."""
     exp = datetime.now(timezone.utc) + timedelta(hours=PROJECT_HOURS)
     token = jwt.encode({"sub": str(user_id), "kind": "project", "bid": business_id, "exp": exp}, settings.secret_key, algorithm="HS256")
-    response.set_cookie(PROJECT_COOKIE, token, httponly=True, samesite="lax", secure=settings.secure_cookies, max_age=PROJECT_HOURS * 3600, path="/")
+    response.set_cookie(PROJECT_COOKIE, token, httponly=True, samesite="strict", secure=settings.secure_cookies, max_age=PROJECT_HOURS * 3600, path="/")  # only ever read by the app's own API calls
 
 
 def _project_claim(request: Request, user_id: int, settings: Settings) -> int | None:
@@ -84,6 +92,8 @@ def _seo_user(token: str, db: Session, settings: Settings) -> User | None:
         return None
     u = db.get(AppUser, int(claims.get("sub", 0)))
     if not u or not u.active:
+        return None
+    if claims.get("pv") != pw_fingerprint(u.password_hash):  # the password was changed or reset since this session was issued (or an old-format token): sign in again
         return None
     on = bool(u.totp_enabled)
     return User(id=str(u.id), name=u.name, email=u.email, role=u.role, department="SEO Platform", source="seo", needs_project_code=on, totp_enabled=on)

@@ -34,7 +34,7 @@ def _sums(db: Session, b: Business, a: date, z: date) -> dict[str, int]:
     return dict(zip(["calls", "directions", "website_clicks", "views"], map(int, row)))
 
 
-def monthly_summary(db: Session, b: Business, month: str | None = None) -> dict[str, Any]:
+def monthly_summary(db: Session, b: Business, month: str | None = None, ai_words: bool = True) -> dict[str, Any]:
     month = month or date.today().strftime("%Y-%m")
     start, end, pstart, pend = _month_range(month)
     cur, prev = _sums(db, b, start, end), _sums(db, b, pstart, pend)
@@ -56,16 +56,16 @@ def monthly_summary(db: Session, b: Business, month: str | None = None) -> dict[
     summary = {"business": b.name, "month": month, "insights": cur, "previous": prev, "leads": leads, "new_reviews": new_reviews,
                "scores": scores, "overall": audits.overall(db, b), "top_fixes": fixes, "keywords": kws,
                "backlinks": ({**own, "new_this_month": gained, "lost_this_month": lost} if own else None)}
-    summary["plain_words"] = _plain_words(b, summary)
+    summary["plain_words"] = _plain_words(b, summary, use_ai=ai_words)
     return summary
 
 
-def _plain_words(b: Business, s: dict[str, Any]) -> str:
+def _plain_words(b: Business, s: dict[str, Any], use_ai: bool = True) -> str:
     calls, prev = s["insights"]["calls"], s["previous"]["calls"]
     fallback = (f"This month {calls} people called {b.name} from Google ({'up' if calls >= prev else 'down'} from {prev}) and "
                 f"{s['insights']['directions']} asked for directions. Overall score: {s['overall'] if s['overall'] is not None else 'not audited yet'}/100. "
                 f"Next step: {s['top_fixes'][0]['title'] if s['top_fixes'] else 'keep posting weekly and replying to reviews'}.")
-    if not ai.is_configured():
+    if not use_ai or not ai.is_configured():
         return fallback
     try:
         return ai.complete(f"You write short monthly reports for small business owners. Plain words, no jargon, 4-6 sentences.\n{ai.RULES}",

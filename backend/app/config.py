@@ -129,6 +129,9 @@ class Settings(BaseSettings):
     serper_api_key: str = ""
     # Development only: the same for the Position Tracking landscape (generated rank checks).
     rank_landscape_mock: bool = False
+    # TESTS AND DEMOS ONLY (ALLOW_SAMPLE_DATA=true): lets the data providers fall back to generated sample numbers when a key is missing. Off by default: with it off,
+    # a missing key means "not available" (HTTP 503 / a failed audit with the reason), never invented rankings, keywords, backlinks, listings or AI mentions.
+    allow_sample_data: bool = False
 
     # Our own sites (comma separated domains): these businesses are "internal", all others are clients. See services/domain_checks.py.
     internal_domains: str = "codigix.co,codigixinfotech.com"
@@ -162,13 +165,18 @@ class Settings(BaseSettings):
     # Guards that can be switched off in development
     login_max_failures: int = 5
     login_lockout_minutes: int = 15
+    login_ip_max_failures: int = 20  # wrong passwords from one address, across all accounts, before it is locked out
+    login_account_max_failures: int = 10  # wrong passwords for one account, from anywhere
+    trust_proxy_headers: bool = False  # take the client address from X-Forwarded-For (only behind a proxy you control: otherwise anyone can fake it)
+    csrf_origin_check: bool = True  # refuse cross-site POST/PUT/PATCH/DELETE (see security_headers.py)
+    allow_insecure_dev: bool = False  # lets the server start with a weak SECRET_KEY: only for a throw-away development machine
     enforce_plan_limits: bool = True
     schema_auto_sync: bool = True  # create missing tables and add missing nullable columns at start-up
     audit_retention_days: int = 180
 
     @property
     def secure_cookies(self) -> bool:
-        return self.cookie_secure or self.public_base_url.lower().startswith("https://")
+        return self.cookie_secure or self.public_base_url.lower().startswith("https://") or self.frontend_url.lower().startswith("https://")
 
     @property
     def lighthouse_reports_path(self) -> Path:
@@ -202,7 +210,7 @@ class Settings(BaseSettings):
 
     @property
     def rank_landscape_mock_on(self) -> bool:
-        return self.rank_landscape_mock and self.environment.lower() != "production"
+        return self.rank_landscape_mock and self.allow_sample_data and self.environment.lower() != "production"
 
     @property
     def internal_domain_list(self) -> list[str]:

@@ -26,6 +26,6 @@ export default defineConfig({
   // host: true = listen on every address, so the app also opens at http://<this PC's IP>:3100 (not only localhost).
   // The page and the API share one origin: the browser calls /api/v1 on this same address and Vite forwards it to the backend. That keeps the
   // login cookie working whether the app is opened as localhost:3100 or as http://<this PC's IP>:3100, with no CORS in between.
-  server: { host: true, port: 3100, strictPort: true, proxy: { '/api': { target: process.env.BACKEND_URL || 'http://127.0.0.1:8000', changeOrigin: false } } },
-  preview: { host: true, port: 3100, proxy: { '/api': { target: process.env.BACKEND_URL || 'http://127.0.0.1:8000', changeOrigin: false } } }
+  server: { host: true, port: 3100, strictPort: true, proxy: { '/api': { target: process.env.BACKEND_URL || 'http://127.0.0.1:8000', changeOrigin: false, xfwd: true } } },
+  preview: { host: true, port: 3100, proxy: { '/api': { target: process.env.BACKEND_URL || 'http://127.0.0.1:8000', changeOrigin: false, xfwd: true } } }
 });

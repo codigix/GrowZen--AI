@@ -2,8 +2,10 @@
 
 Runs each prompt through every configured engine (OpenAI-compatible: OpenAI, Gemini, DeepSeek,
 Perplexity; plus Anthropic), then checks the answer for the business name, its position in a
-list, cited URLs and competitors. Engines without a key are skipped; with none at all, sample
-results are stored and labelled. API answers can differ from logged-in apps: read as a trend.
+list, cited URLs and competitors. Engines without a key are skipped and shown as "not connected";
+with none at all nothing is stored (DataUnavailable): results are never invented. API answers can
+differ from logged-in apps: read as a trend. Only the engines in ENGINE_NAMES are ever queried:
+"AI Overviews" has no API and is never reported.
 """
 import random
 import re
@@ -15,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..errors import DataUnavailable
 from ..models import Business, GeoPrompt, GeoResult
 
 URL_RE = re.compile(r"https?://[^\s)\]>\"']+")
@@ -34,6 +37,23 @@ def _engines() -> dict[str, Any]:
     if s.anthropic_api_key:
         found["Claude"] = ("anthropic", None, s.anthropic_api_key, "claude-haiku-5-5")
     return found
+
+
+ENGINE_NAMES = ("ChatGPT", "Gemini", "Perplexity", "DeepSeek", "Claude")
+
+
+def engine_status() -> list[dict[str, Any]]:
+    """Every engine we can query and whether its key is set: an engine without a key is "not connected", never faked."""
+    on = _engines()
+    return [{"engine": n, "connected": n in on} for n in ENGINE_NAMES]
+
+
+def require_engines() -> dict[str, Any]:
+    """The engines that have a key. With none (and sample data not allowed) there is nothing real to run: say what to set up."""
+    engines = _engines()
+    if not engines and not get_settings().allow_sample_data:
+        raise DataUnavailable("AI visibility needs at least one AI engine key: set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, PERPLEXITY_API_KEY or DEEPSEEK_API_KEY.")
+    return engines
 
 
 def _ask(engine: tuple, prompt: str) -> str:
@@ -77,12 +97,12 @@ def default_prompts(b: Business) -> list[str]:
 
 
 def run_prompts(db: Session, b: Business, competitors: list[str] | None = None) -> dict[str, Any]:
+    engines = require_engines()  # raises DataUnavailable before anything is stored
     prompts = list(db.scalars(select(GeoPrompt).where(GeoPrompt.business_id == b.id, GeoPrompt.active.is_(True))))
     if not prompts:
         prompts = [GeoPrompt(business_id=b.id, prompt=p) for p in default_prompts(b)]
         db.add_all(prompts)
         db.commit()
-    engines = _engines()
     competitors = competitors or []
     saved = 0
     if engines:
@@ -98,7 +118,7 @@ def run_prompts(db: Session, b: Business, competitors: list[str] | None = None) 
     else:
         r = random.Random(f"geo-{b.id}")
         for p in prompts:
-            for name in ("ChatGPT", "Gemini", "Perplexity", "Claude", "AI Overviews"):
+            for name in ENGINE_NAMES:
                 m = r.random() < 0.35
                 db.add(GeoResult(business_id=b.id, prompt_id=p.id, engine=name, mentioned=m, position=r.randint(1, 5) if m else None,
                                  sentiment="positive" if m else None, data_source="sample"))

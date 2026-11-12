@@ -7,7 +7,7 @@ of any URL stand on their own (no business needed).
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base, TimestampMixin, utcnow
@@ -91,6 +91,8 @@ class Business(TimestampMixin, Base):
     photo_count: Mapped[int | None] = mapped_column(Integer)
     cover_photo: Mapped[str | None] = mapped_column(String(500))
     logo: Mapped[str | None] = mapped_column(String(500))
+    local_competitors: Mapped[dict | None] = mapped_column(JSON)  # GBP competitor analysis: {at, keyword, items: [{id, name, rating, reviews, website, maps_link, source}]}
+    citation_listings: Mapped[dict | None] = mapped_column(JSON)  # listing management: {site key: {url, status, note, found, checked_at}} entered or checked by a person
     booking_url: Mapped[str | None] = mapped_column(String(500))  # the Book-an-appointment link (mirrors action_links[APPOINTMENT])
     additional_phones: Mapped[list[str] | None] = mapped_column(JSON)  # up to 2 more numbers shown on the Google profile
     action_links: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)  # Google place-action links: [{type: APPOINTMENT|ONLINE_APPOINTMENT|..., url}]
@@ -600,5 +602,44 @@ class WeeklyReport(TimestampMixin, Base):
     data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     narrative: Mapped[str | None] = mapped_column(Text)
     final: Mapped[bool] = mapped_column(Boolean, default=False)  # false while the period is still running
+
+class ChatGPTBusiness(TimestampMixin, Base):
+    """One project's "Your business, in ChatGPT" record: where its claim stands in OpenAI's Business Hub (claimed and verified there by a person),
+    the profile copy to paste in, the Business Agent guidelines, and the months of insights logged from the Hub. Nothing here is sent to OpenAI by us."""
+    __tablename__ = "chatgpt_businesses"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), unique=True, index=True)
+    claim_status: Mapped[str] = mapped_column(String(20), default="Unclaimed")  # Unclaimed | Claim_Pending | Claim_Approved | Disputed
+    verification_method: Mapped[str | None] = mapped_column(String(20))  # DNS_TXT | Shopify | Business_Email | Business_Phone
+    dns_txt_record: Mapped[str | None] = mapped_column(String(500))
+    persona_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    status_history: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{at, from, to, by}]
+    business_name: Mapped[str | None] = mapped_column(String(255))
+    category: Mapped[str | None] = mapped_column(String(160))
+    description: Mapped[str | None] = mapped_column(String(500))
+    website_url: Mapped[str | None] = mapped_column(String(500))
+    logo_url: Mapped[str | None] = mapped_column(String(500))
+    delivery_policy: Mapped[str | None] = mapped_column(Text)
+    return_policy: Mapped[str | None] = mapped_column(Text)
+    agent_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    agent_instructions: Mapped[str | None] = mapped_column(Text)
+    insights: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{month 'YYYY-MM', mentions, website_clicks, topics}]
+
+
+class CatalogItem(TimestampMixin, Base):
+    """A product or service in the hosted feed that ChatGPT's Business Hub reads."""
+    __tablename__ = "chatgpt_catalog_items"
+    __table_args__ = (UniqueConstraint("business_id", "sku"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    sku: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(String(2000))
+    price: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
+    currency: Mapped[str] = mapped_column(String(3), default="INR")
+    availability: Mapped[str] = mapped_column(String(20), default="in_stock")  # in_stock | out_of_stock | preorder | limited
+    product_url: Mapped[str] = mapped_column(String(1000))
+    image_url: Mapped[str | None] = mapped_column(String(1000))
+
 
 from .backlinks import models as _backlink_models  # noqa: E402,F401  (registers the backlink graph tables)

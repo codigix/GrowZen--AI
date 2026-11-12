@@ -81,7 +81,7 @@ def _run_onpage(db: Session, b: Business, max_pages: int | None = None) -> tuple
     if not b.website:
         return 0, [], {}, "live"
     cfg = b.audit_config or {}  # the project's Site Audit settings (limit, pages to crawl, rules)
-    site = crawler.crawl(b.website, max_pages=max_pages or int(cfg.get("limit") or 25), options=cfg)
+    site = crawler.crawl(b.website, max_pages=max_pages or int(cfg.get("limit") or 300), options=cfg)  # all the pages of this website, and only this website (no subdomains) unless the audit settings say otherwise
     score, issues = crawler.summarise(site)
     return score, issues, {k: v for k, v in site.items() if k != "pages"} | {"pages": site.get("pages", [])}, "live"
 

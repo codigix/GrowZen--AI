@@ -1,5 +1,6 @@
 import OutcomesPanel from './OutcomesPanel';
 import React, { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Sparkles, Check, X, Bot, ShieldCheck, Loader2, ArrowRight, CheckCircle2, TrendingUp,
   AlertTriangle, ShieldAlert, Zap, Filter, Search, RefreshCw, Cpu, Layers,
@@ -14,113 +15,11 @@ import {
 } from './SeoUi';
 import { api, useApi, usePaged, fmtDateTime } from './seoApi';
 
-// 7 Specialized AI Agents with Full Telemetry and Deep Specs
-const AGENT_SWARM = [
-  {
-    id: 'planner',
-    name: 'Planner Agent',
-    badge: 'Master Orchestrator',
-    role: 'Turns every audit, keyword gap & SERP signal into prioritized tasks',
-    description: 'Autonomous reasoning engine that ingests technical audits, competitor SERP movements, and Google Business Profile gaps, compiling them into high-ROI actionable work packets.',
-    model: 'DeepSeek V3 / Reasoning 2.5',
-    color: 'violet',
-    accentBorder: 'border-purple-500/30',
-    accentBg: 'bg-purple-500/10 text-purple-700',
-    icon: Sliders,
-    stats: { tasksGenerated: '38 Planned', approvalRate: '98.5%', latency: '110ms' },
-    capabilities: ['Multi-objective Task Ranking', 'SERP Opportunity Gap Detection', 'Impact Scoring Algorithm']
-  },
-  {
-    id: 'gbp',
-    name: 'GBP Agent',
-    badge: 'Google Maps Autopilot',
-    role: 'Posts, service catalog sync, operating hours & local signals',
-    description: 'Manages Moraya Hospital’s Google Business Profile 24/7. Drafts high-engagement weekly posts, updates medical department services, and optimizes local geo-coordinates.',
-    model: 'Gemini 2.0 Flash Multimodal',
-    color: 'emerald',
-    accentBorder: 'border-emerald-500/30',
-    accentBg: 'bg-emerald-500/10 text-emerald-700',
-    icon: Globe,
-    stats: { tasksGenerated: '24 Posts & Edits', approvalRate: '100%', latency: '85ms' },
-    capabilities: ['Direct Google API Sync', 'Geo-tagged Image Signals', 'Local PCMC Map Pin Alignment']
-  },
-  {
-    id: 'review',
-    name: 'Review Agent',
-    badge: 'Reputation Concierge',
-    role: 'Drafts empathetic, clinical-compliant replies to all incoming reviews',
-    description: 'Listens to incoming patient reviews in real-time. Drafts personalized responses that weave in hospital core competencies, cashless insurance benefits, and local PCMC search phrases.',
-    model: 'DeepSeek V3 Conversational',
-    color: 'amber',
-    accentBorder: 'border-amber-500/30',
-    accentBg: 'bg-amber-500/10 text-amber-700',
-    icon: MessageSquare,
-    stats: { tasksGenerated: '52 Replies', approvalRate: '99.2%', latency: '75ms' },
-    capabilities: ['Sentiment Classification', 'Clinical Medical Guardrail', 'Local Keyword Injection']
-  },
-  {
-    id: 'content',
-    name: 'Content Agent',
-    badge: 'Clinical SEO Copywriter',
-    role: 'Drafts localized treatment pages, doctor FAQs & clean URL routes',
-    description: 'Generates targeted high-converting landing pages like /cataract-surgery-in-pcmc, doctors’ clinical guides, and Google-indexable medical FAQ accordions with Schema.org markup.',
-    model: 'Gemini 2.0 Flash / Pro',
-    color: 'cyan',
-    accentBorder: 'border-cyan-500/30',
-    accentBg: 'bg-cyan-500/10 text-cyan-700',
-    icon: FileCode,
-    stats: { tasksGenerated: '12 Landing Pages', approvalRate: '96.8%', latency: '280ms' },
-    capabilities: ['Clean URL Slug Optimization', 'Schema.org Medical Entity Generation', 'E-E-A-T Medical Copywriting']
-  },
-  {
-    id: 'audit',
-    name: 'Audit Agent',
-    badge: 'Technical & CWV Inspector',
-    role: 'Crawls website code, mobile responsiveness & Core Web Vitals',
-    description: 'Monitors DOM structures, meta tags, heading hierarchies, indexing anomalies, and LCP/INP speeds. Directly generates diff solutions to resolve detected SEO flaws.',
-    model: 'DeepSeek Code Core',
-    color: 'rose',
-    accentBorder: 'border-rose-500/30',
-    accentBg: 'bg-rose-500/10 text-rose-700',
-    icon: Activity,
-    stats: { tasksGenerated: '29 Code Fixes', approvalRate: '97.4%', latency: '130ms' },
-    capabilities: ['Real-time DOM Syntax Audits', 'Core Web Vitals Regression Alerts', 'Structured Data Verification']
-  },
-  {
-    id: 'outreach',
-    name: 'Outreach Agent',
-    badge: 'Citation & Link Prospector',
-    role: 'Finds local medical directories & drafts link partnership emails',
-    description: 'Surfaces top-tier Indian healthcare registries, PCMC community health directories, and medical association listings. Drafts human-ready partnership emails.',
-    model: 'Gemini 2.0 Flash',
-    color: 'indigo',
-    accentBorder: 'border-indigo-500/30',
-    accentBg: 'bg-indigo-500/10 text-indigo-700',
-    icon: Layers,
-    stats: { tasksGenerated: '18 Targets', approvalRate: '94.5%', latency: '165ms' },
-    capabilities: ['NAP Directory Verification', 'Local PCMC Healthcare Citations', 'Outreach Pitch Synthesizer']
-  },
-  {
-    id: 'reporter',
-    name: 'Reporter Agent',
-    badge: 'Executive Intelligence',
-    role: 'Translates rankings, calls & impressions into plain business summaries',
-    description: 'Aggregates multi-node rank movements, GMB phone calls, direction requests, and organic conversions into concise executive briefings for hospital administrators.',
-    model: 'DeepSeek V3 Analytics',
-    color: 'blue',
-    accentBorder: 'border-blue-500/30',
-    accentBg: 'bg-blue-500/10 text-blue-700',
-    icon: BarChart3,
-    stats: { tasksGenerated: 'Weekly Briefings', approvalRate: '100%', latency: '190ms' },
-    capabilities: ['Executive Impact Digests', 'Patient Call Attribution', 'SERP Velocity Tracking']
-  }
-];
-
 const AUTOPILOT_RULES = [
   {
     key: 'review_reply_high',
     label: 'Positive Review Replies (4–5★)',
-    description: 'Automatically approves and posts responses to stellar reviews with gratitude and service highlights.',
+    description: 'Replies to 4 and 5 star reviews can be posted without waiting for approval when this is switched on.',
     risk: 'Low Risk',
     riskTone: 'green',
     locked: false
@@ -128,15 +27,15 @@ const AUTOPILOT_RULES = [
   {
     key: 'review_reply_low',
     label: 'Critical Review Replies (1–3★)',
-    description: 'Drafts responses for patient grievances; requires human doctor sign-off before publishing.',
+    description: 'Drafts replies to unhappy customers. A person reads and approves each one before it is posted.',
     risk: 'Medium Risk (Human Escalation)',
     riskTone: 'amber',
     locked: false
   },
   {
     key: 'gbp_post',
-    label: 'Google Business Profile Weekly Posts',
-    description: 'Auto-schedules verified hospital updates, health camp notices, and eye surgery awareness posts.',
+    label: 'Google Business Profile Posts',
+    description: 'Drafts posts for the profile. Turn the switch on to post them without waiting for approval.',
     risk: 'Low Risk',
     riskTone: 'green',
     locked: false
@@ -144,7 +43,7 @@ const AUTOPILOT_RULES = [
   {
     key: 'profile_edit',
     label: 'Core Profile Edits (Name, Category, Address, Phone)',
-    description: 'Core NAP & medical regulatory data. Strictly locked to protect Google verification and hospital licensing.',
+    description: 'The name, address and phone are what Google verified. They are never changed automatically.',
     risk: 'High Risk (Policy Locked)',
     riskTone: 'red',
     locked: true
@@ -152,15 +51,15 @@ const AUTOPILOT_RULES = [
   {
     key: 'website_fix',
     label: 'Website Code & Schema Fixes',
-    description: 'Applies verified meta tags, structured data snippets, and image alt corrections directly to CMS.',
+    description: 'Meta tags, structured data and image alt text fixes for the website.',
     risk: 'Medium Risk',
     riskTone: 'amber',
     locked: false
   },
   {
     key: 'blog_draft',
-    label: 'Blog & Clinical Article Drafts',
-    description: 'Drafts long-form patient guidance articles. Requires medical staff review before pushing live.',
+    label: 'Blog Article Drafts',
+    description: 'Drafts long-form articles. A person reviews each one before it goes to the website.',
     risk: 'Low Risk',
     riskTone: 'green',
     locked: false
@@ -177,11 +76,11 @@ const AUTOPILOT_RULES = [
 
 // Rejection Quick Reason Templates
 const REJECTION_CHIPS = [
-  'Needs more clinical authority',
-  'Too promotional / commercial',
+  'Too promotional',
   'Exceeds Google character limit',
-  'Mention 24/7 Emergency & Cashless Mediclaim',
-  'Target specifically PCMC & Chinchwad'
+  'Facts are not accurate',
+  'Wrong tone for this business',
+  'Not relevant to this business'
 ];
 
 /**
@@ -225,7 +124,8 @@ function TaskCard({ t, businessName, onDone }) {
 
   const agentMeta = useMemo(() => {
     const key = (t.agent || '').toLowerCase();
-    return AGENT_SWARM.find(a => a.id === key) || AGENT_SWARM[0];
+    const name = { gbp: 'Google profile', review: 'Reviews', audit: 'Site audit', planner: 'Planner', outreach: 'Outreach', content: 'Content', rankings: 'Rankings' }[key] || (key ? key.charAt(0).toUpperCase() + key.slice(1) : 'Assistant');
+    return { name, accentBg: 'bg-indigo-500/10 text-indigo-700', accentBorder: 'border-indigo-500/30', icon: Bot };
   }, [t.agent]);
 
   const AgentIcon = agentMeta.icon;
@@ -425,7 +325,6 @@ export default function AiAgentPage() {
   const [selectedAgentFilter, setSelectedAgentFilter] = useState('all');
   const [selectedImpactFilter, setSelectedImpactFilter] = useState('all');
   const [activityFilter, setActivityFilter] = useState('all');
-  const [isScanning, setIsScanning] = useState(false);
 
   const { list } = useBusinesses();
   const tasks = usePaged('/tasks?status=pending', 40); // slabs of 40; the totals come from /tasks/counts
@@ -436,7 +335,7 @@ export default function AiAgentPage() {
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
 
-  const nameOf = (id) => list?.find(b => b.id === id)?.name || `Moraya Multispeciality Charitable Hospital`;
+  const nameOf = (id) => list?.find(b => b.id === id)?.name || 'Another project';
 
   const finished = (out, approve) => {
     tasks.setData(ts => ts.filter(x => x.id !== out.id));
@@ -456,17 +355,15 @@ export default function AiAgentPage() {
     toast(`Autopilot rule updated: ${key} is now ${value ? 'requiring approval' : 'fully automated'}`);
   });
 
-  // Simulated AI Swarm Audit Cycle
-  const handleTriggerCycle = () => {
-    setIsScanning(true);
-    toast('Triggering multi-agent scan across PCMC Google Search, Maps, and Hospital CMS nodes…');
-    setTimeout(() => {
-      setIsScanning(false);
-      tasks.reload(true); counts.reload(true);
-      done.reload(true);
-      if (tab === 'log') activity.reload(true);
-      toast('Agent cycle finished. Real-time tasks and SERP signals synchronized.');
-    }, 1800);
+  // Reload everything from the server (new proposals appear after the scheduled audits, review syncs and weekly jobs run).
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([tasks.reload(true), counts.reload(true), done.reload(true), tab === 'log' ? activity.reload(true) : null, playbook.reload(true)]);
+      toast('Updated.');
+    } catch (e) { toast(e.message || 'Could not refresh'); }
+    finally { setRefreshing(false); }
   };
 
   // Filter pending tasks
@@ -518,28 +415,19 @@ export default function AiAgentPage() {
 
   // Autopilot active count
   const autopilotRulesCount = useMemo(() => {
-    if (!playbook.data?.approval_rules) return 2;
+    if (!playbook.data?.approval_rules) return 0;
     return Object.values(playbook.data.approval_rules).filter(v => v === false).length;
   }, [playbook.data]);
 
   return (
     <SeoShell
-      title="Autonomous AI SEO Assistant & Agent Swarm"
-      subtitle="Supervised multi-agent intelligence executing Google Business Profile optimizations, review handling, and code diffs with human-in-the-loop governance"
+      title="AI Assistant: approvals and automation"
+      subtitle="What the assistant proposes, what you approved, which actions may run on their own, and everything that was done"
       hideSwitcher
       needsBusiness={false}
       actions={
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="ai"
-            icon={isScanning ? Loader2 : Sparkles}
-            busy={isScanning}
-            onClick={handleTriggerCycle}
-            className="text-xs"
-          >
-            {isScanning ? 'Scanning SERP Nodes…' : 'Trigger Agent Cycle'}
-          </Button>
+          <Button size="sm" variant="secondary" icon={RefreshCw} busy={refreshing} onClick={refresh} className="text-xs">Refresh</Button>
         </div>
       }
     >
@@ -559,10 +447,7 @@ export default function AiAgentPage() {
             {counts.data ? (counts.data.pending ?? 0) : '—'}
             <span className="text-12 font-medium text-amber-700">pending</span>
           </div>
-          <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
-            <span>Human-in-the-loop signoff</span>
-            <span className="text-slate-500 ">Zero unvetted push</span>
-          </div>
+          <div className="text-11 text-slate-500 mt-1"><span>Waiting for your decision</span></div>
         </div>
 
         <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-emerald-500/20">
@@ -579,10 +464,7 @@ export default function AiAgentPage() {
             {counts.data ? (counts.data.applied ?? 0) : '—'}
             <span className="text-12 font-medium text-emerald-700">completed</span>
           </div>
-          <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
-            <span>Live on Google & CMS</span>
-            <span className="text-emerald-700 ">100% verified</span>
-          </div>
+          <div className="text-11 text-slate-500 mt-1"><span>Approved and carried out</span></div>
         </div>
 
         <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-indigo-500/20">
@@ -597,32 +479,21 @@ export default function AiAgentPage() {
           </div>
           <div className="text-3xl font-extrabold text-slate-900 mt-2 font-display tracking-tight flex items-baseline gap-2">
             {autopilotRulesCount}
-            <span className="text-12 font-medium text-slate-500">of {AUTOPILOT_RULES.length} automated</span>
+            <span className="text-12 font-medium text-slate-500">of {AUTOPILOT_RULES.length} on their own</span>
           </div>
-          <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
-            <span>Core NAP profile protected</span>
-            <span className="text-cyan-700 ">Safe Mode</span>
-          </div>
+          <div className="text-11 text-slate-500 mt-1"><span>Actions that may run without approval</span></div>
         </div>
 
-        <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-purple-500/20">
+        <div className="ai-glass-card rounded p-[18px] relative overflow-hidden group border-rose-500/20">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-11 font-bold   text-purple-700  truncate flex items-center gap-1.5">
-              <Bot size={13} className="text-purple-600" />
-              Agent Swarm Active
-            </span>
-            <div className="w-8 h-8 rounded bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-700 shrink-0">
-              <Layers size={16} />
-            </div>
+            <span className="text-11 font-bold text-rose-700 truncate flex items-center gap-1.5"><X size={13} />Rejected</span>
+            <div className="w-8 h-8 rounded bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-700 shrink-0"><ThumbsDown size={16} /></div>
           </div>
           <div className="text-3xl font-extrabold text-slate-900 mt-2 font-display tracking-tight flex items-baseline gap-2">
-            7
-            <span className="text-12 font-medium text-purple-600">nodes online</span>
+            {counts.data ? (counts.data.rejected ?? 0) : '—'}
+            <span className="text-12 font-medium text-rose-700">rejected</span>
           </div>
-          <div className="text-11 text-slate-500 mt-1 flex items-center justify-between">
-            <span>DeepSeek V3 + Gemini 2.0</span>
-            <span className="text-purple-600 ">~98.4% Acc.</span>
-          </div>
+          <div className="text-11 text-slate-500 mt-1"><span>The assistant learns from your reasons</span></div>
         </div>
       </div>
 
@@ -633,10 +504,9 @@ export default function AiAgentPage() {
           onChange={setTab}
           tabs={[
             { id: 'queue', label: 'Approval Queue', count: counts.data ? (counts.data.pending ?? 0) : undefined },
-            { id: 'agents', label: 'Autonomous Agent Swarm', count: 7 },
-            { id: 'playbook', label: 'Autopilot Playbook & Safety Rules' },
+            { id: 'playbook', label: 'Automation rules' },
             { id: 'results', label: 'What worked' },
-            { id: 'log', label: 'Live Audit & Execution Stream' }
+            { id: 'log', label: 'Activity log' }
           ]}
         />
       </div>
@@ -731,9 +601,8 @@ export default function AiAgentPage() {
                     Clear Filters
                   </Button>
                 )}
-                <Button size="sm" variant="ai" icon={Sparkles} onClick={handleTriggerCycle}>
-                  Run On-Demand Audit Scan
-                </Button>
+                <Button size="sm" variant="secondary" icon={RefreshCw} busy={refreshing} onClick={refresh}>Refresh</Button>
+                <Link to="/website-audit"><Button size="sm" variant="ai" icon={Sparkles}>Run a site audit</Button></Link>
               </div>
             </div>
           ) : (
@@ -749,177 +618,6 @@ export default function AiAgentPage() {
               <LoadMore list={tasks} label={`Show more (${Math.max(0, (counts.data?.pending ?? 0) - (tasks.data?.length ?? 0))} left)`} />
             </div>
           )}
-        </div>
-      )}
-
-      {/* TAB 2: AUTONOMOUS AGENT SWARM */}
-      {tab === 'agents' && (
-        <div className="space-y-6">
-          {/* Swarm Architecture Banner */}
-          <div className="ai-glass-card rounded p-5 border border-purple-500/20 bg-gradient-to-r from-purple-50 via-white to-indigo-50 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-11 h-11 rounded bg-gradient-to-tr from-purple-600 to-indigo-500 text-white flex items-center justify-center shadow-lg shrink-0">
-                <Cpu size={22} />
-              </div>
-              <div>
-                <h3 className="text-15 font-bold text-slate-900 font-display flex items-center gap-2">
-                  Multi-Agent Neural Swarm Architecture
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 border border-emerald-500/30 text-10 ">
-                    DeepSeek V3 / Gemini 2.0 Flash Hybrid
-                  </span>
-                </h3>
-                <p className="text-12 text-slate-700 mt-0.5">
-                  Decentralized agent pods operate in parallel: a lead planner translates SERP metrics into task queues, while specialized workers execute domain actions.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-slate-100 text-slate-700 border border-slate-200 text-11  font-medium">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Telemetry: All Nodes Healthy
-              </span>
-            </div>
-          </div>
-
-          {/* 7 Agents Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {AGENT_SWARM.map(agent => {
-              const Icon = agent.icon;
-              return (
-                <div
-                  key={agent.id}
-                  className="bg-white hover:bg-slate-100 border border-slate-200 hover:border-indigo-500/40 rounded p-5 transition-all duration-200 flex flex-col justify-between shadow-lg group relative overflow-hidden"
-                >
-                  <div>
-                    {/* Header with Icon, Name & Model */}
-                    <div className="flex items-start justify-between gap-2.5">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-10 h-10 rounded flex items-center justify-center shrink-0 border ${agent.accentBg} ${agent.accentBorder}`}>
-                          <Icon size={18} />
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="text-14 font-bold text-slate-900 group-hover:text-indigo-800 transition-colors truncate">
-                            {agent.name}
-                          </h4>
-                          <span className="text-10  font-semibold   text-slate-500">
-                            {agent.badge}
-                          </span>
-                        </div>
-                      </div>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 text-10  text-cyan-700 shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        Online
-                      </span>
-                    </div>
-
-                    {/* Role & Description */}
-                    <div className="mt-3.5">
-                      <div className="text-12 font-semibold text-slate-800">
-                        {agent.role}
-                      </div>
-                      <p className="text-11 text-slate-500 mt-1 leading-relaxed">
-                        {agent.description}
-                      </p>
-                    </div>
-
-                    {/* Capabilities Tags */}
-                    <div className="mt-3.5 flex flex-wrap gap-1.5">
-                      {agent.capabilities.map((cap, i) => (
-                        <span key={i} className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-10 font-medium text-slate-700">
-                          {cap}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Bottom Stats Footer */}
-                  <div className="mt-4 pt-3.5 border-t border-slate-200 flex items-center justify-between text-11 text-slate-500">
-                    <span className=" text-indigo-700 text-10">
-                      {agent.model}
-                    </span>
-                    <span className="font-semibold text-slate-700">
-                      {agent.stats.latency} · {agent.stats.approvalRate}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* AI Memory Bank: Learnt from User Feedback */}
-          <div className="ai-glass-card rounded p-6 border border-indigo-500/20">
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <div>
-                <h3 className="text-15 font-bold text-slate-900 font-display flex items-center gap-2">
-                  <Bookmark size={16} className="text-indigo-600" />
-                  Learnt from Rejection Feedback (Memory Bank)
-                </h3>
-                <p className="text-12 text-slate-500 mt-0.5">
-                  Whenever an administrator rejects a task with an explanation note, the agent incorporates the constraint into its active reinforcement heuristics.
-                </p>
-              </div>
-              <span className="text-11 px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-700 border border-indigo-500/30  font-bold">
-                {playbook.data?.learnt?.length || 3} Active Directives
-              </span>
-            </div>
-
-            <div className="space-y-2 mt-4">
-              {playbook.data?.learnt?.length > 0 ? (
-                playbook.data.learnt.slice(0, 10).map((l, i) => (
-                  <div key={i} className="p-3 rounded bg-slate-50 border border-slate-200 text-12 flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-md bg-purple-500/20 text-purple-700 flex items-center justify-center shrink-0 text-10 font-bold mt-0.5">
-                      {i + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-slate-700 font-medium">
-                        Task: <span className="text-slate-900">{l.task}</span>
-                      </div>
-                      <div className="text-purple-700 mt-0.5 flex items-center gap-1.5 font-sans">
-                        <CornerDownRight size={13} className="shrink-0 text-purple-600" />
-                        Feedback Rule: <span className="font-semibold">"{l.note}"</span>
-                        <span className="text-slate-500 text-10 ml-auto">By {l.by || 'Admin'}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                /* Pre-seeded Hospital Constraints */
-                [
-                  {
-                    task: 'Reply to Google Reviews',
-                    note: 'Always highlight NABH accreditation, 24/7 emergency casualty care and cashless TPA insurance tie-ups.',
-                    by: 'Hospital Director'
-                  },
-                  {
-                    task: 'Website Landing Page Slugs',
-                    note: 'Keep slugs clean and exact-match to PCMC keywords, e.g. /cataract-surgery-in-pcmc.',
-                    by: 'SEO Lead'
-                  },
-                  {
-                    task: 'Google Business Profile Updates',
-                    note: 'Never mention speculative medical outcome guarantees or unverified pricing discounts.',
-                    by: 'Medical Compliance Trustee'
-                  }
-                ].map((item, i) => (
-                  <div key={i} className="p-3 rounded bg-slate-50 border border-slate-200 text-12 flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-md bg-indigo-500/20 text-indigo-700 flex items-center justify-center shrink-0 text-10 font-bold mt-0.5">
-                      {i + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-slate-700 font-medium">
-                        Task Pattern: <span className="text-slate-900">{item.task}</span>
-                      </div>
-                      <div className="text-cyan-700 mt-0.5 flex items-center gap-1.5 font-sans">
-                        <CornerDownRight size={13} className="shrink-0 text-cyan-700" />
-                        Permanent Heuristic: <span className="font-semibold">"{item.note}"</span>
-                        <span className="text-slate-500 text-10 ml-auto">Enforced by {item.by}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
         </div>
       )}
 
@@ -993,54 +691,32 @@ export default function AiAgentPage() {
             </Card>
           </div>
 
-          {/* Safety Protocols & Governance (Right 1 col) */}
+          {/* What the rules above mean, and what the assistant learnt from the rejections (real data only) */}
           <div className="space-y-4">
-            <Card
-              title="Safety & Guardrails Architecture"
-              subtitle="Hospital-grade regulatory compliance standards"
-            >
-              <div className="space-y-3.5 text-12">
+            <Card title="How approval works" subtitle="Nothing reaches Google or your website without a rule or a person allowing it">
+              <div className="space-y-3 text-12">
                 <div className="p-3.5 rounded bg-slate-50 border border-slate-200">
-                  <div className="flex items-center gap-2 text-rose-700 font-bold text-13 mb-1">
-                    <ShieldCheck size={16} className="text-rose-600" />
-                    Core NAP Permanent Lock
-                  </div>
-                  <p className="text-slate-500 text-11 leading-relaxed">
-                    Name, Address, Phone, and Hospital Category changes can never be executed via autopilot. These modifications require mandatory multi-signature authorization.
-                  </p>
+                  <div className="flex items-center gap-2 text-rose-700 font-bold text-13 mb-1"><ShieldCheck size={16} className="text-rose-600" />Profile name, address and phone</div>
+                  <p className="text-slate-500 text-11 leading-relaxed">Always need a person. The switch is locked off because Google verified these details.</p>
                 </div>
-
                 <div className="p-3.5 rounded bg-slate-50 border border-slate-200">
-                  <div className="flex items-center gap-2 text-amber-700 font-bold text-13 mb-1">
-                    <AlertTriangle size={16} className="text-amber-700" />
-                    Negative Review Escalation
-                  </div>
-                  <p className="text-slate-500 text-11 leading-relaxed">
-                    Reviews with 1–3 stars trigger an instant escalation alert to hospital patient care managers. Autopilot is bypassed to ensure clinical sensitivity.
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded bg-slate-50 border border-slate-200">
-                  <div className="flex items-center gap-2 text-emerald-700 font-bold text-13 mb-1">
-                    <CheckCircle2 size={16} className="text-emerald-700" />
-                    Audit Rollback Capability
-                  </div>
-                  <p className="text-slate-500 text-11 leading-relaxed">
-                    Every code diff or meta tag change applied to the website or CMS is backed up automatically with a 1-click snapshot restore function.
-                  </p>
+                  <div className="flex items-center gap-2 text-amber-700 font-bold text-13 mb-1"><AlertTriangle size={16} className="text-amber-700" />Everything else</div>
+                  <p className="text-slate-500 text-11 leading-relaxed">Waits in the Approval Queue until you approve it, unless you switch its rule to run on its own. Every decision is written to the Activity log.</p>
                 </div>
               </div>
             </Card>
 
-            <Card title="Connected Target Entity">
-              <div className="text-12 space-y-2">
-                <div className="text-slate-500">Hospital:</div>
-                <div className="text-slate-900 font-bold">Moraya Multispeciality Charitable Hospital</div>
-                <div className="text-slate-500 mt-2">Active Target URL:</div>
-                <div className="text-cyan-700  text-11 break-all p-2 rounded-lg bg-slate-50 border border-slate-200">
-                  https://morayamultispecialitycharitablehospital.com/cataract-surgery-in-pcmc
+            <Card title="Learnt from your rejections" subtitle="When you reject a task and give a reason, the reason is kept here">
+              {playbook.data?.learnt?.length > 0 ? (
+                <div className="space-y-2">
+                  {playbook.data.learnt.slice(0, 10).map((l, i) => (
+                    <div key={i} className="p-3 rounded bg-slate-50 border border-slate-200 text-12">
+                      <div className="text-slate-700 font-medium">Task: <span className="text-slate-900">{l.task}</span></div>
+                      <div className="text-purple-700 mt-0.5 flex items-start gap-1.5"><CornerDownRight size={13} className="shrink-0 mt-0.5 text-purple-600" /><span>“{l.note}”<span className="text-slate-500 text-10 ml-2">by {l.by || 'a team member'}</span></span></div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              ) : <p className="text-12 text-slate-500 py-2">Nothing yet. Reject a proposed task with a short reason and it appears here.</p>}
             </Card>
           </div>
         </div>
@@ -1051,8 +727,8 @@ export default function AiAgentPage() {
       {/* TAB 4: LIVE AUDIT & EXECUTION STREAM */}
       {tab === 'log' && (
         <Card
-          title="Live Multi-Agent Audit & Execution Stream"
-          subtitle="Real-time chronological telemetry of all autonomous agent actions, scheduler triggers, and human decisions"
+          title="Activity log"
+          subtitle="Every action the assistant, the scheduler and your team took, newest first"
         >
           {/* Stream Filter */}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
