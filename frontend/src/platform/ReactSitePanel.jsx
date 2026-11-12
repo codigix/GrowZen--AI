@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle2, XCircle, Loader2, Send, Save, Unplug, ExternalLink, Trash2, Settings2, KeyRound, AlertTriangle, Code2, Eye, EyeOff, Upload, Globe, Lock } from 'lucide-react';
 import { Badge, Button, Field, Modal, inputCls, useDoubleConfirm } from './SeoUi';
 import { api, fmtDateTime } from './seoApi';
+import Select from '../components/Select';
 
 export const REACT_STATUS = { connected: ['Connected', 'green'], failed: ['Authentication Failed', 'red'], not_connected: ['Not connected', 'gray'] };
 const POST_LABEL = { publish: ['Published', 'green'], draft: ['Draft', 'gray'], scheduled: ['Scheduled', 'amber'], deleted: ['Deleted', 'red'] };
@@ -231,10 +232,10 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
               </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <Field label="Image delivery" hint="How the image reaches the website">
-                  <select className={inputCls} value={form.mapping.image_delivery} onChange={setMap('image_delivery')}>
+                  <Select className={inputCls} value={form.mapping.image_delivery} onChange={setMap('image_delivery')}>
                     <option value="upload">Upload endpoint (stores the image address)</option>
                     <option value="inline">Inside the blog post (image field)</option>
-                  </select>
+                  </Select>
                 </Field>
                 <Field label="Blog image field" hint="Blog record field for the image"><input className={inputCls} value={form.mapping.image_field} onChange={setMap('image_field')} placeholder="image" /></Field>
                 <Field label="Blog image ALT field" hint="Empty = don't send"><input className={inputCls} value={form.mapping.image_alt_field} onChange={setMap('image_alt_field')} placeholder="image_alt" /></Field>
@@ -245,10 +246,10 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
                 {form.mapping.image_delivery !== 'inline' && (<>
                   <Field label="Image upload endpoint" hint="POST on the API base URL"><input className={inputCls} value={form.image_endpoint} onChange={set('image_endpoint')} placeholder="/api/uploads" /></Field>
                   <Field label="Request format">
-                    <select className={inputCls} value={form.mapping.upload_format} onChange={setMap('upload_format')}>
+                    <Select className={inputCls} value={form.mapping.upload_format} onChange={setMap('upload_format')}>
                       <option value="multipart">multipart/form-data (file)</option>
                       <option value="json_base64">JSON with base64 image</option>
-                    </select>
+                    </Select>
                   </Field>
                   <Field label="File field name" hint="The field the upload API reads"><input className={inputCls} value={form.mapping.upload_field} onChange={setMap('upload_field')} placeholder="image" /></Field>
                   <Field label="ALT text field" hint="Sent with the upload; empty = none"><input className={inputCls} value={form.mapping.alt_field} onChange={setMap('alt_field')} placeholder="alt" /></Field>

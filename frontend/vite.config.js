@@ -23,6 +23,9 @@ export default defineConfig({
   },
   // Pre-bundle the big libraries once so the dev server does not load hundreds of small files on every page.
   optimizeDeps: { include: ['react', 'react-dom', 'react-router-dom', 'recharts', 'lucide-react', 'leaflet'] },
-  server: { port: 3100, strictPort: true },
-  preview: { port: 3100 }
+  // host: true = listen on every address, so the app also opens at http://<this PC's IP>:3100 (not only localhost).
+  // The page and the API share one origin: the browser calls /api/v1 on this same address and Vite forwards it to the backend. That keeps the
+  // login cookie working whether the app is opened as localhost:3100 or as http://<this PC's IP>:3100, with no CORS in between.
+  server: { host: true, port: 3100, strictPort: true, proxy: { '/api': { target: process.env.BACKEND_URL || 'http://127.0.0.1:8000', changeOrigin: false } } },
+  preview: { host: true, port: 3100, proxy: { '/api': { target: process.env.BACKEND_URL || 'http://127.0.0.1:8000', changeOrigin: false } } }
 });

@@ -11,6 +11,7 @@ import { IntelBar, section } from './DomainIntel';
 import { Th } from './SeoToolkit';
 import OrganicPositions from './OrganicPositions';
 import PositionChanges from './PositionChanges';
+import Select from '../components/Select';
 
 /**
  * Organic Rankings, laid out like an organic research report.
@@ -450,7 +451,7 @@ function Positions({ intel, research, days, setDays }) {
     <div className="space-y-4">
       <OrganicPositions research={research} days={days} setDays={setDays} />
       <Card title={`Organic keywords ${s.data ? `(${fmt(s.data.total)})` : ''}`} subtitle="Every keyword the domain ranks for, from the data provider (the highest-traffic ones are listed)" pad={false}
-        action={<div className="flex gap-2"><select value={intent} onChange={e => setIntent(e.target.value)} className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white cursor-pointer" aria-label="Intent"><option value="">All intents</option>{Object.entries(INTENT).filter(([k]) => k !== 'unknown').map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</select>
+        action={<div className="flex gap-2"><Select value={intent} onChange={e => setIntent(e.target.value)} className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white cursor-pointer" aria-label="Intent"><option value="">All intents</option>{Object.entries(INTENT).filter(([k]) => k !== 'unknown').map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</Select>
           <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter" className="h-8 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white outline-none focus:border-indigo-400" /></label></div>}>
         {s.data?.rows?.length ? (
           <div className="overflow-auto max-h-[520px]"><table className="w-full text-13">

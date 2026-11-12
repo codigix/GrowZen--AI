@@ -3,6 +3,7 @@ import { UserPlus, Shield, UserCheck, Key, UserX, Users as UsersIcon, Mail, Cale
 import { api, useApi, fmtDateTime } from '../platform/seoApi';
 import Breadcrumbs from '../platform/Breadcrumbs';
 import { Card, Badge, Button, Modal, Field, inputCls, ErrorNote, Empty, useToast } from '../platform/SeoUi';
+import Select from '../components/Select';
 
 const ROLES = ['admin', 'editor', 'viewer'];
 const blank = { name: '', email: '', password: '', role: 'editor' };
@@ -109,7 +110,7 @@ export default function UsersPage({ me }) {
                           </div>
                         </td>
                         <td className="px-5 py-3.5">
-                          <select
+                          <Select
                             value={u.role}
                             disabled={self}
                             onChange={e => patch(u, { role: e.target.value }, `${u.name} is now ${e.target.value}`)}
@@ -120,7 +121,7 @@ export default function UsersPage({ me }) {
                                 {r.charAt(0).toUpperCase() + r.slice(1)}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         </td>
                         <td className="px-5 py-3.5 text-slate-600">
                           <div className="flex items-center gap-1.5 text-12">
@@ -188,13 +189,13 @@ export default function UsersPage({ me }) {
               <input type="password" className={inputCls} placeholder="••••••••••••" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
             </Field>
             <Field label="Platform Role">
-              <select className={inputCls} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+              <Select className={inputCls} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
                 {ROLES.map(r => (
                   <option key={r} value={r}>
                     {r.charAt(0).toUpperCase() + r.slice(1)} — {r === 'admin' ? 'Full administrative access' : r === 'editor' ? 'Manage audits, campaigns, posts' : 'Read-only reporting'}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <ErrorNote>{formError}</ErrorNote>
           </div>

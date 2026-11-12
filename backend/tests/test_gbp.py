@@ -12,6 +12,7 @@ def location(n, **meta):
             "metadata": {"placeId": f"place{n}", "mapsUri": f"https://maps.google.com/?cid={n}", "newReviewUri": f"https://g.page/r/{n}/review", **meta}}
 
 
+ACTION_LINKS = [{"name": "locations/1/placeActionLinks/a1", "placeActionType": "APPOINTMENT", "uri": "https://saidental.in/old"}]
 LOCATIONS = [location(1, hasVoiceOfMerchant=True), location(2), location(3, open="CLOSED_TEMPORARILY", hasPendingEdits=True), location(4, duplicateLocation=True)]
 VOM = {"locations/1": {"hasVoiceOfMerchant": True, "hasBusinessAuthority": True},
        "locations/2": {"verify": {"hasPendingVerification": True}},
@@ -45,6 +46,8 @@ def fake_google(monkeypatch, vom_enabled=True):
                                     "createTime": "2026-10-01T00:00:00Z", "locationAssociation": {"category": "EXTERIOR"}, "insights": {"viewCount": str(i * 10)}} for i in range(7)], "totalMediaItemCount": 7}
         if "fetchMultiDailyMetricsTimeSeries" in url:
             return {}
+        if "placeActionLinks" in url and method == "GET":
+            return {"placeActionLinks": ACTION_LINKS}
         raise AssertionError(f"unexpected Google call {url}")
     monkeypatch.setattr(gbp.GbpClient, "_req", req)
 
@@ -304,6 +307,54 @@ def test_an_imported_client_gets_the_plans_recurring_jobs(client, monkeypatch):
         jobs = {r.job: r.every for r in db.query(Schedule).filter(Schedule.business_id == bid)}
         db.close()
         assert jobs["reviews"] == "daily" and jobs["posts"] == "weekly" and jobs["report"] == "monthly"
+    finally:
+        db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
+
+
+def test_phones_and_booking_links_are_written_to_google_and_read_back(client, monkeypatch):
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    try:
+        # Sync reads Google's booking link back onto the project
+        assert client.post(f"/api/v1/businesses/{bid}/sync").status_code == 200
+        got = client.get(f"/api/v1/businesses/{bid}").json()
+        assert got["booking_url"] == "https://saidental.in/old" and got["action_links"] == [{"type": "APPOINTMENT", "url": "https://saidental.in/old"}]
+        sent = []
+        base = gbp.GbpClient._req
+
+        def req(self, method, url, **kw):
+            if method in ("PATCH", "POST", "PUT", "DELETE") and "/revoke" not in url:
+                sent.append((method, url.split("/v1/")[-1], kw.get("params"), kw.get("json")))
+                return {}
+            return base(self, method, url, **kw)
+        monkeypatch.setattr(gbp.GbpClient, "_req", req)
+        out = client.patch(f"/api/v1/businesses/{bid}", json={"phone": "+91 99999 00000", "additional_phones": ["+91 88888 00000", "020 2555 0100"],
+                                                              "booking_url": "https://saidental.in/book", "action_links": [{"type": "FOOD_ORDERING", "url": "https://saidental.in/order"}]}).json()
+        assert set(out["pushed_to_google"]) >= {"phoneNumbers", "placeActionLinks"}
+        loc = next(x for x in sent if x[1] == "locations/1")
+        assert loc[3]["phoneNumbers"] == {"primaryPhone": "+91 99999 00000", "additionalPhones": ["+91 88888 00000", "020 2555 0100"]}
+        assert ("PATCH", "locations/1/placeActionLinks/a1", {"updateMask": "uri"}, {"uri": "https://saidental.in/book"}) in sent  # the changed booking link is edited in place
+        assert any(x[0] == "POST" and x[3] == {"placeActionType": "FOOD_ORDERING", "uri": "https://saidental.in/order"} for x in sent)  # the new order link is created
+        # Removing the booking link removes the button; the other link stays
+        sent.clear()
+        out = client.patch(f"/api/v1/businesses/{bid}", json={"booking_url": ""}).json()
+        assert out["booking_url"] is None and [x["type"] for x in out["action_links"]] == ["FOOD_ORDERING"]
+        assert ("DELETE", "locations/1/placeActionLinks/a1", None, None) in sent
+        # Saving something else does not touch the Book / Order buttons on Google
+        sent.clear()
+        assert client.patch(f"/api/v1/businesses/{bid}", json={"description": "Hello", "booking_url": "", "action_links": [{"type": "FOOD_ORDERING", "url": "https://saidental.in/order"}]}).status_code == 200
+        assert not any("placeActionLinks" in x[1] for x in sent)
+        # Bad input is refused before anything is sent
+        sent.clear()
+        assert client.patch(f"/api/v1/businesses/{bid}", json={"phone": "abc"}).status_code == 422
+        assert client.patch(f"/api/v1/businesses/{bid}", json={"additional_phones": ["1111111", "2222222", "3333333"]}).status_code == 422
+        assert client.patch(f"/api/v1/businesses/{bid}", json={"booking_url": "not a link"}).status_code == 422
+        assert client.patch(f"/api/v1/businesses/{bid}", json={"phone": "+91 99999 00000", "additional_phones": ["+91 99999 00000"]}).status_code == 422
+        assert sent == []
     finally:
         db = SessionLocal()
         db.query(Business).filter(Business.gbp_location == "locations/1").delete()

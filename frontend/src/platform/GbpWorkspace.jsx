@@ -1,11 +1,14 @@
 import ProcessTasks from './ProcessTasks';
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   LayoutDashboard, Store, BarChart3, Star, Newspaper, Image as ImageIcon, MapPinned, MessageCircleQuestion, Sparkles, Swords, Bot, FileText,
   ListTodo, History, Settings2, ArrowRight, Phone, Navigation, MousePointerClick, Search, Eye, CalendarCheck, CheckCircle2, Clock, PlugZap, Globe
 } from 'lucide-react';
-import { Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill, areaCls, useAction, useDoubleConfirm, Sk, SkStats, SkTable, SkList, SkScore, SkCard } from './SeoUi';
+import { ReviewLinkCard } from './ReviewLink';
+import { ProfileStrength, QuickTiles, MissingInfoCard, ShareProfileCard, NewReviewBanner, interactions } from './GbpOverviewExtras';
+import { VerificationCard, ManagersCard, AdvertiseCard, DangerCard } from './GbpAdmin';
+import { refreshBusinesses, Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill, areaCls, useAction, useDoubleConfirm, Sk, SkStats, SkTable, SkList, SkScore, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
 import { useGbpLive } from './AccessGate';
 import { VerifyPill } from './GbpAccounts';
@@ -51,21 +54,10 @@ export const SECTIONS = [
     { id: 'posts', label: 'Posts & Content', icon: Newspaper },
     { id: 'photos', label: 'Photos & Media', icon: ImageIcon },
   ] },
-  { group: 'Optimization', items: [
-    { id: 'local-seo', label: 'Local SEO', icon: MapPinned },
-    { id: 'aeo', label: 'AEO', icon: MessageCircleQuestion },
-    { id: 'geo', label: 'GEO', icon: Sparkles },
-    { id: 'competitors', label: 'Competitor Analysis', icon: Swords },
-    { id: 'ai', label: 'AI Recommendations', icon: Bot },
-  ] },
-  { group: 'Manage', items: [
-    { id: 'reports', label: 'Reports', icon: FileText },
-    { id: 'tasks', label: 'Tasks & Activities', icon: ListTodo },
-    { id: 'sync', label: 'Sync History', icon: History },
-    { id: 'settings', label: 'Settings & Integrations', icon: Settings2 },
-  ] },
 ];
-export const SECTION_IDS = SECTIONS.flatMap(g => g.items.map(i => i.id));
+// These pages live under their own sidebars now (GMB, AI Visibility, Reports, Settings). They are still opened as /gmb-profile?tab=<id>.
+export const SIDEBAR_SECTION_IDS = ['local-seo', 'aeo', 'geo', 'competitors', 'ai', 'reports', 'tasks', 'sync', 'settings'];
+export const SECTION_IDS = [...SECTIONS.flatMap(g => g.items.map(i => i.id)), ...SIDEBAR_SECTION_IDS];
 // Older ?tab= links still land in the right place.
 export const TAB_ALIAS = { live: 'profile', hours: 'profile', faq: 'profile', audit: 'ai', insights: 'performance' };
 
@@ -103,6 +95,15 @@ export function SectionNav({ value, onChange }) {
   );
 }
 
+/** The website's own icon, for a project whose Google profile has no logo (yet). */
+export function siteIcon(website) {
+  if (!website) return null;
+  try {
+    const host = new URL(/^https?:\/\//i.test(website) ? website : `https://${website}`).hostname;
+    return host ? `https://www.google.com/s2/favicons?sz=128&domain=${encodeURIComponent(host)}` : null;
+  } catch { return null; }
+}
+
 /** The business logo from its Google profile, or its first letter when the profile has none. */
 export function BusinessAvatar({ name, src, size = 'w-11 h-11', className = '' }) {
   const [failed, setFailed] = React.useState(false);
@@ -123,13 +124,16 @@ const ago = (iso) => {
 const Loading = () => <SkList rows={3} />;
 
 /** Client header: who this workspace is for and the state of its Google connection. */
-export function ClientBar({ b, onConnect, onSync }) {
+export function ClientBar({ b, onConnect, onSync, syncing = false, version = 0 }) {
   const live = useGbpLive(b);  // the Business Profile data once the project's access steps are done; until then only what the checklist knows
   const d = live.data;
+  const reload = live.reload;
+  const seen = useRef(version);
+  useEffect(() => { if (seen.current !== version) { seen.current = version; reload?.(); } }, [version]); // eslint-disable-line react-hooks/exhaustive-deps -- a sync finished: re-read the header's data
   const connected = Boolean(d?.linked && d?.connection?.status === 'active');
   return (
     <div className="ai-glass-card rounded px-5 py-3.5 flex flex-wrap items-center gap-x-5 gap-y-2">
-      <BusinessAvatar name={b.name} src={d?.profile?.logo || b.logo} size="w-12 h-12" />
+      <BusinessAvatar name={b.name} src={d?.profile?.logo || b.logo || (d?.live?.media || []).find(m => m.type !== 'VIDEO' && m.url)?.url || siteIcon(b.website)} size="w-12 h-12" />
       <div className="min-w-[200px] flex-1">
         <div className="text-16 font-semibold text-slate-900">{b.name}</div>
         <div className="text-12 text-slate-500">{[b.primaryCategory || b.primary_category, [b.area, b.city].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || 'No category or address yet'}</div>
@@ -143,7 +147,7 @@ export function ClientBar({ b, onConnect, onSync }) {
           {d.linked && <VerifyPill state={d.verification} />}
         </>
       )}
-      {d?.linked ? <Button size="sm" onClick={onSync}>Sync now</Button> : <Button size="sm" variant="primary" icon={PlugZap} onClick={() => onConnect?.('google')}>Connect Google account</Button>}
+      {d?.linked ? <Button size="sm" busy={syncing} disabled={syncing} onClick={onSync}>{syncing ? 'Syncing…' : 'Sync now'}</Button> : <Button size="sm" variant="primary" icon={PlugZap} onClick={() => onConnect?.('google')}>Connect Google account</Button>}
     </div>
   );
 }
@@ -170,28 +174,38 @@ export function OverviewSection({ b, go, onOpen }) {
       {!d ? <div className="space-y-4"><SkStats labels={["Average rating", "Search views · 30 days", "Calls · 30 days", "Website clicks · 30 days"]} /><div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><SkCard title="Profile health score" subtitle="Calculated by Codigix from the profile; not a Google score"><SkScore /></SkCard><SkCard title="Fix next" subtitle="Highest-impact gaps first" className="xl:col-span-2"><SkList rows={4} avatar={false} /></SkCard></div></div> : (
         <>
           {!linked && <div className="rounded bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-13 text-amber-900">This client has no Google account connected, so the numbers below are empty. Use <b>Connect Google account</b> above.</div>}
+
+          <div className="rounded-2xl bg-sky-50/70 ring-1 ring-sky-100 p-5 space-y-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <BusinessAvatar name={b.name} src={d?.profile?.logo || b.logo || siteIcon(b.website)} size="w-12 h-12" />
+              <div className="flex-1 min-w-[200px]">
+                <div className="text-18 font-medium text-slate-900">Your business on Google</div>
+                <div className="text-12.5 text-sky-700 flex items-center gap-1.5"><BarChart3 size={13} />{interactions(m)} customer interactions · last 30 days</div>
+              </div>
+              {score.data && <ProfileStrength score={score.data.score} />}
+            </div>
+            <QuickTiles b={b} unreplied={m.unreplied_reviews || 0} />
+            <NewReviewBanner b={b} />
+            <p className="text-11.5 text-slate-500">Only managers of this profile can see this. Profile strength is our check of what Google rewards; Google does not share its own number.</p>
+          </div>
+
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Kpi icon={Star} label="Average rating" value={m.rating ? `${m.rating}★` : '—'} sub={`${fmt(m.review_count || 0)} reviews`} />
             <Kpi icon={Search} label="Search views · 30 days" value={fmt(m.views_search_30)} />
             <Kpi icon={Phone} label="Calls · 30 days" value={fmt(m.calls_30)} />
             <Kpi icon={MousePointerClick} label="Website clicks · 30 days" value={fmt(m.website_clicks_30)} />
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
-            <Card title="Profile health score" subtitle="Calculated by Codigix from the profile; not a Google score" action={<SourceBadge type="calc" />}>
-              {!score.data ? <SkScore /> : <div className="flex items-center gap-5"><ScoreRing score={score.data.score} label={scoreWord(score.data.score)} /><div className="text-13 text-slate-600">{score.data.alerts.length ? `${score.data.alerts.length} alert${score.data.alerts.length > 1 ? 's' : ''} need attention.` : 'No alerts.'}<button type="button" onClick={() => go('ai')} className="block mt-1 text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">See all recommendations</button></div></div>}
-            </Card>
-            <Card title="Fix next" subtitle="Highest-impact gaps first" className="xl:col-span-2" action={<SourceBadge type="calc" />}>
-              {!score.data ? <SkList rows={4} avatar={false} /> : missing.length === 0 ? <p className="text-13 text-slate-500 py-3">Nothing missing. The profile checklist is complete.</p> : (
-                <ul className="divide-y divide-slate-100">{missing.map(i => <li key={i.key} className="py-2 flex items-start gap-3"><div className="flex-1 min-w-0"><div className="text-13 text-slate-900">{i.label}</div><div className="text-12 text-slate-500">{i.fix}</div></div><Badge tone="gray">{i.factor}</Badge></li>)}</ul>
-              )}
-            </Card>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+            <MissingInfoCard b={b} d={d} />
+            <ShareProfileCard b={b} />
           </div>
-          <Card title="Quick actions" subtitle="Edits open here and are sent straight to your Google profile" pad>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {[['profile', 'Edit profile and hours', true], ['reviews', `Reply to reviews${m.unreplied_reviews ? ` (${m.unreplied_reviews} unreplied)` : ''}`, true], ['posts', 'Create a post', true], ['photos', 'Photos and media', true], ['performance', 'Performance trends'], ['tasks', 'Tasks and activity'], ['reports', 'Reports'], ['settings', 'Connection settings']].map(([id, l, panel]) => (
-                <button key={id} type="button" onClick={() => (panel && onOpen ? onOpen(id) : go(id))} className="flex items-center justify-between gap-2 px-3 py-2.5 rounded border border-slate-200 text-13 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/40 cursor-pointer text-left">{l}<ArrowRight size={13} className="text-slate-400 shrink-0" /></button>
-              ))}
-            </div>
+
+          <Card title="Fix next" subtitle="Highest-impact gaps from the full profile check" action={<SourceBadge type="calc" />}>
+            {!score.data ? <SkList rows={4} avatar={false} /> : missing.length === 0 ? <p className="text-13 text-slate-500 py-3">Nothing missing. The profile checklist is complete.</p> : (
+              <ul className="divide-y divide-slate-100">{missing.map(i => <li key={i.key} className="py-2 flex items-start gap-3"><div className="flex-1 min-w-0"><div className="text-13 text-slate-900">{i.label}</div><div className="text-12 text-slate-500">{i.fix}</div></div><Badge tone="gray">{i.factor}</Badge></li>)}</ul>
+            )}
+            {score.data && <button type="button" onClick={() => go('ai')} className="mt-2 text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">See all recommendations</button>}
           </Card>
         </>
       )}
@@ -228,6 +242,16 @@ export function PerformanceMetrics({ b }) {
   );
 }
 
+/** "12 Nov 2026, 3:45 PM": the date and the time (in the viewer's time zone) a review or reply was posted on Google. A date without a time (older rows) shows the date only. */
+const stamp = (v) => {
+  if (!v) return '';
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(String(v));
+  const t = new Date(dateOnly ? `${v}T00:00:00` : v);
+  if (Number.isNaN(t.getTime())) return String(v);
+  const d = t.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return dateOnly ? d : `${d}, ${t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+};
+
 /** One review with its reply written, edited and posted right here (the reply goes to Google when posted). */
 function ReviewRow({ b, r, toast, onChanged }) {
   const [open, setOpen] = React.useState(false);
@@ -244,9 +268,9 @@ function ReviewRow({ b, r, toast, onChanged }) {
   return (
     <li className="text-13">
       {confirmNode}
-      <div className="flex flex-wrap items-center gap-2"><span className="font-semibold text-slate-900">{r.author || 'Google user'}</span><span className="text-amber-500">{'★'.repeat(r.rating)}</span><span className="text-11.5 text-slate-400">{r.date}</span>{!r.replied && <Badge tone="amber">No reply</Badge>}</div>
+      <div className="flex flex-wrap items-center gap-2"><span className="font-semibold text-slate-900">{r.author || 'Google user'}</span><span className="text-amber-500">{'★'.repeat(r.rating)}</span><span className="text-11.5 text-slate-400" title="When the customer posted this on Google">{stamp(r.at || r.date)}</span>{!r.replied && <Badge tone="amber">No reply</Badge>}</div>
       {r.body && <p className="text-slate-600 mt-0.5">{r.body}</p>}
-      {r.reply && !open && <p className="mt-1 pl-3 border-l-2 border-slate-200 text-12.5 text-slate-500">{r.reply}</p>}
+      {r.reply && !open && <div className="mt-1 pl-3 border-l-2 border-slate-200"><div className="text-11.5 font-semibold text-slate-600">Your reply{r.repliedAt ? <span className="font-normal text-slate-400"> · {stamp(r.repliedAt)}</span> : null}</div><p className="text-12.5 text-slate-500">{r.reply}</p></div>}
       {open ? (
         <div className="mt-2 space-y-2">
           <textarea rows={4} className={areaCls} value={text} onChange={e => setText(e.target.value)} placeholder="Write a reply, or let AI draft one and edit it" />
@@ -278,12 +302,12 @@ export function ReviewsSection({ b, toast = () => {} }) {
   const sum = all.data.summary;
   const split = d.rating_split || {};
   const total = Object.values(split).reduce((a, v) => a + v, 0) || 0;
-  const rows = all.data.reviews.map(r => ({ id: r.id, author: r.author, rating: r.rating, body: r.body, date: r.review_date, replied: r.reply_status === 'posted', reply: r.reply_text }));
+  const rows = all.data.reviews.map(r => ({ id: r.id, author: r.author, rating: r.rating, body: r.body, date: r.review_date, at: r.review_at, repliedAt: r.replied_at, replied: r.reply_status === 'posted', reply: r.reply_text }));
   const shown = onlyOpen ? rows.filter(r => !r.replied) : rows;
   const positive = [4, 5].reduce((s2, n) => s2 + (split[String(n)] || 0), 0);
   const negative = [1, 2].reduce((s2, n) => s2 + (split[String(n)] || 0), 0);
   const changed = () => { all.reload(true); live.reload(true); };
-  const fetchNew = () => run('sync', async () => { const x = await api(`/businesses/${b.id}/sync`, { method: 'POST' }); toast(x.new_reviews ? `${x.new_reviews} new review${x.new_reviews === 1 ? '' : 's'} from Google` : 'No new reviews on Google'); changed(); });
+  const fetchNew = () => run('sync', async () => { const x = await api(`/businesses/${b.id}/sync`, { method: 'POST' }); toast(x.new_reviews ? `${x.new_reviews} new review${x.new_reviews === 1 ? '' : 's'} from Google` : x.reviews === 0 ? 'Google has not published any review for this profile yet' : 'No new reviews on Google'); changed(); });
   return (
     <div className="space-y-4">
       <SectionHead title="Reviews & Reputation" subtitle="Rating, distribution, and replies you write here go to Google" sources={['google', 'calc', 'ai']} />
@@ -293,6 +317,7 @@ export function ReviewsSection({ b, toast = () => {} }) {
         <Kpi icon={Star} label="Unanswered" value={fmt(sum.awaiting_reply)} sub="Codigix calculated" />
         <Kpi icon={Star} label="Response rate" value={sum.count ? `${sum.reply_rate}%` : '—'} sub={`Of ${sum.count} reviews · Codigix calculated`} />
       </div>
+      <ReviewLinkCard b={b} />
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <Card title="Rating distribution" action={<SourceBadge type="google" />}>
           <ul className="space-y-1.5">{[5, 4, 3, 2, 1].map(n => <li key={n} className="flex items-center gap-2 text-12"><span className="w-3 text-slate-500">{n}</span><span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full rounded-full bg-amber-400" style={{ width: `${total ? ((split[String(n)] || 0) / total) * 100 : 0}%` }} /></span><span className="w-8 text-right tabular-nums text-slate-500">{split[String(n)] || 0}</span></li>)}</ul>
@@ -301,6 +326,18 @@ export function ReviewsSection({ b, toast = () => {} }) {
         </Card>
         <Card title="Reviews" className="xl:col-span-2" action={<Button size="sm" busy={syncing === 'sync'} onClick={fetchNew}>Fetch new reviews from Google</Button>}>
           <ErrorNote>{syncError}</ErrorNote>
+          {sum.count === 0 && d.linked && (b.review_count || 0) > 0 && (
+            <div className="mb-3 rounded-lg bg-sky-50 ring-1 ring-sky-200 px-4 py-3 text-13 text-sky-900">
+              <div className="font-semibold">Google counts {b.review_count} review{b.review_count === 1 ? '' : 's'}{b.rating ? ` (${b.rating}★)` : ''}, but has not released the text yet</div>
+              <p className="mt-1 text-12.5 text-sky-800">The total is already on Google. The review itself (name, text, date) usually follows within hours. Press <b>Fetch new reviews from Google</b> again later and it will appear here, with a bell alert.</p>
+            </div>
+          )}
+          {sum.count === 0 && d.linked && !((b.review_count || 0) > 0) && (
+            <div className="mb-3 rounded-lg bg-amber-50 ring-1 ring-amber-200 px-4 py-3 text-13 text-amber-900">
+              <div className="font-semibold">Google has not published a review for this profile yet</div>
+              <p className="mt-1 text-12.5 text-amber-800">This page shows exactly what Google returns, and it returned none. A review you just posted can take from a few minutes to a couple of days to appear, and Google holds back some: reviews from the account that manages the profile, from brand-new accounts, or ones flagged by its spam filter. Also check it was posted on this exact listing (open the review link above and look for the same address). Press <b>Fetch new reviews from Google</b> again later.</p>
+            </div>
+          )}
           <div className="flex gap-1 mb-3">
             {[[true, `Unanswered (${sum.awaiting_reply})`], [false, `All (${sum.count})`]].map(([v, l]) => (
               <button key={String(v)} type="button" onClick={() => setOnlyOpen(v)} className={`h-8 px-3 rounded text-12.5 font-semibold cursor-pointer ${onlyOpen === v ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>
@@ -413,7 +450,7 @@ export function SyncSection({ b, onSync, syncing }) {
   );
 }
 
-export function SettingsSection({ b, onConnect }) {
+export function SettingsSection({ b, onConnect, toast = () => {} }) {
   const live = useGbpLive(b);
   const d = live.data;
   return (
@@ -440,6 +477,10 @@ export function SettingsSection({ b, onConnect }) {
             <p className="text-13 text-slate-600">Search Console, WordPress publishing and other connections are managed on the integrations page. Disconnecting a Google account is done there (admin only).</p>
             <Link to="/google-integrations"><Button className="mt-3">Open integrations</Button></Link>
           </Card>
+          {d.linked && <VerificationCard b={b} state={d.verification} onChanged={() => live.reload(true)} toast={toast} />}
+          {d.linked && <ManagersCard b={b} toast={toast} />}
+          <AdvertiseCard />
+          {d.linked && <div className="xl:col-span-2"><DangerCard b={b} onChanged={async () => { await refreshBusinesses(); live.reload(true); }} toast={toast} /></div>}
         </div>
       )}
     </div>

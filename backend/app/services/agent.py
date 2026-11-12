@@ -144,7 +144,8 @@ def apply(db: Session, task: AgentTask, actor: str = "agent") -> AgentTask:
         elif task.kind == "gbp_post":
             p = db.get(Post, task.detail.get("post_id"))
             if p and b.connection and b.gbp_account:
-                created = gbp.GbpClient(b.connection).create_post(b.gbp_account, b.gbp_location, {"post_type": p.post_type, "title": p.title, "body": p.body, "cta_type": p.cta_type, "cta_url": p.cta_url, "image_url": p.image_url})
+                created = gbp.GbpClient(b.connection).create_post(b.gbp_account, b.gbp_location, {"post_type": p.post_type, "title": p.title, "body": p.body, "cta_type": p.cta_type, "cta_url": p.cta_url, "image_url": p.image_url,
+                                                                                                    "starts_on": p.starts_on, "ends_on": p.ends_on, "start_time": p.start_time, "end_time": p.end_time, "coupon_code": p.coupon_code, "redeem_url": p.redeem_url, "terms": p.terms})
                 p.status, p.external_id, p.published_at = "published", created.get("name"), datetime.now(timezone.utc)
                 task.result = {"published": True}
             else:

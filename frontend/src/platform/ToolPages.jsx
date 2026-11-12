@@ -4,6 +4,7 @@ import { Copy, Check, Plus, Sparkles, ArrowRight, PlugZap } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, Field, inputCls, areaCls, useAction, useToast, Empty } from './SeoUi';
 import { api } from './seoApi';
 import { FEATURES } from '../components/featureCatalog';
+import Select from '../components/Select';
 
 const sel = 'h-10 px-3 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
 
@@ -80,7 +81,7 @@ function Social({ b }) {
           <Field label="What is the post about?"><textarea className={areaCls} rows={2} value={topic} onChange={e => setTopic(e.target.value)} placeholder="e.g. Free dental check-up camp this Saturday in Pimpri" /></Field>
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex flex-wrap gap-3">{PLATFORMS.map(([id, l]) => <label key={id} className="inline-flex items-center gap-1.5 text-13 text-slate-700 cursor-pointer"><input type="checkbox" checked={picked.includes(id)} onChange={() => toggle(id)} />{l}</label>)}</div>
-            <select className={sel} value={tone} onChange={e => setTone(e.target.value)} aria-label="Tone">{['friendly', 'professional', 'playful', 'urgent'].map(t => <option key={t}>{t}</option>)}</select>
+            <Select className={sel} value={tone} onChange={e => setTone(e.target.value)} aria-label="Tone">{['friendly', 'professional', 'playful', 'urgent'].map(t => <option key={t}>{t}</option>)}</Select>
             <Button type="submit" variant="primary" icon={Sparkles} busy={busy === 'posts'} disabled={topic.trim().length < 3 || !picked.length}>Write posts</Button>
           </div>
         </form>
@@ -108,7 +109,7 @@ function Ads({ b }) {
     <div className="space-y-4">
       <Card title="Plan a Google Ads search campaign" subtitle="Ad groups, keywords and responsive search ads for your business, within Google's character limits. Nothing is created or spent: you build it in Google Ads">
         <form onSubmit={go} className="flex flex-wrap items-end gap-3">
-          <Field label="Goal"><select className={sel} value={goal} onChange={e => setGoal(e.target.value)}>{[['leads', 'Leads'], ['calls', 'Phone calls'], ['bookings', 'Bookings'], ['visits', 'Website visits']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+          <Field label="Goal"><Select className={sel} value={goal} onChange={e => setGoal(e.target.value)}>{[['leads', 'Leads'], ['calls', 'Phone calls'], ['bookings', 'Bookings'], ['visits', 'Website visits']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Field>
           <Field label="Daily budget (optional)"><input className={`${inputCls} w-40`} type="number" min="1" value={budget} onChange={e => setBudget(e.target.value)} placeholder="e.g. 500" /></Field>
           <Button type="submit" variant="primary" icon={Sparkles} busy={busy === 'ads'}>Plan campaign</Button>
         </form>

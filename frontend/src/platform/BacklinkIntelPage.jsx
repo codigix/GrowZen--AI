@@ -3,6 +3,7 @@ import { Play, Plus, Trash2, Download, RefreshCw, Loader2, Search, Crosshair, Hi
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine, Legend } from 'recharts';
 import { SeoShell, Card, Tabs, Badge, Button, Meter, ErrorNote, Drawer, Field, Modal, Stat, inputCls, areaCls, SERIES, INK, useToast, useAction, useUrlTab, useDoubleConfirm, SkStats, SkTable, SkChart, SkList, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime, SEO_API } from './seoApi';
+import Select from '../components/Select';
 
 const STATUS_TONE = {
   NEW: 'blue', LIVE: 'green', RESTORED: 'green', CHANGED: 'amber', BROKEN_TARGET: 'amber', REDIRECTED_SOURCE: 'amber',
@@ -79,15 +80,15 @@ function Explorer({ base, targets }) {
   return (
     <Card title="Backlink explorer" subtitle="Every link with its status, who vouches for it, and full history">
       <div className="flex flex-wrap gap-2 mb-3">
-        <select className={`${inputCls} !w-auto`} value={f.target} onChange={set('target')}>
+        <Select className={`${inputCls} !w-auto`} value={f.target} onChange={set('target')}>
           <option value="">All tracked domains</option>{targets.map(t => <option key={t.id} value={t.domain}>{t.domain}</option>)}
-        </select>
-        <select className={`${inputCls} !w-auto`} value={f.status} onChange={set('status')}>
+        </Select>
+        <Select className={`${inputCls} !w-auto`} value={f.status} onChange={set('status')}>
           <option value="">Any status</option>{STATUSES.map(s => <option key={s}>{s}</option>)}
-        </select>
-        <select className={`${inputCls} !w-auto`} value={f.verification_status} onChange={set('verification_status')}>
+        </Select>
+        <Select className={`${inputCls} !w-auto`} value={f.verification_status} onChange={set('verification_status')}>
           <option value="">Any verification</option><option value="CRAWLER_VERIFIED">Crawler verified</option><option value="IMPORTED">Not verified</option>
-        </select>
+        </Select>
         <div className="relative"><Search size={13} className="absolute left-2.5 top-3 text-gray-400" /><input className={`${inputCls} !w-52 !pl-8`} placeholder="Anchor contains…" value={f.anchor} onChange={set('anchor')} /></div>
         <Button icon={RefreshCw} onClick={() => res.reload()}>Refresh</Button>
       </div>
@@ -204,7 +205,7 @@ function Lookup() {
     <Card className="mb-4" title="Search all backlinks" subtitle="Find links by a domain, URL or word (typos allowed): codigix finds codigix.co and codigixinfotech.com. Searches every project's stored backlinks; leave empty or use * to list everything.">
       <form className="flex flex-wrap gap-2 mb-3" onSubmit={search}>
         <div className="relative"><Search size={13} className="absolute left-2.5 top-3 text-gray-400" /><input className={`${inputCls} !w-80 !pl-8`} placeholder="codigix.co, https://site.com/blog or a word" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <select className={`${inputCls} !w-auto`} value={limit} onChange={(e) => setLimit(Number(e.target.value))} aria-label="Results">{[25, 100, 500].map(n => <option key={n} value={n}>{n} results</option>)}</select>
+        <Select className={`${inputCls} !w-auto`} value={limit} onChange={(e) => setLimit(Number(e.target.value))} aria-label="Results">{[25, 100, 500].map(n => <option key={n} value={n}>{n} results</option>)}</Select>
         <Button type="submit" variant="primary" icon={Search} busy={busy === 'lookup'}>Search</Button>
       </form>
       <ErrorNote>{error}</ErrorNote>
@@ -343,7 +344,7 @@ function Overview({ base, targets, biz, go, reload }) {
   return (
     <>
       <div className="flex flex-wrap items-center gap-3 mb-3">
-        <select className={`${inputCls} !w-auto`} value={d} onChange={(e) => { setDomain(e.target.value); setPicked([]); }}>{targets.map(t => <option key={t.id}>{t.domain}</option>)}</select>
+        <Select className={`${inputCls} !w-auto`} value={d} onChange={(e) => { setDomain(e.target.value); setPicked([]); }}>{targets.map(t => <option key={t.id}>{t.domain}</option>)}</Select>
         {o && <span className="text-12 text-gray-500">Report scope: all links to <b className="text-gray-700">{o.domain}</b> · updated {fmtDateTime(o.generated_at)}</span>}
         <Button className="ml-auto" icon={RefreshCw} onClick={() => res.reload()}>Refresh</Button>
       </div>
@@ -563,7 +564,7 @@ function Gap({ base, targets }) {
       )}
       {!own.length || !hasComp ? <Empty>Add your own domain and at least one competitor under “Targets”.</Empty> : (
         <>
-          <select className={`${inputCls} !w-auto mb-3`} value={c} onChange={(e) => setClient(e.target.value)}>{own.map(t => <option key={t.id}>{t.domain}</option>)}</select>
+          <Select className={`${inputCls} !w-auto mb-3`} value={c} onChange={(e) => setClient(e.target.value)}>{own.map(t => <option key={t.id}>{t.domain}</option>)}</Select>
           {!g.data ? <SkTable cols={['w-1/3','w-1/3','w-12','w-12']} rows={6} /> : g.data.gap.length === 0 ? <Empty>No gap found in the data collected so far.</Empty> : (
             <table className="w-full text-13"><thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Domain</Th><Th>Links to</Th><Th right>Links</Th><Th right>Verified</Th></tr></thead>
               <tbody className="divide-y divide-gray-100">{g.data.gap.map(x => <tr key={x.domain}><td className="p-2 text-gray-900">{x.domain}</td><td className="p-2 text-gray-600">{x.competitors.join(', ')}</td><td className="p-2 text-right tabular-nums">{x.backlinks}</td><td className="p-2 text-right tabular-nums">{x.crawler_verified}</td></tr>)}</tbody></table>
@@ -693,10 +694,10 @@ function BotPanel({ base, targets, onToast }) {
             <div className="text-12 text-gray-500 mb-4">Shared crawler, all projects: {s.totals.pages_fetched} pages fetched · {s.totals.pages_known} pages known · {s.totals.domains_known} domains discovered · {queued} pages waiting. Every page it reads is checked for links to all tracked projects.</div>
             <div className="flex flex-wrap items-end gap-3 mb-3">
               <label className="flex items-center gap-2 text-13 pb-2"><input type="checkbox" checked={c.enabled} onChange={(e) => save({ enabled: e.target.checked })} /> Run automatically</label>
-              {!rotating && <Field label="Every"><select className={`${inputCls} !w-auto`} value={c.interval_minutes} onChange={(e) => save({ interval_minutes: Number(e.target.value) })}>{[15, 30, 60, 180, 360, 1440].map(m => <option key={m} value={m}>{fmtMinutes(m)}</option>)}</select></Field>}
-              <Field label="Pages per run"><select className={`${inputCls} !w-auto`} value={c.pages_per_run} onChange={(e) => save({ pages_per_run: Number(e.target.value) })}>{[...new Set([25, 50, 100, 250, 500, c.pages_per_run])].sort((x, y) => x - y).map(n => <option key={n}>{n}</option>)}</select></Field>
-              <Field label="How far to explore" hint="Links followed away from your tracked sites"><select className={`${inputCls} !w-auto`} value={c.max_hops} onChange={(e) => save({ max_hops: Number(e.target.value) })}>
-                <option value={0}>Only your own sites</option><option value={1}>1 step out (recommended)</option><option value={2}>2 steps out</option><option value={3}>3 steps out (slow, wide)</option></select></Field>
+              {!rotating && <Field label="Every"><Select className={`${inputCls} !w-auto`} value={c.interval_minutes} onChange={(e) => save({ interval_minutes: Number(e.target.value) })}>{[15, 30, 60, 180, 360, 1440].map(m => <option key={m} value={m}>{fmtMinutes(m)}</option>)}</Select></Field>}
+              <Field label="Pages per run"><Select className={`${inputCls} !w-auto`} value={c.pages_per_run} onChange={(e) => save({ pages_per_run: Number(e.target.value) })}>{[...new Set([25, 50, 100, 250, 500, c.pages_per_run])].sort((x, y) => x - y).map(n => <option key={n}>{n}</option>)}</Select></Field>
+              <Field label="How far to explore" hint="Links followed away from your tracked sites"><Select className={`${inputCls} !w-auto`} value={c.max_hops} onChange={(e) => save({ max_hops: Number(e.target.value) })}>
+                <option value={0}>Only your own sites</option><option value={1}>1 step out (recommended)</option><option value={2}>2 steps out</option><option value={3}>3 steps out (slow, wide)</option></Select></Field>
               <label className="flex items-center gap-2 text-13 pb-2" title={s.render_available ? 'Loads pages built with JavaScript in a real browser. Slower: at most 10 pages per run.' : 'Chrome was not found on the server, so this is unavailable.'}>
                 <input type="checkbox" disabled={!s.render_available} checked={c.render_js} onChange={(e) => save({ render_js: e.target.checked })} /> Read JavaScript pages
               </label>
@@ -920,11 +921,11 @@ function SerpSearch() {
       <Card className="mb-4" title="Top search results" subtitle="Top organic Google results for a query, live from Serper.dev. Leave country empty to search globally.">
         <form className="flex flex-wrap items-end gap-2" onSubmit={search}>
           <Field label="Query"><div className="relative"><Search size={13} className="absolute left-2.5 top-3 text-gray-400" /><input className={`${inputCls} !w-80 !pl-8`} placeholder="social media bookmarking sites" value={query} onChange={(e) => setQuery(e.target.value)} /></div></Field>
-          <Field label="Time range"><select className={`${inputCls} !w-auto`} value={timeRange} onChange={(e) => setTimeRange(e.target.value)}>
+          <Field label="Time range"><Select className={`${inputCls} !w-auto`} value={timeRange} onChange={(e) => setTimeRange(e.target.value)}>
             <option value="any">Any time</option><option value="day">Past day</option><option value="week">Past week</option><option value="month">Past month</option><option value="year">Past year</option>
-          </select></Field>
+          </Select></Field>
           <Field label="Country"><input className={`${inputCls} !w-28`} placeholder="global" value={country} onChange={(e) => setCountry(e.target.value)} /></Field>
-          <Field label="Results"><select className={`${inputCls} !w-auto`} value={top} onChange={(e) => setTop(Number(e.target.value))}>{[5, 10, 20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}</select></Field>
+          <Field label="Results"><Select className={`${inputCls} !w-auto`} value={top} onChange={(e) => setTop(Number(e.target.value))}>{[5, 10, 20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}</Select></Field>
           <Button type="submit" variant="primary" icon={Search} busy={busy === 'search'} disabled={query.trim().length < 2}>Search</Button>
         </form>
         <ErrorNote>{error}</ErrorNote>

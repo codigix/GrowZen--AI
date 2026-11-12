@@ -91,7 +91,15 @@ class Business(TimestampMixin, Base):
     photo_count: Mapped[int | None] = mapped_column(Integer)
     cover_photo: Mapped[str | None] = mapped_column(String(500))
     logo: Mapped[str | None] = mapped_column(String(500))
-    booking_url: Mapped[str | None] = mapped_column(String(500))
+    booking_url: Mapped[str | None] = mapped_column(String(500))  # the Book-an-appointment link (mirrors action_links[APPOINTMENT])
+    additional_phones: Mapped[list[str] | None] = mapped_column(JSON)  # up to 2 more numbers shown on the Google profile
+    action_links: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)  # Google place-action links: [{type: APPOINTMENT|ONLINE_APPOINTMENT|..., url}]
+    open_status: Mapped[str | None] = mapped_column(String(30))  # OPEN | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY (Google openInfo.status)
+    opening_date: Mapped[str | None] = mapped_column(String(10))  # "YYYY-MM-DD": when the business opened or will open (Google openInfo.openingDate)
+    more_hours: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # {hoursTypeId: [period, ...]}: delivery, pickup, kitchen, happy hour...
+    labels: Mapped[list[str] | None] = mapped_column(JSON)  # internal labels, visible only to the profile's managers
+    service_area_type: Mapped[str | None] = mapped_column(String(40))  # CUSTOMER_AND_BUSINESS_LOCATION | CUSTOMER_LOCATION_ONLY
+    service_area_places: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)  # [{name, place_id}]: the areas served
     modules: Mapped[list[str] | None] = mapped_column(JSON)  # services the project is onboarded for: subset of seo/geo/aeo/gmb; NULL = derive (services/project_services.py)
     social_accounts: Mapped[dict | None] = mapped_column(JSON)  # {facebook, instagram, meta_business_id}: linked by address (no Meta login yet), normalised by schemas.clean_social
     created_by: Mapped[str | None] = mapped_column(String(120))
@@ -209,12 +217,29 @@ class Review(TimestampMixin, Base):
     rating: Mapped[int] = mapped_column(Integer)
     body: Mapped[str | None] = mapped_column(Text)
     review_date: Mapped[date | None] = mapped_column(Date)
+    review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # when the customer posted it on Google (date and time)
     reply_text: Mapped[str | None] = mapped_column(Text)
     reply_status: Mapped[str] = mapped_column(String(20), default="none")  # none | draft | approved | posted
     reply_language: Mapped[str | None] = mapped_column(String(20))
     replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sentiment: Mapped[str | None] = mapped_column(String(10))
     topics: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+
+class Notification(TimestampMixin, Base):
+    """Something the owner should see: a new Google review, and later other alerts. Shown in the header bell and on the Overview page."""
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    owner_id: Mapped[str | None] = mapped_column(String(64), index=True)  # the project's owner when this was created
+    kind: Mapped[str] = mapped_column(String(30), default="new_review")  # new_review | low_rating_review | ...
+    title: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str | None] = mapped_column(Text)
+    link: Mapped[str | None] = mapped_column(String(500))  # a frontend path, e.g. /gmb-profile?tab=reviews
+    rating: Mapped[int | None] = mapped_column(Integer)
+    review_id: Mapped[int | None] = mapped_column(Integer)
+    read: Mapped[bool] = mapped_column(Boolean, default=False)
+    emailed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Post(TimestampMixin, Base):
@@ -232,6 +257,13 @@ class Post(TimestampMixin, Base):
     external_id: Mapped[str | None] = mapped_column(String(255))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ai_generated: Mapped[bool] = mapped_column(Boolean, default=False)
+    starts_on: Mapped[date | None] = mapped_column(Date)  # Offer / Event: first day it is on
+    ends_on: Mapped[date | None] = mapped_column(Date)
+    start_time: Mapped[str | None] = mapped_column(String(5))  # Event only, 'HH:MM'
+    end_time: Mapped[str | None] = mapped_column(String(5))
+    coupon_code: Mapped[str | None] = mapped_column(String(60))  # Offer only
+    redeem_url: Mapped[str | None] = mapped_column(String(500))
+    terms: Mapped[str | None] = mapped_column(String(500))
 
 
 class Article(TimestampMixin, Base):
@@ -506,6 +538,13 @@ class KeywordRankLog(Base):
     serp: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)  # [{d: domain, p: position}] of the results Google returned
     features: Mapped[list[str] | None] = mapped_column(JSON)  # SERP features present on the results page
     own_features: Mapped[list[str] | None] = mapped_column(JSON)  # of those, the ones the site appears in
+    depth: Mapped[int | None] = mapped_column(Integer)  # how many Google results were read (20 for older checks, 100 now): a null rank means "not in the top <depth>"
+    rank_page: Mapped[int | None] = mapped_column(Integer)  # the Google results page the site is on (ceil(rank / 10)); null = not found
+    maps_rank: Mapped[int | None] = mapped_column(Integer)  # the business's position in the Google Maps / local results for the same search (null = not found)
+    maps_total: Mapped[int | None] = mapped_column(Integer)  # how many Maps results Google returned (null = the Maps check was not made)
+    maps_listing: Mapped[str | None] = mapped_column(String(255))  # the name of our listing as Maps shows it
+    maps_first: Mapped[str | None] = mapped_column(String(255))  # the listing in Maps position 1
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # the moment of the last check (the row is one per day)
 
 
 

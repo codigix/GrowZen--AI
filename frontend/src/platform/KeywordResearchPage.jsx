@@ -8,6 +8,7 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tool
 import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction, useUrlTab, useDoubleConfirm, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmtDateTime, fmt, SEO_API } from './seoApi';
 import { pathOnly as pathOf } from './siteUtils';
+import Select from '../components/Select';
 
 /**
  * Keyword intelligence for the selected business. Discovery starts from what the platform knows
@@ -428,9 +429,9 @@ function GooglePlanner({ b, tracked, onTracked }) {
           </label>
           <label>
             <div className="text-11 font-semibold text-slate-500 mb-1">Ideas</div>
-            <select className="h-9 px-2.5 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" value={limit} onChange={e => setLimit(Number(e.target.value))}>
+            <Select className="h-9 px-2.5 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" value={limit} onChange={e => setLimit(Number(e.target.value))}>
               {PLANNER_LIMITS.map(n => <option key={n} value={n}>Up to {n}</option>)}
-            </select>
+            </Select>
           </label>
           <label className="h-9 px-3 inline-flex items-center gap-2 rounded-lg ring-1 ring-inset ring-slate-200 bg-white text-12.5 text-slate-700 cursor-pointer select-none" title="Include per-month search volume history (larger payload). Needed for the 12-month chart and trend lines.">
             <input type="checkbox" className="accent-indigo-600" checked={includeMonthly} onChange={e => setIncludeMonthly(e.target.checked)} />
@@ -656,7 +657,7 @@ function Tracked({ b, kw }) {
                     <td className="p-2 text-right tabular-nums">{fmt(k.volume)}</td>
                     <td className="p-2"><input list={`pages-${b.id}`} className={`${inputCls} max-w-[260px] ${!k.target_url ? 'ring-1 ring-amber-300' : ''}`} defaultValue={k.target_url || ''} placeholder="— not mapped —" onBlur={e => e.target.value !== (k.target_url || '') && update(k, { target_url: e.target.value || null })} /></td>
                     <td className="p-2 text-right tabular-nums">{k.rank ?? <span className="text-slate-400">—</span>}{k.rank && k.prev_rank && k.prev_rank !== k.rank && <span className={`ml-1 text-11 ${k.prev_rank > k.rank ? 'text-emerald-700' : 'text-red-600'}`}>{k.prev_rank > k.rank ? '▲' : '▼'}{Math.abs(k.prev_rank - k.rank)}</span>}</td>
-                    <td className="p-2"><select className="h-8 px-2 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200" value={k.priority} onChange={e => update(k, { priority: e.target.value })}>{['High', 'Medium', 'Low'].map(p => <option key={p}>{p}</option>)}</select></td>
+                    <td className="p-2"><Select className="h-8 px-2 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200" value={k.priority} onChange={e => update(k, { priority: e.target.value })}>{['High', 'Medium', 'Low'].map(p => <option key={p}>{p}</option>)}</Select></td>
                     <td className="p-2 text-right"><button type="button" onClick={() => remove(k)} disabled={busy === `d${k.id}`} className="text-slate-400 hover:text-red-600 cursor-pointer" aria-label={`Stop tracking ${k.keyword}`}><Trash2 size={14} /></button></td>
                   </tr>
                 ))}
@@ -872,7 +873,7 @@ function KeywordExplorer({ b, tracked = [], onTracked }) {
             </label>
             <label>
               <div className="text-11 font-semibold text-slate-500 mb-1">Limit</div>
-              <select
+              <Select
                 className="h-9 px-2.5 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400"
                 value={limit}
                 onChange={e => setLimit(Number(e.target.value))}
@@ -880,7 +881,7 @@ function KeywordExplorer({ b, tracked = [], onTracked }) {
                 <option value={50}>50</option>
                 <option value={100}>100</option>
                 <option value={200}>200</option>
-              </select>
+              </Select>
             </label>
             <Button
               variant="primary"
@@ -976,7 +977,7 @@ function KeywordExplorer({ b, tracked = [], onTracked }) {
                     onChange={e => setFilterText(e.target.value)}
                   />
                 </label>
-                <select
+                <Select
                   className="h-8 px-2.5 text-11.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400"
                   value={filterIntent}
                   onChange={e => setFilterIntent(e.target.value)}
@@ -986,8 +987,8 @@ function KeywordExplorer({ b, tracked = [], onTracked }) {
                   <option value="COMMERCIAL">Commercial</option>
                   <option value="TRANSACTIONAL">Transactional</option>
                   <option value="NAVIGATIONAL">Navigational</option>
-                </select>
-                <select
+                </Select>
+                <Select
                   className="h-8 px-2.5 text-11.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400"
                   value={filterComp}
                   onChange={e => setFilterComp(e.target.value)}
@@ -996,7 +997,7 @@ function KeywordExplorer({ b, tracked = [], onTracked }) {
                   <option value="LOW">Low</option>
                   <option value="MEDIUM">Medium</option>
                   <option value="HIGH">High</option>
-                </select>
+                </Select>
               </div>
               <div className="text-11.5 text-slate-500 font-mono">
                 {selectedKws.length} selected

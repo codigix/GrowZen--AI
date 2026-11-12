@@ -85,6 +85,18 @@ app.include_router(outcomes_router, prefix=settings.api_prefix)
 app.include_router(watch_router, prefix=settings.api_prefix)
 app.include_router(backlink_service_router, prefix=settings.api_prefix)
 
+from .routers import review_link  # noqa: E402
+from .routers import notifications  # noqa: E402
+app.include_router(notifications.router, prefix=settings.api_prefix)
+from .routers import gbp_create  # noqa: E402
+app.include_router(gbp_create.router, prefix=settings.api_prefix)
+from .routers import gbp_location  # noqa: E402
+app.include_router(gbp_location.router, prefix=settings.api_prefix)
+app.include_router(review_link.router, prefix=settings.api_prefix)
+app.include_router(review_link.public_router, prefix=settings.api_prefix)
+from .routers import gbp_admin  # noqa: E402
+app.include_router(gbp_admin.router, prefix=settings.api_prefix)
+
 from .routers import analytics_by_email  # noqa: E402
 app.include_router(analytics_by_email.router, prefix=settings.api_prefix)
 

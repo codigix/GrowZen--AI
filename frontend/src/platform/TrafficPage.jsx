@@ -4,6 +4,7 @@ import { Activity, Users, UserPlus, MousePointerClick, Zap, Eye, Clock, Gauge, R
 import { SeoShell, useBusinesses, Card, Stat, Badge, Button, ErrorNote, Empty, Tabs, SERIES, INK, SkPage, refreshBusinesses } from './SeoUi';
 import AccessGate from './AccessGate';
 import { api, useApi, fmt } from './seoApi';
+import Select from '../components/Select';
 
 /**
  * Website traffic from Google Analytics 4 for a connected Google account / website.
@@ -413,28 +414,31 @@ const STAGES = {
   established: { label: 'Established', tone: 'green', next: 'Focus on conversions, repeat visitors and pages that rank 5-15 so they reach the top 3.' }
 };
 
-// Daily action pool. `stage` limits who sees it; `ex` is a concrete example. {city} and {page} are filled from the report.
+// Daily action pool. `stage` limits who sees it; `ex` is a concrete example. Placeholders are filled from THIS project (its name,
+// category, services, city and pages), so nothing in it is written for another kind of business:
+// {name} {category} {service} {city} {page}
 const POOL = [
-  { id: 'gbp-post', stage: ['starter', 'growing', 'established'], t: 'Publish one Google Business Profile post', ex: 'Example: "Free ENT check-up camp this Sunday in {city} - call to book".' },
-  { id: 'review', stage: ['starter', 'growing', 'established'], t: 'Ask 3 recent patients or customers for a Google review', ex: 'Example: send a WhatsApp message with your review link right after a visit.' },
-  { id: 'city-page', stage: ['starter', 'growing'], t: 'Write one page for a service in {city}', ex: 'Example: "Best <service> in {city}" with prices, doctors or team, address and a booking button.' },
-  { id: 'index', stage: ['starter'], t: 'Check that your main pages are indexed', ex: 'Example: search "site:yourdomain.com" on Google, then submit missing pages in Search Console.' },
-  { id: 'directories', stage: ['starter', 'growing'], t: 'Add or fix one directory listing', ex: 'Example: Justdial, Practo, Sulekha or IndiaMART with the same name, address and phone number.' },
-  { id: 'faq', stage: ['starter', 'growing', 'established'], t: 'Add 3 real customer questions as FAQs on "{page}"', ex: 'Example: "How much does it cost?", "How long does it take?", "Is it covered by insurance?".' },
-  { id: 'internal', stage: ['growing', 'established'], t: 'Add internal links to "{page}" from 3 related pages', ex: 'Example: link the words "cochlear implant" or your service name to the matching page.' },
-  { id: 'title', stage: ['growing', 'established'], t: 'Rewrite one page title to include a search phrase and the city', ex: 'Example: "ENT Surgeon in Pimpri Chinchwad | Hospital Name" (under 60 characters).' },
-  { id: 'video', stage: ['growing', 'established'], t: 'Post one short video that answers a common question', ex: 'Example: a 40-second Reel "3 signs your child needs a hearing test", linked to the page.' },
+  { id: 'gbp-post', stage: ['starter', 'growing', 'established'], t: 'Publish one Google Business Profile post for {name}', ex: 'Example: a short update or offer about {service} in {city}, with a photo and a "Learn more" button.' },
+  { id: 'review', stage: ['starter', 'growing', 'established'], t: 'Ask 3 recent customers of {name} for a Google review', ex: 'Example: send them your review link or QR code (Reviews page, "Get more reviews") right after they use {service}.' },
+  { id: 'city-page', stage: ['starter', 'growing'], t: 'Write one page about {service} in {city}', ex: 'Example: "{service} in {city}" with prices, photos, your address and a call or booking button.' },
+  { id: 'index', stage: ['starter'], t: 'Check that the main pages of {name} are indexed', ex: 'Example: search "site:{host}" on Google, then submit missing pages in Search Console.' },
+  { id: 'directories', stage: ['starter', 'growing'], t: 'Add or fix one directory listing for {name}', ex: 'Example: a local directory for {category} in {city}, with exactly the same name, address and phone as the Google profile.' },
+  { id: 'faq', stage: ['starter', 'growing', 'established'], t: 'Add 3 real customer questions as FAQs on "{page}"', ex: 'Example: "How much does {service} cost?", "How do I book?", "Where are you in {city}?".' },
+  { id: 'internal', stage: ['growing', 'established'], t: 'Add internal links to "{page}" from 3 related pages', ex: 'Example: link the words "{service}" on other pages to the matching page.' },
+  { id: 'title', stage: ['growing', 'established'], t: 'Rewrite one page title to include a search phrase and {city}', ex: 'Example: "{service} in {city} | {name}" (under 60 characters).' },
+  { id: 'video', stage: ['growing', 'established'], t: 'Post one short video that answers a common question about {service}', ex: 'Example: a 40-second clip showing {service} at {name}, linked to the page.' },
   { id: 'speed', stage: ['starter', 'growing', 'established'], t: 'Run PageSpeed Insights on "{page}"', ex: 'Example: compress images over 200 KB and remove unused scripts to pass the mobile test.' },
-  { id: 'update', stage: ['growing', 'established'], t: 'Update your oldest blog post with new facts and the current date', ex: 'Example: refresh costs, add a new FAQ and change the "last updated" line.' },
-  { id: 'backlink', stage: ['growing', 'established'], t: 'Ask one partner to link to you', ex: 'Example: an NGO, college, sponsor or local news site that you worked with.' },
-  { id: 'conv', stage: ['growing', 'established'], t: 'Check that call, WhatsApp and form clicks are tracked as key events', ex: 'Example: in GA4, mark "click_to_call" and "form_submit" as key events.' },
-  { id: 'story', stage: ['established'], t: 'Publish one customer story (with consent)', ex: 'Example: what the problem was, how it was solved, and a quote.' },
-  { id: 'reengage', stage: ['established'], t: 'Message past customers about a new service or offer', ex: 'Example: WhatsApp broadcast with one link to the relevant page.' }
+  { id: 'update', stage: ['growing', 'established'], t: 'Update the oldest page or post on {host} with new facts', ex: 'Example: refresh prices and photos for {service}, add a new FAQ and change the "last updated" line.' },
+  { id: 'backlink', stage: ['growing', 'established'], t: 'Ask one partner or supplier of {name} to link to you', ex: 'Example: a local association, supplier, college or news site you have worked with in {city}.' },
+  { id: 'conv', stage: ['growing', 'established'], t: 'Check that call, WhatsApp and form clicks on {host} are tracked as key events', ex: 'Example: in GA4, mark "click_to_call" and "form_submit" as key events.' },
+  { id: 'story', stage: ['established'], t: 'Publish one customer story for {name} (with consent)', ex: 'Example: what the customer needed, how {service} solved it, and a short quote.' },
+  { id: 'reengage', stage: ['established'], t: 'Message past customers of {name} about a new offer', ex: 'Example: a WhatsApp broadcast with one link to the page for {service}.' }
 ];
 
-function Suggestions({ data }) {
+function Suggestions({ data, b }) {
   const r = data?.matched ? data.reports?.[0] : null;
-  const [done, setDone] = useState(() => { const d = safeGet(DONE_KEY, {}); return d.date === today() ? d : { date: today(), ids: [] }; });
+  const doneKey = `${DONE_KEY}.${b?.id ?? 'x'}`; // ticks belong to this project only, not to every project in the browser
+  const [done, setDone] = useState(() => { const d = safeGet(doneKey, {}); return d.date === today() ? d : { date: today(), ids: [] }; });
   const [since, setSince] = useState(null);
 
   const m = useMemo(() => {
@@ -485,7 +489,7 @@ function Suggestions({ data }) {
   const toggle = (id) => {
     const ids = done.ids.includes(id) ? done.ids.filter(x => x !== id) : [...done.ids, id];
     const next = { date: today(), ids };
-    setDone(next); safeSet(DONE_KEY, next);
+    setDone(next); safeSet(doneKey, next);
   };
 
   if (!m) {
@@ -496,7 +500,15 @@ function Suggestions({ data }) {
     );
   }
 
-  const fill = (txt) => txt.replace(/\{city\}/g, m.topCity || 'your city').replace(/\{page\}/g, m.topPage?.title || 'your main service page');
+  const service = (b?.services || []).map(x => x?.name).find(Boolean) || (b?.primary_category || '').toLowerCase() || 'your main service';
+  const host = (b?.website || r?.property_name || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '') || 'your website';
+  const fill = (txt) => txt
+    .replace(/\{city\}/g, b?.city || m.topCity || 'your city')
+    .replace(/\{page\}/g, m.topPage?.title || 'your main service page')
+    .replace(/\{service\}/g, service)
+    .replace(/\{name\}/g, b?.name || 'your business')
+    .replace(/\{category\}/g, (b?.primary_category || 'business').toLowerCase())
+    .replace(/\{host\}/g, host);
 
   // Tips from the data, most important first. Each says what was seen, what to do, and an example.
   const tips = [];
@@ -504,7 +516,7 @@ function Suggestions({ data }) {
   if (m.sessions === 0) tips.push({ tone: 'red', h: 'No visits in this period', t: 'Check that the Analytics tag is on every page and that the website in this form is correct.', ex: 'Example: open your site, then look at "Realtime overview" here; your own visit should appear within a minute.' });
   if (ch.sessions != null && ch.sessions <= -10) tips.push({ tone: 'red', h: `Sessions fell ${Math.abs(ch.sessions).toFixed(0)}%`, t: 'Find which channel dropped, then refresh the pages that lost traffic.', ex: 'Example: if Organic Search fell, open Search Console > Performance, compare dates and update the pages that lost clicks.' });
   if (ch.sessions != null && ch.sessions >= 10) tips.push({ tone: 'green', h: `Sessions grew ${ch.sessions.toFixed(0)}%`, t: 'Find what worked and repeat it.', ex: topPage ? `Example: "${topPage.title}" is your top page; write 2 related posts and link them to it.` : 'Example: check which channel grew most and publish more in it.' });
-  if (organic < 30 && m.sessions > 0) tips.push({ tone: 'amber', h: `Organic search is ${organic.toFixed(0)}% of visits`, t: 'Too few people find you on Google.', ex: `Example: create "Best <service> in ${m.topCity || 'your city'}" pages and add the city and service to titles and headings.` });
+  if (organic < 30 && m.sessions > 0) tips.push({ tone: 'amber', h: `Organic search is ${organic.toFixed(0)}% of visits`, t: 'Too few people find you on Google.', ex: `Example: create "{service} in ${m.topCity || 'your city'}" pages and add the city and service to titles and headings.` });
   if (organic >= 50) tips.push({ tone: 'green', h: `Organic search is ${organic.toFixed(0)}% of visits`, t: 'Good: Google is your main source. Protect it.', ex: 'Example: keep updating your top pages every few months and add FAQ schema.' });
   if (social < 3 && stage !== 'starter') tips.push({ tone: 'blue', h: 'Almost no social traffic', t: 'Share every new page and link it from your profiles.', ex: 'Example: post a 30-second video each week with the page link in the bio and the caption.' });
   if (referral < 3 && stage !== 'starter') tips.push({ tone: 'blue', h: 'Few other sites link to you', t: 'Build links from trusted local sites.', ex: 'Example: get listed in local business directories and ask partners for an "Our partners" link.' });
@@ -512,12 +524,12 @@ function Suggestions({ data }) {
   if (m.t.engagementRate != null && m.t.engagementRate < 50) tips.push({ tone: 'amber', h: `Engagement rate is ${Number(m.t.engagementRate).toFixed(0)}%`, t: 'Visitors leave fast.', ex: 'Example: move the booking or contact button above the fold and cut slow images.' });
   if (weakPage) tips.push({ tone: 'amber', h: `"${weakPage.title}" has a ${Number(weakPage.bounce_rate).toFixed(0)}% bounce rate`, t: `${weakPage.views} views but most people leave.`, ex: 'Example: add a clear next step (button), related links and a short FAQ.' });
   if (keyEvents === 0 && m.sessions > 50) tips.push({ tone: 'amber', h: 'No key events recorded', t: 'You cannot see what brings enquiries.', ex: 'Example: in GA4 mark call clicks and form submits as key events.' });
-  if (returning + newUsers > 30 && returning / (returning + newUsers) < 0.1) tips.push({ tone: 'blue', h: 'Few returning visitors', t: 'People visit once and do not return.', ex: 'Example: start a monthly health tips post and share it by WhatsApp or email.' });
+  if (returning + newUsers > 30 && returning / (returning + newUsers) < 0.1) tips.push({ tone: 'blue', h: 'Few returning visitors', t: 'People visit once and do not return.', ex: 'Example: send a monthly update about {service} and share it by WhatsApp or email.' });
   if (m.topCity) tips.push({ tone: 'gray', h: `Most visitors come from ${m.topCity}`, t: 'Build more content for that area.', ex: `Example: add a "How to reach us from ${m.topCity}" section and Google Business Profile posts mentioning it.` });
 
   // 3 daily actions: the pool for this stage, rotated by the date; ticked ones are kept for today.
   const pool = POOL.filter(x => x.stage.includes(m.stage));
-  const start = dayNo() % pool.length;
+  const start = (dayNo() + (b?.id || 0)) % pool.length; // rotates by day, and differs between projects
   const todays = [0, 1, 2].map(i => pool[(start + i * 4) % pool.length]).filter((x, i, a) => a.indexOf(x) === i);
   const doneCount = todays.filter(x => done.ids.includes(x.id)).length;
 
@@ -530,7 +542,7 @@ function Suggestions({ data }) {
         {sincePct && <p className="text-12 text-slate-500 mt-2">Since your last check ({since.date}): sessions {sincePct}{since.organic != null ? `, organic share ${since.organic.toFixed(0)}% to ${m.organic.toFixed(0)}%` : ''}.</p>}
       </Card>
 
-      <Card title="Today's focus" subtitle={`${doneCount} of ${todays.length} done · new actions tomorrow`}>
+      <Card title="Today's focus" subtitle={`${b?.name ? `For ${b.name} · ` : ''}${doneCount} of ${todays.length} done · new actions tomorrow`}>
         <ul className="space-y-3">
           {todays.map(x => (
             <li key={x.id} className="text-13">
@@ -552,8 +564,8 @@ function Suggestions({ data }) {
             {tips.slice(0, 6).map((x, i) => (
               <li key={i} className="text-13">
                 <div className="flex items-start gap-2"><Badge tone={x.tone}>{x.tone === 'green' ? 'Good' : x.tone === 'red' ? 'Fix' : 'Tip'}</Badge><span className="font-semibold text-slate-800">{x.h}</span></div>
-                <div className="text-slate-600 mt-1">{x.t}</div>
-                <div className="text-slate-500 mt-0.5">{x.ex}</div>
+                <div className="text-slate-600 mt-1">{fill(x.t)}</div>
+                <div className="text-slate-500 mt-0.5">{fill(x.ex)}</div>
               </li>
             ))}
           </ul>
@@ -623,13 +635,13 @@ function TrafficDashboard({ b, access, view: viewProp, initialView = 'overview' 
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">
             <span className="block text-12 font-semibold text-slate-600 mb-1">Google account</span>
-            <select className={`${sel} min-w-[200px] max-w-[260px]`} value={account?.id || ''} disabled={linking || accounts.length < 2} onChange={(e) => changeAccount(Number(e.target.value))} title={accounts.length < 2 ? 'Only one Google account is connected' : 'Switching account re-checks access before showing data'}>
+            <Select className={`${sel} min-w-[200px] max-w-[260px]`} value={account?.id || ''} disabled={linking || accounts.length < 2} onChange={(e) => changeAccount(Number(e.target.value))} title={accounts.length < 2 ? 'Only one Google account is connected' : 'Switching account re-checks access before showing data'}>
               {accounts.length ? accounts.map(c => <option key={c.id} value={c.id}>{c.email}</option>) : <option value="">{account?.email || '—'}</option>}
-            </select>
+            </Select>
           </label>
           <label className="block">
             <span className="block text-12 font-semibold text-slate-600 mb-1">Period</span>
-            <select className={sel} value={days} onChange={(e) => changePeriod(Number(e.target.value))}>{PERIODS.map(([n, label]) => <option key={n} value={n}>{label}</option>)}</select>
+            <Select className={sel} value={days} onChange={(e) => changePeriod(Number(e.target.value))}>{PERIODS.map(([n, label]) => <option key={n} value={n}>{label}</option>)}</Select>
           </label>
           <Button variant="primary" icon={RefreshCw} busy={busy} onClick={() => load()}>Refresh</Button>
         </div>
@@ -646,7 +658,7 @@ function TrafficDashboard({ b, access, view: viewProp, initialView = 'overview' 
             {shownView === 'overview' && data.reports.map(r => <Report key={r.property} r={r} />)}
             {(shownView === 'rt' || shownView === 'rtp') && data.reports.map(r => <Realtime key={`${r.property}-${shownView}`} property={r.property} name={r.property_name} pages={shownView === 'rtp'} businessId={b.id} />)}
           </div>
-          <div className="min-w-0"><Suggestions data={data} /></div>
+          <div className="min-w-0"><Suggestions data={data} b={b} /></div>
         </div>
       )}
 

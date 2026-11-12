@@ -3,6 +3,7 @@ import { Download, Loader2, ChevronDown, ChevronRight, AlertTriangle, CheckCircl
 import { Card, Button, Tabs, ErrorNote, useToast, useAction } from './SeoUi';
 import { api, useApi, usePoll } from './seoApi';
 import { pathOf, hostOf } from './siteUtils';
+import Select from '../components/Select';
 
 /**
  * The full Google Lighthouse report inside the audit report: every category's audits (failed,
@@ -135,9 +136,9 @@ export default function LighthouseDetails({ auditId, target, pages = [], strateg
       </div>}>
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <label className="text-12 font-semibold text-slate-600" htmlFor="lh-page">Page</label>
-        <select id="lh-page" value={url} onChange={e => setUrl(e.target.value)} className="h-9 flex-1 min-w-[200px] max-w-md px-2.5 rounded text-12.5  text-slate-800 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer">
+        <Select id="lh-page" value={url} onChange={e => setUrl(e.target.value)} className="h-9 flex-1 min-w-[200px] max-w-md px-2.5 rounded text-12.5  text-slate-800 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer">
           {choices.map(u => <option key={u} value={u}>{pathOf(u)}{byUrl[u] ? '' : ' (not run yet)'}</option>)}
-        </select>
+        </Select>
         {!id && <Button size="sm" variant="primary" icon={Play} busy={busy === 'run'} onClick={runFor}>Run Lighthouse on this page</Button>}
         {s && !running && <span className="text-11.5 text-slate-500">{s.engine_used === 'lighthouse' ? 'Local Chrome' : 'PageSpeed Insights'} · {s.strategy}</span>}
       </div>

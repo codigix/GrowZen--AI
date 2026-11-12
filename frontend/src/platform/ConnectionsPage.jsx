@@ -52,6 +52,7 @@ function Connections() {
                 <div key={c.id} className="flex flex-wrap items-center gap-3 py-2.5 text-13">
                   <Mail size={14} className="text-gray-400" />
                   <span className="flex-1 text-gray-900">{c.email} <span className="text-gray-500 text-12">· {c.businesses} businesses · synced {c.last_sync_at ? fmtDateTime(c.last_sync_at) : 'never'}</span></span>
+                  {c.status === 'active' && c.permissions && [['business_profile', 'Business Profile'], ['search_console', 'Search Console'], ['analytics', 'Analytics'], ['google_ads', 'Google Ads']].map(([k, label]) => <span key={k} title={c.permissions[k] ? `${label} access granted` : `${label} access not granted: reconnect this account to allow it`} className={`text-11 px-1.5 py-0.5 rounded ring-1 ring-inset ${c.permissions[k] ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-slate-50 text-slate-400 ring-slate-200 line-through'}`}>{label}</span>)}
                   {c.status === 'active' ? <StatusPill level="good">Active</StatusPill> : <Badge>{c.status}</Badge>}
                   {c.last_error && <span className="text-12 text-red-600 max-w-[320px] truncate" title={c.last_error}>{c.last_error}</span>}
                 </div>

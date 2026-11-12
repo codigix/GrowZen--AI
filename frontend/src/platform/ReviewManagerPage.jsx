@@ -5,6 +5,7 @@ import { Star, Sparkles, Send, MessageCircle, Mail, Smartphone, Copy, ShieldChec
 import ProcessTasks from './ProcessTasks';
 import { SeoShell, Card, Tabs, Stat, Badge, StatusPill, Button, Field, inputCls, areaCls, Meter, ErrorNote, SERIES, useToast, useAction, SkStats, SkList, SkCard } from './SeoUi';
 import { api, useApi, fmtDate } from './seoApi';
+import Select from '../components/Select';
 
 const Stars = ({ n, size = 13 }) => (
   <span className="inline-flex" aria-label={`${n} stars`}>{[1, 2, 3, 4, 5].map(i => <Star key={i} size={size} className={i <= n ? 'text-amber-500 fill-amber-500' : 'text-gray-300'} />)}</span>
@@ -41,7 +42,7 @@ function ReviewCard({ r, b, onSaved, toast }) {
             {text && !editing && <><div className="text-11 text-gray-500 mb-1 flex items-center gap-1"><Sparkles size={11} className="text-violet-600" /> Draft ({r.reply_language || language}) · waiting for approval</div><p className="text-13 text-gray-800 whitespace-pre-line">{text}</p></>}
             {editing && <textarea rows={3} className={areaCls} value={text} onChange={e => setText(e.target.value)} />}
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <select className="h-7 px-2 text-xs border border-gray-300 rounded bg-white" value={language} onChange={e => setLanguage(e.target.value)} aria-label="Reply language">{['English', 'Hindi', 'Marathi'].map(l => <option key={l}>{l}</option>)}</select>
+              <Select className="h-7 px-2 text-xs border border-gray-300 rounded bg-white" value={language} onChange={e => setLanguage(e.target.value)} aria-label="Reply language">{['English', 'Hindi', 'Marathi'].map(l => <option key={l}>{l}</option>)}</Select>
               <Button size="sm" variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={draft}>{text ? 'Redraft' : 'Draft reply'}</Button>
               <Button size="sm" icon={editing ? Check : Pencil} onClick={() => setEditing(e => !e)}>{editing ? 'Done' : text ? 'Edit' : 'Write'}</Button>
               {text && <Button size="sm" variant="primary" icon={Send} busy={busy === 'approve'} onClick={approve}>Approve & post</Button>}

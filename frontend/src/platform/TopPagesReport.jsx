@@ -5,6 +5,7 @@ import { ArrowUp, ArrowDown, ExternalLink, Search, Inbox, Info, Sparkles, FileTe
 import { SeoShell, Card, Badge, Button, ErrorNote, useModulePath, SkPage } from './SeoUi';
 import { useApi, fmt } from './seoApi';
 import { IntelBar } from './DomainIntel';
+import Select from '../components/Select';
 
 /**
  * Top Pages: every page of the site that a real source knows, one row each.
@@ -117,7 +118,7 @@ export function AllPages({ d }) {
       <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
         <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={reset(e => setQ(e.target.value))} placeholder="Filter by URL" className="h-8 pl-8 pr-3 w-52 text-13 rounded border border-slate-200 bg-white outline-none focus:border-indigo-400" /></label>
         <div className="flex gap-1">{chip('all', 'All URLs')}{chip('new', 'New', d.comparable ? d.new : null)}{chip('lost', 'Lost', d.comparable ? d.lost : null)}</div>
-        <select value={source} onChange={reset(e => setSource(e.target.value))} className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white cursor-pointer" aria-label="Source"><option value="">Source: all</option><option value="google">Google</option><option value="ai">AI answers</option><option value="crawl">Crawl only</option></select>
+        <Select value={source} onChange={reset(e => setSource(e.target.value))} className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white cursor-pointer" aria-label="Source"><option value="">Source: all</option><option value="google">Google</option><option value="ai">AI answers</option><option value="crawl">Crawl only</option></Select>
         <label className="inline-flex items-center gap-1.5 text-12.5 text-slate-600 cursor-pointer"><input type="checkbox" checked={issuesOnly} onChange={reset(e => setIssuesOnly(e.target.checked))} />With issues</label>
         {!d.comparable && <span className="text-11.5 text-slate-400 ml-auto">New / Lost need two position checks.</span>}
       </div>
@@ -198,7 +199,7 @@ function Page({ b }) {
       <div className="ai-glass-card rounded px-5 py-3.5 flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1"><div className="text-16 font-semibold text-slate-900 flex items-center gap-2 flex-wrap">{d.domain}{d.internal != null && <Badge tone={d.internal ? 'violet' : 'gray'}>{d.internal ? 'Internal' : 'Client'}</Badge>}{d.mock && <Badge tone="amber"><AlertTriangle size={11} />Sample data: not real</Badge>}</div>
           <div className="text-12 text-slate-500">{b.name}</div></div>
-        <select className={sel} value={days} onChange={e => setDays(Number(e.target.value))} aria-label="Period for new and lost pages"><option value={30}>Last 30 days</option><option value={60}>Last 60 days</option><option value={90}>Last 90 days</option></select>
+        <Select className={sel} value={days} onChange={e => setDays(Number(e.target.value))} aria-label="Period for new and lost pages"><option value={30}>Last 30 days</option><option value={60}>Last 60 days</option><option value={90}>Last 90 days</option></Select>
       </div>
       <Sources d={d} />
       {nothing ? (

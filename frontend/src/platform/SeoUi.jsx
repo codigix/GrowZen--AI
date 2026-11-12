@@ -7,6 +7,7 @@ import {
   Bell, Calendar
 } from 'lucide-react';
 import { api, toUi, SEO_API } from './seoApi';
+import NotificationBell from '../components/NotificationBell';
 import { MarketBadge } from './MarketBadge';
 import Breadcrumbs from './Breadcrumbs';
 import { needsSwitchCode, verifyProjectSwitch } from './projectCode';
@@ -312,10 +313,7 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
               <span>Last 30 Days</span>
               <ChevronDown size={13} />
             </div>
-            <div className="relative w-9 h-9 rounded bg-topbar-field flex items-center justify-center text-topbar-item hover:text-white cursor-pointer transition-colors">
-              <Bell size={15} />
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white font-bold text-9 flex items-center justify-center">3</span>
-            </div>
+            <NotificationBell />
             {actions}
             {!hideSwitcher && business && list?.length > 0 && (
               <BusinessSwitcher business={business} onChange={setBusiness} list={list} />

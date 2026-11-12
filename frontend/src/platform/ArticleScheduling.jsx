@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Clock, ExternalLink, Loader2, RefreshCw, Send, XCircle, Pencil, Ban } from 'lucide-react';
 import { Badge, Button, Card, Field, Modal, inputCls } from './SeoUi';
 import { api, usePoll } from './seoApi';
+import Select from '../components/Select';
 
 /** Publishing status of an article in GrowZen (from the server: publishing_status). */
 export const PUB_STATUS = {
@@ -142,9 +143,9 @@ export function ScheduleModal({ b, article, mode = 'schedule', onClose, onDone, 
         {dest && dest.destinations.length > 0 && (
           <>
             <Field label="Publishing destination" hint={chosen?.target ? `Target: ${chosen.target.replace(/^https?:\/\//, '')}` : undefined}>
-              <select className={inputCls} value={form.destination} onChange={set('destination')}>
+              <Select className={inputCls} value={form.destination} onChange={set('destination')}>
                 {dest.destinations.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-              </select>
+              </Select>
             </Field>
             {mode === 'schedule' && (
               <div className="grid grid-cols-2 gap-2">

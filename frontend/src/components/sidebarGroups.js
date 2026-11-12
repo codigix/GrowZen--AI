@@ -114,12 +114,12 @@ export const SIDEBAR_SECTIONS = [
   },
   {
     id: 'GMB', label: 'GMB', title: 'GMB', icon: MapPin, groups: [
-      {
-        items: [link('/gmb-profile?tab=overview', 'Dashboard'), page('/off-page-seo?tab=citations', { label: 'Listing Management' }), page('/reviews', { label: 'Review Management' }),
-        link('/gmb-profile?tab=profile', 'GBP Optimization'), page('/google-posts', { label: 'Posts' }), page('/media-management', { label: 'Photos' })]
-      },
-      { title: 'Automations', items: [page('/automation', { label: 'GBP AI Agent' })] },
-      { title: 'Competitive Analysis', items: [link('/rank-tracking?tab=geo', 'Map Rank Tracker')] }
+      { items: [link('/gmb-profile?tab=overview', 'Dashboard'), link('/gmb-profile?tab=profile', 'GBP Optimization'), link('/gmb-profile?tab=performance', 'Performance'), link('/gmb-profile?tab=traffic', 'Website Traffic'),
+        link('/gmb-profile?tab=reviews', 'Reviews & Reputation'), page('/google-posts', { label: 'Posts' }), page('/media-management', { label: 'Photos' })] },
+      { title: 'Listings & Rankings', items: [page('/off-page-seo?tab=citations', { label: 'Listing Management' }), link('/rank-tracking?tab=geo', 'Map Rank Tracker'), link('/gmb-profile?tab=competitors', 'Competitor Analysis')] },
+      { title: 'Optimization', items: [link('/gmb-profile?tab=local-seo', 'Local SEO'), link('/gmb-profile?tab=ai', 'AI Recommendations')] },
+      { title: 'Manage', items: [page('/automation', { label: 'GBP AI Agent' }), link('/gmb-profile?tab=tasks', 'Tasks & Activities'), link('/gmb-profile?tab=sync', 'Sync History'), link('/gmb-profile?tab=reports', 'Reports')] },
+      { title: 'Settings', items: [link('/gmb-profile?tab=settings', 'Settings & Integrations')] }
     ]
   },
   {
@@ -130,7 +130,7 @@ export const SIDEBAR_SECTIONS = [
   },
   {
     id: 'ai', label: 'AI', title: 'AI Visibility', icon: Sparkles, groups: [
-      { title: 'AI Analysis', items: [link('/geo-optimization', 'Visibility Overview'), soon('ai-competitors'), link('/ai-questions', 'Prompt Research')] },
+      { title: 'AI Analysis', items: [link('/geo-optimization', 'Visibility Overview'), link('/gmb-profile?tab=aeo', 'AEO'), link('/gmb-profile?tab=geo', 'GEO'), soon('ai-competitors'), link('/ai-questions', 'Prompt Research')] },
       { title: 'Brand Performance', items: [soon('ai-brand'), soon('ai-perception'), soon('ai-narrative'), link('/geo-optimization?tab=sources', 'Cited Sources')] },
       { title: 'Boost & Monitor', items: [page('/website-audit', { label: 'Site Audit' }), link('/geo-optimization?tab=prompts', 'Prompt Tracking'), link('/geo-optimization?tab=files', 'llms.txt'), page('/ai-content-generation?tab=blog', { label: 'Content Creation' })] },
       { title: 'Automation', items: [page('/automation'), page('/automation-pipeline')] }
@@ -171,11 +171,11 @@ export const SIDEBAR_SECTIONS = [
   },
   {
     id: 'reports', label: 'Reports', title: 'Reports', icon: FileBarChart, groups: [
-      { items: [link('/reports', 'My Reports'), link('/reports?tab=progress', 'Weekly & Monthly Progress'), link('/reports?tab=tasks', 'All Tasks'), page('/leads', { label: 'Leads & Conversions' })] },
+      { items: [link('/reports', 'My Reports'), link('/gmb-profile?tab=reports', 'GBP Reports'), link('/reports?tab=progress', 'Weekly & Monthly Progress'), link('/reports?tab=tasks', 'All Tasks'), page('/leads', { label: 'Leads & Conversions' })] },
       { title: 'Top Templates', items: [link('/traffic', 'Google Analytics 4'), link('/domain-overview', 'Google Search Console'), link('/reports', 'Monthly SEO')] },
       { items: [soon('report-create'), soon('report-templates'), soon('report-themes')] }
     ]
   },
   { id: 'apps', label: 'Apps', title: 'App Center', icon: LayoutGrid, groups: [{ items: [soon('apps-store'), soon('apps-mine'), page('/google-integrations')] }] },
-  { id: 'settings', label: 'Settings', title: 'Settings', icon: Settings, groups: [{ items: [page('/google-integrations'), page('/users')] }] }
+  { id: 'settings', label: 'Settings', title: 'Settings', icon: Settings, groups: [{ items: [page('/google-integrations'), link('/gmb-profile?tab=settings', 'GBP Settings & Integrations'), page('/users')] }] }
 ];

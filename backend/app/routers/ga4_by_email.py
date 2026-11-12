@@ -45,7 +45,7 @@ def start(email: str | None = None, user: User = Depends(current_user)):
         raise HTTPException(400, "Add TOKEN_ENCRYPTION_KEY to the backend settings first.")
     state = jwt.encode({"sub": user.id, "purpose": "ga4", "nonce": secrets.token_urlsafe(8), "exp": int(time.time()) + 600}, gbp._state_secret(), algorithm="HS256")
     params = {"client_id": s.google_client_id, "redirect_uri": gbp._redirect_uri(), "response_type": "code", "access_type": "offline", "prompt": "consent",
-              "include_granted_scopes": "true", "scope": f"openid email profile {ga4.SCOPE}", "state": state}
+              "include_granted_scopes": "true", "scope": gbp.ALL_SCOPES, "state": state}
     if email:
         params["login_hint"] = email
     return {"url": f"{gbp.AUTH_URL}?{urlencode(params)}"}

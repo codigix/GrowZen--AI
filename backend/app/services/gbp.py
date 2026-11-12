@@ -35,6 +35,7 @@ SCOPES = "openid email profile https://www.googleapis.com/auth/business.manage"
 ACCOUNTS = "https://mybusinessaccountmanagement.googleapis.com/v1"
 INFO = "https://mybusinessbusinessinformation.googleapis.com/v1"
 V4 = "https://mybusiness.googleapis.com/v4"
+PLACE_ACTIONS = "https://mybusinessplaceactions.googleapis.com/v1"
 PERF = "https://businessprofileperformance.googleapis.com/v1"
 VERIFY = "https://mybusinessverifications.googleapis.com/v1"
 READ_MASK = "name,title,storefrontAddress,phoneNumbers,categories,websiteUri,latlng,metadata,profile,regularHours,specialHours,moreHours,serviceItems,serviceArea,labels,openInfo"
@@ -57,6 +58,9 @@ def _state_secret() -> str:
 
 
 GSC_SCOPES = "openid email profile https://www.googleapis.com/auth/webmasters.readonly"
+ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
+# One consent for everything the app uses, so a user connects a Google account once: Business Profile, Search Console, Analytics and Google Ads.
+ALL_SCOPES = f"{SCOPES} https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly {ADS_SCOPE}"
 
 
 def auth_url(user_id: str, purpose: str = "gbp") -> str:
@@ -66,7 +70,7 @@ def auth_url(user_id: str, purpose: str = "gbp") -> str:
     if not s.token_encryption_key:
         raise GbpError("Add TOKEN_ENCRYPTION_KEY to the backend settings first: it encrypts the stored Google access.")
     state = jwt.encode({"sub": user_id, "purpose": purpose, "nonce": secrets.token_urlsafe(8), "exp": int(time.time()) + 600}, _state_secret(), algorithm="HS256")
-    scope = GSC_SCOPES if purpose == "gsc" else f"{SCOPES} https://www.googleapis.com/auth/webmasters.readonly"  # a Business Profile sign-in also grants Search Console
+    scope = ALL_SCOPES  # every sign-in asks for everything (the consent screen is verified for all of it), whatever page started it
     return f"{AUTH_URL}?{urlencode({'client_id': s.google_client_id, 'redirect_uri': _redirect_uri(), 'response_type': 'code', 'scope': scope, 'access_type': 'offline', 'prompt': 'select_account consent', 'include_granted_scopes': 'true', 'state': state})}"
 
 
@@ -245,6 +249,25 @@ class GbpClient:
         """Change the live profile. `body` holds Business Information fields; only those keys are sent (the update mask)."""
         return self._req("PATCH", f"{INFO}/{name}", params={"updateMask": ",".join(sorted(_mask(body)))}, json=body)
 
+    # Place action links: the Book / Order / Reserve buttons on the profile
+    def place_action_links(self, location: str) -> list[dict[str, Any]]:
+        out, token = [], None
+        while True:
+            d = self._req("GET", f"{PLACE_ACTIONS}/{location}/placeActionLinks", params={"pageSize": 100, **({"pageToken": token} if token else {})})
+            out += d.get("placeActionLinks", [])
+            token = d.get("nextPageToken")
+            if not token:
+                return out
+
+    def create_place_action_link(self, location: str, kind: str, url: str) -> dict[str, Any]:
+        return self._req("POST", f"{PLACE_ACTIONS}/{location}/placeActionLinks", json={"placeActionType": kind, "uri": url})
+
+    def update_place_action_link(self, name: str, url: str) -> dict[str, Any]:
+        return self._req("PATCH", f"{PLACE_ACTIONS}/{name}", params={"updateMask": "uri"}, json={"uri": url})
+
+    def delete_place_action_link(self, name: str) -> None:
+        self._req("DELETE", f"{PLACE_ACTIONS}/{name}")
+
     # Categories
     def search_categories(self, term: str, region: str = "IN", language: str = "en") -> list[dict[str, Any]]:
         d = self._req("GET", f"{INFO}/categories", params={"regionCode": region, "languageCode": language, "searchTerm": term, "view": "BASIC", "pageSize": 20})
@@ -289,9 +312,13 @@ class GbpClient:
     def update_post(self, name: str, post: dict[str, Any]) -> dict[str, Any]:
         body: dict[str, Any] = {"summary": post["body"], "languageCode": "en"}
         mask = ["summary"]
-        if post.get("cta_type") and post.get("cta_url"):
-            body["callToAction"] = {"actionType": post["cta_type"], "url": post["cta_url"]}
+        cta = post_call_to_action(post)
+        if cta:
+            body["callToAction"] = cta
             mask.append("callToAction")
+        if post.get("starts_on") or post.get("ends_on"):  # an Offer or Event whose dates changed: the whole event block is replaced, so it keeps its title
+            body["event"] = post_event(post)
+            mask.append("event")
         return self._req("PATCH", f"{V4}/{name}", params={"updateMask": ",".join(mask)}, json=body)
 
     def delete_post(self, name: str) -> None:
@@ -305,15 +332,86 @@ class GbpClient:
 
     def create_post(self, account: str, location: str, post: dict[str, Any]) -> dict[str, Any]:
         body: dict[str, Any] = {"languageCode": "en", "summary": post["body"], "topicType": {"Offer": "OFFER", "Event": "EVENT"}.get(post.get("post_type"), "STANDARD")}
-        if post.get("cta_type") and post.get("cta_url"):
-            body["callToAction"] = {"actionType": post["cta_type"], "url": post["cta_url"]}
+        cta = post_call_to_action(post)
+        if cta:
+            body["callToAction"] = cta
         if post.get("image_url"):
             body["media"] = [{"mediaFormat": "PHOTO", "sourceUrl": post["image_url"]}]
         if body["topicType"] in ("OFFER", "EVENT"):
-            start = datetime.now(timezone.utc).date()
-            end = start + timedelta(days=7)
-            body["event"] = {"title": post.get("title") or "Offer", "schedule": {"startDate": {"year": start.year, "month": start.month, "day": start.day}, "endDate": {"year": end.year, "month": end.month, "day": end.day}}}
+            body["event"] = post_event(post)
+        if body["topicType"] == "OFFER":
+            offer = {k: v for k, v in {"couponCode": post.get("coupon_code"), "redeemOnlineUrl": post.get("redeem_url"), "termsConditions": post.get("terms")}.items() if v}
+            if offer:
+                body["offer"] = offer
         return self._req("POST", f"{V4}/{account}/{location}/localPosts", json=body)
+
+
+# Verification, profile managers and deleting the profile (settings section)
+class GbpAdminMixin:
+    def verification_options(self, location: str) -> list[dict[str, Any]]:
+        return self._req("POST", f"{VERIFY}/{location}:fetchVerificationOptions", json={"languageCode": "en"}).get("options", [])
+
+    def verifications(self, location: str) -> list[dict[str, Any]]:
+        return self._req("GET", f"{VERIFY}/{location}/verifications").get("verifications", [])
+
+    def start_verification(self, location: str, method: str, email: str | None = None, phone: str | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"method": method, "languageCode": "en"}
+        if email:
+            body["emailAddress"] = email
+        if phone:
+            body["phoneNumber"] = phone
+        return self._req("POST", f"{VERIFY}/{location}:verify", json=body).get("verification", {})
+
+    def complete_verification(self, name: str, pin: str) -> dict[str, Any]:
+        return self._req("POST", f"{VERIFY}/{name}:complete", json={"pin": pin}).get("verification", {})
+
+    def admins(self, location: str) -> list[dict[str, Any]]:
+        return self._req("GET", f"{ACCOUNTS}/{location}/admins").get("admins", [])
+
+    def add_admin(self, location: str, email: str, role: str) -> dict[str, Any]:
+        return self._req("POST", f"{ACCOUNTS}/{location}/admins", json={"admin": email, "role": role})
+
+    def remove_admin(self, name: str) -> None:
+        self._req("DELETE", f"{ACCOUNTS}/{name}")
+
+    def delete_location(self, location: str) -> None:
+        self._req("DELETE", f"{INFO}/{location}")
+
+
+for _name in ("verification_options", "verifications", "start_verification", "complete_verification", "admins", "add_admin", "remove_admin", "delete_location"):
+    setattr(GbpClient, _name, getattr(GbpAdminMixin, _name))
+
+
+def _as_date(v: Any) -> date | None:
+    if not v:
+        return None
+    return v if isinstance(v, date) and not isinstance(v, datetime) else date.fromisoformat(str(v)[:10])
+
+
+def post_call_to_action(post: dict[str, Any]) -> dict[str, Any] | None:
+    """The button on a post. "Call now" has no link: Google dials the profile's phone."""
+    kind = post.get("cta_type")
+    if kind == "CALL":
+        return {"actionType": "CALL"}
+    return {"actionType": kind, "url": post["cta_url"]} if kind and post.get("cta_url") else None
+
+
+def post_event(post: dict[str, Any]) -> dict[str, Any]:
+    """The `event` block of an Offer or Event post: its title and dates (and, for events, start and end times). With no dates given it runs for a week from today."""
+    start, end = _as_date(post.get("starts_on")), _as_date(post.get("ends_on"))
+    if not start and not end:
+        start = datetime.now(timezone.utc).date()
+    if start and not end:
+        end = start + timedelta(days=7)
+    if end and not start:
+        start = min(datetime.now(timezone.utc).date(), end)
+    gd = lambda d: {"year": d.year, "month": d.month, "day": d.day}  # noqa: E731
+    schedule: dict[str, Any] = {"startDate": gd(start), "endDate": gd(end)}
+    if post.get("start_time"):
+        schedule["startTime"] = _time(post["start_time"])
+    if post.get("end_time"):
+        schedule["endTime"] = _time(post["end_time"])
+    return {"title": post.get("title") or "Offer", "schedule": schedule}
 
 
 API_NAMES = {
@@ -322,6 +420,7 @@ API_NAMES = {
     "businessprofileperformance": "Business Profile Performance API",
     "mybusiness.googleapis.com": "Google My Business API (v4: reviews, posts, media)",
     "mybusinessverifications": "My Business Verifications API",
+    "mybusinessplaceactions": "My Business Place Actions API (booking and order links)",
 }
 ACCESS_FORM = "https://developers.google.com/my-business/content/prereqs#request-access"
 
@@ -352,7 +451,7 @@ def setup_info() -> dict[str, Any]:
         "token_key": bool(s.token_encryption_key),  # needed to store the Google refresh token encrypted
         "client_id": (s.google_client_id[:16] + "...") if s.google_client_id else None,
         "redirect_uri": _redirect_uri(),
-        "scopes": SCOPES.split(),
+        "scopes": ALL_SCOPES.split(),
         "apis": list(API_NAMES.values()),
         "access_form": ACCESS_FORM,
     }
@@ -414,14 +513,54 @@ def _time(hhmm: str | None) -> dict[str, int]:
     return {"hours": int(h), "minutes": int(m)}
 
 
-def fields_to_location(changes: dict[str, Any]) -> dict[str, Any]:
+PLACE_ACTION_TYPE_IDS = {"APPOINTMENT", "ONLINE_APPOINTMENT", "DINING_RESERVATION", "FOOD_ORDERING", "FOOD_DELIVERY", "FOOD_TAKEOUT", "SHOP_ONLINE"}
+
+
+def phone_numbers_body(primary: str | None, additional: list[str] | None) -> dict[str, Any]:
+    """Google's phoneNumbers: one main number and up to two more. An empty main number is not sent: Google keeps the old one rather than erase the listing's phone."""
+    body: dict[str, Any] = {}
+    if primary:
+        body["primaryPhone"] = primary
+    body["additionalPhones"] = [p for p in (additional or []) if p and p != primary][:2]
+    return body
+
+
+def desired_action_links(links: list[dict[str, Any]] | None, booking_url: str | None) -> list[dict[str, Any]]:
+    """The place-action links to have on Google: the saved list, with the booking link standing for the APPOINTMENT one."""
+    out = [dict(x) for x in links or [] if x.get("url") and x.get("type") != "APPOINTMENT"]
+    if booking_url:
+        out.insert(0, {"type": "APPOINTMENT", "url": booking_url})
+    return out
+
+
+def sync_action_links(client: "GbpClient", location: str, wanted: list[dict[str, Any]]) -> None:
+    """Make Google's Book / Order buttons match `wanted` (one link per type): create the new, change the different, remove the dropped."""
+    have: dict[str, dict[str, Any]] = {}
+    for link in client.place_action_links(location):
+        have.setdefault(link.get("placeActionType"), link)
+    want = {w["type"]: w["url"] for w in wanted}
+    for kind, url in want.items():
+        cur = have.get(kind)
+        if not cur:
+            client.create_place_action_link(location, kind, url)
+        elif cur.get("uri") != url:
+            client.update_place_action_link(cur["name"], url)
+    for kind, cur in have.items():
+        if kind not in want and cur.get("name"):
+            client.delete_place_action_link(cur["name"])
+
+
+def fields_to_location(changes: dict[str, Any], current: Any = None) -> dict[str, Any]:
     """The Business columns that changed -> the Google location fields to patch (the inverse of location_to_fields).
-    Only fields Google accepts as plain values: categories and the address need Google's own ids, so they stay read-only."""
+    Only fields Google accepts as plain values: categories and the address need Google's own ids, so they stay read-only.
+    `current` is the saved Business: when only one of the phone numbers changed, the other is taken from it."""
     body: dict[str, Any] = {}
     if changes.get("name"):
         body["title"] = changes["name"]
-    if "phone" in changes and changes["phone"]:
-        body["phoneNumbers"] = {"primaryPhone": changes["phone"]}
+    if "phone" in changes or "additional_phones" in changes:
+        primary = changes["phone"] if "phone" in changes else getattr(current, "phone", None)
+        extra = changes["additional_phones"] if "additional_phones" in changes else getattr(current, "additional_phones", None)
+        body["phoneNumbers"] = phone_numbers_body(primary, extra)
     if "website" in changes:
         body["websiteUri"] = changes["website"] or ""
     if "description" in changes:
@@ -435,7 +574,50 @@ def fields_to_location(changes: dict[str, Any]) -> dict[str, Any]:
             date_ = {"year": y, "month": mo, "day": d}
             periods.append({"startDate": date_, "endDate": date_, "closed": True} if s.get("closed") else {"startDate": date_, "endDate": date_, "openTime": _time(s.get("open")), "closeTime": _time(s.get("close"))})
         body["specialHours"] = {"specialHourPeriods": periods}
+    if "open_status" in changes or "opening_date" in changes:
+        body["openInfo"] = open_info_body(changes["open_status"] if "open_status" in changes else getattr(current, "open_status", None),
+                                          changes["opening_date"] if "opening_date" in changes else getattr(current, "opening_date", None))
+    if "more_hours" in changes:
+        body["moreHours"] = [{"hoursTypeId": k, "periods": v} for k, v in (changes["more_hours"] or {}).items() if v]
+    if "labels" in changes:
+        body["labels"] = list(changes["labels"] or [])
     return body
+
+
+def open_info_body(status: str | None, opening_date: str | None) -> dict[str, Any]:
+    """Google's openInfo: whether the business is open, temporarily or permanently closed, and its opening date."""
+    body: dict[str, Any] = {"status": status or "OPEN"}
+    if opening_date:
+        y, m, d = (int(x) for x in opening_date.split("-"))
+        body["openingDate"] = {"year": y, "month": m, "day": d}
+    return body
+
+
+def service_area_body(kind: str, places: list[dict[str, str]]) -> dict[str, Any]:
+    """Google's serviceArea: the areas served, and whether the street address is shown beside them."""
+    return {"serviceArea": {"businessType": kind, "places": {"placeInfos": [{"placeName": p["name"], "placeId": p["place_id"]} for p in places if p.get("place_id")]}}}
+
+
+def resolve_places(names: list[str], api_key: str, region: str = "in") -> tuple[list[dict[str, str]], list[str]]:
+    """Turn area names ("Wagholi, Pune") into Google place ids with the Places API (New) text search. Returns (resolved, unresolved names)."""
+    found: list[dict[str, str]] = []
+    missing: list[str] = []
+    for name in names:
+        r = httpx.post("https://places.googleapis.com/v1/places:searchText", timeout=20,
+                       headers={"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": "places.id,places.displayName"},
+                       json={"textQuery": name, "regionCode": region.upper(), "pageSize": 1})
+        if r.status_code >= 400:
+            try:
+                msg = r.json().get("error", {}).get("message") or r.text[:200]
+            except ValueError:
+                msg = r.text[:200]
+            raise GbpError(f"Google Places could not look up the area: {msg}")
+        hit = (r.json().get("places") or [None])[0]
+        if hit and hit.get("id"):
+            found.append({"name": ((hit.get("displayName") or {}).get("text") or name)[:200], "place_id": hit["id"]})
+        else:
+            missing.append(name)
+    return found, missing
 
 
 def address_body(current: dict[str, Any] | None, a: dict[str, Any]) -> dict[str, Any]:
@@ -465,6 +647,10 @@ def service_items_body(services: list[dict[str, Any]], category: str | None) -> 
     return {"serviceItems": items}
 
 
+def _open_date(d: dict[str, Any] | None) -> str | None:
+    return f"{int(d['year']):04d}-{int(d.get('month', 1)):02d}-{int(d.get('day', 1)):02d}" if d and d.get("year") else None
+
+
 def location_to_fields(loc: dict[str, Any]) -> dict[str, Any]:
     """A Business Information location -> Business columns."""
     addr = loc.get("storefrontAddress") or {}
@@ -478,6 +664,7 @@ def location_to_fields(loc: dict[str, Any]) -> dict[str, Any]:
         "secondary_categories": [c.get("displayName") for c in cats.get("additionalCategories") or [] if c.get("displayName")],
         "description": (loc.get("profile") or {}).get("description"),
         "phone": (loc.get("phoneNumbers") or {}).get("primaryPhone"),
+        "additional_phones": list((loc.get("phoneNumbers") or {}).get("additionalPhones") or []),
         "website": loc.get("websiteUri"),
         "address": ", ".join([*lines, addr.get("locality", ""), addr.get("postalCode", "")]).strip(", ") or None,
         "area": lines[-1] if lines else None,
@@ -487,6 +674,12 @@ def location_to_fields(loc: dict[str, Any]) -> dict[str, Any]:
         "verification": verification_state(loc.get("voice_of_merchant"), meta),
         "duplicate_listing": bool(meta.get("duplicateLocation")),
         "hours": loc.get("regularHours") or {},
+        "open_status": (loc.get("openInfo") or {}).get("status"),
+        "opening_date": _open_date((loc.get("openInfo") or {}).get("openingDate")),
+        "more_hours": {m["hoursTypeId"]: m.get("periods") or [] for m in loc.get("moreHours") or [] if m.get("hoursTypeId")},
+        "labels": list(loc.get("labels") or []),
+        "service_area_type": (loc.get("serviceArea") or {}).get("businessType"),
+        "service_area_places": [{"name": x.get("placeName"), "place_id": x.get("placeId")} for x in ((loc.get("serviceArea") or {}).get("places") or {}).get("placeInfos") or []],
         "gbp_location": loc.get("name"),
         "gbp_account": loc.get("account"),
         "gbp_status": listing_status(loc),
@@ -539,7 +732,17 @@ def _post_item(p: dict[str, Any]) -> dict[str, Any]:
     cta = p.get("callToAction") or {}
     return {"id": p.get("name"), "type": p.get("topicType"), "state": p.get("state"), "summary": p.get("summary"), "created": p.get("createTime"), "updated": p.get("updateTime"),
             "url": p.get("searchUrl"), "cta": cta.get("actionType"), "cta_url": cta.get("url"), "image": next((m.get("googleUrl") for m in p.get("media") or [] if m.get("googleUrl")), None),
-            "title": (p.get("event") or {}).get("title")}
+            "title": (p.get("event") or {}).get("title"), **_event_fields(p)}
+
+
+def _event_fields(p: dict[str, Any]) -> dict[str, Any]:
+    """Dates, times and offer details of a Google post, as plain values for the edit form."""
+    sch = (p.get("event") or {}).get("schedule") or {}
+    day = lambda d: f"{d['year']:04d}-{d['month']:02d}-{d['day']:02d}" if d and d.get("year") else None  # noqa: E731
+    clock = lambda t: f"{int(t.get('hours', 0)):02d}:{int(t.get('minutes', 0)):02d}" if t else None  # noqa: E731
+    offer = p.get("offer") or {}
+    return {"starts_on": day(sch.get("startDate")), "ends_on": day(sch.get("endDate")), "start_time": clock(sch.get("startTime")), "end_time": clock(sch.get("endTime")),
+            "coupon": offer.get("couponCode"), "redeem_url": offer.get("redeemOnlineUrl"), "terms": offer.get("termsConditions")}
 
 
 def _keyword_item(k: dict[str, Any]) -> dict[str, Any]:
@@ -579,6 +782,17 @@ def fetch_live(client: "GbpClient", b: Business, loc: dict[str, Any]) -> dict[st
     return live
 
 
+def _google_time(value: str | None) -> datetime | None:
+    """A Google timestamp ("2026-11-12T07:31:05.123456Z") as an aware datetime, or None when missing or unreadable."""
+    if not value:
+        return None
+    try:
+        t = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
 def logo_and_cover(media: list[dict[str, Any]]) -> tuple[str | None, str | None]:
     """The business logo and cover photo among the profile's photos: Google files them under the PROFILE and COVER categories."""
     def url_of(*cats: str) -> str | None:
@@ -609,23 +823,46 @@ def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
     db.commit()
     reviews = client.reviews(b.gbp_account, b.gbp_location)
     added = 0
+    fresh: list[Review] = []
+    had_none = db.scalar(select(Review.id).where(Review.business_id == b.id).limit(1)) is None
     for rv in reviews:
         ext = rv.get("reviewId") or rv.get("name")
         row = db.scalar(select(Review).where(Review.business_id == b.id, Review.external_id == ext))
         if not row:
             row = Review(business_id=b.id, external_id=ext)
             added += 1
+            fresh.append(row)
         row.author = (rv.get("reviewer") or {}).get("displayName")
         row.rating = STAR.get(rv.get("starRating"), 0)
         row.body = rv.get("comment")
-        row.review_date = datetime.fromisoformat(rv["createTime"].replace("Z", "+00:00")).date() if rv.get("createTime") else None
+        row.review_at = _google_time(rv.get("createTime"))
+        row.review_date = row.review_at.date() if row.review_at else None
         if rv.get("reviewReply"):
             row.reply_text = rv["reviewReply"].get("comment")
             row.reply_status = "posted"
+            row.replied_at = _google_time(rv["reviewReply"].get("updateTime")) or row.replied_at
         row.sentiment = row.sentiment or ("positive" if row.rating >= 4 else "negative" if row.rating <= 2 else "neutral")
         db.add(row)
+    if fresh:
+        db.flush()  # the new rows get their ids, so each notification can point at its review
+        from . import notify
+        notify.new_reviews(db, b, fresh, had_none)
+    try:  # the Book / Order buttons live in a separate Google API: a failure there must not fail the whole sync
+        links = [{"type": x.get("placeActionType"), "url": x.get("uri")} for x in client.place_action_links(b.gbp_location) if x.get("uri") and x.get("placeActionType") in PLACE_ACTION_TYPE_IDS]
+        b.action_links = links
+        b.booking_url = next((x["url"] for x in links if x["type"] == "APPOINTMENT"), None) or b.booking_url
+    except GbpError as exc:
+        b.gbp_status = {**(b.gbp_status or {}), "action_links_error": str(exc)}
     b.review_count = len(reviews)
     b.rating = round(sum(STAR.get(r.get("starRating"), 0) for r in reviews) / len(reviews), 1) if reviews else None
+    try:  # Google's own totals can be ahead of the review list (a new review is counted before its text is released)
+        first = client._req("GET", f"{V4}/{b.gbp_account}/{b.gbp_location}/reviews", params={"pageSize": 1})
+        total = int(first.get("totalReviewCount") or 0)
+        if total > len(reviews):
+            b.review_count = total
+            b.rating = first.get("averageRating") or b.rating
+    except (GbpError, ValueError, TypeError):
+        pass
     if "media" not in live["errors"]:
         b.photo_count = len(live["media"])
         logo, cover = logo_and_cover(live["media"])

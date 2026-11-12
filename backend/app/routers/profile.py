@@ -2,6 +2,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -43,6 +44,36 @@ def draft_post(topic: str = "", b: Business = Depends(get_business), db: Session
         raise HTTPException(503, "AI is not set up on the SEO platform.")
     t = agent.draft_weekly_post(db, b, topic)
     return row(t)
+
+
+class ComposeIn(BaseModel):
+    topic: str = ""
+    post_type: str = "Update"
+    what: str = "all"  # all | text | hashtags
+
+
+def _clean_tags(tags, limit: int = 8) -> list[str]:
+    out: list[str] = []
+    for t in tags or []:
+        t = "".join(ch for ch in str(t).replace("#", "").strip().replace(" ", "") if ch.isalnum() or ch == "_")
+        if t and f"#{t}" not in out:
+            out.append(f"#{t}")
+    return out[:limit]
+
+
+@router.post("/posts/compose")
+def compose_post(body: ComposeIn, b: Business = Depends(get_business)):
+    """AI text and hashtags for one post, grounded in the profile. Nothing is saved: the editor shows it for a person to check."""
+    if not ai.is_configured():
+        raise HTTPException(503, "AI is not set up on the SEO platform.")
+    kind = body.post_type if body.post_type in ("Update", "Offer", "Event") else "Update"
+    out = ai.complete_json(
+        f"You write Google Business Profile posts.\n{ai.RULES}\n- Do not put hashtags inside the text; return them separately.",
+        f"Business profile:\n{ai.profile_text(b)}\n\nWrite one {kind} post{' about: ' + body.topic.strip() if body.topic.strip() else ' about one main service'}. "
+        "Friendly, specific, 400 to 900 characters, short paragraphs, end with a clear next step. "
+        "Also give 5 to 8 relevant hashtags (local area, service, category), no spaces inside a hashtag. "
+        'Return JSON {"title": string, "body": string, "hashtags": [string]}.')
+    return {"title": (out.get("title") or "")[:90], "body": str(out.get("body", ""))[:1200], "hashtags": _clean_tags(out.get("hashtags"))}
 
 
 @router.delete("/posts/{post_id}", status_code=204)

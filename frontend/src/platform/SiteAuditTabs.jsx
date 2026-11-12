@@ -3,6 +3,7 @@ import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, Cart
 import { ChevronRight, ExternalLink, Download, Check, LayoutGrid, BarChart3, Folder, FileText, Search } from 'lucide-react';
 import { Card, Badge, Button } from './SeoUi';
 import { AXIS, PALETTE, Th, Empty, Segmented, usePager } from './PositionUi';
+import Select from '../components/Select';
 
 const SEV = { error: ['Errors', '#ef4444'], warning: ['Warnings', '#f59e0b'], notice: ['Notices', '#818cf8'] };
 const SEV_ORDER = ['error', 'warning', 'notice'];
@@ -132,9 +133,9 @@ export function CrawledPagesTab({ r }) {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <select className={sel} value={scope} onChange={e => setScope(e.target.value)} aria-label="Search in"><option value="url">URL</option><option value="title">Title</option></select>
+            <Select className={sel} value={scope} onChange={e => setScope(e.target.value)} aria-label="Search in"><option value="url">URL</option><option value="title">Title</option></Select>
             <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search" aria-label="Search pages" className="h-9 pl-8 pr-3 w-56 text-13 rounded border border-slate-200 bg-white" /></label>
-            <select className={sel} value={sev} onChange={e => setSev(e.target.value)} aria-label="Issues"><option value="">All pages</option><option value="error">With errors</option><option value="warning">With warnings</option><option value="notice">With notices</option><option value="healthy">Healthy</option></select>
+            <Select className={sel} value={sev} onChange={e => setSev(e.target.value)} aria-label="Issues"><option value="">All pages</option><option value="error">With errors</option><option value="warning">With warnings</option><option value="notice">With notices</option><option value="healthy">Healthy</option></Select>
           </div>
           <Card title={`Crawled Pages (${rows.length})`} pad={false} action={<Button size="sm" icon={Download} onClick={() => csv(`${r.project}-pages.csv`, ['URL', 'Title', 'Status', 'Issues', 'Crawl depth', 'Inbound links', 'Words'], rows.map(p => [p.url, p.title, p.status, p.issues.length, p.depth, p.inbound, p.words]))}>Export</Button>}>
             <div className="overflow-x-auto">
@@ -224,8 +225,8 @@ export function CompareTab({ r }) {
     <Card pad={false}>
       <table className="w-full text-13">
         <thead className="bg-slate-50 text-12.5"><tr><th className="px-5 py-3 text-left font-semibold text-slate-700">General</th>
-          <th className="px-5 py-3"><select className={sel} value={a} onChange={e => setA(Number(e.target.value))} aria-label="Newer crawl">{opts}</select></th>
-          <th className="px-5 py-3"><div className="inline-flex items-center gap-2"><span className="text-slate-500">vs</span><select className={sel} value={b} onChange={e => setB(Number(e.target.value))} aria-label="Older crawl">{opts}</select></div></th>
+          <th className="px-5 py-3"><Select className={sel} value={a} onChange={e => setA(Number(e.target.value))} aria-label="Newer crawl">{opts}</Select></th>
+          <th className="px-5 py-3"><div className="inline-flex items-center gap-2"><span className="text-slate-500">vs</span><Select className={sel} value={b} onChange={e => setB(Number(e.target.value))} aria-label="Older crawl">{opts}</Select></div></th>
           <th className="px-5 py-3 text-right font-semibold text-slate-600">Fixed</th><th className="px-5 py-3 text-right font-semibold text-slate-600">New</th></tr></thead>
         <tbody className="divide-y divide-slate-100">{gen.map(([l, f]) => (
           <tr key={l}><td className="px-5 py-2.5 text-slate-800">{l}</td><td className="px-5 py-2.5 text-center tabular-nums">{f(A) ?? dash}</td><td className="px-5 py-2.5 text-center tabular-nums">{f(B) ?? dash}</td>
@@ -265,8 +266,8 @@ export function ProgressTab({ r }) {
       <Card>
         <div className="flex flex-wrap items-center gap-3 mb-3 text-13">
           <span className="font-semibold text-slate-700">HISTORICAL CHART FOR AUDITS</span>
-          <span className="text-slate-500">From:</span><select className={sel} value={from} onChange={e => setFrom(Number(e.target.value))} aria-label="From">{opts}</select>
-          <span className="text-slate-500">To:</span><select className={sel} value={to} onChange={e => setTo(Number(e.target.value))} aria-label="To">{opts}</select>
+          <span className="text-slate-500">From:</span><Select className={sel} value={from} onChange={e => setFrom(Number(e.target.value))} aria-label="From">{opts}</Select>
+          <span className="text-slate-500">To:</span><Select className={sel} value={to} onChange={e => setTo(Number(e.target.value))} aria-label="To">{opts}</Select>
         </div>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">

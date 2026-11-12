@@ -29,7 +29,8 @@ def list_connections(db: Session = Depends(get_db), user: User = Depends(current
     out = []
     for c in db.scalars(only_my_connections(select(GoogleConnection), user).order_by(GoogleConnection.email)):
         n = len(list(db.scalars(only_mine(select(Business.id), user).where(Business.connection_id == c.id))))
-        out.append(row(c) | {"businesses": n})
+        sc = c.scopes or ""
+        out.append(row(c) | {"businesses": n, "permissions": {"business_profile": "business.manage" in sc, "search_console": "webmasters.readonly" in sc, "analytics": "analytics.readonly" in sc, "google_ads": gbp.ADS_SCOPE in sc}})
     return out
 
 
@@ -41,7 +42,7 @@ def google_setup(_: User = Depends(current_user)):
 
 @router.get("/google/start")
 def google_start(purpose: str = "gbp", user: User = Depends(current_user)):
-    """Returns Google's sign-in URL; the frontend sends the browser there. `purpose=gsc` asks only for Search Console access."""
+    """Returns Google's sign-in URL; the frontend sends the browser there. Every sign-in asks for all the permissions the app uses (Business Profile, Search Console, Analytics, Google Ads), so an account is connected once."""
     try:
         return {"url": gbp.auth_url(user.id, "gsc" if purpose == "gsc" else "gbp")}
     except gbp.GbpError as exc:

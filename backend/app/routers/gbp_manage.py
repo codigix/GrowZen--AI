@@ -1,10 +1,11 @@
 """Everything editable on a client's Google Business Profile, written to Google from here: categories, address,
 attributes, photos, live posts and review replies. Profile text, hours and services go through PATCH /businesses/{id}."""
 import base64
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,7 @@ from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business
 from ..models import AgentTask, Business, Post, Review
+from ..schemas import POST_CTA_TYPES, check_post_dates, clean_url
 from ..serialize import row
 from ..services import agent, gbp
 from ..services.activity import log
@@ -247,6 +249,61 @@ def delete_google_post(name: str, b: Business = Depends(get_business), db: Sessi
         db.delete(p)
     log(db, user.name, "gbp_post_deleted", b.id)
     db.commit()
+
+
+class LivePostEditIn(BaseModel):
+    name: str
+    summary: str = Field(min_length=1, max_length=1500)
+    cta_type: str | None = None
+    cta_url: str | None = None
+    title: str | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+
+    @field_validator("cta_url")
+    @classmethod
+    def _url(cls, v):
+        return clean_url(v) or None
+
+    @model_validator(mode="after")
+    def _rules(self):
+        if self.cta_type and self.cta_type not in POST_CTA_TYPES:
+            raise ValueError(f"Button must be one of {', '.join(sorted(POST_CTA_TYPES))}.")
+        if self.cta_type and self.cta_type != "CALL" and not self.cta_url:
+            raise ValueError("A button other than Call needs a link.")
+        if self.starts_on or self.ends_on:
+            check_post_dates("Event" if (self.start_time or self.end_time) else "Offer", self.title, self.starts_on, self.ends_on, self.start_time, self.end_time)
+        return self
+
+
+def _patch_snapshot(b: Business, part: str, item_id: str, fields: dict[str, Any]) -> None:
+    """After an edit, change the post in the last synced copy so the list shows it at once (like _drop_from_snapshot does for a delete)."""
+    status = dict(b.gbp_status or {})
+    live = dict(status.get("live") or {})
+    if part in live:
+        live[part] = [({**x, **fields} if x.get("id") == item_id else x) for x in live[part]]
+        status["live"] = live
+        b.gbp_status = status
+
+
+@router.patch("/live-post")
+def edit_google_post(body: LivePostEditIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Change a post that is already on the profile (text, button, and the dates of an offer or event), including ones made outside this software."""
+    if not body.name.startswith(f"{b.gbp_account}/{b.gbp_location}/localPosts/"):
+        raise HTTPException(400, "That post does not belong to this client's profile.")
+    post = {"body": body.summary, "cta_type": body.cta_type, "cta_url": body.cta_url, "title": body.title, "starts_on": body.starts_on, "ends_on": body.ends_on, "start_time": body.start_time, "end_time": body.end_time}
+    _google(_client(b).update_post, body.name, post)
+    fields = {"summary": body.summary, "cta": body.cta_type, "cta_url": body.cta_url,
+              **({"title": body.title, "starts_on": body.starts_on.isoformat() if body.starts_on else None, "ends_on": body.ends_on.isoformat() if body.ends_on else None,
+                  "start_time": body.start_time, "end_time": body.end_time} if (body.starts_on or body.ends_on) else {})}
+    _patch_snapshot(b, "posts", body.name, fields)
+    for p in db.scalars(select(Post).where(Post.business_id == b.id, Post.external_id == body.name)):
+        p.body, p.cta_type, p.cta_url = body.summary, body.cta_type, body.cta_url
+    log(db, user.name, "gbp_post_edited", b.id)
+    db.commit()
+    return {"id": body.name, **fields}
 
 
 # Review replies

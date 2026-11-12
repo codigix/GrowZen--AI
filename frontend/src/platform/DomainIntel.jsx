@@ -3,6 +3,7 @@ import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, ScatterChart, Scat
 import { RefreshCw, ExternalLink, PlugZap, Database, Download, AlertTriangle, Inbox } from 'lucide-react';
 import { Card, Badge, Button, Sk, SkCard } from './SeoUi';
 import { fmt } from './seoApi';
+import Select from '../components/Select';
 
 /**
  * The sections of the Domain Overview, from Google Search Console (GET /businesses/{id}/seo/domain-intel).
@@ -79,9 +80,9 @@ export function IntelBar({ intel, loading, market, setMarket, onRefresh, refresh
     <div className="flex flex-wrap items-center gap-3 text-12.5 text-slate-600">
       {intel.mock ? <Badge tone="amber" title="DOMAIN_INTEL_MOCK is on in backend/.env"><AlertTriangle size={11} />Sample data: not real</Badge> : <span className="inline-flex items-center gap-1.5"><Database size={13} className="text-slate-400" />Source: Google Search Console{intel.account ? ` (${intel.account})` : ''}</span>}
       {intel.markets.length > 1 && (
-        <select value={market || intel.country} onChange={e => setMarket(e.target.value)} className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white cursor-pointer" aria-label="Market">
+        <Select value={market || intel.country} onChange={e => setMarket(e.target.value)} className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white cursor-pointer" aria-label="Market">
           {intel.markets.map(m => <option key={m.code} value={m.code}>{flag(m.code)} {m.name}</option>)}
-        </select>
+        </Select>
       )}
       {intel.markets.length <= 1 && <span>{flag(intel.country)} {intel.country_name}</span>}
       {when && !intel.mock && <span className="text-slate-400">Fetched {when}{intel.cached ? ' (saved copy)' : ''}</span>}

@@ -126,7 +126,8 @@ _lock = threading.Lock()
 class Serper:
     """Serper.dev calls with a 12-hour cache (same query + place = same answer), counting credits."""
 
-    def __init__(self, country: str | None = None, language: str | None = None) -> None:
+    def __init__(self, country: str | None = None, language: str | None = None, fresh: bool = False) -> None:
+        self.fresh = fresh  # True = never answer from the cache (a "check now" must show Google as it is at this moment)
         self.key = get_settings().serper_api_key
         self.hl = (language or "en")[:5]
         self.gl = countries.gl(country)  # Google's results for the business's country
@@ -137,7 +138,7 @@ class Serper:
     def call(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         ck = f"{path}|{sorted(body.items())}"
         with _lock:
-            hit = _cache.get(ck)
+            hit = None if self.fresh else _cache.get(ck)
             if hit and time.time() - hit[0] < CACHE_SECONDS:
                 return hit[1]
         try:
@@ -156,8 +157,8 @@ class Serper:
             _cache[ck] = (time.time(), data)
         return data
 
-    def search(self, q: str, location: str | None) -> dict[str, Any]:
-        body = {"q": q, "gl": self.gl, "hl": self.hl, "num": 10}
+    def search(self, q: str, location: str | None, num: int = 10) -> dict[str, Any]:
+        body = {"q": q, "gl": self.gl, "hl": self.hl, "num": num}
         if location:
             body["location"] = location
         return self.call("/search", body)

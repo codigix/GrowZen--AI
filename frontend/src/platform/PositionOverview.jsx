@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Card, Button, useModulePath, useAction } from './SeoUi';
 import { api, fmt } from './seoApi';
 import { AXIS, PALETTE, Th, Chg, Empty, Filter, usePager, path } from './PositionUi';
+import Select from '../components/Select';
 
 const METRICS = [['sov', 'Share of Voice', '%', false], ['visibility', 'Visibility', '%', false], ['traffic', 'Est. Traffic', '', false], ['avg_position', 'Avg. Position', '', true]];
 const INTENT = { informational: ['I', 'bg-indigo-100 text-indigo-700'], navigational: ['N', 'bg-violet-100 text-violet-700'], commercial: ['C', 'bg-amber-100 text-amber-700'], transactional: ['T', 'bg-emerald-100 text-emerald-700'] };
@@ -140,10 +141,10 @@ export default function PositionOverview({ d, b, onChanged }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className="h-9 pl-3 pr-1.5 inline-flex items-center gap-2 rounded border border-indigo-300 bg-indigo-50 text-13 text-slate-800">{me}<span className="w-6 h-6 inline-flex items-center justify-center text-slate-500"><X size={13} className="opacity-30" /></span></span>
         {extra.map((v, i) => (
-          <select key={i} className={sel} value={v} aria-label={`Add domain ${i + 1}`} onChange={e => setExtra(x => x.map((y, j) => (j === i ? e.target.value : y)))}>
+          <Select key={i} className={sel} value={v} aria-label={`Add domain ${i + 1}`} onChange={e => setExtra(x => x.map((y, j) => (j === i ? e.target.value : y)))}>
             <option value="">Add domain</option>
             {pickable.filter(x => x === v || !extra.includes(x)).map(x => <option key={x} value={x}>{x}</option>)}
-          </select>))}
+          </Select>))}
         <span className="ml-auto text-12.5 text-slate-500">{d.period.start} → {d.period.end}</span>
       </div>
       <div className="flex flex-wrap items-center gap-3">
@@ -151,9 +152,9 @@ export default function PositionOverview({ d, b, onChanged }) {
         <button type="button" onClick={() => setShowFilter(o => !o)} className="h-9 px-2 inline-flex items-center gap-1.5 text-13 font-semibold text-indigo-600 hover:underline cursor-pointer"><Plus size={14} />Add filter{active ? ` (${active})` : ''}</button>
         {showFilter && (
           <>
-            <select className={sel} value={filters.band} onChange={e => setFilters(f => ({ ...f, band: e.target.value }))} aria-label="Positions"><option value="">Positions</option><option value="top3">Top 3</option><option value="top10">Top 10</option><option value="11-20">11-20</option><option value="out">Not ranking</option></select>
-            <select className={sel} value={filters.intent} onChange={e => setFilters(f => ({ ...f, intent: e.target.value }))} aria-label="Intent"><option value="">Intent</option>{intents.map(i => <option key={i}>{i}</option>)}</select>
-            {tags.length > 0 && <select className={sel} value={filters.tag} onChange={e => setFilters(f => ({ ...f, tag: e.target.value }))} aria-label="Tag"><option value="">Tag</option>{tags.map(t => <option key={t}>{t}</option>)}</select>}
+            <Select className={sel} value={filters.band} onChange={e => setFilters(f => ({ ...f, band: e.target.value }))} aria-label="Positions"><option value="">Positions</option><option value="top3">Top 3</option><option value="top10">Top 10</option><option value="11-20">11-20</option><option value="out">Not ranking</option></Select>
+            <Select className={sel} value={filters.intent} onChange={e => setFilters(f => ({ ...f, intent: e.target.value }))} aria-label="Intent"><option value="">Intent</option>{intents.map(i => <option key={i}>{i}</option>)}</Select>
+            {tags.length > 0 && <Select className={sel} value={filters.tag} onChange={e => setFilters(f => ({ ...f, tag: e.target.value }))} aria-label="Tag"><option value="">Tag</option>{tags.map(t => <option key={t}>{t}</option>)}</Select>}
             {active > 0 && <button type="button" onClick={() => setFilters({ intent: '', band: '', tag: '' })} className="text-13 text-slate-500 hover:text-slate-800 cursor-pointer">Clear</button>}
           </>
         )}

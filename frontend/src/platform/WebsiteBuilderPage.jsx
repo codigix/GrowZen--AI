@@ -10,6 +10,7 @@ import {
   useSimulated, useToast, PreviewNote, Modal
 } from './SeoUi';
 import { useApi } from './seoApi';
+import Select from '../components/Select';
 
 const THEMES = [
   { id: 'cyan', name: 'Clinical Cyan', primary: '#0284c7', secondary: '#0369a1', light: '#f0f9ff', accent: '#38bdf8' },
@@ -1076,7 +1077,7 @@ function Builder({ b }) {
             />
           </Field>
           <Field label="Department / Procedure">
-            <select
+            <Select
               className={inputCls}
               value={bookingForm.service}
               onChange={e => setBookingForm({ ...bookingForm, service: e.target.value })}
@@ -1086,7 +1087,7 @@ function Builder({ b }) {
               <option>General & Laparoscopic Surgery</option>
               <option>Orthopaedic & Joint Pain</option>
               <option>24/7 Emergency / Casualty</option>
-            </select>
+            </Select>
           </Field>
           <div className="p-3 rounded bg-cyan-500/10 border border-cyan-500/25 text-12 text-cyan-800">
             <ShieldCheck size={14} className="inline mr-1 text-cyan-700" />

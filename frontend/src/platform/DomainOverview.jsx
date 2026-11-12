@@ -7,6 +7,7 @@ import {
 import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useAction, useToast, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 import { IntelBar, IntelSections, headline } from './DomainIntel';
+import Select from '../components/Select';
 
 /**
  * Domain Overview from real sources only: Google traffic (clicks, impressions, position, keywords, pages, countries,
@@ -381,8 +382,8 @@ function Page({ b }) {
               {top.map(c => <button key={c.code} type="button" onClick={() => set({ country: c.code })} className={`h-8 px-3 text-12.5 font-semibold rounded cursor-pointer ${filters.country === c.code ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>{flag(c.code)} {c.code}</button>)}
               {filters.country && !top.some(c => c.code === filters.country) && <span className="h-8 px-3 text-12.5 font-semibold rounded bg-white shadow-sm text-slate-900 inline-flex items-center">{flag(filters.country)} {filters.country}</span>}
             </div>
-            <select className={sel} value={filters.device} onChange={e => set({ device: e.target.value })} aria-label="Device"><option value="">All devices</option><option value="desktop">Desktop</option><option value="mobile">Mobile</option><option value="tablet">Tablet</option></select>
-            <select className={sel} value={filters.range} onChange={e => set({ range: e.target.value })} aria-label="Period">{RANGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            <Select className={sel} value={filters.device} onChange={e => set({ device: e.target.value })} aria-label="Device"><option value="">All devices</option><option value="desktop">Desktop</option><option value="mobile">Mobile</option><option value="tablet">Tablet</option></Select>
+            <Select className={sel} value={filters.range} onChange={e => set({ range: e.target.value })} aria-label="Period">{RANGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
           </div>
         )}
       </div>

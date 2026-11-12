@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle, AlertTriangle, Loader2, Globe, FileCode2, Folder
 import { Badge, Button, Field, inputCls, areaCls, useDoubleConfirm } from './SeoUi';
 import { api, fmtDateTime, usePoll } from './seoApi';
 import { ScheduleModal, scheduleText } from './ArticleScheduling';
+import Select from '../components/Select';
 
 const emptyDeploy = { adapter: 'sftp', host: '', port: '', username: '', auth: 'password', password: '', private_key: '', key_passphrase: '', root: '', tls: true };
 const fromDeploy = (d) => (d ? { ...emptyDeploy, adapter: d.adapter || 'sftp', host: d.host || '', port: d.port ? String(d.port) : '', username: d.username || '',
@@ -272,20 +273,20 @@ export default function HtmlSitePanel({ b, article, toast, onConnection }) {
               <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-800"><KeyRound size={13} /> Deployment settings <span className="font-normal text-slate-500">· stored encrypted on the server, never shown again</span></div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Field label="Method">
-                  <select className={inputCls} value={dform.adapter} onChange={setD('adapter')}>
+                  <Select className={inputCls} value={dform.adapter} onChange={setD('adapter')}>
                     <option value="sftp">SFTP (SSH) · recommended for GoDaddy cPanel</option>
                     <option value="ftp">FTP / FTPS</option>
-                  </select>
+                  </Select>
                 </Field>
                 <Field label="Host" hint="e.g. sachspune.com or the server name from cPanel"><input className={inputCls} value={dform.host} onChange={setD('host')} placeholder="sachspune.com" /></Field>
                 <Field label="Port" hint={dform.adapter === 'sftp' ? 'Empty = 22' : 'Empty = 21'}><input className={inputCls} value={dform.port} onChange={setD('port')} placeholder={dform.adapter === 'sftp' ? '22' : '21'} inputMode="numeric" /></Field>
                 <Field label="Username" hint="Your cPanel / SSH user"><input className={inputCls} value={dform.username} onChange={setD('username')} autoComplete="off" /></Field>
                 {dform.adapter === 'sftp' && (
                   <Field label="Sign in with">
-                    <select className={inputCls} value={dform.auth} onChange={setD('auth')}>
+                    <Select className={inputCls} value={dform.auth} onChange={setD('auth')}>
                       <option value="password">Password</option>
                       <option value="key">SSH private key</option>
-                    </select>
+                    </Select>
                   </Field>
                 )}
                 {dform.auth === 'password' || dform.adapter === 'ftp' ? (

@@ -3,6 +3,7 @@ import { Globe } from 'lucide-react';
 import { Button } from './SeoUi';
 import { api } from './seoApi';
 import Wizard, { Row, fieldCls, boxCls } from './Wizard';
+import Select from '../components/Select';
 
 const STEPS = [
   { id: 'general', label: 'General' },
@@ -54,10 +55,10 @@ export default function NewAuditModal({ open, onClose, target, host, business, o
           </Row>
           <Row label="Limit per audit"><span className="inline-flex items-center gap-3"><input type="number" min={10} max={300} value={cfg.limit} onChange={e => set('limit', Math.max(10, Math.min(300, Number(e.target.value) || 10)))} className={`${fieldCls} w-28`} aria-label="Pages per audit" /><span className="text-15 text-slate-700">pages</span></span></Row>
           <Row label="Pages to crawl" hint={WHICH[cfg.pages_to_crawl]}>
-            <select className={`${fieldCls} w-48`} value={cfg.pages_to_crawl} onChange={e => set('pages_to_crawl', e.target.value)} aria-label="Pages to crawl"><option value="website">Website</option><option value="sitemap">Sitemap</option><option value="subfolder">Subfolder</option></select>
+            <Select className={`${fieldCls} w-48`} value={cfg.pages_to_crawl} onChange={e => set('pages_to_crawl', e.target.value)} aria-label="Pages to crawl"><option value="website">Website</option><option value="sitemap">Sitemap</option><option value="subfolder">Subfolder</option></Select>
           </Row>
           <Row label="Schedule" hint={own ? null : "Repeating audits are for this project's own website."}>
-            <select className={`${fieldCls} w-64`} value={own ? cfg.schedule : 'off'} disabled={!own} onChange={e => set('schedule', e.target.value)} aria-label="Schedule"><option value="off">Do not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>
+            <Select className={`${fieldCls} w-64`} value={own ? cfg.schedule : 'off'} disabled={!own} onChange={e => set('schedule', e.target.value)} aria-label="Schedule"><option value="off">Do not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></Select>
             <label className={`mt-3 flex items-center gap-2.5 text-15 ${own ? 'text-slate-800 cursor-pointer' : 'text-slate-400'}`}><input type="checkbox" disabled={!own} checked={own && cfg.email} onChange={e => set('email', e.target.checked)} />Send an email once an audit is complete</label>
           </Row>
         </div>

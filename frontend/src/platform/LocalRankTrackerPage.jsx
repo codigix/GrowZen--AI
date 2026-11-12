@@ -13,6 +13,7 @@ import PositionLandscape from './PositionLandscape';
 import { TABS as LANDSCAPE_TABS } from './PositionExtras';
 import { api, useApi, usePoll, fmtDateTime, fmtDate } from './seoApi';
 import { marketOf } from './MarketBadge';
+import Select from '../components/Select';
 
 /**
  * Local rank grid: where a business shows in the Google Maps pack, point by point around its pin, for every
@@ -178,8 +179,8 @@ function Tracker({ b }) {
           </div>
           <datalist id="rank-kw">{suggestions.map(k => <option key={k} value={k} />)}</datalist>
         </label>
-        <label className="text-12 font-medium text-slate-500">Grid<select className="block mt-1 h-9 px-2 text-13 rounded border border-slate-200 bg-white text-slate-800" value={size} onChange={e => setSize(Number(e.target.value))}>{sizes.map(n => <option key={n} value={n}>{n} × {n}</option>)}</select></label>
-        <label className="text-12 font-medium text-slate-500">Radius<select className="block mt-1 h-9 px-2 text-13 rounded border border-slate-200 bg-white text-slate-800" value={radius} onChange={e => setRadius(Number(e.target.value))}>{[1, 2, 3, 5, 8, 10].map(n => <option key={n} value={n}>{n} km</option>)}</select></label>
+        <label className="text-12 font-medium text-slate-500">Grid<Select className="block mt-1 h-9 px-2 text-13 rounded border border-slate-200 bg-white text-slate-800" value={size} onChange={e => setSize(Number(e.target.value))}>{sizes.map(n => <option key={n} value={n}>{n} × {n}</option>)}</Select></label>
+        <label className="text-12 font-medium text-slate-500">Radius<Select className="block mt-1 h-9 px-2 text-13 rounded border border-slate-200 bg-white text-slate-800" value={radius} onChange={e => setRadius(Number(e.target.value))}>{[1, 2, 3, 5, 8, 10].map(n => <option key={n} value={n}>{n} km</option>)}</Select></label>
         <Button variant="primary" icon={Play} busy={busy === 'scan' || waiting != null} disabled={!kwNow} onClick={() => start()}>{waiting != null ? 'Scanning…' : 'Run scan'}</Button>
         {rows.length > 1 && <Button icon={Layers} busy={busy === 'all'} onClick={scanAll} title="Scan every keyword in the table below">Scan all ({Math.min(rows.length, 10)})</Button>}
         <div className="basis-full text-11.5 text-slate-400 flex flex-wrap items-center gap-x-3">
@@ -211,9 +212,9 @@ function Tracker({ b }) {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
             <Card className="xl:col-span-2" title={`“${shownScan.keyword}”`} subtitle={`${shownScan.grid_size}×${shownScan.grid_size} points, ${shownScan.radius_km} km around the pin (white ring)`}
               action={history.length > 1 && (
-                <select className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white text-slate-700" value={shownScan.id} onChange={e => setScanId(Number(e.target.value))} aria-label="Scan to show">
+                <Select className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white text-slate-700" value={shownScan.id} onChange={e => setScanId(Number(e.target.value))} aria-label="Scan to show">
                   {[...history].reverse().map(s => <option key={s.id} value={s.id}>{fmtDateTime(s.created_at)} · avg {s.avg_rank ?? '—'}</option>)}
-                </select>)}>
+                </Select>)}>
               <RankMap points={shownScan.points} center={hasPin ? { lat: b.lat, lng: b.lng } : null} />
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-12 text-slate-600">
                 {dist.map(([l, c, n]) => <span key={l} className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full" style={{ background: c }} />{l}<b className="text-slate-900 tabular-nums">{n}</b></span>)}

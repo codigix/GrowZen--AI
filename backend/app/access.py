@@ -75,7 +75,7 @@ def connection_options(db: Session, user: User, b: Business) -> list[dict]:
     """The user's own connected Google accounts that could be linked to this project."""
     from sqlalchemy import select
     rows = db.scalars(only_my_connections(select(GoogleConnection), user).order_by(GoogleConnection.email))
-    return [{"id": c.id, "email": c.email, "status": c.status, "analytics": ga4.has_scope(c), "search_console": gsc.has_scope(c), "business": "business.manage" in (c.scopes or "")} for c in rows]
+    return [{"id": c.id, "email": c.email, "status": c.status, "analytics": ga4.has_scope(c), "search_console": gsc.has_scope(c), "business": "business.manage" in (c.scopes or ""), "ads": gbp.ADS_SCOPE in (c.scopes or "")} for c in rows]
 
 
 def evaluate(db: Session, user: User, b: Business, refresh: bool = False, only: str | None = None) -> dict:

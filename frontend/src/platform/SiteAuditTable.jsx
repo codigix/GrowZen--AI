@@ -4,6 +4,7 @@ import { Search, Sparkles, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Plus }
 import { Card, ErrorNote, useModulePath, useSeoBusiness, SkTable } from './SeoUi';
 import { useApi } from './seoApi';
 import SiteAuditOverview from './SiteAuditOverview';
+import Select from '../components/Select';
 
 /**
  * Site Audit overview: one row per project with its site health broken into the parameters an SEO tool
@@ -131,7 +132,7 @@ export default function SiteAuditTable({ onNew, onOverview, projectId }) { // pr
         <span>Page <b className="text-slate-900">{page}</b> of {pages}</span>
         <button type="button" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="p-1.5 rounded border border-slate-200 disabled:opacity-40 cursor-pointer" aria-label="Previous page"><ChevronLeft size={14} /></button>
         <button type="button" disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="p-1.5 rounded border border-slate-200 disabled:opacity-40 cursor-pointer" aria-label="Next page"><ChevronRight size={14} /></button>
-        <select value={size} onChange={e => { setSize(Number(e.target.value)); setPage(1); }} className="h-8 px-2 rounded border border-slate-200 bg-white text-13" aria-label="Rows per page">{[10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}</select>
+        <Select value={size} onChange={e => { setSize(Number(e.target.value)); setPage(1); }} className="h-8 px-2 rounded border border-slate-200 bg-white text-13" aria-label="Rows per page">{[10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}</Select>
         <span className="ml-auto text-11.5 text-slate-400">— = not measured yet; it fills in after the next audit</span>
       </div>
     </Card>

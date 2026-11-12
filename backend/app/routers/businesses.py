@@ -191,7 +191,22 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
     old_site = b.website
     pushed: list[str] = []
     changed = {k: v for k, v in changes.items() if getattr(b, k, None) != v}
-    patch = gbp.fields_to_location(changed)
+    # The booking link and the list of Book / Order links describe the same buttons: keep them in step before saving.
+    links_touched = False
+    if "action_links" in changes or "booking_url" in changes:
+        base = changes["action_links"] if "action_links" in changes else (b.action_links or [])
+        booking = changes["booking_url"] if "booking_url" in changes else next((x["url"] for x in base if x.get("type") == "APPOINTMENT"), b.booking_url)
+        if "action_links" in changes and "booking_url" not in changes:
+            booking = next((x["url"] for x in base if x.get("type") == "APPOINTMENT"), "")
+        wanted = gbp.desired_action_links(base, booking)
+        links_touched = {x["type"]: x["url"] for x in wanted} != {x["type"]: x["url"] for x in gbp.desired_action_links(b.action_links, b.booking_url)}  # only a real change goes to Google
+        changes["action_links"], changes["booking_url"] = wanted, next((x["url"] for x in wanted if x["type"] == "APPOINTMENT"), None)
+        changed = {k: v for k, v in changes.items() if getattr(b, k, None) != v}
+    if "phone" in changes or "additional_phones" in changes:
+        main = changes["phone"] if "phone" in changes else b.phone
+        if main and main in (changes.get("additional_phones") or []):
+            raise HTTPException(422, "An extra number is the same as the main number.")
+    patch = gbp.fields_to_location(changed, b)
     if "services" in changed and b.connection and b.gbp_location:
         try:  # services are filed under the profile's primary category, which Google reports
             primary = ((gbp.GbpClient(b.connection).location(b.gbp_location).get("categories") or {}).get("primaryCategory") or {}).get("name")
@@ -207,6 +222,12 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
         except gbp.GbpError as exc:
             raise HTTPException(502, f"Google did not accept the change, so nothing was saved: {exc}") from exc
         pushed = sorted(patch)
+    if links_touched and b.connection and b.gbp_location:
+        try:
+            gbp.sync_action_links(gbp.GbpClient(b.connection), b.gbp_location, changes["action_links"])
+        except gbp.GbpError as exc:
+            raise HTTPException(502, f"Google did not accept the booking or order links, so they were not saved: {exc}") from exc
+        pushed = sorted({*pushed, "placeActionLinks"})
     for k, v in changes.items():
         setattr(b, k, v)
     log(db, user.name, "business_updated", b.id, fields=list(changes), pushed_to_google=pushed)

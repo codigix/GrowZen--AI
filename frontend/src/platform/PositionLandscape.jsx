@@ -6,9 +6,11 @@ import { Card, Badge, Button, ErrorNote, useAction, useToast, useModulePath, SkP
 import { api, useApi, fmt } from './seoApi';
 import { TrackingHeader, ExportButtons, ShareOfVoice, DevicesLocations, TabBar } from './PositionExtras';
 import PositionOverview from './PositionOverview';
+import CurrentPositions from './CurrentPositions';
 import PositionCompetitors from './PositionCompetitors';
 import { Distribution, PagesTab, Cannibalization, Snippets } from './PositionTabs';
 import { AXIS, PALETTE, Th, path, sign, Chg, Spark, Empty } from './PositionUi';
+import Select from '../components/Select';
 
 /**
  * Position Tracking "Landscape": visibility, estimated traffic, average position, distribution, movers, tags, competitors,
@@ -328,10 +330,11 @@ export default function PositionLandscape({ b, tab: forced, onTab }) {
           <div className="text-16 font-semibold text-slate-900 flex items-center gap-2 flex-wrap">{b.name}{d?.mock && <Badge tone="amber" title="RANK_LANDSCAPE_MOCK is on in backend/.env"><AlertTriangle size={11} />Sample data: not real</Badge>}</div>
           <div className="text-12 text-slate-500">{d?.domain ? <>Tracking <b>{d.domain}</b> · {d.tracked} keyword{d.tracked !== 1 ? 's' : ''}</> : 'Google organic positions of the tracked keywords'}</div>
         </div>
-        <select className={sel} value={days} onChange={e => setDays(Number(e.target.value))} aria-label="Period">{RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        <Select className={sel} value={days} onChange={e => setDays(Number(e.target.value))} aria-label="Period">{RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
         <Button variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={d && !d.serper} onClick={check} title={d && !d.serper ? 'Set SERPER_API_KEY to check positions' : 'Check Google now for every tracked keyword'}>Check positions now</Button>
       </div>
       <ErrorNote>{error}</ErrorNote>
+      {tab === 'landscape' && <CurrentPositions key={b.id} b={b} onChecked={() => data.reload(true)} />}
       {!d ? (data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <SkPage statLabels={["Visibility", "Estimated traffic", "Average position"]} chartTitle="Rankings distribution" tableTitle="Top keywords" tableHeaders={["Keyword", "Position", "Change", "Volume"]} />)
         : d.state === 'ok' ? (
           <div className="space-y-4">

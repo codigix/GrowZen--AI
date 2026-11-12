@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ImagePlus, RefreshCw, Trash2, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button, inputCls } from './SeoUi';
 import { api, SEO_API } from './seoApi';
+import Select from '../components/Select';
 
 const MAX_MB = 15;
 // Everything is converted to optimized WebP on the server; the server checks the real format from the file's bytes.
@@ -149,9 +150,9 @@ export default function FeaturedImageField({ b, article, value, onChange, toast 
             {value.info?.page_count > 1 && (
               <label className="flex items-center gap-2 text-[11.5px] text-slate-700">
                 PDF page
-                <select className="h-8 px-2 rounded-lg bg-white ring-1 ring-inset ring-slate-200 text-[12px]" value={value.info.page || 1} disabled={Boolean(busy)} onChange={e => choosePage(Number(e.target.value))}>
+                <Select className="h-8 px-2 rounded-lg bg-white ring-1 ring-inset ring-slate-200 text-[12px]" value={value.info.page || 1} disabled={Boolean(busy)} onChange={e => choosePage(Number(e.target.value))}>
                   {Array.from({ length: value.info.page_count }, (_, n) => <option key={n + 1} value={n + 1}>Page {n + 1} of {value.info.page_count}</option>)}
-                </select>
+                </Select>
                 {busy === 'page' && <Loader2 size={12} className="animate-spin" />}
               </label>
             )}

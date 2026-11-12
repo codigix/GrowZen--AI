@@ -5,6 +5,7 @@ import { Reports as ProgressReports } from './WorkPlanPage';
 import ProcessTasks from './ProcessTasks';
 import { useUrlTab, SeoShell, Card, Tabs, Stat, Badge, Button, Modal, Field, inputCls, ErrorNote, StatusPill, useToast, useAction, SkTable, SkPage } from './SeoUi';
 import { api, useApi, fmtDate } from './seoApi';
+import Select from '../components/Select';
 
 const TYPE_ICON = { call: Phone, whatsapp: MessageCircle, form: FileText, direction: Navigation, booking: CalendarCheck, other: FileText };
 const STATUS_TONE = { new: 'blue', contacted: 'amber', won: 'green', lost: 'gray' };
@@ -85,7 +86,7 @@ function Reports({ b, tab }) {
                 <div key={l.id} className="flex flex-wrap items-center gap-3 py-2">
                   <span className="w-7 h-7 rounded bg-gray-100 text-gray-600 flex items-center justify-center shrink-0"><I size={13} /></span>
                   <div className="flex-1 min-w-[200px]"><div className="text-13 text-gray-900">{l.name || 'Unknown'} <span className="text-gray-400 text-12">· {l.contact || '—'}</span></div><div className="text-12 text-gray-500">{l.message || '—'} · {l.source} · {fmtDate(l.lead_date)}</div></div>
-                  <select className="h-7 px-1.5 text-xs border border-gray-300 rounded bg-white" value={l.status} onChange={e => setStatus(l, e.target.value)} aria-label="Lead status">{['new', 'contacted', 'won', 'lost'].map(x => <option key={x} value={x}>{x}</option>)}</select>
+                  <Select className="h-7 px-1.5 text-xs border border-gray-300 rounded bg-white" value={l.status} onChange={e => setStatus(l, e.target.value)} aria-label="Lead status">{['new', 'contacted', 'won', 'lost'].map(x => <option key={x} value={x}>{x}</option>)}</Select>
                   <Badge tone={STATUS_TONE[l.status]}>{l.status}</Badge>
                 </div>
               ); })}
@@ -97,8 +98,8 @@ function Reports({ b, tab }) {
       <Modal open={Boolean(adding)} title="Add lead" onClose={() => setAdding(null)} footer={<><Button onClick={() => setAdding(null)}>Cancel</Button><Button variant="primary" busy={busy === 'add'} onClick={addLead}>Add</Button></>}>
         {adding && (
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Type"><select className={inputCls} value={adding.lead_type} onChange={e => setAdding({ ...adding, lead_type: e.target.value })}>{Object.keys(TYPE_ICON).map(t => <option key={t} value={t}>{t}</option>)}</select></Field>
-            <Field label="Source"><select className={inputCls} value={adding.source} onChange={e => setAdding({ ...adding, source: e.target.value })}>{['Google Business Profile', 'Website', 'Google Ads', 'WhatsApp'].map(t => <option key={t}>{t}</option>)}</select></Field>
+            <Field label="Type"><Select className={inputCls} value={adding.lead_type} onChange={e => setAdding({ ...adding, lead_type: e.target.value })}>{Object.keys(TYPE_ICON).map(t => <option key={t} value={t}>{t}</option>)}</Select></Field>
+            <Field label="Source"><Select className={inputCls} value={adding.source} onChange={e => setAdding({ ...adding, source: e.target.value })}>{['Google Business Profile', 'Website', 'Google Ads', 'WhatsApp'].map(t => <option key={t}>{t}</option>)}</Select></Field>
             <Field label="Name"><input className={inputCls} value={adding.name} onChange={e => setAdding({ ...adding, name: e.target.value })} /></Field>
             <Field label="Phone / email"><input className={inputCls} value={adding.contact} onChange={e => setAdding({ ...adding, contact: e.target.value })} /></Field>
             <div className="col-span-2"><Field label="Note"><input className={inputCls} value={adding.message} onChange={e => setAdding({ ...adding, message: e.target.value })} /></Field></div>

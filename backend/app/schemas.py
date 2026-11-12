@@ -1,7 +1,9 @@
 """Request bodies (responses are plain dicts built by `serialize`)."""
+import re
+from datetime import date, timedelta
 from typing import Annotated, Any, Literal
 
-from pydantic import AnyUrl, BaseModel, Field, HttpUrl, field_validator
+from pydantic import AnyUrl, BaseModel, Field, HttpUrl, field_validator, model_validator
 
 
 def clean_social(v: Any) -> dict[str, str] | None:
@@ -61,12 +63,148 @@ class BusinessIn(BaseModel):
     contact_name: str | None = None
     contact_email: str | None = None
     booking_url: str | None = None
+    additional_phones: list[str] | None = None
+    action_links: list[dict[str, Any]] | None = None
     social_accounts: dict[str, Any] | None = None
 
     @field_validator("social_accounts")
     @classmethod
     def _social(cls, v):
         return clean_social(v)
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, v):
+        return clean_phone(v)
+
+    @field_validator("booking_url")
+    @classmethod
+    def _booking(cls, v):
+        return clean_url(v)
+
+    @field_validator("additional_phones")
+    @classmethod
+    def _phones(cls, v):
+        return clean_phones(v)
+
+    @field_validator("action_links")
+    @classmethod
+    def _links(cls, v):
+        return clean_action_links(v)
+
+
+PLACE_ACTION_TYPES = {
+    "APPOINTMENT": "Book an appointment", "ONLINE_APPOINTMENT": "Book online", "DINING_RESERVATION": "Reserve a table",
+    "FOOD_ORDERING": "Order food", "FOOD_DELIVERY": "Food delivery", "FOOD_TAKEOUT": "Takeaway", "SHOP_ONLINE": "Shop online",
+}
+
+
+def clean_phone(v: str | None) -> str | None:
+    """A phone number as typed, tidied: digits, a leading +, spaces, dashes and brackets only; at least 7 digits. Empty means "none"."""
+    if v is None:
+        return None
+    s = " ".join(str(v).split())
+    if not s:
+        return ""
+    if re.search(r"[^\d+()\-\s.]", s) or len(re.sub(r"\D", "", s)) < 7 or len(re.sub(r"\D", "", s)) > 15:
+        raise ValueError("Enter a valid phone number: digits only, with the country code if it is not a local number (7 to 15 digits).")
+    return s
+
+
+def clean_url(v: str | None) -> str | None:
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return ""
+    if not re.match(r"^https?://[^\s/]+\.[^\s]+$", s, re.I):
+        raise ValueError("Enter a full link that starts with https://")
+    return s
+
+
+def clean_phones(v: list[str] | None) -> list[str] | None:
+    if v is None:
+        return None
+    out: list[str] = []
+    for x in v:
+        c = clean_phone(x)
+        if c and c not in out:
+            out.append(c)
+    if len(out) > 2:
+        raise ValueError("Google accepts one main number and up to two more.")
+    return out
+
+
+def clean_action_links(v: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+    if v is None:
+        return None
+    out: list[dict[str, Any]] = []
+    for x in v:
+        t, u = str((x or {}).get("type") or "").upper(), clean_url((x or {}).get("url"))
+        if not u:
+            continue
+        if t not in PLACE_ACTION_TYPES:
+            raise ValueError(f"Link type must be one of {', '.join(PLACE_ACTION_TYPES)}.")
+        if any(o["type"] == t for o in out):
+            raise ValueError(f"Only one “{PLACE_ACTION_TYPES[t]}” link is allowed.")
+        out.append({"type": t, "url": u})
+    return out
+
+
+OPEN_STATUSES = ("OPEN", "CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY")
+SERVICE_AREA_TYPES = ("CUSTOMER_AND_BUSINESS_LOCATION", "CUSTOMER_LOCATION_ONLY")
+MORE_HOURS_TYPES = {
+    "DELIVERY": "Delivery", "PICKUP": "Pickup", "TAKEOUT": "Takeout", "DRIVE_THROUGH": "Drive-through", "KITCHEN": "Kitchen",
+    "HAPPY_HOUR": "Happy hour", "BREAKFAST": "Breakfast", "LUNCH": "Lunch", "DINNER": "Dinner", "BRUNCH": "Brunch",
+    "SENIOR_HOURS": "Senior hours", "ONLINE_SERVICE_HOURS": "Online service hours", "ACCESS": "Access",
+}
+
+
+def clean_status(v: str | None) -> str | None:
+    if v is None or v == "":
+        return v
+    if v not in OPEN_STATUSES:
+        raise ValueError(f"Status must be one of {', '.join(OPEN_STATUSES)}.")
+    return v
+
+
+def clean_opening_date(v: str | None) -> str | None:
+    if v is None or v == "":
+        return v
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+        raise ValueError("Opening date must look like 2024-05-31.")
+    from datetime import date
+    try:
+        date.fromisoformat(v)
+    except ValueError:
+        raise ValueError("That is not a real date.") from None
+    return v
+
+
+def clean_labels(v: list[str] | None) -> list[str] | None:
+    if v is None:
+        return None
+    out: list[str] = []
+    for x in v:
+        t = " ".join(str(x).split())[:255]
+        if t and t.lower() not in (o.lower() for o in out):
+            out.append(t)
+    if len(out) > 10:
+        raise ValueError("Google allows up to 10 labels.")
+    return out
+
+
+def clean_more_hours(v: dict[str, Any] | None) -> dict[str, Any] | None:
+    if v is None:
+        return None
+    out: dict[str, Any] = {}
+    for k, periods in v.items():
+        if k not in MORE_HOURS_TYPES:
+            raise ValueError(f"Unknown hours type {k}.")
+        if not isinstance(periods, list):
+            raise ValueError("Hours must be a list of periods.")
+        out[k] = periods
+    return out
 
 
 class BusinessPatch(BaseModel):
@@ -99,14 +237,61 @@ class BusinessPatch(BaseModel):
     contact_name: str | None = None
     contact_email: str | None = None
     booking_url: str | None = None
+    additional_phones: list[str] | None = None
+    action_links: list[dict[str, Any]] | None = None
     cover_photo: str | None = None
     logo: str | None = None
     social_accounts: dict[str, Any] | None = None
+
+    open_status: str | None = None
+    opening_date: str | None = None
+    more_hours: dict[str, Any] | None = None
+    labels: list[str] | None = None
+
+    @field_validator("open_status")
+    @classmethod
+    def _status(cls, v):
+        return clean_status(v)
+
+    @field_validator("opening_date")
+    @classmethod
+    def _opening(cls, v):
+        return clean_opening_date(v)
+
+    @field_validator("more_hours")
+    @classmethod
+    def _more(cls, v):
+        return clean_more_hours(v)
+
+    @field_validator("labels")
+    @classmethod
+    def _labels(cls, v):
+        return clean_labels(v)
 
     @field_validator("social_accounts")
     @classmethod
     def _social(cls, v):
         return clean_social(v)
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, v):
+        return clean_phone(v)
+
+    @field_validator("booking_url")
+    @classmethod
+    def _booking(cls, v):
+        return clean_url(v)
+
+    @field_validator("additional_phones")
+    @classmethod
+    def _phones(cls, v):
+        return clean_phones(v)
+
+    @field_validator("action_links")
+    @classmethod
+    def _links(cls, v):
+        return clean_action_links(v)
 
 
 class DiscoverIn(BaseModel):
@@ -252,6 +437,33 @@ class ScheduleIn(BaseModel):
     every: Literal["daily", "weekly", "fortnightly", "monthly", "off"]
 
 
+POST_CTA_TYPES = {"BOOK", "ORDER", "SHOP", "LEARN_MORE", "SIGN_UP", "CALL"}
+_HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def check_post_dates(post_type: str, title: str | None, starts_on: date | None, ends_on: date | None, start_time: str | None = None, end_time: str | None = None) -> None:
+    """The rules Google applies to Offer and Event posts, checked before anything is sent: an Event needs a title and both dates, an Offer a title."""
+    today = date.today()
+    if post_type in ("Offer", "Event") and not (title or "").strip():
+        raise ValueError(f"A{'n' if post_type == 'Event' else 'n'} {post_type.lower()} needs a title.")
+    if post_type == "Event" and not (starts_on and ends_on):
+        raise ValueError("An event needs a start date and an end date.")
+    if (starts_on and not ends_on and post_type == "Event") or (ends_on and not starts_on and post_type == "Event"):
+        raise ValueError("An event needs a start date and an end date.")
+    if starts_on and ends_on and ends_on < starts_on:
+        raise ValueError("The end date cannot be before the start date.")
+    for d in (starts_on, ends_on):
+        if d and d > today + timedelta(days=366):
+            raise ValueError("Dates can be at most one year ahead.")
+    if ends_on and ends_on < today:
+        raise ValueError("The end date is already in the past.")
+    for t in (start_time, end_time):
+        if t and not _HHMM.match(t):
+            raise ValueError("Times must look like 09:30.")
+    if start_time and end_time and starts_on and ends_on and starts_on == ends_on and end_time <= start_time:
+        raise ValueError("On a one-day event the end time must be after the start time.")
+
+
 class PostIn(BaseModel):
     post_type: Literal["Update", "Offer", "Event"] = "Update"
     title: str | None = None
@@ -260,6 +472,37 @@ class PostIn(BaseModel):
     cta_url: str | None = None
     image_url: str | None = None
     scheduled_for: str | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    coupon_code: str | None = Field(default=None, max_length=60)
+    redeem_url: str | None = None
+    terms: str | None = Field(default=None, max_length=500)
+
+    @field_validator("redeem_url")
+    @classmethod
+    def _redeem(cls, v):
+        return clean_url(v) or None
+
+    @field_validator("cta_type")
+    @classmethod
+    def _cta(cls, v):
+        if v and v not in POST_CTA_TYPES:
+            raise ValueError(f"Button must be one of {', '.join(sorted(POST_CTA_TYPES))}.")
+        return v or None
+
+    @model_validator(mode="after")
+    def _rules(self):
+        if self.post_type == "Update":  # a plain update carries no schedule or offer details
+            self.starts_on = self.ends_on = self.start_time = self.end_time = self.coupon_code = self.redeem_url = self.terms = None
+            return self
+        if self.post_type != "Event":
+            self.start_time = self.end_time = None
+        if self.post_type != "Offer":
+            self.coupon_code = self.redeem_url = self.terms = None
+        check_post_dates(self.post_type, self.title, self.starts_on, self.ends_on, self.start_time, self.end_time)
+        return self
 
 
 class ReplyIn(BaseModel):

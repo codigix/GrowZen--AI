@@ -50,6 +50,7 @@ const WeeklyTasks = lazy(() => import('./WorkPlanPage').then(m => ({ default: m.
 const SiteResearch = lazy(() => import('./WorkPlanPage').then(m => ({ default: m.Research })));
 const SITE_AREAS = ['technical', 'metadata', 'content', 'seo'];
 import { AuditSummary, PageRewrites } from './AuditAI';
+import Select from '../components/Select';
 
 /**
  * Audit any website through the SEO backend: Google PageSpeed (Lighthouse) for SEO, speed,
@@ -573,9 +574,9 @@ export function AuditStep({ sa, business, onOpenReport }) {
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
             <span className="h-9 px-2.5 inline-flex items-center gap-1.5 text-11.5 font-medium text-slate-500 bg-slate-100 rounded-lg"><Smartphone size={13} />&amp;<Monitor size={13} /> Scans mobile and desktop together</span>
-            <select value={crawlPages} onChange={e => setCrawlPages(Number(e.target.value))} className="h-10 px-2.5 rounded text-12 font-semibold text-slate-700 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer" aria-label="Pages to crawl">
+            <Select value={crawlPages} onChange={e => setCrawlPages(Number(e.target.value))} className="h-10 px-2.5 rounded text-12 font-semibold text-slate-700 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer" aria-label="Pages to crawl">
               {[5, 10, 25, 50, 100, 300].map(n => <option key={n} value={n}>{n === 300 ? 'Crawl all pages (up to 300)' : `Crawl ${n} pages`}</option>)}
-            </select>
+            </Select>
             <span className="text-12 text-slate-500 min-w-0">
               {own ? <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-600 shrink-0" /> Updates this business's scores, dashboard and AI tasks</span>
                 : business?.website ? <>Another site (not saved to {business.name}) · <button type="button" onClick={() => setUrl(business.website)} className="font-medium text-indigo-700 hover:underline cursor-pointer">use {hostOf(business.website)}</button></>

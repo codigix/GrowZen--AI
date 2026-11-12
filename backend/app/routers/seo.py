@@ -126,6 +126,67 @@ def rank_history(days: int = 90, b: Business = Depends(get_business), db: Sessio
     return {"history": organic.history(db, b, max(7, min(days, 365)))}
 
 
+LANGUAGES = {"en": "English", "hi": "Hindi", "mr": "Marathi", "gu": "Gujarati", "ta": "Tamil", "te": "Telugu", "bn": "Bengali", "kn": "Kannada", "ml": "Malayalam", "ar": "Arabic",
+             "fr": "French", "de": "German", "es": "Spanish", "pt": "Portuguese", "it": "Italian", "nl": "Dutch", "ja": "Japanese", "zh": "Chinese"}
+
+
+def _bucket(row: dict) -> str:
+    """Which summary chip a keyword counts in."""
+    o = row["organic"]
+    if not row["checked"]:
+        return "unchecked"
+    if not o["found"]:
+        return "not_found"
+    return "page1" if o["page"] == 1 else "page2" if o["page"] == 2 else "page3plus"
+
+
+@router.get("/current-positions")
+def current_positions(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Where the project stands on Google right now, per tracked keyword, in its targeted area: the results page and the position on it, the
+    place in Google Maps (the local pack is the top 3), the change since the check before, and who is first. All of it is read from the saved
+    live checks (POST /seo/check-ranks); a keyword that was never checked says so, and a site that is not found says "not in the top <depth>"."""
+    cfg = organic.targeting(b)
+    area = {"location": cfg["location"], "device": cfg["device"], "language": cfg["language"], "language_name": LANGUAGES.get(cfg["language"][:2].lower(), cfg["language"].upper())}
+    area["label"] = " · ".join([area["location"], area["device"], area["language_name"]])
+    tracked = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)).order_by(Keyword.keyword)))
+    latest: dict[str, KeywordRankLog] = {}
+    for r in db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id).order_by(KeywordRankLog.day, KeywordRankLog.id)):
+        latest[r.keyword] = r  # oldest first, so the last one kept is the newest
+    rows = []
+    for k in tracked:
+        r = latest.get(k.keyword)
+        depth = (r.depth or 20) if r else None
+        rank = r.rank if r else None
+        page = (r.rank_page or organic.page_of(rank)) if rank else None
+        first = None
+        if r and r.serp:
+            first = next((x.get("d") for x in r.serp if x.get("p") == 1), None) or (r.serp[0].get("d") if r.serp else None)
+        maps_checked = bool(r and r.maps_total is not None)
+        maps_rank = r.maps_rank if r else None
+        change = (k.prev_rank - k.rank) if (k.prev_rank is not None and k.rank is not None) else None  # + = moved up
+        rows.append({
+            "keyword": k.keyword, "checked": bool(r),
+            "organic": {"found": rank is not None, "position": rank, "page": page, "position_on_page": organic.position_on_page(rank), "url": r.url if r else None,
+                        "depth_checked": depth, "change_vs_previous": change, "previous_position": k.prev_rank,
+                        "label": None if not r else (f"Page {page}, position {organic.position_on_page(rank)}" if rank else f"Not in the top {depth}")},
+            "maps": {"checked": maps_checked, "found": maps_rank is not None, "position": maps_rank, "in_pack": bool(maps_rank and maps_rank <= 3),
+                     "listing": r.maps_listing if r else None, "total": r.maps_total if r else None,
+                     "label": None if not maps_checked else (f"#{maps_rank} in Maps" if maps_rank else "Not in Maps results")},
+            "who_is_first": {"domain": first, "maps": r.maps_first if r else None},
+            "last_checked_at": (r.checked_at or datetime.combine(r.day, datetime.min.time(), tzinfo=timezone.utc)).isoformat() if r else None,
+        })
+    for row in rows:
+        row["bucket"] = _bucket(row)
+    summary = {"keywords": len(rows), "checked": sum(1 for x in rows if x["checked"]), "page1": 0, "page2": 0, "page3plus": 0, "not_found": 0, "in_pack": 0, "unchecked": 0}
+    for row in rows:
+        summary[row["bucket"]] += 1
+        summary["in_pack"] += row["maps"]["in_pack"]
+    serper = intel.serper_enabled()
+    state = "needs_serper" if (not serper and not summary["checked"]) else "no_data" if not summary["checked"] else "ok"
+    return {"state": state, "serper": serper, "website": b.website, "domain": organic.host(b.website) or None, "area": area, "depth": organic.DEPTH, "summary": summary, "rows": rows,
+            "last_checked_at": max((x["last_checked_at"] for x in rows if x["last_checked_at"]), default=None)}
+
+
 @router.get("/position-landscape")
 def position_landscape(days: int = 30, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Visibility, estimated traffic, positions, movers, tags, competitors, SERP features, pages and cannibalization of the tracked
