@@ -8,6 +8,7 @@ import SchemaStudio from './SchemaStudio';
 import SiteAuditTable from './SiteAuditTable';
 import SiteAuditOverview from './SiteAuditOverview';
 import WebsiteSnapshot from './WebsiteSnapshot';
+import MergedFindings from './MergedFindings';
 import { XRay } from './PageXRayPage';
 
 const STEPS = [
@@ -78,6 +79,7 @@ function SiteAudit({ b, step, setStep }) {
     <div className="space-y-5">
       <Stepper step={current === 'loading' ? 'report' : current} onStep={setStep} hasReport={Boolean(sa.report)} running={sa.running} />
       {current !== 'xray' && <WebsiteSnapshot b={b} sa={sa} onAudit={() => setStep(sa.report ? 'report' : 'audit')} onXray={() => setStep('xray')} />}
+      {current !== 'xray' && b.website && <MergedFindings key={`${b.id}-${sa.report?.id || 'none'}`} bid={b.id} />}
       {current === 'loading' && <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Opening the latest report…</div></Card>}
       {current === 'audit' && <AuditStep sa={sa} business={b} onOpenReport={() => setStep('report')} />}
       {current === 'audit' && !sa.running && <SiteAuditTable projectId={b.id} onOverview={(id, initial) => setOverview({ id, initial })} />}
