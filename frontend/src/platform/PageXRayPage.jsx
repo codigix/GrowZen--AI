@@ -168,6 +168,65 @@ function CheckCard2({ label, hint, area, filter, areaKey }) {
   );
 }
 
+const AREA_TINT = { seo: 'bg-indigo-50 text-indigo-700', aeo: 'bg-violet-50 text-violet-700', geo: 'bg-sky-50 text-sky-700' };
+
+/** Every check of SEO, AEO and GEO in one table: what was found, how to fix it, the fix task's status and a link to its fix page. Failed checks first. */
+function ChecksTable({ d, filter }) {
+  const { tasks } = useContext(FixCtx);
+  const [q, setQ] = useState('');
+  const [area, setArea] = useState('all');
+  let rows = [];
+  for (const [k] of SCORE_AREAS) arr(d.scores?.[k]?.checks).forEach(c => rows.push({ ...c, area: k, task: tasks[`${k}.${c.key}`] }));
+  rows = rows.filter(r => (filter === 'failed' ? !r.passed : filter === 'passed' ? r.passed : true) && (area === 'all' || r.area === area)
+    && (!q.trim() || `${r.label} ${r.detail || ''} ${r.fix || ''}`.toLowerCase().includes(q.trim().toLowerCase())));
+  rows.sort((a, b) => (a.passed === b.passed ? (b.weight || 0) - (a.weight || 0) : a.passed ? 1 : -1));
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-100">
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search checks…" aria-label="Search checks" className="h-9 w-56 max-w-full px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" />
+        {[['all', 'All areas'], ...SCORE_AREAS.map(([k, l]) => [k, l])].map(([k, l]) => <button key={k} type="button" onClick={() => setArea(k)} aria-pressed={area === k} className={`h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${area === k ? 'bg-indigo-600 text-white ring-indigo-600' : 'text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>{l}</button>)}
+        <span className="ml-auto text-12 text-slate-500">{rows.length} check{rows.length === 1 ? '' : 's'}</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[980px] text-13 text-left">
+          <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
+            <tr><th className="px-4 py-2.5 font-semibold w-24">Result</th><th className="px-3 py-2.5 font-semibold w-16">Area</th><th className="px-3 py-2.5 font-semibold w-[22%]">Check</th><th className="px-3 py-2.5 font-semibold w-[20%]">What was found</th>
+              <th className="px-3 py-2.5 font-semibold w-[30%]">How to fix it</th><th className="px-3 py-2.5 font-semibold w-32">Fix status</th><th className="px-4 py-2.5 font-semibold w-28">Fix page</th></tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No checks match.</td></tr>}
+            {rows.map(r => {
+              const t = r.task, fixed = t?.status === 'verified', st = t ? (FIX_STATUS[t.status] || FIX_STATUS.todo) : null;
+              return (
+                <tr key={`${r.area}.${r.key}`} className={`align-top ${r.passed ? '' : 'bg-red-50/30'}`}>
+                  <td className="px-4 py-3"><span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-12 font-semibold ${r.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{r.passed ? <Check size={12} /> : <X size={12} />}{r.passed ? 'Passed' : 'Failed'}</span></td>
+                  <td className="px-3 py-3"><span className={`rounded px-1.5 py-0.5 text-11 font-bold uppercase ${AREA_TINT[r.area] || ''}`}>{r.area}</span></td>
+                  <td className="px-3 py-3"><div className="font-medium text-slate-900">{r.label}</div>{r.weight != null && <div className="text-11 text-slate-400">weight {r.weight}</div>}</td>
+                  <td className="px-3 py-3 text-slate-600 break-words">{r.detail || <span className="text-slate-400">—</span>}</td>
+                  <td className="px-3 py-3 text-slate-700">
+                    {r.passed ? <span className="text-slate-400">Nothing to fix.</span> : (
+                      <>
+                        {r.fix && <div className="rounded-md bg-indigo-50 text-indigo-900 px-2.5 py-1.5 leading-snug">{r.fix}</div>}
+                        {t?.how?.length > 0 && !fixed && <ol className="mt-1.5 list-decimal pl-5 space-y-0.5 text-slate-600">{t.how.map((h, i) => <li key={i}>{h}</li>)}</ol>}
+                        {t && !fixed && t.closes_when && <p className="mt-1.5 text-12 text-slate-500"><b>Fixed when:</b> {t.closes_when}</p>}
+                      </>
+                    )}
+                  </td>
+                  <td className="px-3 py-3">
+                    {t ? (<div className="space-y-1"><span className={`inline-flex items-center gap-1 rounded-full ring-1 ring-inset px-2.5 py-0.5 text-12 font-semibold ${st[1]}`}>{fixed ? <Check size={12} /> : <AlertTriangle size={12} />}{fixed ? 'Fixed' : st[0]}</span>
+                      {!fixed && t.due_on && <div className="text-12 text-slate-500">{t.overdue ? 'Overdue' : 'Due'} {t.due_on}</div>}{t.fix_mode_label && <div className="text-12 text-indigo-700">{t.fix_mode_label}</div>}</div>) : <span className="text-slate-400">{r.passed ? '—' : 'No task yet'}</span>}
+                  </td>
+                  <td className="px-4 py-3">{t ? <Link to={`/growth/fix/${t.id}`}><Button size="sm" variant={fixed ? undefined : 'primary'} icon={Wrench}>{fixed ? 'See fix' : 'Fix guide'}</Button></Link> : <span className="text-slate-400">—</span>}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function Previews2({ d }) {
   const og = d.social?.og || {}, tw = d.social?.twitter || {};
   const title = og.title || tw.title || d.meta?.title, desc = og.description || tw.description || d.meta?.description, img = og.image || tw.image;
@@ -319,11 +378,7 @@ function Report({ d, onRerun, busy, extra, deep, history, siteScan }) {
           </div>
           <FixSummary failedTotal={failedTotal} />
         </div>
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
-          <CheckCard2 label="SEO" hint="Classic on-page and technical signals" area={d.scores?.seo} filter={filter} areaKey="seo" />
-          <CheckCard2 label="AEO" hint="Ready to be quoted as an answer" area={d.scores?.aeo} filter={filter} areaKey="aeo" />
-          <CheckCard2 label="GEO" hint="Ready for AI search and crawlers" area={d.scores?.geo} filter={filter} areaKey="geo" />
-        </div>
+        <ChecksTable d={d} filter={filter} />
       </div>
     ),
     page: (
