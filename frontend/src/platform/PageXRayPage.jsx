@@ -629,6 +629,11 @@ function XRay({ b }) {
     if (keepHash) setTimeout(() => { try { window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${keepHash}`); } catch { /* optional */ } }, 0);
     if (u) { setNotice(''); setActive(u); run([u]); }
   }, [wanted]); // eslint-disable-line react-hooks/exhaustive-deps
+  const items = urls.map(u => ({ url: u, ...(results[u] || { state: 'idle' }) }));
+  const loading = items.some(i => i.state === 'loading');
+  const done = items.filter(i => i.state === 'done');
+  const shown = items.find(i => i.url === active && i.state === 'done') || (done.length === 1 ? done[0] : null);
+  useEffect(() => { if (shown?.data) setLastShown(shown.data); }, [shown?.data]);
   const fixUrl = (saved?.data || shown?.data || {}).url || null;
   const fixFresh = !saved && !!shown?.data && saveDone;
   useEffect(() => {
@@ -639,11 +644,6 @@ function XRay({ b }) {
     }, 700);
     return () => { live = false; clearTimeout(t); };
   }, [fixUrl, fixFresh, b.id]);
-  const items = urls.map(u => ({ url: u, ...(results[u] || { state: 'idle' }) }));
-  const loading = items.some(i => i.state === 'loading');
-  const done = items.filter(i => i.state === 'done');
-  const shown = items.find(i => i.url === active && i.state === 'done') || (done.length === 1 ? done[0] : null);
-  useEffect(() => { if (shown?.data) setLastShown(shown.data); }, [shown?.data]);
 
   return (
     <FixCtx.Provider value={{ tasks: fixes.tasks, reason: fixes.reason, bid: b.id }}>
