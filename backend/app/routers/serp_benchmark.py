@@ -9,11 +9,11 @@ from ..auth import User, current_user
 from ..competitors import intel
 from ..deps import get_business
 from ..models import Business
-from ..services import serp_benchmark
+from ..services import serp_benchmark, ratelimit
 
 router = APIRouter(prefix="/businesses/{business_id}/articles", tags=["articles"])
 
-_hits: dict[str, deque] = defaultdict(deque)  # user id -> recent call times
+_hits = ratelimit.Hits("serp_benchmark")  # user id -> calls, shared by every server process
 LIMIT, WINDOW = 20, 3600  # 20 benchmarks per hour per user: each one costs a Serper credit and fetches several pages
 
 
@@ -25,12 +25,8 @@ class BenchmarkIn(BaseModel):
 def serp_benchmark_route(body: BenchmarkIn, b: Business = Depends(get_business), user: User = Depends(current_user)):
     if not intel.serper_enabled():
         raise HTTPException(503, "The Google results benchmark needs SERPER_API_KEY on the backend. Nothing is estimated without it.")
-    now, q = time.time(), _hits[str(user.id)]
-    while q and now - q[0] > WINDOW:
-        q.popleft()
-    if len(q) >= LIMIT:
+    if not _hits.hit(str(user.id), LIMIT, WINDOW):
         raise HTTPException(429, "You have run the benchmark 20 times in the last hour. Please wait a while.")
-    q.append(now)
     try:
         return serp_benchmark.benchmark(b, body.keyword)
     except intel.IntelError as exc:

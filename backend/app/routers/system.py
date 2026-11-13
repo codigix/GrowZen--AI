@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user, require_admin
+from .. import startup_state
 from ..config import get_settings
 from ..db import get_db
 from ..models import AppUser
@@ -28,6 +29,7 @@ def status(_: User = Depends(current_user)):
     """What is connected, so the UI can say which data is live and which is sample."""
     s = get_settings()
     return {
+        "startup_problems": list(startup_state.PROBLEMS),  # steps that failed when the server started (empty = all fine)
         "ai": {"configured": ai.is_configured(), "provider": s.ai_provider},
         "google_oauth": s.google_oauth_enabled,
         "pagespeed_key": bool(s.pagespeed_api_key),

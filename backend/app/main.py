@@ -31,6 +31,7 @@ from .routers import agent, articles, assistant, auth, businesses, connections, 
 # from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, html_site, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website, workplan, tools
 # from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website, workplan, tools
 # from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, html_site, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website
+from . import startup_state
 from .services import jobs, lighthouse_runner, schema, scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -46,20 +47,34 @@ security_headers.startup_checks(settings)  # weak SECRET_KEY / wildcard CORS sto
 async def lifespan(_: FastAPI):
     with SessionLocal() as _db:
         security_headers.check_encryption_key(_db, settings)  # outside the try below on purpose: this one must stop the start
-    db = SessionLocal()
-    try:
+    startup_state.clear()
+    log = logging.getLogger("seo")
+
+    def step(name: str, fn) -> None:
+        """Each start-up step on its own: one failing must not silently skip the ones after it, and it must be visible (log + /status)."""
+        db = SessionLocal()
+        try:
+            fn(db)
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            log.error("Start-up step '%s' FAILED: %s", name, exc)
+            startup_state.record(name, exc)
+        finally:
+            db.close()
+
+    def schema_step(_db):
         if settings.schema_auto_sync and not schema.is_current(engine):
             schema.sync(engine)
             schema.mark_current(engine)
-        auth.seed_admin(db, settings)
+
+    def owners_step(db):
         from .deps import backfill_owners
         backfill_owners(db)
-        lighthouse_runner.recover_interrupted(db)
-        jobs.recover_stale(db, startup=True)
-    except Exception as exc:  # e.g. migrations not run yet
-        logging.getLogger("seo").warning("Start-up step skipped: %s", exc)
-    finally:
-        db.close()
+    step("schema update", schema_step)
+    step("admin account", lambda db: auth.seed_admin(db, settings))
+    step("project owners", owners_step)
+    step("interrupted Lighthouse audits", lighthouse_runner.recover_interrupted)
+    step("interrupted jobs", lambda db: jobs.recover_stale(db, startup=True))
     scheduler.start()
     await backlink_service.start()
     yield
@@ -100,6 +115,17 @@ app.include_router(watch_router, prefix=settings.api_prefix)
 app.include_router(backlink_service_router, prefix=settings.api_prefix)
 
 from .routers import review_link  # noqa: E402
+from .routers import growth_plan as growth_plan_router  # noqa: E402
+app.include_router(growth_plan_router.router, prefix=settings.api_prefix)
+app.include_router(growth_plan_router.overview_router, prefix=settings.api_prefix)
+from .routers import page_xray_lighthouse  # noqa: E402
+app.include_router(page_xray_lighthouse.router, prefix=settings.api_prefix)
+from .routers import serp_xray  # noqa: E402
+app.include_router(serp_xray.router, prefix=settings.api_prefix)
+from .routers import page_xray  # noqa: E402
+app.include_router(page_xray.router, prefix=settings.api_prefix)
+from .routers import page_xray_history  # noqa: E402
+app.include_router(page_xray_history.router, prefix=settings.api_prefix)
 from .routers import serp_benchmark  # noqa: E402
 app.include_router(serp_benchmark.router, prefix=settings.api_prefix)
 from .routers import gbp_reports  # noqa: E402

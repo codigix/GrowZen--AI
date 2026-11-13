@@ -74,6 +74,10 @@ def execute(db: Session, b: Business, action: str, params: dict[str, Any], start
         if "." not in domain:
             return {"ok": False, "message": "I could not read a domain from that."}
         site = f"https://{domain}"
+        from ..competitors import hygiene
+        why = hygiene.skip_reason(b, site)
+        if why:
+            return {"ok": False, "message": why}
         if not db.scalar(select(Competitor.id).where(Competitor.business_id == b.id, Competitor.website == site)):
             db.add(Competitor(business_id=b.id, name=domain, website=site, source="manual"))  # the same list Competitor Research uses
             db.commit()

@@ -44,7 +44,7 @@ function useConnections() {
   const { data } = useApi('/status');
   if (!data) return null;
   const checks = [data.ai?.configured, data.google_oauth, data.pagespeed_key, data.smtp, data.intake_imap];
-  return { connected: checks.filter(Boolean).length, total: checks.length };
+  return { connected: checks.filter(Boolean).length, total: checks.length, problems: Array.isArray(data.startup_problems) ? data.startup_problems : [] };
 }
 
 function NavItem({ to, label, icon: Icon, badge, collapsed, active, onNavigate }) {
@@ -223,6 +223,11 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
         </header>
 
         <main className="flex-1 min-w-0">
+          {connections?.problems?.length > 0 && (
+            <div role="alert" className="mx-6 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-13 text-red-800">
+              <b>The server did not start cleanly.</b> Some pages may fail until this is fixed: {connections.problems.map(p => `${p.step} (${p.error})`).join('; ')}. Check the backend log, fix the cause and restart it.
+            </div>
+          )}
           <ErrorBoundary key={location.pathname}><Suspense fallback={<SkPage />}><Outlet /></Suspense></ErrorBoundary>
         </main>
       </div>

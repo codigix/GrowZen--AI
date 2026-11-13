@@ -153,3 +153,13 @@
 .gbp-compact [class*="xl:col-span-"] {
   grid-column: auto !important;
 }
+/* Position Tracking: the same light card language as Page X-Ray. White rounded cards with a hairline border, readable tables
+   (48px rows, a quiet header, thin dividers) and nothing smaller than 12px. Scoped, so no other page changes. */
+.pos-theme .ai-glass-card { border-radius: 0.75rem; border: 1px solid rgb(226 232 240); box-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.05); }
+.pos-theme table { font-size: 14px; }
+.pos-theme thead th { font-size: 12px; font-weight: 600; text-transform: none; letter-spacing: 0; color: rgb(71 85 105); background-color: rgb(248 250 252); border-bottom: 1px solid rgb(226 232 240); }
+.pos-theme tbody td { padding-top: 0.8rem; padding-bottom: 0.8rem; vertical-align: middle; }
+.pos-theme tbody tr + tr td { border-top: 1px solid rgb(241 245 249); }
+.pos-theme tbody tr:hover td { background-color: rgb(248 250 252); }
+.pos-theme .text-9, .pos-theme .text-9\.5, .pos-theme .text-10, .pos-theme .text-10\.5, .pos-theme .text-11, .pos-theme .text-11\.5 { font-size: 12px !important; }
+.pos-theme input[type="search"], .pos-theme input[type="text"] { font-size: 14px; }

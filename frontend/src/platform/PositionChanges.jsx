@@ -148,7 +148,7 @@ export default function PositionChanges({ research }) {
           <span className="w-12 h-12 rounded-full bg-white text-indigo-500 flex items-center justify-center shrink-0"><Gauge size={22} /></span>
           <div className="flex-1 min-w-[260px] pr-6">
             <p className="text-14 text-slate-800">Track positions for your specific keywords on a daily basis. Target different devices and locations. Monitor how your competitors are ranking for your target keywords.</p>
-            <Link to="/rank-tracking" className="mt-2 h-9 px-3.5 rounded inline-flex items-center text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800">Set up the Position Tracking tool</Link>
+            <Link to="/rank-tracking" className="mt-2 h-9 px-3.5 rounded inline-flex items-center text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">Set up the Position Tracking tool</Link>
           </div>
           <button type="button" aria-label="Dismiss" onClick={() => setBanner(false)} className="absolute top-3 right-3 text-slate-500 hover:text-slate-800 cursor-pointer"><X size={16} /></button>
         </div>

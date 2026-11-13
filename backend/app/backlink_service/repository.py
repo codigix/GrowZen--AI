@@ -123,7 +123,7 @@ def acquire_crawler_lock(db: Database):
     Returns the connection, True when there is nothing to lock (SQLite), or None when another crawler holds it."""
     if db.engine.dialect.name != "postgresql":
         return True
-    conn = db.engine.connect()
+    conn = db.engine.connect().execution_options(isolation_level="AUTOCOMMIT")  # never idle in a transaction: that would hold back the database clean-up for as long as the process lives
     if conn.execute(text("select pg_try_advisory_lock(:k)"), {"k": CRAWLER_LOCK_KEY}).scalar():
         return conn
     conn.close()
@@ -136,7 +136,9 @@ def release_crawler_lock(conn) -> None:
         return
     try:
         conn.execute(text("select pg_advisory_unlock(:k)"), {"k": CRAWLER_LOCK_KEY})
-    finally:
+        conn.close()
+    except Exception:  # noqa: BLE001 - the unlock is unconfirmed: drop the real connection (that frees a session lock) instead of returning it to the pool still holding it
+        conn.invalidate()
         conn.close()
 
 

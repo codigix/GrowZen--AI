@@ -502,6 +502,13 @@ def start_project(db: Session, b: Business, run_audits: bool = True) -> dict[str
     schedules.ensure_jobs(db, b)
     steps["plan"] = generate_week(db, b)
     build_report(db, b, "week", week_start())
+    try:  # the first measurement, targets and tasks of the Growth Plan: onboarding never fails because of it
+        from . import growth_plan
+        growth_plan.refresh(db, b, "system", live=True, source="onboarding")
+        steps["growth"] = "started"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Growth Plan start skipped for business %s: %s", b.id, exc)
+        steps["growth"] = "skipped"
     log(db, "workplan", "project_started", b.id, **{k: str(v) for k, v in steps.items()})
     db.commit()
     return steps

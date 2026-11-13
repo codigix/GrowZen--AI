@@ -272,3 +272,23 @@ def test_stored_google_tokens_need_a_valid_encryption_key():
         sh.check_encryption_key(db, get_settings())  # the suite's own valid key
     finally:
         db.close()
+
+
+def test_postgres_connections_carry_a_statement_timeout_and_sqlite_is_untouched():
+    from app.db import connect_args
+    pg = connect_args("postgresql+psycopg://u:p@h/db", 60)
+    assert pg["options"] == "-c statement_timeout=60000" and pg["connect_timeout"] == 10
+    assert "options" not in connect_args("postgresql+psycopg://u:p@h/db", 0)  # 0 switches it off
+    assert connect_args("sqlite:///x.db", 60) == {"check_same_thread": False}
+
+
+def test_production_refuses_to_start_with_a_cookie_that_travels_over_plain_http():
+    import pytest as _pytest
+
+    from app import security_headers
+    from app.config import Settings
+    base = dict(secret_key="x" * 48, cors_origins="https://app.example", environment="production", cookie_secure=False, public_base_url="http://app.example", frontend_url="http://app.example")
+    with _pytest.raises(RuntimeError, match="COOKIE_SECURE"):
+        security_headers.startup_checks(Settings(**base))
+    security_headers.startup_checks(Settings(**{**base, "cookie_secure": True}))  # fine once the cookie is Secure
+    security_headers.startup_checks(Settings(**{**base, "environment": "development"}))  # a local machine may use http

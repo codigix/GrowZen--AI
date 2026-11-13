@@ -168,7 +168,7 @@ def test_site_audit_crawler_walks_a_site_and_scores_it(monkeypatch, no_errors):
         if path in pages:
             return httpx.Response(200, text=pages[path], headers={"content-type": "text/html"})
         return httpx.Response(404, text="nope", headers={"content-type": "text/html"})
-    monkeypatch.setattr(crawler, "site_client", lambda timeout=15: httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True, timeout=timeout))
+    monkeypatch.setattr(crawler, "site_client", lambda timeout=15, user_agent=None: httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True, timeout=timeout))
     events = []
     site = crawler.crawl("https://audit.example.org/some/inner/page", max_pages=10, on_progress=events.append)
     urls = {p["url"] for p in site["pages"]}

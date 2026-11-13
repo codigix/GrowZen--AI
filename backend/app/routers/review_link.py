@@ -21,13 +21,13 @@ from ..config import get_settings
 from ..db import get_db
 from ..deps import get_business
 from ..models import Business
-from ..services import ai
+from ..services import ai, ratelimit
 
 router = APIRouter(prefix="/businesses/{business_id}", tags=["reviews"])
 public_router = APIRouter(prefix="/public/review", tags=["public-review"])
 
 LANGUAGES = ["English", "Hindi", "Marathi"]
-_hits: dict[str, deque] = defaultdict(deque)  # ip -> recent suggestion times
+_hits = ratelimit.Hits("review_link")  # ip -> suggestions, shared by every server process
 LIMIT, WINDOW = 15, 600  # 15 suggestions per 10 minutes per address: the page is public and every call costs an AI request
 
 
@@ -114,12 +114,8 @@ def suggest(token: str, body: SuggestIn, request: Request, db: Session = Depends
     if not ai.is_configured():
         raise HTTPException(503, "Review suggestions are not available right now. You can still write your own review.")
     ip = request.client.host if request.client else "?"
-    now, q = time.time(), _hits[ip]
-    while q and now - q[0] > WINDOW:
-        q.popleft()
-    if len(q) >= LIMIT:
+    if not _hits.hit(ip, LIMIT, WINDOW):
         raise HTTPException(429, "Please wait a few minutes before asking for more suggestions.")
-    q.append(now)
     known = _service_names(b)
     picked = [s for s in body.services if s in known][:5]
     language = body.language if body.language in LANGUAGES else "English"

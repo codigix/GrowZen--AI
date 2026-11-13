@@ -171,6 +171,9 @@ class Settings(BaseSettings):
     csrf_origin_check: bool = True  # refuse cross-site POST/PUT/PATCH/DELETE (see security_headers.py)
     allow_insecure_dev: bool = False  # lets the server start with a weak SECRET_KEY: only for a throw-away development machine
     enforce_plan_limits: bool = True
+    # PostgreSQL gives up on any single query after this many seconds (0 = no limit). Without it one slow query (the backlink graph is large) holds a request thread for minutes,
+    # the pool fills, and every page spins: seen in practice. Schema changes and bulk jobs lift it for their own transaction.
+    db_statement_timeout_seconds: int = 60
     schema_auto_sync: bool = True  # create missing tables and add missing nullable columns at start-up
     audit_retention_days: int = 180
 

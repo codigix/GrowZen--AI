@@ -15,18 +15,21 @@ from ..schemas import CompetitorManualIn, CompetitorRegisterIn
 from ..serialize import row, rows
 from ..services.crawler import homepage
 from ..services.url_safety import SSRFValidationError, validate_url_shape
-from . import service
+from . import hygiene, service
 
 router = APIRouter(prefix="/competitors", tags=["competitors"], dependencies=[Depends(current_user)])
 
 
 def _upsert(db: Session, business_id: int, found: list[dict]) -> list[Competitor]:
+    owner = db.get(Business, business_id)
     existing = {c.website: c for c in db.scalars(select(Competitor).where(Competitor.business_id == business_id)) if c.website}
     saved = []
     for item in found:
         website = (item.get("website") or "").strip()
         if not website:
             continue  # nothing to audit or compare without a website; keep it in the raw results only
+        if hygiene.skip_reason(owner, website):
+            continue  # the business itself, or a social / directory page: not a competitor's website
         c = existing.get(website)
         if not c:
             c = Competitor(business_id=business_id, website=website, source="google_places")
@@ -79,6 +82,9 @@ def add_manual(body: CompetitorManualIn, db: Session = Depends(get_db), user: Us
         raise HTTPException(400, "Enter a full domain, e.g. example.com")
     if b.website and _host(homepage(b.website)) == host:
         raise HTTPException(400, "That is your own website")
+    why = hygiene.skip_reason(b, website)
+    if why:
+        raise HTTPException(400, why)
     for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)):
         if _host(c.website) == host:
             return row(c)

@@ -58,4 +58,30 @@ def prune(db: Session, force: bool = False) -> int:
             n += 1
     if n:
         db.commit()
+    try:
+        prune_history(db)
+    except Exception as exc:  # noqa: BLE001 - housekeeping must never stop the scheduler
+        db.rollback()
+        import logging
+        logging.getLogger("seo.jobs").warning("History pruning failed: %s", exc)
     return n
+
+
+def prune_history(db: Session, today: datetime | None = None) -> dict[str, int]:
+    """The tables that only ever grew. What a person looks at stays; what is only bulk is thinned:
+    read notifications (90 days) and activity (180), the per-check search-results list of old rank checks (the position stays, so charts keep their history),
+    finished growth tasks (a year), growth snapshots (two years) and expired rate-limit counters."""
+    from sqlalchemy import delete, update
+
+    from ..models import ActivityLog, GrowthAction, GrowthSnapshot, KeywordRankLog, Notification, RateHit
+    now = today or datetime.now(timezone.utc)
+    days = lambda n: now - timedelta(days=n)  # noqa: E731
+    out = {}
+    out["notifications"] = db.execute(delete(Notification).where(((Notification.read.is_(True)) & (Notification.created_at < days(90))) | (Notification.created_at < days(365)))).rowcount or 0
+    out["activity"] = db.execute(delete(ActivityLog).where(ActivityLog.created_at < days(180))).rowcount or 0
+    out["rank_serps"] = db.execute(update(KeywordRankLog).where(KeywordRankLog.day < days(90).date(), KeywordRankLog.serp.is_not(None)).values(serp=None)).rowcount or 0
+    out["growth_tasks"] = db.execute(delete(GrowthAction).where(GrowthAction.status.in_(("verified", "skipped", "failed")), GrowthAction.due_on < days(365).date())).rowcount or 0
+    out["snapshots"] = db.execute(delete(GrowthSnapshot).where(GrowthSnapshot.day < days(730).date())).rowcount or 0
+    out["rate_hits"] = db.execute(delete(RateHit).where(RateHit.ends_at < int(now.timestamp()) - 86400)).rowcount or 0  # a window that ended a day ago counts for nothing
+    db.commit()
+    return out

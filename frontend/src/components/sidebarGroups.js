@@ -6,6 +6,7 @@ export const SIDEBAR_GROUPS = [
     title: 'Overview',
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/growth', label: 'Growth Plan', icon: Target, badge: 'New' },
       { to: '/projects', label: 'Projects', icon: Layers },
       { to: '/onboarding', label: 'Business Onboarding', icon: Building2, badge: 'Phase 1' }
     ]
@@ -37,6 +38,7 @@ export const SIDEBAR_GROUPS = [
     title: 'Keyword Research',
     items: [
       { to: '/keyword-overview', label: 'Keyword Overview', icon: Search },
+      { to: '/serp-xray', label: 'SERP X-Ray', icon: ScanLine },
       { to: '/keyword-management/discover', label: 'Keyword Magic Tool', icon: Wand2 },
       { to: '/keyword-management/topics', label: 'Keyword Strategy Builder', icon: Layers },
       { to: '/keyword-management/tracked', label: 'Saved Keywords', icon: Bookmark }
@@ -101,13 +103,13 @@ const page = (to, extra = {}) => ({ ...(BY_TO[to] || { to, label: to }), ...extr
 const link = (to, label) => ({ to, label });
 
 export const SIDEBAR_SECTIONS = [
-  { id: 'home', label: 'Home', title: 'Home', icon: House, groups: [{ items: [page('/dashboard'), page('/projects'), page('/onboarding')] }] },
+  { id: 'home', label: 'Home', title: 'Home', icon: House, groups: [{ items: [page('/dashboard'), page('/growth'), page('/projects'), page('/onboarding')] }] },
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { items: [page('/dashboard')] },
       { title: 'Site Performance', items: [page('/website-audit'), page('/page-xray'), page('/rank-tracking'), page('/traffic')] },
       { title: 'Competitive Analysis', items: [page('/domain-overview'), page('/organic-rankings'), page('/top-pages'), page('/competitor-finder'), page('/competitor-watch'), page('/compare-domains'), page('/keyword-gap'), link('/backlink-intelligence/gap', 'Backlink Gap')] },
-      { title: 'Keyword Research', items: [page('/keyword-overview'), page('/keyword-management/discover'), link('/keyword-management/planner', 'Google Keyword Planner'), link('/keyword-management/explorer', 'Keyword Explorer'), page('/keyword-management/topics'), page('/keyword-management/tracked')] },
+      { title: 'Keyword Research', items: [page('/keyword-overview'), page('/serp-xray'), page('/keyword-management/discover'), link('/keyword-management/planner', 'Google Keyword Planner'), link('/keyword-management/explorer', 'Keyword Explorer'), page('/keyword-management/topics'), page('/keyword-management/tracked')] },
       { title: 'Content Ideas', items: [page('/ai-content-generation/blog'), page('/ai-content-generation/trends'), link('/seo-brief', 'SEO Brief Generator')] },
       { title: 'Link Building', items: [page('/backlink-intelligence'), link('/backlink-intelligence/explorer', 'Backlinks'), soon('referring-domains'), soon('backlink-audit'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks')] }
     ]

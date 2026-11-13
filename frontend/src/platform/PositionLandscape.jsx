@@ -179,7 +179,7 @@ export function Landscape({ d, onTab, b }) {
           <div className="py-10 flex flex-col items-center text-center gap-2">
             <div className="text-15 font-semibold text-slate-900">Add your first tag</div>
             <p className="max-w-sm text-13 text-slate-500">Tags help you track the performance of any keyword group.</p>
-            <Link to={path_('keyword-management')} className="mt-2 h-9 px-4 rounded inline-flex items-center text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800">Tag keywords</Link>
+            <Link to={path_('keyword-management')} className="mt-2 h-9 px-4 rounded inline-flex items-center text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">Tag keywords</Link>
           </div>
         )}
       </Card>
@@ -214,7 +214,7 @@ export function Landscape({ d, onTab, b }) {
                 <div className="text-14 font-semibold text-slate-900">We&apos;ve found your competitors on the Google results</div>
                 <p className="text-13 text-slate-600 mt-0.5">Add domains to your competitors list and track their positions with ease.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => onTab?.('competitors')} className="h-9 px-4 rounded text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800 cursor-pointer">Add competitors</button>
+                  <button type="button" onClick={() => onTab?.('competitors')} className="h-9 px-4 rounded text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">Add competitors</button>
                   <Link to={path_('competitor-finder')} className="h-9 px-4 rounded inline-flex items-center text-13 font-semibold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">Find more competitors</Link>
                 </div>
               </div>

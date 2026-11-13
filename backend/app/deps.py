@@ -1,4 +1,5 @@
 """Shared route dependencies."""
+import logging
 from fastapi import Depends, HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -85,6 +86,16 @@ def in_background(fn, *args):
         db = SessionLocal()
         try:
             fn(db, *args)
+        except Exception as exc:  # noqa: BLE001 - a background task has no caller to tell: record the failure so it can be found, and leave the session clean
+            logging.getLogger("seo.background").exception("Background task %s failed", getattr(fn, "__name__", "task"))
+            try:
+                db.rollback()
+                from .services.activity import log as activity
+                bid = next((a for a in args if isinstance(a, int)), None)
+                activity(db, "system", "background_task_failed", bid, task=getattr(fn, "__name__", "task"), error=f"{type(exc).__name__}: {str(exc)[:200]}")
+                db.commit()
+            except Exception:  # noqa: BLE001 - even recording it can fail (database down): never raise out of a background task
+                db.rollback()
         finally:
             db.close()
     return job

@@ -111,6 +111,10 @@ def track_competitor(body: CompetitorDomainIn, b: Business = Depends(get_busines
     domain = organic.host(body.domain)
     if not domain or domain == organic.host(b.website):
         raise HTTPException(400, "Enter a competitor's domain, not your own.")
+    from ..competitors import hygiene
+    why = hygiene.skip_reason(b, domain)
+    if why:
+        raise HTTPException(400, why)
     site = f"https://{domain}"
     row_ = db.scalar(select(Competitor).where(Competitor.business_id == b.id, Competitor.website == site))
     if not row_:

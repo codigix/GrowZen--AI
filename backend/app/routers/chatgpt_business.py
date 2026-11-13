@@ -29,7 +29,7 @@ from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business, only_mine
 from ..models import Business, CatalogItem, ChatGPTBusiness
-from ..services import chatgpt_business as svc
+from ..services import chatgpt_business as svc, ratelimit
 from ..services.activity import log
 
 router = APIRouter(prefix="/businesses/{business_id}/chatgpt", tags=["chatgpt-business"])
@@ -37,7 +37,7 @@ overview_router = APIRouter(prefix="/chatgpt", tags=["chatgpt-business"])
 public_router = APIRouter(prefix="/public/feeds/chatgpt", tags=["chatgpt-feed"])
 alias_router = APIRouter(prefix="/chatgpt-business/public/feed", tags=["chatgpt-feed"])  # the CSV feed at its second address
 
-_hits: dict[str, deque] = defaultdict(deque)  # ip -> recent feed requests
+_hits = ratelimit.Hits("chatgpt_feed")  # ip -> feed requests, shared by every server process
 FEED_LIMIT, FEED_WINDOW = 120, 3600
 
 
@@ -332,12 +332,8 @@ def overview(db: Session = Depends(get_db), user: User = Depends(current_user)):
 @public_router.get("/{name}")
 def hosted_feed(name: str, request: Request, db: Session = Depends(get_db)):
     ip = request.client.host if request.client else "?"
-    now, q = time.time(), _hits[ip]
-    while q and now - q[0] > FEED_WINDOW:
-        q.popleft()
-    if len(q) >= FEED_LIMIT:
+    if not _hits.hit(ip, FEED_LIMIT, FEED_WINDOW):
         raise HTTPException(429, "Too many requests. Try again later.")
-    q.append(now)
     m = re.fullmatch(r"(?P<token>[0-9]+-[0-9a-f]{16})\.(?P<ext>json|csv)", name or "")
     bid = svc.business_id_of(m.group("token")) if m else None
     b = db.get(Business, bid) if bid else None

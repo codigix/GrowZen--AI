@@ -8,10 +8,11 @@ from sqlalchemy import select, text
 
 from ..config import get_settings
 from ..db import SessionLocal
-from . import intake, jobs, pipeline, schedules, site_publish
+from . import intake, jobs, locks, pipeline, schedules, site_publish
 
 log = logging.getLogger("seo.scheduler")
 _scheduler: BackgroundScheduler | None = None
+TICK_LOCK_KEY = 7310042
 
 
 LAST_TICK: dict[str, object] = {"at": None, "result": None}
@@ -20,12 +21,10 @@ LAST_TICK: dict[str, object] = {"at": None, "result": None}
 def tick() -> dict[str, int]:
     db = SessionLocal()
     out = {"emails": 0, "onboarded": 0, "jobs": 0, "recovered": 0, "posts": 0}
-    locked = False
+    lock = locks.AdvisoryLock(db.get_bind(), TICK_LOCK_KEY)  # two processes must never run the same jobs twice; the lock has its own connection and cannot leak
     try:
-        if db.bind.dialect.name == "postgresql":  # two processes must never run the same jobs twice
-            locked = bool(db.execute(text("select pg_try_advisory_lock(7310042)")).scalar())
-            if not locked:
-                return out
+        if not lock.acquired:
+            return out
         out["recovered"] = jobs.recover_stale(db)
         jobs.prune(db)
         try:
@@ -43,8 +42,7 @@ def tick() -> dict[str, int]:
         out["jobs"] = schedules.run_due(db)
         out["posts"] = site_publish.run_due_scheduled(db)  # blog posts held for a chosen time
     finally:
-        if locked:
-            db.execute(text("select pg_advisory_unlock(7310042)"))
+        lock.release()
         db.close()
         LAST_TICK.update(at=datetime.now(timezone.utc).isoformat(), result=out)
     return out

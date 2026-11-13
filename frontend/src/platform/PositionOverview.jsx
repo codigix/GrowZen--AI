@@ -203,7 +203,7 @@ export default function PositionOverview({ d, b, onChanged }) {
             </div>)}
         </div>}>
         <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
-          <Link to={path_('keyword-management')} className="h-9 px-3 rounded inline-flex items-center text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800">Add keywords</Link>
+          <Link to={path_('keyword-management')} className="h-9 px-3 rounded inline-flex items-center text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">Add keywords</Link>
           <Button size="sm" icon={Download} onClick={() => download(`${me}-rankings.csv`, rows)}>Export</Button>
           <div className="inline-flex rounded border border-slate-200 overflow-hidden ml-1">
             {TABS.map(([id, l]) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-9 px-3 text-13 border-r last:border-r-0 border-slate-200 cursor-pointer ${tab === id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{id === 'all' ? `All for ${me}` : l}</button>)}

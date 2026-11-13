@@ -397,14 +397,14 @@ def post_call_to_action(post: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def post_event(post: dict[str, Any]) -> dict[str, Any]:
-    """The `event` block of an Offer or Event post: its title and dates (and, for events, start and end times). With no dates given it runs for a week from today."""
+    """The `event` block of an Offer or Event post: its title and dates (and, for events, start and end times). With no dates given it runs for a week from today (the server's calendar day: a UTC date would be yesterday in India before 05:30, a start date Google can refuse)."""
     start, end = _as_date(post.get("starts_on")), _as_date(post.get("ends_on"))
     if not start and not end:
-        start = datetime.now(timezone.utc).date()
+        start = datetime.now().date()
     if start and not end:
         end = start + timedelta(days=7)
     if end and not start:
-        start = min(datetime.now(timezone.utc).date(), end)
+        start = min(datetime.now().date(), end)
     gd = lambda d: {"year": d.year, "month": d.month, "day": d.day}  # noqa: E731
     schedule: dict[str, Any] = {"startDate": gd(start), "endDate": gd(end)}
     if post.get("start_time"):

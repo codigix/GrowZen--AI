@@ -18,7 +18,7 @@ LEVELS = ["critical", "serious", "warning", "info"]
 ZERO = {"calls": 0, "directions": 0, "website_clicks": 0}
 SERVICE_LABELS = {
     "full_audit": "Full SEO audit", "rank_scan": "Rank tracking", "technical": "Technical SEO", "reviews": "Review management",
-    "posts": "GBP posts", "report": "Monthly report", "geo": "AI search visibility", "weekly_plan": "Weekly work plan & report", "site_crawl": "Site audit crawl", "site_research": "Website research refresh",
+    "posts": "GBP posts", "report": "Monthly report", "geo": "AI search visibility", "weekly_plan": "Weekly work plan & report", "growth_daily": "Growth plan: daily check", "growth_weekly": "Growth plan: weekly targets", "growth_monthly": "Growth plan: monthly targets", "site_crawl": "Site audit crawl", "site_research": "Website research refresh",
 }
 
 

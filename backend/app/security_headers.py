@@ -143,6 +143,8 @@ def startup_checks(settings: Settings) -> None:
             'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(48))"  (ALLOW_INSECURE_DEV=true skips this check on a throw-away machine only).')
     if "*" in settings.cors_list:
         raise RuntimeError("CORS_ORIGINS must list the frontend addresses: '*' cannot be combined with cookie sessions.")
+    if settings.environment.lower() == "production" and not settings.secure_cookies:
+        raise RuntimeError("ENVIRONMENT=production but the session cookie would be sent over plain http: set COOKIE_SECURE=true (and serve the app over https), or use https addresses in PUBLIC_BASE_URL and FRONTEND_URL.")
     if weak:
         log.warning("Running with a weak SECRET_KEY because ALLOW_INSECURE_DEV is on. Never do this on a server.")
     if os.name != "nt":

@@ -88,7 +88,15 @@ def test_webhook_needs_token(client):
     assert ok.status_code == 202
 
 
-def test_rank_scan_and_keywords(client):
+def test_rank_scan_and_keywords(client, monkeypatch):
+    from app.services import providers
+
+    class Live:  # keyword ideas come only from Google Ads now: a stand-in provider keeps this test independent of the developer's .env keys
+        source = "google_ads"
+
+        def ideas(self, seed, location, b):
+            return [{"keyword": f"{seed} near me", "volume": 100}]
+    monkeypatch.setattr(providers, "keyword_provider", lambda: Live())
     bid = client.post("/api/v1/businesses", json={"name": "Glow Studio", "lat": 18.559, "lng": 73.786}).json()["id"]
     assert client.post(f"/api/v1/businesses/{bid}/rank-scans", json={"keyword": "salon in baner", "grid_size": 5}).status_code == 202
     scans = client.get(f"/api/v1/businesses/{bid}/rank-scans").json()

@@ -11,9 +11,9 @@ from .activity import log
 from .playbook import get_playbook
 
 INTERVALS = {"daily": 1, "weekly": 7, "fortnightly": 14, "monthly": 30}
-JOBS = ["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo", "weekly_plan", "site_research", "site_crawl"]
+JOBS = ["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo", "weekly_plan", "site_research", "site_crawl", "growth_daily", "growth_weekly", "growth_monthly"]
 # Jobs every plan gets even when the playbook saved before they existed has no entry for them.
-JOB_DEFAULTS = {"weekly_plan": "weekly", "site_research": "monthly"}
+JOB_DEFAULTS = {"weekly_plan": "weekly", "site_research": "monthly", "growth_daily": "daily", "growth_weekly": "weekly", "growth_monthly": "monthly"}
 
 
 def _now() -> datetime:
@@ -60,7 +60,10 @@ def run_job(db: Session, s: Schedule) -> None:
     b = db.get(Business, s.business_id)
     if not b or b.status == "paused" or not project_services.job_enabled(b, s.job):
         return
-    if s.job == "full_audit":
+    if s.job in ("growth_daily", "growth_weekly", "growth_monthly"):
+        from . import growth_plan
+        growth_plan.run_job(db, b, s.job)  # the job decides what to roll: it never creates duplicates
+    elif s.job == "full_audit":
         found = audits.run_all(db, b)
         agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues], audited=[a.kind for a in found if a.status == "done"])
     elif s.job == "rank_scan":
@@ -93,10 +96,20 @@ def run_job(db: Session, s: Schedule) -> None:
             notify.send_email(b.contact_email, f"Site audit finished: {b.name}", f"The scheduled site audit of {b.website} is complete.\nScore: {a.score}/100. Issues found: {n}.\nOpen Site Audit to see them.")
 
 
-def run_due(db: Session, limit: int = 20) -> int:
-    """Run every schedule whose time has come (oldest first)."""
+TICK_BUDGET_SECONDS = 240
+
+
+def run_due(db: Session, limit: int = 20, budget_seconds: float = TICK_BUDGET_SECONDS) -> int:
+    """Run every schedule whose time has come (oldest first). No new job is started once the budget is spent: one project's slow audit must not hold every other project's jobs
+    for the rest of the tick. What was not started stays due and goes first on the next tick."""
+    import time
+    began = time.monotonic()
     due = list(db.scalars(select(Schedule).where(Schedule.every != "off", Schedule.next_run_at.is_not(None), Schedule.next_run_at <= _now()).order_by(Schedule.next_run_at).limit(limit)))
+    ran = 0
     for s in due:
+        if ran and time.monotonic() - began > budget_seconds:
+            break
+        ran += 1
         try:
             run_job(db, s)
             s.last_status, s.last_error = "ok", None
@@ -113,4 +126,4 @@ def run_due(db: Session, limit: int = 20) -> int:
         db.add(s)
         db.commit()
     agent.auto_apply_pending(db)
-    return len(due)
+    return ran

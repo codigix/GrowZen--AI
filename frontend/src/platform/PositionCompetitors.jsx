@@ -194,7 +194,7 @@ export default function PositionCompetitors({ d, b, onChanged }) {
         <div className="px-5 py-3 border-t border-slate-100 flex flex-wrap items-center gap-3 text-13 text-slate-700">
           <button type="button" disabled={cur <= 1} onClick={() => setPage(1)} aria-label="First page" className="h-8 w-8 rounded border border-slate-200 disabled:opacity-40 inline-flex items-center justify-center cursor-pointer"><ChevronLeft size={14} /></button>
           <button type="button" disabled={cur <= 1} onClick={() => setPage(cur - 1)} className="h-8 px-3 rounded border border-slate-200 disabled:opacity-40 cursor-pointer">Prev</button>
-          <button type="button" disabled={cur >= pages} onClick={() => setPage(cur + 1)} className="h-8 px-3 rounded bg-slate-900 text-white disabled:opacity-40 cursor-pointer inline-flex items-center gap-1">Next<ChevronRight size={13} /></button>
+          <button type="button" disabled={cur >= pages} onClick={() => setPage(cur + 1)} className="h-8 px-3 rounded bg-indigo-600 text-white disabled:opacity-40 cursor-pointer inline-flex items-center gap-1">Next<ChevronRight size={13} /></button>
           <span>Page: <b>{cur}</b> of <span className="text-indigo-600">{pages}</span></span>
           <Select value={per} onChange={e => { setPer(Number(e.target.value)); setPage(1); }} className="h-8 px-2 rounded border border-slate-200 bg-white" aria-label="Rows per page">{[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</Select>
         </div>

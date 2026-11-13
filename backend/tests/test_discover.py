@@ -121,12 +121,13 @@ def test_google_suggestions_session_and_cached_details(client, monkeypatch):
         sent["details"].append(params)
         return httpx.Response(200, json=place, request=httpx.Request("GET", url))
     monkeypatch.setattr(suggest.httpx, "post", fake_post)
+    monkeypatch.setattr(suggest, "_google_client", type("C", (), {"post": staticmethod(fake_post)})())  # the autocomplete call reuses one client
     monkeypatch.setattr(suggest.httpx, "get", fake_get)
     suggest._cache.clear()
 
     d = client.get("/api/v1/discover/suggest", params={"q": "codigix", "session": "sess-1"}).json()
     assert d["suggestions"][0]["source"] == "google_maps" and sent["autocomplete"][0]["sessionToken"] == "sess-1"
-    assert sum(1 for s in d["suggestions"] if s["source"] == "openstreetmap") == 3  # Google first, OSM trimmed to 3
+    assert sum(1 for s in d["suggestions"] if s["source"] == "openstreetmap") == 0  # OpenStreetMap is asked only when Google has nothing to offer
     c = client.post("/api/v1/discover/resolve", json={"source": "google_maps", "ref": "ChIJcodigix", "session": "sess-1"}).json()
     assert c["address"] == "Office No: 514, 5th Floor, Brahma Sky Uzuri, MIDC, Pimpri Colony, Pimpri-Chinchwad, Maharashtra 411018"  # no plus code / country
     assert (c["area"], c["city"], c["pincode"], c["rating"], c["photo_count"], c["status"]) == ("Pimpri Colony", "Pimpri-Chinchwad", "411018", 4.7, 2, "OPERATIONAL")

@@ -58,21 +58,34 @@ export function api(path, opts = {}) {
 let codeHandler = null;
 export const setProjectCodeHandler = (fn) => { codeHandler = fn; };
 
-async function request(path, { method = 'GET', body, raw = false, repeat = false, codeTried = false } = {}) {
+// A request that gets no answer must end with a message, not a loader that spins forever (a busy or hung backend never replies).
+// Reads wait 60 s, changes 150 s (audits, scans and live checks are slow on purpose); `timeout` (ms) overrides it for one call.
+const READ_TIMEOUT_MS = 60000;
+const WRITE_TIMEOUT_MS = 150000;
+const SLOW_MESSAGE = 'The server is taking too long to answer. It may be busy: wait a moment and try again.';
+
+async function request(path, { method = 'GET', body, raw = false, repeat = false, codeTried = false, timeout } = {}) {
   const safeToRepeat = repeat || method === 'GET' || method === 'HEAD';
   if (!safeToRepeat && Date.now() - lastNetworkFailure < 30000) await waitUntilReachable();
   let r;
   for (let attempt = 0; ; attempt += 1) {
+    const ctl = new AbortController();
+    const limit = timeout || (method === 'GET' || method === 'HEAD' ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS);
+    const timer = setTimeout(() => ctl.abort(), limit);
     try {
       r = await fetch(`${SEO_API}${path}`, {
         method,
         credentials: 'include',
         cache: 'no-store', // never reuse a cached API answer: a copy cached for another origin carries that origin's CORS header and is refused
         headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
-        body: body !== undefined ? JSON.stringify(body) : undefined
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: ctl.signal
       });
+      clearTimeout(timer);
       break;
     } catch (e) {
+      clearTimeout(timer);
+      if (ctl.signal.aborted) throw new SeoApiError(SLOW_MESSAGE, 504); // a hang is not a restart: never retried
       lastNetworkFailure = Date.now();
       if (safeToRepeat && attempt < 4) { // a restart takes a few seconds: wait until the backend answers, then send again
         if (!(await waitUntilReachable(12))) await sleep(600 * (attempt + 1));
