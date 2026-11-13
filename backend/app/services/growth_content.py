@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Article, Business, CatalogItem, Keyword, Post
 
-KINDS = {"competitors_clean", "kw_terms", "bl_prospect", "kw_count", "kw_grouped", "kw_targets", "kw_gap", "kw_used", "audit_probe", "backlinks", "articles_since", "articles_meta", "competitors_done"}
+KINDS = {"competitors_clean", "kw_terms", "bl_prospect", "kw_count", "kw_grouped", "kw_targets", "kw_gap", "kw_used", "audit_probe", "backlinks", "articles_since", "articles_meta", "competitors_done", "comp_reviews", "comp_listings"}
 STOP = {"in", "near", "me", "the", "best", "top", "for", "a", "an", "of", "and", "to", "at", "on", "with", "by", "cheap", "affordable", "my", "your", "nearby", "online", "is", "are", "how", "what"}
 JS_SENSITIVE = {"meta.h1_missing", "meta.alt"}
 SURFACES = {
@@ -286,6 +286,23 @@ def issues(db: Session, b: Business, report: dict[str, Any] | None) -> list[dict
         if gaps:
             out.append(make("kw.gap", "seo", "competitors", "warning", f"Add the keywords competitors win ({len(gaps)} found)", "Competitors rank for these searches and you do not track them: " + "; ".join(f"“{g['keyword']}” ({g['reason']})" for g in gaps[:5]) + ".",
                             ["Open Keyword Magic Tool or Keyword Gap and add the relevant ones.", "Skip any that do not match a service you really offer.", "Then plan a page or article for each."], 15, "/competitor-finder?tab=gap", {"type": "kw_gap", "keywords": [g["keyword"] for g in gaps]}))
+    research = kwsvc.competitor_research(db, b)
+    if research:
+        top = (research.get("summary") or {}).get("local_leader") or {}
+        mine_reviews = int((research.get("business") or {}).get("reviews") or b.review_count or 0)
+        lead = int(top.get("reviews") or 0)
+        if lead > mine_reviews:
+            target = min(lead, mine_reviews + max(10, (lead - mine_reviews) // 4))  # a realistic next step, not the leader's total
+            out.append(make("comp.reviews", "local", "competitors", "serious" if lead > 2 * max(mine_reviews, 1) else "warning", f"Close the review gap with {top.get('name') or 'the Maps leader'} ({mine_reviews} vs {lead:,} reviews)",
+                            f"{top.get('name') or 'The leader in Google Maps'} has {lead:,} reviews and you have {mine_reviews:,}. Reviews are one of the strongest Maps ranking signals.",
+                            [f"Ask recent happy customers for a review: share your Google review link by message or at the counter (aim for {target:,} reviews).", "Reply to every review, good or bad.", "Never buy or trade reviews: Google removes them and can suspend the profile."], 30, "/reviews",
+                            {"type": "comp_reviews", "target": target}, found_at="competitor research"))
+        listing_gaps = [g["domain"] for g in ((research.get("gaps") or {}).get("listings") or [])][:5]
+        if listing_gaps:
+            out.append(make("comp.listings", "seo", "competitors", "info", f"Get listed where competitors are listed ({', '.join(listing_gaps[:3])})",
+                            "Competitors are listed on these sites and they rank for your searches. Each listing is a link and a citation with your name, address and phone: " + ", ".join(listing_gaps) + ".",
+                            ["Open each site and create or claim a free listing with exactly the same name, address and phone as your Google profile.", "Add your website, category, hours and photos.", "Run the competitor research again: it confirms where you are now listed."], 45, "/off-page-seo",
+                            {"type": "comp_listings", "domains": listing_gaps}, found_at="competitor research"))
     # ---- where the main keywords are used
     main = _main_keywords(b, rows)
     if main:
@@ -464,6 +481,16 @@ def verify(db: Session, b: Business, rule: dict[str, Any], ctx: Any, today: date
         have = {k.keyword for k in rows}
         left = [k for k in rule["keywords"] if k not in have]
         return _result(len(left) < len(rule["keywords"]) // 2 + 1 or not left, f"{len(rule['keywords']) - len(left)} of {len(rule['keywords'])} competitor keywords are tracked now." + (f" Still missing: {', '.join(left[:4])}." if left else ""), None, len(left))
+    if kind == "comp_reviews":
+        have = int(b.review_count or 0)
+        return _result(have >= int(rule["target"]), f"{have} reviews; the goal is {rule['target']}." + ("" if have >= int(rule["target"]) else " Reviews update when the Google profile syncs."), None, have)
+    if kind == "comp_listings":
+        from ..competitors import intel
+        from . import keywords as kwsvc
+        research = kwsvc.competitor_research(db, b)
+        mine = {intel.site_of(x.get("domain", "")) for x in ((research or {}).get("you") or {}).get("link_sources", [])}
+        left = [d for d in rule["domains"] if intel.site_of(d) not in mine]
+        return _result(len(left) < len(rule["domains"]) and len(left) <= len(rule["domains"]) // 2, f"The latest competitor research finds you on {len(rule['domains']) - len(left)} of {len(rule['domains'])} of these sites." + (" Run the competitor research again after you list." if left else ""), None, len(left))
     if kind == "kw_used":
         report = None
         try:

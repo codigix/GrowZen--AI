@@ -152,11 +152,23 @@ def build(db: Session, b: Business, period: str, start: date, end: date, today: 
     nxt = {"start": nstart.isoformat(), "end": nend.isoformat(), "targets": [{"label": t.label, "baseline": t.baseline, "target": t.target, "unit": t.unit or ""} for t in nxt_t[:10]],
            "tasks": [{"title": a.title, "link": a.link} for a in nxt_a[:10]]}
     kw = _keyword_moves(db, b, start, end)
-    data = {"period": period, "keywords": kw, "start": start.isoformat(), "end": end.isoformat(), "in_progress": not closed, "generated_at": datetime.now(timezone.utc).isoformat(), "business": {"id": b.id, "name": b.name},
+    comp = _competitor_watch(db, b, start, end)
+    data = {"competitors": comp, "period": period, "keywords": kw, "start": start.isoformat(), "end": end.isoformat(), "in_progress": not closed, "generated_at": datetime.now(timezone.utc).isoformat(), "business": {"id": b.id, "name": b.name},
             "presence": {"start": p0, "end": p1, "delta": _delta(p0, p1)}, "areas": areas, "metrics": metrics, "targets": tgt, "tasks": tasks, "issues": issues, "next": nxt,
             "measured_days": db.query(GrowthSnapshot).filter(GrowthSnapshot.business_id == b.id, GrowthSnapshot.day >= start, GrowthSnapshot.day <= end).count()}
     data["headline"], data["narrative"] = narrate(data)
     return data
+
+
+def _competitor_watch(db: Session, b: Business, start: date, end: date) -> dict[str, Any] | None:
+    """What Competitor Watch saw on the competitors' sites during the period (its own weekly summaries; the first visit only sets a baseline and reports no change)."""
+    from ..backlinks.models import WatchReport
+    rows = list(db.scalars(select(WatchReport).where(WatchReport.business_id == b.id, WatchReport.week_start >= start - timedelta(days=6), WatchReport.week_start <= end, WatchReport.baseline.is_(False)).order_by(WatchReport.week_start.desc())))
+    if not rows:
+        return None
+    latest = rows[0].summary or {}
+    return {"weeks": len(rows), "events": sum(r.events or 0 for r in rows), "headline": latest.get("headline"), "summary": latest.get("summary"), "means": latest.get("what_it_means"),
+            "actions": list(latest.get("actions") or [])[:3], "highlights": [str(x) for x in (latest.get("highlights") or [])][:6]}
 
 
 def _keyword_moves(db: Session, b: Business, start: date, end: date) -> list[dict[str, Any]]:
@@ -216,6 +228,9 @@ def narrate(d: dict[str, Any]) -> tuple[str, list[str]]:
         lines.append(f"Issues still open: {i['open_total']} ({o['critical']} critical, {o['serious']} serious, {o['warning']} warning, {o['info']} info)" + (f"; {i['overdue']} past their due date." if i["overdue"] else "."))
     else:
         lines.append("No open issues in the latest sweep.")
+    c = d.get("competitors")
+    if c and c.get("headline"):
+        lines.append(f"Competitors: {c['headline']}" + ("" if str(c["headline"]).endswith(".") else "."))
     if d.get("in_progress"):
         lines.append(f"This {word} is still in progress: the figures are to date.")
     return head, lines
@@ -267,6 +282,10 @@ def render_text(d: dict[str, Any]) -> str:
         out += ["", "Key numbers (start -> end):"] + [f"  {m['label']}: {'n/a' if m['start'] is None else format(m['start'], 'g')} -> {'n/a' if m['end'] is None else format(m['end'], 'g')}" for m in d["metrics"]]
     if d.get("keywords"):
         out += ["", "Keyword rankings (Google position, start -> end):"] + [f"  {k['keyword']}: {k['start'] if k['start'] is not None else 'n/a'} -> {k['end'] if k['end'] is not None else 'not in top results'}" for k in d["keywords"][:10]]
+    c = d.get("competitors")
+    if c and (c.get("summary") or c.get("highlights")):
+        out += ["", "What your competitors did (Competitor Watch):"] + ([f"  {c['summary']}"] if c.get("summary") else []) + [f"  - {x}" for x in c.get("highlights", [])]
+        out += [f"  What to do: {x}" for x in c.get("actions", []) if x and x != "Nothing needs doing."]
     if d["issues"]["top_open"]:
         out += ["", "Fix next:"] + [f"  [{x['severity']}] {x['title']} (due {x['due_on']})" + (f" {_link(x['link'])}" if x.get("link") else "") for x in d["issues"]["top_open"][:5]]
     if d["next"]["tasks"]:
@@ -285,6 +304,12 @@ def render_html(d: dict[str, Any]) -> str:
         title = f'<a href="{e(href)}" style="color:#4338ca">{e(x["title"])}</a>' if href else e(x["title"])
         return f"<li style='margin:3px 0'><b style='color:{colour}'>{e(x['severity'])}</b> · {title} <span style='color:#64748b'>(due {e(x['due_on'])})</span></li>"
     fix = "".join(fix_item(x) for x in d["issues"]["top_open"][:5])
+    c = d.get("competitors") or {}
+    comp_html = ""
+    if c.get("summary") or c.get("highlights"):
+        comp_html = (f"<h3 style='font-size:14px;margin:16px 0 4px'>What your competitors did</h3><p style='font-size:13px;margin:0 0 4px'>{e(str(c.get('summary') or ''))}</p>"
+                     + ("<ul style='padding-left:18px;font-size:13px;margin:0'>" + "".join("<li style='margin:3px 0'>" + e(x) + "</li>" for x in c.get("highlights", [])) + "</ul>" if c.get("highlights") else "")
+                     + "".join(f"<p style='font-size:13px;margin:4px 0 0'><b>What to do:</b> {e(x)}</p>" for x in c.get("actions", []) if x and x != "Nothing needs doing."))
     nxt = "".join(f"<li style='margin:3px 0'>{e(x['title'])}</li>" for x in d["next"]["tasks"][:6])
     kwrows = "".join(f"<tr><td style='padding:4px 10px 4px 0;color:#475569'>{e(k['keyword'])}</td><td style='padding:4px 0;text-align:right'>{'n/a' if k['start'] is None else k['start']} → <b>{k['end'] if k['end'] is not None else 'not found'}</b></td></tr>" for k in (d.get("keywords") or [])[:10])
     bullets = "".join(f"<li style='margin:4px 0'>{e(x)}</li>" for x in d["narrative"])
@@ -294,6 +319,7 @@ def render_html(d: dict[str, Any]) -> str:
             f"<ul style='padding-left:18px;margin:0 0 12px;font-size:14px'>{bullets}</ul>"
             + (f"<h3 style='font-size:14px;margin:16px 0 4px'>Key numbers</h3><table style='font-size:13px;width:100%;border-collapse:collapse'>{rows}</table>" if rows else "")
             + (f"<h3 style='font-size:14px;margin:16px 0 4px'>Keyword rankings</h3><table style='font-size:13px;width:100%;border-collapse:collapse'>{kwrows}</table>" if kwrows else "")
+            + comp_html
             + (f"<h3 style='font-size:14px;margin:16px 0 4px'>Fix next</h3><ul style='padding-left:18px;font-size:13px;margin:0'>{fix}</ul>" if fix else "")
             + (f"<h3 style='font-size:14px;margin:16px 0 4px'>Next {e(d['period'])}</h3><ul style='padding-left:18px;font-size:13px;margin:0'>{nxt}</ul>" if nxt else "")
             + btn + "<p style='font-size:11px;color:#94a3b8;margin-top:20px'>Every figure comes from real measurements and live checks; a task is counted only when the data confirms it.</p></div>")
@@ -414,6 +440,9 @@ def render_pdf(d: dict[str, Any]) -> bytes:
         flow += [Spacer(1, 8), p("Key numbers", "Heading3"), table(["Metric", "Start", "End", "Change"], [[m["label"], m["start"], m["end"], m["delta"]] for m in d["metrics"]])]
     if d.get("keywords"):
         flow += [Spacer(1, 8), p("Keyword rankings (Google position)", "Heading3"), table(["Keyword", "Start", "End", "Change", "Maps now"], [[k["keyword"], k["start"], k["end"], k["change"], k["maps_end"]] for k in d["keywords"]])]
+    comp = d.get("competitors")
+    if comp and (comp.get("summary") or comp.get("highlights")):
+        flow += [Spacer(1, 8), p("What your competitors did (Competitor Watch)", "Heading3")] + ([p(str(comp["summary"]))] if comp.get("summary") else []) + [p("• " + str(x)) for x in comp.get("highlights", [])]
     if d["targets"]["items"]:
         flow += [Spacer(1, 8), p("Targets", "Heading3"), table(["Target", "From", "To", "Goal", "Result"], [[t["label"], t["baseline"], t["final"], t["target"], t["status"]] for t in d["targets"]["items"]])]
     if d["issues"]["top_open"]:

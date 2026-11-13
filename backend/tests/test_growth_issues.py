@@ -333,3 +333,25 @@ def test_a_skipped_issue_stays_skipped_and_is_not_recreated(project, sources):
         assert gi.listing(db, b, later)["open_total"] == 0  # not shown as open work
     finally:
         db.close()
+
+
+def test_the_report_carries_what_competitor_watch_saw_that_week(project, sources):
+    from datetime import datetime, timezone
+
+    from app.backlinks.models import WatchReport
+    db = SessionLocal()
+    try:
+        b = db.get(Business, project)
+        snap(db, project, date(2026, 11, 1), 40, 1)
+        snap(db, project, date(2026, 11, 8), 46, 4)
+        db.add(WatchReport(business_id=project, week_start=date(2026, 11, 2), source="rules", events=3, baseline=False, created_at=datetime.now(timezone.utc),
+                           summary={"headline": "Rival Co added 2 new pages", "summary": "Rival Co published two service pages.", "actions": ["Write a page for the same service."], "highlights": ["rival.example: new page /braces"]}))
+        db.add(WatchReport(business_id=project, week_start=date(2026, 10, 26), source="rules", events=0, baseline=True, created_at=datetime.now(timezone.utc), summary={"headline": "baseline"}))
+        db.commit()
+        d = gr.generate(db, b, "week", None, date(2026, 11, 9)).data
+        assert d["competitors"]["events"] == 3 and d["competitors"]["weeks"] == 1  # the baseline visit reports no change
+        assert any(x.startswith("Competitors: Rival Co added 2 new pages") for x in d["narrative"])
+        assert "rival.example: new page /braces" in gr.render_text(d) and "What your competitors did" in gr.render_html(d)
+        assert gr.render_pdf(d)[:4] == b"%PDF"
+    finally:
+        db.close()

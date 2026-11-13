@@ -157,3 +157,26 @@ def test_a_cap_never_closes_a_task(project, monkeypatch):
         assert gi.sweep(db, b, TODAY)["closed"] == 0  # reported but beyond the cap: still open
     finally:
         db.close()
+
+
+def test_competitor_research_becomes_review_and_listing_tasks_with_real_checks(project, monkeypatch):
+    from app.services import keywords
+    research = {"summary": {"local_leader": {"name": "Rival Rentals", "reviews": 400}}, "business": {"reviews": 40}, "gaps": {"listings": [{"domain": "justdial.com"}, {"domain": "sulekha.com"}]},
+                "you": {"link_sources": [{"domain": "www.justdial.com", "type": "directory"}]}}
+    monkeypatch.setattr(keywords, "competitor_research", lambda db, b: research)
+    monkeypatch.setattr(keywords, "competitor_ideas", lambda r: [])
+    monkeypatch.setattr(gc, "_crawl", lambda db, b: {})
+    db = SessionLocal()
+    try:
+        b = db.get(Business, project)
+        b.review_count = 40
+        db.commit()
+        found = {i["key"]: i for i in gc.issues(db, b, None)}
+        rev, lst = found["fix.comp.reviews"], found["fix.comp.listings"]
+        assert rev["severity"] == "serious" and rev["verify"] == {"type": "comp_reviews", "target": 130}  # 40 + a quarter of the 360 gap, not the leader's 400
+        assert gc.verify(db, b, rev["verify"], None, TODAY)["passed"] is False
+        b.review_count = 135
+        assert gc.verify(db, b, rev["verify"], None, TODAY)["passed"] is True
+        assert gc.verify(db, b, lst["verify"], None, TODAY)["passed"] is True  # listed on justdial (1 of 2): the research sees it
+    finally:
+        db.close()
