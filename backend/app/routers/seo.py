@@ -202,6 +202,24 @@ def current_positions(b: Business = Depends(get_business), db: Session = Depends
             "last_checked_at": max((x["last_checked_at"] for x in rows if x["last_checked_at"]), default=None)}
 
 
+@router.get("/device-positions")
+def device_positions(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Tracked keywords' Search Console position, impressions and clicks on desktop, mobile and tablet (28 days)."""
+    from ..services import google_rank  # noqa: PLC0415
+    tracked = [k.keyword for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)).order_by(Keyword.keyword))]
+    base = {"tracked": len(tracked), "rank_ready": _rank_ready(db, b)}
+    if not organic.host(b.website):
+        return {**base, "state": "no_website"}
+    if not tracked:
+        return {**base, "state": "no_keywords"}
+    if not base["rank_ready"]:
+        return {**base, "state": "needs_google"}
+    try:
+        return {**base, "state": "ok", **google_rank.device_positions(db, b, tracked)}
+    except google_rank.RankCheckError as exc:
+        return {**base, "state": "error", "message": str(exc)}
+
+
 @router.get("/position-landscape")
 def position_landscape(days: int = 30, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Visibility, estimated traffic, positions, movers, tags, competitors, SERP features, pages and cannibalization of the tracked

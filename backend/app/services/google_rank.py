@@ -75,3 +75,50 @@ def maps_results(b: Business, keyword: str, radius_m: float = 5000.0) -> list[di
 def maps_enabled() -> bool:
     from ..competitors import service
     return service.competitors_enabled()
+
+
+DEVICES = ("desktop", "mobile", "tablet")
+_device_cache: dict[tuple, tuple[float, dict]] = {}
+
+
+def device_positions(db: Session, b: Business, keywords: list[str], days: int = DAYS) -> dict[str, Any]:
+    """How the tracked keywords do on each device, from Search Console (the same 28-day average position, split by desktop / mobile / tablet).
+    {devices: {device: {keywords, impressions, clicks, ctr, position}}, keywords: {keyword: {device: position}}, days}. Cached for ten minutes."""
+    import time
+    host = host_of(b.website)
+    if not host:
+        raise RankCheckError("Add the project's website first: positions are read from its Search Console property.")
+    state, message, sc, site = gsc_access.search_console(db, b, host)
+    if state != "ok":
+        raise RankCheckError(message)
+    end = date.today() - timedelta(days=gsc.LAG_DAYS)
+    start = end - timedelta(days=days - 1)
+    key = (b.id, site, start, end, tuple(sorted(norm(k) for k in keywords)))
+    hit = _device_cache.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    try:
+        rows = sc.query(site, gsc._body(start, end, ["query", "device"], 25000, market.serp_country(b)))
+    except Exception as exc:  # noqa: BLE001
+        raise RankCheckError(str(exc)) from exc
+    wanted = {norm(k): k for k in keywords}
+    per_device: dict[str, dict[str, Any]] = {d: {"imp": 0.0, "pos": 0.0, "clicks": 0, "kws": set()} for d in DEVICES}
+    per_keyword: dict[str, dict[str, dict[str, float]]] = {}
+    for r in rows:
+        q, dev = norm((r.get("keys") or ["", ""])[0]), str((r.get("keys") or ["", ""])[1]).lower()
+        if q not in wanted or dev not in per_device:
+            continue
+        imp = float(r.get("impressions") or 0)
+        if imp <= 0:
+            continue
+        d = per_device[dev]
+        d["imp"] += imp
+        d["pos"] += float(r.get("position") or 0) * imp
+        d["clicks"] += int(r.get("clicks") or 0)
+        d["kws"].add(q)
+        per_keyword.setdefault(wanted[q], {})[dev] = {"position": round(float(r.get("position") or 0), 1), "impressions": int(imp), "clicks": int(r.get("clicks") or 0)}
+    devices = {dev: {"keywords": len(d["kws"]), "impressions": int(d["imp"]), "clicks": d["clicks"], "ctr": round(d["clicks"] / d["imp"] * 100, 2) if d["imp"] else None,
+                     "position": round(d["pos"] / d["imp"], 1) if d["imp"] else None} for dev, d in per_device.items()}
+    out = {"devices": devices, "keywords": per_keyword, "days": days, "country": market.serp_country(b)}
+    _device_cache[key] = (time.time(), out)
+    return out

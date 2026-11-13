@@ -125,3 +125,24 @@ def test_another_users_project_positions_are_not_visible(client):
     bid = a.post("/api/v1/businesses", json={"name": "Private Dental", "website": "https://private.example"}).json()["id"]
     assert a.get(f"/api/v1/businesses/{bid}/seo/current-positions").status_code == 200
     assert b.get(f"/api/v1/businesses/{bid}/seo/current-positions").status_code == 404
+
+
+def test_device_positions_split_search_console_by_desktop_mobile_tablet(client, google, monkeypatch):
+    from app.services import google_rank
+    bid = business(client)
+    link_google(bid)
+    client.put(f"/api/v1/businesses/{bid}/seo/track-campaign", json={"engines": ["google"], "device": "desktop", "location": "Pune, India", "language": "en", "keywords": ["dentist kesnand", "dental implants kesnand"]})
+    rows = [{"keys": ["dentist kesnand", "DESKTOP"], "clicks": 30, "impressions": 300, "position": 2.0}, {"keys": ["dentist kesnand", "MOBILE"], "clicks": 10, "impressions": 100, "position": 4.0},
+            {"keys": ["dentist kesnand", "TABLET"], "clicks": 0, "impressions": 0, "position": 9.0},          # no impressions: not counted
+            {"keys": ["dental implants kesnand", "MOBILE"], "clicks": 2, "impressions": 100, "position": 12.0}, {"keys": ["something else", "MOBILE"], "clicks": 9, "impressions": 900, "position": 1.0}]
+    monkeypatch.setattr(FakeSearchConsole, "query", lambda self, site, body: rows)
+    google_rank._device_cache.clear()
+    d = client.get(f"/api/v1/businesses/{bid}/seo/device-positions").json()
+    assert d["state"] == "ok" and d["days"] == 28
+    assert d["devices"]["desktop"] == {"keywords": 1, "impressions": 300, "clicks": 30, "ctr": 10.0, "position": 2.0}
+    assert d["devices"]["mobile"]["keywords"] == 2 and d["devices"]["mobile"]["impressions"] == 200 and d["devices"]["mobile"]["position"] == 8.0   # (4*100 + 12*100) / 200; a keyword that is not tracked is left out
+    assert d["devices"]["tablet"]["keywords"] == 0 and d["devices"]["tablet"]["position"] is None
+    assert d["keywords"]["dentist kesnand"] == {"desktop": {"position": 2.0, "impressions": 300, "clicks": 30}, "mobile": {"position": 4.0, "impressions": 100, "clicks": 10}}
+    noacct = business(client)
+    client.post(f"/api/v1/businesses/{noacct}/keywords", json=[{"keyword": "dentist kesnand"}])
+    assert client.get(f"/api/v1/businesses/{noacct}/seo/device-positions").json()["state"] == "needs_google"

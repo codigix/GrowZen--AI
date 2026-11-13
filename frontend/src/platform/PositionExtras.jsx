@@ -1,7 +1,7 @@
 import React from 'react';
-import { MapPin, Monitor, Smartphone, Copy, Printer, Plus, Trophy, Check, Globe } from 'lucide-react';
+import { MapPin, Monitor, Smartphone, Tablet, Copy, Printer, Plus, Trophy, Check, Globe } from 'lucide-react';
 import { Card, Badge, Button, useAction } from './SeoUi';
-import { api } from './seoApi';
+import { api, useApi } from './seoApi';
 
 export const SECTIONS = [['sec-landscape', 'Landscape'], ['sec-overview', 'Overview'], ['sec-distribution', 'Rankings Distribution'], ['sec-tags', 'Tags'], ['sec-pages', 'Pages'],
   ['sec-cannibal', 'Cannibalization'], ['sec-competitors', 'Competitors Discovery'], ['sec-devices', 'Devices & Locations'], ['sec-snippets', 'Featured Snippets']];
@@ -105,14 +105,66 @@ export function CompetitorsDiscovery({ d, b, onChanged }) {
   );
 }
 
-export function DevicesLocations({ d }) {
+const DEV = { desktop: ['Desktop', Monitor], mobile: ['Mobile', Smartphone], tablet: ['Tablet', Tablet] };
+const num = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
+
+/** Where and on which device the site is shown: Search Console's position, impressions and clicks per device, then every keyword on desktop vs mobile. */
+export function DevicesLocations({ d, b }) {
+  const dev = useApi(b ? `/businesses/${b.id}/seo/device-positions` : null);
+  const x = dev.data;
+  const rows = x?.state === 'ok' ? Object.entries(x.keywords || {}).map(([k, v]) => ({ keyword: k, ...v })).sort((p, q) => ((q.mobile?.impressions || 0) + (q.desktop?.impressions || 0)) - ((p.mobile?.impressions || 0) + (p.desktop?.impressions || 0))) : [];
+  const best = x?.state === 'ok' ? Object.entries(x.devices).filter(([, v]) => v.position != null).sort((p, q) => p[1].position - q[1].position)[0]?.[0] : null;
   return (
-    <Card title="Devices & locations" subtitle="Where and on which device positions are checked">
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div className="rounded border border-slate-200 p-4 flex items-center gap-3"><Monitor size={18} className="text-indigo-600" /><div className="flex-1"><div className="text-13 font-semibold text-slate-900">Desktop</div><div className="text-12 text-slate-500">{d.tracked} keyword{d.tracked !== 1 ? 's' : ''} checked</div></div><Badge tone="green">Active</Badge></div>
-        <div className="rounded border border-slate-200 p-4 flex items-center gap-3 opacity-60"><Smartphone size={18} className="text-slate-500" /><div className="flex-1"><div className="text-13 font-semibold text-slate-900">Mobile</div><div className="text-12 text-slate-500">Not tracked yet</div></div><Badge>Planned</Badge></div>
-        <div className="rounded border border-slate-200 p-4 flex items-center gap-3 sm:col-span-2"><MapPin size={18} className="text-indigo-600" /><div className="flex-1"><div className="text-13 font-semibold text-slate-900">{d.location || 'Google'}{d.country ? ` · ${d.country}` : ''}</div><div className="text-12 text-slate-500">The location Google results are read for. It follows the business's target market.</div></div><Badge tone="green">Active</Badge></div>
-      </div>
-    </Card>
+    <div className="space-y-4">
+      <Card title="Devices & locations" subtitle="How the site is shown on each device (Google Search Console, last 28 days) and where Google is read from">
+        {!x && !dev.error && <div className="h-24 rounded-lg bg-slate-100 animate-pulse" role="status" aria-busy="true" />}
+        {dev.error && <p className="text-13 text-red-600">{dev.error.message}</p>}
+        {x && x.state !== 'ok' && <p className="text-13 text-slate-600">{x.state === 'no_website' ? 'Add the project\'s website first.' : x.state === 'no_keywords' ? 'No keywords are tracked yet.' : x.state === 'needs_google' ? 'Link the Google account that owns this website to the project (Integrations) to read positions per device.' : x.message}</p>}
+        {x?.state === 'ok' && (
+          <div className="grid sm:grid-cols-3 gap-3">
+            {Object.entries(DEV).map(([id, [label, Icon]]) => {
+              const v = x.devices[id];
+              const on = v.keywords > 0;
+              return (
+                <div key={id} className={`rounded-xl border p-4 ${on ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50/60'}`}>
+                  <div className="flex items-center gap-2"><Icon size={18} className={on ? 'text-indigo-600' : 'text-slate-400'} /><span className="text-14 font-semibold text-slate-900">{label}</span>{best === id && <span className="ml-auto rounded-full bg-emerald-50 text-emerald-700 text-11 font-semibold px-2 py-0.5">best position</span>}</div>
+                  {on ? (
+                    <>
+                      <div className="mt-3 flex items-end gap-2"><span className="text-26 font-bold text-slate-900 tabular-nums leading-none">{v.position}</span><span className="text-12 text-slate-500 pb-0.5">average position</span></div>
+                      <dl className="mt-3 grid grid-cols-3 gap-2 text-12"><div><dt className="text-slate-500">Keywords</dt><dd className="font-semibold text-slate-800 tabular-nums">{v.keywords}</dd></div><div><dt className="text-slate-500">Impressions</dt><dd className="font-semibold text-slate-800 tabular-nums">{num(v.impressions)}</dd></div><div><dt className="text-slate-500">Clicks</dt><dd className="font-semibold text-slate-800 tabular-nums">{num(v.clicks)}{v.ctr != null && <span className="text-slate-400 font-normal"> · {v.ctr}%</span>}</dd></div></dl>
+                    </>
+                  ) : <p className="mt-3 text-12.5 text-slate-500">No impressions on {label.toLowerCase()} in the last 28 days.</p>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="mt-3 rounded-xl border border-slate-200 p-4 flex items-center gap-3"><MapPin size={18} className="text-indigo-600" /><div className="flex-1"><div className="text-13 font-semibold text-slate-900">{d?.location || 'Target market'}{x?.country ? ` · ${x.country}` : ''}</div><div className="text-12.5 text-slate-500">Search Console positions are for searches from this country; Maps results are read around the business's pin.</div></div><span className="rounded-full bg-emerald-50 text-emerald-700 text-11.5 font-semibold px-2.5 py-1">Active</span></div>
+      </Card>
+      {rows.length > 0 && (
+        <Card pad={false} title="Keywords by device" subtitle="Average position on desktop and on mobile for every tracked keyword that was shown">
+          <div className="overflow-x-auto">
+            <table className="w-full text-13 min-w-[720px]">
+              <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2.5 text-left font-semibold">Keyword</th><th className="px-4 py-2.5 text-right font-semibold">Desktop</th><th className="px-4 py-2.5 text-right font-semibold">Mobile</th><th className="px-4 py-2.5 text-right font-semibold">Difference</th><th className="px-4 py-2.5 text-right font-semibold">Impressions</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.map(r => {
+                  const dp = r.desktop?.position, mp = r.mobile?.position;
+                  const diff = dp != null && mp != null ? Math.round((mp - dp) * 10) / 10 : null; // + means mobile is lower on the page
+                  return (
+                    <tr key={r.keyword} className="hover:bg-slate-50">
+                      <td className="px-4 py-2.5 font-semibold text-slate-900">{r.keyword}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{dp ?? <span className="text-slate-300">—</span>}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{mp ?? <span className="text-slate-300">—</span>}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{diff == null ? <span className="text-slate-300">—</span> : diff === 0 ? <span className="text-slate-400">same</span> : <span className={diff > 0 ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'} title={diff > 0 ? 'Lower on mobile' : 'Higher on mobile'}>{diff > 0 ? '+' : ''}{diff}</span>}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{num((r.desktop?.impressions || 0) + (r.mobile?.impressions || 0) + (r.tablet?.impressions || 0))}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
   );
 }

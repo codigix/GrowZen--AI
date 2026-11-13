@@ -291,7 +291,7 @@ export default function PositionLandscape({ b, tab: forced, onTab }) {
             {tab === 'pages' && <PagesTab b={b} />}
             {tab === 'cannibal' && <Cannibalization d={d} b={b} />}
             {tab === 'competitors' && <PositionCompetitors d={d} b={b} onChanged={() => data.reload(true)} />}
-            {tab === 'devices' && <DevicesLocations d={d} />}
+            {tab === 'devices' && <DevicesLocations d={d} b={b} />}
             {tab === 'snippets' && <Snippets d={d} />}
           </div>)
           : (
