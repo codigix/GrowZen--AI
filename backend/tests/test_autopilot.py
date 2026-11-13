@@ -301,3 +301,30 @@ def test_a_draft_with_a_template_placeholder_is_never_offered(project, monkeypat
         assert ap.plan_posts(db, b)["made"] == 0 and db.query(AgentTask).filter_by(business_id=project).count() == 0
     finally:
         db.close()
+
+
+def test_keyword_suggestions_wait_for_approval_and_approving_tracks_the_keyword(project, monkeypatch):
+    from app.models import Keyword
+    from app.services import growth_content as gc
+    monkeypatch.setattr(gc, "_crawl", lambda db, b: {"pages": [{"url": "https://rental.example/", "status": 200, "title": "Rental Co | Designer Lehenga Hire", "meta_description": "Lehenga hire", "h1": "Designer lehenga hire in Pune"}]})
+    monkeypatch.setattr(gc, "_gap_ideas", lambda db, b, have: [{"keyword": "bridal lehenga rental pune", "reason": "rivals rank for it"}])
+    db = SessionLocal()
+    try:
+        b = db.get(Business, project)
+        db.add(Keyword(business_id=project, keyword="clothes market in pune", tracked=True))
+        db.commit()
+        out = ap.plan_keywords(db, b)
+        assert out["made"] >= 2
+        tasks = db.query(AgentTask).filter_by(business_id=project, kind="keyword_add").all()
+        assert all(t.status == "pending" and t.requires_approval for t in tasks)
+        assert not db.query(Keyword).filter_by(business_id=project, keyword="bridal lehenga rental pune").count()  # nothing is tracked yet
+        t = next(t for t in tasks if t.detail["keyword"] == "bridal lehenga rental pune")
+        ap.approve(db, b, t, "owner")
+        assert db.query(Keyword).filter_by(business_id=project, keyword="bridal lehenga rental pune", tracked=True).count() == 1 and db.get(AgentTask, t.id).status == "applied"
+        ap.approve(db, b, next(x for x in tasks if x.id != t.id), "owner") if False else None
+        rej = next(x for x in tasks if x.id != t.id)
+        rej.status = "rejected"
+        db.commit()
+        assert ap.plan_keywords(db, b)["made"] == 0 or rej.detail["keyword"] not in [x.detail["keyword"] for x in db.query(AgentTask).filter_by(business_id=project, kind="keyword_add", status="pending")]  # a rejected suggestion is not offered again
+    finally:
+        db.close()

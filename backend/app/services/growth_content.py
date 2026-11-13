@@ -221,12 +221,13 @@ def _gap_ideas(db: Session, b: Business, have: set[str]) -> list[dict[str, Any]]
     from . import keywords
     ideas = keywords.competitor_ideas(keywords.competitor_research(db, b))
     own = surfaces_text(db, b, None, _crawl(db, b))
-    mine = own["profile"] | own["website"] | {_norm(w) for w in _words(f"{b.name} {b.city or ''}")}
-    generic = {"local", "search", "engine", "directory", "listing", "service", "business", "near", "company"}
+    mine = own["profile"] | own["website"] | own["services"]
+    generic = {"local", "search", "engine", "directory", "listing", "service", "business", "near", "company", "rental", "rent", "hire", "subscription", "self", "drive", "online", "shop", "store", "market", "cheap", "best", "price", "book", "booking"}
+    place = {_norm(w) for w in _words(f"{b.city or ''} {b.area or ''}")}
 
     def relevant(kw: str) -> bool:  # a rival's page can target things that are not what this business sells: keep only searches that share a real word with the business
-        shared = [w for w in core(kw) if w in mine and w not in generic]
-        return bool(shared)
+        shared = [w for w in core(kw) if w in mine and w not in generic and w not in place]
+        return bool(shared)  # a real product or service word, not "rental" or the city: a car-rental rival's keyword shares only those
     return [i for i in ideas if i["keyword"] not in have and 1 <= len(_words(i["keyword"])) <= 6 and "'" not in i["keyword"] and relevant(i["keyword"])][:8]
 
 

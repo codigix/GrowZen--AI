@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { AutopilotPanel } from './AutopilotPanels';
 import { Link } from 'react-router-dom';
 import {
   Search, Plus, Sparkles, FileText, Trash2, Loader2, MapPin, Globe, Users, X, Star, CheckCircle2, CircleDashed, AlertTriangle, Copy, Check, BarChart2,
@@ -1143,6 +1144,7 @@ export default function KeywordResearchPage() {
       {(b) => (
         <>
           <Tabs value={tab} onChange={setTab} tabs={[{ id: 'discover', label: 'Discover' }, { id: 'planner', label: 'Google Planner' }, { id: 'explorer', label: 'Keyword Explorer' }, { id: 'tracked', label: 'Tracked & pages' }, { id: 'topics', label: 'Topics' }]} />
+          {(tab === 'discover' || tab === 'tracked') && <div className="mb-5"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
           <Keywords key={b.id} b={b} tab={tab} />
         </>
       )}

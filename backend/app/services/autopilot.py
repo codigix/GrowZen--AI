@@ -25,10 +25,10 @@ from .activity import log
 
 logger = logging.getLogger("seo.autopilot")
 
-GATED_KINDS = ("gbp_post", "review_reply", "profile_edit", "gbp_photo")
+GATED_KINDS = ("gbp_post", "review_reply", "profile_edit", "gbp_photo", "keyword_add")
 DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 DEFAULTS = {"enabled": False, "posts_per_week": 3, "post_days": ["mon", "wed", "fri"], "post_time": "10:00", "replies": True, "profile": True, "photos_per_week": 2,
-            "photo_days": ["tue", "sat"], "photo_time": "12:00", "language": "English"}
+            "photo_days": ["tue", "sat"], "photo_time": "12:00", "keywords": True, "language": "English"}
 MAX_PENDING_POSTS = 6
 MAX_PENDING_PHOTOS = 12
 RULE = "Nothing is posted, replied, uploaded or changed on Google until you approve that exact item."
@@ -57,7 +57,7 @@ def save_settings(db: Session, b: Business, body: dict[str, Any]) -> dict[str, A
     cur = settings(b)
     if "enabled" in body and body["enabled"] is not None:
         cur["enabled"] = bool(body["enabled"])
-    for k in ("replies", "profile"):
+    for k in ("replies", "profile", "keywords"):
         if body.get(k) is not None:
             cur[k] = bool(body[k])
     for k, hi in (("posts_per_week", 3), ("photos_per_week", 3)):  # three a week: more looks like spam to Google and to customers
@@ -211,6 +211,55 @@ def draft_replies(db: Session, b: Business) -> dict[str, Any]:
         return {"made": 0, "note": "AI is not set up on this server, so no reply can be written."}
     n = agent.draft_review_replies(db, b, st["language"])
     return {"made": n, "note": None}
+
+
+# ------------------------------------------------------------------------------------------------------------------- keyword suggestions
+def plan_keywords(db: Session, b: Business) -> dict[str, Any]:
+    """Suggest up to 5 searches to track: the ones the website itself is about, and the ones competitors win that match what this business sells. Each waits for approval (approve = track it)."""
+    if not settings(b)["keywords"]:
+        return {"made": 0, "note": "Keyword suggestions are switched off in the settings."}
+    from . import growth_content as gc
+    from . import growth_metrics
+    from ..models import Keyword
+    waiting = _count_pending(db, b, "keyword_add")
+    if waiting >= 5:
+        return {"made": 0, "note": f"{waiting} keyword suggestions already wait for you."}
+    rows = gc.tracked(db, b)
+    have = {k.keyword for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id))}
+    asked = {(t.detail or {}).get("keyword") for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.kind == "keyword_add"))}  # a rejected suggestion is not offered again
+    try:
+        report = growth_metrics._latest_xray(db, b)[0]
+    except Exception:  # noqa: BLE001
+        report = None
+    found: list[tuple[str, str]] = [(k, "Your website is about this, but none of your tracked keywords uses these words.") for k in gc.site_phrases(b, report, gc._crawl(db, b), rows)]
+    try:
+        found += [(g["keyword"], g["reason"]) for g in gc._gap_ideas(db, b, have)]
+    except Exception:  # noqa: BLE001 - competitor research may not exist yet
+        pass
+    made = 0
+    for kw, why in found:
+        kw = " ".join(kw.lower().split())
+        if not kw or kw in have or kw in asked or made >= 5 - waiting:
+            continue
+        db.add(AgentTask(business_id=b.id, agent="seo", kind="keyword_add", title=f"Track “{kw}”", impact="Low", requires_approval=True, detail={"source": "autopilot", "keyword": kw, "reason": why}))
+        asked.add(kw)
+        made += 1
+    db.commit()
+    return {"made": made, "note": None if made else "No new keyword suggestions right now."}
+
+
+def apply_keyword(db: Session, b: Business, task: AgentTask) -> dict[str, Any]:
+    from ..models import Keyword
+    from .providers.base import intent_of
+    kw = " ".join(str((task.detail or {}).get("keyword") or "").lower().split())
+    if not kw:
+        raise AutopilotError("There is no keyword to track.")
+    row = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == kw))
+    if row is None:
+        db.add(Keyword(business_id=b.id, keyword=kw, tracked=True, intent=intent_of(kw)))
+    else:
+        row.tracked = True
+    return {"tracked": kw}
 
 
 # ------------------------------------------------------------------------------------------------------------------- the profile rewrite
@@ -431,10 +480,11 @@ def run_job(db: Session, b: Business) -> dict[str, Any]:
     out["posts"] = plan_posts(db, b)
     out["replies"] = draft_replies(db, b)
     out["profile"] = propose_profile(db, b)
+    out["keywords"] = plan_keywords(db, b) if datetime.now(timezone.utc).weekday() == 0 or not db.scalar(select(AgentTask.id).where(AgentTask.business_id == b.id, AgentTask.kind == "keyword_add")) else {"made": 0}
     made = sum(int(v.get("made") or 0) for v in out.values() if isinstance(v, dict))
     if made:
         from ..models import Notification
         db.add(Notification(business_id=b.id, owner_id=b.owner_id, kind="autopilot", title=f"{made} new item{'s' if made != 1 else ''} wait for your approval",
-                            body="Autopilot prepared posts, replies or profile changes. Nothing is published until you approve it.", link="/autopilot"))
+                            body="Autopilot prepared posts, replies or profile changes. Nothing is published until you approve it.", link="/google-posts"))
     db.commit()
     return out

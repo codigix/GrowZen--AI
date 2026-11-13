@@ -4,6 +4,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Save, Store, FileText, ListChecks, Tags, Navigation, CalendarCheck, Clock, ChevronDown, Upload } from 'lucide-react';
 import { SeoShell, Drawer, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useDoubleConfirm, useSeoBusiness, refreshBusinesses, useUrlTab, SkChart, SkList, SkLines, SkScore, SkCard } from './SeoUi';
 import GbpLive from './GbpLive';
+import { AutopilotPanel } from './AutopilotPanels';
 import { BusinessTraffic } from './TrafficPage';
 import AccessGate from './AccessGate';
 import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePosts, isLinked, readBase64 } from './GbpEditors';
@@ -791,7 +792,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
               <SectionHead title="Business Profile" subtitle="Name, categories, address, contact, hours, services, attributes and verification" sources={['google', 'manual']} />
               <Tabs value={sub} onChange={setSub} tabs={[{ id: 'live', label: 'Live from Google' }, { id: 'edit', label: 'Edit profile' }, { id: 'hours', label: 'Hours' }, { id: 'faq', label: 'Q&A / FAQs' }]} />
               {sub === 'live' && <AccessGate b={b} kind="gmb"><GbpLive b={b} toast={toast} onConnect={onConnect} /></AccessGate>}
-              {sub === 'edit' && <div className="space-y-4"><ProfileTab b={b} toast={toast} /><MarketCard b={b} /></div>}
+              {sub === 'edit' && <div className="space-y-4"><AutopilotPanel bid={b.id} feature="profile" /><ProfileTab b={b} toast={toast} /><MarketCard b={b} /></div>}
               {sub === 'hours' && <HoursTab b={b} toast={toast} />}
               {sub === 'faq' && <FaqTab b={b} toast={toast} />}
             </>
@@ -808,9 +809,9 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
               <BusinessTraffic b={b} initialView={trafficView} />
             </>
           )}
-          {section === 'reviews' && <AccessGate b={b} kind="gmb"><ReviewsSection b={b} toast={toast} /></AccessGate>}
-          {section === 'posts' && <><SectionHead title="Posts & Content" subtitle="What's New, Offer and Event posts with approval before publishing" sources={['google', 'ai']} /><AccessGate b={b} kind="gmb"><PostsTab b={b} toast={toast} /></AccessGate></>}
-          {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><AccessGate b={b} kind="gmb"><PhotosTab b={b} toast={toast} /></AccessGate></>}
+          {section === 'reviews' && <AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="replies" /><ReviewsSection b={b} toast={toast} /></div></AccessGate>}
+          {section === 'posts' && <><SectionHead title="Posts & Content" subtitle="What's New, Offer and Event posts with approval before publishing" sources={['google', 'ai']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="posts" /><PostsTab b={b} toast={toast} /></div></AccessGate></>}
+          {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="photos" /><PhotosTab b={b} toast={toast} /></div></AccessGate></>}
           {section === 'competitors' && <CompetitorSection b={b} />}
           {section === 'local-seo' && <LocalSeoSection b={b} />}
           {section === 'reports' && <GbpReportsSection b={b} toast={toast} />}

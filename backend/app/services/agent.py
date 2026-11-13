@@ -150,6 +150,9 @@ def apply(db: Session, task: AgentTask, actor: str = "agent") -> AgentTask:
                 task.result = {"published": True}
             else:
                 task.result = {"published": False, "note": "Not linked to Google."}
+        elif task.kind == "keyword_add" and (task.detail or {}).get("source") == "autopilot":
+            from . import autopilot
+            task.result = autopilot.apply_keyword(db, b, task)
         elif task.kind == "gbp_photo":
             from . import autopilot
             task.result = autopilot.apply_photo(db, b, task)

@@ -55,6 +55,8 @@ def _item(db: Session, b: Business, t: AgentTask) -> dict[str, Any]:
         out |= {"text": (r.reply_text if r and r.reply_text else d.get("text")) or "", "review": {"author": r.author, "rating": r.rating, "text": r.body, "at": str(when) if when else None} if r else None}
     elif t.kind == "profile_edit":
         out |= {"changes": d.get("changes"), "before": d.get("before"), "added_services": d.get("added_services"), "editable": bool(d.get("changes"))}
+    elif t.kind == "keyword_add":
+        out |= {"keyword": d.get("keyword"), "reason": d.get("reason")}
     elif t.kind == "gbp_photo":
         out |= {"category": d.get("category"), "name": d.get("name"), "width": d.get("width"), "height": d.get("height"), "preview": f"/businesses/{b.id}/autopilot/photos/{t.id}"}
     return out
@@ -70,7 +72,7 @@ def _results(db: Session, b: Business) -> dict[str, Any]:
         return {"calls": int(row[0]), "directions": int(row[1]), "website_clicks": int(row[2]), "views": int(row[3])}
     now_, before = total(a0, today), total(p0, a0 - timedelta(days=1))
     since = datetime.now(timezone.utc) - timedelta(days=30)
-    by = {"gbp_post": 0, "review_reply": 0, "gbp_photo": 0, "profile_edit": 0}
+    by = {"gbp_post": 0, "review_reply": 0, "gbp_photo": 0, "profile_edit": 0, "keyword_add": 0}
     for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.status == "applied", AgentTask.kind.in_(ap.GATED_KINDS), AgentTask.applied_at >= since)):
         by[t.kind] = by.get(t.kind, 0) + 1
     return {"period_days": 30, "now": now_, "before": before, "sent": by, "has_insights": any(now_.values()) or any(before.values()),
@@ -82,7 +84,7 @@ def overview(b: Business = Depends(get_business), db: Session = Depends(get_db))
     from ..services import ai
     rows = list(db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.kind.in_(ap.GATED_KINDS)).order_by(AgentTask.id.desc()).limit(300)))
     items = [_item(db, b, t) for t in rows]
-    order = {"gbp_post": 0, "review_reply": 1, "profile_edit": 2, "gbp_photo": 3}
+    order = {"gbp_post": 0, "review_reply": 1, "profile_edit": 2, "gbp_photo": 3, "keyword_add": 4}
     inbox = sorted([i for i in items if i["status"] == "pending"], key=lambda i: (order.get(i["kind"], 9), i["publish_at"] or "9"))
     scheduled = sorted([i for i in items if i["status"] == "scheduled"], key=lambda i: i["publish_at"] or "")
     recent = [i for i in items if i["status"] in ("applied", "failed", "rejected", "handoff")][:25]
@@ -102,6 +104,7 @@ class SettingsIn(BaseModel):
     photos_per_week: int | None = Field(default=None, ge=0, le=3)
     photo_days: list[str] | None = None
     photo_time: str | None = Field(default=None, max_length=5)
+    keywords: bool | None = None
     language: str | None = Field(default=None, max_length=30)
 
 
@@ -122,7 +125,7 @@ def put_settings(body: SettingsIn, b: Business = Depends(get_business), db: Sess
 
 
 class GenerateIn(BaseModel):
-    what: Literal["posts", "replies", "profile", "all"] = "all"
+    what: Literal["posts", "replies", "profile", "keywords", "all"] = "all"
 
 
 @router.post("/generate")
@@ -135,6 +138,8 @@ def generate(body: GenerateIn, b: Business = Depends(get_business), db: Session 
         out["posts"] = ap.plan_posts(db, b)
     if body.what in ("replies", "all"):
         out["replies"] = ap.draft_replies(db, b)
+    if body.what in ("keywords", "all"):
+        out["keywords"] = ap.plan_keywords(db, b)
     if body.what in ("profile", "all"):
         out["profile"] = ap.propose_profile(db, b, force=body.what == "profile")
     log(db, user.name, "autopilot_generate", b.id, what=body.what)
