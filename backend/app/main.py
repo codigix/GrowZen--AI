@@ -22,6 +22,7 @@ from keyword_explorer.api.routes.keywords import router as keyword_explorer_rout
 from .competitors import audit_router as competitor_audits, intel_router as competitor_research, router as competitors
 from .auth import current_user
 from .backlinks import router as backlinks
+from .backlinks.crawler_api import router as crawler_router
 from .backlinks.router import lookup_router, outcomes_router, watch_router
 from .backlink_service import lifecycle as backlink_service
 from .backlink_service.api import router as backlink_service_router
@@ -112,6 +113,7 @@ for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant,
     app.include_router(r.router, prefix=settings.api_prefix)
 
 app.include_router(lookup_router, prefix=settings.api_prefix)
+app.include_router(crawler_router, prefix=settings.api_prefix)
 app.include_router(outcomes_router, prefix=settings.api_prefix)
 app.include_router(watch_router, prefix=settings.api_prefix)
 app.include_router(backlink_service_router, prefix=settings.api_prefix)

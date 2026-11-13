@@ -8,6 +8,7 @@ from datetime import timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
+from ..config import get_settings
 from ..db import utcnow
 from ..models import Business
 from . import engine, finder, frontier, renderer, stop, sync, tasks
@@ -20,6 +21,10 @@ RECRAWL_AFTER = timedelta(hours=24)
 TIME_BUDGET_SECONDS = 150
 RENDERS_PER_RUN = 10  # pages one run may load in a real browser
 LIMITS = {"pages_per_run": (5, 500), "interval_minutes": (5, 1440), "max_hops": (0, 3)}
+
+
+def crawler_mode() -> bool:
+    return get_settings().crawler_enabled
 
 
 def get_config(db: Session, business_id: int) -> BiBotConfig:
@@ -76,7 +81,11 @@ def seed_targets(db: Session, business_id: int) -> int:
 
 
 def run_cycle(db: Session, fetcher: engine.PageFetcher, business_id: int, budget_seconds: float = TIME_BUDGET_SECONDS, clock=time.monotonic, sleep=time.sleep) -> dict:
-    """One bounded exploration run. Safe to call from a scheduler or a request thread; returns what it did."""
+    """One bounded exploration run. Safe to call from a scheduler or a request thread; returns what it did.
+    When our own backlink crawler is set up (CRAWLER_URL + CRAWLER_API_KEY) the run is a sync of its links instead: no page is crawled here."""
+    if crawler_mode():
+        from . import crawler_sync
+        return crawler_sync.run_cycle(db, business_id)
     cfg = get_config(db, business_id)
     if is_running(cfg):
         return {"skipped": "already running"}
@@ -201,6 +210,7 @@ def status(db: Session, business_id: int) -> dict:
     recent =db.execute(select(CrawlAttempt.url, CrawlAttempt.purpose, CrawlAttempt.http_status, CrawlAttempt.error_code, CrawlAttempt.started_at)
                         .where(CrawlAttempt.purpose != "robots").order_by(CrawlAttempt.id.desc()).limit(15)).all()
     return {
+        "source": "crawler" if crawler_mode() else "local",
         "config": {"enabled": cfg.enabled, "pages_per_run": cfg.pages_per_run, "interval_minutes": cfg.interval_minutes, "max_hops": cfg.max_hops, "render_js": bool(cfg.render_js)},
         "render_available": renderer.available(),
         "running": is_running(cfg), "last_run_at": cfg.last_run_at, "last_stats": last,

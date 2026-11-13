@@ -11,6 +11,7 @@ from sqlalchemy import case, distinct, false, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from ..auth import User, current_user
+from ..config import get_settings
 from ..db import get_db, utcnow
 from ..deps import get_business, in_background, my_business_ids
 from ..models import Business
@@ -150,24 +151,23 @@ def search(b: Business = Depends(get_business), db: Session = Depends(get_db), t
 lookup_router = APIRouter(prefix="/backlink-intel", tags=["backlinks"], dependencies=[Depends(current_user)])
 
 
-def _ahrefs_fallback(term: str, background: BackgroundTasks) -> dict | None:
-    """When nothing is stored locally for a domain-like query, fall back to Fortress/Ahrefs: reuse a cached report, or queue a live lookup
-    (run in the background) and tell the caller to check back. Returns None if the term is not a usable domain or the Ahrefs service is not
-    running in this process."""
-    from ..backlink_service import ahrefs as ahrefs_service, lifecycle as backlink_lifecycle
+def _crawler_fallback(term: str) -> dict | None:
+    """When nothing is stored locally for a domain-like query, ask our own deployed crawler. Returns None when the crawler is not set up
+    or the term is not a usable domain; if it cannot be reached the reason is returned, never invented data."""
+    from ..services import crawler_client
 
-    bdb = backlink_lifecycle.state.db
-    if bdb is None:
+    if not get_settings().crawler_enabled:
         return None
     try:
-        domain = ahrefs_service.normalize_domain(term)
+        domain = crawler_client.normalize_domain(term)
     except ValueError:
         return None
-    report, kind = ahrefs_service.request_report(bdb, domain, "subdomains")
-    if kind == "queued":
-        background.add_task(ahrefs_service.run_report, bdb, report.id)
-    view = ahrefs_service.report_view(bdb, report.id)
-    return {"state": kind, **(view or {})}
+    try:
+        r = crawler_client.backlinks(domain, limit=25)
+    except crawler_client.CrawlerError as exc:
+        return {"state": "failed", "domain": domain, "error": str(exc)}
+    return {"state": "done", "domain": domain, "status": r.get("status"), "message": r.get("message"), "total_backlinks": r.get("total_backlinks", 0),
+            "total_referring_domains": r.get("total_referring_domains", 0), "backlinks": r.get("backlinks", [])}
 
 
 @lookup_router.get("/lookup")
@@ -178,8 +178,8 @@ def lookup_backlinks(background: BackgroundTasks,
     """Search every backlink stored in the database (admins: all businesses; everyone else: only links to the domains their own projects track) by domain, URL or word with fuzzy matching: `codigix` returns the
     best-matching backlinks to or from codigix.co, codigixinfotech.com, blog.codigix.co and so on. Each result says whether it is `inbound` (the link
     points at what you searched for) or `outbound` (it comes from it), and inbound results come first. Leave `q` empty or use `*` to list every backlink.
-    Reads the database only, except when a domain or URL query has no stored matches: then it also starts (or reuses) a live Ahrefs lookup via
-    Fortress for that domain and returns its state/result as `ahrefs_fallback`."""
+    Reads the database only, except when a domain or URL query has no stored matches: then it asks our own backlink crawler for that domain
+    and returns the answer as `crawler_fallback`."""
     list_all = q.strip() in ("", "*")
     pq = None
     if not list_all:
@@ -263,12 +263,12 @@ def lookup_backlinks(background: BackgroundTasks,
         data.append(_backlink_out(bl, src, sd) | {"target_domain": target_domain, "direction": direction, "matched_on": on, "match_score": score})
     summary["returned"] = len(data)
 
-    ahrefs_fallback = None
+    crawler_fallback = None
     if not list_all and not data and pq.kind in ("domain", "url"):
         try:
-            ahrefs_fallback = _ahrefs_fallback(pq.term, background)
+            crawler_fallback = _crawler_fallback(pq.term)
         except Exception:  # noqa: BLE001 - the fallback must never break a search that otherwise succeeded
-            log.exception("Ahrefs fallback for backlink lookup %r failed", q)
+            log.exception("Crawler fallback for backlink lookup %r failed", q)
 
     def _counts(col, found: dict[str, int]) -> list[dict]:
         if not found:
@@ -287,7 +287,7 @@ def lookup_backlinks(background: BackgroundTasks,
     if len(data) > 50:
         print(f"[backlink lookup] ... and {len(data) - 50} more in the response", flush=True)
     return {"query": q, "interpreted_as": {"type": "all" if list_all else pq.kind, "term": None if list_all else pq.term, "path": None if list_all else (pq.path or None)},
-            "summary": summary, "matched_domains": {"as_target": as_target, "as_source": as_source}, "data": data, "ahrefs_fallback": ahrefs_fallback}
+            "summary": summary, "matched_domains": {"as_target": as_target, "as_source": as_source}, "data": data, "crawler_fallback": crawler_fallback}
 
 
 def _one(db: Session, b: Business, backlink_id: int):

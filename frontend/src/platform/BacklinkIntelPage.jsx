@@ -126,65 +126,52 @@ function Explorer({ base, targets }) {
 const DIRECTION_TONE = { inbound: 'green', outbound: 'blue', other: 'gray' };
 const DIRECTION_LABEL = { inbound: 'Links to it', outbound: 'Links from it', other: 'Other match' };
 
-// Shown when no stored backlink matches a domain/URL query: the backend starts (or reuses) a live Ahrefs lookup via Fortress and we show its state.
-function AhrefsFallback({ query, af }) {
-  if (!af) return <Empty>No stored backlinks match “{query}”.</Empty>;
-  if (af.state === 'queued' || af.state === 'in_progress' || af.status === 'queued' || af.status === 'running') {
+// Shown when no stored backlink matches a domain/URL query: the backend asks our own backlink crawler and we show its answer.
+function CrawlerFallback({ query, cf }) {
+  if (!cf) return <Empty>No stored backlinks match “{query}”.</Empty>;
+  if (cf.state === 'failed') {
     return (
       <div className="py-6 text-center">
-        <Loader2 size={16} className="inline-block animate-spin text-indigo-500 mb-2" />
-        <div className="text-13 text-gray-700">No stored backlinks for “{query}” yet. Looking it up live on Ahrefs now…</div>
-        <div className="text-12 text-gray-500 mt-1">This takes about 30-120 seconds; the search refreshes itself.</div>
+        <div className="text-13 text-gray-700">No stored backlinks for “{query}”, and our backlink crawler could not answer.</div>
+        <div className="text-12 text-gray-500 mt-1 break-all">{cf.error}</div>
       </div>
     );
   }
-  if (af.status === 'failed') {
-    return (
-      <div className="py-6 text-center">
-        <div className="text-13 text-gray-700">No stored backlinks for “{query}”, and the live Ahrefs lookup failed.</div>
-        <div className="text-12 text-gray-500 mt-1 break-all">{af.error}</div>
+  if (!cf.backlinks?.length) return <Empty>Our backlink crawler has not found any link to {cf.domain} yet. It keeps exploring, so check back later.</Empty>;
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <Badge tone="blue">From our backlink crawler</Badge>
+        <span className="text-12 text-gray-500">{cf.total_backlinks} backlink(s) from {cf.total_referring_domains} domain(s) to {cf.domain}; the first {cf.backlinks.length} are shown.</span>
       </div>
-    );
-  }
-  if (af.status === 'done') {
-    return (
-      <div>
-        <div className="flex items-center gap-2 mb-2">
-          <Badge tone="blue">From Ahrefs (live lookup)</Badge>
-          <span className="text-12 text-gray-500">No stored backlinks for “{query}”; here is Ahrefs' public report for {af.domain}.</span>
-        </div>
-        <div className="flex flex-wrap gap-4 mb-3 text-13">
-          {af.domain_rating != null && <div><span className="text-gray-500">Domain rating </span><b className="text-indigo-600">{af.domain_rating}</b></div>}
-          {af.backlinks && <div><span className="text-gray-500">Backlinks </span><b className="text-indigo-600">{af.backlinks.value}</b> <span className="text-gray-400">({af.backlinks.dofollow} dofollow)</span></div>}
-          {af.linking_websites && <div><span className="text-gray-500">Linking websites </span><b className="text-indigo-600">{af.linking_websites.value}</b> <span className="text-gray-400">({af.linking_websites.dofollow} dofollow)</span></div>}
-        </div>
-        {!af.referring_pages?.length ? <Empty>Ahrefs returned no referring pages.</Empty> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-13">
-              <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Referring page</Th><Th>Anchor</Th><Th>Target</Th><Th right>DR</Th></tr></thead>
-              <tbody className="divide-y divide-gray-100">
-                {af.referring_pages.map((p, i) => (
-                  <tr key={i}>
-                    <td className="p-2 max-w-[280px] truncate" title={p.referring_page_title}>
-                      {p.referring_page_url ? <a className="text-indigo-600 hover:underline" href={p.referring_page_url} target="_blank" rel="noreferrer noopener nofollow">{p.referring_page_url.replace(/^https?:\/\//, '')}</a> : p.referring_page_title || '—'}
-                    </td>
-                    <td className="p-2 max-w-[200px] truncate text-gray-700" title={p.anchor_text || ''}>{p.anchor_text || '—'}</td>
-                    <td className="p-2 max-w-[220px] truncate text-gray-600" title={p.target_url || ''}>{(p.target_url || '').replace(/^https?:\/\//, '') || '—'}</td>
-                    <td className="p-2 text-right tabular-nums">{p.dr || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    );
-  }
-  return <Empty>No stored backlinks match “{query}”.</Empty>;
+      <CrawlerLinks rows={cf.backlinks} />
+    </div>
+  );
+}
+
+function CrawlerLinks({ rows }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-13">
+        <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Referring page</Th><Th>Anchor</Th><Th>Target</Th><Th>Status</Th><Th>Last checked</Th></tr></thead>
+        <tbody className="divide-y divide-gray-100">
+          {rows.map((p, i) => (
+            <tr key={`${i}|${p.source_url}|${p.destination_url}`}>
+              <td className="p-2 max-w-[320px]"><a className="block truncate text-indigo-600 hover:underline" title={p.source_url} href={p.source_url} target="_blank" rel="noreferrer noopener nofollow">{p.source_url.replace(/^https?:\/\//, '')}</a></td>
+              <td className="p-2 max-w-[200px] truncate text-gray-700" title={p.anchor_text || ''}>{p.anchor_text || '—'}</td>
+              <td className="p-2 max-w-[240px] truncate text-12 text-gray-600" title={p.destination_url}>{(p.destination_url || '').replace(/^https?:\/\//, '')}</td>
+              <td className="p-2"><Badge tone={p.link_status === 'verified' ? 'green' : 'gray'}>{p.link_status || '—'}</Badge>{p.rel && <span className="ml-1 text-12 text-gray-500">{String(p.rel)}</span>}</td>
+              <td className="p-2 text-12 text-gray-500">{p.last_verified ? fmtDateTime(p.last_verified) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 // GET /backlink-intel/lookup: fuzzy search by domain, URL or word over every backlink stored (all projects, not only this one). Falls back to a
-// live Ahrefs lookup via Fortress when a domain/URL query has no stored matches.
+// our own backlink crawler when a domain/URL query has no stored matches.
 function Lookup() {
   const fromLink = new URLSearchParams(window.location.search).get('q') || ''; // ?q=domain opens the search already filled in and run
   const [q, setQ] = useState(fromLink);
@@ -199,8 +186,6 @@ function Lookup() {
   const s = res?.summary;
   const matched = res ? [...(res.matched_domains?.as_target || []), ...(res.matched_domains?.as_source || [])] : [];
   const domains = [...new Map(matched.map(m => [m.domain, m])).values()].slice(0, 12);
-  const af = res?.ahrefs_fallback;
-  usePoll(() => search(), Boolean(af && ['queued', 'in_progress', 'running'].includes(af.state)), 5000);
   return (
     <Card className="mb-4" title="Search all backlinks" subtitle="Find links by a domain, URL or word (typos allowed): codigix finds codigix.co and codigixinfotech.com. Searches every project's stored backlinks; leave empty or use * to list everything.">
       <form className="flex flex-wrap gap-2 mb-3" onSubmit={search}>
@@ -219,7 +204,7 @@ function Lookup() {
           {domains.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-3">{domains.map(m => <Badge key={m.domain} tone={m.score === 100 ? 'green' : m.score >= 92 ? 'blue' : 'gray'}>{m.domain} · {m.backlinks}</Badge>)}</div>
           )}
-          {res.data.length === 0 ? <AhrefsFallback query={res.query} af={af} /> : (
+          {res.data.length === 0 ? <CrawlerFallback query={res.query} cf={res.crawler_fallback} /> : (
             <div className="overflow-x-auto">
               <table className="w-full text-13">
                 <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Direction</Th><Th>Source page</Th><Th>Target</Th><Th>Anchor</Th><Th>Attr</Th><Th>Status</Th><Th>Last seen</Th><Th right>Match</Th></tr></thead>
@@ -676,6 +661,38 @@ function BotPanel({ base, targets, onToast }) {
   const save = (patch) => run('save', async () => { await api(`${base}/bot`, { method: 'PUT', body: patch }); st.reload(true); });
   const start = () => run('start', async () => { await api(`${base}/bot/run`, { method: 'POST' }); onToast('Bot started'); setTimeout(() => st.reload(true), 800); });
   if (!s) return <SkCard title="Discovery bot" subtitle="Our own crawler. It starts from your tracked sites and competitors, explores the pages around them, and records every link it finds to them."><SkList rows={4} avatar={false} /></SkCard>;
+  if (s.source === 'crawler') {
+    const cs = s.config;
+    const m = s.mine || {};
+    const l = s.last_stats && !s.last_stats.skipped ? s.last_stats : null;
+    return (
+      <>
+        <Card className="mb-4" title="Crawler sync" subtitle="Backlinks come from our own backlink crawler, which explores the web all the time. This copies what it found for your site and your competitors into your project, so every tab reads it."
+          action={<Badge tone={running ? 'blue' : cs.enabled ? 'green' : 'gray'}>{running ? 'Syncing' : cs.enabled ? 'Scheduled' : 'Off'}</Badge>}>
+          {!targets.length ? <Empty>Add your site and your competitors under “Targets” first. The sync reads the links to the domains you track.</Empty> : (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                {[['Backlinks for your domains', m.backlinks ?? 0], ['Linking domains', m.linking_domains ?? 0], ['Domains tracked', targets.length], ['New in the last sync', l?.new_backlinks ?? 0]].map(([k, v]) => (
+                  <div key={k}><div className="text-12 text-gray-500">{k}</div><div className="text-[24px] font-semibold text-indigo-600 tabular-nums">{v}</div></div>))}
+              </div>
+              <div className="flex flex-wrap items-end gap-3 mb-3">
+                <label className="flex items-center gap-2 text-13 pb-2"><input type="checkbox" checked={cs.enabled} onChange={(e) => save({ enabled: e.target.checked })} /> Sync automatically</label>
+                <Field label="Every"><Select className={`${inputCls} !w-auto`} value={cs.interval_minutes} onChange={(e) => save({ interval_minutes: Number(e.target.value) })}>{[15, 30, 60, 180, 360, 1440].map(n => <option key={n} value={n}>{n < 60 ? `${n} minutes` : n === 60 ? 'hour' : n < 1440 ? `${n / 60} hours` : 'day'}</option>)}</Select></Field>
+                <Button variant="primary" icon={running ? Loader2 : RefreshCw} busy={busy === 'start' || running} disabled={running} onClick={start}>{running ? 'Syncing…' : 'Sync now'}</Button>
+              </div>
+              <ErrorNote>{error}</ErrorNote>
+              {l?.error && <div className="text-12.5 text-amber-700 mb-2">The last sync stopped: {l.error}</div>}
+              <div className="text-12 text-gray-500">
+                {s.last_run_at ? <>Last sync {fmtDateTime(s.last_run_at)}{l ? `: ${l.links_read} links read for ${l.domains} domain(s), ${l.new_backlinks} new.` : '.'}</> : 'It has not synced yet. Click “Sync now”.'}
+              </div>
+            </>
+          )}
+        </Card>
+        <CrawlerStatusLine />
+        {st.error && <ErrorNote>{st.error.message}</ErrorNote>}
+      </>
+    );
+  }
   const c = s.config;
   const queued = Object.values(s.frontier || {}).reduce((n, q) => n + (q.pending || 0), 0);
   const mine = s.mine || {};
@@ -787,49 +804,39 @@ function SeedBacklinks({ biz }) {
   );
 }
 
-const drTone = (dr) => (dr >= 50 ? 'green' : dr >= 20 ? 'blue' : dr >= 5 ? 'gray' : 'amber');
-const IN_PROGRESS = ['queued', 'running'];
-
-// GET /backlinks/ahrefs?domain=: the Ahrefs report saved in PostgreSQL. Made at onboarding and refreshed daily by the backend; this only reads
-// the database. While a refresh runs, the previous report stays on screen. "Refresh now" queues a new lookup (POST /backlinks/ahrefs).
+// GET /backlink-intel/crawler/report?domain=: what our own deployed backlink crawler has found for a domain (totals, linking websites, anchors, links, history).
 // competitors: the same report for a competitor's domain the user types (Competitor gap tab). It starts empty and offers the tracked competitors.
-function AhrefsReport({ biz, competitors = null }) {
+function CrawlerStatusLine() {
+  const st = useApi('/backlink-intel/crawler/status');
+  const d = st.data;
+  if (st.error) return <div className="mt-3 text-12.5 text-amber-700">{st.error.message}</div>;
+  if (!d) return null;
+  const ok = d.workers.length > 0 && d.workers.every(w => w.healthy);
+  return (
+    <div className="mt-3 text-12.5 text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-1">
+      <Badge tone={d.paused ? 'amber' : ok ? 'green' : 'amber'}>{d.paused ? 'Crawler paused' : ok ? 'Crawler running' : 'Crawler needs attention'}</Badge>
+      <span>{Number(d.discovered_domains).toLocaleString()} websites known · {Number(d.discovered_urls).toLocaleString()} pages found · {Number(d.outgoing_links).toLocaleString()} links recorded</span>
+    </div>
+  );
+}
+
+function CrawlerReport({ biz, competitors = null }) {
   const forCompetitor = competitors !== null;
   const own = forCompetitor ? '' : hostOf(biz.website);
   const [domain, setDomain] = useState(own);
   const [input, setInput] = useState(own);
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState('');
   const [shown, setShown] = useState(50);
-  const r = useApi(domain ? `/backlinks/ahrefs?${new URLSearchParams({ domain })}` : null);
+  const r = useApi(domain ? `/backlink-intel/crawler/report?${new URLSearchParams({ domain, limit: '500' })}` : null);
   const d = r.data;
-  const missing = r.error?.status === 404;
-  const working = Boolean(d && (IN_PROGRESS.includes(d.status) || IN_PROGRESS.includes(d.refresh?.status)));
-  usePoll(() => r.reload(true), working || busy, 5000); // a lookup takes about a minute: show the result as soon as it is saved
-  const hasData = d?.status === 'done';
-  const pages = d?.referring_pages || [];
-
-  const lookUp = async (refresh) => {
-    setBusy(true); setNote('');
-    try {
-      const res = await api('/backlinks/ahrefs', { method: 'POST', body: { domain, refresh } });
-      if (res.state === 'cached') setNote('A report from the last day is already saved, so it was not looked up again.');
-      await r.reload(true);
-    } catch (e) {
-      setNote(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const search = (e) => { e.preventDefault(); setShown(50); setNote(''); setDomain(hostOf(input) || input.trim()); };
+  const search = (e) => { e.preventDefault(); setShown(50); setDomain(hostOf(input) || input.trim()); };
 
   return (
     <>
-      <Card className="mb-4" title={forCompetitor ? 'Competitor backlinks (Ahrefs)' : 'Ahrefs backlink report'}
+      <Card className="mb-4" title={forCompetitor ? 'Competitor backlinks' : 'Backlink report'}
         subtitle={forCompetitor
-          ? `Enter a competitor's domain to see its Domain Rating, backlinks and top referring pages from Ahrefs, saved in our database. ${domain ? `Showing ${domain}.` : ''}`
-          : `Domain Rating, backlinks and top referring pages from Ahrefs, saved in our database and refreshed every day. ${own ? `Showing ${domain || own}.` : 'This project has no website: enter a domain below.'}`}
-        action={domain && (hasData || d?.status === 'failed') && <Button icon={RefreshCw} busy={busy || working} disabled={working} onClick={() => lookUp(true)}>{working ? 'Updating…' : 'Refresh now'}</Button>}>
+          ? `Enter a competitor's domain to see the backlinks our own crawler has found for it. ${domain ? `Showing ${domain}.` : ''}`
+          : `Backlinks, linking websites and anchor text found by our own backlink crawler. ${own ? `Showing ${domain || own}.` : 'This project has no website: enter a domain below.'}`}
+        action={domain && <Button icon={RefreshCw} busy={r.loading} onClick={() => r.reload(true)}>Refresh</Button>}>
         <form className="flex flex-wrap gap-2" onSubmit={search}>
           <div className="relative"><Search size={13} className="absolute left-2.5 top-3 text-gray-400" /><input className={`${inputCls} !w-80 !pl-8`} placeholder={forCompetitor ? 'competitor.com' : 'codigix.co'} value={input} onChange={(e) => setInput(e.target.value)} /></div>
           <Button type="submit" variant="primary" icon={Search} busy={r.loading}>Show</Button>
@@ -838,65 +845,54 @@ function AhrefsReport({ biz, competitors = null }) {
         {forCompetitor && competitors.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-12 text-gray-500">
             <span>Your tracked competitors:</span>
-            {competitors.map(c => <Button key={c} size="sm" onClick={() => { setInput(c); setShown(50); setNote(''); setDomain(c); }}>{c}</Button>)}
+            {competitors.map(c => <Button key={c} size="sm" onClick={() => { setInput(c); setShown(50); setDomain(c); }}>{c}</Button>)}
           </div>
         )}
-        {hasData && d.refresh && IN_PROGRESS.includes(d.refresh.status) && (
-          <div className="mt-3 text-12.5 text-indigo-700 flex items-center gap-2"><Loader2 size={13} className="animate-spin" />Updating from Ahrefs. Showing the report from {fmtDateTime(d.finished_at)} until the new one is saved.</div>
-        )}
-        {hasData && d.refresh?.status === 'failed' && (
-          <div className="mt-3 text-12.5 text-amber-700">The latest update did not work ({d.refresh.error}). Showing the report from {fmtDateTime(d.finished_at)}; it is tried again automatically.</div>
-        )}
-        {note && <div className="mt-3 text-12.5 text-gray-600">{note}</div>}
-        <ErrorNote>{!missing && r.error?.message}</ErrorNote>
+        <CrawlerStatusLine />
+        <ErrorNote>{r.error?.message}</ErrorNote>
       </Card>
 
-      {r.loading && !d && !missing ? <><SkStats labels={['Domain Rating', 'Backlinks', 'Linking websites', 'Updated']} /><SkCard title="Top referring pages"><SkTable headers={['DR', 'Referring page', 'Anchor', 'Target']} rows={5} bare /></SkCard></>
-        : missing ? (
+      {r.loading && !d ? <><SkStats labels={['Backlinks', 'Linking websites', 'Verified', 'Anchors']} /><SkCard title="Backlinks"><SkTable headers={['Referring page', 'Anchor', 'Target', 'Status']} rows={5} bare /></SkCard></>
+        : d && d.total_backlinks === 0 ? (
           <Card><Empty>
-            No Ahrefs report saved for {domain} yet.{own === domain ? ' It is made automatically after onboarding and then every day.' : ''}
-            <div className="mt-3"><Button variant="primary" icon={Play} busy={busy} onClick={() => lookUp(false)}>Look it up now</Button></div>
+            Our backlink crawler has not found any link to {d.domain} yet.
+            <div className="text-12 text-gray-500 mt-1">It keeps exploring the web all the time, so links appear here as it finds them.</div>
           </Empty></Card>
-        ) : d && !hasData ? (
-          <Card><Empty>
-            {IN_PROGRESS.includes(d.status)
-              ? <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Looking up {d.domain} on Ahrefs ({d.status}). This takes about a minute.</span>
-              : <>The Ahrefs lookup for {d.domain} did not work: {d.error}<div className="mt-3"><Button icon={RefreshCw} busy={busy} onClick={() => lookUp(true)}>Try again</Button></div></>}
-          </Empty></Card>
-        ) : hasData && (
+        ) : d && (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              <Stat label="Domain Rating" value={d.domain_rating ?? '—'} hint="Ahrefs' 0-100 score of the site's link strength" />
-              <Stat label="Backlinks" value={d.backlinks?.value ?? '—'} hint={d.backlinks?.dofollow ? `${d.backlinks.dofollow} dofollow` : undefined} />
-              <Stat label="Linking websites" value={d.linking_websites?.value ?? '—'} hint={d.linking_websites?.dofollow ? `${d.linking_websites.dofollow} dofollow` : undefined} />
-              <Stat label="Updated" value={fmtDateTime(d.finished_at)} />
+              <Stat label="Backlinks" value={d.total_backlinks} />
+              <Stat label="Linking websites" value={d.total_referring_domains} />
+              <Stat label="Verified links" value={d.verified_backlinks} hint="Checked again on the linking page" />
+              <Stat label="Different anchors" value={d.anchors.length} />
             </div>
-            <Card title="Top referring pages" subtitle={`The ${pages.length} pages Ahrefs lists first; the totals above count every backlink. Data from Ahrefs, saved ${fmtDateTime(d.finished_at)}.`}>
-              {pages.length === 0 ? <Empty>Ahrefs listed no referring pages for {d.domain}.</Empty> : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-13">
-                    <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>DR</Th><Th>Referring page</Th><Th>Anchor</Th><Th>Target</Th></tr></thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {pages.slice(0, shown).map((p, i) => (
-                        <tr key={`${i}|${p.referring_page_url}`}>
-                          <td className="p-2">{p.dr !== '' ? <Badge tone={drTone(Number(p.dr))}>{p.dr}</Badge> : '—'}</td>
-                          <td className="p-2 max-w-[340px]">
-                            <div className="truncate text-gray-800" title={p.referring_page_title}>{p.referring_page_title || '—'}</div>
-                            {p.referring_page_url && <a className="block truncate text-12 text-indigo-600 hover:underline" title={p.referring_page_url} href={p.referring_page_url} target="_blank" rel="noreferrer noopener nofollow">{p.referring_page_url.replace(/^https?:\/\//, '')}</a>}
-                          </td>
-                          <td className="p-2 max-w-[260px] truncate text-gray-700" title={p.anchor_text}>{p.anchor_text || '—'}</td>
-                          <td className="p-2 max-w-[240px] text-12 text-gray-600">
-                            <div className="truncate" title={p.target_url || ''}>{(p.target_url || '—').replace(/^https?:\/\//, '')}</div>
-                            {p.redirects.length > 0 && <span title={p.redirects.join('\n')}><Badge tone="amber">{p.redirects.length} redirect{p.redirects.length > 1 ? 's' : ''}</Badge></span>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {pages.length > shown && <div className="flex justify-center mt-3"><Button onClick={() => setShown(n => n + 50)}>Show more ({pages.length - shown} left)</Button></div>}
+            <div className="grid md:grid-cols-2 gap-4 mb-4">
+              <Card title="Linking websites" subtitle="Websites with the most links to this domain.">
+                {d.referring_domains.length === 0 ? <Empty>None yet.</Empty> : (
+                  <div className="divide-y divide-gray-100">{d.referring_domains.slice(0, 15).map(x => (
+                    <div key={x.domain} className="flex items-center justify-between py-1.5 text-13"><span className="truncate text-gray-800">{x.domain}</span><Badge tone="blue">{x.backlinks}</Badge></div>
+                  ))}</div>
+                )}
+              </Card>
+              <Card title="Anchor text" subtitle="The words used in the links.">
+                {d.anchors.length === 0 ? <Empty>None yet.</Empty> : (
+                  <div className="divide-y divide-gray-100">{d.anchors.slice(0, 15).map(x => (
+                    <div key={x.anchor_text} className="flex items-center justify-between py-1.5 text-13"><span className="truncate text-gray-800">{x.anchor_text || '(no text)'}</span><Badge tone="gray">{x.count}</Badge></div>
+                  ))}</div>
+                )}
+              </Card>
+            </div>
+            <Card title="Backlinks" subtitle={`${d.backlinks.length} of ${d.total_backlinks} links, as found and re-checked by our crawler.`}>
+              <CrawlerLinks rows={d.backlinks.slice(0, shown)} />
+              {d.backlinks.length > shown && <div className="flex justify-center mt-3"><Button onClick={() => setShown(n => n + 50)}>Show more ({d.backlinks.length - shown} left)</Button></div>}
             </Card>
+            {d.history.length > 0 && (
+              <Card className="mt-4" title="Recent changes" subtitle="New, lost and returned links.">
+                <div className="divide-y divide-gray-100">{d.history.slice(0, 15).map((e, i) => (
+                  <div key={i} className="flex items-center gap-2 py-1.5 text-12.5"><Badge tone={e.event === 'new' ? 'green' : e.event === 'lost' ? 'amber' : 'gray'}>{e.event}</Badge><span className="truncate flex-1 text-gray-700" title={e.source_url}>{(e.source_url || '').replace(/^https?:\/\//, '')}</span><span className="text-gray-400">{fmtDateTime(e.at)}</span></div>
+                ))}</div>
+              </Card>
+            )}
           </>
         )}
     </>
@@ -954,7 +950,7 @@ function SerpSearch() {
 }
 
 function Body({ b }) {
-  const [tab, setTab] = useUrlTab('ahrefs', ['ahrefs', 'seed', 'serp', 'overview', 'explorer', 'gap', 'bot', 'collect', 'targets']);
+  const [tab, setTab] = useUrlTab('report', ['report', 'seed', 'serp', 'overview', 'explorer', 'gap', 'bot', 'collect', 'targets']);
   const base = `/businesses/${b.id}/backlink-intel`;
   const t = useApi(`${base}/targets`);
   const [toast, toastNode] = useToast();
@@ -971,21 +967,21 @@ function Body({ b }) {
       {botState.data?.config?.enabled && targets.length > 0 && (
         <div className={`mb-4 rounded px-4 py-2.5 text-12.5 flex flex-wrap items-center gap-x-3 gap-y-1 ring-1 ring-inset ${running ? 'bg-indigo-50 ring-indigo-200 text-indigo-800' : 'bg-slate-50 ring-slate-200 text-slate-600'}`}>
           {running ? <Loader2 size={13} className="animate-spin" /> : <Bot size={13} />}
-          <span className="font-semibold">{running ? 'Discovery bot is running' : 'Discovery bot is on'}</span>
-          <span>{running ? 'New backlinks appear here as they are found.' : botState.data.last_run_at ? `Last run ${fmtDateTime(botState.data.last_run_at)}${stats && !stats.skipped ? `: ${stats.pages} pages read, ${stats.new_backlinks} new backlink(s) to your sites` : ''}. ${botSchedule(botState.data)}` : 'It starts shortly after onboarding.'}</span>
+          <span className="font-semibold">{botState.data?.source === 'crawler' ? (running ? 'Syncing from our backlink crawler' : 'Backlinks come from our backlink crawler') : (running ? 'Discovery bot is running' : 'Discovery bot is on')}</span>
+          <span>{running ? 'New backlinks appear here as they are found.' : botState.data.last_run_at ? `Last run ${fmtDateTime(botState.data.last_run_at)}${stats && !stats.skipped ? (stats.source === 'crawler' ? `: ${stats.links_read} links read from our backlink crawler, ${stats.new_backlinks} new` : `: ${stats.pages} pages read, ${stats.new_backlinks} new backlink(s) to your sites`) : ''}. ${botState.data.source === 'crawler' ? `Synced every ${botState.data.config.interval_minutes} minutes.` : botSchedule(botState.data)}` : 'It starts shortly after onboarding.'}</span>
         </div>
       )}
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'ahrefs', label: 'Ahrefs report' }, { id: 'seed', label: 'Seed backlinks' }, { id: 'serp', label: 'Top Search Results' }, { id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
-        { id: 'bot', label: 'Discovery bot' }, { id: 'collect', label: 'Seeds & verify' }, { id: 'targets', label: 'Targets', count: targets.length }]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'report', label: 'Backlink report' }, { id: 'seed', label: 'Seed backlinks' }, { id: 'serp', label: 'Top Search Results' }, { id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
+        { id: 'bot', label: botState.data?.source === 'crawler' ? 'Crawler sync' : 'Discovery bot' }, { id: 'collect', label: 'Seeds & verify' }, { id: 'targets', label: 'Targets', count: targets.length }]} />
       <ErrorNote>{t.error?.message}</ErrorNote>
       {t.loading && !t.data ? <div className="space-y-4"><SkStats labels={["Backlinks", "Referring domains", "Lost links", "Verified"]} /><SkCard title="Backlinks"><SkTable headers={["Source page", "Target", "Anchor", "Status", "Last seen"]} rows={5} bare /></SkCard></div> : (
         <div key={`${lastRun}-${running}`}>
-          {tab === 'ahrefs' && <AhrefsReport biz={b} />}
+          {tab === 'report' && <CrawlerReport biz={b} />}
           {tab === 'seed' && <SeedBacklinks biz={b} />}
           {tab === 'serp' && <SerpSearch />}
           {tab === 'overview' && <Overview base={base} targets={targets} biz={b} go={setTab} reload={reload} />}
           {tab === 'explorer' && <><Lookup /><Explorer base={base} targets={targets} /></>}
-          {tab === 'gap' && <><div className="mb-4"><AhrefsReport biz={b} competitors={targets.filter(t => t.is_competitor).map(t => t.domain)} /></div><Gap base={base} targets={targets} /></>}
+          {tab === 'gap' && <><div className="mb-4"><CrawlerReport biz={b} competitors={targets.filter(t => t.is_competitor).map(t => t.domain)} /></div><Gap base={base} targets={targets} /></>}
           {tab === 'bot' && <BotPanel base={base} targets={targets} onToast={toast} />}
           {tab === 'collect' && <Collect base={base} targets={targets} onToast={toast} />}
           {tab === 'targets' && <Targets base={base} targets={targets} reload={reload} onToast={toast} />}

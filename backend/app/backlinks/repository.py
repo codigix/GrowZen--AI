@@ -1,6 +1,6 @@
 """Get-or-create helpers and the provenance-preserving link upsert used for links supplied from outside the crawler."""
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 from ..db import utcnow
 from .models import Backlink, BacklinkEvent, BacklinkObservation, BacklinkProvenance, BiDomain, BiPage
 from .urls import host_of, normalize_url, registrable_domain, text_hash, url_hash
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    """Stored timestamps come back naive on some databases: treat them as UTC so they compare with timezone-aware ones."""
+    return dt if dt is None or dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
 def get_domain(db: Session, host_or_url: str, now: datetime | None = None) -> BiDomain:
@@ -76,11 +81,11 @@ def upsert_imported_link(db: Session, rec: LinkRecord, source: str, license_clas
     else:
         bl.provider_status = "LOST" if rec.is_lost else "LIVE"
         if bl.verification_status != "CRAWLER_VERIFIED":  # imported data fills gaps but never overrides our own evidence
-            bl.last_seen_at = max(filter(None, [bl.last_seen_at, rec.last_seen]), default=bl.last_seen_at)
+            bl.last_seen_at = max(filter(None, [_aware(bl.last_seen_at), _aware(rec.last_seen)]), default=bl.last_seen_at)
             bl.anchor_text = rec.anchor_text or bl.anchor_text
             bl.anchor_hash = text_hash(bl.anchor_text)
             bl.rel_attributes = sorted(rec.rel_attributes or bl.rel_attributes or [])
-        if rec.first_seen and (bl.first_seen_at is None or rec.first_seen < bl.first_seen_at):
+        if rec.first_seen and (bl.first_seen_at is None or _aware(rec.first_seen) < _aware(bl.first_seen_at)):
             bl.first_seen_at = rec.first_seen
     db.add(BacklinkObservation(backlink_id=bl.id, observation_type="import", observed_at=rec.last_seen or now, anchor_text=rec.anchor_text,
                                rel_attributes=sorted(rec.rel_attributes or []), link_found=not rec.is_lost, verification_method=source))

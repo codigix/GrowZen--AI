@@ -60,7 +60,7 @@ def bot_tick() -> None:
     from ..backlinks import bot, rotation, router as bl_router
     db = SessionLocal()
     try:
-        if get_settings().backlink_rotation_enabled:
+        if get_settings().backlink_rotation_enabled and not get_settings().crawler_enabled:  # the crawler sync needs no turns: each business syncs when its interval has passed
             rotation.tick(db)
         else:
             bot.run_due(db, bl_router.get_fetcher())

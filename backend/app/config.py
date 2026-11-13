@@ -123,6 +123,12 @@ class Settings(BaseSettings):
     google_ads_client_secret: str = ""
     google_ads_refresh_token: str = ""
     google_ads_customer_id: str = ""  # the Google Ads account id (digits only, no dashes)
+
+    # Our own deployed backlink crawler (https://crawler.codigixinfotech.com). Both must be set to use it.
+    crawler_url: str = ""
+    crawler_api_key: str = ""
+    crawler_auth_header: str = "X-API-Key"  # or "Authorization" (then the key is sent as "Bearer <key>")
+    crawler_timeout_seconds: float = 30.0
     google_ads_login_customer_id: str = ""  # manager (MCC) account id, only needed if the account is managed
 
     # Moz API (Domain Authority, Page Authority, Spam Score, referring domains) for the Backlink Checker. Empty = those fields say 'not available'.
@@ -236,6 +242,10 @@ class Settings(BaseSettings):
         # The google_trends keyword planner now runs in-process (see services/google_trends_client.py),
         # so it's always available whenever this backend is.
         return True
+
+    @property
+    def crawler_enabled(self) -> bool:
+        return bool(self.crawler_url.strip() and self.crawler_api_key.strip() and self.crawler_api_key.strip() != "your_api_key_here")
 
     @property
     def google_ads_enabled(self) -> bool:

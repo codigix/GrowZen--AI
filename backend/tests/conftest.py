@@ -64,3 +64,10 @@ def _offline_keyword_metrics(monkeypatch):
     """Tests never call the Google Ads Keyword Planner, even when the developer's .env has its credentials."""
     from app.services import keyword_metrics
     monkeypatch.setattr(keyword_metrics, "lookup", lambda keywords, country=None: ({}, "offline in tests"))
+
+
+@pytest.fixture(autouse=True)
+def _offline_crawler(monkeypatch):
+    """Tests never call our deployed backlink crawler, even when the developer's .env has its key (the bot then crawls locally, as before)."""
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "crawler_api_key", "")
