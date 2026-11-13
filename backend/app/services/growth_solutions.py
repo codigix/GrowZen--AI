@@ -367,7 +367,7 @@ def build(db: Session, b: Business, a: GrowthAction) -> dict[str, Any]:
     """The exact solution for one task. Raises SolutionError (with a plain message) when a part needs something that is missing (AI, a crawl)."""
     report, crawl = _context(db, b)
     stack = stack_of(report, b.website)
-    key = a.key
+    key = a.key.split("@")[0]  # fix.xray.title@about is the same fix on another page
     short = key.rsplit(".", 1)[-1]
     detail = _check_detail(report, key)
     if key.startswith("fix.security.") and short in (*HEADER_VALUES, "csp"):

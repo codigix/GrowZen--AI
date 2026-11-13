@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Check, X, Plus, Search, Globe, Copy, Download, RefreshCw, ChevronDown, ExternalLink, Loader2, AlertTriangle, ShieldCheck, Lock, FileText, History, Wrench, Share2, Braces, Cpu, Bot, Layers, Columns3, Gauge as GaugeIcon } from 'lucide-react';
 import { SeoShell, Card, Button, Badge } from './SeoUi';
 import { api, useApi } from './seoApi';
@@ -7,6 +7,12 @@ import { HistoryPanel, RenderingCard, SiteScan } from './PageXRayHistory';
 import FullPageCard from './PageXRayLighthouse';
 
 const MAX_URLS = 3;
+// The fix tasks of the page on screen (own website only): { 'seo.title': {id, status, severity, how, ...} }, and the project id.
+const FixCtx = createContext({ tasks: {}, bid: null, reason: null });
+const FIX_STATUS = {
+  todo: ['Pending', 'bg-amber-50 text-amber-800 ring-amber-200'], unverified: ['Not confirmed', 'bg-orange-50 text-orange-800 ring-orange-200'], failed: ['Overdue', 'bg-red-50 text-red-700 ring-red-200'],
+  done: ['Done, not checked', 'bg-indigo-50 text-indigo-700 ring-indigo-200'], verified: ['Fixed', 'bg-emerald-50 text-emerald-700 ring-emerald-200'], skipped: ['Skipped', 'bg-slate-100 text-slate-600 ring-slate-200'], blocked: ['Blocked', 'bg-slate-100 text-slate-600 ring-slate-200']
+};
 const SEC_HEADERS = [['hsts', 'HSTS'], ['csp', 'CSP'], ['x_frame_options', 'X-Frame-Options'], ['x_content_type_options', 'X-Content-Type-Options'], ['referrer_policy', 'Referrer-Policy'], ['permissions_policy', 'Permissions-Policy']];
 const SCORE_AREAS = [['seo', 'SEO'], ['aeo', 'AEO'], ['geo', 'GEO']];
 
@@ -103,7 +109,33 @@ function RangeMeter({ value, min, max, unit = 'characters' }) {
   );
 }
 
-function CheckCard2({ label, hint, area, filter }) {
+function FixBox({ t, bad }) {
+  const { reason } = useContext(FixCtx);
+  if (!t) return bad && reason === null ? null : null;
+  const st = FIX_STATUS[t.status] || FIX_STATUS.todo;
+  const fixed = t.status === 'verified';
+  if (!bad && !fixed) return null;
+  return (
+    <div className={`mt-2 rounded-lg border px-3 py-2.5 text-13 ${fixed ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-flex items-center gap-1 rounded-full ring-1 ring-inset px-2.5 py-0.5 text-12 font-semibold ${st[1]}`}>{fixed ? <Check size={12} /> : <AlertTriangle size={12} />}{fixed ? 'Fixed: this scan passes it' : st[0]}</span>
+        {!fixed && <span className="text-12 text-slate-500">{t.overdue ? 'Overdue' : 'Due'} {t.due_on}</span>}
+        {!fixed && <span className="text-12 font-semibold text-slate-600 capitalize">{t.severity}</span>}
+        <Link to={`/growth/fix/${t.id}`} className="ml-auto"><Button size="sm" variant={fixed ? undefined : 'primary'} icon={Wrench}>{fixed ? 'See the fix' : 'Fix guide'}</Button></Link>
+      </div>
+      {!fixed && (
+        <>
+          {t.how?.length > 0 && <ol className="mt-2 list-decimal pl-5 space-y-0.5 text-13 text-slate-700">{t.how.map((h, i) => <li key={i}>{h}</li>)}</ol>}
+          <p className="mt-2 text-12 text-slate-500"><b>Fixed when:</b> {t.closes_when} Scan again after the change: if the check passes, this turns to Fixed; if not, it stays Pending.</p>
+          {t.last_check && t.status !== 'todo' && <p className="mt-1 text-12 text-amber-800">Last result: {t.last_check}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function CheckCard2({ label, hint, area, filter, areaKey }) {
+  const { tasks } = useContext(FixCtx);
   const checks = arr(area?.checks);
   const failed = checks.filter(c => !c.passed), passed = checks.filter(c => c.passed);
   const row = (c, bad) => (
@@ -113,6 +145,7 @@ function CheckCard2({ label, hint, area, filter }) {
         <div className="text-14 font-medium text-slate-900 leading-snug">{c.label}{c.weight != null && <span className="ml-2 text-11 text-slate-400 font-normal">weight {c.weight}</span>}</div>
         {c.detail && <div className="text-13 text-slate-500 mt-0.5 break-words">{c.detail}</div>}
         {bad && c.fix && <div className="mt-2 rounded-lg bg-indigo-50 text-indigo-900 text-13 px-3 py-2 leading-snug"><b className="font-semibold">Fix: </b>{c.fix}</div>}
+        <FixBox t={tasks[`${areaKey}.${c.key}`]} bad={bad} />
       </div>
     </li>
   );
@@ -165,6 +198,14 @@ const NAV = [
 ];
 const GROUP_KEYS = NAV.map(n => n[0]);
 const readHash = () => { try { const h = window.location.hash.replace('#', ''); return GROUP_KEYS.includes(h) ? h : 'overview'; } catch { return 'overview'; } };
+
+function FixSummary({ failedTotal }) {
+  const { tasks, reason } = useContext(FixCtx);
+  const list = Object.values(tasks);
+  if (!list.length) return <span className="text-13 text-slate-500">{reason && reason !== 'Scan the page first.' ? reason : 'Failed checks come first, each with the fix.'}</span>;
+  const fixed = list.filter(t => t.status === 'verified').length;
+  return <span className="text-13 text-slate-600"><b className="text-emerald-700">{fixed} fixed</b> · <b className="text-amber-700">{list.length - fixed} pending</b> · {failedTotal} check{failedTotal === 1 ? '' : 's'} failing now. Open a Fix guide, apply it, then scan again.</span>;
+}
 
 function Report({ d, onRerun, busy, extra, deep, history, siteScan }) {
   const [copied, setCopied] = useState(false);
@@ -275,12 +316,12 @@ function Report({ d, onRerun, busy, extra, deep, history, siteScan }) {
           <div role="tablist" aria-label="Filter checks" className="inline-flex rounded-lg bg-slate-100 p-1">
             {[['all', 'All'], ['failed', `Failed (${failedTotal})`], ['passed', 'Passed']].map(([id, l]) => <button key={id} type="button" role="tab" aria-selected={filter === id} onClick={() => setFilter(id)} className={`h-8 px-4 rounded-md text-13 font-medium cursor-pointer ${filter === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>{l}</button>)}
           </div>
-          <span className="text-13 text-slate-500">Failed checks come first, each with the fix.</span>
+          <FixSummary failedTotal={failedTotal} />
         </div>
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
-          <CheckCard2 label="SEO" hint="Classic on-page and technical signals" area={d.scores?.seo} filter={filter} />
-          <CheckCard2 label="AEO" hint="Ready to be quoted as an answer" area={d.scores?.aeo} filter={filter} />
-          <CheckCard2 label="GEO" hint="Ready for AI search and crawlers" area={d.scores?.geo} filter={filter} />
+          <CheckCard2 label="SEO" hint="Classic on-page and technical signals" area={d.scores?.seo} filter={filter} areaKey="seo" />
+          <CheckCard2 label="AEO" hint="Ready to be quoted as an answer" area={d.scores?.aeo} filter={filter} areaKey="aeo" />
+          <CheckCard2 label="GEO" hint="Ready for AI search and crawlers" area={d.scores?.geo} filter={filter} areaKey="geo" />
         </div>
       </div>
     ),
@@ -507,6 +548,8 @@ function XRay({ b }) {
   const [tick, setTick] = useState(0); // bumped after a save so the history reloads
   const [notice, setNotice] = useState('');
   const seq = useRef(0);
+  const [saveDone, setSaveDone] = useState(false); // the scan on screen has been saved: only then may its result close or open fix tasks
+  const [fixes, setFixes] = useState({ tasks: {}, reason: null });
   const touched = useRef(false); // a scan was started in this visit: the saved one must not come back over it
   const own = hostOf(b.website || '');
   const comps = useApi(`/businesses/${b.id}/gbp/competitors`);
@@ -523,6 +566,7 @@ function XRay({ b }) {
   const run = useCallback(async (list) => {
     const mine = ++seq.current;
     touched.current = true;
+    setSaveDone(false);
     setResults(r => ({ ...r, ...Object.fromEntries(list.map(u => [u, { state: 'loading' }])) }));
     const settled = await Promise.allSettled(list.map(u => api(`/businesses/${b.id}/page-xray`, { method: 'POST', body: { url: u, ...(renderJs && own && hostOf(u) === own ? { render: true } : {}) } })));
     if (mine !== seq.current && list.length > 1) { /* a newer run started: keep the latest answers per url anyway */ }
@@ -532,7 +576,7 @@ function XRay({ b }) {
       return next;
     });
     // Every successful X-Ray is saved to the page's history. Quietly: a failed save never breaks the view.
-    Promise.allSettled(settled.map(x => (x.status === 'fulfilled' ? api(`/businesses/${b.id}/page-xray/save`, { method: 'POST', body: { report: x.value } }) : null))).then(() => setTick(t => t + 1));
+    Promise.allSettled(settled.map(x => (x.status === 'fulfilled' ? api(`/businesses/${b.id}/page-xray/save`, { method: 'POST', body: { report: x.value } }) : null))).then(() => { setTick(t => t + 1); setSaveDone(true); });
     const ok = settled.some(s => s.status === 'fulfilled');
     if (ok) setSaved(null); // the new scan replaces the previous one only once it has really arrived; a failed scan leaves the previous one on screen
     return ok;
@@ -585,6 +629,16 @@ function XRay({ b }) {
     if (keepHash) setTimeout(() => { try { window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${keepHash}`); } catch { /* optional */ } }, 0);
     if (u) { setNotice(''); setActive(u); run([u]); }
   }, [wanted]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fixUrl = (saved?.data || shown?.data || {}).url || null;
+  const fixFresh = !saved && !!shown?.data && saveDone;
+  useEffect(() => {
+    if (!fixUrl) { setFixes({ tasks: {}, reason: null }); return undefined; }
+    let live = true;
+    const t = setTimeout(() => { // the tasks follow the saved copy of this scan
+      api(`/businesses/${b.id}/growth/xray-fixes`, { method: 'POST', body: { url: fixUrl, apply: fixFresh }, timeout: 60000 }).then(r => { if (live) setFixes({ tasks: r.tasks || {}, reason: r.reason || null }); }).catch(() => { if (live) setFixes({ tasks: {}, reason: null }); });
+    }, 700);
+    return () => { live = false; clearTimeout(t); };
+  }, [fixUrl, fixFresh, b.id]);
   const items = urls.map(u => ({ url: u, ...(results[u] || { state: 'idle' }) }));
   const loading = items.some(i => i.state === 'loading');
   const done = items.filter(i => i.state === 'done');
@@ -592,6 +646,7 @@ function XRay({ b }) {
   useEffect(() => { if (shown?.data) setLastShown(shown.data); }, [shown?.data]);
 
   return (
+    <FixCtx.Provider value={{ tasks: fixes.tasks, reason: fixes.reason, bid: b.id }}>
     <div className="space-y-6 min-w-0 w-full" style={{ contain: 'inline-size' }}>{/* the page never grows wider than the screen because of a long row of tabs or a wide table */}
       <Card>
         <div className="flex flex-wrap gap-2">
@@ -666,6 +721,7 @@ function XRay({ b }) {
           : <Report key={shown.url + (shown.data?.fetched_at || '')} d={shown.data} busy={shown.state === 'loading'} extra={rendering} deep={full} history={history} siteScan={siteScan} onRerun={() => run([shown.url])} />;
       })()}
     </div>
+    </FixCtx.Provider>
   );
 }
 

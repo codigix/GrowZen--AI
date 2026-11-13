@@ -261,3 +261,29 @@ def test_review_and_photo_solutions_use_the_projects_own_review_link_and_never_g
         assert "Storefront" in photos["blocks"][0]["text"] and photos["audience"] == "owner"
     finally:
         db.close()
+
+
+def test_xray_checks_get_tasks_that_close_when_the_next_scan_passes(client, project):
+    from app.models import PageXRayRun
+    from app.services import growth_issues as gi
+    url = "https://rental.example/"
+
+    def report(title_ok):
+        return {"url": url, "final_url": url, "scores": {"seo": {"checks": [{"key": "title", "label": "Title", "passed": title_ok, "weight": 10, "detail": "d"}]}, "aeo": {"checks": []}, "geo": {"checks": []}}, "ssl": {}, "tech": {}}
+    db = SessionLocal()
+    try:
+        b = db.get(Business, project)
+        db.add(PageXRayRun(business_id=project, url=url, final_url=url, render=False, seo_score=50, aeo_score=0, geo_score=0, passed=0, status=200, source="server", report=report(False)))
+        db.commit()
+        read = gi.xray_sync(db, b, url, apply=False)
+        assert read["tasks"] == {}  # an old scan on screen creates nothing
+        made = gi.xray_sync(db, b, url, apply=True)["tasks"]["seo.title"]
+        assert made["status"] == "todo" and made["id"] and made["how"]
+        db.add(PageXRayRun(business_id=project, url=url, final_url=url, render=False, seo_score=60, aeo_score=0, geo_score=0, passed=1, status=200, source="server", report=report(True)))
+        db.commit()
+        assert gi.xray_sync(db, b, url, apply=True)["tasks"]["seo.title"]["status"] == "verified"  # fixed: the scan itself is the proof
+        assert gi.xray_sync(db, b, "https://competitor.example/", apply=True)["reason"].startswith("Fix tasks are made for your own")
+    finally:
+        db.close()
+    r = client.post(f"/api/v1/businesses/{project}/growth/xray-fixes", json={"url": url})
+    assert r.status_code == 200 and "seo.title" in r.json()["tasks"]

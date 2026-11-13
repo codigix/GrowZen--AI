@@ -433,3 +433,59 @@ def listing(db: Session, b: Business, today: date | None = None) -> dict[str, An
         areas[x["area"]] = areas.get(x["area"], 0) + 1
     return {"open": open_rows, "closed": closed[:30], "counts": counts, "open_total": len(open_rows), "overdue": sum(1 for x in open_rows if x["overdue"]), "by_area": areas,
             "scanned_at": max((a.evidence or {}).get("last_seen", "") for a in rows) or None if rows else None}
+
+
+# ------------------------------------------------------------------------------------------------------------------- Page X-Ray checks of the project's own pages
+def xray_sync(db: Session, b: Business, url: str, apply: bool, today: date | None = None) -> dict[str, Any]:
+    """Fix tasks for the failed checks of one of the project's OWN pages, and their live status. `apply` (a fresh scan was just made) also creates missing tasks and closes the ones whose check
+    now passes; without it (an old saved scan is on screen) nothing changes. Returns {tasks: {area.key: {...}}} or {tasks: {}, reason}."""
+    from urllib.parse import urlsplit
+
+    from . import localtime, page_xray
+    from .growth_plan import _action_out, _now
+    from ..models import PageXRayRun
+    today = today or localtime.today(b)
+    try:
+        url = page_xray.normalise_url(url)
+        mine = page_xray.normalise_url(b.website) if (b.website or "").strip() else ""
+    except Exception:  # noqa: BLE001
+        return {"tasks": {}, "reason": "The address is not valid."}
+    host = lambda u: (urlsplit(u).hostname or "").lower().removeprefix("www.")  # noqa: E731
+    same_page = lambda a, c: host(a) == host(c) and (urlsplit(a).path.rstrip("/") or "/") == (urlsplit(c).path.rstrip("/") or "/")  # noqa: E731  (a redirect to www or a trailing slash is the same page)
+    if not mine or host(url) != host(mine):
+        return {"tasks": {}, "reason": "Fix tasks are made for your own website only."}
+    run = db.scalar(select(PageXRayRun).where(PageXRayRun.business_id == b.id, PageXRayRun.url == url).order_by(PageXRayRun.created_at.desc(), PageXRayRun.id.desc()).limit(1))
+    report = run.report if run else None
+    if not report or not report.get("scores"):
+        return {"tasks": {}, "reason": "Scan the page first."}
+    path = urlsplit(url).path or "/"
+    suffix = "" if path in ("", "/") else "@" + slug(path.strip("/"), 30)
+    passing = {(area, c["key"]) for area in ("seo", "aeo", "geo") for c in ((report.get("scores") or {}).get(area) or {}).get("checks", []) if c.get("passed")}
+    found = {i["key"] + suffix: i for i in _xray_issues(report, url) if i["verify"].get("type") == "xray_check"}
+    rows = {a.key: a for a in db.scalars(select(GrowthAction).where(GrowthAction.business_id == b.id, GrowthAction.period == "fix", GrowthAction.key.like("fix.xray.%")))}
+    if apply:
+        add_issues(db, b, [{**i, "key": k[:80]} for k, i in found.items() if k[:80] not in rows], today)
+        rows = {a.key: a for a in db.scalars(select(GrowthAction).where(GrowthAction.business_id == b.id, GrowthAction.period == "fix", GrowthAction.key.like("fix.xray.%")))}
+    out: dict[str, Any] = {}
+    for a in rows.values():
+        rule = a.verify or {}
+        if rule.get("type") != "xray_check" or same_page(rule.get("url") or "", url) is False:
+            continue
+        ref = f"{rule['area']}.{rule['key']}"
+        if (rule["area"], rule["key"]) in passing:
+            if apply and a.status in ("todo", "done", "unverified", "failed"):
+                a.status, a.verified_at = "verified", _now()
+                a.evidence = {**(a.evidence or {}), "passed": True, "details": "The latest scan of the page passes this check.", "checked_at": _now().isoformat()}
+                db.add(a)
+        elif apply and a.status == "done":
+            a.status = "unverified"
+            a.evidence = {**(a.evidence or {}), "passed": False, "details": "The latest scan still fails this check.", "checked_at": _now().isoformat()}
+            db.add(a)
+        elif apply and a.status == "verified":  # it regressed
+            a.status, a.verified_at = "todo", None
+            db.add(a)
+        ev = a.evidence or {}
+        out[ref] = {"id": a.id, "status": a.status, "severity": ev.get("severity", "warning"), "due_on": a.due_on.isoformat(), "overdue": a.due_on < today and a.status not in ("verified", "skipped"),
+                    "how": list(a.how or [])[:4], "why": a.why, "closes_when": closes_when(rule), "last_check": ev.get("details"), "has_solution": bool(ev.get("solution"))}
+    db.flush()
+    return {"tasks": out, "reason": None}

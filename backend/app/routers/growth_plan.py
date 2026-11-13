@@ -251,6 +251,19 @@ def get_action(action_id: int, b: Business = Depends(get_business), db: Session 
             "solution": ev.get("solution"), "draft": ev.get("draft"), "website_side": growth_solutions.is_website_side(a)}
 
 
+class XrayFixIn(BaseModel):
+    url: str = Field(min_length=3, max_length=2048)
+    apply: bool = False  # a fresh scan was just made: create the missing tasks and close the ones that now pass
+
+
+@router.post("/xray-fixes")
+def xray_fixes(body: XrayFixIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Page X-Ray: the fix task and live status of each failed check of one of the project's own pages."""
+    out = growth_issues.xray_sync(db, b, body.url, body.apply)
+    db.commit()
+    return out
+
+
 @router.post("/actions/{action_id}/solution")
 def make_solution(action_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Work out the exact solution for this task (code or text for this site, where to put it, how to confirm). Uses AI only for wording."""
