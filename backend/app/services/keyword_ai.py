@@ -125,8 +125,35 @@ def suggest(db: Session, b: Business) -> dict[str, Any]:
 
 
 # ------------------------------------------------------------------------------------------------------------------- where the saved keywords are used
+QUESTION = re.compile(r"^(who|what|which|where|when|why|how|is|are|can|do|does|should|will)(?![a-z])", re.I)
+
+
+def _question_headings(db: Session, b: Business, report: dict[str, Any] | None) -> list[str]:
+    """Headings that are questions (the shape an answer engine quotes): the homepage's headings and the headings and titles of finished blog articles."""
+    heads = [str(x.get("text") or "") for x in ((report or {}).get("content") or {}).get("outline", []) if isinstance(x, dict)]
+    for a in db.scalars(select(Article).where(Article.business_id == b.id, Article.status == "completed")):
+        heads.append(a.title or "")
+        heads += re.findall(r"^\s{0,3}#{1,4}\s+(.+?)\s*$", a.body or "", re.M)
+        heads += [re.sub(r"<[^>]+>", "", h) for h in re.findall(r"<h[1-4][^>]*>(.*?)</h[1-4]>", a.body or "", re.S | re.I)]
+    return [h.strip() for h in heads if h.strip() and (h.strip().endswith("?") or QUESTION.match(h.strip()))]
+
+
+def _chatgpt_texts(db: Session, b: Business) -> list[str]:
+    """What the ChatGPT business profile says: its profile copy, policies, the Hub topics people asked about, and the feed items."""
+    from ..models import CatalogItem, ChatGPTBusiness
+    row = db.scalar(select(ChatGPTBusiness).where(ChatGPTBusiness.business_id == b.id))
+    texts: list[str] = []
+    if row:
+        texts += [row.business_name, row.category, row.description, row.delivery_policy, row.return_policy, row.agent_instructions]
+        for m in row.insights or []:
+            texts += [str(t) for t in (m.get("topics") or [])]
+    for it in db.scalars(select(CatalogItem).where(CatalogItem.business_id == b.id)):
+        texts += [it.title, it.description]
+    return [t for t in texts if t]
+
+
 def usage(db: Session, b: Business) -> dict[str, Any]:
-    """For each saved keyword: where it is already used (from the real website crawl, profile, posts and articles) and where it is meant to be used."""
+    """For each saved keyword: where it is already used (read from the real crawl, profile, posts, articles, question headings, AI questions and the ChatGPT profile) and where it is meant to be used."""
     from . import growth_content as gc, growth_metrics
     rows = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)).order_by(Keyword.volume.desc().nullslast(), Keyword.keyword)))
     report = None
@@ -136,21 +163,42 @@ def usage(db: Session, b: Business) -> dict[str, Any]:
         pass
     text = gc.surfaces_text(db, b, report, gc._crawl(db, b))
     prompts = gc._corpus([p.prompt for p in db.scalars(select(GeoPrompt).where(GeoPrompt.business_id == b.id))])
+    heads = [gc._corpus([h]) for h in _question_headings(db, b, report)]
+    chatgpt = gc._corpus(_chatgpt_texts(db, b))
     items = []
     for k in rows:
         used = {"website": gc.has_keyword(text["website"] | text["services"], k.keyword), "blog": gc.has_keyword(text["blog"], k.keyword), "gmb_post": gc.has_keyword(text["posts"], k.keyword),
-                "geo": gc.has_keyword(prompts, k.keyword), "aeo": None, "chatgpt": None}  # AEO and ChatGPT use cannot be read per keyword: shown as planned only
+                "geo": gc.has_keyword(prompts, k.keyword), "aeo": any(gc.has_keyword(h, k.keyword) for h in heads), "chatgpt": gc.has_keyword(chatgpt, k.keyword)}
         planned = [u for u in (k.uses or []) if u in USES]
         items.append({"id": k.id, "keyword": k.keyword, "cluster": k.cluster, "rank": k.rank, "volume": k.volume, "planned": planned, "used": used})
     areas = {a: {"label": label, "planned": sum(1 for i in items if a in i["planned"]), "used": sum(1 for i in items if i["used"].get(a))} for a, label in USES.items()}
     return {"items": items, "areas": areas, "uses": USES, "total": len(items)}
 
 
+PROVIDER = re.compile(r"(?<![a-z])(agency|agencies|company|companies|clinic|clinics|hospital|hospitals|dentist|dentists|doctor|doctors|consultant|consultants|services?|shop|shops|store|stores|firm|firms|expert|experts|specialist|specialists|studio|studios|centre|centres|center|centers|institute|institutes|classes|salon|salons|lawyer|lawyers|plumber|plumbers|contractor|contractors|designer|designers|developer|developers|photographer|photographers|restaurant|restaurants)(?![a-z])", re.I)
+
+
 def geo_question(keyword: str) -> str:
-    """A customer question from a keyword, for the AI-search (GEO/AEO) tracker."""
-    k = keyword.strip()
-    if re.match(r"^(who|what|which|where|when|why|how|is|are|can|do|does|should)\b", k, re.I):
-        return k[0].upper() + k[1:] + ("" if k.endswith("?") else "?")
+    """A customer question from a keyword, for the AI-search (GEO/AEO) tracker. Rules only: always works, and reads naturally for the usual shapes."""
+    k = " ".join(keyword.split()).strip(" ?.")
+    if QUESTION.match(k):
+        return k[0].upper() + k[1:] + "?"
     if re.search(r"(?<![a-z])(cost|price|prices|fees|fee|charges|rate|rates|pricing)(?![a-z])", k, re.I):
         return f"What is the {k}?"
-    return f"Which is the best {k}?" if not k.lower().startswith("best ") else f"Which is the {k}?"
+    if PROVIDER.search(k):
+        return f"Which is the best {k}?" if not k.lower().startswith("best ") else f"Which is the {k}?"
+    return f"Who offers {k}?"
+
+
+def polished_question(keyword: str) -> str:
+    """The same question, rewritten naturally by the AI when it is set up; the rule-based question otherwise (and whenever the AI fails or returns something odd)."""
+    base = geo_question(keyword)
+    if not ai.is_configured():
+        return base
+    try:
+        out = ai.complete("You rewrite search keywords as one natural question a customer would ask an AI assistant. Keep every place name and the exact meaning; add nothing that is not in the keyword. Reply with the question only.",
+                          f"Keyword: {keyword}" + chr(10) + f"Rule-based draft: {base}", temperature=0.2, max_tokens=60)
+        q = " ".join(str(out).split()).strip(chr(34) + chr(39) + " ")
+        return q if 8 <= len(q) <= 200 and q.endswith("?") else base
+    except Exception:  # noqa: BLE001 - the draft is good enough: never block the action on the AI
+        return base

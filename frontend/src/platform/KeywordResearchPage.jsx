@@ -1259,9 +1259,9 @@ const AREA_HELP = {
   website: 'The keyword appears in your page titles, headings or services.',
   blog: 'A blog article uses the keyword.',
   gmb_post: 'A published Google Business Profile post uses it.',
-  aeo: 'A direct answer or FAQ for the question (set it up in Schema).',
+  aeo: 'A question heading on your site or in a blog article answers it (answer engines quote these).',
   geo: 'It is asked to the AI engines in the GEO tracker.',
-  chatgpt: 'Mention it in your ChatGPT business profile and FAQs.'
+  chatgpt: 'Your ChatGPT business profile, policies or feed mention it.'
 };
 
 function UseIt({ b, kw }) {
@@ -1328,7 +1328,7 @@ function UseIt({ b, kw }) {
           </table>
         </div>
       </Card>
-      <p className="text-11.5 text-slate-400">“Used” is read from your real website crawl, profile, published posts, articles and tracked AI questions. AEO and ChatGPT use cannot be read per keyword, so they show what you planned.</p>
+      <p className="text-11.5 text-slate-400">“Used” is read from your real content: the website crawl and profile, published posts, blog articles, question headings (AEO), tracked AI questions (GEO) and the ChatGPT profile and feed. A keyword counts as used only when all its words appear together.</p>
     </div>
   );
 }

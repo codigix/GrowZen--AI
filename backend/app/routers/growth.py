@@ -58,7 +58,7 @@ def keyword_to_geo_prompt(keyword_id: int, b: Business = Depends(get_business), 
     k = db.get(Keyword, keyword_id)
     if not k or k.business_id != b.id:
         raise HTTPException(404, "Keyword not found")
-    q = keyword_ai.geo_question(k.keyword)
+    q = keyword_ai.polished_question(k.keyword)
     exists = db.scalar(select(GeoPrompt).where(GeoPrompt.business_id == b.id, GeoPrompt.prompt == q))
     if not exists:
         db.add(GeoPrompt(business_id=b.id, prompt=q))
