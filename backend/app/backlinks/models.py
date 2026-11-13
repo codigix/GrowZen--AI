@@ -243,6 +243,19 @@ class BiDomainScore(TimestampMixin, Base):
     scored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class BiDomainMetric(TimestampMixin, Base):
+    """Domain Authority, Page Authority and spam score of a linking domain, as Moz reported them (cached; the same for every business)."""
+    __tablename__ = "bi_domain_metrics"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    domain: Mapped[str] = mapped_column(String(255), unique=True)
+    da: Mapped[int | None] = mapped_column(Integer)
+    pa: Mapped[int | None] = mapped_column(Integer)
+    spam_score: Mapped[int | None] = mapped_column(Integer)
+    linking_domains: Mapped[int | None] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(20), default="moz")
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class ActionOutcome(Base):
     """What an action changed. A baseline is taken when the action happens and measured again after 14 and 30 days."""
     __tablename__ = "action_outcomes"

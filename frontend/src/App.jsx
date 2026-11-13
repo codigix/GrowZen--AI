@@ -44,6 +44,7 @@ function XRayRedirect() {
 const BacklinkCheckerPage = lazy(() => import('./platform/BacklinkCheckerPage'));
 const GrowthFixPage = lazy(() => import('./platform/GrowthFixPage'));
 const BacklinksCitationsPage = lazy(() => import('./platform/BacklinksCitationsPage'));
+const BacklinkHubPage = lazy(() => import('./platform/BacklinkHubPage'));
 const BacklinkIntelPage = lazy(() => import('./platform/BacklinkIntelPage'));
 const CompetitorWatchPage = lazy(() => import('./platform/CompetitorWatchPage'));
 const GeoTrackerPage = lazy(() => import('./platform/GeoTrackerPage'));
@@ -183,6 +184,8 @@ export default function App() {
         <Route path="off-page-seo" element={<BacklinksCitationsPage />} />
         <Route path="off-page-seo/:tab" element={<BacklinksCitationsPage />} />
         <Route path="backlink-checker" element={<BacklinkCheckerPage />} />
+        <Route path="backlinks" element={<Navigate to="/backlinks/links" replace />} />
+        <Route path="backlinks/:view" element={<BacklinkHubPage />} />
         <Route path="backlink-intelligence" element={<BacklinkIntelPage />} />
         <Route path="backlink-intelligence/:tab" element={<BacklinkIntelPage />} />
         <Route path="geo-optimization" element={<GeoTrackerPage />} />
