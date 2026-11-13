@@ -30,7 +30,7 @@ const CASES = [
   ['/keyword-gap', '/competitor-finder?tab=gap', 'Keyword gap', 'Competitors'],
   ['/page-xray', '/website-audit?tab=xray', 'Page X-Ray report', 'Website Audit & X-Ray'],
   ['/gmb-profile/reviews', '/reviews?tab=google', 'Replies on Google', 'Reviews & Reputation'],
-  ['/organic-rankings', '/organic-rankings', 'My search performance', 'My Search Performance'],
+  ['/organic-rankings', '/organic-rankings/overview', 'My search performance', 'My Search Performance'],
   ['/top-pages', '/top-pages', 'My search performance', 'My Search Performance']
 ];
 const VIEWPORTS = [['desktop', 1440, 1000, false], ['phone', 390, 900, true]];
@@ -60,7 +60,7 @@ try {
   const probe = `(() => {
     const w = innerWidth, bad = [];
     document.querySelectorAll('body *').forEach(e => { const r = e.getBoundingClientRect(); if (r.width > 0 && r.right > w + 1 && !e.closest('[role=tablist],.overflow-x-auto,.overflow-auto,nav')) bad.push(e.tagName + '.' + String(e.className).slice(0, 40)); });
-    const active = [...document.querySelectorAll('a[aria-current=page]')].map(a => a.textContent.trim());
+    const active = [...document.querySelectorAll('a[aria-current=page]')].filter(a => !a.closest('nav[aria-label="My search performance"],nav[aria-label="Keyword steps"]')).map(a => a.textContent.trim());
     return JSON.stringify({ path: location.pathname + location.search, text: document.body.innerText, active, docW: document.documentElement.scrollWidth, vw: w, bad: bad.slice(0, 5) });
   })()`;
 
@@ -73,11 +73,13 @@ try {
       for (let i = 0; i < 40; i++) { // wait until the page shows its text (or give up after ~16 s)
         await sleep(400);
         got = JSON.parse((await send('Runtime.evaluate', { returnByValue: true, expression: probe })).result.value);
-        if (got.path === wantPath && got.text.includes(wantText)) break;
+        if (got.path === wantPath && got.text.toLowerCase().includes(wantText.toLowerCase())) break;
       }
+      await sleep(800); // let the sidebar settle on the new address before reading which entry is active
+      got = JSON.parse((await send('Runtime.evaluate', { returnByValue: true, expression: probe })).result.value);
       const why = [];
       if (got.path !== wantPath) why.push(`opened ${got.path}, expected ${wantPath}`);
-      if (!got.text.includes(wantText)) why.push(`text "${wantText}" not shown`);
+      if (!got.text.toLowerCase().includes(wantText.toLowerCase())) why.push(`text "${wantText}" not shown`);
       if (vname === 'desktop' && wantActive && !got.active.includes(wantActive)) why.push(`sidebar active is [${got.active.join(', ')}], expected "${wantActive}"`);
       if (got.docW > got.vw + 1) why.push(`page is ${got.docW}px wide on a ${got.vw}px screen`);
       if (errs.length) why.push(`script error: ${errs[0]}`);

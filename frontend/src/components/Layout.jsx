@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
   LogOut, Menu, X, KeyRound, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen,
@@ -145,11 +145,11 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
                     {items.map(item => {
                       const active = itemActive(location.pathname, location.search, item);
                       return (
-                        <NavLink key={item.to} to={item.to} onClick={() => setOpen(false)} aria-current={active ? 'page' : undefined}
+                        <Link key={item.to} to={item.to} onClick={() => setOpen(false)} aria-current={active ? 'page' : undefined}
                           className={`flex items-center gap-2 min-h-9 px-3 py-1.5 rounded text-14 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 transition-colors ${active ? 'bg-slate-200/80 text-slate-900 font-semibold' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}>
                           <span className="flex-1 leading-snug">{item.label}</span>
                           {item.badge && <span className={`shrink-0 text-10 font-semibold leading-none px-1.5 py-1 rounded-md ring-1 ring-inset ${BADGE_TONES[item.badge] || 'bg-slate-500/15 text-slate-700 ring-slate-400/25'}`}>{item.badge}</span>}
-                        </NavLink>);
+                        </Link>);
                     })}
                   </div>
                 </div>);

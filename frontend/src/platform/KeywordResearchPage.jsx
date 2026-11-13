@@ -1245,7 +1245,7 @@ function KeywordPath({ b, tab, setTab }) {
       {FIND_TABS.includes(tab) && (
         <form onSubmit={(e) => { e.preventDefault(); startSearch(); }} className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 mb-4 flex flex-wrap gap-2" role="search">
           <label className="relative flex-1 min-w-[240px]"><Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-            <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search any keyword or topic, e.g. dentist near me" aria-label="Search keywords" className="w-full h-11 pl-10 pr-3 text-14 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+            <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search any keyword or topic" aria-label="Search keywords" className="w-full h-11 pl-10 pr-3 text-14 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
           <Button type="submit" variant="primary" icon={Search} className="h-11 px-6" disabled={typed.trim().length < 2}>Search</Button>
           <p className="basis-full text-12 text-slate-500">One search for all three sources: it runs in the one you are on, and in the others as you open them. {seedSearch.text ? <>Showing results for <b>{seedSearch.text}</b>.</> : 'Leave it empty to start from your business.'}</p>
         </form>
