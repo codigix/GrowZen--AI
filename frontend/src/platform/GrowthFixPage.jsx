@@ -13,15 +13,24 @@ const Chip = ({ children, cls = 'bg-slate-100 text-slate-700' }) => <span classN
 const inApp = (link) => !!link && !/^\/(page-xray|website-audit)(\?|$)/.test(link);
 
 function CodeBlock({ blk }) {
-  const [ok, setOk] = useState(false);
-  const copy = async () => { try { await navigator.clipboard.writeText(blk.text); setOk(true); setTimeout(() => setOk(false), 1600); } catch { /* clipboard blocked: the text can be selected */ } };
+  const [state, setState] = useState(''); // '' | 'ok' | 'failed'
+  const pre = useRef(null);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(blk.text); setState('ok'); } catch {
+      // The browser refused: select the text so Ctrl+C does it.
+      try { const r = document.createRange(); r.selectNodeContents(pre.current); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch { /* nothing to select */ }
+      setState('failed');
+    }
+    setTimeout(() => setState(''), 2600);
+  };
   return (
     <div className="rounded-xl border border-slate-200 overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 bg-slate-50 border-b border-slate-200 px-3.5 py-2.5">
         <div className="min-w-0 flex-1"><div className="text-13 font-semibold text-slate-900">{blk.label}</div>{blk.where && <div className="text-12 text-slate-500 break-words">Put it in: {blk.where}</div>}</div>
-        <Button size="sm" variant={ok ? undefined : 'primary'} icon={ok ? Check : undefined} onClick={copy}>{ok ? 'Copied' : 'Copy'}</Button>
+        {state === 'failed' && <span className="text-12 text-amber-700" role="status">Copy was blocked: the text is selected, press Ctrl+C</span>}
+        <Button size="sm" variant={state === 'ok' ? undefined : 'primary'} icon={state === 'ok' ? Check : undefined} onClick={copy}>{state === 'ok' ? 'Copied' : 'Copy'}</Button>
       </div>
-      <pre className="m-0 p-3.5 text-12.5 leading-relaxed text-slate-800 bg-white overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-[420px]">{blk.text}</pre>
+      <pre ref={pre} className="m-0 p-3.5 text-12.5 leading-relaxed text-slate-800 bg-white overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-[420px]">{blk.text}</pre>
     </div>
   );
 }
