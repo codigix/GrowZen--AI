@@ -215,7 +215,13 @@ def domains(db: Session, b: Business, *, sort: str = "links", q: str = "", verdi
 
 
 # ------------------------------------------------------------------------------------------------------------------------ where competitors have links and we do not
-def opportunities(db: Session, b: Business, *, q: str = "", category: str = "", limit: int = 60) -> dict[str, Any]:
+def hygiene_competitors(db: Session, b: Business) -> list[str]:
+    from ..competitors import hygiene
+    me = own_domain(db, b.id)
+    return [d for d in hygiene.saved_competitor_domains(db, b) if d != me]
+
+
+def opportunities(db: Session, b: Business, *, q: str = "", category: str = "", status: str = "", limit: int = 60) -> dict[str, Any]:
     from ..competitors import hygiene
     from ..services import backlink_checker as bc
     me = own_domain(db, b.id)
@@ -263,6 +269,17 @@ def opportunities(db: Session, b: Business, *, q: str = "", category: str = "", 
                     "how": HOW.get(cat["key"], HOW["website"]), "priority_score": round(priority, 1)})
     needle = q.strip().lower()
     out = [x for x in out if (not needle or needle in x["domain"]) and (not category or x["category"]["key"] == category)]
+    from .models import BiOpportunity
+    states = {r.domain: r for r in db.scalars(select(BiOpportunity).where(BiOpportunity.business_id == b.id))}
+    for x in out:
+        st = states.get(x["domain"])
+        x["status"] = st.status if st else "new"
+        x["note"] = st.note if st else None
+        x["has_advice"] = bool(st and st.advice)
+    if status:
+        out = [x for x in out if x["status"] == status]
+    else:
+        out = [x for x in out if x["status"] != "skipped"]
     out.sort(key=lambda x: -x["priority_score"])
     for i, x in enumerate(out):
         x["priority"] = "high" if i < 8 and x["priority_score"] >= 45 else "medium" if x["priority_score"] >= 30 else "low"

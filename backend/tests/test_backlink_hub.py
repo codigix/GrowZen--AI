@@ -109,3 +109,64 @@ def test_a_business_without_a_site_gets_a_plain_state(client):
 
 def test_another_users_business_is_not_readable(client, world):
     assert client.get("/api/v1/businesses/999999/backlink-hub/links").status_code in (403, 404)
+
+
+def post(client, bid, path, body=None):
+    r = client.post(f"/api/v1/businesses/{bid}/backlink-hub/{path}", json=body or {})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_plan_statuses_advice_and_the_crawler_confirming_a_link(client, world, monkeypatch):
+    from app.services import ai
+    monkeypatch.setattr(ai, "is_configured", lambda: False)
+    o = get(client, world, "opportunities")["opportunities"]
+    d = next(x for x in o if x["domain"] == "citydirectory.in")
+    assert d["status"] == "new" and d["has_advice"] is False
+    a = post(client, world, "advice", {"domain": "citydirectory.in"})
+    assert a["method"] == "rules" and a["steps"] and a["what_you_get"] and "[add" in a["message"]
+    assert get(client, world, "opportunities")["opportunities"][0]["has_advice"] is True or any(x["has_advice"] for x in get(client, world, "opportunities")["opportunities"])
+    p = post(client, world, "plan", {"domain": "citydirectory.in", "status": "contacted", "note": "emailed the editor"})
+    assert p["counts"]["contacted"] == 1 and p["items"][0]["note"] == "emailed the editor"
+    assert next(x for x in get(client, world, "opportunities")["opportunities"] if x["domain"] == "citydirectory.in")["status"] == "contacted"
+    post(client, world, "plan", {"domain": "wellness-news.in", "status": "skipped"})
+    assert "wellness-news.in" not in {x["domain"] for x in get(client, world, "opportunities")["opportunities"]}
+    assert [x["domain"] for x in get(client, world, "opportunities", status="skipped")["opportunities"]] == ["wellness-news.in"]
+    assert client.post(f"/api/v1/businesses/{world}/backlink-hub/plan", json={"domain": "not a site", "status": "planned"}).status_code == 422
+    # the crawler later sees the site linking to us: it counts as live whatever was clicked
+    db = SessionLocal()
+    try:
+        crawler_sync.save_link(db, link("https://citydirectory.in/clinics/hub", f"https://{ME}/"), hub.utcnow())
+        db.commit()
+    finally:
+        db.close()
+    plan = get(client, world, "plan")
+    live = next(x for x in plan["items"] if x["domain"] == "citydirectory.in")
+    assert live["status"] == "live" and live["confirmed"] is True and plan["counts"]["live"] == 1
+
+
+def test_ai_advice_and_platform_suggestions_are_checked_before_use(client, world, monkeypatch):
+    from app.services import ai
+    monkeypatch.setattr(ai, "is_configured", lambda: True)
+    calls = []
+
+    def fake(system, user, **kw):
+        calls.append(user)
+        if "Website to approach" in user:
+            return {"what_it_is": "A city directory.", "what_you_get": ["Local visitors"], "effort": "low", "steps": ["Claim the listing"], "message": "Hello [add name]", "caution": ""}
+        return {"platforms": [{"domain": "https://www.indiamart.com/x", "name": "IndiaMART", "kind": "directory", "why": "Buyers search here", "how": "Create a listing"},
+                              {"domain": "healthblog.com", "name": "Already links", "kind": "blog", "why": "x", "how": "y"}, {"domain": RIVAL, "name": "Rival", "kind": "other", "why": "x", "how": "y"},
+                              {"domain": "not a domain", "name": "Bad", "kind": "other", "why": "x", "how": "y"}, {"domain": "nolist.org", "name": "No how", "kind": "other", "why": "x", "how": ""}]}
+    monkeypatch.setattr(ai, "complete_json", fake)
+    a = post(client, world, "advice", {"domain": "citydirectory.in"})
+    assert a["method"] == "ai" and a["effort"] == "low"
+    again = post(client, world, "advice", {"domain": "citydirectory.in"})
+    assert again == a and len(calls) == 1  # saved: no second AI call
+    s = post(client, world, "platforms/suggest")
+    assert s["state"] == "ok" and [x["domain"] for x in s["platforms"]] == ["indiamart.com"]  # own links, competitors, bad domains and incomplete entries are dropped
+
+
+def test_platform_suggestions_need_an_ai_key(client, world, monkeypatch):
+    from app.services import ai
+    monkeypatch.setattr(ai, "is_configured", lambda: False)
+    assert post(client, world, "platforms/suggest")["state"] == "no_ai"

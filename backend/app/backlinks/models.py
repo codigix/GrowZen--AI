@@ -256,6 +256,21 @@ class BiDomainMetric(TimestampMixin, Base):
     fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class BiOpportunity(TimestampMixin, Base):
+    """One place to get a link, in a business's link-building plan: where it came from, how far along it is, and the AI's advice for it."""
+    __tablename__ = "bi_opportunities"
+    __table_args__ = (UniqueConstraint("business_id", "domain"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    domain: Mapped[str] = mapped_column(String(255))
+    source: Mapped[str] = mapped_column(String(12), default="competitor")  # competitor (a competitor has a link there) | ai (suggested for the business)
+    status: Mapped[str] = mapped_column(String(12), default="planned")  # planned | contacted | live | skipped
+    name: Mapped[str | None] = mapped_column(String(160))
+    note: Mapped[str | None] = mapped_column(String(500))
+    advice: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # {what_you_get, steps, message, effort, caution, method}
+    status_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class ActionOutcome(Base):
     """What an action changed. A baseline is taken when the action happens and measured again after 14 and 30 days."""
     __tablename__ = "action_outcomes"

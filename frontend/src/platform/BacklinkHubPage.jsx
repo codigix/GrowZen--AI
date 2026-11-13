@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2, Plus, Trash2, Loader2 } from 'lucide-react';
-import { SeoShell, Card, Button, Badge, Stat, ErrorNote, Field, inputCls, useAction, useToast, useDoubleConfirm, SkList } from './SeoUi';
+import { SeoShell, Card, Button, Badge, Stat, ErrorNote, Modal, Field, inputCls, useAction, useToast, useDoubleConfirm, SkList } from './SeoUi';
 import Select from '../components/Select';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 import Tip from './Tip';
@@ -196,50 +196,161 @@ function Domains({ b }) {
   );
 }
 
+const WORK = { new: ['To do', 'gray'], planned: ['Planned', 'blue'], contacted: ['Contacted', 'amber'], live: ['Got the link', 'green'], skipped: ['Skipped', 'gray'] };
+const EFFORT = { low: ['Easy', 'green'], medium: ['Some work', 'amber'], high: ['Hard', 'red'] };
+const STAGES = [['todo', 'To do'], ['progress', 'In progress'], ['done', 'Got the link'], ['skipped', 'Skipped']];
+const stageOf = (st) => (st === 'contacted' ? 'progress' : st === 'live' ? 'done' : st === 'skipped' ? 'skipped' : 'todo');
+
+function AdviceModal({ b, item, onClose, onChanged }) {
+  const [adv, setAdv] = useState(null);
+  const [note, setNote] = useState(item?.note || '');
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
+  const base = `/businesses/${b.id}/backlink-hub`;
+  const load = (refresh = false) => run('advice', async () => { setAdv(await api(`${base}/advice`, { method: 'POST', body: { domain: item.domain, refresh } })); });
+  useEffect(() => { if (item) { setAdv(null); setNote(item.note || ''); load(false); } }, [item?.domain]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!item) return null;
+  const mark = (status) => run('mark', async () => { await api(`${base}/plan`, { method: 'POST', body: { domain: item.domain, status, note, source: item.source || 'competitor', name: item.name } }); toast(`Marked: ${WORK[status][0]}`); onChanged(); });
+  const copy = () => { try { navigator.clipboard.writeText(adv.message); toast('Message copied'); } catch { toast('Select the text and copy it'); } };
+  const [el, et] = EFFORT[adv?.effort] || EFFORT.medium;
+  return (
+    <Modal open title={item.name || item.domain} onClose={onClose} width="max-w-2xl"
+      footer={<div className="flex flex-wrap items-center gap-2 w-full">
+        <Button size="sm" busy={busy === 'mark'} onClick={() => mark('planned')}>Add to my plan</Button>
+        <Button size="sm" busy={busy === 'mark'} onClick={() => mark('contacted')}>I contacted them</Button>
+        <Button size="sm" variant="primary" busy={busy === 'mark'} onClick={() => mark('live')}>I got the link</Button>
+        <Button size="sm" busy={busy === 'mark'} onClick={() => mark('skipped')}>Not for us</Button>
+        <Button size="sm" className="ml-auto" onClick={onClose}>Close</Button>
+      </div>}>
+      <div className="grid gap-4 text-13">
+        <a href={`https://${item.domain}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-indigo-600 hover:underline w-fit">{item.domain}<ExternalLink size={12} /></a>
+        <ErrorNote>{error}</ErrorNote>
+        {!adv && !error && <SkList rows={3} />}
+        {adv && (
+          <>
+            <div className="flex flex-wrap items-center gap-2"><span className="text-slate-700">{adv.what_it_is}</span><Badge tone={et}>{el}</Badge><Badge tone={adv.method === 'ai' ? 'blue' : 'gray'}>{adv.method === 'ai' ? 'Advice by AI' : 'Standard advice'}</Badge></div>
+            <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">What you get from a link here</h4><ul className="grid gap-1 list-disc pl-5 text-slate-700">{adv.what_you_get.map((x, i) => <li key={i}>{x}</li>)}</ul></section>
+            <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">How to get it</h4><ol className="grid gap-1 list-decimal pl-5 text-slate-700">{adv.steps.map((x, i) => <li key={i}>{x}</li>)}</ol></section>
+            <section><div className="flex items-center justify-between mb-1.5"><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500">Message you can send</h4><button type="button" onClick={copy} className="text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">Copy</button></div>
+              <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 ring-1 ring-inset ring-slate-200 p-3 text-12.5 text-slate-700 font-sans">{adv.message}</pre><p className="text-11.5 text-slate-400 mt-1">Fill in the [add …] parts before sending. Nothing is sent from here.</p></section>
+            {adv.caution && <p className="rounded-lg bg-amber-50 text-amber-800 px-3 py-2 text-12.5">{adv.caution}</p>}
+            <label className="grid gap-1"><span className="text-12 font-semibold text-slate-500">Your note (who you contacted, when)</span><input value={note} onChange={e => setNote(e.target.value)} maxLength={500} className="h-9 px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+            <button type="button" onClick={() => load(true)} className="text-12 text-slate-500 hover:underline w-fit cursor-pointer">Write the advice again</button>
+          </>
+        )}
+      </div>
+      {toastNode}
+    </Modal>
+  );
+}
+
+function AiPlatforms({ b, onOpen, onChanged }) {
+  const [res, setRes] = useState(null);
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
+  const base = `/businesses/${b.id}/backlink-hub`;
+  const ask = () => run('ask', async () => setRes(await api(`${base}/platforms/suggest`, { method: 'POST' })));
+  const add = (p) => run(p.domain, async () => { await api(`${base}/plan`, { method: 'POST', body: { domain: p.domain, status: 'planned', source: 'ai', name: p.name } }); setRes(r => ({ ...r, platforms: r.platforms.filter(x => x.domain !== p.domain) })); toast(`${p.name} added to your plan`); onChanged(); });
+  return (
+    <Card title="More places to get links, chosen by AI for your business" subtitle="Not only where competitors are: sites that fit what you do and where you are. Suggestions, to be checked before you use them."
+      action={<Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'ask'} onClick={ask}>{res ? 'Suggest again' : 'Suggest places'}</Button>}>
+      <ErrorNote>{error}</ErrorNote>
+      {!res && <p className="text-13 text-slate-500">Press “Suggest places” and the AI lists sites that suit this business, what a link there gives you, and the first step.</p>}
+      {res?.state === 'no_ai' && <p className="text-13 text-amber-800">{res.message}</p>}
+      {res?.state === 'error' && <p className="text-13 text-amber-800">{res.message}</p>}
+      {res?.state === 'ok' && (res.platforms.length === 0 ? <p className="text-13 text-slate-500">Nothing new to suggest right now.</p> : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {res.platforms.map(p => (
+            <div key={p.domain} className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-1.5 text-13">
+              <div className="flex items-center gap-2"><a href={`https://${p.domain}`} target="_blank" rel="noreferrer" className="font-semibold text-indigo-600 hover:underline inline-flex items-center gap-1">{p.name}<ExternalLink size={11} /></a><Badge tone="gray">{p.kind}</Badge></div>
+              <p className="text-slate-700"><span className="font-semibold">You get:</span> {p.why}</p>
+              <p className="text-slate-600"><span className="font-semibold">First step:</span> {p.how}</p>
+              <div className="flex gap-2 pt-1"><Button size="sm" busy={busy === p.domain} onClick={() => add(p)}>Add to my plan</Button><Button size="sm" onClick={() => onOpen({ domain: p.domain, name: p.name, source: 'ai' })}>How to get it</Button></div>
+            </div>
+          ))}
+        </div>
+      ))}
+      {res?.note && <p className="text-11.5 text-slate-400 mt-3">{res.note}</p>}
+      {toastNode}
+    </Card>
+  );
+}
+
 function Opportunities({ b }) {
+  const [stage, setStage] = useState('todo');
   const [cat, setCat] = useState('');
   const [q, setQ] = useState('');
+  const [open, setOpen] = useState(null);
   const dq = useDebounced(q);
-  const r = useList(b, 'opportunities', { q: dq, category: cat });
+  const r = useList(b, 'opportunities', { q: dq, category: cat, limit: 200 });
+  const sk = useList(b, 'opportunities', { status: 'skipped', limit: 200 });
+  const pl = useApi(`/businesses/${b.id}/backlink-hub/plan`);
+  const [busy, error, run] = useAction();
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
+  const changed = () => { r.reload(true); sk.reload(true); pl.reload(true); };
+  const setStatus = (x, status) => run(x.domain, async () => { await api(`/businesses/${b.id}/backlink-hub/plan`, { method: 'POST', body: { domain: x.domain, status, source: 'competitor' } }); changed(); });
+  const all = d.opportunities || [];
+  const done = (pl.data?.items || []).filter(x => x.status === 'live');
+  const lists = { todo: all.filter(x => stageOf(x.status) === 'todo'), progress: all.filter(x => stageOf(x.status) === 'progress'), skipped: sk.data?.opportunities || [] };
+  const shown = lists[stage] || [];
+  const pill = (on) => `h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
+  const count = (id) => (id === 'done' ? done.length : (lists[id] || []).length);
   return (
     <>
-      <Card title="Where your competitors have links and you do not" subtitle={d.competitors?.length ? `Compared with ${d.competitors.join(', ')}. Spammy sites are left out.` : 'Add competitors first.'}>
+      <Card title="Where your competitors have links and you do not" subtitle={d.competitors?.length ? 'Your competitors are the ones saved on the Competitors page. Spammy sites are left out.' : 'Add competitors first.'}
+        action={<Link to="/competitor-finder"><Button size="sm">Manage competitors</Button></Link>}>
+        {d.competitors?.length > 0 && <div className="flex flex-wrap items-center gap-2 mb-3 text-12 text-slate-500"><span>Compared with:</span>{d.competitors.map(c => <Badge key={c} tone="gray">{c}</Badge>)}</div>}
         {d.state === 'no_target' && <p className="text-13 text-slate-500">Add the project's website first.</p>}
         {d.state === 'no_competitors' && <p className="text-13 text-slate-500">No competitors are saved for this project. Find them on the <Link to="/competitor-finder" className="text-indigo-600 hover:underline">Competitors page</Link>; their links are then read by your crawler.</p>}
         {d.note && <p className="text-13 text-slate-500">{d.note}</p>}
-        {d.state === 'ok' && d.total > 0 && <div className="grid grid-cols-3 gap-3 max-w-xl"><Stat label="Sites to approach" value={d.total} /><Stat label="High priority" value={d.opportunities.filter(x => x.priority === 'high').length} /><Stat label="Follow links" value={d.opportunities.filter(x => x.follow === 'dofollow').length} /></div>}
+        {d.state === 'ok' && <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl"><Stat label="To do" value={lists.todo.length} /><Stat label="In progress" value={lists.progress.length} /><Stat label="Got the link" value={done.length} hint="Confirmed when the crawler sees it" /><Stat label="High priority" value={lists.todo.filter(x => x.priority === 'high').length} /></div>}
       </Card>
-      {d.state === 'ok' && d.total > 0 && (
+      {d.state === 'ok' && (
         <Card pad={false}>
-          <Filters q={q} setQ={setQ}>
-            <Select value={cat} onChange={e => setCat(e.target.value)} className={sel} aria-label="Category"><option value="">Any category</option>{[...new Set(d.opportunities.map(x => x.category.key))].map(k => <option key={k} value={k}>{k}</option>)}</Select>
-          </Filters>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-13">
-              <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-                <th className={TH}>Priority</th><th className={TH}>Site</th><th className={TH}>Links to</th><th className={TH}>Category</th><th className={TH}>Follow</th><th className={`${TH} text-right`}>DA</th><th className={`${TH} text-right`}>Relevance</th><th className={TH}>Useful?</th><th className={TH}>How to get it</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {d.opportunities.map(x => { const [pl, pt] = PRIORITY[x.priority]; return (
-                  <tr key={x.domain} className="hover:bg-slate-50 align-middle">
-                    <td className="px-3 py-3"><Badge tone={pt}>{pl}</Badge></td>
-                    <td className="px-3 py-3 max-w-[220px]"><a href={x.sample.url} target="_blank" rel="noreferrer" className="font-semibold text-indigo-600 hover:underline inline-flex items-center gap-1">{x.domain}<ExternalLink size={11} /></a>{x.sample.anchor && <span className="block truncate text-11.5 text-slate-400" title={x.sample.anchor}>anchor “{x.sample.anchor}”</span>}</td>
-                    <td className="px-3 py-3 text-slate-600"><Tip text={x.competitors.join(', ')}><span>{x.competitor_count} competitor{x.competitor_count !== 1 ? 's' : ''} · {x.links} link{x.links !== 1 ? 's' : ''}</span></Tip></td>
-                    <td className="px-3 py-3 text-slate-600">{x.category.label}</td>
-                    <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
-                    <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td>
-                    <td className="px-3 py-3 text-right tabular-nums">{x.quality.relevance}</td>
-                    <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
-                    <td className="px-3 py-3 max-w-[300px]"><Tip text={x.how} wide><span className="line-clamp-2 text-12.5 text-slate-600">{x.how}</span></Tip></td>
-                  </tr>); })}
-              </tbody>
-            </table>
+          <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-slate-100">
+            {STAGES.map(([id, label]) => <button key={id} type="button" aria-pressed={stage === id} onClick={() => setStage(id)} className={pill(stage === id)}>{label} <span className="opacity-70">{count(id)}</span></button>)}
+            {stage !== 'done' && <Select value={cat} onChange={e => setCat(e.target.value)} className={sel} aria-label="Category"><option value="">Any category</option>{[...new Set(all.map(x => x.category.key))].map(k => <option key={k} value={k}>{k}</option>)}</Select>}
+            <label className="relative ml-auto"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search" aria-label="Search" className="h-8 w-48 pl-8 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
           </div>
-          <p className="px-5 py-3 border-t border-slate-100 text-11.5 text-slate-400">Listed because a competitor has a link there and you do not. It is a place to ask, not a promise that they will say yes. The best ones also become tasks in your <Link to="/growth#issues" className="text-indigo-600 hover:underline">Growth Plan</Link>.</p>
+          <ErrorNote>{error}</ErrorNote>
+          <div className="overflow-x-auto">
+            {stage === 'done' ? (
+              <table className="w-full min-w-[600px] text-13">
+                <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className={TH}>Site</th><th className={TH}>Where it came from</th><th className={TH}>Result</th><th className={TH}>Note</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {done.map(x => <tr key={x.domain} className="align-middle"><td className="px-3 py-3 font-semibold text-slate-900">{x.domain}</td><td className="px-3 py-3 text-slate-600">{x.source === 'ai' ? 'Suggested by AI' : 'Competitor gap'}</td><td className="px-3 py-3">{x.confirmed ? <Badge tone="green">Confirmed by the crawler</Badge> : <Badge tone="amber">Marked by you: not seen by the crawler yet</Badge>}</td><td className="px-3 py-3 text-slate-600">{x.note || '—'}</td></tr>)}
+                  {!done.length && <Empty>No link won yet. Work through “To do”: the crawler confirms a link when it finds it.</Empty>}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full min-w-[1000px] text-13">
+                <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+                  <th className={TH}>Priority</th><th className={TH}>Site</th><th className={TH}>Competitors linked there</th><th className={TH}>Category</th><th className={TH}>Follow</th><th className={`${TH} text-right`}>DA</th><th className={TH}>Useful?</th><th className={TH}>Status</th><th className={TH} /></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {shown.map(x => { const [pl2, pt] = PRIORITY[x.priority] || PRIORITY.low; return (
+                    <tr key={x.domain} className="hover:bg-slate-50 align-middle">
+                      <td className="px-3 py-3"><Badge tone={pt}>{pl2}</Badge></td>
+                      <td className="px-3 py-3 max-w-[220px]"><a href={x.sample.url} target="_blank" rel="noreferrer" className="font-semibold text-indigo-600 hover:underline inline-flex items-center gap-1">{x.domain}<ExternalLink size={11} /></a>{x.note && <span className="block truncate text-11.5 text-slate-400" title={x.note}>{x.note}</span>}</td>
+                      <td className="px-3 py-3 text-slate-600"><Tip text={x.competitors.join(', ')}><span>{x.competitors.join(', ')}</span></Tip></td>
+                      <td className="px-3 py-3 text-slate-600">{x.category.label}</td>
+                      <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
+                      <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td>
+                      <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
+                      <td className="px-3 py-3"><Select value={x.status} onChange={e => setStatus(x, e.target.value)} className="h-8 text-13 min-w-[130px]" aria-label={`Status of ${x.domain}`} disabled={busy === x.domain}><option value="new">To do</option><option value="planned">Planned</option><option value="contacted">Contacted</option><option value="live">Got the link</option><option value="skipped">Skipped</option></Select></td>
+                      <td className="px-3 py-3"><Button size="sm" variant="primary" onClick={() => setOpen(x)}>Guide</Button></td>
+                    </tr>); })}
+                  {!shown.length && <Empty>{stage === 'todo' ? (all.length ? 'Nothing left to do here.' : 'No opportunities yet: your crawler has not found sites that link to your competitors and not to you.') : stage === 'progress' ? 'Nothing in progress. Open a site and press “I contacted them”.' : 'Nothing skipped.'}</Empty>}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <p className="px-5 py-3 border-t border-slate-100 text-11.5 text-slate-400">Listed because a competitor has a link there and you do not: a place to ask, not a promise. “Got the link” is confirmed automatically once the crawler finds your link on that site. The best ones also become tasks in your <Link to="/growth#issues" className="text-indigo-600 hover:underline">Growth Plan</Link>.</p>
         </Card>
       )}
+      {d.state !== 'no_target' && <AiPlatforms b={b} onOpen={setOpen} onChanged={changed} />}
+      {open && <AdviceModal b={b} item={open} onClose={() => setOpen(null)} onChanged={() => { changed(); setOpen(null); }} />}
     </>
   );
 }
