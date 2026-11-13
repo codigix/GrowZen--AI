@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { Check, X, Plus, Search, Globe, Copy, Download, RefreshCw, ChevronDown, ExternalLink, Loader2, AlertTriangle, ShieldCheck, Lock, FileText, History, Wrench, Share2, Braces, Cpu, Bot, Layers, Columns3, Gauge as GaugeIcon } from 'lucide-react';
-import { SeoShell, Card, Button, Badge } from './SeoUi';
+import { SeoShell, Card, Button, Badge, Modal } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { HistoryPanel, RenderingCard, SiteScan } from './PageXRayHistory';
 import FullPageCard from './PageXRayLighthouse';
@@ -169,60 +170,147 @@ function CheckCard2({ label, hint, area, filter, areaKey }) {
 }
 
 const AREA_TINT = { seo: 'bg-indigo-50 text-indigo-700', aeo: 'bg-violet-50 text-violet-700', geo: 'bg-sky-50 text-sky-700' };
+const AREA_NAME = { seo: 'SEO', aeo: 'AEO: answer engines', geo: 'GEO: AI search' };
 
-/** Every check of SEO, AEO and GEO in one table: what was found, how to fix it, the fix task's status and a link to its fix page. Failed checks first. */
+// Which part of the page a check is about (the "subcontent"): the same grouping the website health view uses.
+const CHECK_GROUP = {
+  title: 'Titles', descriptive_title: 'Titles', description: 'Descriptions', description_unique: 'Descriptions', one_h1: 'Headings', outline: 'Headings', words: 'Content', short_paragraphs: 'Content', lists_tables: 'Content', numbers: 'Content',
+  alt: 'Images', a11y_img_alt: 'Images', internal_links: 'Links', outbound: 'Links', redirects: 'Links', status_200: 'Links', canonical: 'Indexing', single_canonical: 'Indexing', indexable: 'Indexing', not_noindex: 'Indexing',
+  sitemap: 'Indexing', https: 'Security', no_mixed_content: 'Security', cert: 'Security', page_weight: 'Speed', response_time: 'Speed', viewport: 'Mobile', lang: 'Mobile', favicon: 'Mobile', og: 'Social sharing', twitter_card: 'Social sharing',
+  faq_schema: 'Structured data', org_schema: 'Structured data', entity_consistent: 'Structured data', question_headings: 'AI answers', direct_answer: 'AI answers', date: 'AI answers', author: 'AI answers', eeat: 'AI answers',
+  ai_crawlers: 'AI access', llms_txt: 'AI access'
+};
+const groupOf = (key) => (key.startsWith('a11y_') && key !== 'a11y_img_alt' ? 'Accessibility' : CHECK_GROUP[key] || 'Content');
+
+/** A short hover / focus bubble: the full text of a shortened cell, or a plain-words explanation of a column. Drawn on the page body so a scrolling table never clips it. */
+function Tip({ text, children, wide = false, align = 'left' }) {
+  const [pos, setPos] = useState(null);
+  if (!text) return children;
+  const show = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const w = wide ? 320 : 240;
+    const left = Math.max(8, Math.min(window.innerWidth - w - 8, align === 'right' ? r.right - w : r.left));
+    const below = r.bottom + 8 + 120 < window.innerHeight;
+    setPos({ left, width: w, ...(below ? { top: r.bottom + 6 } : { bottom: window.innerHeight - r.top + 6 }) });
+  };
+  return (
+    <span className="inline-flex max-w-full" tabIndex={0} onMouseEnter={show} onMouseLeave={() => setPos(null)} onFocus={show} onBlur={() => setPos(null)}>
+      {children}
+      {pos && createPortal(<span role="tooltip" style={{ position: 'fixed', zIndex: 80, ...pos }} className="pointer-events-none rounded-lg bg-slate-900 text-white text-12 leading-snug font-normal normal-case tracking-normal text-left px-3 py-2 shadow-xl">{text}</span>, document.body)}
+    </span>
+  );
+}
+const Clip = ({ text, lines = 2 }) => (text ? <Tip text={String(text).length > 70 ? text : null} wide><span className={`block text-slate-600 ${lines === 1 ? 'truncate' : 'line-clamp-2'}`}>{text}</span></Tip> : <span className="text-slate-400">—</span>);
+
+/** The whole check in one window: what it is, what was found, why it counts, the fix, the fix task and its status. */
+function CheckModal({ r, onClose }) {
+  const t = r?.task;
+  const fixed = t?.status === 'verified';
+  const st = t ? (FIX_STATUS[t.status] || FIX_STATUS.todo) : null;
+  return (
+    <Modal open={Boolean(r)} onClose={onClose} width="max-w-2xl" title={r ? r.label : ''}
+      footer={r && t ? <><Button onClick={onClose}>Close</Button><Link to={`/growth/fix/${t.id}`}><Button variant="primary" icon={Wrench}>{fixed ? 'See the fix' : 'Open the fix guide'}</Button></Link></> : <Button onClick={onClose}>Close</Button>}>
+      {r && (
+        <div className="space-y-4 text-13 text-slate-700">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-12 font-semibold ${r.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{r.passed ? <Check size={12} /> : <X size={12} />}{r.passed ? 'Passed' : 'Failed'}</span>
+            <span className={`rounded px-2 py-1 text-11 font-bold uppercase ${AREA_TINT[r.area] || ''}`}>{AREA_NAME[r.area] || r.area}</span>
+            <span className="rounded-full bg-slate-100 text-slate-700 px-2.5 py-1 text-12 font-medium">{groupOf(r.key)}</span>
+            <span className="rounded-full bg-slate-100 text-slate-700 px-2.5 py-1 text-12 font-medium">Weight {r.weight ?? '—'}</span>
+            {r.impact > 0 && <span className="rounded-full bg-amber-50 text-amber-800 px-2.5 py-1 text-12 font-semibold">{r.passed ? `Worth ${r.impact} points of the ${r.area.toUpperCase()} score` : `Fixing it adds about ${r.impact} points to the ${r.area.toUpperCase()} score`}</span>}
+          </div>
+          <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1">What was found</h4><p className="break-words">{r.detail || 'The check ran and returned no extra detail.'}</p></section>
+          {!r.passed && (
+            <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1">How to fix it</h4>
+              {r.fix && <p className="rounded-lg bg-indigo-50 text-indigo-900 px-3 py-2 leading-snug">{r.fix}</p>}
+              {t?.how?.length > 0 && !fixed && <ol className="mt-2 list-decimal pl-5 space-y-1">{t.how.map((h, i) => <li key={i}>{h}</li>)}</ol>}
+              {t?.closes_when && !fixed && <p className="mt-2 text-12.5 text-slate-500"><b>Fixed when:</b> {t.closes_when}</p>}
+            </section>
+          )}
+          <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1">Fix task</h4>
+            {t ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`inline-flex items-center gap-1 rounded-full ring-1 ring-inset px-2.5 py-0.5 text-12 font-semibold ${st[1]}`}>{fixed ? <Check size={12} /> : <AlertTriangle size={12} />}{fixed ? 'Fixed: this scan passes it' : st[0]}</span>
+                {!fixed && t.due_on && <span className="text-12.5 text-slate-500">{t.overdue ? 'Overdue' : 'Due'} {t.due_on}</span>}
+                {!fixed && t.severity && <span className="text-12.5 font-semibold capitalize">{t.severity}</span>}
+                {t.fix_mode_label && <span className="text-12 rounded-full bg-indigo-50 text-indigo-700 px-2.5 py-0.5 font-medium">{t.fix_mode_label}</span>}
+                {t.last_check && t.status !== 'todo' && <span className="w-full text-12 text-amber-800">Last result: {t.last_check}</span>}
+              </div>
+            ) : <p className="text-slate-500">{r.passed ? 'Nothing to fix.' : 'No fix task has been created for this check yet. Scan again, or open the Growth Plan.'}</p>}
+          </section>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/** Every check of SEO, AEO and GEO in one compact table. Long text is shortened and shows in full on hover; a click on a row opens the whole check in a window. Failed checks first. */
 function ChecksTable({ d, filter }) {
   const { tasks } = useContext(FixCtx);
   const [q, setQ] = useState('');
   const [area, setArea] = useState('all');
+  const [grp, setGrp] = useState('all');
+  const [open, setOpen] = useState(null);
   let rows = [];
-  for (const [k] of SCORE_AREAS) arr(d.scores?.[k]?.checks).forEach(c => rows.push({ ...c, area: k, task: tasks[`${k}.${c.key}`] }));
-  rows = rows.filter(r => (filter === 'failed' ? !r.passed : filter === 'passed' ? r.passed : true) && (area === 'all' || r.area === area)
-    && (!q.trim() || `${r.label} ${r.detail || ''} ${r.fix || ''}`.toLowerCase().includes(q.trim().toLowerCase())));
+  for (const [k] of SCORE_AREAS) {
+    const checks = arr(d.scores?.[k]?.checks);
+    const total = checks.reduce((x, c) => x + (Number(c.weight) || 0), 0);
+    checks.forEach(c => rows.push({ ...c, area: k, group: groupOf(c.key), impact: total ? Math.round(((Number(c.weight) || 0) / total) * 100 * 10) / 10 : 0, task: tasks[`${k}.${c.key}`] }));
+  }
+  const groups = [...new Set(rows.map(r => r.group))].sort();
+  rows = rows.filter(r => (filter === 'failed' ? !r.passed : filter === 'passed' ? r.passed : true) && (area === 'all' || r.area === area) && (grp === 'all' || r.group === grp)
+    && (!q.trim() || `${r.label} ${r.detail || ''} ${r.fix || ''} ${r.group}`.toLowerCase().includes(q.trim().toLowerCase())));
   rows.sort((a, b) => (a.passed === b.passed ? (b.weight || 0) - (a.weight || 0) : a.passed ? 1 : -1));
+  const pill = (on) => `h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'text-slate-600 ring-slate-300 hover:bg-slate-50'}`;
+  const th = 'px-3 py-2.5 font-semibold whitespace-nowrap';
   return (
-    <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+    <section className="rounded-xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-100">
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search checks…" aria-label="Search checks" className="h-9 w-56 max-w-full px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" />
-        {[['all', 'All areas'], ...SCORE_AREAS.map(([k, l]) => [k, l])].map(([k, l]) => <button key={k} type="button" onClick={() => setArea(k)} aria-pressed={area === k} className={`h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${area === k ? 'bg-indigo-600 text-white ring-indigo-600' : 'text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>{l}</button>)}
-        <span className="ml-auto text-12 text-slate-500">{rows.length} check{rows.length === 1 ? '' : 's'}</span>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search checks…" aria-label="Search checks" className="h-9 w-52 max-w-full px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" />
+        {[['all', 'All areas'], ...SCORE_AREAS.map(([k, l]) => [k, l])].map(([k, l]) => <button key={k} type="button" onClick={() => setArea(k)} aria-pressed={area === k} className={pill(area === k)}>{l}</button>)}
+        <select value={grp} onChange={e => setGrp(e.target.value)} aria-label="Filter by part of the page" className="h-8 px-2 rounded-lg text-12 font-semibold text-slate-700 ring-1 ring-inset ring-slate-300 bg-white cursor-pointer">
+          <option value="all">All parts of the page</option>{groups.map(g => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <span className="ml-auto text-12 text-slate-500">{rows.length} check{rows.length === 1 ? '' : 's'} · click a row for everything about it</span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] text-13 text-left">
+        <table className="w-full min-w-[1040px] table-fixed text-13 text-left">
+          <colgroup><col style={{ width: 96 }} /><col style={{ width: 64 }} /><col style={{ width: 116 }} /><col style={{ width: '24%' }} /><col style={{ width: 70 }} /><col style={{ width: '18%' }} /><col style={{ width: '22%' }} /><col style={{ width: 124 }} /><col style={{ width: 84 }} /></colgroup>
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
-            <tr><th className="px-4 py-2.5 font-semibold w-24">Result</th><th className="px-3 py-2.5 font-semibold w-16">Area</th><th className="px-3 py-2.5 font-semibold w-[22%]">Check</th><th className="px-3 py-2.5 font-semibold w-[20%]">What was found</th>
-              <th className="px-3 py-2.5 font-semibold w-[30%]">How to fix it</th><th className="px-3 py-2.5 font-semibold w-32">Fix status</th><th className="px-4 py-2.5 font-semibold w-28">Fix page</th></tr>
+            <tr>
+              <th className={`${th} w-24`}>Result</th><th className={`${th} w-16`}>Area</th>
+              <th className={`${th} w-28`}><Tip text="The part of the page this check is about: titles, headings, images, links, security, speed and so on." align="left">Part of page</Tip></th>
+              <th className={`${th} w-[22%]`}>Check</th>
+              <th className={`${th} w-20 text-right`}><Tip text="How many points of the area's score this check is worth. Fixing a failed check adds this many points." align="right">Points</Tip></th>
+              <th className={`${th} w-[20%]`}>What was found</th><th className={`${th} w-[24%]`}>How to fix it</th>
+              <th className={`${th} w-28`}>Fix status</th><th className={`${th} w-24 text-right`}>Details</th>
+            </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No checks match.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500">No checks match.</td></tr>}
             {rows.map(r => {
               const t = r.task, fixed = t?.status === 'verified', st = t ? (FIX_STATUS[t.status] || FIX_STATUS.todo) : null;
               return (
-                <tr key={`${r.area}.${r.key}`} className={`align-top ${r.passed ? '' : 'bg-red-50/30'}`}>
-                  <td className="px-4 py-3"><span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-12 font-semibold ${r.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{r.passed ? <Check size={12} /> : <X size={12} />}{r.passed ? 'Passed' : 'Failed'}</span></td>
-                  <td className="px-3 py-3"><span className={`rounded px-1.5 py-0.5 text-11 font-bold uppercase ${AREA_TINT[r.area] || ''}`}>{r.area}</span></td>
-                  <td className="px-3 py-3"><div className="font-medium text-slate-900">{r.label}</div>{r.weight != null && <div className="text-11 text-slate-400">weight {r.weight}</div>}</td>
-                  <td className="px-3 py-3 text-slate-600 break-words">{r.detail || <span className="text-slate-400">—</span>}</td>
-                  <td className="px-3 py-3 text-slate-700">
-                    {r.passed ? <span className="text-slate-400">Nothing to fix.</span> : (
-                      <>
-                        {r.fix && <div className="rounded-md bg-indigo-50 text-indigo-900 px-2.5 py-1.5 leading-snug">{r.fix}</div>}
-                        {t?.how?.length > 0 && !fixed && <ol className="mt-1.5 list-decimal pl-5 space-y-0.5 text-slate-600">{t.how.map((h, i) => <li key={i}>{h}</li>)}</ol>}
-                        {t && !fixed && t.closes_when && <p className="mt-1.5 text-12 text-slate-500"><b>Fixed when:</b> {t.closes_when}</p>}
-                      </>
-                    )}
+                <tr key={`${r.area}.${r.key}`} onClick={() => setOpen(r)} className={`align-middle cursor-pointer hover:bg-indigo-50/40 ${r.passed ? '' : 'bg-red-50/30'}`}>
+                  <td className="px-3 py-2.5"><span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-12 font-semibold ${r.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{r.passed ? <Check size={12} /> : <X size={12} />}{r.passed ? 'Passed' : 'Failed'}</span></td>
+                  <td className="px-3 py-2.5"><Tip text={AREA_NAME[r.area]}><span className={`rounded px-1.5 py-0.5 text-11 font-bold uppercase ${AREA_TINT[r.area] || ''}`}>{r.area}</span></Tip></td>
+                  <td className="px-3 py-2.5 text-slate-600 truncate">{r.group}</td>
+                  <td className="px-3 py-2.5"><Tip text={r.label.length > 38 ? r.label : null}><span className="block font-medium text-slate-900 truncate">{r.label}</span></Tip></td>
+                  <td className="px-3 py-2.5 text-right tabular-nums"><Tip text={`Weight ${r.weight ?? '—'}: worth ${r.impact} points of the ${r.area.toUpperCase()} score.`} align="right"><span className={r.passed ? 'text-slate-400' : 'font-semibold text-amber-700'}>{r.passed ? '' : '+'}{r.impact}</span></Tip></td>
+                  <td className="px-3 py-2.5"><Clip text={r.detail} /></td>
+                  <td className="px-3 py-2.5">{r.passed ? <span className="text-slate-400">Nothing to fix</span> : <Clip text={r.fix} />}</td>
+                  <td className="px-3 py-2.5">{t ? <Tip text={fixed ? 'This scan passes the check.' : `${st[0]}${t.due_on ? `, due ${t.due_on}` : ''}${t.fix_mode_label ? `. ${t.fix_mode_label}.` : ''}`}><span className={`inline-flex items-center gap-1 rounded-full ring-1 ring-inset px-2.5 py-0.5 text-12 font-semibold whitespace-nowrap ${st[1]}`}>{fixed ? <Check size={12} /> : <AlertTriangle size={12} />}{fixed ? 'Fixed' : st[0]}</span></Tip> : <span className="text-slate-400">{r.passed ? '—' : 'No task yet'}</span>}</td>
+                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setOpen(r); }} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Details</button>
+                    {t && <Link to={`/growth/fix/${t.id}`} onClick={e => e.stopPropagation()} title="Open the exact fix" className="ml-2 inline-flex align-middle text-slate-500 hover:text-indigo-700"><Wrench size={14} /></Link>}
                   </td>
-                  <td className="px-3 py-3">
-                    {t ? (<div className="space-y-1"><span className={`inline-flex items-center gap-1 rounded-full ring-1 ring-inset px-2.5 py-0.5 text-12 font-semibold ${st[1]}`}>{fixed ? <Check size={12} /> : <AlertTriangle size={12} />}{fixed ? 'Fixed' : st[0]}</span>
-                      {!fixed && t.due_on && <div className="text-12 text-slate-500">{t.overdue ? 'Overdue' : 'Due'} {t.due_on}</div>}{t.fix_mode_label && <div className="text-12 text-indigo-700">{t.fix_mode_label}</div>}</div>) : <span className="text-slate-400">{r.passed ? '—' : 'No task yet'}</span>}
-                  </td>
-                  <td className="px-4 py-3">{t ? <Link to={`/growth/fix/${t.id}`}><Button size="sm" variant={fixed ? undefined : 'primary'} icon={Wrench}>{fixed ? 'See fix' : 'Fix guide'}</Button></Link> : <span className="text-slate-400">—</span>}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+      <CheckModal r={open} onClose={() => setOpen(null)} />
     </section>
   );
 }
