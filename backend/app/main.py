@@ -73,6 +73,8 @@ async def lifespan(_: FastAPI):
     step("schema update", schema_step)
     step("admin account", lambda db: auth.seed_admin(db, settings))
     step("project owners", owners_step)
+    from .services import autopilot as _autopilot
+    step("approval rules", _autopilot.enforce)
     step("interrupted Lighthouse audits", lighthouse_runner.recover_interrupted)
     step("interrupted jobs", lambda db: jobs.recover_stale(db, startup=True))
     scheduler.start()
@@ -116,6 +118,8 @@ app.include_router(backlink_service_router, prefix=settings.api_prefix)
 
 from .routers import review_link  # noqa: E402
 from .routers import growth_plan as growth_plan_router  # noqa: E402
+from .routers import autopilot as autopilot_router  # noqa: E402
+app.include_router(autopilot_router.router, prefix=settings.api_prefix)
 app.include_router(growth_plan_router.router, prefix=settings.api_prefix)
 app.include_router(growth_plan_router.overview_router, prefix=settings.api_prefix)
 from .routers import page_xray_lighthouse  # noqa: E402

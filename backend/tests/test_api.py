@@ -149,7 +149,7 @@ def test_portfolio(client):
 
     # The AI side: provider status, autopilot rules and each agent's workload.
     a = data["ai"]
-    assert a["engine"]["configured"] is False and "profile_edit" in a["autopilot"]["manual"] and "gbp_post" in a["autopilot"]["auto"]
+    assert a["engine"]["configured"] is False and "profile_edit" in a["autopilot"]["manual"] and "gbp_post" in a["autopilot"]["manual"] and not a["autopilot"]["auto"]  # nothing that reaches Google runs without approval
     assert {"audit", "gbp", "review", "outreach"} <= set(a["agents"]) and a["agents"]["gbp"]["label"] == "Profile agent"
     assert all(v["pending"] >= 0 and v["proposed_30"] >= v["applied_30"] for v in a["agents"].values())
 

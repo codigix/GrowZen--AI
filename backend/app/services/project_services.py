@@ -22,7 +22,7 @@ LABELS = {"seo": "SEO", "geo": "GEO", "aeo": "AEO", "gmb": "GMB"}
 GEO_ENGINES = {"ChatGPT", "Gemini", "Claude", "DeepSeek"}  # everything else (Perplexity) counts as an answer engine
 # Scheduled jobs that belong to one service ("geo" runs for GEO or AEO).
 JOB_MODULE = {"full_audit": "seo", "rank_scan": "seo", "technical": "seo", "report": "seo", "weekly_plan": "seo", "site_research": "seo", "site_crawl": "seo",
-              "reviews": "gmb", "posts": "gmb", "geo": "geo"}
+              "reviews": "gmb", "posts": "gmb", "geo": "geo", "autopilot": "gmb"}
 
 
 def enabled(b: Business) -> list[str]:

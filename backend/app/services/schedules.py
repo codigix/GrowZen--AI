@@ -11,9 +11,9 @@ from .activity import log
 from .playbook import get_playbook
 
 INTERVALS = {"daily": 1, "weekly": 7, "fortnightly": 14, "monthly": 30}
-JOBS = ["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo", "weekly_plan", "site_research", "site_crawl", "growth_daily", "growth_weekly", "growth_monthly"]
+JOBS = ["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo", "weekly_plan", "site_research", "site_crawl", "growth_daily", "growth_weekly", "growth_monthly", "autopilot"]
 # Jobs every plan gets even when the playbook saved before they existed has no entry for them.
-JOB_DEFAULTS = {"weekly_plan": "weekly", "site_research": "monthly", "growth_daily": "daily", "growth_weekly": "weekly", "growth_monthly": "monthly"}
+JOB_DEFAULTS = {"weekly_plan": "weekly", "site_research": "monthly", "growth_daily": "daily", "growth_weekly": "weekly", "growth_monthly": "monthly", "autopilot": "daily"}
 
 
 def _now() -> datetime:
@@ -63,6 +63,9 @@ def run_job(db: Session, s: Schedule) -> None:
     if s.job in ("growth_daily", "growth_weekly", "growth_monthly"):
         from . import growth_plan
         growth_plan.run_job(db, b, s.job)  # the job decides what to roll: it never creates duplicates
+    elif s.job == "autopilot":
+        from . import autopilot
+        autopilot.run_job(db, b)  # prepares drafts only (and only when Autopilot is on); never publishes
     elif s.job == "full_audit":
         found = audits.run_all(db, b)
         agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues], audited=[a.kind for a in found if a.status == "done"])
@@ -80,7 +83,9 @@ def run_job(db: Session, s: Schedule) -> None:
             gbp.sync_business(db, b, days=7)
         agent.draft_review_replies(db, b)
     elif s.job == "posts":
-        agent.draft_weekly_post(db, b)
+        from . import autopilot
+        if not autopilot.settings(b)["enabled"]:  # Autopilot plans the week itself when it is on
+            agent.draft_weekly_post(db, b)
     elif s.job == "report":
         reports.send_monthly(db, b)
     elif s.job == "geo":

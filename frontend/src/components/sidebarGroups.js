@@ -7,6 +7,7 @@ export const SIDEBAR_GROUPS = [
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/growth', label: 'Growth Plan', icon: Target, badge: 'New' },
+      { to: '/autopilot', label: 'Autopilot', icon: Bot, badge: 'New' },
       { to: '/projects', label: 'Projects', icon: Layers },
       { to: '/onboarding', label: 'Business Onboarding', icon: Building2, badge: 'Phase 1' }
     ]
@@ -103,7 +104,7 @@ const page = (to, extra = {}) => ({ ...(BY_TO[to] || { to, label: to }), ...extr
 const link = (to, label) => ({ to, label });
 
 export const SIDEBAR_SECTIONS = [
-  { id: 'home', label: 'Home', title: 'Home', icon: House, groups: [{ items: [page('/dashboard'), page('/growth'), page('/projects'), page('/onboarding')] }] },
+  { id: 'home', label: 'Home', title: 'Home', icon: House, groups: [{ items: [page('/dashboard'), page('/growth'), page('/autopilot'), page('/projects'), page('/onboarding')] }] },
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { items: [page('/dashboard')] },
@@ -120,7 +121,7 @@ export const SIDEBAR_SECTIONS = [
         link('/gmb-profile/reviews', 'Reviews & Reputation'), page('/google-posts', { label: 'Posts' }), page('/media-management', { label: 'Photos' })] },
       { title: 'Listings & Rankings', items: [page('/off-page-seo/citations', { label: 'Listing Management' }), link('/rank-tracking/geo', 'Map Rank Tracker'), link('/gmb-profile/competitors', 'Competitor Analysis')] },
       { title: 'Optimization', items: [link('/gmb-profile/local-seo', 'Local SEO'), link('/gmb-profile/ai', 'AI Recommendations')] },
-      { title: 'Manage', items: [page('/automation', { label: 'GBP AI Agent' }), link('/gmb-profile/tasks', 'Tasks & Activities'), link('/gmb-profile/sync', 'Sync History'), link('/gmb-profile/reports', 'Reports')] },
+      { title: 'Manage', items: [page('/autopilot', { label: 'Autopilot' }), page('/automation', { label: 'GBP AI Agent' }), link('/gmb-profile/tasks', 'Tasks & Activities'), link('/gmb-profile/sync', 'Sync History'), link('/gmb-profile/reports', 'Reports')] },
       { title: 'Settings', items: [link('/gmb-profile/settings', 'Settings & Integrations')] }
     ]
   },

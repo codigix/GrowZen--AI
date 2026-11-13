@@ -92,6 +92,7 @@ class Business(TimestampMixin, Base):
     photo_count: Mapped[int | None] = mapped_column(Integer)
     cover_photo: Mapped[str | None] = mapped_column(String(500))
     logo: Mapped[str | None] = mapped_column(String(500))
+    autopilot: Mapped[dict | None] = mapped_column(JSON)  # Autopilot settings (services/autopilot.py): what is prepared and when; approval is always required
     growth_notify: Mapped[dict | None] = mapped_column(JSON)  # Growth Plan emails: {email, weekly, monthly, alerts, to, last_alert}: who is told, and about what
     local_competitors: Mapped[dict | None] = mapped_column(JSON)  # GBP competitor analysis: {at, keyword, items: [{id, name, rating, reviews, website, maps_link, source}]}
     citation_listings: Mapped[dict | None] = mapped_column(JSON)  # listing management: {site key: {url, status, note, found, checked_at}} entered or checked by a person
@@ -261,6 +262,8 @@ class Post(TimestampMixin, Base):
     external_id: Mapped[str | None] = mapped_column(String(255))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ai_generated: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_by: Mapped[str | None] = mapped_column(String(120))  # who approved it for publishing (Autopilot publishes nothing without this)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     starts_on: Mapped[date | None] = mapped_column(Date)  # Offer / Event: first day it is on
     ends_on: Mapped[date | None] = mapped_column(Date)
     start_time: Mapped[str | None] = mapped_column(String(5))  # Event only, 'HH:MM'

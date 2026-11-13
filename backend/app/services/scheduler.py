@@ -41,6 +41,12 @@ def tick() -> dict[str, int]:
             log.warning("Schedule backfill failed: %s", exc)
         out["jobs"] = schedules.run_due(db)
         out["posts"] = site_publish.run_due_scheduled(db)  # blog posts held for a chosen time
+        try:
+            from . import autopilot
+            out["posts"] += autopilot.publish_due(db)  # Google posts and photos a person approved for a time
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            log.warning("Autopilot publisher failed: %s", exc)
     finally:
         lock.release()
         db.close()
@@ -72,7 +78,9 @@ def posts_tick() -> int:
     this and the main tick can never publish the same post twice."""
     db = SessionLocal()
     try:
-        return site_publish.run_due_scheduled(db)
+        n = site_publish.run_due_scheduled(db)
+        from . import autopilot
+        return n + autopilot.publish_due(db)  # approved Google posts and photos go out within a minute of their time
     except Exception as exc:
         log.warning("Scheduled posts tick failed: %s", exc)
         return 0
