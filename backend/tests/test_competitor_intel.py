@@ -257,3 +257,15 @@ def test_a_serper_rate_limit_is_retried_and_credits_are_told_apart(monkeypatch):
     with pytest.raises(intel.IntelError, match="credits are used up"):
         intel.Serper().call("/search", {"q": "no credits"})
     get_settings.cache_clear()
+
+
+def test_a_competitor_added_in_the_google_profile_section_is_in_the_shared_list(client):
+    from app.competitors import hygiene
+    from app.db import SessionLocal
+    from app.models import Business
+    bid = client.post("/api/v1/businesses", json={"name": "Share Two", "website": "https://share-two.example", "city": "Pune"}).json()["id"]
+    r = client.post(f"/api/v1/businesses/{bid}/gbp/competitors", json={"name": "Rival Two", "website": "https://www.rival-two.example"})
+    assert r.status_code == 201, r.text
+    db = SessionLocal()
+    assert hygiene.saved_competitor_domains(db, db.get(Business, bid)) == ["rival-two.example"]
+    db.close()
