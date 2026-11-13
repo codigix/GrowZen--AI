@@ -93,9 +93,12 @@ function SetupForm({ b, defaults, onStart, busy, error, setupInfo, hasRun }) {
   };
   return (
     <div className="space-y-4">
+      {setupInfo.maps_only && (
+        <div className="text-13 text-sky-900 bg-sky-50 border border-sky-200 rounded px-4 py-3">Serper is not set up, so this research uses the <b>Google Places API</b>: the Google Maps competitors, their ratings, reviews and websites. Organic Google rankings and listing sites are not included.</div>
+      )}
       {!setupInfo.google_results && (
         <div className="text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded px-4 py-3">
-          Competitor research needs Google results. Add <code className="">SERPER_API_KEY</code> (from serper.dev) to the SEO backend's <code className="">.env</code> and restart it.
+          Competitor research needs Google results. Add <code className="">GOOGLE_PLACES_API_KEY</code> (Maps competitors) or <code className="">SERPER_API_KEY</code> (from serper.dev, adds organic rankings) to the SEO backend's <code className="">.env</code> and restart it.
         </div>
       )}
       <Field label={`Keywords (${keywords.length}/${MAX_KEYWORDS})`} hint="The searches your customers type. Put the area in, as customers do.">
@@ -352,7 +355,7 @@ function PlanTab({ r }) {
         ))}
         {!r.actions.length && !r.gaps.keywords.length && <tr><td colSpan={5} className="px-5 py-10 text-center text-13 text-slate-500">No gaps found for these keywords. Try more keywords or another area.</td></tr>}
       </Table>
-      <div className="px-5 py-2.5 border-t border-slate-200 text-11.5 text-slate-500 flex items-center gap-1.5"><Sparkles size={12} /> Based on live Google results ({r.sources.credits} searches) and a scan of the top competitors' websites.</div>
+      <div className="px-5 py-2.5 border-t border-slate-200 text-11.5 text-slate-500 flex items-center gap-1.5"><Sparkles size={12} /> {r.sources.maps_only ? (r.sources.note || "Based on the Google Places API (Maps businesses) and a scan of the top competitors' websites.") : `Based on live Google results (${r.sources.credits} searches) and a scan of the top competitors' websites.`}</div>
     </Card>
   );
 }

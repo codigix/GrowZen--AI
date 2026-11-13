@@ -186,3 +186,27 @@ def test_a_run_whose_worker_died_is_failed_not_left_spinning(client_with_db=None
     db = DB()
     assert intel_router._expire_stale(db, old).status == "failed" and "interrupted" in old.error and db.committed
     assert intel_router._expire_stale(DB(), fresh).status == "running"
+
+
+def test_maps_only_when_serper_has_no_credits(monkeypatch):
+    """Serper refuses (credits used up): the Maps competitors still come from the Google Places API and the result says so."""
+    monkeypatch.setenv("SERPER_API_KEY", "test-key")
+    get_settings.cache_clear()
+    intel._cache.clear()
+
+    def refuse(self, path, body):
+        raise intel.IntelError("Serper credits are used up or rate-limited. Top up at serper.dev or try later.")
+
+    monkeypatch.setattr(intel.Serper, "call", refuse)
+    monkeypatch.setattr(intel, "places_enabled", lambda: True)
+    monkeypatch.setattr(intel, "google_places", lambda q, loc, gl: {"places": [
+        {"position": 1, "title": "Smile Care Dental", "rating": 4.8, "ratingCount": 900, "website": "https://smilecare.in/", "address": "12, FC Road, Baner, Pune, Maharashtra 411045", "cid": "p1"},
+        {"position": 2, "title": "My Dental", "rating": 4.2, "ratingCount": 40, "website": "https://mydental.in/", "address": "4, Main St, Baner, Pune, Maharashtra 411045", "cid": "p2"}]})
+    monkeypatch.setattr(intel, "scan_site", lambda url, **kw: {"url": url, "host": intel.host_of(url), "pages": SITES.get(intel.host_of(url), [])})
+    me = SimpleNamespace(id=1, name="My Dental", website="https://mydental.in", phone="", area="Baner", city="Pune",
+                         primary_category="Dentist", secondary_categories=[], services=[], rating=4.2, review_count=40)
+    r = intel.analyse(me, KEYWORDS, "Pune, India")
+    get_settings.cache_clear()
+    assert r["sources"]["maps_only"] is True and r["sources"]["google"] == "google_places" and "credits are used up" in r["sources"]["note"]
+    assert r["local_competitors"][0]["name"] == "Smile Care Dental" and r["you"]["local"] == {"dentist in Baner": 2, "dentist in Pune": 2}
+    assert r["organic_competitors"] == [] and r["profiles"][0]["domain"] == "smilecare.in"  # its website was still scanned

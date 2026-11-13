@@ -94,6 +94,24 @@ class IntelError(RuntimeError):
     pass
 
 
+def places_enabled() -> bool:
+    from .service import competitors_enabled
+    return competitors_enabled()
+
+
+def google_places(q: str, location: str | None, gl: str | None) -> dict[str, Any]:
+    """The Google Places API (the Maps listing), shaped like Serper's /places answer: positions are Google's own order."""
+    from .service import CompetitorSearchError, find_competitors
+    area = (location or "").strip()
+    text = q if not area or area.lower() in q.lower() else f"{q} in {area}"
+    try:
+        found = find_competitors(text, "", "", 10, (gl or "in"))
+    except CompetitorSearchError as exc:
+        raise IntelError(str(exc)) from exc
+    return {"places": [{"position": i + 1, "title": p["name"], "rating": p["rating"] or None, "ratingCount": p["reviews"], "category": p["category"], "address": p["address"],
+                        "website": p["website"], "phoneNumber": p["phone"], "cid": p["place_id"] or None} for i, p in enumerate(found)]}
+
+
 def serper_enabled() -> bool:
     return bool(get_settings().serper_api_key)
 
@@ -454,7 +472,14 @@ def _local_rollup(serps: list[dict[str, Any]], n_keywords: int) -> list[dict[str
 
 
 def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Callable[[dict[str, Any]], None] = lambda e: None) -> dict[str, Any]:
-    serper = Serper(market.serp_country(b))
+    serper_reason = ""
+    try:
+        serper: Serper | None = Serper(market.serp_country(b))
+    except IntelError as exc:
+        if not places_enabled():
+            raise
+        serper, serper_reason = None, str(exc)
+    serper_gl = countries.gl(market.serp_country(b))
     settings = get_settings()
     my_host = host_of(b.website)
     keywords = [k.strip() for k in keywords if k.strip()][:10]
@@ -484,14 +509,27 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
         }
 
     # 1. Google results for every keyword: the organic top 10 and the Maps results.
+    # Serper gives both. When it is unavailable (no key, credits used up) the Maps side still comes from the Google Places API, in Google's own order; the organic side is then simply empty.
     serps: list[dict[str, Any]] = []
+    why_no_serper: str | None = None if serper else serper_reason
     for kw in keywords:
         progress(f"Google results for \"{kw}\"", live() if serps else None)
-        org = serper.search(kw, location)
-        try:
-            plc = serper.places(kw, location)
-        except IntelError:
-            plc = {}
+        org: dict[str, Any] = {}
+        plc: dict[str, Any] = {}
+        if serper:
+            try:
+                org = serper.search(kw, location)
+            except IntelError as exc:
+                if not places_enabled():
+                    raise
+                serper, why_no_serper = None, str(exc)
+        if serper:
+            try:
+                plc = serper.places(kw, location)
+            except IntelError:
+                plc = {}
+        if not plc.get("places") and places_enabled():
+            plc = google_places(kw, location, serper_gl)
         organic = []
         for o in org.get("organic", [])[:10]:
             h = host_of(o.get("link"))
@@ -526,6 +564,9 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
     places_words = {w for w in _words(f"{b.area or ''} {b.city or ''}") if len(w) > 2} | {w for w, n in seen_localities.items() if n >= 2}
     away = other_cities(places_words, countries.of(b))
     targets = [d for d in organic_competitors if d["type"] == "business"][:4]
+    if not targets:  # no organic results (Maps-only mode): the best Maps businesses that have a website
+        targets = [{"domain": e["domain"], "name": e["name"], "type": "business", "visibility": e["visibility"], "positions": e["positions"], "urls": [e["website"]]}
+                   for e in local_competitors if e.get("domain") and not is_directory(e["domain"])][:4]
     progress("Scanning competitors' websites", live())
     profiles: dict[str, dict[str, Any]] = {}
 
@@ -548,6 +589,9 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
     local_by_host = {e["domain"]: e for e in local_competitors if e.get("domain")}
     sources: dict[str, list[dict[str, str]]] = {}
     for d in targets:
+        if not serper:
+            sources[d["domain"]] = []
+            continue
         try:
             loc = local_by_host.get(d["domain"])
             name = loc["name"] if loc else d["domain"].split(".")[0]
@@ -556,6 +600,8 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
             sources[d["domain"]] = []
     my_sources: list[dict[str, str]] = []
     try:
+        if not serper:
+            raise IntelError("no Serper")
         my_sources = link_sources(serper, f"{b.name} {b.city or ''}".strip(), my_host or "-", brand_words_of(my_host, b.name))
     except IntelError:
         pass
@@ -628,7 +674,8 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
                                                       if not set(k.split()) & away))[:20],
         },
         "actions": actions,
-        "sources": {"google": "serper", "backlinks": "google_mentions", "credits": serper.credits},
+        "sources": {"google": "serper" if serper else "google_places", "backlinks": "google_mentions", "credits": serper.credits if serper else 0,
+                    "maps_only": serper is None, "note": (f"Google search results (Serper) were not available: {why_no_serper} The competitors below are the Google Maps businesses from the Google Places API; organic rankings and listing sites are not included." if serper is None else None)},
         "analysed_at": datetime.now(timezone.utc).isoformat(),
     }
 

@@ -80,14 +80,14 @@ def latest(b: Business = Depends(get_business), db: Session = Depends(get_db)):
         "run": row(a) if a else None,
         "last_done": row(last_done) if last_done else None,
         "defaults": {"keywords": intel.default_keywords(b), "location": intel.default_location(b)},
-        "setup": {"google_results": intel.serper_enabled(), "backlinks": False},
+        "setup": {"google_results": intel.serper_enabled() or intel.places_enabled(), "maps_only": not intel.serper_enabled() and intel.places_enabled(), "backlinks": False},
     }
 
 
 @router.post("/businesses/{business_id}/competitor-research", status_code=202)
 def start(body: ResearchIn, tasks: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    if not intel.serper_enabled():
-        raise HTTPException(400, "Competitor research needs Google results: set SERPER_API_KEY on the SEO backend (serper.dev).")
+    if not intel.serper_enabled() and not intel.places_enabled():
+        raise HTTPException(400, "Competitor research needs Google results: set SERPER_API_KEY (serper.dev) or GOOGLE_PLACES_API_KEY on the SEO backend.")
     busy = _expire_stale(db, db.scalar(select(Audit).where(Audit.kind == "intel", Audit.target == _target(b.id), Audit.status.in_(("queued", "running")))))
     if busy and busy.status in ("queued", "running"):
         return row(busy)

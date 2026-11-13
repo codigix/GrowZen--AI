@@ -26,6 +26,8 @@ FIELDS = ",".join([
     "places.nationalPhoneNumber",
     "places.googleMapsUri",
     "places.businessStatus",
+    "places.id",
+    "places.primaryTypeDisplayName",
 ])
 
 
@@ -37,7 +39,7 @@ def competitors_enabled() -> bool:
     return bool(_key())
 
 
-def find_competitors(business_type: str, location: str, own_firm_name: str = "", top_n: int = 10) -> list[dict[str, Any]]:
+def find_competitors(business_type: str, location: str, own_firm_name: str = "", top_n: int = 10, region: str = "IN") -> list[dict[str, Any]]:
     """Search Google Maps for `business_type` in `location` and return up to `top_n` results,
     excluding `own_firm_name` and permanently closed businesses."""
     api_key = _key()
@@ -50,8 +52,8 @@ def find_competitors(business_type: str, location: str, own_firm_name: str = "",
         "X-Goog-FieldMask": FIELDS,
     }
     body = {
-        "textQuery": f"{business_type} in {location}",
-        "regionCode": "IN",
+        "textQuery": f"{business_type} in {location}" if location.strip() else business_type,
+        "regionCode": (region or "IN").upper()[:2],
         "languageCode": "en",
         "pageSize": 20,  # fetch extra so we can drop your own firm and still have top_n left
     }
@@ -79,6 +81,8 @@ def find_competitors(business_type: str, location: str, own_firm_name: str = "",
             "phone": p.get("nationalPhoneNumber", ""),
             "website": p.get("websiteUri", ""),
             "maps_link": p.get("googleMapsUri", ""),
+            "place_id": p.get("id", ""),
+            "category": (p.get("primaryTypeDisplayName") or {}).get("text", ""),
         })
         if len(results) == top_n:
             break
