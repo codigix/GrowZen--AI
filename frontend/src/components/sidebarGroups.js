@@ -56,6 +56,7 @@ export const SIDEBAR_GROUPS = [
     title: 'Link Building',
     items: [
       { to: '/backlink-intelligence', label: 'Backlink Intelligence', icon: Link2, badge: 'New' },
+      { to: '/backlink-checker', label: 'Backlink Checker', icon: Link2, badge: 'New' },
       { to: '/off-page-seo/outreach', label: 'Outreach', icon: Send }
     ]
   },
@@ -111,7 +112,7 @@ export const SIDEBAR_SECTIONS = [
       { title: 'Competitive Analysis', items: [page('/domain-overview'), page('/organic-rankings'), page('/top-pages'), page('/competitor-finder'), page('/competitor-watch'), page('/compare-domains'), page('/keyword-gap'), link('/backlink-intelligence/gap', 'Backlink Gap')] },
       { title: 'Keyword Research', items: [page('/keyword-overview'), page('/serp-xray'), page('/keyword-management/discover'), link('/keyword-management/planner', 'Google Keyword Planner'), link('/keyword-management/explorer', 'Keyword Explorer'), page('/keyword-management/topics'), page('/keyword-management/tracked')] },
       { title: 'Content Ideas', items: [page('/ai-content-generation/blog'), page('/ai-content-generation/trends'), link('/seo-brief', 'SEO Brief Generator')] },
-      { title: 'Link Building', items: [page('/backlink-intelligence'), link('/backlink-intelligence/explorer', 'Backlinks'), soon('referring-domains'), soon('backlink-audit'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks')] }
+      { title: 'Link Building', items: [page('/backlink-intelligence'), page('/backlink-checker'), link('/backlink-intelligence/explorer', 'Backlinks'), soon('referring-domains'), soon('backlink-audit'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks')] }
     ]
   },
   {

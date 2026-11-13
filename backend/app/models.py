@@ -760,6 +760,20 @@ class GrowthReport(TimestampMixin, Base):
     email_error: Mapped[str | None] = mapped_column(Text)
 
 
+class BacklinkCheck(TimestampMixin, Base):
+    """The last live check of one page that should link to the project (services/backlink_checker.py): is the link there, follow or nofollow, anchor, kind of site, and Moz's numbers when configured."""
+    __tablename__ = "backlink_checks"
+    __table_args__ = (UniqueConstraint("business_id", "source_url", "target"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    source_url: Mapped[str] = mapped_column(String(1000))
+    target: Mapped[str] = mapped_column(String(500))  # the website or page the link must point to
+    state: Mapped[str] = mapped_column(String(20))  # working | link_missing | page_error
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    checks: Mapped[int] = mapped_column(Integer, default=1)  # how many times it was checked
+    was_working: Mapped[bool | None] = mapped_column(Boolean)  # the state at the check before: shows a link that was lost
+
+
 class RateHit(Base):
     """A fixed-window counter shared by every server process (services/ratelimit.py): one row per limiter name, caller and time window."""
     __tablename__ = "rate_hits"

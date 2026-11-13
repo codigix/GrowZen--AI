@@ -125,6 +125,10 @@ class Settings(BaseSettings):
     google_ads_customer_id: str = ""  # the Google Ads account id (digits only, no dashes)
     google_ads_login_customer_id: str = ""  # manager (MCC) account id, only needed if the account is managed
 
+    # Moz API (Domain Authority, Page Authority, Spam Score, referring domains) for the Backlink Checker. Empty = those fields say 'not available'.
+    moz_access_id: str = ""
+    moz_secret_key: str = ""
+
     # Google search results (serper.dev): competitor research -- organic top 10 and Maps results per keyword
     serper_api_key: str = ""
     # Development only: the same for the Position Tracking landscape (generated rank checks).

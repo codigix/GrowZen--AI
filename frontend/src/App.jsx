@@ -36,6 +36,7 @@ const SiteAuditPage = lazy(() => import('./platform/SiteAuditPage'));
 const PageXRayPage = lazy(() => import('./platform/PageXRayPage'));
 const SerpXRayPage = lazy(() => import('./platform/SerpXRayPage'));
 const GrowthPlanPage = lazy(() => import('./platform/GrowthPlanPage'));
+const BacklinkCheckerPage = lazy(() => import('./platform/BacklinkCheckerPage'));
 const GrowthFixPage = lazy(() => import('./platform/GrowthFixPage'));
 const BacklinksCitationsPage = lazy(() => import('./platform/BacklinksCitationsPage'));
 const BacklinkIntelPage = lazy(() => import('./platform/BacklinkIntelPage'));
@@ -176,6 +177,7 @@ export default function App() {
         <Route path="on-page-seo" element={<Navigate to="/website-audit?tab=site" replace />} />
         <Route path="off-page-seo" element={<BacklinksCitationsPage />} />
         <Route path="off-page-seo/:tab" element={<BacklinksCitationsPage />} />
+        <Route path="backlink-checker" element={<BacklinkCheckerPage />} />
         <Route path="backlink-intelligence" element={<BacklinkIntelPage />} />
         <Route path="backlink-intelligence/:tab" element={<BacklinkIntelPage />} />
         <Route path="geo-optimization" element={<GeoTrackerPage />} />
