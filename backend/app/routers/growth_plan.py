@@ -247,8 +247,15 @@ def get_action(action_id: int, b: Business = Depends(get_business), db: Session 
     """One task with everything its fix page needs (the saved solution, if any)."""
     a = _action(db, b, action_id)
     ev = a.evidence or {}
+    sol = ev.get("solution")
+    if sol and not sol.get("target"):  # a solution saved before the "where exactly" part existed: add it now (read-only, cheap)
+        try:
+            from ..services import growth_target
+            sol = {**sol, "target": growth_target.target_for(db, b, a)}
+        except Exception:  # noqa: BLE001
+            pass
     return {"action": plan._action_out(a), "severity": ev.get("severity"), "source": growth_issues.SOURCE_LABEL.get(ev.get("source"), ev.get("source")), "closes_when": growth_issues.closes_when(a.verify or {}),
-            "solution": ev.get("solution"), "draft": ev.get("draft"), "website_side": growth_solutions.is_website_side(a)}
+            "solution": sol, "draft": ev.get("draft"), "website_side": growth_solutions.is_website_side(a)}
 
 
 class XrayFixIn(BaseModel):

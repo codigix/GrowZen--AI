@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Loader2, RefreshCw, ShieldCheck, Sparkles, Wrench } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Ban, Check, CheckCircle2, Clock, ExternalLink, FileText, Loader2, MapPin, RefreshCw, ShieldCheck, Sparkles, Wrench } from 'lucide-react';
 import { SeoShell, Button } from './SeoUi';
 import { api } from './seoApi';
 
@@ -11,6 +11,40 @@ const AUDIENCE = { developer: 'For your web developer or host', owner: 'You can 
 const Card = ({ children, className = '' }) => <section className={`bg-white rounded-xl border border-slate-200 shadow-sm min-w-0 ${className}`}>{children}</section>;
 const Chip = ({ children, cls = 'bg-slate-100 text-slate-700' }) => <span className={`inline-flex items-center gap-1 text-12 rounded-full px-2.5 py-1 leading-none font-medium whitespace-nowrap ${cls}`}>{children}</span>;
 const inApp = (link) => !!link && !/^\/(page-xray|website-audit)(\?|$)/.test(link);
+
+
+const SCOPE_TONE = { page: 'bg-indigo-600 text-white', pages: 'bg-indigo-600 text-white', server: 'bg-slate-800 text-white', file: 'bg-amber-500 text-white', profile: 'bg-emerald-600 text-white', external: 'bg-sky-600 text-white', app: 'bg-violet-600 text-white' };
+
+/** Exactly where the change is made: which page(s), which part of the page or site, how to get there on this site's platform, and what not to touch. */
+function WhereCard({ t }) {
+  if (!t) return null;
+  return (
+    <Card className="p-5 sm:p-6 border-indigo-200 ring-1 ring-indigo-100">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <span className={`inline-flex items-center gap-1.5 text-12 rounded-full px-3 py-1 font-semibold ${SCOPE_TONE[t.scope] || SCOPE_TONE.page}`}><MapPin size={13} />Where to make this change</span>
+        <Chip>{t.scope_label}</Chip>
+        {t.platform && t.scope !== 'profile' && t.scope !== 'app' && t.scope !== 'external' && <Chip cls="bg-slate-50 text-slate-600">Your site: {t.platform}</Chip>}
+      </div>
+      <h3 className="text-16 font-semibold text-slate-900 leading-snug">{t.headline}</h3>
+      {arr(t.pages).length > 0 && (
+        <ul className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200 overflow-hidden">
+          {t.pages.map(p => (
+            <li key={p.url} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2.5 bg-white">
+              <FileText size={15} className="text-slate-400 shrink-0" aria-hidden="true" />
+              <span className="text-13.5 font-semibold text-slate-900">{p.label}</span>
+              <a href={p.url} target="_blank" rel="noreferrer" className="text-13 text-indigo-700 hover:underline break-all inline-flex items-center gap-1">{p.url}<ExternalLink size={12} /></a>
+            </li>
+          ))}
+        </ul>
+      )}
+      <dl className="mt-4 grid gap-3 text-13.5">
+        <div><dt className="text-12 font-semibold uppercase tracking-wide text-slate-500">Which part</dt><dd className="mt-0.5 text-slate-800 leading-relaxed">{t.place}</dd></div>
+        <div><dt className="text-12 font-semibold uppercase tracking-wide text-slate-500">How to get there</dt><dd className="mt-0.5 text-slate-800 leading-relaxed">{t.how_to_open}</dd></div>
+        {t.not_here && <div className="flex gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-slate-700"><Ban size={15} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" /><span>{t.not_here}</span></div>}
+      </dl>
+    </Card>
+  );
+}
 
 function CodeBlock({ blk }) {
   const [state, setState] = useState(''); // '' | 'ok' | 'failed'
@@ -102,6 +136,7 @@ function Fix({ b }) {
           {arr(a.how).length > 0 && <div className="mt-5"><div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1">Meanwhile, the general steps</div><ol className="list-decimal pl-5 space-y-1 text-13.5 text-slate-700">{a.how.map((h, i) => <li key={i}>{h}</li>)}</ol></div>}</Card>
       ) : sol && (
         <>
+          <WhereCard t={sol.target} />
           <Card className="p-5 sm:p-6">
             <h3 className="text-15 font-semibold text-slate-900 mb-3 flex items-center gap-2"><Wrench size={16} className="text-indigo-600" />Do this</h3>
             <ol className="space-y-2.5">{arr(sol.steps).map((s, i) => <li key={i} className="flex gap-3 text-14 text-slate-800 leading-relaxed"><span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 text-12 font-semibold inline-flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span><span className="min-w-0">{s}</span></li>)}</ol>

@@ -406,6 +406,11 @@ def build(db: Session, b: Business, a: GrowthAction) -> dict[str, Any]:
     sol.setdefault("audience", "owner")
     sol.setdefault("ai_used", False)
     sol.update(stack=stack, built_at=datetime.now(timezone.utc).isoformat(), landing=a.link, key=key)
+    try:
+        from . import growth_target
+        sol["target"] = growth_target.target_for(db, b, a, report, stack)  # which page, which part, how to get there
+    except Exception:  # noqa: BLE001 - the solution is still useful without it
+        pass
     return sol
 
 
