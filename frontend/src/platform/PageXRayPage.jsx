@@ -507,6 +507,7 @@ function XRay({ b }) {
   const [tick, setTick] = useState(0); // bumped after a save so the history reloads
   const [notice, setNotice] = useState('');
   const seq = useRef(0);
+  const touched = useRef(false); // a scan was started in this visit: the saved one must not come back over it
   const own = hostOf(b.website || '');
   const comps = useApi(`/businesses/${b.id}/gbp/competitors`);
   const comps2 = useApi(`/competitors?business_id=${b.id}`);
@@ -521,6 +522,7 @@ function XRay({ b }) {
 
   const run = useCallback(async (list) => {
     const mine = ++seq.current;
+    touched.current = true;
     setResults(r => ({ ...r, ...Object.fromEntries(list.map(u => [u, { state: 'loading' }])) }));
     const settled = await Promise.allSettled(list.map(u => api(`/businesses/${b.id}/page-xray`, { method: 'POST', body: { url: u, ...(renderJs && own && hostOf(u) === own ? { render: true } : {}) } })));
     if (mine !== seq.current && list.length > 1) { /* a newer run started: keep the latest answers per url anyway */ }
@@ -531,7 +533,24 @@ function XRay({ b }) {
     });
     // Every successful X-Ray is saved to the page's history. Quietly: a failed save never breaks the view.
     Promise.allSettled(settled.map(x => (x.status === 'fulfilled' ? api(`/businesses/${b.id}/page-xray/save`, { method: 'POST', body: { report: x.value } }) : null))).then(() => setTick(t => t + 1));
+    const ok = settled.some(s => s.status === 'fulfilled');
+    if (ok) setSaved(null); // the new scan replaces the previous one only once it has really arrived; a failed scan leaves the previous one on screen
+    return ok;
   }, [b.id, renderJs, own]);
+
+  // Until the next scan is done, the last one stays on screen: the latest saved X-Ray of this project opens by itself.
+  const [lastShown, setLastShown] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setSaved(null); setLastShown(null);
+    api(`/businesses/${b.id}/page-xray/history?limit=1`).then(async list => {
+      const row = Array.isArray(list) ? list[0] : null;
+      if (!row || !live) return;
+      const full = await api(`/businesses/${b.id}/page-xray/history/${row.id}`);
+      if (live && !touched.current && full?.report) setSaved(s => s || { data: full.report, at: full.created_at || row.created_at });
+    }).catch(() => { /* no saved scan, or it could not be read: the page simply starts empty */ });
+    return () => { live = false; };
+  }, [b.id]);
 
   const add = (raw) => {
     const u = normaliseUrl(raw);
@@ -548,11 +567,11 @@ function XRay({ b }) {
     let list = urls;
     if (input.trim()) { const u = add(input); if (!u) return; list = urls.includes(u) ? urls : [...urls, u]; setInput(''); }
     if (!list.length) { setFormError('Enter a page address to inspect.'); return; }
-    setSaved(null); setNotice('');
+    setNotice('');
     setActive(list[0]);
     await run(list);
   };
-  const useSite = () => { if (b.website) { const u = add(b.website); if (u) { setSaved(null); setNotice(''); setActive(u); run(urls.includes(u) ? urls : [...urls, u]); } } };
+  const useSite = () => { if (b.website) { const u = add(b.website); if (u) { setNotice(''); setActive(u); run(urls.includes(u) ? urls : [...urls, u]); } } };
   // A link from SERP X-Ray (or anywhere) can carry the page to inspect: /page-xray?url=https://example.com/page. It is read once, then removed from the address.
   const [params, setParams] = useSearchParams();
   const wanted = params.get('url');
@@ -564,12 +583,13 @@ function XRay({ b }) {
     const keepHash = window.location.hash; // the chosen report group (#checks) survives the address clean-up
     setParams(p => { const n = new URLSearchParams(p); n.delete('url'); return n; }, { replace: true });
     if (keepHash) setTimeout(() => { try { window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${keepHash}`); } catch { /* optional */ } }, 0);
-    if (u) { setSaved(null); setNotice(''); setActive(u); run([u]); }
+    if (u) { setNotice(''); setActive(u); run([u]); }
   }, [wanted]); // eslint-disable-line react-hooks/exhaustive-deps
   const items = urls.map(u => ({ url: u, ...(results[u] || { state: 'idle' }) }));
   const loading = items.some(i => i.state === 'loading');
   const done = items.filter(i => i.state === 'done');
   const shown = items.find(i => i.url === active && i.state === 'done') || (done.length === 1 ? done[0] : null);
+  useEffect(() => { if (shown?.data) setLastShown(shown.data); }, [shown?.data]);
 
   return (
     <div className="space-y-6 min-w-0 w-full" style={{ contain: 'inline-size' }}>{/* the page never grows wider than the screen because of a long row of tabs or a wide table */}
@@ -611,9 +631,9 @@ function XRay({ b }) {
         <div className="sr-only" aria-live="polite">{loading ? 'Inspecting pages…' : done.length ? `${done.length} page${done.length > 1 ? 's' : ''} inspected` : ''}</div>
       </Card>
 
-      {loading && done.length === 0 && <Card><div className="py-10 flex flex-col items-center gap-2 text-slate-500"><Loader2 className="animate-spin" /><div className="text-13">Opening the page and reading its HTML, headers, certificate, domain record and robots.txt…</div></div></Card>}
+      {loading && done.length === 0 && !saved && !lastShown && <Card><div className="py-10 flex flex-col items-center gap-2 text-slate-500"><Loader2 className="animate-spin" /><div className="text-13">Opening the page and reading its HTML, headers, certificate, domain record and robots.txt…</div></div></Card>}
 
-      {done.length === 0 && !loading && urls.length === 0 && (
+      {done.length === 0 && !loading && urls.length === 0 && !saved && !lastShown && (
         <Card><div className="py-8 text-center max-w-xl mx-auto">
           <span className="inline-flex w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 items-center justify-center"><ShieldCheck size={22} /></span>
           <div className="text-16 font-semibold text-slate-900 mt-3">Inspect any page in one click</div>
@@ -627,18 +647,20 @@ function XRay({ b }) {
       {saved && (
         <div className="rounded-lg bg-indigo-50 ring-1 ring-inset ring-indigo-200 px-4 py-2.5 flex flex-wrap items-center gap-3 text-13 text-indigo-900">
           <History size={15} className="shrink-0" />
-          <span className="flex-1 min-w-[200px]">Showing the X-Ray saved on <b>{new Date(saved.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</b>. It is a saved copy, not a new check.</span>
-          <Button size="sm" onClick={() => { const u = saved.data.url; setSaved(null); run([u]); }}>Check it again now</Button>
+          {loading ? <Loader2 size={14} className="animate-spin shrink-0" /> : null}
+          <span className="flex-1 min-w-[200px]">{loading ? 'Scanning now… the previous X-Ray stays here until the new one arrives. ' : ''}Showing the X-Ray saved on <b>{new Date(saved.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</b>{saved.data?.url ? <> for <b className="break-all">{saved.data.url}</b></> : null}. It is a saved copy, not a new check.</span>
+          <Button size="sm" disabled={loading} onClick={() => { const u = saved.data.url; setActive(u); setUrls(x => (x.includes(u) ? x : [...x, u])); run([u]); }}>Check it again now</Button>
           <Button size="sm" onClick={() => setSaved(null)}>Close</Button>
         </div>
       )}
       {(() => {
-        const cur = saved?.data || shown?.data;
+        const cur = saved?.data || shown?.data || (loading ? lastShown : null);
         const rendering = cur?.rendering && typeof cur.rendering === 'object' ? <RenderingCard r={cur.rendering} /> : null;
         const history = cur ? <HistoryPanel b={b} url={cur.url} tick={tick} onOpen={(report, at) => setSaved({ data: report, at })} onError={setNotice} /> : null;
         const siteScan = b.website ? <SiteScan b={b} onOpen={(report, at) => { setNotice(''); setSaved({ data: report, at }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDone={() => setTick(t => t + 1)} /> : null;
         const full = cur ? <FullPageCard b={b} url={cur.final_url || cur.url} /> : null;
         if (!cur) return siteScan;
+        if (!saved && !shown) return <Report key={`last-${cur.fetched_at || cur.url}`} d={cur} busy extra={rendering} deep={full} history={history} siteScan={siteScan} onRerun={() => {}} />;
         return saved
           ? <Report key={`saved-${saved.at}`} d={saved.data} busy={false} extra={rendering} deep={full} history={history} siteScan={siteScan} onRerun={() => { const u = saved.data.url; setSaved(null); run([u]); }} />
           : <Report key={shown.url + (shown.data?.fetched_at || '')} d={shown.data} busy={shown.state === 'loading'} extra={rendering} deep={full} history={history} siteScan={siteScan} onRerun={() => run([shown.url])} />;
