@@ -1,7 +1,7 @@
 """Rate limits that every server process shares.
 
 An in-memory counter is reset by a restart and is per process: a second uvicorn worker (or a restart loop) hands out a fresh allowance, so the endpoints that cost money or a browser
-(AI, Serper, Chrome, Lighthouse, the public review page) were less protected than they looked. This keeps a fixed-window counter per limiter name and caller in the database.
+(AI, Chrome, Lighthouse, the public review page) were less protected than they looked. This keeps a fixed-window counter per limiter name and caller in the database.
 If the database cannot be reached the limiter falls back to counting in memory for that call, so a database problem never opens the gate completely and never blocks everyone.
 """
 import logging

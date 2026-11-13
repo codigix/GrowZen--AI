@@ -18,7 +18,8 @@ def real_only(monkeypatch):
     """No sample data, and no keys: what a fresh install looks like."""
     s = get_settings()
     monkeypatch.setattr(s, "allow_sample_data", False)
-    monkeypatch.setattr(s, "serper_api_key", "")
+    monkeypatch.setattr(s, "google_places_api_key", "")
+    monkeypatch.setattr(s, "google_api_key", "")
     for k in (*AI_KEYS, *ADS_KEYS):
         monkeypatch.setattr(s, k, "")
     return s
@@ -31,8 +32,7 @@ def _project(client, name="Real Only Co"):
 
 
 def test_every_provider_refuses_and_names_the_missing_key(real_only):
-    for factory, key in [(providers.rank_provider, "SERPER_API_KEY"), (providers.backlink_provider, "SERPER_API_KEY"), (providers.citation_provider, "SERPER_API_KEY"),
-                         (providers.keyword_provider, "GOOGLE_ADS_REFRESH_TOKEN")]:
+    for factory, key in [(providers.rank_provider, "GOOGLE_PLACES_API_KEY"), (providers.keyword_provider, "GOOGLE_ADS_REFRESH_TOKEN")]:
         with pytest.raises(DataUnavailable) as e:
             factory()
         assert key in e.value.message and e.value.code == "data_unavailable"
@@ -41,14 +41,14 @@ def test_every_provider_refuses_and_names_the_missing_key(real_only):
 def test_the_sample_providers_exist_only_when_explicitly_allowed(real_only, monkeypatch):
     monkeypatch.setattr(real_only, "allow_sample_data", True)
     assert providers.rank_provider().source == "sample" and providers.keyword_provider().source == "sample"
-    monkeypatch.setattr(real_only, "serper_api_key", "k")
+    monkeypatch.setattr(real_only, "google_places_api_key", "k")
     assert providers.rank_provider().source == "live"  # a real key always wins
 
 
 def test_routes_answer_503_data_unavailable_instead_of_invented_numbers(client, real_only):
     bid = _project(client)
     r = client.post(f"/api/v1/businesses/{bid}/rank-scans", json={"keyword": "clothing rental in pune"})
-    assert r.status_code == 503 and r.json()["code"] == "data_unavailable" and "SERPER_API_KEY" in r.json()["detail"]
+    assert r.status_code == 503 and r.json()["code"] == "data_unavailable" and "GOOGLE_PLACES_API_KEY" in r.json()["detail"]
     r = client.post(f"/api/v1/businesses/{bid}/keywords/ideas", json={"seed": "lehenga rental"})
     assert r.status_code == 503 and r.json()["code"] == "data_unavailable" and "Keyword Planner" in r.json()["detail"]
     r = client.post(f"/api/v1/businesses/{bid}/geo/run")
@@ -61,10 +61,12 @@ def test_an_audit_without_a_data_source_fails_with_the_reason_and_never_counts(c
     db = SessionLocal()
     try:
         b = db.get(Business, bid)
-        for kind in ("rankings", "backlinks", "citations"):
-            a = audits.run(db, b, kind)
-            assert a.status == "failed" and "SERPER_API_KEY" in a.error and a.score is None
-        assert {k: v for k, v in audits.latest(db, b).items() if k in ("rankings", "backlinks", "citations")} == {}  # a failed run is never the latest result
+        a = audits.run(db, b, "rankings")
+        assert a.status == "failed" and "GOOGLE_PLACES_API_KEY" in a.error and a.score is None
+        b.website = "https://realonly.example"
+        a = audits.run(db, b, "backlinks")
+        assert a.status == "failed" and "Backlink Intelligence" in a.error and a.score is None  # nothing tracked there yet: the reason is stored
+        assert {k: v for k, v in audits.latest(db, b).items() if k in ("rankings", "backlinks")} == {}  # a failed run is never the latest result
     finally:
         db.close()
 

@@ -211,7 +211,7 @@ def listing_sites(category: str | None, c: str | None) -> list[tuple[str, str]]:
 
 
 def search_location(city: str | None, c: str | None) -> str:
-    """Serper's location for a city: "Pune, India", "Muscat, Oman"."""
+    """The search location for a city: "Pune, India", "Muscat, Oman"."""
     return ", ".join(x for x in [(city or "").strip(), name(c)] if x)
 
 

@@ -1,4 +1,4 @@
-"""Competitor research (app/competitors/intel.py): Google results are faked, sites are fake pages."""
+"""Competitor research (app/competitors/intel.py): the Places API answers are faked, sites are fake pages."""
 from types import SimpleNamespace
 
 import pytest
@@ -30,44 +30,31 @@ SITES = {
 }
 
 
-def fake_call(self, path, body):
-    q = body["q"]
-    if path == "/places":
-        return {"places": [
+def fake_places(query, region="IN", lat=None, lng=None, radius_m=5000.0, page_size=20, language="en"):
+    """Google Maps results, the way the Places API returns them."""
+    if "baner" in query.lower():
+        return [
             {"position": 1, "title": "Smile Care Dental", "rating": 4.8, "ratingCount": 900, "website": "https://smilecare.in/", "address": "12, FC Road, Baner, Pune, Maharashtra 411045", "cid": "1"},
-            {"position": 2, "title": "My Dental", "rating": 4.2, "ratingCount": 40, "website": "https://mydental.in/", "address": "4, Main St, Baner, Pune, Maharashtra 411045", "cid": "2"},
-        ]}
-    if q == "dentist in Baner":
-        return {"organic": [
-            {"position": 1, "link": "https://www.practo.com/pune/dentist/baner", "title": "Dentists in Baner - Practo"},
-            {"position": 2, "link": "https://smilecare.in/", "title": "Smile Care"},
-            {"position": 3, "link": "https://toothfairy.com/", "title": "Tooth Fairy"},
-        ], "peopleAlsoAsk": [{"question": "How much does a root canal cost in Pune?"}]}
-    if q == "dentist in Pune":
-        return {"organic": [
-            {"position": 1, "link": "https://smilecare.in/services/implants", "title": "Smile Care"},
-            {"position": 4, "link": "https://mydental.in/", "title": "My Dental"},
-            {"position": 5, "link": "https://www.justdial.com/Pune/Dentists", "title": "Justdial"},
-        ]}
-    # Listing / mention searches by name.
-    if "Smile Care" in q or "smilecare" in q:
-        return {"organic": [{"link": "https://www.practo.com/pune/clinic/smile-care-baner", "title": "Smile Care Dental Clinic - Practo"},
-                            {"link": "https://www.justdial.com/Pune/Smile-Care", "title": "Smile Care Dental in Baner - Justdial"},
-                            {"link": "https://unrelated.com/x", "title": "Something else entirely"}]}
-    if "My Dental" in q:
-        return {"organic": [{"link": "https://www.justdial.com/Pune/My-Dental", "title": "My Dental - Justdial"}]}
-    return {"organic": []}
+            {"position": 2, "title": "Tooth Fairy", "rating": 4.0, "ratingCount": 60, "website": "https://toothfairy.com/", "address": "9, Road, Baner, Pune, Maharashtra 411045", "cid": "3"},
+        ]
+    return [
+        {"position": 1, "title": "Smile Care Dental", "rating": 4.8, "ratingCount": 900, "website": "https://smilecare.in/", "address": "12, FC Road, Baner, Pune, Maharashtra 411045", "cid": "1"},
+        {"position": 2, "title": "My Dental", "rating": 4.2, "ratingCount": 40, "website": "https://mydental.in/", "address": "4, Main St, Baner, Pune, Maharashtra 411045", "cid": "2"},
+    ]
 
 
 @pytest.fixture
 def faked(monkeypatch):
-    monkeypatch.setenv("SERPER_API_KEY", "test-key")
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "test-key")
     get_settings.cache_clear()
-    intel._cache.clear()
-    monkeypatch.setattr(intel.Serper, "call", fake_call)
+    from app.competitors import service
+    monkeypatch.setattr(service, "places_search", fake_places)
     monkeypatch.setattr(intel, "scan_site", lambda url, **kw: {"url": url, "host": intel.host_of(url), "pages": SITES.get(intel.host_of(url), [])})
     yield
     get_settings.cache_clear()
+
+
+ME = SimpleNamespace(id=1, name="My Dental", website="https://mydental.in", phone="", area="Baner", city="Pune", primary_category="Dentist", secondary_categories=[], services=[], rating=4.2, review_count=40)
 
 
 def test_default_keywords_name_the_place():
@@ -77,63 +64,47 @@ def test_default_keywords_name_the_place():
     assert "teeth whitening in Baner" in kws and len(kws) <= 6
 
 
-def test_needs_a_serper_key(monkeypatch):
-    monkeypatch.setenv("SERPER_API_KEY", "")
+def test_research_needs_the_places_key(monkeypatch):
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "")
+    monkeypatch.setenv("GOOGLE_API_KEY", "")
     get_settings.cache_clear()
-    with pytest.raises(intel.IntelError, match="SERPER_API_KEY"):
-        intel.Serper()
+    with pytest.raises(intel.IntelError, match="GOOGLE_PLACES_API_KEY"):
+        intel.analyse(ME, KEYWORDS, "Pune, India")
     get_settings.cache_clear()
 
 
-def test_analysis_positions_gaps_and_strategy(faked):
-    me = SimpleNamespace(id=1, name="My Dental", website="https://mydental.in", phone="", area="Baner", city="Pune",
-                         primary_category="Dentist", secondary_categories=[], services=[], rating=4.2, review_count=40)
-    r = intel.analyse(me, KEYWORDS, "Pune, India")
+def test_analysis_maps_competitors_gaps_and_strategy(faked):
+    r = intel.analyse(ME, KEYWORDS, "Pune, India", own_positions={"dentist in Pune": {"position": 3.6}})
 
-    # Your own positions: organic #4 for one keyword, Maps #2 for both.
+    # Your own positions: organic from Search Console (rounded), Maps from Google Places (#2 for the Pune search, absent for Baner).
     assert r["you"]["positions"] == {"dentist in Pune": 4}
-    assert r["you"]["local"] == {"dentist in Baner": 2, "dentist in Pune": 2}
+    assert r["you"]["local"] == {"dentist in Pune": 2}
     assert r["summary"]["keywords_ranked"] == 1 and r["summary"]["keywords_total"] == 2
+    assert r["sources"]["google"] == "google_places" and r["sources"]["organic"] == "search_console" and r["sources"]["credits"] == 0
 
-    # Competitors by visibility; listing sites are marked, the business itself is left out.
-    doms = {d["domain"]: d for d in r["organic_competitors"]}
-    assert "mydental.in" not in doms
-    assert doms["practo.com"]["type"] == "directory" and doms["smilecare.in"]["type"] == "business"
-    assert doms["smilecare.in"]["positions"] == {"dentist in Baner": 2, "dentist in Pune": 1}
-    assert r["summary"]["leader"]["domain"] == "smilecare.in"
-    assert r["local_competitors"][0]["name"] == "Smile Care Dental"
+    # Rivals are the Maps businesses; Google gives no other site's organic rankings, so there is no organic competitor list.
+    assert r["organic_competitors"] == [] and r["local_competitors"][0]["name"] == "Smile Care Dental"
+    domains = {p["domain"] for p in r["profiles"]}
+    assert {"smilecare.in", "toothfairy.com"} <= domains and "mydental.in" not in domains
 
-    # What the leader does on its site.
+    # What the leader does on its site (a scan of its own website).
     smile = next(p for p in r["profiles"] if p["domain"] == "smilecare.in")
     site = smile["site"]
     assert "Dental Implants" in site["services"] and "Braces" in site["services"]
     assert "Contact Us" not in site["services"] and "View More" not in site["services"] and "Mumbai" not in site["services"]
-    assert "Dentist in Aundh" not in site["services"]
-    assert site["blog"] is True and "Dentist" in site["schema"]
-    assert "best dentist in baner pune" in site["target_keywords"]
-    assert not any("smile care" in k for k in site["target_keywords"])  # the brand is not a keyword
-    assert {s["domain"] for s in smile["link_sources"]} == {"practo.com", "justdial.com"}  # only results about the brand
-    assert any("Listed on practo.com" in line for line in smile["strategy"])
+    assert site["blog"] is True and "Dentist" in site["schema"] and smile["link_sources"] == []
     assert any("Separate pages for its services" in line for line in smile["strategy"])
+    assert not any("hyderabad" in k for k in r["ideas"]["competitor_keywords"])  # another city's phrases are not ideas for this business
 
-    # Another city's site: its phrases are not ideas for this business.
-    assert not any("hyderabad" in k for k in r["ideas"]["competitor_keywords"])
-    assert r["ideas"]["questions"] == ["How much does a root canal cost in Pune?"]
-
-    # Gaps: no top-10 page for "dentist in Baner"; competitors are on Practo, this business is not.
-    assert [g["keyword"] for g in r["gaps"]["keywords"]] == ["dentist in Baner"]
-    assert "practo.com" in [g["domain"] for g in r["gaps"]["listings"]]
-    assert "justdial.com" not in [g["domain"] for g in r["gaps"]["listings"]]
+    # Gap: for "dentist in Baner" the business is not in the Maps results while rivals are.
+    assert [g["keyword"] for g in r["gaps"]["keywords"]] == ["dentist in Baner"] and r["gaps"]["listings"] == []
     titles = [a["title"] for a in r["actions"]]
-    assert 'Build or improve a page for "dentist in Baner"' in titles
-    assert "Close the review gap" in titles
-    assert any(t.startswith("Get listed on practo.com") for t in titles)
+    assert 'Build or improve a page for "dentist in Baner"' in titles and "Close the review gap" in titles
     assert "Add LocalBusiness structured data" in titles  # Smile Care uses Dentist schema, My Dental none
 
 
 def test_api_runs_in_the_background(client, faked):
-    bid = client.post("/api/v1/businesses", json={"name": "My Dental", "primary_category": "Dentist", "area": "Baner", "city": "Pune",
-                                                  "website": "https://mydental.in"}).json()["id"]
+    bid = client.post("/api/v1/businesses", json={"name": "My Dental", "primary_category": "Dentist", "area": "Baner", "city": "Pune", "website": "https://mydental.in"}).json()["id"]
     first = client.get(f"/api/v1/businesses/{bid}/competitor-research").json()
     assert first["run"] is None and first["setup"]["google_results"] is True
     assert first["defaults"]["keywords"][0] == "dentist in Baner"
@@ -142,31 +113,27 @@ def test_api_runs_in_the_background(client, faked):
     assert r.status_code == 202
     run = client.get(f"/api/v1/competitor-research/{r.json()['id']}").json()
     assert run["status"] == "done", run.get("error")
-    assert run["result"]["summary"]["leader"]["domain"] == "smilecare.in"
+    assert run["result"]["local_competitors"][0]["name"] == "Smile Care Dental"
     assert client.get(f"/api/v1/businesses/{bid}/competitor-research").json()["run"]["id"] == run["id"]
-    # The run is not a business audit: it never changes the business's scores.
-    assert run["business_id"] is None
+    assert run["business_id"] is None  # the run is not a business audit: it never changes the business's scores
 
 
 def test_api_explains_a_missing_key(client):
     bid = client.post("/api/v1/businesses", json={"name": "No Key Clinic"}).json()["id"]
     assert client.get(f"/api/v1/businesses/{bid}/competitor-research").json()["setup"]["google_results"] is False
     r = client.post(f"/api/v1/businesses/{bid}/competitor-research", json={"keywords": ["dentist in pune"]})
-    assert r.status_code == 400 and "SERPER_API_KEY" in r.json()["detail"]
+    assert r.status_code == 400 and "GOOGLE_PLACES_API_KEY" in r.json()["detail"]
 
 
 def test_progress_streams_what_is_found_so_far(faked):
-    me = SimpleNamespace(id=1, name="My Dental", website="https://mydental.in", phone="", area="Baner", city="Pune",
-                         primary_category="Dentist", secondary_categories=[], services=[], rating=4.2, review_count=40)
     events = []
-    r = intel.analyse(me, KEYWORDS, "Pune, India", events.append)
+    r = intel.analyse(ME, KEYWORDS, "Pune, India", events.append)
     found = [e["found"] for e in events if "found" in e]
-    assert found, "the page shows competitors while the research is still running"
-    # After the first keyword there are already competitors; later events only add to them.
-    assert found[0]["keywords"] and found[0]["competitors"]
+    assert found, "the page shows what was found while the research is still running"
+    assert found[0]["keywords"] and found[0]["maps"]
     assert len(found[-1]["keywords"]) >= len(found[0]["keywords"])
     assert any(e["step"].startswith("Scanned ") for e in events)  # sites arrive one by one
-    assert {d["domain"] for d in found[0]["competitors"]} <= {d["domain"] for d in r["organic_competitors"]}
+    assert r["local_competitors"]
 
 
 def test_a_run_whose_worker_died_is_failed_not_left_spinning(client_with_db=None):
@@ -188,30 +155,6 @@ def test_a_run_whose_worker_died_is_failed_not_left_spinning(client_with_db=None
     assert intel_router._expire_stale(DB(), fresh).status == "running"
 
 
-def test_maps_only_when_serper_has_no_credits(monkeypatch):
-    """Serper refuses (credits used up): the Maps competitors still come from the Google Places API and the result says so."""
-    monkeypatch.setenv("SERPER_API_KEY", "test-key")
-    get_settings.cache_clear()
-    intel._cache.clear()
-
-    def refuse(self, path, body):
-        raise intel.IntelError("Serper credits are used up or rate-limited. Top up at serper.dev or try later.")
-
-    monkeypatch.setattr(intel.Serper, "call", refuse)
-    monkeypatch.setattr(intel, "places_enabled", lambda: True)
-    monkeypatch.setattr(intel, "google_places", lambda q, loc, gl: {"places": [
-        {"position": 1, "title": "Smile Care Dental", "rating": 4.8, "ratingCount": 900, "website": "https://smilecare.in/", "address": "12, FC Road, Baner, Pune, Maharashtra 411045", "cid": "p1"},
-        {"position": 2, "title": "My Dental", "rating": 4.2, "ratingCount": 40, "website": "https://mydental.in/", "address": "4, Main St, Baner, Pune, Maharashtra 411045", "cid": "p2"}]})
-    monkeypatch.setattr(intel, "scan_site", lambda url, **kw: {"url": url, "host": intel.host_of(url), "pages": SITES.get(intel.host_of(url), [])})
-    me = SimpleNamespace(id=1, name="My Dental", website="https://mydental.in", phone="", area="Baner", city="Pune",
-                         primary_category="Dentist", secondary_categories=[], services=[], rating=4.2, review_count=40)
-    r = intel.analyse(me, KEYWORDS, "Pune, India")
-    get_settings.cache_clear()
-    assert r["sources"]["maps_only"] is True and r["sources"]["google"] == "google_places" and "credits are used up" in r["sources"]["note"]
-    assert r["local_competitors"][0]["name"] == "Smile Care Dental" and r["you"]["local"] == {"dentist in Baner": 2, "dentist in Pune": 2}
-    assert r["organic_competitors"] == [] and r["profiles"][0]["domain"] == "smilecare.in"  # its website was still scanned
-
-
 def test_one_competitor_list_feeds_the_watch_and_the_link_gap(client):
     """A competitor saved on the Competitors page (not a Backlink Intelligence target) is also watched and used for the link gap."""
     from app.backlinks import watch
@@ -227,36 +170,6 @@ def test_one_competitor_list_feeds_the_watch_and_the_link_gap(client):
     assert hygiene.saved_competitor_domains(db, b) == ["rival-one.example"]  # a social page is never a competitor
     assert watch.competitor_domains(db, bid) == ["rival-one.example"]
     db.close()
-
-
-def test_a_serper_rate_limit_is_retried_and_credits_are_told_apart(monkeypatch):
-    monkeypatch.setenv("SERPER_API_KEY", "test-key")
-    get_settings.cache_clear()
-    intel._cache.clear()
-    monkeypatch.setattr(intel.time, "sleep", lambda s: None)
-    answers = [429, 429, 200]
-    calls = []
-
-    class R:
-        def __init__(self, code):
-            self.status_code, self.text, self.content = code, "credit" if code == 400 else "", b"{}"
-
-        def json(self):
-            return {"organic": [], "credits": 1}
-
-    def post(url, **kw):
-        calls.append(url)
-        return R(answers.pop(0))
-
-    monkeypatch.setattr(intel.httpx, "post", post)
-    assert intel.Serper().call("/search", {"q": "retry me"}) == {"organic": [], "credits": 1} and len(calls) == 3  # two 429s waited out, the third answered
-    answers[:] = [429, 429, 429]
-    with pytest.raises(intel.IntelError, match="rate-limiting"):
-        intel.Serper().call("/search", {"q": "still limited"})
-    answers[:] = [400]
-    with pytest.raises(intel.IntelError, match="credits are used up"):
-        intel.Serper().call("/search", {"q": "no credits"})
-    get_settings.cache_clear()
 
 
 def test_a_competitor_added_in_the_google_profile_section_is_in_the_shared_list(client):

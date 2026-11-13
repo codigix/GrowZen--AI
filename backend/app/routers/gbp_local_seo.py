@@ -31,7 +31,7 @@ METHOD = [
     {"part": "reviews", "weight": 20, "based_on": "Review count against a target of 25 (up to 70 points) plus the star rating (up to 30). Both numbers are read from Google."},
     {"part": "citations", "weight": 15, "based_on": "Share of the listing sites where the name and phone match. Sites we could not find in Google search count as not listed until you add and check their link."},
     {"part": "website", "weight": 15, "based_on": "The average of the latest PageSpeed score and the on-page crawl score of the website."},
-    {"part": "rankings", "weight": 20, "based_on": "Share of tracked searches where you are in Google Maps or in the top 10 of Google Search (live results from Serper)."},
+    {"part": "rankings", "weight": 20, "based_on": "Share of tracked searches where you are in Google Maps or on Google Search (Google Search Console and the Google Places API)."},
 ]
 REVIEW_TARGET = 25  # reviews a local business should have before the count stops being its main weakness
 

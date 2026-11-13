@@ -1,50 +1,57 @@
-"""Where the project stands on Google right now: results page + position, Maps position, the targeted area. Serper is mocked: no credits spent."""
+"""Where the project stands on Google: Search Console's average position and page, the Maps position from the Places API, the targeted area. Google is faked: no calls are made."""
 import pytest
-from test_competitor_intel import faked  # noqa: F401  (sets SERPER_API_KEY and clears the cache)
+from test_competitor_intel import faked  # noqa: F401  (sets GOOGLE_PLACES_API_KEY and clears the cache)
 from test_security import login, user
 
-from app.competitors import intel
-from app.models import Business
-from app.services import organic
+from app.competitors import service
+from app.db import SessionLocal
+from app.models import Business, GoogleConnection
+from app.services import gsc_access, organic
 
-CALLS: list[tuple[str, dict]] = []
-
-
-def organic_results(site_at: int | None, total: int = 100):
-    """total results; our site (mydental.in) at the given position, or not at all."""
-    out = []
-    for i in range(1, total + 1):
-        out.append({"position": i, "link": f"https://mydental.in/services" if i == site_at else f"https://other{i}.example/", "title": f"Result {i}"})
-    return {"organic": out}
-
-
-PLACES = {"places": [
+PLACES = [
     {"position": 1, "title": "Smile Care Dental", "website": "https://smilecare.in/", "phoneNumber": "+91 98765 00001", "cid": "1"},
     {"position": 2, "title": "My Dental Clinic", "website": "https://mydental.in/", "phoneNumber": "+91 98220 10099", "cid": "2"},
     {"position": 3, "title": "Tooth Fairy", "website": "https://toothfairy.com/", "cid": "3"},
-]}
+]
+ROWS = {  # Search Console rows: (query, page) -> clicks, impressions, average position
+    "dental implants kesnand": [{"keys": ["dental implants kesnand", "https://mydental.in/services"], "clicks": 3, "impressions": 100, "position": 14.2}],
+    "dentist kesnand": [{"keys": ["dentist kesnand", "https://mydental.in/"], "clicks": 40, "impressions": 400, "position": 1.3},
+                        {"keys": ["dentist kesnand", "https://mydental.in/about"], "clicks": 1, "impressions": 100, "position": 6.0}],
+}
+CALLS: list[tuple[str, object]] = []
+
+
+class FakeSearchConsole:
+    def query(self, site, body):
+        CALLS.append(("gsc", body))
+        return [r for rows in ROWS.values() for r in rows]
 
 
 @pytest.fixture
-def serper(faked, monkeypatch):  # noqa: F811
+def google(faked, monkeypatch):  # noqa: F811
     CALLS.clear()
+    monkeypatch.setattr(gsc_access, "search_console", lambda db, b, host: ("ok", "owner@x.in", FakeSearchConsole(), "sc-domain:mydental.in"))
 
-    def call(self, path, body):
-        CALLS.append((path, dict(body)))
-        if path == "/places":
-            return {"places": [] if "nowhere" in body["q"] else PLACES["places"], "credits": 1}
-        q = body["q"].lower()
-        if "implants" in q:
-            return organic_results(14) | {"credits": 2}  # page 2, 4th on the page
-        if "nowhere" in q:
-            return organic_results(None) | {"credits": 2}
-        return organic_results(1) | {"credits": 2}
+    def places(query, region="IN", lat=None, lng=None, radius_m=5000.0, page_size=20, language="en"):
+        CALLS.append(("places", query))
+        return [] if "nowhere" in query else PLACES
 
-    monkeypatch.setattr(intel.Serper, "call", call)
+    monkeypatch.setattr(service, "places_search", places)
 
 
 def business(client, **extra):
     return client.post("/api/v1/businesses", json={"name": "My Dental Clinic", "primary_category": "Dentist", "area": "Kesnand", "city": "Pune", "website": "https://mydental.in", "phone": "+91 98220 10099", **extra}).json()["id"]
+
+
+def link_google(bid):
+    """A linked Google account with the Search Console permission, so the project can read positions."""
+    db = SessionLocal()
+    c = GoogleConnection(email="owner@x.in", status="active", scopes="https://www.googleapis.com/auth/webmasters.readonly", refresh_token_enc="x", connected_by="user 1")
+    db.add(c)
+    db.flush()
+    db.get(Business, bid).connection_id = c.id
+    db.commit()
+    db.close()
 
 
 def test_page_and_position_math():
@@ -66,50 +73,48 @@ def test_the_business_is_found_in_maps_by_id_phone_site_then_name():
     assert organic.find_listing([{"position": 1, "title": "Smile Care"}], Business(name="My Dental Clinic")) == (None, None)
 
 
-def test_current_positions_show_page_position_maps_and_the_targeted_area(client, serper):
+def test_current_positions_show_search_console_positions_and_the_maps_rank(client, google):
     bid = business(client)
+    link_google(bid)
     client.put(f"/api/v1/businesses/{bid}/seo/track-campaign", json={"engines": ["google"], "device": "mobile", "location": "Kesnand, Pune, India", "language": "en",
                                                                     "keywords": ["dental implants kesnand", "dentist nowhere", "dentist kesnand"]})
     before = client.get(f"/api/v1/businesses/{bid}/seo/current-positions").json()
-    assert before["state"] == "no_data" and all(not r["checked"] for r in before["rows"])  # never invent a position
+    assert before["state"] == "no_data" and before["rank_ready"] is True and all(not r["checked"] for r in before["rows"])  # never invent a position
 
     r = client.post(f"/api/v1/businesses/{bid}/seo/check-ranks", json={}).json()
-    assert r["depth"] == 100 and r["checked"] == 3
-    search = [b for path, b in CALLS if path == "/search"]
-    assert search and all(b["num"] == 100 and b["location"] == "Kesnand, Pune, India" and b["gl"] == "in" for b in search)  # deep, from the targeted area
+    assert r["checked"] == 3 and r["days"] == 28 and r["maps"] is True and "Search Console" in r["source"]
+    assert [c for c, _ in CALLS].count("gsc") == 1  # ONE Search Console request for all keywords
+    assert sorted(q for c, q in CALLS if c == "places") == ["dental implants kesnand", "dentist kesnand", "dentist nowhere"]  # one Maps request per keyword
 
     cur = client.get(f"/api/v1/businesses/{bid}/seo/current-positions").json()
     assert cur["state"] == "ok" and cur["area"]["label"] == "Kesnand, Pune, India · mobile · English"
     by = {x["keyword"]: x for x in cur["rows"]}
     imp = by["dental implants kesnand"]["organic"]
-    assert (imp["found"], imp["position"], imp["page"], imp["position_on_page"], imp["depth_checked"]) == (True, 14, 2, 4, 100)
-    assert imp["label"] == "Page 2, position 4" and imp["url"] == "https://mydental.in/services"
+    assert (imp["found"], imp["position"], imp["page"], imp["position_on_page"], imp["average_position"], imp["impressions"], imp["clicks"]) == (True, 14, 2, 4, 14.2, 100, 3)
+    assert imp["label"] == "Average position 14.2" and imp["url"] == "https://mydental.in/services" and imp["source"] == "search_console"
     assert by["dental implants kesnand"]["maps"] | {"x": 0} == {"checked": True, "found": True, "position": 2, "in_pack": True, "listing": "My Dental Clinic", "total": 3, "label": "#2 in Maps", "x": 0}
-    assert by["dental implants kesnand"]["who_is_first"] == {"domain": "other1.example", "maps": "Smile Care Dental"}
+    assert by["dental implants kesnand"]["who_is_first"] == {"domain": None, "maps": "Smile Care Dental"}   # Google gives no other site's organic rank: only the Maps leader
+    two = by["dentist kesnand"]["organic"]
+    assert two["average_position"] == 2.2 and two["position"] == 2 and two["page"] == 1   # weighted by impressions across the two pages that rank
     nf = by["dentist nowhere"]
-    assert nf["organic"]["found"] is False and nf["organic"]["page"] is None and nf["organic"]["label"] == "Not in the top 100"
+    assert nf["organic"]["found"] is False and nf["organic"]["label"] == "No impressions on Google yet (last 28 days)"
     assert nf["maps"]["found"] is False and nf["maps"]["label"] == "Not in Maps results" and nf["maps"]["in_pack"] is False
-    assert by["dentist kesnand"]["organic"]["page"] == 1
     s = cur["summary"]
-    assert (s["page1"], s["page2"], s["page3plus"], s["not_found"], s["in_pack"]) == (1, 1, 0, 1, 2) and cur["last_checked_at"]
+    assert (s["page1"], s["page2"], s["not_found"], s["in_pack"]) == (1, 1, 1, 2) and cur["last_checked_at"]
 
-    # a second check shows the move (the site climbed from 14 to 1 for this keyword)
-    client.put(f"/api/v1/businesses/{bid}/seo/track-campaign", json={"engines": ["google"], "device": "mobile", "location": "Kesnand, Pune, India", "keywords": []})
+    # a second check keeps the previous position so the move shows
     CALLS.clear()
     client.post(f"/api/v1/businesses/{bid}/seo/check-ranks", json={"keywords": ["dental implants kesnand"]})
-    assert [p for p, _ in CALLS] == ["/search", "/places"]  # one deep request + one Maps request per keyword
     again = {x["keyword"]: x for x in client.get(f"/api/v1/businesses/{bid}/seo/current-positions").json()["rows"]}["dental implants kesnand"]["organic"]
     assert again["position"] == 14 and again["change_vs_previous"] == 0 and again["previous_position"] == 14
 
 
-def test_a_project_with_no_google_key_says_so(client, monkeypatch):
-    monkeypatch.setenv("SERPER_API_KEY", "")
-    from app.config import get_settings
-    get_settings.cache_clear()
+def test_a_project_without_search_console_access_says_so(client):
     bid = business(client)
     cur = client.get(f"/api/v1/businesses/{bid}/seo/current-positions").json()
-    assert cur["state"] == "needs_serper" and cur["serper"] is False
-    get_settings.cache_clear()
+    assert cur["state"] == "needs_google" and cur["rank_ready"] is False
+    r = client.post(f"/api/v1/businesses/{bid}/seo/check-ranks", json={})
+    assert r.status_code == 400 and "Google account" in r.json()["detail"]
 
 
 def test_another_users_project_positions_are_not_visible(client):

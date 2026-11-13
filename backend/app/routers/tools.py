@@ -1,9 +1,10 @@
 """AI-assisted working tools for one project: SEO brief, social posts, Google Ads plan and the questions people ask.
 
-Each one is built from what we really have: live Google results (Serper) and the AI model, with the business's own details. Nothing is
+Each one is built from what we really have: Google Ads Keyword Planner data and the AI model, with the business's own details. Nothing is
 published or spent: the tools return drafts to review. Limits that platforms enforce (ad headline and description lengths, post lengths) are
 checked on the server, not trusted to the model.
 """
+import re
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -35,18 +36,21 @@ def _need_ai() -> None:
         raise HTTPException(503, "The AI model is not set up on the platform (AI settings in backend/.env).")
 
 
-def _serper(b: Business) -> intel.Serper | None:
-    return intel.Serper(market.serp_country(b)) if intel.serper_enabled() else None
+_QUESTION = re.compile(r"^(who|what|which|where|when|why|how|is|are|can|do|does|should|will)(?![a-z])", re.I)
 
 
 def _google(b: Business, q: str) -> dict[str, Any]:
-    s = _serper(b)
-    if not s:
+    """What Google's Keyword Planner knows around a keyword: its related searches and, among them, the questions people type. {} when Google Ads is not set up."""
+    from ..services import google_ads_client as ads, keyword_metrics  # noqa: PLC0415
+    if not keyword_metrics.enabled():
         return {}
     try:
-        return s.search(q, intel.default_location(b))
-    except intel.IntelError as exc:
-        raise HTTPException(502, str(exc)) from exc
+        ideas = ads.keyword_ideas([q], limit=80, geo_target=ads.geo_target_for(market.serp_country(b)))
+    except ads.GoogleAdsError as exc:
+        raise HTTPException(502, "Google Ads did not answer: " + ("; ".join(getattr(exc, "details", []) or []) or str(exc))[:200]) from exc
+    ranked = sorted((i for i in ideas if i["keyword"].lower() != q.lower()), key=lambda i: -(i.get("avg_monthly_searches") or 0))
+    return {"organic": [], "peopleAlsoAsk": [{"question": i["keyword"]} for i in ranked if _QUESTION.match(i["keyword"])][:12],
+            "relatedSearches": [{"query": i["keyword"]} for i in ranked if not _QUESTION.match(i["keyword"])][:12]}
 
 
 # SEO brief -------------------------------------------------------------------------------------------------------------------------------------
@@ -56,7 +60,7 @@ class BriefIn(BaseModel):
 
 @router.post("/seo-brief")
 def seo_brief(body: BriefIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """A content brief for a keyword: what the pages that rank cover, the questions people ask, and an outline to beat them."""
+    """A content brief for a keyword: the questions and related searches Google's Keyword Planner shows, and an outline written for this business."""
     _need_ai()
     kw = " ".join(body.keyword.split())
     res = _google(b, kw)
@@ -156,9 +160,10 @@ class QuestionsIn(BaseModel):
 
 @router.post("/questions")
 def questions(body: QuestionsIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """The questions Google shows for the business's keywords (People also ask and related searches): the questions to answer, and to track in AI answers."""
-    if not intel.serper_enabled():
-        raise HTTPException(503, "Google results are not connected: set SERPER_API_KEY in backend/.env.")
+    """The questions people type around the business's keywords, from the Google Ads Keyword Planner: the questions to answer, and to track in AI answers."""
+    from ..services import keyword_metrics  # noqa: PLC0415
+    if not keyword_metrics.enabled():
+        raise HTTPException(503, "Questions come from the Google Ads Keyword Planner: set the GOOGLE_ADS_* values in backend/.env.")
     seeds = [k.strip() for k in (body.keywords or []) if k.strip()][:5]
     if not seeds:
         seeds = [k.keyword for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)).order_by(Keyword.id).limit(5))] or intel.default_keywords(b)[:3]
@@ -176,4 +181,4 @@ def questions(body: QuestionsIn, b: Business = Depends(get_business), db: Sessio
     out = list(seen.values())
     log(db, user.name, "questions_researched", b.id, keywords=len(seeds))
     db.commit()
-    return {"keywords": seeds, "items": out, "credits": len(seeds)}
+    return {"keywords": seeds, "items": out, "source": "Google Ads Keyword Planner"}

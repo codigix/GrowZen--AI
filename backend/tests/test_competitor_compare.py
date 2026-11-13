@@ -104,7 +104,7 @@ def test_compare_our_website_audit_against_competitor(client, monkeypatch):
     assert comparison["pages"]["matched"][0]["path"] == "/"
     gaps = comparison["keywords_and_content_gaps"]
     assert gaps["on_page"]["available"] is True  # both sites were crawled, so on-page keywords are extracted with no external API
-    assert gaps["search"]["available"] is False  # no competitor-research (Serper) run exists
+    assert gaps["search"]["available"] is False  # no competitor-research  run exists
 
 
 def test_compare_falls_back_to_technical_and_onpage_audits(client, monkeypatch):
@@ -155,7 +155,7 @@ def test_compare_missing_audit_reports_error_without_failing_whole_request(clien
 
 
 def test_onpage_keyword_gap_from_crawled_content(client, monkeypatch):
-    """No SERPER_API_KEY or competitor-research run needed: keyword gaps come straight from each
+    """No Google key or competitor-research run needed: keyword gaps come straight from each
     site's own crawled pages (services/crawler.py's extract_keywords)."""
     from app.services import crawler
 

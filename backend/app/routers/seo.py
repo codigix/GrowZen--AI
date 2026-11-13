@@ -1,5 +1,5 @@
 """SEO toolkit pages built on data the platform really has: the site's own crawl and audits, the tracked keywords,
-Google results from Serper, the competitor research and the backlink provider. Each response says where its figures
+Google Search Console (positions), the Places API (Maps), the competitor research and Backlink Intelligence. Each response says where its figures
 come from; what needs a paid index (organic traffic, backlink totals) is left out, never estimated."""
 import re
 from typing import Literal
@@ -27,6 +27,14 @@ from ..services.activity import log
 from ..conn_access import owns_connection  # noqa: E402
 
 router = APIRouter(prefix="/businesses/{business_id}/seo", tags=["seo"])
+
+
+def _rank_ready(db: Session, b: Business) -> bool:
+    """Positions can be read: the project has a website and a linked Google account that granted Search Console access."""
+    if not organic.host(b.website) or not b.connection_id:
+        return False
+    c = db.get(GoogleConnection, b.connection_id)
+    return bool(c and c.status == "active" and gsc.has_scope(c))
 
 
 def _latest(db: Session, b: Business, kind: str) -> Audit | None:
@@ -72,12 +80,12 @@ class CheckIn(BaseModel):
 
 @router.post("/check-ranks")
 def check_ranks(body: CheckIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """Google's organic position of the site for each tracked keyword (live results from Serper), saved so the next
+    """Google's organic position of the site for each tracked keyword (read from Google Search Console), saved so the next
     check shows the change and the history chart grows."""
     try:
         out = organic.check(db, b, body.keywords)
     except organic.RankCheckError as exc:
-        raise HTTPException(400 if "SERPER_API_KEY" in str(exc) or "website" in str(exc) else 502, str(exc)) from exc
+        raise HTTPException(400 if "website" in str(exc) or "Google account" in str(exc) or "Search Console" in str(exc) else 502, str(exc)) from exc
     log(db, user.name, "ranks_checked", b.id, keywords=out["checked"])
     db.commit()
     return out
@@ -147,8 +155,8 @@ def _bucket(row: dict) -> str:
 @router.get("/current-positions")
 def current_positions(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Where the project stands on Google right now, per tracked keyword, in its targeted area: the results page and the position on it, the
-    place in Google Maps (the local pack is the top 3), the change since the check before, and who is first. All of it is read from the saved
-    live checks (POST /seo/check-ranks); a keyword that was never checked says so, and a site that is not found says "not in the top <depth>"."""
+    place in Google Maps (the local pack is the top 3), and the change since the check before. All of it is read from the saved
+    checks (POST /seo/check-ranks: Google Search Console and the Places API); a keyword that was never checked says so, and one with no impressions says so."""
     cfg = organic.targeting(b)
     area = {"location": cfg["location"], "device": cfg["device"], "language": cfg["language"], "language_name": LANGUAGES.get(cfg["language"][:2].lower(), cfg["language"].upper())}
     area["label"] = " · ".join([area["location"], area["device"], area["language_name"]])
@@ -159,7 +167,8 @@ def current_positions(b: Business = Depends(get_business), db: Session = Depends
     rows = []
     for k in tracked:
         r = latest.get(k.keyword)
-        depth = (r.depth or 20) if r else None
+        sc = bool(r and r.source == "search_console")  # Google Search Console's average position (newer rows); older rows were live result checks
+        depth = None if sc else ((r.depth or 20) if r else None)
         rank = r.rank if r else None
         page = (r.rank_page or organic.page_of(rank)) if rank else None
         first = None
@@ -172,7 +181,9 @@ def current_positions(b: Business = Depends(get_business), db: Session = Depends
             "keyword": k.keyword, "checked": bool(r),
             "organic": {"found": rank is not None, "position": rank, "page": page, "position_on_page": organic.position_on_page(rank), "url": r.url if r else None,
                         "depth_checked": depth, "change_vs_previous": change, "previous_position": k.prev_rank,
-                        "label": None if not r else (f"Page {page}, position {organic.position_on_page(rank)}" if rank else f"Not in the top {depth}")},
+                        "average_position": r.position if r else None, "clicks": r.clicks if r else None, "impressions": r.impressions if r else None, "source": r.source if r else None,
+                        "label": None if not r else ((f"Average position {r.position:g}" if r.position else f"Position {rank}") if (sc and rank) else "No impressions on Google yet (last 28 days)" if sc else
+                                                     f"Page {page}, position {organic.position_on_page(rank)}" if rank else f"Not in the top {depth}")},
             "maps": {"checked": maps_checked, "found": maps_rank is not None, "position": maps_rank, "in_pack": bool(maps_rank and maps_rank <= 3),
                      "listing": r.maps_listing if r else None, "total": r.maps_total if r else None,
                      "label": None if not maps_checked else (f"#{maps_rank} in Maps" if maps_rank else "Not in Maps results")},
@@ -185,9 +196,9 @@ def current_positions(b: Business = Depends(get_business), db: Session = Depends
     for row in rows:
         summary[row["bucket"]] += 1
         summary["in_pack"] += row["maps"]["in_pack"]
-    serper = intel.serper_enabled()
-    state = "needs_serper" if (not serper and not summary["checked"]) else "no_data" if not summary["checked"] else "ok"
-    return {"state": state, "serper": serper, "website": b.website, "domain": organic.host(b.website) or None, "area": area, "depth": organic.DEPTH, "summary": summary, "rows": rows,
+    ready = _rank_ready(db, b)
+    state = "needs_google" if (not ready and not summary["checked"]) else "no_data" if not summary["checked"] else "ok"
+    return {"state": state, "rank_ready": ready, "website": b.website, "domain": organic.host(b.website) or None, "area": area, "depth": organic.DEPTH, "summary": summary, "rows": rows,
             "last_checked_at": max((x["last_checked_at"] for x in rows if x["last_checked_at"]), default=None)}
 
 
@@ -200,7 +211,7 @@ def position_landscape(days: int = 30, b: Business = Depends(get_business), db: 
     today = datetime.now(timezone.utc).date()
     start = date.fromordinal(today.toordinal() - days)
     tracked = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
-    base = {"domain": me or None, "days": days, "tracked": len(tracked), "serper": intel.serper_enabled()}
+    base = {"domain": me or None, "days": days, "tracked": len(tracked), "rank_ready": _rank_ready(db, b)}
     if get_settings().rank_landscape_mock_on and me:
         obs, meta = landscape_svc.mock_obs(me, days, today)
         return {**base, **landscape_svc.landscape(obs, meta, me, start, today), "mock": True}
@@ -223,7 +234,7 @@ def rank_report(b: Business = Depends(get_business), db: Session = Depends(get_d
     (services/rank_report.py). Uses the saved rank checks and the latest on-page crawl."""
     me = organic.host(b.website)
     tracked = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
-    base = {"domain": me or None, "tracked": len(tracked), "serper": intel.serper_enabled()}
+    base = {"domain": me or None, "tracked": len(tracked), "rank_ready": _rank_ready(db, b)}
     if not me:
         return {**base, "state": "no_website", "rows": []}
     if not tracked:
@@ -248,7 +259,7 @@ def organic_research(days: int = 30, b: Business = Depends(get_business), db: Se
     today = datetime.now(timezone.utc).date()
     start = date.fromordinal(today.toordinal() - days)
     tracked = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
-    base = {"domain": me or None, "days": days, "tracked": len(tracked), "serper": intel.serper_enabled()}
+    base = {"domain": me or None, "days": days, "tracked": len(tracked), "rank_ready": _rank_ready(db, b)}
     if get_settings().rank_landscape_mock_on and me:
         obs, meta = landscape_svc.mock_obs(me, days, today)
         return {**base, **landscape_svc.organic_research(obs, meta, me, start, today), "mock": True}
@@ -349,7 +360,7 @@ def get_track_config(b: Business = Depends(get_business), db: Session = Depends(
     cfg = {**TRACK_DEFAULTS, **(b.track_config or {})}
     have = {k.keyword for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)))}
     return {**cfg, "location": cfg["location"] or intel.default_location(b), "website": b.website, "name": b.name, "tracked": sorted(have),
-            "suggestions": [k for k in intel.default_keywords(b)[:24] if k not in have], "serper": intel.serper_enabled(),
+            "suggestions": [k for k in intel.default_keywords(b)[:24] if k not in have], "rank_ready": _rank_ready(db, b),
             "ai_engines": [e for e in ("ChatGPT", "Gemini") if e in geo._engines()]}
 
 
@@ -450,7 +461,7 @@ def top_pages_report(days: int = 30, b: Business = Depends(get_business), db: Se
     geo_rows = [{"prompt_id": g.prompt_id, "engine": g.engine, "urls": g.cited_urls or [], "day": g.created_at.date().isoformat() if g.created_at else None} for g in results]
     out = top_pages_svc.build(crawl["pages"], obs, meta, geo_rows, index, me, start, today, db.query(GeoPrompt).filter(GeoPrompt.business_id == b.id).count())
     return {**base, "state": "ok", "intel_state": payload.get("state"), "internal": payload.get("internal"), "country_name": payload.get("country_name"), "markets": payload.get("markets"),
-            "audited_at": crawl.get("audited_at"), "crawling": _crawl_running(db, b), "serper": intel.serper_enabled(), "mock": bool(payload.get("mock")) or get_settings().rank_landscape_mock_on, "geo_source": results[0].data_source if results else None, **out}
+            "audited_at": crawl.get("audited_at"), "crawling": _crawl_running(db, b), "rank_ready": _rank_ready(db, b), "mock": bool(payload.get("mock")) or get_settings().rank_landscape_mock_on, "geo_source": results[0].data_source if results else None, **out}
 
 
 def _ai_search(db: Session, b: Business, host: str) -> dict:
@@ -480,65 +491,11 @@ def _brand_terms(b: Business, host: str) -> list[str]:
     return list(dict.fromkeys(t for t in (host.split(".")[0], name, name.replace(" ", "")) if len(t) >= 3))
 
 
-def _find_owner(db: Session, b: Business, host: str) -> GoogleConnection | None:
-    """A project with no linked account: the connected account that owns this site's Search Console property, if there is one. Having the
-    verified property proves the account belongs to this site, so it is linked to the project and used from then on."""
-    for c in db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None), GoogleConnection.connected_by == f"user {b.owner_id}").order_by(GoogleConnection.id)):  # only the project owner's own accounts
-        if not gsc.has_scope(c):
-            continue
-        try:
-            if gsc.match_property(gsc.SearchConsole(c).sites(), host):
-                b.connection_id = c.id
-                db.commit()
-                return c
-        except GbpError:
-            continue
-    return None
+from ..services import gsc_access  # noqa: E402
 
-
-def _own_connections(db: Session, b: Business, only: int | None = None, host: str | None = None) -> list[GoogleConnection]:
-    """The Google account(s) this project may use: the one linked to it, nothing else. Another project's account is never tried, so one
-    client's Search Console data cannot show up under another. `only` is an account the user picked on purpose for this request; `host` lets a
-    project with no linked account find the one that owns its site (see _find_owner)."""
-    pick = only or b.connection_id
-    if not pick and host:
-        owner = _find_owner(db, b, host)
-        return [owner] if owner else []
-    if not pick:
-        return []
-    c = db.get(GoogleConnection, pick)
-    if c and pick != b.connection_id and c.connected_by != f"user {b.owner_id}":
-        return []  # (the account explicitly linked to the project is trusted: linking checked who owns it)  # another account's Google connection is never used for this project
-    return [c] if c and c.status == "active" and c.refresh_token_enc else []
-
-
-def _search_console(db: Session, b: Business, host: str):
-    """(state, message, SearchConsole, property) for the business's site, from a connected Google account that can see it."""
-    conns = [c for c in _own_connections(db, b, host=host) if gsc.has_scope(c)]
-    if not conns:
-        linked = db.get(GoogleConnection, b.connection_id) if b.connection_id else None
-        if linked and linked.status != "active":
-            return "not_connected", f"The Google account linked to this project ({linked.email}) is disconnected. Reconnect it in Integrations.", None, None
-        return "not_connected", "No Google account is linked to this project. Connect the account that owns this site in Search Console (Integrations) and link it to the project.", None, None
-    notes: list[str] = []
-    for conn in conns:
-        try:
-            sc = gsc.SearchConsole(conn)
-            sites = sc.sites()
-            site = gsc.match_property(sites, host)
-        except GbpError as exc:
-            notes.append(f"{conn.email}: {str(exc)[:160]}")
-            continue
-        if site:
-            return "ok", conn.email, sc, site
-        have = [x["siteUrl"] for x in sites if x.get("permissionLevel") != "siteUnverifiedUser"]
-        unverified = [x["siteUrl"] for x in sites if x.get("permissionLevel") == "siteUnverifiedUser" and host in x["siteUrl"]]
-        if unverified:
-            notes.append(f"{conn.email} is listed on {unverified[0]} only as an unverified user, and Google returns no data at that level. Ask the site's owner to add it as a Full user in Search Console (Settings > Users and permissions).")
-            continue
-        notes.append(f"{conn.email} has no verified property for {host}" + (f" (it has: {', '.join(have[:6])}{'…' if len(have) > 6 else ''})." if have else " (it has no verified properties at all)."))
-    msg = " ".join(notes) or "No verified Search Console property for this site."
-    return "no_property", msg + " Add and verify the site in Search Console, or link the account that owns it to this project.", None, None
+_find_owner = gsc_access.find_owner
+_own_connections = gsc_access.own_connections
+_search_console = gsc_access.search_console
 
 
 @router.get("/domain-intel")

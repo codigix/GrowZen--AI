@@ -87,3 +87,29 @@ def find_competitors(business_type: str, location: str, own_firm_name: str = "",
         if len(results) == top_n:
             break
     return results
+
+
+def places_search(query: str, region: str = "IN", lat: float | None = None, lng: float | None = None, radius_m: float = 5000.0, page_size: int = 20, language: str = "en") -> list[dict[str, Any]]:
+    """Google Maps results for a search, in Google's own order, from the Places API (New). With a point, results are biased to a circle around it (the Maps view from that spot).
+    Each item: {position, title, rating, ratingCount, category, address, website, phoneNumber, cid (the Google place id), maps_link}."""
+    api_key = _key()
+    if not api_key:
+        raise CompetitorSearchError("Google Maps results are off: set GOOGLE_PLACES_API_KEY on the SEO backend.")
+    body: dict[str, Any] = {"textQuery": query, "regionCode": (region or "IN").upper()[:2], "languageCode": language, "pageSize": max(1, min(int(page_size), 20))}
+    if lat is not None and lng is not None:
+        body["locationBias"] = {"circle": {"center": {"latitude": float(lat), "longitude": float(lng)}, "radius": float(max(1.0, min(radius_m, 50000.0)))}}
+    try:
+        resp = httpx.post(URL, headers={"Content-Type": "application/json", "X-Goog-Api-Key": api_key, "X-Goog-FieldMask": FIELDS}, json=body, timeout=30)
+    except httpx.HTTPError as exc:
+        raise CompetitorSearchError(f"Google Places did not answer: {exc}") from exc
+    if resp.status_code != 200:
+        msg = (resp.json().get("error") or {}).get("message", resp.text[:200]) if resp.content else f"HTTP {resp.status_code}"
+        raise CompetitorSearchError(f"Google Places: {msg}")
+    out = []
+    for i, p in enumerate(resp.json().get("places", [])):
+        if p.get("businessStatus") == "CLOSED_PERMANENTLY":
+            continue
+        out.append({"position": len(out) + 1, "title": p.get("displayName", {}).get("text", ""), "rating": p.get("rating"), "ratingCount": p.get("userRatingCount", 0),
+                    "category": (p.get("primaryTypeDisplayName") or {}).get("text", ""), "address": p.get("formattedAddress", ""), "website": p.get("websiteUri", ""),
+                    "phoneNumber": p.get("nationalPhoneNumber", ""), "cid": p.get("id", ""), "placeId": p.get("id", ""), "maps_link": p.get("googleMapsUri", "")})
+    return out

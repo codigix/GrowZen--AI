@@ -5,7 +5,7 @@ Nothing here is invented: a figure is derived from what a check recorded. Two ch
 - Visibility = the share of the clicks the tracked keywords could win: sum of the expected click-through rate at each position,
   divided by (keywords x the click-through rate of position 1).
 - Estimated traffic = search volume x expected click-through rate at the position, summed (keywords without a volume count 0).
-Checks read the top 10 results (Serper), so "not ranking" means "not in the top 10".
+Positions are Google Search Console's average position, so "not ranking" means "no impressions on Google in the days read".
 """
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -427,7 +427,7 @@ def mock_obs(me: str, days: int, today: date) -> tuple[list[Obs], dict[str, dict
     from ..errors import DataUnavailable
     cfg = get_settings()
     if cfg.environment.lower() == "production" or not cfg.allow_sample_data:  # generated ranks are never shown as real: not in production, not without the explicit switch
-        raise DataUnavailable("Sample rank data is switched off. Rank checks use live Google results (SERPER_API_KEY).")
+        raise DataUnavailable("Sample rank data is switched off. Rank checks read Google Search Console and the Google Places API.")
     import random
     rnd = random.Random(me)
     topics = {

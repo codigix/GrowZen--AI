@@ -135,8 +135,6 @@ class Settings(BaseSettings):
     moz_access_id: str = ""
     moz_secret_key: str = ""
 
-    # Google search results (serper.dev): competitor research -- organic top 10 and Maps results per keyword
-    serper_api_key: str = ""
     # Development only: the same for the Position Tracking landscape (generated rank checks).
     rank_landscape_mock: bool = False
     # TESTS AND DEMOS ONLY (ALLOW_SAMPLE_DATA=true): lets the data providers fall back to generated sample numbers when a key is missing. Off by default: with it off,

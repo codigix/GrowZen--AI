@@ -45,7 +45,7 @@ def _run_rankings(db: Session, b: Business) -> tuple[int, list[dict[str, Any]], 
         from ..competitors.intel import default_keywords  # noqa: PLC0415 - avoids an import cycle
         keywords = [k.lower() for k in default_keywords(b)] or [f"{b.primary_category or 'business'} in {b.area or b.city or ''}".strip().lower()]
     prov = providers.rank_provider()
-    # Live Google results cost per grid point, so that provider scans a smaller grid for fewer keywords.
+    # Each grid point is one Google Places request, so that provider scans a smaller grid for fewer keywords.
     size, radius = getattr(prov, "default_grid", 7), getattr(prov, "default_radius_km", 5.0)
     if getattr(prov, "default_grid", None):
         keywords = keywords[:2]
@@ -87,23 +87,21 @@ def _run_onpage(db: Session, b: Business, max_pages: int | None = None) -> tuple
 
 
 def _run_backlinks(db: Session, b: Business) -> tuple[int, list[dict[str, Any]], dict[str, Any], str]:
-    prov = providers.backlink_provider()
+    """The backlink audit reads Backlink Intelligence (our own crawler and the link index the project tracks): Google has no API for who links to a site."""
+    from ..backlinks.summary import own_site_links  # noqa: PLC0415
     domain = urlparse(b.website).netloc if b.website else None
     if not domain:
-        return 0, [{"area": "Backlinks", "level": "warning", "title": "No website, so no backlink profile", "fix": "Build a website first."}], {}, prov.source
-    s = prov.summary(domain, name=b.name, city=b.city or "", country=countries.of(b))
+        return 0, [{"area": "Backlinks", "level": "warning", "title": "No website, so no backlink profile", "fix": "Build a website first."}], {}, "live"
+    s = own_site_links(db, b.id)
+    if s is None:
+        raise RuntimeError("Backlinks are read from Backlink Intelligence. Track this website there and run it, then run this audit again.")
     rd = s.get("referring_domains") or 0
-    mentions = s.get("source") == "google_mentions"
-    # Google shows at most a page or two of other sites for a name, so mentions score on a smaller scale.
-    score = min(100, round(rd / 12 * 100)) if mentions else min(100, round(rd * 1.6))
+    score = min(100, round(rd * 1.6))
     issues = []
-    if (mentions and rd < 6) or (not mentions and rd < 20):
-        issues.append({"area": "Backlinks", "level": "warning",
-                       "title": f"Only {rd} other site{'s' if rd != 1 else ''} found {'linking to or mentioning the business' if mentions else 'linking to it (referring domains)'}",
+    if rd < 20:
+        issues.append({"area": "Backlinks", "level": "warning", "title": f"Only {rd} other site{'s' if rd != 1 else ''} found linking to it (referring domains)",
                        "fix": "Earn links from local news, associations and directories; see the link gap."})
-    if s.get("toxic"):
-        issues.append({"area": "Backlinks", "level": "warning", "title": f"{s['toxic']} toxic links", "fix": "Review them; disavow only clear spam."})
-    return score, issues, s, prov.source
+    return score, issues, {"referring_domains": rd, "backlinks": s.get("backlinks"), "source": "backlink_intelligence"}, "live"
 
 
 def _run_citations(db: Session, b: Business) -> tuple[int, list[dict[str, Any]], dict[str, Any], str]:

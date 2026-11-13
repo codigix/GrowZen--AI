@@ -6,7 +6,7 @@ keywords and services their pages target, location pages, blog, schema, content 
 they are listed and linked from, and -- against all that -- the business's own gaps and what to
 do first.
 
-Sources: Serper.dev for Google results (SERPER_API_KEY), a short scan of each site, and
+Sources: the Google Places API for the Maps results, Google Search Console for the site's own organic position, a short scan of each site, and
 no backlink index (Google offers no API for one). "Link sources"
 are the sites Google shows listing or mentioning the competitor (directories, social, press) --
 not a full backlink index, and the result says so.
@@ -30,7 +30,6 @@ from ..services.keywords import CITIES, METRO, NOISE, default_seeds, other_citie
 from ..services import countries, market
 from ..services.net import site_client
 
-SERPER = "https://google.serper.dev"
 CACHE_SECONDS = 12 * 3600
 
 # Share of clicks by position (industry averages): turns positions into "visibility".
@@ -99,21 +98,16 @@ def places_enabled() -> bool:
     return competitors_enabled()
 
 
-def google_places(q: str, location: str | None, gl: str | None) -> dict[str, Any]:
-    """The Google Places API (the Maps listing), shaped like Serper's /places answer: positions are Google's own order."""
-    from .service import CompetitorSearchError, find_competitors
+def google_places(q: str, location: str | None, gl: str | None, lat: float | None = None, lng: float | None = None) -> dict[str, Any]:
+    """The Google Maps results for a search from the Places API (Google's own order), around the business's pin when there is one."""
+    from .service import CompetitorSearchError, places_search
     area = (location or "").strip()
     text = q if not area or area.lower() in q.lower() else f"{q} in {area}"
     try:
-        found = find_competitors(text, "", "", 10, (gl or "in"))
+        found = places_search(text, (gl or "in"), lat, lng)
     except CompetitorSearchError as exc:
         raise IntelError(str(exc)) from exc
-    return {"places": [{"position": i + 1, "title": p["name"], "rating": p["rating"] or None, "ratingCount": p["reviews"], "category": p["category"], "address": p["address"],
-                        "website": p["website"], "phoneNumber": p["phone"], "cid": p["place_id"] or None} for i, p in enumerate(found)]}
-
-
-def serper_enabled() -> bool:
-    return bool(get_settings().serper_api_key)
+    return {"places": found}
 
 
 def host_of(url: str | None) -> str:
@@ -134,65 +128,6 @@ def site_of(host: str) -> str:
 
 def _words(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", (text or "").lower())
-
-
-# ── Google results (Serper) ─────────────────────────────────────────────
-_cache: dict[str, tuple[float, dict[str, Any]]] = {}
-_lock = threading.Lock()
-
-
-class Serper:
-    """Serper.dev calls with a 12-hour cache (same query + place = same answer), counting credits."""
-
-    def __init__(self, country: str | None = None, language: str | None = None, fresh: bool = False) -> None:
-        self.fresh = fresh  # True = never answer from the cache (a "check now" must show Google as it is at this moment)
-        self.key = get_settings().serper_api_key
-        self.hl = (language or "en")[:5]
-        self.gl = countries.gl(country)  # Google's results for the business's country
-        if not self.key:
-            raise IntelError("Competitor research needs Google results: set SERPER_API_KEY on the SEO backend (serper.dev).")
-        self.credits = 0
-
-    def call(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        ck = f"{path}|{sorted(body.items())}"
-        with _lock:
-            hit = None if self.fresh else _cache.get(ck)
-            if hit and time.time() - hit[0] < CACHE_SECONDS:
-                return hit[1]
-        r = None
-        for attempt in range(3):  # a rate limit (HTTP 429) clears in a moment: wait and ask again, one search at a time
-            try:
-                r = httpx.post(f"{SERPER}{path}", headers={"X-API-KEY": self.key, "Content-Type": "application/json"}, json=body, timeout=30)
-            except httpx.HTTPError as exc:
-                raise IntelError(f"Google results (Serper) did not answer: {exc}") from exc
-            if r.status_code != 429 or attempt == 2:
-                break
-            time.sleep(1.5 * (attempt + 1))
-        if r.status_code in (401, 403):
-            raise IntelError("The Serper API key was refused. Check SERPER_API_KEY.")
-        if r.status_code == 400 and "credit" in r.text.lower():
-            raise IntelError("Serper credits are used up. Top up at serper.dev.")
-        if r.status_code == 429:
-            raise IntelError("Serper is rate-limiting the requests (it still refused after waiting). Try again in a minute; if it keeps happening check the plan at serper.dev.")
-        if r.status_code != 200:
-            raise IntelError(f"Serper: {(r.json() if r.content else {}).get('message') or f'HTTP {r.status_code}'}")
-        data = r.json()
-        self.credits += int(data.get("credits") or 1)
-        with _lock:
-            _cache[ck] = (time.time(), data)
-        return data
-
-    def search(self, q: str, location: str | None, num: int = 10) -> dict[str, Any]:
-        body = {"q": q, "gl": self.gl, "hl": self.hl, "num": num}
-        if location:
-            body["location"] = location
-        return self.call("/search", body)
-
-    def places(self, q: str, location: str | None) -> dict[str, Any]:
-        body = {"q": q, "gl": self.gl, "hl": "en"}
-        if location:
-            body["location"] = location
-        return self.call("/places", body)
 
 
 # ── Keywords ────────────────────────────────────────────────────────────
@@ -368,22 +303,6 @@ def site_profile(site: dict[str, Any], brand_words: set[str], places: set[str], 
     }
 
 
-def link_sources(serper: Serper, query: str, own_host: str, brand: set[str]) -> list[dict[str, str]]:
-    """Other sites Google shows for a business's name: where it is listed, linked or talked about.
-    A result only counts when it is about the brand (names it or links its domain)."""
-    data = serper.search(query, None)
-    names = {x for x in brand if len(x) >= 4}
-    out: dict[str, dict[str, str]] = {}
-    for o in data.get("organic", []):
-        h = host_of(o.get("link"))
-        compact = re.sub(r"[^a-z0-9]", "", f"{o.get('title', '')} {o.get('snippet', '')} {o.get('link', '')}".lower())
-        about = any(n in compact for n in names)
-        if h and about and h != own_host and not h.endswith(f".{own_host}") and h not in out:
-            out[h] = {"domain": h, "url": o.get("link", ""), "title": o.get("title", ""), "type": "directory" if is_directory(h) else "site"}
-    return list(out.values())
-
-
-# ── The analysis ────────────────────────────────────────────────────────
 def _norm_name(s: str) -> str:
     return " ".join(_words(s))
 
@@ -478,15 +397,10 @@ def _local_rollup(serps: list[dict[str, Any]], n_keywords: int) -> list[dict[str
     return sorted(places.values(), key=lambda e: (-e["visibility"], -(e.get("reviews") or 0)))
 
 
-def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Callable[[dict[str, Any]], None] = lambda e: None) -> dict[str, Any]:
-    serper_reason = ""
-    try:
-        serper: Serper | None = Serper(market.serp_country(b))
-    except IntelError as exc:
-        if not places_enabled():
-            raise
-        serper, serper_reason = None, str(exc)
-    serper_gl = countries.gl(market.serp_country(b))
+def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Callable[[dict[str, Any]], None] = lambda e: None, own_positions: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    region_gl = countries.gl(market.serp_country(b))
+    if not places_enabled():
+        raise IntelError("Competitor research uses the Google Places API: set GOOGLE_PLACES_API_KEY on the SEO backend.")
     settings = get_settings()
     my_host = host_of(b.website)
     keywords = [k.strip() for k in keywords if k.strip()][:10]
@@ -515,45 +429,22 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
             "sites": profiles_done or {},
         }
 
-    # 1. Google results for every keyword: the organic top 10 and the Maps results.
-    # Serper gives both. When it is unavailable (no key, credits used up) the Maps side still comes from the Google Places API, in Google's own order; the organic side is then simply empty.
+    # 1. The Google Maps results for every keyword (Places API, Google's own order), and where the site itself ranks organically (Search Console).
+    # Google gives no API for other websites' organic rankings, so rivals are the Maps businesses; the site's own organic position is Google's own figure for it.
     serps: list[dict[str, Any]] = []
-    why_no_serper: str | None = None if serper else serper_reason
     for kw in keywords:
-        progress(f"Google results for \"{kw}\"", live() if serps else None)
-        org: dict[str, Any] = {}
-        plc: dict[str, Any] = {}
-        if serper:
-            try:
-                org = serper.search(kw, location)
-            except IntelError as exc:
-                if not places_enabled():
-                    raise
-                serper, why_no_serper = None, str(exc)
-        if serper:
-            try:
-                plc = serper.places(kw, location)
-            except IntelError:
-                plc = {}
-        if not plc.get("places") and places_enabled():
-            plc = google_places(kw, location, serper_gl)
-        organic = []
-        for o in org.get("organic", [])[:10]:
-            h = host_of(o.get("link"))
-            organic.append({"position": o.get("position"), "domain": h, "url": o.get("link"), "title": o.get("title", ""),
-                            "snippet": o.get("snippet", ""), "type": "directory" if is_directory(h) else "business", "mine": bool(my_host) and h == my_host})
+        progress(f"Google Maps results for \"{kw}\"", live() if serps else None)
+        plc = google_places(kw, location, region_gl, getattr(b, "lat", None), getattr(b, "lng", None))
         local = []
         for p in plc.get("places", [])[:10]:
             local.append({"position": p.get("position"), "name": p.get("title", ""), "rating": p.get("rating"), "reviews": p.get("ratingCount") or 0,
                           "category": p.get("category"), "address": p.get("address"), "website": p.get("website"), "phone": p.get("phoneNumber"),
                           "cid": p.get("cid"), "mine": _is_me_place(p, b, my_host)})
-        serps.append({
-            "keyword": kw, "organic": organic, "local": local,
-            "questions": [q.get("question") for q in org.get("peopleAlsoAsk", []) if q.get("question")][:6],
-            "related": [q.get("query") for q in org.get("relatedSearches", []) if q.get("query")][:8],
-            "you_organic": next((o["position"] for o in organic if o["mine"]), None),
-            "you_local": next((p["position"] for p in local if p["mine"]), None),
-        })
+        serps.append({"keyword": kw, "organic": [], "local": local, "questions": [], "related": [], "you_organic": None, "you_local": next((p["position"] for p in local if p["mine"]), None)})
+    own_organic: dict[str, dict[str, Any]] = own_positions or {}  # Search Console's figures, read by the caller (it has the database)
+    for s_ in serps:
+        d = own_organic.get(s_["keyword"])
+        s_["you_organic"] = max(1, round(d["position"])) if d else None
 
     # 2. Who competes: organic domains and Maps businesses, by visibility across all keywords.
     organic_competitors = _organic_rollup(serps, len(keywords))
@@ -592,27 +483,11 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
             update(f"Scanned {dom}", live({k: {"scanned": v.get("scanned"), "services": (v.get("services") or [])[:6], "avg_words": v.get("avg_words"), "blog": v.get("blog")} for k, v in profiles.items() if k != my_host}))
     my_profile = profiles.pop(my_host, None) if my_host else None
 
-    progress("Finding where competitors are listed and linked")
+    progress("Collecting the competitors' details")
     local_by_host = {e["domain"]: e for e in local_competitors if e.get("domain")}
-    sources: dict[str, list[dict[str, str]]] = {}
-    for d in targets:
-        if not serper:
-            sources[d["domain"]] = []
-            continue
-        try:
-            loc = local_by_host.get(d["domain"])
-            name = loc["name"] if loc else d["domain"].split(".")[0]
-            sources[d["domain"]] = link_sources(serper, f"{name} {b.city or ''}".strip(), d["domain"], brand_words_of(d["domain"], loc["name"] if loc else ""))
-        except IntelError:
-            sources[d["domain"]] = []
+    sources: dict[str, list[dict[str, str]]] = {d["domain"]: [] for d in targets}
     my_sources: list[dict[str, str]] = []
-    try:
-        if not serper:
-            raise IntelError("no Serper")
-        my_sources = link_sources(serper, f"{b.name} {b.city or ''}".strip(), my_host or "-", brand_words_of(my_host, b.name))
-    except IntelError:
-        pass
-    backlinks: dict[str, Any] = {}  # full backlink counts are not available from Google; only the listings it surfaces (link_sources)
+    backlinks: dict[str, Any] = {}  # Google has no API for who links to a site: link counts come from Backlink Intelligence, not from here
 
     # 4. Per-competitor profile with its strategy in plain words.
     local_by_domain = {e["domain"]: e for e in local_competitors if e.get("domain")}
@@ -632,8 +507,8 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
     my_local = {s["keyword"]: s["you_local"] for s in serps if s["you_local"]}
     keyword_gaps = []
     for s in serps:
-        rivals = [{"domain": o["domain"], "position": o["position"]} for o in s["organic"] if o["type"] == "business" and not o["mine"]][:3]
-        if not s["you_organic"] and rivals:
+        rivals = [{"domain": host_of(p.get("website")) or p["name"], "position": p["position"]} for p in s["local"] if not p["mine"] and p.get("name")][:3]
+        if not s["you_local"] and rivals:
             keyword_gaps.append({"keyword": s["keyword"], "competitors": rivals, "you_local": s["you_local"]})
     my_source_hosts = {site_of(x["domain"]) for x in my_sources}
     listing_count: Counter[str] = Counter()
@@ -681,8 +556,8 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
                                                       if not set(k.split()) & away))[:20],
         },
         "actions": actions,
-        "sources": {"google": "serper" if serper else "google_places", "backlinks": "google_mentions", "credits": serper.credits if serper else 0,
-                    "maps_only": serper is None, "note": (f"Google search results (Serper) were not available: {why_no_serper} The competitors below are the Google Maps businesses from the Google Places API; organic rankings and listing sites are not included." if serper is None else None)},
+        "sources": {"google": "google_places", "organic": "search_console" if own_organic else None, "backlinks": None, "credits": 0, "maps_only": True,
+                    "note": "Competitors are the Google Maps businesses from the Google Places API, with a scan of their websites. Your own organic position is Google Search Console's average position. Google gives no data on other websites' organic rankings, so those are not shown."},
         "analysed_at": datetime.now(timezone.utc).isoformat(),
     }
 

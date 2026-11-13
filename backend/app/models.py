@@ -553,6 +553,10 @@ class KeywordRankLog(Base):
     maps_listing: Mapped[str | None] = mapped_column(String(255))  # the name of our listing as Maps shows it
     maps_first: Mapped[str | None] = mapped_column(String(255))  # the listing in Maps position 1
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # the moment of the last check (the row is one per day)
+    position: Mapped[float | None] = mapped_column(Float)  # Search Console's average position over the days read (rank is this, rounded)
+    clicks: Mapped[int | None] = mapped_column(Integer)  # Search Console clicks for the keyword over the days read
+    impressions: Mapped[int | None] = mapped_column(Integer)  # Search Console impressions for the keyword over the days read
+    source: Mapped[str | None] = mapped_column(String(30))  # search_console | (older rows: null)
 
 
 

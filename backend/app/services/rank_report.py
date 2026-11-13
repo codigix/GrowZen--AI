@@ -1,5 +1,5 @@
 """Rank report: for every tracked keyword, where the site stands on Google, which page ranks, who is ahead, and what to do
-to move up. Built only from saved data: the rank log (Serper checks), the tracked keywords and the latest on-page crawl.
+to move up. Built only from saved data: the rank log (Search Console checks), the tracked keywords and the latest on-page crawl.
 Advice is rule-based and always says why, so each line can be checked against the page."""
 import re
 from urllib.parse import urlparse

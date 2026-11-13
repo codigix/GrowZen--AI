@@ -114,8 +114,6 @@ def run(business_id: int, actor: str) -> None:
         def rank_step():
             if not b.website:
                 return ("No website to rank.", "skipped")
-            if not organic.intel.serper_enabled():
-                return ("The rank data provider is not set up on this server.", "skipped")
             try:
                 out = organic.check(db, b)
             except organic.RankCheckError as exc:

@@ -1,7 +1,7 @@
 """Business listings (citations): the sites that matter, where to add a business on each, and how a listing page is checked.
 
 A citation is the business's name, address and phone (NAP) on another site. They must match the Google Business Profile exactly.
-The automatic check (Serper) finds some listings; a person can add a listing's link by hand and have the page checked here.
+Listings are added by a person (the link of the listing) and the page is checked here: Google has no API that finds listings.
 """
 import re
 from typing import Any

@@ -290,7 +290,7 @@ def _aggregate_page_keywords(crawl: dict[str, Any], top_n: int = 30) -> list[dic
 
 def _onpage_keyword_comparison(our_crawl: dict[str, Any], their_crawl: dict[str, Any]) -> dict[str, Any]:
     """Keyword gaps derived straight from each site's own crawled content (title, headings, alt
-    text, body copy) -- no external API or quota needed, unlike the Serper-based search keywords
+    text, body copy) -- no external API or quota needed, unlike keyword data from a search API
     below, so this works for every audit pair as soon as both have been crawled."""
     ours, theirs = _aggregate_page_keywords(our_crawl), _aggregate_page_keywords(their_crawl)
     if ours is None or theirs is None:
@@ -308,7 +308,7 @@ def _onpage_keyword_comparison(our_crawl: dict[str, Any], their_crawl: dict[str,
 
 def _search_keyword_gap(db: Session, business_id: int | None, competitor_target: str | None) -> dict[str, Any]:
     """Actual Google-search keyword rankings and gaps come from the competitor-research run
-    (competitors/intel.py, Serper-backed), not from PageSpeed or a crawl. Without a finished run,
+    (competitors/intel.py, Google Places and Search Console), not from PageSpeed or a crawl. Without a finished run,
     this is explicitly unavailable -- never guessed."""
     if business_id is None:
         return {"available": False, "reason": "No business_id given, so there is no competitor-research run to read keyword data from.",
@@ -316,14 +316,14 @@ def _search_keyword_gap(db: Session, business_id: int | None, competitor_target:
     run = db.scalar(select(Audit).where(Audit.kind == "intel", Audit.target == f"business:{business_id}", Audit.status == "done").order_by(Audit.id.desc()))
     if not run:
         return {"available": False, "reason": "No completed competitor-research run for this business.",
-                "required_source": "POST /businesses/{id}/competitor-research (needs SERPER_API_KEY)."}
+                "required_source": "POST /businesses/{id}/competitor-research (needs GOOGLE_PLACES_API_KEY)."}
     result = run.result or {}
     host = urlparse(competitor_target or "").hostname or ""
     host = host.removeprefix("www.")
     gaps = [g for g in (result.get("gaps") or {}).get("keywords", []) if any(c.get("domain") == host for c in g.get("competitors", []))] if host else []
     competitor_keywords = (result.get("ideas") or {}).get("competitor_keywords", [])
     return {
-        "available": True, "source": "competitor-research (Serper)", "research_run_id": run.id, "analysed_at": result.get("analysed_at"),
+        "available": True, "source": "competitor-research (Google Places and Search Console)", "research_run_id": run.id, "analysed_at": result.get("analysed_at"),
         "keyword_gaps": gaps if host else (result.get("gaps") or {}).get("keywords", []),
         "competitor_target_keywords": competitor_keywords,
         "note": "From the business's competitor-research run, not this PageSpeed audit; may be stale relative to it." if not host else None,

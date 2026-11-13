@@ -1,16 +1,25 @@
-"""SEO toolkit endpoints: domain overview, top pages, organic rank checks and the keyword overview."""
+"""SEO toolkit endpoints: domain overview, top pages, organic rank checks (Search Console) and the keyword overview (Google Ads Keyword Planner)."""
 import pytest
-from test_competitor_intel import faked, fake_call  # noqa: F401  (the Serper fake)
+from test_competitor_intel import faked  # noqa: F401  (sets GOOGLE_PLACES_API_KEY and clears the cache)
 
-from app.competitors import intel
+from app.competitors import service
+from app.db import SessionLocal
+from app.models import Business, GoogleConnection
+from app.services import gsc_access
 
-CASED = {"dentist in pune": "dentist in Pune", "dentist in baner": "dentist in Baner"}
+ROWS = [{"keys": ["dentist in pune", "https://mydental.in/"], "clicks": 12, "impressions": 300, "position": 3.6}]
+
+
+class FakeSearchConsole:
+    def query(self, site, body):
+        return ROWS
 
 
 @pytest.fixture
 def serper(faked, monkeypatch):  # noqa: F811
-    """The fake answers by exact text; keywords are saved lowercase, so match them the way Google does (ignoring case)."""
-    monkeypatch.setattr(intel.Serper, "call", lambda self, path, body: fake_call(self, path, body | {"q": CASED.get(body["q"].lower(), body["q"])}))
+    """Google is faked: Search Console answers with one ranking keyword; the Places API answers with an empty Maps result."""
+    monkeypatch.setattr(gsc_access, "search_console", lambda db, b, host: ("ok", "owner@x.in", FakeSearchConsole(), "sc-domain:mydental.in"))
+    monkeypatch.setattr(service, "places_search", lambda *a, **k: [])
 
 
 def business(client):
@@ -29,8 +38,8 @@ def test_check_ranks_saves_positions_and_the_change(client, serper):
     client.post(f"/api/v1/businesses/{bid}/keywords", json=[{"keyword": "dentist in Pune"}, {"keyword": "dentist in Baner"}])
     r = client.post(f"/api/v1/businesses/{bid}/seo/check-ranks", json={}).json()
     by = {x["keyword"]: x for x in r["results"]}
-    assert by["dentist in pune"]["rank"] == 4 and by["dentist in pune"]["url"] == "https://mydental.in/"  # mydental.in is #4 in the fake results
-    assert by["dentist in baner"]["rank"] is None  # not in Google's results for that search
+    assert by["dentist in pune"]["rank"] == 4 and by["dentist in pune"]["url"] == "https://mydental.in/" and by["dentist in pune"]["position"] == 3.6   # Search Console's average position, rounded for the rank
+    assert by["dentist in baner"]["rank"] is None  # no impressions on Google for that search in the last 28 days
     kws = {k["keyword"]: k for k in client.get(f"/api/v1/businesses/{bid}/keywords").json()["keywords"]}
     assert kws["dentist in pune"]["rank"] == 4 and kws["dentist in pune"]["rank_checked_at"]
     # A second check keeps the previous position so the page can show the move.
@@ -44,7 +53,7 @@ def test_check_ranks_saves_positions_and_the_change(client, serper):
     assert [x["rank"] for x in h["dentist in pune"]] == [4] and [x["rank"] for x in h["dentist in baner"]] == [None]
 
 
-def test_keyword_overview_uses_the_google_ads_keyword_planner_not_serper(client, monkeypatch):
+def test_keyword_overview_uses_the_google_ads_keyword_planner(client, monkeypatch):
     from app.services import google_ads_client as ads, keyword_metrics
     bid = business(client)
     assert client.post(f"/api/v1/businesses/{bid}/seo/keyword-overview", json={"keyword": "dentist in pune"}).status_code == 400  # Ads not set up: said plainly
@@ -61,10 +70,13 @@ def test_keyword_overview_uses_the_google_ads_keyword_planner_not_serper(client,
     assert "organic" not in o and "local" not in o  # the Planner has no results page: nothing is invented
 
 
-def test_rank_checks_explain_a_missing_key_or_website(client, monkeypatch):
+def test_rank_checks_explain_a_missing_google_account_or_website(client):
     bid = business(client)
     r = client.post(f"/api/v1/businesses/{bid}/seo/check-ranks", json={})
-    assert r.status_code == 400 and "SERPER_API_KEY" in r.json()["detail"]
+    assert r.status_code == 400 and "Google account" in r.json()["detail"]   # no linked account: said plainly, no data invented
+    nosite = client.post("/api/v1/businesses", json={"name": "No Site Clinic"}).json()["id"]
+    r = client.post(f"/api/v1/businesses/{nosite}/seo/check-ranks", json={})
+    assert r.status_code == 400 and "website" in r.json()["detail"]
 
 
 def test_seed_keywords_then_rank_report_gives_advice_per_keyword(client):
@@ -189,17 +201,16 @@ def test_a_project_with_no_linked_account_finds_the_one_that_owns_its_site(clien
 
 
 def test_working_tools_check_platform_limits_and_use_live_results(client, monkeypatch):
-    from app.competitors import intel
-    from app.services import ai
+    from app.services import ai, google_ads_client as ads, keyword_metrics
     monkeypatch.setattr(ai, "is_configured", lambda: True)
-    monkeypatch.setattr(intel, "serper_enabled", lambda: True)
-    monkeypatch.setattr(intel.Serper, "search", lambda self, q, loc: {"organic": [{"position": 1, "title": "Top", "link": "https://x.example", "snippet": "s"}], "peopleAlsoAsk": [{"question": "How much?", "link": "https://q.example"}], "relatedSearches": [{"query": "near me"}]})
-    monkeypatch.setattr(intel.Serper, "__init__", lambda self, country=None: None)
+    monkeypatch.setattr(keyword_metrics, "enabled", lambda: True)
+    ideas = [{"keyword": "how much does a dental clinic cost in pune", "avg_monthly_searches": 500}, {"keyword": "dental clinic near me", "avg_monthly_searches": 900}, {"keyword": "dental clinic pune", "avg_monthly_searches": 100}]
+    monkeypatch.setattr(ads, "keyword_ideas", lambda seeds, **kw: ideas)
     bid = client.post("/api/v1/businesses", json={"name": "Tool Co", "website": "https://tool.example", "city": "Pune"}).json()["id"]
 
     monkeypatch.setattr(ai, "complete_json", lambda *a, **k: {"title_tag": "T" * 80, "meta_description": "M" * 300, "outline": [{"h2": "A", "points": [], "h3": []}]})
     r = client.post(f"/api/v1/businesses/{bid}/tools/seo-brief", json={"keyword": "dental clinic pune"}).json()
-    assert len(r["brief"]["title_tag"]) == 60 and len(r["brief"]["meta_description"]) == 155 and r["live_results"] and r["questions"] == ["How much?"]
+    assert len(r["brief"]["title_tag"]) == 60 and len(r["brief"]["meta_description"]) == 155 and r["live_results"] is False and r["questions"] == ["how much does a dental clinic cost in pune"]
 
     monkeypatch.setattr(ai, "complete_json", lambda *a, **k: {"posts": [{"platform": "x", "text": "x" * 400, "hashtags": ["a"]}, {"platform": "linkedin", "text": "hi"}]})
     r = client.post(f"/api/v1/businesses/{bid}/tools/social-posts", json={"topic": "Diwali offer", "platforms": ["x"]}).json()
@@ -211,7 +222,7 @@ def test_working_tools_check_platform_limits_and_use_live_results(client, monkey
     assert g["headlines"] == ["Short"] and g["descriptions"] == ["Fine"] and r["dropped_over_limit"] == 2
 
     r = client.post(f"/api/v1/businesses/{bid}/tools/questions", json={"keywords": ["a", "b"]}).json()
-    assert [i["question"] for i in r["items"]] == ["How much?", "near me"] and r["credits"] == 2
+    assert [i["question"] for i in r["items"]] == ["how much does a dental clinic cost in pune", "dental clinic near me", "dental clinic pune"] and r["source"] == "Google Ads Keyword Planner"
 
 
 def test_domain_overview_backlinks_summary_counts_follow_types_anchors_and_domains(client):

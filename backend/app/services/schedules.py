@@ -71,7 +71,7 @@ def run_job(db: Session, s: Schedule) -> None:
         agent.plan_from_audits(db, b, [i for a in found if a.status == "done" for i in a.issues], audited=[a.kind for a in found if a.status == "done"])
     elif s.job == "rank_scan":
         audits.run(db, b, "rankings")
-        if b.website and organic.intel.serper_enabled():  # the organic positions too, so the history grows without anyone pressing a button
+        if b.website:  # the organic positions too (Search Console), so the history grows without anyone pressing a button
             try:
                 organic.check(db, b)
             except organic.RankCheckError as exc:

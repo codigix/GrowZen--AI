@@ -167,10 +167,10 @@ def _local(db: Session, b: Business, o: _Out) -> dict[str, Any]:
     pos = (built.get("positions") or {}).get("summary") or {}
     tracked = int(pos.get("keywords") or 0)
     checked = int(pos.get("checked") or 0)
-    o.put("local.keywords_tracked", tracked, "serper")
+    o.put("local.keywords_tracked", tracked, "google")
     why = "Track at least one search" if not tracked else "No rank check has run yet: use Check rankings now"
-    o.put("local.maps_top3", int(pos.get("in_pack") or 0) if checked else None, "serper", None if checked else why)
-    o.put("local.keywords_page1", int(pos.get("page1") or 0) if checked else None, "serper", None if checked else why)
+    o.put("local.maps_top3", int(pos.get("in_pack") or 0) if checked else None, "google", None if checked else why)
+    o.put("local.keywords_page1", int(pos.get("page1") or 0) if checked else None, "google", None if checked else why)
     if built.get("score") is None:
         return {"score": None, "state": "blocked", "blockers": ["Nothing in this area can be scored yet"]}
     return {"score": int(built["score"]), "state": "measured", "blockers": [] if tracked else ["Track at least one search to include rankings in this score"]}
