@@ -115,7 +115,7 @@ export const SIDEBAR_SECTIONS = [
   {
     id: 'GMB', label: 'GMB', title: 'GMB', icon: MapPin, groups: [
       { items: [link('/gmb-profile/overview', 'Dashboard'), link('/gmb-profile/profile', 'GBP Optimization'), link('/gmb-profile/performance', 'Performance'), link('/gmb-profile/traffic', 'Website Traffic'),
-        link('/gmb-profile/reviews', 'Reviews & Reputation'), page('/google-posts', { label: 'Posts' }), page('/media-management', { label: 'Photos' })] },
+        page('/reviews', { label: 'Reviews & Reputation' }), page('/google-posts', { label: 'Posts' }), page('/media-management', { label: 'Photos' })] },
       { title: 'Listings & Rankings', items: [page('/off-page-seo/citations', { label: 'Listing Management' }), link('/rank-tracking/geo', 'Map Rank Tracker'), link('/gmb-profile/competitors', 'Maps Competitors')] },
       { title: 'Optimization', items: [link('/gmb-profile/local-seo', 'Local SEO'), link('/gmb-profile/ai', 'AI Recommendations')] },
       { title: 'Manage', items: [page('/automation', { label: 'AI Tasks & Approvals' }), link('/gmb-profile/tasks', 'Tasks & Activities'), link('/gmb-profile/sync', 'Sync History'), link('/gmb-profile/reports', 'Reports')] },

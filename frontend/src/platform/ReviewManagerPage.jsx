@@ -1,6 +1,9 @@
 import { useCrumb } from './crumbs';
 import AccessGate from './AccessGate';
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { ReviewsSection } from './GbpWorkspace';
+import { AutopilotPanel } from './AutopilotPanels';
 import { Star, Sparkles, Send, MessageCircle, Mail, Smartphone, Copy, ShieldCheck, Check, Pencil, RefreshCw } from 'lucide-react';
 import ProcessTasks from './ProcessTasks';
 import { SeoShell, Card, Tabs, Stat, Badge, StatusPill, Button, Field, inputCls, areaCls, Meter, ErrorNote, SERIES, useToast, useAction, SkStats, SkList, SkCard } from './SeoUi';
@@ -150,14 +153,17 @@ function Reviews({ b, tab }) {
 }
 
 export default function ReviewManagerPage() {
-  const [tab, setTab] = useState('inbox');
-  useCrumb({ inbox: 'Review inbox', requests: 'Review requests', tasks: 'Tasks' }[tab]);
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(() => (['inbox', 'requests', 'google', 'tasks'].includes(params.get('tab')) ? params.get('tab') : 'inbox'));
+  const [toast, toastNode] = useToast();
+  useCrumb({ inbox: 'Review inbox', requests: 'Review requests', google: 'Replies on Google', tasks: 'Tasks' }[tab]);
   return (
     <SeoShell step="reviews" title="Reviews" subtitle="Reply to every review within 24 hours, ask every customer for one, and see what people talk about">
       {(b) => (
         <>
-          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'inbox', label: 'Review inbox' }, { id: 'requests', label: 'Review requests' }, { id: 'tasks', label: 'Tasks' }]} />
-          {tab === 'tasks' ? <ProcessTasks b={b} areas={['reviews']} /> : <AccessGate b={b} kind="gmb"><Reviews key={b.id} b={b} tab={tab} /></AccessGate>}
+          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'inbox', label: 'Review inbox' }, { id: 'requests', label: 'Review requests' }, { id: 'google', label: 'Replies on Google' }, { id: 'tasks', label: 'Tasks' }]} />
+          {tab === 'tasks' ? <ProcessTasks b={b} areas={['reviews']} /> : tab === 'google' ? <AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="replies" /><ReviewsSection key={b.id} b={b} toast={toast} /></div></AccessGate> : <AccessGate b={b} kind="gmb"><Reviews key={b.id} b={b} tab={tab} /></AccessGate>}
+        {toastNode}
         </>
       )}
     </SeoShell>
