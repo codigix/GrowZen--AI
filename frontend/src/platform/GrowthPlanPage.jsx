@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   AlertTriangle, Ban, Bot, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, ExternalLink, Globe, History as HistoryIcon, Layers, ListChecks, Loader2, Lock, MapPinned,
-  MessageSquare, RefreshCw, ShieldCheck, Sparkles, Store, Sun, Target, TrendingDown, TrendingUp, Users, Wrench, X, XCircle, FileText
+  MessageSquare, RefreshCw, ShieldCheck, Sparkles, Store, Sun, Target, TrendingDown, TrendingUp, Users, Wrench, X, XCircle, FileText, SkipForward
 } from 'lucide-react';
 import { SeoShell, Button, Drawer, useSeoBusiness } from './SeoUi';
 import { api } from './seoApi';
+import Tip from './Tip';
 import { ContentPlanView, IssuesView, ReportsView, StartCard } from './GrowthIssuesReports';
 
 // ---------------------------------------------------------------------------------------------------------------- helpers
@@ -157,6 +158,23 @@ const TASK_FILTERS = [
   ['verified', 'Verified', a => a.status === 'verified'], ['other', 'Skipped or blocked', a => ['skipped', 'blocked'].includes(a.status)]
 ];
 const WHO = { manual: ['You do it', 'bg-slate-400'], assisted: ['AI drafts, you approve', 'bg-violet-500'], auto: ['Automatic', 'bg-emerald-500'] };
+const STATUS_TIP = {
+  todo: 'Not done yet.', done: 'You marked it done. It counts only after the live data confirms the change: press Check now.', verified: 'The live data confirms it is fixed.',
+  unverified: 'You marked it done, but the live data does not show the change yet. Some changes take a few hours to appear.', failed: 'The live check ran and the problem is still there.',
+  blocked: 'It cannot be done until something it depends on is done.', skipped: 'You skipped it, with a reason.'
+};
+const TARGET_TIP = { met: 'The goal is reached.', on_track: 'Not reached yet, but the pace is enough to reach it in time.', at_risk: 'Behind: it will be missed unless something changes soon.', missed: 'The period ended without reaching the goal.', blocked: 'It cannot be measured until something it needs is connected.', open: 'In progress.' };
+const WHO_TIP = { manual: 'A person has to do this: the steps are in “Show steps”.', assisted: 'The AI prepares the text or draft. Nothing goes live until you approve it.', auto: 'The software does this by itself.' };
+
+/** A small icon button with its own tooltip: one action of a task. */
+function IconAction({ tip, label, onClick, to, href, icon: Icon, tone = 'plain', disabled, spin }) {
+  const cls = `inline-flex items-center justify-center w-8 h-8 rounded-lg ring-1 ring-inset transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${tone === 'primary' ? 'bg-indigo-600 text-white ring-indigo-600 hover:bg-indigo-700' : tone === 'good' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50 hover:text-indigo-700'}`;
+  const inner = <Icon size={15} className={spin ? 'animate-spin' : ''} aria-hidden="true" />;
+  const node = to ? <Link to={to} className={cls} aria-label={label}>{inner}</Link>
+    : href ? <a href={href} target="_blank" rel="noreferrer" className={cls} aria-label={label}>{inner}</a>
+      : <button type="button" onClick={onClick} disabled={disabled} className={cls} aria-label={label}>{inner}</button>;
+  return <Tip text={tip} align="right">{node}</Tip>;
+}
 const TH = 'px-3 py-2.5 text-left text-11.5 font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap';
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -175,7 +193,7 @@ function TargetsTable({ items }) {
         <table className="w-full text-13 min-w-[920px]">
           <thead className="bg-slate-50 border-b border-slate-200"><tr>
             <th className={TH}>Target</th><th className={`${TH} text-right`}>Baseline</th><th className={`${TH} text-right`}>Now</th><th className={`${TH} text-right`}>Goal</th>
-            <th className={`${TH} w-44`}>Progress</th><th className={TH}>Status</th><th className={TH}>Why this target</th></tr></thead>
+            <th className={`${TH} w-44`}><Tip text="How far Now has moved from Baseline towards Goal.">Progress</Tip></th><th className={TH}>Status</th><th className={TH}>Why this target</th></tr></thead>
           <tbody>
             {groups.map(([k, rows]) => (
               <React.Fragment key={k}>
@@ -197,7 +215,7 @@ function TargetsTable({ items }) {
                         </div>
                         <div className="text-11.5 text-slate-500 mt-1 tabular-nums">{pr}% of the way</div>
                       </td>
-                      <td className="px-3 py-3"><span className={`inline-block text-11.5 font-semibold rounded-full px-2.5 py-1 leading-none ring-1 ring-inset whitespace-nowrap ${cls}`}>{label}</span></td>
+                      <td className="px-3 py-3"><Tip text={TARGET_TIP[t.status] || TARGET_TIP.open}><span className={`inline-block text-11.5 font-semibold rounded-full px-2.5 py-1 leading-none ring-1 ring-inset whitespace-nowrap ${cls}`}>{label}</span></Tip></td>
                       <td className="px-3 py-3 text-12.5 text-slate-600 leading-relaxed max-w-[360px]">{t.why || <span className="text-slate-400">—</span>}{note && <span className="block text-11.5 text-slate-500 mt-1">{note}</span>}</td>
                     </tr>
                   );
@@ -252,15 +270,16 @@ function TaskRow({ a, bid, onChanged }) {
           {how.length > 0 && <button type="button" onClick={() => setSteps(x => !x)} aria-expanded={steps} className="mt-1.5 inline-flex items-center gap-1 text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">{steps ? <>Hide steps <ChevronUp size={12} /></> : <>Show {how.length} step{how.length === 1 ? '' : 's'} <ChevronDown size={12} /></>}</button>}
         </td>
         <td className="px-3 py-3"><AreaPill k={a.area} /></td>
-        <td className="px-3 py-3 text-12.5 text-slate-700 w-[130px]"><span className="inline-flex items-start gap-1.5"><span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${(WHO[a.mode] || WHO.manual)[1]}`} aria-hidden="true" /><span>{(WHO[a.mode] || WHO.manual)[0]}</span></span></td>
+        <td className="px-3 py-3 text-12.5 text-slate-700 w-[130px]"><Tip text={WHO_TIP[a.mode] || WHO_TIP.manual}><span className="inline-flex items-start gap-1.5"><span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${(WHO[a.mode] || WHO.manual)[1]}`} aria-hidden="true" /><span>{(WHO[a.mode] || WHO.manual)[0]}</span></span></Tip></td>
         <td className={`px-3 py-3 text-12.5 whitespace-nowrap ${overdue ? 'text-red-600 font-semibold' : 'text-slate-700'}`}>{a.due_on ? fmtDay(a.due_on) : '—'}{overdue && <span className="block text-11">overdue</span>}{isNum(a.est_minutes) && <span className="block text-11.5 font-normal text-slate-400 tabular-nums">{a.est_minutes} min</span>}</td>
-        <td className="px-3 py-3"><span className={`inline-block text-11.5 font-semibold rounded-full px-2.5 py-1 leading-none whitespace-nowrap ${stCls}`}>{stLabel}</span></td>
+        <td className="px-3 py-3"><Tip text={STATUS_TIP[st]}><span className={`inline-block text-11.5 font-semibold rounded-full px-2.5 py-1 leading-none whitespace-nowrap ${stCls}`}>{stLabel}</span></Tip></td>
         <td className="px-3 py-3 text-12.5 text-slate-600 leading-relaxed min-w-[180px] max-w-[260px]">{check}</td>
         <td className="px-3 py-3">
-          <div className="flex flex-col items-stretch gap-1.5 w-[104px] ml-auto">
-            {a.link && (ext ? <a href={a.link} target="_blank" rel="noreferrer"><Button size="sm" icon={ExternalLink}>Open</Button></a> : <Link to={a.link}><Button size="sm" icon={ExternalLink}>Open</Button></Link>)}
-            {st === 'todo' && !panel && (<><Button size="sm" variant="primary" icon={Check} onClick={() => setPanel('done')}>Mark done</Button><Button size="sm" onClick={() => setPanel('skip')}>Skip</Button></>)}
-            {(st === 'done' || st === 'unverified' || st === 'failed') && <Button size="sm" variant={st === 'done' ? 'primary' : undefined} icon={busy === 'verify' ? Loader2 : ShieldCheck} disabled={busy === 'verify'} onClick={() => call('verify')}>{busy === 'verify' ? 'Checking…' : 'Check now'}</Button>}
+          <div className="flex items-center justify-end gap-1.5">
+            {a.link && <IconAction icon={ExternalLink} label="Open where it is done" tip={`Open where it is done${ext ? ' (a new tab)' : ''}: the page or screen where this task is carried out.`} {...(ext ? { href: a.link } : { to: a.link })} />}
+            {st === 'todo' && !panel && <IconAction icon={Check} tone="primary" label="Mark done" tip="Mark done: you have done it. It is not counted until the live data confirms it." onClick={() => setPanel('done')} />}
+            {st === 'todo' && !panel && <IconAction icon={SkipForward} label="Skip" tip="Skip this task: you must give a reason (at least 5 characters). It is not counted as done." onClick={() => setPanel('skip')} />}
+            {(st === 'done' || st === 'unverified' || st === 'failed') && <IconAction icon={busy === 'verify' ? Loader2 : ShieldCheck} spin={busy === 'verify'} tone={st === 'done' ? 'primary' : 'plain'} disabled={busy === 'verify'} label="Check now" tip="Check now: reads the live data and decides whether the fix is really in place." onClick={() => call('verify')} />}
           </div>
         </td>
       </tr>
@@ -307,7 +326,7 @@ function TasksTable({ list, bid, onChanged }) {
       <div className="overflow-x-auto">
         <table className="w-full text-13 min-w-[940px]">
           <thead className="bg-slate-50 border-b border-slate-200"><tr>
-            <th className={TH}>Task</th><th className={TH}>Area</th><th className={TH}>Who does it</th><th className={TH}>Due · time</th><th className={TH}>Status</th><th className={TH}>Live check</th><th className={`${TH} text-right`}>Actions</th></tr></thead>
+            <th className={TH}>Task</th><th className={TH}>Area</th><th className={TH}><Tip text="A person, the AI with your approval, or the software by itself.">Who does it</Tip></th><th className={TH}>Due · time</th><th className={TH}>Status</th><th className={TH}><Tip text="What the live data says about this task. A task counts only when it confirms the fix.">Live check</Tip></th><th className={`${TH} text-right`}>Actions</th></tr></thead>
           <tbody>
             {rows.map(a => <TaskRow key={a.id} a={a} bid={bid} onChanged={onChanged} />)}
             {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-13 text-slate-500">Nothing matches this filter.</td></tr>}
