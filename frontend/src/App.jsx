@@ -34,7 +34,6 @@ const CompetitorFinderPage = lazy(() => import('./platform/CompetitorFinderPage'
 const ContentStudioPage = lazy(() => import('./platform/ContentStudioPage'));
 const SiteAuditPage = lazy(() => import('./platform/SiteAuditPage'));
 const PageXRayPage = lazy(() => import('./platform/PageXRayPage'));
-const SerpXRayPage = lazy(() => import('./platform/SerpXRayPage'));
 const GrowthPlanPage = lazy(() => import('./platform/GrowthPlanPage'));
 const BacklinkCheckerPage = lazy(() => import('./platform/BacklinkCheckerPage'));
 const GrowthFixPage = lazy(() => import('./platform/GrowthFixPage'));
@@ -170,7 +169,7 @@ export default function App() {
         <Route path="content-calendar" element={<Navigate to="/ai-content-generation/calendar" replace />} />
         <Route path="website-audit" element={<SiteAuditPage />} />
         <Route path="page-xray" element={<PageXRayPage />} />
-        <Route path="serp-xray" element={<SerpXRayPage />} />
+        <Route path="serp-xray" element={<Navigate to="/keyword-overview" replace />} />
         <Route path="growth" element={<GrowthPlanPage />} />
         <Route path="autopilot" element={<Navigate to="/google-posts" replace />} />
         <Route path="growth/fix/:id" element={<GrowthFixPage />} />

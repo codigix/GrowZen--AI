@@ -126,8 +126,6 @@ app.include_router(growth_plan_router.router, prefix=settings.api_prefix)
 app.include_router(growth_plan_router.overview_router, prefix=settings.api_prefix)
 from .routers import page_xray_lighthouse  # noqa: E402
 app.include_router(page_xray_lighthouse.router, prefix=settings.api_prefix)
-from .routers import serp_xray  # noqa: E402
-app.include_router(serp_xray.router, prefix=settings.api_prefix)
 from .routers import page_xray  # noqa: E402
 app.include_router(page_xray.router, prefix=settings.api_prefix)
 from .routers import page_xray_history  # noqa: E402

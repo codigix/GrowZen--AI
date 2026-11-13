@@ -38,7 +38,6 @@ export const SIDEBAR_GROUPS = [
     title: 'Keyword Research',
     items: [
       { to: '/keyword-overview', label: 'Keyword Overview', icon: Search },
-      { to: '/serp-xray', label: 'SERP X-Ray', icon: ScanLine },
       { to: '/keyword-management/discover', label: 'Keyword Magic Tool', icon: Wand2 },
       { to: '/keyword-management/topics', label: 'Keyword Strategy Builder', icon: Layers },
       { to: '/keyword-management/tracked', label: 'Saved Keywords', icon: Bookmark }
@@ -110,7 +109,7 @@ export const SIDEBAR_SECTIONS = [
       { items: [page('/dashboard')] },
       { title: 'Site Performance', items: [page('/website-audit'), page('/page-xray'), page('/rank-tracking'), page('/traffic')] },
       { title: 'Competitive Analysis', items: [page('/domain-overview'), page('/organic-rankings'), page('/top-pages'), page('/competitor-finder'), page('/competitor-watch'), page('/compare-domains'), page('/keyword-gap'), link('/backlink-intelligence/gap', 'Backlink Gap')] },
-      { title: 'Keyword Research', items: [page('/keyword-overview'), page('/serp-xray'), page('/keyword-management/discover'), link('/keyword-management/planner', 'Google Keyword Planner'), link('/keyword-management/explorer', 'Keyword Explorer'), page('/keyword-management/topics'), page('/keyword-management/tracked')] },
+      { title: 'Keyword Research', items: [page('/keyword-overview'), page('/keyword-management/discover'), link('/keyword-management/planner', 'Google Keyword Planner'), link('/keyword-management/explorer', 'Keyword Explorer'), page('/keyword-management/topics'), page('/keyword-management/tracked')] },
       { title: 'Content Ideas', items: [page('/ai-content-generation/blog'), page('/ai-content-generation/trends'), link('/seo-brief', 'SEO Brief Generator')] },
       { title: 'Link Building', items: [page('/backlink-intelligence'), page('/backlink-checker'), link('/backlink-intelligence/explorer', 'Backlinks'), soon('referring-domains'), soon('backlink-audit'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks')] }
     ]
