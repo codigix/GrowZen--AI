@@ -285,8 +285,12 @@ def _config(db: Session, business_id: int) -> BiBotConfig:
 
 
 def competitor_domains(db: Session, business_id: int) -> list[str]:
-    return [t.domain for t in db.scalars(select(BiTrackedTarget).where(BiTrackedTarget.business_id == business_id, BiTrackedTarget.is_competitor.is_(True),
-                                                                      BiTrackedTarget.monitoring_enabled.is_(True)).order_by(BiTrackedTarget.id))][:MAX_COMPETITORS]
+    """Every saved competitor (competitor research, Maps list and Backlink Intelligence targets), not only the Backlink Intelligence ones."""
+    from ..competitors import hygiene
+    b = db.get(Business, business_id)
+    if b is None:
+        return []
+    return hygiene.saved_competitor_domains(db, b, monitored_only=True, limit=MAX_COMPETITORS)
 
 
 def is_running(cfg: BiBotConfig) -> bool:

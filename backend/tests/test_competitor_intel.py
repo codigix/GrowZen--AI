@@ -210,3 +210,20 @@ def test_maps_only_when_serper_has_no_credits(monkeypatch):
     assert r["sources"]["maps_only"] is True and r["sources"]["google"] == "google_places" and "credits are used up" in r["sources"]["note"]
     assert r["local_competitors"][0]["name"] == "Smile Care Dental" and r["you"]["local"] == {"dentist in Baner": 2, "dentist in Pune": 2}
     assert r["organic_competitors"] == [] and r["profiles"][0]["domain"] == "smilecare.in"  # its website was still scanned
+
+
+def test_one_competitor_list_feeds_the_watch_and_the_link_gap(client):
+    """A competitor saved on the Competitors page (not a Backlink Intelligence target) is also watched and used for the link gap."""
+    from app.backlinks import watch
+    from app.competitors import hygiene
+    from app.db import SessionLocal
+    from app.models import Business, Competitor
+    bid = client.post("/api/v1/businesses", json={"name": "Shared Co", "website": "https://shared-co.example"}).json()["id"]
+    db = SessionLocal()
+    db.add_all([Competitor(business_id=bid, name="Rival", website="https://www.rival-one.example/", source="manual"),
+                Competitor(business_id=bid, name="Insta", website="https://instagram.com/x", source="manual")])
+    db.commit()
+    b = db.get(Business, bid)
+    assert hygiene.saved_competitor_domains(db, b) == ["rival-one.example"]  # a social page is never a competitor
+    assert watch.competitor_domains(db, bid) == ["rival-one.example"]
+    db.close()

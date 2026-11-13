@@ -32,6 +32,26 @@ def real_competitor_domains(business: Any, domains: list[str]) -> list[str]:
     return [d for d in domains if not skip_reason(business, d)]
 
 
+def saved_competitor_domains(db: Any, business: Any, monitored_only: bool = False, limit: int = 8) -> list[str]:
+    """The business's competitors, from every place they are saved: the competitor research / Maps list and the Backlink Intelligence targets.
+    One list, so a competitor added in one tool is watched, compared and used for the link gap in the others."""
+    from urllib.parse import urlsplit
+
+    from sqlalchemy import select
+
+    from ..backlinks.models import BiTrackedTarget
+    from ..models import Competitor
+    found: list[str] = []
+    for t in db.scalars(select(BiTrackedTarget).where(BiTrackedTarget.business_id == business.id, BiTrackedTarget.is_competitor.is_(True)).order_by(BiTrackedTarget.id)):
+        if t.monitoring_enabled or not monitored_only:
+            found.append((t.domain or "").lower())
+    for c in db.scalars(select(Competitor).where(Competitor.business_id == business.id).order_by(Competitor.id)):
+        raw = (c.website or "").strip()
+        host = (urlsplit(raw if "//" in raw else f"//{raw}").hostname or "").lower()
+        found.append(host[4:] if host.startswith("www.") else host)
+    return list(dict.fromkeys(d for d in real_competitor_domains(business, [d for d in found if d])))[:limit]
+
+
 def invalid_targets(db: Any, business: Any) -> list[tuple[str, str]]:
     """Competitor targets already tracked in Backlink Intelligence that are not competitors (a tracked instagram.com makes every link-gap read count hundreds of thousands of links)."""
     from sqlalchemy import select
