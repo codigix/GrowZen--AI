@@ -1832,7 +1832,7 @@ export default function BusinessOnboardingPage() {
   const reset = () => { setStep('find'); setSources(NO_SOURCES); setSource(null); setForm(EMPTY); setFollowUps([]); setQuery({ website: '', email: '', name: '', bizName: '', city: '', country: query.country || 'IN', target_scope: 'local', target_countries: [], target_areas: [], social_accounts: { facebook: '', instagram: '', meta_business_id: '' } }); };
 
   return (
-    <SeoShell title="Business Onboarding" subtitle="Add a business in two quick steps. We find it on Google, you check the details, and the AI starts the audits and the plan." hideSwitcher needsBusiness={false}>
+    <SeoShell step="details" title="Business Onboarding" subtitle="Add a business in two quick steps. We find it on Google, you check the details, and the AI starts the audits and the plan." hideSwitcher needsBusiness={false}>
       <Stepper step={step} />
       {step === 'find' && !advanced && <QuickFind query={query} setQuery={setQuery} sources={sources} setSources={setSources} busy={finding} onContinue={() => continueQuick(false)} onManual={() => continueQuick(true)}
         onAdvanced={() => setAdvanced(true)} onOpenExisting={(id) => { choose(id).then(ok => ok && navigate(path('gmb-profile'))); }} />}

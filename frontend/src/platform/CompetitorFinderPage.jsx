@@ -721,7 +721,7 @@ function Research({ b }) {
 
 export default function CompetitorFinderPage() {
   return (
-    <SeoShell title="Competitor Research" subtitle="Who outranks you on Google and Google Maps, the keywords and pages they win with, how their sites compare to yours, and what to do">
+    <SeoShell step="competitors" title="Competitor Research" subtitle="Who outranks you on Google and Google Maps, the keywords and pages they win with, how their sites compare to yours, and what to do">
       {(b) => <Research key={b.id} b={b} />}
     </SeoShell>
   );

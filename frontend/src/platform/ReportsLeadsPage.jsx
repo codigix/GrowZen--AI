@@ -115,7 +115,7 @@ export default function ReportsLeadsPage() {
   const [tab, setTab] = useUrlTab('report', ['report', 'tasks', 'progress', 'leads']);
   useCrumb({ report: 'Monthly report', tasks: 'All tasks', progress: 'Weekly & monthly progress', leads: 'Leads' }[tab]);
   return (
-    <SeoShell title="Reports & leads" subtitle="Calls, directions, clicks and leads in one place, plus the monthly PDF">
+    <SeoShell step="report" title="Reports & leads" subtitle="Calls, directions, clicks and leads in one place, plus the monthly PDF">
       {(b) => (
         <>
           <Tabs value={tab} onChange={setTab} tabs={[{ id: 'report', label: 'Monthly report' }, { id: 'tasks', label: 'All tasks' }, { id: 'progress', label: 'Weekly & monthly progress' }, { id: 'leads', label: 'Leads' }]} />

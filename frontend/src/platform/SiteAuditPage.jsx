@@ -93,7 +93,7 @@ export default function SiteAuditPage() {
   const step = STEPS.some(s => s.id === raw) ? raw : OLD_TABS[raw] || 'audit'; // always opens on step 1; the report is one click away once there is one
   const setStep = (t) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
   return (
-    <SeoShell title="Website & On-Page SEO" subtitle="Audit the website, read the report, then fix and re-check: page by page, with ready-made fixes.">
+    <SeoShell step="website" title="Website & On-Page SEO" subtitle="Audit the website, read the report, then fix and re-check: page by page, with ready-made fixes.">
       {(b) => <SiteAudit key={b.id} b={b} step={step} setStep={setStep} />}
     </SeoShell>
   );

@@ -170,7 +170,7 @@ export default function BacklinksCitationsPage() {
   // Backlinks moved to Backlink Intelligence (our own discovery bot); old bookmarks and links keep working.
   if (tab === 'backlinks') return <Navigate to="/backlink-intelligence" replace />;
   return (
-    <SeoShell title="Citations & outreach" subtitle="Consistent listings everywhere, and outreach for the links worth earning, never bought">
+    <SeoShell step="links" title="Citations & outreach" subtitle="Consistent listings everywhere, and outreach for the links worth earning, never bought">
       {(b) => (
         <>
           <Tabs value={tab} onChange={setTab} tabs={[{ id: 'citations', label: 'Citations & NAP' }, { id: 'outreach', label: 'Outreach' }, { id: 'tasks', label: 'Tasks' }]} />

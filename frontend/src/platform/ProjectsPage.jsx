@@ -170,7 +170,7 @@ function Projects() {
 
 export default function ProjectsPage() {
   return (
-    <SeoShell title="Projects" subtitle="Every project you manage, the services it is set up for, and where to remove a service or the whole project" hideSwitcher needsBusiness={false}>
+    <SeoShell step="details" title="Projects" subtitle="Every project you manage, the services it is set up for, and where to remove a service or the whole project" hideSwitcher needsBusiness={false}>
       <Projects />
     </SeoShell>
   );

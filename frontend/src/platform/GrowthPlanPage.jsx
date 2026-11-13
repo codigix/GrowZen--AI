@@ -543,7 +543,7 @@ function Growth({ b }) {
 
 export default function GrowthPlanPage() {
   return (
-    <SeoShell title="Growth Plan" subtitle="Daily, weekly and monthly targets that raise your online presence, with every task checked against real data.">
+    <SeoShell step="fix" title="Growth Plan" subtitle="Daily, weekly and monthly targets that raise your online presence, with every task checked against real data.">
       {(b) => <Growth key={b.id} b={b} />}
     </SeoShell>
   );

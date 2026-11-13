@@ -998,7 +998,7 @@ function Body({ b }) {
 
 export default function BacklinkIntelPage() {
   return (
-    <SeoShell title="Backlink intelligence" subtitle="Backlinks found by our own discovery bot, with status, evidence and history for every link">
+    <SeoShell step="links" title="Backlink intelligence" subtitle="Backlinks found by our own discovery bot, with status, evidence and history for every link">
       {(b) => <Body key={b.id} b={b} />}
     </SeoShell>
   );

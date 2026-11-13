@@ -143,7 +143,7 @@ function BacklinkChecker({ b }) {
 
 export default function BacklinkCheckerPage() {
   return (
-    <SeoShell title="Backlink Checker" subtitle="Which of your backlinks really work: live status, follow or nofollow, anchor text and kind of site. Authority scores appear with a Moz key.">
+    <SeoShell step="links" title="Backlink Checker" subtitle="Which of your backlinks really work: live status, follow or nofollow, anchor text and kind of site. Authority scores appear with a Moz key.">
       {(b) => <BacklinkChecker key={b.id} b={b} />}
     </SeoShell>
   );

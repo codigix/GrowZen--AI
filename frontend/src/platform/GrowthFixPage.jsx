@@ -121,7 +121,7 @@ function Fix({ b }) {
 
 export default function GrowthFixPage() {
   return (
-    <SeoShell title="Fix guide" subtitle="The exact change for your site, ready to paste, with the live check that confirms it.">
+    <SeoShell step="fix" title="Fix guide" subtitle="The exact change for your site, ready to paste, with the live check that confirms it.">
       {(b) => <Fix key={b.id} b={b} />}
     </SeoShell>
   );

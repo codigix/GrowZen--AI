@@ -862,7 +862,7 @@ export default function GbpManagerPage({ initialTab = 'overview' }) {
   const account = Number(new URLSearchParams(location.search).get('account')) || null; // just connected (from Google sign-in)
   return (
     <>
-      <SeoShell title="Google Business Profile" subtitle="Each project's Google Business Profile, read live: profile, photos, posts, reviews and search data, plus its audit, hours and insights" needsBusiness={false}>
+      <SeoShell step={["posts", "photos"].includes(tab) ? "publish" : tab === "reviews" ? "reviews" : "google"} title="Google Business Profile" subtitle="Each project's Google Business Profile, read live: profile, photos, posts, reviews and search data, plus its audit, hours and insights" needsBusiness={false}>
         {(b) => (
           <div className="space-y-5">
             {b && isLinked(b) && <div className="flex justify-end"><Button size="sm" icon={Plus} onClick={() => setCreateOpen(true)}>Create new profile</Button></div>}

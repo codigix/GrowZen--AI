@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { StepBar } from './JourneyBar';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { TAB_BASES, HIDE_STRIP, LIST_BASES } from './tabPages';
@@ -281,7 +282,7 @@ const NoBusinesses = ({ onCreated }) => {
 /**
  * Top Page Shell: High-tech obsidian glass header with breadcrumbs and business switcher.
  */
-export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = false, needsBusiness = true }) => {
+export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = false, needsBusiness = true, step = null }) => {
   const { list, error, refresh } = useBusinesses();
   const [business, setBusiness] = useSeoBusiness();
 
@@ -321,6 +322,7 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
             {subtitle && <p className="text-12 text-slate-400 mt-0.5 max-w-3xl">{subtitle}</p>}
           </div>
         </div>
+        {step && business && !error && <div className="mb-4"><StepBar bid={business.id} step={step} /></div>}
         {body}
       </div>
     </div>

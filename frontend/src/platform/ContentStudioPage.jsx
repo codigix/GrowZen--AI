@@ -15,7 +15,6 @@ import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } f
 import FeaturedImageField, { featuredOf } from './FeaturedImageField';
 import ReactSitePanel from './ReactSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
-import HtmlSitePanel from './HtmlSitePanel';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 
 
@@ -1164,9 +1163,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         {/* Step 4: Publish & Schedule */}
         {step === 4 && (
           <PublishDestinations key={b.id} b={b}>
-            {(dest, setReactConn, setHtmlConn) => dest === 'html' ? (
-              <HtmlSitePanel b={b} article={selectedArticle} toast={toast} onConnection={setHtmlConn} />
-            ) : dest === 'react' ? (
+            {(dest, setReactConn) => dest === 'react' ? (
               <ReactSitePanel b={b} article={selectedArticle} featured={featured} toast={toast} defaultWhen={scheduledDate}
                 onChanged={() => { if (onSaved) onSaved(); }} onConnection={setReactConn} />
             ) : (
@@ -1203,8 +1200,6 @@ function PublishDestinations({ b, children }) {
   const wp = useApi(`/businesses/${b.id}/site-integration`);
   const react = useApi(`/businesses/${b.id}/react-site`);
   const setReactConn = useCallback((c) => { if (c) react.setData(c); }, [react.setData]); // eslint-disable-line react-hooks/exhaustive-deps
-  const htmlSite = useApi(`/businesses/${b.id}/html-site`);
-  const setHtmlConn = useCallback((c) => { if (c) htmlSite.setData(c); }, [htmlSite.setData]); // eslint-disable-line react-hooks/exhaustive-deps
   const [dest, setDest] = useState(() => { try { return localStorage.getItem(`growzen.dest.${b.id}`) || ''; } catch { return ''; } });
   const wpOn = wp.data?.status === 'connected';
   const reactOn = react.data?.status === 'connected';
@@ -1212,14 +1207,13 @@ function PublishDestinations({ b, children }) {
   const pick = (d) => { setDest(d); try { localStorage.setItem(`growzen.dest.${b.id}`, d); } catch { /* this page only */ } };
   const cards = [
     { id: 'wordpress', title: 'WordPress', on: wpOn, loading: !wp.data && !wp.error, target: wp.data?.base_url || b.website },
-    { id: 'react', title: 'React.js Website', on: reactOn, loading: !react.data && !react.error, failed: react.data?.status === 'failed', target: react.data?.blog_url || react.data?.website_url },
-    { id: 'html', title: 'HTML Website', on: htmlSite.data?.status === 'connected', loading: !htmlSite.data && !htmlSite.error, failed: htmlSite.data?.status === 'failed', target: htmlSite.data?.listing_url }
+    { id: 'react', title: 'React.js Website', on: reactOn, loading: !react.data && !react.error, failed: react.data?.status === 'failed', target: react.data?.blog_url || react.data?.website_url }
   ];
   return (
     <div className="space-y-4">
       <div>
         <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Select blog publishing destination</div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-w-4xl">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-3xl">
           {cards.map(c => (
             <button key={c.id} type="button" onClick={() => pick(c.id)}
               className={`text-left p-3 rounded-xl border cursor-pointer transition-colors ${chosen === c.id ? 'border-indigo-500 bg-indigo-500/10 ring-1 ring-indigo-500/30' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
@@ -1233,7 +1227,7 @@ function PublishDestinations({ b, children }) {
           ))}
         </div>
       </div>
-      {children(chosen, setReactConn, setHtmlConn)}
+      {children(chosen, setReactConn)}
     </div>
   );
 }
@@ -1249,9 +1243,7 @@ function PublishingSetup({ b }) {
       </Card>
       <Card>
         <PublishDestinations key={b.id} b={b}>
-          {(dest, setReactConn, setHtmlConn) => dest === 'html' ? (
-            <HtmlSitePanel b={b} article={null} toast={toast} onConnection={setHtmlConn} />
-          ) : dest === 'react' ? (
+          {(dest, setReactConn) => dest === 'react' ? (
             <ReactSitePanel b={b} article={null} featured={null} toast={toast} onConnection={setReactConn} />
           ) : (
             <SitePublishPanel b={b} article={null} featured={null} toast={toast} />
@@ -1278,7 +1270,7 @@ export default function ContentStudioPage() {
   };
 
   return (
-    <SeoShell
+    <SeoShell step="publish"
       title="AI Blog Studio & Autonomous Content Engine"
       subtitle="Find topics people search for, write articles from real keywords, check them against the top Google results, and publish them to your website"
     >

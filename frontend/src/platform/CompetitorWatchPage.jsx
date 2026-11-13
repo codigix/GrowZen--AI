@@ -106,7 +106,7 @@ function Body({ b }) {
 
 export default function CompetitorWatchPage() {
   return (
-    <SeoShell title="Competitor watch" subtitle="A weekly summary of what your competitors changed on their websites">
+    <SeoShell step="competitors" title="Competitor watch" subtitle="A weekly summary of what your competitors changed on their websites">
       {(b) => <Body key={b.id} b={b} />}
     </SeoShell>
   );

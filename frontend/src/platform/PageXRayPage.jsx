@@ -728,7 +728,7 @@ function XRay({ b }) {
 
 export default function PageXRayPage() {
   return (
-    <SeoShell title="Page X-Ray" subtitle="Inspect any page in one click: SEO, answer-engine (AEO) and AI-search (GEO) readiness, tech stack, domain and security. Real data from the live page.">
+    <SeoShell step="website" title="Page X-Ray" subtitle="Inspect any page in one click: SEO, answer-engine (AEO) and AI-search (GEO) readiness, tech stack, domain and security. Real data from the live page.">
       {(b) => <XRay key={b.id} b={b} />}
     </SeoShell>
   );

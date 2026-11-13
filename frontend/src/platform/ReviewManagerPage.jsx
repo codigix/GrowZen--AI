@@ -153,7 +153,7 @@ export default function ReviewManagerPage() {
   const [tab, setTab] = useState('inbox');
   useCrumb({ inbox: 'Review inbox', requests: 'Review requests', tasks: 'Tasks' }[tab]);
   return (
-    <SeoShell title="Reviews" subtitle="Reply to every review within 24 hours, ask every customer for one, and see what people talk about">
+    <SeoShell step="reviews" title="Reviews" subtitle="Reply to every review within 24 hours, ask every customer for one, and see what people talk about">
       {(b) => (
         <>
           <Tabs value={tab} onChange={setTab} tabs={[{ id: 'inbox', label: 'Review inbox' }, { id: 'requests', label: 'Review requests' }, { id: 'tasks', label: 'Tasks' }]} />

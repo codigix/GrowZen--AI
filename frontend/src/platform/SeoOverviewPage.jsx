@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { JourneyCard } from './JourneyBar';
 import { Link, useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import {
@@ -724,10 +725,15 @@ function GrowthSkeleton() {
   );
 }
 
+function DashboardJourney() {
+  const [business] = useSeoBusiness();
+  return business ? <div className="mb-5"><JourneyCard bid={business.id} /></div> : null;
+}
+
 export default function SeoOverviewPage() {
   return (
     <SeoShell title="Command Center" subtitle="Your AI-run SEO portfolio at a glance" hideSwitcher>
-      {() => <Dashboard />}
+      {() => <><DashboardJourney /><Dashboard /></>}
     </SeoShell>
   );
 }
