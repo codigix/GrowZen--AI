@@ -369,6 +369,30 @@ def verify_rule(db: Session, b: Business, rule: dict[str, Any], ctx: Any, today:
 
 
 # ------------------------------------------------------------------------------------------------------------------- what the page reads
+# Who really does the work. Honest about today: the software never edits the website or the Google profile by itself.
+MODES = {
+    "auto": ("Software does it", "The software fixes this by itself (Start plan and the daily job). Nothing for you to do."),
+    "ai_approve": ("AI writes · you approve", "AI writes it and the software saves it as a draft inside the app. You read it and approve or publish it."),
+    "ai_apply": ("AI writes · you apply", "AI or the software writes the exact text or code. You (or your web developer) paste it in; the software then checks it live."),
+    "manual": ("Needs a person", "A real-world action the software cannot do: it gives you the steps, the messages and the live check."),
+}
+AUTO_KEYS = ("fix.kw.ungrouped", "fix.kw.no_target", "fix.kw.site_terms")
+APPROVE_PREFIX = ("fix.kw.use.posts",)
+APPLY_PREFIX = ("fix.security.", "fix.site.", "fix.kw.use.website", "fix.kw.use.profile", "fix.kw.use.services", "fix.kw.use.alt", "fix.kw.use.blog", "fix.blog.none", "fix.gbp.services", "fix.chatgpt.jsonld")
+APPLY_XRAY = ("title", "description", "one_h1", "descriptive_title", "faq_schema", "direct_answer", "question_headings", "eeat", "author", "date", "org_schema", "ai_crawlers", "llms_txt", "og", "canonical", "viewport")
+
+
+def fix_mode(key: str) -> str:
+    k = key.split("@")[0]
+    if k in AUTO_KEYS:
+        return "auto"
+    if k.startswith(APPROVE_PREFIX):
+        return "ai_approve"
+    if k.startswith(APPLY_PREFIX) or (k.startswith("fix.xray.") and k.rsplit(".", 1)[-1] in APPLY_XRAY):
+        return "ai_apply"
+    return "manual"
+
+
 SOURCE_LABEL = {"audit:onpage": "Website audit (on-page crawl)", "audit:technical": "Website audit (technical)", "page_xray": "Page X-Ray of the live homepage", "gbp": "Google profile checklist",
                 "listings": "Listing Management (NAP check)", "rankings": "Position Tracking (Google and Maps)", "chatgpt": "Business in ChatGPT checklist", "keywords": "Keyword Management and your content", "competitors": "Competitor research", "backlinks": "Backlink Intelligence (our crawler)",
                 "content": "Blog and content"}
@@ -423,7 +447,7 @@ def listing(db: Session, b: Business, today: date | None = None) -> dict[str, An
         ev = a.evidence or {}
         return {**_action_out(a), "severity": ev.get("severity", "warning"), "source": ev.get("source"), "confidence": ev.get("confidence", "confirmed"), "note_check": ev.get("note"),
                 "found_at": ev.get("found_at"), "first_seen": ev.get("first_seen"), "source_label": SOURCE_LABEL.get(ev.get("source"), ev.get("source")), "closes_when": closes_when(a.verify or {}),
-                "last_check": ev.get("details"), "checked_at": ev.get("checked_at"), "draft_kind": growth_drafts.kind_of(a), "draft": ev.get("draft"), "has_solution": bool(ev.get("solution")), "website_side": growth_solutions.is_website_side(a), "overdue": a.due_on < today and a.status not in ("verified", "skipped")}
+                "last_check": ev.get("details"), "checked_at": ev.get("checked_at"), "draft_kind": growth_drafts.kind_of(a), "draft": ev.get("draft"), "has_solution": bool(ev.get("solution")), "fix_mode": fix_mode(a.key), "fix_mode_label": MODES[fix_mode(a.key)][0], "website_side": growth_solutions.is_website_side(a), "overdue": a.due_on < today and a.status not in ("verified", "skipped")}
     open_rows = sorted([item(a) for a in rows if a.status in ("todo", "done", "unverified", "failed", "blocked")], key=lambda x: (ORDER.get(x["severity"], 9), x["due_on"]))
     since = today - timedelta(days=30)
     closed = sorted([item(a) for a in rows if a.status == "verified" and a.verified_at and a.verified_at.date() >= since], key=lambda x: x["verified_at"], reverse=True)
@@ -431,7 +455,8 @@ def listing(db: Session, b: Business, today: date | None = None) -> dict[str, An
     areas: dict[str, int] = {}
     for x in open_rows:
         areas[x["area"]] = areas.get(x["area"], 0) + 1
-    return {"open": open_rows, "closed": closed[:30], "counts": counts, "open_total": len(open_rows), "overdue": sum(1 for x in open_rows if x["overdue"]), "by_area": areas,
+    by_mode = {m: sum(1 for x in open_rows if x["fix_mode"] == m) for m in MODES}
+    return {"by_mode": by_mode, "modes": {m: {"label": v[0], "help": v[1]} for m, v in MODES.items()}, "open": open_rows, "closed": closed[:30], "counts": counts, "open_total": len(open_rows), "overdue": sum(1 for x in open_rows if x["overdue"]), "by_area": areas,
             "scanned_at": max((a.evidence or {}).get("last_seen", "") for a in rows) or None if rows else None}
 
 
@@ -486,6 +511,6 @@ def xray_sync(db: Session, b: Business, url: str, apply: bool, today: date | Non
             db.add(a)
         ev = a.evidence or {}
         out[ref] = {"id": a.id, "status": a.status, "severity": ev.get("severity", "warning"), "due_on": a.due_on.isoformat(), "overdue": a.due_on < today and a.status not in ("verified", "skipped"),
-                    "how": list(a.how or [])[:4], "why": a.why, "closes_when": closes_when(rule), "last_check": ev.get("details"), "has_solution": bool(ev.get("solution"))}
+                    "how": list(a.how or [])[:4], "why": a.why, "closes_when": closes_when(rule), "fix_mode": fix_mode(a.key), "fix_mode_label": MODES[fix_mode(a.key)][0], "last_check": ev.get("details"), "has_solution": bool(ev.get("solution")), "fix_mode": fix_mode(a.key), "fix_mode_label": MODES[fix_mode(a.key)][0]}
     db.flush()
     return {"tasks": out, "reason": None}

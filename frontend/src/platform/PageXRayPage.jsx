@@ -121,6 +121,7 @@ function FixBox({ t, bad }) {
         <span className={`inline-flex items-center gap-1 rounded-full ring-1 ring-inset px-2.5 py-0.5 text-12 font-semibold ${st[1]}`}>{fixed ? <Check size={12} /> : <AlertTriangle size={12} />}{fixed ? 'Fixed: this scan passes it' : st[0]}</span>
         {!fixed && <span className="text-12 text-slate-500">{t.overdue ? 'Overdue' : 'Due'} {t.due_on}</span>}
         {!fixed && <span className="text-12 font-semibold text-slate-600 capitalize">{t.severity}</span>}
+        {t.fix_mode_label && <span className="text-12 rounded-full bg-indigo-50 text-indigo-700 px-2.5 py-0.5 font-medium">{t.fix_mode_label}</span>}
         <Link to={`/growth/fix/${t.id}`} className="ml-auto"><Button size="sm" variant={fixed ? undefined : 'primary'} icon={Wrench}>{fixed ? 'See the fix' : 'Fix guide'}</Button></Link>
       </div>
       {!fixed && (

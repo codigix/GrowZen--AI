@@ -15,6 +15,8 @@ const Card = ({ children, className = '' }) => <section className={`bg-white rou
 const Chip = ({ children, cls = 'bg-slate-100 text-slate-700', title }) => <span title={title} className={`inline-flex items-center gap-1 text-12 rounded-full px-2.5 py-1 leading-none font-medium whitespace-nowrap ${cls}`}>{children}</span>;
 const Skeleton = ({ h = 'h-24' }) => <div className={`rounded-xl bg-slate-100 animate-pulse ${h}`} />;
 const TIMEZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Muscat', 'Asia/Riyadh', 'Asia/Qatar', 'Asia/Karachi', 'Asia/Dhaka', 'Asia/Singapore', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Toronto', 'Australia/Sydney', 'Pacific/Auckland', 'Africa/Johannesburg', 'Africa/Nairobi', 'Africa/Lagos'];
+const MODE = { auto: 'bg-emerald-50 text-emerald-700', ai_approve: 'bg-violet-50 text-violet-700', ai_apply: 'bg-indigo-50 text-indigo-700', manual: 'bg-slate-100 text-slate-700' };
+const ModeChip = ({ m, label, help }) => <Chip cls={MODE[m] || MODE.manual} title={help}>{m === 'auto' || m === 'ai_approve' || m === 'ai_apply' ? <Sparkles size={11} /> : null}{label}</Chip>;
 const SEV = {
   critical: ['Critical', 'bg-red-50 text-red-700', 'due in 3 days'],
   serious: ['Serious', 'bg-orange-50 text-orange-700', 'due in 7 days'],
@@ -193,7 +195,7 @@ function IssueTable({ rows, bid, onChanged }) {
             <li key={a.id}>
               <button type="button" aria-expanded={on} onClick={() => setOpenId(on ? null : a.id)} className="w-full text-left px-4 py-3.5 cursor-pointer">
                 <div className="flex flex-wrap items-center gap-1.5"><Chip cls={sv[1]}>{sv[0]}</Chip><Chip cls={stt[1]}>{stt[0]}</Chip><span className={`text-12 ${a.overdue ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>due {fmtDay(a.due_on)}{a.overdue ? ' · overdue' : ''}</span></div>
-                <div className="mt-1.5 font-medium text-slate-900 leading-snug">{a.title}</div>
+                <div className="mt-1.5 font-medium text-slate-900 leading-snug">{a.title}</div><div className="mt-1"><ModeChip m={a.fix_mode} label={a.fix_mode_label} /></div>
                 <div className="mt-0.5 text-12.5 text-slate-500">{AREA[a.area] || a.area} · {a.source_label || '—'}</div>
               </button>
               {on && <IssueDetail a={a} bid={bid} onChanged={onChanged} />}
@@ -214,7 +216,7 @@ function IssueTable({ rows, bid, onChanged }) {
                   <tr className={`border-b border-slate-100 align-top cursor-pointer ${on ? 'bg-indigo-50/40' : 'hover:bg-slate-50'}`} onClick={() => setOpenId(on ? null : a.id)}>
                     <td className="px-3 py-3.5"><button type="button" aria-expanded={on} aria-label={on ? 'Hide details' : 'Show details'} onClick={e => { e.stopPropagation(); setOpenId(on ? null : a.id); }} className="text-slate-500 cursor-pointer">{on ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button></td>
                     <td className="px-3 py-3.5"><Chip cls={sv[1]}>{sv[0]}</Chip></td>
-                    <td className="px-3 py-3.5 min-w-0"><div className="font-medium text-slate-900 leading-snug">{a.title}</div>{a.confidence === 'check_first' && <div className="mt-1"><Chip cls="bg-violet-50 text-violet-700" title={a.note_check || ''}>Check first</Chip></div>}<div className="mt-0.5 text-12.5 text-slate-500 line-clamp-2">{a.why}</div></td>
+                    <td className="px-3 py-3.5 min-w-0"><div className="font-medium text-slate-900 leading-snug">{a.title}</div><div className="mt-1"><ModeChip m={a.fix_mode} label={a.fix_mode_label} /></div>{a.confidence === 'check_first' && <div className="mt-1"><Chip cls="bg-violet-50 text-violet-700" title={a.note_check || ''}>Check first</Chip></div>}<div className="mt-0.5 text-12.5 text-slate-500 line-clamp-2">{a.why}</div></td>
                     <td className="px-3 py-3.5 text-13 text-slate-700 whitespace-nowrap">{AREA[a.area] || a.area}</td>
                     <td className="px-3 py-3.5 text-12.5 text-slate-600 min-w-[150px] max-w-[200px]">{a.source_label || '—'}</td>
                     <td className="px-3 py-3.5 text-13 text-slate-600 whitespace-nowrap">{fmtDay(a.found_at || a.first_seen)}</td>
@@ -299,6 +301,13 @@ export function IssuesView({ bid }) {
           <div className="flex flex-wrap gap-2"><Button icon={Download} onClick={() => setBrief({ loading: true })}>Developer brief</Button>
             <Button variant="primary" icon={scanning ? Loader2 : Search} disabled={scanning} onClick={scan}>{scanning ? 'Scanning…' : 'Scan now'}</Button></div>
         </div>
+        {d.by_mode && (
+          <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-2.5" aria-label="Who fixes the open issues">
+            {Object.entries(d.modes || {}).map(([m, v]) => (
+              <div key={m} className="rounded-lg border border-slate-200 p-3"><div className="flex items-center justify-between gap-2"><ModeChip m={m} label={v.label} /><span className="text-20 font-semibold tabular-nums text-slate-900">{d.by_mode[m] || 0}</span></div><p className="mt-1.5 text-12 text-slate-500 leading-snug">{v.help}</p></div>
+            ))}
+          </div>
+        )}
         {msg && <p className="mt-3 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{msg}</p>}
         {error && <p className="mt-3 text-13 text-red-700" role="alert">{error}</p>}
         <div className="mt-4 flex flex-wrap gap-2">
