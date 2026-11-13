@@ -17,7 +17,7 @@ from ..config import Settings, get_settings
 from ..db import get_db
 from ..models import AppUser
 from ..serialize import row
-from ..services import crypto, totp
+from ..services import crypto, ratelimit, totp
 from ..services.activity import log as audit_log
 from ..services.passwords import hash_password, is_known_default, verify_password
 
@@ -49,27 +49,24 @@ def public(u: AppUser) -> dict:
     return row(u, exclude={"password_hash"})
 
 
-_failures: dict[str, list[float]] = {}
-_failures_lock = threading.Lock()
+_failures = ratelimit.FailureLog()  # wrong attempts per key, in the database (shared by every process, survives a restart)
 log = logging.getLogger("seo.auth")
 
 
 def _throttle(key: str, settings: Settings, record: bool = False, reset: bool = False, limit: int | None = None, raise_: bool = True) -> None:
-    """Too many wrong attempts for one key (an address, an account, or both): locked for a while (in memory: a restart clears it)."""
+    """Too many wrong attempts for one key (an address, an account, or both): locked for a while. The count is kept in the database, so a restart or a second process does not reset it."""
     window = settings.login_lockout_minutes * 60
     limit = limit or settings.login_max_failures
     now = time.time()
-    with _failures_lock:
-        recent = [t for t in _failures.get(key, []) if now - t < window]
-        if reset:
-            _failures.pop(key, None)
-            return
-        if record:
-            recent.append(now)
-        _failures[key] = recent
-        if raise_ and len(recent) >= limit:
-            wait = max(1, int((window - (now - recent[0])) / 60) + 1)
-            raise HTTPException(429, f"Too many attempts. Try again in {wait} minute{'s' if wait != 1 else ''}.")
+    if reset:
+        _failures.reset(key)
+        return
+    if record:
+        _failures.add(key)
+    recent = _failures.recent(key, window)
+    if raise_ and len(recent) >= limit:
+        wait = max(1, int((window - (now - recent[0])) / 60) + 1)
+        raise HTTPException(429, f"Too many attempts. Try again in {wait} minute{'s' if wait != 1 else ''}.")
 
 
 def client_ip(request: Request, settings: Settings) -> str:

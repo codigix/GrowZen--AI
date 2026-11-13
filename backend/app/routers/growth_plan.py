@@ -196,7 +196,7 @@ def send_report(report_id: int, b: Business = Depends(get_business), db: Session
     r = _report(db, b, report_id)
     if not _send_limit.hit(user.id):
         raise HTTPException(429, "Too many emails: try again later.")
-    res = growth_report.send(db, b, r, force=True)
+    res = growth_report.send(db, b, r, force=True, interactive=True)
     log(db, user.name, "growth_report_sent", b.id, sent=res["sent"])
     db.commit()
     return {**res, "report": growth_report.out(r, full=False)}

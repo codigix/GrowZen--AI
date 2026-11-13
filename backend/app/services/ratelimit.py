@@ -13,7 +13,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from ..db import SessionLocal
-from ..models import RateHit
+from ..models import LoginFailure, RateHit
 
 log = logging.getLogger("seo.ratelimit")
 _CLEAN_EVERY = 200  # calls between deletions of expired windows
@@ -86,6 +86,59 @@ class Hits:
         try:
             with SessionLocal() as db:
                 db.execute(delete(RateHit).where(RateHit.name == self.name))
+                db.commit()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+class FailureLog:
+    """Wrong attempts per key within a time window, for lock-outs. In the database, so a restart does not unlock a locked-out address and a second server process sees the same count;
+    in memory for that call only when the database cannot be reached (so a database problem never turns the lock-out off)."""
+    MAX_AGE = 86400
+
+    def __init__(self):
+        self._memory: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def recent(self, key: str, window: float) -> list[float]:
+        now = time.time()
+        try:
+            with SessionLocal() as db:
+                if now % 50 < 1:  # now and then drop what no window can still need
+                    db.execute(delete(LoginFailure).where(LoginFailure.at < now - self.MAX_AGE))
+                    db.commit()
+                return [r for (r,) in db.execute(select(LoginFailure.at).where(LoginFailure.key == key, LoginFailure.at > now - window).order_by(LoginFailure.at))]
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Failure log fell back to memory: %s", exc)
+            with self._lock:
+                return [t for t in self._memory.get(key, []) if now - t < window]
+
+    def add(self, key: str) -> None:
+        now = time.time()
+        try:
+            with SessionLocal() as db:
+                db.add(LoginFailure(key=key[:320], at=now))
+                db.commit()
+        except Exception:  # noqa: BLE001
+            with self._lock:
+                self._memory.setdefault(key, []).append(now)
+
+    def reset(self, key: str) -> None:
+        with self._lock:
+            self._memory.pop(key, None)
+        try:
+            with SessionLocal() as db:
+                db.execute(delete(LoginFailure).where(LoginFailure.key == key))
+                db.commit()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def clear(self) -> None:
+        with self._lock:
+            self._memory.clear()
+        try:
+            with SessionLocal() as db:
+                db.execute(delete(LoginFailure))
                 db.commit()
         except Exception:  # noqa: BLE001
             pass

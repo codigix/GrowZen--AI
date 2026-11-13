@@ -11,7 +11,7 @@ from ..config import get_settings
 log = logging.getLogger("seo.notify")
 
 
-def send_email(to: str, subject: str, body: str, attachments: list[tuple[str, bytes, str]] | None = None, html: str | None = None) -> bool:
+def send_email(to: str, subject: str, body: str, attachments: list[tuple[str, bytes, str]] | None = None, html: str | None = None, timeout: float = 30) -> bool:
     """Plain text always; `html` adds a formatted version (the caller escapes everything it puts in it)."""
     s = get_settings()
     if not (s.smtp_host and s.smtp_from and to):
@@ -26,7 +26,7 @@ def send_email(to: str, subject: str, body: str, attachments: list[tuple[str, by
         msg.add_attachment(data, maintype=main, subtype=sub, filename=name)
     for attempt in (1, 2):  # Gmail sometimes drops a fresh connection: one retry is enough, a second failure is real
         try:
-            with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=30) as smtp:
+            with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=timeout) as smtp:
                 smtp.starttls()
                 if s.smtp_user:
                     smtp.login(s.smtp_user, s.smtp_password)

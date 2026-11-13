@@ -150,3 +150,30 @@ def test_history_pruning_thins_what_only_grows_and_keeps_what_people_read(client
         assert rows[date.today() - timedelta(days=120)].serp is None and rows[date.today() - timedelta(days=2)].serp is not None
     finally:
         db.close()
+
+
+def test_login_failures_are_shared_and_survive_a_new_instance(client):
+    from app.services import ratelimit
+    a, b = ratelimit.FailureLog(), ratelimit.FailureLog()  # two server processes
+    a.clear()
+    for _ in range(3):
+        a.add("me@x.com|1.2.3.4")
+    assert len(b.recent("me@x.com|1.2.3.4", 900)) == 3  # the other process sees them (and a restart would too: they are rows)
+    assert b.recent("other", 900) == []
+    a.reset("me@x.com|1.2.3.4")
+    assert b.recent("me@x.com|1.2.3.4", 900) == []
+
+
+def test_old_failures_fall_out_of_the_window(client):
+    import time
+
+    from app.db import SessionLocal
+    from app.models import LoginFailure
+    from app.services import ratelimit
+    f = ratelimit.FailureLog()
+    f.clear()
+    db = SessionLocal()
+    db.add_all([LoginFailure(key="k", at=time.time() - 2000), LoginFailure(key="k", at=time.time() - 10)])
+    db.commit()
+    db.close()
+    assert len(f.recent("k", 900)) == 1

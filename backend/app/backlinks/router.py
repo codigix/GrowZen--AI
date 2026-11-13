@@ -1,6 +1,7 @@
 """Backlink Intelligence API. Everything is scoped to a business: a backlink is visible only if it points at a domain that
 business tracks (its own site or a competitor), so one business never sees another's monitoring set."""
 import logging
+from ..competitors import hygiene
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -396,7 +397,7 @@ class GapIn(BaseModel):
 def prioritize_gap(body: GapIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     """The competitor-gap domains ranked by how realistic they are to win, each with an honest way to approach it."""
     me = _require_tracked(db, b, body.client)
-    comps = [t.domain for t in _targets(db, b) if t.is_competitor and t.domain != me]
+    comps = hygiene.real_competitor_domains(b, [t.domain for t in _targets(db, b) if t.is_competitor and t.domain != me])
     if not comps:
         raise HTTPException(409, "Add at least one competitor target first")
     return {"client": me, "competitors": comps, **insights.prioritize_gap(db, b, me, comps)}
@@ -478,7 +479,7 @@ def ref_domains(domain: str, b: Business = Depends(get_business), db: Session = 
 def competitor_gap(client: str, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     """Domains linking to the business's competitors but not to `client`. A prospecting signal; each needs human relevance review."""
     me = _require_tracked(db, b, client)
-    comps = [t.domain for t in _targets(db, b) if t.is_competitor and t.domain != me]
+    comps = hygiene.real_competitor_domains(b, [t.domain for t in _targets(db, b) if t.is_competitor and t.domain != me])
     if not comps:
         raise HTTPException(409, "Add at least one competitor target first")
     return {"client": me, "competitors": comps, "gap": analytics.gap(db, me, comps)}

@@ -27,6 +27,7 @@ SURFACES = {
     "profile": ("the Google profile (description and categories)", "/gmb-profile/profile?sub=edit&step=about", "Mention it naturally in the business description. Never stuff keywords into the business name."),
     "services": ("service names and descriptions (profile and ChatGPT feed)", "/gmb-profile/profile?sub=edit&step=services", "Name a service after it and describe it in one sentence with a price if you show one."),
     "posts": ("Google posts", "/google-posts", "Write a post about the service using these words naturally, with a photo and a call to action."),
+    "alt": ("image alt text on the homepage", "/page-xray", "Describe the main photos with the service and the place in a few words, for example “bridal lehenga rental in Pune”. Describe what is in the picture: never a list of keywords."),
     "blog": ("blog articles", "/ai-content-generation/blog", "Write one helpful article for each keyword (the AI Blog Studio drafts it; you review and publish)."),
 }
 
@@ -79,6 +80,13 @@ def _brand(b: Business) -> set[str]:
     return {_norm(w) for w in _words(b.name)} | {_norm(w) for w in re.split(r"[^a-z0-9]+", (b.website or "").lower().replace("www.", "").split("/")[-1] if "//" not in (b.website or "") else (b.website or "").lower().split("//")[1].split("/")[0].replace("www.", "")) if len(w) > 3}
 
 
+def _brand_strict(b: Business) -> set[str]:
+    """Only the brand itself: the name's first word and the website's domain words. A name like "Asha Rental" must not hide the word that says what the business does."""
+    first = _norm(next(iter(_words(b.name)), ""))
+    domain = {w for w in _brand(b) if w not in {_norm(x) for x in _words(b.name)}}
+    return {first} | domain
+
+
 def _main_keywords(b: Business, rows: list[Keyword], n: int = 6) -> list[str]:
     """The keywords worth placing in content: a few words, and not the brand name itself (a brand search needs no keyword work)."""
     brand = _brand(b)
@@ -100,12 +108,57 @@ def site_terms(b: Business, report: dict[str, Any] | None, crawl: dict[str, Any]
         titles.append(home.get("title") or "")
         descs.append(home.get("meta_description") or "")
         h1s.append(home.get("h1") if isinstance(home.get("h1"), str) else " ".join(home.get("h1") or []))
-    first = _norm(next(iter(_words(b.name)), ""))  # only the brand itself: a name like "Asha Rental" must not hide the word that says what the business does
-    domain = {w for w in _brand(b) if w not in {_norm(x) for x in _words(b.name)}}
-    skip = {first} | domain | {_norm(w) for w in _words(b.city or "")} | {_norm(w) for w in _words(b.area or "")} | FLUFF
+    skip = _brand_strict(b) | {_norm(w) for w in _words(b.city or "")} | {_norm(w) for w in _words(b.area or "")} | FLUFF
     groups = [{_norm(w) for t in g for w in _words(t) if w not in STOP and len(w) >= 4} - skip for g in (titles, h1s, descs)]
     counts = Counter(w for g in groups for w in g)
     return sorted(w for w, n in counts.items() if n >= 2)
+
+
+def site_phrases(b: Business, report: dict[str, Any] | None, crawl: dict[str, Any], rows: list[Keyword], limit: int = 3) -> list[str]:
+    """Searches built from the website's own words that no tracked keyword has yet: the two-word phrase of its title or heading that holds the uncovered term, with the city ("clothing rental in pune")."""
+    terms = [t for t in site_terms(b, report, crawl) if not _covered(t, rows)]
+    if not terms:
+        return []
+    texts = []
+    if report:
+        texts += [((report.get("meta") or {}).get("title")) or ""] + [x.get("text", "") for x in ((report.get("content") or {}).get("outline") or []) if x.get("level") == 1]
+    for p in crawl.get("pages") or []:
+        if re.sub(r"^https?://[^/]+", "", p.get("url", "")) in ("", "/"):
+            texts += [p.get("title") or "", p.get("h1") if isinstance(p.get("h1"), str) else " ".join(p.get("h1") or [])]
+    city = " ".join(_words(b.city or "")).strip()
+    out: list[str] = []
+    for t in terms:
+        phrase = t
+        for text in texts:
+            ws = [w for w in _words(text)]
+            for i, w in enumerate(ws):
+                if _norm(w) == t:
+                    pair = [x for x in ws[max(0, i - 1): i + 2] if x not in STOP and len(x) >= 4 and _norm(x) not in FLUFF and _norm(x) not in _brand_strict(b)]
+                    if len(pair) >= 2 and ws[max(0, i - 1)] in pair:
+                        phrase = " ".join(pair[:2])
+                    break
+            if phrase != t:
+                break
+        kw = f"{phrase} in {city}" if city else phrase
+        if kw not in out and not any(kw == k.keyword for k in rows):
+            out.append(kw)
+    return out[:limit]
+
+
+def add_site_keywords(db: Session, b: Business, report: dict[str, Any] | None = None) -> list[str]:
+    """Track the searches the website itself is about (only when tracked keywords ignore its main words). Never removes or changes a keyword."""
+    from .providers.base import intent_of
+    rows = tracked(db, b)
+    if not rows or len(rows) >= 12:
+        return []
+    made = []
+    for kw in site_phrases(b, report, _crawl(db, b), rows):
+        if db.scalar(select(Keyword.id).where(Keyword.business_id == b.id, Keyword.keyword == kw)):
+            continue
+        db.add(Keyword(business_id=b.id, keyword=kw, tracked=True, intent=intent_of(kw)))
+        made.append(kw)
+    db.flush()
+    return made
 
 
 def _covered(term: str, rows: list[Keyword]) -> bool:
@@ -123,7 +176,8 @@ def surfaces_text(db: Session, b: Business, report: dict[str, Any] | None, crawl
     svc += [f"{c.title} {c.description or ''}" for c in db.scalars(select(CatalogItem).where(CatalogItem.business_id == b.id))]
     posts = [f"{p.title or ''} {p.body or ''}" for p in db.scalars(select(Post).where(Post.business_id == b.id, Post.status == "published")) if p.published_at is None or (p.published_at if p.published_at.tzinfo else p.published_at.replace(tzinfo=timezone.utc)) >= since]
     arts = [f"{a.title or ''} {a.keyword or ''} {' '.join(a.secondary_keywords or [])} {a.body or ''}" for a in db.scalars(select(Article).where(Article.business_id == b.id, Article.status == "completed"))]
-    return {"website": _corpus(site), "profile": _corpus(prof), "services": _corpus(svc), "posts": _corpus(posts), "blog": _corpus(arts)}
+    alts = ((report or {}).get("content") or {}).get("images", {}).get("alts") or []
+    return {"alt": _corpus(alts), "website": _corpus(site), "profile": _corpus(prof), "services": _corpus(svc), "posts": _corpus(posts), "blog": _corpus(arts)}
 
 
 # ------------------------------------------------------------------------------------------------------------------- the metadata and sitemap probes (recomputed from any site crawl)
@@ -217,10 +271,11 @@ def issues(db: Session, b: Business, report: dict[str, Any] | None) -> list[dict
     # ---- competitor research and gaps
     from ..competitors import hygiene
     bad = hygiene.invalid_rows(db, b)
-    if bad:
-        out.append(make("comp.invalid", "local", "competitors", "warning", f"Remove entries that are not competitors ({len(bad)})",
-                        "These saved competitors are not competitors' own websites, so audits, keyword gaps and the backlink gap use the wrong data: " + "; ".join(f"{c.name or c.website} ({why.rstrip('.')})" for c, why in bad[:5]) + ".",
-                        ["Open Competitor Analysis and remove each of them (the business itself is not touched).", "Add real competitors instead: businesses with their own website that rank for your searches."], 10, "/gmb-profile/competitors", {"type": "competitors_clean"}))
+    bad_targets = hygiene.invalid_targets(db, b)
+    if bad or bad_targets:
+        out.append(make("comp.invalid", "local", "competitors", "warning", f"Remove entries that are not competitors ({len(bad) + len(bad_targets)})",
+                        "These saved competitors are not competitors' own websites, so audits, keyword gaps and the backlink gap use the wrong data: " + "; ".join([f"{c.name or c.website} ({why.rstrip('.')})" for c, why in bad[:5]] + [f"{d} tracked in Backlink Intelligence ({why.rstrip('.')})" for d, why in bad_targets[:5]]) + ".",
+                        ["Open Competitor Analysis and remove each saved entry (the business itself is not touched).", "In Backlink Intelligence, remove the matching tracked targets: they make link reads very slow.", "Add real competitors instead: businesses with their own website that rank for your searches."], 10, "/gmb-profile/competitors", {"type": "competitors_clean"}))
     from . import keywords as kwsvc
     if kwsvc.competitor_research(db, b) is None:
         out.append(make("comp.none", "local", "competitors", "warning", "Run the competitor analysis", "No competitor research has finished for this project, so keyword gaps, link gaps and rivals' strategies are unknown.",
@@ -244,7 +299,11 @@ def issues(db: Session, b: Business, report: dict[str, Any] | None) -> list[dict
             for surface, (label, link, how) in SURFACES.items():
                 if surface == "website" and not (report or crawl):
                     continue
+                if surface == "alt" and (not report or "alts" not in ((report.get("content") or {}).get("images") or {})):
+                    continue  # an older X-Ray did not read the alt texts: say nothing rather than guess
                 missing = [k for k in kws if not has_keyword(text[surface], k)]
+                if surface == "alt" and len(kws) > 1:
+                    missing = missing[:2]  # an image describes one thing: ask for the leading keywords only
                 if not missing:
                     continue
                 target = f"{link}?url={quote(url, safe='')}" if surface == "website" and url else link
@@ -330,7 +389,8 @@ def _gap(db: Session, b: Business) -> tuple[str, list[dict]]:
     from ..backlinks.models import BiTrackedTarget
     targets = list(db.scalars(select(BiTrackedTarget).where(BiTrackedTarget.business_id == b.id)))
     mine = next((t.domain for t in targets if not t.is_competitor), None)
-    comps = [t.domain for t in targets if t.is_competitor and t.domain != mine]
+    from ..competitors import hygiene
+    comps = hygiene.real_competitor_domains(b, [t.domain for t in targets if t.is_competitor and t.domain != mine])
     if not mine or not comps:
         return mine or "", []
     return mine, analytics.gap(db, mine, comps)
@@ -388,7 +448,7 @@ def verify(db: Session, b: Business, rule: dict[str, Any], ctx: Any, today: date
         return _result(ok, f"{len(rows)} keywords tracked; needs {rule['min']}.", None, len(rows))
     if kind == "competitors_clean":
         from ..competitors import hygiene
-        n = len(hygiene.invalid_rows(db, b))
+        n = len(hygiene.invalid_rows(db, b)) + len(hygiene.invalid_targets(db, b))
         return _result(n == 0, "Every saved competitor is a real competitor website." if n == 0 else f"{n} saved entries are still not competitors' websites.", None, n)
     if kind == "kw_terms":
         left = [t for t in rule["terms"] if not _covered(t, rows)]

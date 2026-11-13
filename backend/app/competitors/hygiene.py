@@ -26,6 +26,25 @@ def skip_reason(business: Any, website: str | None) -> str | None:
     return None
 
 
+def real_competitor_domains(business: Any, domains: list[str]) -> list[str]:
+    """Only the domains that can be competitors: never the business itself or a social, video, directory or link page. A link-graph read for instagram.com or youtube.com
+    counts hundreds of thousands of links and runs for minutes, and says nothing about a competitor."""
+    return [d for d in domains if not skip_reason(business, d)]
+
+
+def invalid_targets(db: Any, business: Any) -> list[tuple[str, str]]:
+    """Competitor targets already tracked in Backlink Intelligence that are not competitors (a tracked instagram.com makes every link-gap read count hundreds of thousands of links)."""
+    from sqlalchemy import select
+
+    from ..backlinks.models import BiTrackedTarget
+    out = []
+    for t in db.scalars(select(BiTrackedTarget).where(BiTrackedTarget.business_id == business.id, BiTrackedTarget.is_competitor.is_(True))):
+        why = skip_reason(business, t.domain)
+        if why:
+            out.append((t.domain, why))
+    return out
+
+
 def invalid_rows(db: Any, business: Any) -> list[tuple[Any, str]]:
     from sqlalchemy import select
 

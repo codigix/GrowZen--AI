@@ -769,4 +769,12 @@ class RateHit(Base):
     count: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class LoginFailure(Base):
+    """One wrong attempt counted against a lock-out key (an address, an account, a reset link): shared by every server process and kept across restarts (services/ratelimit.FailureLog)."""
+    __tablename__ = "login_failures"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(320), index=True)
+    at: Mapped[float] = mapped_column(Float, index=True)  # epoch seconds
+
+
 from .backlinks import models as _backlink_models  # noqa: E402,F401  (registers the backlink graph tables)

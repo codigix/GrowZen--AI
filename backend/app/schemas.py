@@ -219,6 +219,22 @@ class BusinessPatch(BaseModel):
     area: str | None = None
     city: str | None = None
     country: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")  # ISO code
+    timezone: str | None = Field(default=None, max_length=40)  # IANA name such as Asia/Kolkata; empty = the country's main one
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None
+        try:
+            from zoneinfo import available_timezones
+            known = available_timezones()
+        except Exception:  # noqa: BLE001
+            known = set()
+        if (known and v not in known) or not re.fullmatch(r"[A-Za-z]+(/[A-Za-z0-9_+-]+){1,2}", v):
+            raise ValueError("Choose a time zone from the list (for example Asia/Kolkata).")
+        return v
     lat: float | None = None
     lng: float | None = None
     service_area: str | None = None

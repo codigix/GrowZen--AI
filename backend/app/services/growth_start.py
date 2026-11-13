@@ -125,9 +125,11 @@ def run(business_id: int, actor: str) -> None:
 
         def kw_step():
             from . import growth_content
+            from . import growth_metrics
+            added = growth_content.add_site_keywords(db, b, growth_metrics._latest_xray(db, b)[0])
             r = growth_content.group_keywords(db, b)
             db.commit()
-            return (f"{r['grouped']} keywords grouped into topics, {r['targeted']} given a target page (only where exactly one page clearly covers it).", "done")
+            return ((f"Now tracking {len(added)} search{'es' if len(added) != 1 else ''} your website is about: {', '.join(added)}. " if added else "") + f"{r['grouped']} keywords grouped into topics, {r['targeted']} given a target page (only where exactly one page clearly covers it).", "done")
         _step(db, business_id, "keywords", kw_step)
 
         def sweep_step():

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Bell, Sparkles, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, ExternalLink, ShieldCheck, FileText, Loader2, Mail, Play, RefreshCw, Search, SkipForward, Wrench, XCircle } from 'lucide-react';
 import { Button } from './SeoUi';
+import Select from '../components/Select';
 import { api, SEO_API } from './seoApi';
 
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -13,6 +14,7 @@ const signed = (v) => (!isNum(v) ? '—' : `${v > 0 ? '+' : ''}${Math.round(v * 
 const Card = ({ children, className = '' }) => <section className={`bg-white rounded-xl border border-slate-200 shadow-sm min-w-0 ${className}`}>{children}</section>;
 const Chip = ({ children, cls = 'bg-slate-100 text-slate-700', title }) => <span title={title} className={`inline-flex items-center gap-1 text-12 rounded-full px-2.5 py-1 leading-none font-medium whitespace-nowrap ${cls}`}>{children}</span>;
 const Skeleton = ({ h = 'h-24' }) => <div className={`rounded-xl bg-slate-100 animate-pulse ${h}`} />;
+const TIMEZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Muscat', 'Asia/Riyadh', 'Asia/Qatar', 'Asia/Karachi', 'Asia/Dhaka', 'Asia/Singapore', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Toronto', 'Australia/Sydney', 'Pacific/Auckland', 'Africa/Johannesburg', 'Africa/Nairobi', 'Africa/Lagos'];
 const SEV = {
   critical: ['Critical', 'bg-red-50 text-red-700', 'due in 3 days'],
   serious: ['Serious', 'bg-orange-50 text-orange-700', 'due in 7 days'],
@@ -125,6 +127,7 @@ function DraftBox({ a, bid, onChanged }) {
           {d.kind === 'post' && <><Field label="Post title" value={data.title} /><Field label="Post text" value={data.body} />
             {d.applied ? <p className="text-13 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} />Saved as a draft post. <Link to="/google-posts" className="font-semibold underline">Open Google Posts</Link> to review and publish it.</p>
               : <Button size="sm" variant="primary" icon={busy === 'draft/apply' ? Loader2 : Check} disabled={!!busy} onClick={() => run('draft/apply')}>Save as a draft post</Button>}</>}
+          {d.kind === 'alt' && arr(data.alts).map((x, i) => <Field key={i} label={`Image alt text ${i + 1}`} value={x} />)}
           {d.kind === 'blog' && <><Field label="Article title" value={data.title} /><Field label="Meta description" value={data.meta_description} /><Field label="Intro" value={data.intro} />{arr(data.headings).length > 0 && <Field label="Section headings" value={data.headings.map((h, i) => `${i + 1}. ${h}`).join('\n')} />}</>}
           <p className="text-11.5 text-slate-500">{d.model_note}</p>
         </div>
@@ -182,7 +185,22 @@ function IssueTable({ rows, bid, onChanged }) {
   const th = 'px-3 py-3 text-left font-medium whitespace-nowrap';
   return (
     <Card className="overflow-hidden">
-      <div className="overflow-x-auto">
+      <ul className="md:hidden divide-y divide-slate-100">
+        {rows.map(a => {
+          const sv = SEV[a.severity] || SEV.warning, stt = STATUS[a.status] || STATUS.todo, on = openId === a.id;
+          return (
+            <li key={a.id}>
+              <button type="button" aria-expanded={on} onClick={() => setOpenId(on ? null : a.id)} className="w-full text-left px-4 py-3.5 cursor-pointer">
+                <div className="flex flex-wrap items-center gap-1.5"><Chip cls={sv[1]}>{sv[0]}</Chip><Chip cls={stt[1]}>{stt[0]}</Chip><span className={`text-12 ${a.overdue ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>due {fmtDay(a.due_on)}{a.overdue ? ' · overdue' : ''}</span></div>
+                <div className="mt-1.5 font-medium text-slate-900 leading-snug">{a.title}</div>
+                <div className="mt-0.5 text-12.5 text-slate-500">{AREA[a.area] || a.area} · {a.source_label || '—'}</div>
+              </button>
+              {on && <IssueDetail a={a} bid={bid} onChanged={onChanged} />}
+            </li>
+          );
+        })}
+      </ul>
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-14 min-w-[980px]">
           <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200">
             <th className={`${th} w-10`}><span className="sr-only">Expand</span></th><th className={th}>Severity</th><th className={`${th} w-[34%]`}>Issue</th><th className={th}>Area</th><th className={th}>Source</th><th className={th}>Found</th><th className={th}>Due</th><th className={th}>Status</th><th className={`${th} text-right`}>Fix</th>
@@ -339,13 +357,16 @@ function ReportBody({ r }) {
 }
 
 function NotifySettings({ bid, s, onSaved }) {
-  const [form, setForm] = useState({ email: !!s.email, weekly: !!s.weekly, monthly: !!s.monthly, alerts: !!s.alerts, to: s.to || '' });
+  const [form, setForm] = useState({ email: !!s.email, weekly: !!s.weekly, monthly: !!s.monthly, alerts: !!s.alerts, to: s.to || '', timezone: s.timezone || '' });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const save = async () => {
     setBusy(true); setMsg(''); setErr('');
-    try { const out = await api(`/businesses/${bid}/growth/notifications`, { method: 'PUT', body: { ...form, to: form.to.trim() } }); setMsg(`Saved. Reports go to ${out.sends_to || 'no address yet'}.`); onSaved(); } catch (e) { setErr(e.message || 'Could not save.'); } finally { setBusy(false); }
+    try {
+      if ((s.timezone || '') !== form.timezone) await api(`/businesses/${bid}`, { method: 'PATCH', body: { timezone: form.timezone }, repeat: true });
+      const { timezone: _tz, ...prefs } = form;
+      const out = await api(`/businesses/${bid}/growth/notifications`, { method: 'PUT', body: { ...prefs, to: form.to.trim() } }); setMsg(`Saved. Reports go to ${out.sends_to || 'no address yet'}.`); onSaved(); } catch (e) { setErr(e.message || 'Could not save.'); } finally { setBusy(false); }
   };
   const Tog = ({ k, label, hint }) => (
     <label className="flex items-start gap-3 cursor-pointer"><input type="checkbox" checked={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.checked }))} className="mt-1 w-4 h-4 accent-indigo-600" /><span><span className="text-13.5 font-medium text-slate-800">{label}</span><span className="block text-12 text-slate-500">{hint}</span></span></label>
@@ -363,6 +384,12 @@ function NotifySettings({ bid, s, onSaved }) {
       <label className="mt-4 block text-12.5 font-semibold text-slate-700" htmlFor="gp-to">Send to</label>
       <input id="gp-to" type="email" inputMode="email" autoComplete="email" maxLength={254} value={form.to} onChange={e => setForm(f => ({ ...f, to: e.target.value }))} placeholder={s.sends_to || 'Registered email'} className="mt-1 w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-14 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
       <p className="mt-1 text-12 text-slate-500">Leave empty to use the registered address{s.sends_to ? ` (${s.sends_to})` : ''}.</p>
+      <label className="mt-4 block text-12.5 font-semibold text-slate-700" htmlFor="gp-tz">Time zone</label>
+      <Select className="mt-1 w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-14" aria-label="Time zone" value={form.timezone} onChange={e => setForm(f => ({ ...f, timezone: e.target.value }))}>
+        <option value="">Automatic (from the project's country)</option>
+        {TIMEZONES.map(z => <option key={z} value={z}>{z.replace('_', ' ')}</option>)}
+      </Select>
+      <p className="mt-1 text-12 text-slate-500">Days, weeks and report dates follow it. In use now: {s.timezone_in_use}; today is {s.today}.</p>
       <div className="mt-3 flex flex-wrap items-center gap-3"><Button variant="primary" busy={busy} onClick={save}>Save settings</Button>{msg && <span className="text-13 text-emerald-700" role="status">{msg}</span>}{err && <span className="text-13 text-red-700" role="alert">{err}</span>}</div>
     </Card>
   );

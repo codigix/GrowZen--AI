@@ -749,7 +749,8 @@ def analyse(f: Fetched, robots: dict[str, Any], llms: dict[str, Any] | None, ssl
         nxt = first.find_next("p")
         first_answer = len(re.findall(r"\w+", _txt(nxt.get_text()))) if nxt else None
     content = {"word_count": len(words), "headings": headings, "outline": outline, "h1_texts": [tx[:200] for lv, tx in heads if lv == 1][:10],
-               "images": {"total": len(imgs), "missing_alt": sum(1 for i in imgs if i.get("alt") is None), "lazy": sum(1 for i in imgs if (i.get("loading") or "").lower() == "lazy")},
+               "images": {"total": len(imgs), "missing_alt": sum(1 for i in imgs if i.get("alt") is None), "lazy": sum(1 for i in imgs if (i.get("loading") or "").lower() == "lazy"),
+                          "alts": [str(i.get("alt")).strip()[:120] for i in imgs if (i.get("alt") or "").strip()][:60]},  # the first 60 non-empty alt texts: what the images say about themselves
                "links": {"internal": internal, "external": external, "nofollow": nofollow}, "reading_ease": flesch(text)}
     if content["reading_ease"] is None:
         notes.append("Reading ease needs at least 100 words of English text; it is left empty here.")

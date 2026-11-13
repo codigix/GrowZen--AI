@@ -73,7 +73,7 @@ def test_meta_content_schema_and_tech_are_read_from_the_page():
     assert r["meta"]["hreflang"] == [{"lang": "en", "url": "https://asha.example/rent/"}, {"lang": "hi", "url": "https://asha.example/hi/"}, {"lang": "x-default", "url": "https://asha.example/rent/"}] and r["meta"]["generator"] == "WordPress 6.5"
     assert r["social"]["og"]["image"] == "https://asha.example/og.png" and r["social"]["twitter"]["card"] == "summary_large_image"
     assert r["content"]["headings"]["h1"] == 1 and r["content"]["headings"]["h2"] == 2 and r["content"]["h1_texts"] == ["Festive outfit rental in Pune"]
-    assert r["content"]["images"] == {"total": 2, "missing_alt": 0, "lazy": 1} and r["content"]["links"]["internal"] == 3 and r["content"]["links"]["external"] == 1 and r["content"]["links"]["nofollow"] == 1
+    assert r["content"]["images"] == {"total": 2, "missing_alt": 0, "lazy": 1, "alts": ["A lehenga", "A sherwani"]} and r["content"]["links"]["internal"] == 3 and r["content"]["links"]["external"] == 1 and r["content"]["links"]["nofollow"] == 1
     assert r["schema"]["types"][:2] == ["LocalBusiness", "FAQPage"] and r["schema"]["json_ld"] == [{"type": "LocalBusiness", "valid": True}] and r["schema"]["errors"] == []
     t = r["tech"]
     assert t["server"] == "nginx" and t["powered_by"] == "PHP/8.2" and t["cms"] == "WordPress" and "Cloudflare" in t["cdn"] and "jQuery" in t["js_libraries"]

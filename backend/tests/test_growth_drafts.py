@@ -311,3 +311,62 @@ def test_saved_polluted_competitors_become_a_task_that_closes_when_they_are_remo
         assert gc.verify(db, b, issue["verify"], None, TODAY)["passed"] is True
     finally:
         db.close()
+
+
+def test_social_and_directory_domains_never_reach_the_link_gap_or_the_backlink_targets(project):
+    from types import SimpleNamespace
+
+    from app.backlinks.models import BiTrackedTarget
+    from app.backlinks.sync import sync_targets
+    from app.competitors import hygiene
+    from app.models import Competitor
+    me = SimpleNamespace(website="https://rental.example")
+    assert hygiene.real_competitor_domains(me, ["instagram.com", "youtube.com", "rival.in", "rental.example", "linktr.ee"]) == ["rival.in"]
+    db = SessionLocal()
+    try:
+        b = db.get(Business, project)
+        db.add_all([Competitor(business_id=project, name="IG", website="https://instagram.com/x", source="manual"), Competitor(business_id=project, name="Rival", website="https://rival.in", source="manual")])
+        db.commit()
+        sync_targets(db, b)
+        domains = {t.domain for t in db.query(BiTrackedTarget).filter_by(business_id=project)}
+        assert "rival.in" in domains and "instagram.com" not in domains  # the expensive, meaningless target is never created
+    finally:
+        db.close()
+
+
+def test_start_tracks_the_searches_the_website_is_about_and_never_touches_existing_keywords(project, monkeypatch):
+    monkeypatch.setattr(gc, "_crawl", lambda db, b: {"pages": [{"url": "https://rental.example/", "status": 200, "title": "Rental Co | Designer Lehenga Hire", "meta_description": "Lehenga hire for weddings", "h1": "Designer lehenga hire in Pune"}]})
+    db = SessionLocal()
+    try:
+        b = db.get(Business, project)
+        assert gc.add_site_keywords(db, b) == []  # nothing tracked at all: the person chooses the first keywords
+        db.add(Keyword(business_id=project, keyword="clothes market in pune", volume=100, tracked=True, cluster="Keep"))
+        db.flush()
+        made = gc.add_site_keywords(db, b)
+        assert made and all(k.endswith(" in pune") for k in made) and any("lehenga" in k for k in made)
+        kept = db.query(Keyword).filter_by(business_id=project, keyword="clothes market in pune").one()
+        assert kept.cluster == "Keep" and kept.tracked is True
+        assert gc.add_site_keywords(db, b) == []  # the terms are covered now: nothing more to add
+    finally:
+        db.close()
+
+
+def test_image_alt_text_is_checked_against_keywords_only_when_the_alt_texts_were_read(project, monkeypatch):
+    monkeypatch.setattr(gc, "_crawl", lambda db, b: {})
+    db = SessionLocal()
+    try:
+        b = db.get(Business, project)
+        db.add(Keyword(business_id=project, keyword="lehenga rental in pune", volume=300, tracked=True, cluster="Lehenga"))
+        db.flush()
+        old = {"content": {"images": {"total": 5, "missing_alt": 0}}}  # an older X-Ray: no alt texts were kept
+        assert not any(i["key"].startswith("fix.kw.use.alt") for i in gc.issues(db, b, old))
+        none_used = {"content": {"images": {"total": 5, "missing_alt": 0, "alts": ["Team photo", "Our shop"]}}}
+        issue = next(i for i in gc.issues(db, b, none_used) if i["key"].startswith("fix.kw.use.alt"))
+        assert issue["verify"] == {"type": "kw_used", "surface": "alt", "keywords": ["lehenga rental in pune"]}
+        used = {"content": {"images": {"total": 5, "missing_alt": 0, "alts": ["Bridal lehenga rental in Pune showroom"]}}}
+        assert not any(i["key"].startswith("fix.kw.use.alt") for i in gc.issues(db, b, used))
+        from app.models import GrowthAction
+        from app.services import growth_drafts as gd
+        assert gd.kind_of(GrowthAction(key="fix.kw.use.alt.lehenga")) == "alt"
+    finally:
+        db.close()

@@ -14,7 +14,7 @@ from ..models import Business, GrowthAction, Post
 from . import ai
 from .growth_content import _corpus, core, has_keyword, _main_keywords, tracked
 
-KIND_BY_KEY = {"fix.kw.use.website": "meta", "fix.kw.use.profile": "profile", "fix.kw.use.posts": "post", "fix.kw.use.blog": "blog", "fix.blog.none": "blog",
+KIND_BY_KEY = {"fix.kw.use.alt": "alt", "fix.kw.use.website": "meta", "fix.kw.use.profile": "profile", "fix.kw.use.posts": "post", "fix.kw.use.blog": "blog", "fix.blog.none": "blog",
                "fix.xray.title": "meta", "fix.xray.description": "meta", "fix.site.meta.title_missing": "meta", "fix.site.meta.title_length": "meta", "fix.site.meta.title_duplicate": "meta",
                "fix.site.meta.desc_missing": "meta", "fix.site.meta.desc_length": "meta", "fix.site.meta.desc_duplicate": "meta"}
 FACTS = ("Use only facts that appear in the business profile. Never invent prices, discounts, awards, years in business, statistics, customer names, reviews, addresses or phone numbers. "
@@ -75,6 +75,10 @@ def build(db: Session, b: Business, a: GrowthAction) -> dict[str, Any]:
         user = (f"Business profile:\n{profile}\n\n{kw_line}\n\nWrite a Google Business Profile description (600 to 740 characters, no links, no phone numbers, no promotions) and up to 4 service names with a one-sentence description each, "
                 'using the keywords naturally. Never put keywords in the business name. Return JSON {"description": "", "services": [{"name": "", "description": ""}]}.')
         limits = {"description": 750}
+    elif kind == "alt":
+        user = (f"Business profile:\n{profile}\n\n{kw_line}\n\nWrite 4 alt texts for photos on the homepage, each under 110 characters, describing what a photo of this business could really show and naturally including one keyword and the place. "
+                'Describe the picture, never list keywords. Return JSON {"alts": [""]}.')
+        limits = {}
     elif kind == "post":
         user = (f"Business profile:\n{profile}\n\n{kw_line}\n\nWrite one Google Business Profile Update post, 120 to 300 words at most 1200 characters, about the service, with a helpful tone and a clear call to action. "
                 'Return JSON {"title": "", "body": "", "cta_type": "BOOK"|"LEARN_MORE"|"CALL"}.')
@@ -93,13 +97,15 @@ def build(db: Session, b: Business, a: GrowthAction) -> dict[str, Any]:
     for k, v in data.items():
         if k in limits:
             clean[k] = _cut(v, limits[k])
+        elif k == "alts" and isinstance(v, list):
+            clean[k] = [_cut(x, 110) for x in v if str(x).strip()][:6]
         elif k == "headings" and isinstance(v, list):
             clean[k] = [_cut(x, 120) for x in v if str(x).strip()][:8]
         elif k == "services" and isinstance(v, list):
             clean[k] = [{"name": _cut(x.get("name"), 80), "description": _cut(x.get("description"), 300)} for x in v if isinstance(x, dict) and str(x.get("name") or "").strip()][:4]
         elif k == "cta_type" and v in ("BOOK", "LEARN_MORE", "CALL"):
             clean[k] = v
-    main_field = {"meta": "title", "profile": "description", "post": "body", "blog": "title"}[kind]
+    main_field = {"meta": "title", "profile": "description", "post": "body", "blog": "title", "alt": "alts"}[kind]
     if not clean.get(main_field):
         raise DraftError("The AI answer was empty. Try again.")
     text = " ".join(str(v) if not isinstance(v, (list, dict)) else repr(v) for v in clean.values())

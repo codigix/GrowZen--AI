@@ -62,7 +62,8 @@ def recipient(db: Session, b: Business) -> str | None:
 def public_prefs(db: Session, b: Business) -> dict[str, Any]:
     p = prefs(b)
     s = get_settings()
-    return {"email": p["email"], "weekly": p["weekly"], "monthly": p["monthly"], "alerts": p["alerts"], "to": p["to"], "sends_to": recipient(db, b), "smtp_ready": bool(s.smtp_host and s.smtp_from)}
+    return {"email": p["email"], "weekly": p["weekly"], "monthly": p["monthly"], "alerts": p["alerts"], "to": p["to"], "sends_to": recipient(db, b), "smtp_ready": bool(s.smtp_host and s.smtp_from),
+            "timezone": b.timezone or "", "timezone_in_use": str(localtime.tz_of(b)), "today": localtime.today(b).isoformat()}
 
 
 # ------------------------------------------------------------------------------------------------------------------- windows
@@ -298,7 +299,7 @@ def render_html(d: dict[str, Any]) -> str:
             + btn + "<p style='font-size:11px;color:#94a3b8;margin-top:20px'>Every figure comes from real measurements and live checks; a task is counted only when the data confirms it.</p></div>")
 
 
-def send(db: Session, b: Business, row: GrowthReport, force: bool = False) -> dict[str, Any]:
+def send(db: Session, b: Business, row: GrowthReport, force: bool = False, interactive: bool = False) -> dict[str, Any]:
     """Email the report once to the registered address. Returns {sent, reason}. A report already emailed is not sent again unless forced."""
     from . import notify
     p = prefs(b)
@@ -317,7 +318,7 @@ def send(db: Session, b: Business, row: GrowthReport, force: bool = False) -> di
     word = "Weekly" if row.period == "week" else "Monthly"
     subject = f"{word} growth report: {b.name} ({row.period_start.isoformat()} to {row.period_end.isoformat()})"
     try:
-        ok = notify.send_email(to, subject, render_text(d), html=render_html(d))
+        ok = notify.send_email(to, subject, render_text(d), html=render_html(d), timeout=10 if interactive else 30)  # a person is waiting: 10 s, not 30
     except Exception as exc:  # noqa: BLE001 - a mail failure is recorded, never raised into the scheduler
         log.warning("growth report email failed for business %s: %s", b.id, type(exc).__name__)
         row.email_error = f"The email could not be sent ({type(exc).__name__})."

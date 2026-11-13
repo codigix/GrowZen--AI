@@ -199,7 +199,7 @@ def test_a_single_measurement_is_a_level_not_a_movement(project, sources):
 
 def test_reports_are_emailed_once_to_the_registered_address(project, sources, monkeypatch):
     sent = []
-    monkeypatch.setattr(notify, "send_email", lambda to, subject, body, attachments=None, html=None: sent.append((to, subject, body, html)) or True)
+    monkeypatch.setattr(notify, "send_email", lambda to, subject, body, attachments=None, html=None, **kw: sent.append((to, subject, body, html)) or True)
     db = SessionLocal()
     try:
         b = db.get(Business, project)
@@ -264,7 +264,7 @@ def test_a_mail_failure_is_recorded_not_raised_and_retried_later(project, source
 
 def test_the_critical_alert_goes_out_at_most_once_a_day(project, monkeypatch):
     sent = []
-    monkeypatch.setattr(notify, "send_email", lambda to, subject, body, attachments=None, html=None: sent.append(subject) or True)
+    monkeypatch.setattr(notify, "send_email", lambda to, subject, body, attachments=None, html=None, **kw: sent.append(subject) or True)
     db = SessionLocal()
     try:
         b = db.get(Business, project)

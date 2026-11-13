@@ -46,3 +46,15 @@ def test_the_growth_plan_uses_the_projects_day(client, monkeypatch):
         assert gp._today(date(2026, 1, 1), b) == date(2026, 1, 1)  # an explicit day is never overridden
     finally:
         db.close()
+
+
+def test_the_time_zone_can_be_set_through_the_api_and_is_validated(client):
+    bid = client.post("/api/v1/businesses", json={"name": "Zone Co", "country": "IN"}).json()["id"]
+    ok = client.patch(f"/api/v1/businesses/{bid}", json={"timezone": "Asia/Dubai"})
+    assert ok.status_code == 200 and ok.json()["timezone"] == "Asia/Dubai"
+    assert client.get(f"/api/v1/businesses/{bid}/growth/notifications").json()["timezone_in_use"] == "Asia/Dubai"
+    assert client.patch(f"/api/v1/businesses/{bid}", json={"timezone": "Mars/Olympus"}).status_code == 422
+    assert client.patch(f"/api/v1/businesses/{bid}", json={"timezone": "not a zone"}).status_code == 422
+    cleared = client.patch(f"/api/v1/businesses/{bid}", json={"timezone": ""})
+    assert cleared.status_code == 200 and cleared.json()["timezone"] in (None, "")
+    assert "Kolkata" in client.get(f"/api/v1/businesses/{bid}/growth/notifications").json()["timezone_in_use"]
