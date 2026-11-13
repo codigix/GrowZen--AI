@@ -8,6 +8,7 @@ export const SIDEBAR_GROUPS = [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/growth', label: 'Growth Plan', icon: Target, badge: 'New' },
       { to: '/projects', label: 'Projects', icon: Layers },
+      { to: '/tracking-overview', label: 'Tracking Overview', icon: MapPin },
       { to: '/onboarding', label: 'Business Onboarding', icon: Building2, badge: 'Phase 1' }
     ]
   },
@@ -15,7 +16,7 @@ export const SIDEBAR_GROUPS = [
     title: 'Site Performance',
     items: [
       { to: '/website-audit', label: 'Website Audit & X-Ray', icon: ScanSearch },
-      { to: '/rank-tracking', label: 'Position Tracking', icon: MapPin },
+      { to: '/rank-tracking/landscape', label: 'Position Tracking', icon: MapPin },
       { to: '/traffic', label: 'Website Traffic', icon: Activity, badge: 'New' },
 
 
@@ -101,11 +102,11 @@ const page = (to, extra = {}) => ({ ...(BY_TO[to] || { to, label: to }), ...extr
 const link = (to, label) => ({ to, label });
 
 export const SIDEBAR_SECTIONS = [
-  { id: 'home', label: 'Home', title: 'Home', icon: House, groups: [{ items: [page('/dashboard'), page('/growth'), page('/projects'), page('/onboarding')] }] },
+  { id: 'home', label: 'Home', title: 'Home', icon: House, groups: [{ items: [page('/dashboard'), page('/growth'), page('/projects'), page('/tracking-overview'), page('/onboarding')] }] },
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { items: [page('/dashboard')] },
-      { title: 'Site Performance', items: [page('/website-audit'), page('/rank-tracking'), page('/traffic'), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] })] },
+      { title: 'Site Performance', items: [page('/website-audit'), page('/rank-tracking/landscape', { also: ['/rank-tracking'] }), page('/traffic'), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] })] },
       { title: 'Competitors', items: [page('/competitor-finder'), page('/competitor-watch'), link('/backlink-intelligence/gap', 'Backlink Gap')] },
       { title: 'Keyword Research', items: [page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' }), page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics', '/keyword-management/use'] })] },
       { title: 'Content Ideas', items: [page('/ai-content-generation/blog'), page('/ai-content-generation/trends'), link('/seo-brief', 'SEO Brief Generator')] },

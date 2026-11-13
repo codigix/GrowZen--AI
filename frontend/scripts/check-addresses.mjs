@@ -32,6 +32,10 @@ const CASES = [
   ['/keyword-gap', '/competitor-finder?tab=gap', 'Keyword gap', 'Competitors'],
   ['/page-xray', '/website-audit?tab=xray', 'Page X-Ray report', 'Website Audit & X-Ray'],
   ['/gmb-profile/reviews', '/reviews?tab=google', 'Replies on Google', 'Reviews & Reputation'],
+  ['/rank-tracking', '/rank-tracking/landscape', 'Where you rank on Google right now', 'Position Tracking'],
+  ['/rank-tracking/landscape', '/rank-tracking/landscape', 'Where you rank on Google right now', 'Position Tracking'],
+  ['/tracking-overview', '/tracking-overview', 'Projects tracked', 'Tracking Overview'],
+  ['/dashboard', '/dashboard', 'Open as a page', 'Dashboard'],
   ['/organic-rankings', '/organic-rankings/overview', 'My search performance', 'My Search Performance'],
   ['/top-pages', '/top-pages', 'My search performance', 'My Search Performance']
 ];

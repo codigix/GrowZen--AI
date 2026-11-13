@@ -1,3 +1,4 @@
+import PositionTrackingHome from './PositionTrackingHome';
 import React, { useEffect, useState } from 'react';
 import { JourneyCard } from './JourneyBar';
 import { Link, useNavigate } from 'react-router-dom';
@@ -725,6 +726,19 @@ function GrowthSkeleton() {
   );
 }
 
+/** Every project's Position Tracking on the Dashboard: visibility, movement and keywords, the same table as Tracking Overview. */
+function TrackingTable() {
+  return (
+    <section className="mt-8" aria-label="Position tracking across projects">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <div><h2 className="text-18 font-semibold text-slate-900">Position tracking</h2><p className="text-13 text-slate-500">Every project's visibility on Google and in AI answers. Click a project to open its tracking.</p></div>
+        <Link to="/tracking-overview" className="text-13 font-semibold text-indigo-600 hover:underline">Open as a page →</Link>
+      </div>
+      <PositionTrackingHome />
+    </section>
+  );
+}
+
 function DashboardJourney() {
   const [business] = useSeoBusiness();
   return business ? <div className="mb-5"><JourneyCard bid={business.id} /></div> : null;
@@ -733,7 +747,7 @@ function DashboardJourney() {
 export default function SeoOverviewPage() {
   return (
     <SeoShell title="Command Center" subtitle="Your AI-run SEO portfolio at a glance" hideSwitcher>
-      {() => <><DashboardJourney /><Dashboard /></>}
+      {() => <><DashboardJourney /><Dashboard /><TrackingTable /></>}
     </SeoShell>
   );
 }

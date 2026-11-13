@@ -1,7 +1,6 @@
 import { useCrumb } from './crumbs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
-import PositionTrackingHome from './PositionTrackingHome';
+import { Navigate, Link, useParams, useSearchParams } from 'react-router-dom';
 import L from 'leaflet';
 import ProcessTasks from './ProcessTasks';
 import 'leaflet/dist/leaflet.css';
@@ -303,7 +302,7 @@ function Page({ b }) {
   return (
     <div className="pos-theme space-y-6 min-w-0" style={{ contain: 'inline-size' }}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Link to="/rank-tracking" className="inline-flex items-center gap-1.5 text-13 font-semibold text-indigo-600 hover:underline"><ArrowLeft size={14} />All projects</Link>
+        <Link to="/tracking-overview" className="inline-flex items-center gap-1.5 text-13 font-semibold text-indigo-600 hover:underline"><ArrowLeft size={14} />All projects</Link>
         <span className="text-slate-300" aria-hidden="true">/</span>
         <span className="text-14 font-semibold text-slate-900">{b.name}</span>
         {b.website && <span className="text-13 text-slate-500 truncate max-w-[280px]">{String(b.website).replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>}
@@ -330,10 +329,8 @@ function Page({ b }) {
 export default function LocalRankTrackerPage() {
   const [params] = useSearchParams();
   const { tab: routeTab } = useParams();
-  // Without a tab the page is the list of projects; a tab opens that project's view
-  if (!routeTab && !params.get('tab')) {
-    return <SeoShell title="Position Tracking" subtitle="Every project's visibility on Google and in AI answers: open one to see its positions, landscape and competitors" needsBusiness={false}><PositionTrackingHome /></SeoShell>;
-  }
+  // Without a tab the page opens the Landscape of the selected project (the table of every project is on the Dashboard and on Tracking Overview)
+  if (!routeTab && !params.get('tab')) return <Navigate to="/rank-tracking/landscape" replace />;
   return (
     <SeoShell title="Position Tracking" subtitle="Visibility, estimated traffic and positions of your tracked keywords on Google, and how you rank in the Maps pack">
       {(b) => <Page key={b.id} b={b} />}

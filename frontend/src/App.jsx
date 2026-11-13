@@ -29,6 +29,7 @@ const AutomationPipelinePage = lazy(() => import('./platform/AutomationPipelineP
 const GbpManagerPage = lazy(() => import('./platform/GbpManagerPage'));
 const ReviewManagerPage = lazy(() => import('./platform/ReviewManagerPage'));
 const LocalRankTrackerPage = lazy(() => import('./platform/LocalRankTrackerPage'));
+const TrackingOverviewPage = lazy(() => import('./platform/TrackingOverviewPage'));
 const KeywordResearchPage = lazy(() => import('./platform/KeywordResearchPage'));
 const CompetitorFinderPage = lazy(() => import('./platform/CompetitorFinderPage'));
 const ContentStudioPage = lazy(() => import('./platform/ContentStudioPage'));
@@ -149,6 +150,7 @@ export default function App() {
         <Route path="google-posts" element={<GbpManagerPage initialTab="posts" />} />
         <Route path="media-management" element={<GbpManagerPage initialTab="photos" />} />
         <Route path="reviews" element={<ReviewManagerPage />} />
+        <Route path="tracking-overview" element={<TrackingOverviewPage />} />
         <Route path="rank-tracking" element={<LocalRankTrackerPage />} />
         <Route path="rank-tracking/:tab" element={<LocalRankTrackerPage />} />
         <Route path="keyword-management" element={<KeywordResearchPage />} />
