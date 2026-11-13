@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { KeywordGap, CompareDomains } from './SeoToolkit';
 import {
   Search, MapPin, Star, Globe, ExternalLink, Loader2, AlertTriangle, Lightbulb, Plus, X, Link2, FileText, Gauge, Settings2, Play,
   CheckCircle2, Minus, Layers, ArrowRight, BookOpen, Code2, ListChecks, HelpCircle, Sparkles, ShieldCheck, Smartphone, Monitor, RotateCcw, Eye
@@ -535,7 +536,8 @@ function Research({ b }) {
   const [addBusy, addError, runAdd] = useAction();
   const [state, setState] = useState(null); // { run, defaults, setup }
   const [loadError, setLoadError] = useState('');
-  const [tab, setTab] = useState('overview');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(() => (['overview', 'competitors', 'compare', 'gap', 'keywords', 'maps', 'links', 'plan'].includes(params.get('tab')) ? params.get('tab') : 'overview'));
   const [settings, setSettings] = useState(false);
   const [detail, setDetail] = useState(null);
   const [serp, setSerp] = useState(null);
@@ -691,6 +693,8 @@ function Research({ b }) {
             <Tabs value={tab} onChange={setTab} tabs={[
               { id: 'overview', label: 'Overview' },
               { id: 'competitors', label: 'Competitors', count: rows.length },
+              { id: 'compare', label: 'Side by side' },
+              { id: 'gap', label: 'Keyword gap' },
               { id: 'keywords', label: 'Keywords', count: result.keywords.length },
               { id: 'maps', label: 'Google Maps', count: result.local_competitors.length },
               { id: 'links', label: 'Listings' },
@@ -703,6 +707,8 @@ function Research({ b }) {
                 onAddManual={addManual} addBusy={addBusy === 'add'} addError={addError} />
               <ErrorNote>{mapsError}</ErrorNote>
             </>}
+            {tab === 'compare' && <CompareDomains b={b} result={result} />}
+            {tab === 'gap' && <KeywordGap b={b} result={result} />}
             {tab === 'keywords' && <KeywordsTab r={result} onKeyword={setSerp} onIdeas={() => setIdeas(true)} />}
             {tab === 'maps' && <MapsTab r={result} />}
             {tab === 'links' && <ListingsTab r={result} setupInfo={state.setup} />}
@@ -724,7 +730,7 @@ function Research({ b }) {
 
 export default function CompetitorFinderPage() {
   return (
-    <SeoShell step="competitors" title="Competitor Research" subtitle="Who outranks you on Google and Google Maps, the keywords and pages they win with, how their sites compare to yours, and what to do">
+    <SeoShell step="competitors" title="Competitors" subtitle="Who outranks you on Google and Maps, side by side with you, the keywords you are missing, and what to do about it: one research, one place">
       {(b) => <Research key={b.id} b={b} />}
     </SeoShell>
   );

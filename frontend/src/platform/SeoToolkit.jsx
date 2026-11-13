@@ -56,8 +56,9 @@ const Empty = ({ icon: Icon = Lightbulb, title, children, action }) => (
 );
 
 /** The latest competitor research of the project (Serper), shared by Keyword Gap and Compare Domains. */
-function useResearch(b) {
-  const d = useApi(`/businesses/${b.id}/competitor-research`);
+function useResearch(b, given = null) {
+  const d = useApi(given ? null : `/businesses/${b.id}/competitor-research`); // inside Competitor Research the result is handed over: no second request
+  if (given) return { loading: false, error: null, result: given, running: false };
   const run = d.data?.run;
   const done = run?.status === 'done' ? run : d.data?.last_done;
   return { loading: !d.data && !d.error, error: d.error, result: done?.result || null, running: run && run.status !== 'done' && run.status !== 'failed' };
@@ -131,9 +132,9 @@ export function TrackedPositions({ b }) {
 
 /* ── Keyword Gap ───────────────────────────────────────────────────────── */
 
-function KeywordGap({ b }) {
+export function KeywordGap({ b, result = null }) {
   const path = useModulePath();
-  const r = useResearch(b);
+  const r = useResearch(b, result);
   const [tab, setTab] = useState('missing');
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
@@ -191,9 +192,9 @@ function KeywordGap({ b }) {
 
 /* ── Compare Domains ───────────────────────────────────────────────────── */
 
-function CompareDomains({ b }) {
+export function CompareDomains({ b, result = null }) {
   const path = useModulePath();
-  const r = useResearch(b);
+  const r = useResearch(b, result);
   if (r.loading) return <SkCard title="Side by side" subtitle="The best figure in each row is highlighted" pad={false}><SkTable headers={["Measure", "You", "Competitor 1", "Competitor 2", "Competitor 3"]} rows={6} bare /></SkCard>;
   if (!r.result) return <NeedResearch path={path} what="The comparison" />;
   const x = r.result;
