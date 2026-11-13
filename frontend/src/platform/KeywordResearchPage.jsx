@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AutopilotPanel } from './AutopilotPanels';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Sparkles, FileText, Trash2, Loader2, MapPin, Globe, Users, X, Star, CheckCircle2, CircleDashed, AlertTriangle, Copy, Check, BarChart2,
   TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft, ArrowRight
@@ -100,7 +100,7 @@ function Discover({ b, tracked, onTracked }) {
   const track = (rows) => run('track', async () => {
     const body = rows.map(k => ({ keyword: k.keyword, volume: k.volume ?? null, difficulty: k.difficulty ?? null, cpc: k.cpc ?? null, intent: k.intent, target_url: k.coverage?.page ? pathOf(k.coverage.page) : null, priority: k.group === 'near_me' || k.group === 'local' ? 'High' : 'Medium' }));
     const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body });
-    setSelected([]); onTracked(); toast(`${r.added} keyword${r.added === 1 ? '' : 's'} added to tracking`);
+    setSelected([]); onTracked(rows.map(k => k.keyword), r.added);
     setResult(res => res && { ...res, keywords: res.keywords.map(k => (rows.some(x => x.keyword === k.keyword) ? { ...k, tracked: true } : k)) });
   });
   const exportCsv = () => {
@@ -406,9 +406,7 @@ function GooglePlanner({ b, tracked, onTracked }) {
   const track = (list) => run('track', async () => {
     const body = list.map(r => ({ keyword: r.keyword, volume: r.avg_monthly_searches ?? null, cpc: r.high_top_of_page_bid || null, priority: r.competition === 'LOW' ? 'High' : 'Medium' }));
     const res = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body });
-    setSelected([]); onTracked();
-    const n = res?.added ?? list.length;
-    toast(`${n} keyword${n === 1 ? '' : 's'} added to tracking`);
+    setSelected([]); onTracked(list.map(r => r.keyword), res?.added ?? list.length);
   });
 
   const exportCsv = () => {
@@ -626,9 +624,31 @@ function GooglePlanner({ b, tracked, onTracked }) {
 
 /* ── Tracked & topics ─────────────────────────────────────────────────── */
 
+function JustAdded({ names, added, total, mapped }) {
+  if (!names.length) return null;
+  const word = (n) => `${n} keyword${n === 1 ? '' : 's'}`;
+  return (
+    <div className="rounded-xl bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-4 py-3 flex flex-wrap items-center gap-3 text-13 text-emerald-950" role="status">
+      <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+      <div className="flex-1 min-w-[240px]">
+        <b>{added > 0 ? `${word(added)} saved and now tracked.` : `${word(names.length)} already on your list.`}</b>{' '}
+        They are marked <b>Just added</b> below. Your list now has {total}. Google positions are checked for every keyword on this list{mapped < total ? `; next, give each one a page (${total - mapped} still without)` : ''}.
+      </div>
+      <Link to="/keyword-management/discover" className="h-9 px-3.5 rounded-lg inline-flex items-center gap-1.5 text-13 font-semibold bg-white ring-1 ring-inset ring-emerald-300 text-emerald-900 hover:bg-emerald-100"><Plus size={14} />Find more keywords</Link>
+    </div>
+  );
+}
+
 function Tracked({ b, kw }) {
   const [busy, error, run] = useAction();
   const tracked = kw.data?.keywords || [];
+  const location = useLocation();
+  const fresh = useMemo(() => new Set((location.state?.added || []).map(x => String(x).toLowerCase())), [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!fresh.size || !kw.data) return;
+    const el = document.querySelector('[data-just-added="1"]');
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [fresh, kw.data]);
   const update = (k, patch) => run(`u${k.id}`, async () => {
     const out = await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, ...patch } });
     kw.setData(d => ({ ...d, keywords: d.keywords.map(x => (x.id === k.id ? out : x)) }));
@@ -645,16 +665,17 @@ function Tracked({ b, kw }) {
         ))}
       </div>
       {confirmNode}
+      <JustAdded names={[...fresh]} added={location.state?.newCount ?? 0} total={tracked.length} mapped={mapped} />
       <ErrorNote>{error}</ErrorNote>
       <Card title="Tracked keywords and their pages" subtitle="Give each keyword one target page, so your pages don't compete with each other. Ranks update with each rank scan.">
-        {!kw.data ? <SkTable cols={['w-1/3','w-12','w-12','w-12','w-16']} rows={8} /> : !tracked.length ? <div className="py-10 text-center text-13 text-slate-500">No tracked keywords yet. Pick some in Discover.</div> : (
+        {!kw.data ? <SkTable cols={['w-1/3','w-12','w-12','w-12','w-16']} rows={8} /> : !tracked.length ? <div className="py-10 text-center text-13 text-slate-500">No tracked keywords yet. Pick some in Find Keywords.</div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-13 min-w-[640px]">
               <thead className="text-11   text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-semibold">Keyword</th><th className="p-2 text-right font-semibold">Searches</th><th className="p-2 text-left font-semibold">Target page</th><th className="p-2 text-right font-semibold">Rank</th><th className="p-2 text-left font-semibold">Priority</th><th className="p-2" /></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {tracked.map(k => (
-                  <tr key={k.id} className="hover:bg-slate-50">
-                    <td className="p-2 text-slate-900">{k.keyword}<div>{k.intent && <Badge tone={INTENT_TONE[k.intent] || 'gray'}>{k.intent}</Badge>}</div></td>
+                  <tr key={k.id} data-just-added={fresh.has(k.keyword.toLowerCase()) ? '1' : undefined} className={fresh.has(k.keyword.toLowerCase()) ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}>
+                    <td className="p-2 text-slate-900">{k.keyword}{fresh.has(k.keyword.toLowerCase()) && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5 align-middle">Just added</span>}<div>{k.intent && <Badge tone={INTENT_TONE[k.intent] || 'gray'}>{k.intent}</Badge>}</div></td>
                     <td className="p-2 text-right tabular-nums">{fmt(k.volume)}</td>
                     <td className="p-2"><input list={`pages-${b.id}`} className={`${inputCls} max-w-[260px] ${!k.target_url ? 'ring-1 ring-amber-300' : ''}`} defaultValue={k.target_url || ''} placeholder="— not mapped —" onBlur={e => e.target.value !== (k.target_url || '') && update(k, { target_url: e.target.value || null })} /></td>
                     <td className="p-2 text-right tabular-nums">{k.rank ?? <span className="text-slate-400">—</span>}{k.rank && k.prev_rank && k.prev_rank !== k.rank && <span className={`ml-1 text-11 ${k.prev_rank > k.rank ? 'text-emerald-700' : 'text-red-600'}`}>{k.prev_rank > k.rank ? '▲' : '▼'}{Math.abs(k.prev_rank - k.rank)}</span>}</td>
@@ -782,8 +803,7 @@ function KeywordExplorer({ b, tracked = [], onTracked }) {
 
   const trackSingle = (kw) => run(`t-${kw}`, async () => {
     await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: kw }] });
-    if (onTracked) onTracked();
-    toast(`"${kw}" added to tracking`);
+    if (onTracked) onTracked([kw], 1);
   });
 
   const trackSelected = () => run('bulk-track', async () => {
@@ -792,9 +812,9 @@ function KeywordExplorer({ b, tracked = [], onTracked }) {
       method: 'POST',
       body: selectedKws.map(k => ({ keyword: k }))
     });
-    if (onTracked) onTracked();
-    toast(`${selectedKws.length} keywords added to tracking`);
+    const names = selectedKws;
     setSelectedKws([]);
+    if (onTracked) onTracked(names, names.length);
   });
 
   const copyText = (kw) => {
@@ -1129,13 +1149,13 @@ const SOURCES = [['discover', 'Ideas for my business', 'Built from your services
 const SAVED_VIEWS = [['tracked', 'My list and pages', 'Every saved keyword with its rank and the page it should rank with'], ['topics', 'Topics', 'Group the keywords into topics, one page per topic']];
 const pill = (on) => `h-9 px-4 rounded-full text-13 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
 
-function Keywords({ b, tab, kw }) {
+function Keywords({ b, tab, kw, onSaved }) {
   const tracked = kw.data?.keywords || [];
   return (
     <>
-      {tab === 'discover' && <Discover b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
-      {tab === 'planner' && <GooglePlanner b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
-      {tab === 'explorer' && <KeywordExplorer b={b} tracked={tracked} onTracked={() => kw.reload(true)} />}
+      {tab === 'discover' && <Discover b={b} tracked={tracked} onTracked={onSaved} />}
+      {tab === 'planner' && <GooglePlanner b={b} tracked={tracked} onTracked={onSaved} />}
+      {tab === 'explorer' && <KeywordExplorer b={b} tracked={tracked} onTracked={onSaved} />}
       {tab === 'tracked' && <Tracked b={b} kw={kw} />}
       {tab === 'topics' && <Topics b={b} kw={kw} />}
     </>
@@ -1182,7 +1202,13 @@ function NextStep({ progress }) {
 function KeywordPath({ b, tab, setTab }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
   const progress = useApi(`/businesses/${b.id}/keywords/progress`);
+  const navigate = useNavigate();
   const refresh = { ...kw, reload: (q) => { kw.reload(q); progress.reload(true); } };
+  // Saving a keyword from any source ends on My Keywords, with what was just saved marked.
+  const saved = (names, added) => {
+    kw.reload(true); progress.reload(true);
+    navigate('/keyword-management/tracked', { state: { added: names || [], newCount: added ?? (names || []).length } });
+  };
   return (
     <>
       <PathBar progress={progress.data} tab={tab} setTab={setTab} />
@@ -1197,7 +1223,7 @@ function KeywordPath({ b, tab, setTab }) {
         </div>
       )}
       {(tab === 'discover' || tab === 'tracked') && <div className="mb-5"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
-      <Keywords b={b} tab={tab} kw={refresh} />
+      <Keywords b={b} tab={tab} kw={refresh} onSaved={saved} />
       <NextStep progress={progress.data} />
     </>
   );
