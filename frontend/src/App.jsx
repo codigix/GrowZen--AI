@@ -33,8 +33,13 @@ const KeywordResearchPage = lazy(() => import('./platform/KeywordResearchPage'))
 const CompetitorFinderPage = lazy(() => import('./platform/CompetitorFinderPage'));
 const ContentStudioPage = lazy(() => import('./platform/ContentStudioPage'));
 const SiteAuditPage = lazy(() => import('./platform/SiteAuditPage'));
-const PageXRayPage = lazy(() => import('./platform/PageXRayPage'));
 const GrowthPlanPage = lazy(() => import('./platform/GrowthPlanPage'));
+function XRayRedirect() {
+  const { search, hash } = useLocation();
+  const p = new URLSearchParams(search);
+  p.set('tab', 'xray');
+  return <Navigate to={`/website-audit?${p.toString()}${hash}`} replace />;
+}
 const BacklinkCheckerPage = lazy(() => import('./platform/BacklinkCheckerPage'));
 const GrowthFixPage = lazy(() => import('./platform/GrowthFixPage'));
 const BacklinksCitationsPage = lazy(() => import('./platform/BacklinksCitationsPage'));
@@ -168,7 +173,7 @@ export default function App() {
         <Route path="ai-content-generation/:tab" element={<ContentStudioPage />} />
         <Route path="content-calendar" element={<Navigate to="/ai-content-generation/calendar" replace />} />
         <Route path="website-audit" element={<SiteAuditPage />} />
-        <Route path="page-xray" element={<PageXRayPage />} />
+        <Route path="page-xray" element={<XRayRedirect />} />
         <Route path="serp-xray" element={<Navigate to="/keyword-overview" replace />} />
         <Route path="growth" element={<GrowthPlanPage />} />
         <Route path="autopilot" element={<Navigate to="/google-posts" replace />} />

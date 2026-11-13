@@ -538,7 +538,7 @@ function Compare({ items, onOpen, active }) {
   );
 }
 
-function XRay({ b }) {
+export function XRay({ b }) {
   const [input, setInput] = useState('');
   const [urls, setUrls] = useState([]);
   const [results, setResults] = useState({}); // url -> {state, data, error}

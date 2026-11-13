@@ -1,19 +1,22 @@
 import { useCrumb } from './crumbs';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
-import { Check, ChevronRight, ScanSearch, FileBarChart, Braces, Loader2 } from 'lucide-react';
+import { Check, ChevronRight, ScanSearch, FileBarChart, Braces, Loader2, ShieldCheck } from 'lucide-react';
 import { SeoShell, Card } from './SeoUi';
 import { useSiteAudit, AuditStep, ReportStep } from './WebsiteAuditTool';
 import SchemaStudio from './SchemaStudio';
 import SiteAuditTable from './SiteAuditTable';
 import SiteAuditOverview from './SiteAuditOverview';
+import WebsiteSnapshot from './WebsiteSnapshot';
+import { XRay } from './PageXRayPage';
 
 const STEPS = [
   { id: 'audit', label: 'Audit website', hint: 'Scan it live', icon: ScanSearch },
   { id: 'report', label: 'Report', hint: 'Scores, fixes & Lighthouse', icon: FileBarChart },
-  { id: 'schema', label: 'Schema', hint: 'Structured data', icon: Braces }
+  { id: 'schema', label: 'Schema', hint: 'Structured data', icon: Braces },
+  { id: 'xray', label: 'Page X-Ray', hint: 'Check one page in depth', icon: ShieldCheck }
 ];
-const OLD_TABS = { site: 'report', business: 'report', check: 'audit', lighthouse: 'report' };
+const OLD_TABS = { site: 'report', business: 'report', check: 'audit', lighthouse: 'report', 'page-xray': 'xray' };
 
 function Stepper({ step, onStep, hasReport, running }) {
   const at = STEPS.findIndex(s => s.id === step);
@@ -74,11 +77,13 @@ function SiteAudit({ b, step, setStep }) {
   return (
     <div className="space-y-5">
       <Stepper step={current === 'loading' ? 'report' : current} onStep={setStep} hasReport={Boolean(sa.report)} running={sa.running} />
+      {current !== 'xray' && <WebsiteSnapshot b={b} sa={sa} onAudit={() => setStep(sa.report ? 'report' : 'audit')} onXray={() => setStep('xray')} />}
       {current === 'loading' && <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Opening the latest report…</div></Card>}
       {current === 'audit' && <AuditStep sa={sa} business={b} onOpenReport={() => setStep('report')} />}
       {current === 'audit' && !sa.running && <SiteAuditTable projectId={b.id} onOverview={(id, initial) => setOverview({ id, initial })} />}
       {current === 'report' && <ReportStep sa={sa} business={b} onNext={setStep} />}
       {current === 'schema' && <SchemaStudio b={b} report={sa.report} />}
+      {current === 'xray' && <XRay key={b.id} b={b} />}
     </div>
   );
 }
@@ -93,7 +98,7 @@ export default function SiteAuditPage() {
   const step = STEPS.some(s => s.id === raw) ? raw : OLD_TABS[raw] || 'audit'; // always opens on step 1; the report is one click away once there is one
   const setStep = (t) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
   return (
-    <SeoShell step="website" title="Website & On-Page SEO" subtitle="Audit the website, read the report, then fix and re-check: page by page, with ready-made fixes.">
+    <SeoShell step="website" title="Website & On-Page SEO" subtitle="One place for the website: audit the whole site, read the report and fix it, then check any single page in depth with Page X-Ray.">
       {(b) => <SiteAudit key={b.id} b={b} step={step} setStep={setStep} />}
     </SeoShell>
   );
