@@ -231,48 +231,63 @@ export function CompareDomains({ b, result = null }) {
 
 /* ── Keyword Overview ──────────────────────────────────────────────────── */
 
+const COMP_TONE = { LOW: 'text-emerald-700 bg-emerald-50', MEDIUM: 'text-amber-700 bg-amber-50', HIGH: 'text-red-700 bg-red-50' };
+const money = (v) => (v == null ? '—' : Number(v).toFixed(2));
+const pct = (v) => (v == null ? null : `${v > 0 ? '+' : ''}${Number(v).toFixed(0)}%`);
+
 function KeywordOverview({ b }) {
   const [q, setQ] = useState('');
   const [data, setData] = useState(null);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
-  const go = () => run('go', async () => setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: q.trim() } })));
-  const track = (k) => run('track', async () => { await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: k }] }); setData(d => ({ ...d, metrics: { ...d.metrics, tracked: true } })); toast('Added to tracking'); });
+  const [added, setAdded] = useState({});
+  const go = (k) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw } })); });
+  const track = (k) => run(`t${k}`, async () => { await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: k }] }); setAdded(a => ({ ...a, [k]: true })); toast(`“${k}” saved: it is now tracked`); });
+  const m = data?.metrics;
+  const peak = Math.max(1, ...(m?.monthly || []).map(x => x.searches || 0));
+  const isTracked = (k) => added[k] || (data?.keyword === k && data?.you?.tracked);
   return (
     <div className="space-y-4">
       <Card>
         <div className="flex flex-wrap gap-2">
-          <label className="relative flex-1 min-w-[260px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && q.trim().length > 1 && go()} placeholder="Enter a keyword, e.g. dentist near me" aria-label="Keyword" className="w-full h-10 pl-9 pr-3 text-14 rounded border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></label>
-          <Button variant="primary" icon={Search} busy={busy === 'go'} disabled={q.trim().length < 2} onClick={go}>Analyze</Button>
+          <label className="relative flex-1 min-w-[260px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && q.trim().length > 1 && go()} placeholder="Enter a keyword, e.g. dentist near me" aria-label="Keyword" className="w-full h-10 pl-9 pr-3 text-13 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+          <Button variant="primary" icon={Search} busy={busy === 'go'} disabled={q.trim().length < 2} onClick={() => go()}>Analyze</Button>
         </div>
         <ErrorNote>{error}</ErrorNote>
-        <p className="text-11.5 text-slate-400 mt-2">Live from Google, from the business's location. Each lookup uses 2 Serper credits.</p>
+        <p className="text-11.5 text-slate-400 mt-2">Numbers come from the Google Ads Keyword Planner, for this business's country. It shows how often a keyword is searched and what it costs; who ranks for it is on Position Tracking and Competitors.</p>
       </Card>
       {data && (
         <>
           <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
-            <Tile icon={KeyRound} label="Keyword" value={data.keyword.length > 18 ? `${data.keyword.slice(0, 17)}…` : data.keyword} sub={`${data.intent} intent`} right={!data.metrics.tracked && <Button size="sm" icon={Plus} onClick={() => track(data.keyword)}>Track</Button>} />
-            <Tile icon={Trophy} tone="emerald" label="Your Google position" value={data.you.organic ? `#${data.you.organic}` : 'Not in top 10'} sub={data.location} />
-            <Tile icon={MapPin} tone="sky" label="Your Maps position" value={data.you.local ? `#${data.you.local}` : 'Not in pack'} sub="local results" />
-            <Tile icon={TrendingUp} tone="violet" label="Volume" value={data.metrics.volume != null ? fmt(data.metrics.volume) : '—'} sub={data.metrics.volume != null ? 'saved keyword' : 'needs a keyword provider'} />
-            <Tile icon={Gauge} tone="amber" label="Difficulty" value={data.metrics.difficulty ?? '—'} sub={data.metrics.difficulty != null ? 'saved keyword' : 'needs a keyword provider'} />
+            <Tile icon={KeyRound} label="Keyword" value={data.keyword.length > 18 ? `${data.keyword.slice(0, 17)}…` : data.keyword} sub={`${data.intent} intent`} right={!isTracked(data.keyword) && <Button size="sm" icon={Plus} busy={busy === `t${data.keyword}`} onClick={() => track(data.keyword)}>Track</Button>} />
+            <Tile icon={TrendingUp} tone="violet" label="Searches per month" value={m.volume != null ? fmt(m.volume) : '—'} sub={data.found ? [pct(m.three_month_change) && `${pct(m.three_month_change)} in 3 months`, pct(m.yoy_change) && `${pct(m.yoy_change)} vs last year`].filter(Boolean).join(' · ') || 'Google Keyword Planner' : 'not in the Planner'} />
+            <Tile icon={Gauge} tone="amber" label="Competition" value={m.competition_index ?? '—'} sub={m.competition && m.competition !== 'UNSPECIFIED' ? `${m.competition.toLowerCase()} · advertisers bidding` : 'not available'} />
+            <Tile icon={Star} tone="sky" label="Top-of-page bid" value={m.cpc_high != null ? money(m.cpc_high) : '—'} sub={m.cpc_low != null ? `range ${money(m.cpc_low)} to ${money(m.cpc_high)}` : 'what advertisers pay per click'} />
+            <Tile icon={Trophy} tone="emerald" label="Your position" value={data.you.rank ? `#${data.you.rank}` : data.you.tracked ? 'Not ranking' : 'Not tracked'} sub={data.you.tracked ? (data.you.checked_at ? `last check ${data.you.checked_at}` : 'check it in Position Tracking') : 'press Track to follow it'} />
           </div>
-          {data.serp_features.length > 0 && <div className="flex flex-wrap items-center gap-2 text-12"><span className="text-slate-500">SERP features:</span>{data.serp_features.map(f => <Badge key={f} tone="blue">{f.replace(/([A-Z])/g, ' $1').toLowerCase()}</Badge>)}</div>}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
-            <Card className="xl:col-span-2" title="Google top 10" pad={false}>
-              <ol className="divide-y divide-slate-100">{data.organic.map(o => (
-                <li key={`${o.position}-${o.url}`} className={`px-5 py-2.5 flex gap-3 ${o.mine ? 'bg-emerald-50' : ''}`}><Pos value={o.position} /><div className="min-w-0"><a href={o.url} target="_blank" rel="noreferrer" className="block text-13 font-semibold text-slate-900 hover:text-indigo-600 truncate">{o.title}</a><span className="text-12 text-slate-500">{o.domain}{o.type === 'directory' ? ' · listing site' : ''}{o.mine ? ' · you' : ''}</span>{o.snippet && <p className="text-12 text-slate-500 line-clamp-2 mt-0.5">{o.snippet}</p>}</div></li>))}
-                {!data.organic.length && <li className="px-5 py-8 text-center text-13 text-slate-500">No results.</li>}</ol>
+          {!data.found && <p className="text-13 text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Google's Keyword Planner has no figures for this exact keyword (it is too rare or too new). The related ideas below are what it does know.</p>}
+          {m.monthly.length > 0 && (
+            <Card title="Searches by month" subtitle="The last 12 months, from Google">
+              <div className="flex items-end gap-1.5 h-28" role="img" aria-label="Monthly searches for the last 12 months">
+                {m.monthly.map(x => <div key={`${x.year}-${x.month}`} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full" title={`${x.month.slice(0, 3)} ${x.year}: ${fmt(x.searches)}`}><div className="w-full rounded-t bg-indigo-500" style={{ height: `${Math.max(4, Math.round((x.searches / peak) * 100))}%` }} /><span className="text-10 text-slate-400 mt-1">{x.month.slice(0, 1)}</span></div>)}
+              </div>
             </Card>
-            <div className="space-y-4">
-              <Card title="Google Maps pack" pad={false}>
-                <ul className="divide-y divide-slate-100">{data.local.slice(0, 8).map(p => <li key={`${p.position}-${p.name}`} className={`px-5 py-2 flex items-center gap-2 ${p.mine ? 'bg-emerald-50' : ''}`}><Pos value={p.position} maps /><span className="flex-1 min-w-0 truncate text-13 text-slate-800">{p.name}{p.mine ? ' (you)' : ''}</span><Stars rating={p.rating} reviews={p.reviews} /></li>)}
-                  {!data.local.length && <li className="px-5 py-6 text-center text-13 text-slate-500">No local pack for this search.</li>}</ul>
-              </Card>
-              {data.related.length > 0 && <Card title="Related searches"><div className="flex flex-wrap gap-1.5">{data.related.map(k => <button key={k} type="button" onClick={() => { setQ(k); }} className="px-2.5 py-1 rounded-full text-12.5 bg-slate-100 text-slate-700 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer">{k}</button>)}</div></Card>}
-              {data.questions.length > 0 && <Card title="People also ask"><ul className="space-y-1.5">{data.questions.map(k => <li key={k} className="flex gap-2 text-13 text-slate-700"><HelpCircle size={14} className="text-violet-500 mt-0.5 shrink-0" />{k}</li>)}</ul></Card>}
-            </div>
-          </div>
+          )}
+          <Card pad={false} title="Related keyword ideas" subtitle="What Google's Keyword Planner suggests around it, with real numbers">
+            {data.ideas.length === 0 ? <p className="px-5 py-8 text-center text-13 text-slate-500">No related ideas.</p> : (
+              <Table head={<><Th>Keyword</Th><Th c="text-right">Searches / month</Th><Th>Competition</Th><Th c="text-right">Top-of-page bid</Th><Th c="text-right"> </Th></>}>
+                {data.ideas.map(i => (
+                  <tr key={i.keyword} className="hover:bg-slate-50">
+                    <td className="px-4 py-2.5"><button type="button" onClick={() => go(i.keyword)} className="font-semibold text-slate-900 hover:text-indigo-600 text-left cursor-pointer" title="Analyze this keyword">{i.keyword}</button></td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{i.volume != null ? fmt(i.volume) : '—'}</td>
+                    <td className="px-4 py-2.5">{i.competition && i.competition !== 'UNSPECIFIED' ? <span className={`rounded-full px-2 py-0.5 text-12 font-semibold ${COMP_TONE[i.competition] || 'bg-slate-100 text-slate-600'}`}>{i.competition.toLowerCase()}</span> : <span className="text-slate-400">—</span>}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{money(i.cpc)}</td>
+                    <td className="px-4 py-2.5 text-right">{isTracked(i.keyword) ? <Badge tone="green">Tracked</Badge> : <Button size="sm" icon={Plus} busy={busy === `t${i.keyword}`} onClick={() => track(i.keyword)}>Track</Button>}</td>
+                  </tr>
+                ))}
+              </Table>
+            )}
+          </Card>
         </>
       )}
       {toastNode}
@@ -287,4 +302,4 @@ const page = (title, subtitle, Component) => function Page() {
 export { DomainOverviewPage } from './DomainOverview';
 export const KeywordGapPage = page('Keyword Gap', "Keywords your competitors rank for that you don't, and where you are weaker or stronger", KeywordGap);
 export const CompareDomainsPage = page('Compare Domains', "You and your top competitors side by side", CompareDomains);
-export const KeywordOverviewPage = page('Keyword Overview', "One keyword as Google shows it: who ranks, the Maps pack, related searches and questions", KeywordOverview);
+export const KeywordOverviewPage = page('Keyword Overview', "One keyword from the Google Keyword Planner: searches per month, trend, competition, cost per click and related ideas", KeywordOverview);
