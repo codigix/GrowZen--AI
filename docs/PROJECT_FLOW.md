@@ -30,7 +30,7 @@ flowchart LR
   BLS --> DB
   API -- OAuth + REST --> G["Google: Business Profile,<br/>Search Console, Analytics 4,<br/>Places, PageSpeed, Ads Keyword Planner"]
   API --> AI["AI providers: DeepSeek, OpenAI,<br/>Gemini, Claude, Perplexity, Ollama / llama.cpp"]
-  API --> SERP["Serper (Google results)"]
+  API --> SERP["Google Search Console + Places API"]
   BLS --> CR["Our deployed backlink crawler<br/>(CRAWLER_URL, API key)"]
   API -- publish --> SITE["Customer websites:<br/>WordPress, React blog API, plain HTML (FTP/SFTP/etc.),<br/>Ghost, Shopify, GitHub"]
   API -- optional --> CRM["CRM /auth/me (sessions only)"]
@@ -308,7 +308,7 @@ flowchart LR
 |---|---|---|
 | Keywords | `GET/POST /businesses/{id}/keywords`, `PATCH/DELETE /keywords/{id}`, `/keywords/ideas`, `/context`, `/discover`, `/cluster`, `POST /seed-keywords` | discovery from category, services, area, website, competitors; Google Autocomplete (free); volume/CPC from Google Ads Keyword Planner when configured (`GOOGLE_ADS_*`) |
 | Local rank scans | `POST/GET /rank-scans` | grid of Maps positions per keyword -> `rank_scans`; used for local projects (`services/market.py`) |
-| Organic positions | `POST /seo/check-ranks`, `GET /seo/rank-history`, `/rank-report` | live Google check through Serper (`SERPER_API_KEY`) -> `keywords` + daily `keyword_rank_log` |
+| Organic positions | `POST /seo/check-ranks`, `GET /seo/rank-history`, `/rank-report` | Google Search Console average position (28 days) + Places API Maps rank -> `keywords` + daily `keyword_rank_log` |
 | Landscape | `GET /seo/position-landscape` | visibility, movers, distribution computed from `keyword_rank_log` only |
 | Targeting | `GET /seo/track-config`, `PUT /seo/track-campaign` | `Business.track_config` (engine, device, location, language) |
 | Top pages | `GET /seo/top-pages`, `/top-pages-report` | merges crawl, Google rank, Search Console |
@@ -440,7 +440,7 @@ Per-project schedule rows (`schedules`, one per job; `schedules.JOBS`):
 | Job | Runs | Belongs to service |
 |---|---|---|
 | `full_audit` | all six audits then the agent plan | SEO |
-| `rank_scan` | local rank scan + organic positions if Serper is set | SEO |
+| `rank_scan` | local rank scan (Places API) + organic positions (Search Console) | SEO |
 | `technical` | technical (PageSpeed) audit | SEO |
 | `report` | monthly report email | SEO |
 | `weekly_plan` | work plan cycle (default weekly) | SEO |

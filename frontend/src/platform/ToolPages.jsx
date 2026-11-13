@@ -38,7 +38,7 @@ function Brief({ b }) {
           <div className="flex justify-end"><CopyBtn text={asText} label="Copy brief" /></div>
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
             <div className="xl:col-span-2 space-y-4">
-              <Card title="Title and description" subtitle={res.live_results ? 'Based on live Google results' : 'No live Google results (Serper not connected): based on the AI model only'}>
+              <Card title="Title and description" subtitle={res.live_results ? 'Based on live Google results' : 'Written by the AI model from your business details and the questions Google Keyword Planner shows'}>
                 <Field label={`Title tag (${x.title_tag.length}/60)`}><div className="text-14 text-slate-900 font-semibold">{x.title_tag}</div></Field>
                 <div className="mt-3"><Field label={`Meta description (${x.meta_description.length}/155)`}><div className="text-13 text-slate-700">{x.meta_description}</div></Field></div>
                 <div className="mt-3 flex flex-wrap gap-2 text-12"><Badge tone="violet">{x.search_intent}</Badge>{x.target_words && <Badge>{x.target_words} words</Badge>}</div>

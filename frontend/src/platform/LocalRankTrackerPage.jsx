@@ -101,7 +101,7 @@ function Tracker({ b }) {
   const scans = useApi(`/businesses/${b.id}/rank-scans`);
   const kw = useApi(`/businesses/${b.id}/keywords`);
   const status = useApi('/status');
-  const live = status.data?.rank_source === 'serper'; // live Google results cost 3 credits per grid point, so those scans stay small
+  const live = status.data?.rank_source === 'google_places'; // every grid point is one Google Places request, so those scans stay small
   const sizes = live ? [3, 5] : [3, 5, 7, 9, 11, 13];
   const [size, setSize] = useState(5);
   const [radius, setRadius] = useState(5);
@@ -141,7 +141,7 @@ function Tracker({ b }) {
   const scanAll = () => run('all', async () => {
     if (!hasPin) throw new Error('Set the map pin first: GBP Profile Manager → Profile.');
     const list = rows.map(r => r.keyword).slice(0, 10);
-    if (live && !window.confirm(`Scan ${list.length} keywords live? That uses about ${list.length * Math.min(size, 5) ** 2 * 3} Serper credits.`)) return;
+    if (live && !window.confirm(`Scan ${list.length} keywords live? That makes about ${list.length * Math.min(size, 5) ** 2} Google Places requests.`)) return;
     for (const k of list) await post(k);
     setScanId(null); setWaiting(all.length);
   });
@@ -185,7 +185,7 @@ function Tracker({ b }) {
         {rows.length > 1 && <Button icon={Layers} busy={busy === 'all'} onClick={scanAll} title="Scan every keyword in the table below">Scan all ({Math.min(rows.length, 10)})</Button>}
         <div className="basis-full text-11.5 text-slate-400 flex flex-wrap items-center gap-x-3">
           <span className="inline-flex items-center gap-1"><Clock size={11} /> {row?.latest ? `Last scan ${fmtDateTime(row.latest.created_at)}` : 'Not scanned yet'}</span>
-          <span>{Math.min(size, live ? 5 : size) ** 2} points{live ? ` · live Google Maps, ${Math.min(size, 5) ** 2 * 3} Serper credits per scan` : ' · sample data until live results are connected'}</span>
+          <span>{Math.min(size, live ? 5 : size) ** 2} points{live ? ` · live Google Maps, ${Math.min(size, 5) ** 2} Places requests per scan` : ' · sample data until live results are connected'}</span>
         </div>
       </div>
       <ErrorNote>{error}</ErrorNote>
@@ -206,7 +206,7 @@ function Tracker({ b }) {
             <Tile icon={Target} tone="emerald" label="Top-3 coverage" value={`${topPct(shownScan)}%`} sub={`${shownScan.top3} of ${cellsOf(shownScan)} points`} delta={<Delta now={topPct(shownScan)} before={topPct(before)} better="up" unit="%" />} />
             <Tile icon={Trophy} tone="indigo" label="Average rank" value={shownScan.avg_rank ?? '—'} sub={Number.isFinite(best) ? `best #${best} · lower is better` : 'not found anywhere'} delta={<Delta now={shownScan.avg_rank} before={before?.avg_rank} better="down" />} />
             <Tile icon={MapPin} tone="sky" label="Found in top 20" value={`${foundPct(shownScan)}%`} sub={`${shownScan.found} of ${cellsOf(shownScan)} points`} delta={<Delta now={foundPct(shownScan)} before={foundPct(before)} better="up" unit="%" />} />
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 min-w-0"><div className="text-13 font-medium text-slate-500">Data</div><div className="mt-3"><SourceTag source={shownScan.data_source} /></div><div className="text-13 text-slate-500 mt-1.5">{shownScan.data_source === 'sample' ? 'Connect Serper for live results.' : 'Live Google Maps results.'}</div></div>
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 min-w-0"><div className="text-13 font-medium text-slate-500">Data</div><div className="mt-3"><SourceTag source={shownScan.data_source} /></div><div className="text-13 text-slate-500 mt-1.5">{shownScan.data_source === 'sample' ? 'Add the Google Places key for live results.' : 'Live Google Maps results.'}</div></div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">

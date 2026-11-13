@@ -260,7 +260,7 @@ function Changes({ research, kinds, title, limit = 6, render, noun = 'tracked ke
 function researchWhy(r) {
   if (!r) return 'Loading…';
   return { no_website: 'Add the business website first: positions are matched by its domain.', no_keywords: 'No keyword is tracked yet. Add keywords in the Positions tab or the Keyword Magic Tool.',
-    no_data: r.serper ? 'No position has been checked in this period. Press “Check positions now” in the Positions tab.' : 'No position has been checked yet, and Google results are not connected (SERPER_API_KEY).' }[r.state] || 'Not available.';
+    no_data: r.rank_ready ? 'No position has been checked in this period. Press “Check positions now” in the Positions tab.' : 'No position has been checked yet. Link the Google account that owns this website (Search Console) first.' }[r.state] || 'Not available.';
 }
 
 function FeatureChanges({ research, limit = 6 }) {

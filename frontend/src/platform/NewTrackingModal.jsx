@@ -88,7 +88,7 @@ export default function NewTrackingModal({ open, onClose, projects, initialId, o
           <div className="text-15 font-semibold text-slate-900 mb-2">Keywords to track <span className="font-normal text-slate-500">({words.length}): one per line</span></div>
           <textarea className={boxCls} rows={8} value={text} onChange={e => setText(e.target.value)} placeholder={'dental clinic pune\nbest dentist near me'} aria-label="Keywords" />
           {info?.tracked?.length > 0 && <p className="text-13 text-slate-500 mt-2">Already tracked: {info.tracked.slice(0, 8).join(', ')}{info.tracked.length > 8 ? '…' : ''}</p>}
-          <label className={`mt-4 flex items-center gap-2.5 text-15 ${info?.serper ? 'text-slate-800 cursor-pointer' : 'text-slate-400'}`}><input type="checkbox" disabled={!info?.serper} checked={check && !!info?.serper} onChange={e => setCheck(e.target.checked)} />Check positions now{info?.serper ? ` (uses about ${words.length || 'one'} Google search credit${words.length === 1 ? '' : 's'})` : ' (Google results are not connected: set SERPER_API_KEY)'}</label>
+          <label className={`mt-4 flex items-center gap-2.5 text-15 ${info?.rank_ready ? 'text-slate-800 cursor-pointer' : 'text-slate-400'}`}><input type="checkbox" disabled={!info?.rank_ready} checked={check && !!info?.rank_ready} onChange={e => setCheck(e.target.checked)} />Check positions now{info?.rank_ready ? ` (reads Google Search Console)` : ' (link the Google account that owns the site, in Integrations, to read positions)'}</label>
         </div>
       )}
       <ErrorNote>{error}</ErrorNote>

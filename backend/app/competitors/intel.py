@@ -539,7 +539,7 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
             "local_visibility": _visibility(my_local, len(keywords), LOCAL_CTR),
             "keywords_ranked": len(my_positions), "keywords_top3": sum(1 for p in my_positions.values() if p <= 3),
             "local_ranked": len(my_local), "keywords_total": len(keywords),
-            "competitors": len([d for d in organic_competitors if d["type"] == "business"]),
+            "competitors": len(local_competitors),
             "leader": organic_competitors and next(({"domain": d["domain"], "visibility": d["visibility"]} for d in organic_competitors if d["type"] == "business"), None),
             "local_leader": top_local and {"name": top_local["name"], "visibility": top_local["visibility"], "reviews": top_local.get("reviews")},
         },
@@ -569,7 +569,7 @@ def _actions(b, keywords, serps, keyword_gaps, listing_gaps, profiles, my_site, 
     for g in keyword_gaps[:4]:
         lead = g["competitors"][0]
         out.append({"priority": "high", "title": f"Build or improve a page for \"{g['keyword']}\"",
-                    "why": f"{len(g['competitors'])} competitor{'s' if len(g['competitors']) != 1 else ''} rank on page 1 ({lead['domain']} is #{lead['position']}); you are not in the top 10. Put the service and area in the title, H1 and first paragraph.",
+                    "why": f"{len(g['competitors'])} competitor{'s' if len(g['competitors']) != 1 else ''} show in Google Maps for this search ({lead['domain']} is #{lead['position']}); your business does not. Put the service and area in the page title, H1 and first paragraph, and make sure the Google profile category and services match the search.",
                     "to": "/website-audit"})
     if top_local and (top_local.get("reviews") or 0) > (my_reviews or 0):
         out.append({"priority": "high" if (top_local.get("reviews") or 0) > 2 * (my_reviews or 0) else "medium", "title": "Close the review gap",

@@ -9,7 +9,7 @@ import { api, useApi, fmt, fmtDateTime } from './seoApi';
 
 /**
  * The SEO toolkit pages, each on data the platform really has (its own crawl, tracked keywords, Google results
- * from Serper, the competitor research): Domain Overview, Organic Rankings, Top Pages, Keyword Gap, Compare
+ * from Google Search Console and the Places API, the competitor research): Domain Overview, Organic Rankings, Top Pages, Keyword Gap, Compare
  * Domains and Keyword Overview. Figures that need a paid index (organic traffic, backlink totals) are not
  * estimated: a page says what is missing and where to turn it on.
  */
@@ -55,7 +55,7 @@ const Empty = ({ icon: Icon = Lightbulb, title, children, action }) => (
     <div className="text-15 font-semibold text-slate-900">{title}</div><p className="text-13 text-slate-500 mt-1">{children}</p>{action && <div className="mt-4">{action}</div>}</div></Card>
 );
 
-/** The latest competitor research of the project (Serper), shared by Keyword Gap and Compare Domains. */
+/** The latest competitor research of the project (Google Places and Search Console), shared by Keyword Gap and Compare Domains. */
 function useResearch(b, given = null) {
   const d = useApi(given ? null : `/businesses/${b.id}/competitor-research`); // inside Competitor Research the result is handed over: no second request
   if (given) return { loading: false, error: null, result: given, running: false };
@@ -89,7 +89,7 @@ export function TrackedPositions({ b }) {
     const r = await api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: {} });
     setUrls(Object.fromEntries(r.results.filter(x => x.url).map(x => [x.keyword, x.url])));
     kw.reload(true);
-    toast(`Checked ${r.checked} keyword${r.checked === 1 ? '' : 's'} on Google (${r.credits} Serper credits)`);
+    toast(`Read ${r.checked} keyword${r.checked === 1 ? '' : 's'} from Google Search Console`);
   });
   const chip = (id, label, n) => <button key={id} type="button" onClick={() => setFilter(id)} className={`h-8 px-3 rounded text-12 font-semibold cursor-pointer ${filter === id ? 'bg-indigo-500 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>{label} <span className="opacity-70">{n}</span></button>;
   if (!kw.data) return kw.error ? <ErrorNote>{kw.error.message}</ErrorNote> : <div className="space-y-4"><SkStats cols="grid-cols-2 xl:grid-cols-4" labels={["Tracked keywords", "Top 3", "Improved", "Dropped"]} /><SkCard title="Tracked keywords" pad={false}><SkTable headers={["Keyword", "Volume", "Position", "Change", "Page"]} rows={8} bare /></SkCard></div>;
@@ -124,7 +124,7 @@ export function TrackedPositions({ b }) {
           </Table>
         )}
       </Card>
-      <p className="text-11.5 text-slate-400">Positions are Google's organic results from your location (live, via Serper). A keyword outside the top 20 shows as not ranking. Search volume appears once a keyword provider supplies it.</p>
+      <p className="text-11.5 text-slate-400">Positions are Google Search Console's average position over the last 28 days. A keyword with no impressions shows as not ranking yet. Search volume comes from the Google Ads Keyword Planner.</p>
       {toastNode}
     </div>
   );
@@ -140,10 +140,10 @@ export function KeywordGap({ b, result = null }) {
   const [toast, toastNode] = useToast();
   const model = useMemo(() => {
     if (!r.result) return null;
-    const comps = r.result.organic_competitors.filter(d => d.type === 'business').slice(0, 4);
+    const comps = (r.result.local_competitors || []).filter(d => d.name).slice(0, 4).map(d => ({ ...d, domain: d.domain || d.name })); // the businesses Google Maps shows for these searches
     const rows = r.result.keywords.map(k => {
-      const you = r.result.you.positions[k] || null;
-      const them = comps.map(c => c.positions[k] || null);
+      const you = (r.result.you.local || {})[k] || null; // the business's place in Google Maps for this search
+      const them = comps.map(c => (c.positions || {})[k] || null);
       const best = Math.min(...them.filter(Boolean), Infinity);
       const state = !Number.isFinite(best) ? (you ? 'unique' : 'none') : !you ? 'missing' : you > best ? 'weak' : you < best ? 'strong' : 'shared';
       return { keyword: k, you, them, best: Number.isFinite(best) ? best : null, state };
@@ -184,7 +184,7 @@ export function KeywordGap({ b, result = null }) {
           </Table>
         )}
       </Card>
-      <p className="text-11.5 text-slate-400">Positions are Google's top 10 for each researched keyword. Search volume isn't shown: it needs a keyword provider.</p>
+      <p className="text-11.5 text-slate-400">Positions are the places in Google Maps for each researched search (Google Places API). Google gives no data on other websites' organic rankings. Search volume is in Find Keywords.</p>
       {toastNode}
     </div>
   );
@@ -302,6 +302,6 @@ const page = (title, subtitle, Component) => function Page() {
 };
 
 export { DomainOverviewPage } from './DomainOverview';
-export const KeywordGapPage = page('Keyword Gap', "Keywords your competitors rank for that you don't, and where you are weaker or stronger", KeywordGap);
+export const KeywordGapPage = page('Keyword Gap', "Searches where the Google Maps competitors show and you do not, and where you are weaker or stronger", KeywordGap);
 export const CompareDomainsPage = page('Compare Domains', "You and your top competitors side by side", CompareDomains);
 export const KeywordOverviewPage = page('Keyword Overview', "One keyword from the Google Keyword Planner: searches per month, trend, competition, cost per click and related ideas", KeywordOverview);

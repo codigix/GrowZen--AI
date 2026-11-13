@@ -16,7 +16,7 @@ class FakeSearchConsole:
 
 
 @pytest.fixture
-def serper(faked, monkeypatch):  # noqa: F811
+def google(faked, monkeypatch):  # noqa: F811
     """Google is faked: Search Console answers with one ranking keyword; the Places API answers with an empty Maps result."""
     monkeypatch.setattr(gsc_access, "search_console", lambda db, b, host: ("ok", "owner@x.in", FakeSearchConsole(), "sc-domain:mydental.in"))
     monkeypatch.setattr(service, "places_search", lambda *a, **k: [])
@@ -33,7 +33,7 @@ def test_domain_page_works_before_anything_has_run(client):
     assert client.get(f"/api/v1/businesses/{bid}/seo/top-pages").json() == {"pages": [], "audited_at": None}
 
 
-def test_check_ranks_saves_positions_and_the_change(client, serper):
+def test_check_ranks_saves_positions_and_the_change(client, google):
     bid = business(client)
     client.post(f"/api/v1/businesses/{bid}/keywords", json=[{"keyword": "dentist in Pune"}, {"keyword": "dentist in Baner"}])
     r = client.post(f"/api/v1/businesses/{bid}/seo/check-ranks", json={}).json()

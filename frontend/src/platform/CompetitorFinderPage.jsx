@@ -95,11 +95,11 @@ function SetupForm({ b, defaults, onStart, busy, error, setupInfo, hasRun }) {
   return (
     <div className="space-y-4">
       {setupInfo.maps_only && (
-        <div className="text-13 text-sky-900 bg-sky-50 border border-sky-200 rounded px-4 py-3">Serper is not set up, so this research uses the <b>Google Places API</b>: the Google Maps competitors, their ratings, reviews and websites. Organic Google rankings and listing sites are not included.</div>
+        <div className="text-13 text-sky-900 bg-sky-50 border border-sky-200 rounded px-4 py-3">Competitors are the businesses <b>Google Maps</b> shows for your keywords (Google Places API), with their ratings, reviews and a scan of their websites. Your own organic position is Google Search Console's figure. Google gives no data on other websites' rankings or listing sites, so those are not shown.</div>
       )}
       {!setupInfo.google_results && (
         <div className="text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded px-4 py-3">
-          Competitor research needs Google results. Add <code className="">GOOGLE_PLACES_API_KEY</code> (Maps competitors) or <code className="">SERPER_API_KEY</code> (from serper.dev, adds organic rankings) to the SEO backend's <code className="">.env</code> and restart it.
+          Competitor research uses the Google Places API. Add <code className="">GOOGLE_PLACES_API_KEY</code> to the SEO backend's <code className="">.env</code> and restart it.
         </div>
       )}
       <Field label={`Keywords (${keywords.length}/${MAX_KEYWORDS})`} hint="The searches your customers type. Put the area in, as customers do.">
@@ -121,7 +121,7 @@ function SetupForm({ b, defaults, onStart, busy, error, setupInfo, hasRun }) {
         <Field label="Search from" hint="City Google searches from"><input className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Pune, India" /></Field>
         <Button variant="primary" icon={Play} busy={busy} disabled={!keywords.length || !setupInfo.google_results} onClick={() => onStart(keywords, location)}>{hasRun ? 'Run research again' : 'Research competitors'}</Button>
       </div>
-      <p className="text-11.5 text-slate-500">About a minute. Uses about {keywords.length * 2 + 5} Google searches from your Serper credits. Competitors found on Google Maps are also registered for site audits.</p>
+      <p className="text-11.5 text-slate-500">About a minute. Makes {keywords.length} Google Places request{keywords.length === 1 ? '' : 's'}. Competitors found on Google Maps are also registered for site audits.</p>
       <ErrorNote>{error}</ErrorNote>
     </div>
   );
@@ -142,12 +142,12 @@ function Tile({ label, value, sub, tone = 'text-slate-900' }) {
 function Overview({ r, goto }) {
   const s = r.summary;
   const business = r.organic_competitors.filter(d => d.type === 'business').slice(0, 6);
-  const bars = [{ label: `${r.business.name} (you)`, value: s.visibility, mine: true, sub: `${s.keywords_ranked} of ${s.keywords_total} keywords on page 1` },
+  const bars = [{ label: `${r.business.name} (you)`, value: s.visibility, mine: true, sub: `${s.keywords_ranked} of ${s.keywords_total} keywords shown on Google (Search Console)` },
   ...business.map(d => ({ label: d.domain, value: d.visibility, sub: `${d.keywords_top10} keywords on page 1` }))].sort((a, b) => b.value - a.value);
   const maps = [{ label: `${r.business.name} (you)`, value: s.local_visibility, mine: true }, ...r.local_competitors.slice(0, 5).map(e => ({ label: e.name, value: e.visibility }))].sort((a, b) => b.value - a.value);
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <Card title="Google visibility" subtitle="Expected share of clicks from these keywords" action={<button type="button" onClick={() => goto('competitors')} className="text-12.5 font-semibold text-indigo-700 hover:underline cursor-pointer">All →</button>}><VisibilityBars rows={bars} /></Card>
+      <Card title="Google visibility" subtitle="Your expected share of clicks from these keywords, from Google Search Console positions (Google gives none for other sites)" action={<button type="button" onClick={() => goto('competitors')} className="text-12.5 font-semibold text-indigo-700 hover:underline cursor-pointer">All →</button>}><VisibilityBars rows={bars} /></Card>
       <Card title="Google Maps visibility" subtitle="Who Maps shows first" action={<button type="button" onClick={() => goto('maps')} className="text-12.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Details →</button>}><VisibilityBars rows={maps} /></Card>
       <Card title="Do first" subtitle="Biggest gaps to close" action={<button type="button" onClick={() => goto('plan')} className="text-12.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Full plan →</button>}>
         {r.actions.length ? (
@@ -684,10 +684,10 @@ function Research({ b }) {
       {result && (
         <div className={isRunning(current) ? 'space-y-4 opacity-60 pointer-events-none select-none' : 'space-y-4'} aria-busy={isRunning(current)}>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Tile label="Google visibility" value={`${s.visibility}%`} sub={s.leader ? `leader ${s.leader.domain}: ${s.leader.visibility}%` : ''} tone={s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600'} />
-            <Tile label="Keywords on page 1" value={`${s.keywords_ranked}/${s.keywords_total}`} sub={`${s.keywords_top3} in the top 3`} />
+            <Tile label="Google visibility" value={s.keywords_ranked ? `${s.visibility}%` : '—'} sub={s.keywords_ranked ? 'from Google Search Console' : 'link Search Console to see it'} tone={s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600'} />
+            <Tile label="Keywords shown on Google" value={`${s.keywords_ranked}/${s.keywords_total}`} sub={`${s.keywords_top3} in the top 3 (Search Console)`} />
             <Tile label="Maps visibility" value={`${s.local_visibility}%`} sub={`in Maps for ${s.local_ranked} of ${s.keywords_total}`} />
-            <Tile label="Competing websites" value={s.competitors} sub={s.leader ? `Google leader: ${s.leader.domain}` : ''} />
+            <Tile label="Competing businesses" value={s.competitors} sub={s.local_leader ? `Maps leader: ${s.local_leader.name}` : ''} />
           </div>
           <div>
             <Tabs value={tab} onChange={setTab} tabs={[

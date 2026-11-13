@@ -85,7 +85,7 @@ function Connections() {
               ['No invented facts', 'AI prompts use only the saved profile; the email extractor keeps only values found in the email.'],
               ['No fake or incentivised reviews', 'AI only drafts replies; review requests go to every customer.'],
               ['Outreach drafts only', 'A person sends every outreach email. No paid links or link exchanges.'],
-              ['Licensed data only', 'Rankings come from the Serper Google results API, never from scraping Google pages.'],
+              ['Licensed data only', 'Rankings come from Google Search Console and the Google Places API, never from scraping Google pages.'],
               ['Encrypted tokens', 'Google refresh tokens are stored encrypted; disconnecting deletes them.'],
               ['Allowed senders only', 'The onboarding mailbox processes emails from the team’s addresses only.']
             ].map(([t, d]) => <div key={t} className="p-3 rounded border border-gray-200"><div className="flex items-center gap-1.5 text-13 font-medium text-gray-900"><ShieldCheck size={14} className="text-emerald-600" />{t}</div><p className="text-12 text-gray-600 mt-1">{d}</p></div>)}

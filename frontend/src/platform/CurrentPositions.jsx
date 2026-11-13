@@ -18,6 +18,7 @@ const pageBadge = (o) => {
   if (o.page === 1) return <Badge tone="green">Page 1</Badge>;
   if (o.page === 2) return <Badge tone="amber">Page 2</Badge>;
   if (o.page) return <Badge tone="orange">Page {o.page}</Badge>;
+  if (o.source === 'search_console') return <Badge tone="gray" title="Google Search Console reports no impressions for this keyword in the last 28 days">No impressions yet</Badge>;
   return <Badge tone="red" title="The website was not among the results Google returned">{`Not in top ${o.depth_checked || 100}`}</Badge>;
 };
 
@@ -50,7 +51,7 @@ export default function CurrentPositions({ b, onChecked }) {
 
   const check = () => run('check', async () => {
     const r = await api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: {} });
-    toast(`Checked ${r.checked} keyword${r.checked !== 1 ? 's' : ''} on Google (${r.credits} Serper credit${r.credits !== 1 ? 's' : ''})`);
+    toast(`Read ${r.checked} keyword${r.checked !== 1 ? 's' : ''} from Google Search Console${r.maps ? ' and the Google Maps results' : ''}`);
     data.reload(true);
     if (onChecked) onChecked();
   });
@@ -64,9 +65,9 @@ export default function CurrentPositions({ b, onChecked }) {
     return [...list].sort(by[sort]);
   }, [d, q, sort, bucket]);
 
-  const noKey = d && !d.serper;
+  const noKey = d && !d.rank_ready;
   const check_btn = <Button variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={noKey || !d?.summary.keywords} onClick={check}
-    title={noKey ? 'Set SERPER_API_KEY on the backend to check Google' : !d?.summary.keywords ? 'Add tracked keywords first' : `Reads Google's top ${d?.depth || 100} results and Maps now, from the targeted area`}>Check positions now</Button>;
+    title={noKey ? 'Link the Google account that owns this site (Search Console) first' : !d?.summary.keywords ? 'Add tracked keywords first' : 'Reads each keyword\'s average position from Google Search Console (last 28 days) and its place in Google Maps'}>Check positions now</Button>;
 
   const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
   return (
@@ -90,7 +91,7 @@ export default function CurrentPositions({ b, onChecked }) {
           {noKey && (
             <div className="rounded bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-13 text-amber-900 flex items-start gap-2">
               <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-              <span>Positions come from live Google results, which need a Serper key: set <code className="text-12">SERPER_API_KEY</code> in <code className="text-12">backend/.env</code> and restart the backend. {d.summary.checked ? 'The figures below are from the last check.' : ''}</span>
+              <span>Positions are read from Google Search Console: link the Google account that owns this website to the project in Integrations, with the Search Console permission. {d.summary.checked ? 'The figures below are from the last check.' : ''}</span>
             </div>
           )}
 
@@ -103,7 +104,7 @@ export default function CurrentPositions({ b, onChecked }) {
                 <Chip label="On page 1" value={d.summary.page1} tone="green" active={bucket === 'page1'} onClick={() => setBucket('page1')} />
                 <Chip label="On page 2" value={d.summary.page2} tone="amber" active={bucket === 'page2'} onClick={() => setBucket('page2')} />
                 <Chip label="Page 3 or later" value={d.summary.page3plus} tone="orange" active={bucket === 'page3plus'} onClick={() => setBucket('page3plus')} />
-                <Chip label={`Not in top ${d.depth}`} value={d.summary.not_found} tone="red" active={bucket === 'not_found'} onClick={() => setBucket('not_found')} />
+                <Chip label="No impressions yet" value={d.summary.not_found} tone="red" active={bucket === 'not_found'} onClick={() => setBucket('not_found')} />
                 <Chip label="In Maps top 3" value={d.summary.in_pack} tone="violet" active={bucket === 'pack'} onClick={() => setBucket('pack')} />
                 {d.summary.unchecked > 0 && <Chip label="Not checked yet" value={d.summary.unchecked} active={bucket === 'unchecked'} onClick={() => setBucket('unchecked')} />}
               </div>
@@ -121,7 +122,7 @@ export default function CurrentPositions({ b, onChecked }) {
               <div className="overflow-auto max-h-[520px] rounded ring-1 ring-inset ring-slate-100">
                 <table className="w-full text-13">
                   <thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500">
-                    <tr><Th>Keyword</Th><Th>Google page</Th><Th c="text-right">Position</Th><Th>Maps / local pack</Th><Th c="text-right">Change</Th><Th>Ranking page</Th><Th>Who is #1</Th><Th>Checked</Th></tr>
+                    <tr><Th>Keyword</Th><Th>Google page</Th><Th c="text-right">Position</Th><Th>Maps / local pack</Th><Th c="text-right">Change</Th><Th>Ranking page</Th><Th>Maps leader</Th><Th>Checked</Th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {rows.map(r => {
@@ -135,8 +136,8 @@ export default function CurrentPositions({ b, onChecked }) {
                             <>
                               <td className="px-4 py-3">{pageBadge(o)}</td>
                               <td className="px-4 py-3 text-right whitespace-nowrap">
-                                {o.found ? <><span className="font-bold tabular-nums text-slate-900">#{o.position}</span><div className="text-11 text-slate-500">position {o.position_on_page} on page {o.page}</div></>
-                                  : <span className="text-slate-400">not in top {o.depth_checked}</span>}
+                                {o.found ? <><span className="font-bold tabular-nums text-slate-900">{o.average_position ? o.average_position : `#${o.position}`}</span><div className="text-11 text-slate-500">{o.source === 'search_console' ? `${o.impressions?.toLocaleString('en-IN') ?? 0} impressions · ${o.clicks ?? 0} clicks` : `position ${o.position_on_page} on page ${o.page}`}</div></>
+                                  : <span className="text-slate-400">{o.source === 'search_console' ? 'no impressions yet' : `not in top ${o.depth_checked}`}</span>}
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap">
                                 {!r.maps.checked ? <span className="text-slate-300" title="The Maps check was not made for this keyword">—</span>
@@ -146,8 +147,7 @@ export default function CurrentPositions({ b, onChecked }) {
                               <td className="px-4 py-3 text-right"><Move o={o} /></td>
                               <td className="px-4 py-3 max-w-[200px]">{o.url ? <a href={o.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-indigo-600 hover:underline max-w-full" title={o.url}><span className="truncate">{path(o.url)}</span><ExternalLink size={11} className="shrink-0" /></a> : <span className="text-slate-300">—</span>}</td>
                               <td className="px-4 py-3 text-12 text-slate-600 max-w-[200px]">
-                                <div className="truncate" title={r.who_is_first.domain || ''}>{r.who_is_first.domain ? <>Google: <b className="font-semibold text-slate-800">{r.who_is_first.domain}</b></> : '—'}</div>
-                                {r.who_is_first.maps && <div className="truncate text-slate-500" title={r.who_is_first.maps}>Maps: {r.who_is_first.maps}</div>}
+                                {r.who_is_first.maps ? <div className="truncate text-slate-700" title={r.who_is_first.maps}>{r.who_is_first.maps}</div> : <span className="text-slate-400">—</span>}
                               </td>
                               <td className="px-4 py-3 text-11.5 text-slate-500 whitespace-nowrap">{fmtDateTime(r.last_checked_at)}</td>
                             </>
@@ -159,7 +159,7 @@ export default function CurrentPositions({ b, onChecked }) {
                   </tbody>
                 </table>
               </div>
-              <p className="text-11.5 text-slate-400">Position is the place among Google's top {d.depth} results for the targeted area; page = ten results. Maps position is the place among Google Maps results for the same search; the top 3 form the local pack. A keyword that is not found is shown as such, never estimated.</p>
+              <p className="text-11.5 text-slate-400">Position is Google Search Console's average position for the keyword over the last 28 days (the same figure Google shows you), with the impressions and clicks behind it. “No impressions yet” means the site was not shown on Google for it in that time. Maps position is the place among Google Maps results for the same search, around the business's pin; the top 3 is the local pack. Google gives no data on other websites' rankings.</p>
             </>
           )}
         </div>

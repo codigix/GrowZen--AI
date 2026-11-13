@@ -17,15 +17,12 @@ export function TrackingHeader({ d }) {
       <span className={chip}><MapPin size={12} />{d.country ? `${d.country} · ` : ''}{d.location || 'Google'}</span>
       <span className={chip}><Monitor size={12} />Desktop</span>
       <span className={chip}>Keywords: <b>{d.tracked}</b></span>
-      <span className={chip}>Competitors: <b>{(d.tracked_competitors || []).length}</b></span>
-      <span className={chip}>SERP features: <b>{d.serp_features?.length ?? 0}</b></span>
-      <span className={chip}>Share of voice: <b>{d.share_of_voice?.value ?? 0}%</b></span>
     </div>
   );
 }
 
 export const TABS = [['landscape', 'Landscape'], ['overview', 'Overview'], ['distribution', 'Rankings Distribution'], ['tags', 'Tags'], ['pages', 'Pages'],
-  ['cannibal', 'Cannibalization'], ['competitors', 'Competitors Discovery'], ['devices', 'Devices & Locations'], ['snippets', 'Featured Snippets']];
+  ['cannibal', 'Cannibalization'], ['devices', 'Devices & Locations']];
 
 export function TabBar({ value, onChange }) {
   return (

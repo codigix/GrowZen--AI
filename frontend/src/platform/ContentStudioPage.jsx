@@ -626,19 +626,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   };
   const [intent, setIntent] = useState('');
   const [related, setRelated] = useState(selectedTopic?.related || []);
-  // The top Google results for the keyword, read for real (POST /articles/serp-benchmark): their length and headings.
-  const [bench, setBench] = useState(null);
-  const [benchBusy, setBenchBusy] = useState(false);
-  const [benchError, setBenchError] = useState('');
-  const loadBench = async () => {
-    const keyword = kw.trim();
-    if (!keyword) return;
-    setBenchBusy(true); setBenchError('');
-    try { setBench(await api(`/businesses/${b.id}/articles/serp-benchmark`, { method: 'POST', body: { keyword } })); }
-    catch (e) { setBench(null); setBenchError(e.status === 503 ? 'Reading the top Google results needs a Serper key (SERPER_API_KEY) on the server.' : (e.message || 'Could not read the top results.')); }
-    finally { setBenchBusy(false); }
-  };
-  useEffect(() => { setBench(null); setBenchError(''); }, [kw]);
+  const bench = null; // Google gives no list of other sites' rankings, so there is no top-results benchmark
+
 
   const [draft, setDraft] = useState(selectedArticle ? selectedArticle.body || '' : '');
   const [bodyTab, setBodyTab] = useState('editor'); // 'editor' | 'preview'
@@ -865,28 +854,6 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               </div>
             )}
             {genError && <div className="text-[12px] text-red-600">{genError}</div>}
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-[12px]">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div><div className="text-[12.5px] font-bold text-slate-900">Top Google results for this search</div><div className="text-[11px] text-slate-500">Read live from Google: how long and how detailed the pages that rank are.</div></div>
-                <Button size="sm" icon={Search} busy={benchBusy} disabled={!kw.trim()} onClick={loadBench}>{bench ? 'Check again' : 'Check top results'}</Button>
-              </div>
-              {benchError && <div className="text-[11.5px] text-amber-800">{benchError}</div>}
-              {bench && (bench.results?.length ? (
-                <>
-                  <div className="text-[12px] text-slate-700">Target length: about <b>{fmt(bench.median_words)}</b> words (the middle of the top {bench.results.length}; average {fmt(bench.avg_words)}).{bench.note ? ` ${bench.note}` : ''}</div>
-                  <div className="overflow-x-auto"><table className="w-full text-[11.5px]"><thead className="text-slate-500 border-b border-slate-200"><tr><th className="py-1 pr-2 text-left font-medium">#</th><th className="py-1 pr-2 text-left font-medium">Result</th><th className="py-1 pr-2 text-right font-medium">Words</th><th className="py-1 pr-2 text-right font-medium">Headings</th><th className="py-1 text-left font-medium">FAQ</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">{bench.results.map(r => (
-                      <tr key={`${r.rank}-${r.url}`}><td className="py-1 pr-2 tabular-nums text-slate-500">{r.rank}</td>
-                        <td className="py-1 pr-2 max-w-[320px]"><a href={r.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline line-clamp-1" title={r.title}>{r.title || r.domain}</a><div className="text-[10.5px] text-slate-400">{r.domain}</div></td>
-                        <td className="py-1 pr-2 text-right tabular-nums">{r.fetched ? fmt(r.word_count) : <span className="text-slate-300" title="The page could not be read">n/a</span>}</td>
-                        <td className="py-1 pr-2 text-right tabular-nums">{r.fetched ? r.headings : <span className="text-slate-300">n/a</span>}</td>
-                        <td className="py-1">{r.fetched ? (r.has_faq ? 'Yes' : 'No') : <span className="text-slate-300">n/a</span>}</td></tr>
-                    ))}</tbody></table></div>
-                  <div className="text-[10.5px] text-slate-400">Fetched {bench.fetched_at ? new Date(bench.fetched_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }) : ''} from Google results.</div>
-                </>
-              ) : <div className="text-[11.5px] text-slate-500">Google returned no results for this search.</div>)}
-              {!bench && !benchBusy && !benchError && <div className="text-[11.5px] text-slate-500">Press “Check top results” to see how long the ranking pages are, so the article can match them.</div>}
-            </div>
           </div>
         )}
 
@@ -1156,7 +1123,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   </li>
                 ))}
               </ul>
-              {!bench && <div className="text-[11.5px] text-slate-500">Tip: on the Topic & Intent step, “Check top results” gives the real target length from Google.</div>}
+              {false && <div className="text-[11.5px] text-slate-500">Tip: on the Topic & Intent step, “Check top results” gives the real target length from Google.</div>}
             </div>
           );
         })()}

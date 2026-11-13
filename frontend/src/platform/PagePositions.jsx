@@ -26,12 +26,12 @@ export default function PagePositions({ b }) {
       <Card title="Where each page ranks on Google" subtitle="Position of your site for each tracked keyword, the page Google shows, and what to change to move up."
         action={<div className="flex gap-2">
           <Button size="sm" icon={Sparkles} busy={busy === 'seed'} onClick={seed}>Add suggested keywords</Button>
-          <Button size="sm" variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={!d.tracked || !d.serper} onClick={check}>Check positions now</Button>
+          <Button size="sm" variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={!d.tracked || !d.rank_ready} onClick={check}>Check positions now</Button>
         </div>}>
         <ErrorNote>{error}</ErrorNote>
         {d.state === 'no_website' && <p className="text-13 text-slate-500">Add the project's website first: positions are matched by its domain.</p>}
         {d.state === 'no_keywords' && <p className="text-13 text-slate-500">No keywords are tracked yet. Press "Add suggested keywords" to track the searches customers use to find this business, then check positions.</p>}
-        {!d.serper && d.tracked > 0 && <p className="text-13 text-amber-700">Live Google positions need SERPER_API_KEY on the backend.</p>}
+        {!d.rank_ready && d.tracked > 0 && <p className="text-13 text-amber-700">Positions are read from Google Search Console: link the Google account that owns this website to the project (Integrations).</p>}
         {d.rows.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-1">
             <Stat label="Tracked" value={s.tracked} /><Stat label="Ranking (top 20)" value={s.ranking} /><Stat label="Top 3" value={s.top3} /><Stat label="Top 10" value={s.top10} /><Stat label="Avg position" value={s.avg_position ?? '—'} />

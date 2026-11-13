@@ -899,58 +899,8 @@ function CrawlerReport({ biz, competitors = null }) {
   );
 }
 
-// GET /serp-search/top-results: top organic Google results for a query (via Serper.dev), with an optional time range and country.
-function SerpSearch() {
-  const [query, setQuery] = useState('');
-  const [timeRange, setTimeRange] = useState('any');
-  const [country, setCountry] = useState('');
-  const [top, setTop] = useState(10);
-  const [res, setRes] = useState(null);
-  const [busy, error, run] = useAction();
-  const search = (e) => {
-    e?.preventDefault();
-    if (!query.trim()) return;
-    run('search', async () => setRes(await api(`/serp-search/top-results?${new URLSearchParams({ query: query.trim(), time_range: timeRange, top: String(top), ...(country.trim() ? { country: country.trim() } : {}) })}`)));
-  };
-  return (
-    <>
-      <Card className="mb-4" title="Top search results" subtitle="Top organic Google results for a query, live from Serper.dev. Leave country empty to search globally.">
-        <form className="flex flex-wrap items-end gap-2" onSubmit={search}>
-          <Field label="Query"><div className="relative"><Search size={13} className="absolute left-2.5 top-3 text-gray-400" /><input className={`${inputCls} !w-80 !pl-8`} placeholder="social media bookmarking sites" value={query} onChange={(e) => setQuery(e.target.value)} /></div></Field>
-          <Field label="Time range"><Select className={`${inputCls} !w-auto`} value={timeRange} onChange={(e) => setTimeRange(e.target.value)}>
-            <option value="any">Any time</option><option value="day">Past day</option><option value="week">Past week</option><option value="month">Past month</option><option value="year">Past year</option>
-          </Select></Field>
-          <Field label="Country"><input className={`${inputCls} !w-28`} placeholder="global" value={country} onChange={(e) => setCountry(e.target.value)} /></Field>
-          <Field label="Results"><Select className={`${inputCls} !w-auto`} value={top} onChange={(e) => setTop(Number(e.target.value))}>{[5, 10, 20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}</Select></Field>
-          <Button type="submit" variant="primary" icon={Search} busy={busy === 'search'} disabled={query.trim().length < 2}>Search</Button>
-        </form>
-        <ErrorNote>{error}</ErrorNote>
-      </Card>
-      {res && (
-        <Card title="Results" subtitle={`${res.returned} organic result(s) for “${res.query}” · ${res.country} · ${res.time_range}`}>
-          {res.results.length === 0 ? <Empty>No results found.</Empty> : (
-            <div className="divide-y divide-gray-100">
-              {res.results.map((r, i) => (
-                <div key={i} className="py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-12 text-gray-400 tabular-nums w-5">{r.position}.</span>
-                    <a className="text-13 text-indigo-600 hover:underline font-medium truncate" href={r.link} target="_blank" rel="noreferrer noopener">{r.title}</a>
-                    {r.date && <Badge tone="gray">{r.date}</Badge>}
-                  </div>
-                  <div className="text-12 text-gray-500 break-all ml-7">{r.link}</div>
-                  {r.snippet && <div className="text-12.5 text-gray-700 mt-1 ml-7">{r.snippet}</div>}
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
-    </>
-  );
-}
-
 function Body({ b }) {
-  const [tab, setTab] = useUrlTab('report', ['report', 'seed', 'serp', 'overview', 'explorer', 'gap', 'bot', 'collect', 'targets']);
+  const [tab, setTab] = useUrlTab('report', ['report', 'seed', 'overview', 'explorer', 'gap', 'bot', 'collect', 'targets']);
   const base = `/businesses/${b.id}/backlink-intel`;
   const t = useApi(`${base}/targets`);
   const [toast, toastNode] = useToast();
@@ -971,14 +921,13 @@ function Body({ b }) {
           <span>{running ? 'New backlinks appear here as they are found.' : botState.data.last_run_at ? `Last run ${fmtDateTime(botState.data.last_run_at)}${stats && !stats.skipped ? (stats.source === 'crawler' ? `: ${stats.links_read} links read from our backlink crawler, ${stats.new_backlinks} new` : `: ${stats.pages} pages read, ${stats.new_backlinks} new backlink(s) to your sites`) : ''}. ${botState.data.source === 'crawler' ? `Synced every ${botState.data.config.interval_minutes} minutes.` : botSchedule(botState.data)}` : 'It starts shortly after onboarding.'}</span>
         </div>
       )}
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'report', label: 'Backlink report' }, { id: 'seed', label: 'Seed backlinks' }, { id: 'serp', label: 'Top Search Results' }, { id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'report', label: 'Backlink report' }, { id: 'seed', label: 'Seed backlinks' }, { id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
         { id: 'bot', label: botState.data?.source === 'crawler' ? 'Crawler sync' : 'Discovery bot' }, { id: 'collect', label: 'Seeds & verify' }, { id: 'targets', label: 'Targets', count: targets.length }]} />
       <ErrorNote>{t.error?.message}</ErrorNote>
       {t.loading && !t.data ? <div className="space-y-4"><SkStats labels={["Backlinks", "Referring domains", "Lost links", "Verified"]} /><SkCard title="Backlinks"><SkTable headers={["Source page", "Target", "Anchor", "Status", "Last seen"]} rows={5} bare /></SkCard></div> : (
         <div key={`${lastRun}-${running}`}>
           {tab === 'report' && <CrawlerReport biz={b} />}
           {tab === 'seed' && <SeedBacklinks biz={b} />}
-          {tab === 'serp' && <SerpSearch />}
           {tab === 'overview' && <Overview base={base} targets={targets} biz={b} go={setTab} reload={reload} />}
           {tab === 'explorer' && <><Lookup /><Explorer base={base} targets={targets} /></>}
           {tab === 'gap' && <><div className="mb-4"><CrawlerReport biz={b} competitors={targets.filter(t => t.is_competitor).map(t => t.domain)} /></div><Gap base={base} targets={targets} /></>}

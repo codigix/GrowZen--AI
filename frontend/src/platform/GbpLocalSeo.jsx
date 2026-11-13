@@ -95,7 +95,7 @@ export default function LocalSeoSection({ b }) {
 
           <Card title="Where you rank for local searches" subtitle={pos?.area?.label ? `Checked for ${pos.area.label}` : 'Position in Google Maps and Google Search for each tracked search'}
             action={<Button size="sm" variant="primary" icon={Play} busy={busy === 'check'} disabled={!pos?.summary?.keywords} onClick={check}>Check rankings now</Button>}>
-            {pos?.state === 'needs_serper' && <p className="text-12.5 text-amber-800 bg-amber-50 rounded-lg px-3 py-2 mb-3">Rank checks need a Serper key. Set <b>SERPER_API_KEY</b> on the backend.</p>}
+            {pos?.state === 'needs_google' && <p className="text-12.5 text-amber-800 bg-amber-50 rounded-lg px-3 py-2 mb-3">Rank checks read Google Search Console: link the Google account that owns the website to this project.</p>}
             {pos?.summary?.keywords > 0 && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                 {[['Tracked searches', pos.summary.keywords], ['In the Maps top 3', pos.summary.in_pack], ['On Google page 1', pos.summary.page1], ['Not found', pos.summary.not_found]].map(([l, v]) => <div key={l} className="rounded-lg bg-slate-50 px-3 py-2.5"><div className="text-11.5 font-medium text-slate-500">{l}</div><div className="text-18 font-bold text-slate-900 tabular-nums">{v}</div></div>)}

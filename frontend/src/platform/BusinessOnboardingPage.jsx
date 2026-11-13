@@ -1436,7 +1436,7 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
       mark('competitors', 'running');
       try {
         const cr = await api(`/businesses/${b.id}/competitor-research`);
-        if (!cr.setup?.google_results) mark('competitors', 'skipped', 'Needs a Google results key (SERPER_API_KEY). Run it later from Competitor Research.');
+        if (!cr.setup?.google_results) mark('competitors', 'skipped', 'Needs the Google Places key (GOOGLE_PLACES_API_KEY). Run it later from Competitors.');
         else {
           await api(`/businesses/${b.id}/competitor-research`, { method: 'POST', body: { keywords: (form.keywords.length ? form.keywords : cr.defaults.keywords).slice(0, 4), location: cr.defaults.location } });
           mark('competitors', 'done', 'Competitor research started. Keyword Intelligence builds on it when it finishes.');
