@@ -39,6 +39,9 @@ const isActivePath = (pathname, search, to) => {
   return true;
 };
 
+// An entry can also own other pages (`also`): the merged "My Search Performance" entry stays highlighted on its three views.
+const itemActive = (pathname, search, item) => isActivePath(pathname, search, item.to) || (item.also || []).some(p => pathname === p || pathname.startsWith(`${p}/`));
+
 // Real numbers only: what the backend reports as connected (GET /status).
 function useConnections() {
   const { data } = useApi('/status');
@@ -78,7 +81,7 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
   const connections = useConnections();
   const hidePanel = collapsed && !open; // the mobile drawer always shows the panel
   const mainRef = useRef(null);
-  const holds = (sec) => sec.groups.some(grp => grp.items.some(i => isActivePath(location.pathname, location.search, i.to)));
+  const holds = (sec) => sec.groups.some(grp => grp.items.some(i => itemActive(location.pathname, location.search, i)));
   const section = (picked && SIDEBAR_SECTIONS.find(s => s.id === picked && holds(s))) || SIDEBAR_SECTIONS.find(holds) || SIDEBAR_SECTIONS.find(s => s.id === picked) || SIDEBAR_SECTIONS[0];
   const openSection = (sec) => { setPicked(sec.id); setCollapsed(false); if (!holds(sec)) navigate(sec.groups[0].items[0].to); };
 
@@ -140,7 +143,7 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
                   {grp.title && <div className="px-3 mb-1.5 text-12 text-slate-500">{grp.title}</div>}
                   <div className="space-y-0.5">
                     {items.map(item => {
-                      const active = isActivePath(location.pathname, location.search, item.to);
+                      const active = itemActive(location.pathname, location.search, item);
                       return (
                         <NavLink key={item.to} to={item.to} onClick={() => setOpen(false)} aria-current={active ? 'page' : undefined}
                           className={`flex items-center gap-2 min-h-9 px-3 py-1.5 rounded text-14 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 transition-colors ${active ? 'bg-slate-200/80 text-slate-900 font-semibold' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}>
