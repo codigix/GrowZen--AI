@@ -1189,7 +1189,7 @@ function PathBar({ progress, tab, setTab }) {
 
 function NextStep({ progress }) {
   if (!progress) return null;
-  if (progress.complete) return <div className="mt-6 rounded-xl bg-emerald-50 text-emerald-900 px-4 py-3 text-13 flex items-center gap-2"><CheckCircle2 size={16} /> All four steps are done: {progress.saved} keywords saved, grouped, and checked on Google. Check the positions again in <Link to="/rank-tracking" className="font-semibold underline">Position Tracking</Link>.</div>;
+  if (progress.complete) return <div className="mt-6 rounded-xl bg-emerald-50 text-emerald-900 px-4 py-3 text-13 flex items-center gap-2"><CheckCircle2 size={16} /> All four steps are done: {progress.saved} keywords saved, grouped, and checked on Google. Check the positions again in <Link to="/rank-tracking/positions" className="font-semibold underline">Position Tracking</Link>.</div>;
   const n = progress.next;
   return (
     <div className="mt-6 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 flex flex-wrap items-center gap-3">

@@ -349,7 +349,7 @@ def progress(db: Session, b: Business) -> dict[str, Any]:
         {"key": "find", "title": "Find", "done": n > 0 or researched, "detail": "Competitor research is done: keyword ideas build on it." if researched else "Start with ideas for your business.", "to": "/keyword-management/discover"},
         {"key": "save", "title": "Save", "done": n >= MIN_KEYWORDS, "detail": f"{n} saved" + ("" if n >= MIN_KEYWORDS else f"; aim for at least {MIN_KEYWORDS}."), "to": "/keyword-management/tracked"},
         {"key": "group", "title": "Group", "done": n > 0 and grouped == n and mapped == n, "detail": f"{grouped} of {n} in a topic, {mapped} with a page." if n else "Nothing to group yet.", "to": "/keyword-management/topics"},
-        {"key": "track", "title": "Track", "done": checked > 0, "detail": f"{checked} of {n} checked on Google" + (f", {ranking} ranking." if checked else ".") if n else "Nothing to track yet.", "to": "/rank-tracking"},
+        {"key": "track", "title": "Track", "done": checked > 0, "detail": f"{checked} of {n} checked on Google" + (f", {ranking} ranking." if checked else ".") if n else "Nothing to track yet.", "to": "/rank-tracking/positions"},
     ]
     nxt = next((s for s in steps if not s["done"]), None)
     return {"saved": n, "grouped": grouped, "mapped": mapped, "checked": checked, "ranking": ranking, "researched": researched, "min": MIN_KEYWORDS, "steps": steps,
