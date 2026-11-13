@@ -51,6 +51,13 @@ def keyword_usage(b: Business = Depends(get_business), db: Session = Depends(get
     return keyword_ai.usage(db, b)
 
 
+@router.get("/keywords/status")
+def keyword_status(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Every tracked keyword in one view: position now, impressions and clicks, where it is used, whether it is worth pushing, and what to do next."""
+    from ..services import keyword_status as ks  # noqa: PLC0415
+    return ks.status(db, b)
+
+
 @router.post("/keywords/{keyword_id}/geo-prompt", status_code=201)
 def keyword_to_geo_prompt(keyword_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Turn a saved keyword into a customer question that the AI-search (GEO/AEO) tracker asks the AI engines."""

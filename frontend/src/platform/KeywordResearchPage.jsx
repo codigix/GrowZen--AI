@@ -10,6 +10,7 @@ import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToa
 import { api, useApi, fmtDateTime, fmt, SEO_API } from './seoApi';
 import { pathOnly as pathOf } from './siteUtils';
 import Select from '../components/Select';
+import KeywordStatus from './KeywordStatus';
 
 /**
  * Keyword intelligence for the selected business. Discovery starts from what the platform knows
@@ -1334,9 +1335,9 @@ function UseIt({ b, kw }) {
 }
 
 const FIND_TABS = ['ai', 'discover', 'planner', 'explorer'];
-const SAVE_TABS = ['tracked', 'topics', 'use'];
+const SAVE_TABS = ['tracked', 'topics', 'use', 'status'];
 const SOURCES = [['ai', 'AI suggestions', 'Keywords and questions written from what your business has really done and could grow into'], ['discover', 'Ideas for my business', 'Built from your services, area, website and competitors'], ['planner', 'Google numbers', 'Search volume, competition and bids from the Google Keyword Planner'], ['explorer', 'Other platforms', 'Suggestions from YouTube, Bing, Amazon and more']];
-const SAVED_VIEWS = [['tracked', 'My list and pages', 'Every saved keyword with its rank and the page it should rank with'], ['topics', 'Topics', 'Group the keywords into topics, one page per topic'], ['use', 'Where to use them', 'Blog, Google posts, AEO, GEO, ChatGPT and the website']];
+const SAVED_VIEWS = [['tracked', 'My list and pages', 'Every saved keyword with its rank and the page it should rank with'], ['topics', 'Topics', 'Group the keywords into topics, one page per topic'], ['use', 'Where to use them', 'Blog, Google posts, AEO, GEO, ChatGPT and the website'], ['status', 'Status and results', 'Where each keyword ranks now, what it earns and whether it is worth pushing']];
 const pill = (on) => `h-9 px-4 rounded-full text-13 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
 
 function Keywords({ b, tab, kw, onSaved, seedSearch }) {
@@ -1350,13 +1351,14 @@ function Keywords({ b, tab, kw, onSaved, seedSearch }) {
       {tab === 'tracked' && <Tracked b={b} kw={kw} />}
       {tab === 'topics' && <Topics b={b} kw={kw} />}
       {tab === 'use' && <UseIt b={b} kw={kw} />}
+      {tab === 'status' && <KeywordStatus b={b} />}
     </>
   );
 }
 
 /** The four steps (find, save, group, track), where the project stands on each. */
 function PathBar({ progress, tab, setTab }) {
-  const at = FIND_TABS.includes(tab) ? 'find' : tab === 'tracked' ? 'save' : tab === 'topics' ? 'group' : 'use';
+  const at = FIND_TABS.includes(tab) ? 'find' : tab === 'tracked' ? 'save' : tab === 'topics' ? 'group' : 'use';  // 'status' belongs with the last step
   const go = { find: 'ai', save: 'tracked', group: 'topics', use: 'use' };
   const steps = progress?.steps || [];
   if (!steps.length) return <div className="h-16 rounded-xl bg-slate-100 animate-pulse mb-5" role="status" aria-busy="true" />;
@@ -1433,7 +1435,7 @@ function KeywordPath({ b, tab, setTab }) {
 }
 
 export default function KeywordResearchPage() {
-  const [tab, setTab] = useUrlTab('ai', ['ai', 'discover', 'planner', 'explorer', 'tracked', 'topics', 'use']);
+  const [tab, setTab] = useUrlTab('ai', ['ai', 'discover', 'planner', 'explorer', 'tracked', 'topics', 'use', 'status']);
   return (
     <SeoShell step="keywords" title="Keywords" subtitle="Get keyword ideas from AI, pick the best, group them into topics, use them in your blog, posts and AI answers, then track where they rank">
       {(b) => <KeywordPath key={b.id} b={b} tab={tab} setTab={setTab} />}
