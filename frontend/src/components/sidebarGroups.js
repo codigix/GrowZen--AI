@@ -107,7 +107,7 @@ export const SIDEBAR_SECTIONS = [
       { items: [page('/dashboard')] },
       { title: 'Site Performance', items: [page('/website-audit'), page('/rank-tracking'), page('/traffic'), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] })] },
       { title: 'Competitors', items: [page('/competitor-finder'), page('/competitor-watch'), link('/backlink-intelligence/gap', 'Backlink Gap')] },
-      { title: 'Keyword Research', items: [page('/keyword-management/discover', { label: 'Find Keywords', also: ['/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' }), page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics'] })] },
+      { title: 'Keyword Research', items: [page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' }), page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics', '/keyword-management/use'] })] },
       { title: 'Content Ideas', items: [page('/ai-content-generation/blog'), page('/ai-content-generation/trends'), link('/seo-brief', 'SEO Brief Generator')] },
       { title: 'Link Building', items: [page('/backlink-intelligence'), page('/backlink-checker'), link('/backlink-intelligence/explorer', 'Backlinks'), soon('referring-domains'), soon('backlink-audit'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks')] }
     ]

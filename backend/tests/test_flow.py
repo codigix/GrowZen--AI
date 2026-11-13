@@ -82,9 +82,9 @@ def test_keywords_need_eight_grouped_and_the_endpoint_is_scoped(client):
 def test_keyword_progress_is_one_rule_for_the_page_and_the_journey(client):
     bid = client.post("/api/v1/businesses", json={"name": "Path Co", "website": "https://path.example", "city": "Pune"}).json()["id"]
     p = client.get(f"/api/v1/businesses/{bid}/keywords/progress").json()
-    assert p["saved"] == 0 and p["next"]["key"] == "find" and not p["complete"] and [s["key"] for s in p["steps"]] == ["find", "save", "group", "track"]
+    assert p["saved"] == 0 and p["next"]["key"] == "find" and not p["complete"] and [s["key"] for s in p["steps"]] == ["find", "save", "group", "use", "track"]
     client.post(f"/api/v1/businesses/{bid}/keywords", json=[{"keyword": f"dental service {i} pune", "tracked": True} for i in range(8)])
     p = client.get(f"/api/v1/businesses/{bid}/keywords/progress").json()
-    assert p["steps"][3]["to"] == "/rank-tracking/positions" and p["saved"] == 8 and p["steps"][1]["done"] is True and p["next"]["key"] == "group" and p["next"]["to"] == "/keyword-management/topics"
+    assert p["steps"][4]["to"] == "/rank-tracking/positions" and p["saved"] == 8 and p["steps"][1]["done"] is True and p["next"]["key"] == "group" and p["next"]["to"] == "/keyword-management/topics"
     step = next(s for s in client.get(f"/api/v1/businesses/{bid}/flow").json()["steps"] if s["key"] == "keywords")
     assert step["status"] != "done" and "8 keywords tracked" in step["detail"]  # saved but not grouped: the journey agrees with the page

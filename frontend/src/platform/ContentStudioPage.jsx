@@ -605,8 +605,9 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, onShowA
  */
 function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pendingLength, elapsed = 0, onGenerate, generating, onSaved, onScheduled, toast }) {
   const [step, setStep] = useState(selectedArticle ? 1 : 0);
-  const [kw, setKw] = useState(selectedArticle ? selectedArticle.keyword : selectedTopic ? selectedTopic.title : '');  // the primary keyword
-  const [topicText, setTopicText] = useState(selectedArticle ? selectedArticle.topic || selectedArticle.keyword : selectedTopic ? selectedTopic.title : '');
+  const urlTopic = React.useMemo(() => (selectedArticle || selectedTopic ? '' : (new URLSearchParams(window.location.search).get('topic') || '').slice(0, 200)), []); // a keyword from My Keywords: the writer opens with it ready
+  const [kw, setKw] = useState(selectedArticle ? selectedArticle.keyword : selectedTopic ? selectedTopic.title : urlTopic);  // the primary keyword
+  const [topicText, setTopicText] = useState(selectedArticle ? selectedArticle.topic || selectedArticle.keyword : selectedTopic ? selectedTopic.title : urlTopic);
   const [secondaryList, setSecondaryList] = useState(selectedArticle ? selectedArticle.secondary_keywords || [] : selectedTopic?.selected || []);
   const [kwReady, setKwReady] = useState(Boolean(selectedArticle));  // the full blog is only started once there is a keyword set
   const [kwBusy, setKwBusy] = useState(false);

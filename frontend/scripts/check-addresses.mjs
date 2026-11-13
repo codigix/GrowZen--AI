@@ -16,7 +16,9 @@ const SHOTS = process.env.SHOTS || ''; // a folder: also save a screenshot of ev
 
 // [address, final path (+ query), text the page must show, sidebar entry that must be active (or null)]
 const CASES = [
-  ['/keyword-management', '/keyword-management/discover', 'Find real searches for your business', 'Find Keywords'],
+  ['/keyword-management', '/keyword-management/ai', 'AI suggestions', 'Find Keywords'],
+  ['/keyword-management/ai', '/keyword-management/ai', 'Suggest keywords', 'Find Keywords'],
+  ['/keyword-management/use', '/keyword-management/use', 'Where to use them', 'My Keywords'],
   ['/keyword-management?tab=discover', '/keyword-management/discover', 'Ideas for my business', 'Find Keywords'],
   ['/keyword-management?tab=topics', '/keyword-management/topics', 'Group tracked keywords into topics', 'My Keywords'],
   ['/keyword-management/discover', '/keyword-management/discover', 'Ideas for my business', 'Find Keywords'],

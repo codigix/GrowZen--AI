@@ -461,7 +461,7 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
   const photos = (live.data?.live?.media || []).filter(m => m.type !== 'VIDEO' && m.url).slice(0, 12);
   const [busy, , run] = useAction();
   const [tag, setTag] = useState('');
-  const [topic, setTopic] = useState('');
+  const [topic, setTopic] = useState(() => (new URLSearchParams(window.location.search).get('topic') || '').slice(0, 200)); // a keyword from My Keywords
   const [pick, setPick] = useState(false);
   const [broken, setBroken] = useState(false);
   const fileRef = useRef(null);
@@ -595,7 +595,9 @@ function PostsTab({ b, toast }) {
   const posts = useApi(`/businesses/${b.id}/posts`);
   const [edit, setEdit] = useState(null);
   const [busy, error, run, setError] = useAction();
+  const openedFromKeyword = React.useRef(false);
   const open = () => { setError(''); setEdit({ post_type: 'Update', title: '', body: '', tags: [], image_url: '', cta_type: 'LEARN_MORE', cta_url: b.booking_url || b.website || '', scheduled_for: '', starts_on: '', ends_on: '', start_time: '', end_time: '', coupon_code: '', redeem_url: '', terms: '' }); };
+  useEffect(() => { if (!openedFromKeyword.current && new URLSearchParams(window.location.search).get('topic')) { openedFromKeyword.current = true; open(); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const save = (now = false) => run(now ? 'now' : 'save', async () => {
     const made = await api(`/businesses/${b.id}/posts`, { method: 'POST', body: cleanPost(edit) });
     if (now) await api(`/businesses/${b.id}/gbp/posts/${made.id}/publish`, { method: 'POST' });

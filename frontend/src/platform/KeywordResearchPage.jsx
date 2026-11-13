@@ -694,7 +694,7 @@ function Tracked({ b, kw }) {
               <tbody className="divide-y divide-slate-100">
                 {tracked.map(k => (
                   <tr key={k.id} data-just-added={fresh.has(k.keyword.toLowerCase()) ? '1' : undefined} className={fresh.has(k.keyword.toLowerCase()) ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}>
-                    <td className="p-2 text-slate-900">{k.keyword}{fresh.has(k.keyword.toLowerCase()) && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5 align-middle">Just added</span>}<div>{k.intent && <Badge tone={INTENT_TONE[k.intent] || 'gray'}>{k.intent}</Badge>}</div></td>
+                    <td className="p-2 text-slate-900">{k.keyword}{(k.uses || []).length > 0 && <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">{k.uses.map(u => <UseChip key={u} u={u} />)}</span>}{fresh.has(k.keyword.toLowerCase()) && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5 align-middle">Just added</span>}<div>{k.intent && <Badge tone={INTENT_TONE[k.intent] || 'gray'}>{k.intent}</Badge>}</div></td>
                     <td className="p-2 text-right tabular-nums">{fmt(k.volume)}</td>
                     <td className="p-2"><input list={`pages-${b.id}`} className={`${inputCls} max-w-[260px] ${!k.target_url ? 'ring-1 ring-amber-300' : ''}`} defaultValue={k.target_url || ''} placeholder="— not mapped —" onBlur={e => e.target.value !== (k.target_url || '') && update(k, { target_url: e.target.value || null })} /></td>
                     <td className="p-2 text-right tabular-nums">{k.rank ?? <span className="text-slate-400">—</span>}{k.rank && k.prev_rank && k.prev_rank !== k.rank && <span className={`ml-1 text-11 ${k.prev_rank > k.rank ? 'text-emerald-700' : 'text-red-600'}`}>{k.prev_rank > k.rank ? '▲' : '▼'}{Math.abs(k.prev_rank - k.rank)}</span>}</td>
@@ -1170,29 +1170,194 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
   );
 }
 
-const FIND_TABS = ['discover', 'planner', 'explorer'];
-const SAVE_TABS = ['tracked', 'topics'];
-const SOURCES = [['discover', 'Ideas for my business', 'Built from your services, area, website and competitors'], ['planner', 'Google numbers', 'Search volume, competition and bids from the Google Keyword Planner'], ['explorer', 'Other platforms', 'Suggestions from YouTube, Bing, Amazon and more']];
-const SAVED_VIEWS = [['tracked', 'My list and pages', 'Every saved keyword with its rank and the page it should rank with'], ['topics', 'Topics', 'Group the keywords into topics, one page per topic']];
+
+/* ── AI suggestions and "where to use them" ───────────────────────────── */
+
+const USE_LABEL = { blog: 'Blog', gmb_post: 'Google posts', aeo: 'AEO answers', geo: 'AI search (GEO)', chatgpt: 'ChatGPT', website: 'Website' };
+const USE_TONE = { blog: 'bg-violet-50 text-violet-700 ring-violet-200', gmb_post: 'bg-sky-50 text-sky-700 ring-sky-200', aeo: 'bg-amber-50 text-amber-800 ring-amber-200', geo: 'bg-emerald-50 text-emerald-700 ring-emerald-200', chatgpt: 'bg-teal-50 text-teal-700 ring-teal-200', website: 'bg-slate-50 text-slate-700 ring-slate-200' };
+const HORIZONS = [['done', 'Builds on what you already do', 'Based on your services, saved keywords, posts and articles'], ['next', 'Where you can grow next', 'A realistic direction for the next 3 to 6 months']];
+const UseChip = ({ u }) => <span className={`inline-flex items-center rounded-full ring-1 ring-inset px-2 py-0.5 text-11 font-semibold whitespace-nowrap ${USE_TONE[u] || USE_TONE.website}`}>{USE_LABEL[u] || u}</span>;
+
+function AiSuggestions({ b, tracked, onTracked }) {
+  const cacheKey = `kwai:${b.id}`;
+  const [data, setData] = useState(() => { try { return JSON.parse(sessionStorage.getItem(cacheKey) || 'null'); } catch { return null; } });
+  const [picked, setPicked] = useState([]);
+  const [area, setArea] = useState('all');
+  const [busy, error, run] = useAction();
+  const have = useMemo(() => new Set((tracked || []).map(k => k.keyword)), [tracked]);
+  const items = (data?.items || []).filter(i => !have.has(i.keyword));
+  const shown = items.filter(i => area === 'all' || (i.uses || []).includes(area));
+  const suggest = () => run('suggest', async () => {
+    const r = await api(`/businesses/${b.id}/keywords/ai-suggestions`, { method: 'POST', body: {}, timeout: 120000 });
+    setData(r); setPicked([]);
+    try { sessionStorage.setItem(cacheKey, JSON.stringify(r)); } catch { /* optional */ }
+  });
+  const toggle = (k) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k]));
+  const save = () => run('save', async () => {
+    const chosen = items.filter(i => picked.includes(i.keyword));
+    const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: chosen.map(i => ({ keyword: i.keyword, intent: i.intent || undefined, priority: i.priority, cluster: i.topic || undefined, uses: i.uses })) });
+    onTracked(chosen.map(i => i.keyword), r.added);
+  });
+  const ev = data?.evidence;
+  const facts = ev ? [[ev.services, 'services'], [ev.saved, 'saved keywords'], [ev.posts, 'Google posts'], [ev.articles, 'articles'], [ev.competitor_gaps, 'competitor gaps'], [ev.geo_prompts, 'AI-search questions'], [ev.failing_ai_checks, 'failing AI checks']].filter(([n]) => n > 0) : [];
+  return (
+    <div className="space-y-5">
+      <Card title={`AI suggestions for ${b.name}`} subtitle="Keywords and questions to go after, written from what your business has really done and could grow into. Nothing is saved until you pick."
+        action={<Button variant="ai" icon={Sparkles} busy={busy === 'suggest'} onClick={suggest}>{data ? 'Suggest again' : 'Suggest keywords'}</Button>}>
+        <ErrorNote>{error}</ErrorNote>
+        {!data && busy !== 'suggest' && (
+          <div className="py-8 text-center text-13 text-slate-500 max-w-xl mx-auto">
+            Press <b>Suggest keywords</b>. The AI reads your services, the keywords you already track, your recent Google posts and blog articles, what competitors win, and what is missing for AI search, then proposes keywords and questions. Each one says why, and where to use it: blog, Google posts, AEO, GEO, ChatGPT or the website.
+          </div>
+        )}
+        {busy === 'suggest' && <div className="py-10 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Reading your business and writing suggestions…</div>}
+        {data && busy !== 'suggest' && (
+          <>
+            {facts.length > 0 && <p className="text-12.5 text-slate-500">Built from {facts.map(([n, l]) => `${n} ${l}`).join(' · ')}{ev.researched ? ' · competitor research' : ''}.</p>}
+            <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Filter by where it is for">
+              {[['all', 'All'], ...Object.entries(USE_LABEL)].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={area === id} onClick={() => setArea(id)} className={`h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${area === id ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{label}</button>)}
+            </div>
+          </>
+        )}
+      </Card>
+      {data && busy !== 'suggest' && HORIZONS.map(([hz, title, hint]) => {
+        const list = shown.filter(i => i.horizon === hz);
+        if (!list.length) return null;
+        return (
+          <Card key={hz} pad={false} title={title} subtitle={hint}>
+            <ul className="divide-y divide-slate-100">
+              {list.map(i => (
+                <li key={i.keyword}>
+                  <label className="flex items-start gap-3 px-5 py-3.5 cursor-pointer hover:bg-slate-50">
+                    <input type="checkbox" className="mt-1.5" checked={picked.includes(i.keyword)} onChange={() => toggle(i.keyword)} aria-label={`Pick ${i.keyword}`} />
+                    <span className="flex-1 min-w-0">
+                      <span className="flex flex-wrap items-center gap-2"><span className="text-14 font-semibold text-slate-900">{i.keyword}</span>{i.topic && <Badge tone="gray">{i.topic}</Badge>}{i.intent && <Badge tone={INTENT_TONE[i.intent] || 'gray'}>{i.intent}</Badge>}{i.priority === 'High' && <Badge tone="orange">high priority</Badge>}</span>
+                      {i.why && <span className="block text-12.5 text-slate-600 mt-0.5">{i.why}</span>}
+                      <span className="mt-1.5 flex flex-wrap items-center gap-1.5 text-11.5 text-slate-500">Use it for: {(i.uses || []).map(u => <UseChip key={u} u={u} />)}</span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        );
+      })}
+      {data && busy !== 'suggest' && shown.length === 0 && <Card><p className="py-8 text-center text-13 text-slate-500">{items.length ? 'Nothing in this filter. Choose All.' : 'Every suggestion is already saved. Press Suggest again for new ones.'}</p></Card>}
+      {picked.length > 0 && (
+        <div className="sticky bottom-3 z-10 rounded-xl bg-white border border-indigo-200 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[200px] text-13 text-slate-800"><b>{picked.length}</b> picked. They are saved with the topic and the areas shown, then you group and use them on the next page.</div>
+          <Button size="sm" onClick={() => setPicked([])}>Clear</Button>
+          <Button variant="primary" icon={Plus} busy={busy === 'save'} onClick={save}>Save {picked.length} keyword{picked.length === 1 ? '' : 's'}</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const AREA_ORDER = ['website', 'blog', 'gmb_post', 'aeo', 'geo', 'chatgpt'];
+const AREA_HELP = {
+  website: 'The keyword appears in your page titles, headings or services.',
+  blog: 'A blog article uses the keyword.',
+  gmb_post: 'A published Google Business Profile post uses it.',
+  aeo: 'A direct answer or FAQ for the question (set it up in Schema).',
+  geo: 'It is asked to the AI engines in the GEO tracker.',
+  chatgpt: 'Mention it in your ChatGPT business profile and FAQs.'
+};
+
+function UseIt({ b, kw }) {
+  const usage = useApi(`/businesses/${b.id}/keywords/usage`);
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
+  const [onlyOpen, setOnlyOpen] = useState(false);
+  const d = usage.data;
+  const addQuestion = (k) => run(`g${k.id}`, async () => { const r = await api(`/businesses/${b.id}/keywords/${k.id}/geo-prompt`, { method: 'POST', body: {} }); usage.reload(true); kw.reload(true); toast(r.added ? `Added to AI search: “${r.prompt}”` : 'That question is already tracked in AI search.'); });
+  const setUses = (k, uses) => run(`u${k.id}`, async () => { await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, uses } }); usage.reload(true); kw.reload(true); });
+  if (!d) return usage.error ? <ErrorNote>{usage.error.message}</ErrorNote> : <SkCard title="Where to use your keywords" pad={false}><SkTable headers={['Keyword', 'Website', 'Blog', 'Google posts', 'AEO', 'AI search', 'ChatGPT']} rows={6} bare /></SkCard>;
+  if (!d.total) return <Card><p className="py-10 text-center text-13 text-slate-500">Save some keywords first: find them in <Link to="/keyword-management/ai" className="font-semibold text-indigo-600 hover:underline">Find Keywords</Link>, then come back to put them to work.</p></Card>;
+  const rows = d.items.filter(i => !onlyOpen || AREA_ORDER.some(a => i.planned.includes(a) && i.used[a] === false));
+  const link = (a, i) => ({
+    blog: `/ai-content-generation/blog?topic=${encodeURIComponent(i.keyword)}`, gmb_post: `/google-posts?topic=${encodeURIComponent(i.keyword)}`,
+    aeo: '/website-audit?tab=schema', chatgpt: '/chatgpt-business/profile', website: '/website-audit?tab=report'
+  }[a]);
+  const Cell = ({ a, i }) => {
+    const used = i.used[a], planned = i.planned.includes(a);
+    if (used === true) return <span className="inline-flex items-center gap-1 text-12 font-semibold text-emerald-700"><CheckCircle2 size={14} /> Used</span>;
+    const action = a === 'geo'
+      ? <button type="button" onClick={() => addQuestion(i)} disabled={busy === `g${i.id}`} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">{busy === `g${i.id}` ? 'Adding…' : 'Ask AI engines'}</button>
+      : <Link to={link(a, i)} className="text-12 font-semibold text-indigo-700 hover:underline">{a === 'blog' ? 'Write article' : a === 'gmb_post' ? 'Write post' : a === 'aeo' ? 'Add answer' : a === 'chatgpt' ? 'Open profile' : 'See pages'}</Link>;
+    return (
+      <span className="flex flex-col items-start gap-0.5">
+        <span className={`text-11 font-semibold ${planned ? 'text-indigo-700' : 'text-slate-400'}`}>{planned ? 'Planned' : used === null ? '—' : 'Not yet'}</span>
+        {(planned || a === 'geo') && action}
+      </span>
+    );
+  };
+  return (
+    <div className="space-y-5">
+      {toastNode}
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        {AREA_ORDER.map(a => (
+          <div key={a} className="ai-glass-card rounded px-4 py-3.5" title={AREA_HELP[a]}>
+            <div className="text-12 font-semibold text-slate-500">{USE_LABEL[a]}</div>
+            <div className="text-22 font-bold text-slate-900 tabular-nums mt-0.5">{d.areas[a].used}<span className="text-13 font-medium text-slate-400"> of {d.total} used</span></div>
+            <div className="text-11.5 text-indigo-700">{d.areas[a].planned} planned</div>
+          </div>
+        ))}
+      </div>
+      <ErrorNote>{error}</ErrorNote>
+      <Card pad={false} title="Put your keywords to work" subtitle="For every saved keyword: where it already appears, and where it is meant to be used. Each button opens the right place with the keyword ready."
+        action={<label className="inline-flex items-center gap-2 text-12.5 text-slate-600 cursor-pointer"><input type="checkbox" checked={onlyOpen} onChange={e => setOnlyOpen(e.target.checked)} />Only what is planned but not done</label>}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-13 min-w-[860px]">
+            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="p-3 text-left font-semibold">Keyword</th>{AREA_ORDER.map(a => <th key={a} className="p-3 text-left font-semibold" title={AREA_HELP[a]}>{USE_LABEL[a]}</th>)}<th className="p-3 text-left font-semibold">Plan</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.map(i => (
+                <tr key={i.id} className="align-top hover:bg-slate-50">
+                  <td className="p-3"><div className="font-semibold text-slate-900">{i.keyword}</div><div className="text-11.5 text-slate-500">{i.cluster || 'No topic yet'}{i.rank ? ` · ranks #${i.rank}` : ''}</div></td>
+                  {AREA_ORDER.map(a => <td key={a} className="p-3"><Cell a={a} i={i} /></td>)}
+                  <td className="p-3">
+                    <Select className="h-8 px-2 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200" value="" onChange={e => { const v = e.target.value; if (v) setUses(i, i.planned.includes(v) ? i.planned.filter(x => x !== v) : [...i.planned, v]); }} aria-label={`Plan where to use ${i.keyword}`}>
+                      <option value="">{i.planned.length ? `${i.planned.length} planned` : 'Choose areas'}</option>
+                      {AREA_ORDER.map(a => <option key={a} value={a}>{i.planned.includes(a) ? '✓ ' : ''}{USE_LABEL[a]}</option>)}
+                    </Select>
+                  </td>
+                </tr>
+              ))}
+              {!rows.length && <tr><td colSpan={8} className="p-8 text-center text-slate-500">Nothing planned is left to do.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <p className="text-11.5 text-slate-400">“Used” is read from your real website crawl, profile, published posts, articles and tracked AI questions. AEO and ChatGPT use cannot be read per keyword, so they show what you planned.</p>
+    </div>
+  );
+}
+
+const FIND_TABS = ['ai', 'discover', 'planner', 'explorer'];
+const SAVE_TABS = ['tracked', 'topics', 'use'];
+const SOURCES = [['ai', 'AI suggestions', 'Keywords and questions written from what your business has really done and could grow into'], ['discover', 'Ideas for my business', 'Built from your services, area, website and competitors'], ['planner', 'Google numbers', 'Search volume, competition and bids from the Google Keyword Planner'], ['explorer', 'Other platforms', 'Suggestions from YouTube, Bing, Amazon and more']];
+const SAVED_VIEWS = [['tracked', 'My list and pages', 'Every saved keyword with its rank and the page it should rank with'], ['topics', 'Topics', 'Group the keywords into topics, one page per topic'], ['use', 'Where to use them', 'Blog, Google posts, AEO, GEO, ChatGPT and the website']];
 const pill = (on) => `h-9 px-4 rounded-full text-13 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
 
 function Keywords({ b, tab, kw, onSaved, seedSearch }) {
   const tracked = kw.data?.keywords || [];
   return (
     <>
+      {tab === 'ai' && <AiSuggestions b={b} tracked={tracked} onTracked={onSaved} />}
       {tab === 'discover' && <Discover b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
       {tab === 'planner' && <GooglePlanner b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
       {tab === 'explorer' && <KeywordExplorer b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
       {tab === 'tracked' && <Tracked b={b} kw={kw} />}
       {tab === 'topics' && <Topics b={b} kw={kw} />}
+      {tab === 'use' && <UseIt b={b} kw={kw} />}
     </>
   );
 }
 
 /** The four steps (find, save, group, track), where the project stands on each. */
 function PathBar({ progress, tab, setTab }) {
-  const at = FIND_TABS.includes(tab) ? 'find' : tab === 'tracked' ? 'save' : 'group';
-  const go = { find: 'discover', save: 'tracked', group: 'topics' };
+  const at = FIND_TABS.includes(tab) ? 'find' : tab === 'tracked' ? 'save' : tab === 'topics' ? 'group' : 'use';
+  const go = { find: 'ai', save: 'tracked', group: 'topics', use: 'use' };
   const steps = progress?.steps || [];
   if (!steps.length) return <div className="h-16 rounded-xl bg-slate-100 animate-pulse mb-5" role="status" aria-busy="true" />;
   return (
@@ -1268,9 +1433,9 @@ function KeywordPath({ b, tab, setTab }) {
 }
 
 export default function KeywordResearchPage() {
-  const [tab, setTab] = useUrlTab('discover', ['discover', 'planner', 'explorer', 'tracked', 'topics']);
+  const [tab, setTab] = useUrlTab('ai', ['ai', 'discover', 'planner', 'explorer', 'tracked', 'topics', 'use']);
   return (
-    <SeoShell step="keywords" title="Keywords" subtitle="Find real searches for your business, save the best ones, group them into topics, then track where they rank">
+    <SeoShell step="keywords" title="Keywords" subtitle="Get keyword ideas from AI, pick the best, group them into topics, use them in your blog, posts and AI answers, then track where they rank">
       {(b) => <KeywordPath key={b.id} b={b} tab={tab} setTab={setTab} />}
     </SeoShell>
   );

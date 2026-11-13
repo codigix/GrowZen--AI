@@ -343,14 +343,16 @@ def progress(db: Session, b: Business) -> dict[str, Any]:
     grouped = sum(1 for k in rows if (k.cluster or "").strip())
     mapped = sum(1 for k in rows if (k.target_url or "").strip())
     checked = sum(1 for k in rows if k.rank_checked_at)
+    planned = sum(1 for k in rows if k.uses)
     ranking = sum(1 for k in rows if k.rank)
     researched = competitor_research(db, b) is not None
     steps = [
-        {"key": "find", "title": "Find", "done": n > 0 or researched, "detail": "Competitor research is done: keyword ideas build on it." if researched else "Start with ideas for your business.", "to": "/keyword-management/discover"},
+        {"key": "find", "title": "Find", "done": n > 0 or researched, "detail": "Competitor research is done: keyword ideas build on it." if researched else "Start with ideas for your business.", "to": "/keyword-management/ai"},
         {"key": "save", "title": "Save", "done": n >= MIN_KEYWORDS, "detail": f"{n} saved" + ("" if n >= MIN_KEYWORDS else f"; aim for at least {MIN_KEYWORDS}."), "to": "/keyword-management/tracked"},
         {"key": "group", "title": "Group", "done": n > 0 and grouped == n and mapped == n, "detail": f"{grouped} of {n} in a topic, {mapped} with a page." if n else "Nothing to group yet.", "to": "/keyword-management/topics"},
+        {"key": "use", "title": "Use", "done": n > 0 and planned * 2 >= n, "detail": (f"{planned} of {n} have a place to be used (blog, posts, AEO, GEO, ChatGPT)." if n else "Nothing to use yet."), "to": "/keyword-management/use"},
         {"key": "track", "title": "Track", "done": checked > 0, "detail": f"{checked} of {n} checked on Google" + (f", {ranking} ranking." if checked else ".") if n else "Nothing to track yet.", "to": "/rank-tracking/positions"},
     ]
     nxt = next((s for s in steps if not s["done"]), None)
-    return {"saved": n, "grouped": grouped, "mapped": mapped, "checked": checked, "ranking": ranking, "researched": researched, "min": MIN_KEYWORDS, "steps": steps,
+    return {"saved": n, "grouped": grouped, "mapped": mapped, "planned": planned, "checked": checked, "ranking": ranking, "researched": researched, "min": MIN_KEYWORDS, "steps": steps,
             "next": nxt and {"key": nxt["key"], "title": nxt["title"], "to": nxt["to"], "detail": nxt["detail"]}, "complete": nxt is None}
