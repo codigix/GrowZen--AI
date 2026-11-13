@@ -35,15 +35,15 @@ def advice(row: dict, page: dict | None) -> list[dict]:
 
     if rank is None:
         if not row["url"] and not row["target_url"]:
-            add("fix", f"No page of yours is in Google's top 20 for \"{kw}\". Create a page focused on it: the keyword in the title, H1 and first paragraph, a booking or contact button, and an FAQ.")
+            add("fix", f"Google Search Console shows no impressions for \"{kw}\" in the last 28 days: no page of yours is shown for this search yet. Create a page focused on it: the keyword in the title, H1 and first paragraph, a booking or contact button, and an FAQ.")
         else:
-            add("fix", f"Your page is not in the top 20 for \"{kw}\". Check it is indexed (search site:yourdomain.com/path) and rewrite it to answer this search directly.")
+            add("fix", f"Your page is not shown on Google for \"{kw}\" (no impressions in 28 days). Check it is indexed (Search Console, URL inspection) and rewrite it to answer this search directly.")
     elif rank <= 3:
         add("keep", f"Strong position (#{rank}). Protect it: refresh the page every few months, keep the facts current and keep earning reviews and links.")
     elif rank <= 10:
-        add("improve", f"Page 1 but #{rank}. Small changes can reach the top 3: sharpen the title and H1 around \"{kw}\", add an FAQ section, and link to this page from related pages.")
+        add("improve", f"Page 1 but average position {rank}. Small changes can reach the top 3: sharpen the title and H1 around \"{kw}\", add an FAQ section, and link to this page from related pages.")
     else:
-        add("improve", f"Position #{rank} is on page 2. Make the page more complete than the ones above it (cover costs, process, who it is for, FAQs), and add internal links and local mentions.")
+        add("improve", f"Average position {rank} is on page {(rank - 1) // 10 + 1} of Google. Make the page more complete than the ones above it (cover costs, process, who it is for, FAQs), and add internal links and local mentions.")
 
     if rank and prev and rank - prev >= 3:
         add("fix", f"Dropped {rank - prev} places since the last check (#{prev} to #{rank}). Review what changed on the page, and what the pages above it now offer.")
@@ -107,9 +107,11 @@ def report(logs: list, keywords: list, own_host: str, pages_by_path: dict[str, d
             "pages_ranking": len({_path(u) for u in own}) if own else (1 if url else 0),
             "ahead": ahead[:5], "features": (last.features if last else None) or [], "own_features": (last.own_features if last else None) or [],
             "best": min((x.rank for x in h if x.rank), default=None),
+            "average_position": last.position if last else None, "impressions": last.impressions if last else None, "clicks": last.clicks if last else None,
+            "maps_rank": last.maps_rank if last else None, "maps_first": last.maps_first if last else None,
         }
         page = pages_by_path.get(_path(url or k.target_url)) if (url or k.target_url) else None
-        row["advice"] = advice(row, page) if last else [{"level": "fix", "text": "Not checked yet. Press \"Check positions now\" to get its Google position."}]
+        row["advice"] = advice(row, page) if last else [{"level": "fix", "text": "Not checked yet. Press \"Check positions now\" to read its position from Google Search Console."}]
         row["page"] = {"title": page.get("title"), "words": page.get("words"), "inbound": page.get("inbound")} if page else None
         rows.append(row)
     rows.sort(key=lambda r: (r["rank"] is None, r["rank"] or 99))
@@ -117,7 +119,7 @@ def report(logs: list, keywords: list, own_host: str, pages_by_path: dict[str, d
     return {
         "rows": rows,
         "summary": {
-            "tracked": len(rows), "ranking": len(s), "top3": sum(1 for x in s if x <= 3), "top10": sum(1 for x in s if x <= 10),
+            "tracked": len(rows), "ranking": len(s), "shown": len(s), "impressions": sum((r["impressions"] or 0) for r in rows), "clicks": sum((r["clicks"] or 0) for r in rows), "top3": sum(1 for x in s if x <= 3), "top10": sum(1 for x in s if x <= 10),
             "not_ranking": len(rows) - len(s), "avg_position": round(sum(s) / len(s), 1) if s else None,
             "improved": sum(1 for r in rows if (r["change"] or 0) > 0), "declined": sum(1 for r in rows if (r["change"] or 0) < 0),
         },

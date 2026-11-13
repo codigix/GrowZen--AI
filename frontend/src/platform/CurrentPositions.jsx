@@ -71,7 +71,7 @@ export default function CurrentPositions({ b, onChecked }) {
 
   const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
   return (
-    <Card title="Where you rank on Google right now" subtitle="Your website and Google Business Profile for each tracked keyword, from the area you target" action={check_btn} pad={false}>
+    <Card title="Where you rank on Google right now" subtitle="Your website and Google Business Profile for each tracked keyword, from the area you target" pad={false}>
       {toastNode}
       <div className="px-6 pt-4">
         <ErrorNote>{error}</ErrorNote>
@@ -119,10 +119,10 @@ export default function CurrentPositions({ b, onChecked }) {
                 {bucket !== 'all' && <button type="button" onClick={() => setBucket('all')} className="text-12 text-indigo-600 hover:underline cursor-pointer">Show all</button>}
               </div>
 
-              <div className="overflow-auto max-h-[520px] rounded ring-1 ring-inset ring-slate-100">
+              <div className="overflow-auto max-h-[680px] rounded ring-1 ring-inset ring-slate-100">
                 <table className="w-full text-13">
                   <thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500">
-                    <tr><Th>Keyword</Th><Th>Google page</Th><Th c="text-right">Position</Th><Th>Maps / local pack</Th><Th c="text-right">Change</Th><Th>Ranking page</Th><Th>Maps leader</Th><Th>Checked</Th></tr>
+                    <tr><Th>Keyword</Th><Th>Google page</Th><Th c="text-right">Position</Th><Th>Maps / local pack</Th><Th c="text-right">Change</Th><Th>Ranking page</Th><Th>Maps leader</Th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {rows.map(r => {
@@ -131,7 +131,7 @@ export default function CurrentPositions({ b, onChecked }) {
                         <tr key={r.keyword} className="hover:bg-slate-50 align-top">
                           <td className="px-4 py-3 font-medium text-indigo-700 max-w-[240px]"><span className="block truncate" title={r.keyword}>{r.keyword}</span></td>
                           {!r.checked ? (
-                            <td className="px-4 py-3 text-slate-400" colSpan={7}>Not checked yet: press “Check positions now”.</td>
+                            <td className="px-4 py-3 text-slate-400" colSpan={6}>Not checked yet: press “Check positions now”.</td>
                           ) : (
                             <>
                               <td className="px-4 py-3">{pageBadge(o)}</td>
@@ -149,13 +149,13 @@ export default function CurrentPositions({ b, onChecked }) {
                               <td className="px-4 py-3 text-12 text-slate-600 max-w-[200px]">
                                 {r.who_is_first.maps ? <div className="truncate text-slate-700" title={r.who_is_first.maps}>{r.who_is_first.maps}</div> : <span className="text-slate-400">—</span>}
                               </td>
-                              <td className="px-4 py-3 text-11.5 text-slate-500 whitespace-nowrap">{fmtDateTime(r.last_checked_at)}</td>
+                              
                             </>
                           )}
                         </tr>
                       );
                     })}
-                    {!rows.length && <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-500">No keyword matches.</td></tr>}
+                    {!rows.length && <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-500">No keyword matches.</td></tr>}
                   </tbody>
                 </table>
               </div>

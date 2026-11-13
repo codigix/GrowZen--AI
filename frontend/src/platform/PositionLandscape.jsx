@@ -4,7 +4,7 @@ import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, ScatterChart, Scat
 import { ArrowUp, ArrowDown, RefreshCw, ExternalLink, AlertTriangle, Search, Inbox, Info } from 'lucide-react';
 import { Card, Badge, Button, ErrorNote, useAction, useToast, useModulePath, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
-import { TrackingHeader, ExportButtons, ShareOfVoice, DevicesLocations, TabBar } from './PositionExtras';
+import { TrackingHeader, ExportButtons, DevicesLocations, TabBar } from './PositionExtras';
 import PositionOverview from './PositionOverview';
 import CurrentPositions from './CurrentPositions';
 import PositionCompetitors from './PositionCompetitors';
@@ -18,7 +18,7 @@ import Select from '../components/Select';
  * Google rank checks (GET /businesses/{id}/seo/position-landscape, services/landscape.py).
  */
 
-const BUCKETS = [['top3', '1-3', '#f59e0b'], ['p4_10', '4-10', '#4338ca'], ['p11_20', '11-20', '#818cf8'], ['out', 'Not in top 10', '#e2e8f0']];
+const BUCKETS = [['top3', '1-3', '#f59e0b'], ['p4_10', '4-10', '#4338ca'], ['p11_20', '11-20', '#818cf8'], ['out', 'Page 3+ or none', '#e2e8f0']];
 const RANGES = [[30, 'Last 30 days'], [60, 'Last 60 days'], [90, 'Last 90 days']];
 
 
@@ -104,7 +104,7 @@ export function Landscape({ d, onTab, b }) {
         <Card className="xl:col-span-2" pad={false}>
           <Metric label="Visibility" hint="Share of the clicks your tracked keywords could win: expected click-through rate at each position, over keywords × the click rate of position 1." value={d.cards.visibility.value} unit="%" change={d.cards.visibility.change} better="up" series={d.cards.visibility.series} />
           <Metric label="Estimated traffic" hint={d.has_volume ? 'Search volume × expected click-through rate at the position, summed over tracked keywords.' : 'No tracked keyword has a search volume yet.'} value={d.cards.traffic.value != null ? fmt(Math.round(d.cards.traffic.value)) : null} change={d.cards.traffic.change} better="up" series={d.cards.traffic.series} />
-          <Metric label="Average position" hint="Average of the positions of the keywords that rank in the top 10. Lower is better." value={d.cards.avg_position.value} change={d.cards.avg_position.change} better="down" series={d.cards.avg_position.series} />
+          <Metric label="Average position" hint="Average of the Search Console positions of the keywords shown on Google. Lower is better." value={d.cards.avg_position.value} change={d.cards.avg_position.change} better="down" series={d.cards.avg_position.series} />
         </Card>
         <Card className="xl:col-span-3" title="Summary" subtitle={`${d.domain} · ${d.period.start} → ${d.period.end} · ${d.period.checks} check${d.period.checks !== 1 ? 's' : ''}`}>
           <ul className="space-y-2.5 text-13 text-slate-700 list-disc pl-5 marker:text-indigo-400">{d.summary.map(s => <li key={s}>{s}</li>)}</ul>
@@ -113,7 +113,7 @@ export function Landscape({ d, onTab, b }) {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 items-start">
-        <Card className="xl:col-span-3" title="Rankings distribution" subtitle="Tracked keywords by position, per check (Google results are read to the top 10)">
+        <Card className="xl:col-span-3" title="Rankings distribution" subtitle="Tracked keywords by Search Console average position, per check">
           <div className="flex flex-wrap items-center gap-4 mb-2 text-12.5">
             {BUCKETS.map(([key, l, c]) => key === 'out'
               ? <label key={key} className="inline-flex items-center gap-1.5 cursor-pointer text-slate-700"><input type="checkbox" checked={showOut} onChange={e => setShowOut(e.target.checked)} />{l}</label>
@@ -126,7 +126,7 @@ export function Landscape({ d, onTab, b }) {
                 <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={false} minTickGap={20} />
                 <YAxis tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} width={36} />
                 <Tooltip />
-                {[...BUCKETS].reverse().filter(([key]) => key !== 'out' || showOut).map(([key, l, c]) => <Bar key={key} dataKey={key} name={l} stackId="d" fill={c} />)}
+                {[...BUCKETS].reverse().filter(([key]) => key !== 'out' || showOut).map(([key, l, c]) => <Bar key={key} dataKey={key} name={l} stackId="d" fill={c} isAnimationActive={false} />)}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -197,7 +197,7 @@ export function Landscape({ d, onTab, b }) {
                 <td className="px-4 py-2.5 text-right tabular-nums">{d.has_volume ? <>{p.traffic} <Chg v={p.traffic_change} /></> : '—'}</td>
               </tr>))}</tbody>
           </table>
-        ) : <Empty>{pagesTab === 'top' ? 'No page of this site ranked in the top 10 for a tracked keyword.' : `No ${pagesTab} pages in this period.`}</Empty>}
+        ) : <Empty>{pagesTab === 'top' ? 'No page of this site is shown on Google for a tracked keyword yet.' : `No ${pagesTab} pages in this period.`}</Empty>}
         <div className="p-4 border-t border-slate-100"><Button size="sm" onClick={() => onTab?.('pages')}>View all {d.pages.total || 'landing'} {d.pages.total === 1 ? 'landing page' : 'landing pages'}</Button></div>
       </Card>
 
@@ -223,8 +223,7 @@ export function Landscape({ d, onTab, b }) {
         <div className="mt-4"><Button size="sm" onClick={() => onTab?.('cannibal')}>View Cannibalization report</Button></div>
         {d.cannibal.affected > 0 && <div className="mt-4 text-12.5 text-slate-600">Merge or differentiate the competing pages so one page owns each keyword. Open the affected keywords in <b>All keywords</b> to see which URLs rank.</div>}
       </Card>
-      <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />Visibility and estimated traffic are modelled from your saved Google rank checks (top 10 results) with a standard click-through curve and the keyword volumes you track. They will not match another tool exactly.</p>
-      <ShareOfVoice d={d} />
+      <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />Visibility and estimated traffic are modelled from your saved Google Search Console positions with a standard click-through curve and the keyword volumes you track. They will not match another tool exactly.</p>
     </div>
   );
 }
@@ -259,11 +258,13 @@ export default function PositionLandscape({ b, tab: forced, onTab }) {
   const data = useApi(`/businesses/${b.id}/seo/position-landscape?days=${days}`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
+  const [tick, setTick] = useState(0);
   const d = data.data;
   const check = () => run('check', async () => {
     const r = await api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: {} });
     toast(`Read ${r.checked} keyword${r.checked !== 1 ? 's' : ''} from Google Search Console`);
     data.reload(true);
+    setTick(t => t + 1); // the table of current positions reads the new check too
   });
   const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
   return (
@@ -277,7 +278,7 @@ export default function PositionLandscape({ b, tab: forced, onTab }) {
         <Button variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={d && !d.rank_ready} onClick={check} title={d && !d.rank_ready ? 'Link the Google account that owns this site (Search Console) first' : 'Read every tracked keyword from Google Search Console (last 28 days average)'}>Check positions now</Button>
       </div>
       <ErrorNote>{error}</ErrorNote>
-      {tab === 'landscape' && <CurrentPositions key={b.id} b={b} onChecked={() => data.reload(true)} />}
+      {tab === 'landscape' && <CurrentPositions key={`${b.id}-${tick}`} b={b} onChecked={() => data.reload(true)} />}
       {!d ? (data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <SkPage statLabels={["Visibility", "Estimated traffic", "Average position"]} chartTitle="Rankings distribution" tableTitle="Top keywords" tableHeaders={["Keyword", "Position", "Change", "Volume"]} />)
         : d.state === 'ok' ? (
           <div className="space-y-4">

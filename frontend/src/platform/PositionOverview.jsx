@@ -7,8 +7,8 @@ import { api, fmt } from './seoApi';
 import { AXIS, PALETTE, Th, Chg, Empty, Filter, usePager, path } from './PositionUi';
 import Select from '../components/Select';
 
-const METRICS = [['sov', 'Share of Voice', '%', false], ['visibility', 'Visibility', '%', false], ['traffic', 'Est. Traffic', '', false], ['avg_position', 'Avg. Position', '', true]];
-const INTENT = { informational: ['I', 'bg-indigo-100 text-indigo-700'], navigational: ['N', 'bg-violet-100 text-violet-700'], commercial: ['C', 'bg-amber-100 text-amber-700'], transactional: ['T', 'bg-emerald-100 text-emerald-700'] };
+const METRICS = [['visibility', 'Visibility', '%', false], ['traffic', 'Est. Traffic', '', false], ['avg_position', 'Avg. Position', '', true]];
+const INTENT = { informational: ['I', 'bg-indigo-100 text-indigo-700'], navigational: ['N', 'bg-violet-100 text-violet-700'], commercial: ['C', 'bg-amber-100 text-amber-700'], transactional: ['T', 'bg-emerald-100 text-emerald-700'], local: ['L', 'bg-sky-100 text-sky-700'] };
 const TABS = [['positions', 'Positions'], ['traffic', 'Est. Traffic'], ['visibility', 'Visibility'], ['all', 'All']];
 const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
 const dash = <span className="text-slate-300">—</span>;
@@ -59,7 +59,7 @@ function PositionChart({ r, domains, colorOf, me }) {
               <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} />
               <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={false} minTickGap={24} />
               <YAxis tick={AXIS} tickLine={false} axisLine={false} width={40} reversed domain={smart ? [(min) => Math.max(1, Math.floor(min) - 1), (max) => Math.ceil(max) + 1] : [1, 20]} allowDecimals />
-              <Tooltip formatter={(v, n) => [v == null ? 'not in top 20' : v, n]} />
+              <Tooltip formatter={(v, n) => [v == null ? 'no impressions' : v, n]} />
               {shown.map(x => <Line key={x} type="monotone" dataKey={x} stroke={colorOf(x)} strokeWidth={2} dot={{ r: 4 }} connectNulls isAnimationActive={false} />)}
             </LineChart>
           </ResponsiveContainer>
@@ -101,7 +101,7 @@ export default function PositionOverview({ d, b, onChanged }) {
   const [filters, setFilters] = useState({ intent: '', band: '', tag: '' });
   const [showFilter, setShowFilter] = useState(false);
   const [tab, setTab] = useState('all');
-  const [cols, setCols] = useState(() => new Set(['intent', 'sf', 'kd', 'vol', 'cpc', 'url']));
+  const [cols, setCols] = useState(() => new Set(['intent', 'kd', 'vol', 'cpc', 'url']));
   const [showCols, setShowCols] = useState(false);
   const [sort, setSort] = useState({ key: 'rank', dir: 1 });
   const [open, setOpen] = useState(() => new Set());
@@ -199,7 +199,7 @@ export default function PositionOverview({ d, b, onChanged }) {
           <Button size="sm" icon={Settings2} onClick={() => setShowCols(o => !o)}>Table settings</Button>
           {showCols && (
             <div className="absolute right-0 top-full mt-1 z-20 w-48 rounded bg-white shadow-lg ring-1 ring-slate-200 p-2 text-13">
-              {[['intent', 'Intent'], ['sf', 'SERP features'], ['kd', 'KD %'], ['vol', 'Volume'], ['cpc', 'CPC'], ['url', 'URL']].map(([c, l]) => <label key={c} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-slate-50 rounded"><input type="checkbox" checked={cols.has(c)} onChange={() => toggleCol(c)} />{l}</label>)}
+              {[['intent', 'Intent'], ['kd', 'KD %'], ['vol', 'Volume'], ['cpc', 'CPC'], ['url', 'URL']].map(([c, l]) => <label key={c} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-slate-50 rounded"><input type="checkbox" checked={cols.has(c)} onChange={() => toggleCol(c)} />{l}</label>)}
             </div>)}
         </div>}>
         <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
@@ -256,7 +256,7 @@ export default function PositionOverview({ d, b, onChanged }) {
         </div>
         {footer || <div className="px-5 py-3 border-t border-slate-100 text-12.5 text-slate-500">Page: 1 of 1</div>}
       </Card>
-      <p className="text-11.5 text-slate-400">Positions come from your saved Google checks (top 20). Visibility, traffic and share of voice are modelled with a standard click-through curve and the keyword volumes you track.</p>
+      <p className="text-11.5 text-slate-400">Positions are Google Search Console's average positions from your saved checks. Visibility and traffic are modelled with a standard click-through curve and the keyword volumes you track.</p>
     </div>
   );
 }

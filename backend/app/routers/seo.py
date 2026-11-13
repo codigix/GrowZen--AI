@@ -220,7 +220,7 @@ def position_landscape(days: int = 30, b: Business = Depends(get_business), db: 
     if not tracked:
         return {**base, "state": "no_keywords"}
     logs = list(db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= start)))
-    meta = {k.keyword: {"volume": k.volume, "tag": k.cluster, "intent": k.intent, "difficulty": k.difficulty, "cpc": k.cpc, "id": k.id} for k in tracked}
+    meta = {k.keyword: {"volume": k.volume, "tag": k.cluster, "intent": k.intent or intent_of(k.keyword), "difficulty": k.difficulty, "cpc": k.cpc, "id": k.id} for k in tracked}
     registered = [c.website for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id))]
     keep = {u.lower().replace("https://", "").replace("http://", "").removeprefix("www.").split("/")[0] for u in registered if u}
     out = landscape_svc.landscape(landscape_svc.from_logs([r for r in logs if r.keyword in meta]), meta, me, start, today, keep)
@@ -267,7 +267,7 @@ def organic_research(days: int = 30, b: Business = Depends(get_business), db: Se
         return {**base, "state": "no_website"}
     if not tracked:
         return {**base, "state": "no_keywords"}
-    meta = {k.keyword: {"volume": k.volume, "tag": k.cluster, "intent": k.intent} for k in tracked}
+    meta = {k.keyword: {"volume": k.volume, "tag": k.cluster, "intent": k.intent or intent_of(k.keyword)} for k in tracked}
     logs = [r for r in db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= start)) if r.keyword in meta]
     return {**base, **landscape_svc.organic_research(landscape_svc.from_logs(logs), meta, me, start, today)}
 
