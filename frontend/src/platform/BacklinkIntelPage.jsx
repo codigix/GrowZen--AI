@@ -93,7 +93,7 @@ function Explorer({ base, targets }) {
         <Button icon={RefreshCw} onClick={() => res.reload()}>Refresh</Button>
       </div>
       <ErrorNote>{res.error?.message}</ErrorNote>
-      {res.loading && !res.data ? <SkTable cols={7} rows={8} /> : rows.length === 0 ? <Empty>No backlinks yet. Run the discovery bot, or queue pages that should link to a tracked domain and run the crawler.</Empty> : (
+      {res.loading && !res.data ? <SkTable cols={7} rows={8} /> : rows.length === 0 ? <Empty>No backlinks yet. Open Crawler sync and press Sync now to read them from our backlink crawler.</Empty> : (
         <div className="overflow-x-auto">
           <table className="w-full text-13">
             <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Source page</Th><Th>Target</Th><Th>Anchor</Th><Th>Attr</Th><Th>Status</Th><Th>Evidence</Th><Th>Last seen</Th><Th /></tr></thead>
@@ -266,10 +266,10 @@ function QuickStart({ base, biz, go, reload }) {
   const site = (biz?.website || '').trim();
   const add = () => run('add', async () => { await api(`${base}/targets/sync`, { method: 'POST' }); reload(true); });
   return (
-    <Card title="Start tracking backlinks" subtitle="Backlink intelligence monitors the domains you add. Our own discovery bot finds the links">
+    <Card title="Start tracking backlinks" subtitle="Backlink intelligence monitors the domains you add. Our own backlink crawler (a separate server) finds the links">
       <ol className="text-13 text-gray-700 list-decimal pl-5 space-y-1.5 mb-4">
         <li><b>Add your website</b> (and competitors) as tracked domains.</li>
-        <li><b>Discover</b> backlinks: run the discovery bot from your tracked sites, or queue pages that should link to you for the crawler to check.</li>
+        <li><b>Discover</b> backlinks: sync them from our backlink crawler.</li>
         <li><b>Review</b> this report: new and lost links, anchors, top pages, and the competitor gap.</li>
       </ol>
       <ErrorNote>{error}</ErrorNote>
@@ -337,10 +337,10 @@ function Overview({ base, targets, biz, go, reload }) {
       {!o ? <div className="space-y-4"><SkStats labels={["Backlinks", "Referring domains", "Lost links", "Verified"]} /><SkCard title="Backlink report" subtitle="Links found by the crawler and by Google results"><SkChart /></SkCard></div> : o.backlinks.total === 0 && o.backlinks.lost === 0 ? (
         <Card title={`No backlinks collected for ${o.domain} yet`} subtitle="The report fills in as soon as links are imported or the crawler finds them">
           <ol className="text-13 text-gray-700 list-decimal pl-5 space-y-1.5 mb-3">
-            <li>Open <b>Discovery bot</b> and click <b>Run now</b>, or open <b>Seeds &amp; verify</b>, paste pages that should link to you and click <b>Run crawler now</b>.</li>
+            <li>Open <b>Crawler sync</b> and click <b>Sync now</b>: your links are read from our backlink crawler.</li>
             <li>Add competitors under <b>Targets</b> to unlock the competitor link gap.</li>
           </ol>
-          <Button variant="primary" icon={Play} onClick={() => go('bot')}>Open the discovery bot</Button>
+          <Button variant="primary" icon={Play} onClick={() => go('bot')}>Open the crawler sync</Button>
         </Card>
       ) : (
         <>
@@ -594,63 +594,7 @@ function Targets({ base, targets, reload, onToast }) {
   );
 }
 
-function Collect({ base, targets, onToast }) {
-  const [busy, error, run] = useAction();
-  const [domain, setDomain] = useState('');
-  const [urls, setUrls] = useState('');
-  const [result, setResult] = useState(null);
-  const status = useApi(`${base}/crawl/status`);
-  const d = domain || targets[0]?.domain || '';
-  const seed = () => run('seed', async () => {
-    const list = urls.split(/\s+/).filter(Boolean);
-    const r = await api(`${base}/crawl/seed`, { method: 'POST', body: { urls: list } });
-    onToast(`${r.queued} page(s) queued`); setUrls(''); status.reload(true);
-  });
-  const crawl = () => run('crawl', async () => {
-    const r = await api(`${base}/crawl/run`, { method: 'POST', body: { limit: 10 } });
-    setResult(r); onToast(`Crawled ${r.processed} page(s)`); status.reload(true);
-  });
-  const verify = () => run('verify', async () => {
-    const r = await api(`${base}/verify`, { method: 'POST', body: { all_due: true } });
-    onToast(`${r.queued} source page(s) queued for verification`); status.reload(true);
-  });
-  const fmtQueues = (f) => Object.entries(f || {}).map(([q, s]) => `${q}: ${Object.entries(s).map(([k, v]) => `${v} ${k}`).join(', ')}`).join(' · ');
-  const counts = fmtQueues(status.data?.frontier);
-  const mineCounts = fmtQueues(status.data?.mine);
-  return (
-    <div className="grid grid-cols-1 gap-4">
-      <Card title="Seeds and verification" subtitle="Give the bot places to look (pages that should link to you), or re-check links it already found. It respects robots.txt and rate limits.">
-        <Field label="Pages to check (one per line)"><textarea className="ai-glass-input w-full px-3 py-2 text-13 rounded" rows={3} placeholder="https://some-blog.com/post-that-links-to-you" value={urls} onChange={(e) => setUrls(e.target.value)} /></Field>
-        <div className="flex flex-wrap gap-2 mt-2">
-          <Button icon={Plus} busy={busy === 'seed'} disabled={!urls.trim()} onClick={seed}>Queue pages</Button>
-          <Button variant="primary" icon={Play} busy={busy === 'crawl'} disabled={!targets.length} onClick={crawl}>Run crawler now</Button>
-          <Button icon={Crosshair} busy={busy === 'verify'} onClick={verify}>Re-check all known links</Button>
-        </div>
-        <div className="text-12 text-gray-500 mt-3">This project: {mineCounts || 'nothing queued.'}</div>
-        <div className="text-12 text-gray-400 mt-1">Shared queue, all projects: {counts || 'empty.'}</div>
-        {result && (
-          <div className="mt-2 text-12">{result.results.map((x, i) => (
-            <div key={i} className="py-1 border-b border-gray-100 break-all">{x.url} → {x.error_code ? <Badge tone="amber">{x.error_code}</Badge> : `HTTP ${x.http_status}`} · {x.links_seen} links · {x.new_backlinks} new backlink(s) to tracked projects</div>))}
-          </div>
-        )}
-      </Card>
-      <ErrorNote>{error}</ErrorNote>
-    </div>
-  );
-}
-
 const fmtMinutes = (m) => (m < 60 ? `${m} min` : `${+(m / 60).toFixed(1)} h`);
-
-// When this project crawls next. With rotation on (the default), projects take turns in batches and the "Every" setting is not used.
-function botSchedule(s) {
-  const r = s?.rotation;
-  if (!r?.enabled) return `It runs again every ${fmtMinutes(s?.config?.interval_minutes || 30)}.`;
-  if (r.in_current_batch && r.window_ends_at) return `It is crawling in the current batch until ${fmtDateTime(r.window_ends_at)}.`;
-  if (!r.window_ends_at) return 'It starts with the next crawl batch, within a minute.';
-  if (r.batches_before_turn == null) return 'It joins the rotation once the bot is on and a domain is tracked.';
-  const next = new Date(new Date(r.window_ends_at).getTime() + r.batches_before_turn * r.batch_minutes * 60000);
-  return `Its next turn starts by about ${fmtDateTime(next.toISOString())} (projects take turns, ${r.batch_size} at a time for ${fmtMinutes(r.batch_minutes)}; ${r.batches_before_turn} batch(es) ahead).`;
-}
 
 function BotPanel({ base, targets, onToast }) {
   const st = useApi(`${base}/bot`);
@@ -660,7 +604,7 @@ function BotPanel({ base, targets, onToast }) {
   usePoll(() => st.reload(true), running, 2500);
   const save = (patch) => run('save', async () => { await api(`${base}/bot`, { method: 'PUT', body: patch }); st.reload(true); });
   const start = () => run('start', async () => { await api(`${base}/bot/run`, { method: 'POST' }); onToast('Bot started'); setTimeout(() => st.reload(true), 800); });
-  if (!s) return <SkCard title="Discovery bot" subtitle="Our own crawler. It starts from your tracked sites and competitors, explores the pages around them, and records every link it finds to them."><SkList rows={4} avatar={false} /></SkCard>;
+  if (!s) return <SkCard title="Crawler sync" subtitle="Backlinks come from our own backlink crawler."><SkList rows={4} avatar={false} /></SkCard>;
   if (s.source === 'crawler') {
     const cs = s.config;
     const m = s.mine || {};
@@ -693,51 +637,10 @@ function BotPanel({ base, targets, onToast }) {
       </>
     );
   }
-  const c = s.config;
-  const queued = Object.values(s.frontier || {}).reduce((n, q) => n + (q.pending || 0), 0);
-  const mine = s.mine || {};
-  const last = s.last_stats;
-  const rotating = Boolean(s.rotation?.enabled);
   return (
-    <>
-      <Card className="mb-4" title="Discovery bot" subtitle="Our own crawler. It starts from your tracked sites and competitors, explores the pages around them, and records every link it finds to them. No third-party index is used."
-        action={<Badge tone={running ? 'blue' : c.enabled ? 'green' : 'gray'}>{running ? 'Running' : c.enabled ? 'Scheduled' : 'Off'}</Badge>}>
-        {!targets.length ? <Empty>Add your site and your competitors under “Targets” first. The bot starts from the domains you track.</Empty> : (
-          <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-              {[['Backlinks found by the bot', mine.backlinks ?? s.totals.backlinks_found_by_bot], ['Linking domains', mine.linking_domains ?? 0], ['Pages crawled on your sites', mine.pages_crawled ?? 0], ['Pages queued for this project', mine.queue_pending ?? 0]].map(([k, v]) => (
-                <div key={k}><div className="text-12 text-gray-500">{k}</div><div className="text-[24px] font-semibold text-indigo-600 tabular-nums">{v}</div></div>))}
-            </div>
-            <div className="text-12 text-gray-500 mb-4">Shared crawler, all projects: {s.totals.pages_fetched} pages fetched · {s.totals.pages_known} pages known · {s.totals.domains_known} domains discovered · {queued} pages waiting. Every page it reads is checked for links to all tracked projects.</div>
-            <div className="flex flex-wrap items-end gap-3 mb-3">
-              <label className="flex items-center gap-2 text-13 pb-2"><input type="checkbox" checked={c.enabled} onChange={(e) => save({ enabled: e.target.checked })} /> Run automatically</label>
-              {!rotating && <Field label="Every"><Select className={`${inputCls} !w-auto`} value={c.interval_minutes} onChange={(e) => save({ interval_minutes: Number(e.target.value) })}>{[15, 30, 60, 180, 360, 1440].map(m => <option key={m} value={m}>{fmtMinutes(m)}</option>)}</Select></Field>}
-              <Field label="Pages per run"><Select className={`${inputCls} !w-auto`} value={c.pages_per_run} onChange={(e) => save({ pages_per_run: Number(e.target.value) })}>{[...new Set([25, 50, 100, 250, 500, c.pages_per_run])].sort((x, y) => x - y).map(n => <option key={n}>{n}</option>)}</Select></Field>
-              <Field label="How far to explore" hint="Links followed away from your tracked sites"><Select className={`${inputCls} !w-auto`} value={c.max_hops} onChange={(e) => save({ max_hops: Number(e.target.value) })}>
-                <option value={0}>Only your own sites</option><option value={1}>1 step out (recommended)</option><option value={2}>2 steps out</option><option value={3}>3 steps out (slow, wide)</option></Select></Field>
-              <label className="flex items-center gap-2 text-13 pb-2" title={s.render_available ? 'Loads pages built with JavaScript in a real browser. Slower: at most 10 pages per run.' : 'Chrome was not found on the server, so this is unavailable.'}>
-                <input type="checkbox" disabled={!s.render_available} checked={c.render_js} onChange={(e) => save({ render_js: e.target.checked })} /> Read JavaScript pages
-              </label>
-              <Button variant="primary" icon={running ? Loader2 : Play} busy={busy === 'start' || running} disabled={running} onClick={start}>{running ? 'Running…' : 'Run now'}</Button>
-            </div>
-            <ErrorNote>{error}</ErrorNote>
-            <div className="text-12 text-gray-500">
-              {c.enabled ? botSchedule(s) : 'Automatic runs are off.'}
-              {s.last_run_at && <> · last run {fmtDateTime(s.last_run_at)}{last && !last.skipped ? `: ${last.pages} pages read, ${last.new_backlinks} new backlink(s) to your sites, ${last.queued} queued, ${last.errors} error(s), ${last.blocked} blocked by robots.txt${last.rendered ? `, ${last.rendered} read in a browser` : ''}${last.handoff ? `; scored ${last.handoff.scored} linking domain(s), ${last.handoff.tasks} removal request(s) waiting for approval in Autonomous AI Agents` : ''}` : ''}</>}
-            </div>
-            <p className="text-11 text-gray-400 mt-3">The bot follows public links only, obeys robots.txt, waits between requests to the same site, and stays inside the page budget above. It finds links on pages it can reach from your sites, so coverage grows with each run but is smaller than a commercial index. Raise “how far to explore” to widen it.</p>
-          </>
-        )}
-      </Card>
-      <Card title="What it just fetched" subtitle="Most recent requests by the shared crawler, for all projects">
-        {s.recent.length === 0 ? <Empty>Nothing yet. Click “Run now”.</Empty> : s.recent.map((r, i) => (
-          <div key={i} className="flex gap-2 text-12 py-1 border-b border-gray-100">
-            <Badge tone={r.error_code ? 'amber' : r.http_status && r.http_status < 400 ? 'green' : 'gray'}>{r.error_code || `HTTP ${r.http_status}`}</Badge>
-            <span className="w-16 text-gray-500">{r.purpose}</span><span className="flex-1 break-all text-gray-700">{r.url}</span><span className="text-gray-400">{fmtDateTime(r.at)}</span>
-          </div>))}
-      </Card>
-      {st.error && <ErrorNote>{st.error.message}</ErrorNote>}
-    </>
+    <Card title="Backlink crawler not connected" subtitle="Backlinks come from our own crawler server. Nothing is crawled inside this app.">
+      <p className="text-13 text-gray-600">Set <b>CRAWLER_URL</b> and <b>CRAWLER_API_KEY</b> in the backend settings and restart the backend. Your site and competitors are then read from the crawler automatically.</p>
+    </Card>
   );
 }
 
@@ -747,65 +650,6 @@ const hostOf = (site) => {
   try { return new URL(raw.includes('://') ? raw : `https://${raw}`).hostname.replace(/^www\./, ''); } catch { return ''; }
 };
 
-// GET /backlinks?query=: the backlinks our seed crawler (Seed Backlink Finder) stored in PostgreSQL. Reads the database only; the crawler keeps adding rows.
-function SeedBacklinks({ biz }) {
-  const own = hostOf(biz.website);
-  const [query, setQuery] = useState(own);
-  const [shown, setShown] = useState(100);
-  const r = useApi(query ? `/backlinks?${new URLSearchParams({ query })}` : null);
-  usePoll(() => r.reload(true), Boolean(query), 15000); // new backlinks appear while the crawler runs
-  const rows = r.data?.backlinks || [];
-  const sites = new Set(rows.map(x => x.source_site)).size;
-  const follow = rows.filter(x => x.link_type === 'dofollow').length;
-  const search = (e) => { e.preventDefault(); setShown(100); r.reload(); };
-  return (
-    <>
-      <Card className="mb-4" title="Backlinks found by the Seed Backlink Finder" subtitle={`Saved in the database by the crawler that reads the seed sites. ${own ? `Showing links to ${own}.` : 'This project has no website: enter a domain below.'}`}>
-        <form className="flex flex-wrap gap-2" onSubmit={search}>
-          <div className="relative"><Search size={13} className="absolute left-2.5 top-3 text-gray-400" /><input className={`${inputCls} !w-80 !pl-8`} placeholder="codigix.co or https://site.com/page" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
-          <Button type="submit" variant="primary" icon={Search} busy={r.loading}>Search</Button>
-          {own && query !== own && <Button onClick={() => setQuery(own)}>This project</Button>}
-        </form>
-        <ErrorNote>{r.error?.message}</ErrorNote>
-      </Card>
-      {r.loading && !r.data ? <SkCard title="Backlinks"><SkTable headers={['Source page', 'Anchor', 'Type', 'Found in', 'Last seen']} rows={5} bare /></SkCard> : r.data && (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <Stat label="Backlinks" value={r.data.total} />
-            <Stat label="Referring sites" value={sites} />
-            <Stat label="Dofollow" value={follow} />
-            <Stat label="Nofollow" value={rows.length - follow} />
-          </div>
-          <Card title="Backlinks" subtitle={`Newest first · ${r.data.match_mode === 'exact' ? 'links to this exact page' : 'links to the domain and its subdomains'}`}>
-            {rows.length === 0 ? <Empty>No backlinks stored yet for “{r.data.query}”. The crawler adds them as it reads the seed sites.</Empty> : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-13">
-                  <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><Th>Source page</Th><Th>Target</Th><Th>Anchor</Th><Th>Type</Th><Th>Found in</Th><Th>Last seen</Th></tr></thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {rows.slice(0, shown).map(x => (
-                      <tr key={`${x.source_url}|${x.target_url}`}>
-                        <td className="p-2 max-w-[280px] truncate" title={x.source_title ? `${x.source_title}\n${x.source_url}` : x.source_url}><a className="text-indigo-600 hover:underline" href={x.source_url} target="_blank" rel="noreferrer noopener nofollow">{x.source_url.replace(/^https?:\/\//, '')}</a></td>
-                        <td className="p-2 max-w-[200px] truncate text-gray-600" title={x.target_url}>{x.target_url.replace(/^https?:\/\//, '')}</td>
-                        <td className="p-2 max-w-[180px] truncate text-gray-700" title={x.context || x.anchor_text || ''}>{x.anchor_text || '—'}</td>
-                        <td className="p-2"><Badge tone={x.link_type === 'dofollow' ? 'green' : 'amber'} title={x.rel.length ? x.rel.join(', ') : ''}>{x.link_type}</Badge></td>
-                        <td className="p-2 text-12 text-gray-600">{x.found_in}</td>
-                        <td className="p-2 text-12 text-gray-500">{fmtDateTime(x.last_seen_at)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {rows.length > shown && <div className="flex justify-center mt-3"><Button onClick={() => setShown(n => n + 100)}>Show more ({rows.length - shown} left)</Button></div>}
-          </Card>
-        </>
-      )}
-    </>
-  );
-}
-
-// GET /backlink-intel/crawler/report?domain=: what our own deployed backlink crawler has found for a domain (totals, linking websites, anchors, links, history).
-// competitors: the same report for a competitor's domain the user types (Competitor gap tab). It starts empty and offers the tracked competitors.
 function CrawlerStatusLine() {
   const st = useApi('/backlink-intel/crawler/status');
   const d = st.data;
@@ -900,7 +744,7 @@ function CrawlerReport({ biz, competitors = null }) {
 }
 
 function Body({ b }) {
-  const [tab, setTab] = useUrlTab('report', ['report', 'seed', 'overview', 'explorer', 'gap', 'bot', 'collect', 'targets']);
+  const [tab, setTab] = useUrlTab('report', ['report', 'overview', 'explorer', 'gap', 'bot', 'targets']);
   const base = `/businesses/${b.id}/backlink-intel`;
   const t = useApi(`${base}/targets`);
   const [toast, toastNode] = useToast();
@@ -921,18 +765,16 @@ function Body({ b }) {
           <span>{running ? 'New backlinks appear here as they are found.' : botState.data.last_run_at ? `Last run ${fmtDateTime(botState.data.last_run_at)}${stats && !stats.skipped ? (stats.source === 'crawler' ? `: ${stats.links_read} links read from our backlink crawler, ${stats.new_backlinks} new` : `: ${stats.pages} pages read, ${stats.new_backlinks} new backlink(s) to your sites`) : ''}. ${botState.data.source === 'crawler' ? `Synced every ${botState.data.config.interval_minutes} minutes.` : botSchedule(botState.data)}` : 'It starts shortly after onboarding.'}</span>
         </div>
       )}
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'report', label: 'Backlink report' }, { id: 'seed', label: 'Seed backlinks' }, { id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
-        { id: 'bot', label: botState.data?.source === 'crawler' ? 'Crawler sync' : 'Discovery bot' }, { id: 'collect', label: 'Seeds & verify' }, { id: 'targets', label: 'Targets', count: targets.length }]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'report', label: 'Backlink report' }, { id: 'overview', label: 'Overview' }, { id: 'explorer', label: 'Backlink explorer' }, { id: 'gap', label: 'Competitor gap' },
+        { id: 'bot', label: 'Crawler sync' }, { id: 'targets', label: 'Targets', count: targets.length }]} />
       <ErrorNote>{t.error?.message}</ErrorNote>
       {t.loading && !t.data ? <div className="space-y-4"><SkStats labels={["Backlinks", "Referring domains", "Lost links", "Verified"]} /><SkCard title="Backlinks"><SkTable headers={["Source page", "Target", "Anchor", "Status", "Last seen"]} rows={5} bare /></SkCard></div> : (
         <div key={`${lastRun}-${running}`}>
           {tab === 'report' && <CrawlerReport biz={b} />}
-          {tab === 'seed' && <SeedBacklinks biz={b} />}
           {tab === 'overview' && <Overview base={base} targets={targets} biz={b} go={setTab} reload={reload} />}
           {tab === 'explorer' && <><Lookup /><Explorer base={base} targets={targets} /></>}
           {tab === 'gap' && <><div className="mb-4"><CrawlerReport biz={b} competitors={targets.filter(t => t.is_competitor).map(t => t.domain)} /></div><Gap base={base} targets={targets} /></>}
           {tab === 'bot' && <BotPanel base={base} targets={targets} onToast={toast} />}
-          {tab === 'collect' && <Collect base={base} targets={targets} onToast={toast} />}
           {tab === 'targets' && <Targets base={base} targets={targets} reload={reload} onToast={toast} />}
         </div>
       )}
@@ -943,7 +785,7 @@ function Body({ b }) {
 
 export default function BacklinkIntelPage() {
   return (
-    <SeoShell step="links" title="Backlink intelligence" subtitle="Backlinks found by our own discovery bot, with status, evidence and history for every link">
+    <SeoShell step="links" title="Backlink intelligence" subtitle="Backlinks found by our own backlink crawler, with status, evidence and history for every link">
       {(b) => <Body key={b.id} b={b} />}
     </SeoShell>
   );

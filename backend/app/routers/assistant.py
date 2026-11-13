@@ -44,10 +44,10 @@ class ActionIn(BaseModel):
 @router.post("/actions")
 def run_action(body: ActionIn, background: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db), _: User = Depends(current_user)):
     """Carry out ONE action the assistant proposed, after the user confirmed it. Only actions in assistant_actions.ACTIONS can run."""
-    from ..backlinks import bot as bl_bot, router as bl_router
+    from ..backlinks import bot as bl_bot
 
     def start(business_id: int) -> None:
-        background.add_task(in_background(lambda s, bid: bl_bot.run_cycle(s, bl_router.get_fetcher(), bid), business_id))
+        background.add_task(in_background(lambda s, bid: bl_bot.run_cycle(s, bid), business_id))
     try:
         return assistant_actions.execute(db, b, body.action, body.params, start)
     except ValueError as exc:

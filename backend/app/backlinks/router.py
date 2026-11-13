@@ -44,17 +44,10 @@ class TargetIn(BaseModel):
     is_competitor: bool = False
 
 
-class VerifyIn(BaseModel):
-    backlink_ids: list[int] | None = Field(default=None, max_length=500)
-    all_due: bool = False
 
 
-class SeedIn(BaseModel):
-    urls: list[str] = Field(min_length=1, max_length=100)
 
 
-class CrawlRunIn(BaseModel):
-    limit: int = Field(default=10, ge=1, le=50)
 
 
 def _targets(db: Session, b: Business) -> list[BiTrackedTarget]:
@@ -503,52 +496,6 @@ def history(backlink_id: int, b: Business = Depends(get_business), db: Session =
                               "anchor_text": o.anchor_text, "rel_attributes": o.rel_attributes, "method": o.verification_method, "detail": o.detail} for o in obs]}
 
 
-@router.post("/verify", status_code=202)
-def verify(body: VerifyIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
-    """Queue source pages for re-verification by the crawler. Returns immediately; run the worker (POST /crawl/run or a scheduler)."""
-    if not body.backlink_ids and not body.all_due:
-        raise HTTPException(422, "Pass backlink_ids or all_due=true")
-    q, *_ = _scoped(db, b)
-    if body.backlink_ids:
-        q = q.where(Backlink.id.in_(body.backlink_ids))
-    queued = 0
-    for bl, page, _dom in db.execute(q).all():
-        if body.all_due and not body.backlink_ids and bl.next_verify_at and aware(bl.next_verify_at) > utcnow():
-            continue
-        if frontier.enqueue(db, page.normalized_url, "user", 0, priority=90.0, queue="verification", business_id=b.id):
-            queued += 1
-    db.commit()
-    return {"queued": queued}
-
-
-@router.post("/crawl/seed", status_code=202)
-def seed(body: SeedIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
-    added = 0
-    for u in body.urls:
-        try:
-            normalize_url(u)
-        except ValueError:
-            continue
-        if frontier.enqueue(db, u, "user", 0, priority=50.0, business_id=b.id):
-            added += 1
-    db.commit()
-    return {"queued": added}
-
-
-@router.post("/crawl/run")
-def crawl_run(body: CrawlRunIn, b: Business = Depends(get_business), db: Session = Depends(get_db), fetcher: engine.PageFetcher = Depends(get_fetcher)) -> dict:
-    """Run one worker tick inline (claims fair work from the frontier and processes it)."""
-    if not _targets(db, b):
-        raise HTTPException(409, "Add a tracked target first")
-    results = engine.run_batch(db, fetcher, body.limit)
-    return {"processed": len(results), "results": results}
-
-
-@router.get("/crawl/status")
-def crawl_status(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
-    return {"frontier": frontier.stats(db), "mine": frontier.stats(db, business_id=b.id, tracked=[t.domain for t in _targets(db, b)])}
-
-
 class BotConfigIn(BaseModel):
     enabled: bool | None = None
     pages_per_run: int | None = Field(default=None, ge=5, le=500)
@@ -573,14 +520,16 @@ def bot_configure(body: BotConfigIn, b: Business = Depends(get_business), db: Se
 
 
 def _bot_job(db: Session, business_id: int) -> None:
-    bot.run_cycle(db, get_fetcher(), business_id)
+    bot.run_cycle(db, business_id)
 
 
 @router.post("/bot/run", status_code=202)
 def bot_run(background: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
-    """Start one exploration run now. It runs in the background; poll GET /bot for progress."""
+    """Start one sync from our backlink crawler now. It runs in the background; poll GET /bot for progress."""
+    if not get_settings().crawler_enabled:
+        raise HTTPException(409, "Our backlink crawler is not connected: set CRAWLER_URL and CRAWLER_API_KEY in the backend settings.")
     if not _targets(db, b):
-        raise HTTPException(409, "Add a tracked domain first: the bot starts from the domains you track")
+        raise HTTPException(409, "Add a tracked domain first: the sync starts from the domains you track")
     if bot.is_running(bot.get_config(db, b.id)):
         raise HTTPException(409, "The bot is already running")
     background.add_task(in_background(_bot_job, b.id))

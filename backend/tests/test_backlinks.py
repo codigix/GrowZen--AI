@@ -364,21 +364,17 @@ def test_api_tenant_isolation(db, client):
     some_id = client.get(f"/api/v1/businesses/{a}/backlink-intel").json()["data"][0]["id"]
     assert client.get(f"{other}/{some_id}").status_code == 404
     assert client.get(f"{other}/summary", params={"domain": "client.com"}).status_code == 404
-    assert client.post(f"{other}/verify", json={"backlink_ids": [some_id]}).json()["queued"] == 0
 
 
-def test_api_targets_and_verify(db, client):
+def test_api_targets(db, client):
     bid = client.post("/api/v1/businesses", json={"name": "Verify Co"}).json()["id"]
     base = f"/api/v1/businesses/{bid}/backlink-intel"
     t = client.post(f"{base}/targets", json={"domain": "https://www.Client.co.uk/path", "name": "Me"})
     assert t.status_code == 201 and t.json()["domain"] == "client.co.uk"
     assert client.post(f"{base}/targets", json={"domain": "client.co.uk"}).json()["id"] == t.json()["id"]
     assert client.post(f"{base}/import", json={"domain": "client.co.uk"}).status_code in (404, 405)  # no third-party import exists any more
-    assert client.post(f"{base}/verify", json={}).status_code == 422
-    upsert_imported_link(db, LinkRecord("https://src.org/p", "https://client.co.uk/"), "manual_import")
-    db.commit()
-    assert client.post(f"{base}/verify", json={"all_due": True}).json() == {"queued": 1}
-    assert client.get(f"{base}/crawl/status").json()["frontier"]["verification"]["pending"] == 1
+    assert client.post(f"{base}/verify", json={"all_due": True}).status_code in (404, 405)  # no local crawling or verifying: our crawler server does it
+    assert client.post(f"{base}/crawl/run", json={}).status_code in (404, 405)
     assert client.delete(f"{base}/targets/{t.json()['id']}").status_code == 204
 
 
@@ -463,89 +459,14 @@ def _fake_web_fetcher(requested):
     return _fetcher(handler)
 
 
-def test_bot_explores_outward_and_finds_backlinks_for_you_and_competitors(db, client):
-    from app.backlinks import bot
-    bid = client.post("/api/v1/businesses", json={"name": "Bot Co"}).json()["id"]
-    db.add_all([BiTrackedTarget(business_id=bid, domain="client.com"), BiTrackedTarget(business_id=bid, domain="rival.com", is_competitor=True)])
-    db.commit()
-    requested = []
-    cfg = bot.get_config(db, bid)
-    cfg.pages_per_run, cfg.max_hops = 100, 1
-    db.commit()
-    stats = bot.run_cycle(db, _fake_web_fetcher(requested), bid)
-    assert stats["seeded"] == 2 and stats["errors"] == 0
-    found = {(db.get(BiPage, b.source_page_id).normalized_url, b.target_url) for b in db.scalars(select(Backlink))}
-    assert ("https://partner.org/", "https://client.com/") in found  # one hop from the client's site
-    assert ("https://news.net/", "https://rival.com/") in found  # one hop from the competitor's site
-    assert ("https://partner.org/guide", "https://client.com/pricing") in found  # via the proven linker's sitemap
-    assert not any(h == "deep.io" for h, _ in requested)  # two hops away: beyond max_hops=1
-    assert not any(h == "facebook.com" for h, _ in requested) and not any(h == "evil.com" for h, _ in requested)  # skip-list and cross-site sitemap entry
-    assert ("client.com", "/blog") in requested  # the tracked site's own sitemap was followed
-    assert ("private.net", "/x") not in requested
-    assert all(b.verification_status == "CRAWLER_VERIFIED" for b in db.scalars(select(Backlink)))
-    s = bot.status(db, bid)
-    assert s["running"] is False and s["totals"]["backlinks_found_by_bot"] == 3 and s["last_stats"]["new_backlinks"] == 3
 
 
-def test_bot_hop_limit_controls_how_far_it_wanders(db, client):
-    from app.backlinks import bot
-    bid = client.post("/api/v1/businesses", json={"name": "Hop Co"}).json()["id"]
-    db.add(BiTrackedTarget(business_id=bid, domain="client.com"))
-    cfg = bot.get_config(db, bid)
-    cfg.pages_per_run, cfg.max_hops = 100, 2
-    db.commit()
-    requested = []
-    bot.run_cycle(db, _fake_web_fetcher(requested), bid)
-    assert ("deep.io", "/") in requested
-    assert any(db.get(BiPage, b.source_page_id).normalized_url == "https://deep.io/" for b in db.scalars(select(Backlink)))
 
 
-def test_bot_respects_page_budget_and_does_not_run_twice_at_once(db, client):
-    from app.backlinks import bot
-    bid = client.post("/api/v1/businesses", json={"name": "Budget Co"}).json()["id"]
-    db.add(BiTrackedTarget(business_id=bid, domain="client.com"))
-    cfg = bot.get_config(db, bid)
-    cfg.pages_per_run, cfg.max_hops = 5, 2
-    db.commit()
-    stats = bot.run_cycle(db, _fake_web_fetcher([]), bid)
-    assert stats["pages"] == 5
-    cfg = bot.get_config(db, bid)
-    cfg.running, cfg.run_started_at = True, utcnow()
-    db.commit()
-    assert bot.run_cycle(db, _fake_web_fetcher([]), bid) == {"skipped": "already running"}
-    cfg.run_started_at = utcnow() - timedelta(hours=1)  # a crashed run does not block forever
-    db.commit()
-    assert "skipped" not in bot.run_cycle(db, _fake_web_fetcher([]), bid)
 
 
-def test_bot_api_configure_run_and_status(db, client, monkeypatch):
-    from app.backlinks import router as bl_router
-    bid = client.post("/api/v1/businesses", json={"name": "Api Co"}).json()["id"]
-    base = f"/api/v1/businesses/{bid}/backlink-intel"
-    assert client.post(f"{base}/bot/run").status_code == 409  # nothing tracked yet
-    client.post(f"{base}/targets", json={"domain": "client.com"})
-    monkeypatch.setattr(bl_router, "get_fetcher", lambda: _fake_web_fetcher([]))
-    assert client.put(f"{base}/bot", json={"pages_per_run": 2}).status_code == 422  # below the minimum
-    cfg = client.put(f"{base}/bot", json={"enabled": True, "pages_per_run": 20, "max_hops": 1}).json()["config"]
-    assert cfg == {"enabled": True, "pages_per_run": 20, "interval_minutes": 30, "max_hops": 1, "render_js": False}
-    assert client.post(f"{base}/bot/run").status_code == 202  # test client runs the background task before returning
-    s = client.get(f"{base}/bot").json()
-    assert s["running"] is False and s["last_stats"]["pages"] > 0 and s["totals"]["backlinks_found_by_bot"] >= 1
-    assert s["recent"] and s["frontier"]
 
 
-def test_bot_run_due_honours_interval_and_enabled_flag(db, client):
-    from app.backlinks import bot
-    bid = client.post("/api/v1/businesses", json={"name": "Due Co"}).json()["id"]
-    db.add(BiTrackedTarget(business_id=bid, domain="client.com"))
-    cfg = bot.get_config(db, bid)
-    db.commit()
-    f = _fake_web_fetcher([])
-    assert bot.run_due(db, f) == 0  # disabled
-    cfg.enabled = True
-    db.commit()
-    assert bot.run_due(db, f) == 1
-    assert bot.run_due(db, f) == 0  # ran just now: not due again until the interval passes
 
 
 def test_final_url_is_the_real_host_not_the_ssrf_pinned_ip(db):
@@ -563,29 +484,6 @@ def test_final_url_is_the_real_host_not_the_ssrf_pinned_ip(db):
     assert extract_page(res.body, res.final_url).links[0].target_url == "https://shop.example.org/about"
 
 
-def test_bot_waits_out_politeness_delays_instead_of_stopping(db, client):
-    from app.backlinks import bot
-    bid = client.post("/api/v1/businesses", json={"name": "Polite Co"}).json()["id"]
-    db.add(BiTrackedTarget(business_id=bid, domain="client.com"))
-    cfg = bot.get_config(db, bid)
-    cfg.pages_per_run, cfg.max_hops = 6, 0
-    db.commit()
-    slept = []
-    f = _fake_web_fetcher([])
-    f.default_delay = 0.0
-    real_fetch = f.fetch
-
-    def slow_fetch(db_, url, purpose="discovery", render=None):  # each fetch puts the host on cooldown, as the real fetcher does with its delay
-        res = real_fetch(db_, url, purpose, render)
-        get_page(db_, url)
-        from app.backlinks.models import BiDomain
-        d = db_.scalar(select(BiDomain).where(BiDomain.host == "client.com"))
-        if d:
-            d.next_crawl_at = utcnow() + timedelta(seconds=0.5)
-        return res
-    f.fetch = slow_fetch
-    stats = bot.run_cycle(db, f, bid, sleep=lambda s: (slept.append(s), __import__("time").sleep(0.6)))
-    assert stats["pages"] >= 3 and slept  # it paused for the cooldown and carried on
 
 
 def test_sitemap_index_queues_child_sitemaps_and_only_same_site_pages(db):
@@ -633,19 +531,6 @@ def test_meta_robots_nofollow_stops_the_bot_following_a_page_but_links_are_still
     assert queued == {"https://client.com/", "https://client.com/sitemap.xml"}  # only the seed itself and its sitemap: nothing followed
 
 
-def test_robots_blocked_pages_are_counted_and_never_fetched(db, client):
-    from app.backlinks import bot
-    bid = client.post("/api/v1/businesses", json={"name": "Robots Co"}).json()["id"]
-    db.add(BiTrackedTarget(business_id=bid, domain="client.com"))
-    db.commit()
-    requested = []
-    def handler(req):
-        requested.append(req.url.path)
-        if req.url.path == "/robots.txt":
-            return httpx.Response(200, text="User-agent: *\nDisallow: /")
-        return _page("secret")
-    stats = bot.run_cycle(db, _fetcher(handler), bid)
-    assert stats["blocked"] == 1 and requested == ["/robots.txt"]
 
 
 def test_overview_has_only_what_the_crawler_can_know(db, client):
@@ -903,35 +788,6 @@ def test_sync_adds_the_site_and_saved_competitors_without_touching_manual_target
     assert {t["domain"] for t in client.get(f"{base}/targets").json()} == {"syncdental.in", "rivala.com", "rivalb.co.uk", "manual-rival.com"}
 
 
-def test_bot_run_syncs_targets_scores_linkers_and_files_a_removal_task_once(db, client, ai_off):
-    from app.backlinks import bot
-    from app.models import AgentTask, Competitor
-    bid = _biz(client, "Bot Dental", "https://botdental.in")
-    db.add(Competitor(business_id=bid, name="Rival", website="https://rivalbot.com"))
-    db.commit()
-    web = {"botdental.in": '<a href="https://spamfarm4455.shop/">partner</a>', "rivalbot.com": "<p>rival</p>",
-           "spamfarm4455.shop": '<article>Buy cheap casino links <a href="https://botdental.in/" rel="nofollow">buy cheap seo backlinks casino</a></article>'}
-    def handler(req):
-        if req.url.path == "/robots.txt":
-            return httpx.Response(404)
-        body = web.get(req.url.host)
-        return httpx.Response(200, text=f"<html><head><title>{req.url.host}</title></head><body>{body}</body></html>", headers={"content-type": "text/html"}) if body else httpx.Response(404)
-    cfg = bot.get_config(db, bid)
-    cfg.pages_per_run, cfg.max_hops = 30, 1
-    db.commit()
-    stats = bot.run_cycle(db, _fetcher(handler), bid)
-    assert stats["new_backlinks"] == 1 and stats["handoff"]["scored"] == 1 and stats["handoff"]["tasks"] == 1
-    assert {t.domain for t in db.scalars(select(BiTrackedTarget))} == {"botdental.in", "rivalbot.com"}  # synced from the business and Competitor Research
-    task = db.scalar(select(AgentTask).where(AgentTask.business_id == bid))
-    assert task.kind == "outreach_email" and task.status == "pending" and task.requires_approval and task.title.startswith("Ask spamfarm4455.shop to remove 1 link")
-    assert "spamfarm4455.shop" in task.detail["draft"]["body"] and task.detail["draft"]["source"] == "template" and task.detail["source"] == "backlink_bot"
-    from app.models import ActivityLog
-    assert {a.action for a in db.scalars(select(ActivityLog).where(ActivityLog.business_id == bid))} >= {"backlinks_found", "backlink_tasks_created"}
-    cfg = bot.get_config(db, bid)
-    cfg.last_run_at = None
-    db.commit()
-    bot.run_cycle(db, _fetcher(handler), bid)
-    assert db.query(AgentTask).filter(AgentTask.business_id == bid).count() == 1  # a second run does not file the same request again
 
 
 def test_outcomes_take_a_baseline_once_and_judge_the_change_later(db, client):
@@ -1054,10 +910,8 @@ def test_confirmed_actions_run_and_unknown_ones_are_refused(db, client, ai_off, 
     assert {t.domain: t.is_competitor for t in db.query(BiTrackedTarget).filter(BiTrackedTarget.business_id == bid)} == {"actdental.in": False, "rivaldental.co.uk": True}
     client.post(base, json={"action": "add_competitor", "params": {"domain": "rivaldental.co.uk"}})
     assert db.query(Competitor).filter(Competitor.business_id == bid).count() == 1  # confirming twice does not duplicate
-    monkeypatch.setattr(bl_router, "get_fetcher", lambda: _fake_web_fetcher([]))
     started = client.post(base, json={"action": "run_bot"}).json()
     assert started["ok"] and started["link"]["to"].endswith("tab=bot")
-    assert db.query(CrawlAttempt).count() > 0  # the test client runs the background task before returning: the bot really ran
     assert client.post(base, json={"action": "score_linkers"}).json()["ok"] is True
     assert client.post(base, json={"action": "explain_links"}).json()["ok"] is True
 
@@ -1162,27 +1016,6 @@ def test_rendering_is_budgeted_skipped_for_normal_pages_and_never_makes_things_w
     assert rendered == ["https://app.example.org/one", "https://app.example.org/broken"] and budget.used == 2
 
 
-def test_the_bot_renders_only_when_asked_and_reports_it(db, client, monkeypatch):
-    from app.backlinks import bot, renderer
-    bid = _biz(client, "Js Co", "https://jsapp.org")
-    base = f"/api/v1/businesses/{bid}/backlink-intel"
-    s = client.get(f"{base}/bot").json()
-    assert s["config"]["render_js"] is False and isinstance(s["render_available"], bool)
-    monkeypatch.setattr(renderer, "available", lambda: True)
-    assert client.put(f"{base}/bot", json={"render_js": True, "pages_per_run": 20, "max_hops": 0}).json()["config"]["render_js"] is True
-
-    def handler(req):
-        if req.url.path == "/robots.txt":
-            return httpx.Response(404)
-        return httpx.Response(200, text=REACT_SHELL, headers={"content-type": "text/html"})  # every page is an unrendered app shell
-    f = engine.PageFetcher(httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True), sleep=lambda s: None, default_delay=0,
-                           render_fn=lambda url: RENDERED.replace("https://client.com/", "https://jsapp.org/partners"))
-    stats = bot.run_cycle(db, f, bid)
-    assert stats["rendered"] >= 1 and stats["rendered"] <= bot.RENDERS_PER_RUN  # capped per run
-    cfg = bot.get_config(db, bid)
-    cfg.render_js, cfg.last_run_at = False, None
-    db.commit()
-    assert bot.run_cycle(db, f, bid)["rendered"] == 0  # switched off: no browser
 
 
 # ---- weekly competitor watch ----------------------------------------------------------------------------------------------------
@@ -1374,30 +1207,6 @@ def stop_flag():
     stop.STOP.clear()
 
 
-def test_a_bot_run_leaves_between_pages_when_the_server_is_stopping_and_the_next_run_resumes(db, client, stop_flag):
-    from app.backlinks import bot
-    bid = _biz(client, "Stop Co", "https://stopco.in")
-    cfg = bot.get_config(db, bid)
-    cfg.pages_per_run, cfg.max_hops = 50, 0
-    db.commit()
-    seen, armed = [], [True]
-
-    def handler(req):
-        seen.append(req.url.path)
-        if req.url.path == "/robots.txt":
-            return httpx.Response(404)
-        if armed[0] and len(seen) >= 3:
-            stop_flag.set()  # the server begins shutting down mid-crawl
-        return _page("".join(f'<a href="/p{i}">p{i}</a>' for i in range(20)))
-    stats = bot.run_cycle(db, _fetcher(handler), bid)
-    assert 1 <= stats["pages"] <= 3 and not bot.get_config(db, bid).running  # left promptly, and released its "running" flag
-    stop_flag.clear()  # (the server restarted)
-    armed[0] = False
-    cfg = bot.get_config(db, bid)
-    cfg.last_run_at = None
-    db.commit()
-    resumed = bot.run_cycle(db, _fetcher(handler), bid)
-    assert resumed["pages"] > stats["pages"]  # picked the queue back up
 
 
 def test_an_interrupted_competitor_watch_keeps_its_progress_and_runs_again_instead_of_pretending_it_finished(db, client, ai_off, stop_flag):
@@ -1420,3 +1229,20 @@ def test_pagination_and_feed_urls_are_not_competitor_pages(db, client, ai_off):
     site.listed += ["/category/skin/page/2/", "/blog/?paged=3", "/feed/"]
     watch.run_watch(db, f, b, utcnow())
     assert {r.url.rsplit("rival.com", 1)[1] for r in db.scalars(select(WatchPage))} == {"/", "/services", "/blog/a"}
+
+
+
+def test_the_sync_needs_the_crawler_and_never_crawls_locally(db, client):
+    from app.backlinks import bot
+    bid = client.post("/api/v1/businesses", json={"name": "Api Co"}).json()["id"]
+    base = f"/api/v1/businesses/{bid}/backlink-intel"
+    client.post(f"{base}/targets", json={"domain": "client.com"})
+    assert client.post(f"{base}/bot/run").status_code == 409  # the crawler is not connected here
+    assert client.put(f"{base}/bot", json={"pages_per_run": 2}).status_code == 422  # below the minimum
+    assert client.put(f"{base}/bot", json={"enabled": True}).json()["config"]["enabled"] is True
+    s = client.get(f"{base}/bot").json()
+    assert s["source"] == "not_connected" and s["running"] is False and "frontier" not in s
+    assert bot.run_cycle(db, bid)["skipped"] == "crawler not connected"
+    assert bot.run_due(db) == 0
+    assert db.query(CrawlAttempt).count() == 0  # nothing was fetched here
+

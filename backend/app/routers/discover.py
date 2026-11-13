@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..backlinks import autostart as backlink_autostart
-from ..backlink_service import trigger as backlink_service_trigger
 from ..db import get_db
 from ..deps import in_background, my_business_ids, only_mine, owned_business
 from ..models import Business, Review
@@ -182,7 +181,6 @@ def add(body: DiscoverImportIn, tasks: BackgroundTasks, db: Session = Depends(ge
     bot = {"enabled": False}
     if not body.defer_audit:
         bot = backlink_autostart.enable(db, b)  # track the site and switch the backlink discovery bot on
-        backlink_service_trigger.start_for_website(b.website)  # Seed Backlink Finder
         tasks.add_task(in_background(_onboard, b.id))
         if bot["enabled"]:
             tasks.add_task(in_background(backlink_autostart.first_run, b.id))
@@ -197,7 +195,6 @@ def start_onboarding(business_id: int, tasks: BackgroundTasks, db: Session = Dep
     db.commit()
     # Backlink discovery starts with onboarding: the site and its competitors are tracked, the bot is switched on and explores right away.
     bot = backlink_autostart.enable(db, b)
-    backlink_service_trigger.start_for_website(b.website)  # Seed Backlink Finder
     tasks.add_task(in_background(_onboard, b.id))
     if bot["enabled"]:
         log(db, user.name, "backlink_bot_started", b.id, domains=bot["domains"])

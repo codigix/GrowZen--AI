@@ -25,8 +25,6 @@ from .backlinks import router as backlinks
 from .backlinks.crawler_api import router as crawler_router
 from .backlinks.hub_router import router as hub_router
 from .backlinks.router import lookup_router, outcomes_router, watch_router
-from .backlink_service import lifecycle as backlink_service
-from .backlink_service.api import router as backlink_service_router
 from .config import get_settings
 from .db import SessionLocal, engine
 from .routers import agent, articles, assistant, auth, businesses, connections, copilot, discover, growth, intake, keyword_planner, keyword_trends, leads, gbp_manage, lighthouse, profile, react_site, seo, site_integration, system, website, workplan, tools
@@ -80,9 +78,7 @@ async def lifespan(_: FastAPI):
     step("interrupted Lighthouse audits", lighthouse_runner.recover_interrupted)
     step("interrupted jobs", lambda db: jobs.recover_stale(db, startup=True))
     scheduler.start()
-    await backlink_service.start()
     yield
-    await backlink_service.stop()
     from .backlinks import stop as backlink_stop
     backlink_stop.STOP.set()  # let a running crawl finish its current page and leave, so shutdown does not hang
     scheduler.stop()
@@ -118,7 +114,6 @@ app.include_router(crawler_router, prefix=settings.api_prefix)
 app.include_router(hub_router, prefix=settings.api_prefix)
 app.include_router(outcomes_router, prefix=settings.api_prefix)
 app.include_router(watch_router, prefix=settings.api_prefix)
-app.include_router(backlink_service_router, prefix=settings.api_prefix)
 
 from .routers import review_link  # noqa: E402
 from .routers import growth_plan as growth_plan_router  # noqa: E402

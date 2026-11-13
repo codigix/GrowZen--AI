@@ -93,7 +93,7 @@ def test_bot_run_cycle_uses_the_crawler_when_it_is_set_up(client, crawler):
     bid = _business(client)
     db = SessionLocal()
     try:
-        out = bot.run_cycle(db, None, bid)  # no fetcher needed: nothing is crawled here
+        out = bot.run_cycle(db, bid)  # nothing is crawled here
         assert out["source"] == "crawler" and out["links_read"] == 3
         assert bot.status(db, bid)["source"] == "crawler"
     finally:

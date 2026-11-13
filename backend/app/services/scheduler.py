@@ -55,15 +55,11 @@ def tick() -> dict[str, int]:
 
 
 def bot_tick() -> None:
-    """Run the backlink discovery bot (separate job). With rotation on, businesses crawl in batches that take turns (backlinks/rotation.py);
-    the tick only starts or checks the batch's threads, so it returns at once. Without rotation, each business whose interval has elapsed runs here."""
-    from ..backlinks import bot, rotation, router as bl_router
+    """Sync backlinks from our own crawler server (separate job). Nothing is crawled in this process: each business whose interval has elapsed reads its links from the crawler."""
+    from ..backlinks import bot, router as bl_router
     db = SessionLocal()
     try:
-        if get_settings().backlink_rotation_enabled and not get_settings().crawler_enabled:  # the crawler sync needs no turns: each business syncs when its interval has passed
-            rotation.tick(db)
-        else:
-            bot.run_due(db, bl_router.get_fetcher())
+        bot.run_due(db)
         from ..backlinks import outcomes, watch
         outcomes.measure_due(db)
         watch.run_due(db, bl_router.get_fetcher())  # weekly competitor visits (each business only when a week has passed)

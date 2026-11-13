@@ -11,7 +11,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..backlinks import autostart as backlink_autostart
-from ..backlink_service import trigger as backlink_service_trigger
 from ..models import Business, GoogleConnection, IntakeEmail
 from . import agent, audits, extraction, gbp, reports, schedules, site_research, workplan
 from .activity import log
@@ -143,13 +142,12 @@ def onboard(db: Session, em: IntakeEmail, actor: str = "pipeline", owner_id: str
             db.rollback()
 
         try:
-            bl = backlink_autostart.enable(db, b)  # backlink discovery starts with the client: a first run now, then its turns in the rotation
+            bl = backlink_autostart.enable(db, b)  # backlink discovery starts with the client: a first sync now, then on its schedule
             log(db, "pipeline", "backlink_bot_enabled" if bl["enabled"] else "backlink_bot_skipped", b.id, **({"domains": bl["domains"]} if bl["enabled"] else {"reason": bl["reason"]}))
             if bl["enabled"]:
                 backlink_autostart.first_run_in_background(b.id)
         except Exception:  # noqa: BLE001 - never blocks onboarding
             db.rollback()
-        backlink_service_trigger.start_for_website(b.website)  # Seed Backlink Finder: the business's site becomes a target now
 
         _step(db, em, "notify", "running")
         sent = send_email(em.from_addr, f"Onboarded: {b.name}", f"{b.name} is audited and scheduled.\n\n{summary['plain_words']}", [(f"{b.name}-audit.pdf", reports.pdf(summary), "application/pdf")])
