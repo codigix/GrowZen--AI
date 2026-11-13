@@ -48,15 +48,15 @@ GUIDE: list[dict[str, Any]] = [
      "about": "You and your top competitors side by side on visibility, keywords, ratings and content.", "steps": ["Run Competitor Research first, then open Compare Domains."]},
     {"id": "gap", "label": "Keyword Gap", "to": "/keyword-gap", "words": "keyword gap missing weak strong untapped",
      "about": "Keywords competitors rank for that you don't (Missing), where you are weaker or stronger, and untapped ideas.", "steps": ["Run Competitor Research first.", "Open Keyword Gap and pick Missing, Weak, Strong or Untapped.", "Press Track to add a keyword to tracking."]},
-    {"id": "kwoverview", "label": "Keyword Overview", "to": "/keyword-overview", "words": "keyword overview lookup serp people also ask related",
-     "about": "One keyword as Google shows it from the business location: top 10, Maps pack, related searches and questions.", "steps": ["Open Keyword Overview, type a keyword, press Analyze."]},
-    {"id": "keywords", "label": "Keyword Magic Tool", "to": "/keyword-management?tab=discover", "words": "keyword magic tool discover find keywords research ideas autocomplete",
+    {"id": "kwoverview", "label": "Check One Keyword", "to": "/keyword-overview", "words": "keyword overview check one keyword lookup volume searches competition cost per click bid related planner",
+     "about": "One keyword from the Google Keyword Planner: searches per month, 12-month trend, competition, the bid range and related ideas. Who ranks is on Position Tracking and Competitors.", "steps": ["Open Check One Keyword, type a keyword, press Analyze.", "Press Track on it or on a related idea to save it."]},
+    {"id": "keywords", "label": "Find Keywords", "to": "/keyword-management/discover", "words": "find keywords keyword magic tool discover planner explorer find keywords research ideas autocomplete",
      "about": "Step 2 of the process. Finds real searches for the business's services and area, built on the competitor research, and tracks the ones you pick.",
-     "steps": ["Run Competitor Research first.", "Open Keyword Magic Tool; switch services and areas on or off.", "Press Find keywords, then select and Track the best ones."]},
-    {"id": "strategy", "label": "Keyword Strategy Builder", "to": "/keyword-management?tab=topics", "words": "strategy builder topics clusters group keywords pages",
-     "about": "Groups tracked keywords into topics, one page per topic.", "steps": ["Track some keywords first.", "Open Strategy Builder and press Group into topics with AI."]},
-    {"id": "saved", "label": "Saved Keywords", "to": "/keyword-management?tab=tracked", "words": "saved keywords tracked list map page url",
-     "about": "The tracked keywords with their rank, priority and the page each should rank with.", "steps": ["Open Saved Keywords to review, prioritise and map keywords to pages."]},
+     "steps": ["Run Competitor Research first.", "Open Find Keywords; switch services and areas on or off.", "Press Find keywords, then select and Track the best ones."]},
+    {"id": "strategy", "label": "My Keywords: topics", "to": "/keyword-management/topics", "words": "my keywords topics strategy builder topics clusters group keywords pages",
+     "about": "Groups tracked keywords into topics, one page per topic.", "steps": ["Track some keywords first.", "Open My Keywords, Topics, and press Group into topics with AI."]},
+    {"id": "saved", "label": "My Keywords", "to": "/keyword-management/tracked", "words": "my keywords saved keywords tracked list map page url",
+     "about": "The tracked keywords with their rank, priority and the page each should rank with.", "steps": ["Open My Keywords to review, prioritise and map keywords to pages."]},
     {"id": "content", "label": "SEO Writing Assistant & Topic Research", "to": "/ai-content-generation?tab=blog", "words": "content blog write article topic trending writing assistant post draft calendar",
      "about": "Finds topics people search for and drafts articles and posts; the calendar queues them for publishing.", "steps": ["Open Topic Research for ideas.", "Open SEO Writing Assistant, pick a topic and generate a draft.", "Queue it in Content Calendar."]},
     {"id": "backlinks", "label": "Backlink Intelligence", "to": "/backlink-intelligence", "words": "backlinks referring domains links disavow outreach discovery bot competitor gap",
@@ -81,7 +81,7 @@ GUIDE: list[dict[str, Any]] = [
     {"id": "integrations", "label": "Integrations & APIs", "to": "/google-integrations", "words": "integrations api keys connect google serper smtp setup",
      "about": "What is connected (Google, Serper, PageSpeed, email) and how to turn each on.", "steps": ["Open Integrations & APIs to see what is connected."]},
 ]
-PROCESS = ["Business Onboarding (add the project)", "Site Audit (fix the website)", "Competitor Research (who you compete with)", "Keyword Magic Tool (keywords from that research)",
+PROCESS = ["Business Onboarding (add the project)", "Site Audit (fix the website)", "Competitor Research (who you compete with)", "Find Keywords (keywords from that research)",
            "GBP Profile Manager (connect Google, live profile data)", "Autonomous AI Agents (approve the proposed changes)", "Reports (show the client results)"]
 
 
@@ -141,7 +141,7 @@ def next_steps(f: dict[str, Any]) -> list[dict[str, str]]:
     if not f["research"]:
         add("Run the competitor research: it shows who outranks you and feeds the keyword step.", "Competitor Research", "/competitor-finder")
     if not f["kws"]:
-        add("Track keywords: none are tracked yet, so rankings can't be followed.", "Keyword Magic Tool", "/keyword-management?tab=discover")
+        add("Track keywords: none are tracked yet, so rankings can't be followed.", "Find Keywords", "/keyword-management/discover")
     elif not any(k.rank_checked_at for k in f["kws"]):
         add("Check Google positions for the tracked keywords: they have never been checked.", "Organic Rankings", "/organic-rankings")
     if not b.gbp_location:
@@ -207,7 +207,7 @@ def a_issues(f: dict[str, Any]) -> dict[str, Any]:
 def a_keywords(f: dict[str, Any]) -> dict[str, Any]:
     k, ranked = f["kws"], f["ranked"]
     if not k:
-        return {"answer": "No keywords are tracked for this project yet. Run Competitor Research first, then use the Keyword Magic Tool: it builds on what your competitors rank for.", "links": [{"label": "Competitor Research", "to": "/competitor-finder"}, {"label": "Keyword Magic Tool", "to": "/keyword-management?tab=discover"}], "topic": "keywords", "sources": []}
+        return {"answer": "No keywords are tracked for this project yet. Run Competitor Research first, then use Find Keywords: it builds on what your competitors rank for.", "links": [{"label": "Competitor Research", "to": "/competitor-finder"}, {"label": "Keyword Magic Tool", "to": "/keyword-management?tab=discover"}], "topic": "keywords", "sources": []}
     checked = max((x.rank_checked_at for x in k if x.rank_checked_at), default=None)
     lines = [f"**{len(k)} tracked keywords**, {len(ranked)} ranking in Google's top 20" + (f" (positions checked {checked})." if checked else " (positions never checked).")]
     if ranked:

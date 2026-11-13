@@ -243,7 +243,7 @@ def issues(db: Session, b: Business, report: dict[str, Any] | None) -> list[dict
     if n < 8:
         out.append(make("kw.few", "seo", "keywords", "serious" if n < 3 else "warning", f"Research and track more keywords ({n} tracked)",
                         f"Only {n} keyword{'s are' if n != 1 else ' is'} tracked. Rankings, content and posts can only target what is tracked; a healthy local project tracks at least 8 (service + place, service + near me, questions customers ask).",
-                        ["Open Keyword Magic Tool and press Discover: it builds searches from your services, area and competitors.", "Add the ones with real volume and a clear intent; do not add unrelated keywords.", "Press Seed keywords on Position Tracking for the basics."], 25, "/keyword-management/discover",
+                        ["Open Find Keywords and press Discover: it builds searches from your services, area and competitors.", "Add the ones with real volume and a clear intent; do not add unrelated keywords.", "Press Seed keywords on Position Tracking for the basics."], 25, "/keyword-management/discover",
                         {"type": "kw_count", "min": 8}))
     terms = [t for t in site_terms(b, report, crawl) if not _covered(t, rows)]
     if terms and rows:
@@ -251,7 +251,7 @@ def issues(db: Session, b: Business, report: dict[str, Any] | None) -> list[dict
         ideas = [f"{t} in {city}" if city else t for t in terms[:3]] + ([f"{(b.primary_category or '').lower()} {terms[0]}".strip()] if b.primary_category else [])
         out.append(make("kw.site_terms", "seo", "keywords", "serious", f"Your keywords do not use what your website says ({', '.join(terms[:3])})",
                         f"Your homepage (title, heading and description) is about “{' '.join(terms[:3])}”, but none of your {n} tracked keywords contains {'it' if len(terms) == 1 else 'them'}. Keywords that do not match the site cannot rank, and content written for them will feel off.",
-                        [f"Add keywords that use these words, for example: {'; '.join(ideas)}.", "Open Keyword Magic Tool to check their volume before tracking them.", "If a tracked keyword no longer describes the business (for example an old category), untrack it."], 20, "/keyword-management/discover",
+                        [f"Add keywords that use these words, for example: {'; '.join(ideas)}.", "Open Find Keywords to check their volume before tracking them.", "If a tracked keyword no longer describes the business (for example an old category), untrack it."], 20, "/keyword-management/discover",
                         {"type": "kw_terms", "terms": terms}))
     ungrouped = [k.keyword for k in rows if not (k.cluster or "").strip()]
     if ungrouped:
@@ -285,7 +285,7 @@ def issues(db: Session, b: Business, report: dict[str, Any] | None) -> list[dict
         gaps = _gap_ideas(db, b, have)
         if gaps:
             out.append(make("kw.gap", "seo", "competitors", "warning", f"Add the keywords competitors win ({len(gaps)} found)", "Competitors rank for these searches and you do not track them: " + "; ".join(f"“{g['keyword']}” ({g['reason']})" for g in gaps[:5]) + ".",
-                            ["Open Keyword Magic Tool or Keyword Gap and add the relevant ones.", "Skip any that do not match a service you really offer.", "Then plan a page or article for each."], 15, "/competitor-finder?tab=gap", {"type": "kw_gap", "keywords": [g["keyword"] for g in gaps]}))
+                            ["Open Find Keywords or the Keyword gap tab on Competitors and add the relevant ones.", "Skip any that do not match a service you really offer.", "Then plan a page or article for each."], 15, "/competitor-finder?tab=gap", {"type": "kw_gap", "keywords": [g["keyword"] for g in gaps]}))
     research = kwsvc.competitor_research(db, b)
     if research:
         top = (research.get("summary") or {}).get("local_leader") or {}

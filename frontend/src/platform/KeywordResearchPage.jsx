@@ -3,7 +3,7 @@ import { AutopilotPanel } from './AutopilotPanels';
 import { Link } from 'react-router-dom';
 import {
   Search, Plus, Sparkles, FileText, Trash2, Loader2, MapPin, Globe, Users, X, Star, CheckCircle2, CircleDashed, AlertTriangle, Copy, Check, BarChart2,
-  TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft
+  TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft, ArrowRight
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction, useUrlTab, useDoubleConfirm, SkTable, SkCard } from './SeoUi';
@@ -1123,8 +1123,13 @@ function KeywordExplorer({ b, tracked = [], onTracked }) {
   );
 }
 
-function Keywords({ b, tab }) {
-  const kw = useApi(`/businesses/${b.id}/keywords`);
+const FIND_TABS = ['discover', 'planner', 'explorer'];
+const SAVE_TABS = ['tracked', 'topics'];
+const SOURCES = [['discover', 'Ideas for my business', 'Built from your services, area, website and competitors'], ['planner', 'Google numbers', 'Search volume, competition and bids from the Google Keyword Planner'], ['explorer', 'Other platforms', 'Suggestions from YouTube, Bing, Amazon and more']];
+const SAVED_VIEWS = [['tracked', 'My list and pages', 'Every saved keyword with its rank and the page it should rank with'], ['topics', 'Topics', 'Group the keywords into topics, one page per topic']];
+const pill = (on) => `h-9 px-4 rounded-full text-13 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
+
+function Keywords({ b, tab, kw }) {
   const tracked = kw.data?.keywords || [];
   return (
     <>
@@ -1137,17 +1142,72 @@ function Keywords({ b, tab }) {
   );
 }
 
+/** The four steps (find, save, group, track), where the project stands on each. */
+function PathBar({ progress, tab, setTab }) {
+  const at = FIND_TABS.includes(tab) ? 'find' : tab === 'tracked' ? 'save' : 'group';
+  const go = { find: 'discover', save: 'tracked', group: 'topics' };
+  const steps = progress?.steps || [];
+  if (!steps.length) return <div className="h-16 rounded-xl bg-slate-100 animate-pulse mb-5" role="status" aria-busy="true" />;
+  return (
+    <nav aria-label="Keyword steps" className="bg-white rounded-xl border border-slate-200 shadow-sm p-1.5 flex flex-wrap items-stretch gap-1 mb-5">
+      {steps.map((st, i) => {
+        const current = st.key === at;
+        const inner = (
+          <>
+            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-12 font-bold shrink-0 ${current ? 'bg-white/20 text-white' : st.done ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>{st.done && !current ? <Check size={14} /> : i + 1}</span>
+            <span className="min-w-0 text-left"><span className={`block text-13 font-semibold ${current ? 'text-white' : 'text-slate-800'}`}>{st.title}</span><span className={`block text-11.5 truncate ${current ? 'text-indigo-100' : 'text-slate-500'}`} title={st.detail}>{st.detail}</span></span>
+          </>
+        );
+        const cls = `flex-1 min-w-[150px] rounded-lg px-3 py-2 flex items-center gap-2.5 cursor-pointer ${current ? 'bg-indigo-600' : 'hover:bg-slate-50'}`;
+        return st.key === 'track'
+          ? <Link key={st.key} to={st.to} className={cls}>{inner}</Link>
+          : <button key={st.key} type="button" onClick={() => setTab(go[st.key])} aria-current={current ? 'step' : undefined} className={cls}>{inner}</button>;
+      })}
+    </nav>
+  );
+}
+
+function NextStep({ progress }) {
+  if (!progress) return null;
+  if (progress.complete) return <div className="mt-6 rounded-xl bg-emerald-50 text-emerald-900 px-4 py-3 text-13 flex items-center gap-2"><CheckCircle2 size={16} /> All four steps are done: {progress.saved} keywords saved, grouped, and checked on Google. Check the positions again in <Link to="/rank-tracking" className="font-semibold underline">Position Tracking</Link>.</div>;
+  const n = progress.next;
+  return (
+    <div className="mt-6 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 flex flex-wrap items-center gap-3">
+      <div className="flex-1 min-w-[220px] text-13 text-indigo-950"><b>Next step: {n.title}.</b> {n.detail}</div>
+      <Link to={n.to} className="h-9 px-4 rounded-lg inline-flex items-center gap-1.5 text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">{n.key === 'track' ? 'Open Position Tracking' : `Go to ${n.title}`}<ArrowRight size={14} /></Link>
+    </div>
+  );
+}
+
+function KeywordPath({ b, tab, setTab }) {
+  const kw = useApi(`/businesses/${b.id}/keywords`);
+  const progress = useApi(`/businesses/${b.id}/keywords/progress`);
+  const refresh = { ...kw, reload: (q) => { kw.reload(q); progress.reload(true); } };
+  return (
+    <>
+      <PathBar progress={progress.data} tab={tab} setTab={setTab} />
+      {FIND_TABS.includes(tab) && (
+        <div role="tablist" aria-label="Where the ideas come from" className="flex flex-wrap gap-2 mb-5">
+          {SOURCES.map(([id, label, hint]) => <button key={id} type="button" role="tab" aria-selected={tab === id} title={hint} onClick={() => setTab(id)} className={pill(tab === id)}>{label}</button>)}
+        </div>
+      )}
+      {SAVE_TABS.includes(tab) && (
+        <div role="tablist" aria-label="My keywords" className="flex flex-wrap gap-2 mb-5">
+          {SAVED_VIEWS.map(([id, label, hint]) => <button key={id} type="button" role="tab" aria-selected={tab === id} title={hint} onClick={() => setTab(id)} className={pill(tab === id)}>{label}</button>)}
+        </div>
+      )}
+      {(tab === 'discover' || tab === 'tracked') && <div className="mb-5"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
+      <Keywords b={b} tab={tab} kw={refresh} />
+      <NextStep progress={progress.data} />
+    </>
+  );
+}
+
 export default function KeywordResearchPage() {
   const [tab, setTab] = useUrlTab('discover', ['discover', 'planner', 'explorer', 'tracked', 'topics']);
   return (
-    <SeoShell step="keywords" title="Keyword Intelligence" subtitle="Real searches for this business's services and area: local, near me, questions and fresh searches, checked against the website">
-      {(b) => (
-        <>
-          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'discover', label: 'Discover' }, { id: 'planner', label: 'Google Planner' }, { id: 'explorer', label: 'Keyword Explorer' }, { id: 'tracked', label: 'Tracked & pages' }, { id: 'topics', label: 'Topics' }]} />
-          {(tab === 'discover' || tab === 'tracked') && <div className="mb-5"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
-          <Keywords key={b.id} b={b} tab={tab} />
-        </>
-      )}
+    <SeoShell step="keywords" title="Keywords" subtitle="Find real searches for your business, save the best ones, group them into topics, then track where they rank">
+      {(b) => <KeywordPath key={b.id} b={b} tab={tab} setTab={setTab} />}
     </SeoShell>
   );
 }
