@@ -81,6 +81,11 @@ def record_published(db: Session, a: Article, destination: str, out: dict, at: d
         db.add(p)
     p.method, p.due_at, p.status, p.error, p.finished_at = destination, at, "published", None, at
     p.result = {"id": out.get("id"), "url": out.get("url"), "status": out.get("status"), "direct": True, "published_at": at.isoformat()}
+    from ..models import Business
+    from . import blog_flow
+    blog = db.get(Business, a.business_id)
+    if blog is not None:
+        blog_flow.after_published(db, blog, a)  # the promotion plan and its task; never fails the publish
 
 
 def publish_site(db: Session, b: Business, a: Article, target: SiteIntegration, mode: str, when: datetime | None, record: bool = True) -> dict:

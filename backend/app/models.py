@@ -725,6 +725,24 @@ class GrowthTarget(TimestampMixin, Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class BlogPromotion(TimestampMixin, Base):
+    """One place where a published blog is promoted (a short overview with the blog's link). The user posts it; the link on the posted page is then checked."""
+    __tablename__ = "blog_promotions"
+    __table_args__ = (UniqueConstraint("article_id", "platform"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    platform: Mapped[str] = mapped_column(String(80))  # a catalog key (linkedin, medium...) or a domain the user added
+    name: Mapped[str] = mapped_column(String(120))
+    open_url: Mapped[str | None] = mapped_column(String(500))  # where to go to post
+    overview: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # {text, hashtags, method}
+    status: Mapped[str] = mapped_column(String(12), default="planned")  # planned | posted | verified | problem | skipped
+    posted_url: Mapped[str | None] = mapped_column(String(800))  # the page the user posted on
+    check: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # the last link check of posted_url
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class GrowthAction(TimestampMixin, Base):
     """One task that serves a growth target. It only counts as done when a real check of the live data (or the live page) says so."""
     __tablename__ = "growth_actions"

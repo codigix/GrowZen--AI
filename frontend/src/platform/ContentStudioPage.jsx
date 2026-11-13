@@ -16,6 +16,7 @@ import FeaturedImageField, { featuredOf } from './FeaturedImageField';
 import ReactSitePanel from './ReactSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
+import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps } from './BlogFlow';
 
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
@@ -531,7 +532,7 @@ function GeneratedArticlesTab({ b, openId, onOpen, onWrite, toast }) {
 }
 
 /** The single "AI Blog & Article Writer" tab: the generated articles on top, the E-E-A-T pipeline for the open one below. */
-function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, onShowArticles, toast }) {
+function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onScheduled, onShowArticles, toast }) {
   const list = useApi(`/businesses/${b.id}/articles`);
   const articles = list.data?.articles || [];
   const full = useApi(openId ? `/businesses/${b.id}/articles/${openId}` : null);
@@ -564,8 +565,12 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, onShowA
     else if (a.status === 'failed') setPendingId(null);
   }, [articles, pendingId, setOpenId]);
 
+  const done = article && article.status === 'completed';
+  const flowStep = pendingId ? 2 : done ? (article.publishing_status === 'published' ? 6 : article.publishing_status === 'scheduled' ? 5 : 3) : activeTopic || openId ? 2 : 0;
   return (
     <div className="space-y-6">
+      <FlowSteps step={flowStep} />
+      {!openId && !pendingId && !activeTopic && <KeywordTopicPlanner b={b} onPick={onPickTopic} />}
       {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
           <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
@@ -578,6 +583,9 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, onShowA
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
             onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
+
+      {done && <LayoutCheckCard b={b} article={article} />}
+      {done && <PromoteCard b={b} article={article} />}
 
       {/* the full list lives on the Generated Articles tab; here only a summary with a shortcut */}
       {articles.length > 0 && (() => {
@@ -1229,7 +1237,7 @@ export default function ContentStudioPage() {
   const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'articles', 'calendar', 'publishing']);
   const openInWriter = (id) => { if (!id) { setOpenArticleId(null); return; } setActiveTopic(null); setOpenArticleId(id); setTab('blog'); };
   const [activeTopic, setActiveTopic] = useState(null);
-  const [openArticleId, setOpenArticleId] = useState(null);
+  const [openArticleId, setOpenArticleId] = useState(() => { const n = Number(new URLSearchParams(window.location.search).get('article')); return Number.isInteger(n) && n > 0 ? n : null; }); // a Growth task links to one article
 
   const handleSelectTopic = (topic) => {
     setActiveTopic(topic);
@@ -1256,7 +1264,7 @@ export default function ContentStudioPage() {
           />
 
           {tab === 'trends' && <TrendingTopicsTab b={b} onSelectTopic={handleSelectTopic} />}
-          {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} onShowArticles={() => setTab('articles')} toast={window.__seoToast || console.log} />}
+          {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} onPickTopic={handleSelectTopic} onShowArticles={() => setTab('articles')} toast={window.__seoToast || console.log} />}
           {tab === 'articles' && <GeneratedArticlesTab b={b} openId={openArticleId} onOpen={openInWriter} toast={window.__seoToast || console.log}
             onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
           {tab === 'calendar' && <PublishingCalendar b={b} toast={window.__seoToast || console.log} onOpenArticle={openInWriter} />}

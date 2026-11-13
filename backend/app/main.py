@@ -24,6 +24,7 @@ from .auth import current_user
 from .backlinks import router as backlinks
 from .backlinks.crawler_api import router as crawler_router
 from .backlinks.hub_router import router as hub_router
+from .routers.blog_flow import router as blog_flow_router
 from .backlinks.router import lookup_router, outcomes_router, watch_router
 from .config import get_settings
 from .db import SessionLocal, engine
@@ -112,6 +113,7 @@ for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant,
 app.include_router(lookup_router, prefix=settings.api_prefix)
 app.include_router(crawler_router, prefix=settings.api_prefix)
 app.include_router(hub_router, prefix=settings.api_prefix)
+app.include_router(blog_flow_router, prefix=settings.api_prefix)
 app.include_router(outcomes_router, prefix=settings.api_prefix)
 app.include_router(watch_router, prefix=settings.api_prefix)
 

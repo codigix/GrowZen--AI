@@ -156,6 +156,11 @@ def schedule(db: Session, b: Business, a: Article, date: str, time: str, destina
         p = ScheduledPost(business_id=b.id, article_id=a.id)
         db.add(p)
     p.method, p.due_at, p.status, p.attempts, p.error, p.finished_at = destination, due, "pending", 0, None, None
+    try:
+        from . import blog_flow
+        blog_flow.schedule_task(db, b, a, due)  # a task on that day; a failure here never blocks the schedule
+    except Exception:  # noqa: BLE001
+        log.exception("Could not add the publish-day task for article %s", a.id)
     db.commit()
     return p
 
@@ -165,6 +170,11 @@ def cancel(db: Session, a: Article) -> ScheduledPost:
     if not p or p.status not in ("pending", "failed"):
         raise ScheduleError("This article is being published right now." if p and p.status == "publishing" else "This article is not scheduled.")
     p.status, p.finished_at = "cancelled", _now()
+    try:
+        from . import blog_flow
+        blog_flow.cancel_task(db, db.get(Business, a.business_id), a)
+    except Exception:  # noqa: BLE001
+        log.exception("Could not close the publish-day task for article %s", a.id)
     db.commit()
     return p
 
@@ -237,6 +247,8 @@ def _run_one(db: Session, p: ScheduledPost, now: datetime) -> int:
         p.result = {"id": out.get("id"), "url": out.get("url"), "status": out.get("status"), "steps": out.get("steps"), "published_at": now.isoformat()}
         activity(db, "scheduler", "post_published", p.business_id, article_id=p.article_id, url=out.get("url"), destination=p.method)
         db.commit()
+        from . import blog_flow
+        blog_flow.after_published(db, b, a)
         return 1
     except _Gone as exc:
         db.rollback()

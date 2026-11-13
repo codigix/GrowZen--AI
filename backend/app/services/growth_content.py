@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Article, Business, CatalogItem, Keyword, Post
 
-KINDS = {"competitors_clean", "kw_terms", "bl_prospect", "kw_count", "kw_grouped", "kw_targets", "kw_gap", "kw_used", "audit_probe", "backlinks", "articles_since", "articles_meta", "competitors_done", "comp_reviews", "comp_listings"}
+KINDS = {"blog_published", "blog_promo", "competitors_clean", "kw_terms", "bl_prospect", "kw_count", "kw_grouped", "kw_targets", "kw_gap", "kw_used", "audit_probe", "backlinks", "articles_since", "articles_meta", "competitors_done", "comp_reviews", "comp_listings"}
 STOP = {"in", "near", "me", "the", "best", "top", "for", "a", "an", "of", "and", "to", "at", "on", "with", "by", "cheap", "affordable", "my", "your", "nearby", "online", "is", "are", "how", "what"}
 JS_SENSITIVE = {"meta.h1_missing", "meta.alt"}
 SURFACES = {
@@ -477,6 +477,19 @@ def verify(db: Session, b: Business, rule: dict[str, Any], ctx: Any, today: date
     if kind == "kw_targets":
         n = sum(1 for k in rows if not (k.target_url or "").strip())
         return _result(n == 0, "Every tracked keyword has a target page." if n == 0 else f"{n} keywords still have no target page.", None, n)
+    if kind in ("blog_published", "blog_promo"):
+        from . import blog_promo
+        art = db.get(Article, int(rule["article_id"]))
+        if art is None or art.business_id != b.id:
+            return _result(None, "The article was deleted.")
+        url = blog_promo.published_url(db, art)
+        if kind == "blog_published":
+            return _result(bool(url), f"The blog is live: {url}" if url else "The blog is not published yet.")
+        from ..models import BlogPromotion
+        rows = list(db.scalars(select(BlogPromotion).where(BlogPromotion.article_id == art.id)))
+        ok_n = sum(1 for r in rows if r.status == "verified")
+        need = int(rule.get("min", 3))
+        return _result(ok_n >= need, f"{ok_n} of {need} promotion links confirmed." + ("" if ok_n >= need else " Post the overview, paste the address and press Check link."), need, ok_n)
     if kind == "kw_gap":
         have = {k.keyword for k in rows}
         left = [k for k in rule["keywords"] if k not in have]
