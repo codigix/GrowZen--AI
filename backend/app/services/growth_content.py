@@ -268,7 +268,7 @@ def issues(db: Session, b: Business, report: dict[str, Any] | None) -> list[dict
             return u if c and sc == len(c) else None
         hints = [f"“{k.keyword}” → {best(k.keyword) or 'no page covers it yet: create one'}" for k in untargeted[:5]]
         out.append(make("kw.no_target", "seo", "keywords", "warning", f"Give each keyword a page to rank with ({len(untargeted)} have none)", f"{len(untargeted)} tracked keywords have no target page, so nothing on the website is built to rank for them. Suggested: {'; '.join(hints)}.",
-                        ["For each keyword pick the page that answers it, or create a new page.", "Set it as the keyword's target page in Keyword Management.", "Put the keyword in that page's title, H1 and first paragraph."], 20, "/keyword-management", {"type": "kw_targets"}))
+                        ["For each keyword pick the page that answers it, or create a new page.", "Set it as the keyword's target page in Keyword Management.", "Put the keyword in that page's title, H1 and first paragraph."], 20, "/keyword-management/tracked", {"type": "kw_targets"}))
     # ---- competitor research and gaps
     from ..competitors import hygiene
     bad = hygiene.invalid_rows(db, b)
@@ -276,11 +276,11 @@ def issues(db: Session, b: Business, report: dict[str, Any] | None) -> list[dict
     if bad or bad_targets:
         out.append(make("comp.invalid", "local", "competitors", "warning", f"Remove entries that are not competitors ({len(bad) + len(bad_targets)})",
                         "These saved competitors are not competitors' own websites, so audits, keyword gaps and the backlink gap use the wrong data: " + "; ".join([f"{c.name or c.website} ({why.rstrip('.')})" for c, why in bad[:5]] + [f"{d} tracked in Backlink Intelligence ({why.rstrip('.')})" for d, why in bad_targets[:5]]) + ".",
-                        ["Open Competitor Analysis and remove each saved entry (the business itself is not touched).", "In Backlink Intelligence, remove the matching tracked targets: they make link reads very slow.", "Add real competitors instead: businesses with their own website that rank for your searches."], 10, "/gmb-profile/competitors", {"type": "competitors_clean"}))
+                        ["Open Competitors and remove each saved entry (the business itself is not touched).", "In Backlink Intelligence, remove the matching tracked targets: they make link reads very slow.", "Add real competitors instead: businesses with their own website that rank for your searches."], 10, "/competitor-finder?tab=competitors", {"type": "competitors_clean"}))
     from . import keywords as kwsvc
     if kwsvc.competitor_research(db, b) is None:
-        out.append(make("comp.none", "local", "competitors", "warning", "Run the competitor analysis", "No competitor research has finished for this project, so keyword gaps, link gaps and rivals' strategies are unknown.",
-                        ["Open Competitor Analysis and run it (it uses your tracked searches and location).", "Review the rivals it finds and remove any that are not real competitors."], 15, "/gmb-profile/competitors", {"type": "competitors_done"}))
+        out.append(make("comp.none", "local", "competitors", "warning", "Run the competitor research", "No competitor research has finished for this project, so keyword gaps, link gaps and rivals' strategies are unknown.",
+                        ["Open Competitors and run the research (it uses your tracked searches and location).", "Review the rivals it finds and remove any that are not real competitors."], 15, "/competitor-finder", {"type": "competitors_done"}))
     else:
         gaps = _gap_ideas(db, b, have)
         if gaps:

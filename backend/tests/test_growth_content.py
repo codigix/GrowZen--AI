@@ -62,7 +62,9 @@ def test_keyword_issues_and_where_keywords_are_missing(project, monkeypatch):
         assert out["fix.kw.use.posts"]["verify"]["keywords"] == ["lehenga rental in pune"]  # the brand keyword is not asked for
         assert "fix.kw.use.website" not in out  # the crawl shows the keyword on a page title
         assert out["fix.kw.use.blog"]["link"] == "/ai-content-generation/blog" and out["fix.blog.none"]["verify"]["type"] == "articles_since"
-        assert out["fix.comp.none"]["link"] == "/gmb-profile/competitors"
+        assert out["fix.comp.none"]["link"] == "/competitor-finder"
+        # each keyword task opens the exact tab of the keyword path
+        assert out["fix.kw.ungrouped"]["link"] == "/keyword-management/topics" and out["fix.kw.no_target"]["link"] == "/keyword-management/tracked"
     finally:
         db.close()
 

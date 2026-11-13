@@ -507,7 +507,7 @@ def candidates(db: Session, b: Business, data: dict[str, Any], today: date, live
             {"type": "metric", "metric": "local.keywords_tracked", "op": ">=", "value": 1}, lw * 1.0, status="todo")
     elif tracked:
         add("local.rank_check", "local", "daily", "Check where the tracked searches rank today", f"{int(tracked)} searches are tracked; the history is what shows progress.", ["The rank check runs by itself. Open Position Tracking to read the result."], 2, "auto",
-            "/rank-tracking", {"type": "job", "job": "rank_check"}, lw * 0.3)
+            "/rank-tracking/positions", {"type": "job", "job": "rank_check"}, lw * 0.3)
     if tracked is not None and 0 < tracked < SPEC["local.keywords_tracked"]["goal"] and b.website:
         n = int(min(5, SPEC["local.keywords_tracked"]["goal"] - tracked))
         add("local.keywords", "local", "monthly", f"Track {n} more searches", f"{int(tracked)} searches are tracked; {SPEC['local.keywords_tracked']['goal']} gives a fair picture.", ["Add real customer searches (service + area) in Keyword Research."], 15, "manual",

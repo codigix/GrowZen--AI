@@ -177,9 +177,9 @@ def _ranking_issues(db: Session, b: Business) -> list[dict[str, Any]]:
     sm, rows = pos["summary"], pos["rows"]
     if not sm["keywords"]:
         out.append(make("rank.none", "local", "rankings", "serious", "Start tracking the searches your customers use", "No searches are tracked, so rankings cannot be measured or improved.",
-                        ["Open Position Tracking and press Start tracking (it adds searches such as “service in your city”).", "Check the rankings once."], 10, "/rank-tracking", {"type": "metric", "metric": "local.keywords_tracked", "op": ">=", "value": 1}))
+                        ["Open Position Tracking and press Start tracking (it adds searches such as “service in your city”).", "Check the rankings once."], 10, "/rank-tracking/positions", {"type": "metric", "metric": "local.keywords_tracked", "op": ">=", "value": 1}))
     elif not sm["checked"]:
-        out.append(make("rank.unchecked", "local", "rankings", "warning", "Check where the tracked searches rank today", f"{sm['keywords']} searches are tracked but none has been checked.", ["Press Check rankings now in Position Tracking."], 5, "/rank-tracking",
+        out.append(make("rank.unchecked", "local", "rankings", "warning", "Check where the tracked searches rank today", f"{sm['keywords']} searches are tracked but none has been checked.", ["Press Check rankings now in Position Tracking."], 5, "/rank-tracking/positions",
                         {"type": "job", "job": "rank_check"}))
     else:
         n = 0
