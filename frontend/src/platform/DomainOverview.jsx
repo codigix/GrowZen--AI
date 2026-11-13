@@ -4,6 +4,7 @@ import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Cart
 import {
   Globe, Sparkles, ArrowUp, ArrowDown, Download, PlugZap, ExternalLink, Info, Monitor, Smartphone, Tablet, Search, Bot, Link2, MousePointerClick, Eye, KeyRound, FileText, Gauge
 } from 'lucide-react';
+import SearchPerfNav from './SearchPerfNav';
 import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useAction, useToast, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 import { IntelBar, IntelSections, headline } from './DomainIntel';
@@ -402,5 +403,5 @@ function Page({ b }) {
 }
 
 export const DomainOverviewPage = function DomainOverviewPage() {
-  return <SeoShell title="Domain Overview" subtitle="The site's real Google traffic, keywords, countries and AI visibility">{(b) => <Page key={b.id} b={b} />}</SeoShell>;
+  return <SeoShell title="Domain Overview" subtitle="The site's real Google traffic, keywords, countries and AI visibility">{(b) => <div className="space-y-4"><SearchPerfNav /><Page key={b.id} b={b} /></div>}</SeoShell>;
 };

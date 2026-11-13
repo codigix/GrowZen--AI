@@ -5,6 +5,7 @@ import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Cart
 import {
   ArrowUp, ArrowDown, ExternalLink, Search, Inbox, Info, Bot, FileText, BookOpen, HelpCircle, MapPin, Video, Image as ImageIcon, Newspaper, ShoppingCart, Sparkles, AlertTriangle, Quote, MessageSquare, PlayCircle, ShoppingBag, List as ListIcon, Link2, Star, PanelTop
 } from 'lucide-react';
+import SearchPerfNav from './SearchPerfNav';
 import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useUrlTab, useModulePath, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 import { IntelBar, section } from './DomainIntel';
@@ -601,7 +602,7 @@ function Page({ b }) {
 }
 
 export const OrganicRankingsPage = function OrganicRankingsPage() {
-  return <SeoShell title="Organic Rankings" subtitle="Keywords, traffic, positions, SERP features, pages and competitors for the site on Google">{(b) => <Page key={b.id} b={b} />}</SeoShell>;
+  return <SeoShell title="Organic Rankings" subtitle="Keywords, traffic, positions, SERP features, pages and competitors for the site on Google">{(b) => <div className="space-y-4"><SearchPerfNav /><Page key={b.id} b={b} /></div>}</SeoShell>;
 };
 
 export { Overview, Positions, ChangesTab, Competitors, PagesTab, SubdomainsCard, Changes, FeatureGrid, FeatureTrend, FeatureChanges, Headline };

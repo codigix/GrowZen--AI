@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { ArrowUp, ArrowDown, ExternalLink, Search, Inbox, Info, Sparkles, FileText, Download, AlertTriangle, ChevronLeft, ChevronRight, ScanSearch } from 'lucide-react';
+import SearchPerfNav from './SearchPerfNav';
 import { SeoShell, Card, Badge, Button, ErrorNote, useModulePath, SkPage } from './SeoUi';
 import { useApi, fmt } from './seoApi';
 import { IntelBar } from './DomainIntel';
@@ -216,5 +217,5 @@ function Page({ b }) {
 }
 
 export const TopPagesPage = function TopPagesPage() {
-  return <SeoShell title="Top Pages" subtitle="Every page of the site with where it ranks, what it earns, whether AI cites it, and what is wrong with it">{(b) => <Page key={b.id} b={b} />}</SeoShell>;
+  return <SeoShell title="Top Pages" subtitle="Every page of the site with where it ranks, what it earns, whether AI cites it, and what is wrong with it">{(b) => <div className="space-y-4"><SearchPerfNav /><Page key={b.id} b={b} /></div>}</SeoShell>;
 };
