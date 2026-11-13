@@ -117,7 +117,7 @@ function Elapsed({ since }) {
 }
 
 /** Live view while an audit runs: the page being scanned in a browser frame, and a log of every page checked. */
-function LiveScan({ audit, startedAt }) {
+export function LiveScan({ audit, startedAt }) {
   const prog = audit.result?.progress || {};
   const pages = prog.pages || [];
   const latest = pages[pages.length - 1];

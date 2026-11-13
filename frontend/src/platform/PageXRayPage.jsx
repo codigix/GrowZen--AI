@@ -538,7 +538,7 @@ function Compare({ items, onOpen, active }) {
   );
 }
 
-export function XRay({ b }) {
+export function XRay({ b, embedded = false, trigger = null, onBusy = null, onSaved = null }) {
   const [input, setInput] = useState('');
   const [urls, setUrls] = useState([]);
   const [results, setResults] = useState({}); // url -> {state, data, error}
@@ -564,12 +564,12 @@ export function XRay({ b }) {
     return out.slice(0, 6);
   }, [comps.data, comps2.data]);
 
-  const run = useCallback(async (list) => {
+  const run = useCallback(async (list, forceRender = false) => {
     const mine = ++seq.current;
     touched.current = true;
     setSaveDone(false);
     setResults(r => ({ ...r, ...Object.fromEntries(list.map(u => [u, { state: 'loading' }])) }));
-    const settled = await Promise.allSettled(list.map(u => api(`/businesses/${b.id}/page-xray`, { method: 'POST', body: { url: u, ...(renderJs && own && hostOf(u) === own ? { render: true } : {}) } })));
+    const settled = await Promise.allSettled(list.map(u => api(`/businesses/${b.id}/page-xray`, { method: 'POST', body: { url: u, ...((renderJs || forceRender) && own && hostOf(u) === own ? { render: true } : {}) } })));
     if (mine !== seq.current && list.length > 1) { /* a newer run started: keep the latest answers per url anyway */ }
     setResults(r => {
       const next = { ...r };
@@ -630,11 +630,23 @@ export function XRay({ b }) {
     if (keepHash) setTimeout(() => { try { window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${keepHash}`); } catch { /* optional */ } }, 0);
     if (u) { setNotice(''); setActive(u); run([u]); }
   }, [wanted]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Embedded in the website page: one click there runs this too (the homepage, read as a browser shows it when it is the own site).
+  const lastTrigger = useRef(0);
+  useEffect(() => {
+    if (!trigger?.n || trigger.n === lastTrigger.current) return;
+    lastTrigger.current = trigger.n;
+    const u = normaliseUrl(trigger.url || '');
+    if (!u || !/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(u)) return;
+    setUrls([u]); setResults({}); setActive(u); setNotice(''); setFormError('');
+    run([u], true);
+  }, [trigger?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const items = urls.map(u => ({ url: u, ...(results[u] || { state: 'idle' }) }));
   const loading = items.some(i => i.state === 'loading');
   const done = items.filter(i => i.state === 'done');
   const shown = items.find(i => i.url === active && i.state === 'done') || (done.length === 1 ? done[0] : null);
   useEffect(() => { if (shown?.data) setLastShown(shown.data); }, [shown?.data]);
+  useEffect(() => { if (onBusy) onBusy(loading); }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (saveDone && onSaved) onSaved(); }, [saveDone]); // eslint-disable-line react-hooks/exhaustive-deps
   const fixUrl = (saved?.data || shown?.data || {}).url || null;
   const fixFresh = !saved && !!shown?.data && saveDone;
   useEffect(() => {
@@ -649,7 +661,7 @@ export function XRay({ b }) {
   return (
     <FixCtx.Provider value={{ tasks: fixes.tasks, reason: fixes.reason, bid: b.id }}>
     <div className="space-y-6 min-w-0 w-full" style={{ contain: 'inline-size' }}>{/* the page never grows wider than the screen because of a long row of tabs or a wide table */}
-      <Card>
+      {!embedded && <Card>
         <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-[240px]">
             <Globe size={15} className="absolute left-3 top-3 text-slate-400" aria-hidden="true" />
@@ -685,11 +697,11 @@ export function XRay({ b }) {
         )}
         {items.filter(i => i.state === 'error').map(i => <p key={i.url} className="text-12.5 text-red-600 mt-2" role="alert"><b>{hostOf(i.url)}:</b> {i.error}</p>)}
         <div className="sr-only" aria-live="polite">{loading ? 'Inspecting pages…' : done.length ? `${done.length} page${done.length > 1 ? 's' : ''} inspected` : ''}</div>
-      </Card>
+      </Card>}
 
       {loading && done.length === 0 && !saved && !lastShown && <Card><div className="py-10 flex flex-col items-center gap-2 text-slate-500"><Loader2 className="animate-spin" /><div className="text-13">Opening the page and reading its HTML, headers, certificate, domain record and robots.txt…</div></div></Card>}
 
-      {done.length === 0 && !loading && urls.length === 0 && !saved && !lastShown && (
+      {!embedded && done.length === 0 && !loading && urls.length === 0 && !saved && !lastShown && (
         <Card><div className="py-8 text-center max-w-xl mx-auto">
           <span className="inline-flex w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 items-center justify-center"><ShieldCheck size={22} /></span>
           <div className="text-16 font-semibold text-slate-900 mt-3">Inspect any page in one click</div>

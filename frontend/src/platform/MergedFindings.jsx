@@ -33,8 +33,8 @@ export default function MergedFindings({ bid }) {
         </div>
         <button type="button" onClick={() => setAll(a => !a)} className="text-13 font-semibold text-indigo-600 hover:underline cursor-pointer">{all ? 'Show only what needs attention' : `Show all ${s.topics} topics`}</button>
       </div>
-      {!d.xray?.has && <p className="mt-3 text-12.5 text-slate-600 bg-slate-50 rounded-lg px-3 py-2">Page X-Ray has not checked your homepage yet, so only the audit's findings are shown. Run Page X-Ray (step 4) to add the page-level checks.</p>}
-      {!d.audit?.has && <p className="mt-3 text-12.5 text-slate-600 bg-slate-50 rounded-lg px-3 py-2">No site audit yet, so only Page X-Ray's findings are shown. Run an audit to add the whole-site checks.</p>}
+      {!d.xray?.has && <p className="mt-3 text-12.5 text-slate-600 bg-slate-50 rounded-lg px-3 py-2">Page X-Ray has not checked your homepage yet, so only the audit's findings are shown. Press Check website to add the page-level checks.</p>}
+      {!d.audit?.has && <p className="mt-3 text-12.5 text-slate-600 bg-slate-50 rounded-lg px-3 py-2">No site audit yet, so only Page X-Ray's findings are shown. Press Check website to add the whole-site checks.</p>}
       <ul className="mt-3 divide-y divide-slate-100">
         {shown.map(t => {
           const [label, cls, Icon] = ST[t.status] || ST.ok;
