@@ -46,9 +46,11 @@ def business(client, **extra):
 def link_google(bid):
     """A linked Google account with the Search Console permission, so the project can read positions."""
     db = SessionLocal()
-    c = GoogleConnection(email="owner@x.in", status="active", scopes="https://www.googleapis.com/auth/webmasters.readonly", refresh_token_enc="x", connected_by="user 1")
-    db.add(c)
-    db.flush()
+    c = db.query(GoogleConnection).filter_by(email="owner@x.in").first()
+    if c is None:
+        c = GoogleConnection(email="owner@x.in", status="active", scopes="https://www.googleapis.com/auth/webmasters.readonly", refresh_token_enc="x", connected_by="user 1")
+        db.add(c)
+        db.flush()
     db.get(Business, bid).connection_id = c.id
     db.commit()
     db.close()
