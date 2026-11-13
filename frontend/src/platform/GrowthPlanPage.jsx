@@ -148,37 +148,71 @@ function Hero({ g, onRefresh, refreshing, secs, onAll }) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------- targets
-function TargetCard({ t }) {
-  const [label, cls] = TARGET_STATUS[t.status] || TARGET_STATUS.open;
-  const pr = targetProgress(t);
-  const f = t.feasibility || {};
+const TASK_STATUS = {
+  todo: ['To do', 'bg-slate-100 text-slate-700'], done: ['Done: awaiting check', 'bg-sky-50 text-sky-700'], verified: ['Verified', 'bg-emerald-50 text-emerald-700'],
+  unverified: ['Not confirmed', 'bg-amber-50 text-amber-800'], failed: ['Failed check', 'bg-red-50 text-red-700'], blocked: ['Blocked', 'bg-slate-100 text-slate-600'], skipped: ['Skipped', 'bg-slate-50 text-slate-500']
+};
+const TASK_FILTERS = [
+  ['all', 'All', () => true], ['todo', 'To do', a => a.status === 'todo'], ['check', 'Needs a check', a => ['done', 'unverified', 'failed'].includes(a.status)],
+  ['verified', 'Verified', a => a.status === 'verified'], ['other', 'Skipped or blocked', a => ['skipped', 'blocked'].includes(a.status)]
+];
+const WHO = { manual: ['You do it', 'bg-slate-400'], assisted: ['AI drafts, you approve', 'bg-violet-500'], auto: ['Automatic', 'bg-emerald-500'] };
+const TH = 'px-3 py-2.5 text-left text-11.5 font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap';
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
+function AreaPill({ k }) {
+  const meta = areaOf(k);
+  const Icon = meta.icon;
+  return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-12 font-medium whitespace-nowrap ${meta.chip}`}><Icon size={13} aria-hidden="true" />{meta.label}</span>;
+}
+
+/** One row per target: what it measures, where it started, where it is, the goal, the progress and whether it is on track. */
+function TargetsTable({ items }) {
+  const groups = byArea(items);
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 min-w-0 flex flex-col">
-      <div className="flex items-start gap-2">
-        <h4 className="text-14 font-semibold text-slate-900 leading-snug flex-1 min-w-0">{t.label}</h4>
-        <span className={`text-11 font-semibold rounded-full px-2 py-1 leading-none ring-1 ring-inset shrink-0 ${cls}`}>{label}</span>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-13 min-w-[920px]">
+          <thead className="bg-slate-50 border-b border-slate-200"><tr>
+            <th className={TH}>Target</th><th className={`${TH} text-right`}>Baseline</th><th className={`${TH} text-right`}>Now</th><th className={`${TH} text-right`}>Goal</th>
+            <th className={`${TH} w-44`}>Progress</th><th className={TH}>Status</th><th className={TH}>Why this target</th></tr></thead>
+          <tbody>
+            {groups.map(([k, rows]) => (
+              <React.Fragment key={k}>
+                <tr className="bg-slate-50/70 border-y border-slate-200"><td colSpan={7} className="px-3 py-2"><AreaPill k={k} /> <span className="ml-2 text-12 text-slate-500">{rows.length} target{rows.length === 1 ? '' : 's'}</span></td></tr>
+                {rows.map(t => {
+                  const [label, cls] = TARGET_STATUS[t.status] || TARGET_STATUS.open;
+                  const pr = t.status === 'met' ? 100 : targetProgress(t);
+                  const f = t.feasibility || {};
+                  const note = [f.cap != null ? `Capped at ${typeof f.cap === 'number' ? f.cap : String(f.cap)}` : null, f.note].filter(Boolean).join(' · ');
+                  return (
+                    <tr key={t.id} className="align-top border-b border-slate-100 hover:bg-slate-50/60">
+                      <td className="px-3 py-3 min-w-[220px]"><div className="font-semibold text-slate-900 leading-snug">{t.label}</div><div className="text-11.5 text-slate-400 mt-0.5">{fmtDay(t.window_start)} – {fmtDay(t.window_end)}</div></td>
+                      <td className="px-3 py-3 text-right tabular-nums text-slate-600 whitespace-nowrap">{fmtVal(t.baseline, t.unit)}</td>
+                      <td className="px-3 py-3 text-right tabular-nums font-bold text-slate-900 whitespace-nowrap">{fmtVal(t.current, t.unit)}</td>
+                      <td className="px-3 py-3 text-right tabular-nums font-semibold text-indigo-700 whitespace-nowrap">{fmtVal(t.target, t.unit)}{t.direction === 'down' ? <span className="block text-11 font-normal text-slate-400">lower is better</span> : t.direction === 'keep' ? <span className="block text-11 font-normal text-slate-400">keep it</span> : null}</td>
+                      <td className="px-3 py-3">
+                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden" role="progressbar" aria-valuenow={pr} aria-valuemin={0} aria-valuemax={100} aria-label={`${t.label}: ${pr}% of the way to the target`}>
+                          <div className={`h-full rounded-full ${t.status === 'met' ? 'bg-emerald-500' : t.status === 'at_risk' ? 'bg-amber-400' : t.status === 'missed' ? 'bg-red-400' : t.status === 'blocked' ? 'bg-slate-300' : 'bg-indigo-500'}`} style={{ width: `${Math.max(pr, pr > 0 ? 4 : 0)}%` }} />
+                        </div>
+                        <div className="text-11.5 text-slate-500 mt-1 tabular-nums">{pr}% of the way</div>
+                      </td>
+                      <td className="px-3 py-3"><span className={`inline-block text-11.5 font-semibold rounded-full px-2.5 py-1 leading-none ring-1 ring-inset whitespace-nowrap ${cls}`}>{label}</span></td>
+                      <td className="px-3 py-3 text-12.5 text-slate-600 leading-relaxed max-w-[360px]">{t.why || <span className="text-slate-400">—</span>}{note && <span className="block text-11.5 text-slate-500 mt-1">{note}</span>}</td>
+                    </tr>
+                  );
+                })}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
       </div>
-      <div className="mt-3 flex items-end gap-2 flex-wrap">
-        <div><div className="text-11 text-slate-500">Baseline</div><div className="text-13 text-slate-600 tabular-nums">{fmtVal(t.baseline, t.unit)}</div></div>
-        <span className="text-slate-300 pb-0.5" aria-hidden="true">→</span>
-        <div><div className="text-11 text-slate-500">Now</div><div className="text-20 font-bold text-slate-900 tabular-nums leading-none">{fmtVal(t.current, t.unit)}</div></div>
-        <span className="text-slate-300 pb-0.5" aria-hidden="true">→</span>
-        <div><div className="text-11 text-slate-500">Target{t.direction === 'down' ? ' (lower)' : t.direction === 'keep' ? ' (keep)' : ''}</div><div className="text-13 font-semibold text-indigo-700 tabular-nums">{fmtVal(t.target, t.unit)}</div></div>
-      </div>
-      <div className="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden" role="progressbar" aria-valuenow={pr} aria-valuemin={0} aria-valuemax={100} aria-label={`${t.label}: ${pr}% of the way to the target`}>
-        <div className={`h-full rounded-full ${t.status === 'met' ? 'bg-emerald-500' : t.status === 'at_risk' ? 'bg-amber-400' : t.status === 'missed' ? 'bg-red-400' : t.status === 'blocked' ? 'bg-slate-300' : 'bg-indigo-500'}`} style={{ width: `${Math.max(pr, 2)}%` }} />
-      </div>
-      {t.why && <p className="mt-3 text-13 text-slate-600 leading-relaxed">{t.why}</p>}
-      {(f.cap != null || f.note) && (
-        <p className="mt-2 text-12 text-slate-500 flex gap-1.5"><ShieldCheck size={13} className="mt-0.5 shrink-0 text-slate-400" /><span>{[f.cap != null ? `Capped at ${typeof f.cap === 'number' ? f.cap : String(f.cap)}` : null, f.note].filter(Boolean).join(' · ')}{f.confidence ? ` · ${f.confidence} confidence` : ''}</span></p>
-      )}
-      <div className="mt-auto pt-3 text-11 text-slate-400">{fmtDay(t.window_start)} – {fmtDay(t.window_end)}</div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------------------------------------------- actions
-function ActionCard({ a, bid, onChanged }) {
+/** One task: its row (what, area, who does it, time, due, status, what the live check says, buttons) and, when opened, its steps and the note box. */
+function TaskRow({ a, bid, onChanged }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [panel, setPanel] = useState(null); // 'done' | 'skip'
@@ -187,6 +221,10 @@ function ActionCard({ a, bid, onChanged }) {
   const [result, setResult] = useState(null);
   const how = arr(a.how);
   const mode = MODES[a.mode] || MODES.manual;
+  const st = a.status;
+  const [stLabel, stCls] = TASK_STATUS[st] || TASK_STATUS.todo;
+  const ext = a.link && /^https?:\/\//i.test(a.link);
+  const overdue = st === 'todo' && a.due_on && String(a.due_on).slice(0, 10) < todayIso();
   const call = async (kind, body) => {
     setBusy(kind); setError('');
     try {
@@ -196,108 +234,114 @@ function ActionCard({ a, bid, onChanged }) {
       await onChanged();
     } catch (e) { setError(e.message || 'That did not work. Try again.'); } finally { setBusy(''); }
   };
-  const st = a.status;
-  const ext = a.link && /^https?:\/\//i.test(a.link);
-  const shown = result || null;
-  const tint = st === 'verified' ? 'border-emerald-200' : st === 'unverified' ? 'border-amber-200' : st === 'failed' ? 'border-red-200' : 'border-slate-200';
+  const ev = typeof a.evidence === 'string' ? a.evidence : '';
+  const check = st === 'verified' ? <><b className="text-emerald-700">Verified</b> {fmtWhen(a.verified_at)}{(result?.before != null || result?.after != null) ? <span className="tabular-nums"> · {dash(result.before)} → {dash(result.after)}</span> : null}{ev ? <span className="block text-slate-500">{ev}</span> : null}</>
+    : st === 'unverified' ? <>{result?.details || ev || 'The live data does not show this change yet. Some changes take a few hours to appear.'}</>
+    : st === 'failed' ? <>{ev || 'This task failed its live check.'}</>
+    : st === 'blocked' ? <>{ev || 'Blocked until something it depends on is done.'}</>
+    : st === 'skipped' ? <>Skipped{a.note ? `: ${a.note}` : ''}</>
+    : st === 'done' ? <>Marked done{a.note ? `: ${a.note}` : ''}. Counted only once live data confirms it.</>
+    : <span className="text-slate-400">Not checked yet: it is checked against live data after you finish</span>;
+  const open = steps || panel || error;
   return (
-    <article className={`rounded-xl border ${tint} bg-white p-4 sm:p-5 min-w-0 ${st === 'skipped' ? 'opacity-70' : ''}`}>
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-        <h4 className="text-15 font-semibold text-slate-900 leading-snug flex-1 min-w-[220px]">{a.title}</h4>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Chip cls={mode[1]}>{mode[0]}</Chip>
-          {isNum(a.est_minutes) && <Chip title="Estimated time"><Clock size={12} />{a.est_minutes} min</Chip>}
-          {a.due_on && <Chip title="Due date"><CalendarDays size={12} />Due {fmtDay(a.due_on)}</Chip>}
-        </div>
-      </div>
-      {a.why && <p className="mt-2 text-13 text-slate-600 leading-relaxed">{a.why}</p>}
-
-      {how.length > 0 && (
-        <div className="mt-3">
-          <ol className="list-decimal pl-5 space-y-1 text-13 text-slate-700">{(steps ? how : how.slice(0, 2)).map((h, i) => <li key={i}>{h}</li>)}</ol>
-          {how.length > 2 && <button type="button" onClick={() => setSteps(s => !s)} aria-expanded={steps} className="mt-1.5 inline-flex items-center gap-1 text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">{steps ? <>Hide steps <ChevronUp size={13} /></> : <>Show all {how.length} steps <ChevronDown size={13} /></>}</button>}
-        </div>
-      )}
-
-      {st === 'verified' && (
-        <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2.5 text-13 text-emerald-900 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="inline-flex items-center gap-1.5 font-semibold"><CheckCircle2 size={15} className="text-emerald-600" />Verified against live data</span>
-          <span className="text-emerald-800/80">{fmtWhen(a.verified_at)}</span>
-          {(shown?.before != null || shown?.after != null) && <span className="tabular-nums">{dash(shown.before)} → {dash(shown.after)}</span>}
-          {a.evidence && <span className="w-full text-12 text-emerald-800/90">{typeof a.evidence === 'string' ? a.evidence : ''}</span>}
-        </div>
-      )}
-      {st === 'unverified' && (
-        <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-13 text-amber-900">
-          <div className="font-semibold flex items-center gap-1.5"><AlertTriangle size={15} className="text-amber-600" />Reality check: not confirmed yet</div>
-          <p className="mt-1 text-amber-900/90">{shown?.details || (typeof a.evidence === 'string' ? a.evidence : 'The live data does not show this change yet. Some changes take a few hours to appear.')}</p>
-        </div>
-      )}
-      {st === 'failed' && <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-13 text-red-800 flex gap-1.5"><XCircle size={15} className="mt-0.5 shrink-0" /><span>{typeof a.evidence === 'string' && a.evidence ? a.evidence : 'This step failed. Review the details and try again.'}</span></div>}
-      {st === 'blocked' && <div className="mt-3 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-13 text-slate-600 flex gap-1.5"><Ban size={15} className="mt-0.5 shrink-0 text-slate-400" /><span>{typeof a.evidence === 'string' && a.evidence ? a.evidence : 'Blocked until a requirement is met.'}{arr(a.how).length ? ' Steps to unblock are listed above.' : ''}</span></div>}
-      {st === 'skipped' && <p className="mt-3 text-12 text-slate-500">Skipped{a.note ? `: ${a.note}` : ''}</p>}
-      {(st === 'done') && <p className="mt-3 text-12 text-slate-500">Marked done{a.note ? `: ${a.note}` : ''}. It is only counted once the live data confirms it.</p>}
-
-      {panel && (
-        <div className="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-3">
-          <label className="text-12 font-semibold text-slate-700 block mb-1" htmlFor={`gp-note-${a.id}`}>{panel === 'skip' ? 'Why are you skipping this? (at least 5 characters)' : 'Add a note (optional)'}</label>
-          <textarea id={`gp-note-${a.id}`} rows={2} value={text} onChange={e => setText(e.target.value.slice(0, 500))} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-13 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-          <div className="mt-2 flex flex-wrap gap-2">
-            {panel === 'skip'
-              ? <Button size="sm" variant="primary" busy={busy === 'skip'} disabled={text.trim().length < 5} onClick={() => call('skip', { reason: text.trim() })}>Skip this task</Button>
-              : <Button size="sm" variant="primary" icon={Check} busy={busy === 'done'} onClick={() => call('done', text.trim() ? { note: text.trim() } : {})}>Confirm done</Button>}
-            <Button size="sm" onClick={() => { setPanel(null); setText(''); }}>Cancel</Button>
+    <>
+      <tr className={`align-top border-b border-slate-100 hover:bg-slate-50/60 ${st === 'skipped' ? 'opacity-70' : ''}`}>
+        <td className="px-3 py-3 min-w-[240px] max-w-[340px]">
+          <div className="font-semibold text-slate-900 leading-snug">{a.title}</div>
+          {a.why && <div className="text-12.5 text-slate-600 mt-1 leading-relaxed line-clamp-3" title={a.why}>{a.why}</div>}
+          {how.length > 0 && <button type="button" onClick={() => setSteps(x => !x)} aria-expanded={steps} className="mt-1.5 inline-flex items-center gap-1 text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">{steps ? <>Hide steps <ChevronUp size={12} /></> : <>Show {how.length} step{how.length === 1 ? '' : 's'} <ChevronDown size={12} /></>}</button>}
+        </td>
+        <td className="px-3 py-3"><AreaPill k={a.area} /></td>
+        <td className="px-3 py-3 text-12.5 text-slate-700 w-[130px]"><span className="inline-flex items-start gap-1.5"><span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${(WHO[a.mode] || WHO.manual)[1]}`} aria-hidden="true" /><span>{(WHO[a.mode] || WHO.manual)[0]}</span></span></td>
+        <td className={`px-3 py-3 text-12.5 whitespace-nowrap ${overdue ? 'text-red-600 font-semibold' : 'text-slate-700'}`}>{a.due_on ? fmtDay(a.due_on) : '—'}{overdue && <span className="block text-11">overdue</span>}{isNum(a.est_minutes) && <span className="block text-11.5 font-normal text-slate-400 tabular-nums">{a.est_minutes} min</span>}</td>
+        <td className="px-3 py-3"><span className={`inline-block text-11.5 font-semibold rounded-full px-2.5 py-1 leading-none whitespace-nowrap ${stCls}`}>{stLabel}</span></td>
+        <td className="px-3 py-3 text-12.5 text-slate-600 leading-relaxed min-w-[180px] max-w-[260px]">{check}</td>
+        <td className="px-3 py-3">
+          <div className="flex flex-col items-stretch gap-1.5 w-[104px] ml-auto">
+            {a.link && (ext ? <a href={a.link} target="_blank" rel="noreferrer"><Button size="sm" icon={ExternalLink}>Open</Button></a> : <Link to={a.link}><Button size="sm" icon={ExternalLink}>Open</Button></Link>)}
+            {st === 'todo' && !panel && (<><Button size="sm" variant="primary" icon={Check} onClick={() => setPanel('done')}>Mark done</Button><Button size="sm" onClick={() => setPanel('skip')}>Skip</Button></>)}
+            {(st === 'done' || st === 'unverified' || st === 'failed') && <Button size="sm" variant={st === 'done' ? 'primary' : undefined} icon={busy === 'verify' ? Loader2 : ShieldCheck} disabled={busy === 'verify'} onClick={() => call('verify')}>{busy === 'verify' ? 'Checking…' : 'Check now'}</Button>}
           </div>
-        </div>
+        </td>
+      </tr>
+      {open && (
+        <tr className="bg-slate-50/70 border-b border-slate-100">
+          <td colSpan={7} className="px-4 py-3">
+            {steps && how.length > 0 && <ol className="list-decimal pl-5 space-y-1 text-13 text-slate-700 max-w-3xl">{how.map((h, i) => <li key={i}>{h}</li>)}</ol>}
+            {panel && (
+              <div className="mt-2 max-w-xl">
+                <label className="text-12 font-semibold text-slate-700 block mb-1" htmlFor={`gp-note-${a.id}`}>{panel === 'skip' ? 'Why are you skipping this? (at least 5 characters)' : 'Add a note (optional)'}</label>
+                <textarea id={`gp-note-${a.id}`} rows={2} value={text} onChange={e => setText(e.target.value.slice(0, 500))} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-13 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {panel === 'skip'
+                    ? <Button size="sm" variant="primary" busy={busy === 'skip'} disabled={text.trim().length < 5} onClick={() => call('skip', { reason: text.trim() })}>Skip this task</Button>
+                    : <Button size="sm" variant="primary" icon={Check} busy={busy === 'done'} onClick={() => call('done', text.trim() ? { note: text.trim() } : {})}>Confirm done</Button>}
+                  <Button size="sm" onClick={() => { setPanel(null); setText(''); }}>Cancel</Button>
+                </div>
+              </div>
+            )}
+            {error && <p className="mt-2 text-12.5 text-red-600" role="alert">{error}</p>}
+          </td>
+        </tr>
       )}
-      {error && <p className="mt-2 text-12.5 text-red-600" role="alert">{error}</p>}
+    </>
+  );
+}
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {a.link && (ext
-          ? <a href={a.link} target="_blank" rel="noreferrer"><Button size="sm" icon={ExternalLink}>Open</Button></a>
-          : <Link to={a.link}><Button size="sm" icon={ExternalLink}>Open</Button></Link>)}
-        {st === 'todo' && !panel && (<><Button size="sm" variant="primary" icon={Check} onClick={() => setPanel('done')}>Mark done</Button><Button size="sm" onClick={() => setPanel('skip')}>Skip</Button></>)}
-        {(st === 'done' || st === 'unverified' || st === 'failed') && <Button size="sm" variant={st === 'done' ? 'primary' : undefined} icon={busy === 'verify' ? Loader2 : ShieldCheck} disabled={busy === 'verify'} onClick={() => call('verify')}>{busy === 'verify' ? 'Checking live data…' : st === 'done' ? 'Verify now' : 'Verify again'}</Button>}
+/** The period's tasks as one table, with filters by status and area, sorted so what needs you comes first. */
+function TasksTable({ list, bid, onChanged }) {
+  const [filter, setFilter] = useState('all');
+  const [area, setArea] = useState('all');
+  const order = { todo: 0, failed: 1, unverified: 2, done: 3, blocked: 4, verified: 5, skipped: 6 };
+  const pred = TASK_FILTERS.find(f => f[0] === filter)[2];
+  const areas = [...new Set(list.map(a => a.area || 'other'))];
+  const rows = list.filter(a => pred(a) && (area === 'all' || (a.area || 'other') === area)).sort((x, y) => (order[x.status] ?? 9) - (order[y.status] ?? 9) || String(x.due_on || '').localeCompare(String(y.due_on || '')));
+  const pill = (on) => `h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-100">
+        {TASK_FILTERS.map(([id, label, f]) => <button key={id} type="button" onClick={() => setFilter(id)} aria-pressed={filter === id} className={pill(filter === id)}>{label} <span className="opacity-70">{list.filter(f).length}</span></button>)}
+        {areas.length > 1 && <span className="mx-1 h-5 w-px bg-slate-200" aria-hidden="true" />}
+        {areas.length > 1 && [['all', 'All areas'], ...areas.map(k => [k, areaOf(k).label])].map(([k, label]) => <button key={k} type="button" onClick={() => setArea(k)} aria-pressed={area === k} className={pill(area === k)}>{label}</button>)}
       </div>
-    </article>
+      <div className="overflow-x-auto">
+        <table className="w-full text-13 min-w-[940px]">
+          <thead className="bg-slate-50 border-b border-slate-200"><tr>
+            <th className={TH}>Task</th><th className={TH}>Area</th><th className={TH}>Who does it</th><th className={TH}>Due · time</th><th className={TH}>Status</th><th className={TH}>Live check</th><th className={`${TH} text-right`}>Actions</th></tr></thead>
+          <tbody>
+            {rows.map(a => <TaskRow key={a.id} a={a} bid={bid} onChanged={onChanged} />)}
+            {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-13 text-slate-500">Nothing matches this filter.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
 function PeriodView({ g, periodKey, bid, onChanged }) {
   const [, period, label] = PERIODS.find(p => p[0] === periodKey);
-  const targets = byArea(g.targets?.[period]);
-  const actions = byArea(g.actions?.[periodKey]);
-  const open = arr(g.actions?.[periodKey]).filter(a => a.status === 'todo').length;
+  const targets = arr(g.targets?.[period]);
+  const list = arr(g.actions?.[periodKey]);
+  const open = list.filter(a => a.status === 'todo').length;
+  const verified = list.filter(a => a.status === 'verified').length;
   const nextRun = g.next?.[period];
+  const met = targets.filter(t => t.status === 'met').length;
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <h2 className="text-18 font-semibold text-slate-900">{label}: targets</h2>
-        <span className="text-13 text-slate-500">{arr(g.targets?.[period]).length} target{arr(g.targets?.[period]).length === 1 ? '' : 's'}{nextRun ? ` · next ${period === 'daily' ? 'day' : period === 'weekly' ? 'week' : 'month'} starts ${fmtDay(nextRun)}` : ''}</span>
-      </div>
-      {targets.length === 0 ? <EmptyBox icon={Target} title="No targets for this period yet" text="Targets are set from real measurements. Press Refresh plan after connecting your Google account and running an audit." /> : targets.map(([k, items]) => {
-        const meta = areaOf(k); const Icon = meta.icon;
-        return (
-          <div key={k}>
-            <div className="flex items-center gap-2.5 mb-3"><IconChip icon={Icon} cls={meta.chip} /><h3 className="text-15 font-semibold text-slate-900">{meta.label}</h3></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">{items.map(t => <TargetCard key={t.id} t={t} />)}</div>
-          </div>
-        );
-      })}
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2">
-        <h2 className="text-18 font-semibold text-slate-900">{label}: tasks</h2>
-        <span className="text-13 text-slate-500">{open} to do · {arr(g.actions?.[periodKey]).length} in total</span>
-      </div>
-      {actions.length === 0 ? <EmptyBox icon={ListChecks} title="No tasks for this period" text="When a target needs work, its tasks appear here with the steps and how they will be checked." /> : actions.map(([k, items]) => {
-        const meta = areaOf(k); const Icon = meta.icon;
-        return (
-          <div key={k}>
-            <div className="flex items-center gap-2.5 mb-3"><IconChip icon={Icon} cls={meta.chip} /><h3 className="text-15 font-semibold text-slate-900">{meta.label}</h3><span className="text-12 text-slate-500">{items.length} task{items.length === 1 ? '' : 's'}</span></div>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">{items.map(a => <ActionCard key={a.id} a={a} bid={bid} onChanged={onChanged} />)}</div>
-          </div>
-        );
-      })}
+      <section className="space-y-3" aria-label={`${label}: targets`}>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h2 className="text-18 font-semibold text-slate-900">{label}: targets</h2>
+          <span className="text-13 text-slate-500">{targets.length} target{targets.length === 1 ? '' : 's'}{targets.length ? ` · ${met} met` : ''}{nextRun ? ` · next ${period === 'daily' ? 'day' : period === 'weekly' ? 'week' : 'month'} starts ${fmtDay(nextRun)}` : ''}</span>
+        </div>
+        {targets.length === 0 ? <EmptyBox icon={Target} title="No targets for this period yet" text="Targets are set from real measurements. Press Refresh plan after connecting your Google account and running an audit." /> : <TargetsTable items={targets} />}
+      </section>
+      <section className="space-y-3" aria-label={`${label}: tasks`}>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h2 className="text-18 font-semibold text-slate-900">{label}: tasks</h2>
+          <span className="text-13 text-slate-500">{open} to do · {verified} verified · {list.length} in total</span>
+        </div>
+        {list.length === 0 ? <EmptyBox icon={ListChecks} title="No tasks for this period" text="When a target needs work, its tasks appear here with the steps and how they will be checked." /> : <TasksTable list={list} bid={bid} onChanged={onChanged} />}
+      </section>
     </div>
   );
 }
