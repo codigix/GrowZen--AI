@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Bell, Sparkles, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, ExternalLink, ShieldCheck, FileText, Loader2, Mail, Play, RefreshCw, Search, SkipForward, Wrench, XCircle } from 'lucide-react';
-import { Button } from './SeoUi';
+import { Wrench as WrenchIcon, Download, AlertTriangle, Bell, Sparkles, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, ExternalLink, ShieldCheck, FileText, Loader2, Mail, Play, RefreshCw, Search, SkipForward, Wrench, XCircle } from 'lucide-react';
+import { Button, Drawer } from './SeoUi';
 import Select from '../components/Select';
 import { api, SEO_API } from './seoApi';
 
@@ -172,7 +172,8 @@ function IssueDetail({ a, bid, onChanged }) {
       )}
       {err && <p className="mt-3 text-13 text-red-700" role="alert">{err}</p>}
       <div className="mt-4 flex flex-wrap gap-2">
-        {a.link && <OpenLink link={a.link} variant="primary">Open where it is fixed</OpenLink>}
+        <Link to={`/growth/fix/${a.id}`}><Button size="sm" variant="primary" icon={WrenchIcon}>Get the exact fix</Button></Link>
+        {a.link && <OpenLink link={a.link}>{a.website_side ? 'See the live page check' : 'Open where it is fixed'}</OpenLink>}
         {a.status === 'todo' && !panel && <><Button size="sm" icon={Check} onClick={() => setPanel('done')}>Mark done</Button><Button size="sm" onClick={() => setPanel('skip')}>Skip</Button></>}
         {['todo', 'done', 'unverified', 'failed'].includes(a.status) && <Button size="sm" icon={busy === 'verify' ? Loader2 : ShieldCheck} disabled={busy === 'verify'} onClick={() => call('verify')}>{busy === 'verify' ? 'Checking live data…' : 'Check now'}</Button>}
       </div>
@@ -219,7 +220,7 @@ function IssueTable({ rows, bid, onChanged }) {
                     <td className="px-3 py-3.5 text-13 text-slate-600 whitespace-nowrap">{fmtDay(a.found_at || a.first_seen)}</td>
                     <td className={`px-3 py-3.5 text-13 whitespace-nowrap ${a.overdue ? 'text-red-600 font-semibold' : 'text-slate-600'}`}>{fmtDay(a.due_on)}{a.overdue && <span className="block text-11 font-medium">overdue</span>}</td>
                     <td className="px-3 py-3.5"><Chip cls={stt[1]}>{stt[0]}</Chip></td>
-                    <td className="px-3 py-3.5 text-right" onClick={e => e.stopPropagation()}>{a.link ? <OpenLink link={a.link}>Open</OpenLink> : null}</td>
+                    <td className="px-3 py-3.5 text-right" onClick={e => e.stopPropagation()}><Link to={`/growth/fix/${a.id}`}><Button size="sm" variant="primary" icon={WrenchIcon}>Fix it</Button></Link></td>
                   </tr>
                   {on && <tr><td colSpan={9} className="p-0"><IssueDetail a={a} bid={bid} onChanged={onChanged} /></td></tr>}
                 </React.Fragment>
@@ -233,6 +234,27 @@ function IssueTable({ rows, bid, onChanged }) {
   );
 }
 
+function BriefDrawer({ brief, onClose }) {
+  const [ok, setOk] = useState(false);
+  const text = brief?.markdown || '';
+  const copy = async () => { try { await navigator.clipboard.writeText(text); setOk(true); setTimeout(() => setOk(false), 1600); } catch { /* clipboard blocked */ } };
+  const download = () => { const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown' })); const a = document.createElement('a'); a.href = url; a.download = 'website-fixes.md'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
+  return (
+    <Drawer open={!!brief} onClose={onClose} title="Developer brief" subtitle="Every open website fix with its exact code, in order of importance" width="max-w-3xl">
+      {brief?.loading ? <div className="py-10 text-center text-13 text-slate-600"><Loader2 size={22} className="mx-auto animate-spin text-indigo-600 mb-2" />Building the brief from your live site. This can take a minute when AI is writing titles and answers.</div>
+        : brief?.error ? <p className="text-13 text-red-700 bg-red-50 rounded-lg px-3 py-2">{brief.error}</p>
+          : brief ? (
+            <div className="space-y-3">
+              <p className="text-13 text-slate-700">{brief.count} fix{brief.count === 1 ? '' : 'es'}, about {brief.minutes} minutes of work in total. Send this to whoever edits your website: every item says where the code goes and how it is checked.</p>
+              <div className="flex flex-wrap gap-2"><Button variant="primary" icon={ok ? Check : undefined} onClick={copy}>{ok ? 'Copied' : 'Copy brief'}</Button><Button icon={Download} onClick={download}>Download .md</Button></div>
+              {arr(brief.skipped).length > 0 && <p className="text-12.5 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Not included: {brief.skipped.join(' · ')}</p>}
+              <pre className="text-12.5 leading-relaxed text-slate-800 bg-slate-50 border border-slate-200 rounded-xl p-3.5 whitespace-pre-wrap break-words font-mono max-h-[60vh] overflow-auto">{text}</pre>
+            </div>
+          ) : null}
+    </Drawer>
+  );
+}
+
 export function IssuesView({ bid }) {
   const [d, setD] = useState(null);
   const [error, setError] = useState('');
@@ -241,6 +263,13 @@ export function IssuesView({ bid }) {
   const [sev, setSev] = useState('all');
   const [showClosed, setShowClosed] = useState(false);
   const [msg, setMsg] = useState('');
+  const [brief, setBrief] = useState(null); // {loading} | {markdown, count, minutes, skipped} | {error}
+  useEffect(() => {
+    if (!brief?.loading) return undefined;
+    let live = true;
+    api(`/businesses/${bid}/growth/handoff`, { timeout: 180000 }).then(r => { if (live) setBrief(r); }).catch(e => { if (live) setBrief({ error: e.message || 'The brief could not be built.' }); });
+    return () => { live = false; };
+  }, [brief?.loading, bid]);
   const load = useCallback(async () => {
     try { setD(await api(`/businesses/${bid}/growth/issues`)); setError(''); } catch (e) { setError(e.message || 'Could not load the issues.'); }
   }, [bid]);
@@ -260,13 +289,15 @@ export function IssuesView({ bid }) {
   const areas = Object.keys(d.by_area || {});
   return (
     <div className="space-y-5">
+      <BriefDrawer brief={brief} onClose={() => setBrief(null)} />
       <Card className="p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex-1 min-w-[240px]">
             <h3 className="text-15 font-semibold text-slate-900 flex items-center gap-2"><Wrench size={16} className="text-indigo-600" aria-hidden="true" />{d.open_total} open issue{d.open_total === 1 ? '' : 's'}{d.overdue > 0 && <span className="text-12 font-semibold text-red-600">· {d.overdue} overdue</span>}</h3>
             <p className="mt-0.5 text-12.5 text-slate-500">Every problem found in the website, Google profile, listings, rankings and ChatGPT module. Open a task to land on the page where it is fixed; it closes only when the real data stops reporting it.</p>
           </div>
-          <Button variant="primary" icon={scanning ? Loader2 : Search} disabled={scanning} onClick={scan}>{scanning ? 'Scanning…' : 'Scan now'}</Button>
+          <div className="flex flex-wrap gap-2"><Button icon={Download} onClick={() => setBrief({ loading: true })}>Developer brief</Button>
+            <Button variant="primary" icon={scanning ? Loader2 : Search} disabled={scanning} onClick={scan}>{scanning ? 'Scanning…' : 'Scan now'}</Button></div>
         </div>
         {msg && <p className="mt-3 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{msg}</p>}
         {error && <p className="mt-3 text-13 text-red-700" role="alert">{error}</p>}

@@ -159,10 +159,11 @@ def run(business_id: int, actor: str) -> None:
             n = agent.draft_review_replies(db, b)
             recent = db.scalar(select(Post.id).where(Post.business_id == b.id, Post.status == "draft", Post.ai_generated.is_(True), Post.created_at >= datetime.now(timezone.utc) - timedelta(days=7)).limit(1))
             p = None if recent else agent.draft_weekly_post(db, b)  # a second Start never piles up a second draft
-            from . import growth_drafts
+            from . import growth_drafts, growth_solutions
             made = growth_drafts.prefill(db, b)
+            sols = growth_solutions.prefill(db, b)
             db.commit()
-            return (f"{n} review repl{'y' if n == 1 else 'ies'}, {1 if p else 0} post and {made} fix-task draft{'s' if made != 1 else ''} written" + (" (a post draft from this week already waits for you)" if recent else "") + ". Nothing is published until you approve it.", "done")
+            return (f"{n} review repl{'y' if n == 1 else 'ies'}, {1 if p else 0} post and {made} fix-task draft{'s' if made != 1 else ''} written; exact solutions ready for {sols['built']} fix task{'s' if sols['built'] != 1 else ''}" + (" (a post draft from this week already waits for you)" if recent else "") + ". Nothing is published until you approve it.", "done")
         _step(db, business_id, "drafts", drafts_step)
 
         def plan_step():

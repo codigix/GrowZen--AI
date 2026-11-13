@@ -22,7 +22,7 @@ from ..db import get_db
 from ..deps import get_business, my_business_ids
 from ..models import Business, GrowthAction, GrowthReport
 from ..services import localtime
-from ..services import growth_content, growth_drafts, growth_issues, growth_report, growth_start
+from ..services import growth_content, growth_drafts, growth_solutions, growth_issues, growth_report, growth_start
 from ..services import growth_plan as plan
 from ..services.activity import log
 
@@ -35,6 +35,7 @@ _scan_limit = plan.RateLimit(6, name="growth_scan")
 _start_limit = plan.RateLimit(4, name="growth_start")
 _send_limit = plan.RateLimit(6, name="growth_send")
 _draft_limit = plan.RateLimit(20, name="growth_draft")
+_solution_limit = plan.RateLimit(40, name="growth_solution")
 
 
 def _action(db: Session, b: Business, action_id: int) -> GrowthAction:
@@ -239,6 +240,40 @@ def write_draft(action_id: int, b: Business = Depends(get_business), db: Session
     log(db, user.name, "growth_draft_written", b.id, key=a.key)
     db.commit()
     return {"draft": d}
+
+
+@router.get("/actions/{action_id}")
+def get_action(action_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """One task with everything its fix page needs (the saved solution, if any)."""
+    a = _action(db, b, action_id)
+    ev = a.evidence or {}
+    return {"action": plan._action_out(a), "severity": ev.get("severity"), "source": growth_issues.SOURCE_LABEL.get(ev.get("source"), ev.get("source")), "closes_when": growth_issues.closes_when(a.verify or {}),
+            "solution": ev.get("solution"), "draft": ev.get("draft"), "website_side": growth_solutions.is_website_side(a)}
+
+
+@router.post("/actions/{action_id}/solution")
+def make_solution(action_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Work out the exact solution for this task (code or text for this site, where to put it, how to confirm). Uses AI only for wording."""
+    a = _action(db, b, action_id)
+    if not _solution_limit.hit(user.id):
+        raise HTTPException(429, "Too many solutions requested: wait a few minutes.")
+    try:
+        sol = growth_solutions.save(db, b, a)
+    except growth_solutions.SolutionError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    log(db, user.name, "growth_solution_built", b.id, key=a.key)
+    db.commit()
+    return {"solution": sol}
+
+
+@router.get("/handoff")
+def handoff(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """One brief for the person who edits the website: every open website-side fix with its exact code."""
+    if not _solution_limit.hit(user.id):
+        raise HTTPException(429, "Too many requests: wait a few minutes.")
+    out = growth_solutions.handoff(db, b)
+    db.commit()
+    return out
 
 
 @router.post("/actions/{action_id}/draft/apply")

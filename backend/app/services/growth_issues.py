@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Business, GrowthAction
-from . import growth_content, growth_drafts
+from . import growth_content, growth_drafts, growth_solutions
 
 log = logging.getLogger("seo.growth")
 
@@ -384,7 +384,9 @@ def closes_when(rule: dict[str, Any]) -> str:
         if path == "ssl.days_left":
             return f"The live certificate has at least {rule.get('value')} days left."
         if path.startswith("tech.security_headers."):
-            return f"The live homepage sends the {path.rsplit('.', 1)[1].replace('_', '-')} header."
+            names = {"hsts": "Strict-Transport-Security", "csp": "Content-Security-Policy", "x_frame_options": "X-Frame-Options", "x_content_type_options": "X-Content-Type-Options", "referrer_policy": "Referrer-Policy", "permissions_policy": "Permissions-Policy"}
+            key = path.rsplit(".", 1)[1]
+            return f"The live homepage sends the {names.get(key, key.replace('_', '-'))} header."
         return f"The live page reports {path} {rule.get('op', '==')} {rule.get('value')}."
     if k == "xray_check":
         return "The check passes when Page X-Ray reads the live homepage again."
@@ -421,7 +423,7 @@ def listing(db: Session, b: Business, today: date | None = None) -> dict[str, An
         ev = a.evidence or {}
         return {**_action_out(a), "severity": ev.get("severity", "warning"), "source": ev.get("source"), "confidence": ev.get("confidence", "confirmed"), "note_check": ev.get("note"),
                 "found_at": ev.get("found_at"), "first_seen": ev.get("first_seen"), "source_label": SOURCE_LABEL.get(ev.get("source"), ev.get("source")), "closes_when": closes_when(a.verify or {}),
-                "last_check": ev.get("details"), "checked_at": ev.get("checked_at"), "draft_kind": growth_drafts.kind_of(a), "draft": ev.get("draft"), "overdue": a.due_on < today and a.status not in ("verified", "skipped")}
+                "last_check": ev.get("details"), "checked_at": ev.get("checked_at"), "draft_kind": growth_drafts.kind_of(a), "draft": ev.get("draft"), "has_solution": bool(ev.get("solution")), "website_side": growth_solutions.is_website_side(a), "overdue": a.due_on < today and a.status not in ("verified", "skipped")}
     open_rows = sorted([item(a) for a in rows if a.status in ("todo", "done", "unverified", "failed", "blocked")], key=lambda x: (ORDER.get(x["severity"], 9), x["due_on"]))
     since = today - timedelta(days=30)
     closed = sorted([item(a) for a in rows if a.status == "verified" and a.verified_at and a.verified_at.date() >= since], key=lambda x: x["verified_at"], reverse=True)

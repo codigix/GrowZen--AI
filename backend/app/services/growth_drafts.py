@@ -64,7 +64,8 @@ def build(db: Session, b: Business, a: GrowthAction) -> dict[str, Any]:
     if not kws:
         raise DraftError("There is no keyword to write for yet: track some keywords first.")
     profile = ai.profile_text(b)
-    system = f"You write search-optimised content for a local business.\n{ai.RULES}\n{FACTS}"
+    system = (f"You write search-optimised content for a local business.\n{ai.RULES}\n{FACTS}\n"
+              "The keyword list may contain mistakes (for example an old category): use a keyword ONLY if it truly describes what this business sells according to the profile, otherwise ignore it.")
     kw_line = "Keywords to use: " + ", ".join(f"“{k}”" for k in kws)
     if kind == "meta":
         page = _page_for_meta(a, b)
