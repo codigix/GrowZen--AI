@@ -23,8 +23,8 @@ function RowMenu({ c, onTrack, onIgnore, tracked }) {
   const navigate = useNavigate();
   const go = (to) => () => navigate(to);
   const items = c.you
-    ? [['Analyze in Domain Overview', '/domain-overview'], ['Analyze organic traffic', '/organic-rankings'], ['Analyze backlinks', '/backlink-intelligence']]
-    : [['Audit this website', `/website-audit?tab=audit&url=${encodeURIComponent(`https://${c.domain}`)}`], ['Compare with your domain', '/compare-domains'], ['Find its backlinks', `/backlink-intelligence?q=${encodeURIComponent(c.domain)}`]];
+    ? [['Analyze in Domain Overview', '/domain-overview'], ['Analyze organic traffic', '/organic-rankings'], ['Analyze backlinks', '/backlinks/opportunities']]
+    : [['Audit this website', `/website-audit?tab=audit&url=${encodeURIComponent(`https://${c.domain}`)}`], ['Compare with your domain', '/compare-domains'], ['Find its backlinks', `/backlinks/links?q=${encodeURIComponent(c.domain)}`]];
   const item = 'w-full text-left px-4 py-2.5 hover:bg-slate-50 text-slate-800 cursor-pointer';
   return (
     <div className="relative inline-block text-left">

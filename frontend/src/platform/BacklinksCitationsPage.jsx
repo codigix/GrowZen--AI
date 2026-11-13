@@ -168,7 +168,7 @@ export default function BacklinksCitationsPage() {
   const [tab, setTab] = useUrlTab('citations', ['citations', 'backlinks', 'outreach', 'tasks']);
   useCrumb({ citations: 'Citations & NAP', outreach: 'Outreach', tasks: 'Tasks' }[tab]);
   // Backlinks moved to Backlink Intelligence (our own discovery bot); old bookmarks and links keep working.
-  if (tab === 'backlinks') return <Navigate to="/backlink-intelligence" replace />;
+  if (tab === 'backlinks') return <Navigate to="/backlinks/links" replace />;
   return (
     <SeoShell step="links" title="Citations & outreach" subtitle="Consistent listings everywhere, and outreach for the links worth earning, never bought">
       {(b) => (

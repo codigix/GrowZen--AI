@@ -911,7 +911,7 @@ def test_confirmed_actions_run_and_unknown_ones_are_refused(db, client, ai_off, 
     client.post(base, json={"action": "add_competitor", "params": {"domain": "rivaldental.co.uk"}})
     assert db.query(Competitor).filter(Competitor.business_id == bid).count() == 1  # confirming twice does not duplicate
     started = client.post(base, json={"action": "run_bot"}).json()
-    assert started["ok"] and started["link"]["to"].endswith("tab=bot")
+    assert started["ok"] and started["link"]["to"].endswith("/backlinks/sites")
     assert client.post(base, json={"action": "score_linkers"}).json()["ok"] is True
     assert client.post(base, json={"action": "explain_links"}).json()["ok"] is True
 
@@ -919,7 +919,7 @@ def test_confirmed_actions_run_and_unknown_ones_are_refused(db, client, ai_off, 
 def test_actions_without_a_site_to_start_from_explain_instead_of_failing(db, client, ai_off):
     bid = client.post("/api/v1/businesses", json={"name": "No Site Co"}).json()["id"]
     r = client.post(f"/api/v1/businesses/{bid}/assistant/actions", json={"action": "run_bot"}).json()
-    assert r["ok"] is False and "website" in r["message"] and r["link"]["to"].endswith("tab=targets")
+    assert r["ok"] is False and "website" in r["message"] and r["link"]["to"].endswith("/backlinks/sites")
     assert client.post(f"/api/v1/businesses/{bid}/assistant/actions", json={"action": "score_linkers"}).json()["ok"] is False
 
 
@@ -1229,7 +1229,7 @@ def test_pagination_and_feed_urls_are_not_competitor_pages(db, client, ai_off):
     site.listed += ["/category/skin/page/2/", "/blog/?paged=3", "/feed/"]
     watch.run_watch(db, f, b, utcnow())
     assert {r.url.rsplit("rival.com", 1)[1] for r in db.scalars(select(WatchPage))} == {"/", "/services", "/blog/a"}
-
+
 
 
 def test_the_sync_needs_the_crawler_and_never_crawls_locally(db, client):
@@ -1245,4 +1245,4 @@ def test_the_sync_needs_the_crawler_and_never_crawls_locally(db, client):
     assert bot.run_cycle(db, bid)["skipped"] == "crawler not connected"
     assert bot.run_due(db) == 0
     assert db.query(CrawlAttempt).count() == 0  # nothing was fetched here
-
+

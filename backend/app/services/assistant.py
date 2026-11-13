@@ -59,7 +59,7 @@ GUIDE: list[dict[str, Any]] = [
      "about": "The tracked keywords with their rank, priority and the page each should rank with.", "steps": ["Open My Keywords to review, prioritise and map keywords to pages."]},
     {"id": "content", "label": "SEO Writing Assistant & Topic Research", "to": "/ai-content-generation?tab=blog", "words": "content blog write article topic trending writing assistant post draft calendar",
      "about": "Finds topics people search for and drafts articles and posts; the calendar queues them for publishing.", "steps": ["Open Topic Research for ideas.", "Open SEO Writing Assistant, pick a topic and generate a draft.", "Queue it in Content Calendar."]},
-    {"id": "backlinks", "label": "Backlink Intelligence", "to": "/backlink-intelligence", "words": "backlinks referring domains links disavow outreach discovery bot competitor gap",
+    {"id": "backlinks", "label": "Backlink Intelligence", "to": "/backlinks/links", "words": "backlinks referring domains links disavow outreach discovery bot competitor gap",
      "about": "Links pointing at the site, found by our own Discovery bot, with status, history, a competitor link gap and a disavow file.", "steps": ["Open Backlink Intelligence and add your site and competitors under Targets.", "Run the Discovery bot, then review the Overview and Competitor gap."]},
     {"id": "citations", "label": "Local Citations & NAP", "to": "/off-page-seo?tab=citations", "words": "citations nap listings directories name address phone consistency justdial",
      "about": "Checks that the business name, address and phone are the same on every listing site.", "steps": ["Open Local Citations & NAP.", "Fix the listings whose details differ (shown in red)."]},
@@ -322,7 +322,7 @@ def a_links(f: dict[str, Any]) -> dict[str, Any]:
         lines.append("**Backlinks:** no site is tracked yet. Add yours under Backlink Intelligence and run the Discovery bot.")
     if ci:
         lines.append(f"**Citations & NAP:** score {ci.score}/100" + (f"; top issue: {ci.issues[0]['title']}" if ci.issues else "."))
-    return {"answer": "\n".join(lines), "links": [{"label": "Backlink Intelligence", "to": "/backlink-intelligence"}, {"label": "Citations & NAP", "to": "/off-page-seo?tab=citations"}],
+    return {"answer": "\n".join(lines), "links": [{"label": "Backlink Intelligence", "to": "/backlinks/links"}, {"label": "Citations & NAP", "to": "/off-page-seo?tab=citations"}],
             "topic": "links", "sources": ["backlink discovery bot", "citation audit"]}
 
 

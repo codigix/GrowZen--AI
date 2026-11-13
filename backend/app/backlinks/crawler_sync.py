@@ -75,12 +75,20 @@ def save_link(db: Session, item: dict, now: datetime) -> tuple[Backlink, bool]:
 
 
 def sync_domain(db: Session, domain: str, now: datetime | None = None) -> dict:
-    """Read the crawler's links to `domain` and save them. Returns {read, created}."""
+    """Read the crawler's links to `domain` and save them. Returns {read, created, seeded}. A domain the crawler has never seen is handed to it as a seed,
+    so it starts looking for links to it (links appear on a later sync, once it has explored)."""
     now = now or utcnow()
     read = created = 0
+    seeded = False
     offset = 0
     while offset < MAX_PER_DOMAIN:
         page = cc.backlinks(domain, include_removed=True, limit=PAGE, offset=offset)
+        if offset == 0 and page.get("status") == "not_found_in_current_index":
+            try:
+                cc.seed([f"https://{domain}/"])
+                seeded = True
+            except cc.CrawlerError:
+                log.warning("Could not hand %s to the crawler as a seed", domain)
         items = page.get("backlinks") or []
         for item in items:
             if not item.get("source_url") or not item.get("destination_url"):
@@ -97,7 +105,7 @@ def sync_domain(db: Session, domain: str, now: datetime | None = None) -> dict:
         if len(items) < PAGE:
             break
         offset += PAGE
-    return {"read": read, "created": created}
+    return {"read": read, "created": created, "seeded": seeded}
 
 
 def run_cycle(db: Session, business_id: int, **_ignored) -> dict:
@@ -124,6 +132,7 @@ def run_cycle(db: Session, business_id: int, **_ignored) -> dict:
                 stats["error"] = str(exc)
                 break
             stats["domains"] += 1
+            stats["seeded"] += 1 if r.get("seeded") else 0
             stats["links_read"] += r["read"]
             stats["new_backlinks_all"] += r["created"]
             stats["new_backlinks"] += r["created"]  # links to any domain this business tracks, as the local bot counted them

@@ -370,7 +370,7 @@ const TOOLS = {
   geo: { title: 'GEO: Generative Engine Optimization', subtitle: 'Visibility in AI search such as ChatGPT, Gemini and Perplexity', sources: ['external', 'ai', 'calc'], cards: [
     ['AI search visibility tracking', 'Whether and where this brand is cited by AI answers.', '/geo-optimization', 'external'],
     ['Domain overview', 'Brand authority and traffic for the client website.', '/domain-overview', 'external'],
-    ['Backlink intelligence', 'Citation and authority analysis.', '/backlink-intelligence', 'external'],
+    ['Backlink intelligence', 'Citation and authority analysis.', '/backlinks/links', 'external'],
   ] },
   competitors: { title: 'Competitor Analysis', subtitle: 'Find, add and compare competitors', sources: ['external', 'manual'], cards: [
     ['Competitor finder', 'Discover competitors by keyword and add them.', '/competitor-finder', 'external'],

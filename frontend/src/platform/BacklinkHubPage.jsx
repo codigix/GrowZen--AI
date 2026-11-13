@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2 } from 'lucide-react';
-import { SeoShell, Card, Button, Badge, Stat, ErrorNote, useAction, useToast, SkList } from './SeoUi';
+import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2, Plus, Trash2, Loader2 } from 'lucide-react';
+import { SeoShell, Card, Button, Badge, Stat, ErrorNote, Field, inputCls, useAction, useToast, useDoubleConfirm, SkList } from './SeoUi';
 import Select from '../components/Select';
-import { api, useApi } from './seoApi';
+import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 import Tip from './Tip';
 
 const VIEWS = {
   links: ['Backlinks', 'Every link to your website that the crawler found: follow or nofollow, anchor text, kind of site, authority and whether it is worth having.'],
   domains: ['Referring domains', 'The websites that link to you, with how many links each gives, what kind of site it is and whether it helps or hurts.'],
   opportunities: ['Link opportunities', 'Websites that link to your competitors but not to you: the places worth asking for a link, best first.'],
-  audit: ['Backlink audit', 'What is wrong or weak in your backlink profile, and what to do about it.']
+  audit: ['Backlink audit', 'What is wrong or weak in your backlink profile, and what to do about it.'],
+  sites: ['Tracked sites and sync', 'The websites whose links are collected (yours and your competitors) and how often they are read from our backlink crawler.']
 };
 const USEFUL = { useful: ['Useful', 'green'], neutral: ['Neutral', 'gray'], risky: ['Risky', 'red'], unscored: ['Not judged', 'amber'] };
 const FOLLOW = { dofollow: ['Follow', 'green'], nofollow: ['Nofollow', 'gray'], sponsored: ['Sponsored', 'amber'], ugc: ['UGC', 'gray'] };
@@ -45,7 +46,7 @@ function Setup({ s }) {
   );
 }
 
-function Summary({ s, b, reload }) {
+function Summary({ s, b, reload, compact = false }) {
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   if (s.state !== 'ok') return null;
@@ -53,12 +54,22 @@ function Summary({ s, b, reload }) {
   const sync = () => run('sync', async () => { await api(`/businesses/${b.id}/backlink-intel/bot/run`, { method: 'POST' }); toast('Looking for backlinks. This page updates when it is done.'); setTimeout(() => reload(true), 4000); });
   const score = () => run('score', async () => { const r = await api(`/businesses/${b.id}/backlink-intel/scores/run`, { method: 'POST', body: { domain: s.domain, limit: 15 } }); toast(`Judged ${r.scored.length} site${r.scored.length !== 1 ? 's' : ''}${r.remaining ? `, ${r.remaining} to go: press again` : ''}`); reload(true); });
   const moz = () => run('moz', async () => { const r = await api(`/businesses/${b.id}/backlink-hub/metrics/refresh`, { method: 'POST' }); toast(r.message); reload(true); });
+  if (compact) {
+    return (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-13 text-slate-600">
+        <span><b className="text-slate-900">{s.domain}</b>: {s.totals.live} live links from {s.totals.referring_domains} domains{s.crawler.last_sync_at ? `, synced ${day(s.crawler.last_sync_at)}` : ''}</span>
+        <span className="ml-auto flex items-center gap-3"><Link to="/backlinks/links" className="font-semibold text-indigo-600 hover:underline">All backlinks</Link><Button size="sm" icon={Link2} busy={busy === 'sync'} onClick={sync}>Find backlinks now</Button></span>
+        {toastNode}
+      </div>
+    );
+  }
   return (
     <Card title={`Backlinks to ${s.domain}`} subtitle={s.crawler.last_sync_at ? `Last crawler sync ${day(s.crawler.last_sync_at)}${s.crawler.running ? ' (running now)' : ''}` : 'Read from your backlink crawler'}
       action={<div className="flex flex-wrap gap-2">
         <Button size="sm" icon={Sparkles} busy={busy === 'score'} onClick={score}>Score the links</Button>
         <Button size="sm" icon={RefreshCw} busy={busy === 'moz'} disabled={!s.moz.configured} onClick={moz}>Get DA / PA / spam</Button>
         <Button size="sm" variant="primary" icon={Link2} busy={busy === 'sync'} onClick={sync}>Find backlinks now</Button>
+        <Link to="/backlinks/sites"><Button size="sm">Tracked sites</Button></Link>
       </div>}>
       <ErrorNote>{error}</ErrorNote>
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
@@ -254,6 +265,79 @@ function Audit({ b }) {
   );
 }
 
+function Sites({ b }) {
+  const base = `/businesses/${b.id}/backlink-intel`;
+  const targets = useApi(`${base}/targets`);
+  const bot = useApi(`${base}/bot`);
+  const [domain, setDomain] = useState('');
+  const [comp, setComp] = useState(false);
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
+  const [ask, confirmNode] = useDoubleConfirm();
+  const st = bot.data;
+  const running = Boolean(st?.running);
+  usePoll(() => bot.reload(true), running, 2500);
+  const list = targets.data || [];
+  const add = () => run('add', async () => { await api(`${base}/targets`, { method: 'POST', body: { domain, is_competitor: comp } }); setDomain(''); targets.reload(true); toast('Domain added'); });
+  const remove = (t) => ask({ what: `the tracked domain ${t.domain}`, effect: 'It stops being monitored. Backlinks already found for it stay in your records.', onConfirm: () => run('rm', async () => { await api(`${base}/targets/${t.id}`, { method: 'DELETE' }); targets.reload(true); }) });
+  const save = (patch) => run('save', async () => { await api(`${base}/bot`, { method: 'PUT', body: patch }); bot.reload(true); });
+  const sync = () => run('sync', async () => { await api(`${base}/bot/run`, { method: 'POST' }); toast('Syncing from the crawler'); setTimeout(() => bot.reload(true), 800); });
+  const addMine = () => run('mine', async () => { const r = await api(`${base}/targets/sync`, { method: 'POST' }); targets.reload(true); toast(r.added.length ? `Added ${r.added.length}: ${r.added.map(a => a.domain).join(', ')}` : 'Already up to date'); });
+  const l = st?.last_stats && !st.last_stats.skipped ? st.last_stats : null;
+  return (
+    <>
+      <Card title="Crawler sync" subtitle="Links are found by our own backlink crawler server. This copies what it found for your tracked sites into the project."
+        action={st && <Badge tone={running ? 'blue' : st.source !== 'crawler' ? 'red' : st.config.enabled ? 'green' : 'gray'}>{running ? 'Syncing' : st.source !== 'crawler' ? 'Not connected' : st.config.enabled ? 'Scheduled' : 'Off'}</Badge>}>
+        {st && st.source !== 'crawler' && <p className="text-13 text-amber-800">Our backlink crawler is not connected. Set CRAWLER_URL and CRAWLER_API_KEY in the backend settings and restart the backend.</p>}
+        {st && st.source === 'crawler' && (
+          <div className="grid gap-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex items-center gap-2 text-13 pb-2"><input type="checkbox" checked={st.config.enabled} onChange={(e) => save({ enabled: e.target.checked })} /> Sync automatically</label>
+              <Field label="Every"><Select className={`${inputCls} !w-auto`} value={st.config.interval_minutes} onChange={(e) => save({ interval_minutes: Number(e.target.value) })}>{[15, 30, 60, 180, 360, 1440].map(n => <option key={n} value={n}>{n < 60 ? `${n} min` : `${n / 60} h`}</option>)}</Select></Field>
+              <Button variant="primary" icon={running ? Loader2 : RefreshCw} busy={busy === 'sync' || running} disabled={running || !list.length} onClick={sync}>{running ? 'Syncing…' : 'Sync now'}</Button>
+            </div>
+            {l?.error && <p className="text-12.5 text-amber-700">The last sync stopped: {l.error}</p>}
+            <p className="text-12 text-gray-500">{st.last_run_at ? <>Last sync {fmtDateTime(st.last_run_at)}{l ? `: ${l.links_read} links read for ${l.domains} domain(s), ${l.new_backlinks} new${l.seeded ? `, ${l.seeded} site(s) handed to the crawler to start looking` : ''}.` : '.'}</> : 'It has not synced yet.'}</p>
+            <CrawlerStatusLine />
+          </div>
+        )}
+        <ErrorNote>{error}</ErrorNote>
+      </Card>
+      <Card title="Tracked domains" subtitle="Your site and your competitors. Backlinks are collected for these.">
+        <div className="flex flex-wrap items-end gap-2 mb-3">
+          <Field label="Domain"><input className={`${inputCls} !w-64`} placeholder="example.com" value={domain} onChange={(e) => setDomain(e.target.value)} /></Field>
+          <label className="flex items-center gap-1.5 text-13 pb-2"><input type="checkbox" checked={comp} onChange={(e) => setComp(e.target.checked)} /> Competitor</label>
+          <Button variant="primary" icon={Plus} busy={busy === 'add'} disabled={domain.trim().length < 3} onClick={add}>Add</Button>
+          <Button icon={RefreshCw} busy={busy === 'mine'} onClick={addMine}>Add my website and saved competitors</Button>
+        </div>
+        {confirmNode}
+        {list.length === 0 ? <p className="py-6 text-center text-13 text-slate-500">Nothing tracked yet.</p> : list.map(t => (
+          <div key={t.id} className="flex items-center gap-3 py-2 border-b border-slate-100 text-13">
+            <span className="flex-1 text-slate-900">{t.domain}</span>
+            <Badge tone={t.is_competitor ? 'amber' : 'green'}>{t.is_competitor ? 'Competitor' : 'Your site'}</Badge>
+            <button type="button" className="text-slate-400 hover:text-red-500 cursor-pointer" aria-label={`Remove ${t.domain}`} onClick={() => remove(t)}><Trash2 size={14} /></button>
+          </div>
+        ))}
+      </Card>
+      {toastNode}
+    </>
+  );
+}
+
+function CrawlerStatusLine() {
+  const st = useApi('/backlink-intel/crawler/status');
+  const d = st.data;
+  if (st.error) return <div className="text-12.5 text-amber-700">{st.error.message}</div>;
+  if (!d) return null;
+  const ok = d.workers.length > 0 && d.workers.every(w => w.healthy);
+  return (
+    <div className="text-12.5 text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-1">
+      <Badge tone={d.paused ? 'amber' : ok ? 'green' : 'amber'}>{d.paused ? 'Crawler paused' : ok ? 'Crawler running' : 'Crawler needs attention'}</Badge>
+      <span>{Number(d.discovered_domains).toLocaleString()} websites known · {Number(d.discovered_urls).toLocaleString()} pages found · {Number(d.outgoing_links).toLocaleString()} links recorded</span>
+    </div>
+  );
+}
+
 export default function BacklinkHubPage() {
   const { view } = useParams();
   if (!VIEWS[view]) return <Navigate to="/backlinks/links" replace />;
@@ -268,12 +352,13 @@ export default function BacklinkHubPage() {
 function Body({ b, view }) {
   const s = useApi(`/businesses/${b.id}/backlink-hub/summary`);
   const key = `${b.id}-${s.data?.totals?.live ?? 'x'}-${s.data?.useful?.useful ?? 'x'}-${s.data?.moz?.configured}-${s.data?.totals?.avg_da ?? 'x'}`;
-  const V = { links: Links, domains: Domains, opportunities: Opportunities, audit: Audit }[view];
+  const V = { links: Links, domains: Domains, opportunities: Opportunities, audit: Audit, sites: Sites }[view];
+  const main = view === 'links';
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      {s.data ? <><Summary s={s.data} b={b} reload={s.reload} /><Setup s={s.data} /></> : s.error ? <Card><ErrorNote>{s.error.message}</ErrorNote></Card> : <SkList rows={3} />}
-      {(!s.data || s.data.state === 'ok') && <V key={key} b={b} />}
-      {s.data && <Used s={s.data} />}
+      {view !== 'sites' && (s.data ? <><Summary s={s.data} b={b} reload={s.reload} compact={!main} />{main && <Setup s={s.data} />}</> : s.error ? <Card><ErrorNote>{s.error.message}</ErrorNote></Card> : <SkList rows={3} />)}
+      {(view === 'sites' || !s.data || s.data.state === 'ok') && <V key={key} b={b} />}
+      {main && s.data && <Used s={s.data} />}
     </div>
   );
 }

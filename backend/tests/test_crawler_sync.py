@@ -98,3 +98,15 @@ def test_bot_run_cycle_uses_the_crawler_when_it_is_set_up(client, crawler):
         assert bot.status(db, bid)["source"] == "crawler"
     finally:
         db.close()
+
+
+def test_a_domain_the_crawler_has_never_seen_is_handed_to_it_as_a_seed(client, crawler, monkeypatch):
+    seen = []
+    monkeypatch.setattr(cc, "seed", lambda urls: seen.append(list(urls)) or {"queued": urls})
+    bid = client.post("/api/v1/businesses", json={"name": "Unknown Co", "website": "https://never-crawled.example/"}).json()["id"]
+    db = SessionLocal()
+    try:
+        st = crawler_sync.run_cycle(db, bid)
+        assert st["error"] is None and st["links_read"] == 0 and st["seeded"] == 1 and seen == [["https://never-crawled.example/"]]
+    finally:
+        db.close()

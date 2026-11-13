@@ -62,13 +62,13 @@ def execute(db: Session, b: Business, action: str, params: dict[str, Any], start
         if not own:
             sync.sync_targets(db, b)
             if not db.scalar(select(BiTrackedTarget.id).where(BiTrackedTarget.business_id == b.id)):
-                return {"ok": False, "message": "Nothing to start from yet: add your website to the business profile or a domain under Backlink Intelligence first.", "link": {"label": "Open Backlink Intelligence", "to": "/backlink-intelligence?tab=targets"}}
+                return {"ok": False, "message": "Nothing to start from yet: add your website to the business profile or a domain under Backlink Intelligence first.", "link": {"label": "Open Backlink Intelligence", "to": "/backlinks/sites"}}
         start_bot(b.id)
-        return {"ok": True, "message": "Started. The bot is crawling now; results appear under Discovery bot in a minute or two.", "link": {"label": "Watch the bot", "to": "/backlink-intelligence?tab=bot"}}
+        return {"ok": True, "message": "Started. The bot is crawling now; results appear under Discovery bot in a minute or two.", "link": {"label": "Watch the bot", "to": "/backlinks/sites"}}
     if action == "sync_targets":
         r = sync.sync_targets(db, b)
         names = ", ".join(a["domain"] for a in r["added"])
-        return {"ok": True, "message": f"Added {len(r['added'])}: {names}." if r["added"] else "Already up to date: your site and saved competitors are all tracked.", "link": {"label": "See targets", "to": "/backlink-intelligence?tab=targets"}}
+        return {"ok": True, "message": f"Added {len(r['added'])}: {names}." if r["added"] else "Already up to date: your site and saved competitors are all tracked.", "link": {"label": "See targets", "to": "/backlinks/sites"}}
     if action == "add_competitor":
         domain = _clean_domain(str(params.get("domain", "")))
         if "." not in domain:
@@ -82,14 +82,14 @@ def execute(db: Session, b: Business, action: str, params: dict[str, Any], start
             db.add(Competitor(business_id=b.id, name=domain, website=site, source="manual"))  # the same list Competitor Research uses
             db.commit()
         r = sync.sync_targets(db, b)
-        return {"ok": True, "message": f"{domain} is now a competitor, tracked for backlinks. Run the discovery bot to start finding who links to it.", "link": {"label": "Open the competitor gap", "to": "/backlink-intelligence?tab=gap"}}
+        return {"ok": True, "message": f"{domain} is now a competitor, tracked for backlinks. Run the discovery bot to start finding who links to it.", "link": {"label": "Open the competitor gap", "to": "/backlinks/opportunities"}}
     own_site = db.scalar(select(BiTrackedTarget).where(BiTrackedTarget.business_id == b.id, BiTrackedTarget.is_competitor.is_(False)).order_by(BiTrackedTarget.id))
     if own_site is None:
-        return {"ok": False, "message": "Your own site isn't tracked yet. Use “Track my site and saved competitors” first.", "link": {"label": "Open Backlink Intelligence", "to": "/backlink-intelligence?tab=targets"}}
+        return {"ok": False, "message": "Your own site isn't tracked yet. Use “Track my site and saved competitors” first.", "link": {"label": "Open Backlink Intelligence", "to": "/backlinks/sites"}}
     if action == "score_linkers":
         todo = quality.unscored_domains(db, b.id, own_site.domain)
         rows = quality.score_domains(db, b, own_site.domain, todo) if todo else []
         risky = [r.source_domain for r in rows if r.verdict == "risky"]
-        return {"ok": True, "message": (f"Scored {len(rows)} linking site(s); {len(risky)} look risky: {', '.join(risky)}." if rows else "Every linking site is already scored."), "link": {"label": "See the results", "to": "/backlink-intelligence?tab=overview"}}
+        return {"ok": True, "message": (f"Scored {len(rows)} linking site(s); {len(risky)} look risky: {', '.join(risky)}." if rows else "Every linking site is already scored."), "link": {"label": "See the results", "to": "/backlinks/links"}}
     out = insights.explain_changes(db, b, own_site.domain)
-    return {"ok": True, "message": out["summary"] + ("\n\n" + "\n".join(f"• {a}" for a in out["actions"]) if out["actions"] else ""), "link": {"label": "Open Backlink Intelligence", "to": "/backlink-intelligence"}}
+    return {"ok": True, "message": out["summary"] + ("\n\n" + "\n".join(f"• {a}" for a in out["actions"]) if out["actions"] else ""), "link": {"label": "Open Backlink Intelligence", "to": "/backlinks/links"}}

@@ -82,4 +82,4 @@ def global_status():
 
 
 def seed(urls: list[str]):
-    return _call("POST", "/crawler/seed", json={"seed_urls": urls})
+    return _call("POST", "/crawler/seed", json={"urls": urls})

@@ -49,7 +49,7 @@ function Body({ b }) {
         {none ? (
           <div className="text-13 text-gray-600">
             No competitors are being watched yet. Save competitors in <Link className="text-indigo-600 font-semibold" to="/competitor-finder">Competitor Research</Link>, or add them under{' '}
-            <Link className="text-indigo-600 font-semibold" to="/backlink-intelligence?tab=targets">Backlink Intelligence → Targets</Link> (use “Sync”).
+            <Link className="text-indigo-600 font-semibold" to="/backlinks/sites">Backlinks → Tracked sites</Link> (use “Sync”).
           </div>
         ) : (
           <>

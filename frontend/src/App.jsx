@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { Sk, SkPage, resetBusinessesStore } from './platform/SeoUi';
 import { api, clearApiCache } from './platform/seoApi';
 import ProjectCodeHost from './platform/ProjectCodeModal';
@@ -41,11 +41,17 @@ function XRayRedirect() {
   p.set('tab', 'xray');
   return <Navigate to={`/website-audit?${p.toString()}${hash}`} replace />;
 }
+/** The old Backlink Intelligence page is now the backlink pages: each of its old views has a new address. */
+const BI_VIEWS = { gap: 'opportunities', targets: 'sites', bot: 'sites', collect: 'sites', explorer: 'links', report: 'links', overview: 'links', seed: 'links' };
+function BacklinkIntelRedirect() {
+  const { tab } = useParams();
+  return <Navigate to={`/backlinks/${BI_VIEWS[tab] || 'links'}`} replace />;
+}
+
 const BacklinkCheckerPage = lazy(() => import('./platform/BacklinkCheckerPage'));
 const GrowthFixPage = lazy(() => import('./platform/GrowthFixPage'));
 const BacklinksCitationsPage = lazy(() => import('./platform/BacklinksCitationsPage'));
 const BacklinkHubPage = lazy(() => import('./platform/BacklinkHubPage'));
-const BacklinkIntelPage = lazy(() => import('./platform/BacklinkIntelPage'));
 const CompetitorWatchPage = lazy(() => import('./platform/CompetitorWatchPage'));
 const GeoTrackerPage = lazy(() => import('./platform/GeoTrackerPage'));
 const ChatGPTBusinessPage = lazy(() => import('./platform/ChatGPTBusinessPage'));
@@ -186,8 +192,8 @@ export default function App() {
         <Route path="backlink-checker" element={<BacklinkCheckerPage />} />
         <Route path="backlinks" element={<Navigate to="/backlinks/links" replace />} />
         <Route path="backlinks/:view" element={<BacklinkHubPage />} />
-        <Route path="backlink-intelligence" element={<BacklinkIntelPage />} />
-        <Route path="backlink-intelligence/:tab" element={<BacklinkIntelPage />} />
+        <Route path="backlink-intelligence" element={<BacklinkIntelRedirect />} />
+        <Route path="backlink-intelligence/:tab" element={<BacklinkIntelRedirect />} />
         <Route path="geo-optimization" element={<GeoTrackerPage />} />
         <Route path="geo-optimization/:tab" element={<GeoTrackerPage />} />
         <Route path="chatgpt-business" element={<ChatGPTBusinessPage />} />

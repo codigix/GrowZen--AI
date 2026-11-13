@@ -29,8 +29,7 @@ export const SIDEBAR_GROUPS = [
       { to: '/organic-rankings', label: 'Organic Rankings', icon: TrendingUp },
       { to: '/top-pages', label: 'Top Pages', icon: FileText },
       { to: '/competitor-finder', label: 'Competitors', icon: Swords },
-      { to: '/competitor-watch', label: 'Competitor Watch', icon: Radar, badge: 'New' },
-      { to: '/backlink-intelligence/gap', label: 'Backlink Gap', icon: Link2 }
+      { to: '/competitor-watch', label: 'Competitor Watch', icon: Radar, badge: 'New' }
     ]
   },
   {
@@ -53,7 +52,7 @@ export const SIDEBAR_GROUPS = [
   {
     title: 'Link Building',
     items: [
-      { to: '/backlink-intelligence', label: 'Backlink Intelligence', icon: Link2, badge: 'New' },
+      { to: '/backlinks/links', label: 'Backlinks', icon: Link2, badge: 'New' },
       { to: '/backlink-checker', label: 'Backlink Checker', icon: Link2, badge: 'New' },
       { to: '/off-page-seo/outreach', label: 'Outreach', icon: Send }
     ]
@@ -107,10 +106,10 @@ export const SIDEBAR_SECTIONS = [
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { items: [page('/dashboard')] },
       { title: 'Site Performance', items: [page('/website-audit'), page('/rank-tracking/landscape', { also: ['/rank-tracking'] }), page('/traffic'), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] })] },
-      { title: 'Competitors', items: [page('/competitor-finder'), page('/competitor-watch'), link('/backlink-intelligence/gap', 'Backlink Gap')] },
+      { title: 'Competitors', items: [page('/competitor-finder'), page('/competitor-watch')] },
       { title: 'Keyword Research', items: [page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' }), page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics', '/keyword-management/use'] })] },
       { title: 'Content Ideas', items: [page('/ai-content-generation/blog'), page('/ai-content-generation/trends'), link('/seo-brief', 'SEO Brief Generator')] },
-      { title: 'Link Building', items: [page('/backlink-intelligence'), page('/backlink-checker'), link('/backlinks/links', 'Backlinks'), link('/backlinks/domains', 'Referring Domains'), link('/backlinks/opportunities', 'Link Opportunities'), link('/backlinks/audit', 'Backlink Audit'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks')] }
+      { title: 'Link Building', items: [{ to: '/backlinks/links', label: 'Backlinks', also: ['/backlinks/sites'] }, link('/backlinks/domains', 'Referring Domains'), link('/backlinks/opportunities', 'Link Opportunities'), link('/backlinks/audit', 'Backlink Audit'), page('/backlink-checker'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks')] }
     ]
   },
   {

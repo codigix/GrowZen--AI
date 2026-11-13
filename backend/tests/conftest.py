@@ -71,3 +71,5 @@ def _offline_crawler(monkeypatch):
     """Tests never call our deployed backlink crawler, even when the developer's .env has its key (the bot then crawls locally, as before)."""
     from app.config import get_settings
     monkeypatch.setattr(get_settings(), "crawler_api_key", "")
+    from app.services import crawler_client
+    monkeypatch.setattr(crawler_client, "seed", lambda urls: {"queued": list(urls)})

@@ -356,11 +356,11 @@ def issues(db: Session, b: Business, report: dict[str, Any] | None) -> list[dict
     if unreadable:
         pass
     elif bl is None:
-        out.append(make("bl.none", "seo", "backlinks", "warning", "Start tracking your backlinks", "The project does not track its own website's backlinks, so link growth cannot be measured.", ["Open Backlink Intelligence and add your website as the tracked site.", "Press Run to let the crawler look for links."], 10, "/backlink-intelligence",
+        out.append(make("bl.none", "seo", "backlinks", "warning", "Start tracking your backlinks", "The project does not track its own website's backlinks, so link growth cannot be measured.", ["Open Backlink Intelligence and add your website as the tracked site.", "Press Run to let the crawler look for links."], 10, "/backlinks/links",
                         {"type": "backlinks", "min": 1, "field": "tracked"}))
     elif bl["referring_domains"] < 10:
         out.append(make("bl.few", "seo", "backlinks", "serious" if bl["referring_domains"] < 3 else "warning", f"Earn more backlinks ({bl['referring_domains']} referring domains)", f"Only {bl['referring_domains']} websites link to {bl['domain']} ({bl['backlinks']} links). Quality links from real sites are a top ranking signal.",
-                        ["Claim your listings on directories and local chambers (Listing Management).", "Ask suppliers, partners and event organisers you work with to link to you.", "Publish something worth linking to (a guide, a local list, a case study).", "Use Link Building Tasks and the Backlink Gap for ready prospects.", "Never buy links or join link schemes: they cause penalties."], 40, "/backlink-intelligence/gap",
+                        ["Claim your listings on directories and local chambers (Listing Management).", "Ask suppliers, partners and event organisers you work with to link to you.", "Publish something worth linking to (a guide, a local list, a case study).", "Use Link Building Tasks and the Backlink Gap for ready prospects.", "Never buy links or join link schemes: they cause penalties."], 40, "/backlinks/opportunities",
                         {"type": "backlinks", "min": 10}))
     # ---- blog output
     arts = list(db.scalars(select(Article).where(Article.business_id == b.id)))
@@ -426,7 +426,7 @@ def _prospect_issues(db: Session, b: Business, bl: dict | None) -> list[dict[str
                         f"{g['domain']} links to {n} of your competitors ({g['backlinks']} link{'s' if g['backlinks'] != 1 else ''}) but not to {mine}. A relevant site that already links to rivals is a realistic prospect.",
                         [f"Open {g['domain']} and find the page that links to your competitor: what is it (directory, guide, supplier list, press)?", "Decide honestly whether your business belongs there. If not, skip this task with a reason.",
                          "Write a short, personal message that says what you offer and why it helps their readers. Never offer money or free products for a link.", "Track the reply in Link Building Tasks; the task closes when our crawler finds the link."], 20,
-                        "/backlink-intelligence/gap", {"type": "bl_prospect", "domain": g["domain"]}))
+                        "/backlinks/opportunities", {"type": "bl_prospect", "domain": g["domain"]}))
     return out
 
 
