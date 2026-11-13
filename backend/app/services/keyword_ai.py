@@ -151,6 +151,6 @@ def geo_question(keyword: str) -> str:
     k = keyword.strip()
     if re.match(r"^(who|what|which|where|when|why|how|is|are|can|do|does|should)\b", k, re.I):
         return k[0].upper() + k[1:] + ("" if k.endswith("?") else "?")
-    if re.search(r"(cost|price|prices|fees|fee|charges|rate|rates|pricing)", k, re.I):
+    if re.search(r"(?<![a-z])(cost|price|prices|fees|fee|charges|rate|rates|pricing)(?![a-z])", k, re.I):
         return f"What is the {k}?"
     return f"Which is the best {k}?" if not k.lower().startswith("best ") else f"Which is the {k}?"
