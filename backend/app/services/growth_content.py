@@ -285,7 +285,7 @@ def issues(db: Session, b: Business, report: dict[str, Any] | None) -> list[dict
         gaps = _gap_ideas(db, b, have)
         if gaps:
             out.append(make("kw.gap", "seo", "competitors", "warning", f"Add the keywords competitors win ({len(gaps)} found)", "Competitors rank for these searches and you do not track them: " + "; ".join(f"“{g['keyword']}” ({g['reason']})" for g in gaps[:5]) + ".",
-                            ["Open Keyword Magic Tool or Keyword Gap and add the relevant ones.", "Skip any that do not match a service you really offer.", "Then plan a page or article for each."], 15, "/keyword-gap", {"type": "kw_gap", "keywords": [g["keyword"] for g in gaps]}))
+                            ["Open Keyword Magic Tool or Keyword Gap and add the relevant ones.", "Skip any that do not match a service you really offer.", "Then plan a page or article for each."], 15, "/competitor-finder?tab=gap", {"type": "kw_gap", "keywords": [g["keyword"] for g in gaps]}))
     # ---- where the main keywords are used
     main = _main_keywords(b, rows)
     if main:
@@ -391,7 +391,7 @@ def _gap(db: Session, b: Business) -> tuple[str, list[dict]]:
     targets = list(db.scalars(select(BiTrackedTarget).where(BiTrackedTarget.business_id == b.id)))
     mine = next((t.domain for t in targets if not t.is_competitor), None)
     from ..competitors import hygiene
-    comps = hygiene.real_competitor_domains(b, [t.domain for t in targets if t.is_competitor and t.domain != mine])
+    comps = [d for d in hygiene.saved_competitor_domains(db, b) if d != mine]  # every saved competitor, not only the Backlink Intelligence targets
     if not mine or not comps:
         return mine or "", []
     return mine, analytics.gap(db, mine, comps)
