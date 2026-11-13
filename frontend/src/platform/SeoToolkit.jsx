@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Search, Star, ArrowUp, ArrowDown, Plus, RefreshCw, KeyRound, ScanSearch, Swords, Sparkles, Link2, MapPin, Gauge, Layers, FileText, ExternalLink,
   AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot
@@ -242,7 +242,9 @@ function KeywordOverview({ b }) {
   const [toast, toastNode] = useToast();
   const [added, setAdded] = useState({});
   const go = (k) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw } })); });
-  const track = (k) => run(`t${k}`, async () => { await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: k }] }); setAdded(a => ({ ...a, [k]: true })); toast(`“${k}” saved: it is now tracked`); });
+  const navigate = useNavigate();
+  // Saving a keyword ends on My Keywords, with it marked "Just added" (the same landing as Find Keywords).
+  const track = (k) => run(`t${k}`, async () => { const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: k }] }); setAdded(a => ({ ...a, [k]: true })); navigate('/keyword-management/tracked', { state: { added: [k], newCount: r?.added ?? 1 } }); });
   const m = data?.metrics;
   const peak = Math.max(1, ...(m?.monthly || []).map(x => x.searches || 0));
   const isTracked = (k) => added[k] || (data?.keyword === k && data?.you?.tracked);

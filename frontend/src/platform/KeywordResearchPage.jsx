@@ -52,7 +52,7 @@ function Coverage({ c }) {
 
 /* ── Discover ─────────────────────────────────────────────────────────── */
 
-function Discover({ b, tracked, onTracked }) {
+function Discover({ b, tracked, onTracked, seedSearch }) {
   const ctx = useApi(`/businesses/${b.id}/keywords/context`);
   const c = ctx.data;
   const [seeds, setSeeds] = useState(null); // [{text, on}]
@@ -75,12 +75,25 @@ function Discover({ b, tracked, onTracked }) {
 
   const activeSeeds = (seeds || []).filter(s => s.on).map(s => s.text);
   const activeAreas = (areas || []).filter(a => a.on).map(a => a.text);
-  const find = () => run('find', async () => {
-    const r = await api(`/businesses/${b.id}/keywords/discover`, { method: 'POST', body: { seeds: activeSeeds, areas: activeAreas } });
+  const find = (extra) => run('find', async () => {
+    const list = extra && !activeSeeds.includes(extra) ? [extra, ...activeSeeds] : activeSeeds;
+    const r = await api(`/businesses/${b.id}/keywords/discover`, { method: 'POST', body: { seeds: list, areas: activeAreas } });
     setResult(r); setSelected([]); setGroup('all');
   });
-  // Run once the starting point is ready, so the page opens with results.
-  useEffect(() => { if (seeds && !result && activeSeeds.length && !busy) find(); }, [seeds]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Run once the starting point is ready, so the page opens with results. A keyword typed in the shared search box becomes one of the starting words.
+  useEffect(() => {
+    if (!seeds || result || busy) return;
+    const t = (seedSearch?.text || '').trim().toLowerCase();
+    if (t) { setSeeds(list => (list.some(x => x.text === t) ? list.map(x => (x.text === t ? { ...x, on: true } : x)) : [{ text: t, on: true }, ...list])); find(t); } else if (activeSeeds.length) find();
+  }, [seeds]); // eslint-disable-line react-hooks/exhaustive-deps
+  const seededN = React.useRef(seedSearch?.n || 0);
+  useEffect(() => {
+    if (!seedSearch?.n || seedSearch.n === seededN.current || !seeds) return;
+    seededN.current = seedSearch.n;
+    const t = seedSearch.text.trim().toLowerCase();
+    setSeeds(list => (list.some(x => x.text === t) ? list.map(x => (x.text === t ? { ...x, on: true } : x)) : [{ text: t, on: true }, ...list]));
+    find(t);
+  }, [seedSearch?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addSeed = () => {
     const t = custom.trim().toLowerCase();
@@ -134,7 +147,7 @@ function Discover({ b, tracked, onTracked }) {
 
       {/* Starting point */}
       <Card title="What we search from" subtitle={`Built from ${b.name}'s profile and website audit. Switch items on or off, then find keywords.`}
-        action={<Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={find}>Find keywords</Button>}>
+        action={<Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={() => find()}>Find keywords</Button>}>
         <div className="space-y-4">
           <div>
             <div className="text-11 font-semibold   text-slate-500 mb-1.5">Services & category <span className="normal-case font-normal tracking-normal">({activeSeeds.length}/6 on)</span></div>
@@ -336,7 +349,7 @@ const PLANNER_COLS = [
   { id: 'high_top_of_page_bid', label: 'Top-of-page bid', align: 'right' }
 ];
 
-function GooglePlanner({ b, tracked, onTracked }) {
+function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
   const serviceSeeds = useMemo(() => [...new Set((b.services || []).map(s => String(s?.name || s || '').trim().toLowerCase()).filter(Boolean))].slice(0, 6), [b.services]);
   const [keyword, setKeyword] = useState(serviceSeeds[0] || '');
   const [limit, setLimit] = useState(50);
@@ -367,6 +380,12 @@ function GooglePlanner({ b, tracked, onTracked }) {
     }
   });
 
+  const searchedN = React.useRef(0);
+  useEffect(() => { // the shared search box: this source answers the same keyword
+    if (!seedSearch?.n || searchedN.current === seedSearch.n) return;
+    searchedN.current = seedSearch.n;
+    search(seedSearch.text);
+  }, [seedSearch?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const trackedSet = new Set(tracked.map(k => k.keyword));
   const rows = data?.keywords || [];
   const seed = data?.seed_keyword?.toLowerCase();
@@ -752,7 +771,7 @@ function SparkTrend({ values = [] }) {
   );
 }
 
-function KeywordExplorer({ b, tracked = [], onTracked }) {
+function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
   const [keyword, setKeyword] = useState('');
   const [country, setCountry] = useState('IN');
   const [platforms, setPlatforms] = useState(['google', 'youtube', 'bing', 'amazon', 'duckduckgo']);
@@ -776,9 +795,10 @@ function KeywordExplorer({ b, tracked = [], onTracked }) {
     );
   };
 
-  const search = () => run('search', async () => {
-    const q = keyword.trim();
+  const search = (seed) => run('search', async () => {
+    const q = (typeof seed === 'string' ? seed : keyword).trim();
     if (!q) return;
+    setKeyword(q);
     // Same host as the rest of the API (SEO_API ends in /api/v1; the Keyword Explorer lives at /api/keywords), signed in with the session cookie.
     const r = await fetch(`${SEO_API.replace(/\/v1$/, '')}/keywords`, {
       method: 'POST',
@@ -800,6 +820,13 @@ function KeywordExplorer({ b, tracked = [], onTracked }) {
     setResults(data || []);
     setSelectedKws([]);
   });
+
+  const searchedN = React.useRef(0);
+  useEffect(() => { // the shared search box: this source answers the same keyword
+    if (!seedSearch?.n || searchedN.current === seedSearch.n) return;
+    searchedN.current = seedSearch.n;
+    search(seedSearch.text);
+  }, [seedSearch?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const trackSingle = (kw) => run(`t-${kw}`, async () => {
     await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: kw }] });
@@ -1149,13 +1176,13 @@ const SOURCES = [['discover', 'Ideas for my business', 'Built from your services
 const SAVED_VIEWS = [['tracked', 'My list and pages', 'Every saved keyword with its rank and the page it should rank with'], ['topics', 'Topics', 'Group the keywords into topics, one page per topic']];
 const pill = (on) => `h-9 px-4 rounded-full text-13 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
 
-function Keywords({ b, tab, kw, onSaved }) {
+function Keywords({ b, tab, kw, onSaved, seedSearch }) {
   const tracked = kw.data?.keywords || [];
   return (
     <>
-      {tab === 'discover' && <Discover b={b} tracked={tracked} onTracked={onSaved} />}
-      {tab === 'planner' && <GooglePlanner b={b} tracked={tracked} onTracked={onSaved} />}
-      {tab === 'explorer' && <KeywordExplorer b={b} tracked={tracked} onTracked={onSaved} />}
+      {tab === 'discover' && <Discover b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
+      {tab === 'planner' && <GooglePlanner b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
+      {tab === 'explorer' && <KeywordExplorer b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
       {tab === 'tracked' && <Tracked b={b} kw={kw} />}
       {tab === 'topics' && <Topics b={b} kw={kw} />}
     </>
@@ -1203,6 +1230,9 @@ function KeywordPath({ b, tab, setTab }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
   const progress = useApi(`/businesses/${b.id}/keywords/progress`);
   const navigate = useNavigate();
+  const [typed, setTyped] = useState('');
+  const [seedSearch, setSeedSearch] = useState({ n: 0, text: '' }); // one search for every source: the source on screen runs it now, the others when opened
+  const startSearch = () => { const t = typed.trim(); if (t.length > 1) setSeedSearch(x => ({ n: x.n + 1, text: t })); };
   const refresh = { ...kw, reload: (q) => { kw.reload(q); progress.reload(true); } };
   // Saving a keyword from any source ends on My Keywords, with what was just saved marked.
   const saved = (names, added) => {
@@ -1212,6 +1242,14 @@ function KeywordPath({ b, tab, setTab }) {
   return (
     <>
       <PathBar progress={progress.data} tab={tab} setTab={setTab} />
+      {FIND_TABS.includes(tab) && (
+        <form onSubmit={(e) => { e.preventDefault(); startSearch(); }} className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 mb-4 flex flex-wrap gap-2" role="search">
+          <label className="relative flex-1 min-w-[240px]"><Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+            <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search any keyword or topic, e.g. dentist near me" aria-label="Search keywords" className="w-full h-11 pl-10 pr-3 text-14 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+          <Button type="submit" variant="primary" icon={Search} className="h-11 px-6" disabled={typed.trim().length < 2}>Search</Button>
+          <p className="basis-full text-12 text-slate-500">One search for all three sources: it runs in the one you are on, and in the others as you open them. {seedSearch.text ? <>Showing results for <b>{seedSearch.text}</b>.</> : 'Leave it empty to start from your business.'}</p>
+        </form>
+      )}
       {FIND_TABS.includes(tab) && (
         <div role="tablist" aria-label="Where the ideas come from" className="flex flex-wrap gap-2 mb-5">
           {SOURCES.map(([id, label, hint]) => <button key={id} type="button" role="tab" aria-selected={tab === id} title={hint} onClick={() => setTab(id)} className={pill(tab === id)}>{label}</button>)}
@@ -1223,7 +1261,7 @@ function KeywordPath({ b, tab, setTab }) {
         </div>
       )}
       {(tab === 'discover' || tab === 'tracked') && <div className="mb-5"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
-      <Keywords b={b} tab={tab} kw={refresh} onSaved={saved} />
+      <Keywords b={b} tab={tab} kw={refresh} onSaved={saved} seedSearch={seedSearch} />
       <NextStep progress={progress.data} />
     </>
   );
