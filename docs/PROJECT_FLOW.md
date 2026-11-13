@@ -31,7 +31,7 @@ flowchart LR
   API -- OAuth + REST --> G["Google: Business Profile,<br/>Search Console, Analytics 4,<br/>Places, PageSpeed, Ads Keyword Planner"]
   API --> AI["AI providers: DeepSeek, OpenAI,<br/>Gemini, Claude, Perplexity, Ollama / llama.cpp"]
   API --> SERP["Serper (Google results)"]
-  BLS --> AH["Ahrefs free backlink checker<br/>(separate stealth-Chromium process)"]
+  BLS --> CR["Our deployed backlink crawler<br/>(CRAWLER_URL, API key)"]
   API -- publish --> SITE["Customer websites:<br/>WordPress, React blog API, plain HTML (FTP/SFTP/etc.),<br/>Ghost, Shopify, GitHub"]
   API -- optional --> CRM["CRM /auth/me (sessions only)"]
   API -- optional --> MAIL["IMAP mailbox (intake) + SMTP (notifications)"]
@@ -340,7 +340,7 @@ Rule: results say whether they are `live` or `sample`; the UI labels sample data
 
 Two layers:
 
-1. **Backlink service** (`backend/app/backlink_service/`, endpoints `/backlinks`, `/backlinks/crawl`, `/seeds`, `/backlinks/ahrefs`, `/backlinks/href`): a shared, domain-keyed crawl graph (`bl_*` tables: seeds, targets, backlinks, slots, Ahrefs reports). Started inside the web process by `lifecycle.py`. `business_sync.py` makes every non-paused project's website a target; `trigger.start_for_website` runs at onboarding. `ahrefs.py` stores the Ahrefs free backlink checker's report (run by a separate stealth-Chromium process).
+1. **Backlink service** (`backend/app/backlink_service/`, endpoints `/backlinks`, `/backlinks/crawl`, `/seeds`): a shared, domain-keyed crawl graph (`bl_*` tables: seeds, targets, backlinks, slots). Started inside the web process by `lifecycle.py`. `business_sync.py` makes every non-paused project's website a target; `trigger.start_for_website` runs at onboarding. The Backlink report tab and the search fallback read our own deployed crawler (`CRAWLER_URL`, `CRAWLER_API_KEY`) through `services/crawler_client.py` and `backlinks/crawler_api.py`; Ahrefs is no longer used.
 2. **Backlink Intelligence** (`backend/app/backlinks/`, endpoints `/businesses/{id}/backlink-intel/*`): per-project view and the autonomous bot.
    - `autostart.enable` at onboarding: project site and saved competitors become `bi_tracked_targets`, the bot is switched on, first run starts.
    - `bot.py` / `rotation.py`: businesses take turns in batches (`BACKLINK_BATCH_SIZE`, `BACKLINK_BATCH_MINUTES`); the bot follows public links within a page/time/hop budget, obeys robots.txt, and records links to tracked domains (`backlinks`, `backlink_observations`, `backlink_events`).
