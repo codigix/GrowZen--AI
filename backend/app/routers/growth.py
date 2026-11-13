@@ -32,6 +32,42 @@ def list_keywords(b: Business = Depends(get_business), db: Session = Depends(get
     return {"keywords": rows(found), "clusters": sorted(clusters.values(), key=lambda c: -c["volume"])}
 
 
+@router.post("/keywords/ai-suggestions")
+def keyword_ai_suggestions(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """AI keyword and topic suggestions from what this business has really done and could grow into, each with why and where to use it. Nothing is saved."""
+    from ..services import keyword_ai  # noqa: PLC0415
+    try:
+        return keyword_ai.suggest(db, b)
+    except ai.AiUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - a failed AI call is said plainly, not a server error
+        raise HTTPException(502, f"The AI could not write suggestions right now: {str(exc)[:160]}") from exc
+
+
+@router.get("/keywords/usage")
+def keyword_usage(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Where each saved keyword is used already (website, blog, Google posts, AI questions) and where it is meant to be used."""
+    from ..services import keyword_ai  # noqa: PLC0415
+    return keyword_ai.usage(db, b)
+
+
+@router.post("/keywords/{keyword_id}/geo-prompt", status_code=201)
+def keyword_to_geo_prompt(keyword_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Turn a saved keyword into a customer question that the AI-search (GEO/AEO) tracker asks the AI engines."""
+    from ..services import keyword_ai  # noqa: PLC0415
+    k = db.get(Keyword, keyword_id)
+    if not k or k.business_id != b.id:
+        raise HTTPException(404, "Keyword not found")
+    q = keyword_ai.geo_question(k.keyword)
+    exists = db.scalar(select(GeoPrompt).where(GeoPrompt.business_id == b.id, GeoPrompt.prompt == q))
+    if not exists:
+        db.add(GeoPrompt(business_id=b.id, prompt=q))
+        if "geo" not in (k.uses or []):
+            k.uses = [*(k.uses or []), "geo"]
+        db.commit()
+    return {"prompt": q, "added": not exists}
+
+
 @router.get("/keywords/progress")
 def keyword_progress(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """The four-step keyword path (find, save, group, track) and the next thing to do."""
