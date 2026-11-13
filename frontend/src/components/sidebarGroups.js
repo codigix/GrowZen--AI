@@ -107,7 +107,7 @@ export const SIDEBAR_SECTIONS = [
       { items: [page('/dashboard')] },
       { title: 'Site Performance', items: [page('/website-audit'), page('/rank-tracking'), page('/traffic'), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] })] },
       { title: 'Competitors', items: [page('/competitor-finder'), page('/competitor-watch'), link('/backlink-intelligence/gap', 'Backlink Gap')] },
-      { title: 'Keyword Research', items: [page('/keyword-overview'), page('/keyword-management/discover'), link('/keyword-management/planner', 'Google Keyword Planner'), link('/keyword-management/explorer', 'Keyword Explorer'), page('/keyword-management/topics'), page('/keyword-management/tracked')] },
+      { title: 'Keyword Research', items: [page('/keyword-management/discover', { label: 'Find Keywords', also: ['/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' }), page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics'] })] },
       { title: 'Content Ideas', items: [page('/ai-content-generation/blog'), page('/ai-content-generation/trends'), link('/seo-brief', 'SEO Brief Generator')] },
       { title: 'Link Building', items: [page('/backlink-intelligence'), page('/backlink-checker'), link('/backlink-intelligence/explorer', 'Backlinks'), soon('referring-domains'), soon('backlink-audit'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks')] }
     ]
@@ -115,7 +115,7 @@ export const SIDEBAR_SECTIONS = [
   {
     id: 'GMB', label: 'GMB', title: 'GMB', icon: MapPin, groups: [
       { items: [link('/gmb-profile/overview', 'Dashboard'), link('/gmb-profile/profile', 'GBP Optimization'), link('/gmb-profile/performance', 'Performance'), link('/gmb-profile/traffic', 'Website Traffic'),
-        link('/gmb-profile/reviews', 'Reviews & Reputation'), page('/google-posts', { label: 'Posts' }), page('/media-management', { label: 'Photos' })] },
+        page('/reviews', { label: 'Reviews & Reputation' }), page('/google-posts', { label: 'Posts' }), page('/media-management', { label: 'Photos' })] },
       { title: 'Listings & Rankings', items: [page('/off-page-seo/citations', { label: 'Listing Management' }), link('/rank-tracking/geo', 'Map Rank Tracker'), link('/gmb-profile/competitors', 'Maps Competitors')] },
       { title: 'Optimization', items: [link('/gmb-profile/local-seo', 'Local SEO'), link('/gmb-profile/ai', 'AI Recommendations')] },
       { title: 'Manage', items: [page('/automation', { label: 'AI Tasks & Approvals' }), link('/gmb-profile/tasks', 'Tasks & Activities'), link('/gmb-profile/sync', 'Sync History'), link('/gmb-profile/reports', 'Reports')] },
@@ -143,7 +143,7 @@ export const SIDEBAR_SECTIONS = [
   },
   {
     id: 'traffic', label: 'Traffic & Market', title: 'Traffic & Market', icon: BarChart3, groups: [
-      { items: [page('/traffic', { label: 'Traffic Analytics' }), page('/top-pages'), page('/domain-overview', { label: 'Market Overview' }), page('/competitor-watch', { label: 'Competitor Monitoring' })] },
+      { items: [page('/traffic', { label: 'Traffic Analytics' }), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] }), page('/competitor-watch', { label: 'Competitor Monitoring' })] },
       { title: 'Traffic Distribution', items: ['tm-ai-traffic', 'tm-referral', 'tm-organic-search', 'tm-paid-search', 'tm-organic-social', 'tm-paid-social', 'tm-email', 'tm-display', 'tm-sources'].map(soon) },
       { title: 'Pages and Categories', items: [link('/organic-rankings/subdomains', 'Subfolders & Subdomains'), soon('tm-page-groups')] },
       { title: 'Regional Trends', items: ['tm-usa', 'tm-business-regions', 'tm-geo-regions'].map(soon) },

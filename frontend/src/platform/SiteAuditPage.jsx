@@ -1,7 +1,7 @@
 import { useCrumb } from './crumbs';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
-import { ChevronDown, Globe, Loader2, Search, Check, ScanSearch, ShieldCheck } from 'lucide-react';
+import { ChevronDown, Globe, Loader2, Search, Check, ScanSearch, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import { SeoShell, Card, Button } from './SeoUi';
 import { useSiteAudit, ReportStep, LiveScan } from './WebsiteAuditTool';
 import SchemaStudio from './SchemaStudio';
@@ -11,6 +11,8 @@ import WebsiteSnapshot from './WebsiteSnapshot';
 import MergedFindings from './MergedFindings';
 import { XRay } from './PageXRayPage';
 import Select from '../components/Select';
+import NewAuditModal from './NewAuditModal';
+import { api } from './seoApi';
 
 const OLD_TABS = { site: 'report', business: 'report', check: 'audit', lighthouse: 'report', 'page-xray': 'xray', audit: null };
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return String(u || ''); } };
@@ -53,11 +55,16 @@ function SiteAudit({ b, openFold }) {
   useEffect(() => { setOverview(null); }, [location.key]);
 
   const toggle = (k) => setOpen(o => ({ ...o, [k]: !o[k] }));
-  const check = () => {
+  const [setup, setSetup] = useState(false); // the audit settings window (crawl limits, exclusions, user agent)
+  const check = (cfg) => {
     const target = clean(sa.url);
     if (!target) { setFormError('Enter a website address, for example https://yourbusiness.com'); return; }
     setFormError('');
-    sa.launch(target, sa.crawlPages); // the site audit …
+    setSetup(false);
+    if (cfg && cfg.limit) {
+      sa.launch(target, cfg.limit, { pages_to_crawl: cfg.pages_to_crawl, subdomains: cfg.subdomains, allow: cfg.allow, disallow: cfg.disallow, ignore_params: cfg.ignore_params, user_agent: cfg.user_agent });
+      if (b.website && hostOf(target) === hostOf(b.website)) api(`/businesses/${b.id}/audit-config`, { method: 'PUT', body: cfg, repeat: true }).catch(() => { /* the schedule is not saved; the audit still runs */ });
+    } else sa.launch(target, sa.crawlPages); // the site audit …
     setTrigger(t => ({ n: t.n + 1, url: target })); // … and the Page X-Ray of the homepage, from the same click
   };
 
@@ -85,7 +92,8 @@ function SiteAudit({ b, openFold }) {
           <Select value={sa.crawlPages} onChange={e => sa.setCrawlPages(Number(e.target.value))} className="h-11 px-2.5 rounded text-13 font-semibold text-slate-700 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer" aria-label="Pages to crawl">
             {[5, 10, 25, 50, 100, 300].map(n => <option key={n} value={n}>{n === 300 ? 'Crawl all pages (up to 300)' : `Crawl ${n} pages`}</option>)}
           </Select>
-          <Button variant="primary" className="h-11 px-6" icon={Search} busy={busy} onClick={check} disabled={busy}>{busy ? 'Checking…' : 'Check website'}</Button>
+          <Button variant="primary" className="h-11 px-6" icon={Search} busy={busy} onClick={() => check()} disabled={busy}>{busy ? 'Checking…' : 'Check website'}</Button>
+          <Button className="h-11" icon={SlidersHorizontal} disabled={busy || !clean(sa.url)} onClick={() => setSetup(true)} title="Crawl limits, pages to include or skip, user agent">Audit settings</Button>
         </div>
         {(formError || sa.error) && <p className="text-12.5 text-red-600 mt-2" role="alert">{formError || sa.error}</p>}
         <p className="mt-2 text-12 text-slate-500">{own ? 'This is your business website: the results update your scores, dashboard and AI tasks.' : b.website ? <>Another site: the results are not saved to {b.name}. <button type="button" onClick={() => sa.setUrl(b.website)} className="font-medium text-indigo-700 hover:underline cursor-pointer">Use {hostOf(b.website)}</button></> : 'You can check any site.'}</p>
@@ -97,6 +105,8 @@ function SiteAudit({ b, openFold }) {
         )}
         {failed && <p className="mt-2 text-12.5 text-red-700 bg-red-50 rounded-lg px-3 py-2" role="alert">The site audit of {hostOf(sa.audit.data.target)} could not finish: {sa.audit.data.error || 'the site could not be reached.'} Check the address opens in a browser and try again.</p>}
       </Card>
+
+      <NewAuditModal open={setup} onClose={() => setSetup(false)} target={clean(sa.url)} host={hostOf(clean(sa.url) || sa.url)} business={b} own={Boolean(own)} busy={busy} onStart={check} />
 
       {sa.running && <LiveScan audit={sa.audit.data} startedAt={sa.startedAt} />}
 
@@ -128,7 +138,7 @@ function SiteAudit({ b, openFold }) {
 export default function SiteAuditPage() {
   const [params] = useSearchParams();
   const raw = params.get('tab');
-  const fold = ['report', 'xray', 'schema'].includes(raw) ? raw : OLD_TABS[raw] || null;
+  const fold = ['report', 'xray', 'schema', 'sites'].includes(raw) ? raw : OLD_TABS[raw] || null;
   return (
     <SeoShell step="website" title="Website Audit & Page X-Ray" subtitle="Check the website once: the whole-site audit and the homepage X-Ray run together and show on this page.">
       {(b) => <SiteAudit key={b.id} b={b} openFold={fold} />}

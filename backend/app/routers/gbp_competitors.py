@@ -95,6 +95,15 @@ class SearchIn(BaseModel):
     top_n: int = Field(default=10, ge=3, le=20)
 
 
+def _share(db: Session, b: Business, items: list[dict], source: str = "google_places") -> None:
+    """The competitors found here are also saved in the shared competitor list (the Competitors page, Competitor Watch, the backlink gap, the Growth Plan): one list, entered once."""
+    from ..competitors.router import _upsert  # noqa: PLC0415
+    rows = _upsert(db, b.id, [i for i in items if i.get("website")])
+    if source == "manual":
+        for c in rows:
+            c.source = "manual"
+
+
 @router.post("/search")
 def search(body: SearchIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     kind = (body.keyword or b.primary_category or "").strip()
@@ -117,6 +126,7 @@ def search(body: SearchIn, b: Business = Depends(get_business), db: Session = De
                       "reviews": int(f.get("reviews") or 0), "address": f.get("address"), "phone": f.get("phone"), "website": f.get("website") or None,
                       "maps_link": f.get("maps_link"), "source": "maps"})
     b.local_competitors = {"at": datetime.now(timezone.utc).isoformat(), "keyword": kind, "items": [*items, *manual]}
+    _share(db, b, items)
     log(db, user.name, "gbp_competitors_found", b.id, count=len(items))
     db.commit()
     return overview(b)
@@ -146,6 +156,7 @@ def add(body: ManualIn, b: Business = Depends(get_business), db: Session = Depen
     st["items"].append({"id": secrets.token_hex(4), "name": body.name.strip(), "rating": body.rating, "reviews": body.reviews or 0, "address": None, "phone": None,
                         "website": site or None, "maps_link": (body.maps_link or "").strip() or None, "source": "manual"})
     b.local_competitors = {"at": st["at"], "keyword": st["keyword"], "items": st["items"]}
+    _share(db, b, [st["items"][-1]], source="manual")
     db.commit()
     return overview(b)
 

@@ -144,6 +144,7 @@ export default function App() {
         <Route path="work-plan" element={<Navigate to="/dashboard" replace />} />
         <Route path="automation-pipeline" element={<AutomationPipelinePage />} />
         <Route path="gmb-profile" element={<GbpManagerPage />} />
+        <Route path="gmb-profile/reviews" element={<Navigate to="/reviews?tab=google" replace />} />
         <Route path="gmb-profile/:tab" element={<GbpManagerPage />} />
         <Route path="google-posts" element={<GbpManagerPage initialTab="posts" />} />
         <Route path="media-management" element={<GbpManagerPage initialTab="photos" />} />

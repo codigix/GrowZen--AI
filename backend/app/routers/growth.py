@@ -32,6 +32,13 @@ def list_keywords(b: Business = Depends(get_business), db: Session = Depends(get
     return {"keywords": rows(found), "clusters": sorted(clusters.values(), key=lambda c: -c["volume"])}
 
 
+@router.get("/keywords/progress")
+def keyword_progress(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The four-step keyword path (find, save, group, track) and the next thing to do."""
+    from ..services import keywords as kwsvc  # noqa: PLC0415
+    return kwsvc.progress(db, b)
+
+
 @router.post("/keywords", status_code=201)
 def add_keywords(body: list[KeywordIn], b: Business = Depends(get_business), db: Session = Depends(get_db)):
     added = 0

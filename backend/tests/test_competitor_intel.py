@@ -227,3 +227,45 @@ def test_one_competitor_list_feeds_the_watch_and_the_link_gap(client):
     assert hygiene.saved_competitor_domains(db, b) == ["rival-one.example"]  # a social page is never a competitor
     assert watch.competitor_domains(db, bid) == ["rival-one.example"]
     db.close()
+
+
+def test_a_serper_rate_limit_is_retried_and_credits_are_told_apart(monkeypatch):
+    monkeypatch.setenv("SERPER_API_KEY", "test-key")
+    get_settings.cache_clear()
+    intel._cache.clear()
+    monkeypatch.setattr(intel.time, "sleep", lambda s: None)
+    answers = [429, 429, 200]
+    calls = []
+
+    class R:
+        def __init__(self, code):
+            self.status_code, self.text, self.content = code, "credit" if code == 400 else "", b"{}"
+
+        def json(self):
+            return {"organic": [], "credits": 1}
+
+    def post(url, **kw):
+        calls.append(url)
+        return R(answers.pop(0))
+
+    monkeypatch.setattr(intel.httpx, "post", post)
+    assert intel.Serper().call("/search", {"q": "retry me"}) == {"organic": [], "credits": 1} and len(calls) == 3  # two 429s waited out, the third answered
+    answers[:] = [429, 429, 429]
+    with pytest.raises(intel.IntelError, match="rate-limiting"):
+        intel.Serper().call("/search", {"q": "still limited"})
+    answers[:] = [400]
+    with pytest.raises(intel.IntelError, match="credits are used up"):
+        intel.Serper().call("/search", {"q": "no credits"})
+    get_settings.cache_clear()
+
+
+def test_a_competitor_added_in_the_google_profile_section_is_in_the_shared_list(client):
+    from app.competitors import hygiene
+    from app.db import SessionLocal
+    from app.models import Business
+    bid = client.post("/api/v1/businesses", json={"name": "Share Two", "website": "https://share-two.example", "city": "Pune"}).json()["id"]
+    r = client.post(f"/api/v1/businesses/{bid}/gbp/competitors", json={"name": "Rival Two", "website": "https://www.rival-two.example"})
+    assert r.status_code == 201, r.text
+    db = SessionLocal()
+    assert hygiene.saved_competitor_domains(db, db.get(Business, bid)) == ["rival-two.example"]
+    db.close()

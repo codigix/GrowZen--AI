@@ -44,20 +44,27 @@ def test_check_ranks_saves_positions_and_the_change(client, serper):
     assert [x["rank"] for x in h["dentist in pune"]] == [4] and [x["rank"] for x in h["dentist in baner"]] == [None]
 
 
-def test_keyword_overview_reads_google_from_the_business_place(client, serper):
+def test_keyword_overview_uses_the_google_ads_keyword_planner_not_serper(client, monkeypatch):
+    from app.services import google_ads_client as ads, keyword_metrics
     bid = business(client)
+    assert client.post(f"/api/v1/businesses/{bid}/seo/keyword-overview", json={"keyword": "dentist in pune"}).status_code == 400  # Ads not set up: said plainly
+    monkeypatch.setattr(keyword_metrics, "enabled", lambda: True)
+    idea = lambda k, v: {"keyword": k, "avg_monthly_searches": v, "competition": "MEDIUM", "competition_index": 48, "low_top_of_page_bid": 1.2, "high_top_of_page_bid": 3.4, "three_month_change": 5.0, "yoy_change": -2.5,  # noqa: E731
+                         "monthly_search_volumes": [{"year": 2026, "month": "JANUARY", "monthly_searches": v}]}
+    seen = {}
+    monkeypatch.setattr(ads, "keyword_ideas", lambda seeds, **kw: seen.update(seeds=seeds) or [idea("dentist in pune", 1900), idea("best dentist in pune", 720), idea("dental clinic pune", 390)])
+    client.post(f"/api/v1/businesses/{bid}/keywords", json=[{"keyword": "dentist in Pune"}])
     o = client.post(f"/api/v1/businesses/{bid}/seo/keyword-overview", json={"keyword": "Dentist in Pune"}).json()
-    assert o["keyword"] == "dentist in pune" and o["intent"] == "local"
-    assert o["you"]["organic"] == 4 and o["you"]["local"] == 2  # mydental.in is #4 on Google and #2 in Maps in the fake results
-    assert [x["position"] for x in o["organic"]][:2] == [1, 4] and any(x["mine"] for x in o["organic"])
-    assert o["metrics"]["volume"] is None  # no volume without a provider: never invented
+    assert seen["seeds"] == ["dentist in pune"] and o["keyword"] == "dentist in pune" and o["intent"] == "local" and o["source"] == "Google Ads Keyword Planner"
+    assert o["metrics"]["volume"] == 1900 and o["metrics"]["cpc_high"] == 3.4 and o["metrics"]["difficulty"] == 48 and o["metrics"]["monthly"][0]["searches"] == 1900
+    assert [i["keyword"] for i in o["ideas"]] == ["best dentist in pune", "dental clinic pune"] and o["you"]["tracked"] is True
+    assert "organic" not in o and "local" not in o  # the Planner has no results page: nothing is invented
 
 
 def test_rank_checks_explain_a_missing_key_or_website(client, monkeypatch):
     bid = business(client)
     r = client.post(f"/api/v1/businesses/{bid}/seo/check-ranks", json={})
     assert r.status_code == 400 and "SERPER_API_KEY" in r.json()["detail"]
-    assert client.post(f"/api/v1/businesses/{bid}/seo/keyword-overview", json={"keyword": "dentist"}).status_code == 400
 
 
 def test_seed_keywords_then_rank_report_gives_advice_per_keyword(client):

@@ -330,3 +330,27 @@ def context_competitors(db: Session, b: Business) -> list[str]:
         scan = db.scalar(select(RankScan).where(RankScan.business_id == b.id).order_by(RankScan.created_at.desc()))
         names = [c["name"] for c in (scan.competitors if scan else []) if c.get("name") and not c["name"].startswith("Competitor ")]
     return list(dict.fromkeys(names))
+
+
+# ------------------------------------------------------------------------------------------------------------------- the four steps
+MIN_KEYWORDS = 8  # the fewest saved keywords that make a useful list (the same number the journey and the Growth Plan use)
+
+
+def progress(db: Session, b: Business) -> dict[str, Any]:
+    """Where the project is on the keyword path: 1 find, 2 save, 3 group into topics (and give each a page), 4 track. One place for the rule, used by the page, the journey and the reports."""
+    rows = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
+    n = len(rows)
+    grouped = sum(1 for k in rows if (k.cluster or "").strip())
+    mapped = sum(1 for k in rows if (k.target_url or "").strip())
+    checked = sum(1 for k in rows if k.rank_checked_at)
+    ranking = sum(1 for k in rows if k.rank)
+    researched = competitor_research(db, b) is not None
+    steps = [
+        {"key": "find", "title": "Find", "done": n > 0 or researched, "detail": "Competitor research is done: keyword ideas build on it." if researched else "Start with ideas for your business.", "to": "/keyword-management/discover"},
+        {"key": "save", "title": "Save", "done": n >= MIN_KEYWORDS, "detail": f"{n} saved" + ("" if n >= MIN_KEYWORDS else f"; aim for at least {MIN_KEYWORDS}."), "to": "/keyword-management/tracked"},
+        {"key": "group", "title": "Group", "done": n > 0 and grouped == n and mapped == n, "detail": f"{grouped} of {n} in a topic, {mapped} with a page." if n else "Nothing to group yet.", "to": "/keyword-management/topics"},
+        {"key": "track", "title": "Track", "done": checked > 0, "detail": f"{checked} of {n} checked on Google" + (f", {ranking} ranking." if checked else ".") if n else "Nothing to track yet.", "to": "/rank-tracking/positions"},
+    ]
+    nxt = next((s for s in steps if not s["done"]), None)
+    return {"saved": n, "grouped": grouped, "mapped": mapped, "checked": checked, "ranking": ranking, "researched": researched, "min": MIN_KEYWORDS, "steps": steps,
+            "next": nxt and {"key": nxt["key"], "title": nxt["title"], "to": nxt["to"], "detail": nxt["detail"]}, "complete": nxt is None}

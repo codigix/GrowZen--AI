@@ -48,10 +48,11 @@ def evaluate(db: Session, b: Business) -> dict[str, Any]:
     onpage = db.scalar(select(Audit).where(Audit.business_id == b.id, Audit.kind == "onpage", Audit.status == "done", Audit.data_source != "sample").order_by(Audit.id.desc()).limit(1))
     state["website"] = {"done": bool(onpage), "detail": f"Last site audit scored {onpage.score}/100." if onpage and onpage.score is not None else ("A site audit was run." if onpage else "No site audit yet."), "metric": f"{onpage.score}/100" if onpage and onpage.score is not None else "not run"}
 
-    tracked = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
-    ungrouped = sum(1 for k in tracked if not (k.cluster or "").strip())
-    kw_done = len(tracked) >= 8 and ungrouped == 0
-    state["keywords"] = {"done": kw_done, "detail": f"{len(tracked)} keywords tracked" + (f", {ungrouped} not grouped yet." if ungrouped else ".") + ("" if len(tracked) >= 8 else " Aim for at least 8."), "metric": f"{len(tracked)} tracked"}
+    from . import keywords as kwsvc
+    kp = kwsvc.progress(db, b)
+    ungrouped = kp["saved"] - kp["grouped"]
+    kw_done = kp["saved"] >= kp["min"] and ungrouped == 0
+    state["keywords"] = {"done": kw_done, "detail": f"{kp['saved']} keywords tracked" + (f", {ungrouped} not grouped yet." if ungrouped else ".") + ("" if kp["saved"] >= kp["min"] else f" Aim for at least {kp['min']}."), "metric": f"{kp['saved']} tracked"}
 
     try:
         from ..competitors import hygiene

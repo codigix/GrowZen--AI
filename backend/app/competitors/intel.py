@@ -159,14 +159,21 @@ class Serper:
             hit = None if self.fresh else _cache.get(ck)
             if hit and time.time() - hit[0] < CACHE_SECONDS:
                 return hit[1]
-        try:
-            r = httpx.post(f"{SERPER}{path}", headers={"X-API-KEY": self.key, "Content-Type": "application/json"}, json=body, timeout=30)
-        except httpx.HTTPError as exc:
-            raise IntelError(f"Google results (Serper) did not answer: {exc}") from exc
+        r = None
+        for attempt in range(3):  # a rate limit (HTTP 429) clears in a moment: wait and ask again, one search at a time
+            try:
+                r = httpx.post(f"{SERPER}{path}", headers={"X-API-KEY": self.key, "Content-Type": "application/json"}, json=body, timeout=30)
+            except httpx.HTTPError as exc:
+                raise IntelError(f"Google results (Serper) did not answer: {exc}") from exc
+            if r.status_code != 429 or attempt == 2:
+                break
+            time.sleep(1.5 * (attempt + 1))
         if r.status_code in (401, 403):
             raise IntelError("The Serper API key was refused. Check SERPER_API_KEY.")
-        if r.status_code == 429 or (r.status_code == 400 and "credit" in r.text.lower()):
-            raise IntelError("Serper credits are used up or rate-limited. Top up at serper.dev or try later.")
+        if r.status_code == 400 and "credit" in r.text.lower():
+            raise IntelError("Serper credits are used up. Top up at serper.dev.")
+        if r.status_code == 429:
+            raise IntelError("Serper is rate-limiting the requests (it still refused after waiting). Try again in a minute; if it keeps happening check the plan at serper.dev.")
         if r.status_code != 200:
             raise IntelError(f"Serper: {(r.json() if r.content else {}).get('message') or f'HTTP {r.status_code}'}")
         data = r.json()

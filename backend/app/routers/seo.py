@@ -267,39 +267,41 @@ class OverviewIn(BaseModel):
 
 @router.post("/keyword-overview")
 def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """One keyword, as Google shows it from the business's place: the top 10, the Maps pack, related searches, the
-    questions people ask, where the business stands, and the volume and difficulty when a provider supplies them."""
-    if not intel.serper_enabled():
-        raise HTTPException(400, "Keyword overview needs Google results: set SERPER_API_KEY on the SEO backend (serper.dev).")
+    """One keyword from the Google Ads Keyword Planner: monthly searches and the 12-month trend, competition, the bid range and related ideas, for the business's country.
+    Where the business stands comes from its saved keyword (its last rank check). The Planner has no results page, so no top 10 / Maps pack is shown here."""
+    from ..services import google_ads_client as ads  # noqa: PLC0415
+    if not keyword_metrics.enabled():
+        raise HTTPException(400, "Keyword Overview uses the Google Ads Keyword Planner: set the GOOGLE_ADS_* values on the SEO backend.")
     kw = " ".join(body.keyword.lower().split())
-    location = intel.default_location(b)
-    serper = intel.Serper(market.serp_country(b))
+    country = market.serp_country(b)
     try:
-        org = serper.search(kw, location)
+        ideas = ads.keyword_ideas([kw], limit=60, include_monthly=True, geo_target=ads.geo_target_for(country))
+    except ads.GoogleAdsNotConfigured as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except ads.GoogleAdsError as exc:
+        raise HTTPException(502, "Google Ads did not answer: " + ("; ".join(getattr(exc, "details", []) or []) or str(exc))[:200]) from exc
+    exact = next((i for i in ideas if i["keyword"].lower() == kw), None)
+    if exact is None:  # the Planner did not list the exact text among its ideas: ask for its own numbers
         try:
-            plc = serper.places(kw, location)
-        except intel.IntelError:
-            plc = {}
-    except intel.IntelError as exc:
-        raise HTTPException(502, str(exc)) from exc
-    host = _host(b.website)
-    organic = [{"position": o.get("position"), "domain": _host(o.get("link")), "url": o.get("link"), "title": o.get("title"), "snippet": o.get("snippet"),
-                "type": "directory" if intel.is_directory(_host(o.get("link"))) else "business", "mine": bool(host) and _host(o.get("link")) == host} for o in org.get("organic", [])[:10]]
-    local = [{"position": p.get("position"), "name": p.get("title"), "rating": p.get("rating"), "reviews": p.get("ratingCount") or 0, "category": p.get("category"), "address": p.get("address"),
-              "mine": intel._is_me_place(p, b, host)} for p in plc.get("places", [])[:10]]
+            got = ads.historical_metrics([kw], geo_target=ads.geo_target_for(country)).get(kw)
+        except ads.GoogleAdsError:
+            got = None
+        if got:
+            exact = {"avg_monthly_searches": got["volume"], "competition": got["competition"], "competition_index": got["competition_index"], "low_top_of_page_bid": None,
+                     "high_top_of_page_bid": got["cpc"], "three_month_change": None, "yoy_change": None}
     saved = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == kw))
-    live_m, metrics_note = keyword_metrics.lookup([kw], market.serp_country(b))
-    lm = live_m.get(kw)
-    metrics = {"volume": lm["volume"] if lm else (saved.volume if saved else None), "difficulty": lm["difficulty"] if lm else (saved.difficulty if saved else None),
-               "cpc": lm["cpc"] if lm else (saved.cpc if saved else None), "tracked": bool(saved and saved.tracked)}
+    monthly = [{"year": m["year"], "month": m["month"], "searches": m["monthly_searches"]} for m in (exact or {}).get("monthly_search_volumes", [])][-12:]
+    ci = (exact or {}).get("competition_index")
     return {
-        "keyword": kw, "location": location, "intent": intent_of(kw), "credits": serper.credits,
-        "you": {"organic": next((o["position"] for o in organic if o["mine"]), None), "local": next((p["position"] for p in local if p["mine"]), None)},
-        "organic": organic, "local": local,
-        "related": [q.get("query") for q in org.get("relatedSearches", []) if q.get("query")][:10], "questions": [q.get("question") for q in org.get("peopleAlsoAsk", []) if q.get("question")][:8],
-        "serp_features": sorted({k for k in ("answerBox", "knowledgeGraph", "peopleAlsoAsk", "places", "topStories", "images", "videos", "shopping") if org.get(k)}),
-        "metrics": metrics, "metrics_note": metrics_note,
-        "volume_source": "Google Ads Keyword Planner" if live_m else ("saved keyword" if saved and saved.volume is not None else None),
+        "keyword": kw, "location": intel.default_location(b), "country": country, "intent": intent_of(kw), "source": "Google Ads Keyword Planner",
+        "found": exact is not None,
+        "metrics": {"volume": (exact or {}).get("avg_monthly_searches"), "competition": (exact or {}).get("competition"), "competition_index": ci,
+                    "difficulty": ci if (exact or {}).get("competition") not in (None, "UNSPECIFIED") else None,
+                    "cpc_low": (exact or {}).get("low_top_of_page_bid"), "cpc_high": (exact or {}).get("high_top_of_page_bid"),
+                    "three_month_change": (exact or {}).get("three_month_change"), "yoy_change": (exact or {}).get("yoy_change"), "monthly": monthly},
+        "ideas": [{"keyword": i["keyword"], "volume": i["avg_monthly_searches"], "competition": i["competition"], "cpc": i["high_top_of_page_bid"]} for i in ideas if i["keyword"].lower() != kw][:40],
+        "you": {"tracked": bool(saved and saved.tracked), "rank": saved.rank if saved else None, "prev_rank": saved.prev_rank if saved else None,
+                "checked_at": saved.rank_checked_at if saved else None, "target_url": saved.target_url if saved else None},
     }
 
 
