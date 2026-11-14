@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Briefcase, Search, Plus, X, Trash2, ArrowRight, Globe, MapPin, RotateCcw } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, SkTable, useDoubleConfirm, useSeoBusiness, useAction, useToast, refreshBusinesses } from './SeoUi';
-import { api, useApi, fmtDate } from './seoApi';
+import { api, useApi, fmtDate, clearApiCache } from './seoApi';
 
 /**
  * Projects: every project the signed-in user can open, the services (SEO, GEO, AEO, GMB) each is onboarded for, a way to remove one service
@@ -121,6 +121,7 @@ function Projects() {
     effect: `The project and everything stored for it is deleted from the system: ${MODULES.filter(m => p.modules.includes(m)).map(m => META[m].label).join(', ') || 'no'} services, audits, keywords, rankings, reviews, articles, tasks, schedules, reports and links to its website and Google profile. Your Google Business Profile itself is not touched. This cannot be undone.`,
     onConfirm: () => run(`del-${p.id}`, async () => {
       await api(`/businesses/${p.id}`, { method: 'DELETE' });
+      clearApiCache(); // nothing saved about the deleted project (or its Google account lists) is shown again
       const rest = (await refreshBusinesses()) || [];
       if (String(selected?.id ?? selected) === String(p.id) && rest.length) choose(rest[0].id);
       toast(`${p.name} deleted`);
