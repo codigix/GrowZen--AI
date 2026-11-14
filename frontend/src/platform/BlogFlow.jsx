@@ -18,7 +18,9 @@ export function KeywordTopicPlanner({ b, onPick }) {
   useEffect(() => { try { localStorage.setItem(memKey, JSON.stringify({ picked, res })); } catch { /* not remembered */ } }, [picked, res, memKey]);
   const [busy, error, run] = useAction();
   const [own, setOwn] = useState('');
+  const [q, setQ] = useState('');
   const list = kws.data?.keywords || [];
+  const shown = q.trim() ? list.filter(k => k.keyword.toLowerCase().includes(q.trim().toLowerCase())) : list;
   const toggle = (k) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : p.length >= 4 ? p : [...p, k]));
   const ask = () => run('topics', async () => setRes(await api(`${base}/topics`, { method: 'POST', body: { keywords: picked } })));
   return (
@@ -31,23 +33,39 @@ export function KeywordTopicPlanner({ b, onPick }) {
           <Button variant="primary" icon={ArrowRight} disabled={own.trim().length < 3} onClick={() => onPick({ title: own.trim(), selected: [], related: [] })}>Write this blog</Button>
         </div>
       </div>
-      <p className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Or choose from your keywords: pick up to 4</p>
+      <p className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Or choose from your keywords: tick up to 4</p>
       {!kws.data && !kws.error && <SkList rows={3} />}
       {kws.error && <ErrorNote>{kws.error.message}</ErrorNote>}
       {kws.data && !list.length && <p className="text-13 text-slate-500">No keywords are tracked yet. Add them on <Link to="/keyword-management/ai" className="text-indigo-600 hover:underline">Find Keywords</Link>, then come back; or write from your own topic below.</p>}
       {list.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {list.map(k => {
-            const on = picked.includes(k.keyword);
-            return (
-              <button key={k.keyword} type="button" aria-pressed={on} onClick={() => toggle(k.keyword)}
-                className={`inline-flex items-center gap-2 h-9 px-3 rounded-full text-13 cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>
-                <span className="font-semibold">{k.keyword}</span>
-                <span className={`text-11.5 ${on ? 'text-indigo-100' : 'text-slate-400'}`}>{k.volume != null ? `${n0(k.volume)}/mo` : 'no volume'}</span>
-                {k.used > 0 && <Tip text={`Already used in ${k.used} article${k.used > 1 ? 's' : ''}`}><span className={`text-11 rounded-full px-1.5 ${on ? 'bg-white/20' : 'bg-amber-50 text-amber-700'}`}>used {k.used}</span></Tip>}
-              </button>
-            );
-          })}
+        <div className="rounded-xl ring-1 ring-inset ring-slate-200 overflow-hidden">
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${list.length} keywords`} aria-label="Search keywords" className={`${inputCls} !w-64`} />
+            <span className="text-12 text-slate-500">{shown.length === list.length ? `${list.length} keywords` : `${shown.length} of ${list.length}`}</span>
+            {picked.length > 0 && <button type="button" onClick={() => setPicked([])} className="ml-auto text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">Clear {picked.length} selected</button>}
+          </div>
+          <div className="max-h-[340px] overflow-y-auto divide-y divide-slate-100" role="listbox" aria-multiselectable="true" aria-label="Keywords">
+            <div className="grid grid-cols-[28px_minmax(0,1fr)_90px_70px_70px] gap-3 px-3 py-1.5 text-11.5 uppercase tracking-wide text-slate-400 sticky top-0 bg-white">
+              <span /><span>Keyword</span><span className="text-right">Searches/mo</span><span className="text-right">Difficulty</span><span className="text-right">Rank</span>
+            </div>
+            {shown.map(k => {
+              const on = picked.includes(k.keyword);
+              const full = !on && picked.length >= 4;
+              return (
+                <button key={k.keyword} type="button" role="option" aria-selected={on} disabled={full} onClick={() => toggle(k.keyword)}
+                  className={`w-full grid grid-cols-[28px_minmax(0,1fr)_90px_70px_70px] items-center gap-3 px-3 py-2 text-left text-13 cursor-pointer ${on ? 'bg-indigo-50' : 'hover:bg-slate-50'} ${full ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                  <span className={`h-[18px] w-[18px] rounded border inline-flex items-center justify-center text-white text-11 ${on ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'}`}>{on ? '✓' : ''}</span>
+                  <span className="min-w-0"><span className="font-semibold text-slate-900 break-words">{k.keyword}</span>
+                    {k.for_blog && <span className="ml-2 text-11 rounded-full px-1.5 py-0.5 bg-emerald-50 text-emerald-700">meant for blogs</span>}
+                    {k.used > 0 && <span className="ml-2 text-11 rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700">used in {k.used} article{k.used > 1 ? 's' : ''}</span>}</span>
+                  <span className="text-right tabular-nums text-slate-700">{k.volume != null ? n0(k.volume) : <span className="text-slate-300">—</span>}</span>
+                  <span className="text-right tabular-nums text-slate-700">{k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>}</span>
+                  <span className="text-right tabular-nums text-slate-700">{k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>}</span>
+                </button>
+              );
+            })}
+            {!shown.length && <p className="px-3 py-6 text-center text-13 text-slate-500">No keyword matches “{q}”.</p>}
+          </div>
         </div>
       )}
       {list.length > 0 && (

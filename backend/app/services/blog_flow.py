@@ -32,8 +32,8 @@ def keyword_pool(db: Session, b: Business) -> list[dict[str, Any]]:
         for k in [a.keyword, *(a.secondary_keywords or [])]:
             used[" ".join(str(k).lower().split())] = used.get(" ".join(str(k).lower().split()), 0) + 1
     rows = db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))).all()
-    rows = sorted(rows, key=lambda k: -(k.volume or 0))
-    return [{"keyword": k.keyword, "volume": k.volume, "difficulty": k.difficulty, "intent": k.intent, "cluster": k.cluster, "rank": k.rank, "used": used.get(k.keyword.lower(), 0)} for k in rows]
+    rows = sorted(rows, key=lambda k: ("blog" not in (k.uses or []), -(k.volume or 0)))
+    return [{"keyword": k.keyword, "volume": k.volume, "difficulty": k.difficulty, "intent": k.intent, "cluster": k.cluster, "rank": k.rank, "for_blog": "blog" in (k.uses or []), "used": used.get(" ".join(k.keyword.lower().split()), 0)} for k in rows]
 
 
 # ------------------------------------------------------------------------------------------------------------------------ topics
