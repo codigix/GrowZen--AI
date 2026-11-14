@@ -77,7 +77,7 @@ def _schedule_view(p: ScheduledPost) -> dict:
     due = _utc(p.due_at)
     local = due.astimezone(_tz())
     return {"id": p.id, "destination": p.method, "status": p.status, "due_at": due.isoformat(), "date": local.strftime("%Y-%m-%d"),
-            "time": local.strftime("%H:%M"), "timezone": tz_name(), "attempts": p.attempts, "error": p.error,
+            "time": local.strftime("%H:%M"), "timezone": tz_name(), "attempts": p.attempts, "error": p.error, "planned_for": (p.result or {}).get("planned_for"),
             "url": (p.result or {}).get("url"), "post_id": (p.result or {}).get("id"), "direct": bool((p.result or {}).get("direct")),
             "finished_at": _utc(p.finished_at).isoformat() if p.finished_at else None}
 
@@ -268,6 +268,8 @@ def _run_one(db: Session, p: ScheduledPost, now: datetime) -> int:
         if p.attempts >= RETRIES or isinstance(exc, rs.AuthFailed):
             p.status, p.finished_at = "failed", now
         else:
+            planned = (p.result or {}).get("planned_for") or _utc(p.due_at).isoformat()  # the time the person chose stays visible
+            p.result = {**(p.result or {}), "planned_for": planned}
             p.status, p.due_at = "pending", now + RETRY_AFTER  # tried again in ten minutes
     if p.status == "failed":
         activity(db, "scheduler", "post_publish_failed", p.business_id, article_id=p.article_id, error=(p.error or "")[:200])

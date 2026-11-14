@@ -374,6 +374,15 @@ def _site_sample(c: httpx.Client, conn: ReactSiteConnection, base: str, path: st
     return max(rows, key=lambda x: sum(v not in (None, "") for v in x.values())) if rows else None
 
 
+def site_db_problem(base: str, path: str) -> str | None:
+    """The website's own blog list failed with a database error (it prints the SQL error): that is why posting fails, whatever the post holds."""
+    m = re.search(r"Unknown column '([\w.]+)'", _last_list_text.get(base + path, ""))
+    if m:
+        return (f"The website's own database is missing the column '{m.group(1)}' (even its blog list fails with that error), so no post can be created, with or without an image. "
+                f"Ask the website's developer to add the '{m.group(1)}' column to its blogs table (or run its pending migration), then publish again. Nothing was published.")
+    return None
+
+
 def fit_to_site(data: dict, sample: dict | None, keep: set | None = None) -> tuple[dict, list[str]]:
     """Shape the article like the website's own records, so its database accepts it as is:
     only the columns the site has (unknown keys would fail the insert), lists as text (a MySQL `SET ?` insert expands
@@ -858,9 +867,19 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
     except (httpx.HTTPError, SSRFValidationError) as exc:
         steps.append({"step": "Send to the website", "ok": False, "detail": str(exc)[:140]})
         raise ReactSiteError(f"Could not reach the website's API: {str(exc)[:160]}") from exc
+    except AuthFailed:
+        raise
+    except ReactSiteError as exc:
+        cause = site_db_problem(base, path)
+        if cause:
+            raise ReactSiteError(cause) from exc
+        raise
     if r.status_code in (401, 403):
         raise AuthFailed(f"The website refused the request: {_msg(r)}")
     if r.status_code >= 400:
+        cause = site_db_problem(base, path)
+        if cause:
+            raise ReactSiteError(cause)
         raise ReactSiteError(f"The website refused the post ({r.status_code}): {_msg(r)}")
     try:
         d = r.json()

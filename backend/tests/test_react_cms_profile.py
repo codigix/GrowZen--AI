@@ -64,3 +64,10 @@ def test_publish_sends_the_sites_own_shape_and_refuses_schedule(monkeypatch):
         assert "no scheduled posts" in str(exc)
     else:
         raise AssertionError("the site cannot schedule: GrowZen must hold it")
+
+
+def test_a_database_error_on_the_site_is_named_instead_of_blaming_the_image():
+    rs._last_list_text["https://s.example/api/blogs"] = "{\"sqlMessage\":\"Unknown column 'bannerImage' in 'field list'\"}"
+    msg = rs.site_db_problem("https://s.example", "/api/blogs")
+    assert "bannerImage" in msg and "with or without an image" in msg
+    assert rs.site_db_problem("https://other.example", "/api/blogs") is None

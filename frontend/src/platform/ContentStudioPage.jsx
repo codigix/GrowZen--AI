@@ -460,7 +460,13 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => {} })
                 )}
                 {x.status === 'pending' && <div className="mt-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-[12px] text-slate-600">Waiting to start writing…</div>}
                 {x.status === 'failed' && x.error && <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-[12px] text-rose-800"><AlertTriangle size={13} className="shrink-0 mt-0.5" /> {x.error}</div>}
-                {x.schedule && (ps === 'scheduled' || ps === 'publishing') && (
+                {x.schedule?.attempts > 0 && x.schedule?.error && ps === 'scheduled' && (
+                  <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-[12px] text-rose-800">
+                    <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                    <span>The scheduled time came{x.schedule.planned_for ? ` (${new Date(x.schedule.planned_for).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''} but publishing failed ({x.schedule.attempts} {x.schedule.attempts === 1 ? 'try' : 'tries'}). It tries again at <b>{scheduleText(x.schedule)}</b>.<span className="block mt-0.5 text-rose-700/90">{x.schedule.error}</span></span>
+                  </div>
+                )}
+                {x.schedule && (ps === 'scheduled' || ps === 'publishing') && !(x.schedule.attempts > 0 && x.schedule.error) && (
                   <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[12px] text-amber-900">
                     <Clock size={13} className="shrink-0" /> <span>{ps === 'publishing' ? 'Publishing now to ' : 'Publishes automatically: '}<b>{scheduleText(x.schedule)}</b></span>
                   </div>
