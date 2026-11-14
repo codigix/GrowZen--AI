@@ -149,6 +149,28 @@ def login(client: httpx.Client, conn: ReactSiteConnection) -> tuple[str, datetim
     return token, expires_at or datetime.now(timezone.utc) + timedelta(minutes=DEFAULT_TOKEN_MINUTES)
 
 
+LOGIN_GUESSES = ("/api/auth/login", "/api/login", "/api/admin/login", "/api/users/login", "/api/user/login", "/api/v1/auth/login", "/api/auth/signin")
+
+
+def discover_login(client: httpx.Client, conn: ReactSiteConnection) -> str | None:
+    """The configured login address does not exist: try the usual ones with the same credentials. Returns the first that gives a token, else None.
+    (Only the website the user connected is contacted, with the credentials they entered for it.)"""
+    first = conn.auth_endpoint
+    try:
+        for path in LOGIN_GUESSES:
+            if path == normalize_path(first):
+                continue
+            conn.auth_endpoint = path
+            try:
+                login(client, conn)
+                return path
+            except (ReactSiteError, httpx.HTTPError):
+                continue
+    finally:
+        conn.auth_endpoint = first
+    return None
+
+
 def _token(client: httpx.Client, conn: ReactSiteConnection, force: bool = False) -> str:
     """A valid access token: the cached one while it has more than a minute left, otherwise a fresh login (cached encrypted)."""
     exp = conn.token_expires_at
@@ -186,6 +208,7 @@ def test(conn: ReactSiteConnection) -> tuple[list[dict], bool]:
     login: connected = the login returns a token (and, when a health endpoint is set, it accepts the token).
     key:   connected = the health endpoint accepts the key and refuses a request without it."""
     steps: list[dict] = []
+    first_path = conn.auth_endpoint
 
     def step(name, ok, detail):
         steps.append({"step": name, "ok": bool(ok), "detail": detail})
@@ -209,8 +232,14 @@ def test(conn: ReactSiteConnection) -> tuple[list[dict], bool]:
                 try:
                     _token(c, conn, force=True)
                 except ReactSiteError as exc:
-                    step("Sign in as the integration user", False, str(exc))
-                    return steps, False
+                    found = discover_login(c, conn) if "does not exist (404)" in str(exc) else None
+                    if not found:
+                        tried = ", ".join(LOGIN_GUESSES) if "does not exist (404)" in str(exc) else ""
+                        step("Sign in as the integration user", False, str(exc) + (f" The usual alternatives were tried and none worked ({tried}). The website's backend must provide a login (see docs/react-site-blog-api.md), or enter its real login path." if tried else ""))
+                        return steps, False
+                    conn.auth_endpoint = found  # saved with the connection: the site's real login address
+                    step("Find the login address", True, f"{normalize_path(first_path)} does not exist, but {found} signs in: it is now used.")
+                    _token(c, conn, force=True)
                 exp = conn.token_expires_at
                 step("Sign in as the integration user", True, f"Signed in as {conn.login_username}; access token valid until {exp.strftime('%d %b %H:%M UTC') if exp else 'unknown'}")
                 if not health:
