@@ -11,6 +11,7 @@ import { SeoShell, Card, Badge, Button, ScoreRing, ChartTooltip, ErrorNote, SERI
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 import { ReportsModal } from './CopilotPanel';
 import SiteAuditTable from './SiteAuditTable';
+import { JourneyButton } from './JourneyBar';
 
 /**
  * Command Center: every project (client business) at once, with the AI side of the work in front.
@@ -131,10 +132,9 @@ function ProjectCard({ p, onOpen, journey }) {
         <div className="rounded-lg bg-slate-50 ring-1 ring-inset ring-slate-200 px-3 py-2.5" onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-between gap-2 text-12">
             <span className="font-semibold text-slate-800">Journey: {journey.done} of {journey.total} steps done</span>
-            <Link to={`/projects/${p.id}/journey`} className="font-semibold text-indigo-700 hover:underline whitespace-nowrap">Open journey</Link>
+            <JourneyButton bid={p.id} name={p.name} stage={journey} link />
           </div>
           <div className="mt-1.5 h-1.5 rounded-full bg-slate-200 overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${journey.percent}%` }} /></div>
-          <div className="mt-1.5 text-12 text-slate-600">{journey.next ? <>Now at step {journey.next.order}: <Link to={`/projects/${p.id}/journey`} className="font-semibold text-slate-900 hover:underline">{journey.next.title}</Link></> : 'Every step is done.'}</div>
         </div>
       )}
 
@@ -205,10 +205,10 @@ function Projects({ projects, onOpen }) {
           {projects.map(p => { const j = journeys[p.id]; return j ? (
             <div key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-13">
               <span className="font-semibold text-slate-900 min-w-[140px]">{p.name}</span>
-              <span className="text-slate-600 flex-1 min-w-[200px]">{j.next ? <>Now at step {j.next.order} of {j.total}: <b className="text-slate-900">{j.next.title}</b></> : 'Every step is done.'}</span>
+              <span className="flex-1" />
               <span className="w-32 h-1.5 rounded-full bg-slate-200 overflow-hidden hidden sm:block"><span className="block h-full bg-emerald-500" style={{ width: `${j.percent}%` }} /></span>
               <span className="text-12 text-slate-500 tabular-nums">{j.done}/{j.total}</span>
-              <Link to={`/projects/${p.id}/journey`} className="font-semibold text-indigo-700 hover:underline">Open journey</Link>
+              <JourneyButton bid={p.id} name={p.name} stage={j} link />
             </div>) : null; })}
         </div>
       )}

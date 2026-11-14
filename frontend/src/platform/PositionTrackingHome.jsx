@@ -4,6 +4,7 @@ import { Search, Plus, CalendarDays, Monitor, Smartphone, Tablet, ArrowDownUp, A
 import { ErrorNote, useSeoBusiness, SkTable } from './SeoUi';
 import { useApi } from './seoApi';
 import NewTrackingModal from './NewTrackingModal';
+import { JourneyButton, useJourneys } from './JourneyBar';
 
 const DEVICE = { desktop: Monitor, mobile: Smartphone, tablet: Tablet };
 const ago = (iso) => {
@@ -45,6 +46,7 @@ const Vis = ({ v }) => (v == null ? <span className="text-slate-300">—</span>
 /** Position Tracking home: every project with how visible it is, how that moved and how many keywords went up or down. A click on a project or a figure opens that view. */
 export default function PositionTrackingHome() {
   const data = useApi('/businesses/rank-tracking');
+  const journeys = useJourneys();
   const [, choose] = useSeoBusiness();
   const navigate = useNavigate();
   const [q, setQ] = useState('');
@@ -97,7 +99,7 @@ export default function PositionTrackingHome() {
         {!data.data && !data.error ? <SkTable cols={['w-1/4', 'w-1/5', 'w-16', 'w-16', 'w-16', 'w-16', 'w-16']} headers={['Project', 'Device & Location', 'Visibility', 'Change', 'Improved', 'Declined', 'Keywords']} rows={4} /> : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px]">
-              <thead><tr><Th onClick={() => setSort(s => -s)}>Project</Th><Th>Device &amp; location</Th><Th c="text-right">Visibility</Th><Th c="text-right">Change</Th><Th c="text-right">Improved</Th><Th c="text-right">Declined</Th><Th c="text-right">Keywords</Th><Th>Updated</Th><Th c="text-right"><span className="sr-only">Open</span></Th></tr></thead>
+              <thead><tr><Th onClick={() => setSort(s => -s)}>Project</Th><Th>Device &amp; location</Th><Th c="text-right">Visibility</Th><Th c="text-right">Change</Th><Th c="text-right">Improved</Th><Th c="text-right">Declined</Th><Th c="text-right">Keywords</Th><Th>Updated</Th><Th c="text-right">Journey / action</Th></tr></thead>
               <tbody>
                 {lines.map(r => {
                   const D = DEVICE[r.device] || Monitor;
@@ -112,7 +114,7 @@ export default function PositionTrackingHome() {
                       <td className="px-4 text-right tabular-nums">{r.m.declined == null ? num(null) : link(r, 'declined', r.m.declined, r.m.declined ? 'text-red-600' : 'text-slate-500')}</td>
                       <td className="px-4 text-right tabular-nums font-medium">{link(r, 'keywords', r.m.keywords)}</td>
                       <td className="px-4 whitespace-nowrap text-slate-600">{link(r, 'updated', ago(r.m.updated), 'text-slate-600')}</td>
-                      <td className="px-4 text-right"><button type="button" onClick={() => open(r, (ai ? AI : SEO).name)} className="h-8 px-3 rounded-lg inline-flex items-center gap-1.5 text-13 font-medium text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50 cursor-pointer">Open<ArrowRight size={13} /></button></td>
+                      <td className="px-4 text-right whitespace-nowrap"><span className="inline-flex items-center gap-2"><JourneyButton bid={r.id} name={r.name} stage={journeys[r.id]} /><button type="button" onClick={() => open(r, (ai ? AI : SEO).name)} className="h-8 px-3 rounded-lg inline-flex items-center gap-1.5 text-13 font-medium text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50 cursor-pointer">Open<ArrowRight size={13} /></button></span></td>
                     </tr>);
                 })}
                 {without.map(r => (
