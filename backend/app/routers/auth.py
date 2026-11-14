@@ -141,7 +141,7 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
     audit_log(db, u.name, "login_ok", None, ip=ip)
     db.commit()
     issue_session(response, u.id, settings, u.password_hash)
-    return public(u) | {"must_change_password": is_known_default(u.password_hash), "totp_enabled": bool(u.totp_enabled)}
+    return public(u) | {"must_change_password": is_known_default(u.password_hash), "totp_enabled": bool(u.totp_enabled) and settings.two_factor_enabled}
 
 
 class PasswordIn(BaseModel):

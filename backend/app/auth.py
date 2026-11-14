@@ -95,7 +95,7 @@ def _seo_user(token: str, db: Session, settings: Settings) -> User | None:
         return None
     if claims.get("pv") != pw_fingerprint(u.password_hash):  # the password was changed or reset since this session was issued (or an old-format token): sign in again
         return None
-    on = bool(u.totp_enabled)
+    on = bool(u.totp_enabled) and settings.two_factor_enabled
     return User(id=str(u.id), name=u.name, email=u.email, role=u.role, department="SEO Platform", source="seo", needs_project_code=on, totp_enabled=on)
 
 

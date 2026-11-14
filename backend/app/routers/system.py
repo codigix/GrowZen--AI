@@ -21,7 +21,7 @@ def health():
 def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """The signed-in user, and whether their password is one that was published in the source (the page then forces a change)."""
     u = db.get(AppUser, int(user.id)) if user.source == "seo" and str(user.id).isdigit() else None
-    return user.__dict__ | {"is_admin": user.is_admin, "must_change_password": bool(u and is_known_default(u.password_hash)), "can_enrol_2fa": u is not None}
+    return user.__dict__ | {"is_admin": user.is_admin, "must_change_password": bool(u and is_known_default(u.password_hash)), "can_enrol_2fa": u is not None and get_settings().two_factor_enabled}
 
 
 @router.get("/status")

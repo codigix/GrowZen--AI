@@ -322,3 +322,19 @@ def test_an_admin_can_reset_a_lost_authenticator(monkeypatch):
     uid = [u["id"] for u in adm.get("/api/v1/users").json() if u["email"] == "lost@x.in"][0]
     assert adm.patch(f"/api/v1/users/{uid}", json={"reset_2fa": True}).status_code == 200
     assert c.get(f"/api/v1/businesses/{a}").status_code == 200
+
+
+def test_pausing_two_step_verification_asks_for_no_code_and_keeps_the_enrolment(monkeypatch):
+    from app.config import get_settings
+    clock = _Clock(monkeypatch)
+    user("paused-tf@x.in", "editor")
+    c, _ = login("paused-tf@x.in")
+    a = c.post("/api/v1/businesses", json={"name": "Paused Co"}).json()["id"]
+    _enrol(c, clock)
+    assert c.get(f"/api/v1/businesses/{a}").status_code == 403  # on: a code is needed
+    monkeypatch.setattr(get_settings(), "two_factor_enabled", False)
+    assert c.get(f"/api/v1/businesses/{a}").status_code == 200  # paused: nothing is asked
+    me = c.get("/api/v1/me").json()
+    assert me["totp_enabled"] is False and me["can_enrol_2fa"] is False
+    monkeypatch.setattr(get_settings(), "two_factor_enabled", True)
+    assert c.get(f"/api/v1/businesses/{a}").status_code == 403  # back on: the enrolment still works

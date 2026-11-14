@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     token_encryption_key: str = ""
 
     # Google (Business Profile, PageSpeed)
+    two_factor_enabled: bool = True  # false pauses the authenticator-app code (TWO_FACTOR_ENABLED=false): no code is asked, enrolments are kept and work again when it is true
     google_client_id: str = ""
     google_client_secret: str = ""
     pagespeed_api_key: str = ""
