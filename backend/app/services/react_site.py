@@ -313,7 +313,45 @@ def payload(a: Article, mode: str, when: datetime | None, image_url: str | None)
     }
 
 
+CMS_STATUS = {"draft": "Draft", "publish": "Published"}
+CMS_MARKERS = ("isPublished", "coverImage", "seoData")
+
+
+def detect_profile(conn: ReactSiteConnection, sample: dict | None, list_text: str = "") -> str:
+    """standard | cms. cms = a blog table of the kind this software's CMS-style sites use: `content`, `isPublished`, `coverImage`, a `seoData` JSON column.
+    Read from an example record, or, when the site's list call fails, from the column names its own error message prints."""
+    chosen = mapping_of(conn).get("profile", "auto")
+    if chosen in ("standard", "cms"):
+        return chosen
+    if sample and "content" in sample and ("isPublished" in sample or "seoData" in sample):
+        return "cms"
+    return "cms" if sum(m in (list_text or "") for m in CMS_MARKERS) >= 2 else "standard"
+
+
+def to_cms(a: Article, raw: dict, mode: str, when: datetime | None) -> dict:
+    """The article as one record of a `content / isPublished / seoData` blog table: the same shape the site's own admin form saves
+    (status "Draft" or "Published" with isPublished, SEO fields inside seoData, FAQs as {question, answer})."""
+    words = len(re.sub(r"<[^>]+>", " ", raw.get("body") or "").split())
+    published = mode == "publish"
+    pub_at = (when or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    return {
+        "title": raw["title"], "slug": raw["slug"], "excerpt": raw.get("excerpt") or "", "category": raw.get("category") or "", "subCategory": "", "author": "Admin",
+        "readingTime": max(1, round(words / 200)), "status": CMS_STATUS[mode], "isPublished": published,
+        "coverImage": "", "bannerImage": "", "relatedImages": [], "imageAltText": "", "imageCaption": "",
+        "content": raw["body"], "enableToc": False,
+        "seoData": {"focusKeyword": raw.get("focus_keyword") or "", "secondaryKeywords": ", ".join(raw.get("secondary_keywords") or []), "seoTitle": raw.get("seo_title") or raw["title"],
+                    "metaDescription": raw.get("seo_description") or "", "canonicalUrl": "", "index": True, "follow": True, "bannerImageAltText": "", "relatedImagesAltTexts": []},
+        "socialMediaData": {"socialTitle": raw.get("seo_title") or raw["title"], "socialDescription": raw.get("seo_description") or "", "socialImage": ""},
+        "ctaData": {"ctaType": "", "heading": "", "description": "", "buttonText": "", "buttonUrl": ""},
+        "relatedCategories": [], "faqs": raw.get("faqs") or [], "internalLinks": [], "relatedProductIds": [], "visibility": "Public",
+        "publishedAt": pub_at.strftime("%Y-%m-%d"),
+    }
+
+
 _SKIP_FROM_SAMPLE = {"id", "_id", "views", "likes", "created_at", "updated_at", "createdAt", "updatedAt"}
+
+
+_last_list_text: dict[str, str] = {}
 
 
 def _site_sample(c: httpx.Client, conn: ReactSiteConnection, base: str, path: str) -> dict | None:
@@ -322,6 +360,7 @@ def _site_sample(c: httpx.Client, conn: ReactSiteConnection, base: str, path: st
         r = c.get(base + path)
         if r.status_code in (401, 403):
             r = _send(c, conn, "GET", base + path)
+        _last_list_text[base + path] = r.text[:4000] if r.status_code >= 400 else ""
         d = r.json() if r.status_code == 200 else None
     except (httpx.HTTPError, ValueError):
         return None
@@ -408,6 +447,7 @@ DEFAULT_MAPPING = {
     "image_field": "image",         # the blog record field that stores the featured image URL
     "image_alt_field": "image_alt", # the blog record field for the ALT text ("" = none)
     "max_upload_mb": 5,             # the site's upload limit: larger images are re-compressed to fit first
+    "profile": "auto",              # how the blog record is shaped: standard (title, body, seo_title...) | cms (content, isPublished, seoData...) | auto (decided from the site)
 }
 MAPPING_KEYS = tuple(DEFAULT_MAPPING)
 
@@ -430,6 +470,9 @@ def clean_mapping(raw: dict | None) -> dict:
         if k == "image_delivery":
             if v not in ("upload", "inline"):
                 raise ReactSiteError("Image delivery must be 'upload' or 'inline'.")
+        elif k == "profile":
+            if v not in ("auto", "standard", "cms"):
+                raise ReactSiteError("Record shape must be auto, standard or cms.")
         elif k == "upload_format":
             if v not in ("multipart", "json_base64"):
                 raise ReactSiteError("Request format must be multipart or json_base64.")
@@ -788,7 +831,19 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
             sample = _site_sample(c, conn, base, path)
             raw = payload(a, mode, when, None)
             raw.pop("image"), raw.pop("image_alt")  # the image goes into the site's own field, set below
-            data, dropped = fit_to_site(raw, sample)
+            profile = detect_profile(conn, sample, _last_list_text.get(base + path, ""))
+            if profile == "cms":
+                if mode == "schedule":
+                    raise ReactSiteError("This website has no scheduled posts (its blog has only Draft and Published). Choose Save as draft or Publish now.")
+                data, dropped = to_cms(a, raw, mode, when), []
+                m = dict(conn.mapping or {})
+                for k, v in (("image_delivery", "inline"), ("image_field", "coverImage"), ("image_alt_field", "imageAltText"), ("max_upload_mb", 0.5)):
+                    if m.get(k) in (None, "", DEFAULT_MAPPING.get(k)):
+                        m[k] = v  # this website keeps the image itself in coverImage (its admin form reads the file as a data URL)
+                conn.mapping = m
+                steps.append({"step": "Match the website's blog fields", "ok": True, "detail": "Sent in this website's own shape: content, isPublished, seoData, faqs"})
+            else:
+                data, dropped = fit_to_site(raw, sample)
             if dropped:
                 steps.append({"step": "Match the website's blog fields", "ok": True, "detail": f"Not stored by this website: {', '.join(dropped)}"})
             if img_path:
