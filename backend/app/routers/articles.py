@@ -111,6 +111,29 @@ def get_article(article_id: int, b: Business = Depends(get_business), db: Sessio
     return {**row(a), **asch.state_of(a, asch.latest_by_article(db, b.id, a.id).get(a.id))}
 
 
+@router.get("/{article_id}/duplicates")
+def duplicates(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Other articles of this project that have the same title or the very same featured image file: each blog should have its own."""
+    import hashlib
+    a = _get(db, b, article_id)
+
+    def norm(t: str | None) -> str:
+        return " ".join((t or "").lower().split())
+
+    def digest(rel: str | None) -> str | None:
+        p = fi.path_of(rel) if rel else None
+        return hashlib.md5(p.read_bytes()).hexdigest() if p else None
+
+    mine, img = norm(a.title), digest(a.featured_image_path)
+    same_title, same_image = [], []
+    for o in db.scalars(select(Article).where(Article.business_id == b.id, Article.id != a.id)):
+        if mine and norm(o.title) == mine:
+            same_title.append({"id": o.id, "title": o.title})
+        if img and o.featured_image_path and digest(o.featured_image_path) == img:
+            same_image.append({"id": o.id, "title": o.title})
+    return {"same_title": same_title, "same_image": same_image}
+
+
 class RegenerateIn(BaseModel):
     part: Literal["full", "intro", "section", "conclusion", "faqs", "title", "meta"]
     section_id: str | None = Field(default=None, max_length=20)  # for "section": an id from /regenerate/sections

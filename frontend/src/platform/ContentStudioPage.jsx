@@ -620,6 +620,26 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
 /**
  * 2. 7-Step AI Blog Writer & E-E-A-T Quality Gate
  */
+/** Every blog should have its own title and its own image: say so when another article of this project has the same. */
+function DuplicateNotice({ b, article, title, image }) {
+  const d = useApi(`/businesses/${b.id}/articles/${article.id}/duplicates`);
+  useEffect(() => { d.reload(true); }, [image?.path, image?.url, article.featured_image_path]); // eslint-disable-line react-hooks/exhaustive-deps
+  const t = d.data?.same_title || [], im = d.data?.same_image || [];
+  const typed = String(title || '').trim().toLowerCase();
+  const titleDup = t.length > 0 && typed === String(article.title || '').trim().toLowerCase();
+  if (!titleDup && !im.length) return null;
+  const names = (l) => l.slice(0, 3).map(x => `#${x.id}`).join(', ');
+  return (
+    <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[12.5px] text-amber-900">
+      <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+      <div className="space-y-0.5">
+        {titleDup && <p><b>Same title as another article</b> ({names(t)}). Two posts with one title compete with each other in Google: give this one its own SEO title.</p>}
+        {im.length > 0 && <p><b>Same image as another article</b> ({names(im)}). Use a picture that shows this blog's topic.</p>}
+      </div>
+    </div>
+  );
+}
+
 function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pendingLength, elapsed = 0, onGenerate, generating, onSaved, onScheduled, toast }) {
   const [step, setStep] = useState(selectedArticle ? 1 : 0);
   const urlTopic = React.useMemo(() => (selectedArticle || selectedTopic ? '' : (new URLSearchParams(window.location.search).get('topic') || '').slice(0, 200)), []); // a keyword from My Keywords: the writer opens with it ready
@@ -972,6 +992,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 )}
                 <SeoField kind="meta" value={meta.meta_description} onChange={v => setMeta(m => ({ ...m, meta_description: v }))}
                   onRegenerate={selectedArticle ? () => regenRef.current?.run('meta') : null} busy={fieldBusy === 'meta'} disabled={Boolean(fieldBusy)} />
+                {selectedArticle && <DuplicateNotice b={b} article={selectedArticle} title={meta.title} image={featured} />}
                 {selectedArticle && <FeaturedImageField b={b} article={selectedArticle} value={featured} onChange={setFeatured} toast={toast} />}
                 {/* Article Body: HTML Editor & Live Preview */}
                 <div className="space-y-2">
