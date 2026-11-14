@@ -306,7 +306,7 @@ def payload(a: Article, mode: str, when: datetime | None, image_url: str | None)
         "title": a.title or a.keyword, "slug": _slug(a.title or a.keyword), "body": body_only,
         "excerpt": a.meta_description or "", "seo_title": a.title or a.keyword, "seo_description": a.meta_description or "",
         "focus_keyword": a.keyword, "secondary_keywords": a.secondary_keywords or [], "seo_keywords": ", ".join(keywords),
-        "tags": keywords[:8], "category": (a.topic or a.keyword or "").strip().title(),
+        "tags": keywords[:8], "category": (a.keyword or a.topic or "").strip().title()[:60],  # short, like a real category: the topic is a whole sentence and can overflow the site's column
         "image": image_url or "", "image_alt": (a.featured_image_alt or a.title or "") if image_url else "",
         "status": STATUS_OUT[mode], "date": pub_at.strftime("%Y-%m-%d"), "publication_time": pub_at.isoformat(timespec="seconds"),
         "faqs": faqs, "schema_jsonld": schema.strip(), "source": "growzen", "growzen_article_id": a.id,
