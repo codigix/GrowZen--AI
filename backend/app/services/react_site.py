@@ -620,12 +620,16 @@ def _upload_image(c: httpx.Client, conn: ReactSiteConnection, a: Article, steps:
     return upload_image_bytes(c, conn, p.read_bytes(), fi.upload_filename(a, a.featured_image_path), a.featured_image_alt or a.title or "", steps)
 
 
-def _verify_image(conn: ReactSiteConnection, base: str, path: str, pid: str, image_url: str, steps: list[dict], field: str | None = None) -> None:
+def _verify_image(conn: ReactSiteConnection, base: str, path: str, pid: str, image_url: str, steps: list[dict], field: str | None = None, slug: str | None = None) -> None:
     """Read the post back: is the image URL stored in the mapped field, and does the image load publicly?"""
     field = field or mapping_of(conn)["image_field"]
     try:
         with site_client(30) as c:
-            r = _send(c, conn, "GET", f"{base}{path}/{pid}")
+            r = None
+            for key in dict.fromkeys(k for k in (pid, slug) if k):  # some sites read one post by its id, others by its slug
+                r = _send(c, conn, "GET", f"{base}{path}/{key}")
+                if r.status_code == 200:
+                    break
             rec = r.json() if r.status_code == 200 else None
             rec = _find(rec, ("data", "blog", "post")) if isinstance(rec, dict) and field not in rec and _find(rec, ("data", "blog", "post")) else rec
             saved = _dig(rec, field) if isinstance(rec, dict) else None
@@ -929,7 +933,7 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
         url = f"{blog}/{_page_key(conn, base, path, str(slug), str(pid))}"
     steps.append({"step": "Send to the website", "ok": True, "detail": f"Post {pid} {'updated' if existing else 'created'} as {data.get('status', STATUS_OUT[mode])}"})
     if image_url:
-        _verify_image(conn, base, path, str(pid), image_url, steps, img_field)
+        _verify_image(conn, base, path, str(pid), image_url, steps, img_field, str(slug))
     return {"id": str(pid), "url": url, "status": {"draft": "draft", "publish": "publish", "schedule": "scheduled"}[mode], "image_url": image_url, "steps": steps}
 
 

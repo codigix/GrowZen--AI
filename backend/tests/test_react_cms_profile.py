@@ -109,3 +109,29 @@ def test_a_create_answer_without_an_id_is_resolved_by_slug_and_an_existing_post_
     a.react_post_id, a.react_status = None, None  # GrowZen never stored it: publishing again must update post 5, not create a second one
     again = rs.publish(conn, a, "publish", None)
     assert again["id"] == "5" and len(posts) == 1
+
+
+def test_image_check_reads_the_post_back_by_slug_when_the_site_has_no_read_by_id(monkeypatch):
+    import contextlib
+
+    from app.services import crypto
+    img = "data:image/webp;base64,AAAA"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/api/auth/login":
+            return httpx.Response(200, json={"token": "a.b.c", "expiresIn": 3600})
+        if req.url.path == "/api/blogs/my-slug":
+            return httpx.Response(200, json={"id": 9, "slug": "my-slug", "coverImage": img})
+        return httpx.Response(404, json={"message": "Blog not found"})
+
+    @contextlib.contextmanager
+    def fake(_timeout=30):
+        with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+            yield c
+
+    monkeypatch.setattr(rs, "site_client", fake)
+    conn = _conn()
+    conn.login_username, conn.password_enc = "u@x.com", crypto.seal("pw")
+    steps = []
+    rs._verify_image(conn, "https://site.example", "/api/blogs", "9", img, steps, "coverImage", "my-slug")
+    assert steps[0]["ok"] is True and "stored unchanged" in steps[0]["detail"]
