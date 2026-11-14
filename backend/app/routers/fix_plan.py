@@ -1,4 +1,4 @@
-"""The fix plan of one area: /businesses/{id}/fix-plan/{area} (the changes to make, their worth and the score) and a re-check that raises the score once fixes are confirmed."""
+"""The fix plan: /businesses/{id}/fix-plan (every change to make, by area, with scores) and a re-check that raises the scores once fixes are confirmed."""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -12,21 +12,18 @@ from ..services.activity import log
 router = APIRouter(prefix="/businesses/{business_id}/fix-plan", tags=["growth"])
 
 
-@router.get("/{area}")
-def get_plan(area: str, b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    try:
-        return fix_plan.plan(db, b, area)
-    except ValueError as exc:
-        raise HTTPException(404, str(exc)) from exc
+@router.get("")
+def get_plan(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    return fix_plan.overview(db, b)
 
 
-@router.post("/{area}/check")
-def check_fixes(area: str, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """Scan the homepage again: tasks whose check passes now are closed and the area's score is read again."""
+@router.post("/check")
+def check_fixes(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Scan the homepage again: tasks whose check passes now are closed and the scores are read again."""
     try:
-        out = fix_plan.check(db, b, area)
+        out = fix_plan.check(db, b)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    log(db, user.name, "fix_plan_checked", b.id, area=area, before=out["result"]["before"], after=out["result"]["after"])
+    log(db, user.name, "fix_plan_checked", b.id, scores={k: v["after"] for k, v in out["result"]["areas"].items()})
     db.commit()
     return out

@@ -39,15 +39,20 @@ def biz(client):
     db.close()
 
 
-def test_the_plan_lists_the_areas_tasks_with_their_real_worth(client, biz):
-    d = client.get(f"/api/v1/businesses/{biz}/fix-plan/seo").json()
-    assert d["scored"] and d["score"]["now"] == 10 and d["score"]["checks_total"] == 3
-    pts = {i["key"]: i["points"] for i in d["open"]}
-    assert pts == {"fix.xray.title": 50.0, "fix.xray.description": 40.0} and d["potential"] == 90.0 and d["score"]["potential"] == 100
-    assert [i["severity"] for i in d["open"]] == ["serious", "warning"] and d["open_total"] == 2
-    g = client.get(f"/api/v1/businesses/{biz}/fix-plan/gmb").json()
-    assert g["scored"] is False and g["score"] is None and [i["title"] for i in g["open"]] == ["Add a phone number"] and g["open"][0]["points"] is None
-    assert client.get(f"/api/v1/businesses/{biz}/fix-plan/nothing").status_code == 404
+def _area(d, key):
+    return next(a for a in d["areas"] if a["key"] == key)
+
+
+def test_one_page_lists_every_areas_tasks_with_their_real_worth(client, biz):
+    d = client.get(f"/api/v1/businesses/{biz}/fix-plan").json()
+    seo = _area(d, "seo")
+    assert seo["scored"] and seo["score"]["now"] == 10 and seo["score"]["checks_total"] == 3 and seo["potential"] == 90.0 and seo["score"]["potential"] == 100
+    pts = {i["key"]: (i["points"], i["area"]) for i in d["open"] if i["area"] == "seo"}
+    assert pts == {"fix.xray.title": (50.0, "seo"), "fix.xray.description": (40.0, "seo")}
+    gmb = _area(d, "gmb")
+    assert gmb["scored"] is False and gmb["score"] is None and gmb["open_total"] == 1
+    assert [i["title"] for i in d["open"] if i["area"] == "gmb"] == ["Add a phone number"] and d["open_total"] == 3
+    assert [i["severity"] for i in d["open"]] == ["serious", "warning", "warning"]  # one list, most urgent first
 
 
 def test_checking_the_fixes_closes_passing_tasks_and_raises_the_score(client, biz, monkeypatch):
@@ -57,14 +62,13 @@ def test_checking_the_fixes_closes_passing_tasks_and_raises_the_score(client, bi
         db.commit()
         return rep, None
     monkeypatch.setattr(growth_metrics, "_fresh_xray", fresh)
-    d = client.post(f"/api/v1/businesses/{biz}/fix-plan/seo/check").json()
-    assert d["result"] == {"before": 10, "after": 60, "delta": 50, "closed": 1, "still_open": 1}
-    assert [i["key"] for i in d["closed"]] == ["fix.xray.title"] and d["gained"] == 50.0 and [i["key"] for i in d["open"]] == ["fix.xray.description"]
-    assert d["potential"] == 40.0 and len(d["history"]) == 2  # the scan history shows the score moving
-    assert [h["score"] for h in d["history"]][-1] == 60
+    d = client.post(f"/api/v1/businesses/{biz}/fix-plan/check").json()
+    assert d["result"]["areas"]["seo"] == {"before": 10, "after": 60, "delta": 50} and d["result"]["closed"] == 1 and d["result"]["still_open"] == 2
+    seo = _area(d, "seo")
+    assert [i["key"] for i in d["closed"]] == ["fix.xray.title"] and seo["gained"] == 50.0 and seo["potential"] == 40.0 and [h["score"] for h in seo["history"]][-1] == 60 and len(seo["history"]) == 2
 
 
 def test_an_unreachable_site_is_said_plainly(client, biz, monkeypatch):
     monkeypatch.setattr(growth_metrics, "_fresh_xray", lambda db, b: (None, "The website could not be read: timeout"))
-    r = client.post(f"/api/v1/businesses/{biz}/fix-plan/seo/check")
+    r = client.post(f"/api/v1/businesses/{biz}/fix-plan/check")
     assert r.status_code == 422 and "could not be read" in r.json()["detail"]

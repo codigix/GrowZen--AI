@@ -51,6 +51,10 @@ function BacklinkIntelRedirect() {
 const BacklinkCheckerPage = lazy(() => import('./platform/BacklinkCheckerPage'));
 const GrowthFixPage = lazy(() => import('./platform/GrowthFixPage'));
 const BacklinksCitationsPage = lazy(() => import('./platform/BacklinksCitationsPage'));
+function FixPlanArea() {
+  const { area } = useParams();
+  return <Navigate to={`/fix-plan?area=${area}`} replace />;
+}
 const FixPlanPage = lazy(() => import('./platform/FixPlanPage'));
 const BacklinkHubPage = lazy(() => import('./platform/BacklinkHubPage'));
 const CompetitorWatchPage = lazy(() => import('./platform/CompetitorWatchPage'));
@@ -192,7 +196,8 @@ export default function App() {
         <Route path="off-page-seo/:tab" element={<BacklinksCitationsPage />} />
         <Route path="backlink-checker" element={<BacklinkCheckerPage />} />
         <Route path="projects/:id/journey" element={<Navigate to="/tracking-overview" replace />} />
-        <Route path="fix-plan/:area" element={<FixPlanPage />} />
+        <Route path="fix-plan" element={<FixPlanPage />} />
+        <Route path="fix-plan/:area" element={<FixPlanArea />} />
         <Route path="backlinks" element={<Navigate to="/backlinks/links" replace />} />
         <Route path="backlinks/:view" element={<BacklinkHubPage />} />
         <Route path="backlink-intelligence" element={<BacklinkIntelRedirect />} />

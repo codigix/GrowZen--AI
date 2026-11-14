@@ -57,11 +57,11 @@ def _scores(report: dict[str, Any] | None, area: str) -> dict[str, Any] | None:
     return {"score": s["score"], "passed": s["passed"], "total": s["total"], "weight": total, "checks": {c["key"]: {"weight": c.get("weight", 0), "passed": bool(c.get("passed")), "label": c.get("label")} for c in s["checks"]}}
 
 
-def plan(db: Session, b: Business, area: str) -> dict[str, Any]:
+def plan(db: Session, b: Business, area: str, listing: dict[str, Any] | None = None) -> dict[str, Any]:
     if area not in AREAS:
         raise ValueError("Unknown area")
     label, about = AREAS[area]
-    listing = growth_issues.listing(db, b)
+    listing = listing or growth_issues.listing(db, b)
     home = _home(b)
     runs = _runs(db, b)
     latest = runs[0] if runs else None
@@ -99,10 +99,28 @@ def plan(db: Session, b: Business, area: str) -> dict[str, Any]:
             "note": None if score or area not in SCORED else ("Add the project's website first." if not home else "Scan the homepage to get this score: press “Check my fixes”.")}
 
 
-def check(db: Session, b: Business, area: str) -> dict[str, Any]:
-    """Scan the homepage again, close the tasks whose check passes now, and report the score before and after."""
+def overview(db: Session, b: Business) -> dict[str, Any]:
+    """Every area on one page: each area's score and counts, and one list of all the changes to make (each tagged with its area)."""
+    listing = growth_issues.listing(db, b)
+    areas, open_all, closed_all = [], [], []
+    for key in AREAS:
+        p = plan(db, b, key, listing)
+        for i in p["open"]:
+            open_all.append({**i, "area": key, "area_label": p["label"]})
+        for i in p["closed"]:
+            closed_all.append({**i, "area": key, "area_label": p["label"]})
+        areas.append({"key": key, "label": p["label"], "about": p["about"], "scored": p["scored"], "score": p["score"], "history": p["history"], "counts": p["counts"], "open_total": p["open_total"],
+                      "closed_total": len(p["closed"]), "potential": p["potential"], "gained": p["gained"]})
+    order = {k: i for i, k in enumerate(AREAS)}
+    open_all.sort(key=lambda i: (ORDER.get(i["severity"], 9), order[i["area"]], -(i["points"] or 0)))
+    return {"has_website": bool(_home(b)), "areas": areas, "open": open_all, "closed": closed_all, "open_total": len(open_all),
+            "counts": {k: sum(1 for i in open_all if i["severity"] == k) for k in ORDER}}
+
+
+def check(db: Session, b: Business) -> dict[str, Any]:
+    """Scan the homepage again, close the tasks whose check passes now, and report each scored area's score before and after."""
     from . import growth_metrics
-    before = plan(db, b, area)
+    before = overview(db, b)
     home = _home(b)
     if not home:
         raise ValueError("Add the project's website first.")
@@ -111,8 +129,9 @@ def check(db: Session, b: Business, area: str) -> dict[str, Any]:
         raise ValueError(why or "The website could not be read.")
     growth_issues.xray_sync(db, b, home, True)
     db.commit()
-    after = plan(db, b, area)
-    b_now, a_now = (before["score"] or {}).get("now"), (after["score"] or {}).get("now")
-    after["result"] = {"before": b_now, "after": a_now, "delta": (a_now - b_now) if (a_now is not None and b_now is not None) else None,
-                       "closed": max(0, len(after["closed"]) - len(before["closed"])), "still_open": after["open_total"]}
+    after = overview(db, b)
+    was = {a["key"]: (a["score"] or {}).get("now") for a in before["areas"]}
+    now = {a["key"]: (a["score"] or {}).get("now") for a in after["areas"]}
+    changes = {k: {"before": was[k], "after": now[k], "delta": (now[k] - was[k]) if (now[k] is not None and was[k] is not None) else None} for k in SCORED}
+    after["result"] = {"areas": changes, "closed": max(0, len(after["closed"]) - len(before["closed"])), "still_open": after["open_total"]}
     return after
