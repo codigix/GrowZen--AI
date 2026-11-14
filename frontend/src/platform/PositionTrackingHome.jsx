@@ -131,7 +131,7 @@ export default function PositionTrackingHome() {
         <div className="px-5 py-3 border-t border-slate-100 text-13 text-slate-500">{lines.length + without.length} row{lines.length + without.length === 1 ? '' : 's'}</div>
       </section>
       <NewTrackingModal open={Boolean(creating)} onClose={() => setCreating(false)} projects={rows} initialId={typeof creating === 'number' ? creating : undefined}
-        onDone={(id) => { setCreating(false); data.reload(true); choose(id).then(ok => ok && navigate('/rank-tracking?tab=positions')); }} />
+        onDone={(id, hasKeywords) => { setCreating(false); data.reload(true); choose(id).then(ok => ok && navigate(hasKeywords ? '/rank-tracking?tab=positions' : '/keyword-management/ai')); }} />
     </div>
   );
 }
