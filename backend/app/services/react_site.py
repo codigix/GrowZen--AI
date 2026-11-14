@@ -374,6 +374,27 @@ def _site_sample(c: httpx.Client, conn: ReactSiteConnection, base: str, path: st
     return max(rows, key=lambda x: sum(v not in (None, "") for v in x.values())) if rows else None
 
 
+def _rows_of(d) -> list[dict]:
+    rows = d if isinstance(d, list) else _find(d, ("data", "blogs", "posts", "items", "results")) if isinstance(d, dict) else None
+    return [x for x in rows if isinstance(x, dict)] if isinstance(rows, list) else []
+
+
+def find_post(c: httpx.Client, conn: ReactSiteConnection, base: str, path: str, slug: str) -> str | None:
+    """The id of the website's post with this slug, read from its public list and then its admin list (drafts are only there).
+    Used when the site's answer to a create carries no id, and before creating, so a post that is already there is updated, never duplicated."""
+    for url, authed in ((base + path, False), (f"{base}{path}/admin/all", True)):
+        try:
+            r = _send(c, conn, "GET", url) if authed else c.get(url)
+            if r.status_code != 200:
+                continue
+            for x in _rows_of(r.json()):
+                if str(x.get("slug") or "") == slug and _id_of(x):
+                    return _id_of(x)
+        except (httpx.HTTPError, ValueError, ReactSiteError):
+            continue
+    return None
+
+
 def site_db_problem(base: str, path: str) -> str | None:
     """The website's own blog list failed with a database error (it prints the SQL error): that is why posting fails, whatever the post holds."""
     m = re.search(r"Unknown column '([\w.]+)'", _last_list_text.get(base + path, ""))
@@ -859,6 +880,11 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
                 data, dropped = fit_to_site(raw, sample)
             if dropped:
                 steps.append({"step": "Match the website's blog fields", "ok": True, "detail": f"Not stored by this website: {', '.join(dropped)}"})
+            if not existing:
+                found = find_post(c, conn, base, path, str(data.get("slug") or ""))
+                if found:
+                    existing = found
+                    steps.append({"step": "Find the existing post", "ok": True, "detail": f"A post with this address is already on the website (id {found}); it is updated, not created again"})
             if img_path:
                 img_field = _image_fields(sample, mapping_of(conn))[0]
                 image_url, r, existing = _send_with_image(c, conn, a, img_path, sample, data, steps, base, path, existing)
@@ -886,6 +912,14 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
     except ValueError:
         d = {}
     pid = _id_of(d) or existing
+    if not pid:
+        try:
+            with site_client(30) as c2:
+                pid = find_post(c2, conn, base, path, str(data.get("slug") or ""))
+        except (httpx.HTTPError, SSRFValidationError):
+            pid = None
+        if pid:
+            steps.append({"step": "Find the post's id", "ok": True, "detail": f"The website's answer had no id; found the post by its address (id {pid})"})
     if not pid:
         raise ReactSiteError("The website accepted the post but did not return its id (expected JSON like {\"id\": 12}), so it could not be updated or deleted later.")
     slug = _find(d, ("slug",)) or data.get("slug") or _slug(a.title or a.keyword)
