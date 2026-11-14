@@ -81,3 +81,26 @@ def _next(status_: str, used: list[str], target: str | None, articles: int, r: d
     if status_ == "working":
         return {"text": "Keep it fresh: update the page now and then", "to": "/rank-tracking/positions"}
     return {"text": "Check the page that should rank", "to": "/rank-tracking/positions"}
+
+
+def pages_for_keywords(db: Session, b: Business) -> dict[str, Any]:
+    """For each tracked keyword, the website pages that use it, read from the last site crawl: the page's title, meta description and main heading.
+    A page counts when it carries every word of the keyword (same rule as "where it is used" elsewhere). The crawl does not keep body text, so this
+    is where the page says what it is about, not every mention."""
+    from urllib.parse import urlsplit
+    from . import growth_content as gc
+    crawl = gc._crawl(db, b)
+    pages = [p for p in (crawl.get("pages") or []) if p.get("status") == 200 and p.get("url")]
+    rows = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
+    out: dict[str, list[dict[str, Any]]] = {}
+    for k in rows:
+        found = []
+        for p in pages:
+            h1 = p.get("h1") if isinstance(p.get("h1"), str) else " ".join(p.get("h1") or [])
+            where = [label for label, text in (("title", p.get("title")), ("heading", h1), ("description", p.get("meta_description"))) if gc.has_keyword(gc._corpus([text]), k.keyword)]
+            if where:
+                path = urlsplit(p["url"]).path or "/"
+                found.append({"url": p["url"], "path": path, "in": where})
+        found.sort(key=lambda x: (-len(x["in"]), x["path"]))
+        out[k.keyword] = found
+    return {"crawled": bool(pages), "found_at": crawl.get("_found"), "pages": out}

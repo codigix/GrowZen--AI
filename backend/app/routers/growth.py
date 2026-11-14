@@ -51,6 +51,13 @@ def keyword_usage(b: Business = Depends(get_business), db: Session = Depends(get
     return keyword_ai.usage(db, b)
 
 
+@router.get("/keywords/pages")
+def keyword_pages(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The website pages that use each tracked keyword (title, heading or description), from the last site crawl."""
+    from ..services import keyword_status as ks  # noqa: PLC0415
+    return ks.pages_for_keywords(db, b)
+
+
 @router.get("/keywords/status")
 def keyword_status(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Every tracked keyword in one view: position now, impressions and clicks, where it is used, whether it is worth pushing, and what to do next."""

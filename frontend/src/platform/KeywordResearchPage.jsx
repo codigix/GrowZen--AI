@@ -659,8 +659,24 @@ function JustAdded({ names, added, total, mapped }) {
   );
 }
 
+/** The website pages that use a keyword (page title, heading or description), from the last site crawl. */
+function UsedOn({ info, keyword }) {
+  if (!info) return null;
+  if (!info.crawled) return <span className="block mt-1 text-11 text-slate-400">Run a site audit to see which pages use it.</span>;
+  const list = info.pages?.[keyword] || [];
+  if (!list.length) return <span className="block mt-1 text-11 text-amber-700">No page uses it yet (title, heading or description).</span>;
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-1">
+      <span className="text-11 text-slate-400">Used on:</span>
+      {list.slice(0, 4).map(x => <a key={x.url} href={x.url} target="_blank" rel="noreferrer" title={`In the page ${x.in.join(', ')}`} className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-2 py-0.5 text-11">{x.path}</a>)}
+      {list.length > 4 && <span title={list.slice(4).map(x => x.path).join(', ')} className="text-11 text-slate-500">+{list.length - 4} more</span>}
+    </span>
+  );
+}
+
 function Tracked({ b, kw }) {
   const [busy, error, run] = useAction();
+  const pagesInfo = useApi(`/businesses/${b.id}/keywords/pages`).data;
   const tracked = kw.data?.keywords || [];
   const location = useLocation();
   const fresh = useMemo(() => new Set((location.state?.added || []).map(x => String(x).toLowerCase())), [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -697,7 +713,7 @@ function Tracked({ b, kw }) {
                   <tr key={k.id} data-just-added={fresh.has(k.keyword.toLowerCase()) ? '1' : undefined} className={fresh.has(k.keyword.toLowerCase()) ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}>
                     <td className="p-2 text-slate-900">{k.keyword}{(k.uses || []).length > 0 && <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">{k.uses.map(u => <UseChip key={u} u={u} />)}</span>}{fresh.has(k.keyword.toLowerCase()) && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5 align-middle">Just added</span>}<div>{k.intent && <Badge tone={INTENT_TONE[k.intent] || 'gray'}>{k.intent}</Badge>}</div></td>
                     <td className="p-2 text-right tabular-nums">{fmt(k.volume)}</td>
-                    <td className="p-2"><input list={`pages-${b.id}`} className={`${inputCls} max-w-[260px] ${!k.target_url ? 'ring-1 ring-amber-300' : ''}`} defaultValue={k.target_url || ''} placeholder="— not mapped —" onBlur={e => e.target.value !== (k.target_url || '') && update(k, { target_url: e.target.value || null })} /></td>
+                    <td className="p-2"><input list={`pages-${b.id}`} className={`${inputCls} max-w-[260px] ${!k.target_url ? 'ring-1 ring-amber-300' : ''}`} defaultValue={k.target_url || ''} placeholder="— not mapped —" onBlur={e => e.target.value !== (k.target_url || '') && update(k, { target_url: e.target.value || null })} /><UsedOn info={pagesInfo} keyword={k.keyword} /></td>
                     <td className="p-2 text-right tabular-nums">{k.rank ?? <span className="text-slate-400">—</span>}{k.rank && k.prev_rank && k.prev_rank !== k.rank && <span className={`ml-1 text-11 ${k.prev_rank > k.rank ? 'text-emerald-700' : 'text-red-600'}`}>{k.prev_rank > k.rank ? '▲' : '▼'}{Math.abs(k.prev_rank - k.rank)}</span>}</td>
                     <td className="p-2"><Select className="h-8 px-2 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200" value={k.priority} onChange={e => update(k, { priority: e.target.value })}>{['High', 'Medium', 'Low'].map(p => <option key={p}>{p}</option>)}</Select></td>
                     <td className="p-2 text-right"><button type="button" onClick={() => remove(k)} disabled={busy === `d${k.id}`} className="text-slate-400 hover:text-red-600 cursor-pointer" aria-label={`Stop tracking ${k.keyword}`}><Trash2 size={14} /></button></td>

@@ -45,3 +45,20 @@ def test_nothing_is_shown_for_a_project_with_no_keywords(client):
     bid = client.post("/api/v1/businesses", json={"name": "Empty Co", "website": "https://emptyco.example/"}).json()["id"]
     d = client.get(f"/api/v1/businesses/{bid}/keywords/status").json()
     assert d["total"] == 0 and d["state"] == "no_keywords"
+
+
+def test_pages_that_use_each_keyword_come_from_the_site_crawl(client, biz, monkeypatch):
+    from app.services import growth_content as gc
+    crawl = {"_found": "2026-11-10", "pages": [
+        {"url": "https://statusco.example/", "status": 200, "title": "Status Co: dental implants in Pune", "h1": "Dental implants Pune", "meta_description": "Book a visit."},
+        {"url": "https://statusco.example/services", "status": 200, "title": "Services", "h1": "Our services", "meta_description": "Teeth whitening and dental implants in Pune."},
+        {"url": "https://statusco.example/missing", "status": 404, "title": "dental implants pune", "h1": "", "meta_description": ""},
+    ]}
+    monkeypatch.setattr(gc, "_crawl", lambda db, b: crawl)
+    d = client.get(f"/api/v1/businesses/{biz}/keywords/pages").json()
+    assert d["crawled"] is True and d["found_at"] == "2026-11-10"
+    imp = d["pages"]["dental implants pune"]
+    assert [x["path"] for x in imp] == ["/", "/services"] and imp[0]["in"] == ["title", "heading"] and imp[1]["in"] == ["description"]  # the 404 page is left out
+    assert d["pages"]["kids dentist"] == []
+    monkeypatch.setattr(gc, "_crawl", lambda db, b: {})
+    assert client.get(f"/api/v1/businesses/{biz}/keywords/pages").json()["crawled"] is False
