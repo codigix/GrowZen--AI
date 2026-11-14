@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { AlertTriangle, CheckCircle2, XCircle, MinusCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, XCircle, MinusCircle, Download, Printer, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Card, Badge, Tabs, ErrorNote, Button, useAction } from './SeoUi';
 import { api } from './seoApi';
 
@@ -69,6 +70,63 @@ function ResearchedKeywords({ r, bid, competitor }) {
   );
 }
 
+const PRI = { high: ['Do first', 'red'], medium: ['Next', 'amber'], low: ['Later', 'gray'] };
+const esc = (t) => String(t ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+/** The upgrade report as one standalone page the user can keep, send or print. */
+function reportHtml(c) {
+  const u = c.upgrade; const them = c.competitor?.name || c.competitor?.target || 'Competitor';
+  const rows = u.items.map(i => `<tr><td><b class="${i.priority}">${PRI[i.priority][0]}</b></td><td>${esc(i.area)}</td><td><b>${esc(i.title)}</b><br><span>${esc(i.why)}</span></td><td>${esc(i.you)}</td><td>${esc(i.them)}</td><td>${esc(i.fix)}</td></tr>`).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Upgrade report: ${esc(c.ours?.target)} vs ${esc(them)}</title><style>body{font:14px/1.5 system-ui,sans-serif;margin:32px;color:#1e293b}h1{font-size:22px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin:16px 0}td,th{border-bottom:1px solid #e2e8f0;padding:8px 10px;text-align:left;vertical-align:top}th{font-size:12px;text-transform:uppercase;color:#64748b}span{color:#64748b;font-size:12.5px}.high{color:#b91c1c}.medium{color:#b45309}.low{color:#64748b}li{margin:4px 0}</style></head><body><h1>Where to upgrade: ${esc(c.ours?.target)} vs ${esc(them)}</h1><p>${esc(u.headline)}</p><p><span>Made ${new Date().toLocaleDateString('en-GB')}. ${esc(u.note)}</span></p><table><thead><tr><th>Priority</th><th>Area</th><th>What to improve</th><th>You</th><th>Them</th><th>How to fix</th></tr></thead><tbody>${rows}</tbody></table>${u.strengths.length ? `<h2>Where you already lead</h2><ul>${u.strengths.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</body></html>`;
+}
+
+/** Where to upgrade, in order: every real difference found in this comparison, how to fix it and where to do it. */
+function UpgradeReport({ c, onGo }) {
+  const u = c.upgrade;
+  const [pri, setPri] = useState('all');
+  if (!u) return <p className="text-13 text-slate-500">This comparison has no report yet. Compare again.</p>;
+  const items = u.items.filter(i => pri === 'all' || i.priority === pri);
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([reportHtml(c)], { type: 'text/html' }));
+    const a = document.createElement('a'); a.href = url; a.download = `upgrade-report-${(c.competitor?.name || 'competitor').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.html`; a.click(); URL.revokeObjectURL(url);
+  };
+  const print = () => { const w = window.open('', '_blank'); if (!w) return; w.document.write(reportHtml(c)); w.document.close(); w.focus(); w.print(); };
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 p-4">
+        <p className="text-14 font-semibold text-slate-900">{u.headline}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {Object.entries(PRI).map(([k, [l, t]]) => <button key={k} type="button" onClick={() => setPri(pri === k ? 'all' : k)} aria-pressed={pri === k} className={`cursor-pointer rounded-full ${pri === k ? 'ring-2 ring-indigo-400' : ''}`}><Badge tone={t}>{l} {u.counts[k]}</Badge></button>)}
+          <span className="ml-auto flex gap-2"><Button size="sm" icon={Download} onClick={download}>Download report</Button><Button size="sm" icon={Printer} onClick={print}>Print</Button></span>
+        </div>
+      </div>
+      {!items.length ? <p className="text-13 text-slate-500">Nothing to upgrade here.</p> : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full text-13 min-w-[860px]">
+            <thead className="bg-slate-50 text-left text-11 uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2 font-semibold">Priority</th><th className="px-3 py-2 font-semibold">What to improve</th><th className="px-3 py-2 font-semibold">You</th><th className="px-3 py-2 font-semibold">Them</th><th className="px-3 py-2 font-semibold">How to fix</th><th className="px-3 py-2" /></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {items.map((i, n) => (
+                <tr key={n} className="align-top">
+                  <td className="px-3 py-3"><Badge tone={PRI[i.priority][1]}>{PRI[i.priority][0]}</Badge><div className="text-11.5 text-slate-400 mt-1">{i.area}</div></td>
+                  <td className="px-3 py-3 max-w-[260px]"><div className="font-semibold text-slate-900">{i.title}</div><div className="text-12 text-slate-500 mt-0.5">{i.why}</div></td>
+                  <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{i.you}</td>
+                  <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{i.them}</td>
+                  <td className="px-3 py-3 text-slate-700 max-w-[320px]">{i.fix}</td>
+                  <td className="px-3 py-3 text-right">{i.to && <Link to={i.to} onClick={onGo}><Button size="sm" icon={ArrowRight}>{i.to_label || 'Open'}</Button></Link>}</td>
+                </tr>))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {u.strengths.length > 0 && (
+        <div><div className="text-12 font-semibold uppercase tracking-wide text-emerald-700 mb-1.5">Where you already lead</div>
+          <ul className="grid gap-1 text-13 text-slate-700">{u.strengths.map((x, n) => <li key={n} className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-600 mt-0.5 shrink-0" />{x}</li>)}</ul></div>
+      )}
+      <p className="text-12 text-slate-500">{u.note}</p>
+    </div>
+  );
+}
+
 const STATUS_TONE = {
   both_pass: ['green', CheckCircle2, 'Both pass'],
   both_fail: ['red', XCircle, 'Both fail'],
@@ -95,8 +153,8 @@ function MetricRow({ m }) {
 /** The comparison without its own card: inside a modal the modal is the frame. */
 const BareShell = ({ note, children }) => <div><p className="text-12.5 text-slate-500 mb-4">{note}</p>{children}</div>;
 
-export function ComparisonResult({ c, bare = false }) {
-  const [tab, setTab] = useState('overview');
+export function ComparisonResult({ c, bare = false, onGo }) {
+  const [tab, setTab] = useState('report');
   if (c.error) return <ErrorNote>{c.error}</ErrorNote>;
   const checks = c.technical_seo?.checks || [];
   const pages = c.pages || {};
@@ -112,11 +170,14 @@ export function ComparisonResult({ c, bare = false }) {
         </div>
       )}
       <Tabs value={tab} onChange={setTab} tabs={[
+        { id: 'report', label: 'Upgrade report', count: c.upgrade?.total },
         { id: 'overview', label: 'Scores & vitals' },
         { id: 'technical', label: 'Technical SEO', count: checks.length },
         { id: 'pages', label: 'Pages', count: pages.matched?.length || 0 },
         { id: 'keywords', label: 'Keywords & content' }
       ]} />
+
+      {tab === 'report' && <UpgradeReport c={c} onGo={onGo} />}
 
       {tab === 'overview' && (
         <div className="space-y-5">

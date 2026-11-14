@@ -346,7 +346,7 @@ def compare(db: Session, ours: ResolvedAudit, theirs: ResolvedAudit) -> dict[str
     compatible = bool(ours.strategy) and bool(theirs.strategy) and ours.strategy == theirs.strategy
     competitor = db.get(Competitor, theirs.competitor_id) if theirs.competitor_id else None
     ours_business = db.get(Business, ours.business_id) if ours.business_id else None
-    return {
+    result = {
         "ours": {"audit_id": ours.audit_id, "business_id": ours.business_id, "target": ours.target, "strategy": ours.strategy, "finished_at": ours.finished_at and ours.finished_at.isoformat()},
         "competitor": {"audit_id": theirs.audit_id, "competitor_id": theirs.competitor_id, "name": competitor.name if competitor else None,
                         "target": theirs.target, "strategy": theirs.strategy, "finished_at": theirs.finished_at and theirs.finished_at.isoformat()},
@@ -366,3 +366,6 @@ def compare(db: Session, ours: ResolvedAudit, theirs: ResolvedAudit) -> dict[str
         "keywords_and_content_gaps": _keyword_gap_comparison(db, ours.business_id, theirs.target, our_crawl, their_crawl,
                                                             our_name=(ours_business.name if ours_business else ""), their_name=competitor.name if competitor else "", our_host=ours.target or ""),
     }
+    from . import competitor_report  # noqa: PLC0415
+    result["upgrade"] = competitor_report.build(result)
+    return result
