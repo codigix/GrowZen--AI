@@ -465,6 +465,7 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
   const [pick, setPick] = useState(false);
   const [broken, setBroken] = useState(false);
   const fileRef = useRef(null);
+  const [card, setCard] = useState(null);   // the picture made from the post's words, shown before it is used: { image_base64, style, styles }
   const set = (patch) => setEdit(e => ({ ...e, ...patch }));
   const total = postText(edit).length;
   const addTags = (raw) => { const add = String(raw).split(/[\s,]+/).map(cleanTag).filter(Boolean); if (add.length) set({ tags: [...new Set([...(edit.tags || []), ...add])].slice(0, 10) }); setTag(''); };
@@ -474,6 +475,16 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
     const r = await api(`/businesses/${b.id}/gbp/media`, { method: 'POST', body: { category: 'ADDITIONAL', data_base64: await readBase64(file), content_type: file.type } });
     if (!r.googleUrl) throw new Error('Google has not returned the photo address yet. Pick it from Profile photos in a moment.');
     setBroken(false); set({ image_url: r.googleUrl }); toast('Photo added to your Google profile and attached to this post');
+  });
+  const makeCard = (style) => run('card', async () => {
+    const r = await api(`/businesses/${b.id}/posts/image`, { method: 'POST', body: { title: edit.title || null, body: edit.body, post_type: edit.post_type, style: style || null, coupon_code: edit.coupon_code || null,
+      starts_on: edit.starts_on || null, ends_on: edit.ends_on || null, start_time: edit.start_time || null } });
+    setCard(r);
+  });
+  const useCard = () => card && run('up', async () => {
+    const r = await api(`/businesses/${b.id}/gbp/media`, { method: 'POST', body: { category: 'ADDITIONAL', data_base64: card.image_base64, content_type: 'image/jpeg' } });
+    if (!r.googleUrl) throw new Error('Google has not returned the picture address yet. Press Use this picture again in a moment.');
+    setBroken(false); set({ image_url: r.googleUrl }); setCard(null); toast('Picture added to your Google profile and attached to this post');
   });
   const compose = (tagsOnly) => run('ai', async () => {
     const r = await api(`/businesses/${b.id}/posts/compose`, { method: 'POST', body: { topic: tagsOnly ? (edit.body || topic).slice(0, 300) : topic, post_type: edit.post_type } });
@@ -487,7 +498,7 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
         <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit">{['Update', 'Offer', 'Event'].map(t => <button key={t} type="button" onClick={() => set({ post_type: t })} className={`h-8 px-4 text-13 rounded-md cursor-pointer font-medium ${edit.post_type === t ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{t === 'Update' ? 'What’s new' : t}</button>)}</div>
 
         <section>
-          <div className="text-13 font-semibold text-slate-800 mb-2">1 · Picture</div>
+          <div className="text-13 font-semibold text-slate-800 mb-2">1 · Picture <span className="text-red-600" title="Required">*</span> <span className="font-normal text-12 text-slate-500">Every post needs a picture. 1200 × 900 px is Google's recommended size.</span></div>
           {img ? (
             <div className="flex items-center gap-3 p-2 rounded-lg ring-1 ring-slate-200">
               <img src={img} alt="" className="w-20 h-20 rounded-md object-cover bg-slate-100" onError={() => setBroken(true)} />
@@ -507,7 +518,25 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
               {pick && (photos.length === 0 ? <p className="text-12 text-slate-400 mt-3">No photos on the profile yet.</p> : (
                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 mt-3">{photos.map(m => <button key={m.id} type="button" onClick={() => { setBroken(false); set({ image_url: m.url }); setPick(false); }} className="aspect-square rounded-md overflow-hidden ring-1 ring-slate-200 hover:ring-2 hover:ring-indigo-400 cursor-pointer"><img src={m.thumb || m.url} alt="" className="w-full h-full object-cover" loading="lazy" /></button>)}</div>
               ))}
-              <p className="text-11.5 text-slate-400 mt-2">Best: a clear JPG or PNG, 1200 × 900 px or larger, no text or phone numbers on it.</p>
+              <p className="text-11.5 text-slate-400 mt-2">Best: a clear JPG or PNG, 1200 × 900 px or larger, no phone numbers or links on it.</p>
+              <div className="mt-3 pt-3 border-t border-slate-200">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="ai" icon={Sparkles} busy={busy === 'card'} disabled={!edit.body.trim() && !edit.title.trim()} title={edit.body.trim() || edit.title.trim() ? '' : 'Write the post first: the picture is made from its words'} onClick={() => makeCard(card?.style)}>{card ? 'Make it again' : 'Create a picture from this post'}</Button>
+                  <span className="text-12 text-slate-500">A 1200 × 900 card with the post's headline and your business name. Nothing is added that the post does not say.</span>
+                </div>
+                {card && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,340px)_1fr]">
+                    <img src={`data:image/jpeg;base64,${card.image_base64}`} alt="Picture made from the post" className="w-full aspect-[4/3] rounded-lg ring-1 ring-slate-200" />
+                    <div className="space-y-2">
+                      <div className="text-12 font-semibold text-slate-600">Colours</div>
+                      <div className="flex flex-wrap gap-1.5">{card.styles.map(st => <button key={st} type="button" onClick={() => makeCard(st)} aria-pressed={card.style === st} className={`h-8 px-3 rounded-full text-12 capitalize cursor-pointer ring-1 ring-inset ${card.style === st ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{st}</button>)}</div>
+                      <div className="text-11.5 text-slate-500">{card.width} × {card.height} px · JPG · {Math.round(card.size / 1024)} KB</div>
+                      <div className="flex gap-2 pt-1"><Button variant="primary" icon={Upload} busy={busy === 'up'} disabled={!linked} title={linked ? '' : 'Connect the Google account to add the picture'} onClick={useCard}>Use this picture</Button><Button onClick={() => setCard(null)}>Discard</Button></div>
+                      {!linked && <p className="text-11.5 text-slate-400">Google needs the picture uploaded to your profile, so the Google account must be connected.</p>}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </section>
@@ -571,6 +600,7 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
       </div>
 
       <aside className="lg:sticky lg:top-0 self-start space-y-2">
+        {!edit.image_url && <div className="text-12 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">This post has no picture yet. Add one, or create one from the post, to save it.</div>}
         <div className="text-12 font-semibold uppercase tracking-wide text-slate-400">How it will look on Google</div>
         <div className="bg-white rounded-2xl ring-1 ring-slate-200 shadow-sm overflow-hidden">
           <div className="flex items-center gap-2.5 p-3"><BusinessAvatar name={b.name} src={b.logo} size="w-9 h-9" /><div className="min-w-0"><div className="text-13 font-medium text-slate-900 truncate">{b.name}</div><div className="text-11.5 text-slate-500">Just now · {edit.post_type === 'Update' ? 'Update' : edit.post_type}</div></div></div>
@@ -632,7 +662,7 @@ function PostsTab({ b, toast }) {
         )}
       </Card>
       <div className="mt-4"><LivePosts b={b} toast={toast} /></div>
-      <Modal open={Boolean(edit)} title="New post" onClose={() => setEdit(null)} width="max-w-5xl" footer={<><Button onClick={() => setEdit(null)}>Cancel</Button><Button icon={Send} busy={busy === 'save'} disabled={!edit?.body.trim() || postText(edit).length > 1500 || Boolean(postProblem(edit))} onClick={() => save(false)}>Save for approval</Button>{isLinked(b) && <Button variant="primary" icon={Send} busy={busy === 'now'} disabled={!edit?.body.trim() || postText(edit).length > 1500 || Boolean(postProblem(edit))} onClick={() => save(true)}>Share on Google</Button>}</>}>
+      <Modal open={Boolean(edit)} title="New post" onClose={() => setEdit(null)} width="max-w-5xl" footer={<><Button onClick={() => setEdit(null)}>Cancel</Button><Button icon={Send} busy={busy === 'save'} disabled={!edit?.body.trim() || !edit?.image_url || postText(edit).length > 1500 || Boolean(postProblem(edit))} title={!edit?.image_url ? 'Add a picture first' : ''} onClick={() => save(false)}>Save for approval</Button>{isLinked(b) && <Button variant="primary" icon={Send} busy={busy === 'now'} disabled={!edit?.body.trim() || !edit?.image_url || postText(edit).length > 1500 || Boolean(postProblem(edit))} title={!edit?.image_url ? 'Add a picture first' : ''} onClick={() => save(true)}>Share on Google</Button>}</>}>
         {edit && <PostEditor b={b} edit={edit} setEdit={setEdit} toast={toast} error={error} />}
       </Modal>
     </>
