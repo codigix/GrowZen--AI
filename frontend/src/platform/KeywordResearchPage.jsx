@@ -1397,14 +1397,29 @@ function PathBar({ progress, tab, setTab }) {
   );
 }
 
-function NextStep({ progress }) {
+function NextStep({ progress, tab, bid, reload }) {
+  const navigate = useNavigate();
+  const [busy, error, run] = useAction();
   if (!progress) return null;
   if (progress.complete) return <div className="mt-6 rounded-xl bg-emerald-50 text-emerald-900 px-4 py-3 text-13 flex items-center gap-2"><CheckCircle2 size={16} /> All four steps are done: {progress.saved} keywords saved, grouped, and checked on Google. Check the positions again in <Link to="/rank-tracking/positions" className="font-semibold underline">Position Tracking</Link>.</div>;
   const n = progress.next;
+  // On the page of the very step that is open, a link to itself does nothing: offer the action that finishes it
+  let action = <Link to={n.to} className="h-9 px-4 rounded-lg inline-flex items-center gap-1.5 text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">{n.key === 'track' ? 'Open Position Tracking' : `Go to ${n.title}`}<ArrowRight size={14} /></Link>;
+  let detail = n.detail;
+  if (n.key === 'group' && tab === 'topics') {
+    if (progress.ungrouped?.length) {
+      detail = `${n.detail} Not in a topic yet: ${progress.ungrouped.join(', ')}.`;
+      action = <Button variant="ai" icon={Sparkles} busy={busy === 'group'} onClick={() => run('group', async () => { await api(`/businesses/${bid}/keywords/cluster`, { method: 'POST' }); reload(); })}>Group them into topics</Button>;
+    } else if (progress.unmapped?.length) {
+      detail = `${n.detail} Still without a page: ${progress.unmapped.join(', ')}.`;
+      action = <Button variant="primary" icon={ArrowRight} onClick={() => navigate('/keyword-management/tracked')}>Give {progress.unmapped.length === 1 ? 'it' : 'them'} a page</Button>;
+    }
+  }
   return (
-    <div className="mt-6 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 flex flex-wrap items-center gap-3">
-      <div className="flex-1 min-w-[220px] text-13 text-indigo-950"><b>Next step: {n.title}.</b> {n.detail}</div>
-      <Link to={n.to} className="h-9 px-4 rounded-lg inline-flex items-center gap-1.5 text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">{n.key === 'track' ? 'Open Position Tracking' : `Go to ${n.title}`}<ArrowRight size={14} /></Link>
+    <div className="mt-6 mb-16 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 flex flex-wrap items-center gap-3 sm:pr-24">
+      <div className="flex-1 min-w-[220px] text-13 text-indigo-950"><b>Next step: {n.title}.</b> {detail}</div>
+      {action}
+      {error && <p className="basis-full text-12 text-red-600">{error}</p>}
     </div>
   );
 }
@@ -1445,7 +1460,7 @@ function KeywordPath({ b, tab, setTab }) {
       )}
       {(tab === 'discover' || tab === 'tracked') && <div className="mb-5"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
       <Keywords b={b} tab={tab} kw={refresh} onSaved={saved} seedSearch={seedSearch} />
-      <NextStep progress={progress.data} />
+      <NextStep progress={progress.data} tab={tab} bid={b.id} reload={() => { kw.reload(true); progress.reload(true); }} />
     </>
   );
 }

@@ -354,5 +354,7 @@ def progress(db: Session, b: Business) -> dict[str, Any]:
         {"key": "track", "title": "Track", "done": checked > 0, "detail": f"{checked} of {n} checked on Google" + (f", {ranking} ranking." if checked else ".") if n else "Nothing to track yet.", "to": "/rank-tracking/positions"},
     ]
     nxt = next((s for s in steps if not s["done"]), None)
-    return {"saved": n, "grouped": grouped, "mapped": mapped, "planned": planned, "checked": checked, "ranking": ranking, "researched": researched, "min": MIN_KEYWORDS, "steps": steps,
+    ungrouped = [k.keyword for k in rows if not (k.cluster or "").strip()]
+    unmapped = [k.keyword for k in rows if not (k.target_url or "").strip()]
+    return {"ungrouped": ungrouped[:8], "unmapped": unmapped[:8], "saved": n, "grouped": grouped, "mapped": mapped, "planned": planned, "checked": checked, "ranking": ranking, "researched": researched, "min": MIN_KEYWORDS, "steps": steps,
             "next": nxt and {"key": nxt["key"], "title": nxt["title"], "to": nxt["to"], "detail": nxt["detail"]}, "complete": nxt is None}
