@@ -27,7 +27,9 @@ _settings = get_settings()
 def connect_args(url: str, statement_timeout_seconds: int) -> dict:
     if url.startswith("sqlite"):
         return {"check_same_thread": False}
-    args: dict = {"connect_timeout": 10}
+    # keepalives: a database reached through an SSH tunnel loses its connections whenever the tunnel restarts; without them a request on such a
+    # dead connection waits minutes. With them the dead connection is noticed within about a minute and replaced.
+    args: dict = {"connect_timeout": 10, "keepalives": 1, "keepalives_idle": 20, "keepalives_interval": 5, "keepalives_count": 3}
     if statement_timeout_seconds and statement_timeout_seconds > 0:
         args["options"] = f"-c statement_timeout={int(statement_timeout_seconds) * 1000}"
     return args
