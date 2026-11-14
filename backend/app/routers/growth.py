@@ -99,7 +99,7 @@ def add_keywords(body: list[KeywordIn], b: Business = Depends(get_business), db:
             row_ = Keyword(business_id=b.id, keyword=text)
             added += 1
         for f, v in k.model_dump(exclude={"keyword"}).items():
-            if v is not None:
+            if v is not None and not (f == "source" and row_.source):  # the first place a keyword was found is kept
                 setattr(row_, f, v)
         row_.intent = row_.intent or intent_of(text)
         db.add(row_)

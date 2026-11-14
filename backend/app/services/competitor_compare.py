@@ -330,10 +330,13 @@ def _search_keyword_gap(db: Session, business_id: int | None, competitor_target:
     }
 
 
-def _keyword_gap_comparison(db: Session, business_id: int | None, competitor_target: str | None, our_crawl: dict[str, Any], their_crawl: dict[str, Any]) -> dict[str, Any]:
+def _keyword_gap_comparison(db: Session, business_id: int | None, competitor_target: str | None, our_crawl: dict[str, Any], their_crawl: dict[str, Any], our_name: str = "", their_name: str = "", our_host: str = "") -> dict[str, Any]:
+    from . import competitor_keywords  # noqa: PLC0415
     return {
         "on_page": _onpage_keyword_comparison(our_crawl, their_crawl),
         "search": _search_keyword_gap(db, business_id, competitor_target),
+        "researched": competitor_keywords.researched(db, business_id, our_crawl, their_crawl, our_name=our_name, their_name=their_name,
+                                                     our_host=our_host, their_host=urlparse(competitor_target or "").hostname or ""),
     }
 
 
@@ -342,6 +345,7 @@ def compare(db: Session, ours: ResolvedAudit, theirs: ResolvedAudit) -> dict[str
     our_crawl, their_crawl = ours.payload.get("crawl") or {}, theirs.payload.get("crawl") or {}
     compatible = bool(ours.strategy) and bool(theirs.strategy) and ours.strategy == theirs.strategy
     competitor = db.get(Competitor, theirs.competitor_id) if theirs.competitor_id else None
+    ours_business = db.get(Business, ours.business_id) if ours.business_id else None
     return {
         "ours": {"audit_id": ours.audit_id, "business_id": ours.business_id, "target": ours.target, "strategy": ours.strategy, "finished_at": ours.finished_at and ours.finished_at.isoformat()},
         "competitor": {"audit_id": theirs.audit_id, "competitor_id": theirs.competitor_id, "name": competitor.name if competitor else None,
@@ -359,5 +363,6 @@ def compare(db: Session, ours: ResolvedAudit, theirs: ResolvedAudit) -> dict[str
             "available": bool(our_ps and their_ps),
         },
         "pages": _page_comparison(our_crawl, their_crawl) if our_crawl or their_crawl else {"matched": [], "unmatched_ours": [], "unmatched_competitor": [], "available": False},
-        "keywords_and_content_gaps": _keyword_gap_comparison(db, ours.business_id, theirs.target, our_crawl, their_crawl),
+        "keywords_and_content_gaps": _keyword_gap_comparison(db, ours.business_id, theirs.target, our_crawl, their_crawl,
+                                                            our_name=(ours_business.name if ours_business else ""), their_name=competitor.name if competitor else "", our_host=ours.target or ""),
     }

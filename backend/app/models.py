@@ -411,6 +411,7 @@ class Keyword(TimestampMixin, Base):
     priority: Mapped[str] = mapped_column(String(10), default="Medium")
     tracked: Mapped[bool] = mapped_column(Boolean, default=True)
     uses: Mapped[list[str] | None] = mapped_column(JSON)  # where it is meant to be used: blog, gmb_post, aeo, geo, chatgpt, website
+    source: Mapped[dict | None] = mapped_column(JSON)  # where the keyword was taken from: {kind, label, from, pages: [{url, in}], searches, at}
 
 
 class RankScan(TimestampMixin, Base):

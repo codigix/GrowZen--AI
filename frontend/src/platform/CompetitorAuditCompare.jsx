@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, CheckCircle2, XCircle, MinusCircle } from 'lucide-react';
-import { Card, Badge, Tabs, ErrorNote } from './SeoUi';
+import { Card, Badge, Tabs, ErrorNote, Button, useAction } from './SeoUi';
+import { api } from './seoApi';
 
 /**
  * The side-by-side result of comparing a competitor's site audit with the business's own (PageSpeed scores,
@@ -15,6 +16,59 @@ const Chips = ({ items, empty, tone = 'slate' }) => (
     </div>
   ) : <p className="text-13 text-slate-500">{empty}</p>
 );
+const SIDE = { both: ['Both sites', 'green'], competitor: ['Competitor', 'rose'], client: ['Your site', 'blue'] };
+
+/** The keywords worth targeting: real searched phrases from both sites' titles, headings and descriptions, each with where it was taken from. */
+function ResearchedKeywords({ r, bid, competitor }) {
+  const [added, setAdded] = useState({});
+  const [pick, setPick] = useState([]);
+  const [open, setOpen] = useState(null);
+  const [busy, error, run] = useAction();
+  if (!r) return null;
+  if (!r.available) return <p className="text-13 text-slate-500">No usable phrases were found in the crawled titles, headings and descriptions.</p>;
+  const items = r.items;
+  const todo = items.filter(i => !i.tracked && !added[i.keyword]);
+  const save = (list) => run('add', async () => {
+    await api(`/businesses/${bid}/keywords`, { method: 'POST', body: list.map(i => ({ keyword: i.keyword, volume: i.volume || undefined, source: {
+      kind: 'competitor_compare', label: i.side === 'client' ? 'Your own site' : `${competitor || 'Competitor'} website`, side: i.side, from: competitor || null,
+      pages: i.sources.slice(0, 4).map(x => ({ url: x.url, in: x.in })), searches: i.volume ?? null, at: new Date().toISOString().slice(0, 10) } })) });
+    setAdded(a => ({ ...a, ...Object.fromEntries(list.map(i => [i.keyword, true])) })); setPick([]);
+  });
+  return (
+    <div className="space-y-3">
+      <p className="text-12.5 text-slate-600">Phrases taken from the {r.source}. {r.verified ? 'Only phrases people really search for are kept, with their monthly searches from Google Keyword Planner.' : <b className="text-amber-800">Searches not verified: {r.volume_note}</b>}</p>
+      <div className="flex flex-wrap items-center gap-2 text-12">
+        {Object.entries(SIDE).map(([k, [l, t]]) => <Badge key={k} tone={t}>{l} {r.counts[k] || 0}</Badge>)}
+        <span className="ml-auto flex gap-2">
+          {pick.length > 0 && <Button size="sm" variant="primary" busy={busy === 'add'} onClick={() => save(items.filter(i => pick.includes(i.keyword)))}>Add {pick.length} to My Keywords</Button>}
+          {!pick.length && todo.length > 0 && <Button size="sm" onClick={() => setPick(todo.slice(0, 20).map(i => i.keyword))}>Select the top {Math.min(20, todo.length)}</Button>}
+        </span>
+      </div>
+      <ErrorNote>{error}</ErrorNote>
+      <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[460px] overflow-y-auto">
+        <table className="w-full text-13 min-w-[720px]">
+          <thead className="bg-slate-50 text-left text-11 uppercase tracking-wide text-slate-500 sticky top-0"><tr>
+            <th className="px-3 py-2 w-8" /><th className="px-3 py-2 font-semibold">Keyword</th><th className="px-3 py-2 font-semibold text-right">Searches/mo</th><th className="px-3 py-2 font-semibold">Taken from</th><th className="px-3 py-2 font-semibold text-right">Pages</th><th className="px-3 py-2" /></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {items.map(i => { const done = i.tracked || added[i.keyword]; const [sl, st] = SIDE[i.side]; return (
+              <React.Fragment key={i.keyword}>
+                <tr className="align-middle">
+                  <td className="px-3 py-2"><input type="checkbox" disabled={done} checked={pick.includes(i.keyword)} onChange={() => setPick(p => (p.includes(i.keyword) ? p.filter(x => x !== i.keyword) : [...p, i.keyword]))} aria-label={`Select ${i.keyword}`} /></td>
+                  <td className="px-3 py-2 font-semibold text-slate-900">{i.keyword}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{i.volume != null ? i.volume.toLocaleString('en-IN') : <span className="text-slate-300" title="Not verified">—</span>}</td>
+                  <td className="px-3 py-2"><Badge tone={st}>{sl}</Badge> <button type="button" onClick={() => setOpen(open === i.keyword ? null : i.keyword)} className="ml-1 text-12 text-indigo-600 hover:underline cursor-pointer">{open === i.keyword ? 'hide pages' : 'see pages'}</button></td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{i.pages}</td>
+                  <td className="px-3 py-2 text-right">{done ? <span className="text-12 text-emerald-700 font-semibold">In My Keywords</span> : <Button size="sm" onClick={() => save([i])}>Add</Button>}</td>
+                </tr>
+                {open === i.keyword && <tr><td /><td colSpan={5} className="px-3 pb-3"><ul className="grid gap-1 text-12.5 text-slate-600">{i.sources.map((x, n) => <li key={n}><b>{x.name}</b>: <a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{x.path}</a> · in the {x.in.join(', ')}</li>)}</ul></td></tr>}
+              </React.Fragment>); })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 const STATUS_TONE = {
   both_pass: ['green', CheckCircle2, 'Both pass'],
   both_fail: ['red', XCircle, 'Both fail'],
@@ -148,6 +202,13 @@ export function ComparisonResult({ c, bare = false }) {
       {tab === 'keywords' && (
         <div className="space-y-6">
           <div>
+            <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Best keywords to target</div>
+            <ResearchedKeywords r={gaps.researched} bid={c.ours?.business_id} competitor={c.competitor?.name || c.competitor?.target} />
+          </div>
+
+          <details className="group">
+            <summary className="text-12 font-semibold uppercase tracking-wide text-slate-500 cursor-pointer">All repeated words on the pages (raw, not checked for searches)</summary>
+            <div className="mt-3">
             <div className="text-12 font-semibold  tracking-wide text-slate-500 mb-2">On-page keywords (from the crawled content, no external API)</div>
             {gaps.on_page?.available ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -167,7 +228,8 @@ export function ComparisonResult({ c, bare = false }) {
             ) : (
               <div className="text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">{gaps.on_page?.reason}</div>
             )}
-          </div>
+            </div>
+          </details>
 
           <div>
             <div className="text-12 font-semibold  tracking-wide text-slate-500 mb-2">Google-search keyword gaps (from Competitor Research)</div>
