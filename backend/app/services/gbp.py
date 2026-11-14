@@ -651,6 +651,28 @@ def _open_date(d: dict[str, Any] | None) -> str | None:
     return f"{int(d['year']):04d}-{int(d.get('month', 1)):02d}-{int(d.get('day', 1)):02d}" if d and d.get("year") else None
 
 
+def services_from_items(items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Google's serviceItems as the app's services [{name, description, price}]. A free-form service has its own name; a structured one only has
+    Google's type id ("job_type_id:hair_cut"), shown as plain words."""
+    out = []
+    for i in items or []:
+        free = i.get("freeFormServiceItem") or {}
+        label = free.get("label") or {}
+        name = label.get("displayName") or ""
+        if not name:
+            tid = (i.get("structuredServiceItem") or {}).get("serviceTypeId") or ""
+            name = tid.split(":", 1)[-1].replace("_", " ").strip().capitalize()
+        if not name:
+            continue
+        price = i.get("price") or {}
+        amount = None
+        if price.get("units") is not None or price.get("nanos"):
+            frac = str(int(price.get("nanos") or 0)).zfill(9).rstrip("0")
+            amount = f"{int(price.get('units') or 0)}" + (f".{frac}" if frac else "")
+        out.append({"name": name[:140], "description": (label.get("description") or "")[:300], **({"price": amount, "currency": price.get("currencyCode")} if amount else {})})
+    return out
+
+
 def location_to_fields(loc: dict[str, Any]) -> dict[str, Any]:
     """A Business Information location -> Business columns."""
     addr = loc.get("storefrontAddress") or {}
@@ -678,6 +700,7 @@ def location_to_fields(loc: dict[str, Any]) -> dict[str, Any]:
         "opening_date": _open_date((loc.get("openInfo") or {}).get("openingDate")),
         "more_hours": {m["hoursTypeId"]: m.get("periods") or [] for m in loc.get("moreHours") or [] if m.get("hoursTypeId")},
         "labels": list(loc.get("labels") or []),
+        "services": services_from_items(loc.get("serviceItems")),
         "service_area_type": (loc.get("serviceArea") or {}).get("businessType"),
         "service_area_places": [{"name": x.get("placeName"), "place_id": x.get("placeId")} for x in ((loc.get("serviceArea") or {}).get("places") or {}).get("placeInfos") or []],
         "gbp_location": loc.get("name"),
