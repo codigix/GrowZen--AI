@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Sparkles, CheckCircle2, AlertTriangle, Copy, RefreshCw, Plus, Layout, Megaphone } from 'lucide-react';
+import { ExternalLink, Sparkles, CheckCircle2, AlertTriangle, Copy, RefreshCw, Plus, Layout, Megaphone, ArrowRight, FileText } from 'lucide-react';
 import { Card, Button, Badge, Stat, ErrorNote, useAction, useToast, SkList, inputCls } from './SeoUi';
 import { api, useApi } from './seoApi';
 import Tip from './Tip';
@@ -11,8 +11,11 @@ const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 export function KeywordTopicPlanner({ b, onPick }) {
   const base = `/businesses/${b.id}/blog-flow`;
   const kws = useApi(`${base}/keywords`);
-  const [picked, setPicked] = useState([]);
-  const [res, setRes] = useState(null);
+  const memKey = `growzen.blogplan.${b.id}`;
+  const mem = (() => { try { return JSON.parse(localStorage.getItem(memKey) || 'null') || {}; } catch { return {}; } })();
+  const [picked, setPicked] = useState(Array.isArray(mem.picked) ? mem.picked : []);
+  const [res, setRes] = useState(mem.res || null);
+  useEffect(() => { try { localStorage.setItem(memKey, JSON.stringify({ picked, res })); } catch { /* not remembered */ } }, [picked, res, memKey]);
   const [busy, error, run] = useAction();
   const list = kws.data?.keywords || [];
   const toggle = (k) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : p.length >= 4 ? p : [...p, k]));
@@ -63,6 +66,41 @@ export function KeywordTopicPlanner({ b, onPick }) {
           )}
         </div>
       )}
+    </Card>
+  );
+}
+
+const stageOf = (x) => {
+  if (x.status === 'failed') return { label: 'Writing failed', tone: 'red', next: 'Open it and write it again' };
+  if (x.status !== 'completed') return { label: 'Being written', tone: 'blue', next: 'Wait for it to finish' };
+  const ps = x.publishing_status;
+  if (ps === 'published') return { label: 'Published', tone: 'green', next: 'Promote it and check the links' };
+  if (ps === 'scheduled' || ps === 'publishing') return { label: 'Scheduled', tone: 'amber', next: 'Check the layout, then wait for it to go live' };
+  return { label: 'Draft saved', tone: 'gray', next: 'Review, check the layout, then schedule or publish' };
+};
+
+/** Where you stopped: the articles that are not finished (drafts, scheduled, just published and not yet promoted), each with its next step. */
+export function ResumeCard({ articles, onOpen }) {
+  const rows = [...articles].filter(x => x.status !== 'completed' || x.publishing_status !== 'published' || (x.wp_url || x.react_url))
+    .sort((a, c) => String(c.updated_at || c.created_at).localeCompare(String(a.updated_at || a.created_at))).slice(0, 5);
+  if (!rows.length) return null;
+  const open = rows.filter(x => !(x.status === 'completed' && x.publishing_status === 'published'));
+  const [first, ...rest] = rows;
+  return (
+    <Card title="Continue where you stopped" subtitle="Every blog you generated is saved as a draft. Open one to carry on from its next step.">
+      <div className="grid gap-2">
+        {[first, ...rest].map((x, i) => { const st = stageOf(x); return (
+          <div key={x.id} className={`flex flex-wrap items-center gap-3 rounded-lg px-3 py-2.5 ring-1 ring-inset ${i === 0 ? 'ring-indigo-200 bg-indigo-50/40' : 'ring-slate-200'}`}>
+            <FileText size={16} className="text-slate-400 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="text-13 font-semibold text-slate-900 truncate">{x.title || x.topic || x.keyword}</div>
+              <div className="text-12 text-slate-500 truncate">{x.keyword} · next: {st.next}</div>
+            </div>
+            <Badge tone={st.tone}>{st.label}</Badge>
+            <Button size="sm" variant={i === 0 ? 'primary' : 'secondary'} icon={ArrowRight} disabled={x.status === 'generating' || x.status === 'pending'} onClick={() => onOpen(x.id)}>{i === 0 ? 'Continue' : 'Open'}</Button>
+          </div>); })}
+      </div>
+      {open.length === 0 && <p className="mt-2 text-12 text-slate-500">All finished. Open a published one to promote it.</p>}
     </Card>
   );
 }

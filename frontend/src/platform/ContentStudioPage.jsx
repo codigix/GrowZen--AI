@@ -16,7 +16,7 @@ import FeaturedImageField, { featuredOf } from './FeaturedImageField';
 import ReactSitePanel from './ReactSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
-import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps } from './BlogFlow';
+import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
 
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
@@ -570,6 +570,7 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
   return (
     <div className="space-y-6">
       <FlowSteps step={flowStep} />
+      {!openId && !pendingId && !activeTopic && <ResumeCard articles={articles} onOpen={setOpenId} />}
       {!openId && !pendingId && !activeTopic && <KeywordTopicPlanner b={b} onPick={onPickTopic} />}
       {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
@@ -579,6 +580,7 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
           <span className="ml-auto font-mono text-[11px] font-semibold text-slate-500 shrink-0">Elapsed {mins(elapsed)}</span>
         </div>
       )}
+      {openId && <div><button type="button" onClick={() => setOpenId(null)} className="text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">← All my blogs and a new one</button></div>}
       {openId && !article
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
@@ -656,6 +658,21 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       });
     }
   }, [selectedArticle]);
+  // edits not saved yet are kept in this browser, so leaving the page does not lose them
+  const bk = selectedArticle ? `growzen.blogedit.${b.id}.${selectedArticle.id}` : null;
+  const [restore, setRestore] = useState(null);
+  useEffect(() => {
+    if (!bk) return;
+    try {
+      const v = JSON.parse(localStorage.getItem(bk) || 'null');
+      if (v && (v.draft !== (selectedArticle.body || '') || v.meta?.title !== (selectedArticle.title || '') || v.meta?.meta_description !== (selectedArticle.meta_description || ''))) setRestore(v);
+    } catch { /* nothing kept */ }
+  }, [bk]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!bk || restore) return;
+    const same = draft === (selectedArticle.body || '') && meta.title === (selectedArticle.title || '') && meta.meta_description === (selectedArticle.meta_description || '');
+    try { if (!same) localStorage.setItem(bk, JSON.stringify({ draft, meta, at: Date.now() })); } catch { /* not kept */ }
+  }, [draft, meta, bk, restore, selectedArticle]);
   const isGenerating = Boolean(generating || (pendingArticle && pendingArticle.status === 'generating'));
   const activeArt = selectedArticle || pendingArticle;
   const liveBody = isGenerating ? (activeArt?.body || '') : (draft || activeArt?.body || '');
@@ -735,7 +752,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const saveArticle = () => {
     setSaveBusy(true);
     return api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: articleFields() })
-      .then(() => { toast('Draft saved'); if (onSaved) onSaved(); })
+      .then(() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } toast('Draft saved'); if (onSaved) onSaved(); })
       .catch(e => toast(e.message))
       .finally(() => setSaveBusy(false));
   };
@@ -868,6 +885,13 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         {/* Step 1: AI Draft */}
         {step === 1 && (
           <div className="space-y-4">
+            {restore && (
+              <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[12.5px] text-amber-900">
+                <span className="flex-1 min-w-[220px]"><b>Unsaved edits found</b> from {new Date(restore.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}: you changed this article and did not press Save.</span>
+                <button type="button" className="h-8 px-3 rounded-lg bg-amber-600 text-white font-semibold cursor-pointer" onClick={() => { setDraft(restore.draft); setMeta(restore.meta); setRestore(null); }}>Restore my edits</button>
+                <button type="button" className="h-8 px-3 rounded-lg bg-white ring-1 ring-inset ring-amber-300 font-semibold cursor-pointer" onClick={() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } setRestore(null); }}>Discard</button>
+              </div>
+            )}
             {/* Status indicator bar */}
             <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 border border-indigo-200">
               <div className="flex items-center gap-2.5">
