@@ -12,6 +12,7 @@ APIs used (all need the project to be approved for the Business Profile APIs):
   Performance          businessprofileperformance.googleapis.com/v1/{location}:fetchMultiDailyMetricsTimeSeries
   Verifications        mybusinessverifications.googleapis.com/v1/{location}/VoiceOfMerchantState
 """
+import logging
 import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -826,6 +827,22 @@ def logo_and_cover(media: list[dict[str, Any]]) -> tuple[str | None, str | None]
     return url_of("PROFILE", "LOGO"), url_of("COVER")
 
 
+def fill_pin_from_maps(b: Business) -> bool:
+    """Business Information returns `latlng` only when the profile has a precise pin of its own. Without it, take the point of the same Google Maps listing
+    (its place id) so the map and the local rank grids have a position. It is the listing's position, not a hand-placed pin. Never fails a sync."""
+    if b.lat is not None and b.lng is not None or not b.place_id:
+        return False
+    try:
+        from . import discovery
+        loc = discovery.place_details(b.place_id).get("location") or {}
+        if loc.get("latitude") is not None and loc.get("longitude") is not None:
+            b.lat, b.lng = float(loc["latitude"]), float(loc["longitude"])
+            return True
+    except Exception:  # noqa: BLE001 - Places not set up or unreachable: the pin simply stays empty
+        logging.getLogger("seo.gbp").info("No map position from the Maps listing for business %s", getattr(b, "id", None), exc_info=True)
+    return False
+
+
 def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
     """Refresh the listing's status, then pull reviews, photo count and daily insights for one connected business."""
     if not (b.connection and b.gbp_account and b.gbp_location):
@@ -838,6 +855,7 @@ def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
             if k == "website" and ".grexa.site" in str(v) and b.website and ".grexa.site" not in b.website:
                 continue  # Grexa's auto-generated placeholder site on the profile must not replace the business's real website
             setattr(b, k, v)
+    fill_pin_from_maps(b)
     status = listing_status(loc) | {k: (b.gbp_status or {}).get(k) for k in ("account_name", "account_role", "account_type")}
     live = fetch_live(client, b, loc)
     if live["special_hours"]:
