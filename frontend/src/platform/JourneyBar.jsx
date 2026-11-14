@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Check, ChevronDown, Circle, Lock, Map as MapIcon } from 'lucide-react';
+import { ArrowRight, Check, ChevronRight, Circle, Lock, Map as MapIcon } from 'lucide-react';
+import { Drawer } from './SeoUi';
 import { useApi } from './seoApi';
 
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -28,22 +29,45 @@ export function JourneyCard({ bid }) {
       <ol className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-1">
         {d.steps.map(s => (
           <li key={s.key} className="min-w-0">
-            <button type="button" onClick={() => setOpen(open === s.key ? null : s.key)} aria-expanded={open === s.key} className="w-full flex items-center gap-3 text-left rounded-lg px-2 py-2 hover:bg-slate-50 cursor-pointer">
+            <button type="button" onClick={() => setOpen(s.key)} aria-haspopup="dialog" className="w-full flex items-center gap-3 text-left rounded-lg px-2 py-2 hover:bg-slate-50 cursor-pointer">
               <Icon s={s.status} />
               <span className="min-w-0 flex-1"><span className={`block text-14 font-medium ${s.status === 'done' ? 'text-slate-500' : 'text-slate-900'}`}>{s.order}. {s.title}</span><span className="block text-12 text-slate-500 truncate">{s.status === 'blocked' ? `Waiting for: ${s.waiting_for.map(w => w.title).join(', ')}` : s.detail}</span></span>
-              <ChevronDown size={14} className={`text-slate-400 transition-transform ${open === s.key ? 'rotate-180' : ''}`} />
+              <ChevronRight size={15} className="text-slate-400" />
             </button>
-            {open === s.key && (
-              <div className="ml-11 mb-2 text-13 text-slate-600 space-y-1.5">
-                <p>{s.why}</p><p className="text-slate-700">{s.detail}</p>
-                {s.requires.length > 0 && <p className="text-12.5">Needs first: {s.requires.map(r => <span key={r.key} className={`inline-flex items-center gap-1 mr-2 ${r.done ? 'text-emerald-700' : 'text-amber-700 font-medium'}`}>{r.done ? <Check size={11} /> : <Lock size={11} />}{r.title}</span>)}</p>}
-                <Link to={s.status === 'blocked' ? s.waiting_for[0].link : s.link} className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:underline">{s.status === 'blocked' ? `Do this first: ${s.waiting_for[0].title}` : s.status === 'done' ? 'Open' : 'Do this step'}<ArrowRight size={13} /></Link>
-              </div>
-            )}
           </li>
         ))}
       </ol>
+      <StepPanel step={d.steps.find(x => x.key === open)} total={d.total} onClose={() => setOpen(null)} />
     </section>
+  );
+}
+
+const STATE = { done: ['Done', 'bg-emerald-50 text-emerald-700'], blocked: ['Waiting on an earlier step', 'bg-amber-50 text-amber-800'], todo: ['To do', 'bg-indigo-50 text-indigo-700'] };
+
+/** One step of the journey in a side panel: what it is, why it matters, what it needs first, and the button to do it. */
+function StepPanel({ step: s, total, onClose }) {
+  const [label, cls] = STATE[s?.status] || STATE.todo;
+  return (
+    <Drawer open={Boolean(s)} onClose={onClose} width="max-w-md" title={s ? `${s.order}. ${s.title}` : ''} subtitle={s ? `Step ${s.order} of ${total}` : ''}>
+      {s && (
+        <div className="grid gap-5 text-14 text-slate-700">
+          <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-12.5 font-semibold ${cls}`}><Icon s={s.status} />{label}</span>
+          <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1">Where you are</h4><p className="text-slate-900">{s.detail}</p></section>
+          <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1">Why it matters</h4><p>{s.why}</p></section>
+          {s.requires.length > 0 && (
+            <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Needs first</h4>
+              <ul className="grid gap-2">{s.requires.map(r => (
+                <li key={r.key} className={`flex items-center gap-2 ${r.done ? 'text-emerald-700' : 'text-amber-800 font-medium'}`}>{r.done ? <Check size={14} /> : <Lock size={13} />}{r.title}{r.done || !r.link ? null : <Link to={r.link} onClick={onClose} className="ml-auto text-12.5 font-semibold text-indigo-600 hover:underline">Open</Link>}</li>))}</ul>
+            </section>
+          )}
+          <div className="pt-1">
+            <Link to={s.status === 'blocked' && s.waiting_for[0] ? s.waiting_for[0].link : s.link} onClick={onClose}>
+              <span className="inline-flex items-center gap-1.5 h-10 px-4 rounded-lg bg-indigo-600 text-white text-14 font-semibold hover:bg-indigo-700">{s.status === 'blocked' && s.waiting_for[0] ? `Do this first: ${s.waiting_for[0].title}` : s.status === 'done' ? 'Open' : 'Do this step'}<ArrowRight size={15} /></span>
+            </Link>
+          </div>
+        </div>
+      )}
+    </Drawer>
   );
 }
 
