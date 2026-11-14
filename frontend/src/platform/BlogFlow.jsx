@@ -17,12 +17,21 @@ export function KeywordTopicPlanner({ b, onPick }) {
   const [res, setRes] = useState(mem.res || null);
   useEffect(() => { try { localStorage.setItem(memKey, JSON.stringify({ picked, res })); } catch { /* not remembered */ } }, [picked, res, memKey]);
   const [busy, error, run] = useAction();
+  const [own, setOwn] = useState('');
   const list = kws.data?.keywords || [];
   const toggle = (k) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : p.length >= 4 ? p : [...p, k]));
   const ask = () => run('topics', async () => setRes(await api(`${base}/topics`, { method: 'POST', body: { keywords: picked } })));
   return (
-    <Card title="1. Choose the keywords this blog is for" subtitle="Your tracked keywords. Pick up to 4: the topics below are written for them, and the article will use them."
+    <Card title="Start a new blog" subtitle="Pick the keywords it is for and choose a topic, or type your own topic. The article is written from them."
       action={<Link to="/keyword-management/tracked"><Button size="sm">My Keywords</Button></Link>}>
+      <div className="mb-5 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 p-3.5">
+        <label className="block text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5" htmlFor="own-topic">I already know what to write about</label>
+        <div className="flex flex-wrap gap-2">
+          <input id="own-topic" value={own} onChange={e => setOwn(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && own.trim().length > 2) onPick({ title: own.trim(), selected: [], related: [] }); }} placeholder="For example: how much does a root canal cost in Pune" className={`${inputCls} flex-1 min-w-[260px]`} />
+          <Button variant="primary" icon={ArrowRight} disabled={own.trim().length < 3} onClick={() => onPick({ title: own.trim(), selected: [], related: [] })}>Write this blog</Button>
+        </div>
+      </div>
+      <p className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Or choose from your keywords: pick up to 4</p>
       {!kws.data && !kws.error && <SkList rows={3} />}
       {kws.error && <ErrorNote>{kws.error.message}</ErrorNote>}
       {kws.data && !list.length && <p className="text-13 text-slate-500">No keywords are tracked yet. Add them on <Link to="/keyword-management/ai" className="text-indigo-600 hover:underline">Find Keywords</Link>, then come back; or write from your own topic below.</p>}
@@ -50,7 +59,7 @@ export function KeywordTopicPlanner({ b, onPick }) {
       <ErrorNote>{error}</ErrorNote>
       {res && (
         <div className="mt-5 border-t border-slate-100 pt-4">
-          <p className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">2. Pick a topic {res.method === 'ai' ? '(written by AI for your business)' : '(standard patterns: add an AI key for topics written for your business)'}</p>
+          <p className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Pick a topic {res.method === 'ai' ? '(written by AI for your business)' : '(standard patterns: add an AI key for topics written for your business)'}</p>
           {res.topics.length === 0 ? <p className="text-13 text-slate-500">Nothing new to suggest: every idea already has an article.</p> : (
             <div className="grid gap-3 md:grid-cols-2">
               {res.topics.map((t, i) => (
@@ -240,18 +249,24 @@ export function PromoteCard({ b, article }) {
   );
 }
 
-/** Where the article is in the flow, from the first keyword to the confirmed link. */
+/** Where the article is in the flow: five stages, and in a line what to do now. */
 export function FlowSteps({ step }) {
-  const steps = ['Keywords', 'Topic', 'Write', 'Layout', 'Schedule', 'Publish', 'Promote', 'Link check'];
+  const steps = [['Keywords & topic', 'Choose the keywords and a topic, or type your own.'], ['Write', 'The article is written from your keywords. Read it and edit what you like.'], ['Review & layout', 'Compare it with your website’s blog, fix what is missing, then save the draft.'],
+    ['Schedule or publish', 'Pick a day and time, or publish now. A task is added for you.'], ['Promote & track', 'Post a short overview on other sites with the blog’s link, then check the links.']];
   return (
-    <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-12">
-      {steps.map((s, i) => (
-        <li key={s} className="flex items-center gap-2">
-          <span className={`inline-flex items-center justify-center h-5 min-w-[20px] px-1 rounded-full font-semibold ${i < step ? 'bg-emerald-100 text-emerald-700' : i === step ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>{i < step ? '✓' : i + 1}</span>
-          <span className={i === step ? 'font-semibold text-slate-900' : 'text-slate-500'}>{s}</span>
-          {i < steps.length - 1 && <span className="text-slate-300">›</span>}
-        </li>
-      ))}
-    </ol>
+    <div className="rounded-xl bg-white ring-1 ring-inset ring-slate-200 p-3.5">
+      <ol className="grid grid-cols-5 gap-2">
+        {steps.map(([s], i) => (
+          <li key={s} className="min-w-0">
+            <div className={`h-1.5 rounded-full ${i < step ? 'bg-emerald-500' : i === step ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+            <div className="mt-2 flex items-center gap-1.5 text-12">
+              <span className={`inline-flex items-center justify-center h-5 w-5 rounded-full text-11 font-semibold shrink-0 ${i < step ? 'bg-emerald-100 text-emerald-700' : i === step ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>{i < step ? '✓' : i + 1}</span>
+              <span className={`truncate ${i === step ? 'font-semibold text-slate-900' : 'text-slate-500'}`}>{s}</span>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-2.5 text-12.5 text-slate-600"><b className="text-slate-800">Now:</b> {steps[Math.min(step, 4)][1]}</p>
+    </div>
   );
 }

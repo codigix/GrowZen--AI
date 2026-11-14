@@ -566,12 +566,13 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
   }, [articles, pendingId, setOpenId]);
 
   const done = article && article.status === 'completed';
-  const flowStep = pendingId ? 2 : done ? (article.publishing_status === 'published' ? 6 : article.publishing_status === 'scheduled' ? 5 : 3) : activeTopic || openId ? 2 : 0;
+  const showStart = !openId && !pendingId && !activeTopic;
+  const flowStep = pendingId ? 1 : done ? (article.publishing_status === 'published' ? 4 : article.publishing_status === 'scheduled' || article.publishing_status === 'publishing' ? 3 : 2) : activeTopic || openId ? 1 : 0;
   return (
     <div className="space-y-6">
       <FlowSteps step={flowStep} />
-      {!openId && !pendingId && !activeTopic && <ResumeCard articles={articles} onOpen={setOpenId} />}
-      {!openId && !pendingId && !activeTopic && <KeywordTopicPlanner b={b} onPick={onPickTopic} />}
+      {showStart && <ResumeCard articles={articles} onOpen={setOpenId} />}
+      {showStart && <KeywordTopicPlanner b={b} onPick={onPickTopic} />}
       {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
           <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
@@ -580,8 +581,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
           <span className="ml-auto font-mono text-[11px] font-semibold text-slate-500 shrink-0">Elapsed {mins(elapsed)}</span>
         </div>
       )}
-      {openId && <div><button type="button" onClick={() => setOpenId(null)} className="text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">← All my blogs and a new one</button></div>}
-      {openId && !article
+      {!showStart && !pendingId && <div><button type="button" onClick={() => { setOpenId(null); onPickTopic(null); }} className="text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">← Back to my blogs and a new topic</button></div>}
+      {showStart ? null : openId && !article
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
             onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
