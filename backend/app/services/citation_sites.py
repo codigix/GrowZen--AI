@@ -60,25 +60,53 @@ def fetch_page(url: str) -> tuple[int, str]:
         return r.status_code, r.text[:400_000]
 
 
+def _brand_forms(name: str) -> list[str]:
+    """The ways a business is really written on other sites: its full name, the part before a dash or colon ("Codigix Infotech – Healthcare Marketing Agency"
+    is "Codigix Infotech"), and its first word ("Codigix"), each reduced to letters and digits."""
+    flat = lambda t: re.sub(r"[^a-z0-9]", "", t.lower())
+    head = re.split(r"\s[-–—|:]\s|[:|]", name or "")[0]
+    words = re.findall(r"[A-Za-z0-9]+", head)
+    forms = [flat(name), flat(head)]
+    if len(words) >= 2:
+        forms.append(flat(" ".join(words[:2])))
+    if words and len(words[0]) >= 5:
+        forms.append(flat(words[0]))
+    return [f for f in dict.fromkeys(forms) if f]
+
+
 def check_listing(business: Any, url: str, page: tuple[int, str] | None = None) -> dict[str, Any]:
-    """Open the listing page and compare it with the business: the name and the phone must be on it.
-    Returns {status, found: {name, phone}, note}. status: listed (name and phone match), inconsistent (page found but the phone or name is not what the profile says), missing (the page does not mention the business)."""
+    """Open the listing page and compare it with the business.
+    Evidence: the business's name (as written in full, or as its short brand name), its website address, and its phone number. Page text and the page's own
+    title and description are read, with entities decoded. A directory must also show the phone; a social profile needs only the name or the website
+    (a profile's bio does not have to carry a number).
+    Returns {status, found: {name, phone}, note}. status: listed, inconsistent (page found but the phone is not what the profile says), missing (the page does not mention the business)."""
+    from html import unescape
+    from urllib.parse import urlsplit
     code, html = page if page is not None else fetch_page(url)
     if code >= 400:
         return {"status": "missing", "found": None, "note": f"The page answered with an error ({code}). Check the link."}
-    text = re.sub(r"<[^>]+>", " ", html)
+    meta = " ".join(re.findall(r"""<meta[^>]+(?:name|property)=["'](?:description|og:description|og:title|twitter:description)["'][^>]+content=["']([^"']*)["']""", html, re.I))
+    text = unescape(re.sub(r"<[^>]+>", " ", html) + " " + meta)
     flat = re.sub(r"[^a-z0-9]", "", text.lower())
-    name_flat = re.sub(r"[^a-z0-9]", "", (business.name or "").lower())
-    name_hit = bool(name_flat) and name_flat in flat
+    forms = _brand_forms(getattr(business, "name", "") or "")
+    full, short = (forms[0] if forms else ""), forms[1:]
+    host = (urlsplit(getattr(business, "website", None) or "").hostname or "").lower().removeprefix("www.")
+    site_hit = bool(host) and host in text.lower()
     country = getattr(business, "country", None)
     mine = countries.national(getattr(business, "phone", None), country)
-    runs = re.findall(r"\+?\d[\d\s().-]{8,16}\d", text)
-    phones = [m.strip() for m in runs if len(re.sub(r"\D", "", m)) >= 7]
+    runs = re.findall(r"(?<!\d)\+?\d[\d\s().-]{6,17}\d(?!\d)", text)
+    phones = [m.strip() for m in runs if 7 <= len(re.sub(r"\D", "", m)) <= 15]  # an 18-digit number is an id, not a phone
     phone_hit = bool(mine) and any(countries.same_phone(mine, p, country) for p in phones)
+    name_hit = bool(full) and full in flat
+    brand_hit = any(f in flat for f in short)  # the short brand name counts when the website or the phone confirms it is the same business
     title = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
-    found = {"name": re.sub(r"\s+", " ", title.group(1)).strip()[:140] if title else None, "phone": next(iter(phones), None), "address": None}
-    if not name_hit:
+    found = {"name": re.sub(r"\s+", " ", unescape(title.group(1))).strip()[:140] if title else None, "phone": next(iter(phones), None), "address": None}
+    is_social = any(c[4] == "social" and c[2] in (urlsplit(url).hostname or "") for c in CATALOG)
+    if not (name_hit or (brand_hit and (site_hit or phone_hit)) or (site_hit and is_social)):
         return {"status": "missing", "found": found, "note": "The business name is not on this page. Check it is the right listing."}
+    how = "name" if name_hit else "brand name" + (" and website" if site_hit else " and phone")
+    if is_social:
+        return {"status": "listed", "found": found, "note": f"The {how} match the profile." + ("" if phone_hit or not mine else " (A profile does not need to show a phone number.)")}
     if mine and not phone_hit:
         return {"status": "inconsistent", "found": found, "note": "The page does not show the profile's phone number. Correct the listing."}
-    return {"status": "listed", "found": found, "note": "The name" + (" and phone match" if mine else " matches") + " the profile."}
+    return {"status": "listed", "found": found, "note": "The " + how + (" and phone match" if mine else " matches") + " the profile."}
