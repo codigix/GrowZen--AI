@@ -203,3 +203,22 @@ def test_a_row_left_publishing_by_a_crash_becomes_failed_not_republished(client,
     db.refresh(p)
     assert p.status == "failed" and "interrupted" in p.error and not fake.calls
     assert _listed(client, base, a.id)["publishing_status"] == "failed"
+
+
+def test_react_site_without_scheduling_is_held_by_growzen_and_published_at_the_time(client, db, monkeypatch):
+    calls = []
+
+    def fake(conn, a, mode, when):
+        calls.append(mode)
+        if mode == "schedule":
+            raise rs.ScheduleHeldByGrowZen("This website has no scheduled posts of its own.")
+        return {"id": "9", "url": "https://acme.com/blog/9", "status": "publish", "image_url": None, "steps": []}
+
+    bid, a, base = _setup(client, db, monkeypatch, fake)
+    when = datetime.now(timezone.utc) + timedelta(days=1)
+    r = client.post(f"{base}/{a.id}/publish-react", json={"mode": "schedule", "scheduled_at": when.isoformat()})
+    assert r.status_code == 200 and r.json()["held"] is True and calls == ["schedule"]
+    p = db.query(ScheduledPost).filter_by(article_id=a.id).one()
+    assert p.status == "pending" and p.method == "react"
+    assert sp.run_due_scheduled(db, when + timedelta(minutes=1)) == 1
+    assert calls == ["schedule", "publish"] and db.query(ScheduledPost).filter_by(article_id=a.id).one().status == "published"

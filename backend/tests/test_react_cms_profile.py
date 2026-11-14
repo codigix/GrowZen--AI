@@ -60,7 +60,7 @@ def test_publish_sends_the_sites_own_shape_and_refuses_schedule(monkeypatch):
     assert out["id"] == "7" and sent["status"] == "Draft" and sent["isPublished"] is False and sent["content"].startswith("<h2>") and sent["seoData"]["seoTitle"] == "Silk Sarees"
     try:
         rs.publish(conn, a, "schedule", datetime(2099, 1, 1, tzinfo=timezone.utc))
-    except rs.ReactSiteError as exc:
+    except rs.ScheduleHeldByGrowZen as exc:
         assert "no scheduled posts" in str(exc)
     else:
-        raise AssertionError("schedule should be refused")
+        raise AssertionError("the site cannot schedule: GrowZen must hold it")

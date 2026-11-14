@@ -38,6 +38,10 @@ class ReactSiteError(RuntimeError):
     pass
 
 
+class ScheduleHeldByGrowZen(ReactSiteError):
+    """The website has no scheduled posts of its own: the caller keeps the article and publishes it at the chosen time."""
+
+
 class AuthFailed(ReactSiteError):
     pass
 
@@ -834,7 +838,7 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
             profile = detect_profile(conn, sample, _last_list_text.get(base + path, ""))
             if profile == "cms":
                 if mode == "schedule":
-                    raise ReactSiteError("This website has no scheduled posts (its blog has only Draft and Published). Choose Save as draft or Publish now.")
+                    raise ScheduleHeldByGrowZen("This website has no scheduled posts of its own (its blog has only Draft and Published), so GrowZen holds the post and publishes it at the chosen time.")
                 data, dropped = to_cms(a, raw, mode, when), []
                 m = dict(conn.mapping or {})
                 for k, v in (("image_delivery", "inline"), ("image_field", "coverImage"), ("image_alt_field", "imageAltText"), ("max_upload_mb", 0.5)):

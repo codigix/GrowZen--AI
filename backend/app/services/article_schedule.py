@@ -146,6 +146,11 @@ def schedule(db: Session, b: Business, a: Article, date: str, time: str, destina
         raise ScheduleError(f"Pick a date and time in the future ({tz_name()} time).", 422)
     if get_settings().blog_featured_image_required and not fi.path_of(a.featured_image_path):
         raise ScheduleError("Add a featured image before scheduling (Featured image section, above the article body).", 422)
+    return schedule_at(db, b, a, due, destination)
+
+
+def schedule_at(db: Session, b: Business, a: Article, due: datetime, destination: str) -> ScheduledPost:
+    """Hold the article in GrowZen and publish it at `due` (UTC): for websites that have no "publish later" of their own."""
     _check_destination(db, b, destination)
     current = latest_by_article(db, b.id, a.id).get(a.id)
     if current and current.status == "publishing":

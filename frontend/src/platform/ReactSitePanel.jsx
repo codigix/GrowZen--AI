@@ -125,7 +125,7 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
     if (!article) return;
     setBusy('publish'); setPubSteps([]); setError('');
     api(`/businesses/${b.id}/articles/${article.id}/publish-react`, { method: 'POST', body: { mode, scheduled_at: mode === 'schedule' ? new Date(when).toISOString() : null } })
-      .then(r => { setPubSteps(r.steps); setPost(r.article); toast(mode === 'draft' ? 'Saved as a draft on the React.js website.' : mode === 'publish' ? 'Published on the React.js website.' : 'Scheduled on the React.js website.'); if (onChanged) onChanged(r.article); })
+      .then(r => { setPubSteps(r.steps); setPost(r.article); toast(mode === 'draft' ? 'Saved as a draft on the React.js website.' : mode === 'publish' ? 'Published on the React.js website.' : (r.held ? 'Scheduled: GrowZen will publish it at that time.' : 'Scheduled on the React.js website.')); if (onChanged) onChanged(r.article); })
       .catch(e => setPubSteps([{ step: 'Publish', ok: false, detail: e.message || String(e) }])).finally(() => setBusy(''));
   };
   const removePost = () => {
@@ -143,7 +143,7 @@ export default function ReactSitePanel({ b, article, featured, toast, onChanged,
   const modes = [
     { id: 'draft', title: 'Save as draft', hint: 'Review it on the website before it goes live' },
     { id: 'publish', title: 'Publish now', hint: 'Goes live immediately' },
-    { id: 'schedule', title: 'Schedule', hint: 'The website publishes it at the chosen time' }
+    { id: 'schedule', title: 'Schedule', hint: 'Published automatically at the chosen time' }
   ];
 
   if (!conn) return <div className="py-8 flex items-center gap-2 text-[12px] text-slate-500"><Loader2 size={14} className="animate-spin" /> Loading the React.js website connection…</div>;
