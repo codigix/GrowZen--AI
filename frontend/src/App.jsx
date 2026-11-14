@@ -51,6 +51,7 @@ function BacklinkIntelRedirect() {
 const BacklinkCheckerPage = lazy(() => import('./platform/BacklinkCheckerPage'));
 const GrowthFixPage = lazy(() => import('./platform/GrowthFixPage'));
 const BacklinksCitationsPage = lazy(() => import('./platform/BacklinksCitationsPage'));
+const FixPlanPage = lazy(() => import('./platform/FixPlanPage'));
 const BacklinkHubPage = lazy(() => import('./platform/BacklinkHubPage'));
 const CompetitorWatchPage = lazy(() => import('./platform/CompetitorWatchPage'));
 const GeoTrackerPage = lazy(() => import('./platform/GeoTrackerPage'));
@@ -191,6 +192,7 @@ export default function App() {
         <Route path="off-page-seo/:tab" element={<BacklinksCitationsPage />} />
         <Route path="backlink-checker" element={<BacklinkCheckerPage />} />
         <Route path="projects/:id/journey" element={<Navigate to="/tracking-overview" replace />} />
+        <Route path="fix-plan/:area" element={<FixPlanPage />} />
         <Route path="backlinks" element={<Navigate to="/backlinks/links" replace />} />
         <Route path="backlinks/:view" element={<BacklinkHubPage />} />
         <Route path="backlink-intelligence" element={<BacklinkIntelRedirect />} />

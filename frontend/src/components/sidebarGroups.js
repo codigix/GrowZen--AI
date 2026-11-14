@@ -105,7 +105,7 @@ export const SIDEBAR_SECTIONS = [
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { items: [page('/dashboard')] },
-      { title: 'Site Performance', items: [page('/website-audit'), page('/rank-tracking/landscape', { also: ['/rank-tracking'] }), page('/traffic'), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] })] },
+      { title: 'Site Performance', items: [page('/website-audit'), link('/fix-plan/seo', 'SEO Fix Plan'), link('/fix-plan/aeo', 'AEO Fix Plan'), link('/fix-plan/geo', 'GEO Fix Plan'), page('/rank-tracking/landscape', { also: ['/rank-tracking'] }), page('/traffic'), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] })] },
       { title: 'Competitors', items: [page('/competitor-finder'), page('/competitor-watch')] },
       { title: 'Keyword Research', items: [page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' }), page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics', '/keyword-management/use'] }), link('/keyword-management/status', 'Keyword Status')] },
       { title: 'Content Ideas', items: [page('/ai-content-generation/blog'), page('/ai-content-generation/trends'), link('/seo-brief', 'SEO Brief Generator')] },
@@ -117,7 +117,7 @@ export const SIDEBAR_SECTIONS = [
       { items: [link('/gmb-profile/overview', 'Dashboard'), link('/gmb-profile/profile', 'GBP Optimization'), link('/gmb-profile/performance', 'Performance'), link('/gmb-profile/traffic', 'Website Traffic'),
         page('/reviews', { label: 'Reviews & Reputation' }), page('/google-posts', { label: 'Posts' }), page('/media-management', { label: 'Photos' })] },
       { title: 'Listings & Rankings', items: [page('/off-page-seo/citations', { label: 'Listing Management' }), link('/rank-tracking/geo', 'Map Rank Tracker'), link('/gmb-profile/competitors', 'Maps Competitors')] },
-      { title: 'Optimization', items: [link('/gmb-profile/local-seo', 'Local SEO'), link('/gmb-profile/ai', 'AI Recommendations')] },
+      { title: 'Optimization', items: [link('/fix-plan/gmb', 'Profile Fix Plan'), link('/gmb-profile/local-seo', 'Local SEO'), link('/gmb-profile/ai', 'AI Recommendations')] },
       { title: 'Manage', items: [page('/automation', { label: 'AI Tasks & Approvals' }), link('/gmb-profile/tasks', 'Tasks & Activities'), link('/gmb-profile/sync', 'Sync History'), link('/gmb-profile/reports', 'Reports')] },
       { title: 'Settings', items: [link('/gmb-profile/settings', 'Settings & Integrations')] }
     ]

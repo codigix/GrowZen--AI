@@ -317,6 +317,7 @@ export function IssuesView({ bid }) {
           })}
           <span className="w-px bg-slate-200 mx-1" aria-hidden="true" />
           {['all', ...areas].map(k => <button key={k} type="button" aria-pressed={area === k} onClick={() => setArea(k)} className={`text-13 rounded-full px-3 py-1.5 border cursor-pointer ${area === k ? 'border-indigo-500 bg-indigo-50 text-indigo-700 font-semibold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{k === 'all' ? 'Every area' : AREA[k] || k}{k !== 'all' && <span className="tabular-nums"> {d.by_area[k]}</span>}</button>)}
+          {['seo', 'aeo', 'geo', 'gmb', 'local', 'chatgpt'].includes(area) && <Link to={`/fix-plan/${area}`} className="ml-auto self-center text-13 font-semibold text-indigo-600 hover:underline">Open the fix plan for this area →</Link>}
         </div>
       </Card>
 
