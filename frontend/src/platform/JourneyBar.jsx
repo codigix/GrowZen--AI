@@ -42,6 +42,27 @@ function StepRow({ s, total, open, onToggle, onClose }) {
   );
 }
 
+/** All ten steps of one project, open on the page: the project's own journey. */
+export function JourneyFull({ bid }) {
+  const f = useFlow(bid);
+  const [open, setOpen] = useState(null);
+  const d = f.data;
+  if (!d) return <div className="h-64 rounded-xl bg-slate-100 animate-pulse" role="status" aria-busy="true" />;
+  const cur = open === null ? d.next?.key : open;
+  return (
+    <div className="grid gap-4 max-w-3xl">
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-wrap items-center gap-3">
+        <span className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 inline-flex items-center justify-center shrink-0"><MapIcon size={18} /></span>
+        <div className="flex-1 min-w-[220px]"><h2 className="text-16 font-semibold text-slate-900">{d.done} of {d.total} steps done</h2>
+          <div className="mt-1.5 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-emerald-500 rounded-full" style={{ width: `${d.percent}%` }} /></div></div>
+        {d.next && <Link to={d.next.link} className="shrink-0"><span className="inline-flex items-center gap-1.5 h-10 px-4 rounded-lg bg-indigo-600 text-white text-14 font-semibold hover:bg-indigo-700">Next: {d.next.title}<ArrowRight size={15} /></span></Link>}
+      </section>
+      {d.approvals_waiting > 0 && <p className="text-13 text-violet-800 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">{d.approvals_waiting} prepared item{d.approvals_waiting === 1 ? '' : 's'} wait for your approval on the Posts, Reviews, Photos, Profile and Keyword pages. Nothing is published until you approve it.</p>}
+      <ol className="grid grid-cols-[minmax(0,1fr)] gap-2">{d.steps.map(s => <StepRow key={s.key} s={s} total={d.total} open={cur === s.key} onToggle={() => setOpen(cur === s.key ? '' : s.key)} onClose={() => {}} />)}</ol>
+    </div>
+  );
+}
+
 /** The journey on the dashboard: one slim bar (progress and the next step). Click it to open all ten steps in a panel on the right. */
 export function JourneyCard({ bid }) {
   const f = useFlow(bid);
@@ -93,7 +114,7 @@ export function StepBar({ bid, step }) {
           <p>{s.why}</p>
           {s.requires.length > 0 && <p>Needs first: {s.requires.map(r => <span key={r.key} className="inline-flex items-center gap-1 mr-2">{r.done ? <Check size={11} /> : <Lock size={11} />}{r.title}</span>)}</p>}
           {nxt && <p>Comes next: <Link to={nxt.link} className="underline font-semibold">{nxt.order}. {nxt.title}</Link></p>}
-          <p><Link to="/dashboard" className="underline font-semibold">See the whole journey</Link></p>
+          <p><Link to={`/projects/${bid}/journey`} className="underline font-semibold">See this project's whole journey</Link></p>
         </div>
       )}
     </div>

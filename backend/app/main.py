@@ -123,6 +123,7 @@ from .routers import autopilot as autopilot_router  # noqa: E402
 from .routers import backlink_check as backlink_check_router  # noqa: E402
 from .routers import flow as flow_router  # noqa: E402
 app.include_router(flow_router.router, prefix=settings.api_prefix)
+app.include_router(flow_router.projects_router, prefix=settings.api_prefix)
 app.include_router(backlink_check_router.router, prefix=settings.api_prefix)
 app.include_router(autopilot_router.router, prefix=settings.api_prefix)
 app.include_router(growth_plan_router.router, prefix=settings.api_prefix)

@@ -1,6 +1,5 @@
 import PositionTrackingHome from './PositionTrackingHome';
 import React, { useEffect, useState } from 'react';
-import { JourneyCard } from './JourneyBar';
 import { Link, useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import {
@@ -96,7 +95,7 @@ function nextStepFor(p) {
   return { text: 'On track', level: 'ok' };
 }
 
-function ProjectCard({ p, onOpen }) {
+function ProjectCard({ p, onOpen, journey }) {
   const st = STATUS_META[p.status] || { label: p.status, tone: 'gray' };
   const step = nextStepFor(p);
   return (
@@ -128,6 +127,17 @@ function ProjectCard({ p, onOpen }) {
         </div>
       </div>
 
+      {journey && (
+        <div className="rounded-lg bg-slate-50 ring-1 ring-inset ring-slate-200 px-3 py-2.5" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between gap-2 text-12">
+            <span className="font-semibold text-slate-800">Journey: {journey.done} of {journey.total} steps done</span>
+            <Link to={`/projects/${p.id}/journey`} className="font-semibold text-indigo-700 hover:underline whitespace-nowrap">Open journey</Link>
+          </div>
+          <div className="mt-1.5 h-1.5 rounded-full bg-slate-200 overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${journey.percent}%` }} /></div>
+          <div className="mt-1.5 text-12 text-slate-600">{journey.next ? <>Now at step {journey.next.order}: <Link to={`/projects/${p.id}/journey`} className="font-semibold text-slate-900 hover:underline">{journey.next.title}</Link></> : 'Every step is done.'}</div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-1 min-h-[22px]">
         {p.services.length ? p.services.slice(0, 4).map(s => (
           <span key={s.job} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-11 font-medium ring-1 ring-inset ${s.last_status === 'failed' ? 'bg-red-50 text-red-700 ring-red-200' : 'bg-slate-50 text-slate-700 ring-slate-200'}`} title={`${s.label} · ${EVERY[s.every] || s.every}`}>
@@ -158,6 +168,7 @@ const scorePill = (s) => (s == null ? 'bg-slate-100 text-slate-400 ring-slate-20
 
 function Projects({ projects, onOpen }) {
   const path = useModulePath();
+  const journeys = useApi('/flow/projects').data?.projects || {};
   const [view, setView] = useState(readView);
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
@@ -189,9 +200,21 @@ function Projects({ projects, onOpen }) {
           <button className={seg(view === 'table')} onClick={() => setView('table')} aria-label="Table view" title="Table"><List size={14} /></button>
         </div>
       </div>
+      {view === 'table' && projects.length > 0 && (
+        <div className="mb-4 ai-glass-card rounded divide-y divide-slate-100">
+          {projects.map(p => { const j = journeys[p.id]; return j ? (
+            <div key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-13">
+              <span className="font-semibold text-slate-900 min-w-[140px]">{p.name}</span>
+              <span className="text-slate-600 flex-1 min-w-[200px]">{j.next ? <>Now at step {j.next.order} of {j.total}: <b className="text-slate-900">{j.next.title}</b></> : 'Every step is done.'}</span>
+              <span className="w-32 h-1.5 rounded-full bg-slate-200 overflow-hidden hidden sm:block"><span className="block h-full bg-emerald-500" style={{ width: `${j.percent}%` }} /></span>
+              <span className="text-12 text-slate-500 tabular-nums">{j.done}/{j.total}</span>
+              <Link to={`/projects/${p.id}/journey`} className="font-semibold text-indigo-700 hover:underline">Open journey</Link>
+            </div>) : null; })}
+        </div>
+      )}
       {view === 'table' ? <SiteAuditTable />
         : !shown.length ? <div className="ai-glass-card rounded py-12 text-center text-13 text-slate-500">No projects match.</div>
-          : <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{shown.map(p => <ProjectCard key={p.id} p={p} onOpen={onOpen} />)}</div>}
+          : <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{shown.map(p => <ProjectCard key={p.id} p={p} onOpen={onOpen} journey={journeys[p.id]} />)}</div>}
     </section>
   );
 }
@@ -739,15 +762,10 @@ function TrackingTable() {
   );
 }
 
-function DashboardJourney() {
-  const [business] = useSeoBusiness();
-  return business ? <div className="mb-5"><JourneyCard bid={business.id} /></div> : null;
-}
-
 export default function SeoOverviewPage() {
   return (
     <SeoShell title="Command Center" subtitle="Your AI-run SEO portfolio at a glance" hideSwitcher>
-      {() => <><DashboardJourney /><Dashboard /><TrackingTable /></>}
+      {() => <><Dashboard /><TrackingTable /></>}
     </SeoShell>
   );
 }
