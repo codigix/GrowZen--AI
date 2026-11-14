@@ -463,7 +463,7 @@ export const ScoreRing = ({ score, size = 112, label = 'Score', level }) => {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-        <span className="text-2xl font-extrabold text-slate-900 leading-none font-display">{score}</span>
+        <span className="text-xl font-extrabold text-slate-900 leading-none font-display">{score}</span>
         <span className="text-10  font-bold text-slate-500  mt-1 ">{label}</span>
       </div>
     </div>

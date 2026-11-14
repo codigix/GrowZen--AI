@@ -102,11 +102,15 @@ def check_listing(business: Any, url: str, page: tuple[int, str] | None = None) 
     title = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
     found = {"name": re.sub(r"\s+", " ", unescape(title.group(1))).strip()[:140] if title else None, "phone": next(iter(phones), None), "address": None}
     is_social = any(c[4] == "social" and c[2] in (urlsplit(url).hostname or "") for c in CATALOG)
-    if not (name_hit or (brand_hit and (site_hit or phone_hit)) or (site_hit and is_social)):
-        return {"status": "missing", "found": found, "note": "The business name is not on this page. Check it is the right listing."}
-    how = "name" if name_hit else "brand name" + (" and website" if site_hit else " and phone")
     if is_social:
-        return {"status": "listed", "found": found, "note": f"The {how} match the profile." + ("" if phone_hit or not mine else " (A profile does not need to show a phone number.)")}
+        found["phone"] = next((p for p in phones if countries.same_phone(mine, p, country)), None) if mine else None  # a social page's stray numbers are ids, not its phone
+    if not (name_hit or (brand_hit and (site_hit or phone_hit or is_social)) or (site_hit and is_social)):
+        return {"status": "missing", "found": found, "note": "The business name is not on this page. Check it is the right listing."}
+    how = "name" if name_hit else "brand name" + (" and website" if site_hit else " and phone" if phone_hit else "")
+    if is_social:
+        proof = name_hit or site_hit or phone_hit
+        return {"status": "listed", "found": found, "note": f"The {how} match the profile."
+                + ("" if proof else " Instagram, Facebook and LinkedIn do not show a website or phone to automatic checks, so make sure this profile is yours.")}
     if mine and not phone_hit:
         return {"status": "inconsistent", "found": found, "note": "The page does not show the profile's phone number. Correct the listing."}
     return {"status": "listed", "found": found, "note": "The " + how + (" and phone match" if mine else " matches") + " the profile."}

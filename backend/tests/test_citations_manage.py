@@ -82,3 +82,13 @@ def test_short_brand_name_website_and_entities_are_understood_and_ids_are_not_ph
     # a directory page with the short name and the right phone is listed
     r = sites.check_listing(B, "https://www.justdial.com/x", (200, "<title>Codigix | Justdial</title><body>Codigix Pune 070665 56768</body>"))
     assert r["status"] == "listed"
+
+
+def test_a_social_profile_with_only_the_brand_name_is_listed_with_a_warning_and_no_stray_phone():
+    class B:
+        name, phone, country, website = "Codigix Infotech – Healthcare Marketing Agency", "070665 56768", "IN", "https://codigix.co"
+    page = (200, "<html><head><title>Codigix (&#064;codigix) &bull; Instagram photos and videos</title></head><body>1054639155</body></html>")
+    r = sites.check_listing(B, "https://www.instagram.com/codigix?xtok=abc", page)
+    assert r["status"] == "listed" and r["found"]["phone"] is None and "make sure this profile is yours" in r["note"]
+    # the same page on a directory is still not accepted
+    assert sites.check_listing(B, "https://www.justdial.com/x", page)["status"] == "missing"
