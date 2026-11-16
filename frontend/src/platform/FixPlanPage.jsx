@@ -4,6 +4,7 @@ import { ArrowRight, CheckCircle2, Clock, RefreshCw, TrendingUp, ExternalLink } 
 import { SeoShell, Card, Button, Badge, ScoreRing, ErrorNote, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import Tip from './Tip';
+import OnboardingPhases from './OnboardingPhases';
 
 const SEV = { critical: ['Critical', 'red'], serious: ['Serious', 'amber'], warning: ['Warning', 'blue'], info: ['Notice', 'gray'] };
 const STATUS = { todo: ['To do', 'gray'], done: ['Marked done: not confirmed', 'amber'], unverified: ['Check still fails', 'red'], failed: ['Check failed', 'red'], blocked: ['Blocked', 'gray'], verified: ['Confirmed', 'green'] };
@@ -49,7 +50,7 @@ function Body({ b }) {
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
-  const setArea = (k) => setParams(k === 'all' ? {} : { area: k }, { replace: true });
+  const setArea = (k) => setParams(k === 'all' ? { view: 'all' } : { view: 'all', area: k }, { replace: true });
   const check = () => run('check', async () => {
     const out = await api(`/businesses/${b.id}/fix-plan/check`, { method: 'POST', timeout: 180000 });
     r.setData(out); setResult(out.result);
@@ -111,10 +112,24 @@ function Body({ b }) {
   );
 }
 
+/** Two views of the same plan: step by step (the website first, then each profile phase) and every change in one list with the scores. */
+function Views({ b }) {
+  const [params, setParams] = useSearchParams();
+  const view = params.get('view') === 'all' || params.get('area') ? 'all' : 'steps';
+  const tab = (id, label) => <button type="button" aria-pressed={view === id} onClick={() => setParams(id === 'all' ? { view: 'all' } : {}, { replace: true })}
+    className={`h-9 px-4 rounded-lg text-13 font-semibold cursor-pointer ring-1 ring-inset ${view === id ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{label}</button>;
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+      <div className="flex flex-wrap gap-2">{tab('steps', 'Step by step')}{tab('all', 'All changes and scores')}</div>
+      {view === 'steps' ? <OnboardingPhases b={b} /> : <Body b={b} />}
+    </div>
+  );
+}
+
 export default function FixPlanPage() {
   return (
-    <SeoShell title="Fix plan" subtitle="All the changes for your website and profile in one place, what each is worth, and the score that rises once a fix is confirmed">
-      {(b) => <Body key={b.id} b={b} />}
+    <SeoShell title="Fix plan" subtitle="Start with the website, page by page. When it is right, build the profiles phase by phase.">
+      {(b) => <Views key={b.id} b={b} />}
     </SeoShell>
   );
 }
