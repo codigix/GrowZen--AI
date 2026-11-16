@@ -1290,16 +1290,27 @@ function PublishingSetup({ b }) {
   );
 }
 
+const TOPIC_HANDOFF = 'growzen.writerTopic';
+
 /**
  * Main AI Content Studio Component
  */
 export default function ContentStudioPage() {
   const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'articles', 'calendar', 'publishing']);
   const openInWriter = (id) => { if (!id) { setOpenArticleId(null); return; } setActiveTopic(null); setOpenArticleId(id); setTab('blog'); };
-  const [activeTopic, setActiveTopic] = useState(null);
+  // Moving from /trends to /blog remounts this page (the layout resets on every address), so a topic picked in
+  // Topic Finder is handed over through sessionStorage and taken once here.
+  const [activeTopic, setActiveTopic] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(TOPIC_HANDOFF);
+      sessionStorage.removeItem(TOPIC_HANDOFF);
+      return raw && tab === 'blog' ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
   const [openArticleId, setOpenArticleId] = useState(() => { const n = Number(new URLSearchParams(window.location.search).get('article')); return Number.isInteger(n) && n > 0 ? n : null; }); // a Growth task links to one article
 
   const handleSelectTopic = (topic) => {
+    try { if (topic && tab !== 'blog') sessionStorage.setItem(TOPIC_HANDOFF, JSON.stringify(topic)); } catch { /* storage blocked: the topic is still set below */ }
     setActiveTopic(topic);
     setOpenArticleId(null);
     setTab('blog');
