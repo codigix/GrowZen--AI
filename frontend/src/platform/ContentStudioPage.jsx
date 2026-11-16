@@ -548,6 +548,14 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
   const pendingFull = useApi(pendingId ? `/businesses/${b.id}/articles/${pendingId}` : null);  // the text written so far
   usePoll(() => pendingFull.reload(true), Boolean(pendingId), 1000);
   usePoll(() => list.reload(true), Boolean(pendingId), 2000);
+  // a scheduled article is published by the server at its time: refresh on our own so the page shows it without F5
+  const waiting = s => s === 'scheduled' || s === 'publishing';
+  const anyWaiting = articles.some(x => waiting(x.publishing_status)) || waiting(article?.publishing_status);
+  usePoll(() => {
+    if (document.visibilityState !== 'visible') return;
+    list.reload(true);
+    if (openId) full.reload(true);
+  }, anyWaiting && !pendingId, 30000);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!pendingId) return undefined;

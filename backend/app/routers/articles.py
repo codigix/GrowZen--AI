@@ -375,7 +375,7 @@ def publish_react(article_id: int, body: PublishIn, b: Business = Depends(get_bu
             sched.schedule_at(db, b, a, when, ap.REACT)  # the website cannot publish later: GrowZen keeps it and publishes at that time
         except sched.ScheduleError as err:
             raise HTTPException(err.code, str(err))
-        a.react_status = a.react_status if a.react_post_id else "scheduled"
+        a.react_status = a.react_status if a.react_post_id and a.react_status != "deleted" else "scheduled"  # a deleted post comes back at that time
         db.commit()
         return {"id": None, "url": None, "status": "scheduled", "held": True, "due_at": when, "article": row(a),
                 "steps": [{"step": "Schedule it", "ok": True, "detail": f"{exc} It will be published on {when.strftime('%d %b %Y %H:%M')} UTC."}]}

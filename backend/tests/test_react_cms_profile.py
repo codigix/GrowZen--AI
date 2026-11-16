@@ -61,7 +61,7 @@ def test_publish_sends_the_sites_own_shape_and_refuses_schedule(monkeypatch):
     try:
         rs.publish(conn, a, "schedule", datetime(2099, 1, 1, tzinfo=timezone.utc))
     except rs.ScheduleHeldByGrowZen as exc:
-        assert "no scheduled posts" in str(exc)
+        assert "publishes it at the chosen time" in str(exc)
     else:
         raise AssertionError("the site cannot schedule: GrowZen must hold it")
 
