@@ -18,6 +18,7 @@ Endpoints (the site's backend implements the receiving side; see docs/react-site
 Requests go through the same SSRF-safe client as WordPress publishing (public hosts only).
 """
 import base64
+import html
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -332,6 +333,20 @@ def detect_profile(conn: ReactSiteConnection, sample: dict | None, list_text: st
     return "cms" if sum(m in (list_text or "") for m in CMS_MARKERS) >= 2 else "standard"
 
 
+def card_safe_content(body: str) -> str:
+    """These sites print the first lines of `content` as plain text on their blog cards (and render it as HTML on the
+    post page), so a body starting with <p> shows "<p>Care for..." on the card. Start it with the first paragraph as
+    bare text instead: the card shows clean words, and the post page still renders the same text followed by the rest."""
+    m = re.match(r"\s*<p\b[^>]*>([\s\S]*?)</p>\s*", body or "", re.I)
+    if not m:
+        return body
+    text = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", m.group(1)))).strip()
+    if not text:
+        return body
+    text = text.replace("<", "&lt;").replace(">", "&gt;")  # still safe as HTML; a bare & renders as itself
+    return f"{text}\n{body[m.end():]}"
+
+
 def to_cms(a: Article, raw: dict, mode: str, when: datetime | None) -> dict:
     """The article as one record of a `content / isPublished / seoData` blog table: the same shape the site's own admin form saves
     (status "Draft" or "Published" with isPublished, SEO fields inside seoData, FAQs as {question, answer})."""
@@ -342,7 +357,7 @@ def to_cms(a: Article, raw: dict, mode: str, when: datetime | None) -> dict:
         "title": raw["title"], "slug": raw["slug"], "excerpt": raw.get("excerpt") or "", "category": raw.get("category") or "", "subCategory": "", "author": "Admin",
         "readingTime": max(1, round(words / 200)), "status": CMS_STATUS[mode], "isPublished": published,
         "coverImage": "", "bannerImage": "", "relatedImages": [], "imageAltText": "", "imageCaption": "",
-        "content": raw["body"], "enableToc": False,
+        "content": card_safe_content(raw["body"]), "enableToc": False,
         "seoData": {"focusKeyword": raw.get("focus_keyword") or "", "secondaryKeywords": ", ".join(raw.get("secondary_keywords") or []), "seoTitle": raw.get("seo_title") or raw["title"],
                     "metaDescription": raw.get("seo_description") or "", "canonicalUrl": "", "index": True, "follow": True, "bannerImageAltText": "", "relatedImagesAltTexts": []},
         "socialMediaData": {"socialTitle": raw.get("seo_title") or raw["title"], "socialDescription": raw.get("seo_description") or "", "socialImage": ""},
@@ -393,6 +408,24 @@ def find_post(c: httpx.Client, conn: ReactSiteConnection, base: str, path: str, 
         except (httpx.HTTPError, ValueError, ReactSiteError):
             continue
     return None
+
+
+def list_posts(conn: ReactSiteConnection) -> list[dict]:
+    """The website's blog records from its own list endpoint (read only). [] when it cannot be read."""
+    path = normalize_path(conn.publish_endpoint)
+    if not path:
+        return []
+    base = normalize_base(conn.api_base_url)
+    try:
+        with site_client(30) as c:
+            r = c.get(base + path)
+            if r.status_code in (401, 403):
+                r = _send(c, conn, "GET", base + path)
+            d = r.json() if r.status_code == 200 else None
+    except (httpx.HTTPError, ValueError, SSRFValidationError, ReactSiteError):
+        return []
+    rows = d if isinstance(d, list) else _find(d, ("data", "blogs", "posts", "items", "results")) if isinstance(d, dict) else None
+    return [x for x in rows if isinstance(x, dict)] if isinstance(rows, list) else []
 
 
 def site_db_problem(base: str, path: str) -> str | None:
