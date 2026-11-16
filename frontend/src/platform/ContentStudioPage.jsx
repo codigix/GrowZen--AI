@@ -7,32 +7,73 @@ import {
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
-  ScoreRing, Meter, SERIES, scoreWord, useSimulated, useToast, useAction, useUrlTab, useDoubleConfirm, ErrorNote, PreviewNote
+  useToast, useAction, useUrlTab, useDoubleConfirm, ErrorNote
 } from './SeoUi';
-import { rng, shortDate, daysBack, ymd } from './seoMock';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
 import { api, fmt, useApi, usePoll } from './seoApi';
 import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } from './SitePublishPanel';
 import FeaturedImageField, { featuredOf } from './FeaturedImageField';
 import ReactSitePanel from './ReactSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
-import HtmlSitePanel from './HtmlSitePanel';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
+import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
 
-const STEPS = ['Topic & Intent', 'AI Draft', 'E-E-A-T Enrichment', 'Quality Gate', 'Publish & Schedule'];
 
-const serpFor = (b, kw) => {
-  const r = rng(`${b.id}-${kw}-serp`);
-  const sites = ['practo.com', 'justdial.com', 'apollohospitals.com', 'healthline.com', 'lybrate.com', 'competitor-hospital.in', 'quora.com', 'medium.com', 'sulekha.com', 'ncbi.nlm.nih.gov'];
-  return sites.map((s, i) => ({
-    pos: i + 1,
-    site: s,
-    title: `${kw.replace(/\b\w/g, c => c.toUpperCase())}${i % 3 === 0 ? ` in ${b.city}` : i % 3 === 1 ? ': Procedure, Cost & Recovery' : ' - Complete 2026 Guide'}`,
-    words: Math.round((900 + r() * 2100) / 50) * 50,
-    headings: Math.round(6 + r() * 12),
-    faq: r() > 0.4
-  }));
-};
+const STEPS = ['Topic & Intent', 'AI Draft', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
+
+const stripTags = (html) => String(html || '').replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+const wordsOf = (t) => (String(t).match(/[\p{L}\p{N}'’-]+/gu) || []);
+const digitsOnly = (t) => String(t || '').replace(/\D/g, '');
+
+/**
+ * Checks computed from the draft itself (no scores are invented): each one passes or fails on what is in the text right now.
+ * `bench` is the real word count of the top Google results (median), when it was fetched.
+ */
+function qualityChecks({ draft, title, metaDescription, keyword, benchMedian }) {
+  const text = stripTags(draft);
+  const words = wordsOf(text);
+  const kw = String(keyword || '').trim().toLowerCase();
+  const has = (hay) => Boolean(kw) && norm(hay).includes(norm(kw));
+  const headings = [...String(draft || '').matchAll(/<h[2-3]\b[^>]*>([\s\S]*?)<\/h[2-3]>/gi)].map(m => stripTags(m[1]));
+  const mdHeadings = [...String(draft || '').matchAll(/^#{2,3}\s+(.+)$/gm)].map(m => m[1]);
+  const heads = [...headings, ...mdHeadings];
+  const first100 = words.slice(0, 100).join(' ');
+  const sentences = text.split(/(?<=[.!?])\s+/).filter(x => wordsOf(x).length > 2);
+  const avgSentence = sentences.length ? Math.round(words.length / sentences.length) : 0;
+  const target = benchMedian || 0;
+  const lo = target ? Math.round(target * 0.8) : 800;
+  const out = [
+    { id: 'title-kw', label: 'The keyword is in the SEO title', ok: has(title), fix: 'Put the main keyword in the title, near the start.' },
+    { id: 'title-len', label: 'The SEO title is 30 to 60 characters', ok: String(title || '').trim().length >= 30 && String(title || '').trim().length <= 60, detail: `${String(title || '').trim().length} characters`, fix: 'Shorter titles are not cut off in Google results.' },
+    { id: 'meta', label: 'The meta description is 70 to 160 characters and has the keyword', ok: String(metaDescription || '').trim().length >= 70 && String(metaDescription || '').trim().length <= 160 && has(metaDescription), detail: `${String(metaDescription || '').trim().length} characters`, fix: 'It is the text under the title in Google.' },
+    { id: 'intro-kw', label: 'The keyword is in the first 100 words', ok: has(first100), fix: 'Say what the page is about, using the keyword, in the opening paragraph.' },
+    { id: 'head-kw', label: 'The keyword is in at least one heading', ok: heads.some(h => has(h)), fix: 'Use the keyword in one H2 or H3.' },
+    { id: 'heads', label: 'There are at least 3 sub-headings', ok: heads.length >= 3, detail: `${heads.length} found`, fix: 'Break the article into sections with H2/H3 headings.' },
+    { id: 'length', label: target ? `Length is close to the top Google results (about ${target} words)` : 'The article is at least 800 words', ok: words.length >= lo, detail: `${words.length} words${target ? `, top results: ${target}` : ''}`, fix: target ? 'The pages that rank are about this long.' : 'Longer, useful articles tend to rank better.' },
+    { id: 'faq', label: 'There is a FAQ section', ok: /faq|frequently asked|common questions/i.test(`${heads.join(' ')} ${text.slice(0, 4000)}`) || heads.some(h => /\?$/.test(h.trim())), fix: 'Add 3 to 5 real customer questions with short answers.' },
+    { id: 'links', label: 'There is a link or a call to action', ok: /<a\s[^>]*href=|\]\(https?:|https?:\/\/|call |contact|book |visit /i.test(draft || ''), fix: 'Tell the reader what to do next: call, book or visit.' },
+    { id: 'read', label: 'Sentences are short enough to read easily (about 22 words or fewer on average)', ok: Boolean(avgSentence) && avgSentence <= 22, detail: avgSentence ? `${avgSentence} words per sentence` : 'no text yet', fix: 'Split long sentences.' },
+    { id: 'todo', label: 'No unfinished placeholders are left in the text', ok: !/\[(write|add|insert|todo|tbd)[^\]]*\]|lorem ipsum/i.test(draft || ''), fix: 'Replace every [Write about…] or [Add…] note with real details.' }
+  ];
+  return out;
+}
+
+/** The facts the article should use come from the business's own profile: nothing is made up here. */
+function realDetailChecks(b, draft) {
+  const flat = norm(stripTags(draft));
+  const body = digitsOnly(stripTags(draft));
+  const inText = (t) => Boolean(t) && flat.includes(norm(t));
+  const services = (b.services || []).map(x => x?.name).filter(Boolean);
+  const phone = digitsOnly(b.phone).slice(-9);
+  const rows = [
+    { id: 'name', label: 'The business name is mentioned', value: b.name, ok: inText(b.name) },
+    { id: 'place', label: 'The city or area is mentioned', value: [b.area, b.city].filter(Boolean).join(', '), ok: Boolean(b.city) && (inText(b.city) || inText(b.area)) },
+    { id: 'phone', label: 'The phone number is in the text', value: b.phone, ok: phone.length >= 7 && body.includes(phone) },
+    { id: 'site', label: 'The website address is in the text', value: b.website, ok: Boolean(b.website) && flat.includes(norm(String(b.website).replace(/^https?:\/\//, '').replace(/\/$/, ''))) },
+    { id: 'service', label: 'At least one of your services is named', value: services.slice(0, 4).join(', '), ok: services.some(inText) }
+  ];
+  return rows.filter(r => r.value);
+}
 
 // How many times a keyword appears (as a phrase, ignoring case and punctuation) in the title, meta description and body.
 const norm = (t) => ` ${(String(t).toLowerCase().match(/\w+/g) || []).join(' ')} `;
@@ -419,7 +460,13 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => {} })
                 )}
                 {x.status === 'pending' && <div className="mt-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-[12px] text-slate-600">Waiting to start writing…</div>}
                 {x.status === 'failed' && x.error && <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-[12px] text-rose-800"><AlertTriangle size={13} className="shrink-0 mt-0.5" /> {x.error}</div>}
-                {x.schedule && (ps === 'scheduled' || ps === 'publishing') && (
+                {x.schedule?.attempts > 0 && x.schedule?.error && ps === 'scheduled' && (
+                  <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-[12px] text-rose-800">
+                    <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                    <span>The scheduled time came{x.schedule.planned_for ? ` (${new Date(x.schedule.planned_for).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''} but publishing failed ({x.schedule.attempts} {x.schedule.attempts === 1 ? 'try' : 'tries'}). It tries again at <b>{scheduleText(x.schedule)}</b>.<span className="block mt-0.5 text-rose-700/90">{x.schedule.error}</span></span>
+                  </div>
+                )}
+                {x.schedule && (ps === 'scheduled' || ps === 'publishing') && !(x.schedule.attempts > 0 && x.schedule.error) && (
                   <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[12px] text-amber-900">
                     <Clock size={13} className="shrink-0" /> <span>{ps === 'publishing' ? 'Publishing now to ' : 'Publishes automatically: '}<b>{scheduleText(x.schedule)}</b></span>
                   </div>
@@ -491,7 +538,7 @@ function GeneratedArticlesTab({ b, openId, onOpen, onWrite, toast }) {
 }
 
 /** The single "AI Blog & Article Writer" tab: the generated articles on top, the E-E-A-T pipeline for the open one below. */
-function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, onShowArticles, toast }) {
+function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onScheduled, onShowArticles, toast }) {
   const list = useApi(`/businesses/${b.id}/articles`);
   const articles = list.data?.articles || [];
   const full = useApi(openId ? `/businesses/${b.id}/articles/${openId}` : null);
@@ -524,8 +571,14 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, onShowA
     else if (a.status === 'failed') setPendingId(null);
   }, [articles, pendingId, setOpenId]);
 
+  const done = article && article.status === 'completed';
+  const showStart = !openId && !pendingId && !activeTopic;
+  const flowStep = pendingId ? 1 : done ? (article.publishing_status === 'published' ? 4 : article.publishing_status === 'scheduled' || article.publishing_status === 'publishing' ? 3 : 2) : activeTopic || openId ? 1 : 0;
   return (
     <div className="space-y-6">
+      <FlowSteps step={flowStep} />
+      {showStart && <ResumeCard articles={articles} onOpen={setOpenId} />}
+      {showStart && <KeywordTopicPlanner b={b} onPick={onPickTopic} />}
       {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
           <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
@@ -534,10 +587,14 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, onShowA
           <span className="ml-auto font-mono text-[11px] font-semibold text-slate-500 shrink-0">Elapsed {mins(elapsed)}</span>
         </div>
       )}
-      {openId && !article
+      {!showStart && !pendingId && <div><button type="button" onClick={() => { setOpenId(null); onPickTopic(null); }} className="text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">← Back to my blogs and a new topic</button></div>}
+      {showStart ? null : openId && !article
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
             onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
+
+      {done && <LayoutCheckCard b={b} article={article} />}
+      {done && <PromoteCard b={b} article={article} />}
 
       {/* the full list lives on the Generated Articles tab; here only a summary with a shortcut */}
       {articles.length > 0 && (() => {
@@ -565,8 +622,9 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onScheduled, onShowA
  */
 function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pendingLength, elapsed = 0, onGenerate, generating, onSaved, onScheduled, toast }) {
   const [step, setStep] = useState(selectedArticle ? 1 : 0);
-  const [kw, setKw] = useState(selectedArticle ? selectedArticle.keyword : selectedTopic ? selectedTopic.title : '');  // the primary keyword
-  const [topicText, setTopicText] = useState(selectedArticle ? selectedArticle.topic || selectedArticle.keyword : selectedTopic ? selectedTopic.title : '');
+  const urlTopic = React.useMemo(() => (selectedArticle || selectedTopic ? '' : (new URLSearchParams(window.location.search).get('topic') || '').slice(0, 200)), []); // a keyword from My Keywords: the writer opens with it ready
+  const [kw, setKw] = useState(selectedArticle ? selectedArticle.keyword : selectedTopic ? selectedTopic.title : urlTopic);  // the primary keyword
+  const [topicText, setTopicText] = useState(selectedArticle ? selectedArticle.topic || selectedArticle.keyword : selectedTopic ? selectedTopic.title : urlTopic);
   const [secondaryList, setSecondaryList] = useState(selectedArticle ? selectedArticle.secondary_keywords || [] : selectedTopic?.selected || []);
   const [kwReady, setKwReady] = useState(Boolean(selectedArticle));  // the full blog is only started once there is a keyword set
   const [kwBusy, setKwBusy] = useState(false);
@@ -585,20 +643,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   };
   const [intent, setIntent] = useState('');
   const [related, setRelated] = useState(selectedTopic?.related || []);
-  const [busy, run] = useSimulated();
-  const serp = useMemo(() => serpFor(b, kw), [b, kw]);
-  const avgWords = Math.round(serp.reduce((s, x) => s + x.words, 0) / serp.length / 50) * 50;
+  const bench = null; // Google gives no list of other sites' rankings, so there is no top-results benchmark
 
-  const topic = kw.trim() || 'your topic';
-  const place = [b.area, b.city].filter(Boolean).join(', ');
-  const [outline, setOutline] = useState(() => [
-    `What is ${topic}?`,
-    `Why people are searching for ${topic} right now`,
-    `${topic}: key options, costs and what to expect${place ? ` in ${place}` : ''}`,
-    `How to choose the right provider for ${topic}`,
-    `How ${b.name} can help`,
-    `Frequently asked questions about ${topic}`
-  ]);
 
   const [draft, setDraft] = useState(selectedArticle ? selectedArticle.body || '' : '');
   const [bodyTab, setBodyTab] = useState('editor'); // 'editor' | 'preview'
@@ -619,6 +665,21 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       });
     }
   }, [selectedArticle]);
+  // edits not saved yet are kept in this browser, so leaving the page does not lose them
+  const bk = selectedArticle ? `growzen.blogedit.${b.id}.${selectedArticle.id}` : null;
+  const [restore, setRestore] = useState(null);
+  useEffect(() => {
+    if (!bk) return;
+    try {
+      const v = JSON.parse(localStorage.getItem(bk) || 'null');
+      if (v && (v.draft !== (selectedArticle.body || '') || v.meta?.title !== (selectedArticle.title || '') || v.meta?.meta_description !== (selectedArticle.meta_description || ''))) setRestore(v);
+    } catch { /* nothing kept */ }
+  }, [bk]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!bk || restore) return;
+    const same = draft === (selectedArticle.body || '') && meta.title === (selectedArticle.title || '') && meta.meta_description === (selectedArticle.meta_description || '');
+    try { if (!same) localStorage.setItem(bk, JSON.stringify({ draft, meta, at: Date.now() })); } catch { /* not kept */ }
+  }, [draft, meta, bk, restore, selectedArticle]);
   const isGenerating = Boolean(generating || (pendingArticle && pendingArticle.status === 'generating'));
   const activeArt = selectedArticle || pendingArticle;
   const liveBody = isGenerating ? (activeArt?.body || '') : (draft || activeArt?.body || '');
@@ -698,32 +759,17 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const saveArticle = () => {
     setSaveBusy(true);
     return api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: articleFields() })
-      .then(() => { toast('Draft saved'); if (onSaved) onSaved(); })
+      .then(() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } toast('Draft saved'); if (onSaved) onSaved(); })
       .catch(e => toast(e.message))
       .finally(() => setSaveBusy(false));
   };
-  const [enrich, setEnrich] = useState({ prices: true, quote: true, photos: true, local: true });
   const [scheduledDate] = useState(() => { const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); });  // tomorrow 10:00, local
-
-  const makeDraft = () => {
-    const title = topic.replace(/\b\w/g, c => c.toUpperCase());
-    const contact = [b.phone && `call ${b.phone}`, b.website && `visit ${b.website}`].filter(Boolean).join(' or ');
-    return `# ${title}${place ? ` in ${place}` : ''}\n\n` +
-      outline.map((h, n) => `## ${n + 1}. ${h}\n[Write about "${h}" using real details from ${b.name}.]\n`).join('\n') +
-      (contact ? `\nTo know more, ${contact}.` : '');
-  };
-
-  const enrichDone = Object.values(enrich).filter(Boolean).length;
-  const score = Math.min(98, 62 + enrichDone * 7 + (outline.length >= 6 ? 6 : 0) + 4);
 
   const next = () => {
     if (step === 0) {
-      // Topic & Intent -> start real Ollama generation, then go to AI Draft
-      if (kwReady && kw.trim()) {
-        generateBlog().then(() => setStep(1));
-      } else {
-        run('draft', () => { setStep(1); }, 800);
-      }
+      // Topic & Intent -> write the article for real, then go to the AI Draft
+      if (kwReady && kw.trim()) generateBlog().then(() => setStep(1));
+      else setGenError('Generate the keywords first: the article is written from them.');
       return;
     }
     if (step === 4) return undefined;
@@ -759,7 +805,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         </ol>
         <div className="mt-4 p-3 rounded-xl bg-white border border-slate-200 text-[11px] text-slate-500 leading-relaxed">
           <ShieldCheck size={13} className="text-emerald-700 inline mr-1" />
-          Content is cross-checked against Google Search Essentials, E-E-A-T guidelines, and hospital policy safeguards.
+          The checks on the next steps are computed from your own draft and your business profile. Nothing is assumed or invented.
         </div>
       </Card>
 
@@ -768,7 +814,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         className="xl:col-span-3"
         title={STEPS[step]}
         action={step === 4 ? null : (
-          <Button variant="secondary" busy={Boolean(busy)} onClick={next}>
+          <Button variant="secondary" busy={genBusy} onClick={next}>
             {step === 0 ? 'Generate Blog' : 'Next Step'}
             <ChevronRight size={13} />
           </Button>
@@ -840,26 +886,19 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               </div>
             )}
             {genError && <div className="text-[12px] text-red-600">{genError}</div>}
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-[12px]">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Growth:</span>
-                <Badge tone="blue">Local Transactional / Patient Guidance</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Target Conversion URL:</span>
-                <span className="font-mono text-cyan-700">/{kw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Suggested Format:</span>
-                <span className="text-slate-800 font-semibold">2026 Comprehensive Cost & Clinical Guide</span>
-              </div>
-            </div>
           </div>
         )}
 
         {/* Step 1: AI Draft */}
         {step === 1 && (
           <div className="space-y-4">
+            {restore && (
+              <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[12.5px] text-amber-900">
+                <span className="flex-1 min-w-[220px]"><b>Unsaved edits found</b> from {new Date(restore.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}: you changed this article and did not press Save.</span>
+                <button type="button" className="h-8 px-3 rounded-lg bg-amber-600 text-white font-semibold cursor-pointer" onClick={() => { setDraft(restore.draft); setMeta(restore.meta); setRestore(null); }}>Restore my edits</button>
+                <button type="button" className="h-8 px-3 rounded-lg bg-white ring-1 ring-inset ring-amber-300 font-semibold cursor-pointer" onClick={() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } setRestore(null); }}>Discard</button>
+              </div>
+            )}
             {/* Status indicator bar */}
             <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 border border-indigo-200">
               <div className="flex items-center gap-2.5">
@@ -1091,64 +1130,47 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
           </div>
         )}
 
-        {step === 2 && (
-          <div className="space-y-3 max-w-xl">
-            <p className="text-[12px] text-slate-700 mb-2">
-              Inject first-hand medical proof points to safeguard against generic, low-value AI penalties.
-            </p>
-            {[
-              ['prices', 'Verified Subsidized Package Pricing (₹12,000 - ₹65,000)'],
-              ['quote', 'Quote from Senior Ophthalmologist / Medical Director'],
-              ['photos', 'Hospital OT & Biometry Diagnostics Photos (No stock photos)'],
-              ['local', 'Local PCMC Access: Opposite Chinchwad Railway Station, Free Parking']
-            ].map(([k, l]) => (
-              <label key={k} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-[12px] cursor-pointer hover:bg-slate-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={enrich[k]}
-                  onChange={e => setEnrich({ ...enrich, [k]: e.target.checked })}
-                  className="rounded text-blue-600 focus:ring-0"
-                />
-                <span className="text-slate-800 font-medium">{l}</span>
-              </label>
-            ))}
-          </div>
-        )}
-
-        {/* Step 5: Quality Gate & Fact Checks */}
-        {step === 3 && (
-          <div className="flex flex-wrap gap-6 items-center">
-            <ScoreRing score={score} label={scoreWord(score)} size={110} />
-            <div className="flex-1 min-w-[280px] space-y-3">
-              {[
-                ['Search Intent & Keyword Saturation', 94],
-                ['Topic Depth vs Top 10 SERP', 75 + enrichDone * 5],
-                ['Internal Anchor Linking', 95],
-                ['E-E-A-T Real Fact Verification', 50 + enrichDone * 12]
-              ].map(([l, v], i) => (
-                <div key={l}>
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-slate-500">{l}</span>
-                    <span className="font-mono font-bold text-slate-900">{Math.min(100, v)}%</span>
-                  </div>
-                  <Meter value={Math.min(100, v)} color={SERIES[i % 3]} />
+        {step === 2 && (() => {
+          const rows = realDetailChecks(b, liveBody);
+          return (
+            <div className="space-y-3 max-w-2xl">
+              <p className="text-[12px] text-slate-700">Real details make an article trustworthy to readers and to Google. These come from your business profile, and each is checked against the draft. Add what is missing by editing the draft, never by guessing.</p>
+              {rows.length === 0 ? <div className="text-[12px] text-slate-500 p-3 rounded-xl bg-slate-50 border border-slate-200">The business profile has no name, city, phone, website or services yet. Add them under GBP Optimization, then they are checked here.</div> : rows.map(r => (
+                <div key={r.id} className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-[12px]">
+                  {r.ok ? <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" /> : <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />}
+                  <div className="min-w-0"><div className="font-semibold text-slate-800">{r.label}</div><div className="text-slate-500 break-words">{r.value}</div></div>
+                  <span className={`ml-auto shrink-0 font-semibold ${r.ok ? 'text-emerald-700' : 'text-amber-700'}`}>{r.ok ? 'Included' : 'Not in the draft'}</span>
                 </div>
               ))}
-              <div className="flex flex-wrap gap-2 pt-1 text-[11px]">
-                <StatusPill level="good">Plagiarism 0.5% (Clean)</StatusPill>
-                <StatusPill level="good">Medical Disclaimer Attached</StatusPill>
-                <StatusPill level="good">Spam-Risk: None</StatusPill>
-              </div>
+              {(b.services || []).some(x => x?.price) && <div className="text-[11.5px] text-slate-500">Prices in your services list: {(b.services || []).filter(x => x?.price).map(x => `${x.name} ${x.price}`).join(' · ')}. Only quote prices you have listed.</div>}
             </div>
-          </div>
-        )}
+          );
+        })()}
+
+        {step === 3 && (() => {
+          const list = qualityChecks({ draft: liveBody, title: liveTitle, metaDescription: liveMetaDesc, keyword: kw || activeArt?.keyword, benchMedian: bench?.median_words });
+          const passed = list.filter(c => c.ok).length;
+          return (
+            <div className="space-y-3 max-w-2xl">
+              <div className="flex items-center gap-3"><span className="text-[22px] font-bold text-slate-900 tabular-nums">{passed} of {list.length}</span><span className="text-[12px] text-slate-500">checks passed on the draft as it is now. Each one is computed from the text, not estimated.</span></div>
+              {!liveBody.trim() && <div className="text-[12px] text-amber-800 bg-amber-50 rounded-lg px-3 py-2">There is no draft to check yet. Generate the article first.</div>}
+              <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                {list.map(c => (
+                  <li key={c.id} className="flex items-start gap-3 px-3 py-2.5 text-[12px]">
+                    {c.ok ? <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" /> : <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />}
+                    <div className="min-w-0"><div className="font-semibold text-slate-800">{c.label}</div>{(c.detail || !c.ok) && <div className="text-slate-500">{c.detail}{c.detail && !c.ok ? ' · ' : ''}{!c.ok ? c.fix : ''}</div>}</div>
+                  </li>
+                ))}
+              </ul>
+              {false && <div className="text-[11.5px] text-slate-500">Tip: on the Topic & Intent step, “Check top results” gives the real target length from Google.</div>}
+            </div>
+          );
+        })()}
 
         {/* Step 4: Publish & Schedule */}
         {step === 4 && (
           <PublishDestinations key={b.id} b={b}>
-            {(dest, setReactConn, setHtmlConn) => dest === 'html' ? (
-              <HtmlSitePanel b={b} article={selectedArticle} toast={toast} onConnection={setHtmlConn} />
-            ) : dest === 'react' ? (
+            {(dest, setReactConn) => dest === 'react' ? (
               <ReactSitePanel b={b} article={selectedArticle} featured={featured} toast={toast} defaultWhen={scheduledDate}
                 onChanged={() => { if (onSaved) onSaved(); }} onConnection={setReactConn} />
             ) : (
@@ -1185,8 +1207,6 @@ function PublishDestinations({ b, children }) {
   const wp = useApi(`/businesses/${b.id}/site-integration`);
   const react = useApi(`/businesses/${b.id}/react-site`);
   const setReactConn = useCallback((c) => { if (c) react.setData(c); }, [react.setData]); // eslint-disable-line react-hooks/exhaustive-deps
-  const htmlSite = useApi(`/businesses/${b.id}/html-site`);
-  const setHtmlConn = useCallback((c) => { if (c) htmlSite.setData(c); }, [htmlSite.setData]); // eslint-disable-line react-hooks/exhaustive-deps
   const [dest, setDest] = useState(() => { try { return localStorage.getItem(`growzen.dest.${b.id}`) || ''; } catch { return ''; } });
   const wpOn = wp.data?.status === 'connected';
   const reactOn = react.data?.status === 'connected';
@@ -1194,14 +1214,13 @@ function PublishDestinations({ b, children }) {
   const pick = (d) => { setDest(d); try { localStorage.setItem(`growzen.dest.${b.id}`, d); } catch { /* this page only */ } };
   const cards = [
     { id: 'wordpress', title: 'WordPress', on: wpOn, loading: !wp.data && !wp.error, target: wp.data?.base_url || b.website },
-    { id: 'react', title: 'React.js Website', on: reactOn, loading: !react.data && !react.error, failed: react.data?.status === 'failed', target: react.data?.blog_url || react.data?.website_url },
-    { id: 'html', title: 'HTML Website', on: htmlSite.data?.status === 'connected', loading: !htmlSite.data && !htmlSite.error, failed: htmlSite.data?.status === 'failed', target: htmlSite.data?.listing_url }
+    { id: 'react', title: 'React.js Website', on: reactOn, loading: !react.data && !react.error, failed: react.data?.status === 'failed', target: react.data?.blog_url || react.data?.website_url }
   ];
   return (
     <div className="space-y-4">
       <div>
         <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Select blog publishing destination</div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-w-4xl">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-3xl">
           {cards.map(c => (
             <button key={c.id} type="button" onClick={() => pick(c.id)}
               className={`text-left p-3 rounded-xl border cursor-pointer transition-colors ${chosen === c.id ? 'border-indigo-500 bg-indigo-500/10 ring-1 ring-indigo-500/30' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
@@ -1215,154 +1234,28 @@ function PublishDestinations({ b, children }) {
           ))}
         </div>
       </div>
-      {children(chosen, setReactConn, setHtmlConn)}
+      {children(chosen, setReactConn)}
     </div>
   );
 }
 
-/**
- * 4. Contextual Backlink & Digital PR Outreach Hub
- */
-function BacklinksTab({ b, toast }) {
-  const [prospects, setProspects] = useState([
-    {
-      id: 1,
-      domain: 'practo.com/pune/hospitals/cataract',
-      name: 'Practo Healthcare Directory',
-      type: 'Medical Registry',
-      da: 88,
-      status: 'Link Acquired',
-      anchor: 'Moraya Charitable Hospital Cataract Care',
-      target: '/cataract-surgery-in-pcmc'
-    },
-    {
-      id: 2,
-      domain: 'punenews.org/health/eye-care-charity',
-      name: 'Pune News Community Health',
-      type: 'Local Publication',
-      da: 62,
-      status: 'Outreach Sent',
-      anchor: 'Affordable cataract surgery in PCMC',
-      target: '/cataract-surgery-in-pcmc'
-    },
-    {
-      id: 3,
-      domain: 'justdial.com/pune/eye-surgeons-chinchwad',
-      name: 'JustDial PCMC Verified Business',
-      type: 'Local Citation NAP',
-      da: 84,
-      status: 'Link Acquired',
-      anchor: 'Moraya Multispeciality Hospital',
-      target: '/'
-    },
-    {
-      id: 4,
-      domain: 'ima-pune.org/members/moraya-hospital',
-      name: 'Indian Medical Association Directory',
-      type: 'Accreditation Body',
-      da: 71,
-      status: 'Qualified Prospect',
-      anchor: 'NABH Charitable Eye Care Unit',
-      target: '/cataract-surgery-in-pcmc'
-    }
-  ]);
-
-  const [pitching, setPitching] = useState(null);
-
-  const sendPitch = (p) => {
-    toast(`Personalized digital PR pitch drafted and sent for ${p.name}!`);
-    setProspects(prev => prev.map(x => x.id === p.id ? { ...x, status: 'Outreach Sent' } : x));
-    setPitching(null);
-  };
-
+/** Blog publishing setup, on its own: connect the website (WordPress, React or HTML) once, any time after the business is added. */
+function PublishingSetup({ b }) {
+  const toast = window.__seoToast || console.log;
   return (
-    <div className="space-y-5">
-      {/* Top Value Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="ai-glass-card rounded-2xl p-[18px] border border-emerald-500/20">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 font-mono">
-            Verified Referring Domains
-          </div>
-          <div className="text-3xl font-extrabold text-slate-900 mt-2 font-display">18 Domains</div>
-          <p className="text-[11px] text-slate-500 mt-1">100% legitimate editorial & medical listings</p>
-        </div>
-
-        <div className="ai-glass-card rounded-2xl p-[18px] border border-cyan-500/20">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-700 font-mono">
-            Key Anchor Target URL
-          </div>
-          <div className="text-[13px] font-mono font-bold text-cyan-700 mt-2 truncate">
-            /cataract-surgery-in-pcmc
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">Directing link equity to primary service page</p>
-        </div>
-
-        <div className="ai-glass-card rounded-2xl p-[18px] border border-purple-500/20">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-purple-600 font-mono">
-            Ethical Outreach Guardrail
-          </div>
-          <div className="text-[13px] font-bold text-slate-900 mt-2">Zero Spam / PBN Safe</div>
-          <p className="text-[11px] text-slate-500 mt-1">Strict compliance with Google link spam policies</p>
-        </div>
-      </div>
-
-      {/* Prospects & Live Backlinks Table */}
-      <Card
-        title="Authority Prospects & Verified Backlinks"
-        subtitle="Legitimate citations and medical publication relationship pipeline"
-      >
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <table className="w-full text-[12px]">
-            <thead className="bg-white text-slate-500 border-b border-slate-200">
-              <tr>
-                <th className="p-3 text-left">Prospect / Publication</th>
-                <th className="p-3 text-left">Category</th>
-                <th className="p-3 text-center font-mono">Domain Auth</th>
-                <th className="p-3 text-left">Anchor Text & Target</th>
-                <th className="p-3 text-left">Status</th>
-                <th className="p-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-slate-50">
-              {prospects.map(p => (
-                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-3">
-                    <div className="font-bold text-slate-900">{p.name}</div>
-                    <div className="text-[10px] text-cyan-700 font-mono">{p.domain}</div>
-                  </td>
-                  <td className="p-3 text-slate-700 font-medium">{p.type}</td>
-                  <td className="p-3 text-center font-mono font-bold text-slate-800">DA {p.da}</td>
-                  <td className="p-3">
-                    <div className="text-slate-900 font-medium">"{p.anchor}"</div>
-                    <div className="text-[10px] text-indigo-700 font-mono">{p.target}</div>
-                  </td>
-                  <td className="p-3">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
-                      p.status === 'Link Acquired'
-                        ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
-                        : p.status === 'Outreach Sent'
-                        ? 'bg-blue-500/15 text-blue-700 border-blue-500/30'
-                        : 'bg-amber-500/15 text-amber-700 border-amber-500/30'
-                    }`}>
-                      {p.status}
-                    </span>
-                  </td>
-                  <td className="p-3 text-right">
-                    {p.status === 'Qualified Prospect' ? (
-                      <Button size="sm" variant="ai" icon={Send} onClick={() => sendPitch(p)} className="text-xs">
-                        Draft Pitch
-                      </Button>
-                    ) : (
-                      <span className="text-emerald-700 font-mono text-[11px] font-bold flex items-center justify-end gap-1">
-                        <CheckCircle2 size={13} /> Active
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+    <div className="space-y-4">
+      <Card>
+        <h2 className="text-18 font-semibold text-slate-900">Blog publishing setup</h2>
+        <p className="text-13 text-slate-600 mt-1 max-w-2xl">Choose where articles for <b>{b.name}</b> are published and connect it once. After that, every article you write can be sent to the website as a draft, published now or scheduled. You can change or disconnect this at any time.</p>
+      </Card>
+      <Card>
+        <PublishDestinations key={b.id} b={b}>
+          {(dest, setReactConn) => dest === 'react' ? (
+            <ReactSitePanel b={b} article={null} featured={null} toast={toast} onConnection={setReactConn} />
+          ) : (
+            <SitePublishPanel b={b} article={null} featured={null} toast={toast} />
+          )}
+        </PublishDestinations>
       </Card>
     </div>
   );
@@ -1372,10 +1265,10 @@ function BacklinksTab({ b, toast }) {
  * Main AI Content Studio Component
  */
 export default function ContentStudioPage() {
-  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'articles', 'calendar', 'backlinks']);
+  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'articles', 'calendar', 'publishing']);
   const openInWriter = (id) => { if (!id) { setOpenArticleId(null); return; } setActiveTopic(null); setOpenArticleId(id); setTab('blog'); };
   const [activeTopic, setActiveTopic] = useState(null);
-  const [openArticleId, setOpenArticleId] = useState(null);
+  const [openArticleId, setOpenArticleId] = useState(() => { const n = Number(new URLSearchParams(window.location.search).get('article')); return Number.isInteger(n) && n > 0 ? n : null; }); // a Growth task links to one article
 
   const handleSelectTopic = (topic) => {
     setActiveTopic(topic);
@@ -1384,30 +1277,29 @@ export default function ContentStudioPage() {
   };
 
   return (
-    <SeoShell
+    <SeoShell step="publish"
       title="AI Blog Studio & Autonomous Content Engine"
-      subtitle="Discover trending patient queries, draft E-E-A-T validated medical articles, schedule CMS publishing, and build ethical backlinks"
+      subtitle="Find topics people search for, write articles from real keywords, check them against the top Google results, and publish them to your website"
     >
       {(b) => (
         <div className="space-y-5 animate-in fade-in duration-200">
           <Tabs
             value={tab}
-            onChange={(t) => { if (t === 'blog' && tab !== 'blog') { setOpenArticleId(null); setActiveTopic(null); } setTab(t); }}
+            onChange={Object.assign((t) => { if (t === 'blog' && tab !== 'blog') { setOpenArticleId(null); setActiveTopic(null); } setTab(t); }, { locked: setTab.locked })}
             tabs={[
               { id: 'trends', label: 'Trending Topics Radar' },
-              { id: 'blog', label: 'AI Blog & Article Writer (E-E-A-T)' },
+              { id: 'blog', label: 'AI Blog & Article Writer' },
               { id: 'articles', label: 'Generated Articles' },
-              { id: 'calendar', label: 'Publishing Calendar & CMS Queue' },
-              { id: 'backlinks', label: 'Backlink & Digital PR Hub' }
+              { id: 'calendar', label: 'Publishing Calendar & CMS Queue' }
             ]}
           />
 
           {tab === 'trends' && <TrendingTopicsTab b={b} onSelectTopic={handleSelectTopic} />}
-          {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} onShowArticles={() => setTab('articles')} toast={window.__seoToast || console.log} />}
+          {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} onPickTopic={handleSelectTopic} onShowArticles={() => setTab('articles')} toast={window.__seoToast || console.log} />}
           {tab === 'articles' && <GeneratedArticlesTab b={b} openId={openArticleId} onOpen={openInWriter} toast={window.__seoToast || console.log}
             onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
           {tab === 'calendar' && <PublishingCalendar b={b} toast={window.__seoToast || console.log} onOpenArticle={openInWriter} />}
-          {tab === 'backlinks' && <BacklinksTab b={b} toast={window.__seoToast || console.log} />}
+          {tab === 'publishing' && <PublishingSetup b={b} />}
         </div>
       )}
     </SeoShell>

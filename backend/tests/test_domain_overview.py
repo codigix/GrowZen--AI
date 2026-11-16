@@ -42,7 +42,7 @@ def fake(monkeypatch, sites=SITES):
 def connect(scope=True, bid=None):
     db = SessionLocal()
     c = db.query(GoogleConnection).filter_by(email="owner@mydental.in").first() or GoogleConnection(email="owner@mydental.in")
-    c.refresh_token_enc, c.status = crypto.seal("rt"), "active"
+    c.refresh_token_enc, c.status, c.connected_by = crypto.seal("rt"), "active", "user crm:48"
     c.scopes = ("openid email " + gsc.SCOPE) if scope else "openid email https://www.googleapis.com/auth/business.manage"
     db.add(c)
     db.commit()
@@ -152,8 +152,9 @@ def test_search_console_only_sign_in_asks_for_that_permission_alone(monkeypatch)
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "secret")
     get_settings.cache_clear()
     s = parse_qs(urlparse(gbp.auth_url("1", "gsc")).query)
-    assert s["scope"][0] == gbp.GSC_SCOPES and "business.manage" not in s["scope"][0]
-    assert "business.manage" in parse_qs(urlparse(gbp.auth_url("1")).query)["scope"][0]
+    assert s["scope"][0] == gbp.ALL_SCOPES  # one consent for every purpose
+    for want in ("business.manage", "webmasters.readonly", "analytics.readonly", "auth/adwords"):
+        assert want in parse_qs(urlparse(gbp.auth_url("1")).query)["scope"][0]
     assert gbp.read_purpose(s["state"][0]) == "gsc" and gbp.read_state(s["state"][0]) == "1"
 
     get_settings.cache_clear()

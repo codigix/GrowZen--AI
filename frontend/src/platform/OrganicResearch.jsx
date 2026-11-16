@@ -5,12 +5,14 @@ import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Cart
 import {
   ArrowUp, ArrowDown, ExternalLink, Search, Inbox, Info, Bot, FileText, BookOpen, HelpCircle, MapPin, Video, Image as ImageIcon, Newspaper, ShoppingCart, Sparkles, AlertTriangle, Quote, MessageSquare, PlayCircle, ShoppingBag, List as ListIcon, Link2, Star, PanelTop
 } from 'lucide-react';
+import SearchPerfNav from './SearchPerfNav';
 import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useUrlTab, useModulePath, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 import { IntelBar, section } from './DomainIntel';
 import { Th } from './SeoToolkit';
 import OrganicPositions from './OrganicPositions';
 import PositionChanges from './PositionChanges';
+import Select from '../components/Select';
 
 /**
  * Organic Rankings, laid out like an organic research report.
@@ -258,7 +260,7 @@ function Changes({ research, kinds, title, limit = 6, render, noun = 'tracked ke
 function researchWhy(r) {
   if (!r) return 'Loading…';
   return { no_website: 'Add the business website first: positions are matched by its domain.', no_keywords: 'No keyword is tracked yet. Add keywords in the Positions tab or the Keyword Magic Tool.',
-    no_data: r.serper ? 'No position has been checked in this period. Press “Check positions now” in the Positions tab.' : 'No position has been checked yet, and Google results are not connected (SERPER_API_KEY).' }[r.state] || 'Not available.';
+    no_data: r.rank_ready ? 'No position has been checked in this period. Press “Check positions now” in the Positions tab.' : 'No position has been checked yet. Link the Google account that owns this website (Search Console) first.' }[r.state] || 'Not available.';
 }
 
 function FeatureChanges({ research, limit = 6 }) {
@@ -450,7 +452,7 @@ function Positions({ intel, research, days, setDays }) {
     <div className="space-y-4">
       <OrganicPositions research={research} days={days} setDays={setDays} />
       <Card title={`Organic keywords ${s.data ? `(${fmt(s.data.total)})` : ''}`} subtitle="Every keyword the domain ranks for, from the data provider (the highest-traffic ones are listed)" pad={false}
-        action={<div className="flex gap-2"><select value={intent} onChange={e => setIntent(e.target.value)} className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white cursor-pointer" aria-label="Intent"><option value="">All intents</option>{Object.entries(INTENT).filter(([k]) => k !== 'unknown').map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</select>
+        action={<div className="flex gap-2"><Select value={intent} onChange={e => setIntent(e.target.value)} className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white cursor-pointer" aria-label="Intent"><option value="">All intents</option>{Object.entries(INTENT).filter(([k]) => k !== 'unknown').map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</Select>
           <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter" className="h-8 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white outline-none focus:border-indigo-400" /></label></div>}>
         {s.data?.rows?.length ? (
           <div className="overflow-auto max-h-[520px]"><table className="w-full text-13">
@@ -600,7 +602,7 @@ function Page({ b }) {
 }
 
 export const OrganicRankingsPage = function OrganicRankingsPage() {
-  return <SeoShell title="Organic Rankings" subtitle="Keywords, traffic, positions, SERP features, pages and competitors for the site on Google">{(b) => <Page key={b.id} b={b} />}</SeoShell>;
+  return <SeoShell title="Organic Rankings" subtitle="Keywords, traffic, positions, SERP features, pages and competitors for the site on Google">{(b) => <div className="space-y-4"><SearchPerfNav /><Page key={b.id} b={b} /></div>}</SeoShell>;
 };
 
 export { Overview, Positions, ChangesTab, Competitors, PagesTab, SubdomainsCard, Changes, FeatureGrid, FeatureTrend, FeatureChanges, Headline };

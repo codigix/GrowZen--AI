@@ -7,7 +7,7 @@ of any URL stand on their own (no business needed).
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base, TimestampMixin, utcnow
@@ -23,6 +23,10 @@ class AppUser(TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(20), default="editor")  # admin | editor | viewer
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Two-step verification (authenticator app). The secret is sealed (services/crypto); while totp_enabled is false it is only a pending setup.
+    totp_secret: Mapped[str | None] = mapped_column(Text)
+    totp_enabled: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    totp_last_step: Mapped[int | None] = mapped_column(Integer)  # the last accepted 30-second step: a code works once
 
 
 class GoogleConnection(TimestampMixin, Base):
@@ -52,6 +56,7 @@ class Business(TimestampMixin, Base):
     area: Mapped[str | None] = mapped_column(String(120))
     city: Mapped[str | None] = mapped_column(String(120))
     country: Mapped[str | None] = mapped_column(String(2))  # ISO code (IN, OM, AE, US…); see services/countries.py
+    timezone: Mapped[str | None] = mapped_column(String(40))  # IANA name (Asia/Kolkata); empty = the country's main one (services/localtime.py)
     lat: Mapped[float | None] = mapped_column(Float)
     lng: Mapped[float | None] = mapped_column(Float)
     service_area: Mapped[str | None] = mapped_column(String(500))
@@ -87,11 +92,35 @@ class Business(TimestampMixin, Base):
     photo_count: Mapped[int | None] = mapped_column(Integer)
     cover_photo: Mapped[str | None] = mapped_column(String(500))
     logo: Mapped[str | None] = mapped_column(String(500))
-    booking_url: Mapped[str | None] = mapped_column(String(500))
+    autopilot: Mapped[dict | None] = mapped_column(JSON)  # Autopilot settings (services/autopilot.py): what is prepared and when; approval is always required
+    growth_notify: Mapped[dict | None] = mapped_column(JSON)  # Growth Plan emails: {email, weekly, monthly, alerts, to, last_alert}: who is told, and about what
+    local_competitors: Mapped[dict | None] = mapped_column(JSON)  # GBP competitor analysis: {at, keyword, items: [{id, name, rating, reviews, website, maps_link, source}]}
+    citation_listings: Mapped[dict | None] = mapped_column(JSON)  # listing management: {site key: {url, status, note, found, checked_at}} entered or checked by a person
+    booking_url: Mapped[str | None] = mapped_column(String(500))  # the Book-an-appointment link (mirrors action_links[APPOINTMENT])
+    additional_phones: Mapped[list[str] | None] = mapped_column(JSON)  # up to 2 more numbers shown on the Google profile
+    action_links: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)  # Google place-action links: [{type: APPOINTMENT|ONLINE_APPOINTMENT|..., url}]
+    open_status: Mapped[str | None] = mapped_column(String(30))  # OPEN | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY (Google openInfo.status)
+    opening_date: Mapped[str | None] = mapped_column(String(10))  # "YYYY-MM-DD": when the business opened or will open (Google openInfo.openingDate)
+    more_hours: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # {hoursTypeId: [period, ...]}: delivery, pickup, kitchen, happy hour...
+    labels: Mapped[list[str] | None] = mapped_column(JSON)  # internal labels, visible only to the profile's managers
+    service_area_type: Mapped[str | None] = mapped_column(String(40))  # CUSTOMER_AND_BUSINESS_LOCATION | CUSTOMER_LOCATION_ONLY
+    service_area_places: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)  # [{name, place_id}]: the areas served
+    modules: Mapped[list[str] | None] = mapped_column(JSON)  # services the project is onboarded for: subset of seo/geo/aeo/gmb; NULL = derive (services/project_services.py)
+    social_accounts: Mapped[dict | None] = mapped_column(JSON)  # {facebook, instagram, meta_business_id}: linked by address (no Meta login yet), normalised by schemas.clean_social
     created_by: Mapped[str | None] = mapped_column(String(120))
+    owner_id: Mapped[str | None] = mapped_column(String(64), index=True)  # the signed-in user (User.id) whose project this is; others never see it, admins see all (deps.can_access)
     last_audit_score: Mapped[int | None] = mapped_column(Integer)
 
     connection: Mapped[GoogleConnection | None] = relationship()
+
+
+class BusinessManager(TimestampMixin, Base):
+    """An email address with manager access to a project: whoever signs in with it can open and fetch all of that project's data."""
+    __tablename__ = "business_managers"
+    __table_args__ = (UniqueConstraint("business_id", "email"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    email: Mapped[str] = mapped_column(String(255), index=True)  # lower-case
 
 
 class IntakeEmail(TimestampMixin, Base):
@@ -193,12 +222,29 @@ class Review(TimestampMixin, Base):
     rating: Mapped[int] = mapped_column(Integer)
     body: Mapped[str | None] = mapped_column(Text)
     review_date: Mapped[date | None] = mapped_column(Date)
+    review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # when the customer posted it on Google (date and time)
     reply_text: Mapped[str | None] = mapped_column(Text)
     reply_status: Mapped[str] = mapped_column(String(20), default="none")  # none | draft | approved | posted
     reply_language: Mapped[str | None] = mapped_column(String(20))
     replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sentiment: Mapped[str | None] = mapped_column(String(10))
     topics: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+
+class Notification(TimestampMixin, Base):
+    """Something the owner should see: a new Google review, and later other alerts. Shown in the header bell and on the Overview page."""
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    owner_id: Mapped[str | None] = mapped_column(String(64), index=True)  # the project's owner when this was created
+    kind: Mapped[str] = mapped_column(String(30), default="new_review")  # new_review | low_rating_review | ...
+    title: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str | None] = mapped_column(Text)
+    link: Mapped[str | None] = mapped_column(String(500))  # a frontend path, e.g. /gmb-profile?tab=reviews
+    rating: Mapped[int | None] = mapped_column(Integer)
+    review_id: Mapped[int | None] = mapped_column(Integer)
+    read: Mapped[bool] = mapped_column(Boolean, default=False)
+    emailed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Post(TimestampMixin, Base):
@@ -216,6 +262,15 @@ class Post(TimestampMixin, Base):
     external_id: Mapped[str | None] = mapped_column(String(255))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ai_generated: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_by: Mapped[str | None] = mapped_column(String(120))  # who approved it for publishing (Autopilot publishes nothing without this)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    starts_on: Mapped[date | None] = mapped_column(Date)  # Offer / Event: first day it is on
+    ends_on: Mapped[date | None] = mapped_column(Date)
+    start_time: Mapped[str | None] = mapped_column(String(5))  # Event only, 'HH:MM'
+    end_time: Mapped[str | None] = mapped_column(String(5))
+    coupon_code: Mapped[str | None] = mapped_column(String(60))  # Offer only
+    redeem_url: Mapped[str | None] = mapped_column(String(500))
+    terms: Mapped[str | None] = mapped_column(String(500))
 
 
 class Article(TimestampMixin, Base):
@@ -355,6 +410,8 @@ class Keyword(TimestampMixin, Base):
     rank_checked_at: Mapped[date | None] = mapped_column(Date)
     priority: Mapped[str] = mapped_column(String(10), default="Medium")
     tracked: Mapped[bool] = mapped_column(Boolean, default=True)
+    uses: Mapped[list[str] | None] = mapped_column(JSON)  # where it is meant to be used: blog, gmb_post, aeo, geo, chatgpt, website
+    source: Mapped[dict | None] = mapped_column(JSON)  # where the keyword was taken from: {kind, label, from, pages: [{url, in}], searches, at}
 
 
 class RankScan(TimestampMixin, Base):
@@ -490,6 +547,17 @@ class KeywordRankLog(Base):
     serp: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)  # [{d: domain, p: position}] of the results Google returned
     features: Mapped[list[str] | None] = mapped_column(JSON)  # SERP features present on the results page
     own_features: Mapped[list[str] | None] = mapped_column(JSON)  # of those, the ones the site appears in
+    depth: Mapped[int | None] = mapped_column(Integer)  # how many Google results were read (20 for older checks, 100 now): a null rank means "not in the top <depth>"
+    rank_page: Mapped[int | None] = mapped_column(Integer)  # the Google results page the site is on (ceil(rank / 10)); null = not found
+    maps_rank: Mapped[int | None] = mapped_column(Integer)  # the business's position in the Google Maps / local results for the same search (null = not found)
+    maps_total: Mapped[int | None] = mapped_column(Integer)  # how many Maps results Google returned (null = the Maps check was not made)
+    maps_listing: Mapped[str | None] = mapped_column(String(255))  # the name of our listing as Maps shows it
+    maps_first: Mapped[str | None] = mapped_column(String(255))  # the listing in Maps position 1
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # the moment of the last check (the row is one per day)
+    position: Mapped[float | None] = mapped_column(Float)  # Search Console's average position over the days read (rank is this, rounded)
+    clicks: Mapped[int | None] = mapped_column(Integer)  # Search Console clicks for the keyword over the days read
+    impressions: Mapped[int | None] = mapped_column(Integer)  # Search Console impressions for the keyword over the days read
+    source: Mapped[str | None] = mapped_column(String(30))  # search_console | (older rows: null)
 
 
 
@@ -545,5 +613,209 @@ class WeeklyReport(TimestampMixin, Base):
     data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     narrative: Mapped[str | None] = mapped_column(Text)
     final: Mapped[bool] = mapped_column(Boolean, default=False)  # false while the period is still running
+
+class ChatGPTBusiness(TimestampMixin, Base):
+    """One project's "Your business, in ChatGPT" record: where its claim stands in OpenAI's Business Hub (claimed and verified there by a person),
+    the profile copy to paste in, the Business Agent guidelines, and the months of insights logged from the Hub. Nothing here is sent to OpenAI by us."""
+    __tablename__ = "chatgpt_businesses"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), unique=True, index=True)
+    claim_status: Mapped[str] = mapped_column(String(20), default="Unclaimed")  # Unclaimed | Claim_Pending | Claim_Approved | Disputed
+    verification_method: Mapped[str | None] = mapped_column(String(20))  # DNS_TXT | Shopify | Business_Email | Business_Phone
+    dns_txt_record: Mapped[str | None] = mapped_column(String(500))
+    persona_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    status_history: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{at, from, to, by}]
+    business_name: Mapped[str | None] = mapped_column(String(255))
+    category: Mapped[str | None] = mapped_column(String(160))
+    description: Mapped[str | None] = mapped_column(String(500))
+    website_url: Mapped[str | None] = mapped_column(String(500))
+    logo_url: Mapped[str | None] = mapped_column(String(500))
+    delivery_policy: Mapped[str | None] = mapped_column(Text)
+    return_policy: Mapped[str | None] = mapped_column(Text)
+    agent_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    agent_instructions: Mapped[str | None] = mapped_column(Text)
+    insights: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{month 'YYYY-MM', mentions, website_clicks, topics}]
+
+
+class CatalogItem(TimestampMixin, Base):
+    """A product or service in the hosted feed that ChatGPT's Business Hub reads."""
+    __tablename__ = "chatgpt_catalog_items"
+    __table_args__ = (UniqueConstraint("business_id", "sku"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    sku: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(String(2000))
+    price: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
+    currency: Mapped[str] = mapped_column(String(3), default="INR")
+    availability: Mapped[str] = mapped_column(String(20), default="in_stock")  # in_stock | out_of_stock | preorder | limited
+    product_url: Mapped[str] = mapped_column(String(1000))
+    image_url: Mapped[str | None] = mapped_column(String(1000))
+
+
+
+class PageXRayRun(TimestampMixin, Base):
+    """One saved Page X-Ray of one page: its three scores and the full report, so a page's progress can be seen over time."""
+    __tablename__ = "page_xray_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(String(1000), index=True)  # the address that was inspected (normalised)
+    final_url: Mapped[str | None] = mapped_column(String(1000))
+    render: Mapped[bool] = mapped_column(Boolean, default=False)  # read after JavaScript ran in Chrome
+    seo_score: Mapped[int | None] = mapped_column(Integer)
+    aeo_score: Mapped[int | None] = mapped_column(Integer)
+    geo_score: Mapped[int | None] = mapped_column(Integer)
+    passed: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # {seo: [passed, total], aeo: [...], geo: [...]}
+    failed_keys: Mapped[list[str] | None] = mapped_column(JSON)  # the checks that failed, for "what changed"
+    word_count: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[int | None] = mapped_column(Integer)  # HTTP status of the page
+    source: Mapped[str] = mapped_column(String(10), default="server")  # server (read by us) | client (the browser sent the report; checked against our cache when possible) | site (whole-site scan)
+    report: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # the whole X-Ray, capped at 300 KB
+
+
+class PageXRayJob(TimestampMixin, Base):
+    """A whole-website scan: every page of the project's own site is X-Rayed in the background."""
+    __tablename__ = "page_xray_jobs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(10), default="running")  # running | done | failed
+    max_pages: Mapped[int] = mapped_column(Integer, default=25)
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    done: Mapped[int] = mapped_column(Integer, default=0)
+    phase: Mapped[str | None] = mapped_column(String(40))  # discovering | scanning
+    pages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{url, run_id, seo, aeo, geo, status, top_fix, error}]
+    error: Mapped[str | None] = mapped_column(Text)
+    started_by: Mapped[str | None] = mapped_column(String(120))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+class GrowthSnapshot(TimestampMixin, Base):
+    """One day's measurement of a project's presence (Growth Plan): every metric with its source, the area scores and the overall presence figure.
+    A second measurement on the same day replaces the first; the series is what targets are set against and what progress is read from."""
+    __tablename__ = "growth_snapshots"
+    __table_args__ = (UniqueConstraint("business_id", "day"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # the full growth_metrics.measure() dict
+    areas: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # {area: score or null}
+    presence: Mapped[int | None] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(20), default="daily")  # daily | manual | onboarding
+
+
+class GrowthTarget(TimestampMixin, Base):
+    """A measurable target for one metric of a project's online presence, for one day, week or month (services/growth_plan.py).
+    The baseline is measured when the window opens, the target is capped to what is realistic, and the window closes as met or missed from real data."""
+    __tablename__ = "growth_targets"
+    __table_args__ = (UniqueConstraint("business_id", "metric", "period", "window_start"),)  # its index also serves the lookup by business, period and window
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    area: Mapped[str] = mapped_column(String(20))  # gmb | local | seo | aeo | geo | chatgpt
+    metric: Mapped[str] = mapped_column(String(60))
+    label: Mapped[str] = mapped_column(String(200))
+    period: Mapped[str] = mapped_column(String(10))  # daily | weekly | monthly
+    window_start: Mapped[date] = mapped_column(Date)
+    window_end: Mapped[date] = mapped_column(Date)
+    baseline: Mapped[float | None] = mapped_column(Float)
+    target: Mapped[float | None] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(20))
+    direction: Mapped[str] = mapped_column(String(6), default="up")  # up | down | keep
+    current: Mapped[float | None] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open | met | missed | blocked
+    feasibility: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # {cap, note, confidence}
+    why: Mapped[str | None] = mapped_column(Text)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class BlogPromotion(TimestampMixin, Base):
+    """One place where a published blog is promoted (a short overview with the blog's link). The user posts it; the link on the posted page is then checked."""
+    __tablename__ = "blog_promotions"
+    __table_args__ = (UniqueConstraint("article_id", "platform"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    platform: Mapped[str] = mapped_column(String(80))  # a catalog key (linkedin, medium...) or a domain the user added
+    name: Mapped[str] = mapped_column(String(120))
+    open_url: Mapped[str | None] = mapped_column(String(500))  # where to go to post
+    overview: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # {text, hashtags, method}
+    status: Mapped[str] = mapped_column(String(12), default="planned")  # planned | posted | verified | problem | skipped
+    posted_url: Mapped[str | None] = mapped_column(String(800))  # the page the user posted on
+    check: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # the last link check of posted_url
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GrowthAction(TimestampMixin, Base):
+    """One task that serves a growth target. It only counts as done when a real check of the live data (or the live page) says so."""
+    __tablename__ = "growth_actions"
+    __table_args__ = (UniqueConstraint("business_id", "key", "due_on"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    target_id: Mapped[int | None] = mapped_column(ForeignKey("growth_targets.id", ondelete="SET NULL"))
+    area: Mapped[str] = mapped_column(String(20))
+    key: Mapped[str] = mapped_column(String(80))
+    period: Mapped[str] = mapped_column(String(10))
+    due_on: Mapped[date] = mapped_column(Date, index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    why: Mapped[str | None] = mapped_column(Text)
+    how: Mapped[list[str]] = mapped_column(JSON, default=list)
+    est_minutes: Mapped[int] = mapped_column(Integer, default=10)
+    mode: Mapped[str] = mapped_column(String(10), default="manual")  # manual | assisted | auto
+    link: Mapped[str | None] = mapped_column(String(300))
+    verify: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # the real check that decides whether the task counts
+    status: Mapped[str] = mapped_column(String(12), default="todo")  # todo | done | verified | unverified | failed | skipped | blocked
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    note: Mapped[str | None] = mapped_column(Text)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_by: Mapped[str | None] = mapped_column(String(120))
+
+
+class GrowthReport(TimestampMixin, Base):
+    """A saved weekly or monthly growth report (services/growth_report.py): what moved, what was done and checked, what is open and what comes next. Emailed once."""
+    __tablename__ = "growth_reports"
+    __table_args__ = (UniqueConstraint("business_id", "period", "period_start"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    period: Mapped[str] = mapped_column(String(8))  # week | month
+    period_start: Mapped[date] = mapped_column(Date, index=True)
+    period_end: Mapped[date] = mapped_column(Date)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    emailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    emailed_to: Mapped[str | None] = mapped_column(String(254))
+    email_error: Mapped[str | None] = mapped_column(Text)
+
+
+class BacklinkCheck(TimestampMixin, Base):
+    """The last live check of one page that should link to the project (services/backlink_checker.py): is the link there, follow or nofollow, anchor, kind of site, and Moz's numbers when configured."""
+    __tablename__ = "backlink_checks"
+    __table_args__ = (UniqueConstraint("business_id", "source_url", "target"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    source_url: Mapped[str] = mapped_column(String(1000))
+    target: Mapped[str] = mapped_column(String(500))  # the website or page the link must point to
+    state: Mapped[str] = mapped_column(String(20))  # working | link_missing | page_error
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    checks: Mapped[int] = mapped_column(Integer, default=1)  # how many times it was checked
+    was_working: Mapped[bool | None] = mapped_column(Boolean)  # the state at the check before: shows a link that was lost
+
+
+class RateHit(Base):
+    """A fixed-window counter shared by every server process (services/ratelimit.py): one row per limiter name, caller and time window."""
+    __tablename__ = "rate_hits"
+    __table_args__ = (UniqueConstraint("name", "caller", "window_start"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(60))
+    caller: Mapped[str] = mapped_column(String(120))
+    window_start: Mapped[int] = mapped_column(Integer)  # seconds since the epoch // window length
+    ends_at: Mapped[int] = mapped_column(Integer, index=True, default=0)  # epoch second the window is over: when the row can go
+    count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class LoginFailure(Base):
+    """One wrong attempt counted against a lock-out key (an address, an account, a reset link): shared by every server process and kept across restarts (services/ratelimit.FailureLog)."""
+    __tablename__ = "login_failures"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(320), index=True)
+    at: Mapped[float] = mapped_column(Float, index=True)  # epoch seconds
+
 
 from .backlinks import models as _backlink_models  # noqa: E402,F401  (registers the backlink graph tables)

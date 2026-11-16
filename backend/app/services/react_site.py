@@ -38,6 +38,10 @@ class ReactSiteError(RuntimeError):
     pass
 
 
+class ScheduleHeldByGrowZen(ReactSiteError):
+    """The website has no scheduled posts of its own: the caller keeps the article and publishes it at the chosen time."""
+
+
 class AuthFailed(ReactSiteError):
     pass
 
@@ -149,6 +153,28 @@ def login(client: httpx.Client, conn: ReactSiteConnection) -> tuple[str, datetim
     return token, expires_at or datetime.now(timezone.utc) + timedelta(minutes=DEFAULT_TOKEN_MINUTES)
 
 
+LOGIN_GUESSES = ("/api/auth/login", "/api/login", "/api/admin/login", "/api/users/login", "/api/user/login", "/api/v1/auth/login", "/api/auth/signin")
+
+
+def discover_login(client: httpx.Client, conn: ReactSiteConnection) -> str | None:
+    """The configured login address does not exist: try the usual ones with the same credentials. Returns the first that gives a token, else None.
+    (Only the website the user connected is contacted, with the credentials they entered for it.)"""
+    first = conn.auth_endpoint
+    try:
+        for path in LOGIN_GUESSES:
+            if path == normalize_path(first):
+                continue
+            conn.auth_endpoint = path
+            try:
+                login(client, conn)
+                return path
+            except (ReactSiteError, httpx.HTTPError):
+                continue
+    finally:
+        conn.auth_endpoint = first
+    return None
+
+
 def _token(client: httpx.Client, conn: ReactSiteConnection, force: bool = False) -> str:
     """A valid access token: the cached one while it has more than a minute left, otherwise a fresh login (cached encrypted)."""
     exp = conn.token_expires_at
@@ -186,6 +212,7 @@ def test(conn: ReactSiteConnection) -> tuple[list[dict], bool]:
     login: connected = the login returns a token (and, when a health endpoint is set, it accepts the token).
     key:   connected = the health endpoint accepts the key and refuses a request without it."""
     steps: list[dict] = []
+    first_path = conn.auth_endpoint
 
     def step(name, ok, detail):
         steps.append({"step": name, "ok": bool(ok), "detail": detail})
@@ -209,8 +236,14 @@ def test(conn: ReactSiteConnection) -> tuple[list[dict], bool]:
                 try:
                     _token(c, conn, force=True)
                 except ReactSiteError as exc:
-                    step("Sign in as the integration user", False, str(exc))
-                    return steps, False
+                    found = discover_login(c, conn) if "does not exist (404)" in str(exc) else None
+                    if not found:
+                        tried = ", ".join(LOGIN_GUESSES) if "does not exist (404)" in str(exc) else ""
+                        step("Sign in as the integration user", False, str(exc) + (f" The usual alternatives were tried and none worked ({tried}). The website's backend must provide a login (see docs/react-site-blog-api.md), or enter its real login path." if tried else ""))
+                        return steps, False
+                    conn.auth_endpoint = found  # saved with the connection: the site's real login address
+                    step("Find the login address", True, f"{normalize_path(first_path)} does not exist, but {found} signs in: it is now used.")
+                    _token(c, conn, force=True)
                 exp = conn.token_expires_at
                 step("Sign in as the integration user", True, f"Signed in as {conn.login_username}; access token valid until {exp.strftime('%d %b %H:%M UTC') if exp else 'unknown'}")
                 if not health:
@@ -277,14 +310,52 @@ def payload(a: Article, mode: str, when: datetime | None, image_url: str | None)
         "title": a.title or a.keyword, "slug": _slug(a.title or a.keyword), "body": body_only,
         "excerpt": a.meta_description or "", "seo_title": a.title or a.keyword, "seo_description": a.meta_description or "",
         "focus_keyword": a.keyword, "secondary_keywords": a.secondary_keywords or [], "seo_keywords": ", ".join(keywords),
-        "tags": keywords[:8], "category": (a.topic or a.keyword or "").strip().title(),
+        "tags": keywords[:8], "category": (a.keyword or a.topic or "").strip().title()[:60],  # short, like a real category: the topic is a whole sentence and can overflow the site's column
         "image": image_url or "", "image_alt": (a.featured_image_alt or a.title or "") if image_url else "",
         "status": STATUS_OUT[mode], "date": pub_at.strftime("%Y-%m-%d"), "publication_time": pub_at.isoformat(timespec="seconds"),
         "faqs": faqs, "schema_jsonld": schema.strip(), "source": "growzen", "growzen_article_id": a.id,
     }
 
 
+CMS_STATUS = {"draft": "Draft", "publish": "Published"}
+CMS_MARKERS = ("isPublished", "coverImage", "seoData")
+
+
+def detect_profile(conn: ReactSiteConnection, sample: dict | None, list_text: str = "") -> str:
+    """standard | cms. cms = a blog table of the kind this software's CMS-style sites use: `content`, `isPublished`, `coverImage`, a `seoData` JSON column.
+    Read from an example record, or, when the site's list call fails, from the column names its own error message prints."""
+    chosen = mapping_of(conn).get("profile", "auto")
+    if chosen in ("standard", "cms"):
+        return chosen
+    if sample and "content" in sample and ("isPublished" in sample or "seoData" in sample):
+        return "cms"
+    return "cms" if sum(m in (list_text or "") for m in CMS_MARKERS) >= 2 else "standard"
+
+
+def to_cms(a: Article, raw: dict, mode: str, when: datetime | None) -> dict:
+    """The article as one record of a `content / isPublished / seoData` blog table: the same shape the site's own admin form saves
+    (status "Draft" or "Published" with isPublished, SEO fields inside seoData, FAQs as {question, answer})."""
+    words = len(re.sub(r"<[^>]+>", " ", raw.get("body") or "").split())
+    published = mode == "publish"
+    pub_at = (when or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    return {
+        "title": raw["title"], "slug": raw["slug"], "excerpt": raw.get("excerpt") or "", "category": raw.get("category") or "", "subCategory": "", "author": "Admin",
+        "readingTime": max(1, round(words / 200)), "status": CMS_STATUS[mode], "isPublished": published,
+        "coverImage": "", "bannerImage": "", "relatedImages": [], "imageAltText": "", "imageCaption": "",
+        "content": raw["body"], "enableToc": False,
+        "seoData": {"focusKeyword": raw.get("focus_keyword") or "", "secondaryKeywords": ", ".join(raw.get("secondary_keywords") or []), "seoTitle": raw.get("seo_title") or raw["title"],
+                    "metaDescription": raw.get("seo_description") or "", "canonicalUrl": "", "index": True, "follow": True, "bannerImageAltText": "", "relatedImagesAltTexts": []},
+        "socialMediaData": {"socialTitle": raw.get("seo_title") or raw["title"], "socialDescription": raw.get("seo_description") or "", "socialImage": ""},
+        "ctaData": {"ctaType": "", "heading": "", "description": "", "buttonText": "", "buttonUrl": ""},
+        "relatedCategories": [], "faqs": raw.get("faqs") or [], "internalLinks": [], "relatedProductIds": [], "visibility": "Public",
+        "publishedAt": pub_at.strftime("%Y-%m-%d"),
+    }
+
+
 _SKIP_FROM_SAMPLE = {"id", "_id", "views", "likes", "created_at", "updated_at", "createdAt", "updatedAt"}
+
+
+_last_list_text: dict[str, str] = {}
 
 
 def _site_sample(c: httpx.Client, conn: ReactSiteConnection, base: str, path: str) -> dict | None:
@@ -293,6 +364,7 @@ def _site_sample(c: httpx.Client, conn: ReactSiteConnection, base: str, path: st
         r = c.get(base + path)
         if r.status_code in (401, 403):
             r = _send(c, conn, "GET", base + path)
+        _last_list_text[base + path] = r.text[:4000] if r.status_code >= 400 else ""
         d = r.json() if r.status_code == 200 else None
     except (httpx.HTTPError, ValueError):
         return None
@@ -300,6 +372,15 @@ def _site_sample(c: httpx.Client, conn: ReactSiteConnection, base: str, path: st
     rows = [x for x in rows if isinstance(x, dict)] if isinstance(rows, list) else []
     # the most filled-in record: it best shows how this site stores each field (e.g. its featured image)
     return max(rows, key=lambda x: sum(v not in (None, "") for v in x.values())) if rows else None
+
+
+def site_db_problem(base: str, path: str) -> str | None:
+    """The website's own blog list failed with a database error (it prints the SQL error): that is why posting fails, whatever the post holds."""
+    m = re.search(r"Unknown column '([\w.]+)'", _last_list_text.get(base + path, ""))
+    if m:
+        return (f"The website's own database is missing the column '{m.group(1)}' (even its blog list fails with that error), so no post can be created, with or without an image. "
+                f"Ask the website's developer to add the '{m.group(1)}' column to its blogs table (or run its pending migration), then publish again. Nothing was published.")
+    return None
 
 
 def fit_to_site(data: dict, sample: dict | None, keep: set | None = None) -> tuple[dict, list[str]]:
@@ -379,6 +460,7 @@ DEFAULT_MAPPING = {
     "image_field": "image",         # the blog record field that stores the featured image URL
     "image_alt_field": "image_alt", # the blog record field for the ALT text ("" = none)
     "max_upload_mb": 5,             # the site's upload limit: larger images are re-compressed to fit first
+    "profile": "auto",              # how the blog record is shaped: standard (title, body, seo_title...) | cms (content, isPublished, seoData...) | auto (decided from the site)
 }
 MAPPING_KEYS = tuple(DEFAULT_MAPPING)
 
@@ -401,6 +483,9 @@ def clean_mapping(raw: dict | None) -> dict:
         if k == "image_delivery":
             if v not in ("upload", "inline"):
                 raise ReactSiteError("Image delivery must be 'upload' or 'inline'.")
+        elif k == "profile":
+            if v not in ("auto", "standard", "cms"):
+                raise ReactSiteError("Record shape must be auto, standard or cms.")
         elif k == "upload_format":
             if v not in ("multipart", "json_base64"):
                 raise ReactSiteError("Request format must be multipart or json_base64.")
@@ -759,7 +844,19 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
             sample = _site_sample(c, conn, base, path)
             raw = payload(a, mode, when, None)
             raw.pop("image"), raw.pop("image_alt")  # the image goes into the site's own field, set below
-            data, dropped = fit_to_site(raw, sample)
+            profile = detect_profile(conn, sample, _last_list_text.get(base + path, ""))
+            if profile == "cms":
+                if mode == "schedule":
+                    raise ScheduleHeldByGrowZen("This website has no scheduled posts of its own (its blog has only Draft and Published), so GrowZen holds the post and publishes it at the chosen time.")
+                data, dropped = to_cms(a, raw, mode, when), []
+                m = dict(conn.mapping or {})
+                for k, v in (("image_delivery", "inline"), ("image_field", "coverImage"), ("image_alt_field", "imageAltText"), ("max_upload_mb", 0.5)):
+                    if m.get(k) in (None, "", DEFAULT_MAPPING.get(k)):
+                        m[k] = v  # this website keeps the image itself in coverImage (its admin form reads the file as a data URL)
+                conn.mapping = m
+                steps.append({"step": "Match the website's blog fields", "ok": True, "detail": "Sent in this website's own shape: content, isPublished, seoData, faqs"})
+            else:
+                data, dropped = fit_to_site(raw, sample)
             if dropped:
                 steps.append({"step": "Match the website's blog fields", "ok": True, "detail": f"Not stored by this website: {', '.join(dropped)}"})
             if img_path:
@@ -770,9 +867,19 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
     except (httpx.HTTPError, SSRFValidationError) as exc:
         steps.append({"step": "Send to the website", "ok": False, "detail": str(exc)[:140]})
         raise ReactSiteError(f"Could not reach the website's API: {str(exc)[:160]}") from exc
+    except AuthFailed:
+        raise
+    except ReactSiteError as exc:
+        cause = site_db_problem(base, path)
+        if cause:
+            raise ReactSiteError(cause) from exc
+        raise
     if r.status_code in (401, 403):
         raise AuthFailed(f"The website refused the request: {_msg(r)}")
     if r.status_code >= 400:
+        cause = site_db_problem(base, path)
+        if cause:
+            raise ReactSiteError(cause)
         raise ReactSiteError(f"The website refused the post ({r.status_code}): {_msg(r)}")
     try:
         d = r.json()

@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     token_encryption_key: str = ""
 
     # Google (Business Profile, PageSpeed)
+    two_factor_enabled: bool = True  # false pauses the authenticator-app code (TWO_FACTOR_ENABLED=false): no code is asked, enrolments are kept and work again when it is true
     google_client_id: str = ""
     google_client_secret: str = ""
     pagespeed_api_key: str = ""
@@ -123,24 +124,30 @@ class Settings(BaseSettings):
     google_ads_client_secret: str = ""
     google_ads_refresh_token: str = ""
     google_ads_customer_id: str = ""  # the Google Ads account id (digits only, no dashes)
+
+    # Our own deployed backlink crawler (https://crawler.codigixinfotech.com). Both must be set to use it.
+    crawler_url: str = ""
+    crawler_api_key: str = ""
+    crawler_auth_header: str = "X-API-Key"  # or "Authorization" (then the key is sent as "Bearer <key>")
+    crawler_timeout_seconds: float = 30.0
     google_ads_login_customer_id: str = ""  # manager (MCC) account id, only needed if the account is managed
 
-    # Google search results (serper.dev): competitor research -- organic top 10 and Maps results per keyword
-    serper_api_key: str = ""
+    # Moz API (Domain Authority, Page Authority, Spam Score, referring domains) for the Backlink Checker. Empty = those fields say 'not available'.
+    moz_access_id: str = ""
+    moz_secret_key: str = ""
+
     # Development only: the same for the Position Tracking landscape (generated rank checks).
     rank_landscape_mock: bool = False
+    # TESTS AND DEMOS ONLY (ALLOW_SAMPLE_DATA=true): lets the data providers fall back to generated sample numbers when a key is missing. Off by default: with it off,
+    # a missing key means "not available" (HTTP 503 / a failed audit with the reason), never invented rankings, keywords, backlinks, listings or AI mentions.
+    allow_sample_data: bool = False
 
     # Our own sites (comma separated domains): these businesses are "internal", all others are clients. See services/domain_checks.py.
     internal_domains: str = "codigix.co,codigixinfotech.com"
 
     # Scheduler
     scheduler_enabled: bool = True
-    backlink_autostart: bool = True  # onboarding starts the backlink discovery bot straight away (false: it only runs on its schedule)
-    # Backlink discovery rotation: businesses take turns in batches. Each batch runs in parallel for a window, then the next batch starts;
-    # after the last batch it wraps to the first, carrying on where each business stopped (pages already crawled are not fetched again).
-    backlink_rotation_enabled: bool = True  # false: the old behaviour, each enabled business runs whenever its interval has passed
-    backlink_batch_size: int = 5  # businesses crawling at the same time
-    backlink_batch_minutes: int = 60  # how long one batch runs before the next batch gets its turn
+    backlink_autostart: bool = True  # onboarding starts the backlink sync from our crawler straight away (false: it only runs on its schedule)
     scheduler_tick_seconds: int = 300
     scheduled_posts_tick_seconds: int = 60  # how often articles scheduled in GrowZen are checked and published when due
     publish_timezone: str = "Asia/Kolkata"  # the time zone schedule dates/times are entered in (PUBLISH_TIMEZONE)
@@ -162,13 +169,21 @@ class Settings(BaseSettings):
     # Guards that can be switched off in development
     login_max_failures: int = 5
     login_lockout_minutes: int = 15
+    login_ip_max_failures: int = 20  # wrong passwords from one address, across all accounts, before it is locked out
+    login_account_max_failures: int = 10  # wrong passwords for one account, from anywhere
+    trust_proxy_headers: bool = False  # take the client address from X-Forwarded-For (only behind a proxy you control: otherwise anyone can fake it)
+    csrf_origin_check: bool = True  # refuse cross-site POST/PUT/PATCH/DELETE (see security_headers.py)
+    allow_insecure_dev: bool = False  # lets the server start with a weak SECRET_KEY: only for a throw-away development machine
     enforce_plan_limits: bool = True
+    # PostgreSQL gives up on any single query after this many seconds (0 = no limit). Without it one slow query (the backlink graph is large) holds a request thread for minutes,
+    # the pool fills, and every page spins: seen in practice. Schema changes and bulk jobs lift it for their own transaction.
+    db_statement_timeout_seconds: int = 60
     schema_auto_sync: bool = True  # create missing tables and add missing nullable columns at start-up
     audit_retention_days: int = 180
 
     @property
     def secure_cookies(self) -> bool:
-        return self.cookie_secure or self.public_base_url.lower().startswith("https://")
+        return self.cookie_secure or self.public_base_url.lower().startswith("https://") or self.frontend_url.lower().startswith("https://")
 
     @property
     def lighthouse_reports_path(self) -> Path:
@@ -202,7 +217,7 @@ class Settings(BaseSettings):
 
     @property
     def rank_landscape_mock_on(self) -> bool:
-        return self.rank_landscape_mock and self.environment.lower() != "production"
+        return self.rank_landscape_mock and self.allow_sample_data and self.environment.lower() != "production"
 
     @property
     def internal_domain_list(self) -> list[str]:
@@ -221,6 +236,10 @@ class Settings(BaseSettings):
         # The google_trends keyword planner now runs in-process (see services/google_trends_client.py),
         # so it's always available whenever this backend is.
         return True
+
+    @property
+    def crawler_enabled(self) -> bool:
+        return bool(self.crawler_url.strip() and self.crawler_api_key.strip() and self.crawler_api_key.strip() != "your_api_key_here")
 
     @property
     def google_ads_enabled(self) -> bool:

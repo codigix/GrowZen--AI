@@ -14,10 +14,10 @@ from sqlalchemy.orm import Session
 from ..auth import User, current_user
 from ..config import get_settings
 from ..db import get_db
-from ..models import LighthouseAudit, LighthouseSiteAudit
+from ..models import Business, LighthouseAudit, LighthouseSiteAudit
 from ..schemas import LighthouseAuditIn, LighthouseSiteAuditIn
 from ..serialize import row
-from ..services import lighthouse, lighthouse_report, lighthouse_runner
+from ..services import gsc, lighthouse, lighthouse_report, lighthouse_runner
 from ..services.sitemap import SitemapDiscoveryError, discover_site_urls
 from ..services.url_safety import SSRFValidationError
 
@@ -50,15 +50,37 @@ def _status_url(kind: str, id_: int) -> str:
     return f"{get_settings().api_prefix}/lighthouse/{kind}/{id_}"
 
 
-def _get_audit(db: Session, audit_id: int) -> LighthouseAudit:
+# These audits carry no project column, so a user's audits are the ones for their own projects' websites (same host, www or subdomain): another
+# account's site never shows up, and a non-admin can only audit a site that is one of their projects. Admins see and run everything.
+def _hosts(db: Session, user: User) -> set[str] | None:
+    if user.sees_all:
+        return None
+    return {h for h in (gsc.host_of(w) for w in db.scalars(select(Business.website).where(Business.owner_id == user.id, Business.website.is_not(None)))) if h}
+
+
+def _allowed(hosts: set[str] | None, url: str | None) -> bool:
+    if hosts is None:
+        return True
+    h = gsc.host_of(url)
+    return bool(h) and any(h == x or h.endswith("." + x) for x in hosts)
+
+
+def _get_audit(db: Session, audit_id: int, user: User) -> LighthouseAudit:
     a = db.get(LighthouseAudit, audit_id)
-    if not a:
+    if not a or not _allowed(_hosts(db, user), a.submitted_url):
         raise HTTPException(404, "Audit not found")
     return a
 
 
 def _page(page: int, page_size: int) -> tuple[int, int]:
     return max(page, 1), min(max(page_size, 1), 100)
+
+
+def _host_match(col, hosts: set[str]):
+    from sqlalchemy import false, or_
+    if not hosts:
+        return false()
+    return or_(*[or_(col.ilike(f"%://{h}/%"), col.ilike(f"%://www.{h}/%"), col.ilike(f"%://{h}"), col.ilike(f"%://www.{h}"), col.ilike(f"%://%.{h}%"), col.ilike(f"{h}%")) for h in hosts])
 
 
 @router.get("/health")
@@ -79,7 +101,9 @@ def health(_: User = Depends(current_user)):
 
 # Single-page audits
 @router.post("/audits", status_code=201)
-def create_audit(body: LighthouseAuditIn, db: Session = Depends(get_db), _: User = Depends(rate_limited)):
+def create_audit(body: LighthouseAuditIn, db: Session = Depends(get_db), user: User = Depends(rate_limited)):
+    if not _allowed(_hosts(db, user), body.url):
+        raise HTTPException(403, "You can only audit the website of one of your own projects.")
     try:
         a = lighthouse_runner.create_and_queue(db, body.url, body.strategy, body.engine)
     except SSRFValidationError as exc:
@@ -88,24 +112,27 @@ def create_audit(body: LighthouseAuditIn, db: Session = Depends(get_db), _: User
 
 
 @router.get("/audits/history")
-def audit_history(page: int = 1, page_size: int = 20, include_site_pages: bool = True, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def audit_history(page: int = 1, page_size: int = 20, include_site_pages: bool = True, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """include_site_pages=false: only single-page audits (site audit pages are listed under their site audit)."""
     page, page_size = _page(page, page_size)
     where = [] if include_site_pages else [LighthouseAudit.site_audit_id.is_(None)]
+    hosts = _hosts(db, user)
+    if hosts is not None:
+        where.append(_host_match(LighthouseAudit.submitted_url, hosts))
     total = db.scalar(select(func.count(LighthouseAudit.id)).where(*where)) or 0
     items = db.scalars(select(LighthouseAudit).where(*where).order_by(LighthouseAudit.created_at.desc(), LighthouseAudit.id.desc()).offset((page - 1) * page_size).limit(page_size))
     return {"total": total, "page": page, "page_size": page_size, "items": [row(a, INTERNAL) for a in items]}
 
 
 @router.get("/audits/{audit_id}")
-def get_audit(audit_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
-    return row(_get_audit(db, audit_id), INTERNAL)
+def get_audit(audit_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return row(_get_audit(db, audit_id, user), INTERNAL)
 
 
 @router.post("/audits/{audit_id}/rerun", status_code=201)
-def rerun_audit(audit_id: int, db: Session = Depends(get_db), _: User = Depends(rate_limited)):
+def rerun_audit(audit_id: int, db: Session = Depends(get_db), user: User = Depends(rate_limited)):
     """Same URL, strategy and engine, as a new audit."""
-    old = _get_audit(db, audit_id)
+    old = _get_audit(db, audit_id, user)
     try:
         a = lighthouse_runner.create_and_queue(db, old.submitted_url, old.strategy, old.engine, check_duplicate=False)
     except SSRFValidationError as exc:
@@ -114,9 +141,9 @@ def rerun_audit(audit_id: int, db: Session = Depends(get_db), _: User = Depends(
 
 
 @router.get("/audits/{audit_id}/report")
-def get_report(audit_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def get_report(audit_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Normalised report: scores, metrics, audits by category and outcome, CrUX field data."""
-    a = _get_audit(db, audit_id)
+    a = _get_audit(db, audit_id, user)
     return {
         "id": a.id, "status": a.status, "submitted_url": a.submitted_url, "final_url": a.final_url,
         "strategy": a.strategy, "engine": a.engine,
@@ -132,9 +159,9 @@ def get_report(audit_id: int, db: Session = Depends(get_db), _: User = Depends(c
 
 
 @router.get("/audits/{audit_id}/download/json")
-def download_json(audit_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def download_json(audit_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """The raw Lighthouse JSON (the full PageSpeed response for PageSpeed runs)."""
-    a = _get_audit(db, audit_id)
+    a = _get_audit(db, audit_id, user)
     if not a.raw_json_path or not Path(a.raw_json_path).is_file():
         raise HTTPException(404, "Raw JSON report is not available for this audit")
     return Response(Path(a.raw_json_path).read_text(encoding="utf-8"), media_type="application/json",
@@ -142,9 +169,9 @@ def download_json(audit_id: int, db: Session = Depends(get_db), _: User = Depend
 
 
 @router.get("/audits/{audit_id}/download/html")
-def download_html(audit_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def download_html(audit_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """The original Lighthouse HTML (local engine), else a generated summary that says it is one."""
-    a = _get_audit(db, audit_id)
+    a = _get_audit(db, audit_id, user)
     if a.html_report_path and Path(a.html_report_path).is_file():
         return HTMLResponse(Path(a.html_report_path).read_text(encoding="utf-8"),
                             headers={"Content-Disposition": f'attachment; filename="lighthouse-{a.id}.report.html"'})
@@ -171,7 +198,9 @@ def _site_summary(db: Session, s: LighthouseSiteAudit) -> tuple[dict, list[Light
 
 
 @router.post("/site-audits", status_code=201)
-def create_site_audit(body: LighthouseSiteAuditIn, db: Session = Depends(get_db), _: User = Depends(rate_limited)):
+def create_site_audit(body: LighthouseSiteAuditIn, db: Session = Depends(get_db), user: User = Depends(rate_limited)):
+    if not _allowed(_hosts(db, user), body.url):
+        raise HTTPException(403, "You can only audit the website of one of your own projects.")
     try:
         urls = discover_site_urls(body.url, body.max_pages)
     except SSRFValidationError as exc:
@@ -194,17 +223,19 @@ def create_site_audit(body: LighthouseSiteAuditIn, db: Session = Depends(get_db)
 
 
 @router.get("/site-audits/history")
-def site_audit_history(page: int = 1, page_size: int = 20, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def site_audit_history(page: int = 1, page_size: int = 20, db: Session = Depends(get_db), user: User = Depends(current_user)):
     page, page_size = _page(page, page_size)
-    total = db.scalar(select(func.count(LighthouseSiteAudit.id))) or 0
-    items = db.scalars(select(LighthouseSiteAudit).order_by(LighthouseSiteAudit.created_at.desc(), LighthouseSiteAudit.id.desc()).offset((page - 1) * page_size).limit(page_size))
+    hosts = _hosts(db, user)
+    where = [] if hosts is None else [_host_match(LighthouseSiteAudit.base_url, hosts)]
+    total = db.scalar(select(func.count(LighthouseSiteAudit.id)).where(*where)) or 0
+    items = db.scalars(select(LighthouseSiteAudit).where(*where).order_by(LighthouseSiteAudit.created_at.desc(), LighthouseSiteAudit.id.desc()).offset((page - 1) * page_size).limit(page_size))
     return {"total": total, "page": page, "page_size": page_size, "items": [_site_summary(db, s)[0] for s in items]}
 
 
 @router.get("/site-audits/{site_audit_id}")
-def get_site_audit(site_audit_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def get_site_audit(site_audit_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     s = db.get(LighthouseSiteAudit, site_audit_id)
-    if not s:
+    if not s or not _allowed(_hosts(db, user), s.base_url):
         raise HTTPException(404, "Site audit not found")
     summary, pages = _site_summary(db, s)
     return summary | {"pages": [row(p, INTERNAL) for p in pages]}

@@ -16,6 +16,9 @@ def _domain_of(website: str | None) -> str | None:
     return registrable_domain(host)
 
 
+from ..competitors import hygiene  # noqa: E402
+
+
 def sync_targets(db: Session, b: Business) -> dict:
     """Add the business's site and its saved competitors as targets. Never removes or changes anything the user added by hand."""
     have = {t.domain: t for t in db.scalars(select(BiTrackedTarget).where(BiTrackedTarget.business_id == b.id))}
@@ -34,7 +37,7 @@ def sync_targets(db: Session, b: Business) -> dict:
     add(own, b.name, False)
     for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id).order_by(Competitor.id)):
         d = _domain_of(c.website)
-        if d and d != own:
+        if d and d != own and not hygiene.skip_reason(b, c.website):  # a competitor's Instagram or YouTube is not a site whose links mean anything
             add(d, c.name, True)
     db.commit()
     return {"added": added, "total": len(have)}

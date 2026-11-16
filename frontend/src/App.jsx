@@ -1,11 +1,27 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Sk, SkPage } from './platform/SeoUi';
-import { api } from './platform/seoApi';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { Sk, SkPage, resetBusinessesStore } from './platform/SeoUi';
+import { api, clearApiCache } from './platform/seoApi';
+import ProjectCodeHost from './platform/ProjectCodeModal';
+import { resetProjectCode } from './platform/projectCode';
+
+// Everything remembered about the previous account or project: cached answers, the project list, the selected project, and per-site
+// traffic notes. Run on sign-out, when the session ends, and when a different account signs in.
+const wipeClientState = () => {
+  clearApiCache();
+  resetProjectCode();
+  resetBusinessesStore();
+  try {
+    ['traffic.last', 'traffic.snapshot', 'traffic.done'].forEach(k => localStorage.removeItem(k));
+    Object.keys(localStorage).filter(k => /^(growzen\.dest\.|growzen\.ignored)/.test(k)).forEach(k => localStorage.removeItem(k));
+    Object.keys(sessionStorage).forEach(k => sessionStorage.removeItem(k));
+  } catch (e) { /* storage blocked */ }
+};
 import Layout from './components/Layout';
 import PasswordGate from './components/PasswordGate';
 const LandingPage = lazy(() => import('./public/LandingPage'));
 const LegalPage = lazy(() => import('./public/LegalPage'));
+const PublicReviewPage = lazy(() => import('./platform/ReviewLink').then(m => ({ default: m.PublicReviewPage })));
 import LoginPage from './pages/LoginPage';
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const SeoOverviewPage = lazy(() => import('./platform/SeoOverviewPage'));
@@ -13,18 +29,41 @@ const AutomationPipelinePage = lazy(() => import('./platform/AutomationPipelineP
 const GbpManagerPage = lazy(() => import('./platform/GbpManagerPage'));
 const ReviewManagerPage = lazy(() => import('./platform/ReviewManagerPage'));
 const LocalRankTrackerPage = lazy(() => import('./platform/LocalRankTrackerPage'));
+const TrackingOverviewPage = lazy(() => import('./platform/TrackingOverviewPage'));
 const KeywordResearchPage = lazy(() => import('./platform/KeywordResearchPage'));
 const CompetitorFinderPage = lazy(() => import('./platform/CompetitorFinderPage'));
 const ContentStudioPage = lazy(() => import('./platform/ContentStudioPage'));
 const SiteAuditPage = lazy(() => import('./platform/SiteAuditPage'));
+const GrowthPlanPage = lazy(() => import('./platform/GrowthPlanPage'));
+function XRayRedirect() {
+  const { search, hash } = useLocation();
+  const p = new URLSearchParams(search);
+  p.set('tab', 'xray');
+  return <Navigate to={`/website-audit?${p.toString()}${hash}`} replace />;
+}
+/** The old Backlink Intelligence page is now the backlink pages: each of its old views has a new address. */
+const BI_VIEWS = { gap: 'opportunities', targets: 'sites', bot: 'sites', collect: 'sites', explorer: 'links', report: 'links', overview: 'links', seed: 'links' };
+function BacklinkIntelRedirect() {
+  const { tab } = useParams();
+  return <Navigate to={`/backlinks/${BI_VIEWS[tab] || 'links'}`} replace />;
+}
+
+const BacklinkCheckerPage = lazy(() => import('./platform/BacklinkCheckerPage'));
+const GrowthFixPage = lazy(() => import('./platform/GrowthFixPage'));
 const BacklinksCitationsPage = lazy(() => import('./platform/BacklinksCitationsPage'));
-const BacklinkIntelPage = lazy(() => import('./platform/BacklinkIntelPage'));
+function FixPlanArea() {
+  const { area } = useParams();
+  return <Navigate to={`/fix-plan?area=${area}`} replace />;
+}
+const FixPlanPage = lazy(() => import('./platform/FixPlanPage'));
+const BacklinkHubPage = lazy(() => import('./platform/BacklinkHubPage'));
 const CompetitorWatchPage = lazy(() => import('./platform/CompetitorWatchPage'));
 const GeoTrackerPage = lazy(() => import('./platform/GeoTrackerPage'));
+const ChatGPTBusinessPage = lazy(() => import('./platform/ChatGPTBusinessPage'));
 const ReportsLeadsPage = lazy(() => import('./platform/ReportsLeadsPage'));
 const AiAgentPage = lazy(() => import('./platform/AiAgentPage'));
-const WebsiteBuilderPage = lazy(() => import('./platform/WebsiteBuilderPage'));
 const BusinessOnboardingPage = lazy(() => import('./platform/BusinessOnboardingPage'));
+const ProjectsPage = lazy(() => import('./platform/ProjectsPage'));
 const ConnectionsPage = lazy(() => import('./platform/ConnectionsPage'));
 const ConnectResultPage = lazy(() => import('./platform/ConnectResultPage'));
 const TrafficPage = lazy(() => import('./platform/TrafficPage'));
@@ -37,8 +76,6 @@ const OrganicRankingsPage = lazy(() => import('./platform/OrganicResearch').then
 const TopPagesPage = lazy(() => import('./platform/TopPagesReport').then(m => ({ default: m.TopPagesPage })));
 const toolkit = (name) => lazy(() => import('./platform/SeoToolkit').then(m => ({ default: m[name] })));
 const DomainOverviewPage = toolkit('DomainOverviewPage');
-const KeywordGapPage = toolkit('KeywordGapPage');
-const CompareDomainsPage = toolkit('CompareDomainsPage');
 const KeywordOverviewPage = toolkit('KeywordOverviewPage');
 
 /** Page-shaped placeholder: top bar, title and subtitle, then tiles, a chart card and a table card, inside the usual page margins. */
@@ -61,10 +98,10 @@ export default function App() {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const { pathname } = useLocation();
 
-  const loadMe = useCallback(() => api('/me').then(u => { setUser(u); try { localStorage.setItem('seo:user', JSON.stringify({ id: u.id, name: u.name, email: u.email, role: u.role, is_admin: u.is_admin, must_change_password: u.must_change_password })); } catch (e) { /* private mode */ } }).catch(() => { try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ } setUser(null); }), []);
+  const loadMe = useCallback(() => api('/me').then(u => { try { const prev = JSON.parse(localStorage.getItem('seo:user') || 'null'); if (prev && String(prev.id) !== String(u.id)) wipeClientState(); } catch (e) { /* ignore */ } setUser(u); try { localStorage.setItem('seo:user', JSON.stringify({ id: u.id, name: u.name, email: u.email, role: u.role, is_admin: u.is_admin, must_change_password: u.must_change_password })); } catch (e) { /* private mode */ } }).catch(() => { try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ } setUser(null); }), []);
   useEffect(() => { loadMe(); }, [loadMe]);
   useEffect(() => {
-    const out = () => { try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ } setUser(null); };
+    const out = () => { try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ } wipeClientState(); setUser(null); };
     const openPwd = () => setShowChangePassword(true);
     window.addEventListener('seo:unauthorized', out);
     window.addEventListener('seo:change-password', openPwd);
@@ -77,6 +114,7 @@ export default function App() {
   const logout = async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => {});
     try { localStorage.removeItem('seo:user'); } catch (e) { /* ignore */ }
+    wipeClientState();
     setUser(null);
   };
 
@@ -85,6 +123,7 @@ export default function App() {
   const publicPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   if (publicPath === '/') return <Suspense fallback={<PageLoading />}><LandingPage user={user} /></Suspense>;
   if (publicPath === '/privacy') return <Suspense fallback={<PageLoading />}><LegalPage kind="privacy" /></Suspense>;
+  if (/^\/r\/[^/]+$/.test(publicPath)) return <Suspense fallback={<PageLoading />}><PublicReviewPage token={decodeURIComponent(publicPath.slice(3))} /></Suspense>; // a customer's review page: no sign-in
   if (publicPath === '/terms') return <Suspense fallback={<PageLoading />}><LegalPage kind="terms" /></Suspense>;
 
   if (user === undefined) {
@@ -101,6 +140,7 @@ export default function App() {
 
   return (
     <>
+    <ProjectCodeHost />
     {showChangePassword && (
       <PasswordGate
         user={user}
@@ -113,14 +153,20 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<SeoOverviewPage />} />
         <Route path="onboarding" element={<BusinessOnboardingPage />} />
+        <Route path="projects" element={<ProjectsPage />} />
         <Route path="work-plan" element={<Navigate to="/dashboard" replace />} />
         <Route path="automation-pipeline" element={<AutomationPipelinePage />} />
         <Route path="gmb-profile" element={<GbpManagerPage />} />
+        <Route path="gmb-profile/reviews" element={<Navigate to="/reviews?tab=google" replace />} />
+        <Route path="gmb-profile/:tab" element={<GbpManagerPage />} />
         <Route path="google-posts" element={<GbpManagerPage initialTab="posts" />} />
         <Route path="media-management" element={<GbpManagerPage initialTab="photos" />} />
         <Route path="reviews" element={<ReviewManagerPage />} />
+        <Route path="tracking-overview" element={<TrackingOverviewPage />} />
         <Route path="rank-tracking" element={<LocalRankTrackerPage />} />
+        <Route path="rank-tracking/:tab" element={<LocalRankTrackerPage />} />
         <Route path="keyword-management" element={<KeywordResearchPage />} />
+        <Route path="keyword-management/:tab" element={<KeywordResearchPage />} />
         <Route path="competitor-finder" element={<CompetitorFinderPage />} />
         <Route path="competitor-watch" element={<CompetitorWatchPage />} />
         <Route path="traffic" element={<TrafficPage />} />
@@ -131,21 +177,40 @@ export default function App() {
         <Route path="feature/:slug" element={<FeaturePage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
         <Route path="organic-rankings" element={<OrganicRankingsPage />} />
+        <Route path="organic-rankings/:tab" element={<OrganicRankingsPage />} />
         <Route path="top-pages" element={<TopPagesPage />} />
-        <Route path="keyword-gap" element={<KeywordGapPage />} />
-        <Route path="compare-domains" element={<CompareDomainsPage />} />
+        <Route path="keyword-gap" element={<Navigate to="/competitor-finder?tab=gap" replace />} />
+        <Route path="compare-domains" element={<Navigate to="/competitor-finder?tab=compare" replace />} />
         <Route path="keyword-overview" element={<KeywordOverviewPage />} />
         <Route path="ai-content-generation" element={<ContentStudioPage />} />
-        <Route path="content-calendar" element={<Navigate to="/ai-content-generation?tab=calendar" replace />} />
+        <Route path="ai-content-generation/:tab" element={<ContentStudioPage />} />
+        <Route path="content-calendar" element={<Navigate to="/ai-content-generation/calendar" replace />} />
         <Route path="website-audit" element={<SiteAuditPage />} />
+        <Route path="page-xray" element={<XRayRedirect />} />
+        <Route path="serp-xray" element={<Navigate to="/keyword-overview" replace />} />
+        <Route path="growth" element={<GrowthPlanPage />} />
+        <Route path="autopilot" element={<Navigate to="/google-posts" replace />} />
+        <Route path="growth/fix/:id" element={<GrowthFixPage />} />
         <Route path="on-page-seo" element={<Navigate to="/website-audit?tab=site" replace />} />
         <Route path="off-page-seo" element={<BacklinksCitationsPage />} />
-        <Route path="backlink-intelligence" element={<BacklinkIntelPage />} />
+        <Route path="off-page-seo/:tab" element={<BacklinksCitationsPage />} />
+        <Route path="backlink-checker" element={<BacklinkCheckerPage />} />
+        <Route path="projects/:id/journey" element={<Navigate to="/tracking-overview" replace />} />
+        <Route path="fix-plan" element={<FixPlanPage />} />
+        <Route path="fix-plan/:area" element={<FixPlanArea />} />
+        <Route path="backlinks" element={<Navigate to="/backlinks/links" replace />} />
+        <Route path="backlinks/:view" element={<BacklinkHubPage />} />
+        <Route path="backlink-intelligence" element={<BacklinkIntelRedirect />} />
+        <Route path="backlink-intelligence/:tab" element={<BacklinkIntelRedirect />} />
         <Route path="geo-optimization" element={<GeoTrackerPage />} />
+        <Route path="geo-optimization/:tab" element={<GeoTrackerPage />} />
+        <Route path="chatgpt-business" element={<ChatGPTBusinessPage />} />
+        <Route path="chatgpt-business/:tab" element={<ChatGPTBusinessPage />} />
         <Route path="leads" element={<ReportsLeadsPage initialTab="leads" />} />
         <Route path="reports" element={<ReportsLeadsPage />} />
+        <Route path="reports/:tab" element={<ReportsLeadsPage />} />
         <Route path="automation" element={<AiAgentPage />} />
-        <Route path="website-builder" element={<WebsiteBuilderPage />} />
+        <Route path="website-builder" element={<Navigate to="/ai-content-generation/publishing" replace />} />
         <Route path="google-integrations" element={<ConnectionsPage />} />
         <Route path="connect-result" element={<ConnectResultPage />} />
         {user.is_admin && <Route path="users" element={<UsersPage me={user} />} />}

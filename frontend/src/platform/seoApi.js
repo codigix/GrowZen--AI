@@ -39,6 +39,8 @@ async function waitUntilReachable(tries = 10) {
 const inflight = new Map();
 const answers = new Map();
 const FRESH_MS = 30000;
+/** Forget every cached answer: called on sign-out / account switch so the next user never sees the previous one's projects or data. */
+export const clearApiCache = () => { answers.clear(); inflight.clear(); };
 export const cached = (path) => { const a = answers.get(path); return a && Date.now() - a.at < FRESH_MS ? a.data : undefined; };
 
 export function api(path, opts = {}) {
@@ -51,21 +53,39 @@ export function api(path, opts = {}) {
   return p;
 }
 
-async function request(path, { method = 'GET', body, raw = false, repeat = false } = {}) {
+// Two-step verification: a project's data answers 403 {code:'project_code_required'} until an authenticator code was accepted for it.
+// projectCode.js registers a handler that asks for the code; the request is then sent once more.
+let codeHandler = null;
+export const setProjectCodeHandler = (fn) => { codeHandler = fn; };
+
+// A request that gets no answer must end with a message, not a loader that spins forever (a busy or hung backend never replies).
+// Reads wait 60 s, changes 150 s (audits, scans and live checks are slow on purpose); `timeout` (ms) overrides it for one call.
+const READ_TIMEOUT_MS = 60000;
+const WRITE_TIMEOUT_MS = 150000;
+const SLOW_MESSAGE = 'The server is taking too long to answer. It may be busy: wait a moment and try again.';
+
+async function request(path, { method = 'GET', body, raw = false, repeat = false, codeTried = false, timeout } = {}) {
   const safeToRepeat = repeat || method === 'GET' || method === 'HEAD';
   if (!safeToRepeat && Date.now() - lastNetworkFailure < 30000) await waitUntilReachable();
   let r;
   for (let attempt = 0; ; attempt += 1) {
+    const ctl = new AbortController();
+    const limit = timeout || (method === 'GET' || method === 'HEAD' ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS);
+    const timer = setTimeout(() => ctl.abort(), limit);
     try {
       r = await fetch(`${SEO_API}${path}`, {
         method,
         credentials: 'include',
         cache: 'no-store', // never reuse a cached API answer: a copy cached for another origin carries that origin's CORS header and is refused
         headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
-        body: body !== undefined ? JSON.stringify(body) : undefined
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: ctl.signal
       });
+      clearTimeout(timer);
       break;
     } catch (e) {
+      clearTimeout(timer);
+      if (ctl.signal.aborted) throw new SeoApiError(SLOW_MESSAGE, 504); // a hang is not a restart: never retried
       lastNetworkFailure = Date.now();
       if (safeToRepeat && attempt < 4) { // a restart takes a few seconds: wait until the backend answers, then send again
         if (!(await waitUntilReachable(12))) await sleep(600 * (attempt + 1));
@@ -78,6 +98,9 @@ async function request(path, { method = 'GET', body, raw = false, repeat = false
     const b = await r.json().catch(() => ({}));
     // Session ended: the app shell listens for this and shows the login page.
     if (r.status === 401 && !path.startsWith('/auth/')) window.dispatchEvent(new Event('seo:unauthorized'));
+    if (r.status === 403 && b?.detail?.code === 'project_code_required' && codeHandler && !codeTried && await codeHandler(b.detail.business_id)) {
+      return request(path, { method, body, raw, repeat, codeTried: true });
+    }
     throw new SeoApiError(messageOf(b, r.status), r.status);
   }
   if (raw) return r;

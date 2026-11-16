@@ -8,10 +8,11 @@ from sqlalchemy import select, text
 
 from ..config import get_settings
 from ..db import SessionLocal
-from . import intake, jobs, pipeline, schedules, site_publish
+from . import intake, jobs, locks, pipeline, schedules, site_publish
 
 log = logging.getLogger("seo.scheduler")
 _scheduler: BackgroundScheduler | None = None
+TICK_LOCK_KEY = 7310042
 
 
 LAST_TICK: dict[str, object] = {"at": None, "result": None}
@@ -20,12 +21,10 @@ LAST_TICK: dict[str, object] = {"at": None, "result": None}
 def tick() -> dict[str, int]:
     db = SessionLocal()
     out = {"emails": 0, "onboarded": 0, "jobs": 0, "recovered": 0, "posts": 0}
-    locked = False
+    lock = locks.AdvisoryLock(db.get_bind(), TICK_LOCK_KEY)  # two processes must never run the same jobs twice; the lock has its own connection and cannot leak
     try:
-        if db.bind.dialect.name == "postgresql":  # two processes must never run the same jobs twice
-            locked = bool(db.execute(text("select pg_try_advisory_lock(7310042)")).scalar())
-            if not locked:
-                return out
+        if not lock.acquired:
+            return out
         out["recovered"] = jobs.recover_stale(db)
         jobs.prune(db)
         try:
@@ -42,24 +41,25 @@ def tick() -> dict[str, int]:
             log.warning("Schedule backfill failed: %s", exc)
         out["jobs"] = schedules.run_due(db)
         out["posts"] = site_publish.run_due_scheduled(db)  # blog posts held for a chosen time
+        try:
+            from . import autopilot
+            out["posts"] += autopilot.publish_due(db)  # Google posts and photos a person approved for a time
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            log.warning("Autopilot publisher failed: %s", exc)
     finally:
-        if locked:
-            db.execute(text("select pg_advisory_unlock(7310042)"))
+        lock.release()
         db.close()
         LAST_TICK.update(at=datetime.now(timezone.utc).isoformat(), result=out)
     return out
 
 
 def bot_tick() -> None:
-    """Run the backlink discovery bot (separate job). With rotation on, businesses crawl in batches that take turns (backlinks/rotation.py);
-    the tick only starts or checks the batch's threads, so it returns at once. Without rotation, each business whose interval has elapsed runs here."""
-    from ..backlinks import bot, rotation, router as bl_router
+    """Sync backlinks from our own crawler server (separate job). Nothing is crawled in this process: each business whose interval has elapsed reads its links from the crawler."""
+    from ..backlinks import bot, router as bl_router
     db = SessionLocal()
     try:
-        if get_settings().backlink_rotation_enabled:
-            rotation.tick(db)
-        else:
-            bot.run_due(db, bl_router.get_fetcher())
+        bot.run_due(db)
         from ..backlinks import outcomes, watch
         outcomes.measure_due(db)
         watch.run_due(db, bl_router.get_fetcher())  # weekly competitor visits (each business only when a week has passed)
@@ -74,7 +74,9 @@ def posts_tick() -> int:
     this and the main tick can never publish the same post twice."""
     db = SessionLocal()
     try:
-        return site_publish.run_due_scheduled(db)
+        n = site_publish.run_due_scheduled(db)
+        from . import autopilot
+        return n + autopilot.publish_due(db)  # approved Google posts and photos go out within a minute of their time
     except Exception as exc:
         log.warning("Scheduled posts tick failed: %s", exc)
         return 0

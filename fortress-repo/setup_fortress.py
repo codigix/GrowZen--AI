@@ -105,10 +105,44 @@ def setup_venv() -> None:
     subprocess.run([str(python), "-m", "pip", "install", "--disable-pip-version-check", "-q", PLAYWRIGHT], check=True)
 
 
+def _is_admin() -> bool:
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def register_firewall_rule(browser: Path) -> None:
+    """Windows only: pre-approve this exact binary so it never shows the "allow this app through the firewall" popup. That popup
+    needs a human to click it; a headless server (or this running as a service, with no one logged into a desktop) either blocks on
+    it forever or has the connection silently dropped. Needs an elevated (Administrator) process; otherwise this is skipped with a
+    warning, so a server provisioned without admin rights can have someone run this script once as Administrator to fix it."""
+    if os.name != "nt":
+        return
+    if not _is_admin():
+        _say("not running as Administrator: skipping the firewall rule. On a server, run this script once as Administrator so "
+             "Fortress is pre-approved and never shows the 'allow this app' popup (nobody is there to click it).")
+        return
+    name = "Fortress Chromium"
+    try:
+        subprocess.run(["netsh", "advfirewall", "firewall", "delete", "rule", f"name={name}"], capture_output=True)
+        for direction in ("in", "out"):
+            subprocess.run(["netsh", "advfirewall", "firewall", "add", "rule", f"name={name}", f"dir={direction}",
+                             "action=allow", f"program={browser}", "enable=yes", "profile=any"], check=True, capture_output=True)
+        _say(f"firewall rule added for {browser}: it will not prompt for this binary again")
+    except (OSError, subprocess.CalledProcessError) as exc:
+        _say(f"could not add the firewall rule ({exc}); it may still show the 'allow this app' popup on first launch")
+
+
 def setup_browser() -> None:
     root = browser_root()
-    if find_browser(root):
-        _say(f"browser is ready: {find_browser(root)}")
+    existing = find_browser(root)
+    if existing:
+        _say(f"browser is ready: {existing}")
+        register_firewall_rule(existing)
         return
     asset, expected = ASSETS[platform_key()]
     url = f"{BASE_URL}/{asset}"
@@ -136,6 +170,8 @@ def setup_browser() -> None:
         raise SystemExit(f"the build was extracted to {root} but no browser executable was found in it")
     if os.name != "nt":
         browser.chmod(0o755)
+    else:
+        register_firewall_rule(browser)
     _say(f"browser is ready: {browser}")
 
 

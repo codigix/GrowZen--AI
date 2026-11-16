@@ -45,7 +45,7 @@ def _run_rankings(db: Session, b: Business) -> tuple[int, list[dict[str, Any]], 
         from ..competitors.intel import default_keywords  # noqa: PLC0415 - avoids an import cycle
         keywords = [k.lower() for k in default_keywords(b)] or [f"{b.primary_category or 'business'} in {b.area or b.city or ''}".strip().lower()]
     prov = providers.rank_provider()
-    # Live Google results cost per grid point, so that provider scans a smaller grid for fewer keywords.
+    # Each grid point is one Google Places request, so that provider scans a smaller grid for fewer keywords.
     size, radius = getattr(prov, "default_grid", 7), getattr(prov, "default_radius_km", 5.0)
     if getattr(prov, "default_grid", None):
         keywords = keywords[:2]
@@ -81,29 +81,27 @@ def _run_onpage(db: Session, b: Business, max_pages: int | None = None) -> tuple
     if not b.website:
         return 0, [], {}, "live"
     cfg = b.audit_config or {}  # the project's Site Audit settings (limit, pages to crawl, rules)
-    site = crawler.crawl(b.website, max_pages=max_pages or int(cfg.get("limit") or 25), options=cfg)
+    site = crawler.crawl(b.website, max_pages=max_pages or int(cfg.get("limit") or 300), options=cfg)  # all the pages of this website, and only this website (no subdomains) unless the audit settings say otherwise
     score, issues = crawler.summarise(site)
     return score, issues, {k: v for k, v in site.items() if k != "pages"} | {"pages": site.get("pages", [])}, "live"
 
 
 def _run_backlinks(db: Session, b: Business) -> tuple[int, list[dict[str, Any]], dict[str, Any], str]:
-    prov = providers.backlink_provider()
+    """The backlink audit reads Backlink Intelligence (our own crawler and the link index the project tracks): Google has no API for who links to a site."""
+    from ..backlinks.summary import own_site_links  # noqa: PLC0415
     domain = urlparse(b.website).netloc if b.website else None
     if not domain:
-        return 0, [{"area": "Backlinks", "level": "warning", "title": "No website, so no backlink profile", "fix": "Build a website first."}], {}, prov.source
-    s = prov.summary(domain, name=b.name, city=b.city or "", country=countries.of(b))
+        return 0, [{"area": "Backlinks", "level": "warning", "title": "No website, so no backlink profile", "fix": "Build a website first."}], {}, "live"
+    s = own_site_links(db, b.id)
+    if s is None:
+        raise RuntimeError("Backlinks are read from Backlink Intelligence. Track this website there and run it, then run this audit again.")
     rd = s.get("referring_domains") or 0
-    mentions = s.get("source") == "google_mentions"
-    # Google shows at most a page or two of other sites for a name, so mentions score on a smaller scale.
-    score = min(100, round(rd / 12 * 100)) if mentions else min(100, round(rd * 1.6))
+    score = min(100, round(rd * 1.6))
     issues = []
-    if (mentions and rd < 6) or (not mentions and rd < 20):
-        issues.append({"area": "Backlinks", "level": "warning",
-                       "title": f"Only {rd} other site{'s' if rd != 1 else ''} found {'linking to or mentioning the business' if mentions else 'linking to it (referring domains)'}",
+    if rd < 20:
+        issues.append({"area": "Backlinks", "level": "warning", "title": f"Only {rd} other site{'s' if rd != 1 else ''} found linking to it (referring domains)",
                        "fix": "Earn links from local news, associations and directories; see the link gap."})
-    if s.get("toxic"):
-        issues.append({"area": "Backlinks", "level": "warning", "title": f"{s['toxic']} toxic links", "fix": "Review them; disavow only clear spam."})
-    return score, issues, s, prov.source
+    return score, issues, {"referring_domains": rd, "backlinks": s.get("backlinks"), "source": "backlink_intelligence"}, "live"
 
 
 def _run_citations(db: Session, b: Business) -> tuple[int, list[dict[str, Any]], dict[str, Any], str]:
@@ -219,8 +217,14 @@ def record_for_business(db: Session, b: Business, web: Audit) -> list[Audit]:
     return saved
 
 
+DEVICES = ("mobile", "desktop")  # every website audit scans both; `strategy` only picks which one scores the audit and is shown by default
+
+
 def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: int = 10, audit: Audit | None = None, options: dict[str, Any] | None = None) -> Audit:
-    """One-off audit of any URL (no business needed): PageSpeed + a short crawl. Always starts from the site's homepage."""
+    """One-off audit of any URL (no business needed): PageSpeed (both mobile and desktop) + a short crawl. Always starts from the site's homepage.
+    `strategy` chooses which device's Lighthouse run is the audit's primary one (used for `audit.score` and wherever a single `pagespeed`
+    result is expected); both devices' results are kept under `result["pagespeed_devices"]` so the report can switch between them without
+    re-auditing."""
     url = crawler.homepage(url)
     audit = audit or Audit(kind="website", target=url)
     audit.target = url
@@ -230,9 +234,9 @@ def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: 
     result: dict[str, Any] = {}
     issues: list[dict[str, Any]] = []
     errors = []
-    # Lighthouse (an HTTP call, no DB) runs beside the crawl; the crawl saves live progress after each step.
-    pool = ThreadPoolExecutor(max_workers=1)
-    psi = pool.submit(run_lighthouse, url, strategy)
+    # Lighthouse (HTTP calls, no DB) runs beside the crawl, one device per worker; the crawl saves live progress after each step.
+    pool = ThreadPoolExecutor(max_workers=len(DEVICES))
+    lh_futures = {d: pool.submit(run_lighthouse, url, d) for d in DEVICES}
     progress: dict[str, Any] = {"lighthouse": "running", "current": url, "pages": [], "queued": 0, "max_pages": crawl_pages}
 
     def save(event: dict[str, Any] | None = None) -> None:
@@ -247,11 +251,12 @@ def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: 
             progress["pages"].append({k: p.get(k) for k in ("url", "status", "title", "meta_description", "h1", "word_count", "images", "images_missing_alt", "has_viewport", "noindex", "frameable", "schema_types")}
                                      | {"issues": [{"level": i["level"], "title": i["title"]} for i in found]})
             progress["queued"] = event["queued"]
-        if progress["lighthouse"] == "running" and psi.done():
-            progress["lighthouse"] = "failed" if psi.exception() else "done"
+        if progress["lighthouse"] == "running" and all(f.done() for f in lh_futures.values()):
+            progress["lighthouse"] = "done" if any(not f.exception() for f in lh_futures.values()) else "failed"
         audit.result = {"progress": dict(progress)}  # a new dict, so SQLAlchemy sees the JSON change
         db.commit()
 
+    crawl_issues: list[dict[str, Any]] = []
     try:
         try:
             site = crawler.crawl(url, max_pages=crawl_pages, on_progress=save, options=options)
@@ -262,15 +267,34 @@ def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: 
             errors.append(f"Crawl: {exc}")
         progress.update(current=None, crawl="done")
         save()
-        try:
-            result["pagespeed"] = psi.result()
-            issues = pagespeed.issues_from(result["pagespeed"]) + issues
-        except Exception as exc:
-            errors.append(f"Lighthouse: {exc}")
+        pagespeed_devices: dict[str, Any] = {}
+        for device, fut in lh_futures.items():
+            try:
+                pagespeed_devices[device] = fut.result()
+            except Exception as exc:
+                errors.append(f"Lighthouse ({device}): {exc}")
+        if pagespeed_devices:
+            result["pagespeed_devices"] = pagespeed_devices
+            # So the report can switch device without re-auditing: each device's own issue list and overall score
+            # (its Lighthouse scores + the one shared crawl score), not just the primary device's.
+            crawl_score_val = (result.get("crawl") or {}).get("score")
+            issues_by_device = {d: pagespeed.issues_from(p) for d, p in pagespeed_devices.items()}
+            result["issues_by_device"] = issues_by_device
+            result["crawl_issues"] = crawl_issues
+            result["score_by_device"] = {}
+            for d, p in pagespeed_devices.items():
+                parts_d = [v for v in p["scores"].values() if v is not None]
+                if crawl_score_val is not None:
+                    parts_d.append(crawl_score_val)
+                result["score_by_device"][d] = round(mean(parts_d)) if parts_d else None
+            primary_device = strategy if strategy in pagespeed_devices else next(iter(pagespeed_devices))
+            primary = pagespeed_devices[primary_device]
+            result["pagespeed"] = primary
+            issues = issues_by_device[primary_device] + issues
     finally:
         pool.shutdown(wait=False)
-    seo = (result.get("pagespeed") or {}).get("scores", {}).get("seo")
-    parts = [x for x in [seo, (result.get("crawl") or {}).get("score")] if x is not None]
+    lighthouse_scores = list(((result.get("pagespeed") or {}).get("scores") or {}).values())
+    parts = [x for x in [*lighthouse_scores, (result.get("crawl") or {}).get("score")] if x is not None]
     audit.score = round(mean(parts)) if parts else None
     audit.result, audit.issues = result, issues
     audit.status = "done" if parts else "failed"

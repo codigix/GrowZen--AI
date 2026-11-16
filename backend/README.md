@@ -59,7 +59,8 @@ Every URL is checked for SSRF before it is queued and again before it runs. It m
 | Technical SEO | `PAGESPEED_API_KEY` | Audit fails with a clear message |
 | Lighthouse audits | `PAGESPEED_API_KEY` and/or local Node.js + `lighthouse` + Chrome | Audit fails with a clear message |
 | On-page SEO | Built-in crawler | Always live |
-| Rank grid, citations, link sources | `SERPER_API_KEY` (live Google results) | Sample data, labelled `sample` |
+| Organic positions | Google Search Console (the project's linked Google account) | "Link the Google account" message, nothing invented |
+| Maps rank grid, competitor research | `GOOGLE_PLACES_API_KEY` (Google Places API) | Sample data, labelled `sample` |
 | Domain Overview, Organic Rankings, Top Pages | A Google account that can see the site in Search Console | Says what is missing; nothing is estimated |
 | Citations | No licensed source chosen yet | Sample data |
 | GEO / AEO | OpenAI, Gemini, Perplexity, Anthropic, DeepSeek keys | Sample data |
@@ -231,7 +232,7 @@ app/
     sitemap.py       pages from sitemap.xml (site audits)
     url_safety.py    SSRF checks, DNS-pinning HTTP transport
     crawler.py       on-page / technical crawler
-    providers/       Serper adapters + sample data
+    providers/       Google Places adapter + sample data
     geo.py           GEO / AEO tracker
     agent.py         planner, approvals, apply
     schedules.py     per-business jobs

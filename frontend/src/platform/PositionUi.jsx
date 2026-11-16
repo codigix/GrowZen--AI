@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { ArrowUp, ArrowDown, Inbox, Search } from 'lucide-react';
+import Select from '../components/Select';
 
 export const AXIS = { fontSize: 11, fill: '#64748b' };
 export const PALETTE = ['#6658dd', '#1abc9c', '#a855f7', '#f59e0b', '#ef4444', '#0ea5e9', '#84cc16', '#ec4899', '#14b8a6', '#64748b'];
@@ -71,7 +72,7 @@ export function usePager(rows, size = 10) {
       <button type="button" disabled={cur <= 1} onClick={() => setPage(cur - 1)} className="px-2.5 py-1 rounded border border-slate-200 disabled:opacity-40 cursor-pointer">Prev</button>
       <button type="button" disabled={cur >= pages} onClick={() => setPage(cur + 1)} className="px-2.5 py-1 rounded border border-slate-200 disabled:opacity-40 cursor-pointer">Next</button>
       <span>Page {cur} of {pages}</span>
-      <select value={per} onChange={e => { setPer(Number(e.target.value)); setPage(1); }} className="h-8 px-2 rounded border border-slate-200 bg-white" aria-label="Rows per page">{[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</select>
+      <Select value={per} onChange={e => { setPer(Number(e.target.value)); setPage(1); }} className="h-8 px-2 rounded border border-slate-200 bg-white" aria-label="Rows per page">{[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</Select>
       <span className="text-slate-400">{rows.length} rows</span>
     </div>
   ) : null;

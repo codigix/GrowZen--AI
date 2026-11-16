@@ -144,11 +144,11 @@ WHY = {
 }
 
 
-def alerts(db: Session, today: date | None = None) -> list[dict[str, Any]]:
+def alerts(db: Session, today: date | None = None, owner_ids: list[int] | None = None) -> list[dict[str, Any]]:
     """Problems worth acting on this week, found by rules across every active business."""
     today = today or date.today()
     out: list[dict[str, Any]] = []
-    businesses = list(db.scalars(select(Business).where(Business.status != "paused")))
+    businesses = list(db.scalars(select(Business).where(Business.status != "paused", *([Business.id.in_(owner_ids)] if owner_ids is not None else []))))
     ids = [b.id for b in businesses]
     # One grouped query per rule for every client (this used to be five to seven queries per client, and each database round trip is slow when it is hosted).
     actions = func.coalesce(func.sum(InsightDay.calls + InsightDay.directions + InsightDay.website_clicks), 0)
@@ -249,15 +249,16 @@ def _rule_priorities(projects: list[dict[str, Any]], found: list[dict[str, Any]]
     return unique[:5]
 
 
-def briefing(db: Session, portfolio: dict[str, Any], refresh: bool = False) -> dict[str, Any]:
+def briefing(db: Session, portfolio: dict[str, Any], refresh: bool = False, owner_ids: list[int] | None = None) -> dict[str, Any]:
     """Today's top priorities across every client, cached for the day. AI-written with a key."""
     today = date.today()
+    key = "briefing:all" if owner_ids is None else "briefing:" + ",".join(map(str, sorted(owner_ids)))  # one cache per set of projects: nobody reads another account's briefing
     with _lock:
-        hit = _cache.get("briefing")
+        hit = _cache.get(key)
         if hit and hit[0] == today and not refresh:
             return hit[1]
     projects = portfolio["projects"]
-    found = alerts(db, today)
+    found = alerts(db, today, owner_ids)
     priorities = _rule_priorities(projects, found)
     t = portfolio["totals"]
     headline = (f"{len(found)} alert{'s' if len(found) != 1 else ''}, {t['pending_tasks']} change{'s' if t['pending_tasks'] != 1 else ''} to approve "
@@ -283,5 +284,5 @@ def briefing(db: Session, portfolio: dict[str, Any], refresh: bool = False) -> d
         except Exception as exc:
             result["ai_error"] = str(exc)[:200]
     with _lock:
-        _cache["briefing"] = (today, result)
+        _cache[key] = (today, result)
     return result

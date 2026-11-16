@@ -12,6 +12,7 @@
     "jspdf": "4.2.1",
     "leaflet": "1.9.4",
     "lucide-react": "0.554.0",
+    "qrcode": "^1.5.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-router-dom": "7.18.4",

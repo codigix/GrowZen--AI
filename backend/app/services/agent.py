@@ -17,7 +17,7 @@ from .playbook import get_playbook
 
 IMPACT = {"critical": "High", "serious": "High", "warning": "Medium", "info": "Low"}
 # Kinds that change what the public sees always ask, whatever the playbook says.
-ALWAYS_ASK = {"profile_edit"}
+ALWAYS_ASK = {"profile_edit", "gbp_post", "review_reply", "gbp_photo"}  # whatever reaches Google needs a person's approval of that exact item, whatever the playbook says
 
 
 def needs_approval(db: Session, kind: str, detail: dict[str, Any] | None = None) -> bool:
@@ -144,11 +144,21 @@ def apply(db: Session, task: AgentTask, actor: str = "agent") -> AgentTask:
         elif task.kind == "gbp_post":
             p = db.get(Post, task.detail.get("post_id"))
             if p and b.connection and b.gbp_account:
-                created = gbp.GbpClient(b.connection).create_post(b.gbp_account, b.gbp_location, {"post_type": p.post_type, "title": p.title, "body": p.body, "cta_type": p.cta_type, "cta_url": p.cta_url, "image_url": p.image_url})
+                created = gbp.GbpClient(b.connection).create_post(b.gbp_account, b.gbp_location, {"post_type": p.post_type, "title": p.title, "body": p.body, "cta_type": p.cta_type, "cta_url": p.cta_url, "image_url": p.image_url,
+                                                                                                    "starts_on": p.starts_on, "ends_on": p.ends_on, "start_time": p.start_time, "end_time": p.end_time, "coupon_code": p.coupon_code, "redeem_url": p.redeem_url, "terms": p.terms})
                 p.status, p.external_id, p.published_at = "published", created.get("name"), datetime.now(timezone.utc)
                 task.result = {"published": True}
             else:
                 task.result = {"published": False, "note": "Not linked to Google."}
+        elif task.kind == "keyword_add" and (task.detail or {}).get("source") == "autopilot":
+            from . import autopilot
+            task.result = autopilot.apply_keyword(db, b, task)
+        elif task.kind == "gbp_photo":
+            from . import autopilot
+            task.result = autopilot.apply_photo(db, b, task)
+        elif task.kind == "profile_edit" and (task.detail or {}).get("changes"):
+            from . import autopilot
+            task.result = {"pushed_to_google": autopilot.apply_profile(db, b, task.detail["changes"])}
         else:
             # Profile edits, website fixes and outreach need a person (the platform cannot edit a client's website): the task
             # says so instead of claiming it was applied, and the next audit closes it when the issue is really gone.

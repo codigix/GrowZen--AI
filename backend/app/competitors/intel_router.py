@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..auth import User, current_user
 from ..config import get_settings
 from ..db import get_db
-from ..deps import get_business, in_background
+from ..deps import can_access, get_business, in_background
 from ..models import Audit, Business
 from ..serialize import row
 from . import intel
@@ -58,7 +58,13 @@ def _run(db: Session, audit_id: int, business_id: int, keywords: list[str], loca
         db.commit()
 
     try:
-        result = intel.analyse(b, keywords, location, progress)
+        own = {}
+        try:
+            from ..services import google_rank
+            own = google_rank.organic_positions(db, b, keywords) if b.website else {}
+        except Exception:  # noqa: BLE001 - Search Console not connected: the Maps research still stands
+            own = {}
+        result = intel.analyse(b, keywords, location, progress, own)
         audit.result, audit.status, audit.score = result, "done", round(result["summary"]["visibility"])
     except intel.IntelError as exc:
         audit.status, audit.error = "failed", str(exc)
@@ -80,14 +86,14 @@ def latest(b: Business = Depends(get_business), db: Session = Depends(get_db)):
         "run": row(a) if a else None,
         "last_done": row(last_done) if last_done else None,
         "defaults": {"keywords": intel.default_keywords(b), "location": intel.default_location(b)},
-        "setup": {"google_results": intel.serper_enabled(), "backlinks": False},
+        "setup": {"google_results": intel.places_enabled(), "maps_only": True, "backlinks": False},
     }
 
 
 @router.post("/businesses/{business_id}/competitor-research", status_code=202)
 def start(body: ResearchIn, tasks: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    if not intel.serper_enabled():
-        raise HTTPException(400, "Competitor research needs Google results: set SERPER_API_KEY on the SEO backend (serper.dev).")
+    if not intel.places_enabled():
+        raise HTTPException(400, "Competitor research uses the Google Places API: set GOOGLE_PLACES_API_KEY on the SEO backend.")
     busy = _expire_stale(db, db.scalar(select(Audit).where(Audit.kind == "intel", Audit.target == _target(b.id), Audit.status.in_(("queued", "running")))))
     if busy and busy.status in ("queued", "running"):
         return row(busy)
@@ -100,8 +106,10 @@ def start(body: ResearchIn, tasks: BackgroundTasks, b: Business = Depends(get_bu
 
 
 @router.get("/competitor-research/{run_id}")
-def get_run(run_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def get_run(run_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     a = _expire_stale(db, db.get(Audit, run_id))
-    if not a or a.kind != "intel":
+    # the run belongs to the project named in its target ("business:<id>"): only that project's owner may read it
+    owner = db.get(Business, int(a.target.split(":")[1])) if a and a.target and a.target.startswith("business:") and a.target.split(":")[1].isdigit() else None
+    if not a or a.kind != "intel" or not can_access(user, owner):
         raise HTTPException(404, "Competitor research not found")
     return row(a)

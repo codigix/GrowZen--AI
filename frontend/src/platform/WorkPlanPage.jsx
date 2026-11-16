@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Copy, ExternalLink, ChevronLeft, ChevronRight, Plus, RefreshCw, Download, Check, Play, SkipForward, RotateCcw, ShieldCheck, Cpu, Globe } from 'lucide-react';
 import { SeoShell, Card, Tabs, Badge, Button, Meter, Modal, Drawer, Field, inputCls, areaCls, ErrorNote, useAction, useToast, useUrlTab, SkPage, Stat } from './SeoUi';
 import { api, useApi, usePoll, fmtDate } from './seoApi';
+import Select from '../components/Select';
 
 const AREA = { gmb: 'Google Business', seo: 'On-page & content SEO', technical: 'Technical', metadata: 'Metadata', content: 'Content', backlinks: 'Backlinks, listings & off-site', rankings: 'Rankings', reviews: 'Reviews', other: 'Other' };
 const AREA_ORDER = Object.keys(AREA);
@@ -190,7 +191,7 @@ export function ThisWeek({ b, areas }) {
       <Modal open={adding} title="Add a task" onClose={() => setAdding(false)} footer={<Button variant="primary" busy={busy === 'add'} disabled={draft.title.trim().length < 3} onClick={add}>Add to this week</Button>}>
         <div className="grid gap-3">
           <Field label="Task"><input className={inputCls} value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} /></Field>
-          <Field label="Area"><select className={inputCls} value={draft.area} onChange={e => setDraft({ ...draft, area: e.target.value })}>{AREA_ORDER.filter(a => !areas || areas.includes(a)).map(a => <option key={a} value={a}>{AREA[a]}</option>)}</select></Field>
+          <Field label="Area"><Select className={inputCls} value={draft.area} onChange={e => setDraft({ ...draft, area: e.target.value })}>{AREA_ORDER.filter(a => !areas || areas.includes(a)).map(a => <option key={a} value={a}>{AREA[a]}</option>)}</Select></Field>
           <Field label="How (optional)"><textarea className={areaCls} rows={3} value={draft.how} onChange={e => setDraft({ ...draft, how: e.target.value })} /></Field>
         </div>
       </Modal>
@@ -219,10 +220,10 @@ export function Reports({ b }) {
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center gap-3">
         <Tabs tabs={[{ id: 'week', label: 'Weekly' }, { id: 'month', label: 'Monthly' }]} value={period} onChange={setPeriod} />
-        <select aria-label="Report period" className={`${inputCls} !w-auto mb-5`} value={start} onChange={e => setStart(e.target.value)}>
+        <Select aria-label="Report period" className={`${inputCls} !w-auto mb-5`} value={start} onChange={e => setStart(e.target.value)}>
           <option value="">Current {period}</option>
           {(history.data || []).map(h => <option key={h.id} value={h.start}>{period === 'week' ? `Week of ${fmtDate(h.start)}` : new Date(h.start).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}{h.final ? '' : ' (running)'}</option>)}
-        </select>
+        </Select>
         <Button className="mb-5" icon={Download} busy={busy === 'pdf'} disabled={!d} onClick={pdf}>PDF</Button>
       </div>
       <ErrorNote>{error || rep.error?.message}</ErrorNote>

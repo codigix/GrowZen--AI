@@ -37,6 +37,26 @@ def test_register_dedupes_and_skips_no_website(client, monkeypatch):
     assert _register(client, monkeypatch, 999999, FOUND).status_code == 404  # unknown business
 
 
+def test_add_competitor_manually_by_domain(client, monkeypatch):
+    bid = _business(client)
+    _register(client, monkeypatch, bid, FOUND)
+    add = lambda url, name="": client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": url, "name": name})
+
+    r = add("Other-Clinic.example/services/teeth", "Other Clinic")
+    assert r.status_code == 201
+    c = r.json()
+    assert c["website"] == "https://other-clinic.example/" and c["name"] == "Other Clinic" and c["source"] == "manual"
+    assert add("https://www.other-clinic.example").json()["id"] == c["id"]  # same host: no duplicate
+    assert add("rival.example").json()["source"] == "google_places"  # already found on Maps: that row is reused
+    assert add("https://www.example.in/about").status_code == 400  # our own site
+    assert add("localhost").status_code == 400
+    assert client.post("/api/v1/competitors/manual", json={"business_id": 999999, "url": "x.example"}).status_code == 404
+    assert len(client.get(f"/api/v1/competitors?business_id={bid}").json()) == 2
+
+    audit = client.post("/api/v1/audit/competitors", json={"urls": [c["website"]], "business_id": bid, "competitor_id": c["id"]}).json()[0]
+    assert client.get(f"/api/v1/audit/competitors/{audit['id']}").json()["status"] == "done"
+
+
 def test_competitor_audit_reuses_recent_result(client, monkeypatch):
     bid = _business(client)
     comp_id = _register(client, monkeypatch, bid, FOUND).json()["registered"][0]["id"]
@@ -84,7 +104,7 @@ def test_compare_our_website_audit_against_competitor(client, monkeypatch):
     assert comparison["pages"]["matched"][0]["path"] == "/"
     gaps = comparison["keywords_and_content_gaps"]
     assert gaps["on_page"]["available"] is True  # both sites were crawled, so on-page keywords are extracted with no external API
-    assert gaps["search"]["available"] is False  # no competitor-research (Serper) run exists
+    assert gaps["search"]["available"] is False  # no competitor-research  run exists
 
 
 def test_compare_falls_back_to_technical_and_onpage_audits(client, monkeypatch):
@@ -112,6 +132,17 @@ def test_compare_strategy_mismatch_is_flagged(client, monkeypatch):
     assert comparison["compatibility"]["compatible"] is False
 
 
+def test_compare_by_business_falls_back_to_an_audit_of_the_other_strategy(client, monkeypatch):
+    """The page asks for its mobile/desktop toggle; a competitor audited only on the other one is still compared, with the mismatch flagged."""
+    bid = _business(client)
+    comp_id = _register(client, monkeypatch, bid, FOUND).json()["registered"][0]["id"]
+    client.post("/api/v1/website-audits", json={"url": "https://example.in/", "business_id": bid, "strategy": "mobile"})
+    client.post("/api/v1/audit/competitors", json={"urls": ["https://rival.example/"], "business_id": bid, "competitor_id": comp_id, "strategy": "desktop"})
+
+    comparison = client.post("/api/v1/audit/competitors/compare", json={"business_id": bid, "competitor_ids": [comp_id], "strategy": "mobile"}).json()["comparisons"][0]
+    assert "error" not in comparison and comparison["compatibility"]["compatible"] is False
+
+
 def test_compare_missing_audit_reports_error_without_failing_whole_request(client, monkeypatch):
     bid = _business(client)
     our = client.post("/api/v1/website-audits", json={"url": "https://example.in/", "business_id": bid}).json()["id"]
@@ -124,7 +155,7 @@ def test_compare_missing_audit_reports_error_without_failing_whole_request(clien
 
 
 def test_onpage_keyword_gap_from_crawled_content(client, monkeypatch):
-    """No SERPER_API_KEY or competitor-research run needed: keyword gaps come straight from each
+    """No Google key or competitor-research run needed: keyword gaps come straight from each
     site's own crawled pages (services/crawler.py's extract_keywords)."""
     from app.services import crawler
 

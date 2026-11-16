@@ -12,6 +12,7 @@ import { pathOnly as pathOf, hostOf, LEVEL_ORDER, SEVERITY_TONE as TONE } from '
 import LighthouseDetails from './LighthouseDetails';
 const STACK_ORDER = [['framework', 'Framework'], ['language', 'Language'], ['libraries', 'Libraries'], ['theme', 'Theme'], ['plugins', 'Plugins'], ['ecommerce', 'E-commerce'],
   ['hosting', 'Hosting'], ['cdn', 'CDN'], ['server', 'Web server'], ['analytics', 'Analytics & tags']];
+const DEVICE_TABS = [['mobile', Smartphone, 'Mobile'], ['desktop', Monitor, 'Desktop']]; // every audit now scans both; this only switches which one is shown
 
 /** What the website is built with, read live from its homepage, headers and cookies. A compact card for the side column. */
 function TechStack({ url }) {
@@ -49,6 +50,7 @@ const WeeklyTasks = lazy(() => import('./WorkPlanPage').then(m => ({ default: m.
 const SiteResearch = lazy(() => import('./WorkPlanPage').then(m => ({ default: m.Research })));
 const SITE_AREAS = ['technical', 'metadata', 'content', 'seo'];
 import { AuditSummary, PageRewrites } from './AuditAI';
+import Select from '../components/Select';
 
 /**
  * Audit any website through the SEO backend: Google PageSpeed (Lighthouse) for SEO, speed,
@@ -97,12 +99,12 @@ function siteBrand(target, pages) {
   return label ? label.charAt(0).toUpperCase() + label.slice(1) : hostOf(target);
 }
 
-function verdict(a, issues) {
+function verdict(score, issues) {
   const crit = issues.filter(i => i.level === 'critical').length;
   const ser = issues.filter(i => i.level === 'serious').length;
-  if (a.score == null) return 'Partial result: see the notes above.';
+  if (score == null) return 'Partial result: see the notes above.';
   if (crit) return `${crit} critical problem${crit === 1 ? '' : 's'} can stop this site ranking. Fix ${crit === 1 ? 'it' : 'them'} first.`;
-  if (a.score >= 90 && !ser) return 'Strong SEO foundations. Keep content fresh and re-check after big changes.';
+  if (score >= 90 && !ser) return 'Strong SEO foundations. Keep content fresh and re-check after big changes.';
   if (ser) return `Solid base, but ${ser} serious issue${ser === 1 ? '' : 's'} ${ser === 1 ? 'is' : 'are'} holding rankings back.`;
   return 'Good shape overall. A few smaller fixes will polish it.';
 }
@@ -115,7 +117,7 @@ function Elapsed({ since }) {
 }
 
 /** Live view while an audit runs: the page being scanned in a browser frame, and a log of every page checked. */
-function LiveScan({ audit, startedAt, strategy }) {
+export function LiveScan({ audit, startedAt }) {
   const prog = audit.result?.progress || {};
   const pages = prog.pages || [];
   const latest = pages[pages.length - 1];
@@ -136,7 +138,7 @@ function LiveScan({ audit, startedAt, strategy }) {
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div className="min-w-0">
           <div className="text-15 font-semibold text-slate-900 flex items-center gap-2"><span className="relative flex w-2.5 h-2.5"><span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" /><span className="relative inline-flex rounded-full w-2.5 h-2.5 bg-emerald-500" /></span>Scanning {hostOf(audit.target)} live</div>
-          <div className="text-12 text-slate-500">{pages.length} of up to {max} pages checked · Lighthouse on {strategy}</div>
+          <div className="text-12 text-slate-500">{pages.length} of up to {max} pages checked · Lighthouse on mobile & desktop</div>
         </div>
         {startedAt && <span className="text-12 text-slate-500 inline-flex items-center gap-1"><Clock size={12} /> <Elapsed since={startedAt} /></span>}
       </div>
@@ -448,7 +450,7 @@ function LatestReport({ report, history, onOpen }) {
           <ScoreRing score={report.score ?? 0} label="Overall" size={104} level={lhLevel(report.score ?? 0)} />
           <div className="max-w-[230px]">
             <div className={`text-14 font-semibold ${LH_TEXT[lhLevel(report.score ?? 0)]}`}>{lhWord(report.score ?? 0)}</div>
-            <div className="text-12 text-slate-600 mt-0.5">{verdict(report, issues)}</div>
+            <div className="text-12 text-slate-600 mt-0.5">{verdict(report.score, issues)}</div>
             {delta !== null && delta !== 0 && <div className={`mt-1 text-12 font-semibold inline-flex items-center gap-1 ${delta > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{delta > 0 ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{Math.abs(delta)} since the previous audit</div>}
           </div>
         </div>
@@ -480,8 +482,7 @@ function LatestReport({ report, history, onOpen }) {
  */
 export function useSiteAudit(business) {
   const site = business?.website || '';
-  const [url, setUrl] = useState(() => new URLSearchParams(window.location.search).get('url') || site); // ?url=… audits that address first
-  const [strategy, setStrategy] = useState('mobile');
+  const [url, setUrl] = useState(() => { const q = new URLSearchParams(window.location.search).get('url'); return q && (!site || hostOf(normalise(q)) === hostOf(normalise(site))) ? q : site; }); // ?url=… audits that address first, but only when it is this project's own site
   const [crawlPages, setCrawlPages] = useState(10);
   const [current, setCurrent] = useState(null);
   const [startedAt, setStartedAt] = useState(null);
@@ -509,7 +510,7 @@ export function useSiteAudit(business) {
 
   const launch = (target, pages = crawlPages, options = undefined) => run('start', async () => {
     const own = site && hostOf(target) === hostOf(site);
-    const r = await api('/website-audits', { method: 'POST', body: { url: target, strategy, crawl_pages: pages, ...(options ? { options } : {}), ...(business?.id ? { workspace_id: business.id } : {}), ...(own ? { business_id: business.id } : {}) } });
+    const r = await api('/website-audits', { method: 'POST', body: { url: target, crawl_pages: pages, ...(options ? { options } : {}), ...(business?.id ? { workspace_id: business.id } : {}), ...(own ? { business_id: business.id } : {}) } });
     setStartedAt(Date.now());
     setCurrent(r.id);
     history.reload(true);
@@ -532,24 +533,22 @@ export function useSiteAudit(business) {
       result: { pagespeed: tech.data.result, crawl: { ...onpage.data.result, score: onpage.data.score, crawled: (onpage.data.result?.pages || []).length } }
     };
   }
-  return { url, setUrl, strategy, setStrategy, crawlPages, setCrawlPages, current, setCurrent, audit, history, busy, error, running, startedAt, launch, start, report };
+  return { url, setUrl, crawlPages, setCrawlPages, current, setCurrent, audit, history, busy, error, running, startedAt, launch, start, report };
 }
 
 /** Step 1: choose the site, run the scan and watch it live. */
 export function AuditStep({ sa, business, onOpenReport }) {
-  const { url, setUrl, strategy, setStrategy, crawlPages, setCrawlPages, busy, error, running, audit, report } = sa;
-  const chip = (on) => `h-9 px-3 flex items-center gap-1.5 text-12 font-semibold rounded-lg cursor-pointer transition-colors ${on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-900'}`;
+  const { url, setUrl, crawlPages, setCrawlPages, busy, error, running, audit, report } = sa;
   const own = business?.website && hostOf(normalise(url)) === hostOf(business.website);
   const [drawer, setDrawer] = useState(null); // tech | recent: a panel on the right, opened on click
   const [setup, setSetup] = useState(false); // the "New audit" window
   const openSetup = () => { const t = normalise(url); if (!t) { sa.start(); return; } setSetup(true); };
-  const begin = async (cfg) => {
+  const begin = (cfg) => {
     const target = normalise(url);
-    try {
-      if (own && business?.id) await api(`/businesses/${business.id}/audit-config`, { method: 'PUT', body: cfg, repeat: true }); // saved for this project's scheduled audits
-    } catch (e) { /* the audit still runs with these settings; the schedule is not saved */ }
     setSetup(false);
+    // Start the audit at once; saving the settings for scheduled audits happens in the background and can never hold the audit back.
     sa.launch(target, cfg.limit, { pages_to_crawl: cfg.pages_to_crawl, subdomains: cfg.subdomains, allow: cfg.allow, disallow: cfg.disallow, ignore_params: cfg.ignore_params, user_agent: cfg.user_agent });
+    if (own && business?.id) api(`/businesses/${business.id}/audit-config`, { method: 'PUT', body: cfg, repeat: true }).catch(() => { /* the schedule is not saved; the audit still runs */ });
   };
   return (
     <div className="space-y-5">
@@ -574,12 +573,10 @@ export function AuditStep({ sa, business, onOpenReport }) {
             <Button variant="primary" className="h-11 px-5" icon={Search} busy={busy === 'start' || running} onClick={openSetup}>{running ? 'Auditing…' : 'Run audit'}</Button>
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded">
-              {[['mobile', Smartphone, 'Mobile'], ['desktop', Monitor, 'Desktop']].map(([s, I, l]) => <button key={s} type="button" onClick={() => setStrategy(s)} className={chip(strategy === s)}><I size={14} /> {l}</button>)}
-            </div>
-            <select value={crawlPages} onChange={e => setCrawlPages(Number(e.target.value))} className="h-10 px-2.5 rounded text-12 font-semibold text-slate-700 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer" aria-label="Pages to crawl">
+            <span className="h-9 px-2.5 inline-flex items-center gap-1.5 text-11.5 font-medium text-slate-500 bg-slate-100 rounded-lg"><Smartphone size={13} />&amp;<Monitor size={13} /> Scans mobile and desktop together</span>
+            <Select value={crawlPages} onChange={e => setCrawlPages(Number(e.target.value))} className="h-10 px-2.5 rounded text-12 font-semibold text-slate-700 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer" aria-label="Pages to crawl">
               {[5, 10, 25, 50, 100, 300].map(n => <option key={n} value={n}>{n === 300 ? 'Crawl all pages (up to 300)' : `Crawl ${n} pages`}</option>)}
-            </select>
+            </Select>
             <span className="text-12 text-slate-500 min-w-0">
               {own ? <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-600 shrink-0" /> Updates this business's scores, dashboard and AI tasks</span>
                 : business?.website ? <>Another site (not saved to {business.name}) · <button type="button" onClick={() => setUrl(business.website)} className="font-medium text-indigo-700 hover:underline cursor-pointer">use {hostOf(business.website)}</button></>
@@ -589,7 +586,7 @@ export function AuditStep({ sa, business, onOpenReport }) {
           <ErrorNote>{error || audit.error?.message}</ErrorNote>
         </Card>
 
-        {running && <div className="xl:col-span-2"><LiveScan audit={audit.data} startedAt={sa.startedAt} strategy={strategy} /></div>}
+        {running && <div className="xl:col-span-2"><LiveScan audit={audit.data} startedAt={sa.startedAt} /></div>}
 
         {!running && audit.data?.status === 'failed' && (
           <Card className="xl:col-span-2">
@@ -615,7 +612,7 @@ export function AuditStep({ sa, business, onOpenReport }) {
         )}
       </div>
 
-      <NewAuditModal open={setup} onClose={() => setSetup(false)} target={normalise(url)} host={hostOf(normalise(url) || url)} business={business} own={Boolean(own)} strategy={strategy} setStrategy={setStrategy} busy={busy === 'start'} onStart={begin} />
+      <NewAuditModal open={setup} onClose={() => setSetup(false)} target={normalise(url)} host={hostOf(normalise(url) || url)} business={business} own={Boolean(own)} busy={busy === 'start'} onStart={begin} />
       {drawer && (
         <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={drawer === 'tech' ? 'Tech stack' : 'Recent audits'}>
           <button type="button" aria-label="Close" onClick={() => setDrawer(null)} className="absolute inset-0 bg-slate-900/30 cursor-default" />
@@ -638,13 +635,25 @@ export function ReportStep({ sa, business, onNext }) {
   const [planning, setPlanning] = useState(false);
   const [tasksKey, setTasksKey] = useState(0);
   const a = sa.report;
-  const ps = a?.result?.pagespeed;
+  const byDevice = a?.result?.pagespeed_devices;
+  const devicesAvailable = byDevice ? Object.keys(byDevice).filter(d => byDevice[d]) : [];
+  const [device, setDevice] = useState('mobile');
+  const ps = (byDevice?.[device]) || (byDevice && byDevice[devicesAvailable[0]]) || a?.result?.pagespeed;
   const crawl = a?.result?.crawl;
   const pages = crawl?.pages || [];
-  const issues = useMemo(() => [...(a?.issues || [])].sort((x, y) => (LEVEL_ORDER[x.level] ?? 9) - (LEVEL_ORDER[y.level] ?? 9)), [a]);
+  // Each device has its own Lighthouse scores and issues (same shared crawl), so the overall score, verdict and issue counts
+  // switch with the device toggle instead of always showing the device the audit happened to run first.
+  const scoreByDevice = a?.result?.score_by_device;
+  const issuesByDevice = a?.result?.issues_by_device;
+  const crawlIssues = a?.result?.crawl_issues;
+  const displayScore = scoreByDevice?.[device] ?? a?.score;
+  const issues = useMemo(() => {
+    const list = issuesByDevice?.[device] && crawlIssues ? [...issuesByDevice[device], ...crawlIssues] : (a?.issues || []);
+    return [...list].sort((x, y) => (LEVEL_ORDER[x.level] ?? 9) - (LEVEL_ORDER[y.level] ?? 9));
+  }, [a, device]); // eslint-disable-line react-hooks/exhaustive-deps
   const counts = Object.fromEntries(LEVELS.map(l => [l, issues.filter(i => i.level === l).length]));
   const prev = a && !a.fromBusiness ? (sa.history.data || []).find(h => h.target === a.target && h.id !== a.id && h.status === 'done' && new Date(h.finished_at) < new Date(a.finished_at)) : null;
-  const delta = prev && a?.score != null && prev.score != null ? a.score - prev.score : null;
+  const delta = prev && displayScore != null && prev.score != null ? displayScore - prev.score : null;
   // Suggestions use the saved business when the audited site is its website, else the site's own brand.
   const subject = useMemo(() => {
     if (!a) return null;
@@ -673,10 +682,10 @@ export function ReportStep({ sa, business, onNext }) {
     let y = 50;
     const ensure = (n = 20) => { if (y > H - n - 40) { doc.addPage(); y = 50; } };
     doc.setFontSize(18); doc.setTextColor(17, 24, 39); doc.text('Website SEO audit', 40, y); y += 18;
-    doc.setFontSize(10); doc.setTextColor(100, 116, 139); doc.text(`${a.target} · ${fmtDateTime(a.finished_at)}`, 40, y); y += 26;
-    doc.setTextColor(17, 24, 39); doc.setFontSize(13); doc.text(`Overall score: ${a.score ?? '—'}/100${delta ? ` (${delta > 0 ? '+' : ''}${delta} since last audit)` : ''}`, 40, y); y += 16;
+    doc.setFontSize(10); doc.setTextColor(100, 116, 139); doc.text(`${a.target} · ${fmtDateTime(a.finished_at)}${ps?.strategy ? ` · Lighthouse: ${ps.strategy}` : ''}`, 40, y); y += 26;
+    doc.setTextColor(17, 24, 39); doc.setFontSize(13); doc.text(`Overall score: ${displayScore ?? '—'}/100${delta ? ` (${delta > 0 ? '+' : ''}${delta} since last audit)` : ''}`, 40, y); y += 16;
     doc.setFontSize(10); doc.setTextColor(71, 85, 105);
-    doc.splitTextToSize(verdict(a, issues), W - 80).forEach(l => { doc.text(l, 40, y); y += 12; }); y += 8;
+    doc.splitTextToSize(verdict(displayScore, issues), W - 80).forEach(l => { doc.text(l, 40, y); y += 12; }); y += 8;
     doc.setTextColor(17, 24, 39); doc.setFontSize(11);
     if (ps) CATEGORIES.forEach(([k, l]) => { doc.text(`${l}: ${ps.scores[k] ?? '—'}/100`, 40, y); y += 15; });
     if (crawl) { doc.text(`On-page: ${crawl.score}/100 (${pages.length} pages crawled)`, 40, y); y += 15; }
@@ -710,13 +719,23 @@ export function ReportStep({ sa, business, onNext }) {
               <a href={a.target} target="_blank" rel="noreferrer" className="text-17 font-semibold text-slate-900 hover:text-indigo-600 inline-flex items-center gap-1.5 max-w-full"><span className="truncate">{a.target.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span><ExternalLink size={13} className="text-slate-400 shrink-0" /></a>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-12 text-slate-500">
                 <span className="inline-flex items-center gap-1"><Clock size={12} /> Audited {fmtDateTime(a.finished_at)}</span>
-                {ps?.strategy && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">{ps.strategy === 'desktop' ? <Monitor size={11} /> : <Smartphone size={11} />}{ps.strategy}</span>}
+                {devicesAvailable.length <= 1 && ps?.strategy && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">{ps.strategy === 'desktop' ? <Monitor size={11} /> : <Smartphone size={11} />}{ps.strategy}</span>}
                 {crawl && <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">{pages.length} page{pages.length === 1 ? '' : 's'} crawled</span>}
                 {a.fromBusiness && <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-medium">Scheduled audit</span>}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {devicesAvailable.length > 1 && (
+              <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" role="tablist" aria-label="Lighthouse device">
+                {DEVICE_TABS.map(([d, I, l]) => (
+                  <button key={d} type="button" role="tab" aria-selected={device === d} disabled={!byDevice[d]} onClick={() => setDevice(d)}
+                    className={`h-8 px-3 flex items-center gap-1.5 text-12 font-semibold rounded-md cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${device === d ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-900'}`}>
+                    <I size={13} /> {l}
+                  </button>
+                ))}
+              </div>
+            )}
             {business && <Button size="sm" icon={ListChecks} busy={planning} onClick={createTasks}>Create weekly tasks</Button>}
             <Button size="sm" icon={Download} onClick={downloadPdf}>PDF report</Button>
             <Button size="sm" variant="primary" icon={RotateCw} busy={sa.busy === 'start' || sa.running} onClick={rerun}>Re-check</Button>
@@ -726,10 +745,10 @@ export function ReportStep({ sa, business, onNext }) {
 
         <div className={`p-6 grid grid-cols-1 gap-6 items-center ${ps?.screenshot ? 'xl:grid-cols-[300px_minmax(0,1fr)_150px]' : 'xl:grid-cols-[300px_minmax(0,1fr)]'}`}>
           <div className="flex items-center gap-4">
-            <ScoreRing score={a.score ?? 0} label="Overall" size={116} level={lhLevel(a.score ?? 0)} />
+            <ScoreRing score={displayScore ?? 0} label="Overall" size={116} level={lhLevel(displayScore ?? 0)} />
             <div className="min-w-0">
-              <span className={`inline-block text-12 font-bold px-2.5 py-0.5 rounded-full ${LH_SOFT[lhLevel(a.score ?? 0)][2]}`}>{lhWord(a.score ?? 0)}</span>
-              <div className="text-13 text-slate-600 mt-1.5 leading-snug">{verdict(a, issues)}</div>
+              <span className={`inline-block text-12 font-bold px-2.5 py-0.5 rounded-full ${LH_SOFT[lhLevel(displayScore ?? 0)][2]}`}>{lhWord(displayScore ?? 0)}</span>
+              <div className="text-13 text-slate-600 mt-1.5 leading-snug">{verdict(displayScore, issues)}</div>
               {delta !== null && delta !== 0 && <div className={`mt-1.5 text-12 font-semibold inline-flex items-center gap-1 ${delta > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{delta > 0 ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{Math.abs(delta)} since {fmtDateTime(prev.finished_at)}</div>}
               <div className="mt-2 flex flex-wrap gap-1">{LEVELS.map(l => counts[l] > 0 && <span key={l} className={`text-10.5 font-bold  px-1.5 py-0.5 rounded ring-1 ring-inset ${TONE[l]}`}>{counts[l]} {l}</span>)}</div>
             </div>

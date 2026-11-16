@@ -16,9 +16,9 @@ DEFAULT_STEPS = [
 
 # Kind -> needs approval. Profile edits always ask (enforced in code too).
 DEFAULT_APPROVAL = {
-    "review_reply_high": False,  # 4-5 star replies go out on autopilot
-    "review_reply_low": True,    # 1-3 star replies wait for a person
-    "gbp_post": False,
+    "review_reply_high": True,   # every reply waits for a person: nothing is posted to Google without approval
+    "review_reply_low": True,
+    "gbp_post": True,
     "profile_edit": True,
     "website_fix": True,
     "blog_draft": True,

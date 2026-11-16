@@ -6,7 +6,7 @@ import {
   TrendingUp, Swords, Play, Phone, Compass, Award, Cpu, Shield, ArrowUpRight, CheckCircle, Flame, ExternalLink, HelpCircle
 } from 'lucide-react';
 import { SITE, CONTACT, GOOGLE_ACCESS } from './site';
-import { PLANS } from '../platform/seoMock';
+import { PLANS } from '../platform/plans';
 
 /**
  * World-Class Modern Landing Page for bevisibe AI
@@ -52,274 +52,44 @@ const Eyebrow = ({ children, light = true }) => (
 
 const GRADIENT_BTN = 'bg-indigo-500 hover:bg-indigo-600 text-white font-bold transition-all duration-200 shadow-md shadow-indigo-500/25 hover:shadow-lg';
 
-/* ── Interactive Live Product Showcase ────────────────────────────────── */
+/* ── What the product does, shown as screens described in words: no numbers, names or results are shown that are not real ─────────── */
 function InteractiveShowcase() {
   const [activeTab, setActiveTab] = useState('command');
-
-  const points = [14, 18, 16, 22, 21, 27, 25, 31, 30, 36, 41, 48];
-  const path = points.map((v, i) => `${i ? 'L' : 'M'}${(i / (points.length - 1)) * 340},${64 - (v - 12) * 1.4}`).join(' ');
-
-  const grid5x5 = [
-    [3, 2, 2, 4, 7],
-    [2, 1, 1, 2, 5],
-    [3, 1, 1, 1, 3],
-    [6, 2, 1, 3, 8],
-    [11, 5, 3, 6, 14]
+  const tabs = [
+    { id: 'command', label: 'Dashboard', icon: Layers, title: 'One place for every client', points: ['Every client with the state of its Google profile, website and reviews', 'A short list of what needs attention first', 'Tasks waiting for your approval'] },
+    { id: 'grid', label: 'Local Rank Grid', icon: MapPin, title: 'Where you show up on the map', points: ['A grid of points around the business, each showing the position in Google Maps', 'Run it for any search, such as a service and the area', 'Compare scans over time'] },
+    { id: 'review', label: 'Reviews', icon: Star, title: 'Reviews and replies', points: ['Every Google review in one list, with date and time', 'Replies drafted by AI in the business\'s tone', 'Nothing is posted until you approve it'] },
+    { id: 'audit', label: 'Site Audit', icon: ScanSearch, title: 'Website audit', points: ['Crawls the pages of the website and lists what to fix', 'Speed and technical checks from Google PageSpeed', 'Fixes ranked by impact, with the page they belong to'] }
   ];
-
+  const tab = tabs.find(t => t.id === activeTab) || tabs[0];
+  const Icon = tab.icon;
   return (
     <div className="relative w-full max-w-2xl mx-auto lg:max-w-none">
-      {/* Background ambient lighting */}
       <div className="absolute -inset-4 sm:-inset-8 bg-gradient-to-tr from-indigo-300/30 via-blue-200/30 to-cyan-200/30 blur-3xl rounded-[40px] pointer-events-none" aria-hidden />
-
-      {/* Main Glass Chrome Shell */}
-      <div className="relative rounded-3xl bg-white backdrop-blur-2xl border border-slate-200 shadow-lg overflow-hidden ring-1 ring-indigo-300">
-        {/* Top window bar */}
-        <div className="h-12 px-4 flex items-center justify-between bg-slate-50 border-b border-slate-200">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-rose-500/80 inline-block" />
-            <span className="w-3 h-3 rounded-full bg-amber-500/80 inline-block" />
-            <span className="w-3 h-3 rounded-full bg-emerald-500/80 inline-block" />
-          </div>
-          <div className="px-4 py-1 rounded-lg bg-slate-50 border border-slate-200 text-11.5  text-indigo-600 flex items-center gap-1.5 shadow-inner">
-            <Lock size={11} className="text-emerald-600" />
-            <span>Sample preview · illustrative data</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-11 font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-            <span>Preview</span>
-          </div>
-        </div>
-
-        {/* Tab Switcher */}
-        <div className="px-4 pt-3 pb-2 bg-white border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-          {[
-            { id: 'command', label: 'Dashboard', icon: Layers },
-            { id: 'grid', label: 'Local Rank Grid', icon: MapPin },
-            { id: 'review', label: 'Reviews', icon: Star },
-            { id: 'audit', label: 'Site Audit', icon: ScanSearch }
-          ].map(tab => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
+      <div className="relative rounded-3xl bg-white border border-slate-200 shadow-lg overflow-hidden ring-1 ring-indigo-300">
+        <div className="px-4 pt-3 pb-2 bg-white border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="What the product does">
+          {tabs.map(t => {
+            const TabIcon = t.icon;
+            const active = activeTab === t.id;
             return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-3.5 py-2 rounded text-12.5 font-medium flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer transition-all ${active
-                  ? 'bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-600 border border-indigo-200 shadow-xs font-semibold'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-              >
-                <Icon size={14} className={active ? 'text-indigo-500' : 'text-slate-500'} />
-                <span>{tab.label}</span>
+              <button key={t.id} type="button" role="tab" aria-selected={active} onClick={() => setActiveTab(t.id)}
+                className={`px-3.5 py-2 rounded text-12.5 font-medium flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer transition-all ${active ? 'bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-600 border border-indigo-200 font-semibold' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}>
+                <TabIcon size={14} className={active ? 'text-indigo-500' : 'text-slate-500'} /><span>{t.label}</span>
               </button>
             );
           })}
         </div>
-
-        {/* Tab Content Display */}
-        <div className="p-6 min-h-[380px] flex flex-col justify-between">
-          {activeTab === 'command' && (
-            <div className="space-y-4 animate-fadeIn">
-              {/* Top stats row */}
-              <div className="grid grid-cols-4 gap-3">
-                {[
-                  { label: 'Overall Health', val: '94/100', color: 'text-emerald-600', sub: '+12pts this month' },
-                  { label: 'Google Calls', val: '438 calls', color: 'text-indigo-500', sub: '+34% velocity' },
-                  { label: 'Top 3 Map Pack', val: '18 keywords', color: 'text-blue-600', sub: 'Dominant' },
-                  { label: 'Drafts Ready', val: '3 items', color: 'text-amber-600', sub: 'Awaiting 1-click' }
-                ].map(s => (
-                  <div key={s.label} className="p-3 rounded bg-slate-50 border border-slate-200 shadow-sm">
-                    <div className="text-10.5 text-slate-500 font-medium truncate">{s.label}</div>
-                    <div className={`text-17 font-extrabold tabular-nums tracking-tight mt-1 font-display ${s.color}`}>{s.val}</div>
-                    <div className="text-10 text-emerald-600 font-semibold mt-0.5">{s.sub}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Call Velocity Graph */}
-              <div className="p-4 rounded bg-slate-50 border border-slate-200 shadow-inner">
-                <div className="flex items-center justify-between text-11.5 mb-2">
-                  <span className="font-semibold text-slate-800 flex items-center gap-2">
-                    <Phone size={13} className="text-indigo-500" />
-                    Direct Customer Calls from Google Maps
-                  </span>
-                  <span className="text-indigo-500  text-10.5">Weekly Trend · Verified</span>
-                </div>
-                <svg viewBox="0 0 340 70" className="w-full h-16" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="hero-dark-graph" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#6658dd" stopOpacity="0.4" />
-                      <stop offset="100%" stopColor="#6658dd" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-                  <path d={`${path} L340,70 L0,70 Z`} fill="url(#hero-dark-graph)" />
-                  <path d={path} fill="none" stroke="#6658dd" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-
-              {/* AI Proposed Tasks */}
-              <div className="space-y-2">
-                <div className="text-11 font-bold   text-slate-500">Autonomous Drafts Ready for Approval:</div>
-                {[
-                  { title: 'Personalized Reply to 5★ Review from Dr. Sharma', desc: 'Emphasized clinical safety & quick response · Low risk' },
-                  { title: 'Sync Updated Holiday Hours & Emergency Line', desc: 'Pre-scheduled for Google Business Profile sync' }
-                ].map(t => (
-                  <div key={t.title} className="flex items-center justify-between gap-3 p-3 rounded bg-slate-50 border border-slate-200">
-                    <div className="min-w-0">
-                      <div className="text-12.5 font-semibold text-slate-800 truncate">{t.title}</div>
-                      <div className="text-11 text-slate-500 truncate">{t.desc}</div>
-                    </div>
-                    <button className="shrink-0 text-11 font-bold px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-500 to-blue-500 text-white hover:from-indigo-600 hover:to-blue-600 cursor-pointer shadow-md shadow-indigo-500/20">
-                      Approve
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'grid' && (
-            <div className="space-y-4 animate-fadeIn">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-14 font-bold text-slate-900">“dentist near me” · 5x5 Geo-Grid Heatmap</div>
-                  <div className="text-11.5 text-slate-500">Radius: 5.0 km from Clinic Centroid · Scan: Today</div>
-                </div>
-                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 text-11 font-bold">
-                  Avg Position #1.6
-                </span>
-              </div>
-              <div className="p-4 rounded bg-slate-50 border border-slate-200 flex items-center justify-center">
-                <div className="grid grid-cols-5 gap-3">
-                  {grid5x5.flat().map((rank, idx) => {
-                    const bg = rank <= 3
-                      ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/25 ring-1 ring-emerald-300/40'
-                      : rank <= 6
-                        ? 'bg-amber-400 text-white shadow-md ring-1 ring-amber-200'
-                        : 'bg-rose-600 text-white shadow-md ring-1 ring-rose-300';
-                    return (
-                      <div
-                        key={idx}
-                        className={`w-10 h-10 rounded ${bg} text-13 font-bold flex items-center justify-center transition-transform hover:scale-110 cursor-pointer ${idx === 12 ? 'ring-4 ring-indigo-300 scale-105 shadow-indigo-500/20' : ''
-                          }`}
-                        title={`Rank #${rank}`}
-                      >
-                        {rank}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="flex items-center justify-between text-11.5 text-slate-500 px-1">
-                <span>🟢 Top 3 Map Pack in 20 of 25 grid nodes</span>
-                <span className="font-semibold text-indigo-500">▲ 4.2 places gained vs last month</span>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'review' && (
-            <div className="space-y-3.5 animate-fadeIn">
-              <div className="flex items-center justify-between">
-                <div className="text-14 font-bold text-slate-900">Autonomous Review Copilot & Sentiment Guard</div>
-                <span className="text-11 font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-200">
-                  Sentiment: 98% Positive
-                </span>
-              </div>
-              <div className="p-3.5 rounded bg-slate-50 border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-blue-400 text-white font-bold text-11 flex items-center justify-center shadow-xs">
-                      RS
-                    </div>
-                    <span className="text-12.5 font-semibold text-slate-800">Rahul Sen</span>
-                  </div>
-                  <div className="flex text-amber-400 text-13">★★★★★</div>
-                </div>
-                <p className="text-12 text-slate-600 italic leading-relaxed">
-                  "Hands down the best local service experience! The staff was courteous, appointments were on time, and results were visible immediately."
-                </p>
-              </div>
-              <div className="p-3.5 rounded bg-indigo-50 border border-indigo-200 space-y-2">
-                <div className="flex items-center gap-2 text-11.5 font-bold text-indigo-600">
-                  <Bot size={14} className="text-indigo-500" />
-                  <span>Drafted Response (Verified Business Persona):</span>
-                </div>
-                <p className="text-12 text-slate-800 leading-relaxed">
-                  "Thank you so much Rahul! Our whole team takes great pride in on-time appointments and delivering real results. Looking forward to welcoming you back anytime!"
-                </p>
-                <div className="flex justify-end gap-2.5 pt-1">
-                  <button className="px-3 py-1 rounded-lg text-11 font-medium text-slate-600 hover:bg-slate-100">Edit Draft</button>
-                  <button className="px-3.5 py-1 rounded-lg text-11 font-bold bg-gradient-to-r from-indigo-500 to-blue-500 text-white shadow-sm hover:from-indigo-600 hover:to-blue-600">
-                    Publish to Google
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'audit' && (
-            <div className="space-y-4 animate-fadeIn">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-14 font-bold text-slate-900">Google Lighthouse 360° Technical Diagnostic</div>
-                  <div className="text-11.5 text-slate-500">Crawl completed across 48 local landing pages</div>
-                </div>
-                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 text-11 font-bold">
-                  Score: 98/100
-                </span>
-              </div>
-              <div className="grid grid-cols-4 gap-2.5">
-                {[
-                  { name: 'Core SEO', score: '98', color: 'text-emerald-600' },
-                  { name: 'Page Speed', score: '94', color: 'text-emerald-600' },
-                  { name: 'Schema JSON', score: '100', color: 'text-indigo-500' },
-                  { name: 'Local NAP', score: '96', color: 'text-emerald-600' }
-                ].map(item => (
-                  <div key={item.name} className="p-3 rounded bg-slate-50 border border-slate-200 text-center">
-                    <div className={`text-18 font-extrabold ${item.color} font-display`}>{item.score}</div>
-                    <div className="text-10 text-slate-500 font-medium mt-0.5">{item.name}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-2 pt-1">
-                {[
-                  { ok: true, text: 'LocalBusiness JSON-LD schema validated with 0 errors' },
-                  { ok: true, text: 'Clean URL slug hierarchy with neighborhood geo-modifiers' },
-                  { ok: false, text: '2 missing meta descriptions generated & ready for 1-click paste' }
-                ].map((row, i) => (
-                  <div key={i} className="flex items-center gap-2.5 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-12">
-                    {row.ok ? <CheckCircle2 size={14} className="text-emerald-600 shrink-0" /> : <AlertTriangle size={14} className="text-amber-500 shrink-0" />}
-                    <span className="text-slate-600 flex-1 truncate">{row.text}</span>
-                    {!row.ok && <span className="text-11 font-bold text-indigo-500 hover:underline cursor-pointer">Apply Fix</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="p-8 min-h-[300px]">
+          <span className="inline-flex w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 items-center justify-center"><Icon size={24} /></span>
+          <h3 className="text-20 font-bold text-slate-900 mt-4 font-display">{tab.title}</h3>
+          <ul className="mt-4 space-y-3">
+            {tab.points.map(pt => <li key={pt} className="flex items-start gap-2.5 text-14 text-slate-600"><CheckCircle2 size={16} className="text-indigo-500 shrink-0 mt-0.5" /><span>{pt}</span></li>)}
+          </ul>
         </div>
       </div>
-
-      {/* Floating Success Pill (Top Left) */}
-      <div className="hidden sm:flex absolute -left-10 -top-7 items-center gap-3 p-3.5 rounded bg-white/95 backdrop-blur-xl shadow-lg border border-indigo-200 z-20">
-        <div className="w-9 h-9 rounded bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-          <TrendingUp size={18} />
-        </div>
-        <div>
-          <div className="text-12.5 font-bold text-slate-900">Sample result</div>
-          <div className="text-11 text-emerald-600 font-semibold">Illustrative data only</div>
-        </div>
-      </div>
-
-      {/* Floating Review Pill (Bottom Right) */}
       <div className="hidden sm:flex absolute -right-4 -bottom-12 items-center gap-3 p-3.5 rounded bg-white/95 backdrop-blur-xl shadow-lg border border-blue-200 z-20">
-        <div className="w-9 h-9 rounded bg-indigo-50 text-indigo-500 flex items-center justify-center">
-          <ShieldCheck size={18} />
-        </div>
-        <div>
-          <div className="text-12.5 font-bold text-slate-900">Runs by itself</div>
-          <div className="text-11 text-slate-500">Risky items wait for your approval</div>
-        </div>
+        <div className="w-9 h-9 rounded bg-indigo-50 text-indigo-500 flex items-center justify-center"><ShieldCheck size={18} /></div>
+        <div><div className="text-12.5 font-bold text-slate-900">You stay in control</div><div className="text-11 text-slate-500">Risky items wait for your approval</div></div>
       </div>
     </div>
   );

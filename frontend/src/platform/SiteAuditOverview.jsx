@@ -5,6 +5,7 @@ import { Card, Button, Badge, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { IssuesTab, CrawledPagesTab, StatisticsTab, CompareTab, ProgressTab, JsTab } from './SiteAuditTabs';
 import { AXIS } from './PositionUi';
+import Select from '../components/Select';
 
 const host = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
 const path = (u) => { try { const x = new URL(u); return x.hostname.replace(/^www\./, '') + (x.pathname + x.search); } catch (e) { return u; } };
@@ -181,9 +182,9 @@ export default function SiteAuditOverview({ projectId, onBack, initial }) {
               <Pick label="Trend of" value={series} onChange={setSeries} options={[{ id: 'health', label: 'Site Health' }, { id: 'ai', label: 'AI Search Health' }]} />
               <label className="h-9 pl-3 pr-2 inline-flex items-center gap-2 rounded border border-slate-300 bg-white text-14 text-slate-800 hover:border-slate-400">
                 <Calendar size={15} className="text-slate-600" />
-                <select aria-label="Show the trend up to" value={upTo} onChange={e => setUpTo(e.target.value)} className="bg-transparent outline-none cursor-pointer appearance-none pr-1">
+                <Select aria-label="Show the trend up to" value={upTo} onChange={e => setUpTo(e.target.value)} className="bg-transparent outline-none cursor-pointer appearance-none pr-1">
                   {days.map(x => <option key={x.iso} value={x.iso}>{x.label}</option>)}
-                </select>
+                </Select>
               </label>
             </div>
           )}>

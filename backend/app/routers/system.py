@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user, require_admin
+from .. import startup_state
 from ..config import get_settings
 from ..db import get_db
 from ..models import AppUser
@@ -20,7 +21,7 @@ def health():
 def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """The signed-in user, and whether their password is one that was published in the source (the page then forces a change)."""
     u = db.get(AppUser, int(user.id)) if user.source == "seo" and str(user.id).isdigit() else None
-    return user.__dict__ | {"is_admin": user.is_admin, "must_change_password": bool(u and is_known_default(u.password_hash))}
+    return user.__dict__ | {"is_admin": user.is_admin, "must_change_password": bool(u and is_known_default(u.password_hash)), "can_enrol_2fa": u is not None and get_settings().two_factor_enabled}
 
 
 @router.get("/status")
@@ -28,14 +29,16 @@ def status(_: User = Depends(current_user)):
     """What is connected, so the UI can say which data is live and which is sample."""
     s = get_settings()
     return {
+        "startup_problems": list(startup_state.PROBLEMS),  # steps that failed when the server started (empty = all fine)
         "ai": {"configured": ai.is_configured(), "provider": s.ai_provider},
         "google_oauth": s.google_oauth_enabled,
         "pagespeed_key": bool(s.pagespeed_api_key),
         "lighthouse_local": s.lighthouse_local_enabled and lighthouse.is_available(),
         "places_key": bool(s.google_places_api_key or s.google_api_key),
-        "serper": bool(s.serper_api_key),
-        # Where rank grids, backlinks and citations come from: live Google results (Serper) or sample data.
-        "rank_source": "serper" if s.serper_api_key else "sample",
+        "search_console": True,  # read per project through its linked Google account (see Integrations)
+        "google_ads": s.google_ads_enabled,
+        # Where rank grids come from: the Google Places API, or sample data.
+        "rank_source": "google_places" if (s.google_places_api_key or s.google_api_key) else ("sample" if s.allow_sample_data else "unavailable"),
         "intake_imap": s.imap_enabled,
         "intake_webhook": bool(s.intake_webhook_token),
         "smtp": bool(s.smtp_host and s.smtp_from),
@@ -74,12 +77,14 @@ def diagnostics(db: Session = Depends(get_db), user: User = Depends(require_admi
         problems.append("These accounts use the password that was published in the source: " + ", ".join(published))
     if not ai.is_configured():
         problems.append("No AI model is configured: drafts, replies and the assistant use rules only.")
-    if not s.serper_api_key:
-        problems.append("SERPER_API_KEY is not set: competitor research, rank checks and keyword overview are off.")
+    if not (s.google_places_api_key or s.google_api_key):
+        problems.append("GOOGLE_PLACES_API_KEY is not set: competitor research and Maps rank checks are off.")
+    if not s.google_ads_enabled:
+        problems.append("Google Ads (GOOGLE_ADS_*) is not set: keyword volumes, Keyword Overview and questions are off.")
     drift = schema.drift(engine)
     if drift["missing_tables"] or drift["missing_columns"]:
         problems.append("The database is missing tables or columns the app expects.")
     return {"problems": problems, "stuck_runs": stuck, "failing_schedules": failing, "tasks": tasks, "scheduler": {"enabled": s.scheduler_enabled, "last_tick": LAST_TICK},
-            "providers": {"ai": ai.is_configured(), "serper": bool(s.serper_api_key), "pagespeed": bool(s.pagespeed_api_key), "places": bool(s.google_places_api_key or s.google_api_key),
+            "providers": {"ai": ai.is_configured(), "google_ads": s.google_ads_enabled, "pagespeed": bool(s.pagespeed_api_key), "places": bool(s.google_places_api_key or s.google_api_key),
                           "google_oauth": s.google_oauth_enabled, "smtp": bool(s.smtp_host and s.smtp_from)},
             "data": {"audits": audits_total, "sample_share": round(sample / audits_total * 100) if audits_total else 0}, "accounts_on_published_password": published, "schema_drift": drift}

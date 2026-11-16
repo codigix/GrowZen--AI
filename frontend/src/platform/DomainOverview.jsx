@@ -4,9 +4,11 @@ import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Cart
 import {
   Globe, Sparkles, ArrowUp, ArrowDown, Download, PlugZap, ExternalLink, Info, Monitor, Smartphone, Tablet, Search, Bot, Link2, MousePointerClick, Eye, KeyRound, FileText, Gauge
 } from 'lucide-react';
+import SearchPerfNav from './SearchPerfNav';
 import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useAction, useToast, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 import { IntelBar, IntelSections, headline } from './DomainIntel';
+import Select from '../components/Select';
 
 /**
  * Domain Overview from real sources only: Google traffic (clicks, impressions, position, keywords, pages, countries,
@@ -56,7 +58,7 @@ function BacklinksSection({ businessId }) {
   const pct = Math.round(d.follow / total * 100);
   const short = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '');
   const Table = ({ title, head, rows, empty }) => (
-    <Card title={title} pad={false} action={<Link to="/backlink-intelligence" className="text-12.5 font-semibold text-indigo-600 hover:underline">View details →</Link>}>
+    <Card title={title} pad={false} action={<Link to="/backlinks/links" className="text-12.5 font-semibold text-indigo-600 hover:underline">View details →</Link>}>
       <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 text-slate-500"><tr>{head.map((h, i) => <th key={h} className={`px-4 py-2.5 font-semibold ${i ? 'text-right' : 'text-left'}`}>{h}</th>)}</tr></thead>
         <tbody className="divide-y divide-slate-100">{rows.length ? rows : <tr><td colSpan={head.length} className="px-4 py-6 text-center text-slate-500">{empty}</td></tr>}</tbody></table>
     </Card>
@@ -65,7 +67,7 @@ function BacklinksSection({ businessId }) {
     <section className="space-y-4">
       <h2 className="text-18 font-bold text-slate-900 flex items-center gap-2"><Link2 size={17} className="text-indigo-500" />Backlinks <span className="text-12 font-normal text-slate-500">found by our discovery bot · {fmt(d.verified)} of {fmt(d.backlinks)} verified by crawl</span></h2>
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 items-start">
-        <Card className="xl:col-span-3" title="Backlinks" pad={false} action={<Link to="/backlink-intelligence?tab=explorer" className="text-12.5 font-semibold text-indigo-600 hover:underline">Open the explorer →</Link>}>
+        <Card className="xl:col-span-3" title="Backlinks" pad={false} action={<Link to="/backlinks/links" className="text-12.5 font-semibold text-indigo-600 hover:underline">Open the explorer →</Link>}>
           <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-4 py-2.5 text-left font-semibold">Referring page</th><th className="px-4 py-2.5 text-left font-semibold">Anchor</th><th className="px-4 py-2.5 text-right font-semibold">Type</th></tr></thead>
             <tbody className="divide-y divide-slate-100">{d.sample.map(x => (
               <tr key={x.id}><td className="px-4 py-2.5 max-w-[280px] truncate"><a href={x.source_url} target="_blank" rel="noreferrer" title={x.source_url} className="text-indigo-700 hover:underline">{short(x.source_url)}</a></td>
@@ -381,8 +383,8 @@ function Page({ b }) {
               {top.map(c => <button key={c.code} type="button" onClick={() => set({ country: c.code })} className={`h-8 px-3 text-12.5 font-semibold rounded cursor-pointer ${filters.country === c.code ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>{flag(c.code)} {c.code}</button>)}
               {filters.country && !top.some(c => c.code === filters.country) && <span className="h-8 px-3 text-12.5 font-semibold rounded bg-white shadow-sm text-slate-900 inline-flex items-center">{flag(filters.country)} {filters.country}</span>}
             </div>
-            <select className={sel} value={filters.device} onChange={e => set({ device: e.target.value })} aria-label="Device"><option value="">All devices</option><option value="desktop">Desktop</option><option value="mobile">Mobile</option><option value="tablet">Tablet</option></select>
-            <select className={sel} value={filters.range} onChange={e => set({ range: e.target.value })} aria-label="Period">{RANGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            <Select className={sel} value={filters.device} onChange={e => set({ device: e.target.value })} aria-label="Device"><option value="">All devices</option><option value="desktop">Desktop</option><option value="mobile">Mobile</option><option value="tablet">Tablet</option></Select>
+            <Select className={sel} value={filters.range} onChange={e => set({ range: e.target.value })} aria-label="Period">{RANGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
           </div>
         )}
       </div>
@@ -401,5 +403,5 @@ function Page({ b }) {
 }
 
 export const DomainOverviewPage = function DomainOverviewPage() {
-  return <SeoShell title="Domain Overview" subtitle="The site's real Google traffic, keywords, countries and AI visibility">{(b) => <Page key={b.id} b={b} />}</SeoShell>;
+  return <SeoShell title="Domain Overview" subtitle="The site's real Google traffic, keywords, countries and AI visibility">{(b) => <div className="space-y-4"><SearchPerfNav /><Page key={b.id} b={b} /></div>}</SeoShell>;
 };

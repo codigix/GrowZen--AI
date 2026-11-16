@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle, Loader2, RefreshCw, ExternalLink, Globe, KeyRoun
 import { Badge, Button, Field, Modal, inputCls, useDoubleConfirm } from './SeoUi';
 import { api, fmtDateTime } from './seoApi';
 import { featuredSrc } from './FeaturedImageField';
+import Select from '../components/Select';
 
 /** The article's post on the website: label + badge tone per stored wp_status. */
 export const POST_STATUS = {
@@ -147,7 +148,7 @@ function ConnectFields({ method, form, setForm, website, toast }) {
           <Field label="Branch" hint="blank = the default branch"><input className={inputCls} value={form.branch} onChange={set('branch')} placeholder="main" /></Field>
           <Field label="Posts folder" hint="where your blog files live"><input className={inputCls} value={form.directory} onChange={set('directory')} placeholder="content/blog" /></Field>
           <Field label="File format">
-            <select className={inputCls} value={form.body_format} onChange={set('body_format')}><option value="markdown">Markdown (.md)</option><option value="html">HTML (.html)</option></select>
+            <Select className={inputCls} value={form.body_format} onChange={set('body_format')}><option value="markdown">Markdown (.md)</option><option value="html">HTML (.html)</option></Select>
           </Field>
         </div>
         <Field label="Your site's address" hint="used to open published posts"><input className={inputCls} value={form.url} onChange={set('url')} placeholder="https://yoursite.com" /></Field>

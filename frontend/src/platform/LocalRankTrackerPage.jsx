@@ -1,18 +1,18 @@
 import { useCrumb } from './crumbs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import PositionTrackingHome from './PositionTrackingHome';
+import { Navigate, Link, useParams, useSearchParams } from 'react-router-dom';
 import L from 'leaflet';
 import ProcessTasks from './ProcessTasks';
 import 'leaflet/dist/leaflet.css';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { Play, MapPin, Clock, ArrowUp, ArrowDown, Crosshair, Layers, Target, Trophy, Search, RotateCw } from 'lucide-react';
+import { Play, MapPin, Clock, ArrowUp, ArrowDown, ArrowLeft, Crosshair, Layers, Target, Trophy, Search, RotateCw } from 'lucide-react';
 import PagePositions from './PagePositions';
 import { SeoShell, Card, Button, SourceTag, ErrorNote, STATUS, Tabs, useUrlTab, useToast, useAction, useModulePath, SkPage } from './SeoUi';
 import PositionLandscape from './PositionLandscape';
 import { TABS as LANDSCAPE_TABS } from './PositionExtras';
 import { api, useApi, usePoll, fmtDateTime, fmtDate } from './seoApi';
 import { marketOf } from './MarketBadge';
+import Select from '../components/Select';
 
 /**
  * Local rank grid: where a business shows in the Google Maps pack, point by point around its pin, for every
@@ -73,15 +73,15 @@ const Delta = ({ now, before, better = 'down', unit = '' }) => {
 };
 
 function Tile({ icon: Icon, label, value, sub, delta, tone = 'indigo' }) {
-  const tones = { indigo: 'bg-indigo-50 text-indigo-500', emerald: 'bg-emerald-50 text-emerald-500', amber: 'bg-amber-50 text-amber-500', sky: 'bg-sky-50 text-sky-500' };
+  const tones = { indigo: 'bg-indigo-50 text-indigo-600', emerald: 'bg-emerald-50 text-emerald-600', amber: 'bg-amber-50 text-amber-600', sky: 'bg-sky-50 text-sky-600' };
   return (
-    <div className="ai-glass-card rounded p-3.5 flex items-center gap-3 min-w-0">
-      <span className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${tones[tone]}`}><Icon size={17} /></span>
-      <div className="min-w-0">
-        <div className="text-11.5 font-semibold  tracking-wide text-slate-400 truncate">{label}</div>
-        <div className="flex items-baseline gap-2"><span className="text-22 leading-tight font-bold text-slate-900 tabular-nums">{value ?? '—'}</span>{delta}</div>
-        {sub && <div className="text-11.5 text-slate-500 truncate">{sub}</div>}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 min-w-0">
+      <div className="flex items-center gap-3">
+        <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${tones[tone]}`}><Icon size={17} aria-hidden="true" /></span>
+        <span className="text-13 font-medium text-slate-500 truncate">{label}</span>
       </div>
+      <div className="mt-3 flex items-baseline gap-2"><span className="text-24 leading-tight font-semibold text-slate-900 tabular-nums">{value ?? '—'}</span>{delta}</div>
+      {sub && <div className="mt-1 text-13 text-slate-500 truncate">{sub}</div>}
     </div>
   );
 }
@@ -100,7 +100,7 @@ function Tracker({ b }) {
   const scans = useApi(`/businesses/${b.id}/rank-scans`);
   const kw = useApi(`/businesses/${b.id}/keywords`);
   const status = useApi('/status');
-  const live = status.data?.rank_source === 'serper'; // live Google results cost 3 credits per grid point, so those scans stay small
+  const live = status.data?.rank_source === 'google_places'; // every grid point is one Google Places request, so those scans stay small
   const sizes = live ? [3, 5] : [3, 5, 7, 9, 11, 13];
   const [size, setSize] = useState(5);
   const [radius, setRadius] = useState(5);
@@ -140,7 +140,7 @@ function Tracker({ b }) {
   const scanAll = () => run('all', async () => {
     if (!hasPin) throw new Error('Set the map pin first: GBP Profile Manager → Profile.');
     const list = rows.map(r => r.keyword).slice(0, 10);
-    if (live && !window.confirm(`Scan ${list.length} keywords live? That uses about ${list.length * Math.min(size, 5) ** 2 * 3} Serper credits.`)) return;
+    if (live && !window.confirm(`Scan ${list.length} keywords live? That makes about ${list.length * Math.min(size, 5) ** 2} Google Places requests.`)) return;
     for (const k of list) await post(k);
     setScanId(null); setWaiting(all.length);
   });
@@ -169,22 +169,22 @@ function Tracker({ b }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* One bar: what to scan, how, and when it last ran */}
-      <div className="ai-glass-card rounded p-4 flex flex-wrap items-end gap-3">
+      <div className="ai-glass-card p-5 flex flex-wrap items-end gap-4">
         <label className="text-12 font-medium text-slate-500 flex-1 min-w-[240px]">Keyword
           <div className="relative mt-1"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input list="rank-kw" className="w-full h-9 pl-9 pr-3 text-13 rounded border border-slate-200 bg-white focus:border-indigo-400 outline-none text-slate-800" value={kwNow} onChange={e => { setKeyword(e.target.value); setScanId(null); }} placeholder="e.g. dentist near me" />
           </div>
           <datalist id="rank-kw">{suggestions.map(k => <option key={k} value={k} />)}</datalist>
         </label>
-        <label className="text-12 font-medium text-slate-500">Grid<select className="block mt-1 h-9 px-2 text-13 rounded border border-slate-200 bg-white text-slate-800" value={size} onChange={e => setSize(Number(e.target.value))}>{sizes.map(n => <option key={n} value={n}>{n} × {n}</option>)}</select></label>
-        <label className="text-12 font-medium text-slate-500">Radius<select className="block mt-1 h-9 px-2 text-13 rounded border border-slate-200 bg-white text-slate-800" value={radius} onChange={e => setRadius(Number(e.target.value))}>{[1, 2, 3, 5, 8, 10].map(n => <option key={n} value={n}>{n} km</option>)}</select></label>
+        <label className="text-12 font-medium text-slate-500">Grid<Select className="block mt-1 h-9 px-2 text-13 rounded border border-slate-200 bg-white text-slate-800" value={size} onChange={e => setSize(Number(e.target.value))}>{sizes.map(n => <option key={n} value={n}>{n} × {n}</option>)}</Select></label>
+        <label className="text-12 font-medium text-slate-500">Radius<Select className="block mt-1 h-9 px-2 text-13 rounded border border-slate-200 bg-white text-slate-800" value={radius} onChange={e => setRadius(Number(e.target.value))}>{[1, 2, 3, 5, 8, 10].map(n => <option key={n} value={n}>{n} km</option>)}</Select></label>
         <Button variant="primary" icon={Play} busy={busy === 'scan' || waiting != null} disabled={!kwNow} onClick={() => start()}>{waiting != null ? 'Scanning…' : 'Run scan'}</Button>
         {rows.length > 1 && <Button icon={Layers} busy={busy === 'all'} onClick={scanAll} title="Scan every keyword in the table below">Scan all ({Math.min(rows.length, 10)})</Button>}
         <div className="basis-full text-11.5 text-slate-400 flex flex-wrap items-center gap-x-3">
           <span className="inline-flex items-center gap-1"><Clock size={11} /> {row?.latest ? `Last scan ${fmtDateTime(row.latest.created_at)}` : 'Not scanned yet'}</span>
-          <span>{Math.min(size, live ? 5 : size) ** 2} points{live ? ` · live Google Maps, ${Math.min(size, 5) ** 2 * 3} Serper credits per scan` : ' · sample data until live results are connected'}</span>
+          <span>{Math.min(size, live ? 5 : size) ** 2} points{live ? ` · live Google Maps, ${Math.min(size, 5) ** 2} Places requests per scan` : ' · sample data until live results are connected'}</span>
         </div>
       </div>
       <ErrorNote>{error}</ErrorNote>
@@ -201,19 +201,19 @@ function Tracker({ b }) {
         <Card><div className="py-12 text-center text-13 text-slate-500"><Crosshair size={26} className="mx-auto mb-2 text-slate-300" />No scan for “{kwNow || '—'}” yet. Run one to see how you rank street by street.</div></Card>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             <Tile icon={Target} tone="emerald" label="Top-3 coverage" value={`${topPct(shownScan)}%`} sub={`${shownScan.top3} of ${cellsOf(shownScan)} points`} delta={<Delta now={topPct(shownScan)} before={topPct(before)} better="up" unit="%" />} />
             <Tile icon={Trophy} tone="indigo" label="Average rank" value={shownScan.avg_rank ?? '—'} sub={Number.isFinite(best) ? `best #${best} · lower is better` : 'not found anywhere'} delta={<Delta now={shownScan.avg_rank} before={before?.avg_rank} better="down" />} />
             <Tile icon={MapPin} tone="sky" label="Found in top 20" value={`${foundPct(shownScan)}%`} sub={`${shownScan.found} of ${cellsOf(shownScan)} points`} delta={<Delta now={foundPct(shownScan)} before={foundPct(before)} better="up" unit="%" />} />
-            <div className="ai-glass-card rounded p-3.5 min-w-0"><div className="text-11.5 font-semibold  tracking-wide text-slate-400">Data</div><div className="mt-1.5"><SourceTag source={shownScan.data_source} /></div><div className="text-11.5 text-slate-500 mt-1">{shownScan.data_source === 'sample' ? 'Connect Serper for live results.' : 'Live Google Maps results.'}</div></div>
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 min-w-0"><div className="text-13 font-medium text-slate-500">Data</div><div className="mt-3"><SourceTag source={shownScan.data_source} /></div><div className="text-13 text-slate-500 mt-1.5">{shownScan.data_source === 'sample' ? 'Add the Google Places key for live results.' : 'Live Google Maps results.'}</div></div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
             <Card className="xl:col-span-2" title={`“${shownScan.keyword}”`} subtitle={`${shownScan.grid_size}×${shownScan.grid_size} points, ${shownScan.radius_km} km around the pin (white ring)`}
               action={history.length > 1 && (
-                <select className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white text-slate-700" value={shownScan.id} onChange={e => setScanId(Number(e.target.value))} aria-label="Scan to show">
+                <Select className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white text-slate-700" value={shownScan.id} onChange={e => setScanId(Number(e.target.value))} aria-label="Scan to show">
                   {[...history].reverse().map(s => <option key={s.id} value={s.id}>{fmtDateTime(s.created_at)} · avg {s.avg_rank ?? '—'}</option>)}
-                </select>)}>
+                </Select>)}>
               <RankMap points={shownScan.points} center={hasPin ? { lat: b.lat, lng: b.lng } : null} />
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-12 text-slate-600">
                 {dist.map(([l, c, n]) => <span key={l} className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full" style={{ background: c }} />{l}<b className="text-slate-900 tabular-nums">{n}</b></span>)}
@@ -281,29 +281,56 @@ function Tracker({ b }) {
 }
 
 function Page({ b }) {
-  // One row of tabs: the page positions, every Landscape view (Overview, Rankings Distribution, Tags, Pages...), the Maps grid and the tasks
+  // One row of views: the page positions, every Landscape view (Overview, Rankings Distribution, Tags, Pages...), the Maps grid and the tasks
   const views = LANDSCAPE_TABS.map(([id, label]) => ({ id, label }));
   const all = [{ id: 'positions', label: 'Page positions' }, ...views, { id: 'geo', label: 'Geo-grid (Maps pack)' }, { id: 'tasks', label: 'Tasks' }];
   const [tab, setTab] = useUrlTab('positions', all.map(t => t.id));
   useCrumb(all.find(t => t.id === tab)?.label);
+  const [stuck, setStuck] = useState(false);
+  const sentinel = useRef(null);
+  useEffect(() => {
+    const el = sentinel.current; if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting), { rootMargin: '-8px 0px 0px 0px' });
+    io.observe(el); return () => io.disconnect();
+  }, []);
+  useEffect(() => { try { document.getElementById(`pos-tab-${tab}`)?.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch { /* optional */ } }, [tab]);
+  const onKey = (e) => {
+    const ids = all.map(t => t.id), i = ids.indexOf(tab);
+    const next = e.key === 'ArrowRight' ? ids[(i + 1) % ids.length] : e.key === 'ArrowLeft' ? ids[(i - 1 + ids.length) % ids.length] : e.key === 'Home' ? ids[0] : e.key === 'End' ? ids[ids.length - 1] : null;
+    if (next) { e.preventDefault(); setTab(next); requestAnimationFrame(() => document.getElementById(`pos-tab-${next}`)?.focus()); }
+  };
   return (
-    <>
-      <Link to="/rank-tracking" className="inline-block mb-2 text-13 font-semibold text-indigo-600 hover:underline">← All projects</Link>
-      <Tabs value={tab} onChange={setTab} tabs={all} />
-      {tab === 'positions' ? <PagePositions key={b.id} b={b} />
-        : tab === 'geo' ? <Tracker key={b.id} b={b} />
-          : tab === 'tasks' ? <ProcessTasks b={b} areas={['rankings']} />
-            : <PositionLandscape key={b.id} b={b} tab={tab} onTab={setTab} />}
-    </>
+    <div className="pos-theme space-y-6 min-w-0" style={{ contain: 'inline-size' }}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Link to="/tracking-overview" className="inline-flex items-center gap-1.5 text-13 font-semibold text-indigo-600 hover:underline"><ArrowLeft size={14} />All projects</Link>
+        <span className="text-slate-300" aria-hidden="true">/</span>
+        <span className="text-14 font-semibold text-slate-900">{b.name}</span>
+        {b.website && <span className="text-13 text-slate-500 truncate max-w-[280px]">{String(b.website).replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>}
+      </div>
+      <div ref={sentinel} aria-hidden="true" className="h-px !mt-3 -mb-6" />
+      <div className={`sticky top-2 z-20 bg-white rounded-xl border border-slate-200 transition-shadow ${stuck ? 'shadow-md' : 'shadow-sm'}`}>
+        <div role="tablist" aria-label="Position tracking views" onKeyDown={onKey} className="flex flex-nowrap overflow-x-auto px-2" style={{ scrollbarWidth: 'none' }}>
+          {all.map(t => { const on = tab === t.id; return (
+            <button key={t.id} id={`pos-tab-${t.id}`} type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} onClick={() => setTab(t.id)}
+              className={`shrink-0 h-12 px-4 text-14 whitespace-nowrap border-b-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${on ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>{t.label}</button>
+          ); })}
+        </div>
+      </div>
+      <div role="tabpanel" aria-labelledby={`pos-tab-${tab}`} className="min-w-0">
+        {tab === 'positions' ? <PagePositions key={b.id} b={b} />
+          : tab === 'geo' ? <Tracker key={b.id} b={b} />
+            : tab === 'tasks' ? <ProcessTasks b={b} areas={['rankings']} />
+              : <PositionLandscape key={b.id} b={b} tab={tab} onTab={setTab} />}
+      </div>
+    </div>
   );
 }
 
 export default function LocalRankTrackerPage() {
   const [params] = useSearchParams();
-  // Without a tab the page is the list of projects; a tab opens that project's view
-  if (!params.get('tab')) {
-    return <SeoShell title="Position Tracking" subtitle="Every project's visibility on Google and in AI answers: open one to see its positions, landscape and competitors" needsBusiness={false}><PositionTrackingHome /></SeoShell>;
-  }
+  const { tab: routeTab } = useParams();
+  // Without a tab the page opens the Landscape of the selected project (the table of every project is on the Dashboard and on Tracking Overview)
+  if (!routeTab && !params.get('tab')) return <Navigate to="/rank-tracking/landscape" replace />;
   return (
     <SeoShell title="Position Tracking" subtitle="Visibility, estimated traffic and positions of your tracked keywords on Google, and how you rank in the Maps pack">
       {(b) => <Page key={b.id} b={b} />}

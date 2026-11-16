@@ -31,5 +31,15 @@ export const GOOGLE_ACCESS = [
     product: 'Google Search Console', scope: 'https://www.googleapis.com/auth/webmasters.readonly',
     use: 'Read your website\'s search clicks, impressions, queries and pages for the sites you manage, to show real Google traffic in reports.',
     never: 'Read-only: we cannot change anything in your Search Console.'
+  },
+  {
+    product: 'Google Analytics', scope: 'https://www.googleapis.com/auth/analytics.readonly',
+    use: 'Read your website\'s Google Analytics 4 reports (users, sessions, traffic sources and top pages) for the sites you manage, to show website performance in SEO reports.',
+    never: 'Read-only: we cannot change anything in your Google Analytics.'
+  },
+  {
+    product: 'Google Ads (Keyword Planner)', scope: 'https://www.googleapis.com/auth/adwords',
+    use: 'Used only for the Google Ads Keyword Planner, to fetch keyword ideas, average monthly searches, competition and bid ranges for keyword research. This runs on our company\'s own Google Ads account, not on your account.',
+    never: 'We never create, change or delete campaigns, ads or budgets, and we do not read your Google Ads data.'
   }
 ];

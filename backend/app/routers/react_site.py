@@ -105,9 +105,7 @@ def _guard_owner(db: Session, b: Business, conn: ReactSiteConnection) -> None:
         return
     for other in db.scalars(select(ReactSiteConnection).where(ReactSiteConnection.business_id != b.id)):
         if mine & _hosts(other.website_url, other.api_base_url):
-            owner = db.get(Business, other.business_id)
-            raise HTTPException(409, f"{', '.join(sorted(mine))} is already connected to the account "
-                                     f"'{owner.name if owner else other.business_id}'. Enter {b.name}'s own website here"
+            raise HTTPException(409, f"{', '.join(sorted(mine))} is already connected to another account. Enter {b.name}'s own website here"
                                      f"{f' ({b.website})' if b.website else ''}.")
 
 

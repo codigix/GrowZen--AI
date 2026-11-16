@@ -4,6 +4,7 @@ import { ChevronRight, ExternalLink, Download, Sparkles } from 'lucide-react';
 import { Card, Badge, Button } from './SeoUi';
 import { fmt } from './seoApi';
 import { AXIS, Th, Chg, Empty, Filter, Segmented, usePager, path, Spark } from './PositionUi';
+import Select from '../components/Select';
 
 const SERIES = [['top3', 'Top 3', '#f59e0b'], ['p4_10', '4-10', '#4338ca'], ['p11_20', '11-20', '#818cf8'], ['features', 'SERP Features', '#22c55e']];
 const RANGES = [[30, '1M'], [180, '6M'], [365, '1Y']];
@@ -86,9 +87,9 @@ export default function OrganicPositions({ research, days, setDays }) {
       <div className="flex flex-wrap items-center gap-3">
         <Segmented value={mode} onChange={setMode} options={[['all', 'All Positions'], ['organic', 'Organic'], ['serp', 'SERP Features']]} />
         <Filter value={q} onChange={setQ} placeholder="Filter by keyword" />
-        <select className={sel} value={band} onChange={e => setBand(e.target.value)} aria-label="Positions"><option value="">Positions</option><option value="top3">Top 3</option><option value="top10">Top 10</option><option value="11-20">11-20</option><option value="none">Not ranking</option></select>
-        <select className={sel} value={intent} onChange={e => setIntent(e.target.value)} aria-label="Intent"><option value="">Intent</option>{intents.map(i => <option key={i} value={i}>{i}</option>)}</select>
-        <select className={sel} value={feat} onChange={e => setFeat(e.target.value)} aria-label="SERP features"><option value="">SERP Features</option>{feats.names.filter(n => all.some(x => x.feature_list.includes(n))).map(n => <option key={n}>{n}</option>)}</select>
+        <Select className={sel} value={band} onChange={e => setBand(e.target.value)} aria-label="Positions"><option value="">Positions</option><option value="top3">Top 3</option><option value="top10">Top 10</option><option value="11-20">11-20</option><option value="none">Not ranking</option></Select>
+        <Select className={sel} value={intent} onChange={e => setIntent(e.target.value)} aria-label="Intent"><option value="">Intent</option>{intents.map(i => <option key={i} value={i}>{i}</option>)}</Select>
+        <Select className={sel} value={feat} onChange={e => setFeat(e.target.value)} aria-label="SERP features"><option value="">SERP Features</option>{feats.names.filter(n => all.some(x => x.feature_list.includes(n))).map(n => <option key={n}>{n}</option>)}</Select>
       </div>
 
       <Card pad={false}>

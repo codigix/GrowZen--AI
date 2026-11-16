@@ -1,5 +1,7 @@
 """Backlink Intelligence API. Everything is scoped to a business: a backlink is visible only if it points at a domain that
 business tracks (its own site or a competitor), so one business never sees another's monitoring set."""
+import logging
+from ..competitors import hygiene
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -8,9 +10,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, distinct, false, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
-from ..auth import current_user
+from ..auth import User, current_user
+from ..config import get_settings
 from ..db import get_db, utcnow
-from ..deps import get_business, in_background
+from ..deps import get_business, in_background, my_business_ids
 from ..models import Business
 from . import analytics, bot, engine, frontier, insights, lookup, outcomes, outreach, quality, sync, watch
 from .lifecycle import ALL_STATES, LIVE_STATES
@@ -20,6 +23,8 @@ from .urls import host_of, normalize_url, registrable_domain
 
 from .lifecycle import LIVE_STATES  # noqa: E402
 from .summary import own_site_links  # noqa: E402
+
+log = logging.getLogger("seo.backlinks")
 
 router = APIRouter(prefix="/businesses/{business_id}/backlink-intel", tags=["backlinks"], dependencies=[Depends(current_user)])
 
@@ -39,17 +44,10 @@ class TargetIn(BaseModel):
     is_competitor: bool = False
 
 
-class VerifyIn(BaseModel):
-    backlink_ids: list[int] | None = Field(default=None, max_length=500)
-    all_due: bool = False
 
 
-class SeedIn(BaseModel):
-    urls: list[str] = Field(min_length=1, max_length=100)
 
 
-class CrawlRunIn(BaseModel):
-    limit: int = Field(default=10, ge=1, le=50)
 
 
 def _targets(db: Session, b: Business) -> list[BiTrackedTarget]:
@@ -146,14 +144,35 @@ def search(b: Business = Depends(get_business), db: Session = Depends(get_db), t
 lookup_router = APIRouter(prefix="/backlink-intel", tags=["backlinks"], dependencies=[Depends(current_user)])
 
 
+def _crawler_fallback(term: str) -> dict | None:
+    """When nothing is stored locally for a domain-like query, ask our own deployed crawler. Returns None when the crawler is not set up
+    or the term is not a usable domain; if it cannot be reached the reason is returned, never invented data."""
+    from ..services import crawler_client
+
+    if not get_settings().crawler_enabled:
+        return None
+    try:
+        domain = crawler_client.normalize_domain(term)
+    except ValueError:
+        return None
+    try:
+        r = crawler_client.backlinks(domain, limit=25)
+    except crawler_client.CrawlerError as exc:
+        return {"state": "failed", "domain": domain, "error": str(exc)}
+    return {"state": "done", "domain": domain, "status": r.get("status"), "message": r.get("message"), "total_backlinks": r.get("total_backlinks", 0),
+            "total_referring_domains": r.get("total_referring_domains", 0), "backlinks": r.get("backlinks", [])}
+
+
 @lookup_router.get("/lookup")
-def lookup_backlinks(q: str = Query(default="", max_length=300, description="A domain, URL or word, e.g. codigix, codigix.co or https://codigix.co/blog. Leave empty or use * to list every backlink"),
+def lookup_backlinks(background: BackgroundTasks,
+                     q: str = Query(default="", max_length=300, description="A domain, URL or word, e.g. codigix, codigix.co or https://codigix.co/blog. Leave empty or use * to list every backlink"),
                      limit: int = Query(default=10, ge=1, le=lookup.MAX_LIMIT, description="How many top results to return (up to 5000)"),
-                     db: Session = Depends(get_db)) -> dict:
-    """Search every backlink stored in the database (all businesses, no scoping) by domain, URL or word with fuzzy matching: `codigix` returns the
+                     db: Session = Depends(get_db), user: User = Depends(current_user)) -> dict:
+    """Search every backlink stored in the database (admins: all businesses; everyone else: only links to the domains their own projects track) by domain, URL or word with fuzzy matching: `codigix` returns the
     best-matching backlinks to or from codigix.co, codigixinfotech.com, blog.codigix.co and so on. Each result says whether it is `inbound` (the link
     points at what you searched for) or `outbound` (it comes from it), and inbound results come first. Leave `q` empty or use `*` to list every backlink.
-    Reads the database only."""
+    Reads the database only, except when a domain or URL query has no stored matches: then it asks our own backlink crawler for that domain
+    and returns the answer as `crawler_fallback`."""
     list_all = q.strip() in ("", "*")
     pq = None
     if not list_all:
@@ -167,6 +186,10 @@ def lookup_backlinks(q: str = Query(default="", max_length=300, description="A d
     TD, SD = aliased(BiDomain), aliased(BiDomain)  # the whole table: every backlink with its source page and both domains
     base = (select(Backlink, BiPage, SD).join(BiPage, BiPage.id == Backlink.source_page_id).join(SD, SD.id == Backlink.source_domain_id)
             .join(TD, TD.id == Backlink.target_domain_id))
+    ids = my_business_ids(db, user)
+    if ids is not None:  # a signed-in user sees backlinks to their own projects' tracked domains, never another account's
+        own = list(db.scalars(select(BiTrackedTarget.domain).where(BiTrackedTarget.business_id.in_(ids))))
+        base = base.where(TD.registrable_domain.in_(own or [""]))
     esc = {"escape": "\\"}
     tconds, sconds, oconds, tmatch, smatch = [], [], [], {}, {}  # conditions on the link's target side, source side, and anchor text
     if list_all:
@@ -233,6 +256,13 @@ def lookup_backlinks(q: str = Query(default="", max_length=300, description="A d
         data.append(_backlink_out(bl, src, sd) | {"target_domain": target_domain, "direction": direction, "matched_on": on, "match_score": score})
     summary["returned"] = len(data)
 
+    crawler_fallback = None
+    if not list_all and not data and pq.kind in ("domain", "url"):
+        try:
+            crawler_fallback = _crawler_fallback(pq.term)
+        except Exception:  # noqa: BLE001 - the fallback must never break a search that otherwise succeeded
+            log.exception("Crawler fallback for backlink lookup %r failed", q)
+
     def _counts(col, found: dict[str, int]) -> list[dict]:
         if not found:
             return []
@@ -250,7 +280,7 @@ def lookup_backlinks(q: str = Query(default="", max_length=300, description="A d
     if len(data) > 50:
         print(f"[backlink lookup] ... and {len(data) - 50} more in the response", flush=True)
     return {"query": q, "interpreted_as": {"type": "all" if list_all else pq.kind, "term": None if list_all else pq.term, "path": None if list_all else (pq.path or None)},
-            "summary": summary, "matched_domains": {"as_target": as_target, "as_source": as_source}, "data": data}
+            "summary": summary, "matched_domains": {"as_target": as_target, "as_source": as_source}, "data": data, "crawler_fallback": crawler_fallback}
 
 
 def _one(db: Session, b: Business, backlink_id: int):
@@ -360,9 +390,9 @@ class GapIn(BaseModel):
 def prioritize_gap(body: GapIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     """The competitor-gap domains ranked by how realistic they are to win, each with an honest way to approach it."""
     me = _require_tracked(db, b, body.client)
-    comps = [t.domain for t in _targets(db, b) if t.is_competitor and t.domain != me]
+    comps = [d for d in hygiene.saved_competitor_domains(db, b) if d != me]
     if not comps:
-        raise HTTPException(409, "Add at least one competitor target first")
+        raise HTTPException(409, "Save at least one competitor first (the Competitors page or Backlink Intelligence targets)")
     return {"client": me, "competitors": comps, **insights.prioritize_gap(db, b, me, comps)}
 
 
@@ -442,9 +472,9 @@ def ref_domains(domain: str, b: Business = Depends(get_business), db: Session = 
 def competitor_gap(client: str, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     """Domains linking to the business's competitors but not to `client`. A prospecting signal; each needs human relevance review."""
     me = _require_tracked(db, b, client)
-    comps = [t.domain for t in _targets(db, b) if t.is_competitor and t.domain != me]
+    comps = [d for d in hygiene.saved_competitor_domains(db, b) if d != me]
     if not comps:
-        raise HTTPException(409, "Add at least one competitor target first")
+        raise HTTPException(409, "Save at least one competitor first (the Competitors page or Backlink Intelligence targets)")
     return {"client": me, "competitors": comps, "gap": analytics.gap(db, me, comps)}
 
 
@@ -464,52 +494,6 @@ def history(backlink_id: int, b: Business = Depends(get_business), db: Session =
                         "evidence_observation_id": e.evidence_observation_id} for e in ev],
             "observations": [{"id": o.id, "type": o.observation_type, "at": o.observed_at, "source_http_status": o.source_http_status, "link_found": o.link_found,
                               "anchor_text": o.anchor_text, "rel_attributes": o.rel_attributes, "method": o.verification_method, "detail": o.detail} for o in obs]}
-
-
-@router.post("/verify", status_code=202)
-def verify(body: VerifyIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
-    """Queue source pages for re-verification by the crawler. Returns immediately; run the worker (POST /crawl/run or a scheduler)."""
-    if not body.backlink_ids and not body.all_due:
-        raise HTTPException(422, "Pass backlink_ids or all_due=true")
-    q, *_ = _scoped(db, b)
-    if body.backlink_ids:
-        q = q.where(Backlink.id.in_(body.backlink_ids))
-    queued = 0
-    for bl, page, _dom in db.execute(q).all():
-        if body.all_due and not body.backlink_ids and bl.next_verify_at and aware(bl.next_verify_at) > utcnow():
-            continue
-        if frontier.enqueue(db, page.normalized_url, "user", 0, priority=90.0, queue="verification", business_id=b.id):
-            queued += 1
-    db.commit()
-    return {"queued": queued}
-
-
-@router.post("/crawl/seed", status_code=202)
-def seed(body: SeedIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
-    added = 0
-    for u in body.urls:
-        try:
-            normalize_url(u)
-        except ValueError:
-            continue
-        if frontier.enqueue(db, u, "user", 0, priority=50.0, business_id=b.id):
-            added += 1
-    db.commit()
-    return {"queued": added}
-
-
-@router.post("/crawl/run")
-def crawl_run(body: CrawlRunIn, b: Business = Depends(get_business), db: Session = Depends(get_db), fetcher: engine.PageFetcher = Depends(get_fetcher)) -> dict:
-    """Run one worker tick inline (claims fair work from the frontier and processes it)."""
-    if not _targets(db, b):
-        raise HTTPException(409, "Add a tracked target first")
-    results = engine.run_batch(db, fetcher, body.limit)
-    return {"processed": len(results), "results": results}
-
-
-@router.get("/crawl/status")
-def crawl_status(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
-    return {"frontier": frontier.stats(db), "mine": frontier.stats(db, business_id=b.id, tracked=[t.domain for t in _targets(db, b)])}
 
 
 class BotConfigIn(BaseModel):
@@ -536,14 +520,16 @@ def bot_configure(body: BotConfigIn, b: Business = Depends(get_business), db: Se
 
 
 def _bot_job(db: Session, business_id: int) -> None:
-    bot.run_cycle(db, get_fetcher(), business_id)
+    bot.run_cycle(db, business_id)
 
 
 @router.post("/bot/run", status_code=202)
 def bot_run(background: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
-    """Start one exploration run now. It runs in the background; poll GET /bot for progress."""
+    """Start one sync from our backlink crawler now. It runs in the background; poll GET /bot for progress."""
+    if not get_settings().crawler_enabled:
+        raise HTTPException(409, "Our backlink crawler is not connected: set CRAWLER_URL and CRAWLER_API_KEY in the backend settings.")
     if not _targets(db, b):
-        raise HTTPException(409, "Add a tracked domain first: the bot starts from the domains you track")
+        raise HTTPException(409, "Add a tracked domain first: the sync starts from the domains you track")
     if bot.is_running(bot.get_config(db, b.id)):
         raise HTTPException(409, "The bot is already running")
     background.add_task(in_background(_bot_job, b.id))

@@ -4,6 +4,7 @@ import { Search, Sparkles, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Plus }
 import { Card, ErrorNote, useModulePath, useSeoBusiness, SkTable } from './SeoUi';
 import { useApi } from './seoApi';
 import SiteAuditOverview from './SiteAuditOverview';
+import Select from '../components/Select';
 
 /**
  * Site Audit overview: one row per project with its site health broken into the parameters an SEO tool
@@ -55,7 +56,7 @@ function Metric({ m, count }) {
   );
 }
 
-export default function SiteAuditTable({ onNew, onOverview }) {
+export default function SiteAuditTable({ onNew, onOverview, projectId }) { // projectId: show only that project's row
   const data = useApi('/businesses/site-audit');
   const [, choose] = useSeoBusiness();
   const navigate = useNavigate();
@@ -67,15 +68,15 @@ export default function SiteAuditTable({ onNew, onOverview }) {
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
-    const list = (data.data || []).filter(r => !term || `${r.name} ${r.domain || ''}`.toLowerCase().includes(term));
+    const list = (data.data || []).filter(r => (projectId == null || r.id === projectId) && (!term || `${r.name} ${r.domain || ''}`.toLowerCase().includes(term)));
     const val = (r) => (sort.key === 'last_update' ? r.last_update || '' : sort.key === 'pages_crawled' ? r.pages_crawled : sort.key === 'name' ? r.name.toLowerCase() : r.metrics[sort.key]?.value ?? -1);
     return [...list].sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sort.dir);
-  }, [data.data, q, sort]);
+  }, [data.data, q, sort, projectId]);
   const pages = Math.max(1, Math.ceil(rows.length / size));
   const shown = rows.slice((page - 1) * size, page * size);
-  const open = (id) => { choose(id); navigate(`${path('website-audit')}?tab=report`); };
+  const open = (id) => { choose(id).then(ok => ok && navigate(`${path('website-audit')}?tab=report`)); };
   const [overviewOf, setOverviewOf] = useState(null); // {id, initial}: that project's audit Overview replaces the table until closed
-  const go = (id, key) => { choose(id); const initial = GO[key]; if (onOverview) onOverview(id, initial); else setOverviewOf({ id, initial }); };
+  const go = (id, key) => { const initial = GO[key]; choose(id).then(ok => { if (!ok) return; if (onOverview) onOverview(id, initial); else setOverviewOf({ id, initial }); }); };
   const th = (key, label, extra = {}) => (
     <th key={key} className={`px-4 py-3 font-semibold whitespace-nowrap ${extra.right ? 'text-right' : 'text-left'}`} title={extra.tip}>
       <button type="button" onClick={() => { setSort(s => ({ key, dir: s.key === key ? -s.dir : -1 })); setPage(1); }} className="inline-flex items-center gap-1 cursor-pointer hover:text-slate-900">
@@ -131,7 +132,7 @@ export default function SiteAuditTable({ onNew, onOverview }) {
         <span>Page <b className="text-slate-900">{page}</b> of {pages}</span>
         <button type="button" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="p-1.5 rounded border border-slate-200 disabled:opacity-40 cursor-pointer" aria-label="Previous page"><ChevronLeft size={14} /></button>
         <button type="button" disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="p-1.5 rounded border border-slate-200 disabled:opacity-40 cursor-pointer" aria-label="Next page"><ChevronRight size={14} /></button>
-        <select value={size} onChange={e => { setSize(Number(e.target.value)); setPage(1); }} className="h-8 px-2 rounded border border-slate-200 bg-white text-13" aria-label="Rows per page">{[10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}</select>
+        <Select value={size} onChange={e => { setSize(Number(e.target.value)); setPage(1); }} className="h-8 px-2 rounded border border-slate-200 bg-white text-13" aria-label="Rows per page">{[10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}</Select>
         <span className="ml-auto text-11.5 text-slate-400">— = not measured yet; it fills in after the next audit</span>
       </div>
     </Card>

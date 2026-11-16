@@ -6,6 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from .. import access
+from ..auth import User, current_user
 from ..deps import get_business
 from ..models import Business, InsightDay, Lead
 from ..schemas import LeadIn
@@ -42,6 +44,7 @@ def set_lead_status(lead_id: int, status: str, b: Business = Depends(get_busines
 
 
 @router.get("/insights")
-def insights(days: int = 30, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+def insights(days: int = 30, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    access.require(db, user, b, "gmb")  # Business Profile performance: only once the project's Google access is complete
     since = date.today() - timedelta(days=min(max(days, 1), 540))
     return rows(db.scalars(select(InsightDay).where(InsightDay.business_id == b.id, InsightDay.day >= since).order_by(InsightDay.day)))

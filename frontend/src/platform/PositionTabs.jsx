@@ -177,12 +177,13 @@ export function Cannibalization({ d, b }) {
           <div className="border-l border-slate-200 pl-8"><div className="text-13 text-slate-600">Cannibal pages</div><div className="text-26 font-bold tabular-nums text-slate-900">{c.pages} <span className="text-14 text-slate-400 font-normal">/ {c.pages_total}</span></div></div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6 items-center">
-          <div className="relative h-36">
+          <div><div className="relative h-36">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart><Pie data={gauge} dataKey="v" startAngle={180} endAngle={0} cy="85%" innerRadius="68%" outerRadius="100%" stroke="none" isAnimationActive={false}>{gauge.map((x, i) => <Cell key={i} fill={x.c} />)}</Pie></PieChart>
             </ResponsiveContainer>
-            <div className="absolute inset-x-0 bottom-0 text-center"><span className="text-22 font-bold tabular-nums" style={{ color: col }}>{c.health}%</span>{c.health_change != null && <span className="ml-1.5 text-12 font-semibold"><Chg v={c.health_change} d={0} unit="%" /></span>}<div className="text-12 text-slate-500">{c.rate} rate</div></div>
+            <div className="absolute inset-x-0 bottom-1 text-center leading-none"><span className="text-24 font-bold tabular-nums" style={{ color: col }}>{c.health}%</span></div>
           </div>
+          <div className="mt-1 text-center text-12 text-slate-500">{c.rate} rate{c.health_change != null && <span className="ml-1.5 font-semibold"><Chg v={c.health_change} d={0} unit="%" /></span>}</div></div>
           {series.length > 1 ? (
             <div className="h-44">
               <ResponsiveContainer width="100%" height="100%">

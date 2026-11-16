@@ -16,7 +16,7 @@ def test_onboarding_tracks_the_site_enables_the_bot_and_runs_it(client, monkeypa
     monkeypatch.setattr(discover, "_onboard", lambda db, business_id: None)  # the audits are not under test here
     monkeypatch.setattr(get_settings(), "backlink_autostart", True)
     ran: list[int] = []
-    monkeypatch.setattr(bot, "run_cycle", lambda db, fetcher, business_id, *a, **k: ran.append(business_id))
+    monkeypatch.setattr(bot, "run_cycle", lambda db, business_id, *a, **k: ran.append(business_id))
     bid = _business(client, "https://www.autostart-clinic.in/")
     assert client.get(f"/api/v1/businesses/{bid}/backlink-intel/targets").json() == []  # creating a project alone tracks nothing
 
@@ -39,7 +39,7 @@ def test_a_project_without_a_website_says_why_and_starts_nothing(client, monkeyp
     monkeypatch.setattr(discover, "_onboard", lambda db, business_id: None)
     monkeypatch.setattr(get_settings(), "backlink_autostart", True)
     ran: list[int] = []
-    monkeypatch.setattr(bot, "run_cycle", lambda db, fetcher, business_id, *a, **k: ran.append(business_id))
+    monkeypatch.setattr(bot, "run_cycle", lambda db, business_id, *a, **k: ran.append(business_id))
     bid = client.post("/api/v1/businesses", json={"name": "No Site Cafe"}).json()["id"]
     out = client.post(f"/api/v1/discover/onboard/{bid}").json()["backlink_bot"]
     assert out["enabled"] is False and "website" in out["reason"].lower()

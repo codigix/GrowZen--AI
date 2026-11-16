@@ -4,6 +4,7 @@ The platform has its own users (email + password, session cookie `seo_session`).
 cookie is also accepted when CRM_JWT_SECRET is set, so CRM users can open it without a second
 account; their name/role come from the CRM's /auth/me over HTTP (never its database).
 """
+import hashlib
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -25,22 +26,60 @@ class User:
     role: str = ""
     department: str = ""
     source: str = "seo"  # seo | crm
+    needs_project_code: bool = False  # two-step verification is on: opening a project needs a fresh authenticator code (deps.owned_business)
+    totp_enabled: bool = False
+    verified_project: int | None = None  # the one project the last accepted code opened (cookie seo_project)
 
     @property
     def is_admin(self) -> bool:
         return self.role.lower() in ("admin", "super admin")
 
+    @property
+    def sees_all(self) -> bool:
+        """Admins (and a CRM session with no role, which keeps the access it always had) can open every project; everyone else only their own."""
+        return self.is_admin or (self.source == "crm" and not self.role)
+
 
 # ── own sessions ───────────────────────────────────────────────────────────────
-def issue_session(response: Response, user_id: int, settings: Settings) -> None:
-    exp = datetime.now(timezone.utc) + timedelta(hours=settings.session_hours)
-    token = jwt.encode({"sub": str(user_id), "kind": "seo", "exp": exp}, settings.secret_key, algorithm="HS256")
+def pw_fingerprint(password_hash: str | None) -> str:
+    """A short fingerprint of the stored password hash. A session and a password-reset token carry it, so both stop working the moment the password changes."""
+    return hashlib.sha256(f"pv:{password_hash or ''}".encode()).hexdigest()[:16]
+
+
+def issue_session(response: Response, user_id: int, settings: Settings, password_hash: str | None = None) -> None:
+    now = datetime.now(timezone.utc)
+    exp = now + timedelta(hours=settings.session_hours)
+    token = jwt.encode({"sub": str(user_id), "kind": "seo", "iat": now, "exp": exp, "pv": pw_fingerprint(password_hash)}, settings.secret_key, algorithm="HS256")
+    # SameSite=Lax, not Strict: the session must survive the redirect back from Google sign-in (a cross-site navigation). Cross-site POSTs are refused separately (security_headers.OriginCheckMiddleware).
     response.set_cookie(settings.session_cookie, token, httponly=True, samesite="lax", secure=settings.secure_cookies,
                         max_age=settings.session_hours * 3600, path="/")
 
 
 def clear_session(response: Response, settings: Settings) -> None:
-    response.delete_cookie(settings.session_cookie, path="/")
+    response.delete_cookie(settings.session_cookie, path="/", httponly=True, samesite="lax", secure=settings.secure_cookies)
+    response.delete_cookie(PROJECT_COOKIE, path="/", httponly=True, samesite="strict", secure=settings.secure_cookies)
+
+
+PROJECT_COOKIE = "seo_project"
+PROJECT_HOURS = 8
+
+
+def issue_project_claim(response: Response, user_id: int, business_id: int, settings: Settings) -> None:
+    """After a correct authenticator code: this session may open this one project. A new claim replaces the old one, so every switch needs a fresh code."""
+    exp = datetime.now(timezone.utc) + timedelta(hours=PROJECT_HOURS)
+    token = jwt.encode({"sub": str(user_id), "kind": "project", "bid": business_id, "exp": exp}, settings.secret_key, algorithm="HS256")
+    response.set_cookie(PROJECT_COOKIE, token, httponly=True, samesite="strict", secure=settings.secure_cookies, max_age=PROJECT_HOURS * 3600, path="/")  # only ever read by the app's own API calls
+
+
+def _project_claim(request: Request, user_id: int, settings: Settings) -> int | None:
+    token = request.cookies.get(PROJECT_COOKIE)
+    if not token:
+        return None
+    try:
+        c = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        return None
+    return int(c["bid"]) if c.get("kind") == "project" and c.get("sub") == str(user_id) and str(c.get("bid", "")).isdigit() else None
 
 
 def _seo_user(token: str, db: Session, settings: Settings) -> User | None:
@@ -54,7 +93,10 @@ def _seo_user(token: str, db: Session, settings: Settings) -> User | None:
     u = db.get(AppUser, int(claims.get("sub", 0)))
     if not u or not u.active:
         return None
-    return User(id=str(u.id), name=u.name, email=u.email, role=u.role, department="SEO Platform", source="seo")
+    if claims.get("pv") != pw_fingerprint(u.password_hash):  # the password was changed or reset since this session was issued (or an old-format token): sign in again
+        return None
+    on = bool(u.totp_enabled) and settings.two_factor_enabled
+    return User(id=str(u.id), name=u.name, email=u.email, role=u.role, department="SEO Platform", source="seo", needs_project_code=on, totp_enabled=on)
 
 
 # ── CRM sessions (optional) ────────────────────────────────────────────────────
@@ -84,17 +126,22 @@ def _crm_user(token: str, settings: Settings) -> User | None:
                 user = User(id=f"crm:{user_id}", name=name, email=d.get("email") or "", role=d.get("role_name") or d.get("role") or "", department=d.get("department") or "", source="crm")
             elif r.status_code in (401, 403):
                 return None
-        except httpx.HTTPError:
-            pass
+            else:
+                raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Could not verify your CRM account right now. Try again shortly.")
+        except httpx.HTTPError as exc:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Could not verify your CRM account right now. Try again shortly.") from exc
     dept = user.department.lower()
     if (user.role or user.department) and not (user.role.lower() in settings.allowed_role_list or any(x in dept for x in settings.allowed_department_list)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your CRM account has no access to the SEO platform.")
-    _cache[token] = (time.time() + 300, user)
+    now = time.time()
+    for k in [k for k, v in _cache.items() if v[0] <= now]:  # drop entries that expired since they were cached
+        del _cache[k]
+    _cache[token] = (now + 300, user)
     return user
 
 
 # POSTs that only read or compute (search, ask, look up): a viewer may use them. Everything else that writes is for editors and admins.
-READ_ONLY_POSTS = ("/assistant", "/seo/keyword-overview", "/discover", "/discover/assist", "/discover/resolve", "/auth/logout", "/auth/change-password", "/ai/preview")
+READ_ONLY_POSTS = ("/assistant", "/seo/keyword-overview", "/discover", "/discover/assist", "/discover/resolve", "/auth/logout", "/auth/change-password", "/ai/preview", "/auth/switch-project", "/auth/2fa/setup", "/auth/2fa/enable", "/auth/2fa/disable")
 
 
 def _enforce_role(request: Request, user: User) -> User:
@@ -111,6 +158,8 @@ def current_user(request: Request, db: Session = Depends(get_db), settings: Sett
     bearer = auth[7:] if auth.lower().startswith("bearer ") else None
     for token in (request.cookies.get(settings.session_cookie), bearer):
         if token and (u := _seo_user(token, db, settings)):
+            if u.needs_project_code:
+                u.verified_project = _project_claim(request, int(u.id), settings)
             return _enforce_role(request, u)
     for token in (request.cookies.get(settings.crm_session_cookie), bearer):
         if token and (u := _crm_user(token, settings)):

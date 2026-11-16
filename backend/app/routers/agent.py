@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..db import get_db
-from ..deps import get_business
+from ..deps import get_business, my_business_ids, owned_business
 from ..models import ActivityLog, AgentTask, Business
 from ..schemas import DecisionIn, PlaybookIn
 from ..serialize import row, rows
@@ -18,22 +18,31 @@ from ..services.playbook import get_playbook
 router = APIRouter(tags=["agent"])
 
 
+def _scope(db: Session, user: User, q, col, business_id: int | None = None):
+    """Limit a query to one of the user's projects (404 if it is not theirs), or to all of theirs."""
+    if business_id:
+        owned_business(db, user, business_id)
+        return q.where(col == business_id)
+    ids = my_business_ids(db, user)
+    return q if ids is None else q.where(col.in_(ids))
+
+
+
+
 @router.get("/tasks/counts")
-def task_counts(business_id: int | None = None, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def task_counts(business_id: int | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """How many tasks there are in each status. The list is loaded in slabs, so its length is no longer the total."""
     q = select(AgentTask.status, func.count(AgentTask.id)).group_by(AgentTask.status)
-    if business_id:
-        q = q.where(AgentTask.business_id == business_id)
+    q = _scope(db, user, q, AgentTask.business_id, business_id)
     return {s: n for s, n in db.execute(q).all()}
 
 
 @router.get("/tasks")
-def list_tasks(status: str | None = "pending", business_id: int | None = None, offset: int = 0, limit: int = 300, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def list_tasks(status: str | None = "pending", business_id: int | None = None, offset: int = 0, limit: int = 300, db: Session = Depends(get_db), user: User = Depends(current_user)):
     q = select(AgentTask).order_by(AgentTask.created_at.desc()).offset(max(0, offset)).limit(max(1, min(limit, 300)))
     if status:
         q = q.where(AgentTask.status == status)
-    if business_id:
-        q = q.where(AgentTask.business_id == business_id)
+    q = _scope(db, user, q, AgentTask.business_id, business_id)
     found = list(db.scalars(q))
     # Tasks planned before drafts existed get the rule-based draft (no AI call here, so the list stays fast).
     missing = [t for t in found if t.status == "pending" and not (t.detail or {}).get("draft")]
@@ -78,9 +87,7 @@ def add_follow_ups(body: list[FollowUpIn], b: Business = Depends(get_business), 
 def approve_low_risk(business_id: int | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Approve every pending task the copilot rated low risk (text and markup fixes, thank-you replies).
     Profile edits never count as low risk, so they always wait for a person."""
-    q = select(AgentTask).where(AgentTask.status == "pending")
-    if business_id:
-        q = q.where(AgentTask.business_id == business_id)
+    q = _scope(db, user, select(AgentTask).where(AgentTask.status == "pending"), AgentTask.business_id, business_id)
     done = [agent.decide(db, t, True, user.name) for t in db.scalars(q).all() if (t.detail or {}).get("risk") == "low" and t.kind not in agent.ALWAYS_ASK]
     return {"approved": len(done), "tasks": rows(done)}
 
@@ -94,7 +101,7 @@ class BulkIn(BaseModel):
 def bulk(body: BulkIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Approve or reject several pending changes at once. Profile edits can't be approved in bulk: they always wait for a person."""
     done, skipped = [], 0
-    for t in db.scalars(select(AgentTask).where(AgentTask.id.in_(body.ids), AgentTask.status == "pending")):
+    for t in db.scalars(_scope(db, user, select(AgentTask).where(AgentTask.id.in_(body.ids), AgentTask.status == "pending"), AgentTask.business_id)):
         if body.action == "approve" and t.kind in agent.ALWAYS_ASK:
             skipped += 1
             continue
@@ -108,7 +115,7 @@ def triage(business_id: int | None = None, approve_low_risk: bool = False, db: S
     rank what is left by impact and age. With approve_low_risk, the changes rated low risk are approved too."""
     from ..services import audits as audit_service  # noqa: PLC0415
 
-    q = select(Business) if not business_id else select(Business).where(Business.id == business_id)
+    q = _scope(db, user, select(Business), Business.id, business_id)
     resolved = duplicates = 0
     for b in db.scalars(q):
         latest = audit_service.latest(db, b)
@@ -124,7 +131,7 @@ def triage(business_id: int | None = None, approve_low_risk: bool = False, db: S
             else:
                 seen[key] = t
     db.commit()
-    pending = list(db.scalars(select(AgentTask).where(AgentTask.status == "pending", *( [AgentTask.business_id == business_id] if business_id else []))))
+    pending = list(db.scalars(_scope(db, user, select(AgentTask).where(AgentTask.status == "pending"), AgentTask.business_id, business_id)))
     weight = {"High": 3, "Medium": 2, "Low": 1}
     ranked = sorted(pending, key=lambda t: (-weight.get(t.impact, 1), t.created_at))
     approved = 0
@@ -137,18 +144,19 @@ def triage(business_id: int | None = None, approve_low_risk: bool = False, db: S
 
 
 @router.post("/tasks/{task_id}/redraft")
-def redraft(task_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def redraft(task_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Draft the change again (with AI when it's set up)."""
-    t = _task(db, task_id)
+    t = _task(db, task_id, user)
     copilot.draft_for(db, db.get(Business, t.business_id), t)
     db.commit()
     return row(t)
 
 
-def _task(db: Session, task_id: int) -> AgentTask:
+def _task(db: Session, task_id: int, user: User) -> AgentTask:
     t = db.get(AgentTask, task_id)
     if not t:
         raise HTTPException(404, "Task not found")
+    owned_business(db, user, t.business_id)
     if t.status != "pending":
         raise HTTPException(409, f"Task is already {t.status}")
     return t
@@ -156,12 +164,12 @@ def _task(db: Session, task_id: int) -> AgentTask:
 
 @router.post("/tasks/{task_id}/approve")
 def approve(task_id: int, body: DecisionIn | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    return row(agent.decide(db, _task(db, task_id), True, user.name))
+    return row(agent.decide(db, _task(db, task_id, user), True, user.name))
 
 
 @router.post("/tasks/{task_id}/reject")
 def reject(task_id: int, body: DecisionIn | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    t = agent.decide(db, _task(db, task_id), False, user.name)
+    t = agent.decide(db, _task(db, task_id, user), False, user.name)
     if body and body.note:
         # A rejection with a reason is something the AI should learn from.
         pb = get_playbook(db)
@@ -171,10 +179,9 @@ def reject(task_id: int, body: DecisionIn | None = None, db: Session = Depends(g
 
 
 @router.get("/activity")
-def activity(business_id: int | None = None, limit: int = 100, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def activity(business_id: int | None = None, limit: int = 100, db: Session = Depends(get_db), user: User = Depends(current_user)):
     q = select(ActivityLog).order_by(ActivityLog.created_at.desc()).limit(min(limit, 500))
-    if business_id:
-        q = q.where(ActivityLog.business_id == business_id)
+    q = _scope(db, user, q, ActivityLog.business_id, business_id)
     return rows(db.scalars(q))
 
 

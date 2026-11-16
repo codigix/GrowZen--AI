@@ -16,9 +16,10 @@ os.environ.update({
     "CRM_API_URL": "",
     "SCHEDULER_ENABLED": "false", "BACKLINK_AUTOSTART": "false",
     "DEEPSEEK_API_KEY": "", "OPENAI_API_KEY": "", "GEMINI_API_KEY": "", "PERPLEXITY_API_KEY": "", "ANTHROPIC_API_KEY": "",
+    "ALLOW_SAMPLE_DATA": "true",  # the suite exercises the sample providers; test_real_data_only.py turns it off to prove nothing invented is shown by default
     "RANK_LANDSCAPE_MOCK": "false", "INTAKE_ALLOWED_SENDERS": "codigixinfotech.com", "INTAKE_WEBHOOK_TOKEN": "hook-token",
     "SITE_AUTODETECT": "false", "SMTP_HOST": "", "SECRET_KEY": "test-session-secret-0123456789-abcdef", "ADMIN_EMAIL": "", "ADMIN_PASSWORD": "",
-    "PAGESPEED_API_KEY": "", "GOOGLE_PLACES_API_KEY": "", "GOOGLE_API_KEY": "", "SERPER_API_KEY": "", "TOKEN_ENCRYPTION_KEY": "aGol6LzAESrBGxyWgYQb0ObDl04ajkjTg_snnQRslJ4=",  # test-only key
+    "PAGESPEED_API_KEY": "", "GOOGLE_PLACES_API_KEY": "", "GOOGLE_API_KEY": "", "TOKEN_ENCRYPTION_KEY": "aGol6LzAESrBGxyWgYQb0ObDl04ajkjTg_snnQRslJ4=",  # test-only key
     "LIGHTHOUSE_REPORTS_DIR": os.path.join(os.path.dirname(_db), "reports"), "LIGHTHOUSE_RATE_LIMIT_PER_MINUTE": "1000",
 })
 
@@ -63,3 +64,13 @@ def _offline_keyword_metrics(monkeypatch):
     """Tests never call the Google Ads Keyword Planner, even when the developer's .env has its credentials."""
     from app.services import keyword_metrics
     monkeypatch.setattr(keyword_metrics, "lookup", lambda keywords, country=None: ({}, "offline in tests"))
+
+
+@pytest.fixture(autouse=True)
+def _offline_crawler(monkeypatch):
+    """Tests never call our deployed backlink crawler, even when the developer's .env has its key (the bot then crawls locally, as before)."""
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "crawler_api_key", "")
+    monkeypatch.setattr(get_settings(), "two_factor_enabled", True)  # the developer's .env may pause it
+    from app.services import crawler_client
+    monkeypatch.setattr(crawler_client, "seed", lambda urls: {"queued": list(urls)})

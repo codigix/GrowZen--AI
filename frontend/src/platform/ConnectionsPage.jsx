@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Plug, CheckCircle2, ShieldCheck, Loader2, Mail } from 'lucide-react';
 import { SeoShell, Card, Tabs, StatusPill, Badge, useToast, SkList } from './SeoUi';
 import { useApi, fmtDateTime, SEO_API } from './seoApi';
-import { PLANS } from './seoMock';
+import { PLANS } from './plans';
 
 // What each backend setting switches on (names match backend/.env).
 const SOURCES = [
@@ -52,6 +52,7 @@ function Connections() {
                 <div key={c.id} className="flex flex-wrap items-center gap-3 py-2.5 text-13">
                   <Mail size={14} className="text-gray-400" />
                   <span className="flex-1 text-gray-900">{c.email} <span className="text-gray-500 text-12">· {c.businesses} businesses · synced {c.last_sync_at ? fmtDateTime(c.last_sync_at) : 'never'}</span></span>
+                  {c.status === 'active' && c.permissions && [['business_profile', 'Business Profile'], ['search_console', 'Search Console'], ['analytics', 'Analytics'], ['google_ads', 'Google Ads']].map(([k, label]) => <span key={k} title={c.permissions[k] ? `${label} access granted` : `${label} access not granted: reconnect this account to allow it`} className={`text-11 px-1.5 py-0.5 rounded ring-1 ring-inset ${c.permissions[k] ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-slate-50 text-slate-400 ring-slate-200 line-through'}`}>{label}</span>)}
                   {c.status === 'active' ? <StatusPill level="good">Active</StatusPill> : <Badge>{c.status}</Badge>}
                   {c.last_error && <span className="text-12 text-red-600 max-w-[320px] truncate" title={c.last_error}>{c.last_error}</span>}
                 </div>
@@ -64,10 +65,10 @@ function Connections() {
       {tab === 'plans' && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {PLANS.map(p => (
-            <div key={p.name} className={`bg-white rounded border p-4 ${p.popular ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200'}`}>
+            <div key={p.name} className={`bg-white rounded border p-4 border-gray-200`}>
               <div className="text-15 font-semibold text-gray-900">{p.name}</div>
               <div className="text-12 text-gray-500 mt-0.5">{p.who}</div>
-              <div className="text-xl font-semibold text-gray-900 mt-3">{p.price}<span className="text-12 font-normal text-gray-500">{p.name === 'Agency' ? '' : ' / month'}</span></div>
+              <div className="text-13 font-medium text-gray-600 mt-3">{p.price}</div>
               <ul className="mt-3 space-y-1.5">{p.includes.map(i => <li key={i} className="flex gap-1.5 text-12 text-gray-700"><CheckCircle2 size={13} className="text-emerald-600 shrink-0 mt-px" />{i}</li>)}</ul>
             </div>
           ))}
@@ -84,7 +85,7 @@ function Connections() {
               ['No invented facts', 'AI prompts use only the saved profile; the email extractor keeps only values found in the email.'],
               ['No fake or incentivised reviews', 'AI only drafts replies; review requests go to every customer.'],
               ['Outreach drafts only', 'A person sends every outreach email. No paid links or link exchanges.'],
-              ['Licensed data only', 'Rankings come from the Serper Google results API, never from scraping Google pages.'],
+              ['Licensed data only', 'Rankings come from Google Search Console and the Google Places API, never from scraping Google pages.'],
               ['Encrypted tokens', 'Google refresh tokens are stored encrypted; disconnecting deletes them.'],
               ['Allowed senders only', 'The onboarding mailbox processes emails from the team’s addresses only.']
             ].map(([t, d]) => <div key={t} className="p-3 rounded border border-gray-200"><div className="flex items-center gap-1.5 text-13 font-medium text-gray-900"><ShieldCheck size={14} className="text-emerald-600" />{t}</div><p className="text-12 text-gray-600 mt-1">{d}</p></div>)}

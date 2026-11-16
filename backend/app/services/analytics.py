@@ -22,8 +22,11 @@ def _week(d: date | datetime | None, start: date) -> int | None:
     return i if i >= 0 else None
 
 
-def summary(db: Session, weeks: int = 12) -> dict[str, Any]:
+def summary(db: Session, weeks: int = 12, ids: list[int] | None = None) -> dict[str, Any]:
     weeks = max(4, min(weeks, 26))
+
+    def mine(col) -> list:
+        return [col.in_(ids)] if ids is not None else []
     today = date.today()
     start = today - timedelta(days=today.weekday()) - timedelta(weeks=weeks - 1)  # Monday of the oldest week
     labels = [(start + timedelta(weeks=i)) for i in range(weeks)]
@@ -41,7 +44,7 @@ def summary(db: Session, weeks: int = 12) -> dict[str, Any]:
     # Health: average finished-audit score per week.
     health, sample = bucket(), 0
     for score, finished, source in db.execute(select(Audit.score, Audit.finished_at, Audit.data_source).where(
-            Audit.status == "done", Audit.score.is_not(None), Audit.business_id.is_not(None), Audit.finished_at >= since, Audit.data_source != "sample")):
+            Audit.status == "done", Audit.score.is_not(None), Audit.business_id.is_not(None), Audit.finished_at >= since, Audit.data_source != "sample", *mine(Audit.business_id))):
         i = _week(finished, start)
         if inside(i):
             health[i].append(score)
@@ -49,7 +52,7 @@ def summary(db: Session, weeks: int = 12) -> dict[str, Any]:
 
     # Rankings: average local rank (lower is better) and grid points in the top 3, from the rank scans.
     rank, top3, found, scans = bucket(), [0] * weeks, [0] * weeks, 0
-    for avg_rank, t3, f, created in db.execute(select(RankScan.avg_rank, RankScan.top3, RankScan.found, RankScan.created_at).where(RankScan.created_at >= since)):
+    for avg_rank, t3, f, created in db.execute(select(RankScan.avg_rank, RankScan.top3, RankScan.found, RankScan.created_at).where(RankScan.created_at >= since, *mine(RankScan.business_id))):
         i = _week(created, start)
         if inside(i):
             scans += 1
@@ -61,7 +64,7 @@ def summary(db: Session, weeks: int = 12) -> dict[str, Any]:
     # Customers: Google calls / directions / website clicks, and leads by type.
     actions = {k: [0] * weeks for k in ("calls", "directions", "website_clicks")}
     has_actions = [False] * weeks
-    for day, c, d, w in db.execute(select(InsightDay.day, InsightDay.calls, InsightDay.directions, InsightDay.website_clicks).where(InsightDay.day >= start)):
+    for day, c, d, w in db.execute(select(InsightDay.day, InsightDay.calls, InsightDay.directions, InsightDay.website_clicks).where(InsightDay.day >= start, *mine(InsightDay.business_id))):
         i = _week(day, start)
         if inside(i):
             actions["calls"][i] += c or 0
@@ -70,7 +73,7 @@ def summary(db: Session, weeks: int = 12) -> dict[str, Any]:
             has_actions[i] = True
     leads = [0] * weeks
     lead_types: dict[str, int] = defaultdict(int)
-    for kind, day, status in db.execute(select(Lead.lead_type, Lead.lead_date, Lead.status).where(Lead.lead_date >= start)):
+    for kind, day, status in db.execute(select(Lead.lead_type, Lead.lead_date, Lead.status).where(Lead.lead_date >= start, *mine(Lead.business_id))):
         i = _week(day, start)
         if inside(i):
             leads[i] += 1
@@ -78,7 +81,7 @@ def summary(db: Session, weeks: int = 12) -> dict[str, Any]:
 
     # Reputation: new reviews per week and their average rating.
     review_n, review_rating = [0] * weeks, bucket()
-    for rating, day in db.execute(select(Review.rating, Review.review_date).where(Review.review_date >= start)):
+    for rating, day in db.execute(select(Review.rating, Review.review_date).where(Review.review_date >= start, *mine(Review.business_id))):
         i = _week(day, start)
         if inside(i):
             review_n[i] += 1
@@ -86,7 +89,7 @@ def summary(db: Session, weeks: int = 12) -> dict[str, Any]:
 
     # AI work: changes the agents proposed, and those applied.
     proposed, applied = [0] * weeks, [0] * weeks
-    for created, status, applied_at in db.execute(select(AgentTask.created_at, AgentTask.status, AgentTask.applied_at).where(AgentTask.created_at >= since)):
+    for created, status, applied_at in db.execute(select(AgentTask.created_at, AgentTask.status, AgentTask.applied_at).where(AgentTask.created_at >= since, *mine(AgentTask.business_id))):
         i = _week(created, start)
         if inside(i):
             proposed[i] += 1
@@ -95,7 +98,7 @@ def summary(db: Session, weeks: int = 12) -> dict[str, Any]:
             applied[j] += 1
 
     # Portfolio growth: projects added each week and the running total.
-    created_at = sorted(c.date() for (c,) in db.execute(select(Business.created_at)) if c)
+    created_at = sorted(c.date() for (c,) in db.execute(select(Business.created_at).where(*mine(Business.id))) if c)
     before = sum(1 for d in created_at if d < start)
     added = [0] * weeks
     for d in created_at:

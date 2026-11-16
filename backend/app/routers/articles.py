@@ -369,6 +369,16 @@ def publish_react(article_id: int, body: PublishIn, b: Business = Depends(get_bu
     from ..services import article_publishing as ap
     try:
         out = ap.publish_react(db, a, conn, body.mode, when)  # a refused login marks the connection failed there
+    except rs.ScheduleHeldByGrowZen as exc:
+        from ..services import article_schedule as sched
+        try:
+            sched.schedule_at(db, b, a, when, ap.REACT)  # the website cannot publish later: GrowZen keeps it and publishes at that time
+        except sched.ScheduleError as err:
+            raise HTTPException(err.code, str(err))
+        a.react_status = a.react_status if a.react_post_id else "scheduled"
+        db.commit()
+        return {"id": None, "url": None, "status": "scheduled", "held": True, "due_at": when, "article": row(a),
+                "steps": [{"step": "Schedule it", "ok": True, "detail": f"{exc} It will be published on {when.strftime('%d %b %Y %H:%M')} UTC."}]}
     except rs.ReactSiteError as exc:
         raise HTTPException(502, str(exc))
     return {**out, "article": row(a)}

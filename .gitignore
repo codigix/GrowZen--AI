@@ -39,6 +39,9 @@ reports/
 # Uploaded files (blog featured images, ...): user content, not source
 backend/uploads/
 
+# Ad-hoc debugging scripts, not part of the app
+scratch/
+
 # OS / editor junk
 .DS_Store
 Thumbs.db

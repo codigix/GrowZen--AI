@@ -61,16 +61,12 @@ def test_assist_checks_follow_the_country(monkeypatch):
 
 
 def test_google_is_searched_in_the_business_country(monkeypatch):
-    from app.competitors import intel
-    from app.config import get_settings
-    monkeypatch.setenv("SERPER_API_KEY", "k")
-    get_settings.cache_clear()
+    from app.competitors import intel, service
     sent = []
-    monkeypatch.setattr(intel.Serper, "call", lambda self, path, body: sent.append(body) or {"organic": []})
-    intel.Serper("OM").search("nursery in seeb", "Seeb, Oman")
-    assert sent[0]["gl"] == "om" and sent[0]["location"] == "Seeb, Oman"
+    monkeypatch.setattr(service, "places_search", lambda query, region="IN", lat=None, lng=None, *a, **k: sent.append((query, region, lat, lng)) or [])
+    intel.google_places("nursery in seeb", "Seeb, Oman", "om", 23.68, 58.19)
+    assert sent[0][1:] == ("om", 23.68, 58.19)  # the country and the business pin go to Google with the search
     assert intel.default_location(SimpleNamespace(city="Seeb", country="OM")) == "Seeb, Oman"
-    get_settings.cache_clear()
 
 
 def test_countries_endpoint(client):

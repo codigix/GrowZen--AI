@@ -25,6 +25,19 @@ class GoogleAdsRequestError(GoogleAdsError):
         self.details = details or []
 
 
+class _NeverRaised(Exception):
+    pass
+
+
+def _ads_exception():
+    """The library's error class; when the package is not installed, a class nothing raises, so _client() can report the real reason (not a raw ImportError / HTTP 500)."""
+    try:
+        from google.ads.googleads.errors import GoogleAdsException
+        return GoogleAdsException
+    except ImportError:
+        return _NeverRaised
+
+
 def _client():
     settings = get_settings()
     if not settings.google_ads_enabled:
@@ -99,7 +112,7 @@ def keyword_ideas(
     geo_target: str = DEFAULT_GEO_TARGET,
 ) -> list[dict]:
     """Keyword ideas + metrics for one or more seed keywords, via the Keyword Planner (GenerateKeywordIdeas)."""
-    from google.ads.googleads.errors import GoogleAdsException
+    GoogleAdsException = _ads_exception()
 
     client, customer_id = _client()
     service = client.get_service("KeywordPlanIdeaService")
@@ -141,7 +154,7 @@ def geo_target_for(country: str | None) -> str:
 
 def historical_metrics(keywords: list[str], *, geo_target: str = DEFAULT_GEO_TARGET, language: str = DEFAULT_LANGUAGE) -> dict[str, dict]:
     """Exact monthly search volume, competition and top-of-page bid for each given keyword (not related ideas)."""
-    from google.ads.googleads.errors import GoogleAdsException
+    GoogleAdsException = _ads_exception()
 
     client, customer_id = _client()
     service = client.get_service("KeywordPlanIdeaService")

@@ -1,14 +1,18 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { StepBar } from './JourneyBar';
 import { createPortal } from 'react-dom';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { TAB_BASES, HIDE_STRIP, LIST_BASES } from './tabPages';
 import {
   ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, CheckCircle2, Info, MapPin,
   Plug, ServerCrash, Plus, Mail, Store, RefreshCw, Sparkles, Building2, ExternalLink, Cpu,
   Bell, Calendar
 } from 'lucide-react';
 import { api, toUi, SEO_API } from './seoApi';
+import NotificationBell from '../components/NotificationBell';
 import { MarketBadge } from './MarketBadge';
 import Breadcrumbs from './Breadcrumbs';
+import { needsSwitchCode, verifyProjectSwitch } from './projectCode';
 
 // Categorical palette, tuned for white surfaces
 export const SERIES = ['#6658dd', '#4a81d4', '#1abc9c', '#f7b84b', '#f1556c', '#43bfe5', '#313a46', '#9ba6b7'];
@@ -18,6 +22,13 @@ export const INK = { primary: '#0f172a', secondary: '#475569', muted: '#64748b',
 // Shared businesses store
 const store = { list: null, error: null, loading: false, listeners: new Set() };
 const notify = () => store.listeners.forEach(fn => fn());
+
+/** Drop the project list and the remembered selection (sign-out / another account). */
+export const resetBusinessesStore = () => {
+  store.list = null; store.error = null; store.loading = false; notify();
+  try { localStorage.removeItem('seoBusinessId'); } catch (e) { /* ignore */ }
+  window.dispatchEvent(new Event('seo-business'));
+};
 
 export const refreshBusinesses = async () => {
   store.loading = true; notify();
@@ -52,24 +63,22 @@ export const useSeoBusiness = () => {
     window.addEventListener('seo-business', on);
     return () => window.removeEventListener('seo-business', on);
   }, []);
-  const choose = useCallback((next) => {
-    try { localStorage.setItem(KEY, String(next)); } catch (e) { /* private window */ }
-    setId(Number(next));
+  // Switching to another project needs an authenticator code (two-step verification). Resolves true when the project was switched, false when
+  // the code was not given (cancel): callers that navigate afterwards wait for it: `choose(id).then(ok => ok && navigate(...))`.
+  const choose = useCallback(async (next) => {
+    const n = Number(next);
+    let current = null;
+    try { current = Number(localStorage.getItem(KEY)) || null; } catch (e) { /* private window */ }
+    current = current || store.list?.[0]?.id || null;
+    if (n !== current && (store.list?.length || 0) > 0 && await needsSwitchCode(store.list.length) && !(await verifyProjectSwitch(n))) return false;
+    try { localStorage.setItem(KEY, String(n)); } catch (e) { /* private window */ }
+    setId(n);
     window.dispatchEvent(new Event('seo-business'));
+    return true;
   }, []);
+  // A remembered project that is not in this account's list (someone else's, or deleted) falls back to the first one the account owns.
   const business = list ? (list.find(b => b.id === id) || list[0] || null) : null;
   return [business, choose];
-};
-
-export const useSimulated = () => {
-  const [busy, setBusy] = useState('');
-  const timer = useRef(null);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const run = useCallback((label, fn, ms = 1100) => {
-    setBusy(label);
-    timer.current = setTimeout(() => { setBusy(''); fn(); }, ms);
-  }, []);
-  return [busy, run];
 };
 
 export const useAction = () => {
@@ -112,7 +121,7 @@ const BusinessSwitcher = ({ business, onChange, list }) => {
             {business.name}
           </div>
           <div className="text-10 text-slate-500 truncate leading-tight mt-0.5">
-            {[business.city, business.area].filter(Boolean).join(', ') || 'PCMC, Pune'} ▾
+            {[business.city, business.area].filter(Boolean).join(', ') || 'No location set'} ▾
           </div>
         </div>
       </button>
@@ -273,7 +282,7 @@ const NoBusinesses = ({ onCreated }) => {
 /**
  * Top Page Shell: High-tech obsidian glass header with breadcrumbs and business switcher.
  */
-export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = false, needsBusiness = true }) => {
+export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = false, needsBusiness = true, step = null }) => {
   const { list, error, refresh } = useBusinesses();
   const [business, setBusiness] = useSeoBusiness();
 
@@ -295,10 +304,7 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
               <span>Last 30 Days</span>
               <ChevronDown size={13} />
             </div>
-            <div className="relative w-9 h-9 rounded bg-topbar-field flex items-center justify-center text-topbar-item hover:text-white cursor-pointer transition-colors">
-              <Bell size={15} />
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white font-bold text-9 flex items-center justify-center">3</span>
-            </div>
+            <NotificationBell />
             {actions}
             {!hideSwitcher && business && list?.length > 0 && (
               <BusinessSwitcher business={business} onChange={setBusiness} list={list} />
@@ -316,6 +322,7 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
             {subtitle && <p className="text-12 text-slate-400 mt-0.5 max-w-3xl">{subtitle}</p>}
           </div>
         </div>
+        {step && business && !error && <div className="mb-4"><StepBar bid={business.id} step={step} /></div>}
         {body}
       </div>
     </div>
@@ -350,15 +357,6 @@ export const SourceTag = ({ source }) => (
       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> live sync
     </span>
   ) : null
-);
-
-export const PreviewNote = ({ children }) => (
-  <div className="mb-5 p-4 rounded border border-indigo-500/25 bg-gradient-to-r from-indigo-50 via-purple-50 to-white text-13 text-indigo-800 flex items-start gap-3 shadow-lg">
-    <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-cyan-700 shrink-0 mt-0.5">
-      <Sparkles size={15} />
-    </div>
-    <div className="flex-1 font-medium leading-relaxed">{children}</div>
-  </div>
 );
 
 /**
@@ -491,13 +489,32 @@ export const Meter = ({ value, max = 100, color = SERIES[0], height = 7 }) => (
 /** A tab kept in the address (?tab=), so sidebar links can open a page on a given tab. */
 export const useUrlTab = (fallback, valid) => {
   const [params, setParams] = useSearchParams();
-  const raw = params.get('tab');
-  const tab = raw && (!valid || valid.includes(raw)) ? raw : fallback;
-  const setTab = (t) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
+  const { tab: routeTab } = useParams();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const clean = pathname.replace(/\/+$/, '') || '/';
+  const base = routeTab ? clean.replace(/\/[^/]+$/, '') : clean;
+  const paged = TAB_BASES.includes(base); // a page whose views have their own addresses: /<page>/<view>
+  const ok = (t) => Boolean(t) && (!valid || valid.includes(t));
+  const queryTab = routeTab ? null : params.get('tab');
+  const raw = routeTab || queryTab;
+  const tab = ok(raw) ? raw : fallback;
+  const goTab = (t, replace = false) => {
+    const n = new URLSearchParams(params); n.delete('tab');
+    const q = n.toString();
+    navigate(`${base}/${t}${q ? `?${q}` : ''}`, { replace });
+  };
+  useEffect(() => { // an old ?tab= link, or the bare page, becomes the view's own address
+    if (!paged || routeTab) return;
+    if (ok(queryTab)) goTab(queryTab, true);
+    else if (!LIST_BASES.includes(base)) goTab(fallback, true);
+  }, [paged, routeTab, queryTab, base]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setTab = paged ? (t) => goTab(t) : (t) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
+  setTab.locked = paged && HIDE_STRIP.includes(base); // the sidebar is the menu: no second row of tabs
   return [tab, setTab];
 };
 
-export const Tabs = ({ tabs, value, onChange }) => (
+export const Tabs = ({ tabs, value, onChange }) => (onChange && onChange.locked ? null : (
   <div className="flex gap-1 p-1 bg-white shadow-card rounded mb-5 overflow-x-auto no-scrollbar w-fit max-w-full">
     {tabs.map(t => {
       const id = typeof t === 'string' ? t : t.id;
@@ -523,7 +540,7 @@ export const Tabs = ({ tabs, value, onChange }) => (
       );
     })}
   </div>
-);
+));
 
 export const Button = ({ variant = 'secondary', size = 'md', icon: Icon, busy, children, className = '', ...rest }) => {
   const v = {

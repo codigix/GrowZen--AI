@@ -20,7 +20,7 @@ def _vis(ranks: list[int | None]) -> float:
     return round(sum(ctr(r) for r in ranks) / (len(ranks) * CTR[0]) * 100, 2) if ranks else 0.0
 
 
-def table(db: Session, days: int = 30) -> list[dict[str, Any]]:
+def table(db: Session, days: int = 30, ids: list[int] | None = None) -> list[dict[str, Any]]:
     start = date.today() - timedelta(days=days)
     logs: dict[int, dict[str, list[KeywordRankLog]]] = {}
     for r in db.scalars(select(KeywordRankLog).where(KeywordRankLog.day >= start).order_by(KeywordRankLog.day)):
@@ -29,7 +29,7 @@ def table(db: Session, days: int = 30) -> list[dict[str, Any]]:
     prompts = dict(db.execute(select(GeoPrompt.business_id, func.count()).group_by(GeoPrompt.business_id)).all())
     last_ai = dict(db.execute(select(GeoResult.business_id, func.max(GeoResult.created_at)).group_by(GeoResult.business_id)).all())
     out = []
-    for b in db.scalars(select(Business).order_by(Business.name)):
+    for b in db.scalars(select(Business).where(*([Business.id.in_(ids)] if ids is not None else [])).order_by(Business.name)):
         cfg = b.track_config or {}
         per = logs.get(b.id, {})
         seo = None

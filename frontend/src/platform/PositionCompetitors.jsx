@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Card, Badge, Button, useAction, useModulePath } from './SeoUi';
 import { api } from './seoApi';
 import { AXIS, PALETTE, Chg, Empty, Filter } from './PositionUi';
+import Select from '../components/Select';
 
 const DEPTHS = [[20, 'Top 20'], [10, 'Top 10'], [5, 'Top 5'], [3, 'Top 3']]; // Google results are read to the top 20
 const host = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '');
@@ -22,8 +23,8 @@ function RowMenu({ c, onTrack, onIgnore, tracked }) {
   const navigate = useNavigate();
   const go = (to) => () => navigate(to);
   const items = c.you
-    ? [['Analyze in Domain Overview', '/domain-overview'], ['Analyze organic traffic', '/organic-rankings'], ['Analyze backlinks', '/backlink-intelligence']]
-    : [['Audit this website', `/website-audit?tab=audit&url=${encodeURIComponent(`https://${c.domain}`)}`], ['Compare with your domain', '/compare-domains'], ['Find its backlinks', `/backlink-intelligence?q=${encodeURIComponent(c.domain)}`]];
+    ? [['Analyze in Domain Overview', '/domain-overview'], ['Analyze organic traffic', '/organic-rankings'], ['Analyze backlinks', '/backlinks/opportunities']]
+    : [['Audit this website', `/website-audit?tab=audit&url=${encodeURIComponent(`https://${c.domain}`)}`], ['Compare with your domain', '/compare-domains'], ['Find its backlinks', `/backlinks/links?q=${encodeURIComponent(c.domain)}`]];
   const item = 'w-full text-left px-4 py-2.5 hover:bg-slate-50 text-slate-800 cursor-pointer';
   return (
     <div className="relative inline-block text-left">
@@ -98,7 +99,7 @@ export default function PositionCompetitors({ d, b, onChanged }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Filter value={q} onChange={v => { setQ(v); setPage(1); }} placeholder="Filter by keyword or domain" />
-        {tags.length > 0 && <select className={sel} value={tag} onChange={e => { setTag(e.target.value); setPage(1); }} aria-label="Tags"><option value="">Tags</option>{tags.map(t => <option key={t}>{t}</option>)}</select>}
+        {tags.length > 0 && <Select className={sel} value={tag} onChange={e => { setTag(e.target.value); setPage(1); }} aria-label="Tags"><option value="">Tags</option>{tags.map(t => <option key={t}>{t}</option>)}</Select>}
         <label className="h-9 px-3 inline-flex items-center gap-2 rounded border border-slate-200 bg-white text-13 text-slate-700 cursor-pointer"><input type="checkbox" checked={plat} onChange={e => setPlat(e.target.checked)} />Directories &amp; social{d.platform_total ? ` (${d.platform_total})` : ''}</label>
         <button type="button" onClick={() => setShowIgnored(o => !o)} className={`${sel} inline-flex items-center`}>Ignored domains{ignored.length ? ` (${ignored.length})` : ''}</button>
       </div>
@@ -193,9 +194,9 @@ export default function PositionCompetitors({ d, b, onChanged }) {
         <div className="px-5 py-3 border-t border-slate-100 flex flex-wrap items-center gap-3 text-13 text-slate-700">
           <button type="button" disabled={cur <= 1} onClick={() => setPage(1)} aria-label="First page" className="h-8 w-8 rounded border border-slate-200 disabled:opacity-40 inline-flex items-center justify-center cursor-pointer"><ChevronLeft size={14} /></button>
           <button type="button" disabled={cur <= 1} onClick={() => setPage(cur - 1)} className="h-8 px-3 rounded border border-slate-200 disabled:opacity-40 cursor-pointer">Prev</button>
-          <button type="button" disabled={cur >= pages} onClick={() => setPage(cur + 1)} className="h-8 px-3 rounded bg-slate-900 text-white disabled:opacity-40 cursor-pointer inline-flex items-center gap-1">Next<ChevronRight size={13} /></button>
+          <button type="button" disabled={cur >= pages} onClick={() => setPage(cur + 1)} className="h-8 px-3 rounded bg-indigo-600 text-white disabled:opacity-40 cursor-pointer inline-flex items-center gap-1">Next<ChevronRight size={13} /></button>
           <span>Page: <b>{cur}</b> of <span className="text-indigo-600">{pages}</span></span>
-          <select value={per} onChange={e => { setPer(Number(e.target.value)); setPage(1); }} className="h-8 px-2 rounded border border-slate-200 bg-white" aria-label="Rows per page">{[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</select>
+          <Select value={per} onChange={e => { setPer(Number(e.target.value)); setPage(1); }} className="h-8 px-2 rounded border border-slate-200 bg-white" aria-label="Rows per page">{[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</Select>
         </div>
         {error && <p className="px-5 pb-3 text-12 text-rose-600">{error}</p>}
       </Card>

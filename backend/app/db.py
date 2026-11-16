@@ -24,7 +24,16 @@ class TimestampMixin:
 _settings = get_settings()
 # PostgreSQL: give up after 10 s instead of waiting forever (an unreachable host would otherwise
 # hang start-up before the server ever listens).
-_connect_args = {"check_same_thread": False} if _settings.database_url.startswith("sqlite") else {"connect_timeout": 10}
+def connect_args(url: str, statement_timeout_seconds: int) -> dict:
+    if url.startswith("sqlite"):
+        return {"check_same_thread": False}
+    args: dict = {"connect_timeout": 10}
+    if statement_timeout_seconds and statement_timeout_seconds > 0:
+        args["options"] = f"-c statement_timeout={int(statement_timeout_seconds) * 1000}"
+    return args
+
+
+_connect_args = connect_args(_settings.database_url, _settings.db_statement_timeout_seconds)
 # pool_pre_ping would cost one extra round trip to the database on every request; recycling idle connections after 5 minutes avoids stale ones instead.
 _pool = {} if _settings.database_url.startswith("sqlite") else {"pool_recycle": 300, "pool_size": 10, "max_overflow": 20}
 engine = create_engine(_settings.database_url, pool_pre_ping=False, connect_args=_connect_args, **_pool)

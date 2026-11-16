@@ -4,6 +4,7 @@ import { Copy, Check, ExternalLink, Download, CheckCircle2, XCircle, CircleDashe
 import { Card, Button, Tabs, ErrorNote, inputCls, areaCls, useAction, useToast, refreshBusinesses, useModulePath } from './SeoUi';
 import { api } from './seoApi';
 import { pathOnly as pathOf } from './siteUtils';
+import Select from '../components/Select';
 
 /**
  * Structured data for the business: what the audit found on the site, a LocalBusiness block built from the
@@ -178,9 +179,9 @@ export default function SchemaStudio({ b, report }) {
             action={<div className="flex gap-2"><Button size="sm" icon={Download} onClick={() => download('localbusiness-schema.html', script(json))}>Download</Button><CopyBtn text={script(json)} /></div>}>
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <label className="text-12 font-semibold text-slate-700" htmlFor="schema-type">Type</label>
-              <select id="schema-type" value={type} onChange={e => setType(e.target.value)} className="h-9 px-2.5 rounded text-12.5 font-semibold text-slate-800 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer">
+              <Select id="schema-type" value={type} onChange={e => setType(e.target.value)} className="h-9 px-2.5 rounded text-12.5 font-semibold text-slate-800 bg-white ring-1 ring-inset ring-slate-200 outline-none cursor-pointer">
                 {TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}{t === auto ? ' (suggested)' : ''}</option>)}
-              </select>
+              </Select>
               <span className="text-11.5 text-slate-500">{type === auto ? `The most specific type for “${b.primary_category || 'this business'}”.` : `Suggested: ${auto}`}</span>
             </div>
             <Code text={script(json)} />

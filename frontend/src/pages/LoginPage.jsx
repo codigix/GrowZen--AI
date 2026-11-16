@@ -52,10 +52,7 @@ export default function LoginPage({ onSignedIn }) {
     setSuccessMsg('');
     try {
       const res = await api('/auth/forgot-password', { method: 'POST', body: { email: email.trim() } });
-      setSuccessMsg(res.message || 'Password reset instructions have been sent.');
-      if (res.token) {
-        setResetToken(res.token);
-      }
+      setSuccessMsg(res.message || 'If that email has an account, a reset code is on its way. Check your inbox.'); // the code is only ever sent by email
     } catch (err) {
       setError(err.message || 'Unable to process password reset request.');
     } finally {

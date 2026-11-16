@@ -1,90 +1,66 @@
-"""Real data for rankings, backlinks and citations (Serper), and never mistaking one business for another."""
+"""Real data for the Maps rank grid (Google Places), and never mistaking one business for another."""
 from types import SimpleNamespace
 
 import pytest
 
-from app.competitors import intel
 from app.config import get_settings
 from app.services import providers
 from app.services.match import is_same_business, same_name
-from app.services.providers import serper as sp
+from app.services.providers import google as gp
 
 BIZ = SimpleNamespace(id=1, name="Skin 101", place_id="ChIJskin101", phone="+91 70551 01101", website="https://www.the101clinic.com/",
                       lat=18.559, lng=73.787, city="Pune", primary_category="Dermatologist")
 
 
-def fake_call(self, path, body):
-    self.credits += 3 if path == "/maps" else 1
-    if path == "/maps":
-        near = body["ll"] == "@18.559,73.787,15z"  # the centre point: the business ranks #2 there
-        places = [{"position": 1, "title": "Clear Skin", "placeId": "ChIJclear", "phoneNumber": "+91 95845 84111"}]
-        if near:
-            places.append({"position": 2, "title": "Skin 101", "placeId": "ChIJskin101"})
-        return {"places": places}
-    q = body["q"]
-    if "the101clinic" in q or "Skin 101" in q:
-        return {"organic": [
-            {"link": "https://www.practo.com/pune/clinic/skin-101-baner", "title": "Skin 101 - Dermatologist in Baner - Practo", "snippet": "Call 070551 01101"},
-            {"link": "https://www.justdial.com/Pune/Skin-101", "title": "Skin 101 in Baner - Justdial", "snippet": "Phone 98220 11111"},
-            {"link": "https://www.instagram.com/skin101clinic/", "title": "Skin 101 (@skin101clinic)"},
-            {"link": "https://www.lybrate.com/kolhapur/clinic/skin-101", "title": "Skin 101 - Kolhapur - Lybrate"},
-            {"link": "https://unrelated.com/x", "title": "Ten skin care tips", "snippet": "nothing about the brand"},
-        ]}
-    return {"organic": []}
+def fake_places(query, region="IN", lat=None, lng=None, radius_m=5000.0, page_size=20, language="en"):
+    near = (round(lat, 3), round(lng, 3)) == (18.559, 73.787)  # the centre point: the business ranks #2 there
+    places = [{"position": 1, "title": "Clear Skin", "placeId": "ChIJclear", "phoneNumber": "+91 95845 84111"}]
+    if near:
+        places.append({"position": 2, "title": "Skin 101", "placeId": "ChIJskin101"})
+    return places
 
 
 @pytest.fixture
-def serper(monkeypatch):
-    monkeypatch.setenv("SERPER_API_KEY", "test-key")
+def places(monkeypatch):
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "test-key")
     get_settings.cache_clear()
-    intel._cache.clear()
-    monkeypatch.setattr(intel.Serper, "call", fake_call)
+    from app.competitors import service
+    monkeypatch.setattr(service, "places_search", fake_places)
     yield
     get_settings.cache_clear()
 
 
-def test_providers_use_live_google_results_when_serper_is_set(serper):
-    assert providers.rank_provider().__class__.__name__ == "SerperRanks"
-    assert providers.backlink_provider().__class__.__name__ == "SerperBacklinks"
-    assert providers.citation_provider().__class__.__name__ == "SerperCitations"
+def test_the_rank_provider_is_google_places_when_its_key_is_set(places):
+    assert providers.rank_provider().__class__.__name__ == "GooglePlacesRanks"
+    assert providers.citation_provider().__class__.__name__ == "ManualCitations"  # no automatic listing search any more
 
 
 def test_providers_fall_back_to_sample_without_keys():
     assert providers.rank_provider().source == "sample"  # tests run with no keys
 
 
-def test_rank_grid_finds_the_business_by_its_google_place(serper):
-    out = sp.SerperRanks().scan_grid(BIZ, "dermatologist", 3, 2.0)
+def test_rank_grid_finds_the_business_by_its_google_place(places):
+    out = gp.GooglePlacesRanks().scan_grid(BIZ, "dermatologist", 3, 2.0)
     assert out["grid_size"] == 3 and len(out["points"]) == 9
     ranks = [p["rank"] for p in out["points"]]
     assert ranks.count(2) == 1 and ranks.count(None) == 8  # found at the centre only
     assert out["competitors"][0]["name"] == "Clear Skin" and out["competitors"][0]["top3"] == 9
-    assert out["credits"] == 27  # 9 points x 3 credits
+    assert out["requests"] == 9  # one Google Places request per point
 
 
-def test_rank_grid_is_capped(serper):
-    assert sp.SerperRanks().scan_grid(BIZ, "dermatologist", 9, 3.0)["grid_size"] == sp.MAX_GRID
+def test_rank_grid_is_capped(places):
+    assert gp.GooglePlacesRanks().scan_grid(BIZ, "dermatologist", 9, 3.0)["grid_size"] == gp.MAX_GRID
 
 
-def test_backlinks_are_sites_that_mention_the_brand(serper):
-    s = sp.SerperBacklinks().summary("the101clinic.com", name="Skin 101", city="Pune")
-    domains = {t["domain"] for t in s["top"]}
-    assert {"practo.com", "justdial.com", "instagram.com"} <= domains and "unrelated.com" not in domains
-    assert s["referring_domains"] == len(domains) and s["source"] == "google_mentions"
-
-
-def test_citations_listed_missing_and_wrong_phone(serper):
-    rows = {r["directory"]: r for r in sp.SerperCitations().check(BIZ)}
-    assert rows["Practo"]["status"] == "listed"
-    assert rows["Justdial"]["status"] == "inconsistent" and rows["Justdial"]["found"]["phone"] == "9822011111"
-    assert rows["Lybrate"]["status"] == "missing"  # the only Lybrate page is a same-named clinic in Kolhapur
-    assert set(rows) == {name for name, _ in sp.listing_sites("Dermatologist")}  # the sites that matter for a clinic
+def test_listings_are_added_by_a_person_not_searched_for():
+    assert gp.ManualCitations().check(BIZ) == []
 
 
 def test_listing_sites_by_kind():
-    assert ("Zomato", "zomato.com") in sp.listing_sites("Restaurant")
-    assert ("Shiksha", "shiksha.com") in sp.listing_sites("Nursery school")
-    assert ("IndiaMART", "indiamart.com") in sp.listing_sites("Wholesaler")
+    from app.services import countries
+    assert ("Zomato", "zomato.com") in countries.listing_sites("Restaurant", None)
+    assert ("Shiksha", "shiksha.com") in countries.listing_sites("Nursery school", None)
+    assert ("IndiaMART", "indiamart.com") in countries.listing_sites("Wholesaler", None)
 
 
 def test_a_shared_phone_is_not_the_same_business():

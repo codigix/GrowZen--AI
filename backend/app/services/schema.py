@@ -46,6 +46,8 @@ def sync(engine: Engine) -> dict[str, Any]:
             col = table.columns[col_name]
             ddl = f'ALTER TABLE "{table_name}" ADD COLUMN "{col_name}" {col.type.compile(dialect=engine.dialect)}'
             with engine.begin() as conn:
+                if engine.dialect.name == "postgresql":
+                    conn.execute(text("SET LOCAL statement_timeout = 0"))  # a schema change may take longer than a web request is allowed to
                 conn.execute(text(ddl))
             done["added_columns"].append(f"{table_name}.{col_name}")
             log.warning("Added missing column %s.%s", table_name, col_name)

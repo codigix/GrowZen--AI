@@ -16,8 +16,8 @@ export const FEATURE_ROWS = [
   ['ai-perception', 'Perception', 'The words and sentiment AI assistants use about your brand.', AIDATA, 'AI Search Visibility', '/geo-optimization'],
   ['ai-narrative', 'Narrative Drivers', 'The sources and topics that shape what AI says about you.', AIDATA, 'Cited Sources', '/geo-optimization?tab=sources'],
   // SEO
-  ['referring-domains', 'Referring Domains', 'Every site linking to you, with its quality and what it links to.', 'A backlink index. Our own discovery bot lists the links it finds in Backlink Intelligence.', 'Backlink Intelligence', '/backlink-intelligence'],
-  ['backlink-audit', 'Backlink Audit', 'Finds risky or toxic links to review and disavow.', 'A backlink index with link-quality data.', 'Backlink Intelligence', '/backlink-intelligence'],
+  ['referring-domains', 'Referring Domains', 'Every site linking to you, with its quality and what it links to.', 'A backlink index. Our own discovery bot lists the links it finds in Backlink Intelligence.', 'Backlinks', '/backlinks/domains'],
+  ['backlink-audit', 'Backlink Audit', 'Finds risky or toxic links to review and disavow.', 'A backlink index with link-quality data.', 'Backlinks', '/backlinks/domains'],
   // Traffic & market
   ['tm-ai-traffic', 'AI Traffic', 'Visits that come from AI assistants.', MARKET, 'Traffic Analytics', '/traffic'],
   ['tm-referral', 'Referral', 'Visits from links on other websites.', MARKET, 'Traffic Analytics', '/traffic'],

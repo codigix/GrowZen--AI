@@ -80,17 +80,6 @@ def test_organic_research_changes_and_serp_features():
     assert f["trend"]["People also ask"] == [1, 1] and f["trend"]["Videos"] == [0, 1]
 
 
-def test_google_redirect_results_keep_their_real_domain():
-    from app.services.organic import _shown, result_host
-    goto = "https://www.google.com/goto?url=CAESabc"
-    assert result_host({"link": "https://www.circadian-ca.com/x", "displayedLink": "ignored"}) == "circadian-ca.com"
-    assert result_host({"link": goto, "displayedLink": "https://www.itorixinfotech.com › Digital Marketing"}) == "itorixinfotech.com"
-    assert _shown({"link": goto, "displayedLink": "https://mysite.com › blog › post-name"}) == ("mysite.com", "https://mysite.com/blog/post-name")
-    assert _shown({"link": goto, "displayedLink": "https://mysite.com › Digital Marketing"})[1] == "https://mysite.com"  # a page title is not a path
-    assert _shown({"link": goto, "displayedLink": ""}) == ("", "")
-    assert result_host({"link": "https://www.google.com/maps/place/x", "displayedLink": "x"}) == "google.com"  # a real Google page is not a redirect
-
-
 def test_tracked_set_summary_when_the_site_does_not_rank():
     from app.services.landscape import organic_research
     obs = [_o("a", D1, None, serp=[("rival.com", 1), ("other.com", 2)]), _o("b", D1, None, serp=[("rival.com", 1)])]

@@ -4,11 +4,13 @@ import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, ScatterChart, Scat
 import { ArrowUp, ArrowDown, RefreshCw, ExternalLink, AlertTriangle, Search, Inbox, Info } from 'lucide-react';
 import { Card, Badge, Button, ErrorNote, useAction, useToast, useModulePath, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
-import { TrackingHeader, ExportButtons, ShareOfVoice, DevicesLocations, TabBar } from './PositionExtras';
+import { TrackingHeader, ExportButtons, DevicesLocations, TabBar } from './PositionExtras';
 import PositionOverview from './PositionOverview';
+import CurrentPositions from './CurrentPositions';
 import PositionCompetitors from './PositionCompetitors';
 import { Distribution, PagesTab, Cannibalization, Snippets } from './PositionTabs';
 import { AXIS, PALETTE, Th, path, sign, Chg, Spark, Empty } from './PositionUi';
+import Select from '../components/Select';
 
 /**
  * Position Tracking "Landscape": visibility, estimated traffic, average position, distribution, movers, tags, competitors,
@@ -16,7 +18,7 @@ import { AXIS, PALETTE, Th, path, sign, Chg, Spark, Empty } from './PositionUi';
  * Google rank checks (GET /businesses/{id}/seo/position-landscape, services/landscape.py).
  */
 
-const BUCKETS = [['top3', '1-3', '#f59e0b'], ['p4_10', '4-10', '#4338ca'], ['p11_20', '11-20', '#818cf8'], ['out', 'Not in top 10', '#e2e8f0']];
+const BUCKETS = [['top3', '1-3', '#f59e0b'], ['p4_10', '4-10', '#4338ca'], ['p11_20', '11-20', '#818cf8'], ['out', 'Page 3+ or none', '#e2e8f0']];
 const RANGES = [[30, 'Last 30 days'], [60, 'Last 60 days'], [90, 'Last 90 days']];
 
 
@@ -102,7 +104,7 @@ export function Landscape({ d, onTab, b }) {
         <Card className="xl:col-span-2" pad={false}>
           <Metric label="Visibility" hint="Share of the clicks your tracked keywords could win: expected click-through rate at each position, over keywords × the click rate of position 1." value={d.cards.visibility.value} unit="%" change={d.cards.visibility.change} better="up" series={d.cards.visibility.series} />
           <Metric label="Estimated traffic" hint={d.has_volume ? 'Search volume × expected click-through rate at the position, summed over tracked keywords.' : 'No tracked keyword has a search volume yet.'} value={d.cards.traffic.value != null ? fmt(Math.round(d.cards.traffic.value)) : null} change={d.cards.traffic.change} better="up" series={d.cards.traffic.series} />
-          <Metric label="Average position" hint="Average of the positions of the keywords that rank in the top 10. Lower is better." value={d.cards.avg_position.value} change={d.cards.avg_position.change} better="down" series={d.cards.avg_position.series} />
+          <Metric label="Average position" hint="Average of the Search Console positions of the keywords shown on Google. Lower is better." value={d.cards.avg_position.value} change={d.cards.avg_position.change} better="down" series={d.cards.avg_position.series} />
         </Card>
         <Card className="xl:col-span-3" title="Summary" subtitle={`${d.domain} · ${d.period.start} → ${d.period.end} · ${d.period.checks} check${d.period.checks !== 1 ? 's' : ''}`}>
           <ul className="space-y-2.5 text-13 text-slate-700 list-disc pl-5 marker:text-indigo-400">{d.summary.map(s => <li key={s}>{s}</li>)}</ul>
@@ -111,7 +113,7 @@ export function Landscape({ d, onTab, b }) {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 items-start">
-        <Card className="xl:col-span-3" title="Rankings distribution" subtitle="Tracked keywords by position, per check (Google results are read to the top 10)">
+        <Card className="xl:col-span-3" title="Rankings distribution" subtitle="Tracked keywords by Search Console average position, per check">
           <div className="flex flex-wrap items-center gap-4 mb-2 text-12.5">
             {BUCKETS.map(([key, l, c]) => key === 'out'
               ? <label key={key} className="inline-flex items-center gap-1.5 cursor-pointer text-slate-700"><input type="checkbox" checked={showOut} onChange={e => setShowOut(e.target.checked)} />{l}</label>
@@ -124,7 +126,7 @@ export function Landscape({ d, onTab, b }) {
                 <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={false} minTickGap={20} />
                 <YAxis tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} width={36} />
                 <Tooltip />
-                {[...BUCKETS].reverse().filter(([key]) => key !== 'out' || showOut).map(([key, l, c]) => <Bar key={key} dataKey={key} name={l} stackId="d" fill={c} />)}
+                {[...BUCKETS].reverse().filter(([key]) => key !== 'out' || showOut).map(([key, l, c]) => <Bar key={key} dataKey={key} name={l} stackId="d" fill={c} isAnimationActive={false} />)}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -177,66 +179,9 @@ export function Landscape({ d, onTab, b }) {
           <div className="py-10 flex flex-col items-center text-center gap-2">
             <div className="text-15 font-semibold text-slate-900">Add your first tag</div>
             <p className="max-w-sm text-13 text-slate-500">Tags help you track the performance of any keyword group.</p>
-            <Link to={path_('keyword-management')} className="mt-2 h-9 px-4 rounded inline-flex items-center text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800">Tag keywords</Link>
+            <Link to={path_('keyword-management')} className="mt-2 h-9 px-4 rounded inline-flex items-center text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">Tag keywords</Link>
           </div>
         )}
-      </Card>
-
-      <Card title="Market traffic vs. selected domains" subtitle="Domains in the Google results of your tracked keywords. Across: keywords they appear for. Up: better average position. Size: visibility.">
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 10, right: 16, left: -4, bottom: 8 }}>
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" />
-                <XAxis type="number" dataKey="keywords" name="Keywords" tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} domain={[0, 'dataMax + 2']} />
-                <YAxis type="number" dataKey="avg_position" name="Avg. position" reversed tick={AXIS} tickLine={false} axisLine={false} width={40} domain={[1, 'dataMax + 1']} />
-                <ZAxis type="number" dataKey="visibility" range={[160, 1400]} />
-                <Tooltip cursor={{ strokeDasharray: '3 3' }} content={({ payload }) => payload?.[0] ? <div className="bg-white border border-slate-200 rounded px-2.5 py-1.5 text-12"><b>{payload[0].payload.domain}{payload[0].payload.you ? ' (you)' : ''}</b><div>{payload[0].payload.keywords} keywords · avg position {payload[0].payload.avg_position}</div><div>Visibility {payload[0].payload.visibility}%</div></div> : null} />
-                {d.competitors.filter(isOn).map(c => <Scatter key={c.domain} name={c.domain} data={[c]} fill={PALETTE[(c.rank - 1) % PALETTE.length]} fillOpacity={0.55} />)}
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-          <div>
-            <table className="w-full text-13">
-              <thead className="text-11.5 text-slate-500"><tr><Th> </Th><Th>#</Th><Th>Competitor</Th><Th c="text-right">Visibility</Th></tr></thead>
-              <tbody className="divide-y divide-slate-100">{d.competitors.map(c => (
-                <tr key={c.domain} className={c.you ? 'bg-indigo-50/50' : ''}>
-                  <td className="px-4 py-2"><input type="checkbox" checked={isOn(c)} onChange={() => togglePick(c.domain)} style={{ accentColor: PALETTE[(c.rank - 1) % PALETTE.length] }} aria-label={`Show ${c.domain}`} /></td>
-                  <td className="px-2 py-2 tabular-nums text-slate-500">{c.rank}</td>
-                  <td className="px-4 py-2 max-w-[220px] truncate"><a href={`https://${c.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">{c.domain}</a>{c.you && <span className="ml-2 text-11 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">You</span>}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{c.visibility}% <Chg v={c.change} /></td>
-                </tr>))}</tbody>
-            </table>
-            {!(d.tracked_competitors || []).length && (
-              <div className="mt-3 rounded bg-slate-50 p-4">
-                <div className="text-14 font-semibold text-slate-900">We&apos;ve found your competitors on the Google results</div>
-                <p className="text-13 text-slate-600 mt-0.5">Add domains to your competitors list and track their positions with ease.</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => onTab?.('competitors')} className="h-9 px-4 rounded text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800 cursor-pointer">Add competitors</button>
-                  <Link to={path_('competitor-finder')} className="h-9 px-4 rounded inline-flex items-center text-13 font-semibold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">Find more competitors</Link>
-                </div>
-              </div>
-            )}
-            <p className="text-11.5 text-slate-400 mt-2">{d.competitor_total} competing businesses appear in the results.{d.platform_total ? ` ${d.platform_total} directories and social sites (like Instagram or Tripadvisor) are left out: see Competitors Discovery.` : ''}</p>
-          </div>
-        </div>
-      </Card>
-
-      <Card title="SERP features" subtitle="On how many tracked keywords each feature appears on Google">
-        {features.length ? (
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={features} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} />
-                <XAxis dataKey="feature" tick={AXIS} tickLine={false} axisLine={false} interval={0} />
-                <YAxis tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} width={36} />
-                <Tooltip /><Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="yours" name={`${d.domain} appears`} stackId="f" fill="#4338ca" />
-                <Bar dataKey="other" name="Present, you are not in it" stackId="f" fill="#c7d2fe" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        ) : <Empty>No SERP features were recorded on the latest checks.</Empty>}
       </Card>
 
       <Card title="Pages" subtitle="Your pages that rank for the tracked keywords" pad={false}
@@ -252,7 +197,7 @@ export function Landscape({ d, onTab, b }) {
                 <td className="px-4 py-2.5 text-right tabular-nums">{d.has_volume ? <>{p.traffic} <Chg v={p.traffic_change} /></> : '—'}</td>
               </tr>))}</tbody>
           </table>
-        ) : <Empty>{pagesTab === 'top' ? 'No page of this site ranked in the top 10 for a tracked keyword.' : `No ${pagesTab} pages in this period.`}</Empty>}
+        ) : <Empty>{pagesTab === 'top' ? 'No page of this site is shown on Google for a tracked keyword yet.' : `No ${pagesTab} pages in this period.`}</Empty>}
         <div className="p-4 border-t border-slate-100"><Button size="sm" onClick={() => onTab?.('pages')}>View all {d.pages.total || 'landing'} {d.pages.total === 1 ? 'landing page' : 'landing pages'}</Button></div>
       </Card>
 
@@ -278,8 +223,7 @@ export function Landscape({ d, onTab, b }) {
         <div className="mt-4"><Button size="sm" onClick={() => onTab?.('cannibal')}>View Cannibalization report</Button></div>
         {d.cannibal.affected > 0 && <div className="mt-4 text-12.5 text-slate-600">Merge or differentiate the competing pages so one page owns each keyword. Open the affected keywords in <b>All keywords</b> to see which URLs rank.</div>}
       </Card>
-      <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />Visibility and estimated traffic are modelled from your saved Google rank checks (top 10 results) with a standard click-through curve and the keyword volumes you track. They will not match another tool exactly.</p>
-      <ShareOfVoice d={d} />
+      <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />Visibility and estimated traffic are modelled from your saved Google Search Console positions with a standard click-through curve and the keyword volumes you track. They will not match another tool exactly.</p>
     </div>
   );
 }
@@ -314,11 +258,13 @@ export default function PositionLandscape({ b, tab: forced, onTab }) {
   const data = useApi(`/businesses/${b.id}/seo/position-landscape?days=${days}`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
+  const [tick, setTick] = useState(0);
   const d = data.data;
   const check = () => run('check', async () => {
     const r = await api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: {} });
-    toast(`Checked ${r.checked} keyword${r.checked !== 1 ? 's' : ''} (${r.credits} Serper credit${r.credits !== 1 ? 's' : ''})`);
+    toast(`Read ${r.checked} keyword${r.checked !== 1 ? 's' : ''} from Google Search Console`);
     data.reload(true);
+    setTick(t => t + 1); // the table of current positions reads the new check too
   });
   const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
   return (
@@ -328,10 +274,11 @@ export default function PositionLandscape({ b, tab: forced, onTab }) {
           <div className="text-16 font-semibold text-slate-900 flex items-center gap-2 flex-wrap">{b.name}{d?.mock && <Badge tone="amber" title="RANK_LANDSCAPE_MOCK is on in backend/.env"><AlertTriangle size={11} />Sample data: not real</Badge>}</div>
           <div className="text-12 text-slate-500">{d?.domain ? <>Tracking <b>{d.domain}</b> · {d.tracked} keyword{d.tracked !== 1 ? 's' : ''}</> : 'Google organic positions of the tracked keywords'}</div>
         </div>
-        <select className={sel} value={days} onChange={e => setDays(Number(e.target.value))} aria-label="Period">{RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-        <Button variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={d && !d.serper} onClick={check} title={d && !d.serper ? 'Set SERPER_API_KEY to check positions' : 'Check Google now for every tracked keyword'}>Check positions now</Button>
+        <Select className={sel} value={days} onChange={e => setDays(Number(e.target.value))} aria-label="Period">{RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
+        <Button variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={d && !d.rank_ready} onClick={check} title={d && !d.rank_ready ? 'Link the Google account that owns this site (Search Console) first' : 'Read every tracked keyword from Google Search Console (last 28 days average)'}>Check positions now</Button>
       </div>
       <ErrorNote>{error}</ErrorNote>
+      {tab === 'landscape' && <CurrentPositions key={`${b.id}-${tick}`} b={b} onChecked={() => data.reload(true)} />}
       {!d ? (data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <SkPage statLabels={["Visibility", "Estimated traffic", "Average position"]} chartTitle="Rankings distribution" tableTitle="Top keywords" tableHeaders={["Keyword", "Position", "Change", "Volume"]} />)
         : d.state === 'ok' ? (
           <div className="space-y-4">
@@ -344,7 +291,7 @@ export default function PositionLandscape({ b, tab: forced, onTab }) {
             {tab === 'pages' && <PagesTab b={b} />}
             {tab === 'cannibal' && <Cannibalization d={d} b={b} />}
             {tab === 'competitors' && <PositionCompetitors d={d} b={b} onChanged={() => data.reload(true)} />}
-            {tab === 'devices' && <DevicesLocations d={d} />}
+            {tab === 'devices' && <DevicesLocations d={d} b={b} />}
             {tab === 'snippets' && <Snippets d={d} />}
           </div>)
           : (
@@ -352,7 +299,7 @@ export default function PositionLandscape({ b, tab: forced, onTab }) {
               <Empty icon={Search}>
                 {d.state === 'no_website' && 'Add the business\'s website first: positions are matched by its domain.'}
                 {d.state === 'no_keywords' && <>No keyword is tracked yet. Add keywords in <Link to={path_('organic-rankings')} className="text-indigo-600 font-semibold hover:underline">Organic Rankings</Link>, then check their positions.</>}
-                {d.state === 'no_data' && (d.serper ? 'No position has been checked in this period. Press “Check positions now”; the charts grow with every check (the scheduled job also runs one daily).' : 'No position has been checked yet, and Google results are not connected: set SERPER_API_KEY in backend/.env.')}
+                {d.state === 'no_data' && (d.rank_ready ? 'No position has been checked in this period. Press “Check positions now”; the charts grow with every check (the scheduled job also runs one daily).' : 'No position has been checked yet. Link the Google account that owns this website to the project (Search Console), then press “Check positions now”.')}
               </Empty>
             </Card>
           )}

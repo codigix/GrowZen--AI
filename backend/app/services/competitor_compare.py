@@ -94,6 +94,15 @@ def _resolve(audit: Audit, competitor_id: int | None = None) -> ResolvedAudit:
                           target=audit.target, strategy=strategy, status=audit.status, finished_at=audit.finished_at, payload=payload)
 
 
+def _pick(audits: list[Audit], strategy: str | None) -> Audit | None:
+    """The newest audit run with `strategy`, else the newest at all: a scan whose Lighthouse half failed has no
+    strategy but still has its crawl, and a mobile/desktop mismatch is flagged by compare() rather than hidden."""
+    if not audits:
+        return None
+    matching = next((a for a in audits if ((a.result or {}).get("pagespeed") or {}).get("strategy") == strategy), None) if strategy else None
+    return matching or audits[0]
+
+
 def resolve_our_side(db: Session, *, audit_id: int | None = None, business_id: int | None = None, strategy: str | None = None) -> ResolvedAudit:
     if audit_id is not None:
         audit = db.get(Audit, audit_id)
@@ -118,7 +127,7 @@ def resolve_our_side(db: Session, *, audit_id: int | None = None, business_id: i
     if not b:
         raise CompareError(f"Business {business_id} not found")
     q = select(Audit).where(Audit.business_id == business_id, Audit.kind == "website", Audit.status == "done").order_by(Audit.finished_at.desc())
-    web_audit = next((a for a in db.scalars(q) if not strategy or ((a.result or {}).get("pagespeed") or {}).get("strategy") == strategy), None)
+    web_audit = _pick(list(db.scalars(q)), strategy)
     if web_audit:
         return _resolve(web_audit)
     # Fall back to the technical + on-page audits recorded for the business's own site.
@@ -148,9 +157,11 @@ def resolve_competitor_side(db: Session, *, audit_id: int | None = None, competi
     if not comp or (business_id is not None and comp.business_id != business_id):
         raise CompareError(f"Competitor {competitor_id} not found" + (f" for business {business_id}" if business_id else ""))
     q = select(Audit).where(Audit.kind == "competitor", Audit.competitor_id == competitor_id, Audit.status == "done").order_by(Audit.finished_at.desc())
-    audit = next((a for a in db.scalars(q) if not strategy or ((a.result or {}).get("pagespeed") or {}).get("strategy") == strategy), None)
+    audit = _pick(list(db.scalars(q)), strategy)
     if not audit:
-        raise CompareError(f"Competitor {comp.name} ({comp.website}) has no finished audit yet; start one with POST /audit/competitors")
+        running = db.scalar(select(Audit.id).where(Audit.kind == "competitor", Audit.competitor_id == competitor_id, Audit.status.in_(("queued", "running"))))
+        raise CompareError(f"{comp.name}'s audit is still running. Compare again when it shows Audited." if running
+                           else f"{comp.name} ({comp.website}) has no finished audit yet. Click Audit on its row first.")
     return _resolve(audit, competitor_id=competitor_id)
 
 
@@ -279,7 +290,7 @@ def _aggregate_page_keywords(crawl: dict[str, Any], top_n: int = 30) -> list[dic
 
 def _onpage_keyword_comparison(our_crawl: dict[str, Any], their_crawl: dict[str, Any]) -> dict[str, Any]:
     """Keyword gaps derived straight from each site's own crawled content (title, headings, alt
-    text, body copy) -- no external API or quota needed, unlike the Serper-based search keywords
+    text, body copy) -- no external API or quota needed, unlike keyword data from a search API
     below, so this works for every audit pair as soon as both have been crawled."""
     ours, theirs = _aggregate_page_keywords(our_crawl), _aggregate_page_keywords(their_crawl)
     if ours is None or theirs is None:
@@ -297,7 +308,7 @@ def _onpage_keyword_comparison(our_crawl: dict[str, Any], their_crawl: dict[str,
 
 def _search_keyword_gap(db: Session, business_id: int | None, competitor_target: str | None) -> dict[str, Any]:
     """Actual Google-search keyword rankings and gaps come from the competitor-research run
-    (competitors/intel.py, Serper-backed), not from PageSpeed or a crawl. Without a finished run,
+    (competitors/intel.py, Google Places and Search Console), not from PageSpeed or a crawl. Without a finished run,
     this is explicitly unavailable -- never guessed."""
     if business_id is None:
         return {"available": False, "reason": "No business_id given, so there is no competitor-research run to read keyword data from.",
@@ -305,24 +316,27 @@ def _search_keyword_gap(db: Session, business_id: int | None, competitor_target:
     run = db.scalar(select(Audit).where(Audit.kind == "intel", Audit.target == f"business:{business_id}", Audit.status == "done").order_by(Audit.id.desc()))
     if not run:
         return {"available": False, "reason": "No completed competitor-research run for this business.",
-                "required_source": "POST /businesses/{id}/competitor-research (needs SERPER_API_KEY)."}
+                "required_source": "POST /businesses/{id}/competitor-research (needs GOOGLE_PLACES_API_KEY)."}
     result = run.result or {}
     host = urlparse(competitor_target or "").hostname or ""
     host = host.removeprefix("www.")
     gaps = [g for g in (result.get("gaps") or {}).get("keywords", []) if any(c.get("domain") == host for c in g.get("competitors", []))] if host else []
     competitor_keywords = (result.get("ideas") or {}).get("competitor_keywords", [])
     return {
-        "available": True, "source": "competitor-research (Serper)", "research_run_id": run.id, "analysed_at": result.get("analysed_at"),
+        "available": True, "source": "competitor-research (Google Places and Search Console)", "research_run_id": run.id, "analysed_at": result.get("analysed_at"),
         "keyword_gaps": gaps if host else (result.get("gaps") or {}).get("keywords", []),
         "competitor_target_keywords": competitor_keywords,
         "note": "From the business's competitor-research run, not this PageSpeed audit; may be stale relative to it." if not host else None,
     }
 
 
-def _keyword_gap_comparison(db: Session, business_id: int | None, competitor_target: str | None, our_crawl: dict[str, Any], their_crawl: dict[str, Any]) -> dict[str, Any]:
+def _keyword_gap_comparison(db: Session, business_id: int | None, competitor_target: str | None, our_crawl: dict[str, Any], their_crawl: dict[str, Any], our_name: str = "", their_name: str = "", our_host: str = "") -> dict[str, Any]:
+    from . import competitor_keywords  # noqa: PLC0415
     return {
         "on_page": _onpage_keyword_comparison(our_crawl, their_crawl),
         "search": _search_keyword_gap(db, business_id, competitor_target),
+        "researched": competitor_keywords.researched(db, business_id, our_crawl, their_crawl, our_name=our_name, their_name=their_name,
+                                                     our_host=our_host, their_host=urlparse(competitor_target or "").hostname or ""),
     }
 
 
@@ -331,7 +345,8 @@ def compare(db: Session, ours: ResolvedAudit, theirs: ResolvedAudit) -> dict[str
     our_crawl, their_crawl = ours.payload.get("crawl") or {}, theirs.payload.get("crawl") or {}
     compatible = bool(ours.strategy) and bool(theirs.strategy) and ours.strategy == theirs.strategy
     competitor = db.get(Competitor, theirs.competitor_id) if theirs.competitor_id else None
-    return {
+    ours_business = db.get(Business, ours.business_id) if ours.business_id else None
+    result = {
         "ours": {"audit_id": ours.audit_id, "business_id": ours.business_id, "target": ours.target, "strategy": ours.strategy, "finished_at": ours.finished_at and ours.finished_at.isoformat()},
         "competitor": {"audit_id": theirs.audit_id, "competitor_id": theirs.competitor_id, "name": competitor.name if competitor else None,
                         "target": theirs.target, "strategy": theirs.strategy, "finished_at": theirs.finished_at and theirs.finished_at.isoformat()},
@@ -348,5 +363,9 @@ def compare(db: Session, ours: ResolvedAudit, theirs: ResolvedAudit) -> dict[str
             "available": bool(our_ps and their_ps),
         },
         "pages": _page_comparison(our_crawl, their_crawl) if our_crawl or their_crawl else {"matched": [], "unmatched_ours": [], "unmatched_competitor": [], "available": False},
-        "keywords_and_content_gaps": _keyword_gap_comparison(db, ours.business_id, theirs.target, our_crawl, their_crawl),
+        "keywords_and_content_gaps": _keyword_gap_comparison(db, ours.business_id, theirs.target, our_crawl, their_crawl,
+                                                            our_name=(ours_business.name if ours_business else ""), their_name=competitor.name if competitor else "", our_host=ours.target or ""),
     }
+    from . import competitor_report  # noqa: PLC0415
+    result["upgrade"] = competitor_report.build(result)
+    return result

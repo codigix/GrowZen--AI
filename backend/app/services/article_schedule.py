@@ -77,7 +77,7 @@ def _schedule_view(p: ScheduledPost) -> dict:
     due = _utc(p.due_at)
     local = due.astimezone(_tz())
     return {"id": p.id, "destination": p.method, "status": p.status, "due_at": due.isoformat(), "date": local.strftime("%Y-%m-%d"),
-            "time": local.strftime("%H:%M"), "timezone": tz_name(), "attempts": p.attempts, "error": p.error,
+            "time": local.strftime("%H:%M"), "timezone": tz_name(), "attempts": p.attempts, "error": p.error, "planned_for": (p.result or {}).get("planned_for"),
             "url": (p.result or {}).get("url"), "post_id": (p.result or {}).get("id"), "direct": bool((p.result or {}).get("direct")),
             "finished_at": _utc(p.finished_at).isoformat() if p.finished_at else None}
 
@@ -146,6 +146,11 @@ def schedule(db: Session, b: Business, a: Article, date: str, time: str, destina
         raise ScheduleError(f"Pick a date and time in the future ({tz_name()} time).", 422)
     if get_settings().blog_featured_image_required and not fi.path_of(a.featured_image_path):
         raise ScheduleError("Add a featured image before scheduling (Featured image section, above the article body).", 422)
+    return schedule_at(db, b, a, due, destination)
+
+
+def schedule_at(db: Session, b: Business, a: Article, due: datetime, destination: str) -> ScheduledPost:
+    """Hold the article in GrowZen and publish it at `due` (UTC): for websites that have no "publish later" of their own."""
     _check_destination(db, b, destination)
     current = latest_by_article(db, b.id, a.id).get(a.id)
     if current and current.status == "publishing":
@@ -156,6 +161,11 @@ def schedule(db: Session, b: Business, a: Article, date: str, time: str, destina
         p = ScheduledPost(business_id=b.id, article_id=a.id)
         db.add(p)
     p.method, p.due_at, p.status, p.attempts, p.error, p.finished_at = destination, due, "pending", 0, None, None
+    try:
+        from . import blog_flow
+        blog_flow.schedule_task(db, b, a, due)  # a task on that day; a failure here never blocks the schedule
+    except Exception:  # noqa: BLE001
+        log.exception("Could not add the publish-day task for article %s", a.id)
     db.commit()
     return p
 
@@ -165,6 +175,11 @@ def cancel(db: Session, a: Article) -> ScheduledPost:
     if not p or p.status not in ("pending", "failed"):
         raise ScheduleError("This article is being published right now." if p and p.status == "publishing" else "This article is not scheduled.")
     p.status, p.finished_at = "cancelled", _now()
+    try:
+        from . import blog_flow
+        blog_flow.cancel_task(db, db.get(Business, a.business_id), a)
+    except Exception:  # noqa: BLE001
+        log.exception("Could not close the publish-day task for article %s", a.id)
     db.commit()
     return p
 
@@ -237,6 +252,8 @@ def _run_one(db: Session, p: ScheduledPost, now: datetime) -> int:
         p.result = {"id": out.get("id"), "url": out.get("url"), "status": out.get("status"), "steps": out.get("steps"), "published_at": now.isoformat()}
         activity(db, "scheduler", "post_published", p.business_id, article_id=p.article_id, url=out.get("url"), destination=p.method)
         db.commit()
+        from . import blog_flow
+        blog_flow.after_published(db, b, a)
         return 1
     except _Gone as exc:
         db.rollback()
@@ -251,6 +268,8 @@ def _run_one(db: Session, p: ScheduledPost, now: datetime) -> int:
         if p.attempts >= RETRIES or isinstance(exc, rs.AuthFailed):
             p.status, p.finished_at = "failed", now
         else:
+            planned = (p.result or {}).get("planned_for") or _utc(p.due_at).isoformat()  # the time the person chose stays visible
+            p.result = {**(p.result or {}), "planned_for": planned}
             p.status, p.due_at = "pending", now + RETRY_AFTER  # tried again in ten minutes
     if p.status == "failed":
         activity(db, "scheduler", "post_publish_failed", p.business_id, article_id=p.article_id, error=(p.error or "")[:200])

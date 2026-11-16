@@ -1,9 +1,14 @@
 import { useCrumb } from './crumbs';
+import AccessGate from './AccessGate';
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { ReviewsSection } from './GbpWorkspace';
+import { AutopilotPanel } from './AutopilotPanels';
 import { Star, Sparkles, Send, MessageCircle, Mail, Smartphone, Copy, ShieldCheck, Check, Pencil, RefreshCw } from 'lucide-react';
 import ProcessTasks from './ProcessTasks';
 import { SeoShell, Card, Tabs, Stat, Badge, StatusPill, Button, Field, inputCls, areaCls, Meter, ErrorNote, SERIES, useToast, useAction, SkStats, SkList, SkCard } from './SeoUi';
 import { api, useApi, fmtDate } from './seoApi';
+import Select from '../components/Select';
 
 const Stars = ({ n, size = 13 }) => (
   <span className="inline-flex" aria-label={`${n} stars`}>{[1, 2, 3, 4, 5].map(i => <Star key={i} size={size} className={i <= n ? 'text-amber-500 fill-amber-500' : 'text-gray-300'} />)}</span>
@@ -40,7 +45,7 @@ function ReviewCard({ r, b, onSaved, toast }) {
             {text && !editing && <><div className="text-11 text-gray-500 mb-1 flex items-center gap-1"><Sparkles size={11} className="text-violet-600" /> Draft ({r.reply_language || language}) · waiting for approval</div><p className="text-13 text-gray-800 whitespace-pre-line">{text}</p></>}
             {editing && <textarea rows={3} className={areaCls} value={text} onChange={e => setText(e.target.value)} />}
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <select className="h-7 px-2 text-xs border border-gray-300 rounded bg-white" value={language} onChange={e => setLanguage(e.target.value)} aria-label="Reply language">{['English', 'Hindi', 'Marathi'].map(l => <option key={l}>{l}</option>)}</select>
+              <Select className="h-7 px-2 text-xs border border-gray-300 rounded bg-white" value={language} onChange={e => setLanguage(e.target.value)} aria-label="Reply language">{['English', 'Hindi', 'Marathi'].map(l => <option key={l}>{l}</option>)}</Select>
               <Button size="sm" variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={draft}>{text ? 'Redraft' : 'Draft reply'}</Button>
               <Button size="sm" icon={editing ? Check : Pencil} onClick={() => setEditing(e => !e)}>{editing ? 'Done' : text ? 'Edit' : 'Write'}</Button>
               {text && <Button size="sm" variant="primary" icon={Send} busy={busy === 'approve'} onClick={approve}>Approve & post</Button>}
@@ -148,14 +153,17 @@ function Reviews({ b, tab }) {
 }
 
 export default function ReviewManagerPage() {
-  const [tab, setTab] = useState('inbox');
-  useCrumb({ inbox: 'Review inbox', requests: 'Review requests', tasks: 'Tasks' }[tab]);
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(() => (['inbox', 'requests', 'google', 'tasks'].includes(params.get('tab')) ? params.get('tab') : 'inbox'));
+  const [toast, toastNode] = useToast();
+  useCrumb({ inbox: 'Review inbox', requests: 'Review requests', google: 'Replies on Google', tasks: 'Tasks' }[tab]);
   return (
-    <SeoShell title="Reviews" subtitle="Reply to every review within 24 hours, ask every customer for one, and see what people talk about">
+    <SeoShell step="reviews" title="Reviews" subtitle="Reply to every review within 24 hours, ask every customer for one, and see what people talk about">
       {(b) => (
         <>
-          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'inbox', label: 'Review inbox' }, { id: 'requests', label: 'Review requests' }, { id: 'tasks', label: 'Tasks' }]} />
-          {tab === 'tasks' ? <ProcessTasks b={b} areas={['reviews']} /> : <Reviews key={b.id} b={b} tab={tab} />}
+          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'inbox', label: 'Review inbox' }, { id: 'requests', label: 'Review requests' }, { id: 'google', label: 'Replies on Google' }, { id: 'tasks', label: 'Tasks' }]} />
+          {tab === 'tasks' ? <ProcessTasks b={b} areas={['reviews']} /> : tab === 'google' ? <AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="replies" /><ReviewsSection key={b.id} b={b} toast={toast} /></div></AccessGate> : <AccessGate b={b} kind="gmb"><Reviews key={b.id} b={b} tab={tab} /></AccessGate>}
+        {toastNode}
         </>
       )}
     </SeoShell>

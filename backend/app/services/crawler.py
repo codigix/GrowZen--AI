@@ -20,7 +20,7 @@ SKIP_EXT = re.compile(r"\.(jpg|jpeg|png|gif|webp|svg|pdf|zip|mp4|mp3|css|js|ico|
 
 # On-page keyword extraction (adapted from keyword_extractor.py): what a page's own title, meta
 # description, headings, alt text and body copy actually emphasise -- no external API, so this
-# works for any crawled page (ours or a competitor's), unlike Serper-based search-keyword data.
+# works for any crawled page (ours or a competitor's), unlike search-keyword data from an API.
 _KW_STOPWORDS = frozenset("""
 a about above after again against all am an and any are as at be because been before being below between
 both but by can cannot could did do does doing down during each few for from further had has have having

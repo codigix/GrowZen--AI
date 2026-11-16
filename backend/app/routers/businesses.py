@@ -10,11 +10,12 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user, require_admin
 from ..db import get_db
-from ..deps import get_business, in_background
-from ..models import AgentTask, Audit, Business, InsightDay, Lead, Review, Schedule
+from .. import access
+from ..deps import get_business, in_background, my_business_ids, only_mine, owned_business
+from ..models import AgentTask, Audit, Business, BusinessManager, InsightDay, Lead, Review, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
-from ..services import agent, audits, discovery, gbp, reports, schedules, site_onboarding, workplan
+from ..services import project_services, agent, audits, discovery, gbp, reports, schedules, site_onboarding, workplan
 from ..services import analytics as analytics_service, portfolio as portfolio_service, site_health, track_table
 from ..services.activity import log
 from ..services.profile_score import score_profile
@@ -23,13 +24,13 @@ router = APIRouter(prefix="/businesses", tags=["businesses"])
 
 
 @router.get("")
-def list_businesses(db: Session = Depends(get_db), _: User = Depends(current_user)):
+def list_businesses(db: Session = Depends(get_db), user: User = Depends(current_user)):
     # Two grouped queries for every client instead of two per client, and no raw Google payload (gbp_status.live, ~6 KB per client, read by the
     # /gbp/live endpoint only): this list loads on every page, and each database round trip is slow on a hosted database.
     pending = dict(db.execute(select(AgentTask.business_id, func.count(AgentTask.id)).where(AgentTask.status == "pending").group_by(AgentTask.business_id)).all())
     nxt = dict(db.execute(select(Schedule.business_id, func.min(Schedule.next_run_at)).where(Schedule.every != "off").group_by(Schedule.business_id)).all())
     out = []
-    for b in db.scalars(select(Business).order_by(Business.name)):
+    for b in db.scalars(only_mine(select(Business), user).order_by(Business.name)):
         r = row(b)
         r["gbp_status"] = {k: v for k, v in (r.get("gbp_status") or {}).items() if k != "live"}
         n = nxt.get(b.id)
@@ -38,31 +39,77 @@ def list_businesses(db: Session = Depends(get_db), _: User = Depends(current_use
 
 
 @router.get("/analytics")
-def analytics(weeks: int = 12, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def analytics(weeks: int = 12, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Weekly growth across every client (health, rankings, customer actions, leads, reviews, AI work, projects)."""
-    return analytics_service.summary(db, weeks)
+    return analytics_service.summary(db, weeks, my_business_ids(db, user))
 
 
 @router.get("/site-audit")
-def site_audit_table(db: Session = Depends(get_db), _: User = Depends(current_user)):
+def site_audit_table(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Every project's site health broken into crawlability, HTTPS, performance, markups, Core Web Vitals and more."""
-    return site_health.table(db)
+    return site_health.table(db, my_business_ids(db, user))
 
 
 @router.get("/rank-tracking")
-def rank_tracking_table(db: Session = Depends(get_db), _: User = Depends(current_user)):
+def rank_tracking_table(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """The Position Tracking home: every project with its visibility, change, improved and declined keywords, for Google and for AI answers."""
-    return track_table.table(db)
+    return track_table.table(db, ids=my_business_ids(db, user))
 
 
-AUDIT_DEFAULTS = {"limit": 100, "pages_to_crawl": "website", "subdomains": True, "user_agent": "desktop", "allow": [], "disallow": [], "ignore_params": [], "schedule": "off", "email": False}
+@router.get("/services")
+def project_services_table(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The Projects page: every project the user may open, the services (SEO, GEO, AEO, GMB) it is onboarded for, and what is stored for each."""
+    out = []
+    for b in db.scalars(only_mine(select(Business), user).order_by(Business.name)):
+        r = project_services.row_for(db, b)
+        r["can_manage"] = user.sees_all or b.owner_id == user.id
+        out.append(r)
+    return out
+
+
+class ServiceIn(BaseModel):
+    enabled: bool
+
+
+def _manage(b: Business, user: User, module: str) -> None:
+    if module not in project_services.MODULES:
+        raise HTTPException(404, "Unknown service")
+    if not (user.sees_all or b.owner_id == user.id):
+        raise HTTPException(403, "Only the project's owner or an admin can change its services.")
+
+
+@router.put("/{business_id}/services/{module}")
+def set_service(module: str, body: ServiceIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Turn a service on for the project again (or off without deleting anything stored: use DELETE to remove its data)."""
+    _manage(b, user, module)
+    if body.enabled:
+        project_services.add(db, b, module)
+        schedules.ensure_jobs(db, b)
+    else:
+        b.modules = [m for m in project_services.enabled(b) if m != module]
+    log(db, user.name, "service_enabled" if body.enabled else "service_disabled", b.id, service=module)
+    db.commit()
+    return project_services.row_for(db, b)
+
+
+@router.delete("/{business_id}/services/{module}")
+def remove_service(module: str, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Remove one service from the project and delete only its stored data. The project, its other services and Google itself are untouched."""
+    _manage(b, user, module)
+    gone = project_services.remove(db, b, module)
+    log(db, user.name, "service_removed", b.id, service=module, deleted=gone)
+    db.commit()
+    return {"deleted": gone, "project": project_services.row_for(db, b)}
+
+
+AUDIT_DEFAULTS = {"limit": 300, "pages_to_crawl": "website", "subdomains": False, "user_agent": "desktop", "allow": [], "disallow": [], "ignore_params": [], "schedule": "off", "email": False}
 
 
 class AuditConfigIn(BaseModel):
     """The Site Audit settings: how many pages, which pages, the rules, and whether it repeats."""
-    limit: int = Field(default=100, ge=10, le=300)
+    limit: int = Field(default=300, ge=10, le=300)
     pages_to_crawl: Literal["website", "sitemap", "subfolder"] = "website"
-    subdomains: bool = True
+    subdomains: bool = False
     user_agent: Literal["desktop", "mobile"] = "desktop"
     allow: list[str] = Field(default_factory=list, max_length=50)
     disallow: list[str] = Field(default_factory=list, max_length=50)
@@ -93,12 +140,10 @@ def put_audit_config(body: AuditConfigIn, b: Business = Depends(get_business), d
 
 
 @router.get("/{business_id}/audit-overview")
-def audit_overview(business_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def audit_overview(business_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """The Overview page of the project's Site Audit: health, issues by type, pages to improve, trend and thematic scores."""
     from ..services import audit_overview as ov
-    b = db.get(Business, business_id)
-    if not b:
-        raise HTTPException(404, "Business not found")
+    b = owned_business(db, user, business_id)
     out = ov.for_project(db, b)
     if not out:
         raise HTTPException(404, "This project has no finished audit yet")
@@ -106,12 +151,10 @@ def audit_overview(business_id: int, db: Session = Depends(get_db), _: User = De
 
 
 @router.get("/{business_id}/audit-report")
-def audit_report(business_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+def audit_report(business_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """The Site Audit tabs (Issues, Crawled Pages, Statistics, Compare Crawls, Progress, JS Impact) for the project's latest crawl and its history."""
     from ..services import audit_overview as ov
-    b = db.get(Business, business_id)
-    if not b:
-        raise HTTPException(404, "Business not found")
+    b = owned_business(db, user, business_id)
     out = ov.report_for_project(db, b)
     if not out:
         raise HTTPException(404, "This project has no finished crawl yet")
@@ -119,14 +162,14 @@ def audit_report(business_id: int, db: Session = Depends(get_db), _: User = Depe
 
 
 @router.get("/portfolio")
-def portfolio(db: Session = Depends(get_db), _: User = Depends(current_user)):
+def portfolio(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Every client with its status, plan, health, running services and what needs attention (dashboard)."""
-    return portfolio_service.summary(db)
+    return portfolio_service.summary(db, my_business_ids(db, user))
 
 
 @router.post("", status_code=201)
 def create_business(body: BusinessIn, background: BackgroundTasks, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    b = Business(**body.model_dump(), source="manual", created_by=user.name)
+    b = Business(**body.model_dump(), source="manual", created_by=user.name, owner_id=user.id)
     db.add(b)
     db.commit()
     log(db, user.name, "business_created", b.id)
@@ -148,7 +191,22 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
     old_site = b.website
     pushed: list[str] = []
     changed = {k: v for k, v in changes.items() if getattr(b, k, None) != v}
-    patch = gbp.fields_to_location(changed)
+    # The booking link and the list of Book / Order links describe the same buttons: keep them in step before saving.
+    links_touched = False
+    if "action_links" in changes or "booking_url" in changes:
+        base = changes["action_links"] if "action_links" in changes else (b.action_links or [])
+        booking = changes["booking_url"] if "booking_url" in changes else next((x["url"] for x in base if x.get("type") == "APPOINTMENT"), b.booking_url)
+        if "action_links" in changes and "booking_url" not in changes:
+            booking = next((x["url"] for x in base if x.get("type") == "APPOINTMENT"), "")
+        wanted = gbp.desired_action_links(base, booking)
+        links_touched = {x["type"]: x["url"] for x in wanted} != {x["type"]: x["url"] for x in gbp.desired_action_links(b.action_links, b.booking_url)}  # only a real change goes to Google
+        changes["action_links"], changes["booking_url"] = wanted, next((x["url"] for x in wanted if x["type"] == "APPOINTMENT"), None)
+        changed = {k: v for k, v in changes.items() if getattr(b, k, None) != v}
+    if "phone" in changes or "additional_phones" in changes:
+        main = changes["phone"] if "phone" in changes else b.phone
+        if main and main in (changes.get("additional_phones") or []):
+            raise HTTPException(422, "An extra number is the same as the main number.")
+    patch = gbp.fields_to_location(changed, b)
     if "services" in changed and b.connection and b.gbp_location:
         try:  # services are filed under the profile's primary category, which Google reports
             primary = ((gbp.GbpClient(b.connection).location(b.gbp_location).get("categories") or {}).get("primaryCategory") or {}).get("name")
@@ -164,6 +222,12 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
         except gbp.GbpError as exc:
             raise HTTPException(502, f"Google did not accept the change, so nothing was saved: {exc}") from exc
         pushed = sorted(patch)
+    if links_touched and b.connection and b.gbp_location:
+        try:
+            gbp.sync_action_links(gbp.GbpClient(b.connection), b.gbp_location, changes["action_links"])
+        except gbp.GbpError as exc:
+            raise HTTPException(502, f"Google did not accept the booking or order links, so they were not saved: {exc}") from exc
+        pushed = sorted({*pushed, "placeActionLinks"})
     for k, v in changes.items():
         setattr(b, k, v)
     log(db, user.name, "business_updated", b.id, fields=list(changes), pushed_to_google=pushed)
@@ -174,8 +238,13 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
 
 
 @router.delete("/{business_id}", status_code=204)
-def delete(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(require_admin)):
+def delete(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Delete the project and everything stored for it. Its owner or an admin may (viewers are read-only; a manager added by email may not)."""
+    if not (user.sees_all or b.owner_id == user.id):
+        raise HTTPException(403, "Only the project's owner or an admin can delete it.")
     log(db, user.name, "business_deleted", None, name=b.name, id=b.id)
+    # Rows that point at the project without a foreign key (the database cascades the rest): website scans run from it.
+    db.query(Audit).filter(Audit.workspace_id == b.id).delete(synchronize_session=False)
     db.delete(b)
     db.commit()
     return Response(status_code=204)
@@ -226,10 +295,20 @@ def gbp_score(b: Business = Depends(get_business), db: Session = Depends(get_db)
     return {"score": r.score, "factors": r.factors, "items": r.items, "alerts": r.alerts, "top_fixes": r.top_fixes}
 
 
+@router.get("/{business_id}/access-status")
+def access_status(refresh: bool = False, kind: Literal["website", "gmb"] | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The project's access checklist: which of the steps that must be done before its website traffic and Google Business Profile data
+    show are done, with what to do about each one that is not (see app/access.py)."""
+    if refresh:
+        access.forget()
+    return access.evaluate(db, user, b, refresh=refresh, only=kind)
+
+
 @router.get("/{business_id}/gbp/live")
-def gbp_live(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+def gbp_live(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Everything read live from this project's Google Business Profile, in one call: the connection, the
     profile as Google holds it, the last 30 days of customer actions, reviews, photos, posts and search keywords."""
+    access.require(db, user, b, "gmb")
     since = date.today() - timedelta(days=30)
     totals = db.execute(select(func.coalesce(func.sum(InsightDay.calls), 0), func.coalesce(func.sum(InsightDay.directions), 0), func.coalesce(func.sum(InsightDay.website_clicks), 0),
                                 func.coalesce(func.sum(InsightDay.views_search), 0), func.coalesce(func.sum(InsightDay.views_maps), 0), func.coalesce(func.sum(InsightDay.bookings), 0))
@@ -279,6 +358,7 @@ def maps_refresh(b: Business = Depends(get_business), db: Session = Depends(get_
 
 @router.post("/{business_id}/sync")
 def sync(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    access.require(db, user, b, "gmb")
     try:
         out = gbp.sync_business(db, b)
     except gbp.GbpError as exc:
@@ -359,3 +439,47 @@ def report_csv(month: str | None = None, b: Business = Depends(get_business), db
 def report_pdf(month: str | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     s = reports.monthly_summary(db, b, month)
     return Response(reports.pdf(s), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{b.name}-{s["month"]}.pdf"'})
+
+
+class OwnerIn(BaseModel):
+    user_id: str  # the User.id (platform account id, or "crm:<id>") who will own and see this project
+
+
+@router.put("/{business_id}/owner")
+def set_owner(body: OwnerIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    """Admins hand a project to a team member: only the owner (and admins) can open it."""
+    b.owner_id = body.user_id.strip()
+    log(db, user.name, "business_owner_changed", b.id, owner=b.owner_id)
+    db.commit()
+    return {"id": b.id, "owner_id": b.owner_id}
+
+
+class ManagersIn(BaseModel):
+    emails: list[str] = Field(default_factory=list, max_length=50)
+
+
+def _managers(db: Session, b: Business) -> dict:
+    return {"managers": sorted(db.scalars(select(BusinessManager.email).where(BusinessManager.business_id == b.id))),
+            "also_has_access": sorted({e.lower() for e in (b.contact_email, b.connection.email if b.connection else None) if e})}
+
+
+@router.get("/{business_id}/managers")
+def get_managers(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Emails with manager access: whoever signs in with one can open and fetch all of this project's data. The project's contact email and the email of its linked Google account always have it."""
+    return _managers(db, b)
+
+
+@router.put("/{business_id}/managers")
+def set_managers(body: ManagersIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    if not (user.sees_all or b.owner_id == user.id):
+        raise HTTPException(403, "Only the project's owner or an admin can change who manages it.")
+    want = {e.strip().lower() for e in body.emails if "@" in e}
+    have = {m.email: m for m in db.scalars(select(BusinessManager).where(BusinessManager.business_id == b.id))}
+    for e, m in have.items():
+        if e not in want:
+            db.delete(m)
+    for e in want - set(have):
+        db.add(BusinessManager(business_id=b.id, email=e))
+    log(db, user.name, "business_managers_changed", b.id, count=len(want))
+    db.commit()
+    return _managers(db, b)

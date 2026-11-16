@@ -36,7 +36,7 @@ def serp_country(b: Any) -> str:
 
 
 def search_location(b: Any) -> str:
-    """Where Serper searches from: a city for a local project, a whole country otherwise."""
+    """Where Google is asked from: a city for a local project, a whole country otherwise."""
     if scope(b) == "local":
         return countries.search_location(getattr(b, "city", None), countries.of(b))
     return countries.name(serp_country(b))

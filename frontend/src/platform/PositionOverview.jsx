@@ -5,9 +5,10 @@ import { Link } from 'react-router-dom';
 import { Card, Button, useModulePath, useAction } from './SeoUi';
 import { api, fmt } from './seoApi';
 import { AXIS, PALETTE, Th, Chg, Empty, Filter, usePager, path } from './PositionUi';
+import Select from '../components/Select';
 
-const METRICS = [['sov', 'Share of Voice', '%', false], ['visibility', 'Visibility', '%', false], ['traffic', 'Est. Traffic', '', false], ['avg_position', 'Avg. Position', '', true]];
-const INTENT = { informational: ['I', 'bg-indigo-100 text-indigo-700'], navigational: ['N', 'bg-violet-100 text-violet-700'], commercial: ['C', 'bg-amber-100 text-amber-700'], transactional: ['T', 'bg-emerald-100 text-emerald-700'] };
+const METRICS = [['visibility', 'Visibility', '%', false], ['traffic', 'Est. Traffic', '', false], ['avg_position', 'Avg. Position', '', true]];
+const INTENT = { informational: ['I', 'bg-indigo-100 text-indigo-700'], navigational: ['N', 'bg-violet-100 text-violet-700'], commercial: ['C', 'bg-amber-100 text-amber-700'], transactional: ['T', 'bg-emerald-100 text-emerald-700'], local: ['L', 'bg-sky-100 text-sky-700'] };
 const TABS = [['positions', 'Positions'], ['traffic', 'Est. Traffic'], ['visibility', 'Visibility'], ['all', 'All']];
 const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
 const dash = <span className="text-slate-300">—</span>;
@@ -58,7 +59,7 @@ function PositionChart({ r, domains, colorOf, me }) {
               <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} />
               <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={false} minTickGap={24} />
               <YAxis tick={AXIS} tickLine={false} axisLine={false} width={40} reversed domain={smart ? [(min) => Math.max(1, Math.floor(min) - 1), (max) => Math.ceil(max) + 1] : [1, 20]} allowDecimals />
-              <Tooltip formatter={(v, n) => [v == null ? 'not in top 20' : v, n]} />
+              <Tooltip formatter={(v, n) => [v == null ? 'no impressions' : v, n]} />
               {shown.map(x => <Line key={x} type="monotone" dataKey={x} stroke={colorOf(x)} strokeWidth={2} dot={{ r: 4 }} connectNulls isAnimationActive={false} />)}
             </LineChart>
           </ResponsiveContainer>
@@ -100,7 +101,7 @@ export default function PositionOverview({ d, b, onChanged }) {
   const [filters, setFilters] = useState({ intent: '', band: '', tag: '' });
   const [showFilter, setShowFilter] = useState(false);
   const [tab, setTab] = useState('all');
-  const [cols, setCols] = useState(() => new Set(['intent', 'sf', 'kd', 'vol', 'cpc', 'url']));
+  const [cols, setCols] = useState(() => new Set(['intent', 'kd', 'vol', 'cpc', 'url']));
   const [showCols, setShowCols] = useState(false);
   const [sort, setSort] = useState({ key: 'rank', dir: 1 });
   const [open, setOpen] = useState(() => new Set());
@@ -140,10 +141,10 @@ export default function PositionOverview({ d, b, onChanged }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className="h-9 pl-3 pr-1.5 inline-flex items-center gap-2 rounded border border-indigo-300 bg-indigo-50 text-13 text-slate-800">{me}<span className="w-6 h-6 inline-flex items-center justify-center text-slate-500"><X size={13} className="opacity-30" /></span></span>
         {extra.map((v, i) => (
-          <select key={i} className={sel} value={v} aria-label={`Add domain ${i + 1}`} onChange={e => setExtra(x => x.map((y, j) => (j === i ? e.target.value : y)))}>
+          <Select key={i} className={sel} value={v} aria-label={`Add domain ${i + 1}`} onChange={e => setExtra(x => x.map((y, j) => (j === i ? e.target.value : y)))}>
             <option value="">Add domain</option>
             {pickable.filter(x => x === v || !extra.includes(x)).map(x => <option key={x} value={x}>{x}</option>)}
-          </select>))}
+          </Select>))}
         <span className="ml-auto text-12.5 text-slate-500">{d.period.start} → {d.period.end}</span>
       </div>
       <div className="flex flex-wrap items-center gap-3">
@@ -151,9 +152,9 @@ export default function PositionOverview({ d, b, onChanged }) {
         <button type="button" onClick={() => setShowFilter(o => !o)} className="h-9 px-2 inline-flex items-center gap-1.5 text-13 font-semibold text-indigo-600 hover:underline cursor-pointer"><Plus size={14} />Add filter{active ? ` (${active})` : ''}</button>
         {showFilter && (
           <>
-            <select className={sel} value={filters.band} onChange={e => setFilters(f => ({ ...f, band: e.target.value }))} aria-label="Positions"><option value="">Positions</option><option value="top3">Top 3</option><option value="top10">Top 10</option><option value="11-20">11-20</option><option value="out">Not ranking</option></select>
-            <select className={sel} value={filters.intent} onChange={e => setFilters(f => ({ ...f, intent: e.target.value }))} aria-label="Intent"><option value="">Intent</option>{intents.map(i => <option key={i}>{i}</option>)}</select>
-            {tags.length > 0 && <select className={sel} value={filters.tag} onChange={e => setFilters(f => ({ ...f, tag: e.target.value }))} aria-label="Tag"><option value="">Tag</option>{tags.map(t => <option key={t}>{t}</option>)}</select>}
+            <Select className={sel} value={filters.band} onChange={e => setFilters(f => ({ ...f, band: e.target.value }))} aria-label="Positions"><option value="">Positions</option><option value="top3">Top 3</option><option value="top10">Top 10</option><option value="11-20">11-20</option><option value="out">Not ranking</option></Select>
+            <Select className={sel} value={filters.intent} onChange={e => setFilters(f => ({ ...f, intent: e.target.value }))} aria-label="Intent"><option value="">Intent</option>{intents.map(i => <option key={i}>{i}</option>)}</Select>
+            {tags.length > 0 && <Select className={sel} value={filters.tag} onChange={e => setFilters(f => ({ ...f, tag: e.target.value }))} aria-label="Tag"><option value="">Tag</option>{tags.map(t => <option key={t}>{t}</option>)}</Select>}
             {active > 0 && <button type="button" onClick={() => setFilters({ intent: '', band: '', tag: '' })} className="text-13 text-slate-500 hover:text-slate-800 cursor-pointer">Clear</button>}
           </>
         )}
@@ -198,11 +199,11 @@ export default function PositionOverview({ d, b, onChanged }) {
           <Button size="sm" icon={Settings2} onClick={() => setShowCols(o => !o)}>Table settings</Button>
           {showCols && (
             <div className="absolute right-0 top-full mt-1 z-20 w-48 rounded bg-white shadow-lg ring-1 ring-slate-200 p-2 text-13">
-              {[['intent', 'Intent'], ['sf', 'SERP features'], ['kd', 'KD %'], ['vol', 'Volume'], ['cpc', 'CPC'], ['url', 'URL']].map(([c, l]) => <label key={c} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-slate-50 rounded"><input type="checkbox" checked={cols.has(c)} onChange={() => toggleCol(c)} />{l}</label>)}
+              {[['intent', 'Intent'], ['kd', 'KD %'], ['vol', 'Volume'], ['cpc', 'CPC'], ['url', 'URL']].map(([c, l]) => <label key={c} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-slate-50 rounded"><input type="checkbox" checked={cols.has(c)} onChange={() => toggleCol(c)} />{l}</label>)}
             </div>)}
         </div>}>
         <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
-          <Link to={path_('keyword-management')} className="h-9 px-3 rounded inline-flex items-center text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800">Add keywords</Link>
+          <Link to={path_('keyword-management')} className="h-9 px-3 rounded inline-flex items-center text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">Add keywords</Link>
           <Button size="sm" icon={Download} onClick={() => download(`${me}-rankings.csv`, rows)}>Export</Button>
           <div className="inline-flex rounded border border-slate-200 overflow-hidden ml-1">
             {TABS.map(([id, l]) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-9 px-3 text-13 border-r last:border-r-0 border-slate-200 cursor-pointer ${tab === id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{id === 'all' ? `All for ${me}` : l}</button>)}
@@ -255,7 +256,7 @@ export default function PositionOverview({ d, b, onChanged }) {
         </div>
         {footer || <div className="px-5 py-3 border-t border-slate-100 text-12.5 text-slate-500">Page: 1 of 1</div>}
       </Card>
-      <p className="text-11.5 text-slate-400">Positions come from your saved Google checks (top 20). Visibility, traffic and share of voice are modelled with a standard click-through curve and the keyword volumes you track.</p>
+      <p className="text-11.5 text-slate-400">Positions are Google Search Console's average positions from your saved checks. Visibility and traffic are modelled with a standard click-through curve and the keyword volumes you track.</p>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { Globe } from 'lucide-react';
 import { Button } from './SeoUi';
 import { api } from './seoApi';
 import Wizard, { Row, fieldCls, boxCls } from './Wizard';
+import Select from '../components/Select';
 
 const STEPS = [
   { id: 'general', label: 'General' },
@@ -10,7 +11,7 @@ const STEPS = [
   { id: 'rules', label: 'Allow/disallow rules', hint: 'optional' },
   { id: 'params', label: 'URL parameter rules', hint: 'optional' }
 ];
-const DEFAULTS = { limit: 100, pages_to_crawl: 'website', subdomains: true, user_agent: 'desktop', allow: [], disallow: [], ignore_params: [], schedule: 'off', email: false };
+const DEFAULTS = { limit: 300, pages_to_crawl: 'website', subdomains: false, user_agent: 'desktop', allow: [], disallow: [], ignore_params: [], schedule: 'off', email: false };
 const WHICH = { website: 'Internally linked pages, starting from the homepage.', sitemap: 'Only the pages listed in the sitemap; links on them are not followed.', subfolder: 'Only the pages inside the folder in the address, starting from it.' };
 const lines = (t) => t.split('\n').map(x => x.trim()).filter(Boolean);
 
@@ -18,7 +19,7 @@ const lines = (t) => t.split('\n').map(x => x.trim()).filter(Boolean);
  * "New audit": asked whenever a website is audited. The scope, how many pages, which pages, how often and whether to email; then optional crawler
  * choices and the rules that decide which addresses are crawled. For the project's own site the choices are saved and used by its scheduled audits.
  */
-export default function NewAuditModal({ open, onClose, target, host, business, own, strategy, setStrategy, busy, onStart }) {
+export default function NewAuditModal({ open, onClose, target, host, business, own, busy, onStart }) {
   const [step, setStep] = useState('general');
   const [cfg, setCfg] = useState(DEFAULTS);
   const [text, setText] = useState({ allow: '', disallow: '', ignore_params: '' });
@@ -52,12 +53,12 @@ export default function NewAuditModal({ open, onClose, target, host, business, o
             <div className="rounded-lg bg-slate-50 px-4 py-3 flex flex-wrap items-center gap-2 text-15"><Globe size={15} className="text-slate-400" /><b className="text-slate-900">{host}</b><span className="text-slate-400">•</span>
               <label className="inline-flex items-center gap-2 text-slate-600 cursor-pointer"><input type="checkbox" checked={cfg.subdomains} onChange={e => set('subdomains', e.target.checked)} />including all subdomains</label></div>
           </Row>
-          <Row label="Limit per audit"><span className="inline-flex items-center gap-3"><input type="number" min={10} max={300} value={cfg.limit} onChange={e => set('limit', Math.max(10, Math.min(300, Number(e.target.value) || 10)))} className={`${fieldCls} w-28`} aria-label="Pages per audit" /><span className="text-15 text-slate-700">pages</span></span></Row>
+          <Row label="Limit per audit"><span className="inline-flex items-center gap-3"><input type="number" min={10} max={300} value={cfg.limit} onChange={e => set('limit', Math.max(10, Math.min(300, Number(e.target.value) || 10)))} className={`${fieldCls} w-28`} aria-label="Pages per audit" /><span className="text-15 text-slate-700">pages</span><span className="text-12.5 text-slate-400">300 covers every page of most websites</span></span></Row>
           <Row label="Pages to crawl" hint={WHICH[cfg.pages_to_crawl]}>
-            <select className={`${fieldCls} w-48`} value={cfg.pages_to_crawl} onChange={e => set('pages_to_crawl', e.target.value)} aria-label="Pages to crawl"><option value="website">Website</option><option value="sitemap">Sitemap</option><option value="subfolder">Subfolder</option></select>
+            <Select className={`${fieldCls} w-48`} value={cfg.pages_to_crawl} onChange={e => set('pages_to_crawl', e.target.value)} aria-label="Pages to crawl"><option value="website">Website</option><option value="sitemap">Sitemap</option><option value="subfolder">Subfolder</option></Select>
           </Row>
           <Row label="Schedule" hint={own ? null : "Repeating audits are for this project's own website."}>
-            <select className={`${fieldCls} w-64`} value={own ? cfg.schedule : 'off'} disabled={!own} onChange={e => set('schedule', e.target.value)} aria-label="Schedule"><option value="off">Do not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>
+            <Select className={`${fieldCls} w-64`} value={own ? cfg.schedule : 'off'} disabled={!own} onChange={e => set('schedule', e.target.value)} aria-label="Schedule"><option value="off">Do not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></Select>
             <label className={`mt-3 flex items-center gap-2.5 text-15 ${own ? 'text-slate-800 cursor-pointer' : 'text-slate-400'}`}><input type="checkbox" disabled={!own} checked={own && cfg.email} onChange={e => set('email', e.target.checked)} />Send an email once an audit is complete</label>
           </Row>
         </div>
@@ -67,10 +68,7 @@ export default function NewAuditModal({ open, onClose, target, host, business, o
           <Row label="Crawl as" hint="The crawler identifies itself as a phone or a computer, which can show different pages on sites that adapt to the device.">
             <div className="inline-flex rounded border border-slate-300 overflow-hidden">{[['desktop', 'Desktop'], ['mobile', 'Mobile']].map(([id, l]) => <button key={id} type="button" onClick={() => set('user_agent', id)} className={`h-10 px-5 text-14 border-r last:border-r-0 border-slate-300 cursor-pointer ${cfg.user_agent === id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{l}</button>)}</div>
           </Row>
-          <Row label="Speed test device" hint="The device Google Lighthouse measures the homepage on.">
-            <div className="inline-flex rounded border border-slate-300 overflow-hidden">{[['mobile', 'Mobile'], ['desktop', 'Desktop']].map(([id, l]) => <button key={id} type="button" onClick={() => setStrategy(id)} className={`h-10 px-5 text-14 border-r last:border-r-0 border-slate-300 cursor-pointer ${strategy === id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{l}</button>)}</div>
-          </Row>
-          <p className="text-14 text-slate-500 mt-3">The crawler always follows robots.txt. Pages behind a login can't be audited.</p>
+          <p className="text-14 text-slate-500 mt-3">Google Lighthouse always measures the homepage on both mobile and desktop. The crawler always follows robots.txt. Pages behind a login can't be audited.</p>
         </div>
       )}
       {step === 'rules' && (

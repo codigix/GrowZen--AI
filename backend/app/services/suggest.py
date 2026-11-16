@@ -93,7 +93,7 @@ def _address_parts(a: dict[str, Any]) -> dict[str, Any]:
 
 
 # ── suggestions ──────────────────────────────────────────────────────────────
-def suggest(db: Session, q: str, near: str = "", session: str = "", country: str = "IN") -> dict[str, Any]:
+def suggest(db: Session, q: str, near: str = "", session: str = "", country: str = "IN", owner_ids: list[int] | None = None) -> dict[str, Any]:
     """Business names while typing, from existing projects, then Google Maps and OpenStreetMap in `country`."""
     country = countries.code(country)
     q = " ".join((q or "").split())
@@ -102,7 +102,7 @@ def suggest(db: Session, q: str, near: str = "", session: str = "", country: str
                            "sources": {"projects": True, "google_maps": places_enabled(), "openstreetmap": s.osm_lookup_enabled}}
     if len(q) < 2:
         return out
-    for b in db.scalars(select(Business).where(func.lower(Business.name).contains(q.lower())).order_by(Business.name).limit(4)):
+    for b in db.scalars(select(Business).where(func.lower(Business.name).contains(q.lower()), *([Business.id.in_(owner_ids)] if owner_ids is not None else [])).order_by(Business.name).limit(4)):
         out["suggestions"].append({"source": "project", "ref": str(b.id), "title": b.name,
                                    "subtitle": ", ".join(x for x in (b.primary_category, b.area, b.city) if x) or "Existing project"})
     text = f"{q} {near}".strip()
@@ -113,21 +113,29 @@ def suggest(db: Session, q: str, near: str = "", session: str = "", country: str
         except (httpx.HTTPError, DiscoveryError, ValueError) as exc:
             out["notes"].append(f"Google Maps suggestions unavailable: {exc}")
     out["suggestions"] += google
-    if s.osm_lookup_enabled:
+    # Google's listings are the better match and answer in well under a second; OpenStreetMap (slow, public server) is only the
+    # backup for when Google is off, failed or found nothing, so a normal search never waits on it.
+    if s.osm_lookup_enabled and not google:
         try:
-            osm = _cached(("photon", country, text.lower()), 600, lambda: _osm(text, country))
-            out["suggestions"] += osm[:3] if google else osm  # Google's listings are the better match; keep OSM as backup
+            out["suggestions"] += _cached(("photon", country, text.lower()), 600, lambda: _osm(text, country))
         except (httpx.HTTPError, ValueError) as exc:
             out["notes"].append(f"OpenStreetMap suggestions unavailable: {exc}")
     return out
 
 
+_google_client = httpx.Client(timeout=5, limits=httpx.Limits(max_keepalive_connections=4))  # reused: no new TLS handshake per keystroke
+
+
 def _google(text: str, session: str = "", country: str = "IN") -> list[dict[str, Any]]:
+    key = ("gplaces", countries.gl(country), text.lower())
+    return _cached(key, 300, lambda: _google_fetch(text, session, country))
+
+
+def _google_fetch(text: str, session: str = "", country: str = "IN") -> list[dict[str, Any]]:
     body: dict[str, Any] = {"input": text, "includedRegionCodes": [countries.gl(country)]}
     if session:
         body["sessionToken"] = session  # with the Place Details call that follows, billed as one session
-    r = httpx.post(f"{PLACES}/places:autocomplete", json=body,
-                   headers={"X-Goog-Api-Key": places_key()}, timeout=8)
+    r = _google_client.post(f"{PLACES}/places:autocomplete", json=body, headers={"X-Goog-Api-Key": places_key()})
     if r.status_code != 200:
         raise DiscoveryError(((r.json().get("error") or {}).get("message") if r.content else None) or f"HTTP {r.status_code}")
     found = []
@@ -232,6 +240,8 @@ def _with_website_facts(c: dict[str, Any]) -> dict[str, Any]:
     """Fill what the map lacked (phone, description, address) from the business's own website."""
     if not c.get("website"):
         return c
+    if c.get("source") == "google_maps" and c.get("phone") and c.get("address"):
+        return c  # Google already has the essentials: do not make the user wait for a crawl of the website
     try:
         site = read_website(website_domain(c["website"])) or {}
     except (DiscoveryError, httpx.HTTPError) as exc:

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Mail, CheckCircle2, Loader2, Circle, AlertTriangle, Inbox, Plus, Trash2, RefreshCw, Play, ArrowRight, CalendarClock, Save } from 'lucide-react';
 import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ErrorNote, useToast, useAction, useBusinesses, useSeoBusiness, refreshBusinesses, useModulePath, Sk, SkTable, SkList, SkLines, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
+import Select from '../components/Select';
 
 const STEP_LABEL = {
   extract: 'AI reads the email and extracts the business', profile: 'Client profile created', gbp_match: 'Google Business Profile matched',
@@ -164,7 +165,7 @@ function ScheduleModal({ business, onClose, toast }) {
             return (
               <div key={job} className="flex items-center gap-2 py-2 text-13">
                 <span className="flex-1 text-gray-800">{label}{s?.last_status === 'failed' && <span className="ml-2 text-11 text-red-600" title={s.last_error}>last run failed</span>}</span>
-                <select className="h-7 px-1.5 text-xs border border-gray-300 rounded bg-white" disabled={busy === job} value={s?.every || 'off'} onChange={e => setJob(job, e.target.value)}>{EVERY.map(f => <option key={f} value={f}>{f}</option>)}</select>
+                <Select className="h-7 px-1.5 text-xs border border-gray-300 rounded bg-white" disabled={busy === job} value={s?.every || 'off'} onChange={e => setJob(job, e.target.value)}>{EVERY.map(f => <option key={f} value={f}>{f}</option>)}</Select>
                 <span className="w-32 text-right text-12 text-gray-500">{s?.next_run_at ? `next ${fmtDateTime(s.next_run_at)}` : 'off'}</span>
               </div>
             );
@@ -243,7 +244,7 @@ function PlaybookTab({ toast }) {
             <tbody className="divide-y divide-gray-100">
               {JOBS.map(([job, label]) => (
                 <tr key={job}><td className="p-1.5 text-gray-800">{label}</td>{plans.map(p => (
-                  <td key={p} className="p-1.5"><select className="h-6 px-1 text-11 border border-gray-300 rounded bg-white" value={draft.plan_schedules[p]?.[job] || 'off'} onChange={e => setDraft(d => ({ ...d, plan_schedules: { ...d.plan_schedules, [p]: { ...d.plan_schedules[p], [job]: e.target.value } } }))}>{EVERY.map(f => <option key={f} value={f}>{f}</option>)}</select></td>
+                  <td key={p} className="p-1.5"><Select className="h-6 px-1 text-11 border border-gray-300 rounded bg-white" value={draft.plan_schedules[p]?.[job] || 'off'} onChange={e => setDraft(d => ({ ...d, plan_schedules: { ...d.plan_schedules, [p]: { ...d.plan_schedules[p], [job]: e.target.value } } }))}>{EVERY.map(f => <option key={f} value={f}>{f}</option>)}</Select></td>
                 ))}</tr>
               ))}
             </tbody>

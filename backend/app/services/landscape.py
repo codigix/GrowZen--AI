@@ -5,7 +5,7 @@ Nothing here is invented: a figure is derived from what a check recorded. Two ch
 - Visibility = the share of the clicks the tracked keywords could win: sum of the expected click-through rate at each position,
   divided by (keywords x the click-through rate of position 1).
 - Estimated traffic = search volume x expected click-through rate at the position, summed (keywords without a volume count 0).
-Checks read the top 10 results (Serper), so "not ranking" means "not in the top 10".
+Positions are Google Search Console's average position, so "not ranking" means "no impressions on Google in the days read".
 """
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -52,7 +52,7 @@ def _vis(ranks: list[int | None], n: int) -> float:
 
 
 def _bucket(rank: int | None) -> str:
-    return "top3" if rank and rank <= 3 else "p4_10" if rank and rank <= 10 else "p11_20" if rank else "out"
+    return "top3" if rank and rank <= 3 else "p4_10" if rank and rank <= 10 else "p11_20" if rank and rank <= 20 else "out"  # "out": page 3 or later, or no impressions
 
 
 def landscape(obs: list[Obs], meta: dict[str, dict], me: str, start: date, end: date, keep: set[str] | None = None) -> dict:
@@ -90,7 +90,7 @@ def landscape(obs: list[Obs], meta: dict[str, dict], me: str, start: date, end: 
         series.append({
             "date": d.isoformat(), "visibility": _r1(_vis(ranks, len(cur)), 2), "traffic": _r1(sum(vol(k) * ctr(o.rank) for k, o in cur.items()), 2) if has_volume else None,
             "avg_position": _r1(mean(ranked), 2) if ranked else None, "keywords": len(cur), **{b: sum(1 for r in ranks if _bucket(r) == b) for b in ("top3", "p4_10", "p11_20", "out")},
-            "top10": sum(1 for r in ranks if r and r <= 10), "top20": len(ranked),
+            "top10": sum(1 for r in ranks if r and r <= 10), "top20": sum(1 for r in ranks if r and r <= 20),
             "cannibal": sum(1 for o in cur.values() if len(set(o.own_urls)) >= 2),
         })
     s0, s1 = series[0], series[-1]
@@ -172,7 +172,7 @@ def landscape(obs: list[Obs], meta: dict[str, dict], me: str, start: date, end: 
                      "avg_position_sd": _r1(pstdev(ps.values()), 2) if len(ps) > 1 else 0.0, "kw": sorted(ps, key=lambda k: ps[k])[:60],
                      "traffic": _r1(t_now, 2), "traffic_change": _delta(t_now, t_was, 2) if comparable else None, **dist,
                      "improved": sum(1 for k in both if ps[k] < was_ps[k]) if comparable else None, "declined": sum(1 for k in both if ps[k] > was_ps[k]) if comparable else None})
-    if not any(c["you"] for c in comp):  # not in the top 20 for any tracked keyword yet: still shown, with zeros
+    if not any(c["you"] for c in comp):  # not shown on Google for any tracked keyword yet: still listed, with zeros
         z = {"count": 0, "diff": 0 if comparable else None, "new": 0 if comparable else None, "lost": 0 if comparable else None}
         comp.append({"domain": me, "you": True, "visibility": 0.0, "change": 0.0 if comparable else None, "keywords": 0, "avg_position": None, "avg_position_change": None,
                      "traffic": 0.0, "traffic_change": 0.0 if comparable else None, "top3": dict(z), "top10": dict(z), "top20": dict(z),
@@ -423,6 +423,11 @@ def organic_research(obs: list[Obs], meta: dict[str, dict], me: str, start: date
 
 # Sample data (RANK_LANDSCAPE_MOCK, development only): generated checks run through the same code as real ones.
 def mock_obs(me: str, days: int, today: date) -> tuple[list[Obs], dict[str, dict]]:
+    from ..config import get_settings
+    from ..errors import DataUnavailable
+    cfg = get_settings()
+    if cfg.environment.lower() == "production" or not cfg.allow_sample_data:  # generated ranks are never shown as real: not in production, not without the explicit switch
+        raise DataUnavailable("Sample rank data is switched off. Rank checks read Google Search Console and the Google Places API.")
     import random
     rnd = random.Random(me)
     topics = {

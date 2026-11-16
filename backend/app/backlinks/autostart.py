@@ -1,5 +1,5 @@
 """Starts backlink discovery for a project without anyone opening the bot page: the business's website and saved competitors become tracked
-domains, the discovery bot is switched on (so the scheduler keeps running it), and a first run can start straight away. Everything the bot
+domains, the sync from our backlink crawler is switched on (so the scheduler keeps running it), and a first run can start straight away. Everything the bot
 finds is stored in the backlink tables and shown on Backlink Intelligence, the Domain Overview and Top Pages."""
 import logging
 import threading
@@ -49,9 +49,8 @@ def first_run(db: Session, business_id: int) -> None:
     """The first exploration run (a background job). Later runs come from the scheduler; a failure here never affects onboarding."""
     if not get_settings().backlink_autostart:
         return
-    from .router import get_fetcher  # imported here: the router imports this package
     try:
-        bot.run_cycle(db, get_fetcher(), business_id)
+        bot.run_cycle(db, business_id)
     except Exception:  # noqa: BLE001 - the scheduler retries on its next tick
         db.rollback()
         log.exception("First backlink discovery run failed for business %s", business_id)

@@ -1,5 +1,6 @@
 """API: login, business CRUD, the onboarding pipeline end to end, approvals, reports."""
 import time
+from statistics import mean
 
 import jwt
 from fastapi.testclient import TestClient
@@ -87,7 +88,15 @@ def test_webhook_needs_token(client):
     assert ok.status_code == 202
 
 
-def test_rank_scan_and_keywords(client):
+def test_rank_scan_and_keywords(client, monkeypatch):
+    from app.services import providers
+
+    class Live:  # keyword ideas come only from Google Ads now: a stand-in provider keeps this test independent of the developer's .env keys
+        source = "google_ads"
+
+        def ideas(self, seed, location, b):
+            return [{"keyword": f"{seed} near me", "volume": 100}]
+    monkeypatch.setattr(providers, "keyword_provider", lambda: Live())
     bid = client.post("/api/v1/businesses", json={"name": "Glow Studio", "lat": 18.559, "lng": 73.786}).json()["id"]
     assert client.post(f"/api/v1/businesses/{bid}/rank-scans", json={"keyword": "salon in baner", "grid_size": 5}).status_code == 202
     scans = client.get(f"/api/v1/businesses/{bid}/rank-scans").json()
@@ -140,7 +149,7 @@ def test_portfolio(client):
 
     # The AI side: provider status, autopilot rules and each agent's workload.
     a = data["ai"]
-    assert a["engine"]["configured"] is False and "profile_edit" in a["autopilot"]["manual"] and "gbp_post" in a["autopilot"]["auto"]
+    assert a["engine"]["configured"] is False and "profile_edit" in a["autopilot"]["manual"] and "gbp_post" in a["autopilot"]["manual"] and not a["autopilot"]["auto"]  # nothing that reaches Google runs without approval
     assert {"audit", "gbp", "review", "outreach"} <= set(a["agents"]) and a["agents"]["gbp"]["label"] == "Profile agent"
     assert all(v["pending"] >= 0 and v["proposed_30"] >= v["applied_30"] for v in a["agents"].values())
 
@@ -169,7 +178,8 @@ def test_website_audit_saves_live_progress(client, monkeypatch):
     r = client.post("/api/v1/website-audits", json={"url": "https://example.in/", "crawl_pages": 5})
     assert r.status_code == 202
     a = client.get(f"/api/v1/website-audits/{r.json()['id']}").json()
-    assert seen and a["status"] == "done" and a["score"] is not None
+    assert seen and a["status"] == "done"
+    assert a["score"] == round(mean([83, 54, 88, 92, a["result"]["crawl"]["score"]]))
     assert a["result"]["pagespeed"]["scores"]["seo"] == 83 and a["result"]["crawl"]["pages"][0]["frameable"]
     assert a["issues"][0]["area"] == "Technical"  # Lighthouse findings first, then the crawl's
 
