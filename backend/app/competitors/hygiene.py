@@ -11,6 +11,15 @@ def host_of(url: str | None) -> str:
     return intel.host_of(url if "//" in (url or "") else f"https://{url or ''}")
 
 
+def _session(b: Any) -> Any:
+    from sqlalchemy import inspect
+    from sqlalchemy.orm import object_session
+    try:
+        return object_session(b) if inspect(b, raiseerr=False) is not None else None
+    except Exception:  # noqa: BLE001 - a stand-in object (no database row) has no sibling projects
+        return None
+
+
 def skip_reason(business: Any, website: str | None) -> str | None:
     """Why this website must not be a competitor of `business`, or None when it can be."""
     host = host_of(website)
@@ -19,6 +28,10 @@ def skip_reason(business: Any, website: str | None) -> str | None:
     mine = host_of(getattr(business, "website", None))
     if mine and (host == mine or host.endswith(f".{mine}")):
         return "That is your own website."
+    from ..services import site_guard
+    from sqlalchemy.orm import object_session
+    if any(site_guard.belongs_to(host, o) for o in site_guard.sibling_hosts(_session(business), business)):
+        return "That is another of your own websites, not a competitor."
     if intel.is_directory(host):
         return "That is a social network or directory page, not a competitor's own website."
     if host in LINK_HOSTS or any(host.endswith(f".{h}") for h in LINK_HOSTS):

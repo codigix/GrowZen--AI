@@ -317,6 +317,9 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 15, on_progress:
                 continue
             if "text/html" not in r.headers.get("content-type", ""):
                 continue
+            if _root(_norm_host(urlparse(str(r.url)).netloc)) != root:  # a redirect to another website (another domain) is never read as this one
+                broken.append({"url": url, "error": "redirects to another website: " + _norm_host(urlparse(str(r.url)).netloc)})
+                continue
             resolved = _norm_url(str(r.url))
             if resolved in fetched:
                 continue  # this URL redirected to a page already crawled: same content, not a new one

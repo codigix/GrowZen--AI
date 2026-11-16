@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import Business, GoogleConnection, InsightDay, Review
-from . import crypto
+from . import crypto, site_guard
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -849,6 +849,13 @@ def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
         raise GbpError("This business is not linked to a connected Google account.")
     client = GbpClient(b.connection)
     loc = client.location(b.gbp_location) | {"voice_of_merchant": client.voice_of_merchant(b.gbp_location)}
+    wrong = site_guard.profile_conflict(b, loc.get("websiteUri"))
+    if wrong:  # a profile that belongs to another website is never read into this project
+        b.gbp_status = {**(b.gbp_status or {}), "site_mismatch": wrong}
+        db.commit()
+        raise GbpError(wrong)
+    if (b.gbp_status or {}).get("site_mismatch"):
+        b.gbp_status = {k: v for k, v in b.gbp_status.items() if k != "site_mismatch"}
     # Google is the source of truth for a linked profile: bring its name, categories, contact, address and hours in.
     for k, v in location_to_fields(loc).items():
         if k not in ("gbp_status", "gbp_account", "gbp_location") and v not in (None, "", [], {}):

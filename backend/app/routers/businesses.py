@@ -15,7 +15,7 @@ from ..deps import get_business, in_background, my_business_ids, only_mine, owne
 from ..models import AgentTask, Audit, Business, BusinessManager, InsightDay, Lead, Review, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
-from ..services import project_services, agent, audits, discovery, gbp, reports, schedules, site_onboarding, workplan
+from ..services import project_services, agent, audits, discovery, gbp, reports, schedules, site_guard, site_onboarding, workplan
 from ..services import analytics as analytics_service, portfolio as portfolio_service, site_health, track_table
 from ..services.activity import log
 from ..services.profile_score import score_profile
@@ -188,6 +188,10 @@ def get_one(b: Business = Depends(get_business)):
 @router.patch("/{business_id}")
 def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     changes = body.model_dump(exclude_unset=True)
+    if changes.get("website") and not site_guard.same_host(changes["website"], b.website):
+        other = site_guard.website_taken(db, b.owner_id, changes["website"], except_id=b.id)
+        if other:
+            raise HTTPException(409, f"{changes['website']} is already the website of your project \"{other}\". Each website is its own project, so nothing is mixed.")
     old_site = b.website
     pushed: list[str] = []
     changed = {k: v for k, v in changes.items() if getattr(b, k, None) != v}
