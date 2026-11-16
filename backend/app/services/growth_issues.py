@@ -275,7 +275,16 @@ def sweep(db: Session, b: Business, today: date | None = None, live: bool = Fals
             row.evidence = ev
             db.add(row)
             continue
-        db.add(GrowthAction(business_id=b.id, target_id=None, area=i["area"], key=i["key"], period="fix", due_on=today + timedelta(days=SLA_DAYS[i["severity"]]), title=i["title"], why=i["why"], how=i["how"],
+        due = today + timedelta(days=SLA_DAYS[i["severity"]])
+        same = db.scalar(select(GrowthAction).where(GrowthAction.business_id == b.id, GrowthAction.key == i["key"], GrowthAction.due_on == due))
+        if same is not None:  # fixed earlier today and found again: the same task (same key and due date) comes back; a second row would break the unique key
+            same.title, same.why, same.how, same.link, same.verify = i["title"], i["why"], i["how"], i["link"], i["verify"]
+            same.status, same.verified_at = "todo", None
+            same.evidence = {"severity": i["severity"], "source": i["source"], "confidence": i["confidence"], "note": i["note"], "found_at": i["found_at"], "first_seen": today.isoformat(), "last_seen": today.isoformat(), "reopened": True}
+            db.add(same)
+            created += 1
+            continue
+        db.add(GrowthAction(business_id=b.id, target_id=None, area=i["area"], key=i["key"], period="fix", due_on=due, title=i["title"], why=i["why"], how=i["how"],
                             est_minutes=i["est"], mode="manual", link=i["link"], verify=i["verify"], status="todo",
                             evidence={"severity": i["severity"], "source": i["source"], "confidence": i["confidence"], "note": i["note"], "found_at": i["found_at"], "first_seen": today.isoformat(), "last_seen": today.isoformat()}))
         created += 1
