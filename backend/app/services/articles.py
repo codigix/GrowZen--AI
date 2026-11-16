@@ -738,6 +738,30 @@ def _rewrite(kind: str, current: str, primary: str, rule: str) -> str:
                   f"Keep the meaning. Plain text only, no quotes, no labels. Answer with the {kind} only.\n\n{kind}: {current}")
 
 
+def _title_for_topic(ask, primary: str, topic: str, tried: str) -> str | None:
+    """The plan's title did not hold the primary keyword or did not fit 60 characters. Rather than the same "<Keyword>: A Complete Guide" for every
+    article, ask once for a title written for THIS topic; failing that use the chosen topic itself when it fits. None = use the generic one."""
+    topic = " ".join((topic or "").split())
+    if topic and _norm(topic) != _norm(primary):
+        try:
+            d = ask(chr(10).join([
+                f'Write ONE blog title for the topic: "{topic}".',
+                f'Rules: at most {TITLE_MAX} characters, it must contain the exact phrase "{primary}", it must promise only what the topic covers, no clickbait, no numbers or years unless the topic has them.',
+                f'The title "{tried}" was not acceptable.' if tried else "",
+                'Answer with ONE JSON object: {"title": "..."}']), num_predict=120)
+            t = _plain((d or {}).get("title") or "")
+            if t and len(t) <= TITLE_MAX and _has(t, primary):
+                return t
+        except Exception:  # noqa: BLE001 - a title is never worth failing the article for
+            log.warning("Could not ask for a topic title", exc_info=True)
+        if len(topic) <= TITLE_MAX and _has(topic, primary):
+            return topic
+        short = _shorten_title(topic, primary)
+        if short and len(short) <= TITLE_MAX and _has(short, primary):
+            return short
+    return None
+
+
 def _shorten_title(t: str, primary: str) -> str:
     """Last resort: cut at the last separator or word that fits in 60 characters, if the primary keyword survives."""
     cut = t[:TITLE_MAX]
@@ -1182,7 +1206,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             raw_title = _plain(d_plan.get("title") or "")
             title = raw_title if raw_title and len(raw_title) <= TITLE_MAX else _shorten_title(raw_title, primary) if raw_title else ""
             if not title or len(title) > TITLE_MAX or not _has(title, primary):
-                title = f"{primary.title()}: A Complete Guide"
+                title = _title_for_topic(_json, primary, topic, d_plan.get("title") or "") or f"{primary.title()}: A Complete Guide"
                 if len(title) > TITLE_MAX:
                     title = primary.title()[:TITLE_MAX].rsplit(" ", 1)[0]
             if title_hint and title_hint.strip():

@@ -12,6 +12,7 @@ APIs used (all need the project to be approved for the Business Profile APIs):
   Performance          businessprofileperformance.googleapis.com/v1/{location}:fetchMultiDailyMetricsTimeSeries
   Verifications        mybusinessverifications.googleapis.com/v1/{location}/VoiceOfMerchantState
 """
+import logging
 import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -651,6 +652,28 @@ def _open_date(d: dict[str, Any] | None) -> str | None:
     return f"{int(d['year']):04d}-{int(d.get('month', 1)):02d}-{int(d.get('day', 1)):02d}" if d and d.get("year") else None
 
 
+def services_from_items(items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Google's serviceItems as the app's services [{name, description, price}]. A free-form service has its own name; a structured one only has
+    Google's type id ("job_type_id:hair_cut"), shown as plain words."""
+    out = []
+    for i in items or []:
+        free = i.get("freeFormServiceItem") or {}
+        label = free.get("label") or {}
+        name = label.get("displayName") or ""
+        if not name:
+            tid = (i.get("structuredServiceItem") or {}).get("serviceTypeId") or ""
+            name = tid.split(":", 1)[-1].replace("_", " ").strip().capitalize()
+        if not name:
+            continue
+        price = i.get("price") or {}
+        amount = None
+        if price.get("units") is not None or price.get("nanos"):
+            frac = str(int(price.get("nanos") or 0)).zfill(9).rstrip("0")
+            amount = f"{int(price.get('units') or 0)}" + (f".{frac}" if frac else "")
+        out.append({"name": name[:140], "description": (label.get("description") or "")[:300], **({"price": amount, "currency": price.get("currencyCode")} if amount else {})})
+    return out
+
+
 def location_to_fields(loc: dict[str, Any]) -> dict[str, Any]:
     """A Business Information location -> Business columns."""
     addr = loc.get("storefrontAddress") or {}
@@ -678,6 +701,7 @@ def location_to_fields(loc: dict[str, Any]) -> dict[str, Any]:
         "opening_date": _open_date((loc.get("openInfo") or {}).get("openingDate")),
         "more_hours": {m["hoursTypeId"]: m.get("periods") or [] for m in loc.get("moreHours") or [] if m.get("hoursTypeId")},
         "labels": list(loc.get("labels") or []),
+        "services": services_from_items(loc.get("serviceItems")),
         "service_area_type": (loc.get("serviceArea") or {}).get("businessType"),
         "service_area_places": [{"name": x.get("placeName"), "place_id": x.get("placeId")} for x in ((loc.get("serviceArea") or {}).get("places") or {}).get("placeInfos") or []],
         "gbp_location": loc.get("name"),
@@ -803,6 +827,22 @@ def logo_and_cover(media: list[dict[str, Any]]) -> tuple[str | None, str | None]
     return url_of("PROFILE", "LOGO"), url_of("COVER")
 
 
+def fill_pin_from_maps(b: Business) -> bool:
+    """Business Information returns `latlng` only when the profile has a precise pin of its own. Without it, take the point of the same Google Maps listing
+    (its place id) so the map and the local rank grids have a position. It is the listing's position, not a hand-placed pin. Never fails a sync."""
+    if b.lat is not None and b.lng is not None or not b.place_id:
+        return False
+    try:
+        from . import discovery
+        loc = discovery.place_details(b.place_id).get("location") or {}
+        if loc.get("latitude") is not None and loc.get("longitude") is not None:
+            b.lat, b.lng = float(loc["latitude"]), float(loc["longitude"])
+            return True
+    except Exception:  # noqa: BLE001 - Places not set up or unreachable: the pin simply stays empty
+        logging.getLogger("seo.gbp").info("No map position from the Maps listing for business %s", getattr(b, "id", None), exc_info=True)
+    return False
+
+
 def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
     """Refresh the listing's status, then pull reviews, photo count and daily insights for one connected business."""
     if not (b.connection and b.gbp_account and b.gbp_location):
@@ -815,6 +855,7 @@ def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
             if k == "website" and ".grexa.site" in str(v) and b.website and ".grexa.site" not in b.website:
                 continue  # Grexa's auto-generated placeholder site on the profile must not replace the business's real website
             setattr(b, k, v)
+    fill_pin_from_maps(b)
     status = listing_status(loc) | {k: (b.gbp_status or {}).get(k) for k in ("account_name", "account_role", "account_type")}
     live = fetch_live(client, b, loc)
     if live["special_hours"]:

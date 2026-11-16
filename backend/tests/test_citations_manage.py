@@ -66,3 +66,29 @@ def test_listings_are_private_to_the_owner(client):
     assert a.get(f"/api/v1/businesses/{bid}/citations/overview").status_code == 200
     assert o.get(f"/api/v1/businesses/{bid}/citations/overview").status_code == 404
     assert o.put(f"/api/v1/businesses/{bid}/citations/listings/justdial", json={"url": "https://x.in/a"}).status_code == 404
+
+
+def test_short_brand_name_website_and_entities_are_understood_and_ids_are_not_phones():
+    class B:
+        name, phone, country, website = "Codigix Infotech \u2013 Healthcare Marketing Agency", "070665 56768", "IN", "https://codigix.co"
+    insta = (200, '<html><head><title>Codigix (&#064;codigix) &bull; Instagram photos and videos</title>'
+                  '<meta property="og:description" content="45 Followers. Codigix (@codigix) on Instagram: Digital Marketing | SEO. codigix.co"></head>'
+                  '<body>770804245193579016</body></html>')
+    r = sites.check_listing(B, "https://www.instagram.com/codigix", insta)
+    assert r["status"] == "listed" and r["found"]["name"].startswith("Codigix (@codigix)") and r["found"]["phone"] is None
+    # a directory with the brand name but no phone and no website is not accepted
+    r = sites.check_listing(B, "https://www.justdial.com/x", (200, "<title>Codigix</title><body>Codigix Pune</body>"))
+    assert r["status"] == "missing"
+    # a directory page with the short name and the right phone is listed
+    r = sites.check_listing(B, "https://www.justdial.com/x", (200, "<title>Codigix | Justdial</title><body>Codigix Pune 070665 56768</body>"))
+    assert r["status"] == "listed"
+
+
+def test_a_social_profile_with_only_the_brand_name_is_listed_with_a_warning_and_no_stray_phone():
+    class B:
+        name, phone, country, website = "Codigix Infotech – Healthcare Marketing Agency", "070665 56768", "IN", "https://codigix.co"
+    page = (200, "<html><head><title>Codigix (&#064;codigix) &bull; Instagram photos and videos</title></head><body>1054639155</body></html>")
+    r = sites.check_listing(B, "https://www.instagram.com/codigix?xtok=abc", page)
+    assert r["status"] == "listed" and r["found"]["phone"] is None and "make sure this profile is yours" in r["note"]
+    # the same page on a directory is still not accepted
+    assert sites.check_listing(B, "https://www.justdial.com/x", page)["status"] == "missing"

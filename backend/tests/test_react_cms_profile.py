@@ -71,3 +71,67 @@ def test_a_database_error_on_the_site_is_named_instead_of_blaming_the_image():
     msg = rs.site_db_problem("https://s.example", "/api/blogs")
     assert "bannerImage" in msg and "with or without an image" in msg
     assert rs.site_db_problem("https://other.example", "/api/blogs") is None
+
+
+def test_a_create_answer_without_an_id_is_resolved_by_slug_and_an_existing_post_is_updated(monkeypatch):
+    import contextlib
+
+    from app.services import crypto
+    posts = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        path = req.url.path
+        if path == "/api/auth/login":
+            return httpx.Response(200, json={"token": "a.b.c", "expiresIn": 3600})
+        if req.method == "GET" and path == "/api/blogs":
+            return httpx.Response(200, json=[{"id": i, "slug": p["slug"]} for i, p in posts.items() if p.get("isPublished")])
+        if req.method == "GET" and path == "/api/blogs/admin/all":
+            return httpx.Response(200, json=[{"id": i, "slug": p["slug"]} for i, p in posts.items()])
+        if req.method == "POST" and path == "/api/blogs":
+            posts[5] = json.loads(req.content)
+            return httpx.Response(201, json={"message": "Blog created"})  # no id in the answer
+        if req.method == "PUT" and path.startswith("/api/blogs/"):
+            posts[int(path.rsplit("/", 1)[1])] = json.loads(req.content)
+            return httpx.Response(200, json={"message": "updated"})
+        return httpx.Response(404, json={})
+
+    @contextlib.contextmanager
+    def fake(_timeout=30):
+        with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+            yield c
+
+    monkeypatch.setattr(rs, "site_client", fake)
+    conn = _conn()
+    conn.login_username, conn.password_enc, conn.website_url = "u@x.com", crypto.seal("pw"), "https://site.example"
+    a = Article(id=1, business_id=1, keyword="silk sarees", title="Silk Sarees", meta_description="D", body="<p>text</p>", status="completed")
+    out = rs.publish(conn, a, "publish", None)
+    assert out["id"] == "5"  # found by its slug
+    a.react_post_id, a.react_status = None, None  # GrowZen never stored it: publishing again must update post 5, not create a second one
+    again = rs.publish(conn, a, "publish", None)
+    assert again["id"] == "5" and len(posts) == 1
+
+
+def test_image_check_reads_the_post_back_by_slug_when_the_site_has_no_read_by_id(monkeypatch):
+    import contextlib
+
+    from app.services import crypto
+    img = "data:image/webp;base64,AAAA"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/api/auth/login":
+            return httpx.Response(200, json={"token": "a.b.c", "expiresIn": 3600})
+        if req.url.path == "/api/blogs/my-slug":
+            return httpx.Response(200, json={"id": 9, "slug": "my-slug", "coverImage": img})
+        return httpx.Response(404, json={"message": "Blog not found"})
+
+    @contextlib.contextmanager
+    def fake(_timeout=30):
+        with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+            yield c
+
+    monkeypatch.setattr(rs, "site_client", fake)
+    conn = _conn()
+    conn.login_username, conn.password_enc = "u@x.com", crypto.seal("pw")
+    steps = []
+    rs._verify_image(conn, "https://site.example", "/api/blogs", "9", img, steps, "coverImage", "my-slug")
+    assert steps[0]["ok"] is True and "stored unchanged" in steps[0]["detail"]

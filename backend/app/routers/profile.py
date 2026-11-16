@@ -76,6 +76,30 @@ def compose_post(body: ComposeIn, b: Business = Depends(get_business)):
     return {"title": (out.get("title") or "")[:90], "body": str(out.get("body", ""))[:1200], "hashtags": _clean_tags(out.get("hashtags"))}
 
 
+class PostImageIn(BaseModel):
+    title: str | None = None
+    body: str | None = None
+    post_type: str = "Update"
+    style: str | None = None
+    coupon_code: str | None = None
+    starts_on: str | None = None
+    ends_on: str | None = None
+    start_time: str | None = None
+
+
+@router.post("/posts/image")
+def post_image(body: PostImageIn, b: Business = Depends(get_business)):
+    """A 1200 x 900 picture made from the post's own words (Google's recommended size). Nothing is saved or sent: the editor shows it, and attaches it only when the person accepts it."""
+    import base64
+    from ..services import post_image as pi
+    if not (body.title or body.body or "").strip():
+        raise HTTPException(422, "Write the post first: the picture is made from its words.")
+    kind = body.post_type if body.post_type in ("Update", "Offer", "Event") else "Update"
+    data = pi.for_business(b, title=body.title, body=body.body, post_type=kind, style=body.style, coupon=body.coupon_code, starts_on=body.starts_on, ends_on=body.ends_on, start_time=body.start_time)
+    return {"width": pi.W, "height": pi.H, "size": len(data), "style": pi.pick_style(b.name or "", body.style), "styles": list(pi.STYLES), "content_type": "image/jpeg",
+            "image_base64": base64.b64encode(data).decode()}
+
+
 @router.delete("/posts/{post_id}", status_code=204)
 def delete_post(post_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     p = db.get(Post, post_id)

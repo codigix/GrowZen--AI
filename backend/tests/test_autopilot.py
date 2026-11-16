@@ -36,6 +36,7 @@ class FakeGoogle:
 
     def create_post(self, account, location, post):
         FakeGoogle.calls.append(("post", post["body"]))
+        assert post.get("image_url") == "https://lh3.example/p"  # a Google post always carries a picture
         return {"name": f"{location}/localPosts/1"}
 
     def reply_review(self, account, location, rid, text):
@@ -131,7 +132,7 @@ def test_a_post_is_sent_only_after_its_approval_and_only_at_its_time(project, mo
         d["publish_at"] = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
         t.detail = d
         db.commit()
-        assert ap.publish_due(db) == 1 and [c[0] for c in FakeGoogle.calls] == ["post"]
+        assert ap.publish_due(db) == 1 and [c[0] for c in FakeGoogle.calls] == ["photo", "post"]  # the picture is made and added first
         assert db.get(AgentTask, t.id).status == "applied" and db.get(Post, d["post_id"]).status == "published"
     finally:
         db.close()
@@ -172,7 +173,7 @@ def test_publish_now_sends_at_once_and_an_unlinked_profile_cannot_schedule(proje
             ap.approve(db, b, t, "owner")
         b = link(db, project)
         ap.approve(db, b, t, "owner", now=True)
-        assert [c[0] for c in FakeGoogle.calls] == ["post"] and db.get(AgentTask, t.id).status == "applied"
+        assert [c[0] for c in FakeGoogle.calls] == ["photo", "post"]  # the picture is made and added first and db.get(AgentTask, t.id).status == "applied"
         with pytest.raises(ap.AutopilotError, match="already"):
             ap.approve(db, b, t, "owner", now=True)  # one approval, one send
     finally:
