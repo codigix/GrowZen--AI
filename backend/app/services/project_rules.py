@@ -19,8 +19,6 @@ def problems(d: dict[str, Any], modules: list[str] | None) -> list[str]:
         return ["Choose at least one service for the project: SEO, AI search or the Google Business Profile."]
     if not str(d.get("name") or "").strip():
         out.append("The business name is required.")
-    if len(str(d.get("target_audience") or "").strip()) < 10:
-        out.append("Say who the customers are (target audience): keywords and content are written for them.")
     if not (d.get("goals") or []):
         out.append("Choose at least one business goal.")
     if any(m in mods for m in SEO_FAMILY):

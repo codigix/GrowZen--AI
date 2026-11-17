@@ -34,7 +34,7 @@ const JOB_LABELS = { full_audit: 'Full SEO audit', rank_scan: 'Rank tracking', t
 const EVERY = { daily: 'daily', weekly: 'weekly', fortnightly: 'every 2 weeks', monthly: 'monthly' };
 const CATEGORIES = ['Dentist', 'Hospital', 'Eye care center', 'Medical clinic', 'Physiotherapist', 'Dermatologist', 'Restaurant', 'Cafe', 'Bakery', 'Hotel', 'Gym', 'Beauty salon',
   'Real estate agency', 'Lawyer', 'Accountant', 'School', 'Coaching center', 'Car repair', 'Interior designer', 'Software company', 'Manufacturer', 'Store'];
-const EMPTY = { modules: ['seo', 'geo', 'aeo'], target_audience: '', goals: [], tone: 'Professional', usps: '', languages: ['English'], competitors: [], name: '', primary_category: '', description: '', phone: '', website: '', address: '', area: '', city: '', country: 'IN', target_scope: 'local', target_countries: [], target_areas: [], contact_name: '', contact_email: '', booking_url: '', plan: 'Growth', services: [], keywords: [], attributes: [], lat: null, lng: null, social_accounts: { facebook: '', instagram: '', meta_business_id: '' } };
+const EMPTY = { modules: ['seo', 'geo', 'aeo'], goals: [], tone: 'Professional', usps: '', languages: ['English'], competitors: [], name: '', primary_category: '', description: '', phone: '', website: '', address: '', area: '', city: '', country: 'IN', target_scope: 'local', target_countries: [], target_areas: [], contact_name: '', contact_email: '', booking_url: '', plan: 'Growth', services: [], keywords: [], attributes: [], lat: null, lng: null, social_accounts: { facebook: '', instagram: '', meta_business_id: '' } };
 
 // Google Maps and schema.org placeholders when they don't know the real category: never a category to keep.
 const realCategory = (c) => (/^(services?|organization|local ?business|corporation|business|point of interest|establishment|store|company|professional ?services?)$/i.test(String(c || '').trim()) ? '' : String(c || '').trim());
@@ -607,7 +607,7 @@ function LocationCard({ form, setForm, source, bare = false }) {
 }
 
 const SECTIONS = [['business', 'Business', Building2], ['contact', 'Contact', Phone], ['location', 'Location', MapPin], ['services', 'Services & keywords', Tags], ['plan', 'Plan', Layers]];
-const ERROR_SECTION = { modules: 'business', target_audience: 'business', goals: 'business', tone: 'business', languages: 'business', competitors: 'business', name: 'business', primary_category: 'business', phone: 'contact', website: 'contact', contact_email: 'contact', city: 'location', country: 'location', services: 'services', facebook: 'contact', instagram: 'contact', meta_business_id: 'contact' };
+const ERROR_SECTION = { modules: 'business', goals: 'business', tone: 'business', languages: 'business', competitors: 'business', name: 'business', primary_category: 'business', phone: 'contact', website: 'contact', contact_email: 'contact', city: 'location', country: 'location', services: 'services', facebook: 'contact', instagram: 'contact', meta_business_id: 'contact' };
 
 /**
  * Customizable searchable select with checkboxes to select multiple international target locations (countries).
@@ -1216,7 +1216,6 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
   const errors = {
     name: !form.name.trim() && 'The business name is required.',
     modules: !(form.modules || []).length && 'Choose at least one service for this project.',
-    target_audience: (form.target_audience || '').trim().length < 10 && 'Say who the customers are (a sentence is enough): keywords and pages are written for them.',
     goals: !(form.goals || []).length && 'Choose at least one goal.',
     tone: !(form.tone || '').trim() && 'Choose the tone the writing should have.',
     languages: !(form.languages || []).length && 'Choose at least one language for the content.',
@@ -1304,9 +1303,7 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
                   </div>{err('modules')}
                 </Field>
               </div>
-              <div data-field="target_audience" className={box('target_audience')}>
-                <Field label="Target audience *" hint="Who are the customers? For example: families in Baner looking for a dentist for children."><textarea rows={2} maxLength={1000} className={areaCls + hl('target_audience')} value={form.target_audience || ''} onChange={set('target_audience')} />{err('target_audience')}</Field>
-              </div>
+              
               <div data-field="goals" className={box('goals')}>
                 <Field label="Business goals *" hint="What should SEO bring?">
                   <div className="flex flex-wrap gap-2">{['Phone calls', 'Bookings and appointments', 'Leads and enquiries', 'Online sales', 'Local visibility', 'Brand awareness'].map(g => {
@@ -1470,7 +1467,7 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
         attributes: form.attributes, lat: form.lat, lng: form.lng,
         social_accounts: Object.fromEntries(Object.entries(form.social_accounts || {}).map(([k, v]) => [k, String(v || '').trim()]).filter(([, v]) => v)),
         target_scope: form.target_scope || 'local', target_countries: form.target_scope === 'international' ? form.target_countries : [], target_areas: (form.target_scope || 'local') === 'local' ? form.target_areas : [],
-        target_audience: (form.target_audience || '').trim() || null, goals: form.goals || [], modules: form.modules,
+        goals: form.goals || [], modules: form.modules,
         tone: (form.tone || '').trim() || null, usps: (form.usps || '').trim() || null, languages: (form.languages || []).join(', ') || null
       };
       await api(`/businesses/${b.id}`, { method: 'PATCH', repeat: true, body: Object.fromEntries(Object.entries(patch).filter(([k, v]) => v !== null || k === 'services' || k === 'attributes')) });
@@ -1753,7 +1750,7 @@ function AnalysisFields({ form, setForm, err }) {
         <div className="flex flex-wrap gap-2">{MODULE_OPTIONS.map(([m, l]) => <button key={m} type="button" aria-pressed={(form.modules || []).includes(m)} onClick={() => toggle('modules', m)} className={pillCls((form.modules || []).includes(m), 'h-9')}>{l}</button>)}</div>{err('modules')}
       </Field>
       <Field label="Services or products *" hint="What the business sells. Press Enter after each one. Keywords and pages are built from them."><Chips values={form.services} onChange={v => setForm({ ...form, services: v })} placeholder="e.g. Dental implants" />{err('services')}</Field>
-      <Field label="Target audience *" hint="Who are the customers? A sentence is enough."><textarea rows={2} maxLength={1000} className={areaCls} value={form.target_audience || ''} onChange={e => setForm({ ...form, target_audience: e.target.value })} placeholder="For example: families in Baner looking for a dentist for children" />{err('target_audience')}</Field>
+      <div data-field="target_areas"><TargetMarket form={form} setForm={setForm} />{err('city')}</div>
       <Field label="Business goals *" hint="What should SEO bring?">
         <div className="flex flex-wrap gap-1.5">{GOALS.map(g => <button key={g} type="button" aria-pressed={(form.goals || []).includes(g)} onClick={() => toggle('goals', g)} className={pillCls((form.goals || []).includes(g))}>{g}</button>)}</div>{err('goals')}
       </Field>
@@ -1778,7 +1775,6 @@ function QuickConfirm({ form, setForm, source, plans, existing, onBack, onNext, 
     name: !form.name.trim() && 'Enter the business name.',
     modules: !(form.modules || []).length && 'Choose at least one service for this project.',
     services: !(form.services || []).length && 'Add at least one service or product: keywords and pages are built from them.',
-    target_audience: (form.target_audience || '').trim().length < 10 && 'Say who the customers are (a sentence is enough).',
     goals: !(form.goals || []).length && 'Choose at least one goal.',
     tone: !(form.tone || '').trim() && 'Choose the tone of the writing.',
     languages: !(form.languages || []).length && 'Choose at least one language.',
@@ -1835,7 +1831,6 @@ function QuickConfirm({ form, setForm, source, plans, existing, onBack, onNext, 
         </button>
         {more && (
           <div className="px-4 pb-4 pt-1 space-y-5 border-t border-slate-100">
-            <TargetMarket form={form} setForm={setForm} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Facebook page"><input className={inputCls} value={meta.facebook || ''} onChange={setMeta('facebook')} placeholder="facebook.com/yourbusiness" /></Field>
               <Field label="Instagram"><input className={inputCls} value={meta.instagram || ''} onChange={setMeta('instagram')} placeholder="@yourbusiness" /></Field>

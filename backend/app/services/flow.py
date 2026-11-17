@@ -46,7 +46,7 @@ def evaluate(db: Session, b: Business) -> dict[str, Any]:
     from . import project_services
     mods = project_services.enabled(b)
     seo_family = any(m in mods for m in ("seo", "geo", "aeo"))
-    checks = [("name", b.name), ("services", b.services), ("target audience", b.target_audience), ("goals", b.goals)]
+    checks = [("name", b.name), ("services", b.services), ("goals", b.goals)]
     if seo_family:
         checks.append(("website", b.website))
     if "gmb" in mods:

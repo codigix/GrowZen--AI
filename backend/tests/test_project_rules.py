@@ -39,4 +39,4 @@ def test_create_and_change_services_are_checked(client):
 def test_audience_and_goals_are_required_for_every_service():
     base = {"name": "A", "website": "https://a.example", "services": [{"name": "x"}], "target_scope": "national"}
     got = " ".join(pr.problems(base, ["seo"]))
-    assert "target audience" in got and "goal" in got
+    assert "goal" in got and "audience" not in got

@@ -70,7 +70,6 @@ export function profileGaps(form, res) {
   const GMB_ONLY = new Set(['phone', 'address', 'pin', 'category']);
   const all = [
     { key: 'name', label: 'Business name', section: 'business', field: 'name', done: Boolean(form.name.trim()), why: 'The registered name, exactly as on the signboard.' },
-    { key: 'audience', label: 'Target audience', section: 'business', field: 'target_audience', done: (form.target_audience || '').trim().length >= 10, why: 'Keywords and content are written for these customers.' },
     { key: 'goals', label: 'Business goals', section: 'business', field: 'goals', done: (form.goals || []).length > 0, why: 'Decides what the plan aims at: calls, bookings, leads or sales.' },
     { key: 'usps', label: 'What makes you different', section: 'business', field: 'usps', done: (form.usps || '').trim().length >= 10, why: 'The writing uses it so posts and pages do not sound generic.' },
     { key: 'competitors', label: 'Competitors you know (optional)', section: 'business', field: 'competitors', done: (form.competitors || []).length > 0, why: 'Competitor research starts from them and finds more.' },
