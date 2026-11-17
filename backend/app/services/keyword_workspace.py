@@ -299,7 +299,7 @@ def overview(db: Session, b: Business, *, source: str = "", tag: str = "", q: st
     return {"competitors": {"count": len(domains), "domains": domains, "done": bool(domains)},
             "sources": [{"kind": k, "label": v, "count": counts_src[k]} for k, v in SOURCES.items()],
             "tags": [{"tag": t, "label": v, "count": counts_tag[t]} for t, v in TAGS.items()],
-            "totals": {"all": len(items), "open": sum(1 for i in items if not i["picked"] and not i["dismissed"]), "picked": sum(1 for i in items if i["picked"]), "dismissed": sum(1 for i in items if i["dismissed"])},
+            "totals": {"suggested": sum(1 for i in items if i["suggested"] and not i["picked"] and not i["dismissed"]), "all": len(items), "open": sum(1 for i in items if not i["picked"] and not i["dismissed"]), "picked": sum(1 for i in items if i["picked"]), "dismissed": sum(1 for i in items if i["dismissed"])},
             "volumes": keyword_metrics.enabled(), "last_collected": last.isoformat() if last else None, "items": out[:limit], "shown": len(out)}
 
 
