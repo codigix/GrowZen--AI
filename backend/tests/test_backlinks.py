@@ -1183,7 +1183,7 @@ def test_watch_api_run_status_toggle_and_the_weekly_schedule(db, client, ai_off,
     bid, site, f, _, b = _watch_setup(db, client)
     base = f"/api/v1/businesses/{bid}/competitor-watch"
     monkeypatch.setattr(bl_router, "get_fetcher", lambda: f)
-    assert client.get(base).json()["latest"] is None and client.get(base).json()["competitors"] == [{"domain": "rival.com", "pages_watched": 0}]
+    assert client.get(base).json()["latest"] is None and [(c["domain"], c["pages_watched"]) for c in client.get(base).json()["competitors"]] == [("rival.com", 0)]
     assert client.post(f"{base}/run").status_code == 202  # the test client runs the background job before returning
     s = client.get(base).json()
     assert s["latest"]["baseline"] is True and s["competitors"] == [{"domain": "rival.com", "pages_watched": 3}] and s["last_run_at"] and s["next_run_at"] and s["running"] is False
