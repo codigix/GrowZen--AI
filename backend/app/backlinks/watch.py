@@ -358,6 +358,32 @@ def run_due(db: Session, fetcher: engine.PageFetcher, now: datetime | None = Non
     return ran
 
 
+def _site(u: str | None) -> str:
+    h = (urlsplit(u if "//" in (u or "") else f"//{u or ''}").hostname or "").lower()
+    return h[4:] if h.startswith("www.") else h
+
+
+def _chosen_cards(db: Session, b: Business, pages: dict[str, int], events: list) -> list[dict]:
+    """The competitors chosen for the watch, each with what the watch knows about it: pages watched and the changes of the last 30 days."""
+    from ..models import Competitor
+    known = {_site(c.website): c for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id))}
+    since = utcnow() - timedelta(days=30)
+    out = []
+    for d, n in pages.items():
+        c = known.get(d)
+        mine = [e for e in events if e.domain == d and _aw(e.at) >= since]
+        out.append({"domain": d, "pages_watched": n, "name": (c.name if c else None) or d, "website": (c.website if c else None) or f"https://{d}", "source": c.source if c else "backlinks",
+                    "rating": c.rating if c else None, "reviews": c.reviews if c else None,
+                    "changes_30d": {k: sum(1 for e in mine if e.kind == k) for k in ("new_page", "changed", "removed")}, "last_change_at": max((e.at for e in mine), default=None)})
+    return out
+
+
+def _not_chosen(db: Session, b: Business) -> list[dict]:
+    """Competitors found by the research or on Google Maps and left out of the watch: a nudge to look at them."""
+    from ..models import Competitor
+    return [{"id": c.id, "name": c.name, "website": c.website} for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id, Competitor.selected.is_(False)).order_by(Competitor.id))][:12]
+
+
 def status(db: Session, b: Business, event_limit: int = 40) -> dict:
     cfg = _config(db, b.id)
     pages = {}
@@ -368,6 +394,7 @@ def status(db: Session, b: Business, event_limit: int = 40) -> dict:
     rep = lambda r: {"week_start": r.week_start, "created_at": r.created_at, "source": r.source, "events": r.events, "baseline": r.baseline, **r.summary}
     return {"enabled": cfg.watch_enabled is not False, "running": is_running(cfg), "last_run_at": cfg.watch_last_run_at,
             "next_run_at": (_aw(cfg.watch_last_run_at) + INTERVAL) if cfg.watch_last_run_at else None,
-            "competitors": [{"domain": d, "pages_watched": n} for d, n in pages.items()],
+            "competitors": _chosen_cards(db, b, pages, events),
+            "not_chosen": _not_chosen(db, b),
             "latest": rep(reports[0]) if reports else None, "history": [rep(r) for r in reports[1:]],
             "events": [{"domain": e.domain, "kind": e.kind, "url": e.url, "title": e.title, "detail": e.detail, "at": e.at} for e in events]}

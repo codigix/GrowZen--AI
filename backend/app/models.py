@@ -175,6 +175,7 @@ class Competitor(TimestampMixin, Base):
     reviews: Mapped[int | None] = mapped_column(Integer)
     maps_link: Mapped[str | None] = mapped_column(String(500))
     source: Mapped[str] = mapped_column(String(20), default="google_places")  # google_places | manual
+    selected: Mapped[bool | None] = mapped_column(Boolean)  # chosen for Competitor Watch and the later steps. NULL = saved before choosing existed (counts as chosen); False = found but not chosen
 
 
 class LighthouseSiteAudit(TimestampMixin, Base):

@@ -79,7 +79,7 @@ def execute(db: Session, b: Business, action: str, params: dict[str, Any], start
         if why:
             return {"ok": False, "message": why}
         if not db.scalar(select(Competitor.id).where(Competitor.business_id == b.id, Competitor.website == site)):
-            db.add(Competitor(business_id=b.id, name=domain, website=site, source="manual"))  # the same list Competitor Research uses
+            db.add(Competitor(business_id=b.id, name=domain, website=site, source="manual", selected=True))  # the same list Competitor Research uses
             db.commit()
         r = sync.sync_targets(db, b)
         return {"ok": True, "message": f"{domain} is now a competitor, tracked for backlinks. Run the discovery bot to start finding who links to it.", "link": {"label": "Open the competitor gap", "to": "/backlinks/opportunities"}}

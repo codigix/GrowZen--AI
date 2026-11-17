@@ -71,7 +71,7 @@ def evaluate(db: Session, b: Business) -> dict[str, Any]:
     try:
         from ..competitors import hygiene
         from ..models import Competitor
-        comps = [c for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)) if not hygiene.skip_reason(b, c.website)]
+        comps = [c for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)) if c.selected is not False and not hygiene.skip_reason(b, c.website)]
     except Exception:  # noqa: BLE001
         comps = []
     state["competitors"] = {"done": len(comps) >= 3, "detail": f"{len(comps)} real competitors saved." + ("" if len(comps) >= 3 else " Find at least 3."), "metric": f"{len(comps)} saved"}

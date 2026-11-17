@@ -35,7 +35,7 @@ def sync_targets(db: Session, b: Business) -> dict:
 
     own = _domain_of(b.website)
     add(own, b.name, False)
-    for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id).order_by(Competitor.id)):
+    for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id, Competitor.selected.is_not(False)).order_by(Competitor.id)):
         d = _domain_of(c.website)
         if d and d != own and not hygiene.skip_reason(b, c.website):  # a competitor's Instagram or YouTube is not a site whose links mean anything
             add(d, c.name, True)

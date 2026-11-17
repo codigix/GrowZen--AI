@@ -126,7 +126,7 @@ def track_competitor(body: CompetitorDomainIn, b: Business = Depends(get_busines
     site = f"https://{domain}"
     row_ = db.scalar(select(Competitor).where(Competitor.business_id == b.id, Competitor.website == site))
     if not row_:
-        db.add(Competitor(business_id=b.id, name=domain, website=site, source="manual"))
+        db.add(Competitor(business_id=b.id, name=domain, website=site, source="manual", selected=True))
         log(db, user.name, "competitor_added", b.id, domain=domain)
         db.commit()
     return {"website": site}

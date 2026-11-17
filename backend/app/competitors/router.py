@@ -4,6 +4,7 @@ and compared later; without `business_id` this is read-only, same as before."""
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -32,7 +33,7 @@ def _upsert(db: Session, business_id: int, found: list[dict]) -> list[Competitor
             continue  # the business itself, or a social / directory page: not a competitor's website
         c = existing.get(website)
         if not c:
-            c = Competitor(business_id=business_id, website=website, source="google_places")
+            c = Competitor(business_id=business_id, website=website, source="google_places", selected=False)  # found, not yet chosen
             db.add(c)
         c.name = item.get("name") or c.name or website
         c.address = item.get("address") or c.address
@@ -87,11 +88,45 @@ def add_manual(body: CompetitorManualIn, db: Session = Depends(get_db), user: Us
         raise HTTPException(400, why)
     for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)):
         if _host(c.website) == host:
+            if c.selected is False:  # typed in by hand: that is a choice
+                c.selected = True
+                db.commit()
             return row(c)
-    c = Competitor(business_id=b.id, website=website, name=body.name.strip() or host, source="manual")
+    c = Competitor(business_id=b.id, website=website, name=body.name.strip() or host, source="manual", selected=True)
     db.add(c)
     db.commit()
     db.refresh(c)
+    return row(c)
+
+
+MAX_CHOSEN = 8  # the weekly watch visits at most this many
+
+
+class ChooseIn(BaseModel):
+    selected: bool
+
+
+@router.patch("/{competitor_id}")
+def choose(competitor_id: int, body: ChooseIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Choose a found competitor for Competitor Watch and the keyword, traffic and link steps, or leave it out again."""
+    c = db.get(Competitor, competitor_id)
+    if c is None:
+        raise HTTPException(404, "Competitor not found")
+    b = owned_business(db, user, c.business_id)
+    if body.selected and c.selected is False:
+        chosen = sum(1 for x in db.scalars(select(Competitor).where(Competitor.business_id == b.id)) if x.selected is not False)
+        if chosen >= MAX_CHOSEN:
+            raise HTTPException(400, f"Choose up to {MAX_CHOSEN} competitors: the weekly watch visits that many. Leave one out first.")
+    c.selected = body.selected
+    from ..backlinks.models import BiTrackedTarget
+    from ..backlinks import sync
+    h = _host(c.website)
+    for t in db.scalars(select(BiTrackedTarget).where(BiTrackedTarget.business_id == b.id, BiTrackedTarget.is_competitor.is_(True))):
+        if _host("//" + (t.domain or "")) == h:
+            t.monitoring_enabled = body.selected  # a competitor left out is no longer visited or counted
+    db.commit()
+    if body.selected:
+        sync.sync_targets(db, b)
     return row(c)
 
 

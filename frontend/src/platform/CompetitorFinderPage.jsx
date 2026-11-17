@@ -191,11 +191,13 @@ function AddCompetitorForm({ onAdd, busy, error }) {
   );
 }
 
-function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, onAuditOur, hasSite, onDetail, onAudit, onCompare, comparing, onFindMaps, findBusy, onAddManual, addBusy, addError }) {
+function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, onAuditOur, hasSite, onDetail, onAudit, onCompare, comparing, onFindMaps, findBusy, onAddManual, addBusy, addError, onChoose }) {
+  const isChosen = (c) => Boolean(c.reg) && c.reg.selected !== false;
+  const chosenCount = rows.filter(isChosen).length;
   return (
     <Card pad={false}>
       <div className="px-5 py-3 border-b border-slate-200 flex flex-wrap items-center gap-3">
-        <div className="text-13 font-semibold text-slate-900">{rows.length} competitors <span className="font-normal text-slate-500">· click a name for the full profile</span></div>
+        <div className="text-13 font-semibold text-slate-900">{rows.length} found, {chosenCount} chosen <span className="font-normal text-slate-500">· tick the ones that really compete with you (3 to 5). Only those are watched.</span></div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg">
             {[['mobile', Smartphone], ['desktop', Monitor]].map(([s, I]) => (
@@ -210,28 +212,28 @@ function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, 
         </div>
       </div>
       <AddCompetitorForm onAdd={onAddManual} busy={addBusy} error={addError} />
-      <Table head={<><Th>Competitor</Th><Th c="text-right">Google visibility</Th><Th c="text-right">Page-1 keywords</Th><Th c="text-center">Maps</Th><Th>Site audit</Th><Th c="text-right">Actions</Th></>}>
+      <Table head={<><Th c="text-center">Choose</Th><Th>Competitor</Th><Th c="text-right">Google visibility</Th><Th c="text-right">Page-1 keywords</Th><Th c="text-center">Maps</Th><Th>Site audit</Th><Th c="text-right">Actions</Th></>}>
         {rows.map(c => {
           const a = auditMap[c.reg?.id];
           return (
-            <tr key={c.host} className="hover:bg-slate-50">
-              <td className="px-4 py-2.5 min-w-[200px]">
+            <tr key={c.host} className={isChosen(c) ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}>
+              <td className="px-3 py-2.5 text-center"><input type="checkbox" aria-label={`Choose ${c.name}`} checked={isChosen(c)} onChange={() => onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website }, !isChosen(c))} className="w-4 h-4 cursor-pointer accent-indigo-600" /></td>
+              <td className="px-3 py-2.5 min-w-[200px]">
                 <button type="button" onClick={() => onDetail(c)} className="text-left cursor-pointer group max-w-[280px]">
                   <span className="block font-semibold text-slate-900 group-hover:text-indigo-700 truncate">{c.name}</span>
                   <span className="block text-12 text-slate-500 truncate">{c.host}</span>
                 </button>
               </td>
-              <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{c.profile ? `${c.profile.visibility}%` : '—'}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{c.profile ? `${Object.keys(c.profile.positions).length}/${r.keywords.length}` : '—'}</td>
-              <td className="px-4 py-2.5 text-center">{c.profile?.local ? <span className="inline-flex items-center gap-1.5"><Pos value={c.profile.local.best} maps /><Stars rating={c.profile.local.rating} /></span> : (c.reg?.rating ? <Stars rating={c.reg.rating} reviews={c.reg.reviews} /> : <span className="text-slate-400">—</span>)}</td>
-              <td className="px-4 py-2.5 whitespace-nowrap text-12.5">
+              <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{c.profile ? `${c.profile.visibility}%` : '—'}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{c.profile ? `${Object.keys(c.profile.positions).length}/${r.keywords.length}` : '—'}</td>
+              <td className="px-3 py-2.5 text-center">{c.profile?.local ? <span className="inline-flex items-center gap-1.5"><Pos value={c.profile.local.best} maps /><Stars rating={c.profile.local.rating} /></span> : (c.reg?.rating ? <Stars rating={c.reg.rating} reviews={c.reg.reviews} /> : <span className="text-slate-400">—</span>)}</td>
+              <td className="px-3 py-2.5 whitespace-nowrap text-12.5">
                 {!c.reg ? <span className="text-slate-400" title="Found by Google results only; use Find more on Maps to register it for audits">Not registered</span>
                   : a ? <span className={`inline-flex items-center gap-1.5 ${a.status === 'failed' ? 'text-red-600' : a.status === 'done' ? 'text-emerald-700' : 'text-slate-500'}`}>{running(a.status) && <Loader2 size={12} className="animate-spin" />}{AUDIT_LABEL[a.status] || a.status}</span>
                     : <span className="text-slate-400">Not audited</span>}
               </td>
-              <td className="px-4 py-2.5 text-right whitespace-nowrap">
+              <td className="px-3 py-2.5 text-right whitespace-nowrap">
                 <div className="inline-flex gap-1.5">
-                  <Button size="sm" icon={Eye} onClick={() => onDetail(c)}>Profile</Button>
                   <Button size="sm" icon={Gauge} disabled={!c.reg || !c.reg.website || running(a?.status)} onClick={() => onAudit(c.reg)} title={c.reg ? 'Run PageSpeed + crawl on their site' : 'Register it first with Find more on Maps'}>{a ? 'Re-audit' : 'Audit'}</Button>
                   <Button size="sm" variant="primary" icon={ShieldCheck} busy={comparing === c.reg?.id} disabled={!canCompare(c, a)} onClick={() => onCompare(c.reg)} title={compareHint(c, a)}>Compare</Button>
                 </div>
@@ -239,7 +241,7 @@ function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, 
             </tr>
           );
         })}
-        {!rows.length && <tr><td colSpan={6} className="px-5 py-10 text-center text-13 text-slate-500">No competitors yet.</td></tr>}
+        {!rows.length && <tr><td colSpan={7} className="px-5 py-10 text-center text-13 text-slate-500">No competitors yet.</td></tr>}
       </Table>
     </Card>
   );
@@ -623,6 +625,16 @@ function Research({ b }) {
     return c;
   });
 
+  // Choosing: a found competitor is used by nothing until it is chosen. One found only by the Google results (not saved yet) is saved as chosen.
+  const chooseCompetitor = async (c, on) => {
+    try {
+      if (c.id) await api(`/competitors/${c.id}`, { method: 'PATCH', body: { selected: on } });
+      else if (on) await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: c.website, name: c.name } });
+      await loadRegistered();
+      toast(on ? `${c.name} chosen: Competitor Watch will follow it` : `${c.name} left out`);
+    } catch (e) { toast(e.message); }
+  };
+
   const removeCompetitor = async (c) => {
     try { await api(`/competitors/${c.id}`, { method: 'DELETE' }); await loadRegistered(); toast(`${c.name} removed`); } catch (e) { toast(`Could not remove it: ${e.message}`); }
   };
@@ -716,7 +728,7 @@ function Research({ b }) {
             {tab === 'competitors' && <>
               <CompetitorsTable rows={rows} r={result} strategy={strategy} setStrategy={setStrategy} auditMap={auditMap} ourAudit={ourAudit} onAuditOur={auditOurSite} hasSite={Boolean(b.website)}
                 onDetail={setDetail} onAudit={auditCompetitor} onCompare={doCompare} comparing={comparing} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'}
-                onAddManual={addManual} addBusy={addBusy === 'add'} addError={addError} />
+                onAddManual={addManual} addBusy={addBusy === 'add'} addError={addError} onChoose={chooseCompetitor} />
               <ErrorNote>{mapsError}</ErrorNote>
             </>}
             {tab === 'pages' && <CompetitorPagesTab b={b} />}
@@ -731,7 +743,7 @@ function Research({ b }) {
       )}
       </div>
       <aside className="xl:sticky xl:top-4 min-w-0">
-        <MyCompetitors list={registered} auditMap={auditMap} onAdd={addManual} onFind={findOnMaps} onAudit={auditCompetitor} onRemove={removeCompetitor} addBusy={addBusy} addError={addError} findBusy={mapsBusy} findError={mapsError} running={isRunning(current)} />
+        <MyCompetitors list={registered} auditMap={auditMap} onAdd={addManual} onFind={findOnMaps} onAudit={auditCompetitor} onRemove={removeCompetitor} onChoose={chooseCompetitor} addBusy={addBusy} addError={addError} findBusy={mapsBusy} findError={mapsError} running={isRunning(current)} />
       </aside>
       </div>
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Loader2, FilePlus2, Pencil, FileX2 } from 'lucide-react';
+import { Play, Loader2, FilePlus2, Pencil, FileX2, ExternalLink, ArrowRight, Star, Plus } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, useAction, useToast, SkList, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 
@@ -48,8 +48,8 @@ function Body({ b }) {
         action={<Badge tone={running ? 'blue' : d.enabled ? 'green' : 'gray'}>{running ? 'Visiting now' : d.enabled ? 'On' : 'Off'}</Badge>}>
         {none ? (
           <div className="text-13 text-gray-600">
-            No competitors are being watched yet. Save competitors in <Link className="text-indigo-600 font-semibold" to="/competitor-finder">Competitor Research</Link>, or add them under{' '}
-            <Link className="text-indigo-600 font-semibold" to="/backlinks/sites">Backlinks → Tracked sites</Link> (use “Sync”).
+            No competitors are chosen yet. Go to <Link className="text-indigo-600 font-semibold" to="/competitor-finder">Competitor Research</Link>, look at everyone found and choose the 3 to 5 that really compete with you. They show here, and the watch follows them.
+            {d.not_chosen?.length > 0 && <span className="block mt-1">{d.not_chosen.length} found competitor{d.not_chosen.length === 1 ? ' is' : 's are'} waiting to be chosen.</span>}
           </div>
         ) : (
           <>
@@ -60,12 +60,46 @@ function Body({ b }) {
                 {d.last_run_at ? `Last visit ${fmtDateTime(d.last_run_at)}` : 'Not visited yet'}{d.enabled && d.next_run_at ? ` · next ${fmtDate(d.next_run_at)}` : ''}
               </span>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">{d.competitors.map(c => (
-              <span key={c.domain} className="text-12 px-2 py-1 rounded bg-gray-100 text-gray-700">{c.domain} · {c.pages_watched} page{c.pages_watched === 1 ? '' : 's'} watched</span>))}</div>
+
             <p className="text-11 text-gray-400 mt-3">Public pages only, with robots.txt and polite delays respected. Up to 25 pages per competitor per visit: the home page, new pages, then the ones we have not looked at for the longest. We report what changed, not why.</p>
           </>
         )}
       </Card>
+
+      {!none && (
+        <Card className="mb-4" title="Competitors you chose" subtitle="Chosen in Competitor Research. Everything below is about these."
+          action={<Link to="/competitor-finder?tab=competitors" className="text-12.5 font-semibold text-indigo-700 hover:underline">Change the choice →</Link>}>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {d.competitors.map(c => {
+              const ch = c.changes_30d || {};
+              const total = (ch.new_page || 0) + (ch.changed || 0) + (ch.removed || 0);
+              return (
+                <div key={c.domain} className="rounded-xl ring-1 ring-inset ring-gray-200 p-3.5 flex flex-col gap-2">
+                  <div className="min-w-0">
+                    <div className="text-14 font-semibold text-gray-900 truncate" title={c.name}>{c.name}</div>
+                    <a href={c.website} target="_blank" rel="noreferrer noopener nofollow" className="text-12 text-indigo-600 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.domain}</span><ExternalLink size={10} className="shrink-0" /></a>
+                    {c.rating ? <span className="ml-2 text-12 text-gray-500 inline-flex items-center gap-0.5"><Star size={11} className="text-amber-500" />{c.rating}{c.reviews ? ` (${c.reviews})` : ''}</span> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-12">
+                    <Badge tone="gray">{c.pages_watched} page{c.pages_watched === 1 ? '' : 's'} watched</Badge>
+                    {total === 0 ? <span className="text-gray-400">no changes in 30 days</span> : <>
+                      {ch.new_page > 0 && <Badge tone="green">{ch.new_page} new</Badge>}{ch.changed > 0 && <Badge tone="amber">{ch.changed} changed</Badge>}{ch.removed > 0 && <Badge tone="red">{ch.removed} removed</Badge>}</>}
+                  </div>
+                  {c.last_change_at && <div className="text-11 text-gray-400">Last change {fmtDate(c.last_change_at)}</div>}
+                  <div className="mt-auto pt-1 flex flex-wrap gap-x-3 gap-y-1 text-12 font-semibold">
+                    <Link className="text-indigo-600 hover:underline" to="/competitor-finder?tab=pages">Top pages</Link>
+                    <Link className="text-indigo-600 hover:underline" to="/competitor-finder?tab=compare">Compare</Link>
+                    <Link className="text-indigo-600 hover:underline" to="/backlinks/domains">Backlinks</Link>
+                  </div>
+                </div>);
+            })}
+          </div>
+          {d.not_chosen?.length > 0 && (
+            <p className="mt-3 text-12.5 text-gray-600">{d.not_chosen.length} more competitor{d.not_chosen.length === 1 ? ' was' : 's were'} found but not chosen ({d.not_chosen.slice(0, 3).map(x => x.name).join(', ')}{d.not_chosen.length > 3 ? '…' : ''}).{' '}
+              <Link className="font-semibold text-indigo-700 hover:underline" to="/competitor-finder?tab=competitors">Look at them <ArrowRight size={11} className="inline" /></Link></p>
+          )}
+        </Card>
+      )}
 
       {d.latest && <Card className="mb-4" title="This week"><Report r={d.latest} /></Card>}
 
@@ -106,7 +140,7 @@ function Body({ b }) {
 
 export default function CompetitorWatchPage() {
   return (
-    <SeoShell step="competitors" title="Competitor watch" subtitle="A weekly summary of what your competitors changed on their websites">
+    <SeoShell step="competitors" title="Competitor watch" subtitle="The competitors you chose, and what they changed on their websites each week">
       {(b) => <Body key={b.id} b={b} />}
     </SeoShell>
   );

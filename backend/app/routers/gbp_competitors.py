@@ -102,6 +102,7 @@ def _share(db: Session, b: Business, items: list[dict], source: str = "google_pl
     if source == "manual":
         for c in rows:
             c.source = "manual"
+            c.selected = True  # added by hand: chosen
 
 
 @router.post("/search")

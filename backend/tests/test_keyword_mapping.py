@@ -62,3 +62,37 @@ def test_a_saved_competitor_can_be_added_and_removed(client):
     assert client.delete(f"/api/v1/competitors/{c['id']}").status_code == 204
     assert client.get(f"/api/v1/competitors?business_id={bid}").json() == []
     assert client.delete(f"/api/v1/competitors/{c['id']}").status_code == 404
+
+
+def test_found_competitors_must_be_chosen_before_the_other_steps_use_them(client):
+    from app.competitors import hygiene
+    from app.competitors.router import _upsert
+    from app.db import SessionLocal
+    from app.models import Business
+    bid = _project(client)
+    db = SessionLocal()
+    found = _upsert(db, bid, [{"name": "Maps Rival", "website": "https://maps-rival.example"}])
+    assert found[0].selected is False and hygiene.saved_competitor_domains(db, db.get(Business, bid)) == []  # found, not chosen: feeds nothing
+    hand = client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": "hand-rival.example"}).json()
+    assert hand["selected"] is True
+    r = client.patch(f"/api/v1/competitors/{found[0].id}", json={"selected": True})
+    assert r.status_code == 200 and r.json()["selected"] is True
+    db.expire_all()
+    assert sorted(hygiene.saved_competitor_domains(db, db.get(Business, bid))) == ["hand-rival.example", "maps-rival.example"]
+    client.patch(f"/api/v1/competitors/{found[0].id}", json={"selected": False})
+    db.expire_all()
+    assert hygiene.saved_competitor_domains(db, db.get(Business, bid)) == ["hand-rival.example"]
+    db.close()
+
+
+def test_competitor_watch_lists_only_the_chosen_with_their_numbers(client):
+    from app.competitors.router import _upsert
+    from app.db import SessionLocal
+    bid = _project(client)
+    db = SessionLocal()
+    _upsert(db, bid, [{"name": "Left Out", "website": "https://left-out.example"}])
+    db.close()
+    client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": "chosen-rival.example", "name": "Chosen Rival"})
+    w = client.get(f"/api/v1/businesses/{bid}/competitor-watch").json()
+    assert [c["domain"] for c in w["competitors"]] == ["chosen-rival.example"] and w["competitors"][0]["name"] == "Chosen Rival"
+    assert w["competitors"][0]["changes_30d"] == {"new_page": 0, "changed": 0, "removed": 0} and [c["name"] for c in w["not_chosen"]] == ["Left Out"]
