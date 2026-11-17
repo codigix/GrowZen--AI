@@ -96,3 +96,16 @@ def test_competitor_watch_lists_only_the_chosen_with_their_numbers(client):
     w = client.get(f"/api/v1/businesses/{bid}/competitor-watch").json()
     assert [c["domain"] for c in w["competitors"]] == ["chosen-rival.example"] and w["competitors"][0]["name"] == "Chosen Rival"
     assert w["competitors"][0]["changes_30d"] == {"new_page": 0, "changed": 0, "removed": 0} and [c["name"] for c in w["not_chosen"]] == ["Left Out"]
+
+
+def test_a_saved_suggestion_is_marked_saved(client):
+    bid = _project(client)
+    db = SessionLocal()
+    _crawl(db, bid)
+    db.add(Keyword(business_id=bid, keyword="dental implants pune", volume=900, tracked=True, intent="commercial"))
+    db.commit()
+    first = {p["path"]: p for p in client.get(f"/api/v1/businesses/{bid}/keyword-mapping").json()["pages"]}
+    assert first["/implants"]["primary"] == "dental implants pune" and first["/implants"]["saved"] is False
+    client.post(f"/api/v1/businesses/{bid}/keyword-mapping/apply")
+    again = {p["path"]: p for p in client.get(f"/api/v1/businesses/{bid}/keyword-mapping").json()["pages"]}
+    assert again["/implants"]["saved"] is True

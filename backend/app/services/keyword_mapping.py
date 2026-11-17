@@ -74,8 +74,10 @@ def plan(db: Session, b: Business) -> dict[str, Any]:
     out_pages = []
     for c in corp:
         ks = sorted(assigned.get(c["path"], []), key=lambda k: (-(k.volume or 0), len(k.keyword)))
-        out_pages.append({"url": c["p"]["url"], "path": c["path"], "title": c["p"].get("title") or "", "primary": ks[0].keyword if ks else None, "primary_volume": ks[0].volume if ks else None,
-                          "secondary": [k.keyword for k in ks[1:]], "keywords": len(ks)})
+        top = ks[0] if ks else None
+        saved = bool(top and top.role == "primary" and top.target_url and _key(urlsplit(top.target_url).path or "/") == c["path"])  # the suggestion is already written on the keyword
+        out_pages.append({"url": c["p"]["url"], "path": c["path"], "title": c["p"].get("title") or "", "primary": top.keyword if top else None, "primary_volume": top.volume if top else None,
+                          "secondary": [k.keyword for k in ks[1:]], "keywords": len(ks), "saved": saved})
     out_pages.sort(key=lambda x: (-x["keywords"], x["path"]))
     return {"crawled": bool(pages), "found_at": crawl.get("_found"), "pages": out_pages, "missing_pages": missing, "blog_opportunities": blog, "keywords": len(kws), "mapped": mapped,
             "unmapped": len(missing) + len(blog), "pages_without_keyword": sum(1 for p in out_pages if not p["keywords"]), "primaries": sum(1 for p in out_pages if p["primary"])}
