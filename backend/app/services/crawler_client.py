@@ -81,5 +81,32 @@ def global_status():
     return _call("GET", "/crawler/global-status")
 
 
+def onboard_business(domain: str) -> dict:
+    """Register a domain with the crawler (POST /discovery/onboard) so it queues a discovery job and starts finding backlinks for it.
+    Safe to repeat: a domain with an active job answers created=false with that job's id and status."""
+    return _call("POST", "/discovery/onboard", json={"domain": normalize_domain(domain)})
+
+
+def add_competitors(business_domain: str, competitors: list[str]) -> dict:
+    """Register competitors of ONE business (POST /businesses/{business_domain}/competitors). The crawler onboards the business first if needed, and
+    only that business's gap includes these competitors. Safe to repeat."""
+    domains = [normalize_domain(d) for d in competitors]
+    return _call("POST", f"/businesses/{_d(normalize_domain(business_domain))}/competitors", json={"domains": domains})
+
+
 def seed(urls: list[str]):
     return _call("POST", "/crawler/seed", json={"urls": urls})
+
+
+def backlink_gap(business_domain: str, competitor: str | None = None, limit: int = 200):
+    """GET /businesses/{business_domain}/backlink-gap: referring domains and pages that link the competitors but not this business (over the crawler's
+    discovered index, not the whole internet). `competitor` limits it to one of the business's registered competitors."""
+    params: dict = {"limit": limit}
+    if competitor:
+        params["competitor"] = normalize_domain(competitor)
+    return _call("GET", f"/businesses/{_d(normalize_domain(business_domain))}/backlink-gap", params=params)
+
+
+def business_competitors(business_domain: str):
+    """GET /businesses/{business_domain}/competitors: the competitors registered for this business, with their crawl status."""
+    return _call("GET", f"/businesses/{_d(normalize_domain(business_domain))}/competitors")

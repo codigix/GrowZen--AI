@@ -10,6 +10,7 @@ const VIEWS = {
   links: ['Backlinks', 'Every link to your website that the crawler found: follow or nofollow, anchor text, kind of site, authority and whether it is worth having.'],
   domains: ['Referring domains', 'The websites that link to you, with how many links each gives, what kind of site it is and whether it helps or hurts.'],
   opportunities: ['Link opportunities', 'Websites that link to your competitors but not to you: the places worth asking for a link, best first.'],
+  gap: ['Competitor gap', 'Pick a competitor to see the websites and pages that link to them but not to you: where they earned links and where you can ask for one.'],
   audit: ['Backlink audit', 'What is wrong or weak in your backlink profile, and what to do about it.'],
   sites: ['Tracked sites and sync', 'The websites whose links are collected (yours and your competitors) and how often they are read from our backlink crawler.']
 };
@@ -356,6 +357,84 @@ function Opportunities({ b }) {
 }
 
 const SEV = { serious: ['Serious', 'red'], warning: ['Fix soon', 'amber'], info: ['Good to know', 'blue'] };
+// GET /businesses/:id/backlink-intel/crawler/gap: our crawler's backlink gap between this business and one (or all) of its registered competitors.
+const GapNote = ({ children }) => <p className="py-6 text-center text-13 text-slate-500">{children}</p>;
+
+function CompetitorGap({ b }) {
+  const [comp, setComp] = useState('');
+  const [shown, setShown] = useState(25);
+  const r = useApi(`/businesses/${b.id}/backlink-intel/crawler/gap?${new URLSearchParams({ ...(comp ? { competitor: comp } : {}), limit: '500' })}`);
+  const d = r.data;
+  const g = d?.gap;
+  const choices = d?.competitors_available || [];
+  const warnings = g?.coverage?.warnings || [];
+  const pages = g?.source_page_gap || [];
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+      <Card title="Compare with a competitor" subtitle="Your site is fixed. Choose which competitor to compare it with, or compare with all of them."
+        action={<Button icon={RefreshCw} busy={r.loading} onClick={() => r.reload(true)}>Refresh</Button>}>
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Your website"><div className={`${inputCls} !w-64 bg-slate-50 text-slate-700 flex items-center`}>{d?.business_domain || b.website || '—'}</div></Field>
+          <Field label="Competitor">
+            <Select className={`${inputCls} !w-80`} value={comp} onChange={(e) => { setComp(e.target.value); setShown(25); }} searchPlaceholder="Search competitors…">
+              <option value="">All competitors ({choices.length})</option>
+              {choices.map(c => <option key={c.domain} value={c.domain}>{c.domain}</option>)}
+            </Select>
+          </Field>
+        </div>
+        <ErrorNote>{r.error?.message}</ErrorNote>
+      </Card>
+
+      {r.loading && !d ? <SkList rows={4} /> : d && !choices.length ? (
+        <Card><GapNote>The crawler has no competitors for {d.business_domain} yet. Find them under SEO → Competitors: they are sent to the crawler when saved.</GapNote></Card>
+      ) : g && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat label="Sites linking them, not you" value={g.summary.gap_domains} hint="Your link opportunities" />
+            <Stat label="Pages linking them, not you" value={g.summary.gap_pages} />
+            <Stat label="Sites linking both" value={g.summary.shared_domains} />
+            <Stat label="Sites linking only you" value={g.summary.own_only_domains} />
+          </div>
+          {warnings.length > 0 && (
+            <Card><div className="flex gap-2 text-12.5 text-amber-700"><Info size={15} className="shrink-0 mt-0.5" />
+              <div>The crawler is still exploring some of these sites, so the gap may be incomplete. {g.coverage?.basis}.
+                <ul className="mt-1 text-slate-500 list-disc pl-4">{warnings.slice(0, 6).map(w => <li key={w}>{w}</li>)}</ul></div></div></Card>
+          )}
+          <Card title="Websites to get links from" subtitle={comp ? `Sites that link ${comp} but not you.` : 'Sites that link your competitors but not you.'}>
+            {!g.opportunities.length ? <GapNote>No gap found yet. As the crawler finds more links to your competitors, sites appear here.</GapNote> : (
+              <div className="overflow-x-auto"><table className="w-full text-13">
+                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className={TH}>Website</th><th className={TH}>Links to</th><th className={TH}>Example page</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">{g.opportunities.slice(0, shown).map(o => (
+                  <tr key={o.referring_domain}>
+                    <td className="px-3 py-2 font-semibold text-slate-800">{o.referring_domain}</td>
+                    <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{o.competitor_targets.map(t => <Badge key={t} tone="blue">{t}</Badge>)}</div></td>
+                    <td className="px-3 py-2 max-w-[360px]">{o.source_pages?.[0] ? <a className="block truncate text-indigo-600 hover:underline" href={o.source_pages[0]} target="_blank" rel="noreferrer noopener nofollow" title={o.source_pages[0]}>{o.source_pages[0].replace(/^https?:\/\//, '')}</a> : '—'}</td>
+                  </tr>))}</tbody>
+              </table></div>
+            )}
+            {g.opportunities.length > shown && <div className="flex justify-center mt-3"><Button onClick={() => setShown(n => n + 25)}>Show more ({g.opportunities.length - shown} left)</Button></div>}
+          </Card>
+          <Card title="Pages that link them" subtitle="The exact pages, which competitor page they link to and the words used. Ask these sites to link you too.">
+            {!pages.length ? <GapNote>None yet.</GapNote> : (
+              <div className="overflow-x-auto"><table className="w-full text-13">
+                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className={TH}>Linking page</th><th className={TH}>Competitor</th><th className={TH}>Anchor</th><th className={TH}>Follow</th><th className={TH}>Last seen</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">{pages.slice(0, shown).map(p => { const l = p.links?.[0] || {}; return (
+                  <tr key={p.source_url}>
+                    <td className="px-3 py-2 max-w-[320px]"><a className="block truncate text-indigo-600 hover:underline" href={p.source_url} target="_blank" rel="noreferrer noopener nofollow" title={p.source_url}>{p.source_url.replace(/^https?:\/\//, '')}</a></td>
+                    <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{p.competitor_targets.map(t => <Badge key={t} tone="blue">{t}</Badge>)}</div></td>
+                    <td className="px-3 py-2 max-w-[200px] truncate text-slate-700" title={l.anchor_text || ''}>{l.anchor_text || '—'}</td>
+                    <td className="px-3 py-2"><Badge tone={l.nofollow ? 'gray' : 'green'}>{l.nofollow ? 'Nofollow' : l.sponsored ? 'Sponsored' : 'Follow'}</Badge></td>
+                    <td className="px-3 py-2 text-12 text-slate-500">{l.last_seen ? fmtDateTime(l.last_seen) : '—'}</td>
+                  </tr>); })}</tbody>
+              </table></div>
+            )}
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Audit({ b }) {
   const r = useApi(`/businesses/${b.id}/backlink-hub/audit`);
   const d = r.data;
@@ -463,7 +542,7 @@ export default function BacklinkHubPage() {
 function Body({ b, view }) {
   const s = useApi(`/businesses/${b.id}/backlink-hub/summary`);
   const key = `${b.id}-${s.data?.totals?.live ?? 'x'}-${s.data?.useful?.useful ?? 'x'}-${s.data?.moz?.configured}-${s.data?.totals?.avg_da ?? 'x'}`;
-  const V = { links: Links, domains: Domains, opportunities: Opportunities, audit: Audit, sites: Sites }[view];
+  const V = { links: Links, domains: Domains, opportunities: Opportunities, gap: CompetitorGap, audit: Audit, sites: Sites }[view];
   const main = view === 'links';
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">

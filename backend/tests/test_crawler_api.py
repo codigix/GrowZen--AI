@@ -64,3 +64,19 @@ def test_search_falls_back_to_the_crawler(client, fake, monkeypatch):
     assert r.status_code == 200, r.text
     f = r.json()["crawler_fallback"]
     assert f["state"] == "done" and f["domain"] == "zzzunknownzzz.com" and f["total_backlinks"] == 4
+
+
+def test_competitor_gap_lists_competitors_and_narrows_to_one(client, monkeypatch):
+    from app.config import get_settings
+    from app.services import crawler_client as cc
+    monkeypatch.setattr(get_settings(), "crawler_url", "https://c.example")
+    monkeypatch.setattr(get_settings(), "crawler_api_key", "k")
+    asked = []
+    monkeypatch.setattr(cc, "business_competitors", lambda d: {"competitors": [{"competitor_domain": "rival-a.com", "discovery_status": "completed", "known_backlinks": 4}, {"competitor_domain": "rival-b.com", "discovery_status": "discovering"}]})
+    monkeypatch.setattr(cc, "backlink_gap", lambda d, c=None, limit=200: asked.append((d, c)) or {"summary": {"gap_domains": 1}, "opportunities": [], "source_page_gap": []})
+    bid = client.post("/api/v1/businesses", json={"name": "Gap Co", "website": "https://www.gap-co.in/"}).json()["id"]
+    r = client.get(f"/api/v1/businesses/{bid}/backlink-intel/crawler/gap")
+    assert r.status_code == 200, r.text
+    assert [c["domain"] for c in r.json()["competitors_available"]] == ["rival-a.com", "rival-b.com"] and asked == [("gap-co.in", None)]
+    assert client.get(f"/api/v1/businesses/{bid}/backlink-intel/crawler/gap?competitor=https://www.rival-a.com/").json()["selected"] == "rival-a.com" and asked[-1] == ("gap-co.in", "rival-a.com")
+    assert client.get(f"/api/v1/businesses/{bid}/backlink-intel/crawler/gap?competitor=stranger.com").status_code == 404

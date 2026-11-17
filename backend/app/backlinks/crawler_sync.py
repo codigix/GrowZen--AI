@@ -74,6 +74,37 @@ def save_link(db: Session, item: dict, now: datetime) -> tuple[Backlink, bool]:
     return bl, created
 
 
+def register_domains(domains: list[str]) -> dict:
+    """Tell the crawler about these domains (it then starts finding backlinks for them). Never raises: onboarding must not fail because the crawler
+    is busy or down; the next sync registers them again, and registering a known domain changes nothing."""
+    out = {"registered": [], "already_known": [], "failed": {}}
+    for d in domains:
+        try:
+            r = cc.onboard_business(d)
+            (out["registered"] if r.get("created") else out["already_known"]).append(d)
+        except (cc.CrawlerError, ValueError) as exc:
+            out["failed"][d] = str(exc)
+            if isinstance(exc, cc.CrawlerError):
+                break  # the crawler is down or refused the key: do not try every domain
+    return out
+
+
+def register_competitors(business_domain: str | None, competitors: list[str]) -> dict:
+    """Tell the crawler which domains are competitors of this business (POST /businesses/{domain}/competitors). Never raises; repeating is harmless."""
+    out = {"business": business_domain, "competitors": [], "failed": None}
+    if not competitors:
+        return out
+    if not business_domain:
+        out["failed"] = "the business has no website, so the crawler cannot tie the competitors to it"
+        return out
+    try:
+        cc.add_competitors(business_domain, competitors)
+        out["competitors"] = list(competitors)
+    except (cc.CrawlerError, ValueError) as exc:
+        out["failed"] = str(exc)
+    return out
+
+
 def sync_domain(db: Session, domain: str, now: datetime | None = None) -> dict:
     """Read the crawler's links to `domain` and save them. Returns {read, created, seeded}. A domain the crawler has never seen is handed to it as a seed,
     so it starts looking for links to it (links appear on a later sync, once it has explored)."""
@@ -123,7 +154,12 @@ def run_cycle(db: Session, business_id: int, **_ignored) -> dict:
         biz = db.get(Business, business_id)
         if biz is not None:
             sync.sync_targets(db, biz)  # the site and saved competitors are always among the targets
-        mine = list(db.scalars(select(BiTrackedTarget.domain).where(BiTrackedTarget.business_id == business_id, BiTrackedTarget.monitoring_enabled.is_(True))))
+        rows = db.execute(select(BiTrackedTarget.domain, BiTrackedTarget.is_competitor).where(BiTrackedTarget.business_id == business_id, BiTrackedTarget.monitoring_enabled.is_(True)).order_by(BiTrackedTarget.id)).all()
+        tracked = [(d, bool(c)) for d, c in rows]
+        mine = [d for d, _ in tracked]
+        own_domains = [d for d, comp in tracked if not comp]
+        stats["registered"] = register_domains(own_domains)  # the business's own site: the crawler starts crawling for backlinks to it
+        stats["competitors_registered"] = register_competitors(own_domains[0] if own_domains else None, [d for d, comp in tracked if comp])  # and who its competitors are
         for domain in mine:
             try:
                 r = sync_domain(db, domain, started)

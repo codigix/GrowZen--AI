@@ -145,7 +145,7 @@ flowchart LR
 2. `PATCH /businesses/{id}` saves the rest, including `social_accounts`.
 3. Website research: `POST /businesses/{id}/site-integration/detect`; competitor research: `POST /businesses/{id}/competitor-research`; keywords: `POST /businesses/{id}/keywords`; follow-up tasks: `POST /businesses/{id}/tasks`.
 4. `POST /discover/onboard/{id}` starts the background run `_onboard`: all six audits (`audits.run_all`), the AI agent plan (`agent.plan_from_audits`), the plan's schedule rows (`schedules.create_for_plan`), then sets `status` to `needs_approval` (tasks wait for a person) or `active`. It also switches on backlink discovery (`backlinks/autostart.enable`) and starts the Seed Backlink Finder (`backlink_service/trigger`).
-5. `POST /businesses` (manual create) additionally runs `site_onboarding` (tech stack, metadata, improvements) and `workplan.start_in_background` when `SITE_AUTODETECT` is on.
+5. `POST /discovery/onboard` (manual create) additionally runs `site_onboarding` (tech stack, metadata, improvements) and `workplan.start_in_background` when `SITE_AUTODETECT` is on.
 
 Other ways in: forward an onboarding email to the mailbox (section 14), or import a Google location (section 5).
 

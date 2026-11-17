@@ -44,7 +44,8 @@ def saved_competitor_domains(db: Any, business: Any, monitored_only: bool = Fals
     found: list[str] = []
     for t in db.scalars(select(BiTrackedTarget).where(BiTrackedTarget.business_id == business.id, BiTrackedTarget.is_competitor.is_(True)).order_by(BiTrackedTarget.id)):
         if t.monitoring_enabled or not monitored_only:
-            found.append((t.domain or "").lower())
+            d = (t.domain or "").lower()
+            found.append(d[4:] if d.startswith("www.") else d)  # the same site with and without www is one competitor
     for c in db.scalars(select(Competitor).where(Competitor.business_id == business.id).order_by(Competitor.id)):
         raw = (c.website or "").strip()
         host = (urlsplit(raw if "//" in raw else f"//{raw}").hostname or "").lower()
