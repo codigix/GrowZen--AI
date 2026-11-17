@@ -58,14 +58,18 @@ def saved_competitor_domains(db: Any, business: Any, monitored_only: bool = Fals
     rows = list(db.scalars(select(Competitor).where(Competitor.business_id == business.id).order_by(Competitor.id)))
     host_of_ = lambda raw: (lambda h: h[4:] if h.startswith("www.") else h)((urlsplit(raw if "//" in raw else f"//{raw}").hostname or "").lower())  # noqa: E731
     not_chosen = {host_of_((c.website or "").strip()) for c in rows if c.selected is False}  # found by the research or Maps but left out: they feed nothing
+    rows = list(db.scalars(select(Competitor).where(Competitor.business_id == business.id).order_by(Competitor.id)))
+    host_of_ = lambda raw: (lambda h: h[4:] if h.startswith("www.") else h)((urlsplit(raw if "//" in raw else f"//{raw}").hostname or "").lower())  # noqa: E731
+    not_chosen = {host_of_((c.website or "").strip()) for c in rows if c.selected is False}  # found by the research or Maps but left out: they feed nothing
     for t in db.scalars(select(BiTrackedTarget).where(BiTrackedTarget.business_id == business.id, BiTrackedTarget.is_competitor.is_(True)).order_by(BiTrackedTarget.id)):
         if t.monitoring_enabled or not monitored_only:
             d = (t.domain or "").lower()
-            found.append(d[4:] if d.startswith("www.") else d)  # the same site with and without www is one competitor
-    for c in db.scalars(select(Competitor).where(Competitor.business_id == business.id).order_by(Competitor.id)):
-        raw = (c.website or "").strip()
-        host = (urlsplit(raw if "//" in raw else f"//{raw}").hostname or "").lower()
-        found.append(host[4:] if host.startswith("www.") else host)
+            d = d[4:] if d.startswith("www.") else d  # the same site with and without www is one competitor
+            if d not in not_chosen:
+                found.append(d)
+    for c in rows:
+        if c.selected is not False:
+            found.append(host_of_((c.website or "").strip()))  # host_of_ drops a leading www as well
     return list(dict.fromkeys(d for d in real_competitor_domains(business, [d for d in found if d])))[:limit]
 
 

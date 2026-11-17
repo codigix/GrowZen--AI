@@ -181,10 +181,13 @@ def test_competitors_found_or_typed_for_a_business_reach_the_crawler(client, cra
     monkeypatch.setattr(service, "find_competitors", lambda *a, **k: found)
     r = client.post("/api/v1/competitors", json={"business_type": "clinic", "location": "Pune", "business_id": bid})  # "found" on Google Maps
     assert r.status_code == 200, r.text
-    assert comp and set(comp) == {("synced-clinic.in", ("rival-one.com", "rival-two.com"))}
-    r = client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": "rival-three.com"})  # typed by hand
+    assert not comp  # found, not chosen: nothing is tracked or sent until the competitor is chosen
+    for item in r.json()["registered"]:
+        assert client.patch(f"/api/v1/competitors/{item['id']}", json={"selected": True}).status_code == 200
+    assert comp and comp[-1] == ("synced-clinic.in", ("rival-one.com", "rival-two.com"))  # choosing sends the chosen list
+    r = client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": "rival-three.com"})  # typed by hand: chosen at once
     assert r.status_code == 201, r.text
-    assert comp[-1] == ("synced-clinic.in", ("rival-one.com", "rival-three.com", "rival-two.com"))  # the whole saved list is sent each time
+    assert comp[-1] == ("synced-clinic.in", ("rival-one.com", "rival-three.com", "rival-two.com"))  # the whole chosen list is sent each time
 
 
 def test_the_sync_registers_the_business_and_its_competitors_again(client, crawler, monkeypatch):

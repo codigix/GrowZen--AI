@@ -131,7 +131,7 @@ def choose(competitor_id: int, body: ChooseIn, db: Session = Depends(get_db), us
             t.monitoring_enabled = body.selected  # a competitor left out is no longer visited or counted
     db.commit()
     if body.selected:
-        sync.sync_targets(db, b)
+        sync.after_competitors_saved(db, b)  # tracked for backlinks and sent to the backlink crawler, like one added by hand
     return row(c)
 
 
