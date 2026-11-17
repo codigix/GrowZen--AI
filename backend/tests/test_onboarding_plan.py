@@ -42,7 +42,7 @@ def test_plan_orders_phases_and_points_at_the_first_open_step(client):
     from app.db import SessionLocal
     from app.models import Business
     from app.services import growth_content
-    bid = client.post("/api/v1/businesses", json={"name": "Plan Co", "website": "https://planco.example", "primary_category": "Shop", "modules": ["seo", "geo", "gmb"], "phone": "+919876543210", "city": "Pune", "services": [{"name": "x"}]}).json()["id"]
+    bid = client.post("/api/v1/businesses", json={"name": "Plan Co", "website": "https://planco.example", "primary_category": "Shop", "modules": ["seo", "geo", "gmb"], "phone": "+919876543210", "city": "Pune", "services": [{"name": "x"}], "target_audience": "Shoppers in Pune", "goals": ["sales"]}).json()["id"]
     db = SessionLocal()
     b = db.get(Business, bid)
     orig = growth_content._crawl
