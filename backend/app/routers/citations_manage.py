@@ -17,7 +17,7 @@ from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business
 from ..models import Business
-from ..services import audits, citation_sites as sites
+from ..services import audits, citation_sites as sites, site_guard
 from ..services.activity import log
 from ..services.url_safety import validate_url_shape
 
@@ -136,7 +136,7 @@ def verify_listing(key: str, b: Business = Depends(get_business), db: Session = 
     if not url:
         raise HTTPException(422, "Add the link of the listing first.")
     try:
-        result = sites.check_listing(b, url)
+        result = sites.check_listing(b, url, others=site_guard.sibling_hosts(db, b))
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 - network errors and blocked addresses both mean "could not open it"

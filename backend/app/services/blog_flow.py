@@ -126,10 +126,13 @@ def layout_check(db: Session, b: Business, article: Article | None = None) -> di
             listing_url = full.split("#")[0]
             break
     if not listing_url:
+        via_api = _from_react_api(db, b, base, article)  # a React (JavaScript) site: its pages have no links until the browser runs it
+        if via_api:
+            return via_api
         return {"state": "no_blog", "message": "No blog page was found from the home page (a link to /blog, /news, /articles...). Publish the first article and the site will get one, or add the link.", "site": base}
     listing, listing_final, err = _soup(listing_url)
     if listing is None:
-        return {"state": "no_blog", "message": f"The blog page could not be opened ({err}).", "site": base, "listing_url": listing_url}
+        return _from_react_api(db, b, base, article) or {"state": "no_blog", "message": f"The blog page could not be opened ({err}).", "site": base, "listing_url": listing_url}
     lpath = urlsplit(listing_final or listing_url).path.rstrip("/")
     posts: list[str] = []
     cards = 0
@@ -142,6 +145,10 @@ def layout_check(db: Session, b: Business, article: Article | None = None) -> di
     cards = len([c for c in card_nodes if c.find("a", href=True) and len(c.get_text(" ", strip=True)) < 900])
     cardfacts = {"posts_found": len(posts), "cards_with_image": sum(1 for c in card_nodes[:20] if c.find("img")), "cards_with_date": sum(1 for c in card_nodes[:20] if c.find("time") or re.search(r"\b20\d\d\b", c.get_text(" ", strip=True))),
                  "cards_with_excerpt": sum(1 for c in card_nodes[:20] if len(c.get_text(" ", strip=True)) > 120), "cards_checked": min(len(card_nodes), 20)}
+    if not posts:
+        via_api = _from_react_api(db, b, base, article)  # the blog page is built in the browser: read the posts from the site's API
+        if via_api:
+            return via_api
     sample = None
     sample_facts = None
     for p in posts[:3]:
@@ -153,6 +160,48 @@ def layout_check(db: Session, b: Business, article: Article | None = None) -> di
     out["fit"] = _fit(article, sample_facts, cardfacts) if sample_facts else []
     out["note"] = ("When you publish, the article is placed in your site's own design: header, footer, styles and fonts come from the site, so the look matches. "
                    "This check shows what your existing posts contain, so the new one has the same parts.")
+    return out
+
+
+_IMAGE_KEYS = ("image", "coverImage", "featuredImage", "featured_image", "thumbnail", "bannerImage", "cover_image")
+_BODY_KEYS = ("content", "body", "html", "description")
+_DATE_KEYS = ("publishedAt", "published_at", "date", "createdAt", "created_at")
+
+
+def _from_react_api(db: Session, b: Business, base: str, article: Article | None) -> dict[str, Any] | None:
+    """For a site connected as a React.js website: its blog pages are drawn in the browser, so the HTML has no posts.
+    Read the same posts from its blog API instead (read only). None when there is no such connection or no posts."""
+    from . import article_publishing as ap
+    from . import react_site as rs
+    conn = ap.react_target(db, b)
+    if not conn:
+        return None
+    rows = rs.list_posts(conn)
+    if not rows:
+        return None
+
+    def first(r: dict, keys: tuple[str, ...]) -> str:
+        return next((str(r[k]) for k in keys if isinstance(r.get(k), str) and r[k].strip()), "")
+
+    own = str(article.react_post_id) if article and article.react_post_id else None
+    others = [r for r in rows if str(r.get("id")) != own] or rows
+    sample = max(others, key=lambda r: len(first(r, _BODY_KEYS)))  # the fullest existing post shows best what a post holds
+    facts = _post_facts(BeautifulSoup(f"<article>{first(sample, _BODY_KEYS)}</article>", "html.parser"))
+    facts["featured_image"] = facts["featured_image"] or bool(first(sample, _IMAGE_KEYS))
+    facts["date"] = facts["date"] or bool(first(sample, _DATE_KEYS))  # the site prints the record's date on the post
+    facts["author"] = facts["author"] or bool(first(sample, ("author",)))
+    shown = rows[:20]
+    cardfacts = {"posts_found": len(rows), "cards_with_image": sum(1 for r in shown if first(r, _IMAGE_KEYS)),
+                 "cards_with_date": sum(1 for r in shown if first(r, _DATE_KEYS)),
+                 "cards_with_excerpt": sum(1 for r in shown if first(r, ("excerpt", "summary")) or len(first(r, _BODY_KEYS)) > 120),
+                 "cards_checked": len(shown)}
+    blog = (conn.blog_url or "").rstrip("/") or base.rstrip("/") + "/blog"
+    key = sample.get("slug") or sample.get("id")
+    out: dict[str, Any] = {"state": "ok", "site": base, "listing_url": blog, "listing": cardfacts,
+                           "sample_post": f"{blog}/{key}" if key else None, "post": facts, "source": "api"}
+    out["fit"] = _fit(article, facts, cardfacts)
+    out["note"] = ("This website builds its blog pages in the browser, so the posts were read from its blog API (the same data its pages show). "
+                   "When you publish, the article is placed in your site's own design: header, footer, styles and fonts come from the site.")
     return out
 
 

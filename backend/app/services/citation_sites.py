@@ -6,7 +6,7 @@ Listings are added by a person (the link of the listing) and the page is checked
 import re
 from typing import Any
 
-from . import countries
+from . import countries, site_guard
 from .net import site_client
 
 # key, label, domain, where to add the business, kind, countries it applies to (None = everywhere)
@@ -74,7 +74,7 @@ def _brand_forms(name: str) -> list[str]:
     return [f for f in dict.fromkeys(forms) if f]
 
 
-def check_listing(business: Any, url: str, page: tuple[int, str] | None = None) -> dict[str, Any]:
+def check_listing(business: Any, url: str, page: tuple[int, str] | None = None, others: tuple[str, ...] | list[str] = ()) -> dict[str, Any]:
     """Open the listing page and compare it with the business.
     Evidence: the business's name (as written in full, or as its short brand name), its website address, and its phone number. Page text and the page's own
     title and description are read, with entities decoded. A directory must also show the phone; a social profile needs only the name or the website
@@ -91,7 +91,10 @@ def check_listing(business: Any, url: str, page: tuple[int, str] | None = None) 
     forms = _brand_forms(getattr(business, "name", "") or "")
     full, short = (forms[0] if forms else ""), forms[1:]
     host = (urlsplit(getattr(business, "website", None) or "").hostname or "").lower().removeprefix("www.")
-    site_hit = bool(host) and host in text.lower()
+    site_hit = site_guard.mentions_host(text, host)
+    other = next((h for h in others if site_guard.mentions_host(text, h)), None)
+    if other and not site_hit:  # the page is the listing of the owner's other website: the shared brand word or phone must not make it this project's
+        return {"status": "missing", "found": {"name": None, "phone": None, "address": None}, "note": f"This page shows {other}, another of your websites, not {host or 'this project'}. Add this project's own listing."}
     country = getattr(business, "country", None)
     mine = countries.national(getattr(business, "phone", None), country)
     runs = re.findall(r"(?<!\d)\+?\d[\d\s().-]{6,17}\d(?!\d)", text)

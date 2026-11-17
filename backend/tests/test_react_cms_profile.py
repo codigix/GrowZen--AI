@@ -23,7 +23,7 @@ def test_cms_record_has_the_shape_of_the_sites_own_admin_form():
     a = Article(id=1, business_id=1, keyword="designer dress rental pune", title="T", meta_description="D", body="<p>" + "word " * 400 + "</p>", secondary_keywords=["a", "b"])
     raw = rs.payload(a, "publish", None, None)
     d = rs.to_cms(a, raw, "publish", None)
-    assert d["content"] == raw["body"] and d["status"] == "Published" and d["isPublished"] is True and d["readingTime"] == 2
+    assert d["content"] == rs.card_safe_content(raw["body"]) and not d["content"].startswith("<") and d["status"] == "Published" and d["isPublished"] is True and d["readingTime"] == 2
     assert d["seoData"]["focusKeyword"] == "designer dress rental pune" and d["seoData"]["secondaryKeywords"] == "a, b" and d["seoData"]["metaDescription"] == "D"
     assert d["faqs"] == [] and "body" not in d and "seo_title" not in d
     assert rs.to_cms(a, raw, "draft", None)["status"] == "Draft" and rs.to_cms(a, raw, "draft", None)["isPublished"] is False
@@ -61,7 +61,7 @@ def test_publish_sends_the_sites_own_shape_and_refuses_schedule(monkeypatch):
     try:
         rs.publish(conn, a, "schedule", datetime(2099, 1, 1, tzinfo=timezone.utc))
     except rs.ScheduleHeldByGrowZen as exc:
-        assert "no scheduled posts" in str(exc)
+        assert "publishes it at the chosen time" in str(exc)
     else:
         raise AssertionError("the site cannot schedule: GrowZen must hold it")
 
