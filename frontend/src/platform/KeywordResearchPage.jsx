@@ -3,7 +3,7 @@ import KeywordFlowBar from './KeywordFlowBar';
 import KeywordMappingTab from './KeywordMappingTab';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AutopilotPanel } from './AutopilotPanels';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Sparkles, FileText, Trash2, Loader2, MapPin, Globe, Users, X, Star, CheckCircle2, CircleDashed, AlertTriangle, Copy, Check, BarChart2,
   TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft, ArrowRight
@@ -1434,9 +1434,17 @@ function KeywordPath({ b, tab, setTab }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
   const progress = useApi(`/businesses/${b.id}/keywords/progress`);
   const navigate = useNavigate();
-  const [typed, setTyped] = useState('');
-  const [seedSearch, setSeedSearch] = useState({ n: 0, text: '' }); // one search for every source: the source on screen runs it now, the others when opened
-  const startSearch = () => { const t = typed.trim(); if (t.length > 1) setSeedSearch(x => ({ n: x.n + 1, text: t })); };
+  const [params] = useSearchParams();
+  const fromUrl = (params.get('q') || '').trim();
+  const [typed, setTyped] = useState(fromUrl);
+  const [seedSearch, setSeedSearch] = useState({ n: fromUrl ? 1 : 0, text: fromUrl }); // one search for every source: the source on screen runs it now, the others when opened
+  // The searched word lives in the address (?q=), so it survives moving from one source to another.
+  const startSearch = () => {
+    const t = typed.trim();
+    if (t.length < 2) return;
+    setSeedSearch(x => ({ n: x.n + 1, text: t }));
+    navigate(`/keyword-management/${tab === 'ai' ? 'discover' : tab}?q=${encodeURIComponent(t)}`, { replace: tab !== 'ai' }); // the AI suggestions are written from the business, not from a typed word: a search opens the ideas source, which answers it
+  };
   const refresh = { ...kw, reload: (q) => { kw.reload(q); progress.reload(true); } };
   // Saving a keyword from any source ends on My Keywords, with what was just saved marked.
   const saved = (names, added) => {
