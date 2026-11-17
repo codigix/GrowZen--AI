@@ -93,9 +93,9 @@ function Body({ b }) {
                       {num(ch.new_page, 'text-green-700')}{num(ch.changed, 'text-amber-700')}{num(ch.removed, 'text-red-700')}
                       <td className="px-3 py-2.5 text-12.5 text-gray-600 whitespace-nowrap">{c.last_change_at ? fmtDate(c.last_change_at) : <span className="text-gray-400">none in 30 days</span>}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-12.5 font-semibold">
-                        <Link className="text-indigo-600 hover:underline mr-3" to="/competitor-finder?tab=pages">Top pages</Link>
-                        <Link className="text-indigo-600 hover:underline mr-3" to="/competitor-finder?tab=compare">Compare</Link>
-                        <Link className="text-indigo-600 hover:underline" to="/backlinks/domains">Backlinks</Link>
+                        <Link className="text-indigo-600 hover:underline mr-3" to={`/competitor-finder?tab=pages&competitor=${encodeURIComponent(c.domain)}`}>Top pages</Link>
+                        <Link className="text-indigo-600 hover:underline mr-3" to={`/competitor-finder?compare=${encodeURIComponent(c.domain)}`}>Compare</Link>
+                        <Link className="text-indigo-600 hover:underline" to={`/backlinks/gap?competitor=${encodeURIComponent(c.domain)}`}>Backlinks</Link>
                       </td>
                     </tr>);
                 })}

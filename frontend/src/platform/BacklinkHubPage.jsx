@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2, Plus, Trash2, Loader2 } from 'lucide-react';
 import { SeoShell, Card, Button, Badge, Stat, ErrorNote, Modal, Field, inputCls, useAction, useToast, useDoubleConfirm, SkList } from './SeoUi';
 import Select from '../components/Select';
@@ -361,7 +361,8 @@ const SEV = { serious: ['Serious', 'red'], warning: ['Fix soon', 'amber'], info:
 const GapNote = ({ children }) => <p className="py-6 text-center text-13 text-slate-500">{children}</p>;
 
 function CompetitorGap({ b }) {
-  const [comp, setComp] = useState('');
+  const [params] = useSearchParams();
+  const [comp, setComp] = useState(params.get('competitor') || ''); // opened from Competitor Watch: that competitor is already picked
   const [shown, setShown] = useState(25);
   const r = useApi(`/businesses/${b.id}/backlink-intel/crawler/gap?${new URLSearchParams({ ...(comp ? { competitor: comp } : {}), limit: '500' })}`);
   const d = r.data;
@@ -382,7 +383,7 @@ function CompetitorGap({ b }) {
             </Select>
           </Field>
         </div>
-        <ErrorNote>{r.error?.message}</ErrorNote>
+        <ErrorNote>{r.error && /not found/i.test(r.error.message) && comp ? `The backlink crawler has no data for ${comp} yet. A competitor is sent to it when it is chosen, and the crawler needs time to find its links. Try again later, or pick All competitors.` : r.error?.message}</ErrorNote>
       </Card>
 
       {r.loading && !d ? <SkList rows={4} /> : d && !choices.length ? (

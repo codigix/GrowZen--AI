@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { KeywordGap, CompareDomains } from './SeoToolkit';
 import {
@@ -555,6 +555,7 @@ function Research({ b }) {
   const [ourAudit, setOurAudit] = useState(null);
   const [strategy, setStrategy] = useState('mobile');
   const [comparing, setComparing] = useState(null);
+  const [auditsLoaded, setAuditsLoaded] = useState(false);
 
   const load = async () => {
     try { setState(await api(`/businesses/${b.id}/competitor-research`)); setLoadError(''); } catch (e) { setLoadError(e.message); }
@@ -566,6 +567,7 @@ function Research({ b }) {
     const by = {};
     for (const a of hist) if (a.competitor_id && !by[a.competitor_id]) by[a.competitor_id] = { id: a.id, status: a.status };
     setAuditMap(m => ({ ...by, ...m }));
+    setAuditsLoaded(true);
     return list;
   };
   const loadOurAudit = async () => {
@@ -657,6 +659,21 @@ function Research({ b }) {
       setCompare({ competitor: c, result: r.comparisons?.[0] || null, error: r.comparisons?.[0] ? '' : 'Nothing to compare yet. Audit your site and this competitor first.' });
     } catch (e) { setCompare({ competitor: c, error: e.message }); } finally { setComparing(null); }
   };
+
+  // Opened from Competitor Watch with ?compare=domain: open that competitor's comparison straight away.
+  const compareHost = (params.get('compare') || '').replace(/^www\./, '').toLowerCase();
+  const compareDone = useRef('');
+  useEffect(() => {
+    if (!compareHost || compareDone.current === compareHost || !auditsLoaded) return;
+    compareDone.current = compareHost;
+    const c = registered.find(x => hostOf(x.website) === compareHost);
+    if (!c) { toast(`${compareHost} is not saved as a competitor yet. Add it in the list on the right, then compare.`); return; }
+    const a = auditMap[c.id];
+    if (a?.status === 'done') { doCompare(c); return; }
+    setTab('competitors');
+    if (!a) { auditCompetitor(c); if (!ourAudit && b.website) auditOurSite(); }
+    toast(`${c.name}'s site is being audited first. When it finishes, press Compare on its row.`);
+  }, [registered, auditsLoaded, compareHost]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const result = current?.status === 'done' ? current.result : state?.last_done?.status === 'done' ? state.last_done.result : null;
   const defaults = useMemo(() => (current?.result?.keywords && !result ? { ...state?.defaults, keywords: current.result.keywords }
