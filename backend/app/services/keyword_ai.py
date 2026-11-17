@@ -68,9 +68,10 @@ def evidence(db: Session, b: Business) -> dict[str, Any]:
     }
 
 
-def _prompt(b: Business, ev: dict[str, Any]) -> str:
+def _prompt(b: Business, ev: dict[str, Any], topic: str = "") -> str:
     saved = "; ".join(f"{k['keyword']}" + (f" (rank {k['rank']})" if k.get("rank") else " (not ranking)") for k in ev["saved"][:25]) or "none yet"
     lines = [
+        f"FOCUS: the person asked about this topic: {topic}. Every suggestion must be about it (its services, questions, places and variations). Do not suggest unrelated keywords." if topic else "",
         ai.profile_text(b),
         f"Services: {', '.join(ev['services'])}" if ev["services"] else "",
         f"Keywords already saved: {saved}",
@@ -112,13 +113,14 @@ def normalise(raw: list[Any], saved: set[str]) -> list[dict[str, Any]]:
     return out
 
 
-def suggest(db: Session, b: Business) -> dict[str, Any]:
+def suggest(db: Session, b: Business, topic: str = "") -> dict[str, Any]:
+    topic = re.sub(r"\s+", " ", topic or "").strip()[:80]
     if not ai.is_configured():
         raise ai.AiUnavailable("AI is not set up on the SEO platform, so keywords cannot be suggested. Add an AI key to the backend .env.")
     ev = evidence(db, b)
-    out = ai.complete_json(SYSTEM, _prompt(b, ev), temperature=0.4, max_tokens=4000)
+    out = ai.complete_json(SYSTEM, _prompt(b, ev, topic), temperature=0.4, max_tokens=4000)
     items = normalise(out.get("items") or [], {k["keyword"] for k in ev["saved"]})
-    return {"items": items, "horizons": HORIZON, "uses": USES, "source": "ai",
+    return {"items": items, "topic": topic or None, "horizons": HORIZON, "uses": USES, "source": "ai",
             "evidence": {"services": len(ev["services"]), "saved": len(ev["saved"]), "posts": len(ev["posts"]), "articles": len(ev["articles"]), "competitor_gaps": len(ev["competitor_gaps"]),
                          "geo_prompts": len(ev["geo_prompts"]), "failing_ai_checks": len(ev["failing_ai_checks"]), "researched": ev["researched"]},
             "generated_at": datetime.now(timezone.utc).isoformat()}

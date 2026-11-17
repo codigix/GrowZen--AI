@@ -1199,7 +1199,7 @@ const USE_TONE = { blog: 'bg-violet-50 text-violet-700 ring-violet-200', gmb_pos
 const HORIZONS = [['done', 'Builds on what you already do', 'Based on your services, saved keywords, posts and articles'], ['next', 'Where you can grow next', 'A realistic direction for the next 3 to 6 months']];
 const UseChip = ({ u }) => <span className={`inline-flex items-center rounded-full ring-1 ring-inset px-2 py-0.5 text-11 font-semibold whitespace-nowrap ${USE_TONE[u] || USE_TONE.website}`}>{USE_LABEL[u] || u}</span>;
 
-function AiSuggestions({ b, tracked, onTracked }) {
+function AiSuggestions({ b, tracked, onTracked, seedSearch }) {
   const cacheKey = `kwai:${b.id}`;
   const [data, setData] = useState(() => { try { return JSON.parse(sessionStorage.getItem(cacheKey) || 'null'); } catch { return null; } });
   const [picked, setPicked] = useState([]);
@@ -1208,11 +1208,17 @@ function AiSuggestions({ b, tracked, onTracked }) {
   const have = useMemo(() => new Set((tracked || []).map(k => k.keyword)), [tracked]);
   const items = (data?.items || []).filter(i => !have.has(i.keyword));
   const shown = items.filter(i => area === 'all' || (i.uses || []).includes(area));
-  const suggest = () => run('suggest', async () => {
-    const r = await api(`/businesses/${b.id}/keywords/ai-suggestions`, { method: 'POST', body: {}, timeout: 120000 });
+  const suggest = (topic = '') => run('suggest', async () => {
+    const r = await api(`/businesses/${b.id}/keywords/ai-suggestions`, { method: 'POST', body: topic ? { topic } : {}, timeout: 120000 });
     setData(r); setPicked([]);
     try { sessionStorage.setItem(cacheKey, JSON.stringify(r)); } catch { /* optional */ }
   });
+  const ranFor = React.useRef(0);
+  useEffect(() => { // a topic typed in the search box above: the AI writes its suggestions around it
+    if (!seedSearch?.n || ranFor.current === seedSearch.n) return;
+    ranFor.current = seedSearch.n;
+    suggest(seedSearch.text);
+  }, [seedSearch?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggle = (k) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k]));
   const save = () => run('save', async () => {
     const chosen = items.filter(i => picked.includes(i.keyword));
@@ -1224,7 +1230,7 @@ function AiSuggestions({ b, tracked, onTracked }) {
   return (
     <div className="space-y-5">
       <Card title={`AI suggestions for ${b.name}`} subtitle="Keywords and questions to go after, written from what your business has really done and could grow into. Nothing is saved until you pick."
-        action={<Button variant="ai" icon={Sparkles} busy={busy === 'suggest'} onClick={suggest}>{data ? 'Suggest again' : 'Suggest keywords'}</Button>}>
+        action={<Button variant="ai" icon={Sparkles} busy={busy === 'suggest'} onClick={() => suggest(data?.topic || '')}>{data ? 'Suggest again' : 'Suggest keywords'}</Button>}>
         <ErrorNote>{error}</ErrorNote>
         {!data && busy !== 'suggest' && (
           <div className="py-8 text-center text-13 text-slate-500 max-w-xl mx-auto">
@@ -1364,7 +1370,7 @@ function Keywords({ b, tab, kw, onSaved, seedSearch }) {
   const tracked = kw.data?.keywords || [];
   return (
     <>
-      {tab === 'ai' && <AiSuggestions b={b} tracked={tracked} onTracked={onSaved} />}
+      {tab === 'ai' && <AiSuggestions b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
       {tab === 'discover' && <Discover b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
       {tab === 'planner' && <GooglePlanner b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
       {tab === 'explorer' && <KeywordExplorer b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
@@ -1430,6 +1436,42 @@ function NextStep({ progress, tab, bid, reload }) {
 
 const FLOW_AT = { workspace: 'workspace', ai: 'find', discover: 'find', planner: 'find', explorer: 'find', tracked: 'mine', topics: 'mine', use: 'mine', mapping: 'mapping', status: 'status' };
 
+const FIND_CARDS = [
+  ['ai', 'AI suggestions', 'Written from your business: what it does, what competitors win, what is missing'],
+  ['discover', 'Ideas for my business', 'Real Google searches around your services and your areas'],
+  ['planner', 'Google numbers', 'Searches per month and cost for a keyword'],
+  ['explorer', 'Other platforms', 'YouTube, Bing, Amazon and more'],
+];
+const FIND_HINT = {
+  ai: 'Type a topic to focus the suggestions, or leave it empty to use your whole business.',
+  discover: 'Type a word to start from it, or leave it empty to start from your services.',
+  planner: 'Type a keyword to see its searches, cost and related ideas.',
+  explorer: 'Type a keyword to see what people search for on other platforms.',
+};
+
+/** The top of Find Keywords: one search box, and the four places to look as cards. */
+function FindHeader({ tab, setTab, typed, setTyped, onSearch, seedText }) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-5">
+      <form onSubmit={(e) => { e.preventDefault(); onSearch(); }} role="search" className="flex flex-wrap gap-2">
+        <label className="relative flex-1 min-w-[240px]"><Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+          <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search a keyword or topic" aria-label="Search keywords" className="w-full h-11 pl-10 pr-3 text-14 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+        <Button type="submit" variant="primary" icon={Search} className="h-11 px-6" disabled={typed.trim().length < 2}>Search</Button>
+      </form>
+      <p className="mt-1.5 text-12 text-slate-500">{FIND_HINT[tab]}{seedText ? <> Showing results for <b className="text-slate-700">{seedText}</b>.</> : null}</p>
+      <div className="mt-4 text-12 font-semibold uppercase tracking-wide text-slate-500">Where to look</div>
+      <div role="tablist" aria-label="Where the ideas come from" className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {FIND_CARDS.map(([id, label, text]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+            className={`text-left rounded-lg px-3.5 py-3 cursor-pointer ring-1 ring-inset transition-colors ${tab === id ? 'bg-indigo-50 ring-indigo-400' : 'bg-white ring-slate-200 hover:bg-slate-50'}`}>
+            <span className={`block text-13.5 font-semibold ${tab === id ? 'text-indigo-800' : 'text-slate-900'}`}>{label}</span>
+            <span className="block text-12 text-slate-500 mt-0.5 leading-snug">{text}</span>
+          </button>))}
+      </div>
+    </div>
+  );
+}
+
 function KeywordPath({ b, tab, setTab }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
   const progress = useApi(`/businesses/${b.id}/keywords/progress`);
@@ -1443,7 +1485,7 @@ function KeywordPath({ b, tab, setTab }) {
     const t = typed.trim();
     if (t.length < 2) return;
     setSeedSearch(x => ({ n: x.n + 1, text: t }));
-    navigate(`/keyword-management/${tab === 'ai' ? 'discover' : tab}?q=${encodeURIComponent(t)}`, { replace: tab !== 'ai' }); // the AI suggestions are written from the business, not from a typed word: a search opens the ideas source, which answers it
+    navigate(`/keyword-management/${tab}?q=${encodeURIComponent(t)}`, { replace: true });
   };
   const refresh = { ...kw, reload: (q) => { kw.reload(q); progress.reload(true); } };
   // Saving a keyword from any source ends on My Keywords, with what was just saved marked.
@@ -1470,20 +1512,8 @@ function KeywordPath({ b, tab, setTab }) {
   return (
     <>
       <KeywordFlowBar b={b} at={FLOW_AT[tab] || 'find'} />
-      <PathBar progress={progress.data} tab={tab} setTab={setTab} />
-      {FIND_TABS.includes(tab) && (
-        <form onSubmit={(e) => { e.preventDefault(); startSearch(); }} className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 mb-4 flex flex-wrap gap-2" role="search">
-          <label className="relative flex-1 min-w-[240px]"><Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-            <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search any keyword or topic" aria-label="Search keywords" className="w-full h-11 pl-10 pr-3 text-14 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
-          <Button type="submit" variant="primary" icon={Search} className="h-11 px-6" disabled={typed.trim().length < 2}>Search</Button>
-          <p className="basis-full text-12 text-slate-500">One search for all three sources: it runs in the one you are on, and in the others as you open them. {seedSearch.text ? <>Showing results for <b>{seedSearch.text}</b>.</> : 'Leave it empty to start from your business.'}</p>
-        </form>
-      )}
-      {FIND_TABS.includes(tab) && (
-        <div role="tablist" aria-label="Where the ideas come from" className="flex flex-wrap gap-2 mb-5">
-          {SOURCES.map(([id, label, hint]) => <button key={id} type="button" role="tab" aria-selected={tab === id} title={hint} onClick={() => setTab(id)} className={pill(tab === id)}>{label}</button>)}
-        </div>
-      )}
+      {!FIND_TABS.includes(tab) && <PathBar progress={progress.data} tab={tab} setTab={setTab} />}
+      {FIND_TABS.includes(tab) && <FindHeader tab={tab} setTab={setTab} typed={typed} setTyped={setTyped} onSearch={startSearch} seedText={seedSearch.text} />}
       {SAVE_TABS.includes(tab) && (
         <div role="tablist" aria-label="My keywords" className="flex flex-wrap gap-2 mb-5">
           {SAVED_VIEWS.map(([id, label, hint]) => <button key={id} type="button" role="tab" aria-selected={tab === id} title={hint} onClick={() => setTab(id)} className={pill(tab === id)}>{label}</button>)}
@@ -1491,7 +1521,7 @@ function KeywordPath({ b, tab, setTab }) {
       )}
       {(tab === 'discover' || tab === 'tracked') && <div className="mb-5"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
       <Keywords b={b} tab={tab} kw={refresh} onSaved={saved} seedSearch={seedSearch} />
-      <NextStep progress={progress.data} tab={tab} bid={b.id} reload={() => { kw.reload(true); progress.reload(true); }} />
+      {!FIND_TABS.includes(tab) && <NextStep progress={progress.data} tab={tab} bid={b.id} reload={() => { kw.reload(true); progress.reload(true); }} />}
     </>
   );
 }
