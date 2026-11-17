@@ -63,6 +63,8 @@ class Business(TimestampMixin, Base):
     target_scope: Mapped[str | None] = mapped_column(String(15))  # local | national | international: who the business wants customers from (services/market.py)
     target_countries: Mapped[list[str]] = mapped_column(JSON, default=list)  # ISO codes, for international
     target_areas: Mapped[list[str]] = mapped_column(JSON, default=list)  # "Aundh, Pune", for local
+    target_audience: Mapped[str | None] = mapped_column(Text)  # who the customers are: the business analysis (services/seo_journey.py)
+    goals: Mapped[list[str]] = mapped_column(JSON, default=list)  # what the business wants from SEO: calls, bookings, leads, sales, brand...
     services: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{name, price, description}]
     attributes: Mapped[list[str]] = mapped_column(JSON, default=list)
     hours: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -410,6 +412,7 @@ class Keyword(TimestampMixin, Base):
     rank_checked_at: Mapped[date | None] = mapped_column(Date)
     priority: Mapped[str] = mapped_column(String(10), default="Medium")
     tracked: Mapped[bool] = mapped_column(Boolean, default=True)
+    role: Mapped[str | None] = mapped_column(String(10))  # primary | secondary: the page's main keyword or one it supports (services/keyword_mapping.py)
     uses: Mapped[list[str] | None] = mapped_column(JSON)  # where it is meant to be used: blog, gmb_post, aeo, geo, chatgpt, website
     source: Mapped[dict | None] = mapped_column(JSON)  # where the keyword was taken from: {kind, label, from, pages: [{url, in}], searches, at}
 

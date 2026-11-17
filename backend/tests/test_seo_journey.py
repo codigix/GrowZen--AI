@@ -1,0 +1,59 @@
+"""The six-stage SEO plan, keyword mapping and competitor pages."""
+from app.db import SessionLocal
+from app.models import Audit, Business, Keyword
+from app.services import keyword_mapping, seo_journey
+
+
+def _project(client, **extra):
+    r = client.post("/api/v1/businesses", json={"name": "Asha Dental", "website": "https://asha.example", "city": "Pune", "primary_category": "Dentist", **extra})
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def _crawl(db, bid):
+    pg = lambda path, title, h1: {"url": "https://asha.example" + path, "status": 200, "title": title, "h1": h1, "meta_description": ""}
+    db.add(Audit(business_id=bid, kind="onpage", status="done", data_source="live", score=70, result={"pages": [pg("/", "Asha Dental | Pune", "Dentist in Pune"), pg("/implants", "Dental implants in Pune", "Dental implants"), pg("/about", "About us", "About")]}))
+    db.commit()
+
+
+def test_business_analysis_fields_save_and_count(client):
+    bid = _project(client)
+    r = client.patch(f"/api/v1/businesses/{bid}", json={"target_audience": "Families in Baner", "goals": ["calls", "bookings"]})
+    assert r.status_code == 200, r.text
+    j = client.get(f"/api/v1/businesses/{bid}/seo-journey").json()
+    biz = {s["key"]: s for s in j["stages"][0]["steps"]}
+    assert biz["audience"]["done"] and biz["goals"]["done"] and biz["services"]["done"]
+    assert [s["n"] for s in j["stages"]] == [1, 2, 3, 4, 5, 6] and j["current"] in ("business", "competitors") and j["roadmap"]
+
+
+def test_mapping_assigns_pages_primary_and_finds_missing_pages_and_posts(client):
+    bid = _project(client)
+    db = SessionLocal()
+    _crawl(db, bid)
+    for k, v in (("dental implants pune", 900), ("implants", 300), ("teeth whitening", 700), ("how much do braces cost", 400)):
+        db.add(Keyword(business_id=bid, keyword=k, volume=v, tracked=True, intent="informational" if k.startswith("how") else "commercial"))
+    db.commit()
+    p = keyword_mapping.plan(db, db.get(Business, bid))
+    page = {x["path"]: x for x in p["pages"]}
+    assert page["/implants"]["primary"] == "dental implants pune" and "implants" in page["/implants"]["secondary"]
+    assert [m["keyword"] for m in p["missing_pages"]] == ["teeth whitening"] and [x["keyword"] for x in p["blog_opportunities"]] == ["how much do braces cost"]
+    out = client.post(f"/api/v1/businesses/{bid}/keyword-mapping/apply").json()
+    assert out["mapped"] == 2
+    k = db.query(Keyword).filter_by(business_id=bid, keyword="dental implants pune").one()
+    db.refresh(k)
+    assert k.role == "primary" and k.target_url.endswith("/implants")
+    j = seo_journey.journey(db, db.get(Business, bid))
+    assert {s["key"]: s["done"] for s in j["stages"][3]["steps"]}["primary"] is True
+
+
+def test_competitor_pages_need_the_research(client):
+    bid = _project(client)
+    assert client.get(f"/api/v1/businesses/{bid}/competitor-pages").json()["available"] is False
+    db = SessionLocal()
+    org = lambda d, u, pos: {"domain": d, "url": u, "position": pos, "title": "t", "mine": False, "type": "business"}
+    db.add(Audit(kind="intel", target=f"business:{bid}", status="done", result={"serps": [{"keyword": "dentist pune", "you_organic": 6, "organic": [org("rival.in", "https://rival.in/dentist", 1), org("rival.in", "https://rival.in/", 3)]}], "gaps": {"keywords": [{"keyword": "dentist pune", "competitors": [{"domain": "rival.in"}]}]}}))
+    db.add(Keyword(business_id=bid, keyword="dentist pune", volume=1000, tracked=True))
+    db.commit()
+    r = client.get(f"/api/v1/businesses/{bid}/competitor-pages").json()
+    c = r["competitors"][0]
+    assert c["domain"] == "rival.in" and c["est_visits"] == 390 and c["top_pages"][0]["url"] == "https://rival.in/dentist" and r["you"]["visits"] == 50 and r["gaps"][0]["volume"] == 1000

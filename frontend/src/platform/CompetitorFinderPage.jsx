@@ -8,6 +8,7 @@ import {
 import { SeoShell, Card, Badge, Button, Field, Tabs, Modal, inputCls, ErrorNote, useToast, useAction, Sk, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
+import CompetitorPagesTab from './CompetitorPagesTab';
 
 /**
  * Competitor research for the selected business, from live Google data, in one place: who ranks on Google
@@ -537,7 +538,7 @@ function Research({ b }) {
   const [state, setState] = useState(null); // { run, defaults, setup }
   const [loadError, setLoadError] = useState('');
   const [params] = useSearchParams();
-  const [tab, setTab] = useState(() => (['overview', 'competitors', 'compare', 'gap', 'keywords', 'maps', 'links', 'plan'].includes(params.get('tab')) ? params.get('tab') : 'overview'));
+  const [tab, setTab] = useState(() => (['overview', 'competitors', 'pages', 'compare', 'gap', 'keywords', 'maps', 'links', 'plan'].includes(params.get('tab')) ? params.get('tab') : 'overview'));
   const [settings, setSettings] = useState(false);
   const [detail, setDetail] = useState(null);
   const [serp, setSerp] = useState(null);
@@ -693,6 +694,7 @@ function Research({ b }) {
             <Tabs value={tab} onChange={setTab} tabs={[
               { id: 'overview', label: 'Overview' },
               { id: 'competitors', label: 'Competitors', count: rows.length },
+              { id: 'pages', label: 'Traffic and top pages' },
               { id: 'compare', label: 'Side by side' },
               { id: 'gap', label: 'Keyword gap' },
               { id: 'keywords', label: 'Keywords', count: result.keywords.length },
@@ -707,6 +709,7 @@ function Research({ b }) {
                 onAddManual={addManual} addBusy={addBusy === 'add'} addError={addError} />
               <ErrorNote>{mapsError}</ErrorNote>
             </>}
+            {tab === 'pages' && <CompetitorPagesTab b={b} />}
             {tab === 'compare' && <CompareDomains b={b} result={result} />}
             {tab === 'gap' && <KeywordGap b={b} result={result} />}
             {tab === 'keywords' && <KeywordsTab r={result} onKeyword={setSerp} onIdeas={() => setIdeas(true)} />}

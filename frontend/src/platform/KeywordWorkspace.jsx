@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Check, CheckCircle2, Download, EyeOff, RefreshCw, Sparkles, Star, Swords, Undo2 } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
@@ -40,8 +40,9 @@ function SourceBadges({ sources }) {
 }
 
 export default function KeywordWorkspace({ b, onUse }) {
-  const [source, setSource] = useState('');
-  const [tag, setTag] = useState('');
+  const [params] = useSearchParams();
+  const [source, setSource] = useState(params.get('source') || '');
+  const [tag, setTag] = useState(params.get('tag') || '');
   const [q, setQ] = useState('');
   const [show, setShow] = useState('open');
   const [sel, setSel] = useState(() => new Set());

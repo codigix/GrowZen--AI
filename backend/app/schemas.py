@@ -54,6 +54,8 @@ class BusinessIn(BaseModel):
     target_scope: Literal["local", "national", "international"] | None = None
     target_countries: list[str] | None = None
     target_areas: list[str] | None = None
+    target_audience: str | None = Field(default=None, max_length=1000)
+    goals: list[str] | None = None
     services: list[dict[str, Any]] = []
     attributes: list[str] = []
     hours: dict[str, Any] = {}
@@ -241,6 +243,8 @@ class BusinessPatch(BaseModel):
     target_scope: Literal["local", "national", "international"] | None = None
     target_countries: list[str] | None = None
     target_areas: list[str] | None = None
+    target_audience: str | None = Field(default=None, max_length=1000)
+    goals: list[str] | None = None
     services: list[dict[str, Any]] | None = None
     attributes: list[str] | None = None
     hours: dict[str, Any] | None = None
@@ -537,6 +541,7 @@ class KeywordIn(BaseModel):
     priority: Literal["High", "Medium", "Low"] = "Medium"
     uses: list[Literal["blog", "gmb_post", "aeo", "geo", "chatgpt", "website"]] | None = None
     source: dict | None = None
+    role: Literal["primary", "secondary"] | None = None
 
 
 class KeywordIdeasIn(BaseModel):
