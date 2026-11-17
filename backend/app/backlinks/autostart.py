@@ -26,8 +26,11 @@ def enable(db: Session, b: Business) -> dict:
     cfg = bot.get_config(db, b.id)
     cfg.enabled = True
     db.commit()
-    return {"enabled": True, "targets": len(targets), "domains": [t.domain for t in targets], "added": [a["domain"] for a in out["added"]],
-            "interval_minutes": cfg.interval_minutes}
+    result = {"enabled": True, "targets": len(targets), "domains": [t.domain for t in targets], "added": [a["domain"] for a in out["added"]],
+              "interval_minutes": cfg.interval_minutes}
+    if "crawler" in out:  # sync_targets already told our backlink crawler about the new domains
+        result["crawler"] = out["crawler"]
+    return result
 
 
 def first_run_in_background(business_id: int) -> None:

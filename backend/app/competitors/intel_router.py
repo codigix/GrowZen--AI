@@ -2,7 +2,7 @@
 latest result. A run is saved on an Audit row (kind "intel", target "business:<id>") without a
 business_id, so it never counts towards the business's own audit scores."""
 from datetime import datetime, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, StringConstraints
@@ -45,6 +45,37 @@ def _expire_stale(db: Session, a: Audit | None) -> Audit | None:
     return a
 
 
+MAX_SAVED_PER_RUN = 25  # most new competitors one research run may add to the business's list
+
+
+def save_found(db: Session, b: Any, result: dict) -> int:
+    """Save every competitor a finished research run found (Maps and Google results) as one of the business's competitors. They are then tracked for
+    backlinks and sent to our backlink crawler, so the saved list, this page and the crawler are the same list. Never raises. Returns how many were new."""
+    from ..models import Competitor
+    from . import hygiene
+    try:
+        have = {hygiene.host_of(c.website) for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)) if c.website}
+        added = 0
+        for item in [*(result.get("local_competitors") or []), *(result.get("organic_competitors") or [])]:
+            site = (item.get("website") or "").strip() or (f"https://{item['domain']}" if item.get("domain") else "")
+            host = hygiene.host_of(site)
+            if not host or host in have or hygiene.skip_reason(b, site):
+                continue
+            db.add(Competitor(business_id=b.id, website=site, name=item.get("name") or host, address=item.get("address"), phone=item.get("phone"),
+                              rating=item.get("rating") if isinstance(item.get("rating"), (int, float)) else None, reviews=item.get("reviews"), source="research"))
+            have.add(host)
+            added += 1
+            if added >= MAX_SAVED_PER_RUN:
+                break
+        db.commit()
+        from ..backlinks import sync as backlink_sync
+        backlink_sync.after_competitors_saved(db, b)  # every saved competitor, new or not, is tracked and sent to the crawler with its business
+        return added
+    except Exception:  # noqa: BLE001 - saving them must never fail the research itself
+        db.rollback()
+        return 0
+
+
 def _run(db: Session, audit_id: int, business_id: int, keywords: list[str], location: str | None) -> None:
     audit = db.get(Audit, audit_id)
     b = db.get(Business, business_id)
@@ -66,6 +97,8 @@ def _run(db: Session, audit_id: int, business_id: int, keywords: list[str], loca
             own = {}
         result = intel.analyse(b, keywords, location, progress, own)
         audit.result, audit.status, audit.score = result, "done", round(result["summary"]["visibility"])
+        db.commit()
+        save_found(db, b, result)  # every competitor found is saved, tracked and sent to the backlink crawler
     except intel.IntelError as exc:
         audit.status, audit.error = "failed", str(exc)
     except Exception as exc:  # noqa: BLE001 - the page shows the reason instead of spinning forever

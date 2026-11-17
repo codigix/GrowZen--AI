@@ -45,6 +45,9 @@ def _upsert(db: Session, business_id: int, found: list[dict]) -> list[Competitor
     db.commit()
     for c in saved:
         db.refresh(c)
+    if saved and owner is not None:
+        from ..backlinks import sync as backlink_sync
+        backlink_sync.after_competitors_saved(db, owner)  # the new competitors are tracked and sent to the backlink crawler
     return saved
 
 
@@ -96,6 +99,8 @@ def add_manual(body: CompetitorManualIn, db: Session = Depends(get_db), user: Us
     db.add(c)
     db.commit()
     db.refresh(c)
+    from ..backlinks import sync as backlink_sync
+    backlink_sync.after_competitors_saved(db, b)  # tracked for backlinks and sent to the backlink crawler
     return row(c)
 
 

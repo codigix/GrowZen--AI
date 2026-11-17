@@ -77,6 +77,8 @@ def add_target(body: TargetIn, b: Business = Depends(get_business), db: Session 
         db.add(t)
         engine.get_domain(db, reg)
         db.commit()
+        own_t = db.scalar(select(BiTrackedTarget.domain).where(BiTrackedTarget.business_id == b.id, BiTrackedTarget.is_competitor.is_(False)).order_by(BiTrackedTarget.id))
+        sync.register_with_crawler(own_t or sync._domain_of(b.website), [] if body.is_competitor else [reg], [reg] if body.is_competitor else [])  # a domain added by hand reaches our backlink crawler too
     return _target_out(t)
 
 

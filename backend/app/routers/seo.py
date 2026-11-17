@@ -129,6 +129,8 @@ def track_competitor(body: CompetitorDomainIn, b: Business = Depends(get_busines
         db.add(Competitor(business_id=b.id, name=domain, website=site, source="manual", selected=True))
         log(db, user.name, "competitor_added", b.id, domain=domain)
         db.commit()
+        from ..backlinks import sync as backlink_sync
+        backlink_sync.after_competitors_saved(db, b)  # tracked for backlinks and sent to the backlink crawler
     return {"website": site}
 
 

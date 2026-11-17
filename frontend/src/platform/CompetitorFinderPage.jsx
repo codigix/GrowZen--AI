@@ -574,6 +574,9 @@ function Research({ b }) {
     if (latest) setOurAudit({ id: latest.id, status: latest.status });
   };
   useEffect(() => { load(); loadRegistered(); loadOurAudit(); }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A finished research run saves every competitor it found, so the saved list is read again then (not only when the page opens).
+  const doneRun = state?.run?.status === 'done' ? state.run.id : state?.last_done?.id;
+  useEffect(() => { if (doneRun) loadRegistered(); }, [doneRun]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const current = state?.run;
   usePoll(async () => {

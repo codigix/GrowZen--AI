@@ -67,33 +67,42 @@ function Body({ b }) {
       </Card>
 
       {!none && (
-        <Card className="mb-4" title="Competitors you chose" subtitle="Chosen in Competitor Research. Everything below is about these."
+        <Card className="mb-4" title="Competitors you chose" subtitle="Chosen in Competitor Research. The watch follows these."
           action={<Link to="/competitor-finder?tab=competitors" className="text-12.5 font-semibold text-indigo-700 hover:underline">Change the choice →</Link>}>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {d.competitors.map(c => {
-              const ch = c.changes_30d || {};
-              const total = (ch.new_page || 0) + (ch.changed || 0) + (ch.removed || 0);
-              return (
-                <div key={c.domain} className="rounded-xl ring-1 ring-inset ring-gray-200 p-3.5 flex flex-col gap-2">
-                  <div className="min-w-0">
-                    <div className="text-14 font-semibold text-gray-900 truncate" title={c.name}>{c.name}</div>
-                    <a href={c.website} target="_blank" rel="noreferrer noopener nofollow" className="text-12 text-indigo-600 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.domain}</span><ExternalLink size={10} className="shrink-0" /></a>
-                    {c.rating ? <span className="ml-2 text-12 text-gray-500 inline-flex items-center gap-0.5"><Star size={11} className="text-amber-500" />{c.rating}{c.reviews ? ` (${c.reviews})` : ''}</span> : null}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5 text-12">
-                    <Badge tone="gray">{c.pages_watched} page{c.pages_watched === 1 ? '' : 's'} watched</Badge>
-                    {total === 0 ? <span className="text-gray-400">no changes in 30 days</span> : <>
-                      {ch.new_page > 0 && <Badge tone="green">{ch.new_page} new</Badge>}{ch.changed > 0 && <Badge tone="amber">{ch.changed} changed</Badge>}{ch.removed > 0 && <Badge tone="red">{ch.removed} removed</Badge>}</>}
-                  </div>
-                  {c.last_change_at && <div className="text-11 text-gray-400">Last change {fmtDate(c.last_change_at)}</div>}
-                  <div className="mt-auto pt-1 flex flex-wrap gap-x-3 gap-y-1 text-12 font-semibold">
-                    <Link className="text-indigo-600 hover:underline" to="/competitor-finder?tab=pages">Top pages</Link>
-                    <Link className="text-indigo-600 hover:underline" to="/competitor-finder?tab=compare">Compare</Link>
-                    <Link className="text-indigo-600 hover:underline" to="/backlinks/domains">Backlinks</Link>
-                  </div>
-                </div>);
-            })}
+          <div className="overflow-x-auto rounded-lg ring-1 ring-inset ring-gray-200">
+            <table className="w-full text-13 min-w-[760px]">
+              <thead className="bg-gray-50 text-11.5 uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">Competitor</th><th className="px-3 py-2 text-right">Pages watched</th>
+                  <th className="px-3 py-2 text-right">New</th><th className="px-3 py-2 text-right">Changed</th><th className="px-3 py-2 text-right">Removed</th>
+                  <th className="px-3 py-2 text-left">Last change</th><th className="px-3 py-2 text-left">Open</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {d.competitors.map(c => {
+                  const ch = c.changes_30d || {};
+                  const num = (v, tone) => <td className={`px-3 py-2.5 text-right tabular-nums ${v ? `font-semibold ${tone}` : 'text-gray-300'}`}>{v || 0}</td>;
+                  return (
+                    <tr key={c.domain} className="hover:bg-gray-50">
+                      <td className="px-3 py-2.5 min-w-[220px]">
+                        <div className="font-semibold text-gray-900 truncate max-w-[300px]" title={c.name}>{c.name}</div>
+                        <a href={c.website} target="_blank" rel="noreferrer noopener nofollow" className="text-12 text-indigo-600 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.domain}</span><ExternalLink size={10} className="shrink-0" /></a>
+                        {c.rating ? <span className="ml-2 text-12 text-gray-500 inline-flex items-center gap-0.5"><Star size={11} className="text-amber-500" />{c.rating}{c.reviews ? ` (${c.reviews})` : ''}</span> : null}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{c.pages_watched}</td>
+                      {num(ch.new_page, 'text-green-700')}{num(ch.changed, 'text-amber-700')}{num(ch.removed, 'text-red-700')}
+                      <td className="px-3 py-2.5 text-12.5 text-gray-600 whitespace-nowrap">{c.last_change_at ? fmtDate(c.last_change_at) : <span className="text-gray-400">none in 30 days</span>}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-12.5 font-semibold">
+                        <Link className="text-indigo-600 hover:underline mr-3" to="/competitor-finder?tab=pages">Top pages</Link>
+                        <Link className="text-indigo-600 hover:underline mr-3" to="/competitor-finder?tab=compare">Compare</Link>
+                        <Link className="text-indigo-600 hover:underline" to="/backlinks/domains">Backlinks</Link>
+                      </td>
+                    </tr>);
+                })}
+              </tbody>
+            </table>
           </div>
+          <p className="mt-2 text-11.5 text-gray-400">New, changed and removed are counted over the last 30 days.</p>
           {d.not_chosen?.length > 0 && (
             <p className="mt-3 text-12.5 text-gray-600">{d.not_chosen.length} more competitor{d.not_chosen.length === 1 ? ' was' : 's were'} found but not chosen ({d.not_chosen.slice(0, 3).map(x => x.name).join(', ')}{d.not_chosen.length > 3 ? '…' : ''}).{' '}
               <Link className="font-semibold text-indigo-700 hover:underline" to="/competitor-finder?tab=competitors">Look at them <ArrowRight size={11} className="inline" /></Link></p>
