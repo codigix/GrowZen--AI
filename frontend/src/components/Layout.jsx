@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
   LogOut, Menu, X, KeyRound, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen,
-  TrendingUp, ChevronDown, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send, Activity
+  TrendingUp, Check, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send, Activity
 } from 'lucide-react';
 import { SIDEBAR_GROUPS, SIDEBAR_SECTIONS } from './sidebarGroups';
 import { useNavigate } from 'react-router-dom';
@@ -76,13 +76,17 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
   const [open, setOpen] = useState(false); // mobile drawer
   const [collapsed, setCollapsed] = useState(readCollapsed); // desktop: hides the pages panel and keeps the icon rail
   const [picked, setPicked] = useState(null); // the rail section the user opened last
-  const [folded, setFolded] = useState({}); // group headers the person opened or closed by hand: { 'seo:3 · Keyword Research': true }
   const location = useLocation();
   const navigate = useNavigate();
   const connections = useConnections();
   const hidePanel = collapsed && !open; // the mobile drawer always shows the panel
   const mainRef = useRef(null);
   const [biz] = useSeoBusiness();
+  // Where the project stands on its journey: a stage group gets a tick when its step is done, and the first group still to do opens on its own.
+  const flow = useApi(biz ? `/businesses/${biz.id}/flow` : null).data;
+  const stepDone = Object.fromEntries((flow?.steps || []).map(st => [st.key, st.status === 'done']));
+  const STAGE_STEP = { '1': 'details', '2': 'competitors', '3': 'keywords', '4': 'mapping', '5': 'website', '6a': 'fix', '6b': 'content', '6c': 'links', '6d': 'report' };
+  const stageKey = (t) => STAGE_STEP[String(t || '').split(' ')[0]];
   // A project that does SEO only is not shown the Google profile, ChatGPT or AI sections it does not use (the section opens again when the page is reached by address).
   const on = biz?.services_on;
   const needs = { GMB: 'gmb', chatgpt: ['geo', 'aeo'], ai: ['geo', 'aeo'] };
@@ -141,30 +145,24 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
             <span className="text-16 font-bold text-white truncate">{section.title}</span>
             <button className="lg:hidden p-1.5 rounded-md text-topbar-item hover:text-white hover:bg-white/10 cursor-pointer" onClick={() => setOpen(false)} aria-label="Close menu"><X size={18} /></button>
           </div>
-          <nav className="flex-1 overflow-y-auto no-scrollbar px-3 py-3" aria-label={section.title}>
+          <nav className="flex-1 overflow-y-auto px-3 py-3 [scrollbar-width:thin]" aria-label={section.title}>
             {section.groups.map((grp, gi) => {
               const items = grp.items.filter(item => !item.adminOnly || user?.is_admin);
               if (!items.length) return null;
-              // A long section (several titled groups) shows only the group you are in; the others open with a click, so nothing is cut off the bottom.
-              const titled = section.groups.filter(g => g.title).length;
-              const holdsHere = items.some(item => itemActive(location.pathname, location.search, item));
-              const fkey = `${section.id}:${grp.title}`;
-              const isOpen = !grp.title || (fkey in folded ? !folded[fkey] : titled <= 3 || holdsHere);
+              const stage = stageKey(grp.title);
               return (
-                <div key={`${grp.title || 'main'}-${gi}`} className={gi ? 'mt-2' : ''}>
+                <div key={`${grp.title || 'main'}-${gi}`} className={gi ? 'mt-3' : ''}>
                   {grp.title && (
-                    <button type="button" onClick={() => setFolded(f => ({ ...f, [fkey]: isOpen }))} aria-expanded={isOpen}
-                      className="w-full flex items-center gap-1.5 px-3 py-1.5 rounded text-12 font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-50 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40">
-                      <span className="flex-1 text-left">{grp.title}</span>
-                      {!isOpen && <span className="text-11 font-normal text-slate-400">{items.length}</span>}
-                      <ChevronDown size={13} className={`shrink-0 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
-                    </button>)}
-                  <div className={`space-y-0.5 ${isOpen ? '' : 'hidden'}`}>
+                    <div className="flex items-center gap-1.5 px-3 mb-1 text-12 font-semibold text-slate-500">
+                      <span className="flex-1">{grp.title}</span>
+                      {stage && stepDone[stage] && <Check size={13} className="text-emerald-600 shrink-0" aria-label="Done" />}
+                    </div>)}
+                  <div className="space-y-0.5">
                     {items.map(item => {
                       const active = itemActive(location.pathname, location.search, item);
                       return (
                         <Link key={item.to} to={item.to} onClick={() => setOpen(false)} aria-current={active ? 'page' : undefined}
-                          className={`flex items-center gap-2 min-h-9 px-3 py-1.5 rounded text-14 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 transition-colors ${active ? 'bg-slate-200/80 text-slate-900 font-semibold' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}>
+                          className={`flex items-center gap-2 min-h-8 px-3 py-1 rounded text-14 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 transition-colors ${active ? 'bg-slate-200/80 text-slate-900 font-semibold' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}>
                           <span className="flex-1 leading-snug">{item.label}</span>
                           {item.badge && <span className={`shrink-0 text-10 font-semibold leading-none px-1.5 py-1 rounded-md ring-1 ring-inset ${BADGE_TONES[item.badge] || 'bg-slate-500/15 text-slate-700 ring-slate-400/25'}`}>{item.badge}</span>}
                         </Link>);
