@@ -3,21 +3,21 @@ from app.services import project_rules as pr
 
 
 def test_seo_only_needs_a_website_and_services_but_no_google_profile_details():
-    ok = {"name": "A", "website": "https://a.example", "services": [{"name": "x"}], "target_scope": "national"}
+    ok = {"name": "A", "website": "https://a.example", "services": [{"name": "x"}], "target_scope": "national", "target_audience": "Families in Pune", "goals": ["calls"]}
     assert pr.problems(ok, ["seo"]) == []
     assert any("website" in p for p in pr.problems({**ok, "website": ""}, ["seo", "geo"]))
     assert any("service or product" in p for p in pr.problems({**ok, "services": []}, ["seo"]))
 
 
 def test_a_google_profile_needs_phone_city_and_category():
-    d = {"name": "A", "website": "https://a.example", "services": [{"name": "x"}]}
+    d = {"name": "A", "website": "https://a.example", "services": [{"name": "x"}], "target_audience": "Families in Pune", "goals": ["calls"]}
     got = " ".join(pr.problems(d, ["seo", "gmb"]))
     assert "phone" in got and "city" in got and "category" in got
     assert pr.problems({**d, "phone": "+919876543210", "city": "Pune", "primary_category": "Dentist"}, ["seo", "gmb"]) == []
 
 
 def test_reach_and_empty_services():
-    base = {"name": "A", "website": "https://a.example", "services": [{"name": "x"}]}
+    base = {"name": "A", "website": "https://a.example", "services": [{"name": "x"}], "target_audience": "Families in Pune", "goals": ["calls"]}
     assert any("city or at least one target area" in p for p in pr.problems(base, ["seo"]))  # local is the default reach
     assert any("target country" in p for p in pr.problems({**base, "target_scope": "international"}, ["seo"]))
     assert pr.problems(base, [])[0].startswith("Choose at least one service")
@@ -28,9 +28,15 @@ def test_create_and_change_services_are_checked(client):
     assert r.status_code == 422 and "phone" in r.json()["detail"]
     r = client.post("/api/v1/businesses", json={"name": "Rules Co", "website": "not a site", "modules": ["seo"]})
     assert r.status_code == 422  # not a website address
-    ok = client.post("/api/v1/businesses", json={"name": "Rules Co", "website": "rules.example", "city": "Pune", "services": [{"name": "x"}], "modules": ["seo"]})
+    ok = client.post("/api/v1/businesses", json={"name": "Rules Co", "website": "rules.example", "city": "Pune", "services": [{"name": "x"}], "modules": ["seo"], "target_audience": "Families in Pune", "goals": ["calls"]})
     assert ok.status_code == 201 and ok.json()["website"] == "https://rules.example"
     bid = ok.json()["id"]
     bad = client.patch(f"/api/v1/businesses/{bid}", json={"modules": ["seo", "gmb"]})
     assert bad.status_code == 422 and "phone" in bad.json()["detail"]
     assert client.get(f"/api/v1/businesses/{bid}").json()["services_on"] == ["seo"]
+
+
+def test_audience_and_goals_are_required_for_every_service():
+    base = {"name": "A", "website": "https://a.example", "services": [{"name": "x"}], "target_scope": "national"}
+    got = " ".join(pr.problems(base, ["seo"]))
+    assert "target audience" in got and "goal" in got

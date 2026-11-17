@@ -62,6 +62,7 @@ class BusinessIn(BaseModel):
     hours: dict[str, Any] = {}
     tone: str | None = None
     usps: str | None = None
+    languages: str | None = Field(default=None, max_length=120)  # content languages, comma separated: English, Hindi
     plan: str | None = None
     contact_name: str | None = None
     contact_email: str | None = None
@@ -273,6 +274,7 @@ class BusinessPatch(BaseModel):
     faqs: list[dict[str, Any]] | None = None
     tone: str | None = None
     usps: str | None = None
+    languages: str | None = Field(default=None, max_length=120)  # content languages, comma separated: English, Hindi
     plan: str | None = None
     status: Literal["active", "needs_approval", "paused"] | None = None
     contact_name: str | None = None

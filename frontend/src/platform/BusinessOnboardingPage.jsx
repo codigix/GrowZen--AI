@@ -34,10 +34,13 @@ const JOB_LABELS = { full_audit: 'Full SEO audit', rank_scan: 'Rank tracking', t
 const EVERY = { daily: 'daily', weekly: 'weekly', fortnightly: 'every 2 weeks', monthly: 'monthly' };
 const CATEGORIES = ['Dentist', 'Hospital', 'Eye care center', 'Medical clinic', 'Physiotherapist', 'Dermatologist', 'Restaurant', 'Cafe', 'Bakery', 'Hotel', 'Gym', 'Beauty salon',
   'Real estate agency', 'Lawyer', 'Accountant', 'School', 'Coaching center', 'Car repair', 'Interior designer', 'Software company', 'Manufacturer', 'Store'];
-const EMPTY = { modules: ['seo', 'geo', 'aeo'], target_audience: '', goals: [], name: '', primary_category: '', description: '', phone: '', website: '', address: '', area: '', city: '', country: 'IN', target_scope: 'local', target_countries: [], target_areas: [], contact_name: '', contact_email: '', booking_url: '', plan: 'Growth', services: [], keywords: [], attributes: [], lat: null, lng: null, social_accounts: { facebook: '', instagram: '', meta_business_id: '' } };
+const EMPTY = { modules: ['seo', 'geo', 'aeo'], target_audience: '', goals: [], tone: 'Professional', usps: '', languages: ['English'], competitors: [], name: '', primary_category: '', description: '', phone: '', website: '', address: '', area: '', city: '', country: 'IN', target_scope: 'local', target_countries: [], target_areas: [], contact_name: '', contact_email: '', booking_url: '', plan: 'Growth', services: [], keywords: [], attributes: [], lat: null, lng: null, social_accounts: { facebook: '', instagram: '', meta_business_id: '' } };
 
 // Google Maps and schema.org placeholders when they don't know the real category: never a category to keep.
 const realCategory = (c) => (/^(services?|organization|local ?business|corporation|business|point of interest|establishment|store|company|professional ?services?)$/i.test(String(c || '').trim()) ? '' : String(c || '').trim());
+const cleanDomain = (u) => { const d = domainOf(String(u || '').trim()); return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(d) ? d : ''; };
+const TONES = ['Professional', 'Friendly', 'Expert', 'Premium', 'Simple and clear', 'Energetic'];
+const LANGS = ['English', 'Hindi', 'Marathi', 'Gujarati', 'Tamil', 'Telugu', 'Bengali', 'Kannada', 'Malayalam', 'Arabic', 'French', 'German', 'Spanish'];
 const digits = (s) => String(s || '').replace(/\D/g, '').slice(-10);
 const domainOf = (u) => { try { return new URL(/^https?:\/\//i.test(u) ? u : `https://${u}`).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return ''; } };
 const normaliseUrl = (u) => { const s = String(u || '').trim(); if (!s) return ''; return /^https?:\/\//i.test(s) ? s : `https://${s}`; };
@@ -604,7 +607,7 @@ function LocationCard({ form, setForm, source, bare = false }) {
 }
 
 const SECTIONS = [['business', 'Business', Building2], ['contact', 'Contact', Phone], ['location', 'Location', MapPin], ['services', 'Services & keywords', Tags], ['plan', 'Plan', Layers]];
-const ERROR_SECTION = { modules: 'business', target_audience: 'business', goals: 'business', name: 'business', primary_category: 'business', phone: 'contact', website: 'contact', contact_email: 'contact', city: 'location', country: 'location', services: 'services', facebook: 'contact', instagram: 'contact', meta_business_id: 'contact' };
+const ERROR_SECTION = { modules: 'business', target_audience: 'business', goals: 'business', tone: 'business', languages: 'business', competitors: 'business', name: 'business', primary_category: 'business', phone: 'contact', website: 'contact', contact_email: 'contact', city: 'location', country: 'location', services: 'services', facebook: 'contact', instagram: 'contact', meta_business_id: 'contact' };
 
 /**
  * Customizable searchable select with checkboxes to select multiple international target locations (countries).
@@ -1215,6 +1218,9 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
     modules: !(form.modules || []).length && 'Choose at least one service for this project.',
     target_audience: (form.target_audience || '').trim().length < 10 && 'Say who the customers are (a sentence is enough): keywords and pages are written for them.',
     goals: !(form.goals || []).length && 'Choose at least one goal.',
+    tone: !(form.tone || '').trim() && 'Choose the tone the writing should have.',
+    languages: !(form.languages || []).length && 'Choose at least one language for the content.',
+    competitors: (form.competitors || []).length > 5 ? 'Five competitors are enough.' : (form.competitors || []).some(c => { const d = cleanDomain(c); return !d || d === domainOf(form.website); }) && 'Enter competitor websites like example.com (not your own site).',
     phone: gmbOn ? (!digits(form.phone) ? 'A phone number is needed for the Google profile and citations.' : !phoneOk(form.phone, form.country) && `This phone number doesn't look complete for ${countryInfo(form.country).name}.`) : (digits(form.phone) && !phoneOk(form.phone, form.country) && `This phone number doesn't look complete for ${countryInfo(form.country).name}.`),
     // Everything the project needs is asked for here, once: its audits, traffic and rank tracking all run on this website, city and category.
     primary_category: gmbOn && !form.primary_category.trim() && 'Pick the main category: the Google profile needs it.',
@@ -1308,6 +1314,26 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
                     return <button key={g} type="button" aria-pressed={on} onClick={() => setForm(x => ({ ...x, goals: on ? x.goals.filter(y => y !== g) : [...(x.goals || []), g] }))}
                       className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{g}</button>;
                   })}</div>{err('goals')}
+                </Field>
+              </div>
+              <div data-field="usps" className={box('usps')}>
+                <Field label="What makes the business different" hint="Experience, certifications, prices, results. The writing uses this, so it never sounds like everyone else."><textarea rows={2} maxLength={600} className={areaCls + hl('usps')} value={form.usps || ''} onChange={set('usps')} placeholder="For example: 15 years of experience, painless implants, EMI available, open on Sundays" /></Field>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div data-field="tone" className={box('tone')}>
+                  <Field label="Tone of the writing *">
+                    <div className="flex flex-wrap gap-1.5">{TONES.map(t => <button key={t} type="button" aria-pressed={form.tone === t} onClick={() => setForm(x => ({ ...x, tone: t }))} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${form.tone === t ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{t}</button>)}</div>{err('tone')}
+                  </Field>
+                </div>
+                <div data-field="languages" className={box('languages')}>
+                  <Field label="Content languages *" hint="Blog posts, Google posts and replies are written in these.">
+                    <div className="flex flex-wrap gap-1.5">{LANGS.map(l => { const on = (form.languages || []).includes(l); return <button key={l} type="button" aria-pressed={on} onClick={() => setForm(x => ({ ...x, languages: on ? x.languages.filter(y => y !== l) : [...(x.languages || []), l] }))} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{l}</button>; })}</div>{err('languages')}
+                  </Field>
+                </div>
+              </div>
+              <div data-field="competitors" className={box('competitors')}>
+                <Field label="Competitors you already know" hint="Up to 5 websites. Optional: competitor research finds more, and starts from these.">
+                  <Chips values={form.competitors || []} onChange={v => setForm({ ...form, competitors: v })} placeholder="competitor.com, then Enter" />{err('competitors')}
                 </Field>
               </div>
               <div>
@@ -1444,7 +1470,8 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
         attributes: form.attributes, lat: form.lat, lng: form.lng,
         social_accounts: Object.fromEntries(Object.entries(form.social_accounts || {}).map(([k, v]) => [k, String(v || '').trim()]).filter(([, v]) => v)),
         target_scope: form.target_scope || 'local', target_countries: form.target_scope === 'international' ? form.target_countries : [], target_areas: (form.target_scope || 'local') === 'local' ? form.target_areas : [],
-        target_audience: (form.target_audience || '').trim() || null, goals: form.goals || [], modules: form.modules
+        target_audience: (form.target_audience || '').trim() || null, goals: form.goals || [], modules: form.modules,
+        tone: (form.tone || '').trim() || null, usps: (form.usps || '').trim() || null, languages: (form.languages || []).join(', ') || null
       };
       await api(`/businesses/${b.id}`, { method: 'PATCH', repeat: true, body: Object.fromEntries(Object.entries(patch).filter(([k, v]) => v !== null || k === 'services' || k === 'attributes')) });
       mark('details', 'done', `${form.services.length} service${form.services.length === 1 ? '' : 's'}, contact and location saved`);
@@ -1463,12 +1490,15 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
 
       // Step 1 of the process: research the competitors. Keyword discovery then starts from what it finds.
       mark('competitors', 'running');
+      const known = [...new Set((form.competitors || []).map(cleanDomain).filter(Boolean))].slice(0, 5);
+      let saved = 0;
+      for (const d of known) { try { await api(`/businesses/${b.id}/seo/track-competitor`, { method: 'POST', body: { domain: d } }); saved += 1; } catch (e) { /* a refused address is left out */ } }
       try {
         const cr = await api(`/businesses/${b.id}/competitor-research`);
         if (!cr.setup?.google_results) mark('competitors', 'skipped', 'Needs the Google Places key (GOOGLE_PLACES_API_KEY). Run it later from Competitors.');
         else {
           await api(`/businesses/${b.id}/competitor-research`, { method: 'POST', body: { keywords: (form.keywords.length ? form.keywords : cr.defaults.keywords).slice(0, 4), location: cr.defaults.location } });
-          mark('competitors', 'done', 'Competitor research started. Keyword Intelligence builds on it when it finishes.');
+          mark('competitors', 'done', `${saved ? `${saved} known competitor${saved === 1 ? '' : 's'} saved. ` : ''}Competitor research started. Keyword Intelligence builds on it when it finishes.`);
         }
       } catch (e) { mark('competitors', 'skipped', 'Could not start competitor research. Run it from Competitor Research.'); }
 

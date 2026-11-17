@@ -221,5 +221,8 @@ def profile_text(b: Any) -> str:
         f"Current description: {b.description}" if b.description else "",
         f"What makes them different (owner): {b.usps}" if b.usps else "",
         f"Tone of voice: {b.tone}" if b.tone else "",
+        f"Target audience: {b.target_audience}" if getattr(b, "target_audience", None) else "",
+        f"What the business wants from SEO: {', '.join(b.goals)}" if getattr(b, "goals", None) else "",
+        f"Write in: {b.languages}" if getattr(b, "languages", None) else "",
     ]
     return "\n".join(x for x in lines if x)
