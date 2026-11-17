@@ -24,7 +24,7 @@ export default function KeywordFlowBar({ b, at }) {
           const on = s.id === at;
           const c = sum && s.count ? s.count(sum) : null;
           return (
-            <Link key={s.id} to={s.to} aria-current={on ? 'page' : undefined} className={`flex-1 min-w-[150px] rounded-lg px-3 py-2 flex items-center gap-2.5 ${on ? 'bg-indigo-600' : 'hover:bg-slate-50'}`}>
+            <Link key={s.id} to={s.to} aria-current={on ? 'page' : undefined} className={`flex-1 min-w-[128px] rounded-lg px-2.5 py-2 flex items-center gap-2 ${on ? 'bg-indigo-600' : 'hover:bg-slate-50'}`}>
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-12 font-bold shrink-0 ${on ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{n + 1}</span>
               <span className="min-w-0"><span className={`block text-13 font-semibold truncate ${on ? 'text-white' : 'text-slate-800'}`}>{s.label}</span>
                 <span className={`block text-11.5 truncate ${on ? 'text-indigo-100' : 'text-slate-500'}`}>{c != null ? `${c} ${s.unit}` : s.hint}</span></span>
