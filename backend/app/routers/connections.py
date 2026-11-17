@@ -1,5 +1,5 @@
 """Connect Google accounts and import the Business Profiles they manage."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -40,11 +40,22 @@ def google_setup(_: User = Depends(current_user)):
     return gbp.setup_info()
 
 
+def _own_front(request: Request) -> str | None:
+    """The app address this request came from, when it is one the backend trusts (the saved front-end address or an allowed origin): the computer's address can change, the browser knows where it is."""
+    from urllib.parse import urlsplit
+    s = get_settings()
+    raw = request.headers.get("origin") or request.headers.get("referer") or ""
+    p = urlsplit(raw)
+    origin = f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else ""
+    allowed = {x.strip().rstrip("/") for x in (s.cors_origins if isinstance(s.cors_origins, (list, tuple)) else str(s.cors_origins).split(",")) if x.strip()} | {s.frontend_url.rstrip("/")}
+    return origin if origin in allowed else None
+
+
 @router.get("/google/start")
-def google_start(purpose: str = "gbp", user: User = Depends(current_user)):
+def google_start(request: Request, purpose: str = "gbp", user: User = Depends(current_user)):
     """Returns Google's sign-in URL; the frontend sends the browser there. Every sign-in asks for all the permissions the app uses (Business Profile, Search Console, Analytics, Google Ads), so an account is connected once."""
     try:
-        return {"url": gbp.auth_url(user.id, "gsc" if purpose == "gsc" else "gbp")}
+        return {"url": gbp.auth_url(user.id, "gsc" if purpose == "gsc" else "gbp", _own_front(request))}
     except gbp.GbpError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -52,7 +63,7 @@ def google_start(purpose: str = "gbp", user: User = Depends(current_user)):
 @router.get("/google/callback")
 def google_callback(code: str = "", state: str = "", error: str = "", db: Session = Depends(get_db)):
     """Google redirects here after sign-in; we store the account and send the user back to the app."""
-    front = get_settings().frontend_url.rstrip("/")
+    front = (gbp.read_front(state) or get_settings().frontend_url).rstrip("/")
     if error or not code:
         return RedirectResponse(f"{front}/connect-result?error={error or 'cancelled'}")
     try:

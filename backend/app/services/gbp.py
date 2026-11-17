@@ -64,13 +64,13 @@ ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
 ALL_SCOPES = f"{SCOPES} https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly {ADS_SCOPE}"
 
 
-def auth_url(user_id: str, purpose: str = "gbp") -> str:
+def auth_url(user_id: str, purpose: str = "gbp", front: str | None = None) -> str:
     s = get_settings()
     if not s.google_oauth_enabled:
         raise GbpError("Google sign-in is not set up: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.")
     if not s.token_encryption_key:
         raise GbpError("Add TOKEN_ENCRYPTION_KEY to the backend settings first: it encrypts the stored Google access.")
-    state = jwt.encode({"sub": user_id, "purpose": purpose, "nonce": secrets.token_urlsafe(8), "exp": int(time.time()) + 600}, _state_secret(), algorithm="HS256")
+    state = jwt.encode({"sub": user_id, "purpose": purpose, "front": front or "", "nonce": secrets.token_urlsafe(8), "exp": int(time.time()) + 600}, _state_secret(), algorithm="HS256")
     scope = ALL_SCOPES  # every sign-in asks for everything (the consent screen is verified for all of it), whatever page started it
     return f"{AUTH_URL}?{urlencode({'client_id': s.google_client_id, 'redirect_uri': _redirect_uri(), 'response_type': 'code', 'scope': scope, 'access_type': 'offline', 'prompt': 'select_account consent', 'include_granted_scopes': 'true', 'state': state})}"
 
@@ -80,6 +80,14 @@ def read_purpose(state: str) -> str:
         return str(jwt.decode(state, _state_secret(), algorithms=["HS256"]).get("purpose") or "gbp")
     except jwt.InvalidTokenError:
         return "gbp"
+
+
+def read_front(state: str) -> str:
+    """The address of the app the person started from (signed into the state), so Google sends them back to the same one."""
+    try:
+        return str(jwt.decode(state, _state_secret(), algorithms=["HS256"]).get("front") or "")
+    except jwt.InvalidTokenError:
+        return ""
 
 
 def read_state(state: str) -> str:
