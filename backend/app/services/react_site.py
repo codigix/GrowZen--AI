@@ -206,6 +206,129 @@ def _send(client: httpx.Client, conn: ReactSiteConnection, method: str, url: str
     return r
 
 
+# ── endpoint detection ──────────────────────────────────────────────────────────
+# Every custom website names its blog and upload routes its own way (Codigix: POST /api/upload, not /api/uploads).
+# After a successful sign-in the connection test finds them by itself, without changing anything on the website:
+#   blog:   GET the configured path, then the usual ones; the one answering a JSON list of posts (title + body) is used.
+#   upload: the website's own public JavaScript (its admin is usually in the same bundle) is read for upload addresses
+#           and the FormData field name; each candidate (then the usual names) is confirmed with a POST that carries NO
+#           file and one made-up field. A real upload route answers "no file/image"; a generic "create a record" route
+#           answers with a table/column error (the made-up column guarantees nothing is stored) and is skipped.
+
+BLOG_GUESSES = ("/api/blogs", "/api/blog", "/api/posts", "/api/articles", "/api/v1/blogs", "/api/v1/posts", "/api/admin/blogs", "/api/blogs/admin/all")
+UPLOAD_GUESSES = ("/api/upload", "/api/uploads", "/api/upload-image", "/api/upload/image", "/api/images/upload", "/api/image/upload",
+                  "/api/media/upload", "/api/media", "/api/files/upload", "/api/file/upload", "/api/admin/upload", "/api/v1/upload")
+_NO_FILE = re.compile(r"no (image|file|photo|picture)|(image|file|photo).{0,30}(required|missing|not (provided|found|uploaded))|missing.{0,20}(image|file)|"
+                      r"unexpected field|multer|multipart|please (upload|select|choose)|upload.{0,20}(an? )?(image|file)", re.I)
+_RECORD_ROUTE = re.compile(r"table .{0,80}(doesn'?t|does not) exist|ER_NO_SUCH_TABLE|unknown column|ER_BAD_FIELD|relation .{0,60}does not exist|"
+                           r"no such table|column .{0,60}does not exist|SQLITE_ERROR|validation failed|cast to objectid", re.I)
+_FIELD_NAMES = ("image", "file", "upload", "photo", "media", "picture", "avatar", "files", "images")
+
+
+def _is_post_list(d) -> bool:
+    rows = _rows_of(d)
+    return isinstance(rows, list) and (not rows or (isinstance(rows[0], dict) and any(k in rows[0] for k in ("title", "name"))
+                                                    and any(k in rows[0] for k in ("body", "content", "html", "description", "excerpt", "slug"))))
+
+
+def _find_blog_endpoint(c: httpx.Client, conn: ReactSiteConnection, base: str) -> tuple[str | None, str]:
+    first = normalize_path(conn.publish_endpoint)
+    for path in dict.fromkeys(p for p in (first, *BLOG_GUESSES) if p):
+        try:
+            r = _send(c, conn, "GET", base + path)
+            if r.status_code < 400 and "json" in r.headers.get("content-type", "") and _is_post_list(r.json()):
+                return path, f"{path} answers with the website's blog posts ({len(_rows_of(r.json()))} found)"
+        except (httpx.HTTPError, ValueError, ReactSiteError, SSRFValidationError):
+            continue
+    return None, "No blog address answered with a list of posts (tried " + ", ".join(dict.fromkeys(p for p in (first, *BLOG_GUESSES) if p)) + ")."
+
+
+def _bundle_hints(c: httpx.Client, conn: ReactSiteConnection) -> tuple[list[str], str | None]:
+    """Upload addresses and the file field name written in the website's own public JavaScript."""
+    site = conn.website_url or conn.api_base_url
+    try:
+        page = c.get(normalize_base(site)).text
+        scripts = [urljoin_site(site, s) for s in re.findall(r"<script[^>]+src=[\"']([^\"']+\.m?js)[\"']", page, re.I)][:6]
+        code = "".join(c.get(s).text[:6_000_000] for s in scripts)
+    except (httpx.HTTPError, ReactSiteError, SSRFValidationError):
+        return [], None
+    paths = re.findall(r"[\"'`](?:\$\{[^}]{1,40}\})?(/(?:api/)?[\w\-/]*(?:upload|media|image)s?[\w\-/]*)[\"'`]", code, re.I)
+    found = [p.rstrip("/") for p in dict.fromkeys(paths) if not re.search(r"\.(png|jpe?g|webp|svg|gif|js|css)$|/uploads/[\w-]+\.", p, re.I) and len(p) < 60]
+    fields = re.findall(r"\.append\(\s*[\"'](\w+)[\"']\s*,\s*\w+", code)
+    field = next((f for f in fields if f.lower() in _FIELD_NAMES), None)
+    # written as `${API_URL}/upload` the /api part is in a variable: try both forms
+    return list(dict.fromkeys(found + [f"/api{p}" for p in found if not p.startswith("/api")])), field
+
+
+def urljoin_site(site: str, src: str) -> str:
+    from urllib.parse import urljoin
+    return urljoin(normalize_base(site) + "/", src)
+
+
+def _probe_upload(c: httpx.Client, conn: ReactSiteConnection, base: str, path: str) -> str:
+    """'upload' | 'record' | 'none' for one address; the request carries no file and stores nothing."""
+    try:
+        r = _send(c, conn, "POST", base + path, files={"growzen_probe": (None, "1")})
+    except (httpx.HTTPError, ReactSiteError, SSRFValidationError):
+        return "none"
+    text = r.text[:2000]
+    if r.status_code in (404, 405) or "html" in r.headers.get("content-type", "").lower() and r.status_code < 500:
+        return "none"
+    if _RECORD_ROUTE.search(text):
+        return "record"
+    if r.status_code >= 400 and _NO_FILE.search(text):
+        return "upload"
+    return "none"
+
+
+def _find_upload_endpoint(c: httpx.Client, conn: ReactSiteConnection, base: str) -> tuple[str | None, str | None, str]:
+    hinted, field = _bundle_hints(c, conn)
+    first = normalize_path(conn.image_endpoint)
+    tried, records = [], []
+    for path in dict.fromkeys(p for p in (*hinted, first, *UPLOAD_GUESSES) if p):
+        if len(tried) >= 16:
+            break
+        tried.append(path)
+        kind = _probe_upload(c, conn, base, path)
+        if kind == "upload":
+            src = "found in the website's own code and " if path in hinted else ""
+            return path, field, f"{path} is the website's image upload ({src}it answers \"no file\" to an empty upload)"
+        if kind == "record":
+            records.append(path)
+    note = f" {', '.join(records)} {'is' if len(records) == 1 else 'are'} the website's generic 'create a record' route, not an upload." if records else ""
+    return None, field, f"No image upload route answered (tried {', '.join(tried)}).{note} Images are then sent inside the post."
+
+
+def discover_endpoints(c: httpx.Client, conn: ReactSiteConnection, base: str, step) -> None:
+    """Run after a successful sign-in: set the blog and upload addresses the website really has. Never fails the test."""
+    blog, detail = _find_blog_endpoint(c, conn, base)
+    before = normalize_path(conn.publish_endpoint)
+    if blog and blog != before:
+        conn.publish_endpoint = blog
+        step("Find the blog address", True, f"{before or '(none)'} did not list the posts; {detail}: it is now used.")
+    else:
+        step("Find the blog address", bool(blog), detail)
+    upload, field, detail = _find_upload_endpoint(c, conn, base)
+    before = normalize_path(conn.image_endpoint)
+    if upload:
+        changes = []
+        if upload != before:
+            conn.image_endpoint = upload
+            changes.append(f"upload address {before or '(none)'} → {upload}")
+        m = dict(conn.mapping or {})
+        if field and m.get("upload_field") != field:
+            changes.append(f"file field '{m.get('upload_field') or 'image'}' → '{field}'")
+            m["upload_field"] = field
+        m.pop("uploads_load", None)  # learned with the old address: checked again on the next publish
+        conn.mapping = m
+        step("Find the image upload address", True, detail + (f". Updated: {'; '.join(changes)}." if changes else "."))
+    else:
+        if before and _probe_upload(c, conn, base, before) == "record":  # proven not an upload: stop calling it on every publish
+            conn.image_endpoint = None
+            detail += f" {before} was removed from the settings."
+        step("Find the image upload address", True, detail)  # informational: publishing still works with images in the post
+
+
 # ── connection test ─────────────────────────────────────────────────────────────
 
 def test(conn: ReactSiteConnection) -> tuple[list[dict], bool]:
@@ -247,6 +370,7 @@ def test(conn: ReactSiteConnection) -> tuple[list[dict], bool]:
                     _token(c, conn, force=True)
                 exp = conn.token_expires_at
                 step("Sign in as the integration user", True, f"Signed in as {conn.login_username}; access token valid until {exp.strftime('%d %b %H:%M UTC') if exp else 'unknown'}")
+                discover_endpoints(c, conn, base, step)
                 if not health:
                     return steps, True
                 r = _send(c, conn, "GET", base + health)
@@ -278,6 +402,7 @@ def test(conn: ReactSiteConnection) -> tuple[list[dict], bool]:
             anon = c.get(base + health)
             if anon.status_code in (401, 403):
                 step("API key accepted", True, "Accepted with the key, refused without it")
+                discover_endpoints(c, conn, base, step)
                 return steps, True
             step("API key accepted", False, f"This endpoint also answers without a key ({anon.status_code}), so the key could not be verified.")
             return steps, False
@@ -811,6 +936,8 @@ def _send_post(c: httpx.Client, conn: ReactSiteConnection, base: str, path: str,
     """POST (or PUT when it exists) the record. The site's column limits are unknown: a text field it reports as too long
     is shortened and the request retried; protected fields (the image) are never cut. Returns (response, post id)."""
     r = None
+    # an article carrying its images inside the text is never cut (that would break the HTML): the site's error is shown instead
+    protect = protect | {k for k in ("body", "content") if "data:image/" in str(data.get(k) or "")}
     for _attempt in range(12):
         if existing:
             r = _send(c, conn, "PUT", f"{base}{path}/{existing}", json=data)
@@ -881,6 +1008,48 @@ def _send_with_image(c: httpx.Client, conn: ReactSiteConnection, a: Article, img
                          + " Fix the website's image upload API or enlarge that column (e.g. LONGTEXT), then publish again. Nothing was published.")
 
 
+CONTENT_INLINE_MAX = 300 * 1024  # an article image sent inside the body (no upload API): kept small, the body column holds it
+IMAGE_FACTS = ("uploads_load", "body_refused_bytes", "body_ok_bytes")  # learned on publish; the Images & Analysis step validates with them
+
+
+def _learn(conn: ReactSiteConnection, **facts) -> None:
+    """Remember what publishing showed about the website (does it serve uploaded images, how long an article it stores)."""
+    conn.mapping = {**(conn.mapping or {}), **facts}  # a new dict, so the JSON column is saved
+
+
+def _with_content_images(c: httpx.Client, conn: ReactSiteConnection, a: Article, body: str, base: str, steps: list[dict]) -> str:
+    """Article-body images placed on the Images & Analysis step, uploaded to the website's own image storage (as its admin
+    does: /api/uploads...) and the body pointed at them. Without a working upload API each goes inside the body as a small WebP."""
+    from . import content_images as ci
+
+    if not ci.names_in(body):
+        return body
+    has_api = bool(normalize_path(conn.image_endpoint)) and mapping_of(conn)["image_delivery"] != "inline"
+    note: list[str] = []
+
+    def upload(data: bytes, filename: str, alt: str, _caption: str) -> str:  # the caption stays in the body's <figcaption>
+        if has_api and not note:
+            try:
+                url = upload_image_bytes(c, conn, data, filename, alt, [])
+                if not _loads(c, url):  # stored, but the website does not serve it: readers would see a broken image
+                    _learn(conn, uploads_load=False)
+                    raise ReactSiteError(f"The website answered with {url}, but that address does not load as an image.")
+                _learn(conn, uploads_load=True)
+                return url
+            except AuthFailed:
+                raise
+            except (ReactSiteError, httpx.HTTPError, SSRFValidationError) as exc:
+                note.append(str(exc)[:200])
+                _learn(conn, uploads_load=False)  # the upload API itself fails: the validation on Images & Analysis knows it
+                steps.append({"step": "Article image upload", "ok": False, "detail": f"{note[0]} The images are sent inside the article instead."})
+        small, _n = _fit_size(data, min(CONTENT_INLINE_MAX, int(mapping_of(conn)["max_upload_mb"] * 1048576)))
+        return "data:image/webp;base64," + base64.b64encode(small).decode()
+    try:
+        return ci.publish_body(body, a.business_id, a.id, a.title or a.keyword or "", f"react:{base}", upload, steps)
+    except ValueError as exc:
+        raise ReactSiteError(str(exc)) from exc
+
+
 def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | None) -> dict:
     """Create the post (or update it when this article is already there). Returns {id, url, status, image_url, steps}."""
     from . import featured_images as fi
@@ -906,6 +1075,7 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
             sample = _site_sample(c, conn, base, path)
             raw = payload(a, mode, when, None)
             raw.pop("image"), raw.pop("image_alt")  # the image goes into the site's own field, set below
+            raw["body"] = _with_content_images(c, conn, a, raw["body"], base, steps)
             profile = detect_profile(conn, sample, _last_list_text.get(base + path, ""))
             if profile == "cms":
                 data, dropped = to_cms(a, raw, mode, when), []
@@ -941,6 +1111,12 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
         raise
     if r.status_code in (401, 403):
         raise AuthFailed(f"The website refused the request: {_msg(r)}")
+    body_col = next((k for k in ("body", "content") if isinstance(data.get(k), str)), None)
+    if r.status_code >= 400 and body_col and _too_long_column(r) == body_col and "data:image/" in data[body_col]:  # sent whole (never cut): its size is the refused size
+        size = len(data[body_col].encode())
+        _learn(conn, body_refused_bytes=min(size, int((conn.mapping or {}).get("body_refused_bytes") or size)))
+    elif r.status_code < 400 and body_col:
+        _learn(conn, body_ok_bytes=max(len(data[body_col].encode()), int((conn.mapping or {}).get("body_ok_bytes") or 0)))
     if r.status_code >= 400:
         cause = site_db_problem(base, path)
         if cause:

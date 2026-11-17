@@ -13,13 +13,15 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'rec
 import { api, fmt, useApi, usePoll } from './seoApi';
 import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } from './SitePublishPanel';
 import FeaturedImageField, { featuredOf } from './FeaturedImageField';
+import BlogImageAnalysis from './BlogImageAnalysis';
 import ReactSitePanel from './ReactSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
 
 
-const STEPS = ['Topic & Intent', 'AI Draft', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
+const STEPS = ['Topic & Intent', 'AI Draft', 'Images & Analysis', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
+const PUBLISH_STEP = STEPS.length - 1;
 
 const stripTags = (html) => String(html || '').replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 const wordsOf = (t) => (String(t).match(/[\p{L}\p{N}'’-]+/gu) || []);
@@ -676,6 +678,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
 
   const [draft, setDraft] = useState(selectedArticle ? selectedArticle.body || '' : '');
   const [bodyTab, setBodyTab] = useState('editor'); // 'editor' | 'preview'
+  const caretRef = useRef(null); // the last cursor position in the HTML editor: article images can be placed there
   const [meta, setMeta] = useState({
     keyword: selectedArticle?.keyword || '',
     secondary: (selectedArticle?.secondary_keywords || []).join(', '),
@@ -791,6 +794,9 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       .catch(e => toast(e.message))
       .finally(() => setSaveBusy(false));
   };
+  // article images placed on the Images & Analysis step: the article is saved with them at once (publishing sends the saved article)
+  const saveWithBody = (body) => api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: { ...articleFields(), body } })
+    .then(() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } if (onSaved) onSaved(); });
   const [scheduledDate] = useState(() => { const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); });  // tomorrow 10:00, local
 
   const next = () => {
@@ -800,7 +806,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       else setGenError('Generate the keywords first: the article is written from them.');
       return;
     }
-    if (step === 4) return undefined;
+    if (step === PUBLISH_STEP) return undefined;
     return setStep(s => Math.min(STEPS.length - 1, s + 1));
   };
 
@@ -841,7 +847,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       <Card
         className="xl:col-span-3"
         title={STEPS[step]}
-        action={step === 4 ? null : (
+        action={step === PUBLISH_STEP ? null : (
           <Button variant="secondary" busy={genBusy} onClick={next}>
             {step === 0 ? 'Generate Blog' : 'Next Step'}
             <ChevronRight size={13} />
@@ -1049,6 +1055,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                         className={`${areaCls} font-mono text-[12px] leading-relaxed`}
                         value={draft}
                         onChange={e => setDraft(e.target.value)}
+                        onSelect={e => { caretRef.current = e.target.selectionStart; }}
                         placeholder="<h2>Introduction</h2><p>Article body HTML content...</p>"
                       />
                       <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
@@ -1159,7 +1166,15 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
           </div>
         )}
 
-        {step === 2 && (() => {
+        {/* Step 2: Images & Analysis (article images + analysis; the featured image upload stays on the AI Draft step) */}
+        {step === 2 && (selectedArticle && !isGenerating ? (
+          <BlogImageAnalysis b={b} article={selectedArticle} featured={featured} onFeaturedChange={setFeatured}
+            draft={draft} onDraftChange={setDraft} saved={selectedArticle.body} onSave={saveArticle} onInsertSave={saveWithBody} saveBusy={saveBusy} caret={caretRef.current} toast={toast} />
+        ) : (
+          <div className="text-[12px] text-slate-500 p-3 rounded-xl bg-slate-50 border border-slate-200">The images are listed once the article is written.</div>
+        ))}
+
+        {step === 3 && (() => {
           const rows = realDetailChecks(b, liveBody);
           return (
             <div className="space-y-3 max-w-2xl">
@@ -1176,7 +1191,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
           );
         })()}
 
-        {step === 3 && (() => {
+        {step === 4 && (() => {
           const list = qualityChecks({ draft: liveBody, title: liveTitle, metaDescription: liveMetaDesc, keyword: kw || activeArt?.keyword, benchMedian: bench?.median_words });
           const passed = list.filter(c => c.ok).length;
           return (
@@ -1197,7 +1212,14 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         })()}
 
         {/* Step 4: Publish & Schedule */}
-        {step === 4 && (
+        {step === PUBLISH_STEP && selectedArticle && draft !== (selectedArticle.body || '') && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[12.5px] text-amber-900">
+            <AlertTriangle size={14} className="shrink-0" />
+            <span className="flex-1 min-w-[220px]"><b>The article has changes that are not saved</b> (for example images you placed). Publishing sends the saved article, so save first.</span>
+            <Button size="sm" busy={saveBusy} onClick={saveArticle}>Save changes</Button>
+          </div>
+        )}
+        {step === PUBLISH_STEP && (
           <PublishDestinations key={b.id} b={b}>
             {(dest, setReactConn) => dest === 'react' ? (
               <ReactSitePanel b={b} article={selectedArticle} featured={featured} toast={toast} defaultWhen={scheduledDate}

@@ -437,14 +437,21 @@ def _html_paragraphs(value) -> str:
     return "\n".join(parts)
 
 
+SCHEMA_TOKEN = "GZSCHEMAPLACEHOLDEREND"  # plain text: survives the '<' escaping (an HTML comment did not)
+
+
 def sanitize_html(body: str) -> str:
     """Keep formatting tags, preserve schema script and img attributes."""
+    from . import content_images as ci
+    body, placed = ci.keep_placed(body)  # images placed on the Images & Analysis step: kept, rebuilt from their checked parts
+    # leftovers of an older placeholder that the '<' escaping below turned into visible text: removed
+    body = re.sub(r"\s*(?:&lt;|<)!--SCHEMA_PLACEHOLDER--(?:&gt;|>)", "", body)
     scripts = re.findall(r'<script type="application/ld\+json">[\s\S]*?</script>', body, re.I)
-    body = re.sub(r'<script type="application/ld\+json">[\s\S]*?</script>', "<!--SCHEMA_PLACEHOLDER-->", body, flags=re.I)
+    body = re.sub(r'<script type="application/ld\+json">[\s\S]*?</script>', SCHEMA_TOKEN, body, flags=re.I)
     body = re.sub(r"<figure\b[\s\S]*?</figure>", "", body, flags=re.I)
     body = re.sub(r"<img\b[^>]*>", "", body, flags=re.I)
     body = re.sub(r"<(script|style|iframe|object|embed)\b[\s\S]*?</\1\s*>", "", body, flags=re.I)
-    body = re.sub(r"<!--(?!SCHEMA_PLACEHOLDER)[\s\S]*?-->", "", body)
+    body = re.sub(r"<!--[\s\S]*?-->", "", body)
     body = re.sub(r"<(?![a-zA-Z/])", "&lt;", body)
 
     def tag_clean(m):
@@ -462,8 +469,11 @@ def sanitize_html(body: str) -> str:
         return f"<{slash}{tag}>"
 
     body = re.sub(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>", tag_clean, body)
-    if scripts:
-        body = body.replace("<!--SCHEMA_PLACEHOLDER-->", "\n" + "\n".join(scripts))
+    if scripts:  # back in their place (the first one); a placeholder is never left in the text
+        body = re.sub(r"\s*" + SCHEMA_TOKEN, lambda _m: "\n" + "\n".join(scripts), body, count=1)
+    body = body.replace(SCHEMA_TOKEN, "")
+    if placed:
+        body = ci.restore_placed(body, placed)
     return body.strip()
 
 

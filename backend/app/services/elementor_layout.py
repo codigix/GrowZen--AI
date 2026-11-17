@@ -39,7 +39,9 @@ def clean_body(body: str) -> str:
     b = re.sub(r"<h1\b([^>]*)>([\s\S]*?)</h1>", r"<h2\1>\2</h2>", b, flags=re.I)  # any other H1 becomes an H2
     scripts = _SCHEMA_RE.findall(b)
     b = _SCHEMA_RE.sub("\n", b)
-    b = re.sub(r"\s(style|class)=\"[^\"]*\"", "", b, flags=re.I)  # the site's CSS styles the article, not inline CSS
+    # the site's CSS styles the article, not inline CSS; only the image figures/rows placed on the Images & Analysis step
+    # (marked data-gz-...) keep their class and layout, so side-by-side images and galleries stay side by side
+    b = re.sub(r"<[a-zA-Z][^>]*>", lambda m: m.group(0) if "data-gz-" in m.group(0) else re.sub(r"\s(style|class)=\"[^\"]*\"", "", m.group(0), flags=re.I), b)
     b = re.sub(r"<(p|li|h[2-6]|strong|em|span)>\s*(?:&nbsp;|\s)*</\1>", "", b, flags=re.I)  # empty tags
     b = re.sub(r"(?:<br\s*/?>\s*){2,}", "<br>", b, flags=re.I)
     b = re.sub(r"\n{3,}", "\n\n", b).strip()

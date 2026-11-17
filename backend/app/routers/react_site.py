@@ -58,6 +58,7 @@ def public(conn: ReactSiteConnection | None) -> dict:
         "token_valid_until": _utc(conn.token_expires_at) if conn.token_enc else None,
         "health_endpoint": conn.health_endpoint, "publish_endpoint": conn.publish_endpoint, "image_endpoint": conn.image_endpoint,
         "default_status": conn.default_status, "last_error": conn.last_error, "mapping": rs.mapping_of(conn),
+        "image_facts": {k: (conn.mapping or {}).get(k) for k in rs.IMAGE_FACTS},  # learned on publish: used to validate article images
         "last_checked_at": _utc(conn.last_checked_at), "last_success_at": _utc(conn.last_success_at),
     }
 

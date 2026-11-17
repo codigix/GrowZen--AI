@@ -342,6 +342,51 @@ def remove_featured_image(article_id: int, b: Business = Depends(get_business), 
     return row(a)
 
 
+@router.post("/{article_id}/content-images")
+def add_content_image(article_id: int, body: FeaturedImageIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """One image for the article body (Images & Analysis step): converted to an optimized WebP and stored in GrowZen.
+    The editor places it in the body; publishing uploads it to the website once (services/content_images.py)."""
+    from ..services import content_images as ci
+    a = _get(db, b, article_id)
+    try:
+        webp, info = fi.convert(fi.decode_upload(body.data_url), body.filename, body.page or 1)
+    except fi.ImageError as exc:
+        raise HTTPException(422, str(exc))
+    name = ci.save(b.id, a.id, webp, info)
+    return {"name": name, "size": len(webp), "info": info}
+
+
+@router.get("/{article_id}/content-images")
+def list_content_images(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import content_images as ci
+    a = _get(db, b, article_id)
+    return {"images": ci.listing(b.id, a.id)}
+
+
+@router.get("/{article_id}/content-images/{name}")
+def get_content_image(article_id: int, name: str, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from fastapi.responses import FileResponse
+
+    from ..services import content_images as ci
+    a = _get(db, b, article_id)
+    p = ci.path_of(b.id, a.id, name)
+    if not p:
+        raise HTTPException(404, "Image not found")
+    return FileResponse(p, media_type="image/webp", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.delete("/{article_id}/content-images/{name}")
+def delete_content_image(article_id: int, name: str, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Remove an uploaded image that is not used in the article (still in the upload list, never inserted)."""
+    from ..services import content_images as ci
+    a = _get(db, b, article_id)
+    if name in ci.names_in(a.body or ""):
+        raise HTTPException(409, "This image is in the saved article. Take it out of the article and save first.")
+    if not ci.remove(b.id, a.id, name):
+        raise HTTPException(404, "Image not found")
+    return {"ok": True}
+
+
 @router.post("/{article_id}/publish")
 def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     a = _get(db, b, article_id)

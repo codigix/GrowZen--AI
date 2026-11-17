@@ -174,6 +174,38 @@ def ensure_wp_featured_media(row: SiteIntegration, a: Article) -> tuple[str | No
         raise PublishError(f"Could not upload the featured image to WordPress: {str(exc)[:160]}") from exc
 
 
+def wp_content_images(row: SiteIntegration, a: Article, body: str, steps: list[dict]) -> str:
+    """Article-body images placed on the Images & Analysis step: each uploaded once to the WordPress media library
+    (ALT text and caption set there too) and the body pointed at the media library address."""
+    from . import content_images as ci
+
+    if not ci.names_in(body):
+        return body
+    base = row.base_url.rstrip("/")
+    try:
+        with site_client(90) as c:
+            auth = _wp_auth(row)
+
+            def upload(data: bytes, filename: str, alt: str, caption: str) -> str:
+                r = c.post(f"{base}/wp-json/wp/v2/media", content=data, auth=auth,
+                           headers={"Content-Type": "image/webp", "Content-Disposition": f'attachment; filename="{filename}"'})
+                if r.status_code in (401, 403):
+                    raise PublishError("WordPress refused the article image upload. The connected user needs permission to upload files.")
+                if r.status_code >= 400:
+                    raise PublishError(f"WordPress could not store an article image ({r.status_code}): {r.text[:200]}")
+                d = r.json()
+                meta = {"alt_text": alt[:255]}
+                if caption:
+                    meta["caption"] = html_escape(caption)
+                c.post(f"{base}/wp-json/wp/v2/media/{d.get('id')}", json=meta, auth=auth)
+                return d.get("source_url") or ""
+            return ci.publish_body(body, a.business_id, a.id, a.title or a.keyword or "", f"wp:{base}", upload, steps)
+    except ValueError as exc:
+        raise PublishError(str(exc)) from exc
+    except (httpx.HTTPError, SSRFValidationError) as exc:
+        raise PublishError(f"Could not upload the article images to WordPress: {str(exc)[:160]}") from exc
+
+
 def existing_wp_post(row: SiteIntegration, a: Article) -> str | None:
     """The WordPress post this article already has on this site (publishing again updates it instead of creating a copy)."""
     if row.method != "wordpress" or not a.wp_post_id or a.wp_status == "deleted" or (a.publish_method or "wordpress") != "wordpress":
@@ -214,6 +246,7 @@ def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: dateti
 
     wp_status = {"draft": "draft", "publish": "publish", "schedule": "future"}[mode]
     body = el.clean_body(a.body or "")  # no duplicate H1, no inline styles or empty tags
+    body = wp_content_images(row, a, body, steps)  # images placed in the article: in the media library, at their places
     payload = {"title": a.title or a.keyword, "content": body, "excerpt": a.meta_description or "", "status": wp_status}
     if a.wp_media_id and str(a.wp_media_id).isdigit():  # the featured image shown on the blog cards and the post page
         payload["featured_media"] = int(a.wp_media_id)

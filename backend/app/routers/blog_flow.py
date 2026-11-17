@@ -50,6 +50,13 @@ def layout(article_id: int | None = Query(None), b: Business = Depends(get_busin
     return flow.layout_check(db, b, _article(db, b, article_id) if article_id else None)
 
 
+@router.get("/images")
+def blog_images(article_id: int | None = Query(None), b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """The images the website's own /blog posts already use: count and size per post (read only)."""
+    from ..services import blog_images as bi
+    return bi.image_structure(db, b, _article(db, b, article_id) if article_id else None)
+
+
 @router.get("/promo/{article_id}")
 def promo_status(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     a = _article(db, b, article_id)
