@@ -110,6 +110,8 @@ app.include_router(crawler_router, prefix=settings.api_prefix)
 app.include_router(hub_router, prefix=settings.api_prefix)
 app.include_router(blog_flow_router, prefix=settings.api_prefix)
 app.include_router(fix_plan_router, prefix=settings.api_prefix)
+from .routers.keyword_workspace import router as keyword_workspace_router  # noqa: E402
+app.include_router(keyword_workspace_router, prefix=settings.api_prefix)
 app.include_router(outcomes_router, prefix=settings.api_prefix)
 app.include_router(watch_router, prefix=settings.api_prefix)
 

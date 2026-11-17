@@ -1,3 +1,4 @@
+import KeywordWorkspace from './KeywordWorkspace';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AutopilotPanel } from './AutopilotPanels';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -1424,6 +1425,16 @@ function NextStep({ progress, tab, bid, reload }) {
   );
 }
 
+/** Workspace (one list from every place) or the single tools (deep search, saved keywords, topics). */
+function ModeBar({ tab, setTab }) {
+  return (
+    <div role="tablist" aria-label="Keyword tools" className="flex flex-wrap gap-2 mb-4">
+      <button type="button" role="tab" aria-selected={tab === 'workspace'} onClick={() => setTab('workspace')} className={pill(tab === 'workspace')}>Keyword Workspace</button>
+      <button type="button" role="tab" aria-selected={tab !== 'workspace'} onClick={() => setTab('ai')} className={pill(tab !== 'workspace')}>Search tools, saved keywords and topics</button>
+    </div>
+  );
+}
+
 function KeywordPath({ b, tab, setTab }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
   const progress = useApi(`/businesses/${b.id}/keywords/progress`);
@@ -1437,8 +1448,17 @@ function KeywordPath({ b, tab, setTab }) {
     kw.reload(true); progress.reload(true);
     navigate('/keyword-management/tracked', { state: { added: names || [], newCount: added ?? (names || []).length } });
   };
+  if (tab === 'workspace') {
+    return (
+      <>
+        <ModeBar tab={tab} setTab={setTab} />
+        <KeywordWorkspace b={b} onUse={setTab} />
+      </>
+    );
+  }
   return (
     <>
+      <ModeBar tab={tab} setTab={setTab} />
       <PathBar progress={progress.data} tab={tab} setTab={setTab} />
       {FIND_TABS.includes(tab) && (
         <form onSubmit={(e) => { e.preventDefault(); startSearch(); }} className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 mb-4 flex flex-wrap gap-2" role="search">
@@ -1466,7 +1486,7 @@ function KeywordPath({ b, tab, setTab }) {
 }
 
 export default function KeywordResearchPage() {
-  const [tab, setTab] = useUrlTab('ai', ['ai', 'discover', 'planner', 'explorer', 'tracked', 'topics', 'use', 'status']);
+  const [tab, setTab] = useUrlTab('workspace', ['workspace', 'ai', 'discover', 'planner', 'explorer', 'tracked', 'topics', 'use', 'status']);
   return (
     <SeoShell step="keywords" title="Keywords" subtitle="Get keyword ideas from AI, pick the best, group them into topics, use them in your blog, posts and AI answers, then track where they rank">
       {(b) => <KeywordPath key={b.id} b={b} tab={tab} setTab={setTab} />}

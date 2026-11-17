@@ -414,6 +414,29 @@ class Keyword(TimestampMixin, Base):
     source: Mapped[dict | None] = mapped_column(JSON)  # where the keyword was taken from: {kind, label, from, pages: [{url, in}], searches, at}
 
 
+class KeywordCandidate(TimestampMixin, Base):
+    """One keyword found for a project, from any place, before anyone has chosen it. Variants of the same phrase are one row (see services/keyword_workspace.py);
+    every place it was found stays in `sources`. Choosing it saves a Keyword."""
+    __tablename__ = "keyword_candidates"
+    __table_args__ = (UniqueConstraint("business_id", "norm"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    norm: Mapped[str] = mapped_column(String(255))
+    keyword: Mapped[str] = mapped_column(String(255))
+    variants: Mapped[list[str] | None] = mapped_column(JSON)
+    sources: Mapped[list[dict] | None] = mapped_column(JSON)  # [{kind, label, detail, at}]
+    competitors: Mapped[list[str] | None] = mapped_column(JSON)  # competitor domains that use it
+    volume: Mapped[int | None] = mapped_column(Integer)
+    difficulty: Mapped[int | None] = mapped_column(Integer)
+    cpc: Mapped[float | None] = mapped_column(Float)
+    intent: Mapped[str | None] = mapped_column(String(20))
+    own_rank: Mapped[float | None] = mapped_column(Float)  # average Google position from Search Console
+    impressions: Mapped[int | None] = mapped_column(Integer)
+    clicks: Mapped[int | None] = mapped_column(Integer)
+    picked: Mapped[bool] = mapped_column(Boolean, default=False)
+    dismissed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class RankScan(TimestampMixin, Base):
     __tablename__ = "rank_scans"
     id: Mapped[int] = mapped_column(primary_key=True)
