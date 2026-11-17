@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
   LogOut, Menu, X, KeyRound, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen,
-  TrendingUp, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send, Activity
+  TrendingUp, ChevronDown, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send, Activity
 } from 'lucide-react';
 import { SIDEBAR_GROUPS, SIDEBAR_SECTIONS } from './sidebarGroups';
 import { useNavigate } from 'react-router-dom';
@@ -76,6 +76,7 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
   const [open, setOpen] = useState(false); // mobile drawer
   const [collapsed, setCollapsed] = useState(readCollapsed); // desktop: hides the pages panel and keeps the icon rail
   const [picked, setPicked] = useState(null); // the rail section the user opened last
+  const [folded, setFolded] = useState({}); // group headers the person opened or closed by hand: { 'seo:3 · Keyword Research': true }
   const location = useLocation();
   const navigate = useNavigate();
   const connections = useConnections();
@@ -144,10 +145,21 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
             {section.groups.map((grp, gi) => {
               const items = grp.items.filter(item => !item.adminOnly || user?.is_admin);
               if (!items.length) return null;
+              // A long section (several titled groups) shows only the group you are in; the others open with a click, so nothing is cut off the bottom.
+              const titled = section.groups.filter(g => g.title).length;
+              const holdsHere = items.some(item => itemActive(location.pathname, location.search, item));
+              const fkey = `${section.id}:${grp.title}`;
+              const isOpen = !grp.title || (fkey in folded ? !folded[fkey] : titled <= 3 || holdsHere);
               return (
-                <div key={`${grp.title || 'main'}-${gi}`} className={gi ? 'mt-4' : ''}>
-                  {grp.title && <div className="px-3 mb-1.5 text-12 text-slate-500">{grp.title}</div>}
-                  <div className="space-y-0.5">
+                <div key={`${grp.title || 'main'}-${gi}`} className={gi ? 'mt-2' : ''}>
+                  {grp.title && (
+                    <button type="button" onClick={() => setFolded(f => ({ ...f, [fkey]: isOpen }))} aria-expanded={isOpen}
+                      className="w-full flex items-center gap-1.5 px-3 py-1.5 rounded text-12 font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-50 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40">
+                      <span className="flex-1 text-left">{grp.title}</span>
+                      {!isOpen && <span className="text-11 font-normal text-slate-400">{items.length}</span>}
+                      <ChevronDown size={13} className={`shrink-0 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                    </button>)}
+                  <div className={`space-y-0.5 ${isOpen ? '' : 'hidden'}`}>
                     {items.map(item => {
                       const active = itemActive(location.pathname, location.search, item);
                       return (

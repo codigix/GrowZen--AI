@@ -26,7 +26,7 @@ export default function KeywordFlowBar({ b, at }) {
           return (
             <Link key={s.id} to={s.to} aria-current={on ? 'page' : undefined} className={`flex-1 min-w-[128px] rounded-lg px-2.5 py-2 flex items-center gap-2 ${on ? 'bg-indigo-600' : 'hover:bg-slate-50'}`}>
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-12 font-bold shrink-0 ${on ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{n + 1}</span>
-              <span className="min-w-0"><span className={`block text-13 font-semibold truncate ${on ? 'text-white' : 'text-slate-800'}`}>{s.label}</span>
+              <span className="min-w-0"><span className={`block text-12.5 font-semibold leading-tight ${on ? 'text-white' : 'text-slate-800'}`}>{s.label}</span>
                 <span className={`block text-11.5 truncate ${on ? 'text-indigo-100' : 'text-slate-500'}`}>{c != null ? `${c} ${s.unit}` : s.hint}</span></span>
             </Link>);
         })}
