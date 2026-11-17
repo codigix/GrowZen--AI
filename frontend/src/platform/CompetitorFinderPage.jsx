@@ -9,6 +9,7 @@ import { SeoShell, Card, Badge, Button, Field, Tabs, Modal, inputCls, ErrorNote,
 import { api, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
+import MyCompetitors from './MyCompetitors';
 
 /**
  * Competitor research for the selected business, from live Google data, in one place: who ranks on Google
@@ -619,6 +620,10 @@ function Research({ b }) {
     return c;
   });
 
+  const removeCompetitor = async (c) => {
+    try { await api(`/competitors/${c.id}`, { method: 'DELETE' }); await loadRegistered(); toast(`${c.name} removed`); } catch (e) { toast(`Could not remove it: ${e.message}`); }
+  };
+
   const start = (keywords, location) => run('start', async () => {
     const r = await api(`/businesses/${b.id}/competitor-research`, { method: 'POST', body: { keywords, location } });
     setState(s => ({ ...s, run: r }));
@@ -660,6 +665,8 @@ function Research({ b }) {
     <div className="space-y-4">
       {toastNode}
 
+      <MyCompetitors list={registered} auditMap={auditMap} onAdd={addManual} onFind={findOnMaps} onAudit={auditCompetitor} onRemove={removeCompetitor} addBusy={addBusy} addError={addError} findBusy={mapsBusy} running={isRunning(current)} />
+
       {/* One compact bar: status, settings, run */}
       <div className="ai-glass-card rounded px-5 py-3 flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
@@ -673,7 +680,7 @@ function Research({ b }) {
             <div className="text-13 text-slate-700"><b className="text-slate-900">Researched {fmtDateTime(result.analysed_at)}</b> · {result.location || 'India'} · {result.keywords.length} keyword{result.keywords.length === 1 ? '' : 's'} · {result.ideas?.competitor_keywords?.length || 0} competitor keywords, {result.gaps?.keywords?.length || 0} gaps</div>
           ) : <div className="text-13 text-slate-600">Research who outranks you on Google and Maps, then find keywords from it.</div>}
         </div>
-        {result && <Link to="/keyword-management" className="h-9 px-3.5 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-indigo-50 text-indigo-800 ring-1 ring-inset ring-indigo-200 hover:bg-indigo-100">Step 2: find keywords <ArrowRight size={14} /></Link>}
+        {result && <Link to="/keyword-management/workspace" className="h-9 px-3.5 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-indigo-50 text-indigo-800 ring-1 ring-inset ring-indigo-200 hover:bg-indigo-100">Next: Keyword Workspace <ArrowRight size={14} /></Link>}
         <Button icon={Settings2} onClick={() => setSettings(true)}>Keywords & settings</Button>
         {result && <Button variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup.google_results} onClick={() => start(defaults.keywords, defaults.location)}>Run again</Button>}
       </div>

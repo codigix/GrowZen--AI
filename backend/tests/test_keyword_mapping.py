@@ -53,3 +53,12 @@ def test_competitor_pages_need_the_research(client):
     r = client.get(f"/api/v1/businesses/{bid}/competitor-pages").json()
     c = r["competitors"][0]
     assert c["domain"] == "rival.in" and c["est_visits"] == 390 and c["top_pages"][0]["url"] == "https://rival.in/dentist" and r["you"]["visits"] == 50 and r["gaps"][0]["volume"] == 1000
+
+
+def test_a_saved_competitor_can_be_added_and_removed(client):
+    bid = _project(client)
+    c = client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": "rival-one.example", "name": "Rival One"}).json()
+    assert c["source"] == "manual" and [x["id"] for x in client.get(f"/api/v1/competitors?business_id={bid}").json()] == [c["id"]]
+    assert client.delete(f"/api/v1/competitors/{c['id']}").status_code == 204
+    assert client.get(f"/api/v1/competitors?business_id={bid}").json() == []
+    assert client.delete(f"/api/v1/competitors/{c['id']}").status_code == 404

@@ -95,6 +95,17 @@ def add_manual(body: CompetitorManualIn, db: Session = Depends(get_db), user: Us
     return row(c)
 
 
+@router.delete("/{competitor_id}", status_code=204)
+def remove(competitor_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Take a competitor off the project's list (its saved audits stay in the history)."""
+    c = db.get(Competitor, competitor_id)
+    if c is None:
+        raise HTTPException(404, "Competitor not found")
+    owned_business(db, user, c.business_id)  # 404 for another account's project
+    db.delete(c)
+    db.commit()
+
+
 @router.get("")
 def list_for_business(business_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Competitors already registered against a business, for picking one to audit or compare."""
