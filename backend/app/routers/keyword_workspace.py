@@ -26,6 +26,21 @@ def workspace(source: str = "", tag: str = "", q: str = Query("", max_length=80)
     return kw.overview(db, b, source=source, tag=tag, q=q, show=show)
 
 
+@router.get("/summary")
+def summary(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    return kw.summary(db, b)
+
+
+class IdeasIn(BaseModel):
+    ideas: list[dict] = Field(min_length=1, max_length=200)
+    label: str = Field(default="Check One Keyword", max_length=60)
+
+
+@router.post("/add")
+def add(body: IdeasIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    return {"added": kw.add_ideas(db, b, body.ideas, body.label)}
+
+
 @router.post("/collect")
 def collect(body: CollectIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Read the chosen sources (all when none are named) and file the keywords they give. A source that cannot run says why."""

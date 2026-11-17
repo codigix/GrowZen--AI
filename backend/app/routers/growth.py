@@ -105,6 +105,8 @@ def add_keywords(body: list[KeywordIn], b: Business = Depends(get_business), db:
         db.add(row_)
     db.flush()
     note = keyword_metrics.fill([r for r in (db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == " ".join(k.keyword.lower().split()))) for k in body) if r], market.serp_country(b))
+    from ..services import keyword_workspace  # noqa: PLC0415
+    keyword_workspace.mirror(db, b, [r for r in (db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == " ".join(k.keyword.lower().split()))) for k in body) if r])
     db.commit()
     return {"added": added, "total": len(body), "metrics_note": note}
 

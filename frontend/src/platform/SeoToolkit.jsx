@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import KeywordFlowBar from './KeywordFlowBar';
 import {
   Search, Star, ArrowUp, ArrowDown, Plus, RefreshCw, KeyRound, ScanSearch, Swords, Sparkles, Link2, MapPin, Gauge, Layers, FileText, ExternalLink,
   AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot
@@ -243,6 +244,10 @@ function KeywordOverview({ b }) {
   const [added, setAdded] = useState({});
   const go = (k) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw } })); });
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const started = useRef(false);
+  useEffect(() => { const k = (params.get('q') || '').trim(); if (k.length > 1 && !started.current) { started.current = true; go(k); } }, []); // eslint-disable-line react-hooks/exhaustive-deps  (a keyword sent from the workspace is analysed at once)
+  const toWorkspace = (ideas) => run('ws', async () => { const r = await api(`/businesses/${b.id}/keyword-workspace/add`, { method: 'POST', body: { ideas: ideas.map(i => ({ keyword: i.keyword, volume: i.volume, detail: `Related to ${data.keyword}` })), label: 'Check One Keyword' } }); toast(r.added ? `${r.added} added to the Keyword Workspace` : 'Already in the Keyword Workspace'); });
   // Saving a keyword ends on My Keywords, with it marked "Just added" (the same landing as Find Keywords).
   const track = (k) => run(`t${k}`, async () => { const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: k }] }); setAdded(a => ({ ...a, [k]: true })); navigate('/keyword-management/tracked', { state: { added: [k], newCount: r?.added ?? 1 } }); });
   const m = data?.metrics;
@@ -250,6 +255,7 @@ function KeywordOverview({ b }) {
   const isTracked = (k) => added[k] || (data?.keyword === k && data?.you?.tracked);
   return (
     <div className="space-y-4">
+      <KeywordFlowBar b={b} at="check" />
       <Card>
         <div className="flex flex-wrap gap-2">
           <label className="relative flex-1 min-w-[260px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && q.trim().length > 1 && go()} placeholder="Enter a keyword, e.g. dentist near me" aria-label="Keyword" className="w-full h-10 pl-9 pr-3 text-13 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
@@ -275,7 +281,8 @@ function KeywordOverview({ b }) {
               </div>
             </Card>
           )}
-          <Card pad={false} title="Related keyword ideas" subtitle="What Google's Keyword Planner suggests around it, with real numbers">
+          <Card pad={false} title="Related keyword ideas" subtitle="What Google's Keyword Planner suggests around it, with real numbers"
+            action={data.ideas.length > 0 && <Button size="sm" busy={busy === 'ws'} onClick={() => toWorkspace(data.ideas)}>Add all to the Keyword Workspace</Button>}>
             {data.ideas.length === 0 ? <p className="px-5 py-8 text-center text-13 text-slate-500">No related ideas.</p> : (
               <Table head={<><Th>Keyword</Th><Th c="text-right">Searches / month</Th><Th>Competition</Th><Th c="text-right">Top-of-page bid</Th><Th c="text-right"> </Th></>}>
                 {data.ideas.map(i => (

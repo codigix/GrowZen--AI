@@ -52,3 +52,17 @@ def test_collect_reports_each_source_and_never_stops(client, monkeypatch):
     assert rep["profile"]["found"] >= 2 and "dentist in pune" in {i["keyword"] for i in r["items"]}  # service with the city
     assert rep["website"]["found"] == 0 and "Website Audit" in rep["website"]["note"]
     assert rep["competitors"]["found"] == 0 and "competitors" in rep["competitors"]["note"].lower()
+
+
+def test_keywords_saved_on_other_pages_appear_in_the_workspace(client):
+    bid = _project(client)
+    base = f"/api/v1/businesses/{bid}"
+    client.post(f"{base}/keywords", json=[{"keyword": "Dental Implants Pune", "source": {"kind": "ai", "label": "AI suggestions"}}, {"keyword": "braces"}])
+    out = client.get(f"{base}/keyword-workspace?show=picked").json()
+    by = {i["keyword"]: i for i in out["items"]}
+    assert set(by) == {"dental implants pune", "braces"} and by["dental implants pune"]["sources"][0]["kind"] == "ai" and out["totals"]["picked"] == 2
+    assert client.post(f"{base}/keyword-workspace/add", json={"ideas": [{"keyword": "dentist near me", "volume": 900}], "label": "Check One Keyword"}).json()["added"] == 1
+    s = client.get(f"{base}/keyword-workspace/summary").json()
+    assert s["saved"] == 2 and s["workspace"] == 1
+    client.delete(f"{base}/keywords/{[k['id'] for k in client.get(f'{base}/keywords').json()['keywords'] if k['keyword'] == 'braces'][0]}")
+    assert client.get(f"{base}/keyword-workspace/summary").json()["saved"] == 1  # removed from the list: back to be looked at

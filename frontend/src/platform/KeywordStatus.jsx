@@ -21,7 +21,7 @@ export default function KeywordStatus({ b }) {
   const rows = useMemo(() => (d ? d.items.filter(x => (f === 'all' || x.status === f) && (!q.trim() || x.keyword.includes(q.trim().toLowerCase()))) : []), [d, f, q]);
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
-  if (!d.total) return <Card><p className="py-8 text-center text-13 text-slate-500">No keywords are tracked yet. Save some in <Link to="/keyword-management/ai" className="font-semibold text-indigo-600 hover:underline">Find Keywords</Link>, and their status appears here.</p></Card>;
+  if (!d.total) return <Card><p className="py-8 text-center text-13 text-slate-500">No keywords are tracked yet. Pick some in the <Link to="/keyword-management/workspace" className="font-semibold text-indigo-600 hover:underline">Keyword Workspace</Link> or save some in <Link to="/keyword-management/ai" className="font-semibold text-indigo-600 hover:underline">Find Keywords</Link>, and their status appears here.</p></Card>;
   const c = d.counts;
   const pill = (on) => `h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
   return (
@@ -49,7 +49,7 @@ export default function KeywordStatus({ b }) {
             <tbody className="divide-y divide-slate-100">
               {rows.map(x => (
                 <tr key={x.keyword} className="hover:bg-slate-50 align-middle">
-                  <td className="px-3 py-3 max-w-[220px]"><span className="block font-semibold text-slate-900 truncate" title={x.keyword}>{x.keyword}</span><span className="text-11.5 text-slate-400">{[x.intent, x.cluster].filter(Boolean).join(' · ') || ' '}{x.articles ? ` · ${x.articles} blog${x.articles > 1 ? 's' : ''}` : ''}</span></td>
+                  <td className="px-3 py-3 max-w-[220px]"><Link to={`/keyword-overview?q=${encodeURIComponent(x.keyword)}`} className="block font-semibold text-slate-900 truncate hover:text-indigo-700 hover:underline" title={`Check ${x.keyword}`}>{x.keyword}</Link><span className="text-11.5 text-slate-400">{[x.intent, x.cluster].filter(Boolean).join(' · ') || ' '}{x.articles ? ` · ${x.articles} blog${x.articles > 1 ? 's' : ''}` : ''}</span></td>
                   <td className="px-3 py-3"><Tip text={x.why} wide><Badge tone={TONE[x.status]}>{x.label}</Badge></Tip></td>
                   <td className="px-3 py-3 text-right whitespace-nowrap">{x.rank != null ? <span className="font-bold tabular-nums">{x.rank}</span> : <span className="text-slate-300">—</span>}
                     {x.change ? <span className={`ml-1 inline-flex items-center text-11.5 ${x.change > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{x.change > 0 ? <ArrowUp size={11} /> : <ArrowDown size={11} />}{Math.abs(x.change)}</span> : null}

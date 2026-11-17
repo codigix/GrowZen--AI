@@ -50,6 +50,9 @@ export default function KeywordWorkspace({ b, onUse }) {
   const [toast, toastNode] = useToast();
   const qs = new URLSearchParams({ show, ...(source && { source }), ...(tag && { tag }), ...(q.trim() && { q: q.trim() }) }).toString();
   const r = useApi(`/businesses/${b.id}/keyword-workspace?${qs}`);
+  const find = (
+    <div className="flex flex-wrap gap-2 text-12.5 text-slate-600 items-center">Want more ideas? <Link to="/keyword-management/ai" className="font-semibold text-indigo-700 hover:underline">Find Keywords</Link> · <Link to="/keyword-overview" className="font-semibold text-indigo-700 hover:underline">Check One Keyword</Link> (what you save there lands in this list too)</div>
+  );
   const d = r.data;
   const items = d?.items || [];
   const suggested = useMemo(() => items.filter(i => i.suggested && !i.picked), [items]);
@@ -140,7 +143,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                   <tr key={i.id} className={sel.has(i.id) ? 'bg-indigo-50/50' : ''}>
                     <td className="px-3 py-2"><input type="checkbox" aria-label={`Select ${i.keyword}`} checked={sel.has(i.id)} onChange={() => toggle(i.id)} /></td>
                     <td className="px-3 py-2 min-w-[180px]">
-                      <span className="font-semibold text-slate-900">{i.keyword}</span>{i.picked && <span className="ml-2"><Badge tone="green">Picked</Badge></span>}
+                      <Link to={`/keyword-overview?q=${encodeURIComponent(i.keyword)}`} title="Check its searches, cost and related ideas" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline">{i.keyword}</Link>{i.picked && <span className="ml-2"><Badge tone="green">Picked</Badge></span>}
                       {i.variants.length > 0 && <span className="block text-11.5 text-slate-400" title="Written differently in other places, merged into this one">also: {i.variants.slice(0, 3).join(', ')}</span>}
                       {i.competitors.length > 0 && <span className="block text-11.5 text-slate-500">used by {i.competitors.slice(0, 3).join(', ')}</span>}
                     </td>
@@ -159,10 +162,12 @@ export default function KeywordWorkspace({ b, onUse }) {
         <p className="mt-3 text-12 text-slate-500">Kinds: <b>Gap</b> competitors use it and you do not · <b>Win</b> you are in the top 3 · <b>Almost</b> you are on page 2 · <b>Shared</b> you both use it · <b>Yours only</b> only you · <b>Idea</b> from Google or AI. The score is a suggestion, not a rule.</p>
       </Card>
 
+      {find}
       <Card title="4 · Use the picked keywords" subtitle="Group them into topics, give each topic a page, then write the blog posts and track the rank.">
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" icon={ArrowRight} onClick={() => onUse('topics')} disabled={!d.totals.picked}>Group into topics</Button>
-          <Button onClick={() => onUse('tracked')} disabled={!d.totals.picked}>My saved keywords</Button>
+          <Button onClick={() => onUse('tracked')} disabled={!d.totals.picked}>My Keywords</Button>
+          <Button onClick={() => onUse('status')} disabled={!d.totals.picked}>Keyword Status</Button>
           <Link to="/ai-content-generation/blog"><Button icon={ArrowRight}>Write a blog post</Button></Link>
           <Link to="/rank-tracking/landscape"><Button icon={ArrowRight}>Track the rank</Button></Link>
         </div>

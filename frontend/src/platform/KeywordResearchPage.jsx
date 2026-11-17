@@ -1,4 +1,5 @@
 import KeywordWorkspace from './KeywordWorkspace';
+import KeywordFlowBar from './KeywordFlowBar';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AutopilotPanel } from './AutopilotPanels';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -705,15 +706,16 @@ function Tracked({ b, kw }) {
       <JustAdded names={[...fresh]} added={location.state?.newCount ?? 0} total={tracked.length} mapped={mapped} />
       <ErrorNote>{error}</ErrorNote>
       <Card title="Tracked keywords and their pages" subtitle="Give each keyword one target page, so your pages don't compete with each other. Ranks update with each rank scan.">
-        {!kw.data ? <SkTable cols={['w-1/3','w-12','w-12','w-12','w-16']} rows={8} /> : !tracked.length ? <div className="py-10 text-center text-13 text-slate-500">No tracked keywords yet. Pick some in Find Keywords.</div> : (
+        {!kw.data ? <SkTable cols={['w-1/3','w-12','w-12','w-12','w-16']} rows={8} /> : !tracked.length ? <div className="py-10 text-center text-13 text-slate-500">No tracked keywords yet. Pick some in the <Link to="/keyword-management/workspace" className="font-semibold text-indigo-700 hover:underline">Keyword Workspace</Link> or <Link to="/keyword-management/ai" className="font-semibold text-indigo-700 hover:underline">Find Keywords</Link>.</div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-13 min-w-[640px]">
-              <thead className="text-11   text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-semibold">Keyword</th><th className="p-2 text-right font-semibold">Searches</th><th className="p-2 text-left font-semibold">Target page</th><th className="p-2 text-right font-semibold">Rank</th><th className="p-2 text-left font-semibold">Priority</th><th className="p-2" /></tr></thead>
+              <thead className="text-11   text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-semibold">Keyword</th><th className="p-2 text-right font-semibold">Searches</th><th className="p-2 text-left font-semibold">Came from</th><th className="p-2 text-left font-semibold">Target page</th><th className="p-2 text-right font-semibold">Rank</th><th className="p-2 text-left font-semibold">Priority</th><th className="p-2" /></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {tracked.map(k => (
                   <tr key={k.id} data-just-added={fresh.has(k.keyword.toLowerCase()) ? '1' : undefined} className={fresh.has(k.keyword.toLowerCase()) ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}>
-                    <td className="p-2 text-slate-900">{k.keyword}{(k.uses || []).length > 0 && <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">{k.uses.map(u => <UseChip key={u} u={u} />)}</span>}{fresh.has(k.keyword.toLowerCase()) && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5 align-middle">Just added</span>}<div>{k.intent && <Badge tone={INTENT_TONE[k.intent] || 'gray'}>{k.intent}</Badge>}</div>{k.source?.label && <span className="block text-11.5 text-slate-500 font-normal" title={(k.source.pages || []).map(x => x.url).join(', ')}>Taken from: {k.source.label}{k.source.at ? `, ${k.source.at}` : ''}</span>}</td>
+                    <td className="p-2 text-slate-900"><Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`} title="Check its searches, cost and related ideas" className="hover:text-indigo-700 hover:underline">{k.keyword}</Link>{(k.uses || []).length > 0 && <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">{k.uses.map(u => <UseChip key={u} u={u} />)}</span>}{fresh.has(k.keyword.toLowerCase()) && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5 align-middle">Just added</span>}<div>{k.intent && <Badge tone={INTENT_TONE[k.intent] || 'gray'}>{k.intent}</Badge>}</div>{k.source?.label && <span className="block text-11.5 text-slate-500 font-normal" title={(k.source.pages || []).map(x => x.url).join(', ')}>Taken from: {k.source.label}{k.source.at ? `, ${k.source.at}` : ''}</span>}</td>
                     <td className="p-2 text-right tabular-nums">{fmt(k.volume)}</td>
+                    <td className="p-2 text-12 text-slate-500 max-w-[180px]"><span title={((k.source?.sources || []).map(x => x.label).join(', ')) || k.source?.label || ''}>{(k.source?.sources?.[0]?.label || k.source?.label || 'Saved by hand')}{(k.source?.sources?.length || 0) > 1 ? ` +${k.source.sources.length - 1}` : ''}</span>{(k.source?.competitors || []).length > 0 && <span className="block text-11 text-slate-400">also {k.source.competitors.slice(0, 2).join(', ')}</span>}</td>
                     <td className="p-2"><input list={`pages-${b.id}`} className={`${inputCls} max-w-[260px] ${!k.target_url ? 'ring-1 ring-amber-300' : ''}`} defaultValue={k.target_url || ''} placeholder="— not mapped —" onBlur={e => e.target.value !== (k.target_url || '') && update(k, { target_url: e.target.value || null })} /><UsedOn info={pagesInfo} keyword={k.keyword} /></td>
                     <td className="p-2 text-right tabular-nums">{k.rank ?? <span className="text-slate-400">—</span>}{k.rank && k.prev_rank && k.prev_rank !== k.rank && <span className={`ml-1 text-11 ${k.prev_rank > k.rank ? 'text-emerald-700' : 'text-red-600'}`}>{k.prev_rank > k.rank ? '▲' : '▼'}{Math.abs(k.prev_rank - k.rank)}</span>}</td>
                     <td className="p-2"><Select className="h-8 px-2 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200" value={k.priority} onChange={e => update(k, { priority: e.target.value })}>{['High', 'Medium', 'Low'].map(p => <option key={p}>{p}</option>)}</Select></td>
@@ -1425,15 +1427,7 @@ function NextStep({ progress, tab, bid, reload }) {
   );
 }
 
-/** Workspace (one list from every place) or the single tools (deep search, saved keywords, topics). */
-function ModeBar({ tab, setTab }) {
-  return (
-    <div role="tablist" aria-label="Keyword tools" className="flex flex-wrap gap-2 mb-4">
-      <button type="button" role="tab" aria-selected={tab === 'workspace'} onClick={() => setTab('workspace')} className={pill(tab === 'workspace')}>Keyword Workspace</button>
-      <button type="button" role="tab" aria-selected={tab !== 'workspace'} onClick={() => setTab('ai')} className={pill(tab !== 'workspace')}>Search tools, saved keywords and topics</button>
-    </div>
-  );
-}
+const FLOW_AT = { workspace: 'workspace', ai: 'find', discover: 'find', planner: 'find', explorer: 'find', tracked: 'mine', topics: 'mine', use: 'mine', status: 'status' };
 
 function KeywordPath({ b, tab, setTab }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
@@ -1451,14 +1445,14 @@ function KeywordPath({ b, tab, setTab }) {
   if (tab === 'workspace') {
     return (
       <>
-        <ModeBar tab={tab} setTab={setTab} />
+        <KeywordFlowBar b={b} at={FLOW_AT[tab] || 'find'} />
         <KeywordWorkspace b={b} onUse={setTab} />
       </>
     );
   }
   return (
     <>
-      <ModeBar tab={tab} setTab={setTab} />
+      <KeywordFlowBar b={b} at={FLOW_AT[tab] || 'find'} />
       <PathBar progress={progress.data} tab={tab} setTab={setTab} />
       {FIND_TABS.includes(tab) && (
         <form onSubmit={(e) => { e.preventDefault(); startSearch(); }} className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 mb-4 flex flex-wrap gap-2" role="search">

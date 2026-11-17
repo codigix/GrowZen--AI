@@ -276,7 +276,7 @@ def score_of(r: KeywordCandidate, tag: str) -> int:
 def item(r: KeywordCandidate, saved: set[str]) -> dict[str, Any]:
     tag = tag_of(r)
     return {"id": r.id, "keyword": r.keyword, "variants": r.variants or [], "sources": r.sources or [], "competitors": r.competitors or [], "volume": r.volume, "difficulty": r.difficulty, "cpc": r.cpc,
-            "intent": r.intent, "rank": r.own_rank, "impressions": r.impressions, "clicks": r.clicks, "tag": tag, "score": score_of(r, tag), "picked": r.picked or merge_key(r.keyword) in saved,
+            "intent": r.intent, "rank": r.own_rank, "impressions": r.impressions, "clicks": r.clicks, "tag": tag, "score": score_of(r, tag), "picked": merge_key(r.keyword) in saved,
             "dismissed": r.dismissed}
 
 
@@ -329,3 +329,37 @@ def dismiss(db: Session, b: Business, ids: list[int], on: bool = True) -> int:
         n += 1
     db.commit()
     return n
+
+
+# ----------------------------------------------------------------------------------------------------------------------------- the other keyword pages feed the same list
+def mirror(db: Session, b: Business, keywords: list[Keyword]) -> None:
+    """Keywords saved anywhere (Find Keywords, Check One Keyword, the workspace) also stand in the workspace, each with where it came from."""
+    found = []
+    for k in keywords:
+        src = k.source or {}
+        kind = src.get("kind") if src.get("kind") in SOURCES else "google_ideas" if src.get("kind") in ("discover", "planner", "explorer", "autocomplete") else None
+        found.append({"keyword": k.keyword, "kind": kind or "google_ideas", "label": src.get("label") or ("Saved by hand" if not src else None), "detail": src.get("from") and f"Saved from {src.get('from')}" or "Saved to your list",
+                      "volume": k.volume, "difficulty": k.difficulty, "cpc": k.cpc})
+    existing = {r.norm: r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))}
+    _add(db, b, found, existing)
+    for f in found:
+        row = existing.get(merge_key(clean(f["keyword"])))
+        if row:
+            row.picked, row.dismissed = True, False
+
+
+def add_ideas(db: Session, b: Business, ideas: list[dict[str, Any]], label: str) -> int:
+    """Ideas seen on another page (the related keywords of Check One Keyword) go to the workspace list to be compared, not saved yet."""
+    existing = {r.norm: r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))}
+    n = _add(db, b, [{"keyword": i.get("keyword"), "kind": "google_ideas", "label": label, "detail": i.get("detail") or label, "volume": i.get("volume")} for i in ideas if i.get("keyword")], existing)
+    db.commit()
+    return n
+
+
+def summary(db: Session, b: Business) -> dict[str, Any]:
+    """The small counts the keyword pages show in their shared step bar."""
+    saved = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id)))
+    keys = {merge_key(k.keyword) for k in saved}
+    cands = list(db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)))
+    return {"competitors": len(_competitor_domains(db, b)), "workspace": sum(1 for r in cands if merge_key(r.keyword) not in keys and not r.dismissed), "saved": len(saved),
+            "ranking": sum(1 for k in saved if k.rank and k.rank <= 10)}
