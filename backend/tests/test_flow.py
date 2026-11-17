@@ -6,6 +6,10 @@ from app.models import Audit, Business, GrowthAction, Keyword, Post
 from app.services import flow
 
 
+GMB = ["seo", "geo", "aeo", "gmb"]
+DETAILS = {"services": [{"name": "Rental"}], "target_audience": "Families in Pune", "goals": ["calls"]}
+
+
 def project(client, **extra):
     r = client.post("/api/v1/businesses", json={"name": "Flow Co", **extra})
     assert r.status_code == 201, r.text
@@ -18,23 +22,26 @@ def steps(d):
 
 def test_a_new_project_starts_at_the_details_and_everything_else_that_needs_them_is_blocked(client):
     bid = project(client)
+    db = SessionLocal()
+    db.get(Business, bid).modules = GMB  # saved directly: creating it with these services would be refused, it has no details yet
+    db.commit()
     d = client.get(f"/api/v1/businesses/{bid}/flow").json()
     s = steps(d)
-    assert [x["key"] for x in d["steps"]] == [x["key"] for x in flow.STEPS] and d["total"] == 10
+    assert [x["key"] for x in d["steps"]] == [x["key"] for x in flow.STEPS] and d["total"] == 12
     assert s["details"]["status"] == "todo" and "Missing" in s["details"]["detail"]
     assert s["google"]["status"] == "blocked" and s["google"]["waiting_for"][0]["key"] == "details"  # the dependency is named, with its link
     assert d["next"]["key"] == "details" and d["done"] == 0
 
 
 def test_finishing_a_step_unblocks_the_ones_that_wait_for_it_and_moves_the_next_step(client):
-    bid = project(client, primary_category="Clothing rental", city="Pune", phone="+919876543210", website="https://flow.example", address="12 MG Road")
+    bid = project(client, primary_category="Clothing rental", city="Pune", phone="+919876543210", website="https://flow.example", address="12 MG Road", modules=GMB, **DETAILS)
     db = SessionLocal()
     try:
         d = flow.evaluate(db, db.get(Business, bid))
         s = steps(d)
         assert s["details"]["status"] == "done" and s["website"]["status"] == "todo" and s["google"]["status"] == "todo" and s["publish"]["status"] == "blocked"  # posting waits for Google
         assert s["publish"]["waiting_for"][0]["title"] == "Connect the Google profile" and s["fix"]["status"] == "blocked"  # fixing waits for the site check
-        assert d["next"]["key"] == "google"
+        assert d["next"]["key"] == "competitors"  # the order is business, competitors, keywords, mapping, website, fixes, content, links, report, then the Google profile steps
         db.add(Audit(business_id=bid, kind="onpage", status="done", score=61, data_source="live", result={}, issues=[]))
         db.commit()
         s = steps(flow.evaluate(db, db.get(Business, bid)))
@@ -44,7 +51,7 @@ def test_finishing_a_step_unblocks_the_ones_that_wait_for_it_and_moves_the_next_
 
 
 def test_fix_is_done_only_after_a_scan_and_with_no_critical_or_serious_issue_open(client):
-    bid = project(client, primary_category="x", city="Pune", phone="+919876543210", website="https://flow.example")
+    bid = project(client, primary_category="x", city="Pune", phone="+919876543210", website="https://flow.example", **DETAILS)
     db = SessionLocal()
     try:
         db.add(Audit(business_id=bid, kind="onpage", status="done", score=50, data_source="live", result={}, issues=[]))
@@ -88,3 +95,11 @@ def test_keyword_progress_is_one_rule_for_the_page_and_the_journey(client):
     assert p["steps"][4]["to"] == "/rank-tracking/positions" and p["saved"] == 8 and p["steps"][1]["done"] is True and p["next"]["key"] == "group" and p["next"]["to"] == "/keyword-management/topics"
     step = next(s for s in client.get(f"/api/v1/businesses/{bid}/flow").json()["steps"] if s["key"] == "keywords")
     assert step["status"] != "done" and "8 keywords tracked" in step["detail"]  # saved but not grouped: the journey agrees with the page
+
+
+def test_a_project_that_does_seo_only_has_no_google_profile_steps_and_needs_no_phone(client):
+    bid = project(client, website="https://seoonly.example", modules=["seo"], **DETAILS, target_scope="national")
+    d = client.get(f"/api/v1/businesses/{bid}/flow").json()
+    keys = [x["key"] for x in d["steps"]]
+    assert "google" not in keys and "publish" not in keys and "reviews" not in keys and keys[:4] == ["details", "competitors", "keywords", "mapping"] and d["total"] == 9
+    assert {x["key"]: x for x in d["steps"]}["details"]["status"] == "done"  # no phone, city, category or address asked for

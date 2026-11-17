@@ -8,7 +8,7 @@ import {
 import { SIDEBAR_GROUPS, SIDEBAR_SECTIONS } from './sidebarGroups';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '../platform/seoApi';
-import { SkPage } from '../platform/SeoUi';
+import { SkPage, useSeoBusiness } from '../platform/SeoUi';
 import AssistantWidget from './AssistantWidget';
 import ErrorBoundary from './ErrorBoundary';
 
@@ -81,8 +81,14 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
   const connections = useConnections();
   const hidePanel = collapsed && !open; // the mobile drawer always shows the panel
   const mainRef = useRef(null);
+  const [biz] = useSeoBusiness();
+  // A project that does SEO only is not shown the Google profile, ChatGPT or AI sections it does not use (the section opens again when the page is reached by address).
+  const on = biz?.services_on;
+  const needs = { GMB: 'gmb', chatgpt: ['geo', 'aeo'], ai: ['geo', 'aeo'] };
   const holds = (sec) => sec.groups.some(grp => grp.items.some(i => itemActive(location.pathname, location.search, i)));
-  const section = (picked && SIDEBAR_SECTIONS.find(s => s.id === picked && holds(s))) || SIDEBAR_SECTIONS.find(holds) || SIDEBAR_SECTIONS.find(s => s.id === picked) || SIDEBAR_SECTIONS[0];
+  const shown = (sec) => !on || !needs[sec.id] || [].concat(needs[sec.id]).some(m => on.includes(m)) || holds(sec);
+  const sections = SIDEBAR_SECTIONS.filter(shown);
+  const section = (picked && sections.find(s => s.id === picked && holds(s))) || sections.find(holds) || sections.find(s => s.id === picked) || sections[0];
   const openSection = (sec) => { setPicked(sec.id); setCollapsed(false); if (!holds(sec)) navigate(sec.groups[0].items[0].to); };
 
   useEffect(() => { try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0'); } catch (e) { /* private mode */ } }, [collapsed]);
@@ -111,7 +117,7 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
             <span className="w-9 h-9 rounded bg-white p-1 flex items-center justify-center"><img src="/bevisibe-mark.png" alt="bevisibe" className="w-full h-full object-contain" /></span>
           </NavLink>
           <nav className="flex-1 overflow-y-auto no-scrollbar py-2 px-1.5 space-y-1" aria-label="Sections">
-            {SIDEBAR_SECTIONS.map(sec => {
+            {sections.map(sec => {
               const on = sec.id === section.id;
               const Icon = sec.icon;
               return (

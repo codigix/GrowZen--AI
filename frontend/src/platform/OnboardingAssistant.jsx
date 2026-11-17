@@ -66,7 +66,9 @@ export function profileGaps(form, res) {
   const postcode = info.postcode ? info.postcode_name : null;
   const newServices = (s?.services?.values || []).filter(v => !form.services.includes(v));
   const newKeywords = (s?.keywords?.values || []).filter(v => !form.keywords.includes(v)).slice(0, 6);
-  return [
+  const gmbOn = (form.modules || []).includes('gmb');
+  const GMB_ONLY = new Set(['phone', 'address', 'pin', 'category']);
+  const all = [
     { key: 'name', label: 'Business name', section: 'business', field: 'name', done: Boolean(form.name.trim()), why: 'The registered name, exactly as on the signboard.' },
     {
       key: 'category', label: 'Primary category', section: 'business', field: 'primary_category', done: Boolean(form.primary_category.trim()),
@@ -114,6 +116,7 @@ export function profileGaps(form, res) {
       fix: newKeywords.length > 0 && { value: newKeywords.join(', '), from: 'Google searches', apply: (x) => ({ ...x, keywords: merge(x.keywords, newKeywords).slice(0, 10) }) }
     }
   ];
+  return gmbOn ? all : all.filter(g => !GMB_ONLY.has(g.key)); // an SEO-only project is not nagged for Google profile details
 }
 
 const same = (k, a, b, c) => (k === 'phone' ? samePhone(a, b, c) : String(a || '').toLowerCase().replace(/[^a-z0-9]/g, '') === String(b || '').toLowerCase().replace(/[^a-z0-9]/g, ''));

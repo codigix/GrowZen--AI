@@ -26,8 +26,6 @@ import LoginPage from './pages/LoginPage';
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const SeoOverviewPage = lazy(() => import('./platform/SeoOverviewPage'));
 const AutomationPipelinePage = lazy(() => import('./platform/AutomationPipelinePage'));
-const SeoJourneyPage = lazy(() => import('./platform/SeoJourneyPage'));
-const KeywordMappingPage = lazy(() => import('./platform/KeywordMappingPage'));
 const GbpManagerPage = lazy(() => import('./platform/GbpManagerPage'));
 const ReviewManagerPage = lazy(() => import('./platform/ReviewManagerPage'));
 const LocalRankTrackerPage = lazy(() => import('./platform/LocalRankTrackerPage'));
@@ -158,8 +156,6 @@ export default function App() {
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="work-plan" element={<Navigate to="/dashboard" replace />} />
         <Route path="automation-pipeline" element={<AutomationPipelinePage />} />
-        <Route path="seo-journey" element={<SeoJourneyPage />} />
-        <Route path="keyword-mapping" element={<KeywordMappingPage />} />
         <Route path="gmb-profile" element={<GbpManagerPage />} />
         <Route path="gmb-profile/reviews" element={<Navigate to="/reviews?tab=google" replace />} />
         <Route path="gmb-profile/:tab" element={<GbpManagerPage />} />

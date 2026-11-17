@@ -1,5 +1,6 @@
 import KeywordWorkspace from './KeywordWorkspace';
 import KeywordFlowBar from './KeywordFlowBar';
+import KeywordMappingTab from './KeywordMappingTab';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AutopilotPanel } from './AutopilotPanels';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -1427,7 +1428,7 @@ function NextStep({ progress, tab, bid, reload }) {
   );
 }
 
-const FLOW_AT = { workspace: 'workspace', ai: 'find', discover: 'find', planner: 'find', explorer: 'find', tracked: 'mine', topics: 'mine', use: 'mine', status: 'status' };
+const FLOW_AT = { workspace: 'workspace', ai: 'find', discover: 'find', planner: 'find', explorer: 'find', tracked: 'mine', topics: 'mine', use: 'mine', mapping: 'mapping', status: 'status' };
 
 function KeywordPath({ b, tab, setTab }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
@@ -1442,6 +1443,14 @@ function KeywordPath({ b, tab, setTab }) {
     kw.reload(true); progress.reload(true);
     navigate('/keyword-management/tracked', { state: { added: names || [], newCount: added ?? (names || []).length } });
   };
+  if (tab === 'mapping') {
+    return (
+      <>
+        <KeywordFlowBar b={b} at="mapping" />
+        <KeywordMappingTab b={b} />
+      </>
+    );
+  }
   if (tab === 'workspace') {
     return (
       <>
@@ -1480,7 +1489,7 @@ function KeywordPath({ b, tab, setTab }) {
 }
 
 export default function KeywordResearchPage() {
-  const [tab, setTab] = useUrlTab('workspace', ['workspace', 'ai', 'discover', 'planner', 'explorer', 'tracked', 'topics', 'use', 'status']);
+  const [tab, setTab] = useUrlTab('workspace', ['workspace', 'mapping', 'ai', 'discover', 'planner', 'explorer', 'tracked', 'topics', 'use', 'status']);
   return (
     <SeoShell step="keywords" title="Keywords" subtitle="Get keyword ideas from AI, pick the best, group them into topics, use them in your blog, posts and AI answers, then track where they rank">
       {(b) => <KeywordPath key={b.id} b={b} tab={tab} setTab={setTab} />}

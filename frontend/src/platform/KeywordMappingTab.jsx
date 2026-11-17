@@ -1,13 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, ExternalLink, FilePlus2, PenLine } from 'lucide-react';
-import { SeoShell, Card, Button, Badge, ErrorNote, SkList, useAction, useToast } from './SeoUi';
+import { Card, Button, Badge, ErrorNote, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
-import KeywordFlowBar from './KeywordFlowBar';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 
-function Mapping({ b }) {
+export default function KeywordMappingTab({ b }) {
   const r = useApi(`/businesses/${b.id}/keyword-mapping`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
@@ -17,7 +16,6 @@ function Mapping({ b }) {
   const save = () => run('apply', async () => { const out = await api(`/businesses/${b.id}/keyword-mapping/apply`, { method: 'POST' }); r.setData(out); toast(`Saved: ${out.primaries} page${out.primaries === 1 ? '' : 's'} with a primary keyword`); });
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      <KeywordFlowBar b={b} at="mapping" />
       {!d.keywords ? (
         <Card><p className="py-8 text-center text-13 text-slate-500">No keywords are saved yet. Pick some in the <Link to="/keyword-management/workspace" className="font-semibold text-indigo-700 hover:underline">Keyword Workspace</Link> first.</p></Card>
       ) : !d.crawled ? (
@@ -67,18 +65,10 @@ function Mapping({ b }) {
                     <span className="min-w-0 flex-1"><span className="block font-semibold text-slate-900">{m.title}</span><span className="block text-12 text-slate-500">{n0(m.volume)} searches/mo</span></span></li>))}</ul>)}
             </Card>
           </div>
-          <div className="flex flex-wrap gap-2"><Link to="/keyword-management/tracked"><Button icon={ArrowRight}>My Keywords</Button></Link><Link to="/seo-journey"><Button icon={ArrowRight}>Back to the SEO plan</Button></Link></div>
+          <div className="flex flex-wrap gap-2"><Link to="/keyword-management/tracked"><Button icon={ArrowRight}>My Keywords</Button></Link><Link to="/keyword-management/status"><Button icon={ArrowRight}>Keyword Status</Button></Link></div>
         </>
       )}
       {toastNode}
     </div>
-  );
-}
-
-export default function KeywordMappingPage() {
-  return (
-    <SeoShell step="keywords" title="Keyword Mapping" subtitle="Give every keyword its page, and find the pages and blog posts you are missing">
-      {(b) => <Mapping key={b.id} b={b} />}
-    </SeoShell>
   );
 }

@@ -14,16 +14,20 @@ from sqlalchemy.orm import Session
 from ..models import AgentTask, Audit, BacklinkCheck, Business, GrowthAction, GrowthReport, Keyword, Post, Review
 
 STEPS: list[dict[str, Any]] = [
-    {"key": "details", "title": "Business details", "why": "Name, category, address, phone and website are used by every other step.", "link": "/projects", "requires": []},
-    {"key": "google", "title": "Connect the Google profile", "why": "Needed to read reviews and performance and to publish posts, replies and photos.", "link": "/gmb-profile/profile", "requires": ["details"]},
-    {"key": "website", "title": "Check the website", "why": "A site audit finds what search engines cannot read or trust.", "link": "/website-audit", "requires": ["details"]},
-    {"key": "keywords", "title": "Choose keywords", "why": "Keywords decide what content, posts and rankings aim at.", "link": "/keyword-management/discover", "requires": ["details"]},
+    # The order of a project's SEO: 1 business analysis, 2 competitors, 3 keywords, 4 keyword mapping, 5 website audit and fixes, 6 content, links and tracking.
+    # A step with "module" only exists for a project that uses that service (a project that does SEO only never sees the Google profile steps).
+    {"key": "details", "title": "Business details", "why": "What the business sells, to whom, where and why: every other step starts from it.", "link": "/onboarding", "requires": []},
     {"key": "competitors", "title": "Know your competitors", "why": "Competitors show which searches and links you are missing.", "link": "/competitor-finder", "requires": ["details"]},
-    {"key": "fix", "title": "Fix the problems found", "why": "Open issues hold back rankings and trust. Each one has an exact fix.", "link": "/growth#issues", "requires": ["website"]},
-    {"key": "publish", "title": "Post and add photos", "why": "Fresh posts and photos keep the Google profile active.", "link": "/google-posts", "requires": ["google"]},
-    {"key": "reviews", "title": "Get and answer reviews", "why": "Reviews are the strongest local trust signal.", "link": "/gmb-profile/reviews", "requires": ["google"]},
+    {"key": "keywords", "title": "Choose keywords", "why": "Keywords decide what content, pages and rankings aim at.", "link": "/keyword-management/workspace", "requires": ["details"]},
+    {"key": "mapping", "title": "Map keywords to pages", "why": "Every keyword needs one page, and every page one main keyword; the rest are missing pages or blog posts.", "link": "/keyword-management/mapping", "requires": ["keywords", "website"]},
+    {"key": "website", "title": "Check the website", "why": "A site audit finds what search engines cannot read or trust.", "link": "/website-audit", "requires": ["details"]},
+    {"key": "fix", "title": "Fix the problems found", "why": "Open issues hold back rankings and trust. Each one has an exact fix.", "link": "/fix-plan", "requires": ["website"]},
+    {"key": "content", "title": "Write content", "why": "Blog posts and pages from your keywords bring the searches in.", "link": "/ai-content-generation/blog", "requires": ["keywords"]},
     {"key": "links", "title": "Build and check backlinks", "why": "Links from real websites raise authority; broken or nofollow ones do not.", "link": "/backlink-checker", "requires": ["website"]},
     {"key": "report", "title": "Follow the weekly report", "why": "The report shows what moved and what to do next.", "link": "/growth#reports", "requires": ["details"]},
+    {"key": "google", "module": "gmb", "title": "Connect the Google profile", "why": "Needed to read reviews and performance and to publish posts, replies and photos.", "link": "/gmb-profile/profile", "requires": ["details"]},
+    {"key": "publish", "module": "gmb", "title": "Post and add photos", "why": "Fresh posts and photos keep the Google profile active.", "link": "/google-posts", "requires": ["google"]},
+    {"key": "reviews", "module": "gmb", "title": "Get and answer reviews", "why": "Reviews are the strongest local trust signal.", "link": "/gmb-profile/reviews", "requires": ["google"]},
 ]
 
 
@@ -39,8 +43,18 @@ def evaluate(db: Session, b: Business) -> dict[str, Any]:
     since = _now() - timedelta(days=30)
     state: dict[str, dict[str, Any]] = {}
 
-    missing = [lab for lab, v in (("name", b.name), ("category", b.primary_category), ("address or city", b.address or b.city), ("phone", b.phone), ("website", b.website)) if not (v or "").strip()]
-    state["details"] = {"done": not missing, "detail": "All details are filled in." if not missing else f"Missing: {', '.join(missing)}.", "metric": f"{5 - len(missing)} of 5 filled"}
+    from . import project_services
+    mods = project_services.enabled(b)
+    seo_family = any(m in mods for m in ("seo", "geo", "aeo"))
+    checks = [("name", b.name), ("services", b.services), ("target audience", b.target_audience), ("goals", b.goals)]
+    if seo_family:
+        checks.append(("website", b.website))
+    if "gmb" in mods:
+        checks += [("category", b.primary_category), ("city", b.city), ("phone", b.phone)]
+    elif (b.target_scope or "local") == "local":
+        checks.append(("city or target areas", b.city or b.target_areas))
+    missing = [lab for lab, v in checks if not (v if isinstance(v, (list, dict)) else (v or "").strip())]
+    state["details"] = {"done": not missing, "detail": "All details are filled in." if not missing else f"Missing: {', '.join(missing)}.", "metric": f"{len(checks) - len(missing)} of {len(checks)} filled"}
 
     linked = bool(b.connection_id and b.gbp_account and b.gbp_location)
     state["google"] = {"done": linked, "detail": "The Google profile is connected." if linked else "Not connected yet.", "metric": "connected" if linked else "not connected"}
@@ -84,14 +98,28 @@ def evaluate(db: Session, b: Business) -> dict[str, Any]:
     rep = db.scalar(select(GrowthReport).where(GrowthReport.business_id == b.id).order_by(GrowthReport.period_start.desc()).limit(1))
     state["report"] = {"done": bool(rep and rep.emailed_at), "detail": ("The latest report was emailed " + rep.emailed_at.date().isoformat() + ".") if rep and rep.emailed_at else ("A report exists but was not emailed." if rep else "No report yet: it is made every Monday."), "metric": "emailed" if rep and rep.emailed_at else "none"}
 
-    steps, done_keys = [], {k for k, v in state.items() if v["done"]}
-    by_key = {s["key"]: s for s in STEPS}
-    for i, spec in enumerate(STEPS, 1):
+    from . import keyword_mapping
+    from ..models import Article
+    mp = keyword_mapping.plan(db, b)
+    primaries = _n(db, select(func.count(Keyword.id)).where(Keyword.business_id == b.id, Keyword.role == "primary"))
+    if not mp["keywords"]:
+        state["mapping"] = {"done": False, "detail": "Save keywords first.", "metric": "no keywords"}
+    elif not mp["crawled"]:
+        state["mapping"] = {"done": False, "detail": "Scan the website first, so keywords can be matched to its pages.", "metric": "website not scanned"}
+    else:
+        state["mapping"] = {"done": mp["unmapped"] == 0 and primaries > 0, "detail": f"{mp['mapped']} of {mp['keywords']} keywords have a page; {len(mp['missing_pages'])} pages and {len(mp['blog_opportunities'])} posts are missing." + ("" if primaries else " Save the mapping to set each page's primary keyword."), "metric": f"{mp['mapped']}/{mp['keywords']} mapped"}
+    arts = _n(db, select(func.count(Article.id)).where(Article.business_id == b.id))
+    state["content"] = {"done": arts >= 1, "detail": f"{arts} article{'s' if arts != 1 else ''} written." if arts else "No article yet: write one from your keywords.", "metric": f"{arts} articles"}
+
+    active = [x for x in STEPS if x.get("module") is None or x["module"] in mods]
+    steps, done_keys = [], {x["key"] for x in active if state[x["key"]]["done"]}
+    by_key = {x["key"]: x for x in STEPS}
+    for i, spec in enumerate(active, 1):
         st = state[spec["key"]]
-        waiting = [r for r in spec["requires"] if r not in done_keys]
+        waiting = [r for r in spec["requires"] if r not in done_keys and any(a["key"] == r for a in active)]
         status = "done" if st["done"] else ("blocked" if waiting else "todo")
         steps.append({"key": spec["key"], "order": i, "title": spec["title"], "why": spec["why"], "link": spec["link"], "status": status, "detail": st["detail"], "metric": st["metric"],
-                      "requires": [{"key": r, "title": by_key[r]["title"], "done": r in done_keys} for r in spec["requires"]], "waiting_for": [{"key": r, "title": by_key[r]["title"], "link": by_key[r]["link"]} for r in waiting]})
+                      "requires": [{"key": r, "title": by_key[r]["title"], "done": r in done_keys} for r in spec["requires"] if r in by_key and any(a["key"] == r for a in active)], "waiting_for": [{"key": r, "title": by_key[r]["title"], "link": by_key[r]["link"]} for r in waiting]})
     nxt = next((s for s in steps if s["status"] == "todo"), None) or next((s for s in steps if s["status"] == "blocked"), None)
     pending = _n(db, select(func.count(AgentTask.id)).where(AgentTask.business_id == b.id, AgentTask.status == "pending", AgentTask.requires_approval.is_(True), AgentTask.kind.in_(("gbp_post", "review_reply", "profile_edit", "gbp_photo", "keyword_add"))))
     return {"steps": steps, "done": len(done_keys), "total": len(steps), "percent": round(len(done_keys) / len(steps) * 100), "next": {"key": nxt["key"], "title": nxt["title"], "link": nxt["link"], "detail": nxt["detail"],

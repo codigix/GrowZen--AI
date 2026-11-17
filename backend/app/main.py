@@ -112,8 +112,8 @@ app.include_router(blog_flow_router, prefix=settings.api_prefix)
 app.include_router(fix_plan_router, prefix=settings.api_prefix)
 from .routers.keyword_workspace import router as keyword_workspace_router  # noqa: E402
 app.include_router(keyword_workspace_router, prefix=settings.api_prefix)
-from .routers.seo_journey import router as seo_journey_router  # noqa: E402
-app.include_router(seo_journey_router, prefix=settings.api_prefix)
+from .routers.keyword_mapping import router as keyword_mapping_router  # noqa: E402
+app.include_router(keyword_mapping_router, prefix=settings.api_prefix)
 app.include_router(outcomes_router, prefix=settings.api_prefix)
 app.include_router(watch_router, prefix=settings.api_prefix)
 

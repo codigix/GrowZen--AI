@@ -1,4 +1,4 @@
-"""The SEO plan in six stages, keyword mapping, and the competitors' top pages."""
+"""Keyword mapping and the competitors' top pages."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -6,15 +6,10 @@ from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business
 from ..models import Business
-from ..services import competitor_pages, keyword_mapping, seo_journey
+from ..services import competitor_pages, keyword_mapping
 from ..services.activity import log
 
-router = APIRouter(prefix="/businesses/{business_id}", tags=["seo-journey"])
-
-
-@router.get("/seo-journey")
-def get_journey(b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    return seo_journey.journey(db, b)
+router = APIRouter(prefix="/businesses/{business_id}", tags=["keyword-mapping"])
 
 
 @router.get("/keyword-mapping")

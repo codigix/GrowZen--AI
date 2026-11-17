@@ -104,11 +104,11 @@ export const SIDEBAR_SECTIONS = [
   { id: 'home', label: 'Home', title: 'Home', icon: House, groups: [{ items: [page('/dashboard'), page('/growth'), page('/projects'), page('/tracking-overview'), page('/onboarding')] }] },
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
-      { items: [link('/seo-journey', 'SEO Plan: start here'), page('/dashboard')] },
-      { title: '1 · Business Analysis', items: [page('/onboarding', { label: 'Business details' }), link('/gmb-profile/profile', 'Services and profile')] },
+      { items: [page('/dashboard')] },
+      { title: '1 · Business Analysis', items: [page('/onboarding', { label: 'Business details' })] },
       { title: '2 · Competitor Research', items: [page('/competitor-finder'), page('/competitor-watch')] },
       { title: '3 · Keyword Research', items: [link('/keyword-management/workspace', 'Keyword Workspace'), page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' })] },
-      { title: '4 · Keyword Mapping', items: [page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics', '/keyword-management/use'] }), link('/keyword-mapping', 'Keyword Mapping')] },
+      { title: '4 · Keyword Mapping', items: [page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics', '/keyword-management/use'] }), link('/keyword-management/mapping', 'Keyword Mapping')] },
       { title: '5 · Website SEO Audit', items: [page('/website-audit'), link('/fix-plan', 'Fix Plan'), link('/backlinks/audit', 'Backlink Audit')] },
       { title: '6 · Strategy and Execution', items: [page('/ai-content-generation/blog', { label: 'Write Content' }), page('/ai-content-generation/trends'), link('/seo-brief', 'SEO Brief Generator'), { to: '/backlinks/links', label: 'Backlinks', also: ['/backlinks/sites'] }, link('/backlinks/opportunities', 'Link Opportunities'), link('/backlinks/domains', 'Referring Domains'), page('/backlink-checker'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks'), page('/rank-tracking/landscape', { also: ['/rank-tracking'] }), link('/keyword-management/status', 'Keyword Status'), page('/traffic'), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] })] }
     ]

@@ -8,7 +8,7 @@ const STEPS = [
   { id: 'find', to: '/keyword-management/ai', label: 'Find Keywords', hint: 'Search more ideas' },
   { id: 'check', to: '/keyword-overview', label: 'Check One Keyword', hint: 'Searches, cost and related ideas' },
   { id: 'mine', to: '/keyword-management/tracked', label: 'My Keywords', hint: 'Saved and grouped', count: (s) => s.saved, unit: 'saved' },
-  { id: 'mapping', to: '/keyword-mapping', label: 'Keyword Mapping', hint: 'A page for every keyword' },
+  { id: 'mapping', to: '/keyword-management/mapping', label: 'Keyword Mapping', hint: 'A page for every keyword' },
   { id: 'status', to: '/keyword-management/status', label: 'Keyword Status', hint: 'How they rank', count: (s) => s.ranking, unit: 'in top 10' },
 ];
 const NEXT = { workspace: 'Pick keywords, then give them a page in My Keywords', find: 'Found something? It is saved to the workspace list too', check: 'Add the ideas you like to the workspace', mine: 'Then give each keyword its page in Keyword Mapping', mapping: 'Then see how they rank in Keyword Status', status: 'Weak or missing? Look for more in the workspace' };

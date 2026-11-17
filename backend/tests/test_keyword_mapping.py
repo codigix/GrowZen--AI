@@ -1,7 +1,7 @@
 """The six-stage SEO plan, keyword mapping and competitor pages."""
 from app.db import SessionLocal
 from app.models import Audit, Business, Keyword
-from app.services import keyword_mapping, seo_journey
+from app.services import keyword_mapping
 
 
 def _project(client, **extra):
@@ -16,14 +16,10 @@ def _crawl(db, bid):
     db.commit()
 
 
-def test_business_analysis_fields_save_and_count(client):
+def test_business_analysis_fields_save(client):
     bid = _project(client)
     r = client.patch(f"/api/v1/businesses/{bid}", json={"target_audience": "Families in Baner", "goals": ["calls", "bookings"]})
-    assert r.status_code == 200, r.text
-    j = client.get(f"/api/v1/businesses/{bid}/seo-journey").json()
-    biz = {s["key"]: s for s in j["stages"][0]["steps"]}
-    assert biz["audience"]["done"] and biz["goals"]["done"] and biz["services"]["done"]
-    assert [s["n"] for s in j["stages"]] == [1, 2, 3, 4, 5, 6] and j["current"] in ("business", "competitors") and j["roadmap"]
+    assert r.status_code == 200 and r.json()["target_audience"] == "Families in Baner" and r.json()["goals"] == ["calls", "bookings"]
 
 
 def test_mapping_assigns_pages_primary_and_finds_missing_pages_and_posts(client):
@@ -42,8 +38,8 @@ def test_mapping_assigns_pages_primary_and_finds_missing_pages_and_posts(client)
     k = db.query(Keyword).filter_by(business_id=bid, keyword="dental implants pune").one()
     db.refresh(k)
     assert k.role == "primary" and k.target_url.endswith("/implants")
-    j = seo_journey.journey(db, db.get(Business, bid))
-    assert {s["key"]: s["done"] for s in j["stages"][3]["steps"]}["primary"] is True
+    f = client.get(f"/api/v1/businesses/{bid}/flow").json()
+    assert {s["key"]: s for s in f["steps"]}["mapping"]["metric"] == "2/4 mapped"
 
 
 def test_competitor_pages_need_the_research(client):
