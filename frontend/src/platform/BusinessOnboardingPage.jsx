@@ -1740,23 +1740,60 @@ function QuickFind({ query, setQuery, sources, setSources, onContinue, onOpenExi
   );
 }
 
+const GOALS = ['Phone calls', 'Bookings and appointments', 'Leads and enquiries', 'Online sales', 'Local visibility', 'Brand awareness'];
+const MODULE_OPTIONS = [['seo', 'SEO (website, keywords, audit)'], ['geo', 'AI search (ChatGPT, Gemini)'], ['aeo', 'Answer engines (Perplexity)'], ['gmb', 'Google Business Profile']];
+const pillCls = (on, h = 'h-8') => `${h} px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
+
+/** What every project needs before the stages after onboarding can work: the services it uses, who the customers are, what it wants, and how to write for it. */
+function AnalysisFields({ form, setForm, err }) {
+  const toggle = (key, value) => setForm(x => ({ ...x, [key]: (x[key] || []).includes(value) ? x[key].filter(y => y !== value) : [...(x[key] || []), value] }));
+  return (
+    <div className="space-y-4">
+      <Field label="What will this project use? *" hint="SEO-only projects are not asked for Google profile details like phone and category.">
+        <div className="flex flex-wrap gap-2">{MODULE_OPTIONS.map(([m, l]) => <button key={m} type="button" aria-pressed={(form.modules || []).includes(m)} onClick={() => toggle('modules', m)} className={pillCls((form.modules || []).includes(m), 'h-9')}>{l}</button>)}</div>{err('modules')}
+      </Field>
+      <Field label="Services or products *" hint="What the business sells. Press Enter after each one. Keywords and pages are built from them."><Chips values={form.services} onChange={v => setForm({ ...form, services: v })} placeholder="e.g. Dental implants" />{err('services')}</Field>
+      <Field label="Target audience *" hint="Who are the customers? A sentence is enough."><textarea rows={2} maxLength={1000} className={areaCls} value={form.target_audience || ''} onChange={e => setForm({ ...form, target_audience: e.target.value })} placeholder="For example: families in Baner looking for a dentist for children" />{err('target_audience')}</Field>
+      <Field label="Business goals *" hint="What should SEO bring?">
+        <div className="flex flex-wrap gap-1.5">{GOALS.map(g => <button key={g} type="button" aria-pressed={(form.goals || []).includes(g)} onClick={() => toggle('goals', g)} className={pillCls((form.goals || []).includes(g))}>{g}</button>)}</div>{err('goals')}
+      </Field>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Tone of the writing *"><div className="flex flex-wrap gap-1.5">{TONES.map(t => <button key={t} type="button" aria-pressed={form.tone === t} onClick={() => setForm({ ...form, tone: t })} className={pillCls(form.tone === t)}>{t}</button>)}</div>{err('tone')}</Field>
+        <Field label="Content languages *"><div className="flex flex-wrap gap-1.5">{LANGS.map(l => <button key={l} type="button" aria-pressed={(form.languages || []).includes(l)} onClick={() => toggle('languages', l)} className={pillCls((form.languages || []).includes(l))}>{l}</button>)}</div>{err('languages')}</Field>
+      </div>
+      <Field label="What makes the business different" hint="Optional. The writing uses it so it never sounds like everyone else."><textarea rows={2} maxLength={600} className={areaCls} value={form.usps || ''} onChange={e => setForm({ ...form, usps: e.target.value })} placeholder="For example: 15 years of experience, painless implants, open on Sundays" /></Field>
+      <Field label="Competitors you already know" hint="Optional, up to 5 websites. Competitor research starts from them."><Chips values={form.competitors || []} onChange={v => setForm({ ...form, competitors: v })} placeholder="competitor.com, then Enter" />{err('competitors')}</Field>
+    </div>
+  );
+}
+
 function QuickConfirm({ form, setForm, source, plans, existing, onBack, onNext, onDetailed }) {
   const rows = useCountries();
   const [tried, setTried] = useState(false);
   const [more, setMore] = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const seoOn = (form.modules || []).some(m => ['seo', 'geo', 'aeo'].includes(m));
+  const gmbOn = (form.modules || []).includes('gmb');
   const errors = {
     name: !form.name.trim() && 'Enter the business name.',
-    city: !form.city.trim() && 'Enter the city: it is used to track local rankings.',
+    modules: !(form.modules || []).length && 'Choose at least one service for this project.',
+    services: !(form.services || []).length && 'Add at least one service or product: keywords and pages are built from them.',
+    target_audience: (form.target_audience || '').trim().length < 10 && 'Say who the customers are (a sentence is enough).',
+    goals: !(form.goals || []).length && 'Choose at least one goal.',
+    tone: !(form.tone || '').trim() && 'Choose the tone of the writing.',
+    languages: !(form.languages || []).length && 'Choose at least one language.',
+    competitors: (form.competitors || []).length > 5 ? 'Five competitors are enough.' : (form.competitors || []).some(c => { const d = cleanDomain(c); return !d || d === domainOf(form.website); }) && 'Enter competitor websites like example.com (not your own site).',
+    city: (gmbOn || (form.target_scope || 'local') === 'local') && !form.city.trim() && !(form.target_areas || []).length && 'Enter the city (or a target area): it is used for local keywords and rankings.',
     country: !form.country && 'Choose the country.',
-    phone: form.phone.trim() && !phoneOk(form.phone, form.country) && `This phone number does not look complete for ${countryInfo(form.country)?.name || 'this country'}.`,
-    website: form.website.trim() && !domainOf(form.website).includes('.') && 'This does not look like a website address.',
+    primary_category: gmbOn && !form.primary_category.trim() && 'Pick the main category: the Google profile needs it.',
+    phone: gmbOn ? (!form.phone.trim() ? 'A phone number is needed for the Google profile.' : !phoneOk(form.phone, form.country) && `This phone number does not look complete for ${countryInfo(form.country)?.name || 'this country'}.`) : (form.phone.trim() && !phoneOk(form.phone, form.country) && `This phone number does not look complete for ${countryInfo(form.country)?.name || 'this country'}.`),
+    website: !form.website.trim() ? (seoOn && 'A website is required for SEO and AI search: the audits, keywords and AI questions are about it.') : !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domainOf(form.website)) && 'This does not look like a website address. Use the form example.com',
     contact_email: form.contact_email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.contact_email.trim()) && 'This does not look like an email address.'
   };
   const bad = Object.values(errors).some(Boolean);
   const err = (k) => (tried && errors[k] ? <span className="block text-11.5 text-red-600 mt-1">{errors[k]}</span> : null);
   const next = () => { setTried(true); if (!bad) onNext(); };
-  const missing = [!form.phone.trim() && 'phone', !form.website.trim() && 'website', !form.primary_category.trim() && 'category'].filter(Boolean);
+  const missing = [!gmbOn && !form.phone.trim() && 'phone', !form.primary_category.trim() && !gmbOn && 'category'].filter(Boolean);
   const meta = form.social_accounts || {};
   const setMeta = (k) => (e) => setForm({ ...form, social_accounts: { ...meta, [k]: e.target.value } });
   return (
@@ -1770,21 +1807,25 @@ function QuickConfirm({ form, setForm, source, plans, existing, onBack, onNext, 
       )}
       {existing && <div className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-2.5 text-13 text-amber-900 flex gap-2"><AlertTriangle size={16} className="shrink-0 mt-0.5" /><span>This looks like the existing project <b>{existing.name}</b>. Adding it updates that project instead of making a copy.</span></div>}
 
-      <Card title="Check the details" subtitle="Only the first three are needed. The rest makes the audits and the Google profile better.">
+      <Card title="Check the details" subtitle={gmbOn ? 'Name, city, category, phone and website are needed for the Google profile.' : 'Name and website are needed. The rest makes the audits better.'}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
           <div className="md:col-span-2"><Field label="Business name *" hint="The real name on the signboard, without keywords."><input className={inputCls} value={form.name} onChange={set('name')} autoFocus />{err('name')}</Field></div>
-          <Field label="City *"><input className={inputCls} value={form.city} onChange={set('city')} placeholder="e.g. Pune" />{err('city')}</Field>
+          <Field label={gmbOn || (form.target_scope || 'local') === 'local' ? 'City *' : 'City'}><input className={inputCls} value={form.city} onChange={set('city')} placeholder="e.g. Pune" />{err('city')}</Field>
           <Field label="Country *"><CountrySelect value={form.country} onChange={v => setForm({ ...form, country: v })} className={inputCls} />{err('country')}</Field>
-          <Field label="What kind of business is it?" hint="Pick or type, e.g. Dentist, Restaurant, Clothing rental.">
-            <input className={inputCls} list="onb-categories" value={form.primary_category} onChange={set('primary_category')} placeholder="e.g. Clothing rental service" />
+          <Field label={gmbOn ? 'What kind of business is it? *' : 'What kind of business is it?'} hint="Pick or type, e.g. Dentist, Restaurant, Clothing rental.">
+            <input className={inputCls} list="onb-categories" value={form.primary_category} onChange={set('primary_category')} placeholder="e.g. Clothing rental service" />{err('primary_category')}
             <datalist id="onb-categories">{CATEGORIES.map(c => <option key={c} value={c} />)}</datalist>
           </Field>
-          <Field label="Phone"><input type="tel" className={inputCls} value={form.phone} onChange={set('phone')} placeholder="+91 …" />{err('phone')}</Field>
-          <Field label="Website"><input className={inputCls} value={form.website} onChange={set('website')} placeholder="https://" inputMode="url" />{err('website')}</Field>
+          <Field label={gmbOn ? 'Phone *' : 'Phone'}><input type="tel" className={inputCls} value={form.phone} onChange={set('phone')} placeholder="+91 …" />{err('phone')}</Field>
+          <Field label={seoOn ? 'Website *' : 'Website'}><input className={inputCls} value={form.website} onChange={set('website')} placeholder="https://" inputMode="url" />{err('website')}</Field>
           <Field label="Email for reports" hint="Monthly reports are sent here."><input className={inputCls} value={form.contact_email} onChange={set('contact_email')} placeholder="owner@business.com" inputMode="email" />{err('contact_email')}</Field>
           <div className="md:col-span-2"><Field label="Address"><input className={inputCls} value={form.address} onChange={set('address')} placeholder="Shop number, street, area" /></Field></div>
         </div>
         {missing.length > 0 && <p className="mt-3 text-12.5 text-slate-500">You can add the {missing.join(', ')} later. The audits start with what you have.</p>}
+      </Card>
+
+      <Card title="What the project is" subtitle="The fields marked * are needed: every later step (competitors, keywords, content) starts from them.">
+        <AnalysisFields form={form} setForm={setForm} err={err} />
       </Card>
 
       <div className="rounded-xl bg-white ring-1 ring-slate-200 overflow-hidden">
@@ -1794,7 +1835,6 @@ function QuickConfirm({ form, setForm, source, plans, existing, onBack, onNext, 
         </button>
         {more && (
           <div className="px-4 pb-4 pt-1 space-y-5 border-t border-slate-100">
-            <Field label="Services you offer" hint="Press Enter after each one. They go on the Google profile and shape the keywords."><Chips values={form.services} onChange={v => setForm({ ...form, services: v })} placeholder="e.g. Lehenga rental" max={12} /></Field>
             <TargetMarket form={form} setForm={setForm} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Facebook page"><input className={inputCls} value={meta.facebook || ''} onChange={setMeta('facebook')} placeholder="facebook.com/yourbusiness" /></Field>
