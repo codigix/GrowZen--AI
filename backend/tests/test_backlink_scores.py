@@ -105,18 +105,39 @@ def test_dataforseo_is_not_paid_for_pages_that_moz_already_answered(client, bid,
     assert rows[url_b]["scores"]["da"] == 40
 
 
-def test_filling_missing_figures_tries_moz_first_then_dataforseo(client, bid, monkeypatch):
+def test_filling_missing_figures_asks_moz_once_per_site_then_dataforseo_for_the_rest(client, bid, monkeypatch):
     _row(bid, "https://one.example/x")
+    _row(bid, "https://one.example/y")  # same site: one Moz lookup serves both pages
     _row(bid, "https://two.example/y")
     monkeypatch.setattr(bc, "dfs_configured", lambda: True)
     monkeypatch.setattr(bc, "moz_configured", lambda: True)
-    monkeypatch.setattr(bc, "moz_metrics", lambda urls: {"https://one.example/x": {"da": 50, "pa": 30, "spam": 1, "ref_domains": 10}})
+    asked = []
+
+    def moz(urls):
+        asked.append(list(urls))
+        return {"one.example/": {"da": 50, "pa": 30, "spam": 1, "ref_domains": 10}}  # Moz knows one.example only
+
+    monkeypatch.setattr(bc, "moz_metrics", moz)
     monkeypatch.setattr(bc, "dfs_scores", lambda domains, pages: {**{d: {"rank": 40, "spam": 7} for d in domains}, **{p: {"rank": 22, "spam": None} for p in pages}})
     r = client.post(f"/api/v1/businesses/{bid}/backlink-check/scores").json()
-    assert r["filled"] == 2 and r["tried"] == 2
+    assert r["filled"] == 3 and r["tried"] == 3
+    assert len(asked) == 1 and sorted(asked[0]) == ["https://one.example/", "https://two.example/"]  # one lookup per site, not per page
     rows = {x["source_url"]: x for x in client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["rows"]}
-    assert rows["https://one.example/x"]["moz"]["da"] == 50 and rows["https://two.example/y"]["scores"]["da"] == 40
-    assert client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["missing_scores"] == 0
+    for u in ("https://one.example/x", "https://one.example/y"):
+        assert rows[u]["moz"]["da"] == 50 and rows[u]["moz"]["spam"] == 1 and rows[u]["moz"]["pa"] is None and rows[u]["moz"]["site_level"] is True
+    assert rows["https://two.example/y"]["scores"]["da"] == 40 and not rows["https://two.example/y"].get("moz")
+
+
+def test_figures_dataforseo_supplied_while_moz_had_no_quota_are_replaced_by_moz_later(client, bid, monkeypatch):
+    _row(bid, "https://swap.example/p", scores={"da": 5, "pa": 2, "spam": 30, "source": "DataForSEO"})
+    monkeypatch.setattr(bc, "dfs_configured", lambda: True)
+    monkeypatch.setattr(bc, "moz_configured", lambda: True)
+    assert client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["missing_scores"] == 1  # Moz can answer now, so this stand-in is to be replaced
+    monkeypatch.setattr(bc, "moz_metrics", lambda urls: {"swap.example/": {"da": 61, "pa": 40, "spam": 2, "ref_domains": 99}})
+    r = client.post(f"/api/v1/businesses/{bid}/backlink-check/scores").json()
+    assert r["filled"] == 1
+    row = client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["rows"][0]
+    assert row["moz"]["da"] == 61 and client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["missing_scores"] == 0
 
 
 def test_a_page_no_service_can_answer_takes_the_figures_known_for_its_site(client, bid, monkeypatch):

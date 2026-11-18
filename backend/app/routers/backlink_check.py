@@ -159,41 +159,59 @@ def _out(r: BacklinkCheck) -> dict[str, Any]:
 @router.get("")
 def list_checks(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     rows = _with_site(db, [_out(r) for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc()).limit(500))])
-    missing = sum(1 for r in rows if _no_figures(r))
+    missing = sum(1 for r in rows if _needs_figures(r))
     return {"rows": rows, "missing_scores": missing if (bc.dfs_configured() or bc.moz_configured()) else 0, "summary": bc.summarise(rows), "moz": bc.moz_configured(), "opr": bc.opr_configured(), "dfs": bc.dfs_configured(), "google": bc.google_configured(), "default_target": _own_target(b), "limit": bc.MAX_SOURCES}
+
+
+def _needs_figures(d: dict[str, Any]) -> bool:
+    """Whether a saved check still needs its figures: Moz's own when Moz can answer (so DataForSEO's stand-ins are replaced), any figures otherwise."""
+    return (d.get("moz") or {}).get("da") is None if bc.moz_available() else _no_figures(d)
+
+
+def _moz_pick(got: dict[str, dict[str, Any]], home: str) -> dict[str, Any] | None:
+    bare = home.removeprefix("https://").removeprefix("http://").removeprefix("www.").rstrip("/")
+    return got.get(home) or got.get(bare) or got.get(bare + "/") or next((v for k, v in got.items() if k.lower().removeprefix("https://").removeprefix("www.").rstrip("/") == bare), None)
 
 
 @router.post("/scores")
 def fill_scores(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """Get DA, PA and spam for saved checks that have none (up to 100 at a time, newest first): Moz first, DataForSEO for what Moz cannot answer (for example while Moz has no quota). Nothing is spent unless this is pressed."""
+    """Get DA, PA and spam for saved checks that lack them (up to 100 at a time, newest first). Moz first, one lookup per linking SITE (all its pages share the site's DA and spam),
+    which also replaces figures DataForSEO supplied while Moz had no quota. DataForSEO fills in only what Moz cannot answer. Nothing is spent unless this is pressed."""
     if not bc.dfs_configured() and not bc.moz_configured():
         raise HTTPException(422, "No data service is set up: add MOZ_ACCESS_ID and MOZ_SECRET_KEY, or DATAFORSEO_AUTH, to the backend settings.")
     if not _limit.hit(user.id):
         raise HTTPException(429, "Too many requests: try again in a while.")
-    found = [r for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc()))
-             if _no_figures(r.data or {})]
+    found = [r for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc())) if _needs_figures(r.data or {})]
     batch, left = found[:100], max(0, len(found) - 100)
-    filled = 0
+    dicts = [dict(r.data or {}, source_url=r.source_url) for r in batch]
     note = None
-    down = False  # once no service answers, the remaining chunks do not ask again
-    for i in range(0, len(batch), 40):
-        chunk = batch[i:i + 40]
-        dicts = [dict(r.data or {}, source_url=r.source_url) for r in chunk]
-        if bc.moz_configured() and not down:
-            try:
-                got = bc.moz_metrics([d.get("final_url") or d["source_url"] for d in dicts])
-                for d in dicts:
-                    d["moz"] = got.get(d.get("final_url") or d["source_url"]) or got.get(d["source_url"]) or None
-            except bc.CheckError as exc:
-                note = str(exc)  # Moz cannot answer now: DataForSEO fills in below
-        n = None if down else _score_rows(dicts)
+    if bc.moz_configured() and dicts:
+        homes = list(dict.fromkeys(f"https://{_site_of(d['source_url'])}/" for d in dicts if _site_of(d["source_url"])))
+        site_moz: dict[str, dict[str, Any]] = {}
+        try:
+            for i in range(0, len(homes), 50):
+                got = bc.moz_metrics(homes[i:i + 50])
+                for h in homes[i:i + 50]:
+                    m = _moz_pick(got, h)
+                    if m and (m.get("da") is not None or m.get("spam") is not None):
+                        site_moz[h] = m
+        except bc.CheckError as exc:
+            note = str(exc)  # Moz cannot answer now: DataForSEO fills in below
+        for d in dicts:
+            m = site_moz.get(f"https://{_site_of(d['source_url'])}/")
+            if m:
+                d["moz"] = {"da": m.get("da"), "pa": None, "spam": m.get("spam"), "ref_domains": m.get("ref_domains"), "site_level": True}  # the page's own PA is not known from a site lookup
+    rest = [d for d in dicts if (d.get("moz") or {}).get("da") is None and _no_figures(d)]
+    if rest and bc.dfs_configured():
+        n = _score_rows(rest)
         if n:
             note = " ".join(x for x in (note, n) if x)
-            down = not any(d.get("moz") or d.get("scores") for d in dicts)
-        _reuse_site_figures(db, b, dicts)  # what no service could answer takes the site's known figures
-        for r, d in zip(chunk, dicts):
+    _reuse_site_figures(db, b, [d for d in dicts if (d.get("moz") or {}).get("da") is None])
+    filled = 0
+    for r, d in zip(batch, dicts):
+        if not _needs_figures(d) or not _no_figures(d):
+            r.data = {**(r.data or {}), **({"moz": d["moz"]} if (d.get("moz") or {}).get("da") is not None else {}), **({"scores": d["scores"]} if d.get("scores") else {})}
             if not _no_figures(d):
-                r.data = {**(r.data or {}), **({"moz": d["moz"]} if (d.get("moz") or {}).get("da") is not None else {}), **({"scores": d["scores"]} if d.get("scores") else {})}
                 filled += 1
     db.commit()
     return {"filled": filled, "tried": len(batch), "left": left, "note": note}
