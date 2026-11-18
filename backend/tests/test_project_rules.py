@@ -40,3 +40,19 @@ def test_audience_and_goals_are_required_for_every_service():
     base = {"name": "A", "website": "https://a.example", "services": [{"name": "x"}], "target_scope": "national"}
     got = " ".join(pr.problems(base, ["seo"]))
     assert "goal" in got and "audience" not in got
+
+
+def test_gmb_is_on_for_a_project_with_a_maps_listing(client):
+    from app.db import SessionLocal
+    from app.models import Business
+    from app.services import project_services
+    bid = client.post("/api/v1/businesses", json={"name": "Maps Co"}).json()["id"]
+    db = SessionLocal()
+    try:
+        b = db.get(Business, bid)
+        assert b.modules is None and "gmb" not in project_services.enabled(b)
+        b.place_id = "ChIJabc"
+        db.commit()
+        assert "gmb" in project_services.enabled(b)
+    finally:
+        db.close()

@@ -88,9 +88,9 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
   const stepDone = Object.fromEntries((flow?.steps || []).map(st => [st.key, st.status === 'done']));
   const STAGE_STEP = { '1': 'details', '2': 'competitors', '3': 'keywords', '4': 'mapping', '5': 'website', '6a': 'fix', '6b': 'content', '6c': 'links', '6d': 'report' };
   const stageKey = (t) => STAGE_STEP[String(t || '').split(' ')[0]];
-  // A project that does SEO only is not shown the Google profile, ChatGPT or AI sections it does not use (the section opens again when the page is reached by address).
+  // A project that does not use GEO or AEO is not shown the ChatGPT or AI sections (they open again when the page is reached by address). The GMB section is always shown: it holds the Connect Google and Find on Google screens, and it works from the public Maps listing before any account is linked.
   const on = biz?.services_on;
-  const needs = { GMB: 'gmb', chatgpt: ['geo', 'aeo'], ai: ['geo', 'aeo'] };
+  const needs = { chatgpt: ['geo', 'aeo'], ai: ['geo', 'aeo'] };
   const holds = (sec) => sec.groups.some(grp => grp.items.some(i => itemActive(location.pathname, location.search, i)));
   const shown = (sec) => !on || !needs[sec.id] || [].concat(needs[sec.id]).some(m => on.includes(m)) || holds(sec);
   const sections = SIDEBAR_SECTIONS.filter(shown);
