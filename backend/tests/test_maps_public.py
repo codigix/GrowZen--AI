@@ -133,3 +133,46 @@ def test_apply_profile_copies_only_what_maps_really_has(client, bid):
     assert set(r["applied"]) == {"primary_category", "phone"}  # Google's summary is not the owner's description, and its place types are not business categories
     b = client.get(f"/api/v1/businesses/{bid}").json()
     assert b["primary_category"] == "Dental clinic"
+
+
+def test_the_report_is_told_for_a_client_themes_gaps_with_reasons_and_the_score_if_fixed(client, bid, monkeypatch):
+    from app.services import gbp_public
+    _city(bid)
+    monkeypatch.setattr(gbp_public, "search", lambda db, b: SEARCH)
+    a = client.get(f"/api/v1/businesses/{bid}/maps-public/profile").json()["analysis"]
+    assert [x["key"] for x in a["pillars"]] == ["reputation", "profile", "activity", "search"]
+    activity = next(x for x in a["pillars"] if x["key"] == "activity")
+    assert "Recent posts" in activity["missing"]  # what could not be measured is named, not scored
+    assert a["gaps"] and all(g["why_it_matters"] and g["help"]["title"] and g["fix"] for g in a["gaps"])
+    assert a["potential"] >= a["score"] and a["potential"] <= 100 and a["headline"]
+    assert all(s["status"] == "ok" for s in a["strengths"])
+    assert {g["pillar"] for g in a["gaps"]} <= {"reputation", "profile", "activity", "search"}
+
+
+def test_the_comparison_appears_only_with_two_chosen_competitors(client, bid, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import Competitor
+    from app.services import gbp_public
+    monkeypatch.setattr(gbp_public, "search", lambda db, b: {"state": "no_site", "message": "x"})
+    assert client.get(f"/api/v1/businesses/{bid}/maps-public/profile").json()["compare"] is None
+    db = SessionLocal()
+    try:
+        db.add_all([Competitor(business_id=bid, name="Rival A", website="https://a.example", rating=4.8, reviews=300, selected=True),
+                    Competitor(business_id=bid, name="Rival B", website="https://b.example", rating=4.1, reviews=40, selected=True),
+                    Competitor(business_id=bid, name="Not chosen", website="https://c.example", rating=5.0, reviews=9, selected=False)])
+        db.commit()
+    finally:
+        db.close()
+    c = client.get(f"/api/v1/businesses/{bid}/maps-public/profile").json()["compare"]
+    assert c["you"]["rating"] == 4.6 and [x["name"] for x in c["others"]] == ["Rival A", "Rival B"] and c["rank"] == 2
+
+
+def test_the_report_leads_with_what_is_missing_and_names_what_google_hides(client, bid, monkeypatch):
+    from app.services import gbp_public
+    monkeypatch.setattr(gbp_public, "search", lambda db, b: {"state": "not_connected", "message": "x"})
+    a = client.get(f"/api/v1/businesses/{bid}/maps-public/profile").json()["analysis"]
+    hidden = {u["key"] for u in a["unverified"]}
+    assert {"claimed", "services", "posts", "search_visibility"} <= hidden  # not visible without access: said so, not guessed
+    assert all(u["why_it_matters"] and u["help"]["title"] for u in a["unverified"])
+    assert "cannot confirm from outside" in a["headline"] or "cannot be checked from outside" in a["headline"]
+    assert not hidden & {c["key"] for c in a["checks"]}  # a thing is either measured or unverified, never both

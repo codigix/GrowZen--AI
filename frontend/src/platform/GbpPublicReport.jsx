@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Star, Download, FileSearch } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Star, Download, FileSearch, Printer, Copy } from 'lucide-react';
 import { Card, Badge, Button, Modal, ErrorNote, useAction, useToast, SkList, ScoreRing, Meter, refreshBusinesses } from './SeoUi';
 import MapsPublicCard from './MapsPublicCard';
+import ClientReport from './GbpClientReport';
 import { api, useApi } from './seoApi';
 
 const TONE = { ok: ['Good', 'green'], warn: ['Improve', 'amber'], bad: ['Fix', 'red'] };
@@ -21,6 +23,19 @@ function markdown(b, d) {
   return L.join('\n');
 }
 
+function clientMessage(b, d) {
+  const a = d.analysis, p = d.profile;
+  const gaps = (a.gaps || []).slice(0, 3), unseen = (a.unverified || []).slice(0, 3);
+  return [`Hello,`, '', `We checked the Google presence of ${p.title || b.name}. ${a.headline}`, '',
+    ...(gaps.length ? ['What is costing you calls and enquiries:', ...gaps.map((g, i) => `${i + 1}. ${g.label}: ${g.detail}`), ''] : []),
+    ...(unseen.length ? [`What Google hides from outside, which we would check for you: ${unseen.map(x => x.label.toLowerCase()).join(', ')}.`, ''] : []),
+    ...(a.potential > a.score ? [`Fixing these would take the profile score from ${a.score} to about ${a.potential}.`, ''] : []),
+    'We can handle all of this for you, and you approve everything before it goes live. Reply to this message and we will start with the quick wins.'].join('\n');
+}
+
+const PRINT_CSS = `@media print { body > *:not(#gbp-print-root) { display: none !important; } #gbp-print-root { display: block !important; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } section { break-inside: avoid; } }
+@media screen { #gbp-print-root { display: none; } }`;
+
 /** The public Google Business Profile read live, an analysis scored from it, and a 7 / 30 / 90 day roadmap. */
 export default function GbpPublicReport({ b }) {
   const r = useApi(`/businesses/${b.id}/maps-public/profile`);
@@ -28,6 +43,7 @@ export default function GbpPublicReport({ b }) {
   const [toast, toastNode] = useToast();
   const [open, setOpen] = useState(false);
   const d = r.data?.state === 'ok' ? r.data : null;
+  const copyMessage = async () => { try { await navigator.clipboard.writeText(clientMessage(b, d)); toast('Message copied: paste it into WhatsApp or email'); } catch { toast('Could not copy: select the text and copy it by hand'); } };
   const use = (fields) => run('use', async () => { const x = await api(`/businesses/${b.id}/maps-public/apply-profile`, { method: 'POST', body: { fields } }); await refreshBusinesses(); toast(`Saved from Google: ${x.applied.join(', ') || 'nothing to change'}`); });
   const download = () => {
     const url = URL.createObjectURL(new Blob([markdown(b, d)], { type: 'text/markdown' }));
@@ -123,19 +139,20 @@ export default function GbpPublicReport({ b }) {
       )}
       <Modal open={open && !!d} title="Google Business Profile report" onClose={() => setOpen(false)} width="max-w-6xl"
         footer={<div className="flex items-center gap-2 w-full"><span className="text-12 text-slate-500">Read from Google on {d ? String(p.read_at).slice(0, 10) : ''}</span>
-          <Button size="sm" className="ml-auto" icon={Download} onClick={download}>Download report</Button><Button size="sm" variant="primary" onClick={() => setOpen(false)}>Close</Button></div>}>
+          <Button size="sm" className="ml-auto" icon={Copy} onClick={copyMessage}>Copy message for the client</Button>
+          <Button size="sm" icon={Printer} onClick={() => window.print()}>Print or save as PDF</Button>
+          <Button size="sm" icon={Download} onClick={download}>Download (.md)</Button><Button size="sm" variant="primary" onClick={() => setOpen(false)}>Close</Button></div>}>
         <ErrorNote>{error}</ErrorNote>
-        <div className="grid gap-6">
-          <div className="flex flex-wrap items-center gap-6">
-            {d && <ScoreRing score={a.score} label={a.word} />}
-            {d && <div className="grid gap-1"><div className="flex gap-2"><Badge tone="green">{a.counts.ok} good</Badge><Badge tone="amber">{a.counts.warn} to improve</Badge><Badge tone="red">{a.counts.bad} to fix</Badge></div>
-              <p className="text-13 text-slate-600 max-w-xl">Scored from {a.checks.length} checks{a.search_read ? ' of the Maps listing and Search Console' : ' of the Maps listing. Search Console is not connected for this site, so search visibility is not scored'}{a.posts_read ? '' : '. Posts are left out: Google cannot be asked for them until the profile is connected'}.</p></div>}
-          </div>
-          {reportBody}
-          <MapsPublicCard b={b} />
-        </div>
+        {d && <ClientReport b={b} d={d} diffs={diffs} onUse={use} busyUse={busy === 'use'} />}
+        {d && (
+          <details className="mt-8 rounded-xl ring-1 ring-slate-200 bg-white">
+            <summary className="cursor-pointer px-4 py-3 font-semibold text-slate-800">The full checklist and the Google Maps listing (for your team)</summary>
+            <div className="p-4 grid gap-6">{reportBody}<MapsPublicCard b={b} /></div>
+          </details>
+        )}
       </Modal>
       {toastNode}
+      {open && d && createPortal(<div id="gbp-print-root"><style>{PRINT_CSS}</style><ClientReport b={b} d={d} diffs={[]} print /></div>, document.body)}
     </Card>
   );
 }

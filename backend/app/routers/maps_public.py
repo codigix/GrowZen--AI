@@ -89,6 +89,18 @@ def _guard(b: Business) -> None:
         raise HTTPException(422, "Reading Google Maps needs a Places API key: add GOOGLE_PLACES_API_KEY to the backend settings.")
 
 
+def _compare(db: Session, b: Business, p: dict) -> dict | None:
+    """You against the nearby businesses chosen as competitors for this project (their rating and review count as Google showed them when they were saved). Nothing is shown unless at least two were chosen."""
+    from sqlalchemy import select
+
+    from ..models import Competitor
+    rows = db.scalars(select(Competitor).where(Competitor.business_id == b.id, Competitor.selected.is_(True), Competitor.rating.is_not(None)).order_by(Competitor.rating.desc()).limit(6)).all()
+    if len(rows) < 2 or not p.get("rating"):
+        return None
+    return {"you": {"name": b.name, "rating": p.get("rating"), "reviews": p.get("votes")}, "others": [{"name": c.name, "rating": c.rating, "reviews": c.reviews} for c in rows],
+            "rank": 1 + sum(1 for c in rows if (c.rating or 0) > (p.get("rating") or 0))}
+
+
 @router.get("/profile")
 def profile(fresh: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """The profile as Google shows it (Places API), set against the connected profile's own saved data when there is one, and how the website does in Google Search (Search Console)."""
@@ -102,7 +114,7 @@ def profile(fresh: bool = False, b: Business = Depends(get_business), db: Sessio
         return {"state": "error", "message": str(exc)}
     posts = gbp_public.saved_posts(b, db)
     sc = gbp_public.search(db, b)
-    return {"state": "ok", "profile": p, "posts": posts, "search": sc, "analysis": gbp_public.analyse(p, b, posts, sc)}
+    return {"state": "ok", "profile": p, "posts": posts, "search": sc, "analysis": gbp_public.analyse(p, b, posts, sc), "compare": _compare(db, b, p)}
 
 
 class ApplyProfileIn(BaseModel):

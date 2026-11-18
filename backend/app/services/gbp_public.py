@@ -91,7 +91,8 @@ def search(db: Any, b: Any) -> dict[str, Any]:
         rep = gsc.report(sc, site, "28d", market.serp_country(b))
     except Exception as exc:  # noqa: BLE001 - Google's own reason (API not enabled, no permission)
         return {"state": "error", "message": str(exc)[:240] or "Search Console did not answer."}
-    return {"state": "ok", "account": message, "property": site, "period": rep["period"], "totals": rep["totals"], "previous": rep["previous"], "keywords": rep["keywords"][:25], "pages": rep["pages"][:10]}
+    return {"state": "ok", "account": message, "property": site, "period": rep["period"], "totals": rep["totals"], "previous": rep["previous"], "keywords": rep["keywords"][:25], "pages": rep["pages"][:10],
+            "timeline": [{"date": d["date"], "clicks": d["clicks"], "impressions": d["impressions"]} for d in rep["timeline"]]}
 
 
 def _plain(text: str | None) -> str:
@@ -102,6 +103,82 @@ def _plain(text: str | None) -> str:
 def _tokens(name: str | None) -> list[str]:
     skip = {"private", "limited", "services", "solutions", "infotech"}
     return [t for t in "".join(c.lower() if c.isalnum() else " " for c in (name or "")).split() if len(t) >= 4 and t not in skip]
+
+
+
+# ------------------------------------------------------------------------------------------------------------------------ the client-facing story
+PILLARS = [
+    ("reputation", "Reputation", "What people read before they call", ("reviews", "rating", "negatives")),
+    ("profile", "Profile completeness", "Whether the profile answers a customer's questions", ("claimed", "category", "description", "hours", "phone", "website", "booking", "attributes", "services", "nap")),
+    ("activity", "Photos and activity", "Whether the business looks open and alive", ("photos", "posts")),
+    ("search", "Search visibility", "How often your website appears when people search", ("search_visibility", "brand_search", "local_search", "search_ctr")),
+]
+# plain-language reasons (no promises: what each thing does for a customer deciding whether to call) and how the software deals with it
+WHY = {
+    "claimed": "If you do not control the profile, anyone can change it, and you cannot answer customers.",
+    "category": "The main category decides which searches show you. The wrong one means the right customers never see you.",
+    "description": "A clear description tells people why to choose you and helps Google match you to what they search.",
+    "photos": "People want to see the place and the work before they visit. Profiles with plenty of real photos earn more calls and direction requests.",
+    "reviews": "Many people read reviews before they call. More, and more recent, reviews put you ahead of nearby businesses that look the same.",
+    "rating": "When two businesses look alike, the higher rating wins the call.",
+    "negatives": "A few unanswered low ratings put new customers off. A polite reply shows everyone how you treat people.",
+    "hours": "Missing or wrong hours send customers to someone else, or to a closed door.",
+    "phone": "No phone number means no calls.",
+    "website": "The website button sends ready customers to your services and your enquiry form.",
+    "booking": "A booking button lets people act at once instead of leaving to search again.",
+    "attributes": "Attributes (payments, accessibility, amenities) answer questions before they are asked and help you appear in filtered searches.",
+    "services": "A services list lets customers see what you do, often with prices, and lets Google show you for each service.",
+    "nap": "When your name and phone differ between Google, your website and directories, Google trusts the listing less.",
+    "posts": "Fresh posts show the business is active and give people a reason to call now: an offer, an event, news.",
+    "search_visibility": "This is how often your website shows up when people search. The more it does, the more the profile has to rank with.",
+    "brand_search": "People who search your name are ready customers. Growing this means more people already know you.",
+    "local_search": "Customers search with an area or “near me”. Pages that mention the areas you serve win those searches.",
+    "search_ctr": "Showing up is half the work: a better title and description turn views into visits.",
+}
+HELP = {
+    "reputation": ("Review Manager", "We send your review link to happy customers and draft a reply to every review for your approval."),
+    "profile": ("Profile Optimizer", "We write and publish the category, description, services, hours and attributes to your Google profile."),
+    "activity": ("Autopilot posts and photos", "We prepare weekly posts and a photo plan. Nothing goes live without your approval."),
+    "search": ("SEO and content", "We build service and area pages, track your searches in Search Console and report progress every month."),
+}
+LABELS = {"claimed": "Claimed profile", "category": "Main category", "description": "Description", "hours": "Opening hours", "phone": "Phone", "website": "Website link", "booking": "Booking link",
+          "attributes": "Attributes", "services": "Services list", "nap": "Same name and phone everywhere", "reviews": "Number of reviews", "rating": "Average rating", "negatives": "Low-star reviews",
+          "photos": "Photos", "posts": "Recent posts", "search_visibility": "Website visibility in Google Search", "brand_search": "People searching your name", "local_search": "Local searches", "search_ctr": "Clicks from Google Search"}
+KEY_PILLAR = {k: pid for pid, _, _, keys in PILLARS for k in keys}
+FACTOR = {"ok": 1, "warn": 0.5, "bad": 0}
+
+
+def story(rows: list[dict[str, Any]], score: int) -> dict[str, Any]:
+    """The same checks told as a client would read them: themes with their own score, what is strong, what is costing calls and enquiries (with why and how we fix it), and the score if the gaps were fixed."""
+    for r in rows:
+        r["pillar"] = KEY_PILLAR.get(r["key"], "profile")
+        r["why_it_matters"] = WHY.get(r["key"], "")
+        title, text = HELP[r["pillar"]]
+        r["help"] = {"title": title, "text": text}
+    pillars = []
+    for pid, label, sub, keys in PILLARS:
+        mine = [r for r in rows if r["key"] in keys]
+        possible = sum(r["weight"] for r in mine)
+        pillars.append({"key": pid, "label": label, "sub": sub, "score": round(100 * sum(r["weight"] * FACTOR[r["status"]] for r in mine) / possible) if possible else None, "checks": len(mine),
+                        "good": sum(1 for r in mine if r["status"] == "ok"), "missing": [LABELS[k] for k in keys if k not in {r["key"] for r in rows} and k != "search_ctr"], "help": dict(zip(("title", "text"), HELP[pid]))})
+    order = {"bad": 0, "warn": 1}
+    gaps = sorted((r for r in rows if r["status"] != "ok"), key=lambda r: (order[r["status"]], -r["weight"]))
+    strengths = sorted((r for r in rows if r["status"] == "ok" and r["key"] not in ("nap", "phone", "website")), key=lambda r: -r["weight"])
+    possible = sum(r["weight"] for r in rows) or 1
+    potential = round(100 * (sum(r["weight"] * FACTOR[r["status"]] for r in rows) + sum(r["weight"] * (1 - FACTOR[r["status"]]) for r in gaps)) / possible)
+    present = {r["key"] for r in rows}
+    unverified = [{"key": k, "label": LABELS[k], "why_it_matters": WHY[k], "pillar": KEY_PILLAR[k], "help": dict(zip(("title", "text"), HELP[KEY_PILLAR[k]]))}
+                  for k in ("claimed", "description", "services", "booking", "posts", "negatives", "search_visibility", "local_search") if k not in present]
+    n, m = len(gaps), len(unverified)
+    if n and m:
+        headline = f"We found {n} thing{'s' if n != 1 else ''} holding back your calls and enquiries, and {m} more that we cannot confirm from outside."
+    elif n:
+        headline = f"We found {n} thing{'s' if n != 1 else ''} holding back your calls and enquiries."
+    elif m:
+        headline = f"Nothing is wrong in what Google shows publicly, but {m} things that decide calls and enquiries cannot be checked from outside."
+    else:
+        headline = "No gaps found. The work from here is keeping the profile active and growing."
+    return {"pillars": pillars, "gaps": gaps, "strengths": strengths[:5], "unverified": unverified, "potential": max(potential, score), "headline": headline}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ analysis
@@ -207,6 +284,7 @@ def analyse(p: dict[str, Any], b: Any, post_list: list[dict[str, Any]] | None = 
         {"what": "Track your Maps rank for your top 10 searches each month and compare with competitors (Map Rank Tracker).", "why": "It shows whether the work is moving you up.", "impact": "medium"},
         {"what": "Earn links and mentions from local sites, and add the same details as LocalBusiness data on your site.", "why": "Prominence on the web lifts the profile in Maps.", "impact": "medium"},
     ]
-    return {"score": score, "word": "Strong" if score >= 80 else "Fair" if score >= 55 else "Needs work", "checks": rows, "roadmap": [
+    tell = story(rows, score)
+    return {"score": score, "word": "Strong" if score >= 80 else "Fair" if score >= 55 else "Needs work", "checks": rows, **tell, "roadmap": [
         {"when": "This week", "days": 7, "items": phases["7"]}, {"when": "Next 30 days", "days": 30, "items": phases["30"]}, {"when": "Next 90 days", "days": 90, "items": phases["90"]}],
         "counts": {s: sum(1 for r in rows if r["status"] == s) for s in ("ok", "warn", "bad")}, "posts_read": post_list is not None, "search_read": bool(sc and sc.get("state") == "ok")}
