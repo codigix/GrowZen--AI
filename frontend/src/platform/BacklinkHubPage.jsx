@@ -408,7 +408,7 @@ function CompetitorGap({ b }) {
   const [comp, setComp] = useState(params.get('competitor') || ''); // opened from Competitor Watch: that competitor is already picked
   const [shown, setShown] = useState(25);
   const [busy, , run] = useAction();
-  const addToPlan = (o) => run(`plan${o.referring_domain}`, async () => { await api(`/businesses/${b.id}/backlink-hub/plan`, { method: 'POST', body: { domain: o.referring_domain, status: 'new', source: 'competitor', name: o.referring_domain } }); });
+  const addToPlan = (o) => run(`plan${o.referring_domain}`, async () => { await api(`/businesses/${b.id}/backlink-hub/plan`, { method: 'POST', body: { domain: o.referring_domain, status: 'planned', source: 'competitor', name: o.referring_domain } }); });
   const r = useApi(`/businesses/${b.id}/backlink-intel/crawler/gap?${new URLSearchParams({ ...(comp ? { competitor: comp } : {}), limit: '500' })}`);
   const d = r.data;
   const g = d?.gap;
