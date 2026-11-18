@@ -20,7 +20,7 @@ function State({ r }) {
 }
 
 const FOLLOW = { dofollow: ['Follow', 'bg-emerald-50 text-emerald-700'], nofollow: ['Nofollow', 'bg-slate-100 text-slate-700'], sponsored: ['Sponsored', 'bg-slate-100 text-slate-700'], ugc: ['UGC', 'bg-slate-100 text-slate-700'] };
-const Moz = ({ v, on }) => (v == null ? <span className="text-slate-300" title={on ? 'Moz has no data for this page' : 'Needs a Moz API key'}>—</span> : <span className="tabular-nums text-slate-800">{v}</span>);
+const Moz = ({ v, on }) => (v == null ? <span className="text-slate-300" title={on ? 'No figure yet: press “Get DA, PA and Spam” above the table, or DataForSEO has no data for this page' : 'Needs a Moz or DataForSEO key'}>—</span> : <span className="tabular-nums text-slate-800">{v}</span>);
 
 function BacklinkChecker({ b }) {
   const [d, setD] = useState(null);
@@ -51,13 +51,17 @@ function BacklinkChecker({ b }) {
     setBusy(true); setNote('');
     try { const r = await api(`/businesses/${b.id}/backlink-check/candidates`); if (r.urls?.length) setText(r.urls.slice(0, d?.limit || 25).join('\n')); setNote(r.note || `${r.urls.length} pages found by the crawler were added to the list: press Check links.`); } catch (e) { setNote(e.message); } finally { setBusy(false); }
   };
+  const fillScores = async () => {
+    setBusy(true); setNote('');
+    try { const r = await api(`/businesses/${b.id}/backlink-check/scores`, { method: 'POST', timeout: 170000 }); setNote(r.note || `DA, PA and Spam found for ${r.filled} of ${r.tried} pages.${r.left ? ` ${r.left} more are waiting: press the button again.` : ''}${r.tried > r.filled && !r.note ? ' The rest have no data at DataForSEO yet.' : ''}`); await load(); } catch (e) { setNote(e.message || 'Could not get the figures.'); } finally { setBusy(false); }
+  };
   const remove = async (id) => { try { await api(`/businesses/${b.id}/backlink-check/${id}`, { method: 'DELETE' }); await load(); } catch (e) { setNote(e.message); } };
 
   const rows = useMemo(() => arr(d?.rows).filter(r => (status === 'all' || (status === 'lost' ? r.lost : r.state === status)) && (follow === 'all' || (follow === 'nofollow' ? ['nofollow', 'sponsored', 'ugc'].includes(r.follow) : r.follow === follow))), [d, status, follow]);
   const csv = () => {
     const head = ['Source page', 'Status', 'HTTP', 'Follow', 'Anchor', 'Category', 'Placement', 'Page indexable', 'DA', 'PA', 'Spam score', 'Referring domains', 'Target', 'Checked'];
     const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [head.join(',')].concat(rows.map(r => [r.source_url, r.lost ? 'lost' : r.state, r.http_status, r.follow, r.link?.anchor, r.category?.label, r.link?.placement, r.page_noindex == null ? '' : r.page_noindex ? 'noindex' : 'yes', r.moz?.da, r.moz?.pa, r.moz?.spam, r.moz?.ref_domains, r.target, r.checked_at].map(q).join(',')));
+    const lines = [head.join(',')].concat(rows.map(r => [r.source_url, r.lost ? 'lost' : r.state, r.http_status, r.follow, r.link?.anchor, r.category?.label, r.link?.placement, r.page_noindex == null ? '' : r.page_noindex ? 'noindex' : 'yes', r.moz?.da ?? r.scores?.da, r.moz?.pa ?? r.scores?.pa, r.moz?.spam ?? r.scores?.spam, r.moz?.ref_domains, r.target, r.checked_at].map(q).join(',')));
     const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = 'backlink-check.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
@@ -95,7 +99,7 @@ function BacklinkChecker({ b }) {
                 <option value="all">Every status</option><option value="working">Working</option><option value="link_missing">Link missing</option><option value="lost">Lost since last check</option><option value="unconfirmed">Cannot confirm</option><option value="page_error">Page error</option></Select>
               <Select className="h-9 w-40 rounded-lg border border-slate-300 bg-white px-3 text-13" aria-label="Follow" value={follow} onChange={e => setFollow(e.target.value)}>
                 <option value="all">Follow and nofollow</option><option value="dofollow">Follow only</option><option value="nofollow">Nofollow only</option></Select>
-              <span className="flex-1" /><Button size="sm" icon={Download} onClick={csv}>Download CSV</Button>
+              <span className="flex-1" />{d.dfs && d.missing_scores > 0 && <Button size="sm" variant="primary" busy={busy} onClick={fillScores}>Get DA, PA and Spam for {d.missing_scores} pages</Button>}<Button size="sm" icon={Download} onClick={csv}>Download CSV</Button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-13.5 min-w-[1100px]">

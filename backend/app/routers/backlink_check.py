@@ -53,7 +53,7 @@ def _score_rows(rows: list[dict[str, Any]]) -> str | None:
     from ..backlinks import pitch
     if not bc.dfs_configured():
         return None
-    live = [r for r in rows if r.get("source_url") and r.get("state") != "page_error"]
+    live = [r for r in rows if r.get("source_url")]  # a page that would not open still has a site rating
     doms = list(dict.fromkeys(pitch._registrable(urlsplit(r["source_url"]).hostname or "") for r in live))
     try:
         got = bc.dfs_scores([d for d in doms if d], [r["source_url"] for r in live][:60])
@@ -95,7 +95,35 @@ def _out(r: BacklinkCheck) -> dict[str, Any]:
 @router.get("")
 def list_checks(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     rows = _with_site(db, [_out(r) for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc()).limit(500))])
-    return {"rows": rows, "summary": bc.summarise(rows), "moz": bc.moz_configured(), "opr": bc.opr_configured(), "dfs": bc.dfs_configured(), "google": bc.google_configured(), "default_target": _own_target(b), "limit": bc.MAX_SOURCES}
+    missing = sum(1 for r in rows if (r.get("scores") or {}).get("da") is None and (r.get("scores") or {}).get("spam") is None)
+    return {"rows": rows, "missing_scores": missing if bc.dfs_configured() else 0, "summary": bc.summarise(rows), "moz": bc.moz_configured(), "opr": bc.opr_configured(), "dfs": bc.dfs_configured(), "google": bc.google_configured(), "default_target": _own_target(b), "limit": bc.MAX_SOURCES}
+
+
+@router.post("/scores")
+def fill_scores(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Ask DataForSEO for the DA-like, PA-like and spam numbers of saved checks that have none (up to 100 at a time, newest first). One request per call, so nothing is spent unless this is pressed."""
+    if not bc.dfs_configured():
+        raise HTTPException(422, "DataForSEO is not set up: add DATAFORSEO_AUTH to the backend settings.")
+    if not _limit.hit(user.id):
+        raise HTTPException(429, "Too many requests: try again in a while.")
+    found = [r for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc()))
+             if ((r.data or {}).get("scores") or {}).get("da") is None and ((r.data or {}).get("scores") or {}).get("spam") is None]
+    batch, left = found[:100], max(0, len(found) - 100)
+    filled = 0
+    note = None
+    for i in range(0, len(batch), 40):
+        chunk = batch[i:i + 40]
+        dicts = [dict(r.data or {}, source_url=r.source_url) for r in chunk]
+        n = _score_rows(dicts)
+        if n:
+            note = n
+            break
+        for r, d in zip(chunk, dicts):
+            if d.get("scores") and (d["scores"].get("da") is not None or d["scores"].get("spam") is not None):
+                r.data = {**(r.data or {}), "scores": d["scores"]}
+                filled += 1
+    db.commit()
+    return {"filled": filled, "tried": len(batch), "left": left, "note": note}
 
 
 @router.get("/candidates")

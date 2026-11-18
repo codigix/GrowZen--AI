@@ -122,7 +122,8 @@ def dfs_scores(domains: list[str], pages: list[str]) -> dict[str, dict[str, Any]
             sp = (spam.get(t) or {}).get("spam_score")
             v = {"rank": round(rk / 10) if isinstance(rk, (int, float)) else None, "spam": sp}
             out[t] = v
-            _DFS[t] = (now, v)
+            if v["rank"] is not None or sp is not None:  # a lookup that found nothing is not kept: it is asked again next time
+                _DFS[t] = (now, v)
     return out
 
 
