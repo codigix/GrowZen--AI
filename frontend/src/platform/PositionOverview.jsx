@@ -1,3 +1,4 @@
+import { KeywordActs } from './TableBits';
 import React, { useMemo, useState } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { ExternalLink, X, Plus, Download, Settings2, Sparkles, ChevronRight } from 'lucide-react';
@@ -218,7 +219,7 @@ export default function PositionOverview({ d, b, onChanged }) {
                 {show('positions') && <><Th c="text-right">Pos. {first}</Th>{th('rank', `Pos. ${last}`)}<Th c="text-right">Diff</Th></>}
                 {show('visibility') && <>{th('visibility', 'Visibility')}<Th c="text-right">Diff</Th></>}
                 {show('traffic') && <>{th('traffic', 'Est. Traffic')}<Th c="text-right">Diff</Th></>}
-                {cols.has('vol') && th('volume', 'Vol.')}{cols.has('cpc') && <Th c="text-right">CPC</Th>}{cols.has('url') && <Th>URL</Th>}
+                {cols.has('vol') && th('volume', 'Vol.')}{cols.has('cpc') && <Th c="text-right">CPC</Th>}{cols.has('url') && <Th>URL</Th>}<Th c="text-right">Actions</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -246,11 +247,12 @@ export default function PositionOverview({ d, b, onChanged }) {
                     {cols.has('vol') && <td className="px-3 py-3 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : dash}</td>}
                     {cols.has('cpc') && <td className="px-3 py-3 text-right tabular-nums">{r.cpc != null ? r.cpc : dash}</td>}
                     {cols.has('url') && <td className="px-3 py-3 max-w-[260px] truncate">{r.url ? <a href={r.url} target="_blank" rel="noreferrer" title={r.url} className="text-indigo-700 hover:underline inline-flex items-center gap-1">{path(r.url)}<ExternalLink size={10} className="shrink-0" /></a> : dash}</td>}
+                    <td className="px-3 py-3 text-right whitespace-nowrap align-top"><KeywordActs keyword={r.keyword} url={r.url} /></td>
                   </tr>
-                  {open.has(r.keyword) && <tr><td colSpan={16} className="p-0 border-y-2 border-indigo-200 bg-white"><PositionChart r={r} domains={chosen} colorOf={colorOf} me={me} /></td></tr>}
+                  {open.has(r.keyword) && <tr><td colSpan={17} className="p-0 border-y-2 border-indigo-200 bg-white"><PositionChart r={r} domains={chosen} colorOf={colorOf} me={me} /></td></tr>}
                   </React.Fragment>);
               })}
-              {!slice.length && <tr><td colSpan={16} className="px-5 py-10 text-center text-slate-500">No keyword matches these filters.</td></tr>}
+              {!slice.length && <tr><td colSpan={17} className="px-5 py-10 text-center text-slate-500">No keyword matches these filters.</td></tr>}
             </tbody>
           </table>
         </div>

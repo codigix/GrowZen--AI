@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2, Plus, Trash2, Loader2 } from 'lucide-react';
+import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2, Plus, Trash2, Loader2, BookOpen } from 'lucide-react';
 import { SeoShell, Card, Button, Badge, Stat, ErrorNote, Modal, Field, inputCls, useAction, useToast, useDoubleConfirm, SkList } from './SeoUi';
 import Select from '../components/Select';
+import { Act, Head, OpenAct } from './TableBits';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 import Tip from './Tip';
 
@@ -117,8 +118,9 @@ function useList(b, view, params) {
 function useDebounced(v, ms = 300) { const [x, setX] = useState(v); useEffect(() => { const t = setTimeout(() => setX(v), ms); return () => clearTimeout(t); }, [v, ms]); return x; }
 
 function Links({ b }) {
+  const [params] = useSearchParams();
   const [f, setF] = useState({ status: 'live', follow: '', category: '', useful: '', sort: 'recent' });
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(params.get('q') || ''); // opened from a site's row: only that site's links
   const dq = useDebounced(q);
   const r = useList(b, 'links', { ...f, q: dq, limit: 100 });
   const d = r.data;
@@ -140,6 +142,7 @@ function Links({ b }) {
             <th className={TH}>Linking page</th><th className={TH}>Anchor text</th><th className={TH}>Goes to</th><th className={TH}>Follow</th><th className={TH}>Category</th>
             <th className={`${TH} text-right`}><Tip text="Moz Domain Authority of the linking site (0-100).">DA</Tip></th><th className={`${TH} text-right`}><Tip text="Moz Page Authority of the linking page (0-100).">PA</Tip></th><th className={`${TH} text-right`}><Tip text="Moz Spam Score: how much the site looks like sites Google penalised. Lower is better.">Spam</Tip></th>
             <th className={TH}><Tip text="Our judgement from relevance to your business, spam risk and the follow type. Hover a badge for the reason.">Useful?</Tip></th><th className={TH}>First seen</th>
+            <th className={`${TH} text-right`}><Head right what="Open the linking page, or your own page it points to." why="See the link in its real setting.">Actions</Head></th>
           </tr></thead>
           <tbody className="divide-y divide-slate-100">
             {d.state === 'no_target' && <Empty>Add the project's website first.</Empty>}
@@ -153,6 +156,10 @@ function Links({ b }) {
                 <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td>
                 <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                 <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(x.first_seen)}</td>
+                <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                  <OpenAct url={x.source_url} tip="Open the linking page: see the link where it sits on the other website." />
+                  <OpenAct url={x.target_url} tip="Open your page: the page of your site this link points to." />
+                </span></td>
               </tr>
             ))}
             {d.state === 'ok' && !d.links.length && <Empty>{d.live_total ? 'No link matches these filters.' : 'No backlinks yet. Connect the crawler and press “Find backlinks now”.'}</Empty>}
@@ -182,7 +189,7 @@ function Domains({ b }) {
         <table className="w-full min-w-[1050px] text-13">
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
             <th className={TH}>Domain</th><th className={`${TH} text-right`}>Live links</th><th className={TH}>Follow</th><th className={TH}>Category</th><th className={TH}>Top anchors</th>
-            <th className={`${TH} text-right`}>DA</th><th className={`${TH} text-right`}>Spam</th><th className={`${TH} text-right`}>Relevance</th><th className={TH}>Useful?</th><th className={TH}>Last seen</th></tr></thead>
+            <th className={`${TH} text-right`}>DA</th><th className={`${TH} text-right`}>Spam</th><th className={`${TH} text-right`}>Relevance</th><th className={TH}>Useful?</th><th className={TH}>Last seen</th><th className={`${TH} text-right`}><Head right what="Open the site, or list only the links this site gives you." why="Check what a site links to before you reply to it.">Actions</Head></th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {d.domains?.map(x => (
               <tr key={x.domain} className="hover:bg-slate-50 align-middle">
@@ -195,6 +202,10 @@ function Domains({ b }) {
                 <td className="px-3 py-3 text-right tabular-nums">{x.quality ? x.quality.relevance : <span className="text-slate-300">—</span>}</td>
                 <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                 <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(x.last_seen)}</td>
+                <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                  <OpenAct url={x.sample_url} tip="Open the site: show a page of it that links to you." />
+                  <Link to={`/backlinks/links?q=${encodeURIComponent(x.domain)}`}><Act icon={Link2} tone="sky" tip="Show its links: list only the links this site gives you." /></Link>
+                </span></td>
               </tr>
             ))}
             {d.state === 'ok' && !d.domains.length && <Empty>No referring domains yet.</Empty>}
@@ -327,16 +338,16 @@ function Opportunities({ b }) {
           <div className="overflow-x-auto">
             {stage === 'done' ? (
               <table className="w-full min-w-[600px] text-13">
-                <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className={TH}>Site</th><th className={TH}>Where it came from</th><th className={TH}>Result</th><th className={TH}>Note</th></tr></thead>
+                <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className={TH}>Site</th><th className={TH}>Where it came from</th><th className={TH}>Result</th><th className={TH}>Note</th><th className={`${TH} text-right`}>Actions</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {done.map(x => <tr key={x.domain} className="align-middle"><td className="px-3 py-3 font-semibold text-slate-900">{x.domain}</td><td className="px-3 py-3 text-slate-600">{x.source === 'ai' ? 'Suggested by AI' : 'Competitor gap'}</td><td className="px-3 py-3">{x.confirmed ? <Badge tone="green">Confirmed by the crawler</Badge> : <Badge tone="amber">Marked by you: not seen by the crawler yet</Badge>}</td><td className="px-3 py-3 text-slate-600">{x.note || '—'}</td></tr>)}
+                  {done.map(x => <tr key={x.domain} className="align-middle"><td className="px-3 py-3 font-semibold text-slate-900">{x.domain}</td><td className="px-3 py-3 text-slate-600">{x.source === 'ai' ? 'Suggested by AI' : 'Competitor gap'}</td><td className="px-3 py-3">{x.confirmed ? <Badge tone="green">Confirmed by the crawler</Badge> : <Badge tone="amber">Marked by you: not seen by the crawler yet</Badge>}</td><td className="px-3 py-3 text-slate-600">{x.note || '—'}</td><td className="px-3 py-3 text-right"><OpenAct url={`https://${x.domain}`} tip="Open the site that gave you the link." /></td></tr>)}
                   {!done.length && <Empty>No link won yet. Work through “To do”: the crawler confirms a link when it finds it.</Empty>}
                 </tbody>
               </table>
             ) : (
               <table className="w-full min-w-[1000px] text-13">
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-                  <th className={TH}>Priority</th><th className={TH}>Site</th><th className={TH}>Competitors linked there</th><th className={TH}>Category</th><th className={TH}>Follow</th><th className={`${TH} text-right`}>DA</th><th className={TH}>Useful?</th><th className={TH}>Status</th><th className={TH} /></tr></thead>
+                  <th className={TH}>Priority</th><th className={TH}>Site</th><th className={TH}>Competitors linked there</th><th className={TH}>Category</th><th className={TH}>Follow</th><th className={`${TH} text-right`}>DA</th><th className={TH}>Useful?</th><th className={TH}>Status</th><th className={`${TH} text-right`}><Head right what="Guide shows how to ask this site for a link. Open shows the site's page that links to your competitor." why="Contact the sites in the order of priority.">Actions</Head></th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {shown.map(x => { const [pl2, pt] = PRIORITY[x.priority] || PRIORITY.low; return (
                     <tr key={x.domain} className="hover:bg-slate-50 align-middle">
@@ -348,7 +359,7 @@ function Opportunities({ b }) {
                       <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td>
                       <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                       <td className="px-3 py-3"><Select value={x.status} onChange={e => setStatus(x, e.target.value)} className="h-8 text-13 min-w-[130px]" aria-label={`Status of ${x.domain}`} disabled={busy === x.domain}><option value="new">To do</option><option value="planned">Planned</option><option value="contacted">Contacted</option><option value="live">Got the link</option><option value="skipped">Skipped</option></Select></td>
-                      <td className="px-3 py-3"><Button size="sm" variant="primary" onClick={() => setOpen(x)}>Guide</Button></td>
+                      <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5"><Act icon={BookOpen} tone="violet" tip="Guide: how to ask this site for a link, with a draft message." onClick={() => setOpen(x)} /><OpenAct url={x.sample?.url} tip="Open the site: the page that links to your competitor." /></span></td>
                     </tr>); })}
                   {!shown.length && <Empty>{stage === 'todo' ? (all.length ? 'Nothing left to do here.' : 'No opportunities yet: your crawler has not found sites that link to your competitors and not to you.') : stage === 'progress' ? 'Nothing in progress. Open a site and press “I contacted them”.' : 'Nothing skipped.'}</Empty>}
                 </tbody>
@@ -372,6 +383,8 @@ function CompetitorGap({ b }) {
   const [params] = useSearchParams();
   const [comp, setComp] = useState(params.get('competitor') || ''); // opened from Competitor Watch: that competitor is already picked
   const [shown, setShown] = useState(25);
+  const [busy, , run] = useAction();
+  const addToPlan = (o) => run(`plan${o.referring_domain}`, async () => { await api(`/businesses/${b.id}/backlink-hub/plan`, { method: 'POST', body: { domain: o.referring_domain, status: 'new', source: 'competitor', name: o.referring_domain } }); });
   const r = useApi(`/businesses/${b.id}/backlink-intel/crawler/gap?${new URLSearchParams({ ...(comp ? { competitor: comp } : {}), limit: '500' })}`);
   const d = r.data;
   const g = d?.gap;
@@ -412,12 +425,16 @@ function CompetitorGap({ b }) {
           <Card title="Websites to get links from" subtitle={comp ? `Sites that link ${comp} but not you.` : 'Sites that link your competitors but not you.'}>
             {!g.opportunities.length ? <GapNote>No gap found yet. As the crawler finds more links to your competitors, sites appear here.</GapNote> : (
               <div className="overflow-x-auto"><table className="w-full text-13">
-                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className={TH}>Website</th><th className={TH}>Links to</th><th className={TH}>Example page</th></tr></thead>
+                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className={TH}>Website</th><th className={TH}>Links to</th><th className={TH}>Example page</th><th className={`${TH} text-right`}><Head right what="Open the site or its example page, or add the site to your link plan." why="The plan keeps the sites you will ask for a link, with their status." from="the Link Opportunities list.">Actions</Head></th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{g.opportunities.slice(0, shown).map(o => (
                   <tr key={o.referring_domain}>
                     <td className="px-3 py-2 font-semibold text-slate-800">{o.referring_domain}</td>
                     <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{o.competitor_targets.map(t => <Badge key={t} tone="blue">{t}</Badge>)}</div></td>
                     <td className="px-3 py-2 max-w-[360px]">{o.source_pages?.[0] ? <a className="block truncate text-indigo-600 hover:underline" href={o.source_pages[0]} target="_blank" rel="noreferrer noopener nofollow" title={o.source_pages[0]}>{o.source_pages[0].replace(/^https?:\/\//, '')}</a> : '—'}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                      <OpenAct url={o.source_pages?.[0] || `https://${o.referring_domain}`} tip="Open the site: see the page that links to your competitor." />
+                      <Act icon={Plus} tone="green" tip="Add to link plan: put this site in Link Opportunities as a place to ask for a link." busy={busy === `plan${o.referring_domain}`} onClick={() => addToPlan(o)} />
+                    </span></td>
                   </tr>))}</tbody>
               </table></div>
             )}
@@ -426,7 +443,7 @@ function CompetitorGap({ b }) {
           <Card title="Pages that link them" subtitle="The exact pages, which competitor page they link to and the words used. Ask these sites to link you too.">
             {!pages.length ? <GapNote>None yet.</GapNote> : (
               <div className="overflow-x-auto"><table className="w-full text-13">
-                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className={TH}>Linking page</th><th className={TH}>Competitor</th><th className={TH}>Anchor</th><th className={TH}>Follow</th><th className={TH}>Last seen</th></tr></thead>
+                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className={TH}>Linking page</th><th className={TH}>Competitor</th><th className={TH}>Anchor</th><th className={TH}>Follow</th><th className={TH}>Last seen</th><th className={`${TH} text-right`}><Head right what="Open the page that links to your competitor." why="Contact its owner and ask for a link to you too.">Actions</Head></th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{pages.slice(0, shown).map(p => { const l = p.links?.[0] || {}; return (
                   <tr key={p.source_url}>
                     <td className="px-3 py-2 max-w-[320px]"><a className="block truncate text-indigo-600 hover:underline" href={p.source_url} target="_blank" rel="noreferrer noopener nofollow" title={p.source_url}>{p.source_url.replace(/^https?:\/\//, '')}</a></td>
@@ -434,6 +451,7 @@ function CompetitorGap({ b }) {
                     <td className="px-3 py-2 max-w-[200px] truncate text-slate-700" title={l.anchor_text || ''}>{l.anchor_text || '—'}</td>
                     <td className="px-3 py-2"><Badge tone={l.nofollow ? 'gray' : 'green'}>{l.nofollow ? 'Nofollow' : l.sponsored ? 'Sponsored' : 'Follow'}</Badge></td>
                     <td className="px-3 py-2 text-12 text-slate-500">{l.last_seen ? fmtDateTime(l.last_seen) : '—'}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap"><OpenAct url={p.source_url} tip="Open the page: see the link to your competitor where it sits." /></td>
                   </tr>); })}</tbody>
               </table></div>
             )}

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Copy, ExternalLink, ChevronLeft, ChevronRight, Plus, RefreshCw, Download, Check, Play, SkipForward, RotateCcw, ShieldCheck, Cpu, Globe } from 'lucide-react';
 import { SeoShell, Card, Tabs, Badge, Button, Meter, Modal, Drawer, Field, inputCls, areaCls, ErrorNote, useAction, useToast, useUrlTab, SkPage, Stat } from './SeoUi';
+import { Act } from './TableBits';
 import { api, useApi, usePoll, fmtDate } from './seoApi';
 import Select from '../components/Select';
 
@@ -58,12 +59,12 @@ function TaskRow({ it, onChange, editable }) {
         </button>
         {editable && it.status !== 'done' && (
           <div className="flex gap-1.5">
-            {it.status !== 'doing' && <Button size="sm" icon={Play} onClick={() => set({ status: 'doing' })}>Start</Button>}
-            <Button size="sm" variant="primary" icon={Check} onClick={() => set({ status: 'done', note })}>Done</Button>
-            <Button size="sm" variant="ghost" icon={SkipForward} title="Won't do: it will not be planned again" onClick={() => set({ status: 'skipped', note })}>Skip</Button>
+            {it.status !== 'doing' && <Act icon={Play} tone="sky" tip="Start: mark this task as in progress." onClick={() => set({ status: 'doing' })} />}
+            <Act icon={Check} tone="green" tip="Done: mark this task finished." onClick={() => set({ status: 'done', note })} />
+            <Act icon={SkipForward} tone="amber" tip="Skip: you will not do it, so it will not be planned again." onClick={() => set({ status: 'skipped', note })} />
           </div>
         )}
-        {editable && it.status === 'skipped' && <Button size="sm" icon={RotateCcw} onClick={() => set({ status: 'todo' })}>Restore</Button>}
+        {editable && it.status === 'skipped' && <Act icon={RotateCcw} tone="slate" tip="Restore: put the task back on the to-do list." onClick={() => set({ status: 'todo' })} />}
       </div>
       <Drawer open={open} onClose={() => setOpen(false)} title={it.title} subtitle={`${AREA[it.area] || it.area} · ${src}`} width="max-w-xl">
         <div className="flex flex-wrap gap-1.5 mb-4">

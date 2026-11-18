@@ -102,6 +102,10 @@ export const HEAD_HELP = {
   declined: E('How many keywords moved down since the last check.', 'Look at these first.', 'comparing two position checks.'),
   updated: E('When this row was last refreshed.', '', 'the last audit or check.'),
   'potential / mo': E('Visits a month the keyword could still give. A model, not a measured count.', '', 'monthly searches times the usual click share of the top spot, minus the clicks you already get.'),
+  'link type': E('Follow, nofollow, UGC or sponsored.', 'Follow links pass the most value.', 'the link rel attribute.'),
+  'kind of site': E('The kind of site: news, directory, forum, business and so on.', '', 'our classification of the linking site.'),
+  indexable: E('Whether Google can keep the linking page in its search.', 'A page Google ignores passes little value.', 'a check of the page robots rules.'),
+  checked: E('When the link was last checked.', '', 'the last check.'),
   // competitor gap
   you: E('Your own figure.', '', 'Search Console and your site audit.'),
   'best competitor': E('The competitor that does best on this row.', '', 'the competitor research.'),

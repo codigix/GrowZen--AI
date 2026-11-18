@@ -1,3 +1,4 @@
+import { KeywordActs } from './TableBits';
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
@@ -153,9 +154,10 @@ export function AllPages({ d }) {
                 <td className="px-3 py-3.5 text-right tabular-nums">{r.inbound != null ? r.inbound : dash}</td>
                 <td className="px-3 py-3.5 max-w-[140px] truncate text-12 text-slate-600" title={(r.schema || []).join(', ')}>{r.schema?.length ? r.schema.join(', ') : (r.words != null ? <span className="text-amber-600">none</span> : dash)}</td>
                 <td className="px-3 py-3.5"><Source sources={r.sources} /></td>
+                <td className="px-3 py-3.5 text-right whitespace-nowrap"><KeywordActs keyword={r.top_keyword} url={r.url} /></td>
               </tr>
             ))}
-            {!shown.length && <tr><td colSpan={17} className="px-5 py-10 text-center text-slate-500">No page matches these filters.</td></tr>}
+            {!shown.length && <tr><td colSpan={18} className="px-5 py-10 text-center text-slate-500">No page matches these filters.</td></tr>}
           </tbody>
         </table>
       </div>

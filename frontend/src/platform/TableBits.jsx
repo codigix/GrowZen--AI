@@ -1,5 +1,6 @@
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ExternalLink, Loader2, PenLine, Search } from 'lucide-react';
 import Tip from './Tip';
 
 /**
@@ -48,4 +49,22 @@ export function Act({ tip, icon: Icon, tone = 'slate', busy = false, children, d
       <button type="button" {...rest} className={`h-7 px-2.5 rounded-md text-12 font-semibold cursor-pointer inline-flex items-center gap-1 ring-1 ring-inset transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${t} ${className}`}>{children}</button>
     </Tip>
   );
+}
+
+/** The actions every keyword row has: check its numbers, open the page that ranks for it, write about it. */
+export function KeywordActs({ keyword, url }) {
+  const q = encodeURIComponent(keyword || '');
+  return (
+    <span className="inline-flex gap-1.5">
+      {keyword && <Link to={`/keyword-overview?q=${q}`}><Act icon={Search} tone="sky" tip="Check: open its searches per month, cost and related ideas." /></Link>}
+      {url && <a href={url} target="_blank" rel="noreferrer noopener"><Act icon={ExternalLink} tone="slate" tip="Open: show the page that ranks for it, in a new tab." /></a>}
+      {keyword && <Link to={`/ai-content-generation/blog?keyword=${q}`}><Act icon={PenLine} tone="violet" tip="Write: start a blog post for this keyword in the blog writer." /></Link>}
+    </span>
+  );
+}
+
+/** Open a web address in a new tab, as an icon with a sentence. */
+export function OpenAct({ url, tip = 'Open: show it in a new tab.' }) {
+  if (!url) return null;
+  return <a href={url} target="_blank" rel="noreferrer noopener"><Act icon={ExternalLink} tone="slate" tip={tip} /></a>;
 }

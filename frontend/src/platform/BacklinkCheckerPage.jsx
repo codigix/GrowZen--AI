@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, ExternalLink, HelpCircle, Link2, Loader2, RefreshCw, Search, Trash2, XCircle } from 'lucide-react';
 import { SeoShell, Button } from './SeoUi';
+import { Act, OpenAct } from './TableBits';
 import Select from '../components/Select';
 import { api } from './seoApi';
 
@@ -100,7 +101,7 @@ function BacklinkChecker({ b }) {
             <div className="overflow-x-auto">
               <table className="w-full text-13.5 min-w-[1100px]">
                 <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200">
-                  {['Linking page', 'Status', 'Link type', 'Anchor text', 'Kind of site', 'Indexable', 'DA', 'PA', 'Spam', 'Ref. domains', 'Checked', ''].map((h, i) => <th key={i} className={`px-3 py-2.5 font-medium whitespace-nowrap ${i >= 6 && i <= 9 ? 'text-right' : 'text-left'}`}>{h}</th>)}</tr></thead>
+                  {['Linking page', 'Status', 'Link type', 'Anchor text', 'Kind of site', 'Indexable', 'DA', 'PA', 'Spam', 'Ref. domains', 'Checked', 'Actions'].map((h, i) => <th key={i} className={`px-3 py-2.5 font-medium whitespace-nowrap ${i >= 6 && i <= 9 ? 'text-right' : 'text-left'}`}>{h}</th>)}</tr></thead>
                 <tbody>{rows.map(r => (
                   <React.Fragment key={r.id}>
                     <tr className="border-b border-slate-100 align-top hover:bg-slate-50 cursor-pointer" onClick={() => setOpenId(openId === r.id ? null : r.id)}>
@@ -113,8 +114,7 @@ function BacklinkChecker({ b }) {
                       <td className="px-3 py-3 text-right"><Moz v={r.moz?.da} on={d.moz} /></td><td className="px-3 py-3 text-right"><Moz v={r.moz?.pa} on={d.moz} /></td>
                       <td className="px-3 py-3 text-right"><Moz v={r.moz?.spam != null ? `${r.moz.spam}%` : null} on={d.moz} /></td><td className="px-3 py-3 text-right"><Moz v={r.moz?.ref_domains} on={d.moz} /></td>
                       <td className="px-3 py-3 text-12 text-slate-500 whitespace-nowrap">{when(r.checked_at)}<div>{r.checks}× checked</div></td>
-                      <td className="px-3 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}><a href={r.source_url} target="_blank" rel="noreferrer noopener" className="text-slate-500 hover:text-indigo-600 inline-block mr-2" aria-label="Open the page"><ExternalLink size={14} /></a>
-                        <button type="button" onClick={() => remove(r.id)} className="text-slate-400 hover:text-red-600 cursor-pointer" aria-label="Remove from the list"><Trash2 size={14} /></button></td>
+                      <td className="px-3 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}><span className="inline-flex gap-1.5"><OpenAct url={r.source_url} tip="Open: show the linking page in a new tab." /><Act icon={Trash2} tone="rose" tip="Remove: take this link off your list." onClick={() => remove(r.id)} /></span></td>
                     </tr>
                     {openId === r.id && (
                       <tr className="bg-slate-50/70"><td colSpan={12} className="px-5 py-4 text-13">

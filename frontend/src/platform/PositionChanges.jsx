@@ -1,3 +1,4 @@
+import { KeywordActs } from './TableBits';
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
@@ -178,7 +179,7 @@ export default function PositionChanges({ research }) {
             <thead className="bg-slate-50 text-12 text-slate-600">
               <tr><Th> </Th><Th>Keyword</Th>{cols.has('intent') && <Th>Intent</Th>}{cols.has('prev') && <Th c="text-right">Previous</Th>}<Th c="text-right">Current</Th><Th c="text-right">Diff.</Th>
                 {cols.has('traffic') && <Th c="text-right">Traffic</Th>}{cols.has('share') && <Th c="text-right">Traffic %</Th>}{cols.has('serp') && <Th>Changes on SERP</Th>}{cols.has('vol') && <Th c="text-right">Volume</Th>}
-                {cols.has('kd') && <Th c="text-right">KD %</Th>}{cols.has('cpc') && <Th c="text-right">CPC</Th>}{cols.has('url') && <Th>URL</Th>}{cols.has('updated') && <Th c="text-right">Updated</Th>}</tr>
+                {cols.has('kd') && <Th c="text-right">KD %</Th>}{cols.has('cpc') && <Th c="text-right">CPC</Th>}{cols.has('url') && <Th>URL</Th>}{cols.has('updated') && <Th c="text-right">Updated</Th>}<Th c="text-right">Actions</Th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {slice.map(x => (
@@ -198,6 +199,7 @@ export default function PositionChanges({ research }) {
                     {cols.has('cpc') && <td className="px-4 py-3 text-right tabular-nums">{x.cpc ?? dash}</td>}
                     {cols.has('url') && <td className="px-4 py-3 max-w-[260px]">{x.url ? <a href={x.url} target="_blank" rel="noreferrer" title={x.url} className="text-indigo-700 hover:underline inline-flex items-start gap-1 break-all">{path(x.url)}<ExternalLink size={10} className="shrink-0 mt-1.5" /></a> : dash}</td>}
                     {cols.has('updated') && <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">{ago(x.checked) || dash}</td>}
+                    <td className="px-4 py-3 text-right whitespace-nowrap"><KeywordActs keyword={x.keyword} url={x.url} /></td>
                   </tr>
                   {open.has(x.keyword) && by[x.keyword] && <tr className="bg-slate-50/60"><td /><td colSpan={13} className="px-4 py-3"><RankedUrls r={by[x.keyword]} /></td></tr>}
                 </React.Fragment>))}

@@ -3,6 +3,7 @@ import { ResponsiveContainer, LineChart, Line, Legend, AreaChart, Area, PieChart
 import { ExternalLink, Plus, Check, Info, RefreshCw, ChevronRight } from 'lucide-react';
 import { Card, Badge, Button, useAction, SkList } from './SeoUi';
 import { api, useApi, fmt, fmtDate } from './seoApi';
+import { KeywordActs, OpenAct } from './TableBits';
 import { AllPages } from './TopPagesReport';
 import { AXIS, PALETTE, Th, Chg, Empty, Filter, Segmented, usePager, path } from './PositionUi';
 
@@ -208,7 +209,7 @@ export function Cannibalization({ d, b }) {
         {slice.length ? (view === 'pages' ? (
           <div className="overflow-x-auto">
             <table className="w-full text-13 min-w-[960px]">
-              <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th>Page</Th><Th>Status</Th><Th c="text-right">Affected keywords</Th><Th c="text-right">Avg. pos.</Th><Th c="text-right">Diff</Th><Th c="text-right">Total est. traffic</Th><Th c="text-right">Diff</Th><Th c="text-right">Total volume</Th></tr></thead>
+              <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th>Page</Th><Th>Status</Th><Th c="text-right">Affected keywords</Th><Th c="text-right">Avg. pos.</Th><Th c="text-right">Diff</Th><Th c="text-right">Total est. traffic</Th><Th c="text-right">Diff</Th><Th c="text-right">Total volume</Th><Th c="text-right">Actions</Th></tr></thead>
               <tbody className="divide-y divide-slate-100">{slice.map(p => (
                 <React.Fragment key={p.url}>
                   <tr className="hover:bg-slate-50">
@@ -221,9 +222,10 @@ export function Cannibalization({ d, b }) {
                     <td className="px-4 py-2.5 text-right tabular-nums">{d.has_volume ? p.traffic : Dash}</td>
                     <td className="px-4 py-2.5 text-right">{d.has_volume && p.traffic_change != null ? <Chg v={p.traffic_change} /> : Dash}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{p.volume != null ? fmt(p.volume) : Dash}</td>
+                    <td className="px-4 py-2.5 text-right whitespace-nowrap"><OpenAct url={p.url} tip="Open: show this page in a new tab." /></td>
                   </tr>
                   {open.has(p.url) && (
-                    <tr className="bg-slate-50/60"><td /><td colSpan={8} className="px-4 py-3">
+                    <tr className="bg-slate-50/60"><td /><td colSpan={9} className="px-4 py-3">
                       <div className="text-11.5 font-semibold text-slate-500 mb-1.5">Keywords this page competes for, and every page of yours that Google shows for each</div>
                       {!p.keywords.length && <p className="text-13 text-slate-500">{p.ranking ? 'This page is the only one of yours in the results for its keywords.' : "This page does not rank in Google's top 20 for a tracked keyword yet."}</p>}
                       <KeywordTrend keywords={p.keywords} />
@@ -244,7 +246,7 @@ export function Cannibalization({ d, b }) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-13 min-w-[760px]">
-              <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th>Keyword</Th><Th>Status</Th><Th c="text-right">Best pos.</Th><Th c="text-right">Pages in results</Th><Th c="text-right">Volume</Th></tr></thead>
+              <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th>Keyword</Th><Th>Status</Th><Th c="text-right">Best pos.</Th><Th c="text-right">Pages in results</Th><Th c="text-right">Volume</Th><Th c="text-right">Actions</Th></tr></thead>
               <tbody className="divide-y divide-slate-100">{slice.map(r => (
                 <React.Fragment key={r.keyword}>
                   <tr className="hover:bg-slate-50">
@@ -254,9 +256,10 @@ export function Cannibalization({ d, b }) {
                     <td className="px-4 py-2.5 text-right tabular-nums">{r.rank ?? Dash}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{r.pages.length}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : Dash}</td>
+                    <td className="px-4 py-2.5 text-right whitespace-nowrap"><KeywordActs keyword={r.keyword} /></td>
                   </tr>
                   {open.has(r.keyword) && (
-                    <tr className="bg-slate-50/60"><td /><td colSpan={5} className="px-4 py-3">
+                    <tr className="bg-slate-50/60"><td /><td colSpan={6} className="px-4 py-3">
                       <ul className="space-y-1">{r.pages.map(p => <li key={p.url} className="flex gap-3 text-13 items-center"><span className="flex-1"><Url u={p.url} /></span><span className="tabular-nums text-slate-600">pos. {p.position || '—'}</span>{d.has_volume && <span className="tabular-nums text-slate-400 w-24 text-right">{p.traffic} traffic</span>}</li>)}</ul>
                       {!r.pages.length && <p className="text-13 text-slate-500">None of your pages is in Google's top 20 for this keyword yet.</p>}
                       {r.competing && <p className="text-12 text-slate-500 mt-2">Keep the page with the best position, then merge or redirect the others into it.</p>}
@@ -295,11 +298,12 @@ export function Snippets({ d }) {
         action={<Segmented value={view} onChange={setView} options={[['opp', 'Opportunities', opp.length], ['has', 'Already featured', has.length], ['new', 'New on SERP', fresh.length]]} />}>
         {slice.length ? (
           <table className="w-full text-13">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th>Feature</Th><Th c="text-right">Volume</Th><Th c="text-right">Est. traffic potential</Th><Th c="text-right">You</Th></tr></thead>
+            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th>Feature</Th><Th c="text-right">Volume</Th><Th c="text-right">Est. traffic potential</Th><Th c="text-right">You</Th><Th c="text-right">Actions</Th></tr></thead>
             <tbody className="divide-y divide-slate-100">{slice.map(s => (
               <tr key={s.keyword}><td className="px-4 py-2.5 font-medium text-indigo-700">{s.keyword}</td><td className="px-4 py-2.5 text-slate-600">{s.feature}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{s.volume != null ? fmt(s.volume) : Dash}</td><td className="px-4 py-2.5 text-right tabular-nums">{s.potential ?? Dash}</td>
-                <td className="px-4 py-2.5 text-right">{s.yours ? <Badge tone="green"><Check size={11} /> Yours</Badge> : s.rank ? <span className="tabular-nums">#{s.rank}</span> : Dash}</td></tr>))}</tbody>
+                <td className="px-4 py-2.5 text-right">{s.yours ? <Badge tone="green"><Check size={11} /> Yours</Badge> : s.rank ? <span className="tabular-nums">#{s.rank}</span> : Dash}</td>
+                <td className="px-4 py-2.5 text-right whitespace-nowrap"><KeywordActs keyword={s.keyword} /></td></tr>))}</tbody>
           </table>
         ) : <Empty>{all.length ? 'Nothing in this view. Try another tab above the table.' : 'No snippet or answer box was seen on the latest checks.'}</Empty>}
         {footer}
