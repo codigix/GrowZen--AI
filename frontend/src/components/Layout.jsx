@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApi } from '../platform/seoApi';
 import { SkPage, useSeoBusiness } from '../platform/SeoUi';
 import AssistantWidget from './AssistantWidget';
+import TableHelp from '../platform/TableHelp';
 import ErrorBoundary from './ErrorBoundary';
 
 export { SIDEBAR_GROUPS };
@@ -251,6 +252,7 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
         </main>
       </div>
       <AssistantWidget />
+      <TableHelp />
     </div>
   );
 }

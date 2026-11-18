@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowRight, ArrowUp, CheckCircle2, Download, EyeOff, Loader2, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
+import { Act, Head } from './TableBits';
 
 const TAG_TONE = { gap: 'red', win: 'green', almost: 'amber', shared: 'blue', yours: 'gray', idea: 'violet' };
 const TAG_SHORT = { gap: 'Gap', win: 'Win', almost: 'Almost', shared: 'Shared', yours: 'Yours', idea: 'Idea' };
@@ -12,12 +13,12 @@ const SRC_TONE = { website: 'blue', search_console: 'green', profile: 'amber', c
 const n0 = (v) => (v == null ? '—' : v.toLocaleString('en-US'));
 const PAGE = 50;
 
-function SortTh({ id, sort, setSort, children, right }) {
+function SortTh({ id, sort, setSort, children, right, what, why, from }) {
   const on = sort.key === id;
   return (
     <th className={`px-3 py-2 ${right ? 'text-right' : 'text-left'}`} aria-sort={on ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
       <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id && s.dir === 'desc' ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${on ? 'text-slate-900' : ''}`}>
-        {children}{on && (sort.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
+        <Head what={what} why={why} from={from} right={right}>{children}</Head>{on && (sort.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
       </button>
     </th>
   );
@@ -170,12 +171,13 @@ export default function KeywordWorkspace({ b, onUse }) {
                   <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="w-10 px-3 py-2"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(i => i.id)))} /></th>
-                      <SortTh id="keyword" sort={sort} setSort={setSort}>Keyword</SortTh>
-                      <SortTh id="volume" sort={sort} setSort={setSort} right>Searches / mo</SortTh>
-                      <SortTh id="difficulty" sort={sort} setSort={setSort} right>Difficulty</SortTh>
-                      <th className="px-3 py-2 text-left">Kind</th>
-                      <th className="px-3 py-2 text-left">Found in</th>
-                      <SortTh id="rank" sort={sort} setSort={setSort} right>Your rank</SortTh>
+                      <SortTh id="keyword" sort={sort} setSort={setSort} what="A search people type into Google." why="Click the name to check its searches, cost and related ideas. Click the heading to sort A to Z." from="your website, Search Console, your profile, competitor sites, Google suggestions and AI.">Keyword</SortTh>
+                      <SortTh id="volume" sort={sort} setSort={setSort} right what="How many times a month people search it in your country." why="Shows which keywords are worth the effort." from="Google Ads Keyword Planner (needs Google Ads connected). Blank when Google gave no figure.">Searches / mo</SortTh>
+                      <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100. Higher is harder." why="Pick easier ones first." from="the advertiser competition Google Ads reports for the keyword.">Difficulty</SortTh>
+                      <th className="px-3 py-2 text-left"><Head what="What kind of opportunity it is: Gap (competitors use it, you do not), Win (you are in the top 3), Almost (page 2), Shared, Yours, Idea." why="Start with Gaps and Almost." from="comparing your own places with the competitor sites and Google results collected.">Kind</Head></th>
+                      <th className="px-3 py-2 text-left"><Head what="The places this keyword was found." why="A keyword found in several places is more trustworthy." from="the collect step: hover a badge for the detail.">Found in</Head></th>
+                      <SortTh id="rank" sort={sort} setSort={setSort} right what="Your average position on Google for it, last 90 days." why="Shows where you already show up." from="Google Search Console. Blank when Google has not shown your site for it.">Your rank</SortTh>
+                      <th className="px-3 py-2 text-right"><Head right what="Things you can do with this keyword right here." why="Pick saves it to your list; Set aside hides it; Check opens its numbers.">Actions</Head></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -190,8 +192,8 @@ export default function KeywordWorkspace({ b, onUse }) {
                           </span>
                           {i.competitors.length > 0 && <span className="block text-11.5 text-slate-500">used by {i.competitors.slice(0, 2).join(', ')}{i.competitors.length > 2 ? ` +${i.competitors.length - 2}` : ''}</span>}
                         </td>
-                        <td className="px-3 py-2.5 text-right"><div className="tabular-nums">{n0(i.volume)}</div>{i.volume > 0 && <div className="mt-1 h-1 rounded-full bg-slate-100 ml-auto w-16"><div className="h-1 rounded-full bg-slate-400" style={{ width: `${Math.max(5, (i.volume / topVolume) * 100)}%` }} /></div>}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{i.difficulty ?? '—'}</td>
+                        <td className="px-3 py-2.5 text-right" title="Searches per month in your country (Google Ads Keyword Planner)"><div className="tabular-nums">{n0(i.volume)}</div>{i.volume > 0 && <div className="mt-1 h-1 rounded-full bg-slate-100 ml-auto w-16"><div className="h-1 rounded-full bg-slate-400" style={{ width: `${Math.max(5, (i.volume / topVolume) * 100)}%` }} /></div>}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums" title="0 to 100, higher is harder (from Google Ads competition)">{i.difficulty ?? '—'}</td>
                         <td className="px-3 py-2.5"><span title={TAG_HELP[i.tag]}><Badge tone={TAG_TONE[i.tag]}>{TAG_SHORT[i.tag]}</Badge></span></td>
                         <td className="px-3 py-2.5">
                           <span className="inline-flex flex-wrap gap-1" title={i.sources.map(s => `${s.label}${s.detail ? ': ' + s.detail : ''}`).join('\n')}>
@@ -199,7 +201,15 @@ export default function KeywordWorkspace({ b, onUse }) {
                             {i.sources.length > 2 && <span className="text-12 text-slate-500 self-center">+{i.sources.length - 2}</span>}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{i.rank != null ? i.rank.toFixed(1) : '—'}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums" title="Average position on Google, last 90 days (Search Console)">{i.rank != null ? i.rank.toFixed(1) : '—'}</td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                          <span className="inline-flex gap-1.5">
+                            {!i.picked && show !== 'dismissed' && <Act primary tip="Save this keyword to your list (My Keywords) so you can give it a page and track it." onClick={() => pick([i.id])}>Pick</Act>}
+                            {show === 'dismissed' ? <Act tip="Put it back in the list to look at." onClick={() => act('restore', [i.id], 'Put back in the list')}>Put back</Act>
+                              : !i.picked && <Act tip="Hide it from this list. It stays under Set aside if you change your mind." onClick={() => act('dismiss', [i.id], 'Set aside')}>Set aside</Act>}
+                            <Link to={`/keyword-overview?q=${encodeURIComponent(i.keyword)}`}><Act tip="Open its searches per month, cost and related ideas.">Check</Act></Link>
+                          </span>
+                        </td>
                       </tr>))}
                   </tbody>
                 </table>

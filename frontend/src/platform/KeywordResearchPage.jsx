@@ -1,6 +1,7 @@
 import KeywordWorkspace from './KeywordWorkspace';
 import KeywordFlowBar from './KeywordFlowBar';
 import KeywordMappingTab from './KeywordMappingTab';
+import { Act, Head } from './TableBits';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AutopilotPanel } from './AutopilotPanels';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -726,9 +727,9 @@ function Tracked({ b, kw }) {
   }, [tracked, view, q, sort]);
   const shown = rows.slice(0, limit);
   const allOn = shown.length > 0 && shown.every(k => sel.has(k.id));
-  const Th = ({ id, children, right }) => (
+  const Th = ({ id, children, right, ...tip }) => (
     <th className={`px-4 py-3 font-semibold ${right ? 'text-right' : 'text-left'}`}>
-      <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id && s.dir === 'desc' ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${sort.key === id ? 'text-slate-900' : ''}`}>{children}{sort.key === id && (sort.dir === 'asc' ? '▲' : '▼')}</button>
+      <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id && s.dir === 'desc' ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${sort.key === id ? 'text-slate-900' : ''}`}><Head right={right} {...tip}>{children}</Head>{sort.key === id && (sort.dir === 'asc' ? '▲' : '▼')}</button>
     </th>
   );
   const chip = (id, label, n) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => go(id)} className={`h-10 px-4 rounded-lg text-14 font-semibold cursor-pointer inline-flex items-center gap-2 ${view === id ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'}`}>{label}<span className={`tabular-nums ${view === id ? 'text-slate-300' : 'text-slate-400'}`}>{n}</span></button>;
@@ -783,7 +784,11 @@ function Tracked({ b, kw }) {
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="w-12 pl-4 py-3"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(k => k.id)))} /></th>
-                    <Th id="keyword">Keyword</Th><Th id="volume" right>Searches a month</Th><Th id="rank" right>Position on Google</Th><th className="px-4 py-3 text-left font-semibold">Page it should rank on</th><th className="w-12" />
+                    <Th id="keyword" what="A keyword you saved and are tracking." why="Click the name to check its searches, cost and related ideas. Click the heading to sort." from="the ones you picked in the Keyword Workspace, Find Keywords or typed in.">Keyword</Th>
+                    <Th id="volume" right what="How many times a month people search it in your country." why="Shows which keywords can bring the most visitors." from="Google Ads Keyword Planner. Blank when Google gave no figure.">Searches a month</Th>
+                    <Th id="rank" right what="Where your website shows on Google for it, as an average over the last 28 days. #1 is the top." why="Shows what is working, what can climb and what is missing." from="Google Search Console (the Google account that owns your site must be linked). Working, Almost page 1 and Weak are our plain reading of that position and the clicks.">Position on Google</Th>
+                    <th className="px-4 py-3 text-left font-semibold"><Head what="The one page on your website this keyword is meant to rank on." why="Each keyword needs its own page, so your pages do not compete with each other." from="a page you chose, or the page where the site scan found the keyword in its title, heading or description.">Page it should rank on</Head></th>
+                    <th className="px-3 py-3 text-right font-semibold"><Head right what="Things you can do with this keyword." why="Check opens its numbers, Write starts a blog post for it, Remove stops tracking it.">Actions</Head></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -801,8 +806,8 @@ function Tracked({ b, kw }) {
                           {isNew && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5">Just added</span>}
                           {(k.cluster || k.intent) && <span className="block mt-0.5 text-12 text-slate-400">{[k.cluster, k.intent].filter(Boolean).join(' · ')}</span>}
                         </td>
-                        <td className="px-4 py-4 text-right tabular-nums">{fmt(k.volume)}</td>
-                        <td className="px-4 py-4 text-right">
+                        <td className="px-4 py-4 text-right tabular-nums" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>
+                        <td className="px-4 py-4 text-right" title={k.rank ? 'Average position on Google, last 28 days (Search Console)' : 'Google has not shown your site for this keyword yet, or positions have not been checked'}>
                           {k.rank ? <span className="inline-flex items-center justify-end gap-2"><span className={`font-semibold tabular-nums ${k.rank <= 10 ? 'text-emerald-700' : 'text-slate-800'}`}>#{k.rank}</span>
                             {verdict && <span title={verdict.why}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red' }[verdict.status]}>{verdict.label}</Badge></span>}</span> : <span className="text-slate-400 text-13">Not seen yet</span>}
                         </td>
@@ -818,7 +823,11 @@ function Tracked({ b, kw }) {
                             <button type="button" onClick={() => setEditing(k.id)} className="font-semibold text-amber-700 hover:underline cursor-pointer">Choose a page</button>
                           )}
                         </td>
-                        <td className="px-3 text-right"><button type="button" onClick={() => remove(k)} disabled={busy === `d${k.id}`} className="p-2 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer" aria-label={`Stop tracking ${k.keyword}`} title="Stop tracking"><Trash2 size={15} /></button></td>
+                        <td className="px-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                          <Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`}><Act tip="Open its searches per month, cost and related ideas.">Check</Act></Link>
+                          <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`}><Act tip="Start a blog post for this keyword in the blog writer.">Write</Act></Link>
+                          <Act danger tip="Stop tracking this keyword. Its rank history is no longer shown." disabled={busy === `d${k.id}`} onClick={() => remove(k)} aria-label={`Stop tracking ${k.keyword}`}>Remove</Act>
+                        </span></td>
                       </tr>);
                   })}
                   {!rows.length && <tr><td colSpan={6} className="px-5 py-12 text-center text-14 text-slate-500">No keyword matches. <button type="button" onClick={() => { go('all'); setQ(''); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button></td></tr>}

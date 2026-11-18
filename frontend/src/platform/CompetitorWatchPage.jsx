@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Play, Loader2, FilePlus2, Pencil, FileX2, ExternalLink, ArrowRight, Star, Plus } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, useAction, useToast, SkList, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
+import { Act, Head } from './TableBits';
 
 const KIND = {
   new_page: { label: 'New page', tone: 'green', icon: FilePlus2 },
@@ -38,6 +39,7 @@ function Body({ b }) {
   const running = Boolean(d?.running);
   usePoll(() => w.reload(true), running, 3000);
   const start = () => run('run', async () => { await api(`${base}/run`, { method: 'POST' }); toast('Visiting your competitors now'); setTimeout(() => w.reload(true), 800); });
+  const leaveOut = (c) => run(`out${c.id}`, async () => { await api(`/competitors/${c.id}`, { method: 'PATCH', body: { selected: false } }); toast(`${c.name} left out of the watch`); w.reload(true); });
   const toggle = (enabled) => run('cfg', async () => { await api(base, { method: 'PUT', body: { enabled } }); w.reload(true); });
   if (!d) return <SkCard title="Weekly competitor watch" subtitle="Each week we visit your competitors' websites and tell you what is new, what changed and what disappeared"><SkList rows={4} /></SkCard>;
   const none = d.competitors.length === 0;
@@ -67,9 +69,13 @@ function Body({ b }) {
             <table className="w-full text-13 min-w-[760px]">
               <thead className="bg-gray-50 text-11.5 uppercase tracking-wide text-gray-500">
                 <tr>
-                  <th className="px-3 py-2 text-left">Competitor</th><th className="px-3 py-2 text-right">Pages watched</th>
-                  <th className="px-3 py-2 text-right">New</th><th className="px-3 py-2 text-right">Changed</th><th className="px-3 py-2 text-right">Removed</th>
-                  <th className="px-3 py-2 text-left">Last change</th><th className="px-3 py-2 text-left">Open</th>
+                  <th className="px-3 py-2 text-left"><Head what="A competitor you chose." why="The watch visits only these." from="your choice in Competitor Research.">Competitor</Head></th>
+                  <th className="px-3 py-2 text-right"><Head right what="How many of its pages the watch remembers." why="Changes are found by comparing a page with what was remembered last time." from="the weekly visits to its public pages.">Pages watched</Head></th>
+                  <th className="px-3 py-2 text-right"><Head right what="Pages it published in the last 30 days." from="pages found in its sitemap or links that were not known before.">New</Head></th>
+                  <th className="px-3 py-2 text-right"><Head right what="Pages whose title, heading, description or text changed in the last 30 days." from="comparing each visit with the one before.">Changed</Head></th>
+                  <th className="px-3 py-2 text-right"><Head right what="Pages that disappeared in the last 30 days (missing for two visits)." from="the weekly visits.">Removed</Head></th>
+                  <th className="px-3 py-2 text-left"><Head what="The date of its most recent change we noticed." from="the weekly visits.">Last change</Head></th>
+                  <th className="px-3 py-2 text-left"><Head what="Top pages: where it ranks on Google. Compare: its site next to yours. Backlinks: sites that link to it and not to you. Leave out: stop watching it." from="the competitor research, site audits and the backlink crawler.">Actions</Head></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -87,9 +93,12 @@ function Body({ b }) {
                       {num(ch.new_page, 'text-green-700')}{num(ch.changed, 'text-amber-700')}{num(ch.removed, 'text-red-700')}
                       <td className="px-3 py-2.5 text-12.5 text-gray-600 whitespace-nowrap">{c.last_change_at ? fmtDate(c.last_change_at) : <span className="text-gray-400">none in 30 days</span>}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-12.5 font-semibold">
-                        <Link className="text-indigo-600 hover:underline mr-3" to={`/competitor-finder?tab=pages&competitor=${encodeURIComponent(c.domain)}`}>Top pages</Link>
-                        <Link className="text-indigo-600 hover:underline mr-3" to={`/competitor-finder?compare=${encodeURIComponent(c.domain)}`}>Compare</Link>
-                        <Link className="text-indigo-600 hover:underline" to={`/backlinks/gap?competitor=${encodeURIComponent(c.domain)}`}>Backlinks</Link>
+                        <span className="inline-flex gap-1.5">
+                          <Link to={`/competitor-finder?tab=pages&competitor=${encodeURIComponent(c.domain)}`}><Act tip="The pages of this competitor that are in Google's top 10 for your keywords, with an estimate of the visits they bring.">Top pages</Act></Link>
+                          <Link to={`/competitor-finder?compare=${encodeURIComponent(c.domain)}`}><Act tip="Open its site next to yours: speed, content and links. It is audited first if needed.">Compare</Act></Link>
+                          <Link to={`/backlinks/gap?competitor=${encodeURIComponent(c.domain)}`}><Act tip="Websites that link to this competitor but not to you: places to ask for a link.">Backlinks</Act></Link>
+                          {c.id && <Act danger tip="Stop watching it. It stays in the found list, and you can choose it again." disabled={busy === `out${c.id}`} onClick={() => leaveOut(c)}>Leave out</Act>}
+                        </span>
                       </td>
                     </tr>);
                 })}

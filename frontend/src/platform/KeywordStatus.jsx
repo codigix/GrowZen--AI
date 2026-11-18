@@ -4,6 +4,7 @@ import { ArrowUp, ArrowDown, Search, MapPin, CheckCircle2, ExternalLink } from '
 import { Card, Badge, Stat, ErrorNote, SkList } from './SeoUi';
 import { useApi } from './seoApi';
 import Tip from './Tip';
+import { Head } from './TableBits';
 
 const TONE = { working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' };
 const FILTERS = [['all', 'All'], ['working', 'Working'], ['climbing', 'Can climb'], ['weak', 'Weak'], ['invisible', 'Not showing'], ['unchecked', 'Not checked']];
@@ -44,10 +45,16 @@ export default function KeywordStatus({ b }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px] text-13">
             <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-              <th className={TH}>Keyword</th><th className={TH}>Status</th><th className={`${TH} text-right`}>Position</th><th className={`${TH} text-right`}>Impressions</th><th className={`${TH} text-right`}>Clicks</th>
+              <th className={TH}><Head what="A keyword you track." why="Click it to check its searches and cost." from="your saved keywords.">Keyword</Head></th>
+              <th className={TH}><Head what="Our plain reading: Working (page 1 with clicks), Can climb, Weak, Not showing." why="Tells you where to put effort." from="the Search Console position and clicks of the last 28 days.">Status</Head></th>
+              <th className={`${TH} text-right`}><Head right what="Average Google position, last 28 days." from="Google Search Console.">Position</Head></th>
+              <th className={`${TH} text-right`}><Head right what="How many times your site was shown for it on Google." from="Google Search Console.">Impressions</Head></th>
+              <th className={`${TH} text-right`}><Head right what="How many people clicked your site for it." from="Google Search Console.">Clicks</Head></th>
               <th className={`${TH} text-right`}><Tip text="Searches per month for this keyword (Google Keyword Planner)." align="right">Searches</Tip></th>
               <th className={`${TH} text-right`}><Tip text="Modelled, not measured: monthly searches times the usual click-through of the top spot, minus the clicks you already get. It shows how much the keyword could still give." align="right">Potential / mo</Tip></th>
-              <th className={TH}>Where it is used</th><th className={TH}>Page</th><th className={TH}>Next step</th></tr></thead>
+              <th className={TH}><Head what="Where the keyword already appears: your website, blog, Google posts, AI questions." why="Shows where it is not used yet." from="a scan of your pages, articles, posts and AI-search questions.">Where it is used</Head></th>
+              <th className={TH}><Head what="The page that ranks for it, or the page you chose." from="Search Console, or your choice on My Keywords.">Page</Head></th>
+              <th className={TH}><Head what="The one action we suggest for this keyword. Click it to do it." from="our reading of its status, page and use.">Actions</Head></th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map(x => (
                 <tr key={x.keyword} className="hover:bg-slate-50 align-middle">
