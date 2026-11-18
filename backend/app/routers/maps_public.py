@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import get_business
 from ..models import Business
-from ..services import discovery, maps_public
+from ..services import discovery, gbp_public, maps_public
 from ..services.activity import log
 
 router = APIRouter(prefix="/businesses/{business_id}/maps-public", tags=["maps-public"])
@@ -77,5 +77,75 @@ def apply(body: ApplyIn, b: Business = Depends(get_business), db: Session = Depe
         b.hours = {"weekdayDescriptions": d["hours"]}
         done.append("hours")
     log(db, "system", "maps_profile_applied", b.id, fields=done)
+    db.commit()
+    return {"applied": done}
+
+
+# ------------------------------------------------------------------------------------------------------------------------ the full public profile (DataForSEO) and its analysis
+def _guard(b: Business) -> None:
+    if not b.place_id:
+        raise HTTPException(422, "This project is not linked to a Google Maps listing yet. Find it by name or email on the connect screen.")
+    if not gbp_public.configured():
+        raise HTTPException(422, "Reading the full public profile needs DATAFORSEO_AUTH in the backend settings.")
+
+
+@router.get("/profile")
+def profile(fresh: bool = False, b: Business = Depends(get_business)):
+    """The public profile as Google shows it (description, every category, photo count, claimed, hours, services, what customers mention) and the analysis."""
+    if not b.place_id:
+        return {"state": "no_place", "message": "This project is not linked to a Google Maps listing yet. Find it by name or email on the connect screen."}
+    if not gbp_public.configured():
+        return {"state": "no_key", "message": "Reading the full public profile needs DATAFORSEO_AUTH in the backend settings."}
+    try:
+        p = gbp_public.info(b.place_id, b.country, fresh)
+    except gbp_public.GbpError as exc:
+        return {"state": "error", "message": str(exc)}
+    cached = gbp_public._posts.get(b.place_id)
+    posts = cached[1] if cached else None
+    return {"state": "ok", "profile": p, "posts": posts, "analysis": gbp_public.analyse(p, b, posts)}
+
+
+@router.post("/report")
+def report(fresh: bool = False, b: Business = Depends(get_business)):
+    """The same, with the recent posts read as well (takes about 20 seconds), so the report covers posting."""
+    _guard(b)
+    try:
+        p = gbp_public.info(b.place_id, b.country, fresh)
+        posts = gbp_public.posts(b.place_id, b.country, fresh)
+    except gbp_public.GbpError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {"state": "ok", "profile": p, "posts": posts, "analysis": gbp_public.analyse(p, b, posts)}
+
+
+class ApplyProfileIn(BaseModel):
+    fields: list[str] = Field(min_length=1, max_length=6)
+
+
+@router.post("/apply-profile")
+def apply_profile(body: ApplyProfileIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Copy the chosen values of the public profile into the project (not for profiles connected to Google: Google is the source there)."""
+    if b.gbp_location:
+        raise HTTPException(409, "This profile is connected to Google, so Google is the source: edit it in the cards below.")
+    _guard(b)
+    try:
+        p = gbp_public.info(b.place_id, b.country)
+    except gbp_public.GbpError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    done = []
+    for f in body.fields:
+        if f == "primary_category" and p.get("category"):
+            b.primary_category = p["category"][:160]
+        elif f == "secondary_categories" and p.get("additional_categories"):
+            b.secondary_categories = list(p["additional_categories"])[:9]
+        elif f == "description" and p.get("description"):
+            b.description = p["description"][:750]
+        elif f == "phone" and p.get("phone"):
+            b.phone = p["phone"]
+        elif f == "name" and p.get("title"):
+            b.name = p["title"]
+        else:
+            continue
+        done.append(f)
+    log(db, "system", "gbp_public_applied", b.id, fields=done)
     db.commit()
     return {"applied": done}

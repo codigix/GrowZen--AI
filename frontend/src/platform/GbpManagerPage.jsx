@@ -10,6 +10,7 @@ import AccessGate from './AccessGate';
 import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePosts, isLinked, readBase64 } from './GbpEditors';
 import { MarketCard } from './Market';
 import MapsPublicCard from './MapsPublicCard';
+import GbpPublicReport from './GbpPublicReport';
 import { GbpAccounts, GoogleSignIn, ListingStatus, VerifyPill } from './GbpAccounts';
 import { hoursFrom, hoursTo, isAllDay, WeekEditor, StatusCard, MoreHoursCard, QuickHoursActions, LabelsField, ServiceAreaCard } from './GbpLocationExtras';
 import CreateOnGoogle from './GbpCreate';
@@ -825,7 +826,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
               <SectionHead title="Business Profile" subtitle="Name, categories, address, contact, hours, services, attributes and verification" sources={['google', 'manual']} />
               <Tabs value={sub} onChange={setSub} tabs={[{ id: 'live', label: 'Live from Google' }, { id: 'edit', label: 'Edit profile' }, { id: 'hours', label: 'Hours' }, { id: 'faq', label: 'Q&A / FAQs' }]} />
               {sub === 'live' && <AccessGate b={b} kind="gmb"><GbpLive b={b} toast={toast} onConnect={onConnect} /></AccessGate>}
-              {sub === 'edit' && <div className="space-y-4"><AutopilotPanel bid={b.id} feature="profile" /><MapsPublicCard b={b} /><ProfileTab b={b} toast={toast} /><MarketCard b={b} /></div>}
+              {sub === 'edit' && <div className="space-y-4"><AutopilotPanel bid={b.id} feature="profile" /><GbpPublicReport b={b} /><MapsPublicCard b={b} /><ProfileTab b={b} toast={toast} /><MarketCard b={b} /></div>}
               {sub === 'hours' && <HoursTab b={b} toast={toast} />}
               {sub === 'faq' && <FaqTab b={b} toast={toast} />}
             </>
