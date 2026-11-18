@@ -108,7 +108,7 @@ def dfs_scores(domains: list[str], pages: list[str]) -> dict[str, dict[str, Any]
     need_rank, need_spam = [], []
     for t in list(dict.fromkeys(domains + pages)):
         hit = _DFS.get(t)
-        if hit and now - hit[0] < 86400:
+        if hit and now - hit[0] < 30 * 86400:
             out[t] = hit[1]
         else:
             need_rank.append(t)

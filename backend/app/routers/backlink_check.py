@@ -46,6 +46,25 @@ def _spam_report(d: dict[str, Any], site: dict[str, Any] | None) -> dict[str, An
     return {"level": "risky" if serious else ("check" if flags else "clean"), "flags": flags, "count": len(flags)}
 
 
+def _score_rows(rows: list[dict[str, Any]]) -> str | None:
+    """DataForSEO's DA-like, PA-like and spam numbers, asked for only when a check runs (it bills per request) and stored with the check. Returns a note when it could not be read."""
+    from urllib.parse import urlsplit
+
+    from ..backlinks import pitch
+    if not bc.dfs_configured():
+        return None
+    live = [r for r in rows if r.get("source_url") and r.get("state") != "page_error"]
+    doms = list(dict.fromkeys(pitch._registrable(urlsplit(r["source_url"]).hostname or "") for r in live))
+    try:
+        got = bc.dfs_scores([d for d in doms if d], [r["source_url"] for r in live][:60])
+    except Exception as exc:  # noqa: BLE001
+        return str(exc) if isinstance(exc, bc.CheckError) else "DataForSEO could not be reached."
+    for r in live:
+        d_, p_ = got.get(pitch._registrable(urlsplit(r["source_url"]).hostname or "")) or {}, got.get(r["source_url"]) or {}
+        r["scores"] = {"da": d_.get("rank"), "pa": p_.get("rank"), "spam": d_.get("spam"), "source": "DataForSEO"}
+    return None
+
+
 def _with_site(db: Session, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from urllib.parse import urlsplit
 
@@ -57,20 +76,11 @@ def _with_site(db: Session, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         db.rollback()
         sig = {}
     ranks = bc.opr_ranks([d for d in doms if d])
-    dfs, dfs_note = {}, None
-    if bc.dfs_configured():
-        try:
-            dfs = bc.dfs_scores([d for d in doms if d], [r["source_url"] for r in rows if r.get("source_url") and r.get("state") != "page_error"][:60])
-        except Exception as exc:  # noqa: BLE001
-            dfs_note = str(exc) if isinstance(exc, bc.CheckError) else "DataForSEO could not be reached."
     for r in rows:
         site = sig.get(pitch._registrable(urlsplit(r.get("source_url") or "").hostname or ""))
         dom = pitch._registrable(urlsplit(r.get("source_url") or "").hostname or "")
         r["site"] = site
         r["domain_rank"] = (ranks.get(dom) or {}).get("rank")
-        d_, p_ = dfs.get(dom) or {}, dfs.get(r.get("source_url")) or {}
-        r["scores"] = {"da": d_.get("rank"), "pa": p_.get("rank"), "spam": d_.get("spam"), "source": "DataForSEO"} if dfs else None
-        r["scores_note"] = dfs_note
         r["spam_report"] = _spam_report(r, site)
     return rows
 
@@ -126,6 +136,7 @@ def run_check(body: CheckIn, b: Business = Depends(get_business), db: Session = 
         rows, note = bc.check_many(body.sources[: bc.MAX_SOURCES], target)
     except bc.CheckError as exc:
         raise HTTPException(422, str(exc)) from exc
+    note = note or _score_rows(rows)
     saved = []
     for r in rows:
         row = db.scalar(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id, BacklinkCheck.source_url == r["source_url"], BacklinkCheck.target == tgt["label"]))
