@@ -102,7 +102,8 @@ def profile(fresh: bool = False, b: Business = Depends(get_business)):
         return {"state": "error", "message": str(exc)}
     cached = gbp_public._posts.get(b.place_id)
     posts = cached[1] if cached else None
-    return {"state": "ok", "profile": p, "posts": posts, "analysis": gbp_public.analyse(p, b, posts)}
+    mine = [x.get("name", "") for x in (b.services or []) if isinstance(x, dict)]
+    return {"state": "ok", "profile": p, "posts": posts, "analysis": gbp_public.analyse(p, b, posts), "service_ideas": gbp_public.service_ideas(p, mine)}
 
 
 @router.post("/report")
@@ -149,3 +150,61 @@ def apply_profile(body: ApplyProfileIn, b: Business = Depends(get_business), db:
     log(db, "system", "gbp_public_applied", b.id, fields=done)
     db.commit()
     return {"applied": done}
+
+
+class ReviewsIn(BaseModel):
+    depth: int = Field(default=100, ge=10, le=200)
+
+
+@router.post("/import-reviews")
+def import_reviews(body: ReviewsIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Read the listing's public reviews and add the ones not saved yet. An owner reply Google already shows is kept as a posted reply."""
+    from datetime import datetime
+
+    from sqlalchemy import select
+
+    from ..models import Review
+    if b.gbp_location:
+        raise HTTPException(409, "This profile is connected to Google: reviews arrive with the Google sync.")
+    _guard(b)
+    try:
+        got = gbp_public.reviews(b.place_id, b.country, body.depth)
+    except gbp_public.GbpError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+    def when(v):
+        try:
+            return datetime.fromisoformat(str(v).replace(" +00:00", "+00:00")) if v else None
+        except ValueError:
+            return None
+
+    have = {(r.external_id) for r in db.scalars(select(Review).where(Review.business_id == b.id))}
+    seen = {((r.author or "").lower(), r.rating, r.review_date) for r in db.scalars(select(Review).where(Review.business_id == b.id))}
+    added = skipped = 0
+    for x in got:
+        ext = f"dfs:{x['id']}"[:250]
+        at = when(x["at"])
+        key = ((x["author"] or "").lower(), x["rating"], at.date() if at else None)
+        if ext in have or key in seen:
+            skipped += 1
+            continue
+        rep_at = when(x["reply_at"])
+        db.add(Review(business_id=b.id, external_id=ext, author=(x["author"] or "")[:160], rating=x["rating"], body=x["text"] or None, review_date=at.date() if at else None, review_at=at,
+                      reply_text=x["reply"] or None, reply_status="posted" if x["reply"] else "none", replied_at=rep_at,
+                      sentiment="positive" if x["rating"] >= 4 else "negative" if x["rating"] <= 2 else "neutral"))
+        seen.add(key)
+        added += 1
+    log(db, "system", "public_reviews_imported", b.id, added=added)
+    db.commit()
+    return {"added": added, "skipped": skipped, "read": len(got)}
+
+
+@router.get("/reviews")
+def saved_reviews(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The reviews saved for this project (read from the public listing). Unlike the Google reviews page, this needs no Google sign-in."""
+    from sqlalchemy import select
+
+    from ..models import Review
+    from ..serialize import rows
+    found = list(db.scalars(select(Review).where(Review.business_id == b.id).order_by(Review.review_date.desc().nullslast(), Review.id.desc())))
+    return {"reviews": rows(found)}

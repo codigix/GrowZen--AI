@@ -10,6 +10,7 @@ import AccessGate from './AccessGate';
 import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePosts, isLinked, readBase64 } from './GbpEditors';
 import { MarketCard } from './Market';
 import GbpPublicReport from './GbpPublicReport';
+import PublicReviews from './PublicReviews';
 import { GbpAccounts, GoogleSignIn, ListingStatus, VerifyPill } from './GbpAccounts';
 import { hoursFrom, hoursTo, isAllDay, WeekEditor, StatusCard, MoreHoursCard, QuickHoursActions, LabelsField, ServiceAreaCard } from './GbpLocationExtras';
 import CreateOnGoogle from './GbpCreate';
@@ -95,6 +96,7 @@ function ProfileTab({ b, toast }) {
   const [p, setP] = useState(() => ({ name: b.name, primary_category: b.primary_category || '', secondary_categories: b.secondary_categories || [], phone: b.phone || '', website: b.website || '', address: b.address || '', area: b.area || '', city: b.city || '', country: b.country || 'IN', description: b.description || '', services: b.services || [], attributes: b.attributes || [], booking_url: b.booking_url || '', labels: b.labels || [], additional_phones: b.additional_phones || [], action_links: (b.action_links || []).filter(x => x.type !== 'APPOINTMENT'), lat: b.lat ?? '', lng: b.lng ?? '' }));
   const [attr, setAttr] = useState('');
   const linked = isLinked(b);
+  const gsvc = useApi(b.place_id && !linked ? `/businesses/${b.id}/maps-public/profile` : null);
   const [busy, error, run] = useAction();
   const set = (k, v) => setP(x => ({ ...x, [k]: v }));
   const save = () => run('save', async () => {
@@ -251,6 +253,13 @@ function ProfileTab({ b, toast }) {
 
           <Sect id="services" icon={ListChecks} title="Services & prices" hint="Shown under the Services section of your Google profile."
             action={<Button size="sm" icon={Plus} onClick={() => set('services', [...p.services, { name: '', price: '', description: '' }])}>Add service</Button>}>
+            {gsvc.data?.state === 'ok' && (
+              <div className="mb-3 rounded-lg bg-slate-50 px-3.5 py-3 text-13 grid gap-2">
+                <div className="text-slate-700"><b>On Google now:</b> {gsvc.data.profile.services.length ? gsvc.data.profile.services.map(x => (typeof x === 'string' ? x : x.name)).join(', ') : 'no services are listed on the profile.'}</div>
+                {gsvc.data.service_ideas.length > 0 && (<div className="flex flex-wrap items-center gap-1.5"><span className="text-slate-500">Suggested from your Google categories:</span>
+                  {gsvc.data.service_ideas.filter(n => !p.services.some(x => (x.name || '').toLowerCase() === n.toLowerCase())).map(n => <button key={n} type="button" onClick={() => set('services', [...p.services.filter(x => x.name), { name: n, price: '', description: '' }])} className="h-7 px-2.5 rounded-full text-12 font-semibold bg-white text-indigo-700 ring-1 ring-inset ring-indigo-200 hover:bg-indigo-50 cursor-pointer">+ {n}</button>)}</div>)}
+              </div>
+            )}
             {p.services.length === 0 && <p className="text-13 text-slate-400">No services yet. Add the main things customers book or buy.</p>}
             <div className="space-y-2">
               {p.services.map((s, i) => (
@@ -884,7 +893,8 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
               <BusinessTraffic b={b} initialView={trafficView} />
             </>
           )}
-          {section === 'reviews' && <AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="replies" /><ReviewsSection b={b} toast={toast} /></div></AccessGate>}
+          {section === 'reviews' && !(b.gbp_location && b.connection_id) && <PublicReviews b={b} />}
+          {section === 'reviews' && (b.gbp_location && b.connection_id) && <AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="replies" /><ReviewsSection b={b} toast={toast} /></div></AccessGate>}
           {section === 'posts' && <><SectionHead title="Posts & Content" subtitle="What's New, Offer and Event posts with approval before publishing" sources={['google', 'ai']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="posts" /><PostsTab b={b} toast={toast} /></div></AccessGate></>}
           {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="photos" /><PhotosTab b={b} toast={toast} /></div></AccessGate></>}
           {section === 'competitors' && <CompetitorSection b={b} />}

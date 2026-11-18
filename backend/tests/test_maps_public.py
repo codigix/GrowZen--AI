@@ -71,3 +71,20 @@ def test_profile_analysis_and_roadmap(client, bid, monkeypatch):
     assert [p["days"] for p in full["analysis"]["roadmap"]] == [7, 30, 90] and full["analysis"]["roadmap"][0]["items"]
     done = client.post(f"/api/v1/businesses/{bid}/maps-public/apply-profile", json={"fields": ["primary_category", "secondary_categories", "description"]}).json()
     assert set(done["applied"]) == {"primary_category", "secondary_categories", "description"}
+
+
+def test_import_public_reviews_and_service_ideas(client, bid, monkeypatch):
+    from app.services import gbp_public
+    monkeypatch.setattr(gbp_public, "configured", lambda: True)
+    monkeypatch.setattr(gbp_public, "info", lambda *a, **k: INFO)
+    got = [{"id": "r1", "author": "Asha", "rating": 5, "text": "Great", "at": "2026-10-30 14:59:17 +00:00", "reply": "Thank you", "reply_at": "2026-10-31 10:00:00 +00:00"},
+           {"id": "r2", "author": "Ravi", "rating": 2, "text": "", "at": "2026-10-20 09:00:00 +00:00", "reply": "", "reply_at": None}]
+    monkeypatch.setattr(gbp_public, "reviews", lambda *a, **k: got)
+    r = client.post(f"/api/v1/businesses/{bid}/maps-public/import-reviews", json={"depth": 20}).json()
+    assert r == {"added": 2, "skipped": 0, "read": 2}
+    again = client.post(f"/api/v1/businesses/{bid}/maps-public/import-reviews", json={"depth": 20}).json()
+    assert again["added"] == 0 and again["skipped"] == 2
+    rows = {x["author"]: x for x in client.get(f"/api/v1/businesses/{bid}/maps-public/reviews").json()["reviews"]}
+    assert rows["Asha"]["reply_status"] == "posted" and rows["Ravi"]["reply_status"] == "none" and rows["Ravi"]["rating"] == 2
+    ideas = client.get(f"/api/v1/businesses/{bid}/maps-public/profile").json()["service_ideas"]
+    assert "Dental clinic" in ideas and "Dentist" in ideas

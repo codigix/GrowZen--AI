@@ -114,6 +114,42 @@ def posts(place_id: str, country: str | None = None, fresh: bool = False) -> lis
     return out
 
 
+def reviews(place_id: str, country: str | None = None, depth: int = 100) -> list[dict[str, Any]]:
+    """Public reviews of the listing, newest first (a DataForSEO task: about 20 to 60 seconds for 100). Each has the author, stars, date, text and the owner's reply when there is one."""
+    try:
+        made = _check(httpx.post(f"{BASE}reviews/task_post", headers=_headers(), json=[{"keyword": f"place_id:{place_id}", "location_name": _location(country), "language_code": "en", "depth": max(10, min(depth, 200)), "sort_by": "newest"}], timeout=60).json())
+        tid = made.get("id")
+        if not tid:
+            raise GbpError("DataForSEO did not start the reviews task.")
+        got = None
+        for _ in range(30):
+            time.sleep(4)
+            task = (httpx.get(f"{BASE}reviews/task_get/{tid}", headers=_headers(), timeout=60).json().get("tasks") or [{}])[0]
+            if task.get("status_code") == 20000:
+                got = task
+                break
+            if task.get("status_code") not in (40601, 40602):
+                raise GbpError(f"DataForSEO: {task.get('status_message') or 'reviews failed'}")
+    except httpx.HTTPError as exc:
+        raise GbpError("DataForSEO could not be reached.") from exc
+    if not got:
+        raise GbpError("The reviews are taking longer than usual. Try again in a minute.")
+    items = ((got.get("result") or [{}])[0] or {}).get("items") or []
+    return [{"id": i.get("review_id"), "author": i.get("profile_name"), "rating": int((i.get("rating") or {}).get("value") or 0), "text": i.get("review_text") or i.get("original_review_text") or "",
+             "at": i.get("timestamp"), "reply": i.get("owner_answer") or i.get("original_owner_answer") or "", "reply_at": i.get("owner_timestamp")} for i in items if i.get("review_id")]
+
+
+def service_ideas(p: dict[str, Any], existing: list[str]) -> list[str]:
+    """Service names to offer on the profile, taken from the categories Google shows for it (Google lists no services of its own for many profiles)."""
+    have = {"".join(ch for ch in x.lower() if ch.isalnum()) for x in existing}
+    out: list[str] = []
+    for name in [p.get("category")] + list(p.get("additional_categories") or []):
+        key = "".join(ch for ch in (name or "").lower() if ch.isalnum())
+        if name and key not in have and name not in out:
+            out.append(name)
+    return out[:12]
+
+
 # ------------------------------------------------------------------------------------------------------------------------ analysis
 def _row(key: str, label: str, status: str, detail: str, weight: int, fix: str | None = None, phase: str = "30") -> dict[str, Any]:
     return {"key": key, "label": label, "status": status, "detail": detail, "weight": weight, "fix": fix, "phase": phase}

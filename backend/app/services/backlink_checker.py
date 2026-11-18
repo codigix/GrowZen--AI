@@ -39,6 +39,42 @@ class CheckError(Exception):
     pass
 
 
+_GOOGLE: dict[str, tuple[float, dict[str, Any] | None]] = {}
+
+
+def google_configured() -> bool:
+    from ..config import get_settings
+    return bool(get_settings().serper_api_key.strip())
+
+
+def google_presence(url: str) -> dict[str, Any] | None:
+    """What google.com itself shows for this exact page: is it indexed (a `site:` search for the address finds it), and under what title and snippet. Read through Serper; None when it cannot be read.
+    Kept a day. This is the only part of the Google result page that is data about the page: authority numbers shown by browser toolbars are added by the toolbar, not by Google."""
+    import time
+    from urllib.parse import urlsplit
+
+    from ..config import get_settings
+    if not google_configured():
+        return None
+    hit = _GOOGLE.get(url)
+    if hit and time.time() - hit[0] < 86400:
+        return hit[1]
+    sp = urlsplit(url)
+    key = (sp.hostname or "").removeprefix("www.") + (sp.path or "").rstrip("/")
+    out = None
+    try:
+        r = httpx.post("https://google.serper.dev/search", headers={"X-API-KEY": get_settings().serper_api_key.strip(), "Content-Type": "application/json"}, json={"q": f"site:{key}", "num": 10}, timeout=20)
+        if r.status_code == 200:
+            items = r.json().get("organic") or []
+            norm = lambda u: (urlsplit(u).hostname or "").removeprefix("www.") + (urlsplit(u).path or "").rstrip("/")  # noqa: E731
+            match = next((i for i in items if norm(i.get("link") or "") == key), None)
+            out = {"indexed": match is not None, "title": (match or {}).get("title"), "snippet": ((match or {}).get("snippet") or "")[:220], "position": (match or {}).get("position"), "pages_found": len(items)}
+            _GOOGLE[url] = (time.time(), out)
+    except (httpx.HTTPError, ValueError):
+        out = None
+    return out
+
+
 _DFS: dict[str, tuple[float, dict[str, Any]]] = {}
 DFS_URL = "https://api.dataforseo.com/v3/backlinks/"
 
@@ -282,6 +318,10 @@ def check_many(sources: list[str], target: str) -> tuple[list[dict[str, Any]], s
         raise CheckError("Add at least one page address to check.")
     with ThreadPoolExecutor(max_workers=5) as pool:
         rows = list(pool.map(lambda u: check_one(u, tgt), urls))
+    if google_configured():
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            for r, g in zip(rows, pool.map(lambda r: google_presence(r["final_url"] or r["source_url"]) if r["state"] != "page_error" else None, rows)):
+                r["google"] = g
     note = None
     if moz_configured():
         try:
