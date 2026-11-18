@@ -179,9 +179,7 @@ function ProfileTab({ b, toast }) {
                 {gsvc.data?.state === 'ok' && gsvc.data.profile.category && gsvc.data.profile.category.toLowerCase() !== (p.primary_category || '').toLowerCase() && (
                   <button type="button" onClick={() => set('primary_category', gsvc.data.profile.category)} className="mt-1.5 text-12 text-indigo-700 hover:underline cursor-pointer text-left">Google shows “{gsvc.data.profile.category}” as the main category: use it</button>)}</Field>
               <Field label="Secondary categories" hint="Comma separated"><input className={inputCls} value={p.secondary_categories.join(', ')} onChange={e => set('secondary_categories', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} />
-                {gsvc.data?.state === 'ok' && (() => { const left = gsvc.data.profile.additional_categories.filter(c => !p.secondary_categories.some(x => x.toLowerCase() === c.toLowerCase())); return left.length > 0 && (
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5"><span className="text-12 text-slate-500">On Google:</span>{left.map(c => <button key={c} type="button" onClick={() => set('secondary_categories', [...p.secondary_categories, c].slice(0, 9))} className="h-7 px-2.5 rounded-full text-12 font-semibold bg-white text-indigo-700 ring-1 ring-inset ring-indigo-200 hover:bg-indigo-50 cursor-pointer">+ {c}</button>)}
-                    <button type="button" onClick={() => set('secondary_categories', [...new Set([...p.secondary_categories, ...left])].slice(0, 9))} className="text-12 text-slate-500 hover:underline cursor-pointer">add all</button></div>); })()}</Field></>}
+              </Field></>}
             </div>
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3"><LabelsField value={p.labels} onChange={v => set('labels', v)} /></div>
             {linked && <p className="mt-3 text-12 text-slate-500">Categories, address and map pin are managed in the Google cards below, because Google needs them in its own format.</p>}
@@ -260,12 +258,8 @@ function ProfileTab({ b, toast }) {
 
           <Sect id="services" icon={ListChecks} title="Services & prices" hint="Shown under the Services section of your Google profile."
             action={<Button size="sm" icon={Plus} onClick={() => set('services', [...p.services, { name: '', price: '', description: '' }])}>Add service</Button>}>
-            {gsvc.data?.state === 'ok' && (
-              <div className="mb-3 rounded-lg bg-slate-50 px-3.5 py-3 text-13 grid gap-2">
-                <div className="text-slate-700"><b>On Google now:</b> {gsvc.data.profile.services.length ? gsvc.data.profile.services.map(x => (typeof x === 'string' ? x : x.name)).join(', ') : 'no services are listed on the profile.'}</div>
-                {gsvc.data.service_ideas.length > 0 && (<div className="flex flex-wrap items-center gap-1.5"><span className="text-slate-500">Suggested from your Google categories:</span>
-                  {gsvc.data.service_ideas.filter(n => !p.services.some(x => (x.name || '').toLowerCase() === n.toLowerCase())).map(n => <button key={n} type="button" onClick={() => set('services', [...p.services.filter(x => x.name), { name: n, price: '', description: '' }])} className="h-7 px-2.5 rounded-full text-12 font-semibold bg-white text-indigo-700 ring-1 ring-inset ring-indigo-200 hover:bg-indigo-50 cursor-pointer">+ {n}</button>)}</div>)}
-              </div>
+            {gsvc.data?.state === 'ok' && !gsvc.data.profile.services.length && (
+              <p className="mb-3 rounded-lg bg-slate-50 px-3.5 py-3 text-13 text-slate-600">Google does not share a business's services list with other tools. Paste it below, or connect the Google account to read it and publish changes.</p>
             )}
             <div className="mb-3 text-13">
               <button type="button" onClick={() => setPasteOpen(v => !v)} className="font-semibold text-indigo-600 hover:underline cursor-pointer">{pasteOpen ? 'Hide' : 'Paste the services list from Google'}</button>

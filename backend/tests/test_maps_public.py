@@ -7,7 +7,8 @@ PLACE = {"id": "ChIJ123", "displayName": {"text": "Hub Clinic"}, "formattedAddre
          "internationalPhoneNumber": "+91 20 1234 5678", "websiteUri": "https://hub-clinic.in/", "rating": 4.6, "userRatingCount": 120, "primaryTypeDisplayName": {"text": "Dental clinic"},
          "types": ["dentist", "health", "point_of_interest"], "location": {"latitude": 18.52, "longitude": 73.85}, "businessStatus": "OPERATIONAL",
          "regularOpeningHours": {"weekdayDescriptions": ["Monday: 9:00 AM - 6:00 PM"]}, "editorialSummary": {"text": "Family dental care."},
-         "reviews": [{"rating": 5, "text": {"text": "Great"}, "authorAttribution": {"displayName": "Asha"}, "relativePublishTimeDescription": "a week ago"}],
+         "reviews": [{"name": "places/ChIJ123/reviews/r1", "publishTime": "2026-10-30T14:59:17Z", "rating": 5, "text": {"text": "Great"}, "authorAttribution": {"displayName": "Asha"}, "relativePublishTimeDescription": "a week ago"},
+                     {"name": "places/ChIJ123/reviews/r2", "publishTime": "2026-10-20T09:00:00Z", "rating": 2, "authorAttribution": {"displayName": "Ravi"}}],
          "photos": [{}, {}], "wheelchairAccessibleEntrance": True, "takeout": True, "paymentOptions": {"acceptsCreditCards": True}}
 
 
@@ -52,39 +53,83 @@ def test_not_linked_to_maps(client, monkeypatch):
     assert client.get(f"/api/v1/businesses/{b}/maps-public").json()["state"] == "no_place"
 
 
-INFO = {"title": "Hub Clinic", "category": "Dental clinic", "additional_categories": ["Dentist"], "description": "x" * 300, "phone": "+91 20 1234 5678", "website": "https://hub-clinic.in/",
-        "book_url": None, "address": "12 MG Road", "address_info": {}, "rating": 4.2, "votes": 40, "distribution": {"1": 5, "2": 3, "5": 32}, "photos": 12, "claimed": True, "price": None,
-        "hours": ["Monday: 09:00-18:00"], "attributes": [], "attributes_missing": [], "services": [], "topics": [], "qa_count": None, "links": [], "logo": None, "image": None, "cid": "1", "read_at": "2026-11-18T00:00:00+00:00"}
+SEARCH = {"state": "ok", "account": "owner@example.com", "property": "sc-domain:hub-clinic.in", "period": {"start": "2026-10-20", "end": "2026-11-16", "days": 28},
+          "totals": {"clicks": 40, "impressions": 900, "ctr": 4.4, "position": 12.5, "keywords": 30, "pages": 8}, "previous": {"clicks": 30, "impressions": 700, "ctr": 4.2, "position": 14.0, "keywords": 20, "pages": 6},
+          "keywords": [{"query": "hub clinic", "clicks": 20, "impressions": 300, "ctr": 6.6, "position": 1.2}, {"query": "dentist near me pune", "clicks": 3, "impressions": 200, "ctr": 1.5, "position": 9.0},
+                       {"query": "teeth whitening", "clicks": 1, "impressions": 400, "ctr": 0.2, "position": 21.0}], "pages": []}
 
 
-def test_profile_analysis_and_roadmap(client, bid, monkeypatch):
+def _city(bid, city="Pune"):
+    from app.db import SessionLocal
+    from app.models import Business
+    db = SessionLocal()
+    try:
+        db.get(Business, bid).city = city
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_profile_comes_from_google_places_and_search_console_not_a_paid_service(client, bid, monkeypatch):
     from app.services import gbp_public
-    monkeypatch.setattr(gbp_public, "configured", lambda: True)
-    monkeypatch.setattr(gbp_public, "info", lambda *a, **k: INFO)
-    monkeypatch.setattr(gbp_public, "posts", lambda *a, **k: [{"text": "Offer", "date": "2020-01-01", "url": None, "image": None, "has_link": False}])
+    _city(bid)
+    monkeypatch.setattr(gbp_public, "search", lambda db, b: SEARCH)
     r = client.get(f"/api/v1/businesses/{bid}/maps-public/profile").json()
-    assert r["state"] == "ok" and r["posts"] is None and 0 < r["analysis"]["score"] < 100
+    assert r["state"] == "ok" and r["profile"]["source"] == "Google Places"
+    p = r["profile"]
+    assert p["rating"] == 4.6 and p["votes"] == 120 and p["distribution"] is None and p["claimed"] is None and p["services"] == [] and r["posts"] is None
     keys = {c["key"]: c["status"] for c in r["analysis"]["checks"]}
-    assert keys["photos"] == "bad" and keys["reviews"] == "warn" and "posts" not in keys
-    full = client.post(f"/api/v1/businesses/{bid}/maps-public/report").json()
-    assert {c["key"]: c["status"] for c in full["analysis"]["checks"]}["posts"] == "bad"
-    assert [p["days"] for p in full["analysis"]["roadmap"]] == [7, 30, 90] and full["analysis"]["roadmap"][0]["items"]
-    done = client.post(f"/api/v1/businesses/{bid}/maps-public/apply-profile", json={"fields": ["primary_category", "secondary_categories", "description"]}).json()
-    assert set(done["applied"]) == {"primary_category", "secondary_categories", "description"}
+    assert "claimed" not in keys and "posts" not in keys and "description" not in keys and "negatives" not in keys  # what Google does not share is left out, not guessed
+    assert keys["search_visibility"] == "warn" and keys["brand_search"] == "ok" and keys["local_search"] == "ok"
+    assert r["analysis"]["search_read"] is True and r["search"]["totals"]["clicks"] == 40
+    assert [x["days"] for x in r["analysis"]["roadmap"]] == [7, 30, 90] and r["analysis"]["roadmap"][2]["items"]
 
 
-def test_import_public_reviews_and_service_ideas(client, bid, monkeypatch):
+def test_profile_says_why_search_console_cannot_be_read(client, bid, monkeypatch):
+    from app.services import gsc_access
+    monkeypatch.setattr(gsc_access, "search_console", lambda db, b, host: ("not_connected", "No Google account is linked to this project.", None, None))
+    r = client.get(f"/api/v1/businesses/{bid}/maps-public/profile").json()
+    assert r["state"] == "ok" and r["search"]["state"] == "not_connected" and "No Google account" in r["search"]["message"]
+    assert r["analysis"]["search_read"] is False and "search_visibility" not in {c["key"] for c in r["analysis"]["checks"]}
+
+
+def test_a_connected_profile_adds_its_own_saved_reviews_posts_and_services(client, bid, monkeypatch):
+    from datetime import date, datetime, timezone
+
+    from app.db import SessionLocal
+    from app.models import Business, Post, Review
     from app.services import gbp_public
-    monkeypatch.setattr(gbp_public, "configured", lambda: True)
-    monkeypatch.setattr(gbp_public, "info", lambda *a, **k: INFO)
-    got = [{"id": "r1", "author": "Asha", "rating": 5, "text": "Great", "at": "2026-10-30 14:59:17 +00:00", "reply": "Thank you", "reply_at": "2026-10-31 10:00:00 +00:00"},
-           {"id": "r2", "author": "Ravi", "rating": 2, "text": "", "at": "2026-10-20 09:00:00 +00:00", "reply": "", "reply_at": None}]
-    monkeypatch.setattr(gbp_public, "reviews", lambda *a, **k: got)
-    r = client.post(f"/api/v1/businesses/{bid}/maps-public/import-reviews", json={"depth": 20}).json()
+    monkeypatch.setattr(gbp_public, "search", lambda db, b: {"state": "no_site", "message": "x"})
+    db = SessionLocal()
+    try:
+        b = db.get(Business, bid)
+        b.gbp_location, b.description, b.photo_count = "locations/1", "d" * 420, 140
+        b.services = [{"name": "Cleaning", "price": "500"}]
+        for i, star in enumerate([5, 5, 5, 4, 4, 2]):
+            db.add(Review(business_id=bid, external_id=f"g{i}", author=f"A{i}", rating=star, review_date=date(2026, 10, 1)))
+        db.add(Post(business_id=bid, body="Offer", status="published", published_at=datetime.now(timezone.utc)))
+        db.commit()
+    finally:
+        db.close()
+    r = client.get(f"/api/v1/businesses/{bid}/maps-public/profile").json()
+    p = r["profile"]
+    assert p["claimed"] is True and p["distribution"] == {"1": 0, "2": 1, "3": 0, "4": 2, "5": 3} and p["services"][0]["name"] == "Cleaning" and p["photos"] == 140 and p["photos_partial"] is False
+    keys = {c["key"]: c["status"] for c in r["analysis"]["checks"]}
+    assert keys["claimed"] == "ok" and keys["description"] == "ok" and keys["negatives"] == "bad" and keys["services"] == "ok" and keys["posts"] in ("ok", "warn")
+    assert len(r["posts"]) == 1
+
+
+def test_save_the_reviews_google_shows(client, bid):
+    r = client.post(f"/api/v1/businesses/{bid}/maps-public/import-reviews", json={"depth": 5}).json()
     assert r == {"added": 2, "skipped": 0, "read": 2}
-    again = client.post(f"/api/v1/businesses/{bid}/maps-public/import-reviews", json={"depth": 20}).json()
+    again = client.post(f"/api/v1/businesses/{bid}/maps-public/import-reviews", json={"depth": 5}).json()
     assert again["added"] == 0 and again["skipped"] == 2
     rows = {x["author"]: x for x in client.get(f"/api/v1/businesses/{bid}/maps-public/reviews").json()["reviews"]}
-    assert rows["Asha"]["reply_status"] == "posted" and rows["Ravi"]["reply_status"] == "none" and rows["Ravi"]["rating"] == 2
-    ideas = client.get(f"/api/v1/businesses/{bid}/maps-public/profile").json()["service_ideas"]
-    assert "Dental clinic" in ideas and "Dentist" in ideas
+    assert rows["Asha"]["rating"] == 5 and rows["Asha"]["body"] == "Great" and rows["Ravi"]["rating"] == 2
+
+
+def test_apply_profile_copies_only_what_maps_really_has(client, bid):
+    r = client.post(f"/api/v1/businesses/{bid}/maps-public/apply-profile", json={"fields": ["primary_category", "phone", "secondary_categories", "description"]}).json()
+    assert set(r["applied"]) == {"primary_category", "phone"}  # Google's summary is not the owner's description, and its place types are not business categories
+    b = client.get(f"/api/v1/businesses/{bid}").json()
+    assert b["primary_category"] == "Dental clinic"

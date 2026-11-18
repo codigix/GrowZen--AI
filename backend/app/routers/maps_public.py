@@ -81,41 +81,28 @@ def apply(body: ApplyIn, b: Business = Depends(get_business), db: Session = Depe
     return {"applied": done}
 
 
-# ------------------------------------------------------------------------------------------------------------------------ the full public profile (DataForSEO) and its analysis
+# ------------------------------------------------------------------------------------------------------------------------ the profile as Google shows it, its analysis and Search Console
 def _guard(b: Business) -> None:
     if not b.place_id:
         raise HTTPException(422, "This project is not linked to a Google Maps listing yet. Find it by name or email on the connect screen.")
-    if not gbp_public.configured():
-        raise HTTPException(422, "Reading the full public profile needs DATAFORSEO_AUTH in the backend settings.")
+    if not discovery.places_enabled():
+        raise HTTPException(422, "Reading Google Maps needs a Places API key: add GOOGLE_PLACES_API_KEY to the backend settings.")
 
 
 @router.get("/profile")
-def profile(fresh: bool = False, b: Business = Depends(get_business)):
-    """The public profile as Google shows it (description, every category, photo count, claimed, hours, services, what customers mention) and the analysis."""
+def profile(fresh: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The profile as Google shows it (Places API), set against the connected profile's own saved data when there is one, and how the website does in Google Search (Search Console)."""
     if not b.place_id:
         return {"state": "no_place", "message": "This project is not linked to a Google Maps listing yet. Find it by name or email on the connect screen."}
-    if not gbp_public.configured():
-        return {"state": "no_key", "message": "Reading the full public profile needs DATAFORSEO_AUTH in the backend settings."}
+    if not discovery.places_enabled():
+        return {"state": "no_key", "message": "Reading Google Maps needs a Places API key: add GOOGLE_PLACES_API_KEY to the backend settings."}
     try:
-        p = gbp_public.info(b.place_id, b.country, fresh)
+        p = gbp_public.enrich_from_connection(gbp_public.info(b.place_id, fresh), b, db)
     except gbp_public.GbpError as exc:
         return {"state": "error", "message": str(exc)}
-    cached = gbp_public._posts.get(b.place_id)
-    posts = cached[1] if cached else None
-    mine = [x.get("name", "") for x in (b.services or []) if isinstance(x, dict)]
-    return {"state": "ok", "profile": p, "posts": posts, "analysis": gbp_public.analyse(p, b, posts), "service_ideas": gbp_public.service_ideas(p, mine)}
-
-
-@router.post("/report")
-def report(fresh: bool = False, b: Business = Depends(get_business)):
-    """The same, with the recent posts read as well (takes about 20 seconds), so the report covers posting."""
-    _guard(b)
-    try:
-        p = gbp_public.info(b.place_id, b.country, fresh)
-        posts = gbp_public.posts(b.place_id, b.country, fresh)
-    except gbp_public.GbpError as exc:
-        raise HTTPException(502, str(exc)) from exc
-    return {"state": "ok", "profile": p, "posts": posts, "analysis": gbp_public.analyse(p, b, posts)}
+    posts = gbp_public.saved_posts(b, db)
+    sc = gbp_public.search(db, b)
+    return {"state": "ok", "profile": p, "posts": posts, "search": sc, "analysis": gbp_public.analyse(p, b, posts, sc)}
 
 
 class ApplyProfileIn(BaseModel):
@@ -124,22 +111,18 @@ class ApplyProfileIn(BaseModel):
 
 @router.post("/apply-profile")
 def apply_profile(body: ApplyProfileIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """Copy the chosen values of the public profile into the project (not for profiles connected to Google: Google is the source there)."""
+    """Copy the chosen values of the Maps listing into the project (not for profiles connected to Google: Google is the source there)."""
     if b.gbp_location:
         raise HTTPException(409, "This profile is connected to Google, so Google is the source: edit it in the cards below.")
     _guard(b)
     try:
-        p = gbp_public.info(b.place_id, b.country)
+        p = gbp_public.info(b.place_id)
     except gbp_public.GbpError as exc:
         raise HTTPException(502, str(exc)) from exc
     done = []
     for f in body.fields:
         if f == "primary_category" and p.get("category"):
             b.primary_category = p["category"][:160]
-        elif f == "secondary_categories" and p.get("additional_categories"):
-            b.secondary_categories = list(p["additional_categories"])[:9]
-        elif f == "description" and p.get("description"):
-            b.description = p["description"][:750]
         elif f == "phone" and p.get("phone"):
             b.phone = p["phone"]
         elif f == "name" and p.get("title"):
@@ -153,45 +136,45 @@ def apply_profile(body: ApplyProfileIn, b: Business = Depends(get_business), db:
 
 
 class ReviewsIn(BaseModel):
-    depth: int = Field(default=100, ge=10, le=200)
+    depth: int = Field(default=5, ge=1, le=200)  # kept for older callers: Google shows five
 
 
 @router.post("/import-reviews")
 def import_reviews(body: ReviewsIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """Read the listing's public reviews and add the ones not saved yet. An owner reply Google already shows is kept as a posted reply."""
+    """Save the reviews the Maps listing shows (Google shares the five most relevant) that are not saved yet. An owner reply Google already shows is kept as a posted reply."""
     from datetime import datetime
 
     from sqlalchemy import select
 
     from ..models import Review
     if b.gbp_location:
-        raise HTTPException(409, "This profile is connected to Google: reviews arrive with the Google sync.")
+        raise HTTPException(409, "This profile is connected to Google: all its reviews arrive with the Google sync.")
     _guard(b)
     try:
-        got = gbp_public.reviews(b.place_id, b.country, body.depth)
-    except gbp_public.GbpError as exc:
+        got = maps_public.fetch(b.place_id, fresh=True).get("reviews") or []
+    except discovery.DiscoveryError as exc:
         raise HTTPException(502, str(exc)) from exc
 
     def when(v):
         try:
-            return datetime.fromisoformat(str(v).replace(" +00:00", "+00:00")) if v else None
+            return datetime.fromisoformat(str(v).replace("Z", "+00:00")) if v else None
         except ValueError:
             return None
 
-    have = {(r.external_id) for r in db.scalars(select(Review).where(Review.business_id == b.id))}
+    have = {r.external_id for r in db.scalars(select(Review).where(Review.business_id == b.id))}
     seen = {((r.author or "").lower(), r.rating, r.review_date) for r in db.scalars(select(Review).where(Review.business_id == b.id))}
     added = skipped = 0
     for x in got:
-        ext = f"dfs:{x['id']}"[:250]
-        at = when(x["at"])
-        key = ((x["author"] or "").lower(), x["rating"], at.date() if at else None)
-        if ext in have or key in seen:
+        ext = (x.get("name") or "")[:250]
+        author = ((x.get("authorAttribution") or {}).get("displayName") or "")[:160]
+        rating = int(x.get("rating") or 0)
+        at = when(x.get("publishTime"))
+        key = (author.lower(), rating, at.date() if at else None)
+        if not ext or ext in have or key in seen:
             skipped += 1
             continue
-        rep_at = when(x["reply_at"])
-        db.add(Review(business_id=b.id, external_id=ext, author=(x["author"] or "")[:160], rating=x["rating"], body=x["text"] or None, review_date=at.date() if at else None, review_at=at,
-                      reply_text=x["reply"] or None, reply_status="posted" if x["reply"] else "none", replied_at=rep_at,
-                      sentiment="positive" if x["rating"] >= 4 else "negative" if x["rating"] <= 2 else "neutral"))
+        db.add(Review(business_id=b.id, external_id=ext, author=author, rating=rating, body=((x.get("text") or {}).get("text") or None), review_date=at.date() if at else None, review_at=at,
+                      sentiment="positive" if rating >= 4 else "negative" if rating <= 2 else "neutral"))
         seen.add(key)
         added += 1
     log(db, "system", "public_reviews_imported", b.id, added=added)
