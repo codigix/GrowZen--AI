@@ -55,3 +55,16 @@ def test_send_says_so_when_mail_is_not_set_up(client, bid, monkeypatch):
     monkeypatch.setattr(notify, "send_email", lambda *a, **k: False)
     r = client.post(f"/api/v1/businesses/{bid}/backlink-hub/outreach/send", json={"domain": "news-site.in", "to": "editor@news-site.in", "subject": "Link request", "body": BODY})
     assert r.status_code == 422 and "SMTP" in r.json()["detail"]
+
+
+def test_search_ideas_are_written_from_the_business_and_a_site_can_be_added_by_hand(client, bid):
+    client.put(f"/api/v1/businesses/{bid}", json={"primary_category": "Dental clinic", "city": "Pune"})
+    r = client.get(f"/api/v1/businesses/{bid}/backlink-hub/outreach/search-ideas")
+    assert r.status_code == 200
+    d = r.json()
+    if d["state"] == "ok":
+        qs = [x["q"] for g in d["groups"] for x in g["queries"]]
+        assert any("write for us" in x for x in qs) and any("-site:hub-clinic.in" in x for x in qs)
+        assert all(x["url"].startswith("https://www.google.com/search?q=") for g in d["groups"] for x in g["queries"])
+    add = client.post(f"/api/v1/businesses/{bid}/backlink-hub/plan", json={"domain": "pune-bloggers.in", "status": "planned", "source": "manual", "name": "Pune Bloggers"})
+    assert add.status_code == 200 and next(x for x in add.json()["items"] if x["domain"] == "pune-bloggers.in")["source"] == "manual"

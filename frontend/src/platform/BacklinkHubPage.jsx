@@ -366,6 +366,53 @@ function AiPlatforms({ b, onOpen, onChanged }) {
   );
 }
 
+/** Searches that find sites worth emailing, and a place to add a site you found yourself. */
+function FindSites({ b, onOpen, onChanged }) {
+  const base = `/businesses/${b.id}/backlink-hub`;
+  const r = useApi(`${base}/outreach/search-ideas`);
+  const [site, setSite] = useState('');
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
+  const d = r.data;
+  const clean = site.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  const add = () => run('add', async () => { await api(`${base}/plan`, { method: 'POST', body: { domain: clean, status: 'planned', source: 'manual', name: clean } }); toast(`${clean} added to your plan`); setSite(''); onChanged(); onOpen({ domain: clean, name: clean, source: 'manual' }); });
+  return (
+    <Card title="Find more sites to email" subtitle="Searches written from your services and area. Open one, look for a site that fits, then add it here and email it from the Guide." pad={false}
+      action={<div className="flex items-center gap-2"><input value={site} onChange={e => setSite(e.target.value)} onKeyDown={e => e.key === 'Enter' && clean.includes('.') && add()} placeholder="site you found, e.g. blog.com" aria-label="Site to add" className="h-8 w-52 px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" />
+        <Button size="sm" variant="primary" icon={Plus} busy={busy === 'add'} disabled={!clean.includes('.')} onClick={add}>Add and write the email</Button></div>}>
+      <ErrorNote>{error}</ErrorNote>
+      {r.error && <p className="px-5 py-4 text-13 text-red-600">{r.error.message}</p>}
+      {!d && !r.error && <SkList rows={3} />}
+      {d?.state === 'no_topic' && <p className="px-5 py-6 text-13 text-slate-500">{d.note}</p>}
+      {d?.state === 'ok' && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-13">
+            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+              <th className={TH}><Head what="The kind of site this search finds." why="Each kind needs a different ask.">Kind of site</Head></th>
+              <th className={TH}><Head what="The Google search to run. It uses your services and area." from="your business details.">Search</Head></th>
+              <th className={TH}><Head what="What the search turns up.">Finds</Head></th>
+              <th className={TH}><Head what="What to ask for when you email a site of this kind.">What to ask</Head></th>
+              <th className={`${TH} text-right`}><Head right what="Run the search on Google in a new tab." why="Read the first results, pick the sites that fit, then add them here.">Actions</Head></th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {d.groups.flatMap(g => g.queries.map((x, i) => (
+                <tr key={`${g.key}${i}`} className="align-top hover:bg-slate-50">
+                  <td className="px-3 py-3 font-semibold text-slate-900 whitespace-nowrap">{i === 0 ? g.title : ''}</td>
+                  <td className="px-3 py-3 font-mono text-12 text-slate-700 max-w-[320px] break-words">{x.q}</td>
+                  <td className="px-3 py-3 text-slate-600 max-w-[240px]">{x.why}</td>
+                  <td className="px-3 py-3 text-slate-600 max-w-[260px]">{i === 0 ? g.ask : ''}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap"><a href={x.url} target="_blank" rel="noreferrer noopener"><Act icon={Search} tone="sky" tip="Search: run this search on Google in a new tab." /></a></td>
+                </tr>
+              )))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {toastNode}
+    </Card>
+  );
+}
+
 function Opportunities({ b }) {
   const [stage, setStage] = useState('todo');
   const [cat, setCat] = useState('');
@@ -411,7 +458,7 @@ function Opportunities({ b }) {
               <table className="w-full min-w-[600px] text-13">
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className={TH}>Site</th><th className={TH}>Where it came from</th><th className={TH}>Result</th><th className={TH}>Note</th><th className={`${TH} text-right`}>Actions</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {done.map(x => <tr key={x.domain} className="align-middle"><td className="px-3 py-3 font-semibold text-slate-900">{x.domain}</td><td className="px-3 py-3 text-slate-600">{x.source === 'ai' ? 'Suggested by AI' : 'Competitor gap'}</td><td className="px-3 py-3">{x.confirmed ? <Badge tone="green">Confirmed by the crawler</Badge> : <Badge tone="amber">Marked by you: not seen by the crawler yet</Badge>}</td><td className="px-3 py-3 text-slate-600">{x.note || '—'}</td><td className="px-3 py-3 text-right"><OpenAct url={`https://${x.domain}`} tip="Open the site that gave you the link." /></td></tr>)}
+                  {done.map(x => <tr key={x.domain} className="align-middle"><td className="px-3 py-3 font-semibold text-slate-900">{x.domain}</td><td className="px-3 py-3 text-slate-600">{x.source === 'ai' ? 'Suggested by AI' : x.source === 'manual' ? 'Found by you' : 'Competitor gap'}</td><td className="px-3 py-3">{x.confirmed ? <Badge tone="green">Confirmed by the crawler</Badge> : <Badge tone="amber">Marked by you: not seen by the crawler yet</Badge>}</td><td className="px-3 py-3 text-slate-600">{x.note || '—'}</td><td className="px-3 py-3 text-right"><OpenAct url={`https://${x.domain}`} tip="Open the site that gave you the link." /></td></tr>)}
                   {!done.length && <Empty>No link won yet. Work through “To do”: the crawler confirms a link when it finds it.</Empty>}
                 </tbody>
               </table>
@@ -442,6 +489,7 @@ function Opportunities({ b }) {
         </Card>
       )}
       {d.state !== 'no_target' && <AiPlatforms b={b} onOpen={setOpen} onChanged={changed} />}
+      {d.state !== 'no_target' && <FindSites b={b} onOpen={setOpen} onChanged={changed} />}
       {open && <AdviceModal b={b} item={open} onClose={() => setOpen(null)} onChanged={() => { changed(); setOpen(null); }} />}
     </>
   );

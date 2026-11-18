@@ -56,7 +56,7 @@ class StatusIn(BaseModel):
     domain: str = Field(min_length=4, max_length=255)
     status: str = Field(pattern="^(planned|contacted|live|skipped)$")
     note: str | None = Field(default=None, max_length=500)
-    source: str = Field(default="competitor", pattern="^(competitor|ai)$")
+    source: str = Field(default="competitor", pattern="^(competitor|ai|manual)$")
     name: str | None = Field(default=None, max_length=160)
 
 
@@ -85,12 +85,18 @@ class SendIn(BaseModel):
     subject: str = Field(min_length=3, max_length=200)
     body: str = Field(min_length=30, max_length=5000)
     name: str | None = Field(default=None, max_length=160)
-    source: str = Field(default="competitor", pattern="^(competitor|ai)$")
+    source: str = Field(default="competitor", pattern="^(competitor|ai|manual)$")
 
 
 class RepliedIn(BaseModel):
     domain: str = Field(min_length=4, max_length=255)
     replied: bool = True
+
+
+@router.get("/outreach/search-ideas")
+def outreach_search_ideas(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Google searches that find sites that take guest posts, list businesses or mention you without a link."""
+    return pitch.search_ideas(db, b)
 
 
 @router.post("/outreach/contacts")

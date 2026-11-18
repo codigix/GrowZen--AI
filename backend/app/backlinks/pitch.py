@@ -115,3 +115,33 @@ def mark_replied(db: Session, b: Business, domain: str, replied: bool = True) ->
     row.replied_at = utcnow() if replied else None
     db.commit()
     return row
+
+
+def search_ideas(db: Session, b: Business) -> dict:
+    """Ready-made Google searches, written from the business's own services and area, that surface sites worth pitching. Nothing is fetched here."""
+    from urllib.parse import quote_plus
+
+    from . import hub
+    topics = [t for t in [(b.primary_category or "").strip(), *[(s.get("name") or "").strip() for s in (b.services or [])[:3]]] if t][:3]
+    place = ((b.target_areas or [None])[0] or b.city or "").split(",")[-1].strip() if (b.target_areas or b.city) else ""
+    own = hub.own_domain(db, b.id) or ""
+    name = (b.name or "").strip()
+    if not topics:
+        return {"state": "no_topic", "groups": [], "note": "Add your category or services in Business details to get searches written for your business."}
+    t = topics[0]
+    where = f" {place}" if place else ""
+
+    def q(text: str, why: str) -> dict:
+        return {"q": text, "url": f"https://www.google.com/search?q={quote_plus(text)}", "why": why}
+
+    groups = [
+        {"key": "guest", "title": "Sites that take guest posts", "ask": "Offer a useful article for their readers, with one link back to you.",
+         "queries": [q(f'"{x}" "write for us"', "Pages where a site invites writers.") for x in topics[:2]] + [q(f'{t} "guest post" "submit"{where}', "Sites with a submission page.")]},
+        {"key": "lists", "title": "Pages that list businesses like yours", "ask": "Ask to be added to the list, with one line on why you fit.",
+         "queries": [q(f'best {t}{" in " + place if place else ""}', "Roundup pages: ask to be added."), q(f'{t} "useful links" OR "resources"{where}', "Resource pages that link out to businesses."), q(f'{place or "local"} business directory {t}', "Local directories that accept listings.")]},
+        {"key": "local", "title": "Local sites and groups", "ask": "Introduce yourself, and offer a quote, an event or a partnership.",
+         "queries": [q(f'{place} chamber of commerce members' if place else "chamber of commerce members", "Associations list their members with links."), q(f'{place} local blog {t}' if place else f"local blog {t}", "Local bloggers who write about your field."), q(f'{place} news {t}' if place else f"news {t}", "Local news that covers your field.")]},
+        {"key": "mentions", "title": "People who mention you without a link", "ask": "Thank them and ask if they would link your name to your site. The best reply rate.",
+         "queries": [q(f'"{name}"' + (f" -site:{own}" if own else ""), "Pages that name your business but are not your site."), q(f'intitle:"{name}"' + (f" -site:{own}" if own else ""), "Pages with your name in the title.")] if name else []},
+    ]
+    return {"state": "ok", "topics": topics, "place": place, "groups": [g for g in groups if g["queries"]]}

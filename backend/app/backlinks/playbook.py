@@ -65,7 +65,7 @@ def set_status(db: Session, b: Business, domain: str, status: str, note: str | N
         raise ValueError("Unknown status")
     if not DOMAIN.match(domain):
         raise ValueError("That is not a website address")
-    row = _row(db, b, domain) or BiOpportunity(business_id=b.id, domain=domain, source=source if source in ("competitor", "ai") else "competitor")
+    row = _row(db, b, domain) or BiOpportunity(business_id=b.id, domain=domain, source=source if source in ("competitor", "ai", "manual") else "competitor")
     if name:
         row.name = name[:160]
     if note is not None:
