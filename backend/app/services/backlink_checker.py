@@ -288,17 +288,35 @@ def check_one(source_url: str, tgt: dict[str, str]) -> dict[str, Any]:
     return out
 
 
+MOZ_QUOTA_MSG = "Moz accepted the login but this account has no lookups left for the period (its allowance is used up or is zero), so DataForSEO is used until Moz has quota again."
+MOZ_PAUSE_SECONDS = 1800
+_moz_pause_until = 0.0
+
+
+def moz_paused() -> bool:
+    """True for half an hour after Moz answered that the quota is used up: it is not asked again meanwhile, and DataForSEO is used. It is asked again after that, so Moz returns by itself when its quota renews."""
+    return time.monotonic() < _moz_pause_until
+
+
+def moz_available() -> bool:
+    return moz_configured() and not moz_paused()
+
+
 def moz_metrics(urls: list[str]) -> dict[str, dict[str, Any]]:
     """DA, PA, Spam Score and referring root domains for each URL, from Moz's API. {} when it is not configured; raises CheckError with the reason when Moz refuses."""
     s = get_settings()
+    global _moz_pause_until
     if not moz_configured() or not urls:
         return {}
+    if moz_paused():
+        raise CheckError(MOZ_QUOTA_MSG)
     try:
         r = httpx.post(MOZ_URL, json={"targets": urls[:50]}, auth=(s.moz_access_id, s.moz_secret_key), timeout=30)
     except httpx.HTTPError as exc:
         raise CheckError(f"Moz could not be reached ({type(exc).__name__}).") from exc
     if r.status_code == 403 and "quota" in r.text.lower():
-        raise CheckError("Moz accepted the login but this account has no lookups left for the period (its free allowance is used up or is zero). Add quota at Moz, or the figures come from DataForSEO.")
+        _moz_pause_until = time.monotonic() + MOZ_PAUSE_SECONDS
+        raise CheckError(MOZ_QUOTA_MSG)
     if r.status_code in (401, 403):
         raise CheckError("Moz refused the credentials: check MOZ_ACCESS_ID and MOZ_SECRET_KEY.")
     if r.status_code == 429:

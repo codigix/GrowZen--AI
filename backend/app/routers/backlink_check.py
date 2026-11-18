@@ -54,7 +54,7 @@ def _score_rows(rows: list[dict[str, Any]]) -> str | None:
     from ..backlinks import pitch
     if not bc.dfs_configured():
         return None
-    live = [r for r in rows if r.get("source_url")]  # a page that would not open still has a site rating
+    live = [r for r in rows if r.get("source_url") and (r.get("moz") or {}).get("da") is None]  # a page that would not open still has a site rating; Moz's own figures are not paid for twice
     doms = list(dict.fromkeys(pitch._registrable(urlsplit(r["source_url"]).hostname or "") for r in live))
     try:
         got = bc.dfs_scores([d for d in doms if d], [r["source_url"] for r in live][:60])
@@ -64,6 +64,12 @@ def _score_rows(rows: list[dict[str, Any]]) -> str | None:
         d_, p_ = got.get(pitch._registrable(urlsplit(r["source_url"]).hostname or "")) or {}, got.get(r["source_url"]) or {}
         r["scores"] = {"da": d_.get("rank"), "pa": p_.get("rank"), "spam": d_.get("spam"), "source": "DataForSEO"}
     return None
+
+
+def _no_figures(d: dict[str, Any]) -> bool:
+    """True when a saved check has neither Moz's nor DataForSEO's figures."""
+    sc = d.get("scores") or {}
+    return (d.get("moz") or {}).get("da") is None and sc.get("da") is None and sc.get("spam") is None
 
 
 def _crawler_life(db: Session, rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -119,32 +125,40 @@ def _out(r: BacklinkCheck) -> dict[str, Any]:
 @router.get("")
 def list_checks(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     rows = _with_site(db, [_out(r) for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc()).limit(500))])
-    missing = sum(1 for r in rows if (r.get("scores") or {}).get("da") is None and (r.get("scores") or {}).get("spam") is None)
-    return {"rows": rows, "missing_scores": missing if bc.dfs_configured() else 0, "summary": bc.summarise(rows), "moz": bc.moz_configured(), "opr": bc.opr_configured(), "dfs": bc.dfs_configured(), "google": bc.google_configured(), "default_target": _own_target(b), "limit": bc.MAX_SOURCES}
+    missing = sum(1 for r in rows if _no_figures(r))
+    return {"rows": rows, "missing_scores": missing if (bc.dfs_configured() or bc.moz_configured()) else 0, "summary": bc.summarise(rows), "moz": bc.moz_configured(), "opr": bc.opr_configured(), "dfs": bc.dfs_configured(), "google": bc.google_configured(), "default_target": _own_target(b), "limit": bc.MAX_SOURCES}
 
 
 @router.post("/scores")
 def fill_scores(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """Ask DataForSEO for the DA-like, PA-like and spam numbers of saved checks that have none (up to 100 at a time, newest first). One request per call, so nothing is spent unless this is pressed."""
-    if not bc.dfs_configured():
-        raise HTTPException(422, "DataForSEO is not set up: add DATAFORSEO_AUTH to the backend settings.")
+    """Get DA, PA and spam for saved checks that have none (up to 100 at a time, newest first): Moz first, DataForSEO for what Moz cannot answer (for example while Moz has no quota). Nothing is spent unless this is pressed."""
+    if not bc.dfs_configured() and not bc.moz_configured():
+        raise HTTPException(422, "No data service is set up: add MOZ_ACCESS_ID and MOZ_SECRET_KEY, or DATAFORSEO_AUTH, to the backend settings.")
     if not _limit.hit(user.id):
         raise HTTPException(429, "Too many requests: try again in a while.")
     found = [r for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc()))
-             if ((r.data or {}).get("scores") or {}).get("da") is None and ((r.data or {}).get("scores") or {}).get("spam") is None]
+             if _no_figures(r.data or {})]
     batch, left = found[:100], max(0, len(found) - 100)
     filled = 0
     note = None
     for i in range(0, len(batch), 40):
         chunk = batch[i:i + 40]
         dicts = [dict(r.data or {}, source_url=r.source_url) for r in chunk]
+        if bc.moz_configured():
+            try:
+                got = bc.moz_metrics([d.get("final_url") or d["source_url"] for d in dicts])
+                for d in dicts:
+                    d["moz"] = got.get(d.get("final_url") or d["source_url"]) or got.get(d["source_url"]) or None
+            except bc.CheckError as exc:
+                note = str(exc)  # Moz cannot answer now: DataForSEO fills in below
         n = _score_rows(dicts)
         if n:
-            note = n
-            break
+            note = " ".join(x for x in (note, n) if x)
+            if not any(d.get("moz") for d in dicts):
+                break
         for r, d in zip(chunk, dicts):
-            if d.get("scores") and (d["scores"].get("da") is not None or d["scores"].get("spam") is not None):
-                r.data = {**(r.data or {}), "scores": d["scores"]}
+            if not _no_figures(d):
+                r.data = {**(r.data or {}), **({"moz": d["moz"]} if (d.get("moz") or {}).get("da") is not None else {}), **({"scores": d["scores"]} if d.get("scores") else {})}
                 filled += 1
     db.commit()
     return {"filled": filled, "tried": len(batch), "left": left, "note": note}
@@ -188,7 +202,7 @@ def run_check(body: CheckIn, b: Business = Depends(get_business), db: Session = 
         rows, note = bc.check_many(body.sources[: bc.MAX_SOURCES], target)
     except bc.CheckError as exc:
         raise HTTPException(422, str(exc)) from exc
-    note = note or _score_rows(rows)
+    note = " ".join(x for x in (note, _score_rows(rows)) if x) or None
     saved = []
     for r in rows:
         row = db.scalar(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id, BacklinkCheck.source_url == r["source_url"], BacklinkCheck.target == tgt["label"]))

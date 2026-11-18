@@ -81,3 +81,39 @@ def test_each_check_adds_a_point_to_the_links_history(client, bid, monkeypatch):
     assert [h["state"] for h in row["history"]] == ["working", "link_missing", "working"]
     assert row["history"][0]["links"] == 1 and row["history"][1]["links"] == 0 and row["checks"] == 3
     assert "crawler" in row  # what the crawler knows (empty when it has not seen this page)
+
+
+def test_dataforseo_is_not_paid_for_pages_that_moz_already_answered(client, bid, monkeypatch):
+    url_a, url_b = "https://blog-m.example/a", "https://blog-n.example/b"
+    monkeypatch.setattr(bc, "dfs_configured", lambda: True)
+    asked = {}
+
+    def fake_check(sources, target):
+        base = {"final_url": None, "follow": "dofollow", "links": [], "http_status": 200, "checked_at": "2026-11-18T10:00:00+00:00", "state": "working"}
+        return [{**base, "source_url": url_a, "moz": {"da": 33, "pa": 21, "spam": 2}}, {**base, "source_url": url_b, "moz": None}], "Moz has no quota"
+
+    def fake_dfs(domains, pages):
+        asked["domains"], asked["pages"] = list(domains), list(pages)
+        return {**{d: {"rank": 40, "spam": 7} for d in domains}, **{p: {"rank": 22, "spam": None} for p in pages}}
+
+    monkeypatch.setattr(bc, "check_many", fake_check)
+    monkeypatch.setattr(bc, "dfs_scores", fake_dfs)
+    client.post(f"/api/v1/businesses/{bid}/backlink-check", json={"sources": [url_a, url_b]})
+    assert asked["pages"] == [url_b] and asked["domains"] == ["blog-n.example"]  # only the page Moz could not answer
+    rows = {x["source_url"]: x for x in client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["rows"]}
+    assert rows[url_a]["moz"]["da"] == 33 and not rows[url_a].get("scores")
+    assert rows[url_b]["scores"]["da"] == 40
+
+
+def test_filling_missing_figures_tries_moz_first_then_dataforseo(client, bid, monkeypatch):
+    _row(bid, "https://one.example/x")
+    _row(bid, "https://two.example/y")
+    monkeypatch.setattr(bc, "dfs_configured", lambda: True)
+    monkeypatch.setattr(bc, "moz_configured", lambda: True)
+    monkeypatch.setattr(bc, "moz_metrics", lambda urls: {"https://one.example/x": {"da": 50, "pa": 30, "spam": 1, "ref_domains": 10}})
+    monkeypatch.setattr(bc, "dfs_scores", lambda domains, pages: {**{d: {"rank": 40, "spam": 7} for d in domains}, **{p: {"rank": 22, "spam": None} for p in pages}})
+    r = client.post(f"/api/v1/businesses/{bid}/backlink-check/scores").json()
+    assert r["filled"] == 2 and r["tried"] == 2
+    rows = {x["source_url"]: x for x in client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["rows"]}
+    assert rows["https://one.example/x"]["moz"]["da"] == 50 and rows["https://two.example/y"]["scores"]["da"] == 40
+    assert client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["missing_scores"] == 0

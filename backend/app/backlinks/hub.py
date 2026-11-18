@@ -90,35 +90,54 @@ def metrics_for(db: Session, domains: list[str]) -> dict[str, dict[str, Any]]:
     sig = crawler_signals(db, domains)
     out = {d: {"da": None, "pa": None, "spam": None, "ref_domains": None, "fetched_at": None, "crawler": c} for d, c in sig.items()}
     for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(domains))):
-        out.setdefault(m.domain, {"crawler": None}).update({"da": m.da, "pa": m.pa, "spam": m.spam_score, "ref_domains": m.linking_domains, "fetched_at": _aware(m.fetched_at).isoformat() if m.fetched_at else None})
+        out.setdefault(m.domain, {"crawler": None}).update({"source": m.source, "da": m.da, "pa": m.pa, "spam": m.spam_score, "ref_domains": m.linking_domains, "fetched_at": _aware(m.fetched_at).isoformat() if m.fetched_at else None})
     return out
 
 
 def refresh_metrics(db: Session, domains: list[str], limit: int = 50, force: bool = False) -> dict[str, Any]:
-    """DA, PA and spam score from Moz for domains with no figures yet (or older than two weeks). Does nothing, and says so, when Moz is not set up."""
+    """DA, PA and spam for the linking sites. Moz first (its figures are the ones people know); DataForSEO while Moz has no quota; Moz again as soon as it has quota, and
+    sites that DataForSEO filled in meanwhile are then refreshed from Moz. Nothing is asked of a service that is not set up."""
     from ..services import backlink_checker as bc
-    use_moz = bc.moz_configured()
-    if not use_moz and not bc.dfs_configured():
-        return {"configured": False, "refreshed": 0, "message": "DA, PA and spam score need a data service: add DATAFORSEO_AUTH (or MOZ_ACCESS_ID and MOZ_SECRET_KEY) to the backend settings."}
+    if not bc.moz_configured() and not bc.dfs_configured():
+        return {"configured": False, "refreshed": 0, "message": "DA, PA and spam score need a data service: add MOZ_ACCESS_ID and MOZ_SECRET_KEY, or DATAFORSEO_AUTH, to the backend settings."}
     now = utcnow()
-    have = {m.domain: m for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(domains or [""])))}
-    todo = [d for d in dict.fromkeys(domains) if force or d not in have or not have[d].fetched_at or now - _aware(have[d].fetched_at) > METRIC_TTL][:limit]
-    if not todo:
-        return {"configured": True, "refreshed": 0, "message": "All figures are recent."}
-    moz_note, got = "", {}
-    if use_moz:
+    names = list(dict.fromkeys(domains))
+    have = {m.domain: m for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(names or [""])))}
+
+    def stale(d: str) -> bool:
+        return force or d not in have or not have[d].fetched_at or now - _aware(have[d].fetched_at) > METRIC_TTL
+
+    wanted = [d for d in names if stale(d)]
+    moz_note, used = "", {"moz": 0, "dfs": 0}
+    done: set[str] = set()
+    if bc.moz_available():
+        upgrade = [d for d in names if d not in wanted and d in have and have[d].source != "moz"]  # filled by DataForSEO while Moz had no quota
+        batch = (wanted + upgrade)[:limit]
         try:
-            got = bc.moz_metrics([f"https://{d}/" for d in todo])
+            got = bc.moz_metrics([f"https://{d}/" for d in batch])
         except bc.CheckError as exc:
-            if not bc.dfs_configured():
-                return {"configured": True, "refreshed": 0, "message": str(exc)}
-            moz_note, use_moz = f"{exc} ", False  # Moz cannot answer: DataForSEO fills in
-    if not use_moz:  # DataForSEO: the site's rank (DA-like), its home page's rank (PA-like) and its spam score
+            moz_note = f"{exc} "
+        else:
+            for d in batch:
+                m = got.get(f"https://{d}/") or got.get(d) or got.get(f"{d}/") or next((v for k, v in got.items() if k.lower().removeprefix("https://").removeprefix("www.").rstrip("/") == d), None)
+                if not m or (m.get("da") is None and m.get("spam") is None):
+                    continue
+                row = have.get(d) or BiDomainMetric(domain=d)
+                row.da, row.pa, row.spam_score, row.linking_domains, row.fetched_at, row.source = m.get("da"), m.get("pa"), m.get("spam"), m.get("ref_domains"), now, "moz"
+                db.add(row)
+                have[d] = row
+                done.add(d)
+                used["moz"] += 1
+    elif bc.moz_configured():
+        moz_note = f"{bc.MOZ_QUOTA_MSG} "
+    left = [d for d in wanted if d not in done]
+    if left and bc.dfs_configured():
+        todo = left[:limit]
         try:
             dfs = bc.dfs_scores(todo, [f"https://{d}/" for d in todo])
         except bc.CheckError as exc:
-            return {"configured": True, "refreshed": 0, "message": str(exc)}
-        n = 0
+            db.commit()
+            return {"configured": True, "refreshed": used["moz"], "message": f"{moz_note}{exc}".strip()}
         for d in todo:
             site, home = dfs.get(d) or {}, dfs.get(f"https://{d}/") or {}
             row = have.get(d) or BiDomainMetric(domain=d)
@@ -126,21 +145,13 @@ def refresh_metrics(db: Session, domains: list[str], limit: int = 50, force: boo
             row.da, row.pa, row.spam_score, row.linking_domains, row.fetched_at, row.source = site.get("rank"), home.get("rank"), site.get("spam"), None, now, "dataforseo"
             db.add(row)
             if site.get("rank") is not None or site.get("spam") is not None:
-                n += 1
-        db.commit()
-        more = max(0, len([d for d in dict.fromkeys(domains) if force or d not in have or not have[d].fetched_at or now - _aware(have[d].fetched_at) > METRIC_TTL]) - len(todo))
-        return {"configured": True, "refreshed": n, "message": moz_note + (f"Updated {n} of {len(todo)} site{'s' if len(todo) != 1 else ''}." + (f" {len(todo) - n} too new or too small: DataForSEO has no figures for them." if len(todo) > n else "") if n else "DataForSEO has no figures for these sites (too new or too small).") + (f" {more} more are waiting: press again." if more else "")}
-    n = 0
-    for d in todo:
-        m = got.get(f"https://{d}/") or got.get(d) or got.get(f"{d}/") or next((v for k, v in got.items() if k.lower().removeprefix("https://").removeprefix("www.").rstrip("/") == d), None)
-        if not m:
-            continue
-        row = have.get(d) or BiDomainMetric(domain=d)
-        row.da, row.pa, row.spam_score, row.linking_domains, row.fetched_at, row.source = m.get("da"), m.get("pa"), m.get("spam"), m.get("ref_domains"), now, "moz"
-        db.add(row)
-        n += 1
+                used["dfs"] += 1
+        left = left[limit:]
     db.commit()
-    return {"configured": True, "refreshed": n, "message": f"Updated {n} domain{'s' if n != 1 else ''}." if n else "Moz returned no figures for these domains."}
+    n = used["moz"] + used["dfs"]
+    parts = [f"{used['moz']} from Moz" if used["moz"] else "", f"{used['dfs']} from DataForSEO" if used["dfs"] else ""]
+    msg = (f"Updated {n} site{'s' if n != 1 else ''} ({', '.join(x for x in parts if x)})." if n else "No service had figures for these sites (too new or too small).")
+    return {"configured": True, "refreshed": n, "message": (moz_note + msg + (f" {len(left)} more are waiting: press again." if left else "")).strip()}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ is it useful?
@@ -198,7 +209,9 @@ def _scores_info(live: list[dict[str, Any]]) -> dict[str, Any]:
     sites = {x["source_domain"] for x in live}
     asked = {x["source_domain"] for x in live if (x["metrics"] or {}).get("fetched_at")}
     got = {x["source_domain"] for x in live if (x["metrics"] or {}).get("da") is not None or (x["metrics"] or {}).get("spam") is not None}
-    return {"configured": configured, "source": "Moz" if bc.moz_configured() else "DataForSEO" if configured else None, "sites": len(sites), "missing": len(sites - asked) if configured else 0,
+    both = bc.moz_configured() and bc.dfs_configured()
+    source = ("Moz, or DataForSEO while Moz has no quota" if both else "Moz" if bc.moz_configured() else "DataForSEO") if configured else None
+    return {"configured": configured, "source": source, "moz_paused": bc.moz_paused(), "sites": len(sites), "missing": len(sites - asked) if configured else 0,
             "no_data": len(asked - got) if configured else 0}
 
 

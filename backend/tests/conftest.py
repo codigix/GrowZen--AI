@@ -73,6 +73,8 @@ def _no_paid_data_services(monkeypatch):
     s = get_settings()
     for name in ("moz_access_id", "moz_secret_key", "dataforseo_auth", "openpagerank_api_key"):
         monkeypatch.setattr(s, name, "", raising=False)
+    from app.services import backlink_checker as bc
+    monkeypatch.setattr(bc, "_moz_pause_until", 0.0)  # a test that made Moz look out of quota must not leak that into the next one
 
 
 @pytest.fixture(autouse=True)

@@ -39,7 +39,9 @@ const spamWord = (v, thin) => (v == null ? '' : thin ? 'Unreliable: very few lin
 
 /** Everything about one backlink in pictures: its status, its figures and how they moved, its life, and the links on the page. */
 export default function LinkDetail({ r }) {
-  const s = r.scores || {};
+  const mz = r.moz && r.moz.da != null ? r.moz : null; // Moz's own figures when it answered, DataForSEO's otherwise
+  const src = mz ? 'Moz' : r.scores ? 'DataForSEO' : '';
+  const s = mz ? { da: mz.da, pa: mz.pa, spam: mz.spam } : (r.scores || {});
   const hist = Array.isArray(r.history) && r.history.length ? r.history : (r.checked_at ? [{ at: r.checked_at, state: r.state, follow: r.follow, links: (r.links || []).length, da: s.da, pa: s.pa, spam: s.spam }] : []); // a row checked before histories were kept starts from its last check
   const [stLabel, stColor, StIcon] = STATE[r.lost ? 'link_missing' : r.state] || STATE.page_error;
   const first = r.crawler?.first_seen || hist[0]?.at;
@@ -59,9 +61,9 @@ export default function LinkDetail({ r }) {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Tile label="Authority (DA-like)" hint="DataForSEO domain rank, scaled to 0-100. Not Moz DA: a different database, so the numbers differ." value={s.da} color="#4f46e5" series={s.da != null ? series('da') : null} note={thin ? 'DataForSEO knows almost no links to this site' : ''} />
-        <Tile label="Page strength (PA-like)" hint="DataForSEO page rank, scaled to 0-100. Not Moz PA." value={s.pa} color="#0891b2" series={s.pa != null ? series('pa') : null} />
-        <Tile label="Spam score" hint="DataForSEO backlink spam score: lower is better." value={s.spam} suffix="%" color={spamTone(s.spam)} series={s.spam != null ? series('spam') : null} note={spamWord(s.spam, thin)} />
+        <Tile label={mz ? 'Authority (Moz DA)' : 'Authority (DA-like)'} hint={mz ? 'Moz Domain Authority.' : 'DataForSEO domain rank, scaled to 0-100. Not Moz DA: a different database, so the numbers differ.'} value={s.da} color="#4f46e5" series={s.da != null ? series('da') : null} note={thin && !mz ? 'DataForSEO knows almost no links to this site' : src ? `Source: ${src}` : ''} />
+        <Tile label={mz ? 'Page strength (Moz PA)' : 'Page strength (PA-like)'} hint={mz ? 'Moz Page Authority.' : 'DataForSEO page rank, scaled to 0-100. Not Moz PA.'} value={s.pa} color="#0891b2" series={s.pa != null ? series('pa') : null} />
+        <Tile label="Spam score" hint={mz ? 'Moz Spam Score: lower is better.' : 'DataForSEO backlink spam score: lower is better.'} value={s.spam} suffix="%" color={spamTone(s.spam)} series={s.spam != null ? series('spam') : null} note={spamWord(s.spam, thin && !mz)} />
         <Tile label="Site rank (Open PageRank)" hint="0 to 10, from the Common Crawl link graph." value={r.domain_rank} max={10} color="#7c3aed" suffix="/ 10" />
       </div>
 

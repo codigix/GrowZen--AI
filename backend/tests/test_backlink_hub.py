@@ -174,6 +174,62 @@ def test_when_moz_has_no_quota_dataforseo_fills_in_and_the_reason_is_shown(clien
     assert r["refreshed"] == 0 and "no lookups left" in r["message"]
 
 
+def _clear_metrics():
+    db = SessionLocal()
+    try:
+        db.query(BiDomainMetric).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_moz_is_used_when_it_has_quota_and_the_switch_back_upgrades_dataforseo_figures(client, world, monkeypatch):
+    _clear_metrics()
+    s = get_settings()
+    monkeypatch.setattr(s, "moz_access_id", "id", raising=False)
+    monkeypatch.setattr(s, "moz_secret_key", "key", raising=False)
+    monkeypatch.setattr(bc, "dfs_configured", lambda: True)
+    monkeypatch.setattr(bc, "dfs_scores", lambda domains, pages: {**{d: {"rank": 40, "spam": 5} for d in domains}, **{p: {"rank": 20, "spam": None} for p in pages}})
+    state = {"moz": "no_quota"}
+
+    def moz(urls):
+        if state["moz"] == "no_quota":
+            raise bc.CheckError(bc.MOZ_QUOTA_MSG)
+        return {u.removeprefix("https://"): {"da": 62, "pa": 48, "spam": 2, "ref_domains": 900} for u in urls}
+
+    monkeypatch.setattr(bc, "moz_metrics", moz)
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()  # Moz has no quota: DataForSEO answers
+    assert r["refreshed"] >= 1 and "from DataForSEO" in r["message"] and "no lookups left" in r["message"]
+    hb = lambda: next(x for x in get(client, world, "links")["links"] if x["source_domain"] == "healthblog.com")["metrics"]  # noqa: E731
+    assert hb()["da"] == 40 and hb()["source"] == "dataforseo"
+    state["moz"] = "ok"  # Moz has quota again
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()
+    assert "from Moz" in r["message"] and r["refreshed"] >= 1
+    assert hb()["da"] == 62 and hb()["source"] == "moz"  # the sites DataForSEO filled in are now Moz's
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()
+    assert r["message"] == "All figures are recent." or r["refreshed"] == 0  # nothing is asked twice
+
+
+def test_moz_is_not_asked_again_for_half_an_hour_after_it_reports_no_quota(monkeypatch):
+    s = get_settings()
+    monkeypatch.setattr(s, "moz_access_id", "id", raising=False)
+    monkeypatch.setattr(s, "moz_secret_key", "key", raising=False)
+    calls = []
+
+    class R:
+        status_code, text = 403, '{"error":"The account does not have enough quota remaining for current period."}'
+
+    monkeypatch.setattr(bc.httpx, "post", lambda *a, **k: (calls.append(1), R())[1])
+    with pytest.raises(bc.CheckError):
+        bc.moz_metrics(["https://a.example/"])
+    assert bc.moz_paused() and not bc.moz_available()
+    with pytest.raises(bc.CheckError):
+        bc.moz_metrics(["https://a.example/"])
+    assert len(calls) == 1  # the second request did not reach Moz
+    monkeypatch.setattr(bc, "_moz_pause_until", 0.0)  # the pause is over (quota renewed): Moz is asked again
+    assert bc.moz_available()
+
+
 def test_a_business_without_a_site_gets_a_plain_state(client):
     bid = client.post("/api/v1/businesses", json={"name": "No Site"}).json()["id"]
     assert get(client, bid, "links")["state"] == "no_target"
