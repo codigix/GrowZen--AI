@@ -142,6 +142,38 @@ def test_dataforseo_figures_fill_da_pa_and_spam_on_the_links_page(client, world,
     assert get(client, world, "summary")["moz"]["configured"] is True
 
 
+def test_when_moz_has_no_quota_dataforseo_fills_in_and_the_reason_is_shown(client, world, monkeypatch):
+    db = SessionLocal()
+    try:
+        db.query(BiDomainMetric).delete()
+        db.commit()
+    finally:
+        db.close()
+    s = get_settings()
+    monkeypatch.setattr(s, "moz_access_id", "id", raising=False)
+    monkeypatch.setattr(s, "moz_secret_key", "key", raising=False)
+
+    def no_quota(urls):
+        raise bc.CheckError("Moz accepted the login but this account has no lookups left for the period.")
+
+    monkeypatch.setattr(bc, "moz_metrics", no_quota)
+    monkeypatch.setattr(bc, "dfs_configured", lambda: True)
+    monkeypatch.setattr(bc, "dfs_scores", lambda domains, pages: {**{d: {"rank": 40, "spam": 5} for d in domains}, **{p: {"rank": 20, "spam": None} for p in pages}})
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()
+    assert r["refreshed"] >= 1 and "no lookups left" in r["message"] and "Updated" in r["message"]
+    hb = next(x for x in get(client, world, "links")["links"] if x["source_domain"] == "healthblog.com")
+    assert hb["metrics"]["da"] == 40
+    monkeypatch.setattr(bc, "dfs_configured", lambda: False)  # with nothing to fall back on, Moz's reason is returned as it is
+    db = SessionLocal()
+    try:
+        db.query(BiDomainMetric).delete()
+        db.commit()
+    finally:
+        db.close()
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()
+    assert r["refreshed"] == 0 and "no lookups left" in r["message"]
+
+
 def test_a_business_without_a_site_gets_a_plain_state(client):
     bid = client.post("/api/v1/businesses", json={"name": "No Site"}).json()["id"]
     assert get(client, bid, "links")["state"] == "no_target"

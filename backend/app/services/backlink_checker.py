@@ -297,6 +297,8 @@ def moz_metrics(urls: list[str]) -> dict[str, dict[str, Any]]:
         r = httpx.post(MOZ_URL, json={"targets": urls[:50]}, auth=(s.moz_access_id, s.moz_secret_key), timeout=30)
     except httpx.HTTPError as exc:
         raise CheckError(f"Moz could not be reached ({type(exc).__name__}).") from exc
+    if r.status_code == 403 and "quota" in r.text.lower():
+        raise CheckError("Moz accepted the login but this account has no lookups left for the period (its free allowance is used up or is zero). Add quota at Moz, or the figures come from DataForSEO.")
     if r.status_code in (401, 403):
         raise CheckError("Moz refused the credentials: check MOZ_ACCESS_ID and MOZ_SECRET_KEY.")
     if r.status_code == 429:

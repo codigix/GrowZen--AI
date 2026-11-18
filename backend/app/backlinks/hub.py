@@ -105,6 +105,14 @@ def refresh_metrics(db: Session, domains: list[str], limit: int = 50, force: boo
     todo = [d for d in dict.fromkeys(domains) if force or d not in have or not have[d].fetched_at or now - _aware(have[d].fetched_at) > METRIC_TTL][:limit]
     if not todo:
         return {"configured": True, "refreshed": 0, "message": "All figures are recent."}
+    moz_note, got = "", {}
+    if use_moz:
+        try:
+            got = bc.moz_metrics([f"https://{d}/" for d in todo])
+        except bc.CheckError as exc:
+            if not bc.dfs_configured():
+                return {"configured": True, "refreshed": 0, "message": str(exc)}
+            moz_note, use_moz = f"{exc} ", False  # Moz cannot answer: DataForSEO fills in
     if not use_moz:  # DataForSEO: the site's rank (DA-like), its home page's rank (PA-like) and its spam score
         try:
             dfs = bc.dfs_scores(todo, [f"https://{d}/" for d in todo])
@@ -121,11 +129,7 @@ def refresh_metrics(db: Session, domains: list[str], limit: int = 50, force: boo
                 n += 1
         db.commit()
         more = max(0, len([d for d in dict.fromkeys(domains) if force or d not in have or not have[d].fetched_at or now - _aware(have[d].fetched_at) > METRIC_TTL]) - len(todo))
-        return {"configured": True, "refreshed": n, "message": (f"Updated {n} of {len(todo)} site{'s' if len(todo) != 1 else ''}." + (f" {len(todo) - n} too new or too small: DataForSEO has no figures for them." if len(todo) > n else "") if n else "DataForSEO has no figures for these sites (too new or too small).") + (f" {more} more are waiting: press again." if more else "")}
-    try:
-        got = bc.moz_metrics([f"https://{d}/" for d in todo])
-    except bc.CheckError as exc:
-        return {"configured": True, "refreshed": 0, "message": str(exc)}
+        return {"configured": True, "refreshed": n, "message": moz_note + (f"Updated {n} of {len(todo)} site{'s' if len(todo) != 1 else ''}." + (f" {len(todo) - n} too new or too small: DataForSEO has no figures for them." if len(todo) > n else "") if n else "DataForSEO has no figures for these sites (too new or too small).") + (f" {more} more are waiting: press again." if more else "")}
     n = 0
     for d in todo:
         m = got.get(f"https://{d}/") or got.get(d) or got.get(f"{d}/") or next((v for k, v in got.items() if k.lower().removeprefix("https://").removeprefix("www.").rstrip("/") == d), None)

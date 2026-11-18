@@ -67,6 +67,15 @@ def _offline_keyword_metrics(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_paid_data_services(monkeypatch):
+    """The real Moz, DataForSEO, Open PageRank and search keys in the developer's .env must never be used (or spent) by a test: a test that needs one sets it up itself."""
+    from app.config import get_settings
+    s = get_settings()
+    for name in ("moz_access_id", "moz_secret_key", "dataforseo_auth", "openpagerank_api_key"):
+        monkeypatch.setattr(s, name, "", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _offline_crawler(monkeypatch):
     """Tests never call our deployed backlink crawler, even when the developer's .env has its key (the bot then crawls locally, as before)."""
     from app.config import get_settings
