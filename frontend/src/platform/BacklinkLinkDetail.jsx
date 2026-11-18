@@ -35,7 +35,7 @@ function Tile({ label, hint, value, max = 100, color, series, suffix = '', note 
 }
 
 const spamTone = (v) => (v == null ? '#94a3b8' : v >= 30 ? '#dc2626' : v >= 15 ? '#d97706' : '#059669');
-const spamWord = (v) => (v == null ? '' : v >= 30 ? 'High: be careful with this site' : v >= 15 ? 'Medium: look at the site' : 'Low: looks clean');
+const spamWord = (v, thin) => (v == null ? '' : thin ? 'Unreliable: very few links are known for this site' : v >= 30 ? 'High: be careful with this site' : v >= 15 ? 'Medium: look at the site' : 'Low: looks clean');
 
 /** Everything about one backlink in pictures: its status, its figures and how they moved, its life, and the links on the page. */
 export default function LinkDetail({ r }) {
@@ -47,6 +47,7 @@ export default function LinkDetail({ r }) {
   const flags = [r.page_noindex && 'This page is noindex: Google will not index it, so the link is worth little.', r.page_nofollow && 'The page tells search engines not to follow any link on it.',
     r.canonical_elsewhere && `The page names another address as its main version: ${r.canonical_elsewhere}`, r.site?.sitewide && `Sitewide link: ${r.site.links} links from ${r.site.pages} pages of this site.`].filter(Boolean);
   const series = (k) => hist.map(h => h[k]);
+  const thin = s.da === 0 && s.pa === 0; // a rank of 0 means the data service has almost no link data for the site, so its other figures rest on very little
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -58,9 +59,9 @@ export default function LinkDetail({ r }) {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Tile label="Authority (DA-like)" hint="DataForSEO domain rank, scaled to 0-100. Not Moz DA." value={s.da} color="#4f46e5" series={s.da != null ? series('da') : null} />
+        <Tile label="Authority (DA-like)" hint="DataForSEO domain rank, scaled to 0-100. Not Moz DA: a different database, so the numbers differ." value={s.da} color="#4f46e5" series={s.da != null ? series('da') : null} note={thin ? 'DataForSEO knows almost no links to this site' : ''} />
         <Tile label="Page strength (PA-like)" hint="DataForSEO page rank, scaled to 0-100. Not Moz PA." value={s.pa} color="#0891b2" series={s.pa != null ? series('pa') : null} />
-        <Tile label="Spam score" hint="DataForSEO backlink spam score: lower is better." value={s.spam} suffix="%" color={spamTone(s.spam)} series={s.spam != null ? series('spam') : null} note={spamWord(s.spam)} />
+        <Tile label="Spam score" hint="DataForSEO backlink spam score: lower is better." value={s.spam} suffix="%" color={spamTone(s.spam)} series={s.spam != null ? series('spam') : null} note={spamWord(s.spam, thin)} />
         <Tile label="Site rank (Open PageRank)" hint="0 to 10, from the Common Crawl link graph." value={r.domain_rank} max={10} color="#7c3aed" suffix="/ 10" />
       </div>
 
