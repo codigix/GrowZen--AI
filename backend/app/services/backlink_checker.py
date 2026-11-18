@@ -39,6 +39,46 @@ class CheckError(Exception):
     pass
 
 
+_OPR: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def opr_configured() -> bool:
+    from ..config import get_settings
+    return bool(get_settings().openpagerank_api_key.strip())
+
+
+def opr_ranks(domains: list[str]) -> dict[str, dict[str, Any]]:
+    """Open PageRank's 0-10 domain rank (from the Common Crawl link graph) for each domain. {} when no key or the service fails; kept a day per domain."""
+    import time
+
+    from ..config import get_settings
+    if not opr_configured() or not domains:
+        return {}
+    now = time.time()
+    out: dict[str, dict[str, Any]] = {}
+    todo = []
+    for d in dict.fromkeys(domains):
+        hit = _OPR.get(d)
+        if hit and now - hit[0] < 86400:
+            out[d] = hit[1]
+        else:
+            todo.append(d)
+    for i in range(0, len(todo), 100):
+        chunk = todo[i:i + 100]
+        try:
+            r = httpx.get("https://openpagerank.com/api/v1.0/getPageRank", params=[("domains[]", d) for d in chunk], headers={"API-OPR": get_settings().openpagerank_api_key.strip()}, timeout=20)
+            if r.status_code != 200:
+                break
+            for item in r.json().get("response", []):
+                if item.get("status_code") == 200:
+                    v = {"rank": item.get("page_rank_decimal"), "global_rank": item.get("rank")}
+                    out[item["domain"]] = v
+                    _OPR[item["domain"]] = (now, v)
+        except (httpx.HTTPError, ValueError, KeyError):
+            break
+    return out
+
+
 def moz_configured() -> bool:
     s = get_settings()
     return bool(getattr(s, "moz_access_id", "") and getattr(s, "moz_secret_key", ""))
