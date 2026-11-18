@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2, Plus, Trash2, Loader2, BookOpen } from 'lucide-react';
+import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2, Plus, Trash2, Loader2, BookOpen, Send } from 'lucide-react';
 import { SeoShell, Card, Button, Badge, Stat, ErrorNote, Modal, Field, inputCls, useAction, useToast, useDoubleConfirm, SkList } from './SeoUi';
 import Select from '../components/Select';
 import { Act, Head, OpenAct } from './TableBits';
-import { api, useApi, usePoll, fmtDateTime } from './seoApi';
+import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 import Tip from './Tip';
 
 const VIEWS = {
@@ -229,6 +229,54 @@ const EFFORT = { low: ['Easy', 'green'], medium: ['Some work', 'amber'], high: [
 const STAGES = [['todo', 'To do'], ['progress', 'In progress'], ['done', 'Got the link'], ['skipped', 'Skipped']];
 const stageOf = (st) => (st === 'contacted' ? 'progress' : st === 'live' ? 'done' : st === 'skipped' ? 'skipped' : 'todo');
 
+/** Write, address, send and track the pitch email for one place. Sending only happens when the button is pressed. */
+function EmailPanel({ b, item, message, onChanged }) {
+  const base = `/businesses/${b.id}/backlink-hub`;
+  const plan = useApi(`${base}/plan`);
+  const row = (plan.data?.items || []).find(x => x.domain === item.domain);
+  const [to, setTo] = useState('');
+  const [subject, setSubject] = useState(`Link request from ${b.name || 'our business'}`);
+  const [body, setBody] = useState(message || '');
+  const [found, setFound] = useState(null);
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
+  useEffect(() => { setBody(message || ''); }, [message]);
+  useEffect(() => { if (row?.contact_email && !to) setTo(row.contact_email); }, [row?.contact_email]); // eslint-disable-line react-hooks/exhaustive-deps
+  const find = () => run('find', async () => { const r = await api(`${base}/outreach/contacts`, { method: 'POST', body: { domain: item.domain } }); setFound(r); if (r.contacts[0] && !to) setTo(r.contacts[0].email); });
+  const left = /\[add/i.test(body) || /\[add/i.test(subject);
+  const send = () => {
+    if (!window.confirm(`Send this email to ${to}?\n\nIt goes from your platform mail account and replies come to ${b.contact_email || 'that account'}.`)) return;
+    run('send', async () => { await api(`${base}/outreach/send`, { method: 'POST', body: { domain: item.domain, to, subject, body, name: item.name, source: item.source || 'competitor' } }); plan.reload(true); toast(`Email sent to ${to}`); onChanged?.(); });
+  };
+  const replied = (v) => run('replied', async () => { await api(`${base}/outreach/replied`, { method: 'POST', body: { domain: item.domain, replied: v } }); plan.reload(true); onChanged?.(); });
+  const inp = 'h-9 px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-full';
+  return (
+    <section className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-2.5">
+      <h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500">Email this site</h4>
+      {row?.emailed_at && (
+        <p className={`rounded-lg px-3 py-2 text-12.5 ${row.replied_at ? 'bg-emerald-50 text-emerald-800' : row.follow_up_due ? 'bg-amber-50 text-amber-800' : 'bg-slate-50 text-slate-700'}`}>
+          Sent {row.email_count > 1 ? `${row.email_count} times, last ` : ''}on {fmtDate(row.emailed_at)} to <b>{row.contact_email}</b>.{' '}
+          {row.replied_at ? `They replied on ${fmtDate(row.replied_at)}.` : row.follow_up_due ? 'No reply for over a week: send a short follow-up.' : 'No reply yet.'}{' '}
+          <button type="button" onClick={() => replied(!row.replied_at)} className="font-semibold underline cursor-pointer">{row.replied_at ? 'Not replied' : 'They replied'}</button>
+        </p>
+      )}
+      <div className="flex gap-2"><input value={to} onChange={e => setTo(e.target.value)} placeholder="Their email address" aria-label="To" className={inp} />
+        <Button size="sm" icon={Search} busy={busy === 'find'} onClick={find}>Find email</Button></div>
+      {found && (found.contacts.length ? (
+        <div className="flex flex-wrap items-center gap-1.5 text-12"><span className="text-slate-500">Published on the site:</span>
+          {found.contacts.map(c => <button key={c.email} type="button" onClick={() => setTo(c.email)} title={`${c.how} on ${c.page}`} className={`rounded-full px-2.5 py-1 ring-1 ring-inset cursor-pointer ${to === c.email ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{c.email}</button>)}</div>
+      ) : <p className="text-12.5 text-amber-800">{found.note}</p>)}
+      <input value={subject} onChange={e => setSubject(e.target.value)} maxLength={200} aria-label="Subject" className={inp} />
+      <textarea value={body} onChange={e => setBody(e.target.value)} rows={8} maxLength={5000} aria-label="Message" className="px-3 py-2 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-full" />
+      {left && <p className="text-12 text-amber-700">Fill in the [add ...] parts before sending.</p>}
+      <ErrorNote>{error}</ErrorNote>
+      <div className="flex items-center gap-3"><Button size="sm" variant="primary" icon={Send} busy={busy === 'send'} disabled={!to.includes('@') || left || body.trim().length < 30} onClick={send}>{row?.emailed_at ? 'Send again' : 'Send email'}</Button>
+        <span className="text-11.5 text-slate-400">Nothing is sent until you press this. Keep it honest and personal: no payment or link swaps.</span></div>
+      {toastNode}
+    </section>
+  );
+}
+
 function AdviceModal({ b, item, onClose, onChanged }) {
   const [adv, setAdv] = useState(null);
   const [note, setNote] = useState(item?.note || '');
@@ -239,8 +287,7 @@ function AdviceModal({ b, item, onClose, onChanged }) {
   useEffect(() => { if (item) { setAdv(null); setNote(item.note || ''); load(false); } }, [item?.domain]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!item) return null;
   const mark = (status) => run('mark', async () => { await api(`${base}/plan`, { method: 'POST', body: { domain: item.domain, status, note, source: item.source || 'competitor', name: item.name } }); toast(`Marked: ${WORK[status][0]}`); onChanged(); });
-  const copy = () => { try { navigator.clipboard.writeText(adv.message); toast('Message copied'); } catch { toast('Select the text and copy it'); } };
-  const [el, et] = EFFORT[adv?.effort] || EFFORT.medium;
+    const [el, et] = EFFORT[adv?.effort] || EFFORT.medium;
   return (
     <Modal open title={item.name || item.domain} onClose={onClose} width="max-w-2xl"
       footer={<div className="flex flex-wrap items-center gap-2 w-full">
@@ -259,8 +306,7 @@ function AdviceModal({ b, item, onClose, onChanged }) {
             <div className="flex flex-wrap items-center gap-2"><span className="text-slate-700">{adv.what_it_is}</span><Badge tone={et}>{el}</Badge><Badge tone={adv.method === 'ai' ? 'blue' : 'gray'}>{adv.method === 'ai' ? 'Advice by AI' : 'Standard advice'}</Badge></div>
             <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">What you get from a link here</h4><ul className="grid gap-1 list-disc pl-5 text-slate-700">{adv.what_you_get.map((x, i) => <li key={i}>{x}</li>)}</ul></section>
             <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">How to get it</h4><ol className="grid gap-1 list-decimal pl-5 text-slate-700">{adv.steps.map((x, i) => <li key={i}>{x}</li>)}</ol></section>
-            <section><div className="flex items-center justify-between mb-1.5"><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500">Message you can send</h4><button type="button" onClick={copy} className="text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">Copy</button></div>
-              <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 ring-1 ring-inset ring-slate-200 p-3 text-12.5 text-slate-700 font-sans">{adv.message}</pre><p className="text-11.5 text-slate-400 mt-1">Fill in the [add …] parts before sending. Nothing is sent from here.</p></section>
+            <EmailPanel b={b} item={item} message={adv.message} onChanged={onChanged} />
             {adv.caution && <p className="rounded-lg bg-amber-50 text-amber-800 px-3 py-2 text-12.5">{adv.caution}</p>}
             <label className="grid gap-1"><span className="text-12 font-semibold text-slate-500">Your note (who you contacted, when)</span><input value={note} onChange={e => setNote(e.target.value)} maxLength={500} className="h-9 px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
             <button type="button" onClick={() => load(true)} className="text-12 text-slate-500 hover:underline w-fit cursor-pointer">Write the advice again</button>
@@ -337,6 +383,7 @@ function Opportunities({ b }) {
   const setStatus = (x, status) => run(x.domain, async () => { await api(`/businesses/${b.id}/backlink-hub/plan`, { method: 'POST', body: { domain: x.domain, status, source: 'competitor' } }); changed(); });
   const all = d.opportunities || [];
   const done = (pl.data?.items || []).filter(x => x.status === 'live');
+  const planMap = Object.fromEntries((pl.data?.items || []).map(x => [x.domain, x]));
   const lists = { todo: all.filter(x => stageOf(x.status) === 'todo'), progress: all.filter(x => stageOf(x.status) === 'progress'), skipped: sk.data?.opportunities || [] };
   const shown = lists[stage] || [];
   const pill = (on) => `h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
@@ -371,7 +418,7 @@ function Opportunities({ b }) {
             ) : (
               <table className="w-full min-w-[1000px] text-13">
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-                  <th className={TH}>Priority</th><th className={TH}>Site</th><th className={TH}>Competitors linked there</th><th className={TH}>Category</th><th className={TH}>Follow</th>{hasMoz(shown) && <th className={`${TH} text-right`}>DA</th>}<th className={TH}>Useful?</th><th className={TH}>Status</th><th className={`${TH} text-right`}><Head right what="Guide shows how to ask this site for a link. Open shows the site's page that links to your competitor." why="Contact the sites in the order of priority.">Actions</Head></th></tr></thead>
+                  <th className={TH}>Priority</th><th className={TH}>Site</th><th className={TH}>Competitors linked there</th><th className={TH}>Category</th><th className={TH}>Follow</th>{hasMoz(shown) && <th className={`${TH} text-right`}>DA</th>}<th className={TH}>Useful?</th><th className={TH}>Status</th><th className={TH}><Head what="Whether you emailed this site, to whom, and whether they replied." why="Follow up after a week without a reply." from="the emails you sent from the Guide.">Email</Head></th><th className={`${TH} text-right`}><Head right what="Guide shows how to ask this site for a link. Open shows the site's page that links to your competitor." why="Contact the sites in the order of priority.">Actions</Head></th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {shown.map(x => { const [pl2, pt] = PRIORITY[x.priority] || PRIORITY.low; return (
                     <tr key={x.domain} className="hover:bg-slate-50 align-middle">
@@ -383,7 +430,8 @@ function Opportunities({ b }) {
                       {hasMoz(shown) && <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td>}
                       <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                       <td className="px-3 py-3"><Select value={x.status} onChange={e => setStatus(x, e.target.value)} className="h-8 text-13 min-w-[130px]" aria-label={`Status of ${x.domain}`} disabled={busy === x.domain}><option value="new">To do</option><option value="planned">Planned</option><option value="contacted">Contacted</option><option value="live">Got the link</option><option value="skipped">Skipped</option></Select></td>
-                      <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5"><Act icon={BookOpen} tone="violet" tip="Guide: how to ask this site for a link, with a draft message." onClick={() => setOpen(x)} /><OpenAct url={x.sample?.url} tip="Open the site: the page that links to your competitor." /></span></td>
+                      <td className="px-3 py-3 text-12.5 whitespace-nowrap">{(() => { const m = planMap[x.domain]; if (!m?.emailed_at) return <span className="text-slate-300">Not emailed</span>; return <Tip text={`${m.email_subject || ''} · to ${m.contact_email}`}><span className={m.replied_at ? 'text-emerald-700 font-semibold' : m.follow_up_due ? 'text-amber-700 font-semibold' : 'text-slate-600'}>{m.replied_at ? 'Replied' : m.follow_up_due ? 'Follow up' : 'Sent'} · {fmtDate(m.replied_at || m.emailed_at)}</span></Tip>; })()}</td>
+                      <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5"><Act icon={BookOpen} tone="violet" tip="Guide: how to ask this site for a link, with a draft message and the email to send." onClick={() => setOpen(x)} /><OpenAct url={x.sample?.url} tip="Open the site: the page that links to your competitor." /></span></td>
                     </tr>); })}
                   {!shown.length && <Empty>{stage === 'todo' ? (all.length ? 'Nothing left to do here.' : 'No opportunities yet: your crawler has not found sites that link to your competitors and not to you.') : stage === 'progress' ? 'Nothing in progress. Open a site and press “I contacted them”.' : 'Nothing skipped.'}</Empty>}
                 </tbody>

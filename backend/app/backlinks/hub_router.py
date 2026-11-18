@@ -7,7 +7,7 @@ from ..auth import current_user
 from ..db import get_db
 from ..deps import get_business
 from ..models import Business
-from . import hub, playbook
+from . import hub, pitch, playbook
 
 router = APIRouter(prefix="/businesses/{business_id}/backlink-hub", tags=["backlinks"], dependencies=[Depends(current_user)])
 
@@ -70,6 +70,52 @@ def plan(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> 
 def set_status(body: StatusIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     try:
         playbook.set_status(db, b, body.domain, body.status, body.note, body.source, body.name)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return playbook.plan(db, b)
+
+
+class ContactsIn(BaseModel):
+    domain: str = Field(min_length=4, max_length=255)
+
+
+class SendIn(BaseModel):
+    domain: str = Field(min_length=4, max_length=255)
+    to: str = Field(min_length=5, max_length=255)
+    subject: str = Field(min_length=3, max_length=200)
+    body: str = Field(min_length=30, max_length=5000)
+    name: str | None = Field(default=None, max_length=160)
+    source: str = Field(default="competitor", pattern="^(competitor|ai)$")
+
+
+class RepliedIn(BaseModel):
+    domain: str = Field(min_length=4, max_length=255)
+    replied: bool = True
+
+
+@router.post("/outreach/contacts")
+def outreach_contacts(body: ContactsIn, b: Business = Depends(get_business)) -> dict:
+    """The public email addresses a website publishes (its contact and about pages)."""
+    try:
+        return pitch.find_contacts(body.domain)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/outreach/send")
+def outreach_send(body: SendIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Send the reviewed pitch email and record it against the place in the plan."""
+    try:
+        pitch.send(db, b, body.domain, body.to, body.subject, body.body, body.name, body.source)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return playbook.plan(db, b)
+
+
+@router.post("/outreach/replied")
+def outreach_replied(body: RepliedIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    try:
+        pitch.mark_replied(db, b, body.domain, body.replied)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return playbook.plan(db, b)

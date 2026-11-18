@@ -269,6 +269,11 @@ class BiOpportunity(TimestampMixin, Base):
     note: Mapped[str | None] = mapped_column(String(500))
     advice: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # {what_you_get, steps, message, effort, caution, method}
     status_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    contact_email: Mapped[str | None] = mapped_column(String(255))  # who the pitch was sent to
+    email_subject: Mapped[str | None] = mapped_column(String(200))
+    emailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    email_count: Mapped[int] = mapped_column(Integer, default=0)
+    replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ActionOutcome(Base):
