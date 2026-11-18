@@ -175,8 +175,13 @@ function ProfileTab({ b, toast }) {
                 <input className={inputCls} value={p.name} onChange={e => set('name', e.target.value)} />
                 {STUFFED.test(p.name) && <div className="mt-1"><StatusPill level="warning">Looks keyword-stuffed: a common cause of suspension</StatusPill></div>}
               </Field></div>
-              {!linked && <><Field label="Primary category"><input className={inputCls} value={p.primary_category} onChange={e => set('primary_category', e.target.value)} /></Field>
-              <Field label="Secondary categories" hint="Comma separated"><input className={inputCls} value={p.secondary_categories.join(', ')} onChange={e => set('secondary_categories', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} /></Field></>}
+              {!linked && <><Field label="Primary category"><input className={inputCls} value={p.primary_category} onChange={e => set('primary_category', e.target.value)} />
+                {gsvc.data?.state === 'ok' && gsvc.data.profile.category && gsvc.data.profile.category.toLowerCase() !== (p.primary_category || '').toLowerCase() && (
+                  <button type="button" onClick={() => set('primary_category', gsvc.data.profile.category)} className="mt-1.5 text-12 text-indigo-700 hover:underline cursor-pointer text-left">Google shows “{gsvc.data.profile.category}” as the main category: use it</button>)}</Field>
+              <Field label="Secondary categories" hint="Comma separated"><input className={inputCls} value={p.secondary_categories.join(', ')} onChange={e => set('secondary_categories', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} />
+                {gsvc.data?.state === 'ok' && (() => { const left = gsvc.data.profile.additional_categories.filter(c => !p.secondary_categories.some(x => x.toLowerCase() === c.toLowerCase())); return left.length > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5"><span className="text-12 text-slate-500">On Google:</span>{left.map(c => <button key={c} type="button" onClick={() => set('secondary_categories', [...p.secondary_categories, c].slice(0, 9))} className="h-7 px-2.5 rounded-full text-12 font-semibold bg-white text-indigo-700 ring-1 ring-inset ring-indigo-200 hover:bg-indigo-50 cursor-pointer">+ {c}</button>)}
+                    <button type="button" onClick={() => set('secondary_categories', [...new Set([...p.secondary_categories, ...left])].slice(0, 9))} className="text-12 text-slate-500 hover:underline cursor-pointer">add all</button></div>); })()}</Field></>}
             </div>
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3"><LabelsField value={p.labels} onChange={v => set('labels', v)} /></div>
             {linked && <p className="mt-3 text-12 text-slate-500">Categories, address and map pin are managed in the Google cards below, because Google needs them in its own format.</p>}
