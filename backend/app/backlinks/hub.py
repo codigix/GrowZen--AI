@@ -97,13 +97,31 @@ def metrics_for(db: Session, domains: list[str]) -> dict[str, dict[str, Any]]:
 def refresh_metrics(db: Session, domains: list[str], limit: int = 50, force: bool = False) -> dict[str, Any]:
     """DA, PA and spam score from Moz for domains with no figures yet (or older than two weeks). Does nothing, and says so, when Moz is not set up."""
     from ..services import backlink_checker as bc
-    if not bc.moz_configured():
-        return {"configured": False, "refreshed": 0, "message": "DA, PA and spam score come from Moz: add MOZ_ACCESS_ID and MOZ_SECRET_KEY to the backend settings."}
+    use_moz = bc.moz_configured()
+    if not use_moz and not bc.dfs_configured():
+        return {"configured": False, "refreshed": 0, "message": "DA, PA and spam score need a data service: add DATAFORSEO_AUTH (or MOZ_ACCESS_ID and MOZ_SECRET_KEY) to the backend settings."}
     now = utcnow()
     have = {m.domain: m for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(domains or [""])))}
     todo = [d for d in dict.fromkeys(domains) if force or d not in have or not have[d].fetched_at or now - _aware(have[d].fetched_at) > METRIC_TTL][:limit]
     if not todo:
         return {"configured": True, "refreshed": 0, "message": "All figures are recent."}
+    if not use_moz:  # DataForSEO: the site's rank (DA-like), its home page's rank (PA-like) and its spam score
+        try:
+            dfs = bc.dfs_scores(todo, [f"https://{d}/" for d in todo])
+        except bc.CheckError as exc:
+            return {"configured": True, "refreshed": 0, "message": str(exc)}
+        n = 0
+        for d in todo:
+            site, home = dfs.get(d) or {}, dfs.get(f"https://{d}/") or {}
+            row = have.get(d) or BiDomainMetric(domain=d)
+            # a site with no data is recorded as asked (empty figures) so it is not billed again before the figures expire
+            row.da, row.pa, row.spam_score, row.linking_domains, row.fetched_at, row.source = site.get("rank"), home.get("rank"), site.get("spam"), None, now, "dataforseo"
+            db.add(row)
+            if site.get("rank") is not None or site.get("spam") is not None:
+                n += 1
+        db.commit()
+        more = max(0, len([d for d in dict.fromkeys(domains) if force or d not in have or not have[d].fetched_at or now - _aware(have[d].fetched_at) > METRIC_TTL]) - len(todo))
+        return {"configured": True, "refreshed": n, "message": (f"Updated {n} of {len(todo)} site{'s' if len(todo) != 1 else ''}." + (f" {len(todo) - n} too new or too small: DataForSEO has no figures for them." if len(todo) > n else "") if n else "DataForSEO has no figures for these sites (too new or too small).") + (f" {more} more are waiting: press again." if more else "")}
     try:
         got = bc.moz_metrics([f"https://{d}/" for d in todo])
     except bc.CheckError as exc:
@@ -169,6 +187,17 @@ def _link_out(bl: Backlink, page: BiPage, dom: str, score: dict | None, metric: 
             "metrics": metric, "useful": j["label"], "useful_why": j["why"]}
 
 
+def _scores_info(live: list[dict[str, Any]]) -> dict[str, Any]:
+    """Whether DA, PA and spam can be fetched for this list (a data service is set up) and for how many of the sites they are still missing."""
+    from ..services import backlink_checker as bc
+    configured = bc.moz_configured() or bc.dfs_configured()
+    sites = {x["source_domain"] for x in live}
+    asked = {x["source_domain"] for x in live if (x["metrics"] or {}).get("fetched_at")}
+    got = {x["source_domain"] for x in live if (x["metrics"] or {}).get("da") is not None or (x["metrics"] or {}).get("spam") is not None}
+    return {"configured": configured, "source": "Moz" if bc.moz_configured() else "DataForSEO" if configured else None, "sites": len(sites), "missing": len(sites - asked) if configured else 0,
+            "no_data": len(asked - got) if configured else 0}
+
+
 def links(db: Session, b: Business, *, status: str = "live", follow: str = "", category: str = "", useful: str = "", q: str = "", sort: str = "recent", limit: int = 50, offset: int = 0) -> dict[str, Any]:
     domain = own_domain(db, b.id)
     if not domain:
@@ -194,7 +223,7 @@ def links(db: Session, b: Business, *, status: str = "live", follow: str = "", c
     key = {"recent": lambda x: x["last_seen"] or "", "domain": lambda x: x["source_domain"], "da": lambda x: (x["metrics"] or {}).get("da") or -1}.get(sort, lambda x: x["last_seen"] or "")
     shown.sort(key=key, reverse=sort != "domain")
     return {"state": "ok", "domain": domain, "links": shown[offset:offset + limit], "total": len(shown), "live_total": len(live), "offset": offset, "limit": limit,
-            "facets": {k: dict(v) for k, v in facets.items()}, "metrics_ready": bool(metrics)}
+            "facets": {k: dict(v) for k, v in facets.items()}, "metrics_ready": bool(metrics), "scores": _scores_info(live)}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ referring domains
@@ -380,7 +409,7 @@ def summary(db: Session, b: Business) -> dict[str, Any]:
     cfg = db.scalar(select(BiBotConfig).where(BiBotConfig.business_id == b.id))
     crawler = {"configured": s.crawler_enabled, "last_sync_at": _aware(cfg.last_run_at).isoformat() if cfg and cfg.last_run_at else None, "last_error": ((cfg.last_stats or {}).get("error") if cfg else None),
                "domains": (cfg.last_stats or {}).get("domains") if cfg else None, "links_read": (cfg.last_stats or {}).get("links_read") if cfg else None, "running": bool(cfg and cfg.running)}
-    moz = {"configured": bc.moz_configured()}
+    moz = {"configured": bc.moz_configured() or bc.dfs_configured()}  # a data service that can give DA, PA and spam (Moz or DataForSEO)
     if not domain:
         return {"state": "no_target", "domain": None, "crawler": crawler, "moz": moz}
     data = links(db, b, status="all", limit=MAX_LINKS)

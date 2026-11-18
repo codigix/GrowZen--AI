@@ -8,6 +8,14 @@ from app.db import SessionLocal
 from app.services import backlink_checker as bc
 from app.services import crawler_client as cc
 
+
+@pytest.fixture(autouse=True)
+def _no_real_data_service(monkeypatch):
+    """The real DATAFORSEO_AUTH in .env must never reach these tests: DA, PA and spam appear only where a test sets a service up."""
+    from app.services import backlink_checker as bc
+    monkeypatch.setattr(bc, "dfs_configured", lambda: False)
+
+
 ME = "hub-clinic.in"
 RIVAL = "rival-clinic.in"
 
@@ -101,6 +109,37 @@ def test_moz_figures_only_when_configured_then_used(client, world, monkeypatch):
         assert db.query(BiDomainMetric).count() >= 2
     finally:
         db.close()
+
+
+def test_dataforseo_figures_fill_da_pa_and_spam_on_the_links_page(client, world, monkeypatch):
+    db = SessionLocal()
+    try:
+        db.query(BiDomainMetric).delete()  # figures an earlier test saved must not hide what this one fetches
+        db.commit()
+    finally:
+        db.close()
+    before = get(client, world, "links")
+    assert before["scores"]["configured"] is False
+    monkeypatch.setattr(bc, "dfs_configured", lambda: True)
+    asked = {}
+
+    def fake(domains, pages):
+        asked["domains"], asked["pages"] = list(domains), list(pages)
+        out = {d: {"rank": 55, "spam": 4} for d in domains}
+        out.update({p: {"rank": 31, "spam": None} for p in pages})
+        return out
+
+    monkeypatch.setattr(bc, "dfs_scores", fake)
+    pending = get(client, world, "links")["scores"]
+    assert pending["configured"] is True and pending["source"] == "DataForSEO" and pending["missing"] >= 1
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()
+    assert r["configured"] is True and r["refreshed"] >= 1
+    assert all(p == f"https://{d}/" for d, p in zip(asked["domains"], asked["pages"]))  # the home page of each site gives the PA-like figure
+    d = get(client, world, "links")
+    hb = next(x for x in d["links"] if x["source_domain"] == "healthblog.com")
+    assert hb["metrics"]["da"] == 55 and hb["metrics"]["pa"] == 31 and hb["metrics"]["spam"] == 4
+    assert d["scores"]["missing"] == 0
+    assert get(client, world, "summary")["moz"]["configured"] is True
 
 
 def test_a_business_without_a_site_gets_a_plain_state(client):

@@ -127,6 +127,8 @@ function SiteCell({ m }) {
 
 function Links({ b }) {
   const [params] = useSearchParams();
+  const [busyScores, errScores, runScores] = useAction();
+  const [toastS, toastSNode] = useToast();
   const [f, setF] = useState({ status: params.get('status') || 'live', follow: params.get('follow') || '', category: '', useful: params.get('useful') || '', sort: 'recent' });
   const [q, setQ] = useState(params.get('q') || ''); // opened from a site's row: only that site's links
   const dq = useDebounced(q);
@@ -135,8 +137,17 @@ function Links({ b }) {
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const sc = d.scores || {};
+  const showScores = hasMoz(d.links) || sc.configured; // the columns are there as soon as a data service can fill them
+  const getScores = () => runScores('scores', async () => { const x = await api(`/businesses/${b.id}/backlink-hub/metrics/refresh`, { method: 'POST' }); toastS(x.message); r.reload(true); });
   return (
     <Card pad={false}>
+      {sc.configured && (
+        <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3 text-13">
+          <Button size="sm" variant={sc.missing ? 'primary' : undefined} icon={RefreshCw} busy={busyScores === 'scores'} onClick={getScores}>{sc.missing ? `Get DA, PA and Spam for ${sc.missing} site${sc.missing === 1 ? '' : 's'}` : 'Refresh DA, PA and Spam'}</Button>
+          <span className="text-slate-500">{sc.missing ? `${sc.sites - sc.missing - sc.no_data} of ${sc.sites} linking sites have figures.` : `${sc.sites - sc.no_data} of ${sc.sites} linking sites have figures.`}{sc.no_data ? ` ${sc.no_data} are too new or too small for ${sc.source} to know.` : ''} From {sc.source}: DA is the site's rank, PA its home page's rank (0-100), Spam is the spam score (lower is better). Not Moz's own numbers.</span>
+          <ErrorNote>{errScores}</ErrorNote>
+        </div>)}
       <Filters q={q} setQ={setQ}>
         <Select value={f.status} onChange={set('status')} className={sel} aria-label="Status"><option value="live">Live links</option><option value="lost">Lost links</option><option value="all">All</option></Select>
         <Select value={f.follow} onChange={set('follow')} className={sel} aria-label="Follow type"><option value="">Any follow type</option><option value="dofollow">Follow</option><option value="nofollow">Nofollow</option><option value="sponsored">Sponsored</option><option value="ugc">UGC</option></Select>
@@ -148,7 +159,7 @@ function Links({ b }) {
         <table className="w-full min-w-[1150px] text-13">
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
             <th className={TH}>Linking page</th><th className={TH}>Anchor text</th><th className={TH}>Goes to</th><th className={TH}>Follow</th><th className={TH}>Category</th>
-            {hasMoz(d.links) ? <><th className={`${TH} text-right`}><Tip text="Moz Domain Authority of the linking site (0-100).">DA</Tip></th><th className={`${TH} text-right`}><Tip text="Moz Page Authority of the linking page (0-100).">PA</Tip></th><th className={`${TH} text-right`}><Tip text="Moz Spam Score: how much the site looks like sites Google penalised. Lower is better.">Spam</Tip></th></> : <th className={TH}><Head what="How many live links this site gives you, and how many of its pages carry them." why="A link repeated on many pages of one site counts as about one link, so more is not always better." from="our backlink crawler.">Site gives you</Head></th>}
+            {showScores ? <><th className={`${TH} text-right`}><Tip text="Authority of the linking site, 0-100 (the site's rank at the data service).">DA</Tip></th><th className={`${TH} text-right`}><Tip text="Strength of the site's home page, 0-100.">PA</Tip></th><th className={`${TH} text-right`}><Tip text="Spam score of the linking site. Lower is better.">Spam</Tip></th><th className={TH}><Head what="How many live links this site gives you, and how many of its pages carry them." why="A link repeated on many pages of one site counts as about one link." from="our backlink crawler.">Site gives you</Head></th></> : <th className={TH}><Head what="How many live links this site gives you, and how many of its pages carry them." why="A link repeated on many pages of one site counts as about one link, so more is not always better." from="our backlink crawler.">Site gives you</Head></th>}
             <th className={TH}><Tip text="Our judgement from relevance to your business, spam risk and the follow type. Hover a badge for the reason.">Useful?</Tip></th><th className={TH}>First seen</th>
             <th className={`${TH} text-right`}><Head right what="Open the linking page, or your own page it points to." why="See the link in its real setting.">Actions</Head></th>
           </tr></thead>
@@ -161,7 +172,7 @@ function Links({ b }) {
                 <td className="px-3 py-3 max-w-[160px]"><span className="block truncate text-slate-600" title={x.target_url}>{path(x.target_url)}</span></td>
                 <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
                 <td className="px-3 py-3 capitalize text-slate-600">{x.category.label}</td>
-                {hasMoz(d.links) ? <><td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
+                {showScores ? <><td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td><td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
                 <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                 <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(x.first_seen)}</td>
                 <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
@@ -175,6 +186,7 @@ function Links({ b }) {
         </table>
       </div>
       <p className="px-5 py-3 border-t border-slate-100 text-11.5 text-slate-400">{d.total} link{d.total !== 1 ? 's' : ''}. Follow type and anchor are read from the page by your crawler. “Useful?” is our own judgement, not a Google or Moz metric.</p>
+      {toastSNode}
     </Card>
   );
 }
