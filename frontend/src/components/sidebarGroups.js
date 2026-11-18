@@ -108,7 +108,7 @@ export const SIDEBAR_SECTIONS = [
       { title: '1 · Business Analysis', items: [page('/onboarding', { label: 'Business details' })] },
       { title: '2 · Competitor Research', items: [page('/competitor-finder'), page('/competitor-watch')] },
       { title: '3 · Keyword Research', items: [link('/keyword-management/workspace', 'Keyword Workspace'), page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' })] },
-      { title: '4 · Keyword Mapping', items: [page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics'] }), link('/keyword-management/mapping', 'Keyword Mapping'), link('/keyword-management/use', 'Where to Use Them')] },
+      { title: '4 · Keyword Mapping', items: [page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics'] }), link('/keyword-management/mapping', 'Keyword Mapping'), link('/keyword-management/use', 'Keyword Usage')] },
       { title: '5 · Website SEO Audit', items: [page('/website-audit'), { to: '/backlinks/links', label: 'Backlinks', also: ['/backlinks/sites'] }, link('/backlinks/domains', 'Referring Domains'), link('/backlinks/audit', 'Backlink Audit')] },
       { title: '6a · Optimize the Pages', items: [link('/fix-plan', 'Fix Plan')] },
       { title: '6b · Content', items: [page('/ai-content-generation/trends', { label: 'Topic Research' }), link('/seo-brief', 'SEO Brief Generator'), page('/ai-content-generation/blog', { label: 'Write Content' })] },
