@@ -88,9 +88,11 @@ def _dfs_call(endpoint: str, targets: list[str]) -> dict[str, dict[str, Any]]:
     from ..config import get_settings
     r = httpx.post(f"{DFS_URL}{endpoint}/live", json=[{"targets": targets}], headers={"Authorization": f"Basic {get_settings().dataforseo_auth.strip()}"}, timeout=40)
     body = r.json()
+    task = (body.get("tasks") or [{}])[0]
+    if 40200 in (body.get("status_code"), task.get("status_code")) or r.status_code == 402:
+        raise CheckError("Your DataForSEO balance is empty: add funds in its Billing section, then try again.")
     if r.status_code != 200 or body.get("status_code") != 20000:
         raise CheckError(f"DataForSEO: {body.get('status_message') or r.status_code}")
-    task = (body.get("tasks") or [{}])[0]
     if task.get("status_code") != 20000:
         raise CheckError(f"DataForSEO: {task.get('status_message') or 'task failed'}")
     items = ((task.get("result") or [{}])[0] or {}).get("items") or []

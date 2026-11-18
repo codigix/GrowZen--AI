@@ -35,9 +35,12 @@ def _location(country: str | None) -> str:
 
 
 def _check(body: dict[str, Any]) -> dict[str, Any]:
+    task = (body.get("tasks") or [{}])[0]
+    if 40200 in (body.get("status_code"), task.get("status_code")):
+        raise GbpError("Your DataForSEO balance is empty: add funds in its Billing section, then try again.")
     if body.get("status_code") != 20000:
         raise GbpError(f"DataForSEO: {body.get('status_message') or 'request failed'}")
-    return (body.get("tasks") or [{}])[0]
+    return task
 
 
 def _hours(wt: dict[str, Any] | None) -> list[str]:
