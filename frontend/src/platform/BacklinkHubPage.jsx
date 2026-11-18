@@ -287,15 +287,31 @@ function AiPlatforms({ b, onOpen, onChanged }) {
       {res?.state === 'no_ai' && <p className="text-13 text-amber-800">{res.message}</p>}
       {res?.state === 'error' && <p className="text-13 text-amber-800">{res.message}</p>}
       {res?.state === 'ok' && (res.platforms.length === 0 ? <p className="text-13 text-slate-500">Nothing new to suggest right now.</p> : (
-        <div className="grid gap-3 md:grid-cols-2">
-          {res.platforms.map(p => (
-            <div key={p.domain} className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-1.5 text-13">
-              <div className="flex items-center gap-2"><a href={`https://${p.domain}`} target="_blank" rel="noreferrer" className="font-semibold text-indigo-600 hover:underline inline-flex items-center gap-1">{p.name}<ExternalLink size={11} /></a><Badge tone="gray">{p.kind}</Badge></div>
-              <p className="text-slate-700"><span className="font-semibold">You get:</span> {p.why}</p>
-              <p className="text-slate-600"><span className="font-semibold">First step:</span> {p.how}</p>
-              <div className="flex gap-2 pt-1"><Button size="sm" busy={busy === p.domain} onClick={() => add(p)}>Add to my plan</Button><Button size="sm" onClick={() => onOpen({ domain: p.domain, name: p.name, source: 'ai' })}>How to get it</Button></div>
-            </div>
-          ))}
+        <div className="overflow-x-auto -mx-5">
+          <table className="w-full min-w-[820px] text-13">
+            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+              <th className={TH}><Head what="The website or listing site the AI suggests." from="the AI, from what your business does and where it is.">Site</Head></th>
+              <th className={TH}><Head what="The kind of place: directory, news, community, partner and so on.">Kind</Head></th>
+              <th className={TH}><Head what="What a link on this site gives you." why="Pick the places with the most value for you.">You get</Head></th>
+              <th className={TH}><Head what="The first thing to do to get the link." why="Start here, then open the Guide for the full steps and a message.">First step</Head></th>
+              <th className={`${TH} text-right`}><Head right what="Add the site to your plan, open its Guide, or open the site." why="Suggestions are not checked: look at the site before you use it.">Actions</Head></th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {res.platforms.map(p => (
+                <tr key={p.domain} className="align-top hover:bg-slate-50">
+                  <td className="px-3 py-3 font-semibold text-slate-900 whitespace-nowrap">{p.name}<span className="block text-11.5 font-normal text-slate-400">{p.domain}</span></td>
+                  <td className="px-3 py-3"><Badge tone="gray">{p.kind}</Badge></td>
+                  <td className="px-3 py-3 max-w-[280px] text-slate-700">{p.why}</td>
+                  <td className="px-3 py-3 max-w-[280px] text-slate-600">{p.how}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                    <Act icon={Plus} tone="green" tip="Add to plan: put this site in your link plan." busy={busy === p.domain} onClick={() => add(p)} />
+                    <Act icon={BookOpen} tone="violet" tip="Guide: how to get the link, with a draft message." onClick={() => onOpen({ domain: p.domain, name: p.name, source: 'ai' })} />
+                    <OpenAct url={`https://${p.domain}`} tip="Open: show the site in a new tab." />
+                  </span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ))}
       {res?.note && <p className="text-11.5 text-slate-400 mt-3">{res.note}</p>}
@@ -355,7 +371,7 @@ function Opportunities({ b }) {
             ) : (
               <table className="w-full min-w-[1000px] text-13">
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-                  <th className={TH}>Priority</th><th className={TH}>Site</th><th className={TH}>Competitors linked there</th><th className={TH}>Category</th><th className={TH}>Follow</th><th className={`${TH} text-right`}>DA</th><th className={TH}>Useful?</th><th className={TH}>Status</th><th className={`${TH} text-right`}><Head right what="Guide shows how to ask this site for a link. Open shows the site's page that links to your competitor." why="Contact the sites in the order of priority.">Actions</Head></th></tr></thead>
+                  <th className={TH}>Priority</th><th className={TH}>Site</th><th className={TH}>Competitors linked there</th><th className={TH}>Category</th><th className={TH}>Follow</th>{hasMoz(shown) && <th className={`${TH} text-right`}>DA</th>}<th className={TH}>Useful?</th><th className={TH}>Status</th><th className={`${TH} text-right`}><Head right what="Guide shows how to ask this site for a link. Open shows the site's page that links to your competitor." why="Contact the sites in the order of priority.">Actions</Head></th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {shown.map(x => { const [pl2, pt] = PRIORITY[x.priority] || PRIORITY.low; return (
                     <tr key={x.domain} className="hover:bg-slate-50 align-middle">
@@ -364,7 +380,7 @@ function Opportunities({ b }) {
                       <td className="px-3 py-3 text-slate-600"><Tip text={x.competitors.join(', ')}><span>{x.competitors.join(', ')}</span></Tip></td>
                       <td className="px-3 py-3 text-slate-600">{x.category.label}</td>
                       <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
-                      <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td>
+                      {hasMoz(shown) && <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td>}
                       <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                       <td className="px-3 py-3"><Select value={x.status} onChange={e => setStatus(x, e.target.value)} className="h-8 text-13 min-w-[130px]" aria-label={`Status of ${x.domain}`} disabled={busy === x.domain}><option value="new">To do</option><option value="planned">Planned</option><option value="contacted">Contacted</option><option value="live">Got the link</option><option value="skipped">Skipped</option></Select></td>
                       <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5"><Act icon={BookOpen} tone="violet" tip="Guide: how to ask this site for a link, with a draft message." onClick={() => setOpen(x)} /><OpenAct url={x.sample?.url} tip="Open the site: the page that links to your competitor." /></span></td>
