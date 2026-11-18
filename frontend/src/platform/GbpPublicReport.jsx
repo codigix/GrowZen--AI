@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Star, Download, FileSearch } from 'lucide-react';
-import { Card, Badge, Button, ErrorNote, useAction, useToast, SkList, ScoreRing, Meter, refreshBusinesses } from './SeoUi';
+import { Card, Badge, Button, Modal, ErrorNote, useAction, useToast, SkList, ScoreRing, Meter, refreshBusinesses } from './SeoUi';
+import MapsPublicCard from './MapsPublicCard';
 import { api, useApi } from './seoApi';
 
 const TONE = { ok: ['Good', 'green'], warn: ['Improve', 'amber'], bad: ['Fix', 'red'] };
@@ -26,6 +27,7 @@ export default function GbpPublicReport({ b }) {
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const [full, setFull] = useState(null);
+  const [open, setOpen] = useState(false);
   const d = full || (r.data?.state === 'ok' ? r.data : null);
   const runFull = () => run('full', async () => { setFull(await api(`/businesses/${b.id}/maps-public/report`, { method: 'POST' })); });
   const use = (fields) => run('use', async () => { const x = await api(`/businesses/${b.id}/maps-public/apply-profile`, { method: 'POST', body: { fields } }); await refreshBusinesses(); toast(`Saved from Google: ${x.applied.join(', ') || 'nothing to change'}`); });
@@ -40,23 +42,9 @@ export default function GbpPublicReport({ b }) {
     ['primary_category', 'Main category', p.category, b.primary_category], ['secondary_categories', 'Extra categories', theirSec, mineSec], ['description', 'Description', p.description, b.description],
   ].filter(([, , g, m]) => g && String(g).trim().toLowerCase() !== String(m || '').trim().toLowerCase());
   const dist = p?.distribution || {}; const total = Object.values(dist).reduce((x, y) => x + y, 0) || 1;
-  return (
-    <Card title="Google profile: what it shows, analysis and roadmap" subtitle="Read live from the public Google Business Profile. The score and roadmap come only from what was read."
-      action={d ? <span className="flex gap-2"><Button size="sm" icon={FileSearch} busy={busy === 'full'} onClick={runFull}>{d.posts ? 'Read again with posts' : 'Add the posts (20 seconds)'}</Button><Button size="sm" icon={Download} onClick={download}>Download report</Button></span> : null}>
-      <ErrorNote>{error}</ErrorNote>
-      {!r.data && !r.error && <SkList rows={5} />}
-      {r.error && <p className="text-13 text-red-600">{r.error.message}</p>}
-      {r.data && r.data.state !== 'ok' && !full && <p className="text-13 text-amber-800">{r.data.message}</p>}
-      {d && (
+  const todo = d ? a.checks.filter(c => c.status !== 'ok').sort((x, y) => (x.status === 'bad' ? 0 : 1) - (y.status === 'bad' ? 0 : 1)).slice(0, 3) : [];
+  const reportBody = d && (
         <div className="grid gap-6 text-13">
-          <div className="flex flex-wrap items-center gap-6">
-            <ScoreRing score={a.score} label={a.word} />
-            <div className="grid gap-1">
-              <div className="flex gap-2"><Badge tone="green">{a.counts.ok} good</Badge><Badge tone="amber">{a.counts.warn} to improve</Badge><Badge tone="red">{a.counts.bad} to fix</Badge></div>
-              <p className="text-slate-600 max-w-xl">Scored from {a.checks.length} checks of the public profile{a.posts_read ? '' : '. Posts are not read yet: press “Add the posts” to include them'}. It is our score, not a Google score.</p>
-            </div>
-          </div>
-
           {diffs.length > 0 && (
             <div className="rounded-lg bg-amber-50 px-4 py-3 grid gap-2">
               <div className="font-semibold text-amber-900">This project differs from what Google shows</div>
@@ -106,7 +94,41 @@ export default function GbpPublicReport({ b }) {
                 {ph.items.length ? <ol className="grid gap-2.5 list-decimal pl-4">{ph.items.map((i, k) => <li key={k} className="text-slate-700"><span>{i.what}</span> <Badge tone={IMPACT[i.impact]}>{i.impact}</Badge><span className="block text-12 text-slate-500">{i.why}</span></li>)}</ol> : <p className="text-slate-400">Nothing urgent here.</p>}
               </div>))}</div></div>
         </div>
+  );
+  return (
+    <Card title="Google profile report" subtitle="Scored from the public Google Business Profile. The score is ours, not Google's."
+      action={d ? <span className="flex gap-2"><Button size="sm" variant="primary" icon={FileSearch} onClick={() => setOpen(true)}>View full report</Button><Button size="sm" icon={Download} onClick={download}>Download</Button></span> : null}>
+      <ErrorNote>{error}</ErrorNote>
+      {!r.data && !r.error && <SkList rows={3} />}
+      {r.error && <p className="text-13 text-red-600">{r.error.message}</p>}
+      {r.data && r.data.state !== 'ok' && !full && <p className="text-13 text-amber-800">{r.data.message}</p>}
+      {d && (
+        <div className="grid gap-4 text-13">
+          <div className="flex flex-wrap items-center gap-6">
+            <ScoreRing score={a.score} label={a.word} />
+            <div className="grid gap-2 min-w-0 flex-1">
+              <div className="flex flex-wrap gap-2"><Badge tone="green">{a.counts.ok} good</Badge><Badge tone="amber">{a.counts.warn} to improve</Badge><Badge tone="red">{a.counts.bad} to fix</Badge></div>
+              {todo.length > 0 && <ul className="grid gap-1 text-slate-700">{todo.map(c => <li key={c.key} className="flex gap-2"><Badge tone={TONE[c.status][1]}>{TONE[c.status][0]}</Badge><span className="min-w-0"><b>{c.label}:</b> {c.detail}</span></li>)}</ul>}
+            </div>
+          </div>
+          {diffs.length > 0 && <div className="flex flex-wrap items-center gap-2"><Button size="sm" busy={busy === 'use'} onClick={() => use(diffs.map(x => x[0]))}>Use what Google shows for {diffs.length} different detail{diffs.length === 1 ? '' : 's'}</Button><span className="text-12 text-slate-500">Fills the project from the public listing.</span></div>}
+        </div>
       )}
+      <Modal open={open && !!d} title="Google Business Profile report" onClose={() => setOpen(false)} width="max-w-6xl"
+        footer={<div className="flex items-center gap-2 w-full"><span className="text-12 text-slate-500">Read from Google on {d ? String(p.read_at).slice(0, 10) : ''}</span>
+          <Button size="sm" className="ml-auto" icon={FileSearch} busy={busy === 'full'} onClick={runFull}>{d?.posts ? 'Read again with posts' : 'Add the posts (20 seconds)'}</Button>
+          <Button size="sm" icon={Download} onClick={download}>Download report</Button><Button size="sm" variant="primary" onClick={() => setOpen(false)}>Close</Button></div>}>
+        <ErrorNote>{error}</ErrorNote>
+        <div className="grid gap-6">
+          <div className="flex flex-wrap items-center gap-6">
+            {d && <ScoreRing score={a.score} label={a.word} />}
+            {d && <div className="grid gap-1"><div className="flex gap-2"><Badge tone="green">{a.counts.ok} good</Badge><Badge tone="amber">{a.counts.warn} to improve</Badge><Badge tone="red">{a.counts.bad} to fix</Badge></div>
+              <p className="text-13 text-slate-600 max-w-xl">Scored from {a.checks.length} checks of the public profile{a.posts_read ? '' : '. Posts are not read yet: press “Add the posts” below to include them'}.</p></div>}
+          </div>
+          {reportBody}
+          <MapsPublicCard b={b} />
+        </div>
+      </Modal>
       {toastNode}
     </Card>
   );

@@ -9,7 +9,6 @@ import { BusinessTraffic } from './TrafficPage';
 import AccessGate from './AccessGate';
 import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePosts, isLinked, readBase64 } from './GbpEditors';
 import { MarketCard } from './Market';
-import MapsPublicCard from './MapsPublicCard';
 import GbpPublicReport from './GbpPublicReport';
 import { GbpAccounts, GoogleSignIn, ListingStatus, VerifyPill } from './GbpAccounts';
 import { hoursFrom, hoursTo, isAllDay, WeekEditor, StatusCard, MoreHoursCard, QuickHoursActions, LabelsField, ServiceAreaCard } from './GbpLocationExtras';
@@ -79,7 +78,19 @@ function contactProblems(p) {
   return out;
 }
 
+/** The public Google listing (DataForSEO profile + Places), for the preview to fill what the project has not saved yet. Null until something was read. */
+function usePublicGoogle(b) {
+  const on = Boolean(b.place_id);
+  const prof = useApi(on ? `/businesses/${b.id}/maps-public/profile` : null);
+  const maps = useApi(on ? `/businesses/${b.id}/maps-public` : null);
+  const g = prof.data?.state === 'ok' ? prof.data.profile : null;
+  const m = maps.data?.state === 'ok' ? maps.data : null;
+  if (!g && !m) return null;
+  return { g, m, posts: prof.data?.posts || null };
+}
+
 function ProfileTab({ b, toast }) {
+  const pub = usePublicGoogle(b);
   const countryRows = useCountries();
   const [p, setP] = useState(() => ({ name: b.name, primary_category: b.primary_category || '', secondary_categories: b.secondary_categories || [], phone: b.phone || '', website: b.website || '', address: b.address || '', area: b.area || '', city: b.city || '', country: b.country || 'IN', description: b.description || '', services: b.services || [], attributes: b.attributes || [], booking_url: b.booking_url || '', labels: b.labels || [], additional_phones: b.additional_phones || [], action_links: (b.action_links || []).filter(x => x.type !== 'APPOINTMENT'), lat: b.lat ?? '', lng: b.lng ?? '' }));
   const [attr, setAttr] = useState('');
@@ -286,8 +297,8 @@ function ProfileTab({ b, toast }) {
             <span className="text-12 font-semibold uppercase tracking-wide text-slate-400">How it looks on Google</span>
             <span className="text-11 text-emerald-600 font-medium inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Live preview</span>
           </div>
-          <GooglePreview b={b} p={p} stars={stars} />
-          <p className="text-11.5 text-slate-400 px-1">Built from the details you are editing. The buttons and tabs work like the real listing; greyed items are still missing.</p>
+          <GooglePreview b={b} p={p} stars={stars} pub={pub} />
+          <p className="text-11.5 text-slate-400 px-1">Built from the details you are editing; anything still empty is filled from the public Google listing. The buttons and tabs work like the real listing.</p>
         </aside>
       </div>
     </div>
@@ -300,38 +311,59 @@ const hoursByDay = (hours) => WEEK.map(d => ({ day: d, spans: (hours?.periods ||
 const asUrl = (u) => (u ? (/^https?:\/\//i.test(u) ? u : `https://${u}`) : null);
 
 /** The business as it appears on Google: working buttons (maps, call, website, booking) and the Overview / Reviews / Photos / About tabs, from the details being edited. */
-function GooglePreview({ b, p, stars }) {
+function GooglePreview({ b, p, stars, pub }) {
+  const g = pub?.g, m = pub?.m, mb = m?.basics || {};
   const [tab, setTab] = useState('overview');
   const [weekOpen, setWeekOpen] = useState(false);
   const reviews = useApi(tab === 'reviews' ? `/businesses/${b.id}/reviews` : null);
   const live = useApi(tab === 'photos' && isLinked(b) ? `/businesses/${b.id}/gbp/live` : null);
-  const week = hoursByDay(b.hours);
+  const own = hoursByDay(b.hours);
+  const pubLines = (g?.hours?.length ? g.hours : m?.hours) || [];
+  const fromPub = !own.some(d => d.spans.length) && pubLines.length > 0;
+  const cap = (t) => t.charAt(0) + t.slice(1).toLowerCase();
+  const week = fromPub ? pubLines.map(l => { const i = l.indexOf(':'); const t = l.slice(i + 1).trim(); return { day: l.slice(0, i), spans: /closed/i.test(t) ? [] : [t] }; }) : own.map(d => ({ day: cap(d.day), spans: d.spans }));
   const hasHours = week.some(d => d.spans.length);
-  const today = week[(new Date().getDay() + 6) % 7];
-  const mapsQuery = [p.name, p.address || [p.area, p.city].filter(Boolean).join(', ')].filter(Boolean).join(' ');
-  const mapsUrl = b.lat != null && b.lng != null ? `https://www.google.com/maps/search/?api=1&query=${b.lat},${b.lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
-  const web = asUrl(p.website);
-  const book = asUrl(p.booking_url);
+  const today = week.find(d => d.day === ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date().getDay()]) || week[0];
+  const rating = b.rating || g?.rating || m?.reputation?.rating;
+  const count = b.reviewCount || g?.votes || m?.reputation?.count || 0;
+  const category = p.primary_category || g?.category || mb.category;
+  const description = p.description || g?.description || mb.summary || '';
+  const address = p.address || mb.address || g?.address;
+  const phone = p.phone || g?.phone || mb.phone;
+  const websiteRaw = p.website || g?.website || mb.website;
+  const cover = b.cover_photo || g?.image;
+  const logo = b.logo || g?.logo;
+  const also = (p.secondary_categories || []).length ? p.secondary_categories : (g?.additional_categories || []);
+  const usedPub = fromPub || (!p.description && description) || (!p.primary_category && category) || (!b.rating && rating) || (!p.address && address) || (!b.cover_photo && cover);
+  const mapsQuery = [p.name, address || [p.area, p.city].filter(Boolean).join(', ')].filter(Boolean).join(' ');
+  const lat = b.lat ?? mb.lat, lng = b.lng ?? mb.lng;
+  const mapsUrl = m?.maps_url || (lat != null && lng != null ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`);
+  const web = asUrl(websiteRaw);
+  const book = asUrl(p.booking_url || g?.book_url);
   const extraPhones = (p.additional_phones || []).filter(x => x && x.trim());
   const otherLinks = (p.action_links || []).filter(x => x.url && x.url.trim());
-  const actions = [['Directions', Navigation, mapsUrl, true], ['Call', Phone, p.phone ? `tel:${p.phone.replace(/[^\d+]/g, '')}` : null], ['Website', Globe, web], ['Book', CalendarCheck, book]];
+  const actions = [['Directions', Navigation, mapsUrl, true], ['Call', Phone, phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : null], ['Website', Globe, web], ['Book', CalendarCheck, book]];
   const photos = (live.data?.live?.media || []).filter(m => m.type !== 'VIDEO' && m.url);
-  const gallery = photos.length ? photos : [b.cover_photo, b.logo].filter(Boolean).map(url => ({ url }));
-  const services = p.services.filter(s => s.name);
+  const gallery = photos.length ? photos : [cover, logo].filter(Boolean).map(url => ({ url }));
+  const own_services = p.services.filter(s => s.name);
+  const services = own_services.length ? own_services : (g?.services || []).map(x => (typeof x === 'string' ? { name: x } : { name: x.name || x.title, price: x.price, description: x.description })).filter(x => x.name);
+  const attrs = p.attributes.length ? p.attributes : [...(g?.attributes || []).map(x => x.split(': ').pop()), ...(m?.features || [])];
+  const posts = pub?.posts || [];
+  const shownReviews = (reviews.data?.reviews || []).length ? reviews.data.reviews : (m?.reputation?.reviews || []).map((x, i) => ({ id: `g${i}`, author: x.author, rating: x.rating, body: x.text, when: x.when }));
   const Line = ({ icon: I, children }) => <div className="flex items-start gap-3.5 text-13 text-slate-700"><I size={17} className="text-blue-600 mt-0.5 shrink-0" /><div className="min-w-0 break-words flex-1">{children}</div></div>;
   return (
     <div className="bg-white rounded-2xl ring-1 ring-slate-200 shadow-sm overflow-hidden">
-      {b.cover_photo
-        ? <img src={b.cover_photo} alt="" className="h-44 w-full object-cover" />
+      {cover
+        ? <img src={cover} alt="" className="h-44 w-full object-cover" />
         : <div className="h-44 bg-gradient-to-br from-sky-100 via-indigo-50 to-emerald-100 flex flex-col items-center justify-center gap-2 text-slate-400">
-            <BusinessAvatar name={p.name} src={b.logo} size="w-16 h-16" className="shadow-sm text-24" />
+            <BusinessAvatar name={p.name} src={logo} size="w-16 h-16" className="shadow-sm text-24" />
             <span className="text-12">Add a cover photo in Photos &amp; Media</span>
           </div>}
       <div className="px-5 pt-4 pb-5">
         <div className="text-22 text-slate-900 leading-snug" style={{ fontFamily: 'Google Sans, Roboto, Arial, sans-serif' }}>{p.name || 'Business name'}</div>
         <div className="flex flex-wrap items-center gap-x-1.5 text-13 text-slate-600 mt-1">
-          {b.rating ? <><span className="text-slate-800">{b.rating}</span><span className="text-amber-400 tracking-tight">{stars(b.rating)}</span><button type="button" onClick={() => setTab('reviews')} className="text-blue-700 hover:underline cursor-pointer">({b.reviewCount || 0})</button></> : <span className="text-slate-400">No reviews yet</span>}
-          <span className="text-slate-300">·</span><span>{p.primary_category || 'Add a category'}</span>
+          {rating ? <><span className="text-slate-800">{rating}</span><span className="text-amber-400 tracking-tight">{stars(rating)}</span><button type="button" onClick={() => setTab('reviews')} className="text-blue-700 hover:underline cursor-pointer">({count})</button></> : <span className="text-slate-400">No reviews yet</span>}
+          <span className="text-slate-300">·</span><span>{category || 'Add a category'}</span>
         </div>
         {hasHours && <div className="text-13 mt-1"><span className={today.spans.length ? 'text-emerald-700 font-medium' : 'text-red-600 font-medium'}>{today.spans.length ? 'Open today' : 'Closed today'}</span>{today.spans.length ? <span className="text-slate-500"> · {today.spans.join(', ')}</span> : null}</div>}
         <div className="grid grid-cols-4 gap-1 mt-5">
@@ -354,27 +386,33 @@ function GooglePreview({ b, p, stars }) {
         {tab === 'overview' && (
           <div className="mt-4 divide-y divide-slate-100">
             <div className="space-y-3.5 pb-4">
-              <Line icon={MapPin}>{p.address || [p.area, p.city].filter(Boolean).join(', ') || <span className="text-slate-400">Add the address, or mark as a service-area business</span>}</Line>
+              <Line icon={MapPin}>{address || [p.area, p.city].filter(Boolean).join(', ') || <span className="text-slate-400">Add the address, or mark as a service-area business</span>}</Line>
               {hasHours && (
                 <Line icon={Clock}>
                   <button type="button" onClick={() => setWeekOpen(o => !o)} className="text-left cursor-pointer w-full flex items-center justify-between gap-2"><span>{today.spans.length ? <>Open · {today.spans.join(', ')}</> : 'Closed today'}</span><ChevronDown size={15} className={`text-slate-400 transition-transform ${weekOpen ? 'rotate-180' : ''}`} /></button>
                   {weekOpen && <div className="mt-2 space-y-1">{week.map(d => <div key={d.day} className={`flex justify-between gap-3 text-12.5 ${d.day === today.day ? 'font-semibold text-slate-900' : 'text-slate-600'}`}><span>{d.day.charAt(0) + d.day.slice(1).toLowerCase()}</span><span>{d.spans.join(', ') || 'Closed'}</span></div>)}</div>}
                 </Line>
               )}
-              <Line icon={Globe}>{web ? <a href={web} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{p.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a> : <span className="text-slate-400">Add a website</span>}</Line>
-              <Line icon={Phone}>{p.phone ? <a href={`tel:${p.phone.replace(/[^\d+]/g, '')}`} className="hover:underline">{p.phone}</a> : <span className="text-slate-400">Add a phone number</span>}{extraPhones.map(x => <div key={x}><a href={`tel:${x.replace(/[^\d+]/g, '')}`} className="hover:underline">{x}</a></div>)}</Line>
+              <Line icon={Globe}>{web ? <a href={web} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{websiteRaw.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a> : <span className="text-slate-400">Add a website</span>}</Line>
+              <Line icon={Phone}>{phone ? <a href={`tel:${phone.replace(/[^\d+]/g, '')}`} className="hover:underline">{phone}</a> : <span className="text-slate-400">Add a phone number</span>}{extraPhones.map(x => <div key={x}><a href={`tel:${x.replace(/[^\d+]/g, '')}`} className="hover:underline">{x}</a></div>)}</Line>
               {(book || otherLinks.length > 0) && <Line icon={CalendarCheck}><div className="flex flex-wrap gap-x-3 gap-y-1">{book && <a href={book} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">Book an appointment</a>}{otherLinks.map(x => <a key={x.type} href={asUrl(x.url)} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{ACTION_TYPES[x.type] || x.type}</a>)}</div></Line>}
             </div>
             <div className="py-4">
               <div className="text-14 font-medium text-slate-900 mb-1">From the business</div>
-              <p className="text-13 text-slate-600 leading-relaxed line-clamp-4">{p.description || <span className="text-slate-400">Write a short description so customers know what you offer.</span>}</p>
-              {p.description.length > 200 && <button type="button" onClick={() => setTab('about')} className="text-13 text-blue-700 mt-1 hover:underline cursor-pointer">More</button>}
+              <p className="text-13 text-slate-600 leading-relaxed line-clamp-4">{description || <span className="text-slate-400">Write a short description so customers know what you offer.</span>}</p>
+              {description.length > 200 && <button type="button" onClick={() => setTab('about')} className="text-13 text-blue-700 mt-1 hover:underline cursor-pointer">More</button>}
             </div>
             {services.length > 0 && (
               <div className="py-4">
                 <div className="text-14 font-medium text-slate-900 mb-2">Services</div>
                 {services.slice(0, 4).map((s, i) => <div key={i} className="flex justify-between gap-3 text-13 text-slate-600 py-1"><span className="truncate">{s.name}</span><span className="text-slate-500 shrink-0">{s.price}</span></div>)}
                 {services.length > 4 && <button type="button" onClick={() => setTab('about')} className="text-13 text-blue-700 mt-1 hover:underline cursor-pointer">All {services.length} services</button>}
+              </div>
+            )}
+            {posts.length > 0 && (
+              <div className="py-4">
+                <div className="text-14 font-medium text-slate-900 mb-2">Updates from the business</div>
+                <ul className="grid gap-2">{posts.slice(0, 3).map((x, i) => <li key={i} className="rounded-lg bg-slate-50 px-3 py-2"><span className="text-12 text-slate-500">{x.date}</span><p className="text-13 text-slate-700 line-clamp-3">{x.text}</p></li>)}</ul>
               </div>
             )}
           </div>
@@ -385,15 +423,15 @@ function GooglePreview({ b, p, stars }) {
             {!reviews.data ? (reviews.error ? <div className="text-13 text-red-600">{reviews.error.message}</div> : <SkList rows={3} />) : (
               <>
                 <div className="flex items-center gap-4 pb-3 border-b border-slate-100">
-                  <div className="text-34 leading-none text-slate-900">{b.rating || '–'}</div>
-                  <div><div className="text-amber-400 tracking-tight">{stars(b.rating)}</div><div className="text-12 text-slate-500">{b.reviewCount || 0} reviews</div></div>
+                  <div className="text-34 leading-none text-slate-900">{rating || '–'}</div>
+                  <div><div className="text-amber-400 tracking-tight">{stars(rating)}</div><div className="text-12 text-slate-500">{count} reviews</div></div>
                 </div>
-                {reviews.data.reviews.length === 0 && <p className="text-13 text-slate-400 py-4">No reviews yet. Ask happy customers to leave one.</p>}
+                {shownReviews.length === 0 && <p className="text-13 text-slate-400 py-4">No reviews yet. Ask happy customers to leave one.</p>}
                 <ul className="divide-y divide-slate-100">
-                  {reviews.data.reviews.slice(0, 5).map(r => (
+                  {shownReviews.slice(0, 5).map(r => (
                     <li key={r.id} className="py-3">
                       <div className="flex items-center gap-2"><span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-12 font-semibold flex items-center justify-center">{(r.author || '?').charAt(0).toUpperCase()}</span><span className="text-13 font-medium text-slate-800">{r.author || 'Google user'}</span></div>
-                      <div className="mt-1 text-12 text-slate-500"><span className="text-amber-400 tracking-tight">{stars(r.rating)}</span> {r.review_at ? new Date(r.review_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : r.review_date ? fmtDate(r.review_date) : ''}</div>
+                      <div className="mt-1 text-12 text-slate-500"><span className="text-amber-400 tracking-tight">{stars(r.rating)}</span> {r.when || (r.review_at ? new Date(r.review_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : r.review_date ? fmtDate(r.review_date) : '')}</div>
                       {r.body && <p className="text-13 text-slate-600 mt-1 line-clamp-4">{r.body}</p>}
                       {r.reply_text && <div className="mt-2 ml-3 pl-3 border-l-2 border-slate-200 text-12.5 text-slate-600"><span className="font-medium text-slate-700">Response from the owner</span><p className="mt-0.5 line-clamp-3">{r.reply_text}</p></div>}
                     </li>
@@ -409,6 +447,7 @@ function GooglePreview({ b, p, stars }) {
             {live.loading && !live.data ? <SkList rows={2} /> : gallery.length === 0
               ? <p className="text-13 text-slate-400 py-4">No photos yet. Add some in Photos &amp; Media so customers can see the place and the work.</p>
               : <div className="grid grid-cols-3 gap-1.5">{gallery.slice(0, 9).map((m, i) => <a key={m.url + i} href={m.url} target="_blank" rel="noreferrer" className={`overflow-hidden rounded-lg bg-slate-100 ${i === 0 ? 'col-span-2 row-span-2' : ''}`}><img src={m.url} alt="" className="w-full h-full aspect-square object-cover hover:scale-105 transition-transform" loading="lazy" /></a>)}</div>}
+            {(g?.photos || m?.reputation?.photos) ? <p className="text-12 text-slate-500 mt-2">{g?.photos || m.reputation.photos} photos on the Google listing{m?.maps_url ? <> · <a href={m.maps_url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">see them on Maps</a></> : null}</p> : null}
           </div>
         )}
 
@@ -416,13 +455,15 @@ function GooglePreview({ b, p, stars }) {
           <div className="mt-4 space-y-5">
             <div>
               <div className="text-14 font-medium text-slate-900 mb-1">From the business</div>
-              <p className="text-13 text-slate-600 leading-relaxed whitespace-pre-line">{p.description || <span className="text-slate-400">No description yet.</span>}</p>
+              <p className="text-13 text-slate-600 leading-relaxed whitespace-pre-line">{description || <span className="text-slate-400">No description yet.</span>}</p>
             </div>
             {services.length > 0 && <div><div className="text-14 font-medium text-slate-900 mb-1.5">Services</div>{services.map((s, i) => <div key={i} className="py-1.5 border-b border-slate-100 last:border-0"><div className="flex justify-between gap-3 text-13 text-slate-800"><span>{s.name}</span><span className="text-slate-500 shrink-0">{s.price}</span></div>{s.description && <div className="text-12 text-slate-500">{s.description}</div>}</div>)}</div>}
-            {p.attributes.length > 0 && <div><div className="text-14 font-medium text-slate-900 mb-1.5">Highlights</div><div className="flex flex-wrap gap-1.5">{p.attributes.map(a => <span key={a} className="text-12 text-slate-600 ring-1 ring-slate-200 rounded-full px-2.5 py-0.5">{a}</span>)}</div></div>}
-            {(p.secondary_categories || []).length > 0 && <div><div className="text-14 font-medium text-slate-900 mb-1.5">Also listed as</div><div className="text-13 text-slate-600">{p.secondary_categories.join(', ')}</div></div>}
+            {attrs.length > 0 && <div><div className="text-14 font-medium text-slate-900 mb-1.5">Highlights</div><div className="flex flex-wrap gap-1.5">{attrs.map(a => <span key={a} className="text-12 text-slate-600 ring-1 ring-slate-200 rounded-full px-2.5 py-0.5">{a}</span>)}</div></div>}
+            {also.length > 0 && <div><div className="text-14 font-medium text-slate-900 mb-1.5">Also listed as</div><div className="text-13 text-slate-600">{also.join(', ')}</div></div>}
+            {(g?.topics || []).length > 0 && <div><div className="text-14 font-medium text-slate-900 mb-1.5">Customers often mention</div><div className="flex flex-wrap gap-1.5">{g.topics.slice(0, 10).map(t => <span key={t.topic} className="text-12 text-slate-600 ring-1 ring-slate-200 rounded-full px-2.5 py-0.5">{t.topic} · {t.mentions}</span>)}</div></div>}
           </div>
         )}
+        {usedPub && <p className="text-11.5 text-slate-400 mt-4 pt-3 border-t border-slate-100">Details you have not saved yet are shown from the public Google listing.</p>}
       </div>
     </div>
   );
@@ -826,7 +867,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
               <SectionHead title="Business Profile" subtitle="Name, categories, address, contact, hours, services, attributes and verification" sources={['google', 'manual']} />
               <Tabs value={sub} onChange={setSub} tabs={[{ id: 'live', label: 'Live from Google' }, { id: 'edit', label: 'Edit profile' }, { id: 'hours', label: 'Hours' }, { id: 'faq', label: 'Q&A / FAQs' }]} />
               {sub === 'live' && <AccessGate b={b} kind="gmb"><GbpLive b={b} toast={toast} onConnect={onConnect} /></AccessGate>}
-              {sub === 'edit' && <div className="space-y-4"><AutopilotPanel bid={b.id} feature="profile" /><GbpPublicReport b={b} /><MapsPublicCard b={b} /><ProfileTab b={b} toast={toast} /><MarketCard b={b} /></div>}
+              {sub === 'edit' && <div className="space-y-4"><AutopilotPanel bid={b.id} feature="profile" /><GbpPublicReport b={b} /><ProfileTab b={b} toast={toast} /><MarketCard b={b} /></div>}
               {sub === 'hours' && <HoursTab b={b} toast={toast} />}
               {sub === 'faq' && <FaqTab b={b} toast={toast} />}
             </>
