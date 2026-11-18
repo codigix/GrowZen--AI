@@ -4,6 +4,7 @@ import { SeoShell, Button } from './SeoUi';
 import { Act, OpenAct } from './TableBits';
 import Select from '../components/Select';
 import { api } from './seoApi';
+import LinkDetail from './BacklinkLinkDetail';
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const when = (iso) => { if (!iso) return '—'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }); };
@@ -129,15 +130,7 @@ function BacklinkChecker({ b }) {
                     </tr>
                     {openId === r.id && (
                       <tr className="bg-slate-50/70"><td colSpan={11 + (d.google ? 1 : 0) + (d.opr ? 1 : 0) + (d.moz ? 4 : d.dfs ? 3 : 0)} className="px-5 py-4 text-13">
-                        <div className="grid md:grid-cols-2 gap-x-10 gap-y-3">
-                          <div><div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1">Result</div>{r.state === 'working' ? `The link was found${r.links.length > 1 ? ` (${r.links.length} links to your site)` : ''}. ${r.follow === 'dofollow' ? 'It passes link value (no nofollow).' : 'It does not pass link value (nofollow, sponsored or user-generated).'}` : r.error || (r.state === 'link_missing' ? 'The page opens, but it has no link to your site.' : '')}{r.lost && ' It worked at the previous check.'}</div>
-                          <div><div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1">Why the kind of site</div>{r.category?.why || '—'} (decided by fixed rules on the address and page, not by a score)</div>
-                          {r.links?.length > 0 && <div className="md:col-span-2"><div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1">Links to your site on this page</div>
-                            <ul className="space-y-1">{r.links.map((l, i) => <li key={i} className="break-all"><span className="text-slate-700">{l.anchor || `(${l.type} link)`}</span> → <span className="text-slate-500">{l.href}</span> <span className="text-12 text-slate-400">· {l.placement}{l.rel?.length ? ` · rel ${l.rel.join(' ')}` : ' · no rel'}</span></li>)}</ul></div>}
-                          {r.page_noindex && <p className="md:col-span-2 text-red-700">This page is marked noindex: Google will not index it, so the link is worth little.</p>}
-                          {r.page_nofollow && <p className="md:col-span-2 text-amber-800">The page tells search engines not to follow any link on it.</p>}
-                          {r.canonical_elsewhere && <p className="md:col-span-2 text-amber-800">The page names another address as its main version: {r.canonical_elsewhere}</p>}
-                        </div>
+                        <div className="sticky left-0 w-[min(88vw,1040px)]"><LinkDetail r={r} /></div>
                       </td></tr>
                     )}
                   </React.Fragment>))}

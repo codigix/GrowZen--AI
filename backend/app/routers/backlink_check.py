@@ -5,6 +5,7 @@ GET    /businesses/{id}/backlink-check/candidates   pages our own crawler found 
 POST   /businesses/{id}/backlink-check              {target?, sources:[page urls]}  check up to 25 pages now (live) and save the result
 DELETE /businesses/{id}/backlink-check/{check_id}
 """
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -65,6 +66,26 @@ def _score_rows(rows: list[dict[str, Any]]) -> str | None:
     return None
 
 
+def _crawler_life(db: Session, rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """What our own crawler knows about each linking page: when it first and last saw a link to a tracked site there, and how many are live now."""
+    from sqlalchemy import case, func
+
+    from ..backlinks.lifecycle import LIVE_STATES
+    from ..backlinks.models import Backlink, BiPage
+    urls = {r.get("source_url") for r in rows if r.get("source_url")}
+    variants = urls | {u.rstrip("/") for u in urls} | {u.rstrip("/") + "/" for u in urls}
+    if not variants:
+        return {}
+    try:
+        got = db.execute(select(BiPage.normalized_url, func.min(Backlink.first_seen_at), func.max(Backlink.last_seen_at), func.count(Backlink.id),
+                                func.sum(case((Backlink.current_status.in_(LIVE_STATES), 1), else_=0)))
+                         .join(Backlink, Backlink.source_page_id == BiPage.id).where(BiPage.normalized_url.in_(variants)).group_by(BiPage.normalized_url)).all()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        return {}
+    return {u: {"first_seen": a.isoformat() if a else None, "last_seen": b.isoformat() if b else None, "links": n, "live": int(live or 0)} for u, a, b, n, live in got}
+
+
 def _with_site(db: Session, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from urllib.parse import urlsplit
 
@@ -76,10 +97,13 @@ def _with_site(db: Session, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         db.rollback()
         sig = {}
     ranks = bc.opr_ranks([d for d in doms if d])
+    life = _crawler_life(db, rows)
     for r in rows:
         site = sig.get(pitch._registrable(urlsplit(r.get("source_url") or "").hostname or ""))
         dom = pitch._registrable(urlsplit(r.get("source_url") or "").hostname or "")
         r["site"] = site
+        u = r.get("source_url") or ""
+        r["crawler"] = life.get(u) or life.get(u.rstrip("/")) or life.get(u.rstrip("/") + "/")
         r["domain_rank"] = (ranks.get(dom) or {}).get("rank")
         r["spam_report"] = _spam_report(r, site)
     return rows
@@ -168,6 +192,10 @@ def run_check(body: CheckIn, b: Business = Depends(get_business), db: Session = 
     saved = []
     for r in rows:
         row = db.scalar(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id, BacklinkCheck.source_url == r["source_url"], BacklinkCheck.target == tgt["label"]))
+        old = list(((row.data or {}).get("history") if row is not None else None) or [])
+        sc = r.get("scores") or {}
+        r["history"] = (old + [{"at": r.get("checked_at") or datetime.now(timezone.utc).isoformat(), "state": r["state"], "follow": r.get("follow"), "links": len(r.get("links") or []), "http": r.get("http_status"),
+                                "da": sc.get("da"), "pa": sc.get("pa"), "spam": sc.get("spam")}])[-30:]  # the link's life, one point per check
         if row is None:
             row = BacklinkCheck(business_id=b.id, source_url=r["source_url"], target=tgt["label"], state=r["state"], data=r, checks=1)
             db.add(row)
