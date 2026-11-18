@@ -35,10 +35,11 @@ const TONES = {
  */
 export function Act({ tip, icon: Icon, tone = 'slate', busy = false, children, danger = false, primary = false, className = '', ...rest }) {
   if (Icon) {
+    const label = String(tip || '').split(':')[0];
     return (
       <Tip text={tip} align="right">
-        <button type="button" aria-label={tip} {...rest} disabled={rest.disabled || busy} className={`h-8 w-8 rounded-lg inline-flex items-center justify-center ring-1 ring-inset cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${TONES[tone] || TONES.slate} ${className}`}>
-          {busy ? <Loader2 size={15} className="animate-spin" /> : <Icon size={15} strokeWidth={2.2} />}
+        <button type="button" aria-label={tip} {...rest} disabled={rest.disabled || busy} className={`h-7 px-2.5 rounded-md text-12 font-semibold whitespace-nowrap inline-flex items-center gap-1 ring-1 ring-inset cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${TONES[tone] || TONES.slate} ${className}`}>
+          {busy && <Loader2 size={13} className="animate-spin" />}{children || label}
         </button>
       </Tip>
     );
