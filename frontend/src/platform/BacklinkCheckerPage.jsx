@@ -83,7 +83,6 @@ function BacklinkChecker({ b }) {
           <Button disabled={busy} onClick={fromCrawler}>Use pages found by our crawler</Button>
         </div>
         {note && <p className="mt-3 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{note}</p>}
-        {!d.moz && <p className="mt-3 text-12.5 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex gap-2"><AlertTriangle size={14} className="mt-0.5 shrink-0" />Domain Authority, Page Authority, Spam Score and referring domains are Moz's numbers and appear only with a Moz API key (MOZ_ACCESS_ID and MOZ_SECRET_KEY in the server settings). Everything else here is read live from the page. Nothing is estimated.</p>}
       </Card>
 
       {d.rows.length > 0 && (
