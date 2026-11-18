@@ -7,7 +7,7 @@ import { AutopilotPanel } from './AutopilotPanels';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Sparkles, FileText, Trash2, Loader2, MapPin, Globe, Users, X, Star, CheckCircle2, CircleDashed, AlertTriangle, Copy, Check, BarChart2,
-  Pencil, TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft, ArrowRight
+  Pencil, PenLine, TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft, ArrowRight
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction, useUrlTab, useDoubleConfirm, SkTable, SkCard } from './SeoUi';
@@ -824,9 +824,9 @@ function Tracked({ b, kw }) {
                           )}
                         </td>
                         <td className="px-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
-                          <Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`}><Act tip="Open its searches per month, cost and related ideas.">Check</Act></Link>
-                          <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`}><Act tip="Start a blog post for this keyword in the blog writer.">Write</Act></Link>
-                          <Act danger tip="Stop tracking this keyword. Its rank history is no longer shown." disabled={busy === `d${k.id}`} onClick={() => remove(k)} aria-label={`Stop tracking ${k.keyword}`}>Remove</Act>
+                          <Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`}><Act icon={Search} tone="sky" tip="Check: open its searches per month, cost and related ideas." /></Link>
+                          <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`}><Act icon={PenLine} tone="violet" tip="Write: start a blog post for this keyword in the blog writer." /></Link>
+                          <Act icon={Trash2} tone="rose" tip="Remove: stop tracking this keyword. Its rank history is no longer shown." busy={busy === `d${k.id}`} onClick={() => remove(k)} />
                         </span></td>
                       </tr>);
                   })}

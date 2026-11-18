@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Copy, ExternalLink, PenLine } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Copy, ExternalLink, Lightbulb, PenLine, Search } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
@@ -75,9 +75,9 @@ export default function KeywordMappingTab({ b }) {
                   </td>
                   <td className="px-3 py-2.5 text-right whitespace-nowrap">
                     <span className="inline-flex gap-1.5">
-                      <a href={p.url} target="_blank" rel="noreferrer"><Act tip="Open this page on your website in a new tab.">Open</Act></a>
-                      {p.primary ? <Link to={`/keyword-overview?q=${encodeURIComponent(p.primary)}`}><Act tip="Open the searches, cost and related ideas for its main keyword.">Check keyword</Act></Link>
-                        : <Link to={`/keyword-management/discover?q=${encodeURIComponent((p.title || p.path).split(/[|\-–:]/)[0].trim().slice(0, 40))}`}><Act tip="Search for keywords this page could rank for." primary>Find a keyword</Act></Link>}
+                      <a href={p.url} target="_blank" rel="noreferrer"><Act icon={ExternalLink} tone="slate" tip="Open: show this page on your website in a new tab." /></a>
+                      {p.primary ? <Link to={`/keyword-overview?q=${encodeURIComponent(p.primary)}`}><Act icon={Search} tone="sky" tip="Check keyword: open the searches, cost and related ideas for its main keyword." /></Link>
+                        : <Link to={`/keyword-management/discover?q=${encodeURIComponent((p.title || p.path).split(/[|\-–:]/)[0].trim().slice(0, 40))}`}><Act icon={Lightbulb} tone="indigo" tip="Find a keyword: search for keywords this page could rank for." /></Link>}
                     </span>
                   </td>
                 </tr>))}
@@ -108,8 +108,8 @@ export default function KeywordMappingTab({ b }) {
                     <td className="px-3 py-2.5 text-12.5 text-slate-500 font-mono">{x.slug}</td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
                       <span className="inline-flex gap-1.5">
-                        <Button size="sm" icon={Copy} onClick={() => copy(x, x.type)} title="Copies the title, address and what to put where, to send to whoever builds the page">Copy brief</Button>
-                        <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(x.keyword)}`}><Button size="sm" variant={x.type === 'post' ? 'primary' : undefined} icon={PenLine}>Write {x.type === 'post' ? 'the post' : 'it as a post'}</Button></Link>
+                        <Act icon={Copy} tone="slate" tip="Copy brief: copy the title, address and what to put where, to send to whoever builds the page." onClick={() => copy(x, x.type)} />
+                        <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(x.keyword)}`}><Act icon={PenLine} tone="violet" tip={x.type === 'post' ? 'Write the post: open the blog writer with this keyword ticked.' : 'Write it as a blog post instead: open the blog writer with this keyword ticked.'} /></Link>
                       </span>
                     </td>
                   </tr>))}

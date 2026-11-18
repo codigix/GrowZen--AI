@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowDown, ArrowRight, ArrowUp, CheckCircle2, Download, EyeOff, Loader2, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, Download, EyeOff, Loader2, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
@@ -204,10 +204,10 @@ export default function KeywordWorkspace({ b, onUse }) {
                         <td className="px-3 py-2.5 text-right tabular-nums" title="Average position on Google, last 90 days (Search Console)">{i.rank != null ? i.rank.toFixed(1) : '—'}</td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                           <span className="inline-flex gap-1.5">
-                            {!i.picked && show !== 'dismissed' && <Act primary tip="Save this keyword to your list (My Keywords) so you can give it a page and track it." onClick={() => pick([i.id])}>Pick</Act>}
-                            {show === 'dismissed' ? <Act tip="Put it back in the list to look at." onClick={() => act('restore', [i.id], 'Put back in the list')}>Put back</Act>
-                              : !i.picked && <Act tip="Hide it from this list. It stays under Set aside if you change your mind." onClick={() => act('dismiss', [i.id], 'Set aside')}>Set aside</Act>}
-                            <Link to={`/keyword-overview?q=${encodeURIComponent(i.keyword)}`}><Act tip="Open its searches per month, cost and related ideas.">Check</Act></Link>
+                            {!i.picked && show !== 'dismissed' && <Act icon={Check} tone="green" tip="Pick: save this keyword to your list (My Keywords) so you can give it a page and track it." onClick={() => pick([i.id])} />}
+                            {show === 'dismissed' ? <Act icon={Undo2} tone="slate" tip="Put back: return it to the list to look at." onClick={() => act('restore', [i.id], 'Put back in the list')} />
+                              : !i.picked && <Act icon={EyeOff} tone="amber" tip="Set aside: hide it from this list. It stays under Set aside if you change your mind." onClick={() => act('dismiss', [i.id], 'Set aside')} />}
+                            <Link to={`/keyword-overview?q=${encodeURIComponent(i.keyword)}`}><Act icon={Search} tone="sky" tip="Check: open its searches per month, cost and related ideas." /></Link>
                           </span>
                         </td>
                       </tr>))}

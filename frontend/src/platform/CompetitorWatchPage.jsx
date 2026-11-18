@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Loader2, FilePlus2, Pencil, FileX2, ExternalLink, ArrowRight, Star, Plus } from 'lucide-react';
+import { Play, Loader2, FilePlus2, Pencil, FileX2, ExternalLink, ArrowRight, Star, Plus, FileText, Columns3, Link2, UserMinus } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, useAction, useToast, SkList, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 import { Act, Head } from './TableBits';
@@ -94,10 +94,10 @@ function Body({ b }) {
                       <td className="px-3 py-2.5 text-12.5 text-gray-600 whitespace-nowrap">{c.last_change_at ? fmtDate(c.last_change_at) : <span className="text-gray-400">none in 30 days</span>}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-12.5 font-semibold">
                         <span className="inline-flex gap-1.5">
-                          <Link to={`/competitor-finder?tab=pages&competitor=${encodeURIComponent(c.domain)}`}><Act tip="The pages of this competitor that are in Google's top 10 for your keywords, with an estimate of the visits they bring.">Top pages</Act></Link>
-                          <Link to={`/competitor-finder?compare=${encodeURIComponent(c.domain)}`}><Act tip="Open its site next to yours: speed, content and links. It is audited first if needed.">Compare</Act></Link>
-                          <Link to={`/backlinks/gap?competitor=${encodeURIComponent(c.domain)}`}><Act tip="Websites that link to this competitor but not to you: places to ask for a link.">Backlinks</Act></Link>
-                          {c.id && <Act danger tip="Stop watching it. It stays in the found list, and you can choose it again." disabled={busy === `out${c.id}`} onClick={() => leaveOut(c)}>Leave out</Act>}
+                          <Link to={`/competitor-finder?tab=pages&competitor=${encodeURIComponent(c.domain)}`}><Act icon={FileText} tone="teal" tip="Top pages: the pages of this competitor that are in Google's top 10 for your keywords, with an estimate of the visits they bring." /></Link>
+                          <Link to={`/competitor-finder?compare=${encodeURIComponent(c.domain)}`}><Act icon={Columns3} tone="indigo" tip="Compare: open its site next to yours (speed, content, links). It is audited first if needed." /></Link>
+                          <Link to={`/backlinks/gap?competitor=${encodeURIComponent(c.domain)}`}><Act icon={Link2} tone="sky" tip="Backlinks: websites that link to this competitor but not to you, places to ask for a link." /></Link>
+                          {c.id && <Act icon={UserMinus} tone="rose" tip="Leave out: stop watching it. It stays in the found list, and you can choose it again." busy={busy === `out${c.id}`} onClick={() => leaveOut(c)} />}
                         </span>
                       </td>
                     </tr>);
