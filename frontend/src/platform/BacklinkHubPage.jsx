@@ -37,8 +37,8 @@ function Setup({ s }) {
   const note = !c.configured
     ? 'Your backlink crawler is not connected. Add CRAWLER_URL and CRAWLER_API_KEY to the backend settings; the links it finds then appear here.'
     : c.last_error ? `The last sync failed: ${c.last_error}` : !c.last_sync_at ? 'The crawler is connected but has not synced this project yet. Press “Find backlinks now”.' : null;
-  if (!note && s.moz.configured) return null;
-  const all = [note, !s.moz.configured && 'Domain Authority, Page Authority and Spam Score come from Moz. Add MOZ_ACCESS_ID and MOZ_SECRET_KEY to the backend settings to show them; until then they read "—".'].filter(Boolean);
+  if (!note) return null;
+  const all = [note, false && 'Site strength comes from your own crawler: how many links and pages each site gives you. DA, PA and Spam Score need a Moz account and are optional.'].filter(Boolean);
   return (
     <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2 text-12.5 text-amber-900 flex items-center gap-2 min-w-0" title={all.join(' ')}>
       <Info size={14} className="shrink-0" /><span className="truncate">{all[0]}</span>{all.length > 1 && <span className="shrink-0 text-amber-700">+{all.length - 1} more note</span>}
@@ -49,7 +49,6 @@ function Setup({ s }) {
     <Card>
       <div className="grid gap-1.5 text-13">
         {note && <p className="flex gap-2 text-amber-800"><Info size={15} className="shrink-0 mt-0.5" />{note}</p>}
-        {!s.moz.configured && <p className="flex gap-2 text-slate-600"><Info size={15} className="shrink-0 mt-0.5" />Domain Authority, Page Authority and Spam Score come from Moz. Add MOZ_ACCESS_ID and MOZ_SECRET_KEY to the backend settings to show them; until then they read “—” and nothing is estimated.</p>}
       </div>
     </Card>
   );
@@ -77,7 +76,7 @@ function Summary({ s, b, reload, compact = false, main = false }) {
     <Card title={`Backlinks to ${s.domain}`} subtitle={s.crawler.last_sync_at ? `Last crawler sync ${day(s.crawler.last_sync_at)}${s.crawler.running ? ' (running now)' : ''}` : 'Read from your backlink crawler'}
       action={<div className="flex flex-wrap gap-2">
         <Button size="sm" icon={Sparkles} busy={busy === 'score'} onClick={score}>Score the links</Button>
-        <Button size="sm" icon={RefreshCw} busy={busy === 'moz'} disabled={!s.moz.configured} onClick={moz}>Get DA / PA / spam</Button>
+        {s.moz.configured && <Button size="sm" icon={RefreshCw} busy={busy === 'moz'} onClick={moz}>Get DA / PA / spam</Button>}
         <Button size="sm" variant="primary" icon={Link2} busy={busy === 'sync'} onClick={sync}>Find backlinks now</Button>
         <Link to="/backlinks/sites"><Button size="sm">Tracked sites</Button></Link>
       </div>}>
@@ -117,6 +116,15 @@ function useList(b, view, params) {
 }
 function useDebounced(v, ms = 300) { const [x, setX] = useState(v); useEffect(() => { const t = setTimeout(() => setX(v), ms); return () => clearTimeout(t); }, [v, ms]); return x; }
 
+const hasMoz = (rows) => (rows || []).some(x => x.metrics && (x.metrics.da != null || x.metrics.spam != null));
+/** What our own crawler knows about the site: how many links and pages it gives, and since when. No third-party score. */
+function SiteCell({ m }) {
+  const c = m?.crawler;
+  if (!c || !c.links) return <span className="text-slate-300">—</span>;
+  return <Tip text={`Our crawler found ${c.links} live link${c.links === 1 ? '' : 's'} from ${c.pages} page${c.pages === 1 ? '' : 's'} of this site${c.sites_linked > 1 ? `, to ${c.sites_linked} of the sites we track` : ''}.${c.linked_by ? ` ${c.linked_by} site${c.linked_by === 1 ? '' : 's'} we crawled link to it.` : ''}${c.sitewide ? ' So many links from one site count as about one link.' : ''}`}>
+    <span className="tabular-nums">{c.links} link{c.links === 1 ? '' : 's'}{c.sitewide && <span className="ml-1 text-11.5 text-amber-600">sitewide</span>}</span></Tip>;
+}
+
 function Links({ b }) {
   const [params] = useSearchParams();
   const [f, setF] = useState({ status: 'live', follow: '', category: '', useful: '', sort: 'recent' });
@@ -140,7 +148,7 @@ function Links({ b }) {
         <table className="w-full min-w-[1150px] text-13">
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
             <th className={TH}>Linking page</th><th className={TH}>Anchor text</th><th className={TH}>Goes to</th><th className={TH}>Follow</th><th className={TH}>Category</th>
-            <th className={`${TH} text-right`}><Tip text="Moz Domain Authority of the linking site (0-100).">DA</Tip></th><th className={`${TH} text-right`}><Tip text="Moz Page Authority of the linking page (0-100).">PA</Tip></th><th className={`${TH} text-right`}><Tip text="Moz Spam Score: how much the site looks like sites Google penalised. Lower is better.">Spam</Tip></th>
+            {hasMoz(d.links) ? <><th className={`${TH} text-right`}><Tip text="Moz Domain Authority of the linking site (0-100).">DA</Tip></th><th className={`${TH} text-right`}><Tip text="Moz Page Authority of the linking page (0-100).">PA</Tip></th><th className={`${TH} text-right`}><Tip text="Moz Spam Score: how much the site looks like sites Google penalised. Lower is better.">Spam</Tip></th></> : <th className={TH}><Head what="How many live links this site gives you, and how many of its pages carry them." why="A link repeated on many pages of one site counts as about one link, so more is not always better." from="our backlink crawler.">Site gives you</Head></th>}
             <th className={TH}><Tip text="Our judgement from relevance to your business, spam risk and the follow type. Hover a badge for the reason.">Useful?</Tip></th><th className={TH}>First seen</th>
             <th className={`${TH} text-right`}><Head right what="Open the linking page, or your own page it points to." why="See the link in its real setting.">Actions</Head></th>
           </tr></thead>
@@ -153,7 +161,7 @@ function Links({ b }) {
                 <td className="px-3 py-3 max-w-[160px]"><span className="block truncate text-slate-600" title={x.target_url}>{path(x.target_url)}</span></td>
                 <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
                 <td className="px-3 py-3 capitalize text-slate-600">{x.category.label}</td>
-                <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td>
+                {hasMoz(d.links) ? <><td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
                 <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                 <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(x.first_seen)}</td>
                 <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
@@ -189,7 +197,7 @@ function Domains({ b }) {
         <table className="w-full min-w-[1050px] text-13">
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
             <th className={TH}>Domain</th><th className={`${TH} text-right`}>Live links</th><th className={TH}>Follow</th><th className={TH}>Category</th><th className={TH}>Top anchors</th>
-            <th className={`${TH} text-right`}>DA</th><th className={`${TH} text-right`}>Spam</th><th className={`${TH} text-right`}>Relevance</th><th className={TH}>Useful?</th><th className={TH}>Last seen</th><th className={`${TH} text-right`}><Head right what="Open the site, or list only the links this site gives you." why="Check what a site links to before you reply to it.">Actions</Head></th></tr></thead>
+            {hasMoz(d.domains) ? <><th className={`${TH} text-right`}>DA</th><th className={`${TH} text-right`}>Spam</th></> : <th className={TH}><Head what="How many live links and pages this site gives you." from="our backlink crawler.">Site gives you</Head></th>}<th className={`${TH} text-right`}>Relevance</th><th className={TH}>Useful?</th><th className={TH}>Last seen</th><th className={`${TH} text-right`}><Head right what="Open the site, or list only the links this site gives you." why="Check what a site links to before you reply to it.">Actions</Head></th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {d.domains?.map(x => (
               <tr key={x.domain} className="hover:bg-slate-50 align-middle">
@@ -198,7 +206,7 @@ function Domains({ b }) {
                 <td className="px-3 py-3 text-12 text-slate-600">{x.dofollow} follow · {x.nofollow} other</td>
                 <td className="px-3 py-3 text-slate-600">{x.category.label}</td>
                 <td className="px-3 py-3 max-w-[220px]"><span className="block truncate text-slate-600" title={x.anchors.join(', ')}>{x.anchors.join(', ') || '—'}</span></td>
-                <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td>
+                {hasMoz(d.domains) ? <><td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
                 <td className="px-3 py-3 text-right tabular-nums">{x.quality ? x.quality.relevance : <span className="text-slate-300">—</span>}</td>
                 <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                 <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(x.last_seen)}</td>

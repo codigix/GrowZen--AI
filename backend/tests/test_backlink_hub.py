@@ -51,7 +51,9 @@ def test_links_carry_follow_anchor_category_and_a_verdict(client, world):
     assert by["listings.in"]["anchor_type"] == "naked" and by["healthblog.com"]["anchor_type"] in ("branded", "compound")
     assert by["healthblog.com"]["category"]["key"] and by["healthblog.com"]["useful"] in ("useful", "neutral", "risky", "unscored")
     assert by["listings.in"]["useful"] in ("neutral", "unscored", "risky") and by["healthblog.com"]["useful_why"]
-    assert by["healthblog.com"]["metrics"] is None  # no Moz: nothing invented
+    m = by["healthblog.com"]["metrics"]
+    assert m["da"] is None and m["pa"] is None and m["spam"] is None  # no Moz: nothing invented
+    assert m["crawler"]["links"] >= 1 and m["crawler"]["pages"] >= 1  # but our own crawler counts are there
     assert d["facets"]["follow"] == {"dofollow": 1, "nofollow": 1}
     assert get(client, world, "links", follow="nofollow")["total"] == 1
     assert get(client, world, "links", status="lost")["total"] == 1

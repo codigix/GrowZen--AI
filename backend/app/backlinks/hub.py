@@ -16,7 +16,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from ..db import utcnow
@@ -64,11 +64,34 @@ def follow_of(rel: list[str] | None) -> str:
 
 
 # ------------------------------------------------------------------------------------------------------------------------ Moz figures (cached)
+def crawler_signals(db: Session, domains: list[str]) -> dict[str, dict[str, Any]]:
+    """What our own crawler knows about each linking site, with no third-party score: how many live links and pages it gives the sites we track,
+    how many different sites we track it links to, how many sites link to it, and since when we have known it. Real counts, nothing invented."""
+    if not domains:
+        return {}
+    SD, TD = aliased(BiDomain), aliased(BiDomain)
+    out: dict[str, dict[str, Any]] = {}
+    given = db.execute(select(SD.registrable_domain, func.count(Backlink.id), func.count(func.distinct(Backlink.source_page_id)), func.count(func.distinct(TD.registrable_domain)), func.min(SD.first_discovered_at))
+                       .select_from(Backlink).join(SD, SD.id == Backlink.source_domain_id).join(TD, TD.id == Backlink.target_domain_id)
+                       .where(SD.registrable_domain.in_(domains), Backlink.current_status.in_(LIVE_STATES)).group_by(SD.registrable_domain)).all()
+    for d, links, pages, sites, since in given:
+        out[d] = {"links": links, "pages": pages, "sites_linked": sites, "since": _aware(since).isoformat() if since else None, "linked_by": 0, "sitewide": links >= 50 and pages >= 20}
+    seen = db.execute(select(TD.registrable_domain, func.count(func.distinct(SD.registrable_domain)))
+                      .select_from(Backlink).join(SD, SD.id == Backlink.source_domain_id).join(TD, TD.id == Backlink.target_domain_id)
+                      .where(TD.registrable_domain.in_(domains), Backlink.current_status.in_(LIVE_STATES)).group_by(TD.registrable_domain)).all()
+    for d, n in seen:
+        out.setdefault(d, {"links": 0, "pages": 0, "sites_linked": 0, "since": None, "sitewide": False})["linked_by"] = n
+    return out
+
+
 def metrics_for(db: Session, domains: list[str]) -> dict[str, dict[str, Any]]:
     if not domains:
         return {}
-    return {m.domain: {"da": m.da, "pa": m.pa, "spam": m.spam_score, "ref_domains": m.linking_domains, "fetched_at": _aware(m.fetched_at).isoformat() if m.fetched_at else None}
-            for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(domains)))}
+    sig = crawler_signals(db, domains)
+    out = {d: {"da": None, "pa": None, "spam": None, "ref_domains": None, "fetched_at": None, "crawler": c} for d, c in sig.items()}
+    for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(domains))):
+        out.setdefault(m.domain, {"crawler": None}).update({"da": m.da, "pa": m.pa, "spam": m.spam_score, "ref_domains": m.linking_domains, "fetched_at": _aware(m.fetched_at).isoformat() if m.fetched_at else None})
+    return out
 
 
 def refresh_metrics(db: Session, domains: list[str], limit: int = 50, force: bool = False) -> dict[str, Any]:
@@ -103,7 +126,7 @@ def judge(follow: str, score: dict | None, metric: dict | None, category: str) -
     """useful | neutral | risky | unscored, with the reason in one sentence. Our judgement, not a third party's metric."""
     spam = (metric or {}).get("spam")
     da = (metric or {}).get("da")
-    if score is None and not metric:
+    if score is None and not any((metric or {}).get(k) is not None for k in ("da", "spam")):
         return {"label": "unscored", "why": "Not judged yet: the domain has no relevance or spam score. Press “Score the links”."}
     risky = bool(score and score["verdict"] == "risky") or (spam is not None and spam >= 50)
     if risky:
@@ -111,6 +134,9 @@ def judge(follow: str, score: dict | None, metric: dict | None, category: str) -
         return {"label": "risky", "why": why}
     if category == "comment":
         return {"label": "neutral", "why": "A comment link: it carries little value."}
+    cr = (metric or {}).get("crawler") or {}
+    if cr.get("sitewide"):
+        return {"label": "neutral", "why": f"{cr['links']} links from {cr['pages']} pages of one site: a repeated or sitewide link counts as about one link."}
     good = bool(score and score["verdict"] == "good") or (da is not None and da >= 30 and (spam is None or spam < 30))
     if follow == "dofollow" and good:
         return {"label": "useful", "why": (score["reason"] if score else f"A dofollow link from a site with DA {da}.")}
