@@ -4,7 +4,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Save, Store, FileText, ListChecks, Tags, Navigation, CalendarCheck, Clock, ChevronDown, Upload } from 'lucide-react';
 import { SeoShell, Drawer, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useDoubleConfirm, useSeoBusiness, refreshBusinesses, useUrlTab, SkChart, SkList, SkLines, SkScore, SkCard } from './SeoUi';
 import GbpLive from './GbpLive';
-import { AutopilotPanel } from './AutopilotPanels';
+import { AutopilotPanel, waitingFor } from './AutopilotPanels';
 import { BusinessTraffic } from './TrafficPage';
 import AccessGate from './AccessGate';
 import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePosts, isLinked, readBase64 } from './GbpEditors';
@@ -868,6 +868,22 @@ function InsightsTab({ b }) {
   );
 }
 
+/** Everything around the editor, in one tabbed block under it so the profile form stays at the top of the page. */
+function EditExtras({ b }) {
+  const [tab, setTab] = useState(null);
+  const ap = useApi(`/businesses/${b.id}/autopilot`);
+  const waiting = ap.data ? waitingFor(ap.data, 'profile') : 0;
+  const current = tab || (waiting > 0 ? 'autopilot' : 'report'); // drafts waiting for approval open first
+  return (
+    <div className="space-y-3">
+      <Tabs value={current} onChange={setTab} tabs={[{ id: 'report', label: 'Google report' }, { id: 'autopilot', label: waiting ? `Autopilot · ${waiting} waiting` : 'Autopilot' }, { id: 'market', label: 'Target market' }]} />
+      {current === 'report' && <GbpPublicReport b={b} />}
+      {current === 'autopilot' && <AutopilotPanel bid={b.id} feature="profile" />}
+      {current === 'market' && <MarketCard b={b} />}
+    </div>
+  );
+}
+
 function Manager({ b, tab, setTab, toast, onConnect }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -897,7 +913,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
               <SectionHead title="Business Profile" subtitle="Name, categories, address, contact, hours, services, attributes and verification" sources={['google', 'manual']} />
               <Tabs value={sub} onChange={setSub} tabs={[{ id: 'live', label: 'Live from Google' }, { id: 'edit', label: 'Edit profile' }, { id: 'hours', label: 'Hours' }, { id: 'faq', label: 'Q&A / FAQs' }]} />
               {sub === 'live' && <AccessGate b={b} kind="gmb"><GbpLive b={b} toast={toast} onConnect={onConnect} /></AccessGate>}
-              {sub === 'edit' && <div className="space-y-4"><AutopilotPanel bid={b.id} feature="profile" /><GbpPublicReport b={b} /><ProfileTab b={b} toast={toast} /><MarketCard b={b} /></div>}
+              {sub === 'edit' && <div className="space-y-6"><ProfileTab b={b} toast={toast} /><EditExtras b={b} /></div>}
               {sub === 'hours' && <HoursTab b={b} toast={toast} />}
               {sub === 'faq' && <FaqTab b={b} toast={toast} />}
             </>

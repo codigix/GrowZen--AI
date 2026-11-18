@@ -163,6 +163,12 @@ function PanelSettings({ feature, d, bid, onChanged }) {
 }
 
 /** The scheduler of one feature, placed on that feature's own page. Everything it prepares waits for approval. */
+/** How many drafts of this kind wait for the owner's approval (the same filter the panel uses). */
+export function waitingFor(d, feature) {
+  const cfg = FEATURES[feature];
+  return cfg ? (d?.inbox || []).filter(i => cfg.kinds.includes(i.kind) && (feature !== 'profile' || i.source === 'autopilot')).length : 0;
+}
+
 export function AutopilotPanel({ bid, feature }) {
   const cfg = FEATURES[feature];
   const [d, setD] = useState(null);
