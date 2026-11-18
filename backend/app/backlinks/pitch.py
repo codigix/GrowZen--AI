@@ -135,6 +135,9 @@ def search_ideas(db: Session, b: Business) -> dict:
         return {"q": text, "url": f"https://www.google.com/search?q={quote_plus(text)}", "why": why}
 
     groups = [
+        {"key": "email", "title": "Platforms that post your link when you email them", "ask": "Send the link, a title and two lines about it, and ask them to publish it. Their email is usually on the submission page.",
+         "queries": [q(f'{t} "submit your link" "email"', "Sites that take submitted links by email."), q(f'{t} "send us your" "to be featured" email{where}', "Sites that feature what readers send in."),
+                     q(f'"submit your business" {t} "email us"{where}', "Listings that accept an emailed submission."), q(f'{t} "press release" "send" "submit" email', "Sites that publish emailed announcements.")]},
         {"key": "guest", "title": "Sites that take guest posts", "ask": "Offer a useful article for their readers, with one link back to you.",
          "queries": [q(f'"{x}" "write for us"', "Pages where a site invites writers.") for x in topics[:2]] + [q(f'{t} "guest post" "submit"{where}', "Sites with a submission page.")]},
         {"key": "lists", "title": "Pages that list businesses like yours", "ask": "Ask to be added to the list, with one line on why you fit.",
@@ -145,3 +148,61 @@ def search_ideas(db: Session, b: Business) -> dict:
          "queries": [q(f'"{name}"' + (f" -site:{own}" if own else ""), "Pages that name your business but are not your site."), q(f'intitle:"{name}"' + (f" -site:{own}" if own else ""), "Pages with your name in the title.")] if name else []},
     ]
     return {"state": "ok", "topics": topics, "place": place, "groups": [g for g in groups if g["queries"]]}
+
+
+def draft_submit(b: Business, domain: str, url: str, title: str = "", description: str = "") -> dict:
+    """A plain, honest request for a platform to post a link for us. Template only, so it never depends on an AI key; the owner edits it before sending."""
+    name = (b.name or "our business").strip()
+    title = (title or name).strip()
+    desc = (description or (b.description or "")).strip()[:300]
+    lines = [f"Hello,", "", f"I am writing on behalf of {name}. We would like to ask whether you could publish a link to our website on {domain}.", "",
+             f"Title: {title}", f"Link: {url}"]
+    if desc:
+        lines += [f"About it: {desc}"]
+    lines += ["", "If you need anything else from us (a logo, a longer description or a different format), just reply to this email and we will send it right away.",
+              "If this is not something you publish, thank you for reading, and sorry for the trouble.", "", f"Kind regards,", name]
+    return {"subject": f"Request to feature {title}"[:200], "body": "\n".join(lines), "source": "template"}
+
+
+def check_published(db: Session, b: Business, domain: str, page_url: str):
+    """Fetch the page where they posted it and look for a link to our site. Saves the page, what was found and when, and marks the place as live when the link is there."""
+    from urllib.parse import urlsplit
+
+    from . import hub
+    domain = domain.lower().strip().removeprefix("www.")
+    host = (urlsplit(page_url).hostname or "").removeprefix("www.")
+    if not host or not (host == domain or host.endswith("." + domain)):
+        raise ValueError(f"The page must be on {domain}")
+    own = hub.own_domain(db, b.id) or (urlsplit(b.website if "://" in (b.website or "") else f"//{b.website or ''}").hostname or "").removeprefix("www.")
+    if not own:
+        raise ValueError("Add the project's website first")
+    row = _row(db, b, domain)
+    if not row:
+        raise ValueError("This place is not in your plan yet")
+    found, rel, anchor, note = False, None, None, ""
+    try:
+        with httpx.Client(transport=SSRFSafeTransport(retries=0), timeout=15, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (compatible; GrowZenLinkCheck/1.0)", "Accept": "text/html"}) as c:
+            r = c.get(page_url)
+        if r.status_code != 200:
+            note = f"The page answered {r.status_code}."
+        else:
+            for m in re.finditer(r"<a\b([^>]*)>(.*?)</a>", r.text, re.I | re.S):
+                attrs = m.group(1)
+                h = re.search(r"href\s*=\s*[\"']([^\"']+)", attrs, re.I)
+                if not h:
+                    continue
+                h_host = (urlsplit(urljoin(page_url, htmllib.unescape(h.group(1)))).hostname or "").removeprefix("www.")
+                if h_host == own or h_host.endswith("." + own):
+                    rr = re.search(r"rel\s*=\s*[\"']([^\"']+)", attrs, re.I)
+                    found, rel = True, (rr.group(1).lower().strip()[:60] if rr else "dofollow")
+                    anchor = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", htmllib.unescape(m.group(2)))).strip()[:120]
+                    break
+            if not found:
+                note = "The page is there, but it has no link to your site yet."
+    except (httpx.HTTPError, SSRFValidationError):
+        note = "The page could not be opened."
+    row.published_url, row.link_checked_at, row.link_found, row.link_rel = page_url[:600], utcnow(), found, rel
+    if found:
+        row.status, row.status_at = "live", utcnow()
+    db.commit()
+    return {"found": found, "rel": rel, "anchor": anchor, "note": note, "followed": bool(found and rel and "nofollow" not in rel and "sponsored" not in rel and "ugc" not in rel)}

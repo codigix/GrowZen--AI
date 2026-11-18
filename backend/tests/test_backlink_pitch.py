@@ -68,3 +68,35 @@ def test_search_ideas_are_written_from_the_business_and_a_site_can_be_added_by_h
         assert all(x["url"].startswith("https://www.google.com/search?q=") for g in d["groups"] for x in g["queries"])
     add = client.post(f"/api/v1/businesses/{bid}/backlink-hub/plan", json={"domain": "pune-bloggers.in", "status": "planned", "source": "manual", "name": "Pune Bloggers"})
     assert add.status_code == 200 and next(x for x in add.json()["items"] if x["domain"] == "pune-bloggers.in")["source"] == "manual"
+
+
+def _fake_page(monkeypatch, html, status=200):
+    class R:
+        status_code, text = status, html
+
+    class C:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def get(self, url): return R()
+
+    monkeypatch.setattr(pitch.httpx, "Client", C)
+
+
+def test_submit_draft_carries_the_link_and_the_posted_link_is_checked(client, bid, monkeypatch):
+    base = f"/api/v1/businesses/{bid}/backlink-hub"
+    d = client.post(f"{base}/outreach/draft-submit", json={"domain": "links-hub.in", "url": "https://hub-clinic.in/guide", "title": "Hub Clinic guide"}).json()
+    assert "https://hub-clinic.in/guide" in d["body"] and "[add" not in d["body"] and d["subject"].startswith("Request to feature")
+    client.post(f"{base}/plan", json={"domain": "links-hub.in", "status": "contacted", "source": "manual"})
+    # the page is not on the platform: refused; the page without our link: not found, not live
+    assert client.post(f"{base}/outreach/check-link", json={"domain": "links-hub.in", "url": "https://other.com/post"}).status_code == 422
+    _fake_page(monkeypatch, '<a href="https://example.org">x</a>')
+    r = client.post(f"{base}/outreach/check-link", json={"domain": "links-hub.in", "url": "https://links-hub.in/p/1"}).json()
+    assert r["result"]["found"] is False
+    assert next(x for x in r["items"] if x["domain"] == "links-hub.in")["status"] == "contacted"
+    # with our link (nofollow): found, live, and said to be not followed
+    _fake_page(monkeypatch, '<p><a rel="nofollow" href="https://www.hub-clinic.in/guide"> Hub Clinic </a></p>')
+    r = client.post(f"{base}/outreach/check-link", json={"domain": "links-hub.in", "url": "https://links-hub.in/p/1"}).json()
+    assert r["result"]["found"] and r["result"]["followed"] is False and r["result"]["anchor"] == "Hub Clinic"
+    item = next(x for x in r["items"] if x["domain"] == "links-hub.in")
+    assert item["status"] == "live" and item["link_found"] and item["published_url"] == "https://links-hub.in/p/1"

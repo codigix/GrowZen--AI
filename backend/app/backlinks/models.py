@@ -274,6 +274,10 @@ class BiOpportunity(TimestampMixin, Base):
     emailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     email_count: Mapped[int] = mapped_column(Integer, default=0)
     replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_url: Mapped[str | None] = mapped_column(String(600))  # the page where they posted our link
+    link_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    link_found: Mapped[bool | None] = mapped_column()
+    link_rel: Mapped[str | None] = mapped_column(String(60))
 
 
 class ActionOutcome(Base):

@@ -93,6 +93,34 @@ class RepliedIn(BaseModel):
     replied: bool = True
 
 
+class DraftIn(BaseModel):
+    domain: str = Field(min_length=4, max_length=255)
+    url: str = Field(min_length=4, max_length=500)
+    title: str = Field(default="", max_length=160)
+    description: str = Field(default="", max_length=600)
+
+
+class CheckIn(BaseModel):
+    domain: str = Field(min_length=4, max_length=255)
+    url: str = Field(min_length=8, max_length=600)
+
+
+@router.post("/outreach/draft-submit")
+def outreach_draft_submit(body: DraftIn, b: Business = Depends(get_business)) -> dict:
+    """An email asking a platform to post our link for us: the link, a title and a short description they can copy."""
+    return pitch.draft_submit(b, body.domain, body.url, body.title, body.description)
+
+
+@router.post("/outreach/check-link")
+def outreach_check_link(body: CheckIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Open the page where they posted it and see whether our link is really there, and whether it is followed."""
+    try:
+        res = pitch.check_published(db, b, body.domain, body.url)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"result": res, **playbook.plan(db, b)}
+
+
 @router.get("/outreach/search-ideas")
 def outreach_search_ideas(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     """Google searches that find sites that take guest posts, list businesses or mention you without a link."""

@@ -240,9 +240,16 @@ function EmailPanel({ b, item, message, onChanged }) {
   const [found, setFound] = useState(null);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
+  const [asks, setAsks] = useState(false);
+  const [link, setLink] = useState({ url: b.website || '', title: b.name || '', description: '' });
+  const [posted, setPosted] = useState('');
+  const [checked, setChecked] = useState(null);
   useEffect(() => { setBody(message || ''); }, [message]);
+  useEffect(() => { if (row?.published_url && !posted) setPosted(row.published_url); }, [row?.published_url]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (row?.contact_email && !to) setTo(row.contact_email); }, [row?.contact_email]); // eslint-disable-line react-hooks/exhaustive-deps
   const find = () => run('find', async () => { const r = await api(`${base}/outreach/contacts`, { method: 'POST', body: { domain: item.domain } }); setFound(r); if (r.contacts[0] && !to) setTo(r.contacts[0].email); });
+  const draft = () => run('draft', async () => { const r = await api(`${base}/outreach/draft-submit`, { method: 'POST', body: { domain: item.domain, ...link } }); setSubject(r.subject); setBody(r.body); });
+  const check = () => run('check', async () => { const r = await api(`${base}/outreach/check-link`, { method: 'POST', body: { domain: item.domain, url: posted.trim() } }); setChecked(r.result); plan.reload(true); onChanged?.(); });
   const left = /\[add/i.test(body) || /\[add/i.test(subject);
   const send = () => {
     if (!window.confirm(`Send this email to ${to}?\n\nIt goes from your platform mail account and replies come to ${b.contact_email || 'that account'}.`)) return;
@@ -266,12 +273,32 @@ function EmailPanel({ b, item, message, onChanged }) {
         <div className="flex flex-wrap items-center gap-1.5 text-12"><span className="text-slate-500">Published on the site:</span>
           {found.contacts.map(c => <button key={c.email} type="button" onClick={() => setTo(c.email)} title={`${c.how} on ${c.page}`} className={`rounded-full px-2.5 py-1 ring-1 ring-inset cursor-pointer ${to === c.email ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{c.email}</button>)}</div>
       ) : <p className="text-12.5 text-amber-800">{found.note}</p>)}
+      <div className="flex flex-wrap items-center gap-2 text-12.5"><span className="text-slate-500">This platform posts links for you?</span>
+        <button type="button" onClick={() => setAsks(v => !v)} className="font-semibold text-indigo-600 hover:underline cursor-pointer">{asks ? 'Hide' : 'Write a “please post my link” email'}</button></div>
+      {asks && (
+        <div className="grid gap-2 rounded-lg bg-slate-50 p-2.5">
+          <input value={link.url} onChange={e => setLink({ ...link, url: e.target.value })} placeholder="Your page to link to" aria-label="Your link" className={inp} />
+          <input value={link.title} onChange={e => setLink({ ...link, title: e.target.value })} placeholder="Title they should show" aria-label="Title" className={inp} maxLength={160} />
+          <input value={link.description} onChange={e => setLink({ ...link, description: e.target.value })} placeholder="One or two lines about it (optional)" aria-label="Description" className={inp} maxLength={600} />
+          <div><Button size="sm" icon={Sparkles} busy={busy === 'draft'} disabled={!link.url.trim()} onClick={draft}>Write the email</Button></div>
+        </div>
+      )}
       <input value={subject} onChange={e => setSubject(e.target.value)} maxLength={200} aria-label="Subject" className={inp} />
       <textarea value={body} onChange={e => setBody(e.target.value)} rows={8} maxLength={5000} aria-label="Message" className="px-3 py-2 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-full" />
       {left && <p className="text-12 text-amber-700">Fill in the [add ...] parts before sending.</p>}
       <ErrorNote>{error}</ErrorNote>
       <div className="flex items-center gap-3"><Button size="sm" variant="primary" icon={Send} busy={busy === 'send'} disabled={!to.includes('@') || left || body.trim().length < 30} onClick={send}>{row?.emailed_at ? 'Send again' : 'Send email'}</Button>
         <span className="text-11.5 text-slate-400">Nothing is sent until you press this. Keep it honest and personal: no payment or link swaps.</span></div>
+      {row?.emailed_at && (
+        <div className="border-t border-slate-100 pt-2.5 grid gap-2">
+          <h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500">After they post it</h4>
+          <div className="flex gap-2"><input value={posted} onChange={e => setPosted(e.target.value)} placeholder={`Address of the page on ${item.domain} that has your link`} aria-label="Page with your link" className={inp} />
+            <Button size="sm" icon={Search} busy={busy === 'check'} disabled={posted.trim().length < 8} onClick={check}>Check the link</Button></div>
+          {(checked || row.link_checked_at) && (() => { const f = checked ? checked.found : row.link_found; const rel = checked ? checked.rel : row.link_rel; return f
+            ? <p className="rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2 text-12.5">Your link is there{rel && rel !== 'dofollow' ? ` (rel: ${rel}: it passes little ranking value)` : ' and it is followed'}. Marked as “Got the link”.</p>
+            : <p className="rounded-lg bg-amber-50 text-amber-800 px-3 py-2 text-12.5">{checked?.note || 'Your link was not on the page the last time we looked.'} Reply to them politely or check again later.</p>; })()}
+        </div>
+      )}
       {toastNode}
     </section>
   );
