@@ -200,8 +200,6 @@ def check_many(sources: list[str], target: str) -> tuple[list[dict[str, Any]], s
                 r["moz"] = got
         except CheckError as exc:
             note = str(exc)
-    else:
-        note = "Domain Authority, Page Authority, Spam Score and referring domains come only from Moz. Add MOZ_ACCESS_ID and MOZ_SECRET_KEY to the server settings to show them; nothing is estimated."
     return rows, note
 
 

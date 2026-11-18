@@ -71,7 +71,7 @@ def test_moz_numbers_appear_only_when_configured_and_are_passed_through_unchange
     monkeypatch.setattr(s, "moz_access_id", "", raising=False)
     monkeypatch.setattr(s, "moz_secret_key", "", raising=False)
     rows, note = bc.check_many(["https://blog.example.com/p"], "salon.example")
-    assert "moz" not in rows[0] and "Moz" in note and "nothing is estimated" in note
+    assert "moz" not in rows[0] and not note  # no Moz: no DA/PA/spam and no notice either
     monkeypatch.setattr(s, "moz_access_id", "id", raising=False)
     monkeypatch.setattr(s, "moz_secret_key", "key", raising=False)
     sent = {}
