@@ -1512,7 +1512,7 @@ function Keywords({ b, tab, kw, onSaved, seedSearch }) {
 
 /** The four steps (find, save, group, track), where the project stands on each. */
 function PathBar({ progress, tab, setTab }) {
-  const at = FIND_TABS.includes(tab) ? 'find' : tab === 'tracked' ? 'save' : tab === 'topics' ? 'group' : 'use';  // 'status' belongs with the last step
+  const at = FIND_TABS.includes(tab) ? 'find' : tab === 'tracked' ? 'save' : tab === 'topics' ? 'group' : tab === 'status' ? 'track' : 'use';
   const go = { find: 'ai', save: 'tracked', group: 'topics', use: 'use' };
   const steps = progress?.steps || [];
   if (!steps.length) return <div className="h-16 rounded-xl bg-slate-100 animate-pulse mb-5" role="status" aria-busy="true" />;
