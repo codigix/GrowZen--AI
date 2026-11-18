@@ -97,6 +97,8 @@ function ProfileTab({ b, toast }) {
   const [attr, setAttr] = useState('');
   const linked = isLinked(b);
   const gsvc = useApi(b.place_id && !linked ? `/businesses/${b.id}/maps-public/profile` : null);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasted, setPasted] = useState('');
   const [busy, error, run] = useAction();
   const set = (k, v) => setP(x => ({ ...x, [k]: v }));
   const save = () => run('save', async () => {
@@ -260,6 +262,20 @@ function ProfileTab({ b, toast }) {
                   {gsvc.data.service_ideas.filter(n => !p.services.some(x => (x.name || '').toLowerCase() === n.toLowerCase())).map(n => <button key={n} type="button" onClick={() => set('services', [...p.services.filter(x => x.name), { name: n, price: '', description: '' }])} className="h-7 px-2.5 rounded-full text-12 font-semibold bg-white text-indigo-700 ring-1 ring-inset ring-indigo-200 hover:bg-indigo-50 cursor-pointer">+ {n}</button>)}</div>)}
               </div>
             )}
+            <div className="mb-3 text-13">
+              <button type="button" onClick={() => setPasteOpen(v => !v)} className="font-semibold text-indigo-600 hover:underline cursor-pointer">{pasteOpen ? 'Hide' : 'Paste the services list from Google'}</button>
+              <span className="ml-2 text-12 text-slate-500">Google does not share this list with other tools. Open the business on Google, copy the names under Services, and paste them here (one per line).</span>
+              {pasteOpen && (
+                <div className="mt-2 grid gap-2">
+                  <textarea rows={6} className={areaCls} value={pasted} onChange={e => setPasted(e.target.value)} placeholder="Aromatherapy, Head Massage, Self Saree Draping Workshop (one per line)" aria-label="Services pasted from Google" />
+                  <div><Button size="sm" variant="primary" disabled={!pasted.trim()} onClick={() => {
+                    const have = new Set(p.services.map(x => (x.name || '').trim().toLowerCase()));
+                    const names = [...new Set(pasted.split(String.fromCharCode(10)).map(x => x.trim().replace(/^[-•*\d.)\s]+/, '').slice(0, 140)).filter(Boolean))].filter(n => !have.has(n.toLowerCase()));
+                    set('services', [...p.services.filter(x => x.name), ...names.map(name => ({ name, price: '', description: '' }))]); setPasted(''); setPasteOpen(false); toast(`${names.length} service${names.length === 1 ? '' : 's'} added: add a price and description, then save`);
+                  }}>Add these services</Button></div>
+                </div>
+              )}
+            </div>
             {p.services.length === 0 && <p className="text-13 text-slate-400">No services yet. Add the main things customers book or buy.</p>}
             <div className="space-y-2">
               {p.services.map((s, i) => (
