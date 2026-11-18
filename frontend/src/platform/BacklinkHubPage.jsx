@@ -230,6 +230,8 @@ const STAGES = [['todo', 'To do'], ['progress', 'In progress'], ['done', 'Got th
 const stageOf = (st) => (st === 'contacted' ? 'progress' : st === 'live' ? 'done' : st === 'skipped' ? 'skipped' : 'todo');
 
 /** Write, address, send and track the pitch email for one place. Sending only happens when the button is pressed. */
+const PURPOSES = [['submit_link', 'Post my link for me'], ['guest_post', 'Guest article'], ['listing', 'Add me to your list'], ['mention', 'Link my mention']];
+
 function EmailPanel({ b, item, message, onChanged }) {
   const base = `/businesses/${b.id}/backlink-hub`;
   const plan = useApi(`${base}/plan`);
@@ -249,7 +251,8 @@ function EmailPanel({ b, item, message, onChanged }) {
   useEffect(() => { if (row?.contact_email && !to) setTo(row.contact_email); }, [row?.contact_email]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (item.email && !to) setTo(item.email); }, [item.email]); // eslint-disable-line react-hooks/exhaustive-deps
   const find = () => run('find', async () => { const r = await api(`${base}/outreach/contacts`, { method: 'POST', body: { domain: item.domain } }); setFound(r); if (r.contacts[0] && !to) setTo(r.contacts[0].email); });
-  const draft = () => run('draft', async () => { const r = await api(`${base}/outreach/draft-submit`, { method: 'POST', body: { domain: item.domain, ...link } }); setSubject(r.subject); setBody(r.body); });
+  const [kind, setKind] = useState('submit_link');
+  const draft = () => run('draft', async () => { const r = await api(`${base}/outreach/generate`, { method: 'POST', body: { domain: item.domain, kind, ...link, about: item.name || '' } }); setSubject(r.subject); setBody(r.body); });
   const check = () => run('check', async () => { const r = await api(`${base}/outreach/check-link`, { method: 'POST', body: { domain: item.domain, url: posted.trim() } }); setChecked(r.result); plan.reload(true); onChanged?.(); });
   const left = /\[add/i.test(body) || /\[add/i.test(subject);
   const send = () => {
@@ -275,13 +278,14 @@ function EmailPanel({ b, item, message, onChanged }) {
           {found.contacts.map(c => <button key={c.email} type="button" onClick={() => setTo(c.email)} title={`${c.how} on ${c.page}`} className={`rounded-full px-2.5 py-1 ring-1 ring-inset cursor-pointer ${to === c.email ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{c.email}</button>)}</div>
       ) : <p className="text-12.5 text-amber-800">{found.note}</p>)}
       <div className="flex flex-wrap items-center gap-2 text-12.5"><span className="text-slate-500">This platform posts links for you?</span>
-        <button type="button" onClick={() => setAsks(v => !v)} className="font-semibold text-indigo-600 hover:underline cursor-pointer">{asks ? 'Hide' : 'Write a “please post my link” email'}</button></div>
+        <button type="button" onClick={() => setAsks(v => !v)} className="font-semibold text-indigo-600 hover:underline cursor-pointer">{asks ? 'Hide' : 'Write the email for me'}</button></div>
       {asks && (
         <div className="grid gap-2 rounded-lg bg-slate-50 p-2.5">
+          <div className="flex flex-wrap gap-1.5">{PURPOSES.map(([k, l]) => <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={kind === k} className={`h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${kind === k ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{l}</button>)}</div>
           <input value={link.url} onChange={e => setLink({ ...link, url: e.target.value })} placeholder="Your page to link to" aria-label="Your link" className={inp} />
           <input value={link.title} onChange={e => setLink({ ...link, title: e.target.value })} placeholder="Title they should show" aria-label="Title" className={inp} maxLength={160} />
           <input value={link.description} onChange={e => setLink({ ...link, description: e.target.value })} placeholder="One or two lines about it (optional)" aria-label="Description" className={inp} maxLength={600} />
-          <div><Button size="sm" icon={Sparkles} busy={busy === 'draft'} disabled={!link.url.trim()} onClick={draft}>Write the email</Button></div>
+          <div><Button size="sm" icon={Sparkles} busy={busy === 'draft'} disabled={!link.url.trim()} onClick={draft}>Write the email</Button><span className="ml-2 text-11.5 text-slate-400">Written by AI when it is set up, from a template otherwise. You edit it before sending.</span></div>
         </div>
       )}
       <input value={subject} onChange={e => setSubject(e.target.value)} maxLength={200} aria-label="Subject" className={inp} />
@@ -394,6 +398,56 @@ function AiPlatforms({ b, onOpen, onChanged }) {
   );
 }
 
+/** Write one email per chosen platform, let the owner read and fix each, then send them from the system. */
+function BulkModal({ b, platforms, onClose, onSent }) {
+  const base = `/businesses/${b.id}/backlink-hub`;
+  const [kind, setKind] = useState('submit_link');
+  const [drafts, setDrafts] = useState(null);
+  const [results, setResults] = useState(null);
+  const [busy, error, run] = useAction();
+  const write = () => run('write', async () => {
+    const out = [];
+    for (const p of platforms) {
+      const r = await api(`${base}/outreach/generate`, { method: 'POST', body: { domain: p.domain, kind, url: b.website || '', title: b.name || '', description: '', about: p.title || '' } });
+      out.push({ domain: p.domain, name: p.title || p.domain, to: p.emails[0]?.email || '', subject: r.subject, body: r.body, include: true });
+    }
+    setDrafts(out); setResults(null);
+  });
+  useEffect(() => { write(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = (i, patch) => setDrafts(d => d.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+  const ready = (drafts || []).filter(x => x.include && x.to.includes('@') && !/\[add/i.test(x.body));
+  const send = () => {
+    if (!window.confirm(`Send ${ready.length} email${ready.length === 1 ? '' : 's'}? Each goes to its own platform from your platform mail account.`)) return;
+    run('send', async () => { const r = await api(`${base}/outreach/send-many`, { method: 'POST', body: { items: ready.map(x => ({ domain: x.domain, to: x.to, subject: x.subject, body: x.body, name: x.name, source: 'manual' })) } }); setResults(r.results); onSent(); });
+  };
+  const inp = 'h-9 px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-full';
+  const res = (d) => (results || []).find(r => r.domain === d);
+  return (
+    <Modal open title={`Email ${platforms.length} platform${platforms.length === 1 ? '' : 's'}`} onClose={onClose} width="max-w-3xl"
+      footer={<div className="flex items-center gap-2 w-full"><span className="text-12 text-slate-500">Read each email: nothing is sent until you press Send. At most 10 at a time.</span>
+        <Button size="sm" className="ml-auto" onClick={onClose}>{results ? 'Done' : 'Close'}</Button>
+        {!results && <Button size="sm" variant="primary" icon={Send} busy={busy === 'send'} disabled={!ready.length} onClick={send}>Send {ready.length} email{ready.length === 1 ? '' : 's'}</Button>}</div>}>
+      <div className="grid gap-3 text-13">
+        <div className="flex flex-wrap items-center gap-1.5"><span className="text-slate-500">Purpose:</span>{PURPOSES.map(([k, l]) => <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={kind === k} className={`h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${kind === k ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{l}</button>)}
+          <Button size="sm" icon={Sparkles} busy={busy === 'write'} onClick={write}>Write again</Button></div>
+        <ErrorNote>{error}</ErrorNote>
+        {!drafts && <SkList rows={3} />}
+        {(drafts || []).map((x, i) => { const r = res(x.domain); return (
+          <div key={x.domain} className={`rounded-lg ring-1 ring-inset p-3 grid gap-2 ${r ? (r.ok ? 'ring-emerald-300 bg-emerald-50/40' : 'ring-red-300 bg-red-50/40') : 'ring-slate-200'}`}>
+            <div className="flex items-center gap-2"><input type="checkbox" checked={x.include} onChange={e => set(i, { include: e.target.checked })} aria-label={`Send to ${x.domain}`} disabled={!!results} />
+              <span className="font-semibold text-slate-900">{x.domain}</span>{r && <Badge tone={r.ok ? 'green' : 'red'}>{r.ok ? 'Sent' : 'Not sent'}</Badge>}</div>
+            {r && !r.ok && <p className="text-12.5 text-red-700">{r.error}</p>}
+            {!results && (<>
+              <input value={x.to} onChange={e => set(i, { to: e.target.value })} placeholder="Their email address" aria-label="To" className={inp} />
+              <input value={x.subject} onChange={e => set(i, { subject: e.target.value })} aria-label="Subject" className={inp} maxLength={200} />
+              <textarea value={x.body} onChange={e => set(i, { body: e.target.value })} rows={6} aria-label="Message" className="px-3 py-2 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-full" maxLength={5000} />
+            </>)}
+          </div>); })}
+      </div>
+    </Modal>
+  );
+}
+
 /** Searches that find sites worth emailing, and a place to add a site you found yourself. */
 function FindSites({ b, onOpen, onChanged }) {
   const base = `/businesses/${b.id}/backlink-hub`;
@@ -403,6 +457,8 @@ function FindSites({ b, onOpen, onChanged }) {
   const [toast, toastNode] = useToast();
   const d = r.data;
   const [found, setFound] = useState(null);
+  const [picked, setPicked] = useState([]);
+  const [mailing, setMailing] = useState(false);
   const discover = (force = false) => run('discover', async () => { setFound(await api(`${base}/outreach/discover${force ? '?force=1' : ''}`, { method: 'POST' })); });
   const take = (p, email) => run(`take${p.domain}`, async () => { await api(`${base}/plan`, { method: 'POST', body: { domain: p.domain, status: 'planned', source: 'manual', name: p.title || p.domain } }); onChanged(); setFound(f => ({ ...f, platforms: f.platforms.map(x => x.domain === p.domain ? { ...x, in_plan: 'planned' } : x) })); onOpen({ domain: p.domain, name: p.title || p.domain, source: 'manual', email }); });
   const clean = site.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
@@ -414,12 +470,14 @@ function FindSites({ b, onOpen, onChanged }) {
       <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
         <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'discover'} onClick={() => discover(!!found)}>{found ? 'Search again' : 'Find platforms and emails for me'}</Button>
         <span className="text-12.5 text-slate-500">Runs the searches below, opens the sites that come up and reads the email addresses they publish. Takes about a minute.</span>
+        {picked.length > 0 && <Button size="sm" className="ml-auto" icon={Send} onClick={() => setMailing(true)}>Write and send emails to {picked.length} chosen</Button>}
       </div>
       {found?.state && found.state !== 'ok' && <p className="px-5 py-3 text-13 text-amber-800">{found.message}</p>}
       {found?.state === 'ok' && (
         <div className="overflow-x-auto border-b border-slate-100">
           <table className="w-full min-w-[900px] text-13">
             <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+              <th className={`${TH} w-8`}><span className="sr-only">Choose</span></th>
               <th className={TH}><Head what="A website the searches found." from="Google results for your searches.">Platform</Head></th>
               <th className={TH}><Head what="Which kind of search found it: sends links by email, guest posts or list pages.">Found by</Head></th>
               <th className={TH}><Head what="Email addresses the site itself publishes on its contact, about or submission pages." why="Send your request here. Check that the site fits first." from="the site's own pages.">Email</Head></th>
@@ -429,6 +487,7 @@ function FindSites({ b, onOpen, onChanged }) {
             <tbody className="divide-y divide-slate-100">
               {found.platforms.map(p => (
                 <tr key={p.domain} className="align-top hover:bg-slate-50">
+                  <td className="px-3 py-3"><input type="checkbox" disabled={!p.emails.length} checked={picked.includes(p.domain)} onChange={e => setPicked(v => (e.target.checked ? [...v, p.domain].slice(0, 10) : v.filter(d => d !== p.domain)))} aria-label={`Choose ${p.domain}`} title={p.emails.length ? 'Include in the batch email' : 'No email published: use its contact form'} /></td>
                   <td className="px-3 py-3 max-w-[300px]"><a href={p.page} target="_blank" rel="noreferrer noopener" className="font-semibold text-indigo-600 hover:underline">{p.domain}</a><span className="block text-12 text-slate-500 truncate" title={p.snippet}>{p.title}</span></td>
                   <td className="px-3 py-3 text-slate-600 max-w-[220px]">{p.kinds.join(', ')}</td>
                   <td className="px-3 py-3">{p.emails.length ? <ul className="grid gap-0.5">{p.emails.map(e => <li key={e.email} className="font-mono text-12 text-slate-800" title={`${e.how} on ${e.page}`}>{e.email}</li>)}</ul> : <span className="text-12 text-slate-400">None published: use its contact form</span>}</td>
@@ -439,7 +498,7 @@ function FindSites({ b, onOpen, onChanged }) {
                   </span></td>
                 </tr>
               ))}
-              {!found.platforms.length && <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-500">No platforms came up. Try again later or use the searches below.</td></tr>}
+              {!found.platforms.length && <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-500">No platforms came up. Try again later or use the searches below.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -472,6 +531,7 @@ function FindSites({ b, onOpen, onChanged }) {
           </table>
         </div>
       )}
+      {mailing && <BulkModal b={b} platforms={(found?.platforms || []).filter(p => picked.includes(p.domain))} onClose={() => { setMailing(false); }} onSent={() => { onChanged(); setPicked([]); }} />}
       {toastNode}
     </Card>
   );

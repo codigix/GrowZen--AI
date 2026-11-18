@@ -131,3 +131,26 @@ def test_discover_finds_platforms_and_their_published_emails(client, bid, monkey
     assert "facebook.com" not in names and "hub-clinic.in" not in names  # big social sites and our own site are never suggested
     assert names[0] == "smile-blog.in" and d["platforms"][0]["emails"][0]["email"] == "editor@smile-blog.in"  # a platform with an email comes first
     assert "pune-links.org" in names
+
+
+def test_generate_writes_each_purpose_with_the_link_and_send_many_survives_a_failure(client, bid, monkeypatch):
+    base = f"/api/v1/businesses/{bid}/backlink-hub"
+    for kind in ("submit_link", "guest_post", "listing", "mention"):
+        d = client.post(f"{base}/outreach/generate", json={"domain": "links-hub.in", "kind": kind, "url": "https://hub-clinic.in/guide"}).json()
+        assert "https://hub-clinic.in/guide" in d["body"] and "[add" not in d["body"] and d["subject"], kind
+    monkeypatch.setattr(__import__("time"), "sleep", lambda s: None)
+    sent = []
+    monkeypatch.setattr(notify, "send_email", lambda to, subject, body, **kw: sent.append(to) or True)
+    items = [{"domain": "a-site.in", "to": "ed@a-site.in", "subject": "Hello", "body": BODY}, {"domain": "b-site.in", "to": "not-an-email", "subject": "Hello", "body": BODY},
+             {"domain": "c-site.in", "to": "ed@c-site.in", "subject": "Hello", "body": BODY}]
+    r = client.post(f"{base}/outreach/send-many", json={"items": items}).json()
+    assert [x["ok"] for x in r["results"]] == [True, False, True] and sent == ["ed@a-site.in", "ed@c-site.in"]
+    assert client.post(f"{base}/outreach/send-many", json={"items": items * 4}).status_code == 422  # at most ten at once
+
+
+def test_daily_limit_stops_a_burst(client, bid, monkeypatch):
+    monkeypatch.setattr(notify, "send_email", lambda *a, **k: True)
+    monkeypatch.setattr(pitch, "DAILY_LIMIT", 2)
+    url = f"/api/v1/businesses/{bid}/backlink-hub/outreach/send"
+    codes = [client.post(url, json={"domain": f"s{i}-site.in", "to": f"ed@s{i}-site.in", "subject": "Hello", "body": BODY}).status_code for i in range(3)]
+    assert codes == [200, 200, 422]

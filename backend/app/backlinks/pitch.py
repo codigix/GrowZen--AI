@@ -21,6 +21,7 @@ from .models import BiOpportunity
 from .playbook import DOMAIN, _row, set_status
 
 log = logging.getLogger("seo.backlinks.pitch")
+DAILY_LIMIT = 25
 EMAIL = re.compile(r"[a-z0-9._%+-]{1,64}@(?:[a-z0-9-]{1,63}\.)+[a-z]{2,24}", re.I)
 PATHS = ("/", "/contact", "/contact-us", "/contact.html", "/about", "/about-us", "/write-for-us", "/guest-post", "/advertise", "/submit")
 JUNK = ("example.", "sentry", "wixpress", "domain.com", "email.com", "yourname", "name@", "user@", ".png", ".jpg", ".gif", ".webp", ".svg", ".js", ".css")
@@ -92,6 +93,11 @@ def send(db: Session, b: Business, domain: str, to: str, subject: str, body: str
         raise ValueError("Write a subject and a message first")
     if "[add" in body.lower() or "[add" in subject.lower():
         raise ValueError("The message still has [add ...] parts to fill in")
+    from datetime import timedelta
+    from sqlalchemy import func, select
+    today = db.scalar(select(func.count(BiOpportunity.id)).where(BiOpportunity.business_id == b.id, BiOpportunity.emailed_at >= utcnow() - timedelta(hours=24))) or 0
+    if today >= DAILY_LIMIT:
+        raise ValueError(f"You have already emailed {today} sites in the last 24 hours. Wait a little: sending too many looks like spam and can get the mail account blocked.")
     row = _row(db, b, domain)
     if row and row.emailed_at and row.contact_email == to_clean and (utcnow() - _aware(row.emailed_at)).total_seconds() < 60:
         raise ValueError("This was just sent to the same address")
@@ -298,4 +304,61 @@ def discover(db: Session, b: Business, force: bool = False) -> dict:
     out = {"state": "error" if errors and not platforms else "ok", "platforms": platforms, "message": errors[0] if errors else "", "searched": len(wanted)}
     if out["state"] == "ok":
         _CACHE[b.id] = (time.time(), out)
+    return out
+
+
+# ------------------------------------------------------------------------------------------------------------------------ writing and sending inside the system
+KINDS = {
+    "submit_link": "ask the platform to publish a link to our page, with the title and a short description they can copy",
+    "guest_post": "propose a guest article for their readers (offer two or three topic ideas) with one link back to us",
+    "listing": "ask to be added to their list or directory of businesses",
+    "mention": "thank them for mentioning us and ask if they would link our name to our site",
+}
+GEN_SYSTEM = """You write one short, courteous outreach email from a small business to a website owner. The purpose is given.
+- 80 to 130 words. Plain text. Greet them, one clear request, thank them, sign with the business name.
+- Use only the facts given. Do not invent contact names, praise for specific articles you have not been shown, statistics, awards or promises.
+- Never offer payment or a link swap. Never say you visited the site beyond what is given.
+- Put the link given on its own line. Do not use [add ...] placeholders: if a fact is missing, leave it out.
+- Return JSON: {"subject": "...", "body": "..."}"""
+
+
+def generate(b: Business, domain: str, kind: str, url: str = "", title: str = "", description: str = "", about: str = "") -> dict:
+    """The email for one platform and purpose, ready to review. The link is always in the body; the owner edits and sends it."""
+    from ..services import ai
+    url = (url or b.website or "").strip()
+    name = (b.name or "our business").strip()
+    base = draft_submit(b, domain, url, title, description)
+    if kind == "guest_post":
+        base = {"subject": f"Guest article idea for {domain}", "source": "template", "body": f"Hello,\n\nI am writing on behalf of {name}. We would like to write a useful article for the readers of {domain}"
+                f"{' (' + about[:120] + ')' if about else ''}. Could we send you two or three topic ideas to choose from?\n\nIf the article is accepted, we would include one link to {url} where it helps the reader.\n\nThank you for your time.\n\nKind regards,\n{name}"}
+    elif kind == "listing":
+        base = {"subject": f"Please add {name} to your list", "source": "template", "body": f"Hello,\n\nI am writing on behalf of {name}. We think we would fit the businesses you list on {domain}. Could you add us?\n\nOur page: {url}\n"
+                f"{'About us: ' + description.strip() + chr(10) if description.strip() else ''}\nIf you need anything else from us, just reply and we will send it.\n\nThank you.\n\nKind regards,\n{name}"}
+    elif kind == "mention":
+        base = {"subject": f"Thank you for mentioning {name}", "source": "template", "body": f"Hello,\n\nThank you for mentioning {name} on {domain}. If you are happy to, could you link our name to our website so readers can find us easily?\n\n{url}\n\nThank you again.\n\nKind regards,\n{name}"}
+    if not ai.is_configured():
+        return base
+    facts = f"Business: {name}\nOur website: {url}\nPlatform: {domain}" + (f"\nWhat the platform says about itself: {about[:200]}" if about else "") + (f"\nTitle to show: {title}" if title else "") + (f"\nAbout the link: {description[:300]}" if description else "") + f"\nPurpose: {KINDS.get(kind, KINDS['submit_link'])}"
+    try:
+        out = ai.complete_json(GEN_SYSTEM, facts, temperature=0.5, max_tokens=500)
+        subject, body = str(out.get("subject", "")).strip(), str(out.get("body", "")).strip()
+        if subject and len(body) > 60 and url in body and "[add" not in body.lower() and "[add" not in subject.lower():
+            return {"subject": subject[:200], "body": body, "source": "ai"}
+    except (ai.AiUnavailable, ValueError):
+        pass
+    return base
+
+
+def send_many(db: Session, b: Business, items: list[dict]) -> list[dict]:
+    """Send several reviewed emails in turn. Each answer says sent or why not; one failure never stops the others."""
+    import time
+    out = []
+    for i, x in enumerate(items):
+        try:
+            send(db, b, x["domain"], x["to"], x["subject"], x["body"], x.get("name"), x.get("source", "manual"))
+            out.append({"domain": x["domain"], "to": x["to"], "ok": True})
+        except ValueError as exc:
+            out.append({"domain": x["domain"], "to": x["to"], "ok": False, "error": str(exc)})
+        if i < len(items) - 1:
+            time.sleep(1.5)  # not a burst: it looks like spam to the receiving mail servers
     return out

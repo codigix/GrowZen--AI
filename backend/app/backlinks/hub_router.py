@@ -105,6 +105,32 @@ class CheckIn(BaseModel):
     url: str = Field(min_length=8, max_length=600)
 
 
+class GenIn(BaseModel):
+    domain: str = Field(min_length=4, max_length=255)
+    kind: str = Field(default="submit_link", pattern="^(submit_link|guest_post|listing|mention)$")
+    url: str = Field(default="", max_length=500)
+    title: str = Field(default="", max_length=160)
+    description: str = Field(default="", max_length=600)
+    about: str = Field(default="", max_length=400)  # what the platform says about itself (its page title or snippet)
+
+
+class ManyIn(BaseModel):
+    items: list[SendIn] = Field(min_length=1, max_length=10)
+
+
+@router.post("/outreach/generate")
+def outreach_generate(body: GenIn, b: Business = Depends(get_business)) -> dict:
+    """Write the email for one platform from its purpose (post my link, guest post, listing, unlinked mention): AI when configured, a plain template otherwise."""
+    return pitch.generate(b, body.domain, body.kind, body.url, body.title, body.description, body.about)
+
+
+@router.post("/outreach/send-many")
+def outreach_send_many(body: ManyIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Send the reviewed emails one after another; each result says whether it went out. A failure never stops the rest."""
+    results = pitch.send_many(db, b, [x.model_dump() for x in body.items])
+    return {"results": results, **playbook.plan(db, b)}
+
+
 @router.post("/outreach/draft-submit")
 def outreach_draft_submit(body: DraftIn, b: Business = Depends(get_business)) -> dict:
     """An email asking a platform to post our link for us: the link, a title and a short description they can copy."""
