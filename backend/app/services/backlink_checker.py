@@ -39,6 +39,57 @@ class CheckError(Exception):
     pass
 
 
+_DFS: dict[str, tuple[float, dict[str, Any]]] = {}
+DFS_URL = "https://api.dataforseo.com/v3/backlinks/"
+
+
+def dfs_configured() -> bool:
+    from ..config import get_settings
+    return bool(get_settings().dataforseo_auth.strip())
+
+
+def _dfs_call(endpoint: str, targets: list[str]) -> dict[str, dict[str, Any]]:
+    from ..config import get_settings
+    r = httpx.post(f"{DFS_URL}{endpoint}/live", json=[{"targets": targets}], headers={"Authorization": f"Basic {get_settings().dataforseo_auth.strip()}"}, timeout=40)
+    body = r.json()
+    if r.status_code != 200 or body.get("status_code") != 20000:
+        raise CheckError(f"DataForSEO: {body.get('status_message') or r.status_code}")
+    task = (body.get("tasks") or [{}])[0]
+    if task.get("status_code") != 20000:
+        raise CheckError(f"DataForSEO: {task.get('status_message') or 'task failed'}")
+    items = ((task.get("result") or [{}])[0] or {}).get("items") or []
+    return {str(i.get("target")): i for i in items}
+
+
+def dfs_scores(domains: list[str], pages: list[str]) -> dict[str, dict[str, Any]]:
+    """DataForSEO's own authority numbers: DA-like = domain rank (0-1000 shown as 0-100), PA-like = page rank, spam = its backlink spam score (0-100).
+    Keyed by domain and by page URL. {} without a login; raises CheckError with the reason when DataForSEO refuses. Kept a day per target."""
+    import time
+    if not dfs_configured():
+        return {}
+    now = time.time()
+    out: dict[str, dict[str, Any]] = {}
+    need_rank, need_spam = [], []
+    for t in list(dict.fromkeys(domains + pages)):
+        hit = _DFS.get(t)
+        if hit and now - hit[0] < 86400:
+            out[t] = hit[1]
+        else:
+            need_rank.append(t)
+            if t in domains:
+                need_spam.append(t)
+    if need_rank:
+        ranks = _dfs_call("bulk_ranks", need_rank[:100])
+        spam = _dfs_call("bulk_spam_score", need_spam[:100]) if need_spam else {}
+        for t in need_rank[:100]:
+            rk = (ranks.get(t) or {}).get("rank")
+            sp = (spam.get(t) or {}).get("spam_score")
+            v = {"rank": round(rk / 10) if isinstance(rk, (int, float)) else None, "spam": sp}
+            out[t] = v
+            _DFS[t] = (now, v)
+    return out
+
+
 _OPR: dict[str, tuple[float, dict[str, Any]]] = {}
 
 

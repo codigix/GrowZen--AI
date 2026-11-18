@@ -133,6 +133,7 @@ class Settings(BaseSettings):
     google_ads_login_customer_id: str = ""  # manager (MCC) account id, only needed if the account is managed
 
     # Moz API (Domain Authority, Page Authority, Spam Score, referring domains) for the Backlink Checker. Empty = those fields say 'not available'.
+    dataforseo_auth: str = ""  # DataForSEO Basic token (base64 of login:password): domain rank, page rank and spam score for the Backlink Checker. Empty = hidden.
     openpagerank_api_key: str = ""  # openpagerank.com (free): a 0-10 domain rank shown in the Backlink Checker. Empty = the column is hidden.
     serper_api_key: str = ""  # Serper.dev (Google results API): finds platforms that take emailed links. Empty = the searches are only offered as links.
     moz_access_id: str = ""

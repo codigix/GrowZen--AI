@@ -57,11 +57,20 @@ def _with_site(db: Session, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         db.rollback()
         sig = {}
     ranks = bc.opr_ranks([d for d in doms if d])
+    dfs, dfs_note = {}, None
+    if bc.dfs_configured():
+        try:
+            dfs = bc.dfs_scores([d for d in doms if d], [r["source_url"] for r in rows if r.get("source_url") and r.get("state") != "page_error"][:60])
+        except Exception as exc:  # noqa: BLE001
+            dfs_note = str(exc) if isinstance(exc, bc.CheckError) else "DataForSEO could not be reached."
     for r in rows:
         site = sig.get(pitch._registrable(urlsplit(r.get("source_url") or "").hostname or ""))
         dom = pitch._registrable(urlsplit(r.get("source_url") or "").hostname or "")
         r["site"] = site
         r["domain_rank"] = (ranks.get(dom) or {}).get("rank")
+        d_, p_ = dfs.get(dom) or {}, dfs.get(r.get("source_url")) or {}
+        r["scores"] = {"da": d_.get("rank"), "pa": p_.get("rank"), "spam": d_.get("spam"), "source": "DataForSEO"} if dfs else None
+        r["scores_note"] = dfs_note
         r["spam_report"] = _spam_report(r, site)
     return rows
 
@@ -76,7 +85,7 @@ def _out(r: BacklinkCheck) -> dict[str, Any]:
 @router.get("")
 def list_checks(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     rows = _with_site(db, [_out(r) for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc()).limit(500))])
-    return {"rows": rows, "summary": bc.summarise(rows), "moz": bc.moz_configured(), "opr": bc.opr_configured(), "default_target": _own_target(b), "limit": bc.MAX_SOURCES}
+    return {"rows": rows, "summary": bc.summarise(rows), "moz": bc.moz_configured(), "opr": bc.opr_configured(), "dfs": bc.dfs_configured(), "default_target": _own_target(b), "limit": bc.MAX_SOURCES}
 
 
 @router.get("/candidates")
@@ -129,7 +138,7 @@ def run_check(body: CheckIn, b: Business = Depends(get_business), db: Session = 
         saved.append(_out(row))
     log(db, user.name, "backlinks_checked", b.id, count=len(saved))
     db.commit()
-    return {"rows": _with_site(db, saved), "summary": bc.summarise(saved), "note": note, "moz": bc.moz_configured(), "opr": bc.opr_configured(), "target": tgt["label"]}
+    return {"rows": _with_site(db, saved), "summary": bc.summarise(saved), "note": note, "moz": bc.moz_configured(), "opr": bc.opr_configured(), "dfs": bc.dfs_configured(), "target": tgt["label"]}
 
 
 @router.delete("/{check_id}", status_code=204)
