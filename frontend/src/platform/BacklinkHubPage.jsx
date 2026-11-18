@@ -37,6 +37,13 @@ function Setup({ s }) {
     ? 'Your backlink crawler is not connected. Add CRAWLER_URL and CRAWLER_API_KEY to the backend settings; the links it finds then appear here.'
     : c.last_error ? `The last sync failed: ${c.last_error}` : !c.last_sync_at ? 'The crawler is connected but has not synced this project yet. Press “Find backlinks now”.' : null;
   if (!note && s.moz.configured) return null;
+  const all = [note, !s.moz.configured && 'Domain Authority, Page Authority and Spam Score come from Moz. Add MOZ_ACCESS_ID and MOZ_SECRET_KEY to the backend settings to show them; until then they read "—".'].filter(Boolean);
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2 text-12.5 text-amber-900 flex items-center gap-2 min-w-0" title={all.join(' ')}>
+      <Info size={14} className="shrink-0" /><span className="truncate">{all[0]}</span>{all.length > 1 && <span className="shrink-0 text-amber-700">+{all.length - 1} more note</span>}
+    </div>
+  );
+  // eslint-disable-next-line no-unreachable
   return (
     <Card>
       <div className="grid gap-1.5 text-13">
@@ -47,7 +54,7 @@ function Setup({ s }) {
   );
 }
 
-function Summary({ s, b, reload, compact = false }) {
+function Summary({ s, b, reload, compact = false, main = false }) {
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   if (s.state !== 'ok') return null;
@@ -59,6 +66,7 @@ function Summary({ s, b, reload, compact = false }) {
     return (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-13 text-slate-600">
         <span><b className="text-slate-900">{s.domain}</b>: {s.totals.live} live links from {s.totals.referring_domains} domains{s.crawler.last_sync_at ? `, synced ${day(s.crawler.last_sync_at)}` : ''}</span>
+        {main && <span className="text-slate-500">{t.dofollow_share == null ? '' : `${t.dofollow_share}% follow · `}{t.new_30d} new · {t.lost_30d} lost (30 days) · {s.useful.useful || 0} useful{s.useful.risky ? `, ${s.useful.risky} risky` : ''}</span>}
         <span className="ml-auto flex items-center gap-3"><Link to="/backlinks/links" className="font-semibold text-indigo-600 hover:underline">All backlinks</Link><Button size="sm" icon={Link2} busy={busy === 'sync'} onClick={sync}>Find backlinks now</Button></span>
         {toastNode}
       </div>
@@ -306,7 +314,7 @@ function Opportunities({ b }) {
         {d.state === 'no_target' && <p className="text-13 text-slate-500">Add the project's website first.</p>}
         {d.state === 'no_competitors' && <p className="text-13 text-slate-500">No competitors are saved for this project. Find them on the <Link to="/competitor-finder" className="text-indigo-600 hover:underline">Competitors page</Link>; their links are then read by your crawler.</p>}
         {d.note && <p className="text-13 text-slate-500">{d.note}</p>}
-        {d.state === 'ok' && <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl"><Stat label="To do" value={lists.todo.length} /><Stat label="In progress" value={lists.progress.length} /><Stat label="Got the link" value={done.length} hint="Confirmed when the crawler sees it" /><Stat label="High priority" value={lists.todo.filter(x => x.priority === 'high').length} /></div>}
+        {d.state === 'ok' && <p className="text-12.5 text-slate-500">{lists.todo.filter(x => x.priority === 'high').length} high priority. A link is confirmed automatically when the crawler sees it on the site.</p>}
       </Card>
       {d.state === 'ok' && (
         <Card pad={false}>
@@ -547,7 +555,7 @@ function Body({ b, view }) {
   const main = view === 'links';
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      {view !== 'sites' && (s.data ? <><Summary s={s.data} b={b} reload={s.reload} compact={!main} />{main && <Setup s={s.data} />}</> : s.error ? <Card><ErrorNote>{s.error.message}</ErrorNote></Card> : <SkList rows={3} />)}
+      {view !== 'sites' && (s.data ? <><Summary s={s.data} b={b} reload={s.reload} compact main={main} />{main && <Setup s={s.data} />}</> : s.error ? <Card><ErrorNote>{s.error.message}</ErrorNote></Card> : <SkList rows={3} />)}
       {(view === 'sites' || !s.data || s.data.state === 'ok') && <V key={key} b={b} />}
       {main && s.data && <Used s={s.data} />}
     </div>

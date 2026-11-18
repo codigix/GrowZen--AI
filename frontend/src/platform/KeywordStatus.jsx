@@ -26,14 +26,16 @@ export default function KeywordStatus({ b }) {
   const pill = (on) => `h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      <Card title="How your keywords are doing" subtitle="Positions are Google Search Console's average position over the last 28 days. Impressions and clicks are real; “potential” is modelled."
-        action={<Link to="/rank-tracking/positions" className="text-12.5 font-semibold text-indigo-600 hover:underline">Check positions now →</Link>}>
-        {!d.rank_ready && <p className="text-13 text-amber-700 mb-3">Positions need the Google account that owns this website linked to the project (Integrations). Until then only usage is shown.</p>}
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-          <Stat label="Tracked" value={d.total} /><Stat label="Working" value={c.working} hint="Page 1 with clicks" /><Stat label="Can climb" value={c.climbing} /><Stat label="Weak" value={c.weak} />
-          <Stat label="Not showing" value={c.invisible} /><Stat label="Impressions" value={n0(d.impressions)} /><Stat label="Clicks" value={n0(d.clicks)} />
-        </div>
-      </Card>
+      <div className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-13 text-slate-600" title="Positions are Google Search Console's average position over the last 28 days. Impressions and clicks are real; “potential” is modelled.">
+        <span><b className="text-slate-900 tabular-nums">{d.total}</b> tracked</span>
+        <span><b className="text-emerald-700 tabular-nums">{c.working}</b> working</span>
+        <span><b className="text-amber-700 tabular-nums">{c.climbing}</b> can climb</span>
+        <span><b className="text-rose-700 tabular-nums">{c.weak}</b> weak</span>
+        <span><b className="text-slate-900 tabular-nums">{c.invisible}</b> not showing</span>
+        <span><b className="text-slate-900 tabular-nums">{n0(d.impressions)}</b> views · <b className="text-slate-900 tabular-nums">{n0(d.clicks)}</b> clicks</span>
+        <Link to="/rank-tracking/positions" className="ml-auto text-12.5 font-semibold text-indigo-600 hover:underline">Check positions now →</Link>
+        {!d.rank_ready && <p className="basis-full text-12.5 text-amber-700">Positions need the Google account that owns this website linked to the project (Integrations). Until then only usage is shown.</p>}
+      </div>
       <Card pad={false}>
         <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-slate-100">
           {FILTERS.map(([id, label]) => <button key={id} type="button" aria-pressed={f === id} onClick={() => setF(id)} className={pill(f === id)}>{label} <span className="opacity-70">{id === 'all' ? d.total : c[id]}</span></button>)}

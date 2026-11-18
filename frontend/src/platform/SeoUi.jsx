@@ -315,14 +315,14 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
 
       <div className="max-w-[1520px] mx-auto px-6 pb-6 animate-in fade-in duration-200">
         {/* Page title with breadcrumb */}
-        <div className="py-5 flex flex-wrap items-center justify-between gap-2">
+        <div className="pt-3 pb-2.5 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
             <Breadcrumbs title={title} />
             <h1 className="text-18 font-semibold text-slate-900 tracking-tight flex flex-wrap items-center gap-2">{title}{business && needsBusiness && <MarketBadge business={business} />}</h1>
-            {subtitle && <p className="text-12 text-slate-400 mt-0.5 max-w-3xl">{subtitle}</p>}
+            {subtitle && <p className="text-12 text-slate-400 mt-0.5 max-w-3xl truncate" title={subtitle}>{subtitle}</p>}
           </div>
         </div>
-        {step && business && !error && <div className="mb-4"><StepBar bid={business.id} step={step} /></div>}
+        {step && business && !error && <div className="mb-3"><StepBar bid={business.id} step={step} /></div>}
         {body}
       </div>
     </div>
@@ -365,7 +365,7 @@ export const SourceTag = ({ source }) => (
 export const Card = ({ title, subtitle, action, children, className = '', pad = true }) => (
   <section className={`ai-glass-card rounded ${className}`}>
     {(title || action) && (
-      <header className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-slate-100">
+      <header className="flex items-start justify-between gap-3 px-5 pt-3.5 pb-3 border-b border-slate-100">
         <div className="min-w-0">
           {title && <h2 className="text-15 font-semibold text-slate-900 tracking-tight">{title}</h2>}
           {subtitle && <p className="text-12 text-slate-400 mt-0.5 font-normal">{subtitle}</p>}
@@ -373,7 +373,7 @@ export const Card = ({ title, subtitle, action, children, className = '', pad = 
         {action}
       </header>
     )}
-    <div className={pad ? 'p-6' : ''}>{children}</div>
+    <div className={pad ? 'p-5' : ''}>{children}</div>
   </section>
 );
 
@@ -385,7 +385,7 @@ export const Stat = ({ label, value, delta, deltaGoodWhenUp = true, hint, icon: 
   const good = delta === 0 || delta == null ? null : up === deltaGoodWhenUp;
 
   return (
-    <div className="ai-glass-card rounded p-5 min-w-0 relative overflow-hidden group">
+    <div className="ai-glass-card rounded px-4 py-3 min-w-0 relative overflow-hidden group">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-slate-500  truncate">{label}</span>
         {Icon && (
@@ -394,8 +394,8 @@ export const Stat = ({ label, value, delta, deltaGoodWhenUp = true, hint, icon: 
           </div>
         )}
       </div>
-      <div className="text-2xl lg:text-3xl font-extrabold text-slate-900 mt-2 font-display tracking-tight">{value}</div>
-      <div className="text-12 mt-2 flex items-center gap-1.5 flex-wrap">
+      <div className="text-xl lg:text-2xl font-extrabold text-slate-900 mt-1 font-display tracking-tight">{value}</div>
+      <div className="text-12 mt-1 flex items-center gap-1.5 flex-wrap empty:hidden">
         {delta != null && delta !== 0 && (
           <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full font-bold text-11 ${good ? 'bg-emerald-500/15 text-emerald-700 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-600 border border-rose-500/30'
             }`}>

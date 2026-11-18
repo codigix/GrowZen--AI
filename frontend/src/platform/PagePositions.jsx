@@ -54,9 +54,14 @@ export default function PagePositions({ b }) {
         {d.state === 'no_keywords' && <p className="text-13 text-slate-500">No keywords are tracked yet. Press "Add suggested keywords" to track the searches customers use to find this business, then check positions.</p>}
         {!d.rank_ready && d.tracked > 0 && <p className="text-13 text-amber-700">Positions are read from Google Search Console: link the Google account that owns this website to the project (Integrations).</p>}
         {d.rows.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mt-1">
-            <Stat label="Tracked" value={s.tracked} /><Stat label="Shown on Google" value={s.shown ?? s.ranking} /><Stat label="Impressions" value={n0(s.impressions)} /><Stat label="Clicks" value={n0(s.clicks)} />
-            <Stat label="Top 3" value={s.top3} /><Stat label="Top 10" value={s.top10} /><Stat label="Avg position" value={s.avg_position ?? '—'} />
+          <div className="mt-1 flex flex-wrap items-center gap-x-6 gap-y-1 text-13 text-slate-600">
+            <span><b className="text-slate-900 tabular-nums">{s.tracked}</b> tracked</span>
+            <span><b className="text-slate-900 tabular-nums">{s.shown ?? s.ranking}</b> shown on Google</span>
+            <span><b className="text-slate-900 tabular-nums">{n0(s.impressions)}</b> impressions</span>
+            <span><b className="text-slate-900 tabular-nums">{n0(s.clicks)}</b> clicks</span>
+            <span><b className="text-emerald-700 tabular-nums">{s.top3}</b> in the top 3</span>
+            <span><b className="text-slate-900 tabular-nums">{s.top10}</b> in the top 10</span>
+            <span>average position <b className="text-slate-900 tabular-nums">{s.avg_position ?? '—'}</b></span>
           </div>
         )}
       </Card>

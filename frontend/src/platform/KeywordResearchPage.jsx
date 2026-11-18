@@ -736,9 +736,9 @@ function Tracked({ b, kw }) {
   // The one thing worth doing next, said plainly
   const nopage = counts.nopage;
   const hint = !tracked.length ? null : nopage > 0
-    ? { text: `${nopage} of your ${tracked.length} keywords have no page yet. A keyword needs one page on your website to rank.`, action: <Button variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages}>Match them to my pages</Button>, more: <Link to="/keyword-management/mapping" className="text-13 font-semibold text-indigo-700 hover:underline">See the matching</Link> }
-    : onGoogle === 0 ? { text: 'Every keyword has a page. Next, check where they show on Google.', action: <Link to="/keyword-management/status"><Button variant="primary" icon={ArrowRight}>Check rankings</Button></Link> }
-      : { text: 'Every keyword has a page. Next, group them into topics and plan where to use them.', action: <Link to="/keyword-management/topics"><Button variant="primary" icon={ArrowRight}>Group into topics</Button></Link> };
+    ? { text: `${nopage} keyword${nopage === 1 ? ' has' : 's have'} no page yet. Each needs one page on your website to rank.`, action: <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages}>Match them to my pages</Button>, more: <Link to="/keyword-management/mapping" className="text-13 font-semibold text-indigo-700 hover:underline">See the matching</Link> }
+    : onGoogle === 0 ? { text: 'Every keyword has a page. Next: check where they show on Google.', action: <Link to="/keyword-management/status"><Button variant="primary" icon={ArrowRight}>Check rankings</Button></Link> }
+      : { text: 'Every keyword has a page. Next: group them into topics.', action: <Link to="/keyword-management/topics"><Button variant="primary" icon={ArrowRight}>Group into topics</Button></Link> };
 
   return (
     <div className="space-y-5">
@@ -757,18 +757,13 @@ function Tracked({ b, kw }) {
         </div></Card>
       ) : (
         <>
-          {/* Where you stand, and the one thing to do next */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <div className="grid grid-cols-3 gap-4 max-w-xl">
-              {[[tracked.length, 'keywords saved'], [`${mapped}`, 'have a page'], [onGoogle, 'show on Google']].map(([n, l]) => (
-                <div key={l}><div className="text-28 font-bold text-slate-900 tabular-nums leading-none">{n}</div><div className="mt-1 text-13 text-slate-500">{l}</div></div>))}
-            </div>
-            {hint && (
-              <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-x-4 gap-y-2">
-                <p className="flex-1 min-w-[260px] text-14 text-slate-800">{hint.text}</p>
-                {hint.more}{hint.action}
-              </div>
-            )}
+          {/* Where you stand and the one thing to do next: one slim row, so the list starts high on the page */}
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <span className="text-14 text-slate-600"><b className="text-slate-900 tabular-nums">{tracked.length}</b> saved · <b className="text-slate-900 tabular-nums">{mapped}</b> have a page · <b className="text-slate-900 tabular-nums">{onGoogle}</b> show on Google</span>
+            {hint && <>
+              <span className="text-13 text-slate-700 flex-1 min-w-[220px]">{hint.text}</span>
+              {hint.more}{hint.action}
+            </>}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

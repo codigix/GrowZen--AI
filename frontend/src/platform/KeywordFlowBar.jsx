@@ -14,7 +14,7 @@ const STEPS = [
 /** The keyword pages in order, as one quiet line: where you are and where the other pages are. */
 export default function KeywordFlowBar({ at }) {
   return (
-    <nav aria-label="Keyword pages" className="mb-4 flex flex-wrap items-center gap-x-1 gap-y-1 text-12.5">
+    <nav aria-label="Keyword pages" className="mb-2.5 flex flex-wrap items-center gap-x-1 gap-y-1 text-12.5">
       {STEPS.map((s, n) => (
         <React.Fragment key={s.id}>
           {n > 0 && <ChevronRight size={12} className="text-slate-300" aria-hidden="true" />}

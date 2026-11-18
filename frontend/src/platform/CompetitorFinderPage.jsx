@@ -726,11 +726,11 @@ function Research({ b }) {
 
       {result && (
         <div className={isRunning(current) ? 'space-y-5 opacity-60 pointer-events-none select-none' : 'space-y-5'} aria-busy={isRunning(current)}>
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-            <Tile label="Google visibility" value={s.keywords_ranked ? `${s.visibility}%` : '—'} sub={s.keywords_ranked ? 'from Google Search Console' : 'link Search Console to see it'} tone={s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600'} />
-            <Tile label="Keywords shown on Google" value={`${s.keywords_ranked}/${s.keywords_total}`} sub={`${s.keywords_top3} in the top 3 (Search Console)`} />
-            <Tile label="Maps visibility" value={`${s.local_visibility}%`} sub={`in Maps for ${s.local_ranked} of ${s.keywords_total}`} />
-            <Tile label="Competing businesses" value={s.competitors} sub={s.local_leader ? `Maps leader: ${s.local_leader.name}` : ''} />
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-13 text-slate-600">
+            <span title={s.keywords_ranked ? 'from Google Search Console' : 'link Search Console to see it'}>Google visibility <b className={`tabular-nums ${s.keywords_ranked ? (s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600') : 'text-slate-400'}`}>{s.keywords_ranked ? `${s.visibility}%` : '—'}</b></span>
+            <span title={`${s.keywords_top3} in the top 3 (Search Console)`}>On Google <b className="text-slate-900 tabular-nums">{s.keywords_ranked}/{s.keywords_total}</b> keywords</span>
+            <span title={`in Maps for ${s.local_ranked} of ${s.keywords_total}`}>Maps visibility <b className="text-slate-900 tabular-nums">{s.local_visibility}%</b></span>
+            <span title={s.local_leader ? `Maps leader: ${s.local_leader.name}` : ''}>Competing businesses <b className="text-slate-900 tabular-nums">{s.competitors}</b>{s.local_leader ? <span className="text-slate-400"> · leader {s.local_leader.name}</span> : null}</span>
           </div>
           <div>
             <Tabs wrap value={tab} onChange={setTab} tabs={[

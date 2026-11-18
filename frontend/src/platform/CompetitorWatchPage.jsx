@@ -44,27 +44,21 @@ function Body({ b }) {
   return (
     <>
       <ErrorNote>{w.error?.message || error}</ErrorNote>
-      <Card className="mb-4" title="Weekly competitor watch" subtitle="Each week we visit your competitors' websites and tell you what is new, what changed and what disappeared"
-        action={<Badge tone={running ? 'blue' : d.enabled ? 'green' : 'gray'}>{running ? 'Visiting now' : d.enabled ? 'On' : 'Off'}</Badge>}>
+      {/* The weekly visit: one slim bar, so the competitors and what changed start high on the page */}
+      <div className="mb-3 rounded-lg border border-gray-200 bg-white px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2" title="Public pages only, with robots.txt and polite delays respected. Up to 25 pages per competitor per visit: the home page, new pages, then the ones not looked at for the longest. We report what changed, not why.">
+        <span className="text-14 font-semibold text-gray-900">Weekly watch</span>
+        <Badge tone={running ? 'blue' : d.enabled ? 'green' : 'gray'}>{running ? 'Visiting now' : d.enabled ? 'On' : 'Off'}</Badge>
         {none ? (
-          <div className="text-13 text-gray-600">
-            No competitors are chosen yet. Go to <Link className="text-indigo-600 font-semibold" to="/competitor-finder">Competitor Research</Link>, look at everyone found and choose the 3 to 5 that really compete with you. They show here, and the watch follows them.
-            {d.not_chosen?.length > 0 && <span className="block mt-1">{d.not_chosen.length} found competitor{d.not_chosen.length === 1 ? ' is' : 's are'} waiting to be chosen.</span>}
-          </div>
+          <span className="text-13 text-gray-600 flex-1 min-w-[240px]">No competitors are chosen yet. <Link className="text-indigo-600 font-semibold" to="/competitor-finder">Choose the 3 to 5 that really compete with you</Link>; the watch follows them.{d.not_chosen?.length > 0 ? ` ${d.not_chosen.length} found competitor${d.not_chosen.length === 1 ? ' is' : 's are'} waiting to be chosen.` : ''}</span>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2 text-13"><input type="checkbox" checked={d.enabled} onChange={(e) => toggle(e.target.checked)} /> Visit every week automatically</label>
-              <Button variant="primary" icon={running ? Loader2 : Play} busy={busy === 'run' || running} disabled={running} onClick={start}>{running ? 'Visiting…' : 'Check now'}</Button>
-              <span className="text-12 text-gray-500">
-                {d.last_run_at ? `Last visit ${fmtDateTime(d.last_run_at)}` : 'Not visited yet'}{d.enabled && d.next_run_at ? ` · next ${fmtDate(d.next_run_at)}` : ''}
-              </span>
-            </div>
-
-            <p className="text-11 text-gray-400 mt-3">Public pages only, with robots.txt and polite delays respected. Up to 25 pages per competitor per visit: the home page, new pages, then the ones we have not looked at for the longest. We report what changed, not why.</p>
+            <label className="flex items-center gap-2 text-13"><input type="checkbox" checked={d.enabled} onChange={(e) => toggle(e.target.checked)} /> Visit every week</label>
+            <span className="text-12.5 text-gray-500">{d.last_run_at ? `Last visit ${fmtDateTime(d.last_run_at)}` : 'Not visited yet'}{d.enabled && d.next_run_at ? ` · next ${fmtDate(d.next_run_at)}` : ''}</span>
+            <span className="flex-1" />
+            <Button size="sm" variant="primary" icon={running ? Loader2 : Play} busy={busy === 'run' || running} disabled={running} onClick={start}>{running ? 'Visiting…' : 'Check now'}</Button>
           </>
         )}
-      </Card>
+      </div>
 
       {!none && (
         <Card className="mb-4" title="Competitors you chose" subtitle="Chosen in Competitor Research. The watch follows these."
