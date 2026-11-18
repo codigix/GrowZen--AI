@@ -121,6 +121,12 @@ def outreach_check_link(body: CheckIn, b: Business = Depends(get_business), db: 
     return {"result": res, **playbook.plan(db, b)}
 
 
+@router.post("/outreach/discover")
+def outreach_discover(b: Business = Depends(get_business), db: Session = Depends(get_db), force: bool = Query(False)) -> dict:
+    """Run the searches, collect the platforms they turn up and read each one's public contact addresses."""
+    return pitch.discover(db, b, force)
+
+
 @router.get("/outreach/search-ideas")
 def outreach_search_ideas(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     """Google searches that find sites that take guest posts, list businesses or mention you without a link."""

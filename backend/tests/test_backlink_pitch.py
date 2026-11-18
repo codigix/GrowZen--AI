@@ -12,6 +12,18 @@ def bid(client):
     return client.post("/api/v1/businesses", json={"name": "Hub Clinic", "website": "https://www.hub-clinic.in/", "contact_email": "owner@hub-clinic.in"}).json()["id"]
 
 
+def _set_topic(bid):
+    from app.db import SessionLocal
+    from app.models import Business
+    db = SessionLocal()
+    try:
+        b = db.get(Business, bid)
+        b.primary_category, b.city = "Dental clinic", "Pune"
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_contacts_come_only_from_what_the_site_publishes(client, bid, monkeypatch):
     page = '<a href="mailto:Editor@news-site.in?subject=hi">mail</a> write to info@news-site.in or logo@2x.png or x@sentry.io'
 
@@ -100,3 +112,22 @@ def test_submit_draft_carries_the_link_and_the_posted_link_is_checked(client, bi
     assert r["result"]["found"] and r["result"]["followed"] is False and r["result"]["anchor"] == "Hub Clinic"
     item = next(x for x in r["items"] if x["domain"] == "links-hub.in")
     assert item["status"] == "live" and item["link_found"] and item["published_url"] == "https://links-hub.in/p/1"
+
+
+def test_discover_finds_platforms_and_their_published_emails(client, bid, monkeypatch):
+    from app.config import get_settings
+    url = f"/api/v1/businesses/{bid}/backlink-hub/outreach/discover"
+    monkeypatch.setattr(get_settings(), "serper_api_key", "")
+    assert client.post(url).json()["state"] == "no_search"  # no search key: says how to set it up, invents nothing
+    monkeypatch.setattr(get_settings(), "serper_api_key", "k")
+    _set_topic(bid)
+    pitch._CACHE.clear()
+    results = [{"link": "https://www.smile-blog.in/write-for-us", "title": "Write for us", "snippet": "s"}, {"link": "https://www.facebook.com/x", "title": "fb"}, {"link": "https://hub-clinic.in/", "title": "me"},
+               {"link": "https://pune-links.org/submit", "title": "Submit your link", "snippet": "t"}]
+    monkeypatch.setattr(pitch, "_serper", lambda q, country: results)
+    monkeypatch.setattr(pitch, "find_contacts", lambda d: {"contacts": [{"email": f"editor@{d}", "page": f"https://{d}/contact", "how": "mailto link"}] if d == "smile-blog.in" else [], "pages_read": 2})
+    d = client.post(url).json()
+    names = [p["domain"] for p in d["platforms"]]
+    assert "facebook.com" not in names and "hub-clinic.in" not in names  # big social sites and our own site are never suggested
+    assert names[0] == "smile-blog.in" and d["platforms"][0]["emails"][0]["email"] == "editor@smile-blog.in"  # a platform with an email comes first
+    assert "pune-links.org" in names

@@ -247,6 +247,7 @@ function EmailPanel({ b, item, message, onChanged }) {
   useEffect(() => { setBody(message || ''); }, [message]);
   useEffect(() => { if (row?.published_url && !posted) setPosted(row.published_url); }, [row?.published_url]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (row?.contact_email && !to) setTo(row.contact_email); }, [row?.contact_email]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (item.email && !to) setTo(item.email); }, [item.email]); // eslint-disable-line react-hooks/exhaustive-deps
   const find = () => run('find', async () => { const r = await api(`${base}/outreach/contacts`, { method: 'POST', body: { domain: item.domain } }); setFound(r); if (r.contacts[0] && !to) setTo(r.contacts[0].email); });
   const draft = () => run('draft', async () => { const r = await api(`${base}/outreach/draft-submit`, { method: 'POST', body: { domain: item.domain, ...link } }); setSubject(r.subject); setBody(r.body); });
   const check = () => run('check', async () => { const r = await api(`${base}/outreach/check-link`, { method: 'POST', body: { domain: item.domain, url: posted.trim() } }); setChecked(r.result); plan.reload(true); onChanged?.(); });
@@ -401,12 +402,48 @@ function FindSites({ b, onOpen, onChanged }) {
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const d = r.data;
+  const [found, setFound] = useState(null);
+  const discover = (force = false) => run('discover', async () => { setFound(await api(`${base}/outreach/discover${force ? '?force=1' : ''}`, { method: 'POST' })); });
+  const take = (p, email) => run(`take${p.domain}`, async () => { await api(`${base}/plan`, { method: 'POST', body: { domain: p.domain, status: 'planned', source: 'manual', name: p.title || p.domain } }); onChanged(); setFound(f => ({ ...f, platforms: f.platforms.map(x => x.domain === p.domain ? { ...x, in_plan: 'planned' } : x) })); onOpen({ domain: p.domain, name: p.title || p.domain, source: 'manual', email }); });
   const clean = site.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
   const add = () => run('add', async () => { await api(`${base}/plan`, { method: 'POST', body: { domain: clean, status: 'planned', source: 'manual', name: clean } }); toast(`${clean} added to your plan`); setSite(''); onChanged(); onOpen({ domain: clean, name: clean, source: 'manual' }); });
   return (
     <Card title="Find more sites to email" subtitle="Searches written from your services and area. Open one, look for a site that fits, then add it here and email it from the Guide." pad={false}
       action={<div className="flex items-center gap-2"><input value={site} onChange={e => setSite(e.target.value)} onKeyDown={e => e.key === 'Enter' && clean.includes('.') && add()} placeholder="site you found, e.g. blog.com" aria-label="Site to add" className="h-8 w-52 px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" />
         <Button size="sm" variant="primary" icon={Plus} busy={busy === 'add'} disabled={!clean.includes('.')} onClick={add}>Add and write the email</Button></div>}>
+      <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
+        <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'discover'} onClick={() => discover(!!found)}>{found ? 'Search again' : 'Find platforms and emails for me'}</Button>
+        <span className="text-12.5 text-slate-500">Runs the searches below, opens the sites that come up and reads the email addresses they publish. Takes about a minute.</span>
+      </div>
+      {found?.state && found.state !== 'ok' && <p className="px-5 py-3 text-13 text-amber-800">{found.message}</p>}
+      {found?.state === 'ok' && (
+        <div className="overflow-x-auto border-b border-slate-100">
+          <table className="w-full min-w-[900px] text-13">
+            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+              <th className={TH}><Head what="A website the searches found." from="Google results for your searches.">Platform</Head></th>
+              <th className={TH}><Head what="Which kind of search found it: sends links by email, guest posts or list pages.">Found by</Head></th>
+              <th className={TH}><Head what="Email addresses the site itself publishes on its contact, about or submission pages." why="Send your request here. Check that the site fits first." from="the site's own pages.">Email</Head></th>
+              <th className={TH}><Head what="Whether it is already in your plan.">In plan</Head></th>
+              <th className={`${TH} text-right`}><Head right what="Add to the plan and write the email, or open the site." why="Look at the site before you email it.">Actions</Head></th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {found.platforms.map(p => (
+                <tr key={p.domain} className="align-top hover:bg-slate-50">
+                  <td className="px-3 py-3 max-w-[300px]"><a href={p.page} target="_blank" rel="noreferrer noopener" className="font-semibold text-indigo-600 hover:underline">{p.domain}</a><span className="block text-12 text-slate-500 truncate" title={p.snippet}>{p.title}</span></td>
+                  <td className="px-3 py-3 text-slate-600 max-w-[220px]">{p.kinds.join(', ')}</td>
+                  <td className="px-3 py-3">{p.emails.length ? <ul className="grid gap-0.5">{p.emails.map(e => <li key={e.email} className="font-mono text-12 text-slate-800" title={`${e.how} on ${e.page}`}>{e.email}</li>)}</ul> : <span className="text-12 text-slate-400">None published: use its contact form</span>}</td>
+                  <td className="px-3 py-3 text-slate-600">{p.in_plan ? <Badge tone="gray">{p.in_plan}</Badge> : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                    <Act icon={Send} tone="violet" tip="Email: add it to your plan and write the email to this platform." busy={busy === `take${p.domain}`} onClick={() => take(p, p.emails[0]?.email)} />
+                    <OpenAct url={p.page} tip="Open: look at the site in a new tab." />
+                  </span></td>
+                </tr>
+              ))}
+              {!found.platforms.length && <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-500">No platforms came up. Try again later or use the searches below.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
       <ErrorNote>{error}</ErrorNote>
       {r.error && <p className="px-5 py-4 text-13 text-red-600">{r.error.message}</p>}
       {!d && !r.error && <SkList rows={3} />}

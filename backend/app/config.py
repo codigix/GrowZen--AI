@@ -133,6 +133,7 @@ class Settings(BaseSettings):
     google_ads_login_customer_id: str = ""  # manager (MCC) account id, only needed if the account is managed
 
     # Moz API (Domain Authority, Page Authority, Spam Score, referring domains) for the Backlink Checker. Empty = those fields say 'not available'.
+    serper_api_key: str = ""  # Serper.dev (Google results API): finds platforms that take emailed links. Empty = the searches are only offered as links.
     moz_access_id: str = ""
     moz_secret_key: str = ""
 

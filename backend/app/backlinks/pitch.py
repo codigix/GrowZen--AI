@@ -206,3 +206,96 @@ def check_published(db: Session, b: Business, domain: str, page_url: str):
         row.status, row.status_at = "live", utcnow()
     db.commit()
     return {"found": found, "rel": rel, "anchor": anchor, "note": note, "followed": bool(found and rel and "nofollow" not in rel and "sponsored" not in rel and "ugc" not in rel)}
+
+
+# ------------------------------------------------------------------------------------------------------------------------ finding platforms by themselves
+BIG = ("google.", "facebook.", "instagram.", "twitter.", "x.com", "linkedin.", "youtube.", "wikipedia.", "pinterest.", "reddit.", "quora.", "amazon.", "flipkart.", "justdial.", "yelp.",
+       "tripadvisor.", "medium.com", "github.com", "apple.com", "microsoft.com", "bing.com", "yahoo.", "gov.in", ".gov", "indiamart.")
+_CACHE: dict[int, tuple[float, dict]] = {}
+CACHE_SECONDS = 1800
+QUERIES_USED = 6
+SITES_READ = 12
+
+
+def _serper(q: str, country: str) -> list[dict]:
+    from ..config import get_settings
+    key = get_settings().serper_api_key.strip()
+    r = httpx.post("https://google.serper.dev/search", headers={"X-API-KEY": key, "Content-Type": "application/json"}, json={"q": q, "num": 10, "gl": (country or "in").lower()}, timeout=20)
+    if r.status_code in (401, 403):
+        raise ValueError("The search service refused the key (check SERPER_API_KEY).")
+    if r.status_code == 429:
+        raise ValueError("The search service has no searches left for now (quota). Try again later.")
+    if r.status_code >= 400:
+        raise ValueError(f"The search service answered {r.status_code}.")
+    return r.json().get("organic", []) or []
+
+
+def _registrable(host: str) -> str:
+    host = (host or "").lower().removeprefix("www.")
+    parts = host.split(".")
+    if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net", "ac", "gov") and len(parts[-1]) == 2:
+        return ".".join(parts[-3:])
+    return ".".join(parts[-2:]) if len(parts) >= 2 else host
+
+
+def discover(db: Session, b: Business, force: bool = False) -> dict:
+    """Search Google (through the search API) with the business's own searches, collect the platforms that come up, and read each one's public email addresses.
+    Slow by nature (a dozen sites are opened), so the answer is kept for half an hour. Every email shown was published by the site itself."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from urllib.parse import urlsplit
+
+    from ..config import get_settings
+    from ..services import market
+    from . import hub
+    from .models import BiOpportunity
+    if not get_settings().serper_api_key.strip():
+        return {"state": "no_search", "platforms": [], "message": "Automatic search needs a search key: add SERPER_API_KEY to the backend settings. Until then use the searches above and add the sites by hand."}
+    hit = _CACHE.get(b.id)
+    if hit and not force and time.time() - hit[0] < CACHE_SECONDS:
+        return hit[1]
+    ideas = search_ideas(db, b)
+    if ideas["state"] != "ok":
+        return {"state": "no_topic", "platforms": [], "message": ideas["note"]}
+    own = hub.own_domain(db, b.id) or (urlsplit(b.website if "://" in (b.website or "") else f"//{b.website or ''}").hostname or "").removeprefix("www.")
+    planned = {r.domain: r for r in db.query(BiOpportunity).filter(BiOpportunity.business_id == b.id).all()}
+    country = market.serp_country(b)
+    # the email-submission searches first, then guest posts and list pages
+    wanted = [(g["title"], x) for key in ("email", "guest", "lists") for g in ideas["groups"] if g["key"] == key for x in g["queries"]][:QUERIES_USED]
+    seen: dict[str, dict] = {}
+    errors: list[str] = []
+    for kind, x in wanted:
+        try:
+            results = _serper(x["q"], country)
+        except (ValueError, httpx.HTTPError) as exc:
+            errors.append(str(exc) if isinstance(exc, ValueError) else "The search service could not be reached.")
+            break
+        for r in results:
+            link = r.get("link") or ""
+            dom = _registrable(urlsplit(link).hostname or "")
+            if not dom or dom == _registrable(own) or any(bad in dom for bad in BIG) or not DOMAIN.match(dom):
+                continue
+            d = seen.setdefault(dom, {"domain": dom, "title": (r.get("title") or "")[:140], "snippet": (r.get("snippet") or "")[:220], "page": link, "kinds": [], "queries": []})
+            if kind not in d["kinds"]:
+                d["kinds"].append(kind)
+            d["queries"].append(x["q"])
+    ranked = sorted(seen.values(), key=lambda d: (-len(d["queries"]), d["domain"]))[:SITES_READ]
+
+    def contacts(d: dict) -> dict:
+        try:
+            c = find_contacts(d["domain"])
+            return {**d, "emails": c["contacts"][:3], "pages_read": c["pages_read"]}
+        except Exception:  # one unreachable site must not stop the rest
+            return {**d, "emails": [], "pages_read": 0}
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        platforms = list(pool.map(contacts, ranked))
+    for p in platforms:
+        row = planned.get(p["domain"])
+        p["in_plan"] = row.status if row else None
+        p["queries"] = p["queries"][:2]
+    platforms.sort(key=lambda p: (0 if p["emails"] else 1, -len(p["kinds"])))
+    out = {"state": "error" if errors and not platforms else "ok", "platforms": platforms, "message": errors[0] if errors else "", "searched": len(wanted)}
+    if out["state"] == "ok":
+        _CACHE[b.id] = (time.time(), out)
+    return out
