@@ -79,7 +79,7 @@ function contactProblems(p) {
   return out;
 }
 
-/** The public Google listing (DataForSEO profile + Places), for the preview to fill what the project has not saved yet. Null until something was read. */
+/** The public Google listing (Places API), for the preview to fill what the project has not saved yet. Null until something was read. */
 function usePublicGoogle(b) {
   const on = Boolean(b.place_id);
   const prof = useApi(on ? `/businesses/${b.id}/maps-public/profile` : null);
