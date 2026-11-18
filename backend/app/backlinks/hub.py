@@ -348,7 +348,26 @@ def audit(db: Session, b: Business) -> dict[str, Any]:
     if heavy:
         items.append({"key": "sitewide", "severity": "info", "title": f"{len(heavy)} site{'s' if len(heavy) != 1 else ''} link to you 20 times or more", "why": "Many links from one site (often a footer) count as roughly one link.",
                       "fix": "Do not count these as separate wins; ask for a single, editorial link instead.", "examples": [{"url": d, "note": f"{sitewide[d]} links"} for d in heavy[:4]], "count": len(heavy)})
-    return {"state": "ok", "domain": domain, "items": items, "live": len(live), "lost": len(lost), "healthy": not any(i["severity"] in ("serious", "warning") for i in items)}
+    found = {i["key"] for i in items}
+    n_live = len(live)
+    passed = []
+    if n_live:
+        for key, title, detail in (
+            ("risky", "No risky links", "No live link looks spammy, paid or automated."),
+            ("lost", "No lost links", "Every link we found is still there."),
+            ("nofollow", "Healthy follow mix", f"{round(sum(1 for x in live if x['follow'] == 'dofollow') / n_live * 100)}% of your links are dofollow."),
+            ("anchors", "Natural anchor words", "Most anchors are your brand or plain words, not exact keywords."),
+            ("unscored", "Every link is judged", "All linking sites have a relevance or spam reading."),
+            ("sitewide", "No repeated sitewide links", "No single site gives you 20 links or more."),
+        ):
+            if key not in found:
+                passed.append({"key": key, "title": title, "detail": detail})
+    weight = {"serious": 25, "warning": 10, "info": 3}
+    score = max(0, 100 - sum(weight.get(i["severity"], 0) for i in items)) if n_live or lost else None
+    counts = {k: sum(1 for i in items if i["severity"] == k) for k in ("serious", "warning", "info")}
+    ref_sites = len({x["source_domain"] for x in live})
+    return {"state": "ok", "domain": domain, "items": items, "passed": passed, "score": score, "counts": counts, "live": n_live, "lost": len(lost), "sites": ref_sites,
+            "healthy": not any(i["severity"] in ("serious", "warning") for i in items)}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ the summary and where the data is used

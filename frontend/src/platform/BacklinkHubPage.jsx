@@ -127,7 +127,7 @@ function SiteCell({ m }) {
 
 function Links({ b }) {
   const [params] = useSearchParams();
-  const [f, setF] = useState({ status: 'live', follow: '', category: '', useful: '', sort: 'recent' });
+  const [f, setF] = useState({ status: params.get('status') || 'live', follow: params.get('follow') || '', category: '', useful: params.get('useful') || '', sort: 'recent' });
   const [q, setQ] = useState(params.get('q') || ''); // opened from a site's row: only that site's links
   const dq = useDebounced(q);
   const r = useList(b, 'links', { ...f, q: dq, limit: 100 });
@@ -470,95 +470,68 @@ function CompetitorGap({ b }) {
   );
 }
 
+const AUDIT_VIEW = {
+  risky: '/backlinks/links?useful=risky', lost: '/backlinks/links?status=lost', nofollow: '/backlinks/links?follow=nofollow', anchors: '/backlinks/links',
+  unscored: '/backlinks/domains', sitewide: '/backlinks/domains',
+};
 function Audit({ b }) {
   const r = useApi(`/businesses/${b.id}/backlink-hub/audit`);
+  const [showPassed, setShowPassed] = useState(false);
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={4} />;
   if (d.state !== 'ok') return <Card><p className="text-13 text-slate-500">Add the project's website first.</p></Card>;
+  const empty = !d.live && !d.lost;
+  const tone = d.score == null ? 'text-slate-400' : d.score >= 80 ? 'text-emerald-600' : d.score >= 55 ? 'text-amber-600' : 'text-red-600';
+  const order = { serious: 0, warning: 1, info: 2 };
+  const items = [...d.items].sort((x, y) => order[x.severity] - order[y.severity]);
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-      <Card><p className={`flex items-center gap-2 text-14 font-semibold ${d.healthy ? 'text-emerald-700' : 'text-amber-700'}`}>{d.healthy ? <CheckCircle2 size={17} /> : <ShieldAlert size={17} />}{!d.live && !d.lost ? 'No backlinks to audit yet.' : d.healthy ? 'No serious problems in your backlink profile.' : 'Some links need your attention.'}</p></Card>
-      {d.items.map(i => { const [l, t] = SEV[i.severity]; return (
-        <Card key={i.key} title={i.title} action={<Badge tone={t}>{l}</Badge>}>
-          <p className="text-13 text-slate-600">{i.why}</p>
-          <p className="text-13 text-slate-800 mt-1"><span className="font-semibold">What to do:</span> {i.fix}</p>
-          {i.examples?.length > 0 && <ul className="mt-2 grid gap-1">{i.examples.map((e, k) => <li key={k} className="text-12.5 text-slate-500 truncate"><span className="text-slate-700">{host(e.url) === e.url ? e.url : e.url.replace(/^https?:\/\//, '')}</span> · {e.note}</li>)}</ul>}
-          {i.action && <div className="mt-3"><a className="inline-flex" href={i.action.href}><Button size="sm" icon={Download}>{i.action.label}</Button></a></div>}
-        </Card>); })}
-    </div>
-  );
-}
-
-function Sites({ b }) {
-  const base = `/businesses/${b.id}/backlink-intel`;
-  const targets = useApi(`${base}/targets`);
-  const bot = useApi(`${base}/bot`);
-  const [domain, setDomain] = useState('');
-  const [comp, setComp] = useState(false);
-  const [busy, error, run] = useAction();
-  const [toast, toastNode] = useToast();
-  const [ask, confirmNode] = useDoubleConfirm();
-  const st = bot.data;
-  const running = Boolean(st?.running);
-  usePoll(() => bot.reload(true), running, 2500);
-  const list = targets.data || [];
-  const add = () => run('add', async () => { await api(`${base}/targets`, { method: 'POST', body: { domain, is_competitor: comp } }); setDomain(''); targets.reload(true); toast('Domain added'); });
-  const remove = (t) => ask({ what: `the tracked domain ${t.domain}`, effect: 'It stops being monitored. Backlinks already found for it stay in your records.', onConfirm: () => run('rm', async () => { await api(`${base}/targets/${t.id}`, { method: 'DELETE' }); targets.reload(true); }) });
-  const save = (patch) => run('save', async () => { await api(`${base}/bot`, { method: 'PUT', body: patch }); bot.reload(true); });
-  const sync = () => run('sync', async () => { await api(`${base}/bot/run`, { method: 'POST' }); toast('Syncing from the crawler'); setTimeout(() => bot.reload(true), 800); });
-  const addMine = () => run('mine', async () => { const r = await api(`${base}/targets/sync`, { method: 'POST' }); targets.reload(true); toast(r.added.length ? `Added ${r.added.length}: ${r.added.map(a => a.domain).join(', ')}` : 'Already up to date'); });
-  const l = st?.last_stats && !st.last_stats.skipped ? st.last_stats : null;
-  return (
-    <>
-      <Card title="Crawler sync" subtitle="Links are found by our own backlink crawler server. This copies what it found for your tracked sites into the project."
-        action={st && <Badge tone={running ? 'blue' : st.source !== 'crawler' ? 'red' : st.config.enabled ? 'green' : 'gray'}>{running ? 'Syncing' : st.source !== 'crawler' ? 'Not connected' : st.config.enabled ? 'Scheduled' : 'Off'}</Badge>}>
-        {st && st.source !== 'crawler' && <p className="text-13 text-amber-800">Our backlink crawler is not connected. Set CRAWLER_URL and CRAWLER_API_KEY in the backend settings and restart the backend.</p>}
-        {st && st.source === 'crawler' && (
-          <div className="grid gap-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="flex items-center gap-2 text-13 pb-2"><input type="checkbox" checked={st.config.enabled} onChange={(e) => save({ enabled: e.target.checked })} /> Sync automatically</label>
-              <Field label="Every"><Select className={`${inputCls} !w-auto`} value={st.config.interval_minutes} onChange={(e) => save({ interval_minutes: Number(e.target.value) })}>{[15, 30, 60, 180, 360, 1440].map(n => <option key={n} value={n}>{n < 60 ? `${n} min` : `${n / 60} h`}</option>)}</Select></Field>
-              <Button variant="primary" icon={running ? Loader2 : RefreshCw} busy={busy === 'sync' || running} disabled={running || !list.length} onClick={sync}>{running ? 'Syncing…' : 'Sync now'}</Button>
-            </div>
-            {l?.error && <p className="text-12.5 text-amber-700">The last sync stopped: {l.error}</p>}
-            <p className="text-12 text-gray-500">{st.last_run_at ? <>Last sync {fmtDateTime(st.last_run_at)}{l ? `: ${l.links_read} links read for ${l.domains} domain(s), ${l.new_backlinks} new${l.seeded ? `, ${l.seeded} site(s) handed to the crawler to start looking` : ''}.` : '.'}</> : 'It has not synced yet.'}</p>
-            <CrawlerStatusLine />
-          </div>
-        )}
-        <ErrorNote>{error}</ErrorNote>
-      </Card>
-      <Card title="Tracked domains" subtitle="Your site and your competitors. Backlinks are collected for these.">
-        <div className="flex flex-wrap items-end gap-2 mb-3">
-          <Field label="Domain"><input className={`${inputCls} !w-64`} placeholder="example.com" value={domain} onChange={(e) => setDomain(e.target.value)} /></Field>
-          <label className="flex items-center gap-1.5 text-13 pb-2"><input type="checkbox" checked={comp} onChange={(e) => setComp(e.target.checked)} /> Competitor</label>
-          <Button variant="primary" icon={Plus} busy={busy === 'add'} disabled={domain.trim().length < 3} onClick={add}>Add</Button>
-          <Button icon={RefreshCw} busy={busy === 'mine'} onClick={addMine}>Add my website and saved competitors</Button>
+      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center gap-x-8 gap-y-2">
+        <div className="flex items-baseline gap-2" title="100 minus points for each problem: 25 serious, 10 fix soon, 3 good to know.">
+          <span className={`text-3xl font-bold tabular-nums ${tone}`}>{d.score ?? '—'}</span><span className="text-12 text-slate-500">link health / 100</span>
         </div>
-        {confirmNode}
-        {list.length === 0 ? <p className="py-6 text-center text-13 text-slate-500">Nothing tracked yet.</p> : list.map(t => (
-          <div key={t.id} className="flex items-center gap-3 py-2 border-b border-slate-100 text-13">
-            <span className="flex-1 text-slate-900">{t.domain}</span>
-            <Badge tone={t.is_competitor ? 'amber' : 'green'}>{t.is_competitor ? 'Competitor' : 'Your site'}</Badge>
-            <button type="button" className="text-slate-400 hover:text-red-500 cursor-pointer" aria-label={`Remove ${t.domain}`} onClick={() => remove(t)}><Trash2 size={14} /></button>
+        <p className={`flex items-center gap-2 text-14 font-semibold ${d.healthy ? 'text-emerald-700' : 'text-amber-700'}`}>{d.healthy ? <CheckCircle2 size={17} /> : <ShieldAlert size={17} />}{empty ? 'No backlinks to audit yet.' : d.healthy ? 'No serious problems in your backlink profile.' : 'Some links need your attention.'}</p>
+        <div className="flex gap-4 text-13 text-slate-600 ml-auto">
+          <span><b className="tabular-nums text-slate-900">{d.live}</b> live links</span><span><b className="tabular-nums text-slate-900">{d.sites}</b> sites</span><span><b className="tabular-nums text-slate-900">{d.lost}</b> lost</span>
+          <span><b className="tabular-nums text-red-600">{d.counts.serious}</b> serious</span><span><b className="tabular-nums text-amber-600">{d.counts.warning}</b> fix soon</span><span><b className="tabular-nums text-blue-600">{d.counts.info}</b> to know</span>
+        </div>
+      </div>
+      <Card title={`Problems found (${items.length})`} pad={false}>
+        {items.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-13">
+              <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+                <th className={TH}><Head what="How much it matters: Serious first, then Fix soon, then Good to know." why="Work from the top.">Priority</Head></th>
+                <th className={TH}><Head what="The problem we found in your links, and why it matters." from="our crawler's links and our own judgement of each linking site.">Problem</Head></th>
+                <th className={`${TH} text-right`}><Head right what="How many links or sites it affects." from="the links we found.">Affects</Head></th>
+                <th className={TH}><Head what="The step that fixes it.">What to do</Head></th>
+                <th className={TH}><Head what="A few of the links behind it, with the reason.">Examples</Head></th>
+                <th className={`${TH} text-right`}><Head right what="Open the affected links, or download the disavow file." why="See exactly which links to act on.">Actions</Head></th>
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {items.map(i => { const [l, t] = SEV[i.severity]; return (
+                  <tr key={i.key} className="align-top hover:bg-slate-50">
+                    <td className="px-3 py-3 whitespace-nowrap"><Badge tone={t}>{l}</Badge></td>
+                    <td className="px-3 py-3 max-w-[320px]"><div className="font-semibold text-slate-900">{i.title}</div><div className="text-12.5 text-slate-500 mt-0.5">{i.why}</div></td>
+                    <td className="px-3 py-3 text-right tabular-nums font-semibold">{i.count ?? '—'}</td>
+                    <td className="px-3 py-3 max-w-[260px] text-slate-700">{i.fix}</td>
+                    <td className="px-3 py-3 max-w-[280px]">{i.examples?.length ? <ul className="grid gap-1">{i.examples.slice(0, 3).map((e, k) => <li key={k} className="text-12 text-slate-500 truncate" title={`${e.url} · ${e.note}`}><span className="text-slate-700">{e.url.replace(/^https?:\/\//, '')}</span> · {e.note}</li>)}</ul> : <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                      {AUDIT_VIEW[i.key] && <Link to={AUDIT_VIEW[i.key]}><Act icon={Link2} tone="sky" tip="View: open the links or sites behind this problem." /></Link>}
+                      {i.action && <a href={i.action.href}><Act icon={Download} tone="rose" tip="Disavow: download the file that tells Google to ignore these links." /></a>}
+                    </span></td>
+                  </tr>); })}
+              </tbody>
+            </table>
           </div>
-        ))}
+        ) : <p className="px-5 py-8 text-center text-13 text-slate-500">{empty ? 'Nothing to check until the crawler has found links to your site.' : 'No problems found.'}</p>}
       </Card>
-      {toastNode}
-    </>
-  );
-}
-
-function CrawlerStatusLine() {
-  const st = useApi('/backlink-intel/crawler/status');
-  const d = st.data;
-  if (st.error) return <div className="text-12.5 text-amber-700">{st.error.message}</div>;
-  if (!d) return null;
-  const ok = d.workers.length > 0 && d.workers.every(w => w.healthy);
-  return (
-    <div className="text-12.5 text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-1">
-      <Badge tone={d.paused ? 'amber' : ok ? 'green' : 'amber'}>{d.paused ? 'Crawler paused' : ok ? 'Crawler running' : 'Crawler needs attention'}</Badge>
-      <span>{Number(d.discovered_domains).toLocaleString()} websites known · {Number(d.discovered_urls).toLocaleString()} pages found · {Number(d.outgoing_links).toLocaleString()} links recorded</span>
+      {d.passed?.length > 0 && (
+        <Card title={`Checks passed (${d.passed.length})`} pad={false} action={<Button size="sm" onClick={() => setShowPassed(v => !v)}>{showPassed ? 'Hide' : 'Show'}</Button>}>
+          {showPassed && <ul className="divide-y divide-slate-100">{d.passed.map(p => <li key={p.key} className="px-5 py-2.5 text-13 flex gap-3 items-center"><CheckCircle2 size={15} className="text-emerald-600 shrink-0" /><span className="font-semibold text-slate-800">{p.title}</span><span className="text-slate-500">{p.detail}</span></li>)}</ul>}
+        </Card>
+      )}
     </div>
   );
 }
