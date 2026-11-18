@@ -680,6 +680,9 @@ function UsedOn({ info, keyword }) {
 function Tracked({ b, kw }) {
   const [busy, error, run] = useAction();
   const pagesInfo = useApi(`/businesses/${b.id}/keywords/pages`).data;
+  const statusData = useApi(`/businesses/${b.id}/keywords/status`).data;
+  const how = useMemo(() => Object.fromEntries((statusData?.items || []).map(x => [x.keyword, x])), [statusData]); // how each keyword is doing: clicks and a plain verdict
+  const [sel, setSel] = useState(() => new Set());
   const tracked = kw.data?.keywords || [];
   const location = useLocation();
   const fresh = useMemo(() => new Set((location.state?.added || []).map(x => String(x).toLowerCase())), [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -704,6 +707,9 @@ function Tracked({ b, kw }) {
     if (t.length < 2) return undefined;
     return run('add', async () => { await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: t }] }); setTyped(''); kw.reload(true); });
   };
+  const bulk = (label, fn) => run(label, async () => { for (const k of tracked.filter(x => sel.has(x.id))) await fn(k); setSel(new Set()); kw.reload(true); });
+  const bulkDelete = () => ask({ what: `${sel.size} keyword${sel.size === 1 ? '' : 's'}`, effect: 'They stop being tracked, and their rank history is no longer shown.', onConfirm: () => bulk('bulkdel', (k) => api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'DELETE' })) });
+  const toggleSel = (id) => setSel(s => { const x = new Set(s); x.has(id) ? x.delete(id) : x.add(id); return x; });
   const pages = [...new Set(['/', '/services', '/contact', ...(b.services || []).map(s => `/services/${String(s.name || s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '')}`), ...tracked.map(k => k.target_url).filter(Boolean)])];
   const mapped = tracked.filter(k => k.target_url).length;
   const top10 = tracked.filter(k => k.rank && k.rank <= 10).length;
@@ -712,9 +718,9 @@ function Tracked({ b, kw }) {
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const list = tracked.filter(k => (!needle || k.keyword.includes(needle)) && (view === 'all' || (view === 'nopage' && !k.target_url) || (view === 'top10' && k.rank && k.rank <= 10) || (view === 'norank' && !k.rank)));
-    const v = (k) => (sort.key === 'keyword' ? k.keyword : sort.key === 'rank' ? (k.rank ?? 999) : sort.key === 'priority' ? ({ High: 3, Medium: 2, Low: 1 }[k.priority] || 0) : (k[sort.key] ?? -1));
+    const v = (k) => (sort.key === 'keyword' ? k.keyword : sort.key === 'clicks' ? (how[k.keyword]?.clicks ?? -1) : sort.key === 'rank' ? (k.rank ?? 999) : sort.key === 'priority' ? ({ High: 3, Medium: 2, Low: 1 }[k.priority] || 0) : (k[sort.key] ?? -1));
     return list.sort((a, c) => { const x = v(a); const y = v(c); const o = typeof x === 'string' ? x.localeCompare(y) : x - y; return sort.dir === 'asc' ? o : -o; });
-  }, [tracked, view, q, sort]);
+  }, [tracked, view, q, sort, how]);
   const Th = ({ id, children, right }) => (
     <th className={`px-3 py-2 font-semibold ${right ? 'text-right' : 'text-left'}`}>
       <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id && s.dir === 'desc' ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${sort.key === id ? 'text-slate-900' : ''}`}>{children}{sort.key === id && (sort.dir === 'asc' ? '▲' : '▼')}</button>
@@ -752,7 +758,7 @@ function Tracked({ b, kw }) {
             <div className="overflow-x-auto">
               <table className="w-full text-13 min-w-[780px]">
                 <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500">
-                  <tr><Th id="keyword">Keyword</Th><Th id="volume" right>Searches</Th><Th id="rank" right>Google rank</Th><th className="px-3 py-2 text-left font-semibold">Page for it</th><Th id="priority">Priority</Th><th className="w-10" /></tr>
+                  <tr><th className="w-10 px-3 py-2"><input type="checkbox" aria-label="Select all shown" checked={rows.length > 0 && rows.every(k => sel.has(k.id))} onChange={() => setSel(rows.every(k => sel.has(k.id)) ? new Set() : new Set(rows.map(k => k.id)))} /></th><Th id="keyword">Keyword</Th><Th id="volume" right>Searches</Th><Th id="rank" right>Google rank</Th><Th id="clicks" right>Clicks</Th><th className="px-3 py-2 text-left font-semibold">How it is doing</th><th className="px-3 py-2 text-left font-semibold">Page for it</th><Th id="priority">Priority</Th><th className="w-10" /></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {rows.map(k => {
@@ -760,7 +766,8 @@ function Tracked({ b, kw }) {
                     const guess = !k.target_url && used[0];
                     const isNew = fresh.has(k.keyword.toLowerCase());
                     return (
-                      <tr key={k.id} data-just-added={isNew ? '1' : undefined} className={isNew ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}>
+                      <tr key={k.id} data-just-added={isNew ? '1' : undefined} className={sel.has(k.id) ? 'bg-indigo-50/60' : isNew ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}>
+                        <td className="px-3 py-2.5"><input type="checkbox" aria-label={`Select ${k.keyword}`} checked={sel.has(k.id)} onChange={() => toggleSel(k.id)} /></td>
                         <td className="px-3 py-2.5 min-w-[220px]">
                           <Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`} title="Check its searches, cost and related ideas" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline">{k.keyword}</Link>
                           {isNew && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5">Just added</span>}
@@ -773,6 +780,8 @@ function Tracked({ b, kw }) {
                         <td className="px-3 py-2.5 text-right tabular-nums">{fmt(k.volume)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums">{k.rank ? <span className={`font-semibold ${k.rank <= 10 ? 'text-emerald-700' : ''}`}>{k.rank}</span> : <span className="text-slate-300">—</span>}
                           {k.rank && k.prev_rank && k.prev_rank !== k.rank && <span className={`ml-1 text-11 ${k.prev_rank > k.rank ? 'text-emerald-700' : 'text-red-600'}`}>{k.prev_rank > k.rank ? '▲' : '▼'}{Math.abs(k.prev_rank - k.rank)}</span>}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{how[k.keyword]?.clicks != null ? how[k.keyword].clicks : <span className="text-slate-300">—</span>}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{how[k.keyword] ? <span title={how[k.keyword].why}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red' }[how[k.keyword].status] || 'gray'}>{how[k.keyword].label}</Badge></span> : <span className="text-slate-300">—</span>}</td>
                         <td className="px-3 py-2.5 min-w-[230px]">
                           {editing === k.id ? (
                             <input autoFocus list={`pages-${b.id}`} className={`${inputCls} max-w-[260px]`} defaultValue={k.target_url || ''} placeholder="/page-address"
@@ -789,18 +798,31 @@ function Tracked({ b, kw }) {
                         <td className="px-2 text-right"><button type="button" onClick={() => remove(k)} disabled={busy === `d${k.id}`} className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer" aria-label={`Stop tracking ${k.keyword}`} title="Stop tracking"><Trash2 size={14} /></button></td>
                       </tr>);
                   })}
-                  {!rows.length && <tr><td colSpan={6} className="px-5 py-10 text-center text-13 text-slate-500">No keyword matches. <button type="button" onClick={() => { setView('all'); setQ(''); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button></td></tr>}
+                  {!rows.length && <tr><td colSpan={9} className="px-5 py-10 text-center text-13 text-slate-500">No keyword matches. <button type="button" onClick={() => { setView('all'); setQ(''); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button></td></tr>}
                 </tbody>
               </table>
               <datalist id={`pages-${b.id}`}>{pages.map(p => <option key={p} value={p} />)}</datalist>
             </div>
           </Card>
           <div className="flex flex-wrap items-center gap-3 text-13 text-slate-600">
-            <span>Next: give every keyword one page, then group them into topics.</span>
-            <Link to="/keyword-management/mapping"><Button size="sm" icon={ArrowRight}>Keyword Mapping</Button></Link>
+            <span>Next: give every keyword one page, then group them and plan where to use them.</span>
+            <Link to="/keyword-management/mapping"><Button size="sm" variant="primary" icon={ArrowRight}>Keyword Mapping</Button></Link>
             <Link to="/keyword-management/topics"><Button size="sm">Topics</Button></Link>
+            <Link to="/keyword-management/use"><Button size="sm">Where to use them</Button></Link>
+            <Link to="/keyword-management/status"><Button size="sm">Rankings</Button></Link>
           </div>
         </>
+      )}
+      {sel.size > 0 && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-32px)]">
+          <div role="toolbar" aria-label="Selected keywords" className="bg-slate-900 text-white rounded-xl shadow-xl px-4 py-2.5 flex flex-wrap items-center gap-3">
+            <span className="text-13 font-semibold">{sel.size} selected</span>
+            <span className="text-12 text-slate-300">Priority</span>
+            {['High', 'Medium', 'Low'].map(p => <Button key={p} size="sm" busy={busy === `bulk${p}`} onClick={() => bulk(`bulk${p}`, (k) => api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, priority: p } }))}>{p}</Button>)}
+            <Button size="sm" variant="danger" icon={Trash2} busy={busy === 'bulkdel'} onClick={bulkDelete}>Delete</Button>
+            <button type="button" onClick={() => setSel(new Set())} className="text-12.5 text-slate-300 hover:text-white underline cursor-pointer">Clear</button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1586,7 +1608,7 @@ function KeywordPath({ b, tab, setTab }) {
       <KeywordFlowBar b={b} at={FLOW_AT[tab] || 'find'} />
 
       {FIND_TABS.includes(tab) && <FindHeader tab={tab} setTab={setTab} typed={typed} setTyped={setTyped} onSearch={startSearch} seedText={seedSearch.text} />}
-      {SAVE_TABS.includes(tab) && (
+      {SAVE_TABS.includes(tab) && tab !== 'tracked' && (
         <div role="tablist" aria-label="My keywords" className="flex flex-wrap gap-2 mb-5">
           {SAVED_VIEWS.map(([id, label, hint]) => <button key={id} type="button" role="tab" aria-selected={tab === id} title={hint} onClick={() => setTab(id)} className={pill(tab === id)}>{label}</button>)}
         </div>
