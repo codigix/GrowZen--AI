@@ -28,6 +28,41 @@ def _own_target(b: Business) -> str:
     return (b.website or "").strip()
 
 
+def _spam_report(d: dict[str, Any], site: dict[str, Any] | None) -> dict[str, Any]:
+    """Our own spam report from facts we read, not a score: each flag is something real about this page or site."""
+    flags = []
+    if site and site.get("sitewide"):
+        flags.append(f"Sitewide link: {site['links']} links from {site['pages']} pages of this site")
+    if d.get("page_noindex"):
+        flags.append("Page is noindex")
+    if d.get("follow") in ("nofollow", "sponsored", "ugc"):
+        flags.append(f"Link is {d['follow']}")
+    if d.get("state") == "page_error":
+        flags.append("Page does not open")
+    for l in (d.get("links") or [])[:1]:
+        if l.get("placement") in ("footer", "sidebar"):
+            flags.append(f"Link sits in the {l['placement']}")
+    serious = any(f.startswith(("Sitewide", "Page is noindex", "Page does not")) for f in flags)
+    return {"level": "risky" if serious else ("check" if flags else "clean"), "flags": flags, "count": len(flags)}
+
+
+def _with_site(db: Session, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from urllib.parse import urlsplit
+
+    from ..backlinks import hub, pitch
+    doms = {pitch._registrable(urlsplit(r.get("source_url") or "").hostname or "") for r in rows}
+    try:
+        sig = hub.crawler_signals(db, [d for d in doms if d])
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        sig = {}
+    for r in rows:
+        site = sig.get(pitch._registrable(urlsplit(r.get("source_url") or "").hostname or ""))
+        r["site"] = site
+        r["spam_report"] = _spam_report(r, site)
+    return rows
+
+
 def _out(r: BacklinkCheck) -> dict[str, Any]:
     d = dict(r.data or {})
     d.update(id=r.id, target=r.target, state=r.state, checks=r.checks, was_working=r.was_working, lost=bool(r.was_working and r.state != "working"),
@@ -37,7 +72,7 @@ def _out(r: BacklinkCheck) -> dict[str, Any]:
 
 @router.get("")
 def list_checks(b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    rows = [_out(r) for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc()).limit(500))]
+    rows = _with_site(db, [_out(r) for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc()).limit(500))])
     return {"rows": rows, "summary": bc.summarise(rows), "moz": bc.moz_configured(), "default_target": _own_target(b), "limit": bc.MAX_SOURCES}
 
 
@@ -91,7 +126,7 @@ def run_check(body: CheckIn, b: Business = Depends(get_business), db: Session = 
         saved.append(_out(row))
     log(db, user.name, "backlinks_checked", b.id, count=len(saved))
     db.commit()
-    return {"rows": saved, "summary": bc.summarise(saved), "note": note, "moz": bc.moz_configured(), "target": tgt["label"]}
+    return {"rows": _with_site(db, saved), "summary": bc.summarise(saved), "note": note, "moz": bc.moz_configured(), "target": tgt["label"]}
 
 
 @router.delete("/{check_id}", status_code=204)
