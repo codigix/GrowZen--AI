@@ -72,6 +72,40 @@ def _no_figures(d: dict[str, Any]) -> bool:
     return (d.get("moz") or {}).get("da") is None and sc.get("da") is None and sc.get("spam") is None
 
 
+def _site_of(url: str) -> str:
+    from urllib.parse import urlsplit
+
+    from ..backlinks import pitch
+    return pitch._registrable(urlsplit(url or "").hostname or "")
+
+
+def _reuse_site_figures(db: Session, b: Business, rows: list[dict[str, Any]]) -> int:
+    """For a page no service could answer, take the site-level DA and spam already known for the same site (from this project's other saved checks, or the sites list).
+    All pages of one site share them; the page's own PA is not known this way, so it stays empty. Nothing is asked of any service."""
+    from ..backlinks.models import BiDomainMetric
+    need = [r for r in rows if _no_figures(r)]
+    if not need:
+        return 0
+    known: dict[str, dict[str, Any]] = {}
+    for x in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).limit(2000)):
+        d = x.data or {}
+        sc, mz = d.get("scores") or {}, d.get("moz") or {}
+        da, spam, src = (mz.get("da"), mz.get("spam"), "Moz") if mz.get("da") is not None else (sc.get("da"), sc.get("spam"), sc.get("source") or "DataForSEO")
+        if da is not None or spam is not None:
+            known.setdefault(_site_of(x.source_url), {"da": da, "spam": spam, "source": src})
+    sites = {_site_of(r["source_url"]) for r in need}
+    for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_([s for s in sites if s]))):
+        if (m.da is not None or m.spam_score is not None) and m.domain not in known:
+            known[m.domain] = {"da": m.da, "spam": m.spam_score, "source": "Moz" if m.source == "moz" else "DataForSEO"}
+    n = 0
+    for r in need:
+        k = known.get(_site_of(r["source_url"]))
+        if k:
+            r["scores"] = {"da": k["da"], "pa": None, "spam": k["spam"], "source": k["source"], "site_level": True}
+            n += 1
+    return n
+
+
 def _crawler_life(db: Session, rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """What our own crawler knows about each linking page: when it first and last saw a link to a tracked site there, and how many are live now."""
     from sqlalchemy import case, func
@@ -141,21 +175,22 @@ def fill_scores(b: Business = Depends(get_business), db: Session = Depends(get_d
     batch, left = found[:100], max(0, len(found) - 100)
     filled = 0
     note = None
+    down = False  # once no service answers, the remaining chunks do not ask again
     for i in range(0, len(batch), 40):
         chunk = batch[i:i + 40]
         dicts = [dict(r.data or {}, source_url=r.source_url) for r in chunk]
-        if bc.moz_configured():
+        if bc.moz_configured() and not down:
             try:
                 got = bc.moz_metrics([d.get("final_url") or d["source_url"] for d in dicts])
                 for d in dicts:
                     d["moz"] = got.get(d.get("final_url") or d["source_url"]) or got.get(d["source_url"]) or None
             except bc.CheckError as exc:
                 note = str(exc)  # Moz cannot answer now: DataForSEO fills in below
-        n = _score_rows(dicts)
+        n = None if down else _score_rows(dicts)
         if n:
             note = " ".join(x for x in (note, n) if x)
-            if not any(d.get("moz") for d in dicts):
-                break
+            down = not any(d.get("moz") or d.get("scores") for d in dicts)
+        _reuse_site_figures(db, b, dicts)  # what no service could answer takes the site's known figures
         for r, d in zip(chunk, dicts):
             if not _no_figures(d):
                 r.data = {**(r.data or {}), **({"moz": d["moz"]} if (d.get("moz") or {}).get("da") is not None else {}), **({"scores": d["scores"]} if d.get("scores") else {})}
@@ -203,6 +238,13 @@ def run_check(body: CheckIn, b: Business = Depends(get_business), db: Session = 
     except bc.CheckError as exc:
         raise HTTPException(422, str(exc)) from exc
     note = " ".join(x for x in (note, _score_rows(rows)) if x) or None
+    for r in rows:  # a re-check that could not get new figures keeps the ones saved before
+        old = db.scalar(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id, BacklinkCheck.source_url == r["source_url"], BacklinkCheck.target == tgt["label"]))
+        if old is not None and _no_figures(r):
+            for k in ("moz", "scores"):
+                if (old.data or {}).get(k):
+                    r[k] = old.data[k]
+    _reuse_site_figures(db, b, rows)
     saved = []
     for r in rows:
         row = db.scalar(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id, BacklinkCheck.source_url == r["source_url"], BacklinkCheck.target == tgt["label"]))

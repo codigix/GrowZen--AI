@@ -61,8 +61,8 @@ export default function LinkDetail({ r }) {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Tile label={mz ? 'Authority (Moz DA)' : 'Authority (DA-like)'} hint={mz ? 'Moz Domain Authority.' : 'DataForSEO domain rank, scaled to 0-100. Not Moz DA: a different database, so the numbers differ.'} value={s.da} color="#4f46e5" series={s.da != null ? series('da') : null} note={thin && !mz ? 'DataForSEO knows almost no links to this site' : src ? `Source: ${src}` : ''} />
-        <Tile label={mz ? 'Page strength (Moz PA)' : 'Page strength (PA-like)'} hint={mz ? 'Moz Page Authority.' : 'DataForSEO page rank, scaled to 0-100. Not Moz PA.'} value={s.pa} color="#0891b2" series={s.pa != null ? series('pa') : null} />
+        <Tile label={mz ? 'Authority (Moz DA)' : 'Authority (DA-like)'} hint={mz ? 'Moz Domain Authority.' : 'DataForSEO domain rank, scaled to 0-100. Not Moz DA: a different database, so the numbers differ.'} value={s.da} color="#4f46e5" series={s.da != null ? series('da') : null} note={thin && !mz ? 'DataForSEO knows almost no links to this site' : src ? `Source: ${src}${r.scores?.site_level && !mz ? ' · site figure, shared by its pages' : ''}` : ''} />
+        <Tile label={mz ? 'Page strength (Moz PA)' : 'Page strength (PA-like)'} hint={mz ? 'Moz Page Authority.' : 'DataForSEO page rank, scaled to 0-100. Not Moz PA.'} value={s.pa} color="#0891b2" series={s.pa != null ? series('pa') : null} note={s.pa == null && r.scores?.site_level ? 'Not known for this page yet' : ''} />
         <Tile label="Spam score" hint={mz ? 'Moz Spam Score: lower is better.' : 'DataForSEO backlink spam score: lower is better.'} value={s.spam} suffix="%" color={spamTone(s.spam)} series={s.spam != null ? series('spam') : null} note={spamWord(s.spam, thin && !mz)} />
         <Tile label="Site rank (Open PageRank)" hint="0 to 10, from the Common Crawl link graph." value={r.domain_rank} max={10} color="#7c3aed" suffix="/ 10" />
       </div>

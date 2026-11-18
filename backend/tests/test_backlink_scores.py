@@ -117,3 +117,32 @@ def test_filling_missing_figures_tries_moz_first_then_dataforseo(client, bid, mo
     rows = {x["source_url"]: x for x in client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["rows"]}
     assert rows["https://one.example/x"]["moz"]["da"] == 50 and rows["https://two.example/y"]["scores"]["da"] == 40
     assert client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["missing_scores"] == 0
+
+
+def test_a_page_no_service_can_answer_takes_the_figures_known_for_its_site(client, bid, monkeypatch):
+    _row(bid, "https://shared.example/one", scores={"da": 7, "pa": 3, "spam": 38, "source": "DataForSEO"})
+    _row(bid, "https://shared.example/two")
+    _row(bid, "https://other.example/x")
+    monkeypatch.setattr(bc, "dfs_configured", lambda: True)
+
+    def down(domains, pages):
+        raise bc.CheckError("Your DataForSEO balance is empty: add funds in its Billing section, then try again.")
+
+    monkeypatch.setattr(bc, "dfs_scores", down)
+    r = client.post(f"/api/v1/businesses/{bid}/backlink-check/scores").json()
+    assert r["filled"] == 1 and r["tried"] == 2 and "balance is empty" in r["note"]
+    rows = {x["source_url"]: x for x in client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["rows"]}
+    two = rows["https://shared.example/two"]["scores"]
+    assert two["da"] == 7 and two["spam"] == 38 and two["pa"] is None and two["site_level"] is True
+    assert not rows["https://other.example/x"].get("scores")  # nothing known for that site
+
+
+def test_a_recheck_that_cannot_get_new_figures_keeps_the_old_ones(client, bid, monkeypatch):
+    url = "https://keep.example/p"
+    _row(bid, url, scores={"da": 12, "pa": 9, "spam": 4, "source": "DataForSEO"})
+    monkeypatch.setattr(bc, "dfs_configured", lambda: True)
+    monkeypatch.setattr(bc, "dfs_scores", lambda d, p: (_ for _ in ()).throw(bc.CheckError("balance is empty")))
+    monkeypatch.setattr(bc, "check_many", lambda sources, target: ([{"source_url": url, "final_url": None, "state": "working", "follow": "dofollow", "links": [], "http_status": 200, "checked_at": "2026-11-18T10:00:00+00:00"}], None))
+    client.post(f"/api/v1/businesses/{bid}/backlink-check", json={"sources": [url]})
+    row = client.get(f"/api/v1/businesses/{bid}/backlink-check").json()["rows"][0]
+    assert row["scores"]["da"] == 12 and row["scores"]["pa"] == 9
