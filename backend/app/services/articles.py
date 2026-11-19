@@ -448,7 +448,7 @@ def sanitize_html(body: str) -> str:
     # leftovers of an older placeholder that the '<' escaping below turned into visible text: removed
     body = re.sub(r"\s*(?:&lt;|<)!--SCHEMA_PLACEHOLDER--(?:&gt;|>)", "", body)
     scripts = re.findall(r'<script type="application/ld\+json">[\s\S]*?</script>', body, re.I)
-    body = re.sub(r'<script type="application/ld\+json">[\s\S]*?</script>', "@@SCHEMA_PLACEHOLDER@@", body, flags=re.I)  # not a comment or a tag: the clean-up below would break those
+    body = re.sub(r'<script type="application/ld\+json">[\s\S]*?</script>', SCHEMA_TOKEN, body, flags=re.I)
     body = re.sub(r"<figure\b[\s\S]*?</figure>", "", body, flags=re.I)
     body = re.sub(r"<img\b[^>]*>", "", body, flags=re.I)
     body = re.sub(r"<(script|style|iframe|object|embed)\b[\s\S]*?</\1\s*>", "", body, flags=re.I)
@@ -470,8 +470,11 @@ def sanitize_html(body: str) -> str:
         return f"<{slash}{tag}>"
 
     body = re.sub(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>", tag_clean, body)
-    if scripts:
-        body = body.replace("@@SCHEMA_PLACEHOLDER@@", "\n" + "\n".join(scripts))
+    if scripts:  # back in their place (the first one); a placeholder is never left in the text
+        body = re.sub(r"\s*" + SCHEMA_TOKEN, lambda _m: "\n" + "\n".join(scripts), body, count=1)
+    body = body.replace(SCHEMA_TOKEN, "")
+    if placed:
+        body = ci.restore_placed(body, placed)
     return body.strip()
 
 
@@ -666,6 +669,10 @@ def unsupported_claims(title: str, meta: str, body: str, keywords: list[str]) ->
             if snip.lower() not in allowed:
                 found.append(f"{label}: '{snip}'")
     return list(dict.fromkeys(found))
+
+
+# the "Don't Wait to Take Action" section: validate() looks for these words, and write() makes sure its heading has them
+ACTION_RE = re.compile(r"don['’]?t wait|don['’]?t delay|take action|timely action|act now|why wait|first step|next step|get started today|start today", re.I)
 
 
 def validate(title: str, meta: str, body: str, primary: str, secondary: list[str], brand: str | None = None) -> list[str]:
