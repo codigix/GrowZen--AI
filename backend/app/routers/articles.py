@@ -81,9 +81,8 @@ def _refresh_schema(a: Article, b: Business) -> None:
     ap.refresh_schema(a, b)
 
 
-@router.get("/url-base")
-def url_base(b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """Where this site's blog posts live, learned from the posts already published (https://site/blog/ for a site that has none yet), so the page can show the whole address a slug will give."""
+def _url_base(b: Business, db: Session) -> dict:
+    """Where this site's blog posts live, learned from the posts already published (https://site/blog/ for a site that has none yet)."""
     from collections import Counter
     from urllib.parse import urlsplit
     seen: Counter = Counter()
@@ -97,6 +96,56 @@ def url_base(b: Business = Depends(get_business), db: Session = Depends(get_db))
         return {"base": base, "trailing_slash": trailing, "learned": True}
     site = (b.website or "").strip().rstrip("/")
     return {"base": f"{site}/blog/" if site.startswith("http") else "", "trailing_slash": True, "learned": False}
+
+
+@router.get("/url-base")
+def url_base(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """So the page can show the whole address a slug will give."""
+    return _url_base(b, db)
+
+
+class SitePreviewIn(BaseModel):
+    view: Literal["post", "list"] = "post"
+    title: str | None = Field(default=None, max_length=255)
+    meta_description: str | None = Field(default=None, max_length=500)
+    body: str | None = None  # the draft as it is on screen (unsaved)
+    slug: str | None = Field(default=None, max_length=120)
+    keyword: str | None = Field(default=None, max_length=255)
+    secondary_keywords: list[str] | None = Field(default=None, max_length=20)
+    highlight: bool = True
+
+
+def _image_src(a: Article) -> str | None:
+    """The featured picture as the page can show it: its public address on the site, else the uploaded file inlined (up to 1.5 MB)."""
+    if a.featured_image_url:
+        return a.featured_image_url
+    path = fi.path_of(a.featured_image_path)
+    if not path:
+        return None
+    import base64
+    import mimetypes
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    return f"data:{mimetypes.guess_type(str(path))[0] or 'image/jpeg'};base64,{base64.b64encode(data).decode()}" if len(data) <= 1_500_000 else None
+
+
+@router.post("/{article_id}/site-preview")
+def site_preview(article_id: int, body: SitePreviewIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The article inside the website's own blog list or blog details page (its real design, read from the site), with the keywords coloured. Nothing is saved."""
+    from ..services import site_preview as site_prev
+    a = _get(db, b, article_id)
+    base = _url_base(b, db)
+    primary = " ".join((body.keyword or a.keyword or "").lower().split())
+    secondary = [" ".join(k.lower().split()) for k in (body.secondary_keywords if body.secondary_keywords is not None else a.secondary_keywords or []) if k.strip()]
+    slug = svc.slugify(body.slug or "", 100) or svc.explicit_slug(a) or svc.slugify(primary)
+    url = f"{base['base']}{slug}" + ("/" if base["trailing_slash"] else "")
+    try:
+        return site_prev.build(db, b, a, view=body.view, title=(body.title if body.title is not None else a.title) or primary.title(), excerpt=(body.meta_description if body.meta_description is not None else a.meta_description) or "",
+                               body=svc.sanitize_html(body.body) if body.body else (a.body or ""), image=_image_src(a), url=url, primary=primary, secondary=secondary, highlight=body.highlight)
+    except site_prev.PreviewError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.get("")
@@ -303,6 +352,27 @@ def edit(article_id: int, body: ArticleEdit, b: Business = Depends(get_business)
     a.warnings = svc.validate(a.title or "", a.meta_description or "", a.body or "", a.keyword, a.secondary_keywords)  # re-checked on every save
     db.commit()
     return row(a)
+
+
+class KeywordParagraphsIn(BaseModel):
+    body: str | None = None  # the draft as it is on screen (unsaved); the saved body when empty
+    keyword: str | None = Field(default=None, max_length=255)
+    secondary_keywords: list[str] | None = Field(default=None, max_length=20)
+
+
+@router.post("/{article_id}/keyword-paragraphs")
+def keyword_paragraphs(article_id: int, body: KeywordParagraphsIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Rewrite the paragraphs of the draft that carry none of the keywords so each carries one. Nothing is saved: the editor shows the result and the person saves it."""
+    a = _get(db, b, article_id)
+    primary = " ".join((body.keyword or a.keyword or "").lower().split())
+    secondary = [" ".join(k.lower().split()) for k in (body.secondary_keywords if body.secondary_keywords is not None else a.secondary_keywords or []) if k.strip()]
+    text = svc.sanitize_html(body.body) if body.body else (a.body or "")
+    try:
+        out, report = svc.add_keywords_to_paragraphs(text, primary, secondary, a.topic or "")
+    except svc.OllamaAnswerError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    cov = svc.paragraph_coverage(out, primary, secondary)
+    return {"body": out, **report, "missing_after": len(cov["missing"]), "covered": cov["covered"], "total": cov["total"]}
 
 
 class PublishIn(BaseModel):

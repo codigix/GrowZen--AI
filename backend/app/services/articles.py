@@ -12,6 +12,7 @@ import logging
 import re
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
 try:
@@ -739,6 +740,9 @@ def validate(title: str, meta: str, body: str, primary: str, secondary: list[str
         w.append("Structure check: Missing Local Business Schema structured data.")
         
     # Keywords check
+    cov = paragraph_coverage(body, primary, secondary)
+    if cov["missing"]:
+        w.append(f"{len(cov['missing'])} of {cov['total']} paragraphs have none of the keywords (paragraph {', '.join(str(n) for n in cov['missing'][:8])}{'…' if len(cov['missing']) > 8 else ''}).")
     if not _has(text, primary):
         w.append(f"The primary keyword '{primary}' does not appear in the article body.")
     for k in secondary:
@@ -866,6 +870,83 @@ def correct_content(draft: dict, primary: str, secondary: list[str], topic: str)
     if missing:
         log.info("Secondary keywords not used in the article (left to the editor, not stuffed into FAQs): %s", missing)
     draft["body"] = body
+
+
+# ── a keyword in every paragraph ─────────────────────────────────────────────
+
+_P_RE = re.compile(r"<p\b([^>]*)>(.*?)</p>", re.S | re.I)
+
+
+def paragraph_coverage(body: str, primary: str, secondary: list[str]) -> dict:
+    """Which paragraphs of the article carry the primary keyword or a secondary one. The JSON-LD block is not part of the article text."""
+    keys = [k for k in dict.fromkeys([primary, *(secondary or [])]) if k and k.strip()]
+    items = []
+    for m in _P_RE.finditer(_SCHEMA_RE.sub("\n", body or "")):
+        text = _text(m.group(2))
+        if len(text.split()) < 6:  # a label, not a paragraph
+            continue
+        items.append({"n": len(items) + 1, "text": text, "keywords": [k for k in keys if _has(text, k)]})
+    missing = [x["n"] for x in items if not x["keywords"]]
+    return {"total": len(items), "covered": len(items) - len(missing), "missing": missing, "paragraphs": items}
+
+
+_NUMBERS = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def _rewrite_ok(original: str, new: str, keyword: str) -> bool:
+    """A rewrite is taken only when it has the keyword, keeps about the same length and brings no number the paragraph did not have."""
+    if not new or not _has(new, keyword):
+        return False
+    a, b = len(original.split()), len(new.split())
+    if not (0.6 * a <= b <= 1.7 * a + 8):
+        return False
+    return set(_NUMBERS.findall(new)) <= set(_NUMBERS.findall(original))
+
+
+def add_keywords_to_paragraphs(body: str, primary: str, secondary: list[str], topic: str = "", batch: int = 6) -> tuple[str, dict]:
+    """Rewrite the paragraphs that have none of the keywords so each has one, naturally. The keywords are handed out evenly (the one used least so far), a rewrite must keep the
+    meaning, the length and the facts (no new numbers), and a paragraph the model could not rewrite properly is left as it was. Returns (body, {changed, left})."""
+    keys = [k for k in dict.fromkeys([primary, *(secondary or [])]) if k and k.strip()]
+    cov = paragraph_coverage(body, primary, secondary)
+    if not keys or not cov["missing"]:
+        return body, {"changed": 0, "left": 0, "total": cov["total"]}
+    use = Counter(k for x in cov["paragraphs"] for k in x["keywords"])
+    todo = []
+    for n in cov["missing"]:
+        k = min(keys, key=lambda x: (use[x], keys.index(x)))
+        use[k] += 1
+        todo.append((n, k, cov["paragraphs"][n - 1]["text"]))
+    done: dict[int, str] = {}
+    for i in range(0, len(todo), batch):
+        chunk = todo[i:i + batch]
+        prompt = "\n".join([
+            f"Rewrite each paragraph below so that it contains its exact keyword phrase once, written naturally for a reader (topic: {topic or primary}).",
+            "Rules: keep the paragraph's meaning, facts and tone; keep about the same length; the phrase must appear exactly as given; do not add statistics, prices, claims or numbers;",
+            "do not add other keyword phrases; plain text only, no quotes, labels or markdown.",
+            "Paragraphs: " + json.dumps([{"n": n, "keyword": k, "paragraph": t} for n, k, t in chunk], ensure_ascii=False),
+            'Answer with ONE JSON object and nothing else: {"paragraphs": [{"n": 1, "text": "the rewritten paragraph"}]}',
+        ])
+        d = _json(prompt, num_predict=int(sum(len(t.split()) for _, _, t in chunk) * 2.2) + 200)
+        got = {int(x.get("n")): " ".join(_plain(x.get("text")).split()) for x in (d.get("paragraphs") or []) if isinstance(x, dict) and str(x.get("n", "")).isdigit()}
+        for n, k, t in chunk:
+            if _rewrite_ok(t, got.get(n, ""), k):
+                done[n] = got[n]
+    if not done:
+        return body, {"changed": 0, "left": len(todo), "total": cov["total"]}
+    count = 0
+
+    def swap(m: re.Match) -> str:
+        nonlocal count
+        text = _text(m.group(2))
+        if len(text.split()) < 6:
+            return m.group(0)
+        count += 1
+        new = done.get(count)
+        return f"<p{m.group(1)}>{html.escape(new, quote=False)}</p>" if new else m.group(0)
+
+    # the schema block is left out of the numbering (it holds no <p>), so paragraph numbers match paragraph_coverage
+    out = _P_RE.sub(swap, body)
+    return out, {"changed": len(done), "left": len(todo) - len(done), "total": cov["total"]}
 
 
 # Optimized for 4-core CPU: short and standard run in a single fast call
@@ -1221,7 +1302,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 " each different, phrased naturally, with a complete, specific 2-3 sentence answer. Never write questions just to fit a keyword"
                 " (no 'How does X contribute to Y?'); use a secondary keyword only where it reads naturally"
                 + (f" (good candidates: {json.dumps(faq_kws)})" if faq_kws else "") + ".",
-                "The article must cover the topic thoroughly and naturally incorporate the secondary keywords across the subheadings and FAQs."
+                "The article must cover the topic thoroughly and naturally incorporate the secondary keywords across the subheadings and FAQs; each FAQ answer should use the primary keyword or a secondary one where it reads naturally."
             ])
             d_plan = _json(plan_prompt, num_predict=1400)
             if not d_plan.get("title"):  # unusable or cut-off JSON: one more try before falling back to defaults
@@ -1281,6 +1362,9 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 "- Clear, warm, professional English for the reader; vary sentence length.",
             ]
             outline_line = "Article outline: Introduction → " + " → ".join(outline)
+            every_kw = [primary, *clean_secondary]
+            rules.append(f"- Every paragraph must naturally contain at least one of these exact keyword phrases: {', '.join(chr(34) + k + chr(34) for k in every_kw)}. "
+                         "Use a different one from the paragraph before it, never the same phrase twice in one paragraph, and never force a keyword into a sentence where it reads badly.")
 
             def kw_rule(kws: list[str]) -> list[str]:
                 return [f'- Use each of these exact phrases once, naturally: {", ".join(chr(34) + k + chr(34) for k in kws)}.'] if kws else []
@@ -1447,6 +1531,10 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             step("Running SEO validation...")
             fix_seo_fields(draft, primary)
             correct_content(draft, primary, secondary, topic)
+            step("Putting a keyword in every paragraph...")
+            draft["body"], kw_report = add_keywords_to_paragraphs(draft["body"], primary, clean_secondary, topic)
+            if kw_report["changed"]:
+                notes.append(f"{kw_report['changed']} paragraph{'s' if kw_report['changed'] != 1 else ''} rewritten to carry a keyword: read them before publishing.")
 
             # ── 10. JSON-LD schema (BlogPosting + FAQPage), built last so it uses the final title, meta and FAQs ──
             step("Adding BlogPosting + FAQPage schema...")

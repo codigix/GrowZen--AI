@@ -44,7 +44,7 @@ export function splitKeywords(text, primary, secondary) {
 }
 
 /** The article's HTML with each keyword wrapped in a coloured <mark>. Only text is touched: tags, attributes, scripts and styles are left exactly as they are. */
-export function highlightHtml(html, primary, secondary) {
+export function highlightHtml(html, primary, secondary, opts = {}) {
   const ex = expression(primary, secondary);
   if (!ex || !html) return html || '';
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
@@ -74,7 +74,25 @@ export function highlightHtml(html, primary, secondary) {
     if (last < text.length) frag.appendChild(doc.createTextNode(text.slice(last)));
     node.parentNode.replaceChild(frag, node);
   }
+  if (opts.flag) { // a paragraph with none of the keywords gets a red bar at its left
+    doc.body.querySelectorAll('p').forEach(p => {
+      if (p.textContent.trim().split(/\s+/).length >= 6 && !p.querySelector('mark')) { p.setAttribute('style', `${p.getAttribute('style') || ''};border-left:3px solid #fca5a5;padding-left:8px`); p.setAttribute('title', 'No keyword in this paragraph'); }
+    });
+  }
   return doc.body.innerHTML;
+}
+
+const words = (x) => ` ${(String(x || '').toLowerCase().match(/\w+/g) || []).join(' ')} `;
+
+/** How many paragraphs of the article carry the primary keyword or a secondary one: { total, covered, missing: [paragraph numbers] }. */
+export function paragraphCoverage(html, primary, secondary) {
+  const keys = [primary, ...(secondary || [])].map(k => String(k || '').trim()).filter(Boolean);
+  const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html');
+  doc.querySelectorAll('script,style').forEach(n => n.remove());
+  const paras = [...doc.querySelectorAll('p')].map(p => p.textContent.trim()).filter(x => x.split(/\s+/).length >= 6);
+  const missing = [];
+  paras.forEach((x, i) => { if (!keys.some(k => words(x).includes(words(k)))) missing.push(i + 1); });
+  return { total: paras.length, covered: paras.length - missing.length, missing };
 }
 
 /** The breadcrumb Google shows under a result: "slug.example › blog › my-post". */

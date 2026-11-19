@@ -17,7 +17,7 @@ import ReactSitePanel from './ReactSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
-import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE } from './keywordHighlight';
+import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage } from './keywordHighlight';
 
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
@@ -686,6 +686,11 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   });
   const urlBase = useApi(selectedArticle ? `/businesses/${b.id}/articles/url-base` : null).data; // where this site's posts live, learned from the ones already published
   const [mark, setMark] = useState(true); // colour the keywords in the preview
+  const [previewView, setPreviewView] = useState('standard'); // standard | post (the site's blog details page) | list (the site's blog page)
+  const [device, setDevice] = useState('desktop');
+  const [site, setSite] = useState({ busy: false, html: '', error: '', notes: [], ref: '' });
+  const siteSeq = useRef(0);
+  const [kwBusyP, setKwBusyP] = useState(false);
   useEffect(() => {
     if (selectedArticle) {
       setDraft(selectedArticle.body || '');
@@ -794,7 +799,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const fullUrl = urlBase?.base ? `${urlBase.base}${slugNow}${urlBase.trailing_slash ? '/' : ''}` : '';
   const keywordWords = slugify(meta.keyword).split('-').filter(Boolean);
   const slugHasKeyword = keywordWords.length > 0 && keywordWords.every(w => slugNow.split('-').includes(w));
-  const previewHtml = React.useMemo(() => (mark ? highlightHtml(draft, meta.keyword, secondaryNow) : draft), [draft, mark, meta.keyword, meta.secondary]); // eslint-disable-line react-hooks/exhaustive-deps
+  const previewHtml = React.useMemo(() => (mark ? highlightHtml(draft, meta.keyword, secondaryNow, { flag: true }) : draft), [draft, mark, meta.keyword, meta.secondary]); // eslint-disable-line react-hooks/exhaustive-deps
   const Marked = ({ text }) => (mark ? splitKeywords(text, meta.keyword, secondaryNow).map((x, i) => (x.kind ? <mark key={i} data-kw={x.kind} style={Object.fromEntries(MARK_STYLE[x.kind].split(';').map(d => d.split(':')).map(([k, v]) => [k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v]))}>{x.text}</mark> : <React.Fragment key={i}>{x.text}</React.Fragment>)) : text);
   const bodyText = draft.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ');
   const renderPreviewHeader = () => (
@@ -822,6 +827,58 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
           {secondaryNow.map(k => <span key={k} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#bae6fd', boxShadow: 'inset 0 -2px 0 #0ea5e9' }} title="Secondary keyword: how many times it appears in the article text">{k} <span className="font-mono">×{countIn(bodyText, k)}</span></span>)}
         </>}
       </div>
+    </div>
+  );
+  const coverage = React.useMemo(() => paragraphCoverage(draft, meta.keyword, secondaryNow), [draft, meta.keyword, meta.secondary]); // eslint-disable-line react-hooks/exhaustive-deps
+  const addKeywordsToParagraphs = () => {
+    setKwBusyP(true);
+    return api(`/businesses/${b.id}/articles/${selectedArticle.id}/keyword-paragraphs`, { method: 'POST', body: { body: draft, keyword: meta.keyword, secondary_keywords: secondaryNow }, timeout: 170000 })
+      .then(r => {
+        if (r.changed) setDraft(r.body);
+        toast(r.changed ? `${r.changed} paragraph${r.changed === 1 ? '' : 's'} rewritten to carry a keyword${r.missing_after ? `; ${r.missing_after} could not be rewritten faithfully` : ''}. Read them, then Save changes.` : 'No paragraph could be rewritten without changing its meaning: add the keyword by hand.');
+      })
+      .catch(e => toast(e.message))
+      .finally(() => setKwBusyP(false));
+  };
+  const loadSitePreview = (view) => {
+    const mine = ++siteSeq.current;
+    setSite(x => ({ ...x, busy: true, error: '' }));
+    return api(`/businesses/${b.id}/articles/${selectedArticle.id}/site-preview`, { method: 'POST', timeout: 90000,
+      body: { view, title: meta.title, meta_description: meta.meta_description, body: draft, slug: slugify(meta.slug, 100), keyword: meta.keyword, secondary_keywords: secondaryNow, highlight: mark } })
+      .then(r => { if (mine === siteSeq.current) setSite({ busy: false, html: r.html, error: '', notes: r.notes || [], ref: r.reference_url || '' }); })
+      .catch(e => { if (mine === siteSeq.current) setSite(x => ({ ...x, busy: false, html: '', error: e.message || 'The preview could not be built.' })); });
+  };
+  useEffect(() => {
+    if (selectedArticle && bodyTab === 'preview' && previewView !== 'standard') loadSitePreview(previewView);
+  }, [previewView, bodyTab, mark]); // eslint-disable-line react-hooks/exhaustive-deps
+  const renderViewSwitch = () => (
+    <div className="flex flex-wrap items-center gap-2 mb-3">
+      <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+        {[['standard', 'Article'], ['post', 'Blog details page'], ['list', 'Blog list']].map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setPreviewView(id)} className={`px-3 py-1.5 rounded-md text-[12px] font-semibold cursor-pointer ${previewView === id ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}>{label}</button>))}
+      </div>
+      {previewView !== 'standard' && (<>
+        <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+          {[['desktop', 'Desktop'], ['mobile', 'Mobile']].map(([id, label]) => <button key={id} type="button" onClick={() => setDevice(id)} className={`px-3 py-1.5 rounded-md text-[12px] font-semibold cursor-pointer ${device === id ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}>{label}</button>)}
+        </div>
+        <Button size="sm" icon={RefreshCw} busy={site.busy} onClick={() => loadSitePreview(previewView)}>Refresh with my edits</Button>
+      </>)}
+    </div>
+  );
+  const renderSitePreview = () => (
+    <div className="space-y-2">
+      {site.error && <div className="flex gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[12.5px] text-amber-900"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><div>{site.error} <button type="button" className="underline font-semibold cursor-pointer" onClick={() => setPreviewView('standard')}>Show the standard preview</button></div></div>}
+      {site.busy && !site.html && <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-[13px] text-slate-500"><RefreshCw size={20} className="animate-spin text-indigo-500 mx-auto mb-2" />Reading your website's {previewView === 'list' ? 'blog page' : 'post design'}…</div>}
+      {site.html && (
+        <>
+          <div className="text-[11.5px] text-slate-500">{site.notes.join(' ')} The keywords are coloured only in this preview; scripts on your site are switched off, so menus and sliders will not move.</div>
+          <div className="rounded-xl border border-slate-200 bg-slate-100 p-3 flex justify-center overflow-x-auto relative">
+            {site.busy && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center"><RefreshCw size={20} className="animate-spin text-indigo-500" /></div>}
+            <iframe title="Preview in your website's design" sandbox="" referrerPolicy="no-referrer" srcDoc={site.html}
+              style={{ width: device === 'mobile' ? 390 : '100%', height: 700, background: '#fff' }} className="rounded-lg border border-slate-300 shadow-sm" />
+          </div>
+        </>
+      )}
     </div>
   );
   const saveArticle = () => {
@@ -1034,6 +1091,14 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   return (
                     <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
                       <div className="text-[11px] font-semibold text-slate-600">Keyword use in this article (updates as you edit)</div>
+                      <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                        {coverage.total > 0 && (coverage.missing.length === 0
+                          ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-emerald-50 border-emerald-200 text-emerald-800 font-semibold"><Check size={12} strokeWidth={3} />Every paragraph ({coverage.total}) has a keyword</span>
+                          : <>
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-amber-50 border-amber-200 text-amber-900 font-semibold" title={`Paragraphs without a keyword: ${coverage.missing.join(', ')}`}><AlertTriangle size={12} />{coverage.missing.length} of {coverage.total} paragraphs have no keyword</span>
+                              <Button size="sm" variant="ai" icon={Sparkles} busy={kwBusyP} onClick={addKeywordsToParagraphs}>Add a keyword to those paragraphs</Button>
+                            </>)}
+                      </div>
                       <div className="flex flex-wrap gap-1.5">
                         {meta.keyword.trim() && chip(meta.keyword.trim(), true)}
                         {secondary.map(k => chip(k, false))}
@@ -1112,6 +1177,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     </div>
                   ) : (
                     <>
+                    {renderViewSwitch()}
+                    {previewView !== 'standard' ? renderSitePreview() : (<>
                     {renderPreviewHeader()}
                     <div className="rounded-xl border border-slate-200 bg-white p-6 min-h-[380px] max-h-[640px] overflow-y-auto shadow-xs">
                       {draft && draft.trim() ? (
@@ -1145,6 +1212,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                         </div>
                       )}
                     </div>
+                    </>)}
                     </>
                   )}
                 </div>
