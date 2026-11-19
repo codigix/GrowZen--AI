@@ -31,8 +31,8 @@ FREE_MAIL = {"gmail.com", "googlemail.com", "yahoo.com", "yahoo.in", "yahoo.co.i
 UA = "Mozilla/5.0 (compatible; CodigixSEOAuditBot/1.0; +https://codigixinfotech.com)"
 PLACES = "https://places.googleapis.com/v1"
 SEARCH_FIELDS = ",".join(f"places.{f}" for f in ["id", "displayName", "formattedAddress", "addressComponents", "nationalPhoneNumber", "internationalPhoneNumber", "websiteUri", "rating",
-                                                  "userRatingCount", "primaryTypeDisplayName", "types", "location", "googleMapsUri", "businessStatus", "regularOpeningHours"])
-DETAIL_FIELDS = "id,displayName,formattedAddress,nationalPhoneNumber,internationalPhoneNumber,websiteUri,rating,userRatingCount,primaryTypeDisplayName,location,googleMapsUri,regularOpeningHours,reviews,photos,editorialSummary,addressComponents,businessStatus"
+                                                  "userRatingCount", "primaryTypeDisplayName", "googleMapsTypeLabel", "types", "location", "googleMapsUri", "businessStatus", "regularOpeningHours"])
+DETAIL_FIELDS = "id,displayName,formattedAddress,nationalPhoneNumber,internationalPhoneNumber,websiteUri,rating,userRatingCount,primaryTypeDisplayName,googleMapsTypeLabel,types,location,googleMapsUri,regularOpeningHours,reviews,photos,editorialSummary,addressComponents,businessStatus"
 PLUS_CODE_RE = re.compile(r"\b[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}\b,?\s*")
 DETAILS_TTL = 600  # seconds: a pick and its import share one Place Details call
 _details_cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -230,13 +230,18 @@ def public_status(p: dict[str, Any]) -> dict[str, Any]:
 def place_to_candidate(p: dict[str, Any], reason: str) -> dict[str, Any]:
     loc = p.get("location") or {}
     country = countries.detect(p.get("addressComponents"), p.get("formattedAddress"), p.get("internationalPhoneNumber"))
+    from . import categories
+    maps_category = (p.get("primaryTypeDisplayName") or {}).get("text")
+    # The label Google Maps itself shows ("Serviced Accommodation"). Only when Google gives none is the broad type ("Lodging") made more exact from the name.
+    shown = (p.get("googleMapsTypeLabel") or {}).get("text")
+    category, refined = (shown, False) if shown else categories.refine(maps_category, p.get("types"), (p.get("displayName") or {}).get("text"))
     return {
         "source": "google_maps", "match": reason, "country": country,
         "place_id": p.get("id"), "name": (p.get("displayName") or {}).get("text"),
         "address": clean_address(p.get("formattedAddress")),
         "phone": _norm_phone(p.get("internationalPhoneNumber") or p.get("nationalPhoneNumber"), country),
         "website": p.get("websiteUri"), "rating": p.get("rating"), "review_count": p.get("userRatingCount"),
-        "category": (p.get("primaryTypeDisplayName") or {}).get("text"), "lat": loc.get("latitude"), "lng": loc.get("longitude"),
+        "category": category, "maps_category": maps_category, "category_refined": refined, "lat": loc.get("latitude"), "lng": loc.get("longitude"),
         "maps_url": p.get("googleMapsUri"), "status": p.get("businessStatus"), "open_status": OPEN_STATUS.get(p.get("businessStatus"), "unknown"),
         "review_url": review_link(p.get("id")),
         "hours": (p.get("regularOpeningHours") or {}).get("weekdayDescriptions"),

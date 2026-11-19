@@ -204,7 +204,9 @@ def _component(components: list[dict[str, Any]], *types: str) -> str | None:
 def _from_google(d: dict[str, Any]) -> dict[str, Any]:
     c = place_to_candidate(d, "chosen from Google Maps suggestions")
     comps = d.get("addressComponents") or []
-    c.update(area=_component(comps, "sublocality_level_1", "sublocality", "neighborhood"), city=_component(comps, "locality", "administrative_area_level_3"),
+    from . import categories
+    area = next((a for a in (_component(comps, "neighborhood"), _component(comps, "sublocality_level_2"), _component(comps, "sublocality_level_1", "sublocality")) if categories.usable_area(a)), None)
+    c.update(area=area, city=_component(comps, "locality", "administrative_area_level_3"),
              pincode=_component(comps, "postal_code"), state=_component(comps, "administrative_area_level_1"),
              description=(d.get("editorialSummary") or {}).get("text"), photo_count=len(d.get("photos") or []), confidence="high")
     return c

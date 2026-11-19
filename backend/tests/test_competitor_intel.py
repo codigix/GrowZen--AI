@@ -30,7 +30,7 @@ SITES = {
 }
 
 
-def fake_places(query, region="IN", lat=None, lng=None, radius_m=5000.0, page_size=20, language="en"):
+def fake_places(query, region="IN", lat=None, lng=None, radius_m=5000.0, page_size=20, language="en", restrict=False):
     """Google Maps results, the way the Places API returns them."""
     if "baner" in query.lower():
         return [
