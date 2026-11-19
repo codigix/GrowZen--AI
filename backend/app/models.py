@@ -283,6 +283,7 @@ class Article(TimestampMixin, Base):
     business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
     topic: Mapped[str | None] = mapped_column(String(255))  # the trending topic the article was started from
     keyword: Mapped[str] = mapped_column(String(255))  # the primary keyword (the first one selected)
+    slug: Mapped[str | None] = mapped_column(String(120))  # the words that end the article's web address; empty = follow the primary keyword
     secondary_keywords: Mapped[list[str]] = mapped_column(JSON, default=list)  # the other selected keywords
     rising_keywords: Mapped[list[str]] = mapped_column(JSON, default=list)  # those of them Google lists as rising
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | generating | completed | failed

@@ -177,7 +177,7 @@ def test_webhook_posts_are_signed_so_the_site_can_verify_them(monkeypatch):
     expected = "sha256=" + hmac.new(b"s3cret", seen["body"], hashlib.sha256).hexdigest()
     assert seen["sig"] == expected  # the receiver can recompute this from the shared secret
     payload = json.loads(seen["body"])
-    assert payload["event"] == "article.publish" and payload["article"]["slug"] == "teeth-whitening-in-pune" and payload["article"]["html"].startswith("<p>")
+    assert payload["event"] == "article.publish" and payload["article"]["slug"] == "teeth-whitening-pune" and payload["article"]["html"].startswith("<p>")
 
 
 def test_webhook_rejections_are_explained(monkeypatch):
@@ -186,3 +186,13 @@ def test_webhook_rejections_are_explained(monkeypatch):
     assert info is None and steps[-1]["step"] == "Signature accepted" and "same secret" in steps[-1]["detail"]
     with pytest.raises(site_publish.PublishError, match="refused the post"):
         site_publish.publish(_row(method="webhook", base="https://shop.example.org/hooks/blog", user=None), _article(), "draft", None)
+
+
+def test_a_new_wordpress_post_is_sent_with_the_slug_from_the_primary_keyword_or_the_one_set(wp):
+    fake = wp(FakeWordPress())
+    out = site_publish.publish(_row(), _article("A title that is quite different"), "publish", None)
+    assert out["status"] == "publish" and fake.posts[0]["slug"] == "teeth-whitening-pune"  # not the title's words
+    custom = _article()
+    custom.slug = "whitening-cost-pune"
+    site_publish.publish(_row(), custom, "draft", None)
+    assert fake.posts[1]["slug"] == "whitening-cost-pune"

@@ -112,12 +112,12 @@ def test_github_publish_commits_a_markdown_file_with_front_matter(monkeypatch):
     fake = FakeGitHub()
     _client(monkeypatch, fake, ad)
     out = sp.publish(_gh_row(public_url="https://acme.com/blog/{slug}"), _article(), "publish", None)
-    path = "content/blog/teeth-whitening-in-pune.md"
-    assert fake.commits == [path] and out["status"] == "publish" and out["url"] == "https://acme.com/blog/teeth-whitening-in-pune" and out["id"].startswith("c0ffee"[:6])
+    path = "content/blog/teeth-whitening-pune.md"
+    assert fake.commits == [path] and out["status"] == "publish" and out["url"] == "https://acme.com/blog/teeth-whitening-pune" and out["id"].startswith("c0ffee"[:6])
     text = fake.files[path]["content"]
     import yaml
     meta = yaml.safe_load(text.split("---")[1])
-    assert meta["title"] == "Teeth whitening in Pune" and meta["draft"] is False and meta["slug"] == "teeth-whitening-in-pune" and meta["keywords"] == ["teeth whitening pune", "whitening cost"]
+    assert meta["title"] == "Teeth whitening in Pune" and meta["draft"] is False and meta["slug"] == "teeth-whitening-pune" and meta["keywords"] == ["teeth whitening pune", "whitening cost"]
     assert "## Why whitening works" in text and "<h2>" not in text and fake.files[path]["branch"] == "main"
     assert all(s["ok"] for s in out["steps"]) and "rebuilds" in out["steps"][-1]["detail"]
 
@@ -126,16 +126,16 @@ def test_github_draft_marks_draft_true_and_republishing_updates_the_same_file(mo
     fake = FakeGitHub()
     _client(monkeypatch, fake, ad)
     d = sp.publish(_gh_row(), _article(), "draft", None)
-    assert d["status"] == "draft" and "draft: true" in fake.files["content/blog/teeth-whitening-in-pune.md"]["content"] and "github.com/acme/website/blob" in d["url"]
+    assert d["status"] == "draft" and "draft: true" in fake.files["content/blog/teeth-whitening-pune.md"]["content"] and "github.com/acme/website/blob" in d["url"]
     sp.publish(_gh_row(), _article(body="<p>Updated body</p>"), "publish", None)  # same title: the file is updated, not rejected
-    assert len(fake.files) == 1 and "Updated body" in fake.files["content/blog/teeth-whitening-in-pune.md"]["content"] and "draft: false" in fake.files["content/blog/teeth-whitening-in-pune.md"]["content"]
+    assert len(fake.files) == 1 and "Updated body" in fake.files["content/blog/teeth-whitening-pune.md"]["content"] and "draft: false" in fake.files["content/blog/teeth-whitening-pune.md"]["content"]
 
 
 def test_github_can_keep_the_html_and_refuses_native_scheduling_and_bad_tokens(monkeypatch):
     fake = FakeGitHub()
     _client(monkeypatch, fake, ad)
     sp.publish(_gh_row(body_format="html"), _article(body="<p>Raw html</p>"), "publish", None)
-    assert list(fake.files) == ["content/blog/teeth-whitening-in-pune.html"] and "<p>Raw html</p>" in fake.files["content/blog/teeth-whitening-in-pune.html"]["content"]
+    assert list(fake.files) == ["content/blog/teeth-whitening-pune.html"] and "<p>Raw html</p>" in fake.files["content/blog/teeth-whitening-pune.html"]["content"]
     with pytest.raises(sp.PublishError, match="GrowZen schedules it"):
         sp.publish(_gh_row(), _article(), "schedule", datetime.now(timezone.utc) + timedelta(days=1))
     _client(monkeypatch, FakeGitHub(token="rotated"), ad)

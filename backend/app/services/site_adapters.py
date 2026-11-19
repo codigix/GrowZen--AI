@@ -103,9 +103,14 @@ def front_matter(fields: dict) -> str:
     return "\n".join(lines) + "\n\n"
 
 
+def _publish_slug(a: Article) -> str:
+    from . import articles as article_svc
+    return article_svc.publish_slug(a)
+
+
 def _article_fields(a: Article, when: datetime | None, draft: bool) -> dict:
     return {"title": a.title or a.keyword, "date": (when or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%S+00:00"), "description": a.meta_description or "",
-            "slug": slugify(a.title or a.keyword), "keywords": [a.keyword, *(a.secondary_keywords or [])], "draft": draft}
+            "slug": _publish_slug(a), "keywords": [a.keyword, *(a.secondary_keywords or [])], "draft": draft}
 
 
 # ---------------------------------------------------------------- GitHub
@@ -265,6 +270,9 @@ def publish_ghost(row: SiteIntegration, a: Article, mode: str, when: datetime | 
     status = {"draft": "draft", "publish": "published", "schedule": "scheduled"}[mode]
     post = {"title": a.title or a.keyword, "html": a.body or "", "status": status, "custom_excerpt": (a.meta_description or "")[:300] or None,
             "tags": [{"name": k} for k in [a.keyword, *(a.secondary_keywords or [])][:5]]}
+    from . import articles as article_svc
+    if article_svc.explicit_slug(a):
+        post["slug"] = article_svc.explicit_slug(a)
     if mode == "schedule":
         post["published_at"] = when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     base = row.base_url.rstrip("/")
@@ -348,6 +356,9 @@ def publish_shopify(row: SiteIntegration, a: Article, mode: str, when: datetime 
     cfg = row.config or {}
     article = {"title": a.title or a.keyword, "body_html": a.body or "", "summary_html": f"<p>{a.meta_description}</p>" if a.meta_description else None,
                "tags": ", ".join([a.keyword, *(a.secondary_keywords or [])][:8]), "published": mode != "draft"}
+    from . import articles as article_svc
+    if article_svc.explicit_slug(a):
+        article["handle"] = article_svc.explicit_slug(a)
     if mode == "schedule":
         article["published_at"] = when.astimezone(timezone.utc).isoformat()  # Shopify keeps a post with a future date hidden until then
     base = row.base_url.rstrip("/")

@@ -54,6 +54,7 @@ class KeywordSuggestIn(BaseModel):
 
 class ArticleEdit(BaseModel):
     keyword: str | None = Field(default=None, min_length=2, max_length=255)  # primary keyword
+    slug: str | None = Field(default=None, max_length=120)  # the end of the web address; empty means "follow the primary keyword"
     secondary_keywords: list[str] | None = Field(default=None, max_length=20)
     title: str | None = Field(default=None, max_length=255)
     meta_description: str | None = Field(default=None, max_length=500)
@@ -78,6 +79,24 @@ def _get(db: Session, b: Business, article_id: int) -> Article:
 def _refresh_schema(a: Article, b: Business) -> None:
     from ..services import article_publishing as ap
     ap.refresh_schema(a, b)
+
+
+@router.get("/url-base")
+def url_base(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Where this site's blog posts live, learned from the posts already published (https://site/blog/ for a site that has none yet), so the page can show the whole address a slug will give."""
+    from collections import Counter
+    from urllib.parse import urlsplit
+    seen: Counter = Counter()
+    for (u,) in db.execute(select(Article.wp_url).where(Article.business_id == b.id, Article.wp_status == "publish", Article.wp_url.is_not(None))):
+        p = urlsplit(u or "")
+        parts = [x for x in p.path.split("/") if x]
+        if p.scheme and p.netloc and parts:
+            seen[(f"{p.scheme}://{p.netloc}/" + "".join(f"{x}/" for x in parts[:-1]), p.path.endswith("/"))] += 1
+    if seen:
+        (base, trailing), _ = seen.most_common(1)[0]
+        return {"base": base, "trailing_slash": trailing, "learned": True}
+    site = (b.website or "").strip().rstrip("/")
+    return {"base": f"{site}/blog/" if site.startswith("http") else "", "trailing_slash": True, "learned": False}
 
 
 @router.get("")
@@ -273,6 +292,10 @@ def edit(article_id: int, body: ArticleEdit, b: Business = Depends(get_business)
             v = list(dict.fromkeys(" ".join(k.lower().split()) for k in (v or []) if k.strip()))
         elif f == "body" and v:
             v = svc.sanitize_html(v)
+        elif f == "slug":
+            v = svc.slugify(v or "", 100) or None
+            if v and db.scalar(select(Article.id).where(Article.business_id == b.id, Article.id != a.id, Article.slug == v)):
+                raise HTTPException(409, f"Another article already ends its address with “{v}”. Make this one different.")
         setattr(a, f, v)
     a.secondary_keywords = [k for k in (a.secondary_keywords or []) if k != a.keyword]
     _refresh_schema(a, b)  # only the JSON-LD block is replaced (BlogPosting + FAQPage from the saved content)

@@ -517,6 +517,30 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")[:80] or "article"
 
 
+def slugify(text: str | None, limit: int = 80) -> str:
+    """Web-address words from text: lower case letters and digits joined by single hyphens, cut at a whole word. Empty when nothing usable is left."""
+    s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+    if len(s) > limit:
+        cut = s[:limit]
+        s = (cut.rsplit("-", 1)[0] if "-" in cut else cut).strip("-")
+    return s
+
+
+def explicit_slug(a) -> str | None:
+    """The words the article's address is to end with: the one set on it, else its primary keyword's. None for an article that is already live under an address an older rule made
+    (re-publishing must never move a live page), so nothing is sent for it."""
+    if getattr(a, "slug", None):
+        return a.slug
+    if getattr(a, "wp_post_id", None) or getattr(a, "wp_url", None) or getattr(a, "react_post_id", None):
+        return None
+    return slugify(a.keyword) or None
+
+
+def publish_slug(a) -> str:
+    """The slug for publishers that always need one (a file name, a webhook field): the explicit one, else the older title-based rule."""
+    return explicit_slug(a) or _slug(a.title or a.keyword)
+
+
 def faqs_of(body: str) -> list[tuple[str, str]]:
     """(question, answer) pairs from the article's FAQ section: each <h3> under the FAQ <h2> and the paragraph(s)/list after it."""
     m = re.search(r"<h2\b[^>]*>\s*(?:Frequently Asked Questions|FAQs?)\b[^<]*</h2>", body or "", re.I)
@@ -535,7 +559,7 @@ def faqs_of(body: str) -> list[tuple[str, str]]:
 
 def article_schema(*, title: str, description: str, body: str, primary: str, secondary: list[str], b: Business,
                    url: str | None = None, published=None, modified=None, topic: str | None = None,
-                   image_url: str | None = None) -> str:
+                   image_url: str | None = None, slug: str | None = None) -> str:
     """The article's JSON-LD: a single @graph with a BlogPosting and (when the article has FAQs) a FAQPage.
     Fallbacks for missing data:
       url        -> the published post URL; else {business website}/blog/{slug of title}; else left out (with @id/mainEntityOfPage)
@@ -557,7 +581,7 @@ def article_schema(*, title: str, description: str, body: str, primary: str, sec
     now = datetime.now(timezone.utc)
     iso = lambda d: (d or now).astimezone(timezone.utc).isoformat(timespec="seconds") if hasattr(d or now, "astimezone") else str(d)
     site = (b.website or "").strip().rstrip("/")
-    page = (url or "").strip() or (f"{site}/blog/{_slug(title or primary)}" if site.startswith("http") else "")
+    page = (url or "").strip() or (f"{site}/blog/{slug or _slug(title or primary)}" if site.startswith("http") else "")
     headline = (title or primary.title()).strip()
     intro = re.search(r"<p\b[^>]*>(.*?)</p>", body or "", re.S | re.I)
     # complete description: the meta description without any '…' (older articles stored a cut one), else the intro's first sentences

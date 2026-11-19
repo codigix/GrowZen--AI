@@ -20,7 +20,7 @@ def refresh_schema(a: Article, b: Business) -> None:
         a.body = svc.with_schema(a.body, svc.article_schema(
             title=a.title or "", description=a.meta_description or "", body=a.body, primary=a.keyword,
             secondary=a.secondary_keywords or [], b=b, url=a.wp_url, published=a.generated_at or a.created_at,
-            modified=datetime.now(timezone.utc), topic=a.topic, image_url=a.featured_image_url))
+            modified=datetime.now(timezone.utc), topic=a.topic, image_url=a.featured_image_url, slug=svc.explicit_slug(a)))
 
 
 def site_target(db: Session, b: Business) -> SiteIntegration | None:

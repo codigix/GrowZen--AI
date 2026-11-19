@@ -17,6 +17,7 @@ import ReactSitePanel from './ReactSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
+import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE } from './keywordHighlight';
 
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
@@ -678,15 +679,19 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const [bodyTab, setBodyTab] = useState('editor'); // 'editor' | 'preview'
   const [meta, setMeta] = useState({
     keyword: selectedArticle?.keyword || '',
+    slug: selectedArticle?.slug || '', // empty = the address follows the primary keyword
     secondary: (selectedArticle?.secondary_keywords || []).join(', '),
     title: selectedArticle?.title || '',
     meta_description: selectedArticle?.meta_description || ''
   });
+  const urlBase = useApi(selectedArticle ? `/businesses/${b.id}/articles/url-base` : null).data; // where this site's posts live, learned from the ones already published
+  const [mark, setMark] = useState(true); // colour the keywords in the preview
   useEffect(() => {
     if (selectedArticle) {
       setDraft(selectedArticle.body || '');
       setMeta({
         keyword: selectedArticle.keyword || '',
+        slug: selectedArticle.slug || '',
         secondary: (selectedArticle.secondary_keywords || []).join(', '),
         title: selectedArticle.title || '',
         meta_description: selectedArticle.meta_description || ''
@@ -765,7 +770,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   };
 
   const articleFields = () => ({
-    keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean),
+    keyword: meta.keyword, slug: slugify(meta.slug, 100), secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean),
     title: meta.title, meta_description: meta.meta_description, body: draft
   });
   // SEO title / meta description: typed by hand or written by AI (✨); every regeneration uses what is in the boxes now
@@ -784,6 +789,41 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const [featured, setFeatured] = useState(() => featuredOf(selectedArticle));
   useEffect(() => { setFeatured(featuredOf(selectedArticle)); }, [selectedArticle?.id, selectedArticle?.featured_image_path, selectedArticle?.wp_media_id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [saveBusy, setSaveBusy] = useState(false);
+  const secondaryNow = meta.secondary.split(',').map(k => k.trim()).filter(Boolean);
+  const slugNow = slugify(meta.slug, 100) || slugify(meta.keyword);
+  const fullUrl = urlBase?.base ? `${urlBase.base}${slugNow}${urlBase.trailing_slash ? '/' : ''}` : '';
+  const keywordWords = slugify(meta.keyword).split('-').filter(Boolean);
+  const slugHasKeyword = keywordWords.length > 0 && keywordWords.every(w => slugNow.split('-').includes(w));
+  const previewHtml = React.useMemo(() => (mark ? highlightHtml(draft, meta.keyword, secondaryNow) : draft), [draft, mark, meta.keyword, meta.secondary]); // eslint-disable-line react-hooks/exhaustive-deps
+  const Marked = ({ text }) => (mark ? splitKeywords(text, meta.keyword, secondaryNow).map((x, i) => (x.kind ? <mark key={i} data-kw={x.kind} style={Object.fromEntries(MARK_STYLE[x.kind].split(';').map(d => d.split(':')).map(([k, v]) => [k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v]))}>{x.text}</mark> : <React.Fragment key={i}>{x.text}</React.Fragment>)) : text);
+  const bodyText = draft.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ');
+  const renderPreviewHeader = () => (
+    <div className="space-y-2.5 mb-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">How it will look in Google</div>
+        <div className="text-[12.5px] text-[#4d5156] truncate" title={fullUrl}>{fullUrl ? crumb(fullUrl) : 'Connect the website to see the address'}</div>
+        <div className="text-[18px] leading-snug text-[#1a0dab] mt-0.5"><Marked text={meta.title || 'Your SEO title appears here'} /></div>
+        <div className="text-[13px] leading-snug text-[#4d5156] mt-1"><Marked text={meta.meta_description || 'Your meta description appears here.'} /></div>
+        <div className="mt-3 pt-2.5 border-t border-slate-100 grid gap-1.5 text-[12px]">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-semibold text-slate-700">Web address:</span>
+            {fullUrl ? <a href={fullUrl} target="_blank" rel="noreferrer noopener" className="font-mono text-[11.5px] text-indigo-700 hover:underline break-all"><span className="text-slate-500">{fullUrl.slice(0, fullUrl.length - slugNow.length - (urlBase?.trailing_slash ? 1 : 0))}</span><b>{slugNow}</b>{urlBase?.trailing_slash ? '/' : ''}</a> : <span className="font-mono text-slate-500">/{slugNow}</span>}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {[[slugHasKeyword, 'The address has the primary keyword', 'The address is missing the primary keyword'], [slugNow.length > 0 && slugNow.length <= 75, `Short enough (${slugNow.length} characters)`, `Too long (${slugNow.length} characters): keep it under 75`], [countIn(meta.title, meta.keyword) > 0, 'The title has the primary keyword', 'The title is missing the primary keyword'],
+              [countIn(meta.meta_description, meta.keyword) > 0, 'The description has the primary keyword', 'The description is missing the primary keyword']].map(([ok, yes, no]) => (
+              <span key={yes} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold ${ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700'}`}>{ok ? <Check size={11} strokeWidth={3} /> : <AlertTriangle size={11} />}{ok ? yes : no}</span>))}
+          </div>
+          {urlBase && !urlBase.learned && <div className="text-[11px] text-slate-500">Shown as {urlBase.base}: your site may place posts in another folder. It is learned from the first post you publish.</div>}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-[12px]">
+        <label className="inline-flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer"><input type="checkbox" checked={mark} onChange={e => setMark(e.target.checked)} /> Colour the keywords</label>
+        {mark && <>
+          {meta.keyword.trim() && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#fde68a', boxShadow: 'inset 0 -2px 0 #f59e0b' }} title="Primary keyword: how many times it appears in the article text">Primary: {meta.keyword.trim()} <span className="font-mono">×{countIn(bodyText, meta.keyword)}</span></span>}
+          {secondaryNow.map(k => <span key={k} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#bae6fd', boxShadow: 'inset 0 -2px 0 #0ea5e9' }} title="Secondary keyword: how many times it appears in the article text">{k} <span className="font-mono">×{countIn(bodyText, k)}</span></span>)}
+        </>}
+      </div>
+    </div>
+  );
   const saveArticle = () => {
     setSaveBusy(true);
     return api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: articleFields() })
@@ -874,6 +914,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                         <input className={inputCls} value={kw} onChange={e => setKw(e.target.value)} />
                         <VolTag k={kw} />
                       </div>
+                      {slugify(kw) && <div className="mt-1 text-[11.5px] text-slate-500 break-all">The article's web address ends with <span className="font-mono font-semibold text-slate-700">/{slugify(kw)}</span> (you can change it after the article is written).</div>}
                     </Field>
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Secondary keywords <span className="normal-case tracking-normal font-normal text-slate-400">({secondaryList.filter(k => k.trim()).length}, 5 to 10 works best; edit, add or remove)</span></div>
@@ -963,6 +1004,19 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   <Field label="Primary keyword" hint="Must appear in the title, meta description and introduction"><input className={inputCls} value={meta.keyword} onChange={e => setMeta(m => ({ ...m, keyword: e.target.value }))} /></Field>
                   <Field label="Secondary keywords" hint="Comma separated; each should appear in the article"><input className={inputCls} value={meta.secondary} onChange={e => setMeta(m => ({ ...m, secondary: e.target.value }))} /></Field>
                 </div>
+                <Field label="Web address (slug)" hint={meta.slug.trim() ? 'Your own words. Click “Use the primary keyword” to follow the keyword again.' : 'Follows the primary keyword: change the keyword and this changes with it. Type here to set your own.'}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center min-w-0 flex-1 rounded-lg border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
+                      <span className="px-2.5 py-2 bg-slate-50 text-[12px] text-slate-500 border-r border-slate-200 whitespace-nowrap max-w-[55%] truncate" title={urlBase?.base}>{urlBase?.base ? urlBase.base.replace(/^https?:\/\//, '') : '/'}</span>
+                      <input className="flex-1 min-w-0 px-2.5 py-2 text-[13px] font-mono outline-none" value={meta.slug.trim() ? meta.slug : slugify(meta.keyword)} aria-label="Web address slug" maxLength={100}
+                        onChange={e => setMeta(m => ({ ...m, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-\s]+/g, '').replace(/\s+/g, '-') }))}
+                        onBlur={() => setMeta(m => ({ ...m, slug: slugify(m.slug, 100) === slugify(m.keyword) ? '' : slugify(m.slug, 100) }))} />
+                    </div>
+                    {meta.slug.trim() && slugify(meta.slug, 100) !== slugify(meta.keyword) && <Button size="sm" onClick={() => setMeta(m => ({ ...m, slug: '' }))}>Use the primary keyword</Button>}
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold ${slugHasKeyword ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>{slugHasKeyword ? <Check size={11} strokeWidth={3} /> : <AlertTriangle size={11} />}{slugHasKeyword ? 'Has the primary keyword' : 'Without the primary keyword'}</span>
+                  </div>
+                  {fullUrl && <div className="mt-1 text-[11.5px] text-slate-500 break-all">Full address: <span className="font-mono">{fullUrl}</span></div>}
+                </Field>
                 {(() => {
                   const text = `${meta.title} ${meta.meta_description} ${draft.replace(/<[^>]+>/g, ' ')}`;
                   const secondary = meta.secondary.split(',').map(k => k.trim()).filter(Boolean);
@@ -1057,6 +1111,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                       </div>
                     </div>
                   ) : (
+                    <>
+                    {renderPreviewHeader()}
                     <div className="rounded-xl border border-slate-200 bg-white p-6 min-h-[380px] max-h-[640px] overflow-y-auto shadow-xs">
                       {draft && draft.trim() ? (
                         <article
@@ -1079,7 +1135,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                             [&_figure]:my-4 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg
                             [&_.faq]:p-4 [&_.faq]:rounded-xl [&_.faq]:bg-slate-50 [&_.faq]:border [&_.faq]:border-slate-200 [&_.faq]:my-3
                             [&_.cta]:p-5 [&_.cta]:rounded-xl [&_.cta]:bg-gradient-to-r [&_.cta]:from-indigo-50 [&_.cta]:to-purple-50 [&_.cta]:border [&_.cta]:border-indigo-100 [&_.cta]:text-center [&_.cta]:my-4"
-                          dangerouslySetInnerHTML={{ __html: draft }}
+                          dangerouslySetInnerHTML={{ __html: previewHtml }}
                         />
                       ) : (
                         <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400">
@@ -1089,6 +1145,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                         </div>
                       )}
                     </div>
+                    </>
                   )}
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-slate-600">
