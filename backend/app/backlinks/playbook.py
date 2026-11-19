@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -64,7 +65,7 @@ def set_status(db: Session, b: Business, domain: str, status: str, note: str | N
         raise ValueError("Unknown status")
     if not DOMAIN.match(domain):
         raise ValueError("That is not a website address")
-    row = _row(db, b, domain) or BiOpportunity(business_id=b.id, domain=domain, source=source if source in ("competitor", "ai") else "competitor")
+    row = _row(db, b, domain) or BiOpportunity(business_id=b.id, domain=domain, source=source if source in ("competitor", "ai", "manual") else "competitor")
     if name:
         row.name = name[:160]
     if note is not None:
@@ -79,7 +80,10 @@ def set_status(db: Session, b: Business, domain: str, status: str, note: str | N
 def _out(row: BiOpportunity, confirmed: bool) -> dict[str, Any]:
     status = "live" if confirmed else row.status
     return {"domain": row.domain, "name": row.name, "source": row.source, "status": status, "confirmed": confirmed, "note": row.note, "advice": row.advice,
-            "status_at": row.status_at.isoformat() if row.status_at else None}
+            "status_at": row.status_at.isoformat() if row.status_at else None, "contact_email": row.contact_email, "email_subject": row.email_subject,
+            "emailed_at": row.emailed_at.isoformat() if row.emailed_at else None, "email_count": row.email_count or 0, "replied_at": row.replied_at.isoformat() if row.replied_at else None,
+            "published_url": row.published_url, "link_found": row.link_found, "link_rel": row.link_rel, "link_checked_at": row.link_checked_at.isoformat() if row.link_checked_at else None,
+            "follow_up_due": bool(row.emailed_at and not row.replied_at and status == "contacted" and utcnow() - (row.emailed_at if row.emailed_at.tzinfo else row.emailed_at.replace(tzinfo=timezone.utc)) > timedelta(days=7))}
 
 
 def plan(db: Session, b: Business) -> dict[str, Any]:

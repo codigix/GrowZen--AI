@@ -10,6 +10,7 @@ import { api, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
+import { Act, Head } from './TableBits';
 
 /**
  * Competitor research for the selected business, from live Google data, in one place: who ranks on Google
@@ -212,7 +213,14 @@ function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, 
         </div>
       </div>
       <AddCompetitorForm onAdd={onAddManual} busy={addBusy} error={addError} />
-      <Table head={<><Th c="text-center">Choose</Th><Th>Competitor</Th><Th c="text-right">Google visibility</Th><Th c="text-right">Page-1 keywords</Th><Th c="text-center">Maps</Th><Th>Site audit</Th><Th c="text-right">Actions</Th></>}>
+      <Table head={<>
+        <Th c="text-center"><Head what="Tick the competitors that really compete with you (3 to 5)." why="Only the chosen ones are watched and used by Competitor Watch, the keyword workspace and the backlink gap.">Choose</Head></Th>
+        <Th><Head what="A business that ranks for your keywords on Google Maps or Google." why="Click the name for its full profile." from="Google Maps (Places) results and the competitors you added.">Competitor</Head></Th>
+        <Th c="text-right"><Head right what="The share of Google clicks it could expect for your keywords, based on where it ranks." from="the competitor research (Google results). Your own figure comes from Search Console.">Google visibility</Head></Th>
+        <Th c="text-right"><Head right what="How many of your researched keywords it shows on page 1 of Google for." from="the competitor research.">Page-1 keywords</Head></Th>
+        <Th c="text-center"><Head what="Its best position in the Google Maps results and its rating." from="Google Maps (Places).">Maps</Head></Th>
+        <Th><Head what="Whether its website has been audited (speed and a page crawl)." why="Needed before you can compare it with your site." from="the site audit run from this page.">Site audit</Head></Th>
+        <Th c="text-right"><Head right what="Audit runs the site audit on its website. Compare shows it side by side with yours." from="the audits of its site and yours.">Actions</Head></Th></>}>
         {rows.map(c => {
           const a = auditMap[c.reg?.id];
           return (
@@ -234,8 +242,8 @@ function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, 
               </td>
               <td className="px-3 py-2.5 text-right whitespace-nowrap">
                 <div className="inline-flex gap-1.5">
-                  <Button size="sm" icon={Gauge} disabled={!c.reg || !c.reg.website || running(a?.status)} onClick={() => onAudit(c.reg)} title={c.reg ? 'Run PageSpeed + crawl on their site' : 'Register it first with Find more on Maps'}>{a ? 'Re-audit' : 'Audit'}</Button>
-                  <Button size="sm" variant="primary" icon={ShieldCheck} busy={comparing === c.reg?.id} disabled={!canCompare(c, a)} onClick={() => onCompare(c.reg)} title={compareHint(c, a)}>Compare</Button>
+                  <Act icon={Gauge} tone="teal" disabled={!c.reg || !c.reg.website || running(a?.status)} onClick={() => onAudit(c.reg)} tip={c.reg ? `${a ? 'Re-audit' : 'Audit'}: run PageSpeed and a page crawl on their site.` : 'Audit: save it as a competitor first (choose it), then audit its site.'} />
+                  <Act icon={ShieldCheck} tone="indigo" busy={comparing === c.reg?.id} disabled={!canCompare(c, a)} onClick={() => onCompare(c.reg)} tip={`Compare: ${compareHint(c, a) || 'show its site next to yours.'}`} />
                 </div>
               </td>
             </tr>
@@ -277,12 +285,15 @@ function MapsTab({ r }) {
   const maxReviews = Math.max(1, ...r.local_competitors.map(e => e.reviews || 0), r.business.reviews || 0);
   const you = { name: `${r.business.name} (you)`, rating: r.business.rating, reviews: r.business.reviews || 0, appearances: r.summary.local_ranked, best: Math.min(...Object.values(r.you.local), Infinity), visibility: r.summary.local_visibility, mine: true };
   const rows = [you, ...r.local_competitors].sort((a, b) => b.visibility - a.visibility);
+  const nearOnly = r.local_competitors.some(e => e.distance_m != null);
   return (
     <Card pad={false}>
-      <Table head={<><Th>Business</Th><Th c="text-right">Visibility</Th><Th c="text-center">Best</Th><Th c="text-right">In results</Th><Th>Rating</Th><Th cls="w-44">Reviews</Th><Th>Website</Th></>}>
+      {nearOnly && <p className="px-4 py-2.5 border-b border-slate-100 text-12.5 text-slate-600">Only businesses within about 4 km of {r.business.name} are counted: the ones its customers can actually choose between.</p>}
+      <Table head={<><Th>Business</Th><Th c="text-right">Distance</Th><Th c="text-right">Visibility</Th><Th c="text-center">Best</Th><Th c="text-right">In results</Th><Th>Rating</Th><Th cls="w-44">Reviews</Th><Th>Website</Th></>}>
         {rows.map(e => (
           <tr key={e.name} className={e.mine ? 'bg-emerald-50/50' : 'hover:bg-slate-50'}>
             <td className="px-4 py-2.5"><div className={`font-medium ${e.mine ? 'text-emerald-800' : 'text-slate-900'}`}>{e.name}</div>{e.category && <div className="text-12 text-slate-500">{e.category}</div>}</td>
+            <td className="px-4 py-2.5 text-right tabular-nums text-slate-600" title="Straight-line distance from your business">{e.mine ? '' : e.distance_m == null ? '—' : e.distance_m < 1000 ? `${e.distance_m} m` : `${(e.distance_m / 1000).toFixed(1)} km`}</td>
             <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{e.visibility}%</td>
             <td className="px-4 py-2.5 text-center"><Pos value={Number.isFinite(e.best) ? e.best : null} maps /></td>
             <td className="px-4 py-2.5 text-right tabular-nums">{e.appearances}/{r.keywords.length}</td>
@@ -726,11 +737,11 @@ function Research({ b }) {
 
       {result && (
         <div className={isRunning(current) ? 'space-y-5 opacity-60 pointer-events-none select-none' : 'space-y-5'} aria-busy={isRunning(current)}>
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-            <Tile label="Google visibility" value={s.keywords_ranked ? `${s.visibility}%` : '—'} sub={s.keywords_ranked ? 'from Google Search Console' : 'link Search Console to see it'} tone={s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600'} />
-            <Tile label="Keywords shown on Google" value={`${s.keywords_ranked}/${s.keywords_total}`} sub={`${s.keywords_top3} in the top 3 (Search Console)`} />
-            <Tile label="Maps visibility" value={`${s.local_visibility}%`} sub={`in Maps for ${s.local_ranked} of ${s.keywords_total}`} />
-            <Tile label="Competing businesses" value={s.competitors} sub={s.local_leader ? `Maps leader: ${s.local_leader.name}` : ''} />
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-13 text-slate-600">
+            <span title={s.keywords_ranked ? 'from Google Search Console' : 'link Search Console to see it'}>Google visibility <b className={`tabular-nums ${s.keywords_ranked ? (s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600') : 'text-slate-400'}`}>{s.keywords_ranked ? `${s.visibility}%` : '—'}</b></span>
+            <span title={`${s.keywords_top3} in the top 3 (Search Console)`}>On Google <b className="text-slate-900 tabular-nums">{s.keywords_ranked}/{s.keywords_total}</b> keywords</span>
+            <span title={`in Maps for ${s.local_ranked} of ${s.keywords_total}`}>Maps visibility <b className="text-slate-900 tabular-nums">{s.local_visibility}%</b></span>
+            <span title={s.local_leader ? `Maps leader: ${s.local_leader.name}` : ''}>Competing businesses <b className="text-slate-900 tabular-nums">{s.competitors}</b>{s.local_leader ? <span className="text-slate-400"> · leader {s.local_leader.name}</span> : null}</span>
           </div>
           <div>
             <Tabs wrap value={tab} onChange={setTab} tabs={[

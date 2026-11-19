@@ -11,13 +11,15 @@ from ..config import get_settings
 log = logging.getLogger("seo.notify")
 
 
-def send_email(to: str, subject: str, body: str, attachments: list[tuple[str, bytes, str]] | None = None, html: str | None = None, timeout: float = 30) -> bool:
+def send_email(to: str, subject: str, body: str, attachments: list[tuple[str, bytes, str]] | None = None, html: str | None = None, timeout: float = 30, reply_to: str | None = None) -> bool:
     """Plain text always; `html` adds a formatted version (the caller escapes everything it puts in it)."""
     s = get_settings()
     if not (s.smtp_host and s.smtp_from and to):
         return False
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = s.smtp_from, to, subject
+    if reply_to:
+        msg["Reply-To"] = reply_to
     msg.set_content(body)
     if html:
         msg.add_alternative(html, subtype="html")

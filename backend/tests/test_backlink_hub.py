@@ -8,6 +8,14 @@ from app.db import SessionLocal
 from app.services import backlink_checker as bc
 from app.services import crawler_client as cc
 
+
+@pytest.fixture(autouse=True)
+def _no_real_data_service(monkeypatch):
+    """The real DATAFORSEO_AUTH in .env must never reach these tests: DA, PA and spam appear only where a test sets a service up."""
+    from app.services import backlink_checker as bc
+    monkeypatch.setattr(bc, "dfs_configured", lambda: False)
+
+
 ME = "hub-clinic.in"
 RIVAL = "rival-clinic.in"
 
@@ -51,7 +59,9 @@ def test_links_carry_follow_anchor_category_and_a_verdict(client, world):
     assert by["listings.in"]["anchor_type"] == "naked" and by["healthblog.com"]["anchor_type"] in ("branded", "compound")
     assert by["healthblog.com"]["category"]["key"] and by["healthblog.com"]["useful"] in ("useful", "neutral", "risky", "unscored")
     assert by["listings.in"]["useful"] in ("neutral", "unscored", "risky") and by["healthblog.com"]["useful_why"]
-    assert by["healthblog.com"]["metrics"] is None  # no Moz: nothing invented
+    m = by["healthblog.com"]["metrics"]
+    assert m["da"] is None and m["pa"] is None and m["spam"] is None  # no Moz: nothing invented
+    assert m["crawler"]["links"] >= 1 and m["crawler"]["pages"] >= 1  # but our own crawler counts are there
     assert d["facets"]["follow"] == {"dofollow": 1, "nofollow": 1}
     assert get(client, world, "links", follow="nofollow")["total"] == 1
     assert get(client, world, "links", status="lost")["total"] == 1
@@ -99,6 +109,125 @@ def test_moz_figures_only_when_configured_then_used(client, world, monkeypatch):
         assert db.query(BiDomainMetric).count() >= 2
     finally:
         db.close()
+
+
+def test_dataforseo_figures_fill_da_pa_and_spam_on_the_links_page(client, world, monkeypatch):
+    db = SessionLocal()
+    try:
+        db.query(BiDomainMetric).delete()  # figures an earlier test saved must not hide what this one fetches
+        db.commit()
+    finally:
+        db.close()
+    before = get(client, world, "links")
+    assert before["scores"]["configured"] is False
+    monkeypatch.setattr(bc, "dfs_configured", lambda: True)
+    asked = {}
+
+    def fake(domains, pages):
+        asked["domains"], asked["pages"] = list(domains), list(pages)
+        out = {d: {"rank": 55, "spam": 4} for d in domains}
+        out.update({p: {"rank": 31, "spam": None} for p in pages})
+        return out
+
+    monkeypatch.setattr(bc, "dfs_scores", fake)
+    pending = get(client, world, "links")["scores"]
+    assert pending["configured"] is True and pending["source"] == "DataForSEO" and pending["missing"] >= 1
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()
+    assert r["configured"] is True and r["refreshed"] >= 1
+    assert all(p == f"https://{d}/" for d, p in zip(asked["domains"], asked["pages"]))  # the home page of each site gives the PA-like figure
+    d = get(client, world, "links")
+    hb = next(x for x in d["links"] if x["source_domain"] == "healthblog.com")
+    assert hb["metrics"]["da"] == 55 and hb["metrics"]["pa"] == 31 and hb["metrics"]["spam"] == 4
+    assert d["scores"]["missing"] == 0
+    assert get(client, world, "summary")["moz"]["configured"] is True
+
+
+def test_when_moz_has_no_quota_dataforseo_fills_in_and_the_reason_is_shown(client, world, monkeypatch):
+    db = SessionLocal()
+    try:
+        db.query(BiDomainMetric).delete()
+        db.commit()
+    finally:
+        db.close()
+    s = get_settings()
+    monkeypatch.setattr(s, "moz_access_id", "id", raising=False)
+    monkeypatch.setattr(s, "moz_secret_key", "key", raising=False)
+
+    def no_quota(urls):
+        raise bc.CheckError("Moz accepted the login but this account has no lookups left for the period.")
+
+    monkeypatch.setattr(bc, "moz_metrics", no_quota)
+    monkeypatch.setattr(bc, "dfs_configured", lambda: True)
+    monkeypatch.setattr(bc, "dfs_scores", lambda domains, pages: {**{d: {"rank": 40, "spam": 5} for d in domains}, **{p: {"rank": 20, "spam": None} for p in pages}})
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()
+    assert r["refreshed"] >= 1 and "no lookups left" in r["message"] and "Updated" in r["message"]
+    hb = next(x for x in get(client, world, "links")["links"] if x["source_domain"] == "healthblog.com")
+    assert hb["metrics"]["da"] == 40
+    monkeypatch.setattr(bc, "dfs_configured", lambda: False)  # with nothing to fall back on, Moz's reason is returned as it is
+    db = SessionLocal()
+    try:
+        db.query(BiDomainMetric).delete()
+        db.commit()
+    finally:
+        db.close()
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()
+    assert r["refreshed"] == 0 and "no lookups left" in r["message"]
+
+
+def _clear_metrics():
+    db = SessionLocal()
+    try:
+        db.query(BiDomainMetric).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_moz_is_used_when_it_has_quota_and_the_switch_back_upgrades_dataforseo_figures(client, world, monkeypatch):
+    _clear_metrics()
+    s = get_settings()
+    monkeypatch.setattr(s, "moz_access_id", "id", raising=False)
+    monkeypatch.setattr(s, "moz_secret_key", "key", raising=False)
+    monkeypatch.setattr(bc, "dfs_configured", lambda: True)
+    monkeypatch.setattr(bc, "dfs_scores", lambda domains, pages: {**{d: {"rank": 40, "spam": 5} for d in domains}, **{p: {"rank": 20, "spam": None} for p in pages}})
+    state = {"moz": "no_quota"}
+
+    def moz(urls):
+        if state["moz"] == "no_quota":
+            raise bc.CheckError(bc.MOZ_QUOTA_MSG)
+        return {u.removeprefix("https://"): {"da": 62, "pa": 48, "spam": 2, "ref_domains": 900} for u in urls}
+
+    monkeypatch.setattr(bc, "moz_metrics", moz)
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()  # Moz has no quota: DataForSEO answers
+    assert r["refreshed"] >= 1 and "from DataForSEO" in r["message"] and "no lookups left" in r["message"]
+    hb = lambda: next(x for x in get(client, world, "links")["links"] if x["source_domain"] == "healthblog.com")["metrics"]  # noqa: E731
+    assert hb()["da"] == 40 and hb()["source"] == "dataforseo"
+    state["moz"] = "ok"  # Moz has quota again
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()
+    assert "from Moz" in r["message"] and r["refreshed"] >= 1
+    assert hb()["da"] == 62 and hb()["source"] == "moz"  # the sites DataForSEO filled in are now Moz's
+    r = client.post(f"/api/v1/businesses/{world}/backlink-hub/metrics/refresh").json()
+    assert r["message"] == "All figures are recent." or r["refreshed"] == 0  # nothing is asked twice
+
+
+def test_moz_is_not_asked_again_for_half_an_hour_after_it_reports_no_quota(monkeypatch):
+    s = get_settings()
+    monkeypatch.setattr(s, "moz_access_id", "id", raising=False)
+    monkeypatch.setattr(s, "moz_secret_key", "key", raising=False)
+    calls = []
+
+    class R:
+        status_code, text = 403, '{"error":"The account does not have enough quota remaining for current period."}'
+
+    monkeypatch.setattr(bc.httpx, "post", lambda *a, **k: (calls.append(1), R())[1])
+    with pytest.raises(bc.CheckError):
+        bc.moz_metrics(["https://a.example/"])
+    assert bc.moz_paused() and not bc.moz_available()
+    with pytest.raises(bc.CheckError):
+        bc.moz_metrics(["https://a.example/"])
+    assert len(calls) == 1  # the second request did not reach Moz
+    monkeypatch.setattr(bc, "_moz_pause_until", 0.0)  # the pause is over (quota renewed): Moz is asked again
+    assert bc.moz_available()
 
 
 def test_a_business_without_a_site_gets_a_plain_state(client):

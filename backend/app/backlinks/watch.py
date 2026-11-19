@@ -372,7 +372,7 @@ def _chosen_cards(db: Session, b: Business, pages: dict[str, int], events: list)
     for d, n in pages.items():
         c = known.get(d)
         mine = [e for e in events if e.domain == d and _aw(e.at) >= since]
-        out.append({"domain": d, "pages_watched": n, "name": (c.name if c else None) or d, "website": (c.website if c else None) or f"https://{d}", "source": c.source if c else "backlinks",
+        out.append({"domain": d, "id": c.id if c else None, "pages_watched": n, "name": (c.name if c else None) or d, "website": (c.website if c else None) or f"https://{d}", "source": c.source if c else "backlinks",
                     "rating": c.rating if c else None, "reviews": c.reviews if c else None,
                     "changes_30d": {k: sum(1 for e in mine if e.kind == k) for k in ("new_page", "changed", "removed")}, "last_change_at": max((e.at for e in mine), default=None)})
     return out

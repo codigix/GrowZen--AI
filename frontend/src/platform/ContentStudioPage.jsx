@@ -19,6 +19,8 @@ import ReactSitePanel from './ReactSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 import { LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
+import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
+import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage, brandOf } from './keywordHighlight';
 
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'Images & Analysis', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
@@ -167,11 +169,10 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
               <button
                 key={f.id}
                 onClick={() => setFilter(f.id)}
-                className={`h-8 px-3 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap cursor-pointer ${
-                  filter === f.id
+                className={`h-8 px-3 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap cursor-pointer ${filter === f.id
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'bg-white text-slate-700 hover:text-slate-900 border border-slate-200'
-                }`}
+                  }`}
               >
                 {f.label}
               </button>
@@ -258,56 +259,56 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
       ) : !topics.length ? (
         <div className="py-10 text-center text-[13px] text-slate-500">No trending topics found for “{seed}”.</div>
       ) : (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {[
-          ['Top queries', 'Most-searched related keywords, by average monthly searches', topQueries],
-          ['Rising queries', 'Keywords whose searches grew most over the last 3 months', risingQueries]
-        ].map(([title, subtitle, rows]) => {
-          const shown = rows.filter(passes);
-          return (
-            <Card key={title} title={title} subtitle={subtitle}>
-              {shown.length ? (
-                <>
-                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
-                    <span className="w-4" />
-                    <span className="flex-1">Query</span>
-                    <span className="w-16 text-right" title="Average monthly searches (Google Keyword Planner)">Searches</span>
-                    <span className="w-16 text-right">Change</span>
-                    <span className="w-14 text-right"> </span>
-                  </div>
-                  <ul className="space-y-2">
-                    {shown.map(t => {
-                      const pct = /^[+-]\d+%$/.test(t.velocity || '') ? parseInt(t.velocity, 10) : null;
-                      return (
-                        <li key={t.id} className="flex items-center gap-2 text-[12.5px]">
-                          <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[t.title])} onChange={() => toggle(t)} title="Select to generate an article" />
-                          <span className="flex-1 text-slate-800">{t.title}</span>
-                          <span className="tabular-nums text-slate-500 w-16 text-right">{t.score != null ? fmt(t.score) : <span className="text-slate-300">—</span>}</span>
-                          <span className="w-16 text-right">
-                            {t.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge>
-                              : pct != null ? (
-                                <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums ${pct >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                                  {pct >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(pct)}%
-                                </span>
-                              ) : t.velocity ? (
-                                <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums text-emerald-700">
-                                  <TrendingUp size={11} />{t.velocity}
-                                </span>
-                              ) : <span className="text-slate-300">—</span>}
-                          </span>
-                          <span className="w-14 text-right">
-                            <button type="button" onClick={() => openWriter(t)} title="Create Brief & Draft" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer">Draft</button>
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              ) : <div className="py-6 text-center text-[13px] text-slate-500">No {title.toLowerCase()} found.</div>}
-            </Card>
-          );
-        })}
-      </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {[
+            ['Top queries', 'Most-searched related keywords, by average monthly searches', topQueries],
+            ['Rising queries', 'Keywords whose searches grew most over the last 3 months', risingQueries]
+          ].map(([title, subtitle, rows]) => {
+            const shown = rows.filter(passes);
+            return (
+              <Card key={title} title={title} subtitle={subtitle}>
+                {shown.length ? (
+                  <>
+                    <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="w-4" />
+                      <span className="flex-1">Query</span>
+                      <span className="w-16 text-right" title="Average monthly searches (Google Keyword Planner)">Searches</span>
+                      <span className="w-16 text-right">Change</span>
+                      <span className="w-14 text-right"> </span>
+                    </div>
+                    <ul className="space-y-2">
+                      {shown.map(t => {
+                        const pct = /^[+-]\d+%$/.test(t.velocity || '') ? parseInt(t.velocity, 10) : null;
+                        return (
+                          <li key={t.id} className="flex items-center gap-2 text-[12.5px]">
+                            <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[t.title])} onChange={() => toggle(t)} title="Select to generate an article" />
+                            <span className="flex-1 text-slate-800">{t.title}</span>
+                            <span className="tabular-nums text-slate-500 w-16 text-right">{t.score != null ? fmt(t.score) : <span className="text-slate-300">—</span>}</span>
+                            <span className="w-16 text-right">
+                              {t.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge>
+                                : pct != null ? (
+                                  <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums ${pct >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                                    {pct >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(pct)}%
+                                  </span>
+                                ) : t.velocity ? (
+                                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums text-emerald-700">
+                                    <TrendingUp size={11} />{t.velocity}
+                                  </span>
+                                ) : <span className="text-slate-300">—</span>}
+                            </span>
+                            <span className="w-14 text-right">
+                              <button type="button" onClick={() => openWriter(t)} title="Create Brief & Draft" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer">Draft</button>
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                ) : <div className="py-6 text-center text-[13px] text-slate-500">No {title.toLowerCase()} found.</div>}
+              </Card>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -331,7 +332,7 @@ const DEST_NAME = { wordpress: 'WordPress', ghost: 'Ghost', shopify: 'Shopify', 
  * 1b. Articles generated from the selected Google Trends keywords: one Ollama draft per keyword, each saved
  * separately. Opening one loads it into the E-E-A-T pipeline below.
  */
-function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => {} }) {
+function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }) {
   const working = articles.some(a => a.status === 'pending' || a.status === 'generating');
   const handleOpen = (id) => {
     onOpen(id);
@@ -602,7 +603,7 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
       {openId && !article
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
-            onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
+          onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
 
       {done && <LayoutCheckCard b={b} article={article} />}
       {done && <PromoteCard b={b} article={article} />}
@@ -747,15 +748,29 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const caretRef = useRef(null); // the last cursor position in the HTML editor: article images can be placed there
   const [meta, setMeta] = useState({
     keyword: selectedArticle?.keyword || '',
+    slug: selectedArticle?.slug || '', // empty = the address follows the primary keyword
     secondary: (selectedArticle?.secondary_keywords || []).join(', '),
     title: selectedArticle?.title || '',
     meta_description: selectedArticle?.meta_description || ''
   });
+  const urlBase = useApi(selectedArticle ? `/businesses/${b.id}/articles/url-base` : null).data; // where this site's posts live, learned from the ones already published
+  const [mark, setMark] = useState(true); // colour the keywords in the preview
+  const [previewView, setPreviewView] = useState('standard'); // standard | post (the site's blog details page) | list (the site's blog page)
+  const [device, setDevice] = useState('desktop');
+  const [site, setSite] = useState({ busy: false, html: '', error: '', notes: [], ref: '' });
+  const siteSeq = useRef(0);
+  const refKey = `growzen.layoutpost.${b.id}`;
+  const [refUrl, setRefUrl] = useState(() => { try { return localStorage.getItem(refKey) || ''; } catch { return ''; } }); // a post of the site whose design the preview copies ('' = chosen automatically)
+  const [refDraft, setRefDraft] = useState('');
+  const useRef2 = (v) => { const clean = v.trim(); setRefUrl(clean); try { if (clean) localStorage.setItem(refKey, clean); else localStorage.removeItem(refKey); } catch { /* kept for this page only */ } };
+  const [kwBusyP, setKwBusyP] = useState(false);
+  const [chunkBusy, setChunkBusy] = useState(false);
   useEffect(() => {
     if (selectedArticle) {
       setDraft(selectedArticle.body || '');
       setMeta({
         keyword: selectedArticle.keyword || '',
+        slug: selectedArticle.slug || '',
         secondary: (selectedArticle.secondary_keywords || []).join(', '),
         title: selectedArticle.title || '',
         meta_description: selectedArticle.meta_description || ''
@@ -810,10 +825,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       setKwNote(r.keywords_by === 'planner_fallback'
         ? `Claude AI didn't answer usably this time, so these keywords are the most-searched Google Keyword Planner ideas for the topic.${withVol ? ` Monthly searches are shown for ${withVol} of them.` : ''} Edit them or click Regenerate Keywords.`
         : r.trends === 'ok' || r.trends === 'cached' || r.trends === 'provided'
-        ? `Keywords were written by Claude AI from Google Keyword Planner ideas.${withVol ? ` Monthly searches from Keyword Planner are shown for ${withVol} of them ("— /mo" = no volume data).` : ' Keyword Planner returned no search volumes for these keywords.'}`
-        : r.trends === 'not_configured'
-          ? 'Google Keyword Planner is not set up on the server, so Claude AI wrote these keywords on its own. They have no verified search volumes.'
-          : 'Google Keyword Planner is not available right now, so Claude AI wrote these keywords on its own. They have no verified search volumes.');
+          ? `Keywords were written by Claude AI from Google Keyword Planner ideas.${withVol ? ` Monthly searches from Keyword Planner are shown for ${withVol} of them ("— /mo" = no volume data).` : ' Keyword Planner returned no search volumes for these keywords.'}`
+          : r.trends === 'not_configured'
+            ? 'Google Keyword Planner is not set up on the server, so Claude AI wrote these keywords on its own. They have no verified search volumes.'
+            : 'Google Keyword Planner is not available right now, so Claude AI wrote these keywords on its own. They have no verified search volumes.');
     } catch (e) {
       if (mine !== kwSeq.current) return;
       setKwError(`${e.message || e} You can type the keywords yourself below.`);
@@ -854,7 +869,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   };
 
   const articleFields = () => ({
-    keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean),
+    keyword: meta.keyword, slug: slugify(meta.slug, 100), secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean),
     title: meta.title, meta_description: meta.meta_description, body: draft
   });
   // SEO title / meta description: typed by hand or written by AI (✨); every regeneration uses what is in the boxes now
@@ -873,6 +888,119 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const [featured, setFeatured] = useState(() => featuredOf(selectedArticle));
   useEffect(() => { setFeatured(featuredOf(selectedArticle)); }, [selectedArticle?.id, selectedArticle?.featured_image_path, selectedArticle?.wp_media_id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [saveBusy, setSaveBusy] = useState(false);
+  const secondaryNow = meta.secondary.split(',').map(k => k.trim()).filter(Boolean);
+  const brand = brandOf(b.name); // the short name readers know: it is written into the article and highlighted like the keywords
+  const slugNow = slugify(meta.slug, 100) || slugify(meta.keyword);
+  const fullUrl = urlBase?.base ? `${urlBase.base}${slugNow}${urlBase.trailing_slash ? '/' : ''}` : '';
+  const keywordWords = slugify(meta.keyword).split('-').filter(Boolean);
+  const slugHasKeyword = keywordWords.length > 0 && keywordWords.every(w => slugNow.split('-').includes(w));
+  const previewHtml = React.useMemo(() => (mark ? highlightHtml(draft, meta.keyword, secondaryNow, { flag: true, brand }) : draft), [draft, mark, meta.keyword, meta.secondary, brand]); // eslint-disable-line react-hooks/exhaustive-deps
+  const Marked = ({ text }) => (mark ? splitKeywords(text, meta.keyword, secondaryNow, brand).map((x, i) => (x.kind ? <mark key={i} data-kw={x.kind} style={Object.fromEntries(MARK_STYLE[x.kind].split(';').map(d => d.split(':')).map(([k, v]) => [k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v]))}>{x.text}</mark> : <React.Fragment key={i}>{x.text}</React.Fragment>)) : text);
+  const bodyText = draft.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ');
+  const renderPreviewHeader = () => (
+    <div className="space-y-2.5 mb-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">How it will look in Google</div>
+        <div className="text-[12.5px] text-[#4d5156] truncate" title={fullUrl}>{fullUrl ? crumb(fullUrl) : 'Connect the website to see the address'}</div>
+        <div className="text-[18px] leading-snug text-[#1a0dab] mt-0.5"><Marked text={meta.title || 'Your SEO title appears here'} /></div>
+        <div className="text-[13px] leading-snug text-[#4d5156] mt-1"><Marked text={meta.meta_description || 'Your meta description appears here.'} /></div>
+        <div className="mt-3 pt-2.5 border-t border-slate-100 grid gap-1.5 text-[12px]">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-semibold text-slate-700">Web address:</span>
+            {fullUrl ? <a href={fullUrl} target="_blank" rel="noreferrer noopener" className="font-mono text-[11.5px] text-indigo-700 hover:underline break-all"><span className="text-slate-500">{fullUrl.slice(0, fullUrl.length - slugNow.length - (urlBase?.trailing_slash ? 1 : 0))}</span><b>{slugNow}</b>{urlBase?.trailing_slash ? '/' : ''}</a> : <span className="font-mono text-slate-500">/{slugNow}</span>}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {[[slugHasKeyword, 'The address has the primary keyword', 'The address is missing the primary keyword'], [slugNow.length > 0 && slugNow.length <= 75, `Short enough (${slugNow.length} characters)`, `Too long (${slugNow.length} characters): keep it under 75`], [countIn(meta.title, meta.keyword) > 0, 'The title has the primary keyword', 'The title is missing the primary keyword'],
+            [countIn(meta.meta_description, meta.keyword) > 0, 'The description has the primary keyword', 'The description is missing the primary keyword']].map(([ok, yes, no]) => (
+              <span key={yes} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold ${ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700'}`}>{ok ? <Check size={11} strokeWidth={3} /> : <AlertTriangle size={11} />}{ok ? yes : no}</span>))}
+          </div>
+          {urlBase && !urlBase.learned && <div className="text-[11px] text-slate-500">Shown as {urlBase.base}: your site may place posts in another folder. It is learned from the first post you publish.</div>}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-[12px]">
+        <label className="inline-flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer"><input type="checkbox" checked={mark} onChange={e => setMark(e.target.checked)} /> Colour the keywords</label>
+        <span className="text-[11.5px] text-slate-500">Colours are for checking here only. On your website the keywords and brand name are just bold: that is added when you save and again when you publish.</span>
+        {mark && <>
+          {meta.keyword.trim() && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#fde68a', boxShadow: 'inset 0 -2px 0 #f59e0b' }} title="Primary keyword: how many times it appears in the article text">Primary: {meta.keyword.trim()} <span className="font-mono">×{countIn(bodyText, meta.keyword)}</span></span>}
+          {secondaryNow.map(k => <span key={k} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#bae6fd', boxShadow: 'inset 0 -2px 0 #0ea5e9' }} title="Secondary keyword: how many times it appears in the article text">{k} <span className="font-mono">×{countIn(bodyText, k)}</span></span>)}
+          {brand && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#bbf7d0', boxShadow: 'inset 0 -2px 0 #22c55e' }} title="Your brand name: how many times it appears in the article text">Brand: {brand} <span className="font-mono">×{countIn(bodyText, brand)}</span></span>}
+        </>}
+      </div>
+    </div>
+  );
+  const coverage = React.useMemo(() => paragraphCoverage(draft, meta.keyword, secondaryNow), [draft, meta.keyword, meta.secondary]); // eslint-disable-line react-hooks/exhaustive-deps
+  const addKeywordsToParagraphs = () => {
+    setKwBusyP(true);
+    return api(`/businesses/${b.id}/articles/${selectedArticle.id}/keyword-paragraphs`, { method: 'POST', body: { body: draft, keyword: meta.keyword, secondary_keywords: secondaryNow }, timeout: 170000 })
+      .then(r => {
+        if (r.changed) setDraft(r.body);
+        toast(r.changed ? `${r.changed} paragraph${r.changed === 1 ? '' : 's'} rewritten to carry a keyword${r.missing_after ? `; ${r.missing_after} could not be rewritten faithfully` : ''}. Read them, then Save changes.` : 'No paragraph could be rewritten without changing its meaning: add the keyword by hand.');
+      })
+      .catch(e => toast(e.message))
+      .finally(() => setKwBusyP(false));
+  };
+  const longParas = React.useMemo(() => { // paragraphs of more than 75 words: they read better in short chunks
+    try { const doc = new DOMParser().parseFromString(`<body>${draft || ''}</body>`, 'text/html'); doc.querySelectorAll('script,style').forEach(n => n.remove()); return [...doc.querySelectorAll('p')].filter(p => p.textContent.trim().split(/\s+/).length > 75).length; } catch { return 0; }
+  }, [draft]);
+  const chunkParagraphs = () => {
+    setChunkBusy(true);
+    return api(`/businesses/${b.id}/articles/${selectedArticle.id}/chunk-paragraphs`, { method: 'POST', body: { body: draft, keyword: meta.keyword, secondary_keywords: secondaryNow } })
+      .then(r => { setDraft(r.body); toast(r.split ? `${r.split} long paragraph${r.split === 1 ? '' : 's'} broken into short chunks. Read them, then Save changes.` : 'Nothing could be split cleanly: the long paragraphs have no sentence breaks to cut at.'); })
+      .catch(e => toast(e.message))
+      .finally(() => setChunkBusy(false));
+  };
+  const loadSitePreview = (view) => {
+    const mine = ++siteSeq.current;
+    setSite(x => ({ ...x, busy: true, error: '' }));
+    return api(`/businesses/${b.id}/articles/${selectedArticle.id}/site-preview`, {
+      method: 'POST', timeout: 90000,
+      body: { view, title: meta.title, meta_description: meta.meta_description, body: draft, slug: slugify(meta.slug, 100), keyword: meta.keyword, secondary_keywords: secondaryNow, highlight: mark, reference_url: refUrl || null }
+    })
+      .then(r => { if (mine === siteSeq.current) setSite({ busy: false, html: r.html, error: '', notes: r.notes || [], ref: r.reference_url || '' }); })
+      .catch(e => { if (mine === siteSeq.current) setSite(x => ({ ...x, busy: false, html: '', error: e.message || 'The preview could not be built.' })); });
+  };
+  useEffect(() => {
+    if (selectedArticle && bodyTab === 'preview' && previewView !== 'standard') loadSitePreview(previewView);
+  }, [previewView, bodyTab, mark, refUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  const renderViewSwitch = () => (
+    <div className="flex flex-wrap items-center gap-2 mb-3">
+      <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+        {[['standard', 'Article'], ['post', 'Blog details page'], ['list', 'Blog list']].map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setPreviewView(id)} className={`px-3 py-1.5 rounded-md text-[12px] font-semibold cursor-pointer ${previewView === id ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}>{label}</button>))}
+      </div>
+      {previewView !== 'standard' && (<>
+        <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+          {[['desktop', 'Desktop'], ['mobile', 'Mobile']].map(([id, label]) => <button key={id} type="button" onClick={() => setDevice(id)} className={`px-3 py-1.5 rounded-md text-[12px] font-semibold cursor-pointer ${device === id ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}>{label}</button>)}
+        </div>
+        <Button size="sm" icon={RefreshCw} busy={site.busy} onClick={() => loadSitePreview(previewView)}>Refresh with my edits</Button>
+      </>)}
+      {previewView === 'post' && (
+        <details className="basis-full text-[12px] text-slate-600">
+          <summary className="cursor-pointer font-semibold text-slate-700">Design copied from: {site.ref ? <a href={site.ref} target="_blank" rel="noreferrer noopener" className="text-indigo-700 hover:underline font-mono break-all" onClick={e => e.stopPropagation()}>{site.ref}</a> : 'a post chosen automatically'}{refUrl ? ' (your choice)' : ''}. Use another post</summary>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input className={`${inputCls} flex-1 min-w-[260px]`} value={refDraft} onChange={e => setRefDraft(e.target.value)} placeholder={`A post of your site, e.g. ${(b.website || 'https://yoursite.com').replace(/\/$/, '')}/a-post/`} aria-label="Post whose layout to copy" />
+            <Button size="sm" variant="primary" disabled={!/^https?:\/\//i.test(refDraft.trim())} onClick={() => useRef2(refDraft)}>Use this post</Button>
+            {refUrl && <Button size="sm" onClick={() => { useRef2(''); setRefDraft(''); }}>Choose automatically</Button>}
+          </div>
+          <div className="mt-1 text-[11.5px] text-slate-500">The preview copies this post's design: header, title and date, the picture, the sidebar, the FAQ and the blocks below it. Pick the post you like best.</div>
+        </details>
+      )}
+    </div>
+  );
+  const renderSitePreview = () => (
+    <div className="space-y-2">
+      {site.error && <div className="flex gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[12.5px] text-amber-900"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><div>{site.error} <button type="button" className="underline font-semibold cursor-pointer" onClick={() => setPreviewView('standard')}>Show the standard preview</button></div></div>}
+      {site.busy && !site.html && <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-[13px] text-slate-500"><RefreshCw size={20} className="animate-spin text-indigo-500 mx-auto mb-2" />Reading your website's {previewView === 'list' ? 'blog page' : 'post design'}…</div>}
+      {site.html && (
+        <>
+          <div className="text-[11.5px] text-slate-500">{site.notes.join(' ')} The keywords are coloured only in this preview; scripts on your site are switched off, so menus and sliders will not move.</div>
+          <div className="rounded-xl border border-slate-200 bg-slate-100 p-3 flex justify-center overflow-x-auto relative">
+            {site.busy && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center"><RefreshCw size={20} className="animate-spin text-indigo-500" /></div>}
+            <iframe title="Preview in your website's design" sandbox="" referrerPolicy="no-referrer" srcDoc={site.html}
+              style={{ width: device === 'mobile' ? 390 : '100%', height: 700, background: '#fff' }} className="rounded-lg border border-slate-300 shadow-sm" />
+          </div>
+        </>
+      )}
+    </div>
+  );
   const saveArticle = () => {
     setSaveBusy(true);
     return api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: articleFields() })
@@ -905,17 +1033,15 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             <li key={s}>
               <button
                 onClick={() => (selectedArticle || i <= step) && setStep(i)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-semibold text-left transition-colors cursor-pointer ${
-                  i === step
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-semibold text-left transition-colors cursor-pointer ${i === step
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                     : i < step
-                    ? 'text-slate-800 hover:bg-slate-50'
-                    : 'text-slate-500'
-                }`}
+                      ? 'text-slate-800 hover:bg-slate-50'
+                      : 'text-slate-500'
+                  }`}
               >
-                <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold ${
-                  i < step ? 'bg-emerald-500 text-white' : i === step ? 'bg-white text-blue-600' : 'bg-slate-100 text-slate-500'
-                }`}>
+                <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold ${i < step ? 'bg-emerald-500 text-white' : i === step ? 'bg-white text-blue-600' : 'bg-slate-100 text-slate-500'
+                  }`}>
                   {i < step ? <Check size={11} strokeWidth={3} /> : i}
                 </span>
                 <span className="truncate">{s}</span>
@@ -970,6 +1096,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                         <input className={inputCls} value={kw} onChange={e => setKw(e.target.value)} />
                         <VolTag k={kw} />
                       </div>
+                      {slugify(kw) && <div className="mt-1 text-[11.5px] text-slate-500 break-all">The article's web address ends with <span className="font-mono font-semibold text-slate-700">/{slugify(kw)}</span> (you can change it after the article is written).</div>}
                     </Field>
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Secondary keywords <span className="normal-case tracking-normal font-normal text-slate-400">({secondaryList.filter(k => k.trim()).length}, 5 to 10 works best; edit, add or remove)</span></div>
@@ -1059,6 +1186,19 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   <Field label="Primary keyword" hint="Must appear in the title, meta description and introduction"><input className={inputCls} value={meta.keyword} onChange={e => setMeta(m => ({ ...m, keyword: e.target.value }))} /></Field>
                   <Field label="Secondary keywords" hint="Comma separated; each should appear in the article"><input className={inputCls} value={meta.secondary} onChange={e => setMeta(m => ({ ...m, secondary: e.target.value }))} /></Field>
                 </div>
+                <Field label="Web address (slug)" hint={meta.slug.trim() ? 'Your own words. Click “Use the primary keyword” to follow the keyword again.' : 'Follows the primary keyword: change the keyword and this changes with it. Type here to set your own.'}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center min-w-0 flex-1 rounded-lg border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
+                      <span className="px-2.5 py-2 bg-slate-50 text-[12px] text-slate-500 border-r border-slate-200 whitespace-nowrap max-w-[55%] truncate" title={urlBase?.base}>{urlBase?.base ? urlBase.base.replace(/^https?:\/\//, '') : '/'}</span>
+                      <input className="flex-1 min-w-0 px-2.5 py-2 text-[13px] font-mono outline-none" value={meta.slug.trim() ? meta.slug : slugify(meta.keyword)} aria-label="Web address slug" maxLength={100}
+                        onChange={e => setMeta(m => ({ ...m, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-\s]+/g, '').replace(/\s+/g, '-') }))}
+                        onBlur={() => setMeta(m => ({ ...m, slug: slugify(m.slug, 100) === slugify(m.keyword) ? '' : slugify(m.slug, 100) }))} />
+                    </div>
+                    {meta.slug.trim() && slugify(meta.slug, 100) !== slugify(meta.keyword) && <Button size="sm" onClick={() => setMeta(m => ({ ...m, slug: '' }))}>Use the primary keyword</Button>}
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold ${slugHasKeyword ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>{slugHasKeyword ? <Check size={11} strokeWidth={3} /> : <AlertTriangle size={11} />}{slugHasKeyword ? 'Has the primary keyword' : 'Without the primary keyword'}</span>
+                  </div>
+                  {fullUrl && <div className="mt-1 text-[11.5px] text-slate-500 break-all">Full address: <span className="font-mono">{fullUrl}</span></div>}
+                </Field>
                 {(() => {
                   const text = `${meta.title} ${meta.meta_description} ${draft.replace(/<[^>]+>/g, ' ')}`;
                   const secondary = meta.secondary.split(',').map(k => k.trim()).filter(Boolean);
@@ -1076,9 +1216,27 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   return (
                     <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
                       <div className="text-[11px] font-semibold text-slate-600">Keyword use in this article (updates as you edit)</div>
+                      <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                        {longParas > 0 && (<>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-amber-50 border-amber-200 text-amber-900 font-semibold"><AlertTriangle size={12} />{longParas} long paragraph{longParas === 1 ? '' : 's'}</span>
+                          <Button size="sm" busy={chunkBusy} onClick={chunkParagraphs}>Break into short chunks</Button>
+                        </>)}
+                        {coverage.total > 0 && (coverage.missing.length === 0
+                          ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-emerald-50 border-emerald-200 text-emerald-800 font-semibold"><Check size={12} strokeWidth={3} />Every paragraph ({coverage.total}) has a keyword</span>
+                          : <>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-amber-50 border-amber-200 text-amber-900 font-semibold" title={`Paragraphs without a keyword: ${coverage.missing.join(', ')}`}><AlertTriangle size={12} />{coverage.missing.length} of {coverage.total} paragraphs have no keyword</span>
+                            <Button size="sm" variant="ai" icon={Sparkles} busy={kwBusyP} onClick={addKeywordsToParagraphs}>Add a keyword to those paragraphs</Button>
+                          </>)}
+                      </div>
                       <div className="flex flex-wrap gap-1.5">
                         {meta.keyword.trim() && chip(meta.keyword.trim(), true)}
                         {secondary.map(k => chip(k, false))}
+                        {brand && (() => {
+                          const n = countIn(text, brand); return (
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11.5px] font-semibold ${n >= 2 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700'}`} title={n >= 2 ? `Your brand name is used ${n} times` : 'Mention your brand name a few times'}>
+                              {n >= 2 ? <Check size={11} strokeWidth={3} /> : <AlertTriangle size={11} />}<span className="text-[10px] uppercase tracking-wide opacity-70">Brand</span>{brand}<span className="font-mono opacity-70">×{n}</span>
+                            </span>);
+                        })()}
                         {!secondary.length && <span className="text-[11.5px] text-slate-500">No secondary keywords. Add some above, separated by commas.</span>}
                       </div>
                     </div>
@@ -1106,35 +1264,33 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                       <div className="text-[11px] text-slate-500">Edit raw HTML or switch to Preview to inspect the formatted blog layout</div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                    {selectedArticle && <RegenerateContent ref={regenRef} b={b} article={selectedArticle} body={draft} onAccept={setDraft} toast={toast} onFieldBusy={setFieldBusy}
-                      fields={{ title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean) }}
-                      onField={(field, value) => setMeta(m => ({ ...m, [field]: value }))} />}
-                    <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
-                      <button
-                        type="button"
-                        onClick={() => setBodyTab('editor')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${
-                          bodyTab === 'editor'
-                            ? 'bg-white text-indigo-700 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                        }`}
-                      >
-                        <Code size={13} />
-                        HTML Editor
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBodyTab('preview')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${
-                          bodyTab === 'preview'
-                            ? 'bg-white text-indigo-700 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                        }`}
-                      >
-                        <Eye size={13} />
-                        Preview
-                      </button>
-                    </div>
+                      {selectedArticle && <RegenerateContent ref={regenRef} b={b} article={selectedArticle} body={draft} onAccept={setDraft} toast={toast} onFieldBusy={setFieldBusy}
+                        fields={{ title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean) }}
+                        onField={(field, value) => setMeta(m => ({ ...m, [field]: value }))} />}
+                      <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => setBodyTab('editor')}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${bodyTab === 'editor'
+                              ? 'bg-white text-indigo-700 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            }`}
+                        >
+                          <Code size={13} />
+                          HTML Editor
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBodyTab('preview')}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${bodyTab === 'preview'
+                              ? 'bg-white text-indigo-700 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            }`}
+                        >
+                          <Eye size={13} />
+                          Preview
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -1154,10 +1310,14 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-slate-200 bg-white p-6 min-h-[380px] max-h-[640px] overflow-y-auto shadow-xs">
-                      {draft && draft.trim() ? (
-                        <article
-                          className="blog-preview-article text-[13.5px] text-slate-800 leading-relaxed space-y-4
+                    <>
+                      {renderViewSwitch()}
+                      {previewView !== 'standard' ? renderSitePreview() : (<>
+                        {renderPreviewHeader()}
+                        <div className="rounded-xl border border-slate-200 bg-white p-6 min-h-[380px] max-h-[640px] overflow-y-auto shadow-xs">
+                          {draft && draft.trim() ? (
+                            <article
+                              className="blog-preview-article text-[13.5px] text-slate-800 leading-relaxed space-y-4
                             [&_h1]:text-[22px] [&_h1]:font-extrabold [&_h1]:text-slate-900 [&_h1]:mt-2 [&_h1]:mb-3 [&_h1]:leading-tight
                             [&_h2]:text-[17px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-6 [&_h2]:mb-2.5 [&_h2]:border-b [&_h2]:border-slate-100 [&_h2]:pb-1.5
                             [&_h3]:text-[14.5px] [&_h3]:font-semibold [&_h3]:text-slate-800 [&_h3]:mt-4 [&_h3]:mb-2
@@ -1176,16 +1336,18 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                             [&_figure]:my-4 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg
                             [&_.faq]:p-4 [&_.faq]:rounded-xl [&_.faq]:bg-slate-50 [&_.faq]:border [&_.faq]:border-slate-200 [&_.faq]:my-3
                             [&_.cta]:p-5 [&_.cta]:rounded-xl [&_.cta]:bg-gradient-to-r [&_.cta]:from-indigo-50 [&_.cta]:to-purple-50 [&_.cta]:border [&_.cta]:border-indigo-100 [&_.cta]:text-center [&_.cta]:my-4"
-                          dangerouslySetInnerHTML={{ __html: draft }}
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400">
-                          <Eye size={28} className="opacity-40 mb-2" />
-                          <div className="text-[13px] font-semibold text-slate-600">Draft is empty</div>
-                          <div className="text-[11.5px] text-slate-400">Switch to the HTML Editor tab to add content or generate a new article.</div>
+                              dangerouslySetInnerHTML={{ __html: previewHtml }}
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400">
+                              <Eye size={28} className="opacity-40 mb-2" />
+                              <div className="text-[13px] font-semibold text-slate-600">Draft is empty</div>
+                              <div className="text-[11.5px] text-slate-400">Switch to the HTML Editor tab to add content or generate a new article.</div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </>)}
+                    </>
                   )}
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-slate-600">

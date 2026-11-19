@@ -4,6 +4,7 @@ import { ArrowUp, ArrowDown, Search, MapPin, CheckCircle2, ExternalLink } from '
 import { Card, Badge, Stat, ErrorNote, SkList } from './SeoUi';
 import { useApi } from './seoApi';
 import Tip from './Tip';
+import { Head } from './TableBits';
 
 const TONE = { working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' };
 const FILTERS = [['all', 'All'], ['working', 'Working'], ['climbing', 'Can climb'], ['weak', 'Weak'], ['invisible', 'Not showing'], ['unchecked', 'Not checked']];
@@ -26,14 +27,16 @@ export default function KeywordStatus({ b }) {
   const pill = (on) => `h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      <Card title="How your keywords are doing" subtitle="Positions are Google Search Console's average position over the last 28 days. Impressions and clicks are real; “potential” is modelled."
-        action={<Link to="/rank-tracking/positions" className="text-12.5 font-semibold text-indigo-600 hover:underline">Check positions now →</Link>}>
-        {!d.rank_ready && <p className="text-13 text-amber-700 mb-3">Positions need the Google account that owns this website linked to the project (Integrations). Until then only usage is shown.</p>}
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-          <Stat label="Tracked" value={d.total} /><Stat label="Working" value={c.working} hint="Page 1 with clicks" /><Stat label="Can climb" value={c.climbing} /><Stat label="Weak" value={c.weak} />
-          <Stat label="Not showing" value={c.invisible} /><Stat label="Impressions" value={n0(d.impressions)} /><Stat label="Clicks" value={n0(d.clicks)} />
-        </div>
-      </Card>
+      <div className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-13 text-slate-600" title="Positions are Google Search Console's average position over the last 28 days. Impressions and clicks are real; “potential” is modelled.">
+        <span><b className="text-slate-900 tabular-nums">{d.total}</b> tracked</span>
+        <span><b className="text-emerald-700 tabular-nums">{c.working}</b> working</span>
+        <span><b className="text-amber-700 tabular-nums">{c.climbing}</b> can climb</span>
+        <span><b className="text-rose-700 tabular-nums">{c.weak}</b> weak</span>
+        <span><b className="text-slate-900 tabular-nums">{c.invisible}</b> not showing</span>
+        <span><b className="text-slate-900 tabular-nums">{n0(d.impressions)}</b> views · <b className="text-slate-900 tabular-nums">{n0(d.clicks)}</b> clicks</span>
+        <Link to="/rank-tracking/positions" className="ml-auto text-12.5 font-semibold text-indigo-600 hover:underline">Check positions now →</Link>
+        {!d.rank_ready && <p className="basis-full text-12.5 text-amber-700">Positions need the Google account that owns this website linked to the project (Integrations). Until then only usage is shown.</p>}
+      </div>
       <Card pad={false}>
         <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-slate-100">
           {FILTERS.map(([id, label]) => <button key={id} type="button" aria-pressed={f === id} onClick={() => setF(id)} className={pill(f === id)}>{label} <span className="opacity-70">{id === 'all' ? d.total : c[id]}</span></button>)}
@@ -42,10 +45,16 @@ export default function KeywordStatus({ b }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px] text-13">
             <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-              <th className={TH}>Keyword</th><th className={TH}>Status</th><th className={`${TH} text-right`}>Position</th><th className={`${TH} text-right`}>Impressions</th><th className={`${TH} text-right`}>Clicks</th>
+              <th className={TH}><Head what="A keyword you track." why="Click it to check its searches and cost." from="your saved keywords.">Keyword</Head></th>
+              <th className={TH}><Head what="Our plain reading: Working (page 1 with clicks), Can climb, Weak, Not showing." why="Tells you where to put effort." from="the Search Console position and clicks of the last 28 days.">Status</Head></th>
+              <th className={`${TH} text-right`}><Head right what="Average Google position, last 28 days." from="Google Search Console.">Position</Head></th>
+              <th className={`${TH} text-right`}><Head right what="How many times your site was shown for it on Google." from="Google Search Console.">Impressions</Head></th>
+              <th className={`${TH} text-right`}><Head right what="How many people clicked your site for it." from="Google Search Console.">Clicks</Head></th>
               <th className={`${TH} text-right`}><Tip text="Searches per month for this keyword (Google Keyword Planner)." align="right">Searches</Tip></th>
               <th className={`${TH} text-right`}><Tip text="Modelled, not measured: monthly searches times the usual click-through of the top spot, minus the clicks you already get. It shows how much the keyword could still give." align="right">Potential / mo</Tip></th>
-              <th className={TH}>Where it is used</th><th className={TH}>Page</th><th className={TH}>Next step</th></tr></thead>
+              <th className={TH}><Head what="Where the keyword already appears: your website, blog, Google posts, AI questions." why="Shows where it is not used yet." from="a scan of your pages, articles, posts and AI-search questions.">Used where</Head></th>
+              <th className={TH}><Head what="The page that ranks for it, or the page you chose." from="Search Console, or your choice on My Keywords.">Page</Head></th>
+              <th className={TH}><Head what="The one action we suggest for this keyword. Click it to do it." from="our reading of its status, page and use.">Actions</Head></th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map(x => (
                 <tr key={x.keyword} className="hover:bg-slate-50 align-middle">
@@ -56,8 +65,7 @@ export default function KeywordStatus({ b }) {
                     {x.maps_rank ? <Tip text={`Google Maps: #${x.maps_rank}`}><span className="ml-1 inline-flex align-middle text-slate-400"><MapPin size={11} /></span></Tip> : null}</td>
                   <td className="px-3 py-3 text-right tabular-nums">{n0(x.impressions)}</td><td className="px-3 py-3 text-right tabular-nums font-semibold">{n0(x.clicks)}</td>
                   <td className="px-3 py-3 text-right tabular-nums text-slate-600">{n0(x.volume)}</td><td className="px-3 py-3 text-right tabular-nums text-slate-600">{x.potential == null ? '—' : n0(x.potential)}</td>
-                  <td className="px-3 py-3 max-w-[200px]">{x.used_in.length ? <span className="flex flex-wrap gap-1">{x.used_in.map(a => <span key={a} className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-11.5"><CheckCircle2 size={10} />{AREA_SHORT[a] || a}</span>)}</span>
-                    : <Link to="/keyword-management/use" className="text-12 font-semibold text-amber-700 hover:underline">Not used yet</Link>}</td>
+                  <td className="px-3 py-3 whitespace-nowrap"><Tip text={x.used_in.length ? `Used in: ${x.used_in.map(a => AREA_SHORT[a] || a).join(', ')}. Open Keyword Usage to add the rest.` : 'Not used anywhere yet. Open Keyword Usage.'}><Link to="/keyword-management/use" className={`text-12 font-semibold hover:underline ${x.used_in.length ? 'text-emerald-700' : 'text-amber-700'}`}>{x.used_in.length ? `Used in ${x.used_in.length} of ${Object.keys(AREA_SHORT).length}` : 'Not used yet'}</Link></Tip></td>
                   <td className="px-3 py-3 max-w-[170px]">{x.ranking_url ? <a href={x.ranking_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{path(x.ranking_url)}</span><ExternalLink size={11} className="shrink-0" /></a>
                     : x.target_url ? <span className="text-slate-500 truncate block" title={x.target_url}>target {x.target_url}</span> : <Link to="/keyword-management/tracked" className="text-12 text-amber-700 hover:underline">No page set</Link>}</td>
                   <td className="px-3 py-3"><Link to={x.next.to} className="text-12.5 font-semibold text-indigo-600 hover:underline">{x.next.text}</Link></td>

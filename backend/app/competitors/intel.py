@@ -98,13 +98,17 @@ def places_enabled() -> bool:
     return competitors_enabled()
 
 
-def google_places(q: str, location: str | None, gl: str | None, lat: float | None = None, lng: float | None = None) -> dict[str, Any]:
+LOCAL_RADIUS_M = 4000  # a local business's rivals are the ones its customers can reach: within about 4 km of its pin
+
+
+def google_places(q: str, location: str | None, gl: str | None, lat: float | None = None, lng: float | None = None, radius_m: float | None = None) -> dict[str, Any]:
     """The Google Maps results for a search from the Places API (Google's own order), around the business's pin when there is one."""
     from .service import CompetitorSearchError, places_search
     area = (location or "").strip()
     text = q if not area or area.lower() in q.lower() else f"{q} in {area}"
     try:
-        found = places_search(text, (gl or "in"), lat, lng)
+        limit_to_area = {"restrict": True} if radius_m and lat is not None and lng is not None else {}
+        found = places_search(text, (gl or "in"), lat, lng, radius_m or 5000.0, **limit_to_area)
     except CompetitorSearchError as exc:
         raise IntelError(str(exc)) from exc
     return {"places": found}
@@ -141,6 +145,13 @@ def default_keywords(b: Any) -> list[str]:
     # A generic Google category ("Doctor", "Store") finds everyone; specific ones (services, other categories) first.
     seeds = default_seeds(b)
     seeds = ([s for s in seeds if s not in GENERIC_CATEGORIES] + [s for s in seeds if s in GENERIC_CATEGORIES])[:3]
+    from ..services import categories
+    wording: list[str] = []  # what customers type ("PG", not Google's "Serviced Accommodation"): the business's own name first, then each category
+    for i, s in enumerate(seeds):
+        for term in (categories.customer_terms(s, getattr(b, "name", None)) if i == 0 else categories.search_terms(s)):
+            if term.lower() not in [w.lower() for w in wording]:
+                wording.append(term)
+    seeds = wording[:3] or seeds
     if market.scope(b) == "national":  # customers anywhere in the country: no city in the search
         out = []
         for i, s in enumerate(seeds):
@@ -151,7 +162,7 @@ def default_keywords(b: Any) -> list[str]:
         out = [f"{seeds[0]} in {n}" for n in names] if seeds else []
         return (out + ([f"best {seeds[0]}"] if seeds else []))[:6]
     area = (b.area or "").split(",")[0].strip()
-    if len(area) > 40:  # a whole address line pasted into the area field is not a place name
+    if len(area) > 40 or not categories.usable_area(area):  # a whole address line, or "Phase 1", is not a place name
         area = ""
     city = (b.city or "").strip()
     out: list[str] = []
@@ -386,7 +397,7 @@ def _local_rollup(serps: list[dict[str, Any]], n_keywords: int) -> list[dict[str
             if p["mine"]:
                 continue
             key = str(p.get("cid") or _norm_name(p["name"]))
-            e = places.setdefault(key, {k: p.get(k) for k in ("name", "rating", "reviews", "category", "address", "website", "phone")} | {"positions": {}})
+            e = places.setdefault(key, {k: p.get(k) for k in ("name", "rating", "reviews", "category", "address", "website", "phone", "distance_m")} | {"positions": {}})
             e["positions"].setdefault(s["keyword"], p["position"])
     for e in places.values():
         e["appearances"] = len(e["positions"])
@@ -425,19 +436,21 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
         return {
             "keywords": [{"keyword": x["keyword"], "you_organic": x["you_organic"], "you_local": x["you_local"], "first": x["organic"][0]["domain"] if x["organic"] else None} for x in serps],
             "competitors": [{k: d[k] for k in ("domain", "type", "visibility", "keywords_top10", "keywords_top3", "avg_position")} for d in _organic_rollup(serps, n)[:12]],
-            "maps": [{k: e.get(k) for k in ("name", "rating", "reviews", "best", "appearances", "visibility", "website")} for e in _local_rollup(serps, n)[:10]],
+            "maps": [{k: e.get(k) for k in ("name", "rating", "reviews", "best", "appearances", "visibility", "website", "category", "distance_m")} for e in _local_rollup(serps, n)[:10]],
             "sites": profiles_done or {},
         }
 
     # 1. The Google Maps results for every keyword (Places API, Google's own order), and where the site itself ranks organically (Search Console).
     # Google gives no API for other websites' organic rankings, so rivals are the Maps businesses; the site's own organic position is Google's own figure for it.
     serps: list[dict[str, Any]] = []
+    # A local business competes with the businesses around it: when it has a pin, only places within LOCAL_RADIUS_M of it count. Other projects search wherever their market is.
+    area_m = LOCAL_RADIUS_M if market.scope(b) == "local" and getattr(b, "lat", None) is not None and getattr(b, "lng", None) is not None else None
     for kw in keywords:
         progress(f"Google Maps results for \"{kw}\"", live() if serps else None)
-        plc = google_places(kw, location, region_gl, getattr(b, "lat", None), getattr(b, "lng", None))
+        plc = google_places(kw, location, region_gl, getattr(b, "lat", None), getattr(b, "lng", None), area_m)
         local = []
         for p in plc.get("places", [])[:10]:
-            local.append({"position": p.get("position"), "name": p.get("title", ""), "rating": p.get("rating"), "reviews": p.get("ratingCount") or 0,
+            local.append({"position": p.get("position"), "name": p.get("title", ""), "rating": p.get("rating"), "reviews": p.get("ratingCount") or 0, "distance_m": p.get("distance_m"),
                           "category": p.get("category"), "address": p.get("address"), "website": p.get("website"), "phone": p.get("phoneNumber"),
                           "cid": p.get("cid"), "mine": _is_me_place(p, b, my_host)})
         serps.append({"keyword": kw, "organic": [], "local": local, "questions": [], "related": [], "you_organic": None, "you_local": next((p["position"] for p in local if p["mine"]), None)})

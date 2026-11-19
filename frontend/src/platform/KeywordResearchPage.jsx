@@ -1,12 +1,13 @@
 import KeywordWorkspace from './KeywordWorkspace';
 import KeywordFlowBar from './KeywordFlowBar';
 import KeywordMappingTab from './KeywordMappingTab';
+import { Act, Head } from './TableBits';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AutopilotPanel } from './AutopilotPanels';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Sparkles, FileText, Trash2, Loader2, MapPin, Globe, Users, X, Star, CheckCircle2, CircleDashed, AlertTriangle, Copy, Check, BarChart2,
-  Pencil, TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft, ArrowRight
+  Pencil, PenLine, TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft, ArrowRight
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction, useUrlTab, useDoubleConfirm, SkTable, SkCard } from './SeoUi';
@@ -726,9 +727,9 @@ function Tracked({ b, kw }) {
   }, [tracked, view, q, sort]);
   const shown = rows.slice(0, limit);
   const allOn = shown.length > 0 && shown.every(k => sel.has(k.id));
-  const Th = ({ id, children, right }) => (
+  const Th = ({ id, children, right, ...tip }) => (
     <th className={`px-4 py-3 font-semibold ${right ? 'text-right' : 'text-left'}`}>
-      <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id && s.dir === 'desc' ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${sort.key === id ? 'text-slate-900' : ''}`}>{children}{sort.key === id && (sort.dir === 'asc' ? '▲' : '▼')}</button>
+      <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id && s.dir === 'desc' ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${sort.key === id ? 'text-slate-900' : ''}`}><Head right={right} {...tip}>{children}</Head>{sort.key === id && (sort.dir === 'asc' ? '▲' : '▼')}</button>
     </th>
   );
   const chip = (id, label, n) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => go(id)} className={`h-10 px-4 rounded-lg text-14 font-semibold cursor-pointer inline-flex items-center gap-2 ${view === id ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'}`}>{label}<span className={`tabular-nums ${view === id ? 'text-slate-300' : 'text-slate-400'}`}>{n}</span></button>;
@@ -736,9 +737,9 @@ function Tracked({ b, kw }) {
   // The one thing worth doing next, said plainly
   const nopage = counts.nopage;
   const hint = !tracked.length ? null : nopage > 0
-    ? { text: `${nopage} of your ${tracked.length} keywords have no page yet. A keyword needs one page on your website to rank.`, action: <Button variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages}>Match them to my pages</Button>, more: <Link to="/keyword-management/mapping" className="text-13 font-semibold text-indigo-700 hover:underline">See the matching</Link> }
-    : onGoogle === 0 ? { text: 'Every keyword has a page. Next, check where they show on Google.', action: <Link to="/keyword-management/status"><Button variant="primary" icon={ArrowRight}>Check rankings</Button></Link> }
-      : { text: 'Every keyword has a page. Next, group them into topics and plan where to use them.', action: <Link to="/keyword-management/topics"><Button variant="primary" icon={ArrowRight}>Group into topics</Button></Link> };
+    ? { text: `${nopage} keyword${nopage === 1 ? ' has' : 's have'} no page yet. Each needs one page on your website to rank.`, action: <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages}>Match them to my pages</Button>, more: <Link to="/keyword-management/mapping" className="text-13 font-semibold text-indigo-700 hover:underline">See the matching</Link> }
+    : onGoogle === 0 ? { text: 'Every keyword has a page. Next: check where they show on Google.', action: <Link to="/keyword-management/status"><Button variant="primary" icon={ArrowRight}>Check rankings</Button></Link> }
+      : { text: 'Every keyword has a page. Next: group them into topics.', action: <Link to="/keyword-management/topics"><Button variant="primary" icon={ArrowRight}>Group into topics</Button></Link> };
 
   return (
     <div className="space-y-5">
@@ -757,18 +758,13 @@ function Tracked({ b, kw }) {
         </div></Card>
       ) : (
         <>
-          {/* Where you stand, and the one thing to do next */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <div className="grid grid-cols-3 gap-4 max-w-xl">
-              {[[tracked.length, 'keywords saved'], [`${mapped}`, 'have a page'], [onGoogle, 'show on Google']].map(([n, l]) => (
-                <div key={l}><div className="text-28 font-bold text-slate-900 tabular-nums leading-none">{n}</div><div className="mt-1 text-13 text-slate-500">{l}</div></div>))}
-            </div>
-            {hint && (
-              <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-x-4 gap-y-2">
-                <p className="flex-1 min-w-[260px] text-14 text-slate-800">{hint.text}</p>
-                {hint.more}{hint.action}
-              </div>
-            )}
+          {/* Where you stand and the one thing to do next: one slim row, so the list starts high on the page */}
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <span className="text-14 text-slate-600"><b className="text-slate-900 tabular-nums">{tracked.length}</b> saved · <b className="text-slate-900 tabular-nums">{mapped}</b> have a page · <b className="text-slate-900 tabular-nums">{onGoogle}</b> show on Google</span>
+            {hint && <>
+              <span className="text-13 text-slate-700 flex-1 min-w-[220px]">{hint.text}</span>
+              {hint.more}{hint.action}
+            </>}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -788,7 +784,11 @@ function Tracked({ b, kw }) {
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="w-12 pl-4 py-3"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(k => k.id)))} /></th>
-                    <Th id="keyword">Keyword</Th><Th id="volume" right>Searches a month</Th><Th id="rank" right>Position on Google</Th><th className="px-4 py-3 text-left font-semibold">Page it should rank on</th><th className="w-12" />
+                    <Th id="keyword" what="A keyword you saved and are tracking." why="Click the name to check its searches, cost and related ideas. Click the heading to sort." from="the ones you picked in the Keyword Workspace, Find Keywords or typed in.">Keyword</Th>
+                    <Th id="volume" right what="How many times a month people search it in your country." why="Shows which keywords can bring the most visitors." from="Google Ads Keyword Planner. Blank when Google gave no figure.">Searches a month</Th>
+                    <Th id="rank" right what="Where your website shows on Google for it, as an average over the last 28 days. #1 is the top." why="Shows what is working, what can climb and what is missing." from="Google Search Console (the Google account that owns your site must be linked). Working, Almost page 1 and Weak are our plain reading of that position and the clicks.">Position on Google</Th>
+                    <th className="px-4 py-3 text-left font-semibold"><Head what="The one page on your website this keyword is meant to rank on." why="Each keyword needs its own page, so your pages do not compete with each other." from="a page you chose, or the page where the site scan found the keyword in its title, heading or description.">Page it should rank on</Head></th>
+                    <th className="px-3 py-3 text-right font-semibold"><Head right what="Things you can do with this keyword." why="Check opens its numbers, Write starts a blog post for it, Remove stops tracking it.">Actions</Head></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -806,8 +806,8 @@ function Tracked({ b, kw }) {
                           {isNew && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5">Just added</span>}
                           {(k.cluster || k.intent) && <span className="block mt-0.5 text-12 text-slate-400">{[k.cluster, k.intent].filter(Boolean).join(' · ')}</span>}
                         </td>
-                        <td className="px-4 py-4 text-right tabular-nums">{fmt(k.volume)}</td>
-                        <td className="px-4 py-4 text-right">
+                        <td className="px-4 py-4 text-right tabular-nums" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>
+                        <td className="px-4 py-4 text-right" title={k.rank ? 'Average position on Google, last 28 days (Search Console)' : 'Google has not shown your site for this keyword yet, or positions have not been checked'}>
                           {k.rank ? <span className="inline-flex items-center justify-end gap-2"><span className={`font-semibold tabular-nums ${k.rank <= 10 ? 'text-emerald-700' : 'text-slate-800'}`}>#{k.rank}</span>
                             {verdict && <span title={verdict.why}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red' }[verdict.status]}>{verdict.label}</Badge></span>}</span> : <span className="text-slate-400 text-13">Not seen yet</span>}
                         </td>
@@ -823,7 +823,11 @@ function Tracked({ b, kw }) {
                             <button type="button" onClick={() => setEditing(k.id)} className="font-semibold text-amber-700 hover:underline cursor-pointer">Choose a page</button>
                           )}
                         </td>
-                        <td className="px-3 text-right"><button type="button" onClick={() => remove(k)} disabled={busy === `d${k.id}`} className="p-2 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer" aria-label={`Stop tracking ${k.keyword}`} title="Stop tracking"><Trash2 size={15} /></button></td>
+                        <td className="px-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                          <Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`}><Act icon={Search} tone="sky" tip="Check: open its searches per month, cost and related ideas." /></Link>
+                          <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`}><Act icon={PenLine} tone="violet" tip="Write: start a blog post for this keyword in the blog writer." /></Link>
+                          <Act icon={Trash2} tone="rose" tip="Remove: stop tracking this keyword. Its rank history is no longer shown." busy={busy === `d${k.id}`} onClick={() => remove(k)} />
+                        </span></td>
                       </tr>);
                   })}
                   {!rows.length && <tr><td colSpan={6} className="px-5 py-12 text-center text-14 text-slate-500">No keyword matches. <button type="button" onClick={() => { go('all'); setQ(''); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button></td></tr>}
@@ -838,7 +842,7 @@ function Tracked({ b, kw }) {
             <span>More:</span>
             <Link to="/keyword-management/mapping"><Button size="sm">Keyword Mapping</Button></Link>
             <Link to="/keyword-management/topics"><Button size="sm">Topics</Button></Link>
-            <Link to="/keyword-management/use"><Button size="sm">Where to use them</Button></Link>
+            <Link to="/keyword-management/use"><Button size="sm">Keyword Usage</Button></Link>
             <Link to="/keyword-management/status"><Button size="sm">Rankings</Button></Link>
           </div>
         </>
@@ -1423,7 +1427,7 @@ function UseIt({ b, kw }) {
   const d = usage.data;
   const addQuestion = (k) => run(`g${k.id}`, async () => { const r = await api(`/businesses/${b.id}/keywords/${k.id}/geo-prompt`, { method: 'POST', body: {} }); usage.reload(true); kw.reload(true); toast(r.added ? `Added to AI search: “${r.prompt}”` : 'That question is already tracked in AI search.'); });
   const setUses = (k, uses) => run(`u${k.id}`, async () => { await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, uses } }); usage.reload(true); kw.reload(true); });
-  if (!d) return usage.error ? <ErrorNote>{usage.error.message}</ErrorNote> : <SkCard title="Where to use your keywords" pad={false}><SkTable headers={['Keyword', 'Website', 'Blog', 'Google posts', 'AEO', 'AI search', 'ChatGPT']} rows={6} bare /></SkCard>;
+  if (!d) return usage.error ? <ErrorNote>{usage.error.message}</ErrorNote> : <SkCard title="Keyword Usage" pad={false}><SkTable headers={['Keyword', 'Website', 'Blog', 'Google posts', 'AEO', 'AI search', 'ChatGPT']} rows={6} bare /></SkCard>;
   if (!d.total) return <Card><p className="py-10 text-center text-13 text-slate-500">Save some keywords first: find them in <Link to="/keyword-management/ai" className="font-semibold text-indigo-600 hover:underline">Find Keywords</Link>, then come back to put them to work.</p></Card>;
   const rows = d.items.filter(i => !onlyOpen || AREA_ORDER.some(a => i.planned.includes(a) && i.used[a] === false));
   const link = (a, i) => ({
@@ -1487,7 +1491,7 @@ function UseIt({ b, kw }) {
 const FIND_TABS = ['ai', 'discover', 'planner', 'explorer'];
 const SAVE_TABS = ['tracked', 'topics', 'use', 'status'];
 const SOURCES = [['ai', 'AI suggestions', 'Keywords and questions written from what your business has really done and could grow into'], ['discover', 'Ideas for my business', 'Built from your services, area, website and competitors'], ['planner', 'Google numbers', 'Search volume, competition and bids from the Google Keyword Planner'], ['explorer', 'Other platforms', 'Suggestions from YouTube, Bing, Amazon and more']];
-const SAVED_VIEWS = [['tracked', 'My keywords', 'Every saved keyword with its rank and the page it should rank with'], ['topics', 'Topics', 'Group the keywords into topics, one page per topic'], ['use', 'Where to use them', 'Blog, Google posts, AEO, GEO, ChatGPT and the website'], ['status', 'Rankings', 'Where each keyword ranks now, what it earns and whether it is worth pushing']];
+const SAVED_VIEWS = [['tracked', 'My keywords', 'Every saved keyword with its rank and the page it should rank with'], ['topics', 'Topics', 'Group the keywords into topics, one page per topic'], ['use', 'Keyword Usage', 'Blog, Google posts, AEO, GEO, ChatGPT and the website'], ['status', 'Rankings', 'Where each keyword ranks now, what it earns and whether it is worth pushing']];
 const pill = (on) => `h-9 px-4 rounded-full text-13 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
 
 function Keywords({ b, tab, kw, onSaved, seedSearch }) {
@@ -1508,7 +1512,7 @@ function Keywords({ b, tab, kw, onSaved, seedSearch }) {
 
 /** The four steps (find, save, group, track), where the project stands on each. */
 function PathBar({ progress, tab, setTab }) {
-  const at = FIND_TABS.includes(tab) ? 'find' : tab === 'tracked' ? 'save' : tab === 'topics' ? 'group' : 'use';  // 'status' belongs with the last step
+  const at = FIND_TABS.includes(tab) ? 'find' : tab === 'tracked' ? 'save' : tab === 'topics' ? 'group' : tab === 'status' ? 'track' : 'use';
   const go = { find: 'ai', save: 'tracked', group: 'topics', use: 'use' };
   const steps = progress?.steps || [];
   if (!steps.length) return <div className="h-16 rounded-xl bg-slate-100 animate-pulse mb-5" role="status" aria-busy="true" />;

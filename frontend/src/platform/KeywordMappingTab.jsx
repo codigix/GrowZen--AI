@@ -1,8 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Copy, ExternalLink, PenLine } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Copy, ExternalLink, Lightbulb, PenLine, Search } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
+import { Act, Head } from './TableBits';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 
@@ -49,7 +50,14 @@ export default function KeywordMappingTab({ b }) {
         <div className="overflow-x-auto">
           <table className="w-full text-13 min-w-[760px]">
             <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500">
-              <tr><th className="px-3 py-2 text-left">Page</th><th className="px-3 py-2 text-left">Main keyword</th><th className="px-3 py-2 text-right">Searches / mo</th><th className="px-3 py-2 text-left">Also on this page</th><th className="px-3 py-2 text-left">Status</th></tr>
+              <tr>
+                <th className="px-3 py-2 text-left"><Head what="A page of your website." why="Click the address to open it." from="the last website scan (Website Audit).">Page</Head></th>
+                <th className="px-3 py-2 text-left"><Head what="The keyword this page should rank for: the most searched keyword found on it." why="One main keyword per page keeps your pages from competing with each other." from="your saved keywords matched to the page title, heading and description from the website scan.">Main keyword</Head></th>
+                <th className="px-3 py-2 text-right"><Head right what="Monthly searches for the main keyword." from="Google Ads Keyword Planner.">Searches / mo</Head></th>
+                <th className="px-3 py-2 text-left"><Head what="Other saved keywords this page also covers." why="They support the main keyword.">Also on this page</Head></th>
+                <th className="px-3 py-2 text-left"><Head what="Saved: written on the keywords already. Suggested: our proposal, not saved yet." why="Press Save the mapping to save the suggestions.">Status</Head></th>
+                <th className="px-3 py-2 text-right"><Head right what="Things you can do for this page." why="Open the page, check its keyword, or find a keyword if it has none.">Actions</Head></th>
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {d.pages.map(p => (
@@ -63,7 +71,14 @@ export default function KeywordMappingTab({ b }) {
                   <td className="px-3 py-2.5 text-12.5 text-slate-600 max-w-[260px]">{p.secondary.length ? <span title={p.secondary.join(', ')}>{p.secondary.slice(0, 2).join(', ')}{p.secondary.length > 2 ? ` +${p.secondary.length - 2}` : ''}</span> : <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     {!p.primary ? <Link to={`/keyword-management/discover?q=${encodeURIComponent((p.title || p.path).split(/[|\-–:]/)[0].trim().slice(0, 40))}`} className="text-12.5 font-semibold text-amber-700 hover:underline">Find a keyword</Link>
-                      : p.saved ? <Badge tone="green">Saved</Badge> : <Badge tone="amber">Suggested</Badge>}
+                      : p.saved ? <span title="Written on the keyword: it is saved"><Badge tone="green">Saved</Badge></span> : <span title="Our proposal. Press Save the mapping to keep it"><Badge tone="amber">Suggested</Badge></span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                    <span className="inline-flex gap-1.5">
+                      <a href={p.url} target="_blank" rel="noreferrer"><Act icon={ExternalLink} tone="slate" tip="Open: show this page on your website in a new tab." /></a>
+                      {p.primary ? <Link to={`/keyword-overview?q=${encodeURIComponent(p.primary)}`}><Act icon={Search} tone="sky" tip="Check keyword: open the searches, cost and related ideas for its main keyword." /></Link>
+                        : <Link to={`/keyword-management/discover?q=${encodeURIComponent((p.title || p.path).split(/[|\-–:]/)[0].trim().slice(0, 40))}`}><Act icon={Lightbulb} tone="indigo" tip="Find a keyword: search for keywords this page could rank for." /></Link>}
+                    </span>
                   </td>
                 </tr>))}
             </tbody>
@@ -76,7 +91,13 @@ export default function KeywordMappingTab({ b }) {
           <div className="overflow-x-auto">
             <table className="w-full text-13 min-w-[700px]">
               <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500">
-                <tr><th className="px-3 py-2 text-left">Make a</th><th className="px-3 py-2 text-left">For the keyword</th><th className="px-3 py-2 text-right">Searches / mo</th><th className="px-3 py-2 text-left">Suggested address</th><th className="px-3 py-2 text-right">Do it</th></tr>
+                <tr>
+                  <th className="px-3 py-2 text-left"><Head what="What to make: a page for people who want to buy or book, or a blog post for questions and guides." why="Keywords no page covers cannot rank.">Make a</Head></th>
+                  <th className="px-3 py-2 text-left"><Head what="The saved keyword that has no page." from="your saved keywords compared with the website scan.">For the keyword</Head></th>
+                  <th className="px-3 py-2 text-right"><Head right what="Monthly searches." from="Google Ads Keyword Planner.">Searches / mo</Head></th>
+                  <th className="px-3 py-2 text-left"><Head what="A web address made from the keyword." why="Use it when you create the page.">Suggested address</Head></th>
+                  <th className="px-3 py-2 text-right"><Head right what="Copy brief: a short note for whoever builds the page. Write: open the blog writer with this keyword ticked.">Actions</Head></th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {todo.map(x => (
@@ -87,8 +108,8 @@ export default function KeywordMappingTab({ b }) {
                     <td className="px-3 py-2.5 text-12.5 text-slate-500 font-mono">{x.slug}</td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
                       <span className="inline-flex gap-1.5">
-                        <Button size="sm" icon={Copy} onClick={() => copy(x, x.type)} title="Copies the title, address and what to put where, to send to whoever builds the page">Copy brief</Button>
-                        <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(x.keyword)}`}><Button size="sm" variant={x.type === 'post' ? 'primary' : undefined} icon={PenLine}>Write {x.type === 'post' ? 'the post' : 'it as a post'}</Button></Link>
+                        <Act icon={Copy} tone="slate" tip="Copy brief: copy the title, address and what to put where, to send to whoever builds the page." onClick={() => copy(x, x.type)} />
+                        <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(x.keyword)}`}><Act icon={PenLine} tone="violet" tip={x.type === 'post' ? 'Write the post: open the blog writer with this keyword ticked.' : 'Write it as a blog post instead: open the blog writer with this keyword ticked.'} /></Link>
                       </span>
                     </td>
                   </tr>))}

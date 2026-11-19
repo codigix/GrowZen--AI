@@ -1,7 +1,7 @@
 """Which services (modules) a project is onboarded for: SEO, GEO, AEO and GMB, and removing one without removing the project.
 
 `Business.modules` is a list subset of MODULES. NULL means "not chosen yet": SEO, GEO and AEO are on for every project, and GMB is on
-when a Google profile is linked (or a Google account is connected to it). Once a person changes a service the list is saved explicitly.
+when a Google profile is linked, a Google account is connected to it, or it has a Google Maps listing. Once a person changes a service the list is saved explicitly.
 
 GEO and AEO share one dataset (GeoPrompt / GeoResult: the questions asked to AI engines and who they name), so they are split by engine:
   * GEO (generative engines): the chat assistants that write an answer from their own knowledge: ChatGPT, Gemini, Claude, DeepSeek.
@@ -22,13 +22,13 @@ LABELS = {"seo": "SEO", "geo": "GEO", "aeo": "AEO", "gmb": "GMB"}
 GEO_ENGINES = {"ChatGPT", "Gemini", "Claude", "DeepSeek"}  # everything else (Perplexity) counts as an answer engine
 # Scheduled jobs that belong to one service ("geo" runs for GEO or AEO).
 JOB_MODULE = {"full_audit": "seo", "rank_scan": "seo", "technical": "seo", "report": "seo", "weekly_plan": "seo", "site_research": "seo", "site_crawl": "seo",
-              "reviews": "gmb", "posts": "gmb", "geo": "geo", "autopilot": "gmb"}
+              "reviews": "gmb", "posts": "gmb", "geo": "geo", "autopilot": "gmb", "indexing": "seo"}
 
 
 def enabled(b: Business) -> list[str]:
     if b.modules is not None:
         return [m for m in MODULES if m in b.modules]
-    return [m for m in MODULES if m != "gmb" or b.gbp_location or b.connection_id]
+    return [m for m in MODULES if m != "gmb" or b.gbp_location or b.connection_id or b.place_id]
 
 
 def job_enabled(b: Business, job: str) -> bool:

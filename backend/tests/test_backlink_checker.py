@@ -11,6 +11,14 @@ PAGE = """<html><head><title>Best salons in Pune - Pune Blog</title></head><body
 </article><footer><a href="https://salon.example/">home</a></footer></body></html>""" % ("word " * 80)
 
 
+
+@pytest.fixture(autouse=True)
+def _no_outside_lookups(monkeypatch):
+    """The real keys in .env must never make these tests call Google, DataForSEO or Open PageRank."""
+    from app.services import backlink_checker as bc
+    for name in ("google_configured", "dfs_configured", "opr_configured"):
+        monkeypatch.setattr(bc, name, lambda: False)
+
 def fake_fetch(monkeypatch, pages):
     def fetch(url):
         if url in pages:
@@ -71,7 +79,7 @@ def test_moz_numbers_appear_only_when_configured_and_are_passed_through_unchange
     monkeypatch.setattr(s, "moz_access_id", "", raising=False)
     monkeypatch.setattr(s, "moz_secret_key", "", raising=False)
     rows, note = bc.check_many(["https://blog.example.com/p"], "salon.example")
-    assert "moz" not in rows[0] and "Moz" in note and "nothing is estimated" in note
+    assert "moz" not in rows[0] and not note  # no Moz: no DA/PA/spam and no notice either
     monkeypatch.setattr(s, "moz_access_id", "id", raising=False)
     monkeypatch.setattr(s, "moz_secret_key", "key", raising=False)
     sent = {}
@@ -112,3 +120,19 @@ def test_the_api_saves_scopes_and_shows_a_lost_link(client, monkeypatch):
     assert client.post(base, json={"sources": ["https://x.example/"], "target": "  "}).status_code in (200, 422)
     assert client.delete(f"{base}/{saved['rows'][0]['id']}").status_code == 204 and client.get(base).json()["rows"] == []
     assert client.get("/api/v1/businesses/987654/backlink-check").status_code == 404
+
+
+def test_google_presence_reads_indexing_from_a_site_search(monkeypatch):
+    class R:
+        status_code = 200
+        def json(self): return {"organic": [{"link": "https://www.blog.example/post/", "title": "My post", "snippet": "s", "position": 1}]}
+
+    monkeypatch.setattr(bc, "google_configured", lambda: True)
+    monkeypatch.setattr(get_settings(), "serper_api_key", "k", raising=False)
+    monkeypatch.setattr(bc.httpx, "post", lambda *a, **k: R())
+    bc._GOOGLE.clear()
+    assert bc.google_presence("https://blog.example/post")["indexed"] is True
+    assert bc.google_presence("https://blog.example/other")["indexed"] is False
+    monkeypatch.setattr(bc.httpx, "post", lambda *a, **k: type("E", (), {"status_code": 400, "json": lambda self: {}})())
+    bc._GOOGLE.clear()
+    assert bc.google_presence("https://blog.example/post") is None  # out of credits or refused: unknown, never "not indexed"

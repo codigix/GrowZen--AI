@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2, Plus, Trash2, Loader2 } from 'lucide-react';
+import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2, Plus, Trash2, Loader2, BookOpen, Send } from 'lucide-react';
 import { SeoShell, Card, Button, Badge, Stat, ErrorNote, Modal, Field, inputCls, useAction, useToast, useDoubleConfirm, SkList } from './SeoUi';
 import Select from '../components/Select';
-import { api, useApi, usePoll, fmtDateTime } from './seoApi';
+import { Act, Head, OpenAct } from './TableBits';
+import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 import Tip from './Tip';
 
 const VIEWS = {
@@ -36,18 +37,24 @@ function Setup({ s }) {
   const note = !c.configured
     ? 'Your backlink crawler is not connected. Add CRAWLER_URL and CRAWLER_API_KEY to the backend settings; the links it finds then appear here.'
     : c.last_error ? `The last sync failed: ${c.last_error}` : !c.last_sync_at ? 'The crawler is connected but has not synced this project yet. Press “Find backlinks now”.' : null;
-  if (!note && s.moz.configured) return null;
+  if (!note) return null;
+  const all = [note, false && 'Site strength comes from your own crawler: how many links and pages each site gives you. DA, PA and Spam Score need a Moz account and are optional.'].filter(Boolean);
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2 text-12.5 text-amber-900 flex items-center gap-2 min-w-0" title={all.join(' ')}>
+      <Info size={14} className="shrink-0" /><span className="truncate">{all[0]}</span>{all.length > 1 && <span className="shrink-0 text-amber-700">+{all.length - 1} more note</span>}
+    </div>
+  );
+  // eslint-disable-next-line no-unreachable
   return (
     <Card>
       <div className="grid gap-1.5 text-13">
         {note && <p className="flex gap-2 text-amber-800"><Info size={15} className="shrink-0 mt-0.5" />{note}</p>}
-        {!s.moz.configured && <p className="flex gap-2 text-slate-600"><Info size={15} className="shrink-0 mt-0.5" />Domain Authority, Page Authority and Spam Score come from Moz. Add MOZ_ACCESS_ID and MOZ_SECRET_KEY to the backend settings to show them; until then they read “—” and nothing is estimated.</p>}
       </div>
     </Card>
   );
 }
 
-function Summary({ s, b, reload, compact = false }) {
+function Summary({ s, b, reload, compact = false, main = false }) {
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   if (s.state !== 'ok') return null;
@@ -59,6 +66,7 @@ function Summary({ s, b, reload, compact = false }) {
     return (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-13 text-slate-600">
         <span><b className="text-slate-900">{s.domain}</b>: {s.totals.live} live links from {s.totals.referring_domains} domains{s.crawler.last_sync_at ? `, synced ${day(s.crawler.last_sync_at)}` : ''}</span>
+        {main && <span className="text-slate-500">{t.dofollow_share == null ? '' : `${t.dofollow_share}% follow · `}{t.new_30d} new · {t.lost_30d} lost (30 days) · {s.useful.useful || 0} useful{s.useful.risky ? `, ${s.useful.risky} risky` : ''}</span>}
         <span className="ml-auto flex items-center gap-3"><Link to="/backlinks/links" className="font-semibold text-indigo-600 hover:underline">All backlinks</Link><Button size="sm" icon={Link2} busy={busy === 'sync'} onClick={sync}>Find backlinks now</Button></span>
         {toastNode}
       </div>
@@ -68,7 +76,7 @@ function Summary({ s, b, reload, compact = false }) {
     <Card title={`Backlinks to ${s.domain}`} subtitle={s.crawler.last_sync_at ? `Last crawler sync ${day(s.crawler.last_sync_at)}${s.crawler.running ? ' (running now)' : ''}` : 'Read from your backlink crawler'}
       action={<div className="flex flex-wrap gap-2">
         <Button size="sm" icon={Sparkles} busy={busy === 'score'} onClick={score}>Score the links</Button>
-        <Button size="sm" icon={RefreshCw} busy={busy === 'moz'} disabled={!s.moz.configured} onClick={moz}>Get DA / PA / spam</Button>
+        {s.moz.configured && <Button size="sm" icon={RefreshCw} busy={busy === 'moz'} onClick={moz}>Get DA / PA / spam</Button>}
         <Button size="sm" variant="primary" icon={Link2} busy={busy === 'sync'} onClick={sync}>Find backlinks now</Button>
         <Link to="/backlinks/sites"><Button size="sm">Tracked sites</Button></Link>
       </div>}>
@@ -108,17 +116,38 @@ function useList(b, view, params) {
 }
 function useDebounced(v, ms = 300) { const [x, setX] = useState(v); useEffect(() => { const t = setTimeout(() => setX(v), ms); return () => clearTimeout(t); }, [v, ms]); return x; }
 
+const hasMoz = (rows) => (rows || []).some(x => x.metrics && (x.metrics.da != null || x.metrics.spam != null));
+/** What our own crawler knows about the site: how many links and pages it gives, and since when. No third-party score. */
+function SiteCell({ m }) {
+  const c = m?.crawler;
+  if (!c || !c.links) return <span className="text-slate-300">—</span>;
+  return <Tip text={`Our crawler found ${c.links} live link${c.links === 1 ? '' : 's'} from ${c.pages} page${c.pages === 1 ? '' : 's'} of this site${c.sites_linked > 1 ? `, to ${c.sites_linked} of the sites we track` : ''}.${c.linked_by ? ` ${c.linked_by} site${c.linked_by === 1 ? '' : 's'} we crawled link to it.` : ''}${c.sitewide ? ' So many links from one site count as about one link.' : ''}`}>
+    <span className="tabular-nums">{c.links} link{c.links === 1 ? '' : 's'}{c.sitewide && <span className="ml-1 text-11.5 text-amber-600">sitewide</span>}</span></Tip>;
+}
+
 function Links({ b }) {
-  const [f, setF] = useState({ status: 'live', follow: '', category: '', useful: '', sort: 'recent' });
-  const [q, setQ] = useState('');
+  const [params] = useSearchParams();
+  const [busyScores, errScores, runScores] = useAction();
+  const [toastS, toastSNode] = useToast();
+  const [f, setF] = useState({ status: params.get('status') || 'live', follow: params.get('follow') || '', category: '', useful: params.get('useful') || '', sort: 'recent' });
+  const [q, setQ] = useState(params.get('q') || ''); // opened from a site's row: only that site's links
   const dq = useDebounced(q);
   const r = useList(b, 'links', { ...f, q: dq, limit: 100 });
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const sc = d.scores || {};
+  const showScores = hasMoz(d.links) || sc.configured; // the columns are there as soon as a data service can fill them
+  const getScores = () => runScores('scores', async () => { const x = await api(`/businesses/${b.id}/backlink-hub/metrics/refresh`, { method: 'POST' }); toastS(x.message); r.reload(true); });
   return (
     <Card pad={false}>
+      {sc.configured && (
+        <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3 text-13">
+          <Button size="sm" variant={sc.missing ? 'primary' : undefined} icon={RefreshCw} busy={busyScores === 'scores'} onClick={getScores}>{sc.missing ? `Get DA, PA and Spam for ${sc.missing} site${sc.missing === 1 ? '' : 's'}` : 'Refresh DA, PA and Spam'}</Button>
+          <span className="text-slate-500">{sc.missing ? `${sc.sites - sc.missing - sc.no_data} of ${sc.sites} linking sites have figures.` : `${sc.sites - sc.no_data} of ${sc.sites} linking sites have figures.`}{sc.no_data ? ` ${sc.no_data} are too new or too small for ${sc.source} to know.` : ''} From {sc.source}: DA is the site's rank, PA its home page's rank (0-100), Spam is the spam score (lower is better). Not Moz's own numbers.</span>
+          <ErrorNote>{errScores}</ErrorNote>
+        </div>)}
       <Filters q={q} setQ={setQ}>
         <Select value={f.status} onChange={set('status')} className={sel} aria-label="Status"><option value="live">Live links</option><option value="lost">Lost links</option><option value="all">All</option></Select>
         <Select value={f.follow} onChange={set('follow')} className={sel} aria-label="Follow type"><option value="">Any follow type</option><option value="dofollow">Follow</option><option value="nofollow">Nofollow</option><option value="sponsored">Sponsored</option><option value="ugc">UGC</option></Select>
@@ -130,8 +159,9 @@ function Links({ b }) {
         <table className="w-full min-w-[1150px] text-13">
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
             <th className={TH}>Linking page</th><th className={TH}>Anchor text</th><th className={TH}>Goes to</th><th className={TH}>Follow</th><th className={TH}>Category</th>
-            <th className={`${TH} text-right`}><Tip text="Moz Domain Authority of the linking site (0-100).">DA</Tip></th><th className={`${TH} text-right`}><Tip text="Moz Page Authority of the linking page (0-100).">PA</Tip></th><th className={`${TH} text-right`}><Tip text="Moz Spam Score: how much the site looks like sites Google penalised. Lower is better.">Spam</Tip></th>
+            {showScores ? <><th className={`${TH} text-right`}><Tip text="Authority of the linking site, 0-100 (the site's rank at the data service).">DA</Tip></th><th className={`${TH} text-right`}><Tip text="Strength of the site's home page, 0-100.">PA</Tip></th><th className={`${TH} text-right`}><Tip text="Spam score of the linking site. Lower is better.">Spam</Tip></th><th className={TH}><Head what="How many live links this site gives you, and how many of its pages carry them." why="A link repeated on many pages of one site counts as about one link." from="our backlink crawler.">Site gives you</Head></th></> : <th className={TH}><Head what="How many live links this site gives you, and how many of its pages carry them." why="A link repeated on many pages of one site counts as about one link, so more is not always better." from="our backlink crawler.">Site gives you</Head></th>}
             <th className={TH}><Tip text="Our judgement from relevance to your business, spam risk and the follow type. Hover a badge for the reason.">Useful?</Tip></th><th className={TH}>First seen</th>
+            <th className={`${TH} text-right`}><Head right what="Open the linking page, or your own page it points to." why="See the link in its real setting.">Actions</Head></th>
           </tr></thead>
           <tbody className="divide-y divide-slate-100">
             {d.state === 'no_target' && <Empty>Add the project's website first.</Empty>}
@@ -142,9 +172,13 @@ function Links({ b }) {
                 <td className="px-3 py-3 max-w-[160px]"><span className="block truncate text-slate-600" title={x.target_url}>{path(x.target_url)}</span></td>
                 <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
                 <td className="px-3 py-3 capitalize text-slate-600">{x.category.label}</td>
-                <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td>
+                {showScores ? <><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td><td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
                 <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                 <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(x.first_seen)}</td>
+                <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                  <OpenAct url={x.source_url} tip="Open the linking page: see the link where it sits on the other website." />
+                  <OpenAct url={x.target_url} tip="Open your page: the page of your site this link points to." />
+                </span></td>
               </tr>
             ))}
             {d.state === 'ok' && !d.links.length && <Empty>{d.live_total ? 'No link matches these filters.' : 'No backlinks yet. Connect the crawler and press “Find backlinks now”.'}</Empty>}
@@ -152,6 +186,7 @@ function Links({ b }) {
         </table>
       </div>
       <p className="px-5 py-3 border-t border-slate-100 text-11.5 text-slate-400">{d.total} link{d.total !== 1 ? 's' : ''}. Follow type and anchor are read from the page by your crawler. “Useful?” is our own judgement, not a Google or Moz metric.</p>
+      {toastSNode}
     </Card>
   );
 }
@@ -174,7 +209,7 @@ function Domains({ b }) {
         <table className="w-full min-w-[1050px] text-13">
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
             <th className={TH}>Domain</th><th className={`${TH} text-right`}>Live links</th><th className={TH}>Follow</th><th className={TH}>Category</th><th className={TH}>Top anchors</th>
-            <th className={`${TH} text-right`}>DA</th><th className={`${TH} text-right`}>Spam</th><th className={`${TH} text-right`}>Relevance</th><th className={TH}>Useful?</th><th className={TH}>Last seen</th></tr></thead>
+            {hasMoz(d.domains) ? <><th className={`${TH} text-right`}>DA</th><th className={`${TH} text-right`}>Spam</th></> : <th className={TH}><Head what="How many live links and pages this site gives you." from="our backlink crawler.">Site gives you</Head></th>}<th className={`${TH} text-right`}>Relevance</th><th className={TH}>Useful?</th><th className={TH}>Last seen</th><th className={`${TH} text-right`}><Head right what="Open the site, or list only the links this site gives you." why="Check what a site links to before you reply to it.">Actions</Head></th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {d.domains?.map(x => (
               <tr key={x.domain} className="hover:bg-slate-50 align-middle">
@@ -183,10 +218,14 @@ function Domains({ b }) {
                 <td className="px-3 py-3 text-12 text-slate-600">{x.dofollow} follow · {x.nofollow} other</td>
                 <td className="px-3 py-3 text-slate-600">{x.category.label}</td>
                 <td className="px-3 py-3 max-w-[220px]"><span className="block truncate text-slate-600" title={x.anchors.join(', ')}>{x.anchors.join(', ') || '—'}</span></td>
-                <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td>
+                {hasMoz(d.domains) ? <><td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
                 <td className="px-3 py-3 text-right tabular-nums">{x.quality ? x.quality.relevance : <span className="text-slate-300">—</span>}</td>
                 <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                 <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(x.last_seen)}</td>
+                <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                  <OpenAct url={x.sample_url} tip="Open the site: show a page of it that links to you." />
+                  <Link to={`/backlinks/links?q=${encodeURIComponent(x.domain)}`}><Act icon={Link2} tone="sky" tip="Show its links: list only the links this site gives you." /></Link>
+                </span></td>
               </tr>
             ))}
             {d.state === 'ok' && !d.domains.length && <Empty>No referring domains yet.</Empty>}
@@ -202,6 +241,86 @@ const EFFORT = { low: ['Easy', 'green'], medium: ['Some work', 'amber'], high: [
 const STAGES = [['todo', 'To do'], ['progress', 'In progress'], ['done', 'Got the link'], ['skipped', 'Skipped']];
 const stageOf = (st) => (st === 'contacted' ? 'progress' : st === 'live' ? 'done' : st === 'skipped' ? 'skipped' : 'todo');
 
+/** Write, address, send and track the pitch email for one place. Sending only happens when the button is pressed. */
+const PURPOSES = [['submit_link', 'Post my link for me'], ['guest_post', 'Guest article'], ['listing', 'Add me to your list'], ['mention', 'Link my mention']];
+
+function EmailPanel({ b, item, message, onChanged }) {
+  const base = `/businesses/${b.id}/backlink-hub`;
+  const plan = useApi(`${base}/plan`);
+  const row = (plan.data?.items || []).find(x => x.domain === item.domain);
+  const [to, setTo] = useState('');
+  const [subject, setSubject] = useState(`Link request from ${b.name || 'our business'}`);
+  const [body, setBody] = useState(message || '');
+  const [found, setFound] = useState(null);
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
+  const [asks, setAsks] = useState(false);
+  const [link, setLink] = useState({ url: b.website || '', title: b.name || '', description: '' });
+  const [posted, setPosted] = useState('');
+  const [checked, setChecked] = useState(null);
+  useEffect(() => { setBody(message || ''); }, [message]);
+  useEffect(() => { if (row?.published_url && !posted) setPosted(row.published_url); }, [row?.published_url]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (row?.contact_email && !to) setTo(row.contact_email); }, [row?.contact_email]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (item.email && !to) setTo(item.email); }, [item.email]); // eslint-disable-line react-hooks/exhaustive-deps
+  const find = () => run('find', async () => { const r = await api(`${base}/outreach/contacts`, { method: 'POST', body: { domain: item.domain } }); setFound(r); if (r.contacts[0] && !to) setTo(r.contacts[0].email); });
+  const [kind, setKind] = useState('submit_link');
+  const draft = () => run('draft', async () => { const r = await api(`${base}/outreach/generate`, { method: 'POST', body: { domain: item.domain, kind, ...link, about: item.name || '' } }); setSubject(r.subject); setBody(r.body); });
+  const check = () => run('check', async () => { const r = await api(`${base}/outreach/check-link`, { method: 'POST', body: { domain: item.domain, url: posted.trim() } }); setChecked(r.result); plan.reload(true); onChanged?.(); });
+  const left = /\[add/i.test(body) || /\[add/i.test(subject);
+  const send = () => {
+    if (!window.confirm(`Send this email to ${to}?\n\nIt goes from your platform mail account and replies come to ${b.contact_email || 'that account'}.`)) return;
+    run('send', async () => { await api(`${base}/outreach/send`, { method: 'POST', body: { domain: item.domain, to, subject, body, name: item.name, source: item.source || 'competitor' } }); plan.reload(true); toast(`Email sent to ${to}`); onChanged?.(); });
+  };
+  const replied = (v) => run('replied', async () => { await api(`${base}/outreach/replied`, { method: 'POST', body: { domain: item.domain, replied: v } }); plan.reload(true); onChanged?.(); });
+  const inp = 'h-9 px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-full';
+  return (
+    <section className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-2.5">
+      <h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500">Email this site</h4>
+      {row?.emailed_at && (
+        <p className={`rounded-lg px-3 py-2 text-12.5 ${row.replied_at ? 'bg-emerald-50 text-emerald-800' : row.follow_up_due ? 'bg-amber-50 text-amber-800' : 'bg-slate-50 text-slate-700'}`}>
+          Sent {row.email_count > 1 ? `${row.email_count} times, last ` : ''}on {fmtDate(row.emailed_at)} to <b>{row.contact_email}</b>.{' '}
+          {row.replied_at ? `They replied on ${fmtDate(row.replied_at)}.` : row.follow_up_due ? 'No reply for over a week: send a short follow-up.' : 'No reply yet.'}{' '}
+          <button type="button" onClick={() => replied(!row.replied_at)} className="font-semibold underline cursor-pointer">{row.replied_at ? 'Not replied' : 'They replied'}</button>
+        </p>
+      )}
+      <div className="flex gap-2"><input value={to} onChange={e => setTo(e.target.value)} placeholder="Their email address" aria-label="To" className={inp} />
+        <Button size="sm" icon={Search} busy={busy === 'find'} onClick={find}>Find email</Button></div>
+      {found && (found.contacts.length ? (
+        <div className="flex flex-wrap items-center gap-1.5 text-12"><span className="text-slate-500">Published on the site:</span>
+          {found.contacts.map(c => <button key={c.email} type="button" onClick={() => setTo(c.email)} title={`${c.how} on ${c.page}`} className={`rounded-full px-2.5 py-1 ring-1 ring-inset cursor-pointer ${to === c.email ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{c.email}</button>)}</div>
+      ) : <p className="text-12.5 text-amber-800">{found.note}</p>)}
+      <div className="flex flex-wrap items-center gap-2 text-12.5"><span className="text-slate-500">This platform posts links for you?</span>
+        <button type="button" onClick={() => setAsks(v => !v)} className="font-semibold text-indigo-600 hover:underline cursor-pointer">{asks ? 'Hide' : 'Write the email for me'}</button></div>
+      {asks && (
+        <div className="grid gap-2 rounded-lg bg-slate-50 p-2.5">
+          <div className="flex flex-wrap gap-1.5">{PURPOSES.map(([k, l]) => <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={kind === k} className={`h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${kind === k ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{l}</button>)}</div>
+          <input value={link.url} onChange={e => setLink({ ...link, url: e.target.value })} placeholder="Your page to link to" aria-label="Your link" className={inp} />
+          <input value={link.title} onChange={e => setLink({ ...link, title: e.target.value })} placeholder="Title they should show" aria-label="Title" className={inp} maxLength={160} />
+          <input value={link.description} onChange={e => setLink({ ...link, description: e.target.value })} placeholder="One or two lines about it (optional)" aria-label="Description" className={inp} maxLength={600} />
+          <div><Button size="sm" icon={Sparkles} busy={busy === 'draft'} disabled={!link.url.trim()} onClick={draft}>Write the email</Button><span className="ml-2 text-11.5 text-slate-400">Written by AI when it is set up, from a template otherwise. You edit it before sending.</span></div>
+        </div>
+      )}
+      <input value={subject} onChange={e => setSubject(e.target.value)} maxLength={200} aria-label="Subject" className={inp} />
+      <textarea value={body} onChange={e => setBody(e.target.value)} rows={8} maxLength={5000} aria-label="Message" className="px-3 py-2 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-full" />
+      {left && <p className="text-12 text-amber-700">Fill in the [add ...] parts before sending.</p>}
+      <ErrorNote>{error}</ErrorNote>
+      <div className="flex items-center gap-3"><Button size="sm" variant="primary" icon={Send} busy={busy === 'send'} disabled={!to.includes('@') || left || body.trim().length < 30} onClick={send}>{row?.emailed_at ? 'Send again' : 'Send email'}</Button>
+        <span className="text-11.5 text-slate-400">Nothing is sent until you press this. Keep it honest and personal: no payment or link swaps.</span></div>
+      {row?.emailed_at && (
+        <div className="border-t border-slate-100 pt-2.5 grid gap-2">
+          <h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500">After they post it</h4>
+          <div className="flex gap-2"><input value={posted} onChange={e => setPosted(e.target.value)} placeholder={`Address of the page on ${item.domain} that has your link`} aria-label="Page with your link" className={inp} />
+            <Button size="sm" icon={Search} busy={busy === 'check'} disabled={posted.trim().length < 8} onClick={check}>Check the link</Button></div>
+          {(checked || row.link_checked_at) && (() => { const f = checked ? checked.found : row.link_found; const rel = checked ? checked.rel : row.link_rel; return f
+            ? <p className="rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2 text-12.5">Your link is there{rel && rel !== 'dofollow' ? ` (rel: ${rel}: it passes little ranking value)` : ' and it is followed'}. Marked as “Got the link”.</p>
+            : <p className="rounded-lg bg-amber-50 text-amber-800 px-3 py-2 text-12.5">{checked?.note || 'Your link was not on the page the last time we looked.'} Reply to them politely or check again later.</p>; })()}
+        </div>
+      )}
+      {toastNode}
+    </section>
+  );
+}
+
 function AdviceModal({ b, item, onClose, onChanged }) {
   const [adv, setAdv] = useState(null);
   const [note, setNote] = useState(item?.note || '');
@@ -212,8 +331,7 @@ function AdviceModal({ b, item, onClose, onChanged }) {
   useEffect(() => { if (item) { setAdv(null); setNote(item.note || ''); load(false); } }, [item?.domain]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!item) return null;
   const mark = (status) => run('mark', async () => { await api(`${base}/plan`, { method: 'POST', body: { domain: item.domain, status, note, source: item.source || 'competitor', name: item.name } }); toast(`Marked: ${WORK[status][0]}`); onChanged(); });
-  const copy = () => { try { navigator.clipboard.writeText(adv.message); toast('Message copied'); } catch { toast('Select the text and copy it'); } };
-  const [el, et] = EFFORT[adv?.effort] || EFFORT.medium;
+    const [el, et] = EFFORT[adv?.effort] || EFFORT.medium;
   return (
     <Modal open title={item.name || item.domain} onClose={onClose} width="max-w-2xl"
       footer={<div className="flex flex-wrap items-center gap-2 w-full">
@@ -232,8 +350,7 @@ function AdviceModal({ b, item, onClose, onChanged }) {
             <div className="flex flex-wrap items-center gap-2"><span className="text-slate-700">{adv.what_it_is}</span><Badge tone={et}>{el}</Badge><Badge tone={adv.method === 'ai' ? 'blue' : 'gray'}>{adv.method === 'ai' ? 'Advice by AI' : 'Standard advice'}</Badge></div>
             <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">What you get from a link here</h4><ul className="grid gap-1 list-disc pl-5 text-slate-700">{adv.what_you_get.map((x, i) => <li key={i}>{x}</li>)}</ul></section>
             <section><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">How to get it</h4><ol className="grid gap-1 list-decimal pl-5 text-slate-700">{adv.steps.map((x, i) => <li key={i}>{x}</li>)}</ol></section>
-            <section><div className="flex items-center justify-between mb-1.5"><h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500">Message you can send</h4><button type="button" onClick={copy} className="text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">Copy</button></div>
-              <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 ring-1 ring-inset ring-slate-200 p-3 text-12.5 text-slate-700 font-sans">{adv.message}</pre><p className="text-11.5 text-slate-400 mt-1">Fill in the [add …] parts before sending. Nothing is sent from here.</p></section>
+            <EmailPanel b={b} item={item} message={adv.message} onChanged={onChanged} />
             {adv.caution && <p className="rounded-lg bg-amber-50 text-amber-800 px-3 py-2 text-12.5">{adv.caution}</p>}
             <label className="grid gap-1"><span className="text-12 font-semibold text-slate-500">Your note (who you contacted, when)</span><input value={note} onChange={e => setNote(e.target.value)} maxLength={500} className="h-9 px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
             <button type="button" onClick={() => load(true)} className="text-12 text-slate-500 hover:underline w-fit cursor-pointer">Write the advice again</button>
@@ -260,18 +377,173 @@ function AiPlatforms({ b, onOpen, onChanged }) {
       {res?.state === 'no_ai' && <p className="text-13 text-amber-800">{res.message}</p>}
       {res?.state === 'error' && <p className="text-13 text-amber-800">{res.message}</p>}
       {res?.state === 'ok' && (res.platforms.length === 0 ? <p className="text-13 text-slate-500">Nothing new to suggest right now.</p> : (
-        <div className="grid gap-3 md:grid-cols-2">
-          {res.platforms.map(p => (
-            <div key={p.domain} className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-1.5 text-13">
-              <div className="flex items-center gap-2"><a href={`https://${p.domain}`} target="_blank" rel="noreferrer" className="font-semibold text-indigo-600 hover:underline inline-flex items-center gap-1">{p.name}<ExternalLink size={11} /></a><Badge tone="gray">{p.kind}</Badge></div>
-              <p className="text-slate-700"><span className="font-semibold">You get:</span> {p.why}</p>
-              <p className="text-slate-600"><span className="font-semibold">First step:</span> {p.how}</p>
-              <div className="flex gap-2 pt-1"><Button size="sm" busy={busy === p.domain} onClick={() => add(p)}>Add to my plan</Button><Button size="sm" onClick={() => onOpen({ domain: p.domain, name: p.name, source: 'ai' })}>How to get it</Button></div>
-            </div>
-          ))}
+        <div className="overflow-x-auto -mx-5">
+          <table className="w-full min-w-[820px] text-13">
+            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+              <th className={TH}><Head what="The website or listing site the AI suggests." from="the AI, from what your business does and where it is.">Site</Head></th>
+              <th className={TH}><Head what="The kind of place: directory, news, community, partner and so on.">Kind</Head></th>
+              <th className={TH}><Head what="What a link on this site gives you." why="Pick the places with the most value for you.">You get</Head></th>
+              <th className={TH}><Head what="The first thing to do to get the link." why="Start here, then open the Guide for the full steps and a message.">First step</Head></th>
+              <th className={`${TH} text-right`}><Head right what="Add the site to your plan, open its Guide, or open the site." why="Suggestions are not checked: look at the site before you use it.">Actions</Head></th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {res.platforms.map(p => (
+                <tr key={p.domain} className="align-top hover:bg-slate-50">
+                  <td className="px-3 py-3 font-semibold text-slate-900 whitespace-nowrap">{p.name}<span className="block text-11.5 font-normal text-slate-400">{p.domain}</span></td>
+                  <td className="px-3 py-3"><Badge tone="gray">{p.kind}</Badge></td>
+                  <td className="px-3 py-3 max-w-[280px] text-slate-700">{p.why}</td>
+                  <td className="px-3 py-3 max-w-[280px] text-slate-600">{p.how}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                    <Act icon={Plus} tone="green" tip="Add to plan: put this site in your link plan." busy={busy === p.domain} onClick={() => add(p)} />
+                    <Act icon={BookOpen} tone="violet" tip="Guide: how to get the link, with a draft message." onClick={() => onOpen({ domain: p.domain, name: p.name, source: 'ai' })} />
+                    <OpenAct url={`https://${p.domain}`} tip="Open: show the site in a new tab." />
+                  </span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ))}
       {res?.note && <p className="text-11.5 text-slate-400 mt-3">{res.note}</p>}
+      {toastNode}
+    </Card>
+  );
+}
+
+/** Write one email per chosen platform, let the owner read and fix each, then send them from the system. */
+function BulkModal({ b, platforms, onClose, onSent }) {
+  const base = `/businesses/${b.id}/backlink-hub`;
+  const [kind, setKind] = useState('submit_link');
+  const [drafts, setDrafts] = useState(null);
+  const [results, setResults] = useState(null);
+  const [busy, error, run] = useAction();
+  const write = () => run('write', async () => {
+    const out = [];
+    for (const p of platforms) {
+      const r = await api(`${base}/outreach/generate`, { method: 'POST', body: { domain: p.domain, kind, url: b.website || '', title: b.name || '', description: '', about: p.title || '' } });
+      out.push({ domain: p.domain, name: p.title || p.domain, to: p.emails[0]?.email || '', subject: r.subject, body: r.body, include: true });
+    }
+    setDrafts(out); setResults(null);
+  });
+  useEffect(() => { write(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = (i, patch) => setDrafts(d => d.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+  const ready = (drafts || []).filter(x => x.include && x.to.includes('@') && !/\[add/i.test(x.body));
+  const send = () => {
+    if (!window.confirm(`Send ${ready.length} email${ready.length === 1 ? '' : 's'}? Each goes to its own platform from your platform mail account.`)) return;
+    run('send', async () => { const r = await api(`${base}/outreach/send-many`, { method: 'POST', body: { items: ready.map(x => ({ domain: x.domain, to: x.to, subject: x.subject, body: x.body, name: x.name, source: 'manual' })) } }); setResults(r.results); onSent(); });
+  };
+  const inp = 'h-9 px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-full';
+  const res = (d) => (results || []).find(r => r.domain === d);
+  return (
+    <Modal open title={`Email ${platforms.length} platform${platforms.length === 1 ? '' : 's'}`} onClose={onClose} width="max-w-3xl"
+      footer={<div className="flex items-center gap-2 w-full"><span className="text-12 text-slate-500">Read each email: nothing is sent until you press Send. At most 10 at a time.</span>
+        <Button size="sm" className="ml-auto" onClick={onClose}>{results ? 'Done' : 'Close'}</Button>
+        {!results && <Button size="sm" variant="primary" icon={Send} busy={busy === 'send'} disabled={!ready.length} onClick={send}>Send {ready.length} email{ready.length === 1 ? '' : 's'}</Button>}</div>}>
+      <div className="grid gap-3 text-13">
+        <div className="flex flex-wrap items-center gap-1.5"><span className="text-slate-500">Purpose:</span>{PURPOSES.map(([k, l]) => <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={kind === k} className={`h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${kind === k ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{l}</button>)}
+          <Button size="sm" icon={Sparkles} busy={busy === 'write'} onClick={write}>Write again</Button></div>
+        <ErrorNote>{error}</ErrorNote>
+        {!drafts && <SkList rows={3} />}
+        {(drafts || []).map((x, i) => { const r = res(x.domain); return (
+          <div key={x.domain} className={`rounded-lg ring-1 ring-inset p-3 grid gap-2 ${r ? (r.ok ? 'ring-emerald-300 bg-emerald-50/40' : 'ring-red-300 bg-red-50/40') : 'ring-slate-200'}`}>
+            <div className="flex items-center gap-2"><input type="checkbox" checked={x.include} onChange={e => set(i, { include: e.target.checked })} aria-label={`Send to ${x.domain}`} disabled={!!results} />
+              <span className="font-semibold text-slate-900">{x.domain}</span>{r && <Badge tone={r.ok ? 'green' : 'red'}>{r.ok ? 'Sent' : 'Not sent'}</Badge>}</div>
+            {r && !r.ok && <p className="text-12.5 text-red-700">{r.error}</p>}
+            {!results && (<>
+              <input value={x.to} onChange={e => set(i, { to: e.target.value })} placeholder="Their email address" aria-label="To" className={inp} />
+              <input value={x.subject} onChange={e => set(i, { subject: e.target.value })} aria-label="Subject" className={inp} maxLength={200} />
+              <textarea value={x.body} onChange={e => set(i, { body: e.target.value })} rows={6} aria-label="Message" className="px-3 py-2 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-full" maxLength={5000} />
+            </>)}
+          </div>); })}
+      </div>
+    </Modal>
+  );
+}
+
+/** Searches that find sites worth emailing, and a place to add a site you found yourself. */
+function FindSites({ b, onOpen, onChanged }) {
+  const base = `/businesses/${b.id}/backlink-hub`;
+  const r = useApi(`${base}/outreach/search-ideas`);
+  const [site, setSite] = useState('');
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
+  const d = r.data;
+  const [found, setFound] = useState(null);
+  const [picked, setPicked] = useState([]);
+  const [mailing, setMailing] = useState(false);
+  const discover = (force = false) => run('discover', async () => { setFound(await api(`${base}/outreach/discover${force ? '?force=1' : ''}`, { method: 'POST' })); });
+  const take = (p, email) => run(`take${p.domain}`, async () => { await api(`${base}/plan`, { method: 'POST', body: { domain: p.domain, status: 'planned', source: 'manual', name: p.title || p.domain } }); onChanged(); setFound(f => ({ ...f, platforms: f.platforms.map(x => x.domain === p.domain ? { ...x, in_plan: 'planned' } : x) })); onOpen({ domain: p.domain, name: p.title || p.domain, source: 'manual', email }); });
+  const clean = site.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  const add = () => run('add', async () => { await api(`${base}/plan`, { method: 'POST', body: { domain: clean, status: 'planned', source: 'manual', name: clean } }); toast(`${clean} added to your plan`); setSite(''); onChanged(); onOpen({ domain: clean, name: clean, source: 'manual' }); });
+  return (
+    <Card title="Find more sites to email" subtitle="Searches written from your services and area. Open one, look for a site that fits, then add it here and email it from the Guide." pad={false}
+      action={<div className="flex items-center gap-2"><input value={site} onChange={e => setSite(e.target.value)} onKeyDown={e => e.key === 'Enter' && clean.includes('.') && add()} placeholder="site you found, e.g. blog.com" aria-label="Site to add" className="h-8 w-52 px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" />
+        <Button size="sm" variant="primary" icon={Plus} busy={busy === 'add'} disabled={!clean.includes('.')} onClick={add}>Add and write the email</Button></div>}>
+      <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
+        <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'discover'} onClick={() => discover(!!found)}>{found ? 'Search again' : 'Find platforms and emails for me'}</Button>
+        <span className="text-12.5 text-slate-500">Runs the searches below, opens the sites that come up and reads the email addresses they publish. Takes about a minute.</span>
+        {picked.length > 0 && <Button size="sm" className="ml-auto" icon={Send} onClick={() => setMailing(true)}>Write and send emails to {picked.length} chosen</Button>}
+      </div>
+      {found?.state && found.state !== 'ok' && <p className="px-5 py-3 text-13 text-amber-800">{found.message}</p>}
+      {found?.state === 'ok' && (
+        <div className="overflow-x-auto border-b border-slate-100">
+          <table className="w-full min-w-[900px] text-13">
+            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+              <th className={`${TH} w-8`}><span className="sr-only">Choose</span></th>
+              <th className={TH}><Head what="A website the searches found." from="Google results for your searches.">Platform</Head></th>
+              <th className={TH}><Head what="Which kind of search found it: sends links by email, guest posts or list pages.">Found by</Head></th>
+              <th className={TH}><Head what="Email addresses the site itself publishes on its contact, about or submission pages." why="Send your request here. Check that the site fits first." from="the site's own pages.">Email</Head></th>
+              <th className={TH}><Head what="Whether it is already in your plan.">In plan</Head></th>
+              <th className={`${TH} text-right`}><Head right what="Add to the plan and write the email, or open the site." why="Look at the site before you email it.">Actions</Head></th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {found.platforms.map(p => (
+                <tr key={p.domain} className="align-top hover:bg-slate-50">
+                  <td className="px-3 py-3"><input type="checkbox" disabled={!p.emails.length} checked={picked.includes(p.domain)} onChange={e => setPicked(v => (e.target.checked ? [...v, p.domain].slice(0, 10) : v.filter(d => d !== p.domain)))} aria-label={`Choose ${p.domain}`} title={p.emails.length ? 'Include in the batch email' : 'No email published: use its contact form'} /></td>
+                  <td className="px-3 py-3 max-w-[300px]"><a href={p.page} target="_blank" rel="noreferrer noopener" className="font-semibold text-indigo-600 hover:underline">{p.domain}</a><span className="block text-12 text-slate-500 truncate" title={p.snippet}>{p.title}</span></td>
+                  <td className="px-3 py-3 text-slate-600 max-w-[220px]">{p.kinds.join(', ')}</td>
+                  <td className="px-3 py-3">{p.emails.length ? <ul className="grid gap-0.5">{p.emails.map(e => <li key={e.email} className="font-mono text-12 text-slate-800" title={`${e.how} on ${e.page}`}>{e.email}</li>)}</ul> : <span className="text-12 text-slate-400">None published: use its contact form</span>}</td>
+                  <td className="px-3 py-3 text-slate-600">{p.in_plan ? <Badge tone="gray">{p.in_plan}</Badge> : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                    <Act icon={Send} tone="violet" tip="Email: add it to your plan and write the email to this platform." busy={busy === `take${p.domain}`} onClick={() => take(p, p.emails[0]?.email)} />
+                    <OpenAct url={p.page} tip="Open: look at the site in a new tab." />
+                  </span></td>
+                </tr>
+              ))}
+              {!found.platforms.length && <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-500">No platforms came up. Try again later or use the searches below.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <ErrorNote>{error}</ErrorNote>
+      {r.error && <p className="px-5 py-4 text-13 text-red-600">{r.error.message}</p>}
+      {!d && !r.error && <SkList rows={3} />}
+      {d?.state === 'no_topic' && <p className="px-5 py-6 text-13 text-slate-500">{d.note}</p>}
+      {d?.state === 'ok' && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-13">
+            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+              <th className={TH}><Head what="The kind of site this search finds." why="Each kind needs a different ask.">Kind of site</Head></th>
+              <th className={TH}><Head what="The Google search to run. It uses your services and area." from="your business details.">Search</Head></th>
+              <th className={TH}><Head what="What the search turns up.">Finds</Head></th>
+              <th className={TH}><Head what="What to ask for when you email a site of this kind.">What to ask</Head></th>
+              <th className={`${TH} text-right`}><Head right what="Run the search on Google in a new tab." why="Read the first results, pick the sites that fit, then add them here.">Actions</Head></th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {d.groups.flatMap(g => g.queries.map((x, i) => (
+                <tr key={`${g.key}${i}`} className="align-top hover:bg-slate-50">
+                  <td className="px-3 py-3 font-semibold text-slate-900 whitespace-nowrap">{i === 0 ? g.title : ''}</td>
+                  <td className="px-3 py-3 font-mono text-12 text-slate-700 max-w-[320px] break-words">{x.q}</td>
+                  <td className="px-3 py-3 text-slate-600 max-w-[240px]">{x.why}</td>
+                  <td className="px-3 py-3 text-slate-600 max-w-[260px]">{i === 0 ? g.ask : ''}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap"><a href={x.url} target="_blank" rel="noreferrer noopener"><Act icon={Search} tone="sky" tip="Search: run this search on Google in a new tab." /></a></td>
+                </tr>
+              )))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {mailing && <BulkModal b={b} platforms={(found?.platforms || []).filter(p => picked.includes(p.domain))} onClose={() => { setMailing(false); }} onSent={() => { onChanged(); setPicked([]); }} />}
       {toastNode}
     </Card>
   );
@@ -294,6 +566,7 @@ function Opportunities({ b }) {
   const setStatus = (x, status) => run(x.domain, async () => { await api(`/businesses/${b.id}/backlink-hub/plan`, { method: 'POST', body: { domain: x.domain, status, source: 'competitor' } }); changed(); });
   const all = d.opportunities || [];
   const done = (pl.data?.items || []).filter(x => x.status === 'live');
+  const planMap = Object.fromEntries((pl.data?.items || []).map(x => [x.domain, x]));
   const lists = { todo: all.filter(x => stageOf(x.status) === 'todo'), progress: all.filter(x => stageOf(x.status) === 'progress'), skipped: sk.data?.opportunities || [] };
   const shown = lists[stage] || [];
   const pill = (on) => `h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
@@ -306,7 +579,7 @@ function Opportunities({ b }) {
         {d.state === 'no_target' && <p className="text-13 text-slate-500">Add the project's website first.</p>}
         {d.state === 'no_competitors' && <p className="text-13 text-slate-500">No competitors are saved for this project. Find them on the <Link to="/competitor-finder" className="text-indigo-600 hover:underline">Competitors page</Link>; their links are then read by your crawler.</p>}
         {d.note && <p className="text-13 text-slate-500">{d.note}</p>}
-        {d.state === 'ok' && <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl"><Stat label="To do" value={lists.todo.length} /><Stat label="In progress" value={lists.progress.length} /><Stat label="Got the link" value={done.length} hint="Confirmed when the crawler sees it" /><Stat label="High priority" value={lists.todo.filter(x => x.priority === 'high').length} /></div>}
+        {d.state === 'ok' && <p className="text-12.5 text-slate-500">{lists.todo.filter(x => x.priority === 'high').length} high priority. A link is confirmed automatically when the crawler sees it on the site.</p>}
       </Card>
       {d.state === 'ok' && (
         <Card pad={false}>
@@ -319,16 +592,16 @@ function Opportunities({ b }) {
           <div className="overflow-x-auto">
             {stage === 'done' ? (
               <table className="w-full min-w-[600px] text-13">
-                <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className={TH}>Site</th><th className={TH}>Where it came from</th><th className={TH}>Result</th><th className={TH}>Note</th></tr></thead>
+                <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className={TH}>Site</th><th className={TH}>Where it came from</th><th className={TH}>Result</th><th className={TH}>Note</th><th className={`${TH} text-right`}>Actions</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {done.map(x => <tr key={x.domain} className="align-middle"><td className="px-3 py-3 font-semibold text-slate-900">{x.domain}</td><td className="px-3 py-3 text-slate-600">{x.source === 'ai' ? 'Suggested by AI' : 'Competitor gap'}</td><td className="px-3 py-3">{x.confirmed ? <Badge tone="green">Confirmed by the crawler</Badge> : <Badge tone="amber">Marked by you: not seen by the crawler yet</Badge>}</td><td className="px-3 py-3 text-slate-600">{x.note || '—'}</td></tr>)}
+                  {done.map(x => <tr key={x.domain} className="align-middle"><td className="px-3 py-3 font-semibold text-slate-900">{x.domain}</td><td className="px-3 py-3 text-slate-600">{x.source === 'ai' ? 'Suggested by AI' : x.source === 'manual' ? 'Found by you' : 'Competitor gap'}</td><td className="px-3 py-3">{x.confirmed ? <Badge tone="green">Confirmed by the crawler</Badge> : <Badge tone="amber">Marked by you: not seen by the crawler yet</Badge>}</td><td className="px-3 py-3 text-slate-600">{x.note || '—'}</td><td className="px-3 py-3 text-right"><OpenAct url={`https://${x.domain}`} tip="Open the site that gave you the link." /></td></tr>)}
                   {!done.length && <Empty>No link won yet. Work through “To do”: the crawler confirms a link when it finds it.</Empty>}
                 </tbody>
               </table>
             ) : (
               <table className="w-full min-w-[1000px] text-13">
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-                  <th className={TH}>Priority</th><th className={TH}>Site</th><th className={TH}>Competitors linked there</th><th className={TH}>Category</th><th className={TH}>Follow</th><th className={`${TH} text-right`}>DA</th><th className={TH}>Useful?</th><th className={TH}>Status</th><th className={TH} /></tr></thead>
+                  <th className={TH}>Priority</th><th className={TH}>Site</th><th className={TH}>Competitors linked there</th><th className={TH}>Category</th><th className={TH}>Follow</th>{hasMoz(shown) && <th className={`${TH} text-right`}>DA</th>}<th className={TH}>Useful?</th><th className={TH}>Status</th><th className={TH}><Head what="Whether you emailed this site, to whom, and whether they replied." why="Follow up after a week without a reply." from="the emails you sent from the Guide.">Email</Head></th><th className={`${TH} text-right`}><Head right what="Guide shows how to ask this site for a link. Open shows the site's page that links to your competitor." why="Contact the sites in the order of priority.">Actions</Head></th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {shown.map(x => { const [pl2, pt] = PRIORITY[x.priority] || PRIORITY.low; return (
                     <tr key={x.domain} className="hover:bg-slate-50 align-middle">
@@ -337,10 +610,11 @@ function Opportunities({ b }) {
                       <td className="px-3 py-3 text-slate-600"><Tip text={x.competitors.join(', ')}><span>{x.competitors.join(', ')}</span></Tip></td>
                       <td className="px-3 py-3 text-slate-600">{x.category.label}</td>
                       <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
-                      <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td>
+                      {hasMoz(shown) && <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td>}
                       <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                       <td className="px-3 py-3"><Select value={x.status} onChange={e => setStatus(x, e.target.value)} className="h-8 text-13 min-w-[130px]" aria-label={`Status of ${x.domain}`} disabled={busy === x.domain}><option value="new">To do</option><option value="planned">Planned</option><option value="contacted">Contacted</option><option value="live">Got the link</option><option value="skipped">Skipped</option></Select></td>
-                      <td className="px-3 py-3"><Button size="sm" variant="primary" onClick={() => setOpen(x)}>Guide</Button></td>
+                      <td className="px-3 py-3 text-12.5 whitespace-nowrap">{(() => { const m = planMap[x.domain]; if (!m?.emailed_at) return <span className="text-slate-300">Not emailed</span>; return <Tip text={`${m.email_subject || ''} · to ${m.contact_email}`}><span className={m.replied_at ? 'text-emerald-700 font-semibold' : m.follow_up_due ? 'text-amber-700 font-semibold' : 'text-slate-600'}>{m.replied_at ? 'Replied' : m.follow_up_due ? 'Follow up' : 'Sent'} · {fmtDate(m.replied_at || m.emailed_at)}</span></Tip>; })()}</td>
+                      <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5"><Act icon={BookOpen} tone="violet" tip="Guide: how to ask this site for a link, with a draft message and the email to send." onClick={() => setOpen(x)} /><OpenAct url={x.sample?.url} tip="Open the site: the page that links to your competitor." /></span></td>
                     </tr>); })}
                   {!shown.length && <Empty>{stage === 'todo' ? (all.length ? 'Nothing left to do here.' : 'No opportunities yet: your crawler has not found sites that link to your competitors and not to you.') : stage === 'progress' ? 'Nothing in progress. Open a site and press “I contacted them”.' : 'Nothing skipped.'}</Empty>}
                 </tbody>
@@ -351,6 +625,7 @@ function Opportunities({ b }) {
         </Card>
       )}
       {d.state !== 'no_target' && <AiPlatforms b={b} onOpen={setOpen} onChanged={changed} />}
+      {d.state !== 'no_target' && <FindSites b={b} onOpen={setOpen} onChanged={changed} />}
       {open && <AdviceModal b={b} item={open} onClose={() => setOpen(null)} onChanged={() => { changed(); setOpen(null); }} />}
     </>
   );
@@ -364,6 +639,8 @@ function CompetitorGap({ b }) {
   const [params] = useSearchParams();
   const [comp, setComp] = useState(params.get('competitor') || ''); // opened from Competitor Watch: that competitor is already picked
   const [shown, setShown] = useState(25);
+  const [busy, , run] = useAction();
+  const addToPlan = (o) => run(`plan${o.referring_domain}`, async () => { await api(`/businesses/${b.id}/backlink-hub/plan`, { method: 'POST', body: { domain: o.referring_domain, status: 'planned', source: 'competitor', name: o.referring_domain } }); });
   const r = useApi(`/businesses/${b.id}/backlink-intel/crawler/gap?${new URLSearchParams({ ...(comp ? { competitor: comp } : {}), limit: '500' })}`);
   const d = r.data;
   const g = d?.gap;
@@ -404,12 +681,16 @@ function CompetitorGap({ b }) {
           <Card title="Websites to get links from" subtitle={comp ? `Sites that link ${comp} but not you.` : 'Sites that link your competitors but not you.'}>
             {!g.opportunities.length ? <GapNote>No gap found yet. As the crawler finds more links to your competitors, sites appear here.</GapNote> : (
               <div className="overflow-x-auto"><table className="w-full text-13">
-                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className={TH}>Website</th><th className={TH}>Links to</th><th className={TH}>Example page</th></tr></thead>
+                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className={TH}>Website</th><th className={TH}>Links to</th><th className={TH}>Example page</th><th className={`${TH} text-right`}><Head right what="Open the site or its example page, or add the site to your link plan." why="The plan keeps the sites you will ask for a link, with their status." from="the Link Opportunities list.">Actions</Head></th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{g.opportunities.slice(0, shown).map(o => (
                   <tr key={o.referring_domain}>
                     <td className="px-3 py-2 font-semibold text-slate-800">{o.referring_domain}</td>
                     <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{o.competitor_targets.map(t => <Badge key={t} tone="blue">{t}</Badge>)}</div></td>
                     <td className="px-3 py-2 max-w-[360px]">{o.source_pages?.[0] ? <a className="block truncate text-indigo-600 hover:underline" href={o.source_pages[0]} target="_blank" rel="noreferrer noopener nofollow" title={o.source_pages[0]}>{o.source_pages[0].replace(/^https?:\/\//, '')}</a> : '—'}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                      <OpenAct url={o.source_pages?.[0] || `https://${o.referring_domain}`} tip="Open the site: see the page that links to your competitor." />
+                      <Act icon={Plus} tone="green" tip="Add to link plan: put this site in Link Opportunities as a place to ask for a link." busy={busy === `plan${o.referring_domain}`} onClick={() => addToPlan(o)} />
+                    </span></td>
                   </tr>))}</tbody>
               </table></div>
             )}
@@ -418,7 +699,7 @@ function CompetitorGap({ b }) {
           <Card title="Pages that link them" subtitle="The exact pages, which competitor page they link to and the words used. Ask these sites to link you too.">
             {!pages.length ? <GapNote>None yet.</GapNote> : (
               <div className="overflow-x-auto"><table className="w-full text-13">
-                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className={TH}>Linking page</th><th className={TH}>Competitor</th><th className={TH}>Anchor</th><th className={TH}>Follow</th><th className={TH}>Last seen</th></tr></thead>
+                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className={TH}>Linking page</th><th className={TH}>Competitor</th><th className={TH}>Anchor</th><th className={TH}>Follow</th><th className={TH}>Last seen</th><th className={`${TH} text-right`}><Head right what="Open the page that links to your competitor." why="Contact its owner and ask for a link to you too.">Actions</Head></th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{pages.slice(0, shown).map(p => { const l = p.links?.[0] || {}; return (
                   <tr key={p.source_url}>
                     <td className="px-3 py-2 max-w-[320px]"><a className="block truncate text-indigo-600 hover:underline" href={p.source_url} target="_blank" rel="noreferrer noopener nofollow" title={p.source_url}>{p.source_url.replace(/^https?:\/\//, '')}</a></td>
@@ -426,6 +707,7 @@ function CompetitorGap({ b }) {
                     <td className="px-3 py-2 max-w-[200px] truncate text-slate-700" title={l.anchor_text || ''}>{l.anchor_text || '—'}</td>
                     <td className="px-3 py-2"><Badge tone={l.nofollow ? 'gray' : 'green'}>{l.nofollow ? 'Nofollow' : l.sponsored ? 'Sponsored' : 'Follow'}</Badge></td>
                     <td className="px-3 py-2 text-12 text-slate-500">{l.last_seen ? fmtDateTime(l.last_seen) : '—'}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap"><OpenAct url={p.source_url} tip="Open the page: see the link to your competitor where it sits." /></td>
                   </tr>); })}</tbody>
               </table></div>
             )}
@@ -436,22 +718,68 @@ function CompetitorGap({ b }) {
   );
 }
 
+const AUDIT_VIEW = {
+  risky: '/backlinks/links?useful=risky', lost: '/backlinks/links?status=lost', nofollow: '/backlinks/links?follow=nofollow', anchors: '/backlinks/links',
+  unscored: '/backlinks/domains', sitewide: '/backlinks/domains',
+};
 function Audit({ b }) {
   const r = useApi(`/businesses/${b.id}/backlink-hub/audit`);
+  const [showPassed, setShowPassed] = useState(false);
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={4} />;
   if (d.state !== 'ok') return <Card><p className="text-13 text-slate-500">Add the project's website first.</p></Card>;
+  const empty = !d.live && !d.lost;
+  const tone = d.score == null ? 'text-slate-400' : d.score >= 80 ? 'text-emerald-600' : d.score >= 55 ? 'text-amber-600' : 'text-red-600';
+  const order = { serious: 0, warning: 1, info: 2 };
+  const items = [...d.items].sort((x, y) => order[x.severity] - order[y.severity]);
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-      <Card><p className={`flex items-center gap-2 text-14 font-semibold ${d.healthy ? 'text-emerald-700' : 'text-amber-700'}`}>{d.healthy ? <CheckCircle2 size={17} /> : <ShieldAlert size={17} />}{!d.live && !d.lost ? 'No backlinks to audit yet.' : d.healthy ? 'No serious problems in your backlink profile.' : 'Some links need your attention.'}</p></Card>
-      {d.items.map(i => { const [l, t] = SEV[i.severity]; return (
-        <Card key={i.key} title={i.title} action={<Badge tone={t}>{l}</Badge>}>
-          <p className="text-13 text-slate-600">{i.why}</p>
-          <p className="text-13 text-slate-800 mt-1"><span className="font-semibold">What to do:</span> {i.fix}</p>
-          {i.examples?.length > 0 && <ul className="mt-2 grid gap-1">{i.examples.map((e, k) => <li key={k} className="text-12.5 text-slate-500 truncate"><span className="text-slate-700">{host(e.url) === e.url ? e.url : e.url.replace(/^https?:\/\//, '')}</span> · {e.note}</li>)}</ul>}
-          {i.action && <div className="mt-3"><a className="inline-flex" href={i.action.href}><Button size="sm" icon={Download}>{i.action.label}</Button></a></div>}
-        </Card>); })}
+      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center gap-x-8 gap-y-2">
+        <div className="flex items-baseline gap-2" title="100 minus points for each problem: 25 serious, 10 fix soon, 3 good to know.">
+          <span className={`text-3xl font-bold tabular-nums ${tone}`}>{d.score ?? '—'}</span><span className="text-12 text-slate-500">link health / 100</span>
+        </div>
+        <p className={`flex items-center gap-2 text-14 font-semibold ${d.healthy ? 'text-emerald-700' : 'text-amber-700'}`}>{d.healthy ? <CheckCircle2 size={17} /> : <ShieldAlert size={17} />}{empty ? 'No backlinks to audit yet.' : d.healthy ? 'No serious problems in your backlink profile.' : 'Some links need your attention.'}</p>
+        <div className="flex gap-4 text-13 text-slate-600 ml-auto">
+          <span><b className="tabular-nums text-slate-900">{d.live}</b> live links</span><span><b className="tabular-nums text-slate-900">{d.sites}</b> sites</span><span><b className="tabular-nums text-slate-900">{d.lost}</b> lost</span>
+          <span><b className="tabular-nums text-red-600">{d.counts.serious}</b> serious</span><span><b className="tabular-nums text-amber-600">{d.counts.warning}</b> fix soon</span><span><b className="tabular-nums text-blue-600">{d.counts.info}</b> to know</span>
+        </div>
+      </div>
+      <Card title={`Problems found (${items.length})`} pad={false}>
+        {items.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-13">
+              <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+                <th className={TH}><Head what="How much it matters: Serious first, then Fix soon, then Good to know." why="Work from the top.">Priority</Head></th>
+                <th className={TH}><Head what="The problem we found in your links, and why it matters." from="our crawler's links and our own judgement of each linking site.">Problem</Head></th>
+                <th className={`${TH} text-right`}><Head right what="How many links or sites it affects." from="the links we found.">Affects</Head></th>
+                <th className={TH}><Head what="The step that fixes it.">What to do</Head></th>
+                <th className={TH}><Head what="A few of the links behind it, with the reason.">Examples</Head></th>
+                <th className={`${TH} text-right`}><Head right what="Open the affected links, or download the disavow file." why="See exactly which links to act on.">Actions</Head></th>
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {items.map(i => { const [l, t] = SEV[i.severity]; return (
+                  <tr key={i.key} className="align-top hover:bg-slate-50">
+                    <td className="px-3 py-3 whitespace-nowrap"><Badge tone={t}>{l}</Badge></td>
+                    <td className="px-3 py-3 max-w-[320px]"><div className="font-semibold text-slate-900">{i.title}</div><div className="text-12.5 text-slate-500 mt-0.5">{i.why}</div></td>
+                    <td className="px-3 py-3 text-right tabular-nums font-semibold">{i.count ?? '—'}</td>
+                    <td className="px-3 py-3 max-w-[260px] text-slate-700">{i.fix}</td>
+                    <td className="px-3 py-3 max-w-[280px]">{i.examples?.length ? <ul className="grid gap-1">{i.examples.slice(0, 3).map((e, k) => <li key={k} className="text-12 text-slate-500 truncate" title={`${e.url} · ${e.note}`}><span className="text-slate-700">{e.url.replace(/^https?:\/\//, '')}</span> · {e.note}</li>)}</ul> : <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                      {AUDIT_VIEW[i.key] && <Link to={AUDIT_VIEW[i.key]}><Act icon={Link2} tone="sky" tip="View: open the links or sites behind this problem." /></Link>}
+                      {i.action && <a href={i.action.href}><Act icon={Download} tone="rose" tip="Disavow: download the file that tells Google to ignore these links." /></a>}
+                    </span></td>
+                  </tr>); })}
+              </tbody>
+            </table>
+          </div>
+        ) : <p className="px-5 py-8 text-center text-13 text-slate-500">{empty ? 'Nothing to check until the crawler has found links to your site.' : 'No problems found.'}</p>}
+      </Card>
+      {d.passed?.length > 0 && (
+        <Card title={`Checks passed (${d.passed.length})`} pad={false} action={<Button size="sm" onClick={() => setShowPassed(v => !v)}>{showPassed ? 'Hide' : 'Show'}</Button>}>
+          {showPassed && <ul className="divide-y divide-slate-100">{d.passed.map(p => <li key={p.key} className="px-5 py-2.5 text-13 flex gap-3 items-center"><CheckCircle2 size={15} className="text-emerald-600 shrink-0" /><span className="font-semibold text-slate-800">{p.title}</span><span className="text-slate-500">{p.detail}</span></li>)}</ul>}
+        </Card>
+      )}
     </div>
   );
 }
@@ -547,7 +875,7 @@ function Body({ b, view }) {
   const main = view === 'links';
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      {view !== 'sites' && (s.data ? <><Summary s={s.data} b={b} reload={s.reload} compact={!main} />{main && <Setup s={s.data} />}</> : s.error ? <Card><ErrorNote>{s.error.message}</ErrorNote></Card> : <SkList rows={3} />)}
+      {view !== 'sites' && (s.data ? <><Summary s={s.data} b={b} reload={s.reload} compact main={main} />{main && <Setup s={s.data} />}</> : s.error ? <Card><ErrorNote>{s.error.message}</ErrorNote></Card> : <SkList rows={3} />)}
       {(view === 'sites' || !s.data || s.data.state === 'ok') && <V key={key} b={b} />}
       {main && s.data && <Used s={s.data} />}
     </div>

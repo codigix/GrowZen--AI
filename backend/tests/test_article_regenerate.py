@@ -134,7 +134,7 @@ def test_the_writer_keeps_a_given_title(monkeypatch):
     plain = svc.write("software engineer", [], [], biz, topic="software engineer", length="short")
     assert "<h1>Something Else Entirely About Software Engineer</h1>" in plain["body"] and "SEO title is fixed" not in asked[0]
     kept = svc.write("software engineer", [], [], biz, topic="software engineer", length="short", title_hint="Software Engineer Guide: Duties, Skills and Growth")
-    assert "<h1>Software Engineer Guide: Duties, Skills and Growth</h1>" in kept["body"] and 'SEO title is fixed: "Software Engineer Guide' in asked[-1]
+    assert "<h1>Software Engineer Guide: Duties, Skills and Growth</h1>" in kept["body"] and any('SEO title is fixed: "Software Engineer Guide' in q for q in asked)  # the plan asked for it (later requests, such as the keyword pass, come after)
 
 
 def test_unsaved_editor_text_is_used_and_errors_are_clear(client, art, monkeypatch):

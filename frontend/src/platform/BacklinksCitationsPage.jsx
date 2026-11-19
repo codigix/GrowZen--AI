@@ -98,11 +98,11 @@ function Listings({ b, ov, reload, toast, finishedAt, source, running, onRecheck
         </div>
       </Card>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 my-4">
-        <Stat label="Correct listings" value={s.total ? `${s.listed}/${s.total}` : '—'} hint={`${s.verified ?? 0} checked on the page · ${s.score ?? 0}% of the sites`} />
-        <Stat label="Need fixing" value={s.inconsistent ?? 0} hint="name or phone differs" />
-        <Stat label="Not listed yet" value={s.missing ?? 0} hint="add the business" />
-        <Stat label="Waiting" value={s.pending ?? 0} hint="submitted, not live yet" />
+      <div className="my-3 rounded-lg border border-slate-200 bg-white px-4 py-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-13 text-slate-600">
+        <span title={`${s.verified ?? 0} checked on the page · ${s.score ?? 0}% of the sites`}>Correct <b className="text-emerald-700 tabular-nums">{s.total ? `${s.listed}/${s.total}` : '—'}</b></span>
+        <span title="name or phone differs">Need fixing <b className="text-amber-700 tabular-nums">{s.inconsistent ?? 0}</b></span>
+        <span title="add the business">Not listed yet <b className="text-rose-700 tabular-nums">{s.missing ?? 0}</b></span>
+        <span title="submitted, not live yet">Waiting <b className="text-slate-900 tabular-nums">{s.pending ?? 0}</b></span>
       </div>
 
       <Card title="Listing sites" subtitle="Add the business on each site, save its link, then press Check: we open the page and compare the name and phone with the profile."

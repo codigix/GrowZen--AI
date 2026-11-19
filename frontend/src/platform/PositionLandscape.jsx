@@ -1,3 +1,4 @@
+import { KeywordActs } from './TableBits';
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, ScatterChart, Scatter, PieChart, Pie, Cell, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
@@ -51,7 +52,7 @@ function Gauge({ improved, declined }) {
 const KeywordTable = ({ rows, empty = 'No keywords.' }) => (
   <div className="overflow-auto max-h-[420px]">
     <table className="w-full text-13">
-      <thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th c="text-right">Pos.</Th><Th c="text-right">Change</Th><Th c="text-right">Volume</Th><Th c="text-right">Visibility</Th><Th>Tag</Th></tr></thead>
+      <thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th c="text-right">Pos.</Th><Th c="text-right">Change</Th><Th c="text-right">Volume</Th><Th c="text-right">Visibility</Th><Th>Tag</Th><Th c="text-right">Actions</Th></tr></thead>
       <tbody className="divide-y divide-slate-100">
         {rows.map(r => (
           <tr key={r.keyword} className="hover:bg-slate-50">
@@ -61,9 +62,10 @@ const KeywordTable = ({ rows, empty = 'No keywords.' }) => (
             <td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td>
             <td className="px-4 py-2.5 text-right tabular-nums">{r.visibility}%</td>
             <td className="px-4 py-2.5 text-slate-500">{r.tag || '—'}</td>
+            <td className="px-4 py-2.5 text-right whitespace-nowrap"><KeywordActs keyword={r.keyword} url={r.url} /></td>
           </tr>
         ))}
-        {!rows.length && <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-500">{empty}</td></tr>}
+        {!rows.length && <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-500">{empty}</td></tr>}
       </tbody>
     </table>
   </div>

@@ -54,6 +54,7 @@ class KeywordSuggestIn(BaseModel):
 
 class ArticleEdit(BaseModel):
     keyword: str | None = Field(default=None, min_length=2, max_length=255)  # primary keyword
+    slug: str | None = Field(default=None, max_length=120)  # the end of the web address; empty means "follow the primary keyword"
     secondary_keywords: list[str] | None = Field(default=None, max_length=20)
     title: str | None = Field(default=None, max_length=255)
     meta_description: str | None = Field(default=None, max_length=500)
@@ -78,6 +79,74 @@ def _get(db: Session, b: Business, article_id: int) -> Article:
 def _refresh_schema(a: Article, b: Business) -> None:
     from ..services import article_publishing as ap
     ap.refresh_schema(a, b)
+
+
+def _url_base(b: Business, db: Session) -> dict:
+    """Where this site's blog posts live, learned from the posts already published (https://site/blog/ for a site that has none yet)."""
+    from collections import Counter
+    from urllib.parse import urlsplit
+    seen: Counter = Counter()
+    for (u,) in db.execute(select(Article.wp_url).where(Article.business_id == b.id, Article.wp_status == "publish", Article.wp_url.is_not(None))):
+        p = urlsplit(u or "")
+        parts = [x for x in p.path.split("/") if x]
+        if p.scheme and p.netloc and parts:
+            seen[(f"{p.scheme}://{p.netloc}/" + "".join(f"{x}/" for x in parts[:-1]), p.path.endswith("/"))] += 1
+    if seen:
+        (base, trailing), _ = seen.most_common(1)[0]
+        return {"base": base, "trailing_slash": trailing, "learned": True}
+    site = (b.website or "").strip().rstrip("/")
+    return {"base": f"{site}/blog/" if site.startswith("http") else "", "trailing_slash": True, "learned": False}
+
+
+@router.get("/url-base")
+def url_base(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """So the page can show the whole address a slug will give."""
+    return _url_base(b, db)
+
+
+class SitePreviewIn(BaseModel):
+    view: Literal["post", "list"] = "post"
+    title: str | None = Field(default=None, max_length=255)
+    meta_description: str | None = Field(default=None, max_length=500)
+    body: str | None = None  # the draft as it is on screen (unsaved)
+    slug: str | None = Field(default=None, max_length=120)
+    keyword: str | None = Field(default=None, max_length=255)
+    secondary_keywords: list[str] | None = Field(default=None, max_length=20)
+    highlight: bool = True
+    reference_url: str | None = Field(default=None, max_length=500)  # a post of the project's own website whose design the preview copies
+
+
+def _image_src(a: Article) -> str | None:
+    """The featured picture as the page can show it: its public address on the site, else the uploaded file inlined (up to 1.5 MB)."""
+    if a.featured_image_url:
+        return a.featured_image_url
+    path = fi.path_of(a.featured_image_path)
+    if not path:
+        return None
+    import base64
+    import mimetypes
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    return f"data:{mimetypes.guess_type(str(path))[0] or 'image/jpeg'};base64,{base64.b64encode(data).decode()}" if len(data) <= 1_500_000 else None
+
+
+@router.post("/{article_id}/site-preview")
+def site_preview(article_id: int, body: SitePreviewIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The article inside the website's own blog list or blog details page (its real design, read from the site), with the keywords coloured. Nothing is saved."""
+    from ..services import site_preview as site_prev
+    a = _get(db, b, article_id)
+    base = _url_base(b, db)
+    primary = " ".join((body.keyword or a.keyword or "").lower().split())
+    secondary = [" ".join(k.lower().split()) for k in (body.secondary_keywords if body.secondary_keywords is not None else a.secondary_keywords or []) if k.strip()]
+    slug = svc.slugify(body.slug or "", 100) or svc.explicit_slug(a) or svc.slugify(primary)
+    url = f"{base['base']}{slug}" + ("/" if base["trailing_slash"] else "")
+    try:
+        return site_prev.build(db, b, a, view=body.view, title=(body.title if body.title is not None else a.title) or primary.title(), excerpt=(body.meta_description if body.meta_description is not None else a.meta_description) or "",
+                               body=svc.prepare_body(body.body, primary, secondary, svc.brand_of(b)) if body.body else (a.body or ""), image=_image_src(a), url=url, primary=primary, secondary=secondary, highlight=body.highlight, reference_url=(body.reference_url or None))
+    except site_prev.PreviewError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.get("")
@@ -272,14 +341,60 @@ def edit(article_id: int, body: ArticleEdit, b: Business = Depends(get_business)
         elif f == "secondary_keywords":
             v = list(dict.fromkeys(" ".join(k.lower().split()) for k in (v or []) if k.strip()))
         elif f == "body" and v:
-            v = svc.sanitize_html(v)
+            v = svc.sanitize_html(svc.strip_emphasis(v))  # the keyword marks are made again below, for the keywords as they are now
+        elif f == "slug":
+            v = svc.slugify(v or "", 100) or None
+            if v and db.scalar(select(Article.id).where(Article.business_id == b.id, Article.id != a.id, Article.slug == v)):
+                raise HTTPException(409, f"Another article already ends its address with “{v}”. Make this one different.")
         setattr(a, f, v)
     a.secondary_keywords = [k for k in (a.secondary_keywords or []) if k != a.keyword]
+    if a.body:
+        a.body = svc.emphasize(a.body, a.keyword, a.secondary_keywords, svc.brand_of(b))  # keywords and the brand name: bold and highlighted on the website
     _refresh_schema(a, b)  # only the JSON-LD block is replaced (BlogPosting + FAQPage from the saved content)
     a.headings = svc.headings_of(a.body or "")
-    a.warnings = svc.validate(a.title or "", a.meta_description or "", a.body or "", a.keyword, a.secondary_keywords)  # re-checked on every save
+    a.warnings = svc.validate(a.title or "", a.meta_description or "", a.body or "", a.keyword, a.secondary_keywords, svc.brand_of(b))  # re-checked on every save
     db.commit()
     return row(a)
+
+
+class KeywordParagraphsIn(BaseModel):
+    body: str | None = None  # the draft as it is on screen (unsaved); the saved body when empty
+    keyword: str | None = Field(default=None, max_length=255)
+    secondary_keywords: list[str] | None = Field(default=None, max_length=20)
+
+
+@router.post("/{article_id}/keyword-paragraphs")
+def keyword_paragraphs(article_id: int, body: KeywordParagraphsIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Rewrite the paragraphs of the draft that carry none of the keywords so each carries one. Nothing is saved: the editor shows the result and the person saves it."""
+    a = _get(db, b, article_id)
+    primary = " ".join((body.keyword or a.keyword or "").lower().split())
+    secondary = [" ".join(k.lower().split()) for k in (body.secondary_keywords if body.secondary_keywords is not None else a.secondary_keywords or []) if k.strip()]
+    brand = svc.brand_of(b)
+    text = svc.sanitize_html(svc.strip_emphasis(body.body)) if body.body else svc.strip_emphasis(a.body or "")
+    try:
+        out, report = svc.add_keywords_to_paragraphs(text, primary, secondary, a.topic or "")
+    except svc.OllamaAnswerError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    out = svc.emphasize(out, primary, secondary, brand)
+    cov = svc.paragraph_coverage(out, primary, secondary)
+    return {"body": out, **report, "missing_after": len(cov["missing"]), "covered": cov["covered"], "total": cov["total"]}
+
+
+class ChunkIn(BaseModel):
+    body: str | None = None  # the draft as it is on screen (unsaved); the saved body when empty
+    keyword: str | None = Field(default=None, max_length=255)
+    secondary_keywords: list[str] | None = Field(default=None, max_length=20)
+
+
+@router.post("/{article_id}/chunk-paragraphs")
+def chunk_paragraphs(article_id: int, body: ChunkIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Break the long paragraphs of the draft into short chunks of whole sentences. Nothing is saved: the editor shows the result and the person saves it."""
+    a = _get(db, b, article_id)
+    primary = " ".join((body.keyword or a.keyword or "").lower().split())
+    secondary = [" ".join(k.lower().split()) for k in (body.secondary_keywords if body.secondary_keywords is not None else a.secondary_keywords or []) if k.strip()]
+    text = svc.sanitize_html(svc.strip_emphasis(body.body)) if body.body else svc.strip_emphasis(a.body or "")
+    out, split = svc.chunk_paragraphs(text)
+    return {"body": svc.emphasize(out, primary, secondary, svc.brand_of(b)), "split": split, "long_left": svc.long_paragraphs(out)}
 
 
 class PublishIn(BaseModel):

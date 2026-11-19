@@ -39,6 +39,136 @@ class CheckError(Exception):
     pass
 
 
+_GOOGLE: dict[str, tuple[float, dict[str, Any] | None]] = {}
+
+
+def google_configured() -> bool:
+    from ..config import get_settings
+    return bool(get_settings().serper_api_key.strip())
+
+
+def google_presence(url: str) -> dict[str, Any] | None:
+    """What google.com itself shows for this exact page: is it indexed (a `site:` search for the address finds it), and under what title and snippet. Read through Serper; None when it cannot be read.
+    Kept a day. This is the only part of the Google result page that is data about the page: authority numbers shown by browser toolbars are added by the toolbar, not by Google."""
+    import time
+    from urllib.parse import urlsplit
+
+    from ..config import get_settings
+    if not google_configured():
+        return None
+    hit = _GOOGLE.get(url)
+    if hit and time.time() - hit[0] < 86400:
+        return hit[1]
+    sp = urlsplit(url)
+    key = (sp.hostname or "").removeprefix("www.") + (sp.path or "").rstrip("/")
+    out = None
+    try:
+        r = httpx.post("https://google.serper.dev/search", headers={"X-API-KEY": get_settings().serper_api_key.strip(), "Content-Type": "application/json"}, json={"q": f"site:{key}", "num": 10}, timeout=20)
+        if r.status_code == 200:
+            items = r.json().get("organic") or []
+            norm = lambda u: (urlsplit(u).hostname or "").removeprefix("www.") + (urlsplit(u).path or "").rstrip("/")  # noqa: E731
+            match = next((i for i in items if norm(i.get("link") or "") == key), None)
+            out = {"indexed": match is not None, "title": (match or {}).get("title"), "snippet": ((match or {}).get("snippet") or "")[:220], "position": (match or {}).get("position"), "pages_found": len(items)}
+            _GOOGLE[url] = (time.time(), out)
+    except (httpx.HTTPError, ValueError):
+        out = None
+    return out
+
+
+_DFS: dict[str, tuple[float, dict[str, Any]]] = {}
+DFS_URL = "https://api.dataforseo.com/v3/backlinks/"
+
+
+def dfs_configured() -> bool:
+    from ..config import get_settings
+    return bool(get_settings().dataforseo_auth.strip())
+
+
+def _dfs_call(endpoint: str, targets: list[str]) -> dict[str, dict[str, Any]]:
+    from ..config import get_settings
+    r = httpx.post(f"{DFS_URL}{endpoint}/live", json=[{"targets": targets}], headers={"Authorization": f"Basic {get_settings().dataforseo_auth.strip()}"}, timeout=40)
+    body = r.json()
+    task = (body.get("tasks") or [{}])[0]
+    if 40200 in (body.get("status_code"), task.get("status_code")) or r.status_code == 402:
+        raise CheckError("Your DataForSEO balance is empty: add funds in its Billing section, then try again.")
+    if r.status_code != 200 or body.get("status_code") != 20000:
+        raise CheckError(f"DataForSEO: {body.get('status_message') or r.status_code}")
+    if task.get("status_code") != 20000:
+        raise CheckError(f"DataForSEO: {task.get('status_message') or 'task failed'}")
+    items = ((task.get("result") or [{}])[0] or {}).get("items") or []
+    return {str(i.get("target")): i for i in items}
+
+
+def dfs_scores(domains: list[str], pages: list[str]) -> dict[str, dict[str, Any]]:
+    """DataForSEO's own authority numbers: DA-like = domain rank (0-1000 shown as 0-100), PA-like = page rank, spam = its backlink spam score (0-100).
+    Keyed by domain and by page URL. {} without a login; raises CheckError with the reason when DataForSEO refuses. Kept a day per target."""
+    import time
+    if not dfs_configured():
+        return {}
+    now = time.time()
+    out: dict[str, dict[str, Any]] = {}
+    need_rank, need_spam = [], []
+    for t in list(dict.fromkeys(domains + pages)):
+        hit = _DFS.get(t)
+        if hit and now - hit[0] < 30 * 86400:
+            out[t] = hit[1]
+        else:
+            need_rank.append(t)
+            if t in domains:
+                need_spam.append(t)
+    if need_rank:
+        ranks = _dfs_call("bulk_ranks", need_rank[:100])
+        spam = _dfs_call("bulk_spam_score", need_spam[:100]) if need_spam else {}
+        for t in need_rank[:100]:
+            rk = (ranks.get(t) or {}).get("rank")
+            sp = (spam.get(t) or {}).get("spam_score")
+            v = {"rank": round(rk / 10) if isinstance(rk, (int, float)) else None, "spam": sp}
+            out[t] = v
+            if v["rank"] is not None or sp is not None:  # a lookup that found nothing is not kept: it is asked again next time
+                _DFS[t] = (now, v)
+    return out
+
+
+_OPR: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def opr_configured() -> bool:
+    from ..config import get_settings
+    return bool(get_settings().openpagerank_api_key.strip())
+
+
+def opr_ranks(domains: list[str]) -> dict[str, dict[str, Any]]:
+    """Open PageRank's 0-10 domain rank (from the Common Crawl link graph) for each domain. {} when no key or the service fails; kept a day per domain."""
+    import time
+
+    from ..config import get_settings
+    if not opr_configured() or not domains:
+        return {}
+    now = time.time()
+    out: dict[str, dict[str, Any]] = {}
+    todo = []
+    for d in dict.fromkeys(domains):
+        hit = _OPR.get(d)
+        if hit and now - hit[0] < 86400:
+            out[d] = hit[1]
+        else:
+            todo.append(d)
+    for i in range(0, len(todo), 100):
+        chunk = todo[i:i + 100]
+        try:
+            r = httpx.get("https://openpagerank.com/api/v1.0/getPageRank", params=[("domains[]", d) for d in chunk], headers={"API-OPR": get_settings().openpagerank_api_key.strip()}, timeout=20)
+            if r.status_code != 200:
+                break
+            for item in r.json().get("response", []):
+                if item.get("status_code") == 200:
+                    v = {"rank": item.get("page_rank_decimal"), "global_rank": item.get("rank")}
+                    out[item["domain"]] = v
+                    _OPR[item["domain"]] = (now, v)
+        except (httpx.HTTPError, ValueError, KeyError):
+            break
+    return out
+
+
 def moz_configured() -> bool:
     s = get_settings()
     return bool(getattr(s, "moz_access_id", "") and getattr(s, "moz_secret_key", ""))
@@ -158,15 +288,35 @@ def check_one(source_url: str, tgt: dict[str, str]) -> dict[str, Any]:
     return out
 
 
+MOZ_QUOTA_MSG = "Moz accepted the login but this account has no lookups left for the period (its allowance is used up or is zero), so DataForSEO is used until Moz has quota again."
+MOZ_PAUSE_SECONDS = 1800
+_moz_pause_until = 0.0
+
+
+def moz_paused() -> bool:
+    """True for half an hour after Moz answered that the quota is used up: it is not asked again meanwhile, and DataForSEO is used. It is asked again after that, so Moz returns by itself when its quota renews."""
+    return time.monotonic() < _moz_pause_until
+
+
+def moz_available() -> bool:
+    return moz_configured() and not moz_paused()
+
+
 def moz_metrics(urls: list[str]) -> dict[str, dict[str, Any]]:
     """DA, PA, Spam Score and referring root domains for each URL, from Moz's API. {} when it is not configured; raises CheckError with the reason when Moz refuses."""
     s = get_settings()
+    global _moz_pause_until
     if not moz_configured() or not urls:
         return {}
+    if moz_paused():
+        raise CheckError(MOZ_QUOTA_MSG)
     try:
         r = httpx.post(MOZ_URL, json={"targets": urls[:50]}, auth=(s.moz_access_id, s.moz_secret_key), timeout=30)
     except httpx.HTTPError as exc:
         raise CheckError(f"Moz could not be reached ({type(exc).__name__}).") from exc
+    if r.status_code == 403 and "quota" in r.text.lower():
+        _moz_pause_until = time.monotonic() + MOZ_PAUSE_SECONDS
+        raise CheckError(MOZ_QUOTA_MSG)
     if r.status_code in (401, 403):
         raise CheckError("Moz refused the credentials: check MOZ_ACCESS_ID and MOZ_SECRET_KEY.")
     if r.status_code == 429:
@@ -191,6 +341,10 @@ def check_many(sources: list[str], target: str) -> tuple[list[dict[str, Any]], s
         raise CheckError("Add at least one page address to check.")
     with ThreadPoolExecutor(max_workers=5) as pool:
         rows = list(pool.map(lambda u: check_one(u, tgt), urls))
+    if google_configured():
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            for r, g in zip(rows, pool.map(lambda r: google_presence(r["final_url"] or r["source_url"]) if r["state"] != "page_error" else None, rows)):
+                r["google"] = g
     note = None
     if moz_configured():
         try:
@@ -200,8 +354,6 @@ def check_many(sources: list[str], target: str) -> tuple[list[dict[str, Any]], s
                 r["moz"] = got
         except CheckError as exc:
             note = str(exc)
-    else:
-        note = "Domain Authority, Page Authority, Spam Score and referring domains come only from Moz. Add MOZ_ACCESS_ID and MOZ_SECRET_KEY to the server settings to show them; nothing is estimated."
     return rows, note
 
 

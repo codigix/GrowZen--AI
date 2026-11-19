@@ -283,6 +283,7 @@ class Article(TimestampMixin, Base):
     business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
     topic: Mapped[str | None] = mapped_column(String(255))  # the trending topic the article was started from
     keyword: Mapped[str] = mapped_column(String(255))  # the primary keyword (the first one selected)
+    slug: Mapped[str | None] = mapped_column(String(120))  # the words that end the article's web address; empty = follow the primary keyword
     secondary_keywords: Mapped[list[str]] = mapped_column(JSON, default=list)  # the other selected keywords
     rising_keywords: Mapped[list[str]] = mapped_column(JSON, default=list)  # those of them Google lists as rising
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | generating | completed | failed
@@ -846,3 +847,38 @@ class LoginFailure(Base):
 
 
 from .backlinks import models as _backlink_models  # noqa: E402,F401  (registers the backlink graph tables)
+
+
+class IndexSetting(TimestampMixin, Base):
+    """Per project: whether new and changed pages are found and sent to the search engines on their own, and the IndexNow key that proves the site is ours."""
+    __tablename__ = "index_settings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), unique=True, index=True)
+    auto: Mapped[bool] = mapped_column(Boolean, default=False)
+    indexnow_key: Mapped[str | None] = mapped_column(String(64))
+    key_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_scan_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_scan: Mapped[dict | None] = mapped_column(JSON)  # {found, new, changed, submitted, inspected, note}
+
+
+class IndexPage(TimestampMixin, Base):
+    """A page of a project's site: when it was first seen, whether it was sent to the search engines that accept submissions, and what Google says about it."""
+    __tablename__ = "index_pages"
+    __table_args__ = (UniqueConstraint("business_id", "url"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(String(1000))
+    source: Mapped[str] = mapped_column(String(12), default="sitemap")  # sitemap | published | manual
+    in_sitemap: Mapped[bool] = mapped_column(Boolean, default=True)
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lastmod: Mapped[str | None] = mapped_column(String(40))
+    changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # the sitemap's lastmod moved after we first saw the page
+    skip_reason: Mapped[str | None] = mapped_column(String(160))  # why it is not sent: noindex, an error status
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_to: Mapped[list | None] = mapped_column(JSON)
+    g_state: Mapped[str | None] = mapped_column(String(16))  # indexed | not_indexed | blocked | unknown
+    g_reason: Mapped[str | None] = mapped_column(String(255))
+    g_last_crawl: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    g_canonical: Mapped[str | None] = mapped_column(String(1000))
+    g_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

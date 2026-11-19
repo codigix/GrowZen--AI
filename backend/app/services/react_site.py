@@ -433,7 +433,7 @@ def payload(a: Article, mode: str, when: datetime | None, image_url: str | None)
     keywords = [k for k in [a.keyword, *(a.secondary_keywords or [])] if k]
     pub_at = (when or datetime.now(timezone.utc)).astimezone(timezone.utc)
     return {
-        "title": a.title or a.keyword, "slug": _slug(a.title or a.keyword), "body": body_only,
+        "title": a.title or a.keyword, "slug": svc.publish_slug(a), "body": body_only,
         "excerpt": a.meta_description or "", "seo_title": a.title or a.keyword, "seo_description": a.meta_description or "",
         "focus_keyword": a.keyword, "secondary_keywords": a.secondary_keywords or [], "seo_keywords": ", ".join(keywords),
         "tags": keywords[:8], "category": (a.keyword or a.topic or "").strip().title()[:60],  # short, like a real category: the topic is a whole sentence and can overflow the site's column

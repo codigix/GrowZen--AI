@@ -16,7 +16,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from ..db import utcnow
@@ -64,38 +64,94 @@ def follow_of(rel: list[str] | None) -> str:
 
 
 # ------------------------------------------------------------------------------------------------------------------------ Moz figures (cached)
+def crawler_signals(db: Session, domains: list[str]) -> dict[str, dict[str, Any]]:
+    """What our own crawler knows about each linking site, with no third-party score: how many live links and pages it gives the sites we track,
+    how many different sites we track it links to, how many sites link to it, and since when we have known it. Real counts, nothing invented."""
+    if not domains:
+        return {}
+    SD, TD = aliased(BiDomain), aliased(BiDomain)
+    out: dict[str, dict[str, Any]] = {}
+    given = db.execute(select(SD.registrable_domain, func.count(Backlink.id), func.count(func.distinct(Backlink.source_page_id)), func.count(func.distinct(TD.registrable_domain)), func.min(SD.first_discovered_at))
+                       .select_from(Backlink).join(SD, SD.id == Backlink.source_domain_id).join(TD, TD.id == Backlink.target_domain_id)
+                       .where(SD.registrable_domain.in_(domains), Backlink.current_status.in_(LIVE_STATES)).group_by(SD.registrable_domain)).all()
+    for d, links, pages, sites, since in given:
+        out[d] = {"links": links, "pages": pages, "sites_linked": sites, "since": _aware(since).isoformat() if since else None, "linked_by": 0, "sitewide": links >= 50 and pages >= 20}
+    seen = db.execute(select(TD.registrable_domain, func.count(func.distinct(SD.registrable_domain)))
+                      .select_from(Backlink).join(SD, SD.id == Backlink.source_domain_id).join(TD, TD.id == Backlink.target_domain_id)
+                      .where(TD.registrable_domain.in_(domains), Backlink.current_status.in_(LIVE_STATES)).group_by(TD.registrable_domain)).all()
+    for d, n in seen:
+        out.setdefault(d, {"links": 0, "pages": 0, "sites_linked": 0, "since": None, "sitewide": False})["linked_by"] = n
+    return out
+
+
 def metrics_for(db: Session, domains: list[str]) -> dict[str, dict[str, Any]]:
     if not domains:
         return {}
-    return {m.domain: {"da": m.da, "pa": m.pa, "spam": m.spam_score, "ref_domains": m.linking_domains, "fetched_at": _aware(m.fetched_at).isoformat() if m.fetched_at else None}
-            for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(domains)))}
+    sig = crawler_signals(db, domains)
+    out = {d: {"da": None, "pa": None, "spam": None, "ref_domains": None, "fetched_at": None, "crawler": c} for d, c in sig.items()}
+    for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(domains))):
+        out.setdefault(m.domain, {"crawler": None}).update({"source": m.source, "da": m.da, "pa": m.pa, "spam": m.spam_score, "ref_domains": m.linking_domains, "fetched_at": _aware(m.fetched_at).isoformat() if m.fetched_at else None})
+    return out
 
 
 def refresh_metrics(db: Session, domains: list[str], limit: int = 50, force: bool = False) -> dict[str, Any]:
-    """DA, PA and spam score from Moz for domains with no figures yet (or older than two weeks). Does nothing, and says so, when Moz is not set up."""
+    """DA, PA and spam for the linking sites. Moz first (its figures are the ones people know); DataForSEO while Moz has no quota; Moz again as soon as it has quota, and
+    sites that DataForSEO filled in meanwhile are then refreshed from Moz. Nothing is asked of a service that is not set up."""
     from ..services import backlink_checker as bc
-    if not bc.moz_configured():
-        return {"configured": False, "refreshed": 0, "message": "DA, PA and spam score come from Moz: add MOZ_ACCESS_ID and MOZ_SECRET_KEY to the backend settings."}
+    if not bc.moz_configured() and not bc.dfs_configured():
+        return {"configured": False, "refreshed": 0, "message": "DA, PA and spam score need a data service: add MOZ_ACCESS_ID and MOZ_SECRET_KEY, or DATAFORSEO_AUTH, to the backend settings."}
     now = utcnow()
-    have = {m.domain: m for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(domains or [""])))}
-    todo = [d for d in dict.fromkeys(domains) if force or d not in have or not have[d].fetched_at or now - _aware(have[d].fetched_at) > METRIC_TTL][:limit]
-    if not todo:
-        return {"configured": True, "refreshed": 0, "message": "All figures are recent."}
-    try:
-        got = bc.moz_metrics([f"https://{d}/" for d in todo])
-    except bc.CheckError as exc:
-        return {"configured": True, "refreshed": 0, "message": str(exc)}
-    n = 0
-    for d in todo:
-        m = got.get(f"https://{d}/") or got.get(d) or got.get(f"{d}/") or next((v for k, v in got.items() if k.lower().removeprefix("https://").removeprefix("www.").rstrip("/") == d), None)
-        if not m:
-            continue
-        row = have.get(d) or BiDomainMetric(domain=d)
-        row.da, row.pa, row.spam_score, row.linking_domains, row.fetched_at, row.source = m.get("da"), m.get("pa"), m.get("spam"), m.get("ref_domains"), now, "moz"
-        db.add(row)
-        n += 1
+    names = list(dict.fromkeys(domains))
+    have = {m.domain: m for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(names or [""])))}
+
+    def stale(d: str) -> bool:
+        return force or d not in have or not have[d].fetched_at or now - _aware(have[d].fetched_at) > METRIC_TTL
+
+    wanted = [d for d in names if stale(d)]
+    moz_note, used = "", {"moz": 0, "dfs": 0}
+    done: set[str] = set()
+    if bc.moz_available():
+        upgrade = [d for d in names if d not in wanted and d in have and have[d].source != "moz"]  # filled by DataForSEO while Moz had no quota
+        batch = (wanted + upgrade)[:limit]
+        try:
+            got = bc.moz_metrics([f"https://{d}/" for d in batch])
+        except bc.CheckError as exc:
+            moz_note = f"{exc} "
+        else:
+            for d in batch:
+                m = got.get(f"https://{d}/") or got.get(d) or got.get(f"{d}/") or next((v for k, v in got.items() if k.lower().removeprefix("https://").removeprefix("www.").rstrip("/") == d), None)
+                if not m or (m.get("da") is None and m.get("spam") is None):
+                    continue
+                row = have.get(d) or BiDomainMetric(domain=d)
+                row.da, row.pa, row.spam_score, row.linking_domains, row.fetched_at, row.source = m.get("da"), m.get("pa"), m.get("spam"), m.get("ref_domains"), now, "moz"
+                db.add(row)
+                have[d] = row
+                done.add(d)
+                used["moz"] += 1
+    elif bc.moz_configured():
+        moz_note = f"{bc.MOZ_QUOTA_MSG} "
+    left = [d for d in wanted if d not in done]
+    if left and bc.dfs_configured():
+        todo = left[:limit]
+        try:
+            dfs = bc.dfs_scores(todo, [f"https://{d}/" for d in todo])
+        except bc.CheckError as exc:
+            db.commit()
+            return {"configured": True, "refreshed": used["moz"], "message": f"{moz_note}{exc}".strip()}
+        for d in todo:
+            site, home = dfs.get(d) or {}, dfs.get(f"https://{d}/") or {}
+            row = have.get(d) or BiDomainMetric(domain=d)
+            # a site with no data is recorded as asked (empty figures) so it is not billed again before the figures expire
+            row.da, row.pa, row.spam_score, row.linking_domains, row.fetched_at, row.source = site.get("rank"), home.get("rank"), site.get("spam"), None, now, "dataforseo"
+            db.add(row)
+            if site.get("rank") is not None or site.get("spam") is not None:
+                used["dfs"] += 1
+        left = left[limit:]
     db.commit()
-    return {"configured": True, "refreshed": n, "message": f"Updated {n} domain{'s' if n != 1 else ''}." if n else "Moz returned no figures for these domains."}
+    n = used["moz"] + used["dfs"]
+    parts = [f"{used['moz']} from Moz" if used["moz"] else "", f"{used['dfs']} from DataForSEO" if used["dfs"] else ""]
+    msg = (f"Updated {n} site{'s' if n != 1 else ''} ({', '.join(x for x in parts if x)})." if n else "No service had figures for these sites (too new or too small).")
+    return {"configured": True, "refreshed": n, "message": (moz_note + msg + (f" {len(left)} more are waiting: press again." if left else "")).strip()}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ is it useful?
@@ -103,7 +159,7 @@ def judge(follow: str, score: dict | None, metric: dict | None, category: str) -
     """useful | neutral | risky | unscored, with the reason in one sentence. Our judgement, not a third party's metric."""
     spam = (metric or {}).get("spam")
     da = (metric or {}).get("da")
-    if score is None and not metric:
+    if score is None and not any((metric or {}).get(k) is not None for k in ("da", "spam")):
         return {"label": "unscored", "why": "Not judged yet: the domain has no relevance or spam score. Press “Score the links”."}
     risky = bool(score and score["verdict"] == "risky") or (spam is not None and spam >= 50)
     if risky:
@@ -111,6 +167,9 @@ def judge(follow: str, score: dict | None, metric: dict | None, category: str) -
         return {"label": "risky", "why": why}
     if category == "comment":
         return {"label": "neutral", "why": "A comment link: it carries little value."}
+    cr = (metric or {}).get("crawler") or {}
+    if cr.get("sitewide"):
+        return {"label": "neutral", "why": f"{cr['links']} links from {cr['pages']} pages of one site: a repeated or sitewide link counts as about one link."}
     good = bool(score and score["verdict"] == "good") or (da is not None and da >= 30 and (spam is None or spam < 30))
     if follow == "dofollow" and good:
         return {"label": "useful", "why": (score["reason"] if score else f"A dofollow link from a site with DA {da}.")}
@@ -143,6 +202,19 @@ def _link_out(bl: Backlink, page: BiPage, dom: str, score: dict | None, metric: 
             "metrics": metric, "useful": j["label"], "useful_why": j["why"]}
 
 
+def _scores_info(live: list[dict[str, Any]]) -> dict[str, Any]:
+    """Whether DA, PA and spam can be fetched for this list (a data service is set up) and for how many of the sites they are still missing."""
+    from ..services import backlink_checker as bc
+    configured = bc.moz_configured() or bc.dfs_configured()
+    sites = {x["source_domain"] for x in live}
+    asked = {x["source_domain"] for x in live if (x["metrics"] or {}).get("fetched_at")}
+    got = {x["source_domain"] for x in live if (x["metrics"] or {}).get("da") is not None or (x["metrics"] or {}).get("spam") is not None}
+    both = bc.moz_configured() and bc.dfs_configured()
+    source = ("Moz, or DataForSEO while Moz has no quota" if both else "Moz" if bc.moz_configured() else "DataForSEO") if configured else None
+    return {"configured": configured, "source": source, "moz_paused": bc.moz_paused(), "sites": len(sites), "missing": len(sites - asked) if configured else 0,
+            "no_data": len(asked - got) if configured else 0}
+
+
 def links(db: Session, b: Business, *, status: str = "live", follow: str = "", category: str = "", useful: str = "", q: str = "", sort: str = "recent", limit: int = 50, offset: int = 0) -> dict[str, Any]:
     domain = own_domain(db, b.id)
     if not domain:
@@ -168,7 +240,7 @@ def links(db: Session, b: Business, *, status: str = "live", follow: str = "", c
     key = {"recent": lambda x: x["last_seen"] or "", "domain": lambda x: x["source_domain"], "da": lambda x: (x["metrics"] or {}).get("da") or -1}.get(sort, lambda x: x["last_seen"] or "")
     shown.sort(key=key, reverse=sort != "domain")
     return {"state": "ok", "domain": domain, "links": shown[offset:offset + limit], "total": len(shown), "live_total": len(live), "offset": offset, "limit": limit,
-            "facets": {k: dict(v) for k, v in facets.items()}, "metrics_ready": bool(metrics)}
+            "facets": {k: dict(v) for k, v in facets.items()}, "metrics_ready": bool(metrics), "scores": _scores_info(live)}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ referring domains
@@ -322,7 +394,26 @@ def audit(db: Session, b: Business) -> dict[str, Any]:
     if heavy:
         items.append({"key": "sitewide", "severity": "info", "title": f"{len(heavy)} site{'s' if len(heavy) != 1 else ''} link to you 20 times or more", "why": "Many links from one site (often a footer) count as roughly one link.",
                       "fix": "Do not count these as separate wins; ask for a single, editorial link instead.", "examples": [{"url": d, "note": f"{sitewide[d]} links"} for d in heavy[:4]], "count": len(heavy)})
-    return {"state": "ok", "domain": domain, "items": items, "live": len(live), "lost": len(lost), "healthy": not any(i["severity"] in ("serious", "warning") for i in items)}
+    found = {i["key"] for i in items}
+    n_live = len(live)
+    passed = []
+    if n_live:
+        for key, title, detail in (
+            ("risky", "No risky links", "No live link looks spammy, paid or automated."),
+            ("lost", "No lost links", "Every link we found is still there."),
+            ("nofollow", "Healthy follow mix", f"{round(sum(1 for x in live if x['follow'] == 'dofollow') / n_live * 100)}% of your links are dofollow."),
+            ("anchors", "Natural anchor words", "Most anchors are your brand or plain words, not exact keywords."),
+            ("unscored", "Every link is judged", "All linking sites have a relevance or spam reading."),
+            ("sitewide", "No repeated sitewide links", "No single site gives you 20 links or more."),
+        ):
+            if key not in found:
+                passed.append({"key": key, "title": title, "detail": detail})
+    weight = {"serious": 25, "warning": 10, "info": 3}
+    score = max(0, 100 - sum(weight.get(i["severity"], 0) for i in items)) if n_live or lost else None
+    counts = {k: sum(1 for i in items if i["severity"] == k) for k in ("serious", "warning", "info")}
+    ref_sites = len({x["source_domain"] for x in live})
+    return {"state": "ok", "domain": domain, "items": items, "passed": passed, "score": score, "counts": counts, "live": n_live, "lost": len(lost), "sites": ref_sites,
+            "healthy": not any(i["severity"] in ("serious", "warning") for i in items)}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ the summary and where the data is used
@@ -335,7 +426,7 @@ def summary(db: Session, b: Business) -> dict[str, Any]:
     cfg = db.scalar(select(BiBotConfig).where(BiBotConfig.business_id == b.id))
     crawler = {"configured": s.crawler_enabled, "last_sync_at": _aware(cfg.last_run_at).isoformat() if cfg and cfg.last_run_at else None, "last_error": ((cfg.last_stats or {}).get("error") if cfg else None),
                "domains": (cfg.last_stats or {}).get("domains") if cfg else None, "links_read": (cfg.last_stats or {}).get("links_read") if cfg else None, "running": bool(cfg and cfg.running)}
-    moz = {"configured": bc.moz_configured()}
+    moz = {"configured": bc.moz_configured() or bc.dfs_configured()}  # a data service that can give DA, PA and spam (Moz or DataForSEO)
     if not domain:
         return {"state": "no_target", "domain": None, "crawler": crawler, "moz": moz}
     data = links(db, b, status="all", limit=MAX_LINKS)

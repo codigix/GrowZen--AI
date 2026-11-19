@@ -1,3 +1,4 @@
+import { KeywordActs } from './TableBits';
 import React, { useMemo, useState } from 'react';
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { ChevronRight, ExternalLink, Download, Sparkles } from 'lucide-react';
@@ -123,7 +124,7 @@ export default function OrganicPositions({ research, days, setDays }) {
       <Card title={<span>Organic Search Positions: <b>{rows.length}</b></span>} pad={false} action={<Button size="sm" icon={Download} onClick={() => download(`${r.domain}-positions.csv`, rows)}>Export</Button>}>
         <div className="overflow-x-auto">
           <table className="w-full text-13 min-w-[1300px]">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th>Keyword</Th><Th c="text-right">KD, %</Th><Th c="text-right">Vol.</Th><Th c="text-right">Traffic Change</Th><Th c="text-right">Comp.</Th><Th c="text-right">CPC</Th><Th>Crawled Time</Th><Th c="text-right">Position</Th><Th c="text-right">Results</Th><Th c="text-right">SF</Th><Th>Intent</Th><Th>URL</Th></tr></thead>
+            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th>Keyword</Th><Th c="text-right">KD, %</Th><Th c="text-right">Vol.</Th><Th c="text-right">Traffic Change</Th><Th c="text-right">Comp.</Th><Th c="text-right">CPC</Th><Th>Crawled Time</Th><Th c="text-right">Position</Th><Th c="text-right">Results</Th><Th c="text-right">SF</Th><Th>Intent</Th><Th>URL</Th><Th c="text-right">Actions</Th></tr></thead>
             <tbody className="divide-y divide-slate-100">{slice.map(x => (
               <React.Fragment key={x.keyword}>
                 <tr className="hover:bg-slate-50 align-top">
@@ -140,10 +141,11 @@ export default function OrganicPositions({ research, days, setDays }) {
                   <td className="px-4 py-2.5 text-right tabular-nums">{x.feature_list.length ? <span className="inline-flex items-center gap-1 text-slate-700" title={x.feature_list.join(', ')}><Sparkles size={12} className="text-emerald-500" />{x.feature_list.length}</span> : dash}</td>
                   <td className="px-4 py-2.5">{x.intent ? <span title={x.intent} className="inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center bg-indigo-100 text-indigo-700">{INTENT[x.intent] || '?'}</span> : dash}</td>
                   <td className="px-4 py-2.5 max-w-[300px]">{x.url ? <a href={x.url} target="_blank" rel="noreferrer" title={x.url} className="text-indigo-700 hover:underline inline-flex items-center gap-1 break-all">{path(x.url)}<ExternalLink size={10} className="shrink-0" /></a> : dash}</td>
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap"><KeywordActs keyword={x.keyword} url={x.url} /></td>
                 </tr>
-                {open.has(x.keyword) && <tr className="bg-slate-50/60"><td /><td colSpan={12} className="px-4 py-3"><RankedUrls r={x} /></td></tr>}
+                {open.has(x.keyword) && <tr className="bg-slate-50/60"><td /><td colSpan={13} className="px-4 py-3"><RankedUrls r={x} /></td></tr>}
               </React.Fragment>))}
-              {!slice.length && <tr><td colSpan={13} className="px-5 py-10 text-center text-slate-500">No keyword matches these filters.</td></tr>}
+              {!slice.length && <tr><td colSpan={14} className="px-5 py-10 text-center text-slate-500">No keyword matches these filters.</td></tr>}
             </tbody>
           </table>
         </div>

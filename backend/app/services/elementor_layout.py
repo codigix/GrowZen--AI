@@ -31,6 +31,16 @@ _CTA_H2 = re.compile(r"^\s*(ready to get started|contact\b|get in touch)", re.I)
 
 # ── clean HTML (also used without Elementor) ────────────────────────────────────
 
+def in_head(schema: str) -> str:
+    """The JSON-LD block(s) followed by a one-line script that moves them into the page's <head> when it loads (WordPress has no way to set a post's head from the API;
+    search engines read the schema from the rendered head). Without scripts running, the block stays where it is, which is valid too."""
+    blocks = [s.strip() if "data-gz-schema" in s else re.sub(r"<script\b", '<script data-gz-schema="1"', s.strip(), count=1) for s in _SCHEMA_RE.findall(schema or "")]
+    if not blocks:
+        return ""
+    mover = "<script>document.querySelectorAll('script[data-gz-schema]').forEach(function(s){document.head.appendChild(s);});</script>"
+    return "\n".join(blocks) + "\n" + mover
+
+
 def clean_body(body: str) -> str:
     """Article HTML for WordPress: no H1 (the theme/Elementor prints the title), no empty tags, no inline styles,
     no runs of blank lines. Headings, paragraphs, lists, links, bold/italic and the schema script are kept."""
@@ -39,9 +49,8 @@ def clean_body(body: str) -> str:
     b = re.sub(r"<h1\b([^>]*)>([\s\S]*?)</h1>", r"<h2\1>\2</h2>", b, flags=re.I)  # any other H1 becomes an H2
     scripts = _SCHEMA_RE.findall(b)
     b = _SCHEMA_RE.sub("\n", b)
-    # the site's CSS styles the article, not inline CSS; only the image figures/rows placed on the Images & Analysis step
-    # (marked data-gz-...) keep their class and layout, so side-by-side images and galleries stay side by side
-    b = re.sub(r"<[a-zA-Z][^>]*>", lambda m: m.group(0) if "data-gz-" in m.group(0) else re.sub(r"\s(style|class)=\"[^\"]*\"", "", m.group(0), flags=re.I), b)
+    # the site's CSS styles the article, not inline CSS: except the keyword marks, whose highlight must reach the site
+    b = re.sub(r"<(?!mark\b)([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>", lambda m: "<" + m.group(1) + re.sub(r"\s(?:style|class)=\"[^\"]*\"", "", m.group(2)) + ">", b)
     b = re.sub(r"<(p|li|h[2-6]|strong|em|span)>\s*(?:&nbsp;|\s)*</\1>", "", b, flags=re.I)  # empty tags
     b = re.sub(r"(?:<br\s*/?>\s*){2,}", "<br>", b, flags=re.I)
     b = re.sub(r"\n{3,}", "\n\n", b).strip()
@@ -133,8 +142,16 @@ def build(layout: list, *, article_key: str, body: str, faqs: list[tuple[str, st
     head_tpl = next((k for k in kids if k.get("widgetType") == "heading"), None)
     text_tpl = next((k for k in kids if k.get("widgetType") == "text-editor"), None)
     has_cta = any(n.get("widgetType") == "button" for n, _ in _walk(kids))
-    kept_before = [k for k in kids[:first] if k.get("widgetType") not in CONTENT_WIDGETS]
-    kept_after = [k for k in kids[first:] if k.get("widgetType") not in CONTENT_WIDGETS]  # CTA box etc.
+
+    def old_content(k: dict) -> bool:
+        """A heading or text widget, or a group that holds nothing but those (the reference's own conclusion, say): the old article, not layout. A box with a button or a picture is layout."""
+        if k.get("widgetType") in CONTENT_WIDGETS:
+            return True
+        inner = [n.get("widgetType") for n, _ in _walk(k.get("elements") or []) if n.get("elType") == "widget" or n.get("widgetType")]
+        return bool(inner) and all(w in CONTENT_WIDGETS for w in inner)
+
+    kept_before = [k for k in kids[:first] if not old_content(k)]
+    kept_after = [k for k in kids[first:] if not old_content(k)]  # CTA box etc.
 
     intro, sections, schema = split_sections(body)
     accordion = next((n for n, _ in _walk(data) if n.get("widgetType") == "nested-accordion"), None)
@@ -167,7 +184,7 @@ def build(layout: list, *, article_key: str, body: str, faqs: list[tuple[str, st
             widgets.append(text(sec))
     faq_items = faq_items or []
     if schema:
-        widgets.append({"id": new_id(), "elType": "widget", "widgetType": "html", "settings": {"html": schema}, "elements": []})
+        widgets.append({"id": new_id(), "elType": "widget", "widgetType": "html", "settings": {"html": in_head(schema) or schema}, "elements": []})
     col["elements"] = kept_before + widgets + kept_after
 
     # FAQ accordion: this article's questions, or no FAQ block at all
