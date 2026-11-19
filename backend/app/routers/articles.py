@@ -144,7 +144,7 @@ def site_preview(article_id: int, body: SitePreviewIn, b: Business = Depends(get
     url = f"{base['base']}{slug}" + ("/" if base["trailing_slash"] else "")
     try:
         return site_prev.build(db, b, a, view=body.view, title=(body.title if body.title is not None else a.title) or primary.title(), excerpt=(body.meta_description if body.meta_description is not None else a.meta_description) or "",
-                               body=svc.sanitize_html(body.body) if body.body else (a.body or ""), image=_image_src(a), url=url, primary=primary, secondary=secondary, highlight=body.highlight, reference_url=(body.reference_url or None))
+                               body=svc.prepare_body(body.body, primary, secondary, svc.brand_of(b)) if body.body else (a.body or ""), image=_image_src(a), url=url, primary=primary, secondary=secondary, highlight=body.highlight, reference_url=(body.reference_url or None))
     except site_prev.PreviewError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -341,16 +341,18 @@ def edit(article_id: int, body: ArticleEdit, b: Business = Depends(get_business)
         elif f == "secondary_keywords":
             v = list(dict.fromkeys(" ".join(k.lower().split()) for k in (v or []) if k.strip()))
         elif f == "body" and v:
-            v = svc.sanitize_html(v)
+            v = svc.sanitize_html(svc.strip_emphasis(v))  # the keyword marks are made again below, for the keywords as they are now
         elif f == "slug":
             v = svc.slugify(v or "", 100) or None
             if v and db.scalar(select(Article.id).where(Article.business_id == b.id, Article.id != a.id, Article.slug == v)):
                 raise HTTPException(409, f"Another article already ends its address with “{v}”. Make this one different.")
         setattr(a, f, v)
     a.secondary_keywords = [k for k in (a.secondary_keywords or []) if k != a.keyword]
+    if a.body:
+        a.body = svc.emphasize(a.body, a.keyword, a.secondary_keywords, svc.brand_of(b))  # keywords and the brand name: bold and highlighted on the website
     _refresh_schema(a, b)  # only the JSON-LD block is replaced (BlogPosting + FAQPage from the saved content)
     a.headings = svc.headings_of(a.body or "")
-    a.warnings = svc.validate(a.title or "", a.meta_description or "", a.body or "", a.keyword, a.secondary_keywords)  # re-checked on every save
+    a.warnings = svc.validate(a.title or "", a.meta_description or "", a.body or "", a.keyword, a.secondary_keywords, svc.brand_of(b))  # re-checked on every save
     db.commit()
     return row(a)
 
@@ -367,13 +369,32 @@ def keyword_paragraphs(article_id: int, body: KeywordParagraphsIn, b: Business =
     a = _get(db, b, article_id)
     primary = " ".join((body.keyword or a.keyword or "").lower().split())
     secondary = [" ".join(k.lower().split()) for k in (body.secondary_keywords if body.secondary_keywords is not None else a.secondary_keywords or []) if k.strip()]
-    text = svc.sanitize_html(body.body) if body.body else (a.body or "")
+    brand = svc.brand_of(b)
+    text = svc.sanitize_html(svc.strip_emphasis(body.body)) if body.body else svc.strip_emphasis(a.body or "")
     try:
         out, report = svc.add_keywords_to_paragraphs(text, primary, secondary, a.topic or "")
     except svc.OllamaAnswerError as exc:
         raise HTTPException(502, str(exc)) from exc
+    out = svc.emphasize(out, primary, secondary, brand)
     cov = svc.paragraph_coverage(out, primary, secondary)
     return {"body": out, **report, "missing_after": len(cov["missing"]), "covered": cov["covered"], "total": cov["total"]}
+
+
+class ChunkIn(BaseModel):
+    body: str | None = None  # the draft as it is on screen (unsaved); the saved body when empty
+    keyword: str | None = Field(default=None, max_length=255)
+    secondary_keywords: list[str] | None = Field(default=None, max_length=20)
+
+
+@router.post("/{article_id}/chunk-paragraphs")
+def chunk_paragraphs(article_id: int, body: ChunkIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Break the long paragraphs of the draft into short chunks of whole sentences. Nothing is saved: the editor shows the result and the person saves it."""
+    a = _get(db, b, article_id)
+    primary = " ".join((body.keyword or a.keyword or "").lower().split())
+    secondary = [" ".join(k.lower().split()) for k in (body.secondary_keywords if body.secondary_keywords is not None else a.secondary_keywords or []) if k.strip()]
+    text = svc.sanitize_html(svc.strip_emphasis(body.body)) if body.body else svc.strip_emphasis(a.body or "")
+    out, split = svc.chunk_paragraphs(text)
+    return {"body": svc.emphasize(out, primary, secondary, svc.brand_of(b)), "split": split, "long_left": svc.long_paragraphs(out)}
 
 
 class PublishIn(BaseModel):

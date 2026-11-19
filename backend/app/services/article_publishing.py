@@ -23,6 +23,17 @@ def refresh_schema(a: Article, b: Business) -> None:
             modified=datetime.now(timezone.utc), topic=a.topic, image_url=a.featured_image_url, slug=svc.explicit_slug(a)))
 
 
+def ensure_emphasis(db: Session, a: Article, b: Business | None = None) -> None:
+    """The keywords and the brand name are bold and highlighted in what goes to the website, also for an article saved before that was done."""
+    b = b or db.get(Business, a.business_id)
+    if not a.body or b is None:
+        return
+    new = svc.emphasize(a.body, a.keyword, a.secondary_keywords or [], svc.brand_of(b))
+    if new != a.body:
+        a.body = new
+        db.commit()
+
+
 def site_target(db: Session, b: Business) -> SiteIntegration | None:
     """The business's connected website; falls back to the WORDPRESS_* settings in .env for a WordPress site."""
     row = db.scalar(select(SiteIntegration).where(SiteIntegration.business_id == b.id))
@@ -92,6 +103,7 @@ def record_published(db: Session, a: Article, destination: str, out: dict, at: d
 
 def publish_site(db: Session, b: Business, a: Article, target: SiteIntegration, mode: str, when: datetime | None, record: bool = True) -> dict:
     """Publish to the connected website (WordPress, Ghost, Shopify, GitHub, webhook) and store the post on the article."""
+    ensure_emphasis(db, a, b)
     media_steps: list[dict] = []
     if target.method == "wordpress" and fi.path_of(a.featured_image_path):
         mid, url, media_steps = sp.ensure_wp_featured_media(target, a)
@@ -124,6 +136,7 @@ def publish_site(db: Session, b: Business, a: Article, target: SiteIntegration, 
 def publish_react(db: Session, a: Article, conn: ReactSiteConnection, mode: str, when: datetime | None, record: bool = True) -> dict:
     """Publish (or update) on the React.js website and store the post on the article. A refused login marks the
     connection failed; a renewed access token is kept either way."""
+    ensure_emphasis(db, a)
     try:
         out = rs.publish(conn, a, mode, when)
     except rs.ReactSiteError as exc:

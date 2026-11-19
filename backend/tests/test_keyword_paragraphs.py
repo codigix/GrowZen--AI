@@ -77,7 +77,7 @@ def test_the_editor_can_ask_for_it_on_the_unsaved_draft(client, monkeypatch):
     _fake(monkeypatch, {"paragraphs": [{"n": 2, "text": "For teeth whitening pune patients, the dentist cleans the surface, applies a gel and uses a light to speed the process up over about forty five minutes."},
                                        {"n": 4, "text": "Aftercare for whitening cost conscious patients is simple: avoid dark drinks for two days and brush gently with a soft brush every morning and night."}]})
     r = client.post(f"/api/v1/businesses/{bid}/articles/{aid}/keyword-paragraphs", json={"body": BODY}).json()
-    assert r["changed"] == 2 and r["missing_after"] == 0 and r["covered"] == 4 and "for teeth whitening pune patients" in r["body"].lower()
+    assert r["changed"] == 2 and r["missing_after"] == 0 and r["covered"] == 4 and "for teeth whitening pune patients" in svc.strip_emphasis(r["body"]).lower()
     assert client.get(f"/api/v1/businesses/{bid}/articles/{aid}").json()["body"].startswith("<p>placeholder")  # nothing was saved
 
 

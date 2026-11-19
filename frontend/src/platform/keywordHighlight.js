@@ -11,11 +11,12 @@ export function slugify(text, limit = 80) {
 const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** One expression for every keyword: the longest phrases first, whole words only, any case. A phrase that is part of a longer one is marked as the longer one. */
-function expression(primary, secondary) {
+function expression(primary, secondary, brand) {
   const list = [];
   const add = (k, kind) => { const t = String(k || '').trim().replace(/\s+/g, ' '); if (t.length > 1 && !list.some(x => x.t.toLowerCase() === t.toLowerCase())) list.push({ t, kind }); };
   add(primary, 'primary');
   (secondary || []).forEach(k => add(k, 'secondary'));
+  add(brand, 'brand');
   if (!list.length) return null;
   list.sort((a, b) => b.t.length - a.t.length);
   const kinds = new Map(list.map(x => [x.t.toLowerCase().replace(/\s+/g, ' '), x.kind]));
@@ -25,11 +26,21 @@ function expression(primary, secondary) {
 export const MARK_STYLE = {
   primary: 'background:#fde68a;color:inherit;padding:0 2px;border-radius:3px;font-weight:600;box-shadow:inset 0 -2px 0 #f59e0b',
   secondary: 'background:#bae6fd;color:inherit;padding:0 2px;border-radius:3px;font-weight:600;box-shadow:inset 0 -2px 0 #0ea5e9',
+  brand: 'background:#bbf7d0;color:inherit;padding:0 2px;border-radius:3px;font-weight:600;box-shadow:inset 0 -2px 0 #22c55e',
 };
 
+/** The name readers know the business by (the same rule the server uses): "Codigix Infotech" from "Codigix Infotech Pvt. Ltd. – Healthcare Marketing Agency". */
+export function brandOf(name) {
+  const n = String(name || '').replace(/\s+/g, ' ').trim();
+  let head = n.split(/\s+[–—|:]\s+|\s+-\s+|\s*\|\s*/)[0].trim();
+  head = head.replace(/\b(?:pvt\.?|private|ltd\.?|limited|llp|inc\.?|llc|corp\.?)\b.*$/i, '').replace(/^[\s,.-]+|[\s,.-]+$/g, '') || head || n;
+  if (head.length > 40 && head.includes(',')) head = head.split(',')[0].trim();
+  return head.slice(0, 60);
+}
+
 /** Plain text split into pieces: [{ text, kind }] with kind 'primary', 'secondary' or null. For the title and description lines. */
-export function splitKeywords(text, primary, secondary) {
-  const ex = expression(primary, secondary);
+export function splitKeywords(text, primary, secondary, brand) {
+  const ex = expression(primary, secondary, brand);
   const src = String(text || '');
   if (!ex || !src) return [{ text: src, kind: null }];
   const out = [];
@@ -45,11 +56,11 @@ export function splitKeywords(text, primary, secondary) {
 
 /** The article's HTML with each keyword wrapped in a coloured <mark>. Only text is touched: tags, attributes, scripts and styles are left exactly as they are. */
 export function highlightHtml(html, primary, secondary, opts = {}) {
-  const ex = expression(primary, secondary);
+  const ex = expression(primary, secondary, opts.brand);
   if (!ex || !html) return html || '';
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => (n.parentElement && ['SCRIPT', 'STYLE', 'MARK', 'TEXTAREA'].includes(n.parentElement.tagName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    acceptNode: (n) => (n.parentElement && n.parentElement.closest('script,style,mark,textarea') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT), // inside a saved mark (even in its <strong>) the text is left as it is
   });
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);

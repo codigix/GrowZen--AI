@@ -17,7 +17,7 @@ import ReactSitePanel from './ReactSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
-import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage } from './keywordHighlight';
+import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage, brandOf } from './keywordHighlight';
 
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
@@ -695,6 +695,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const [refDraft, setRefDraft] = useState('');
   const useRef2 = (v) => { const clean = v.trim(); setRefUrl(clean); try { if (clean) localStorage.setItem(refKey, clean); else localStorage.removeItem(refKey); } catch { /* kept for this page only */ } };
   const [kwBusyP, setKwBusyP] = useState(false);
+  const [chunkBusy, setChunkBusy] = useState(false);
   useEffect(() => {
     if (selectedArticle) {
       setDraft(selectedArticle.body || '');
@@ -799,12 +800,13 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   useEffect(() => { setFeatured(featuredOf(selectedArticle)); }, [selectedArticle?.id, selectedArticle?.featured_image_path, selectedArticle?.wp_media_id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [saveBusy, setSaveBusy] = useState(false);
   const secondaryNow = meta.secondary.split(',').map(k => k.trim()).filter(Boolean);
+  const brand = brandOf(b.name); // the short name readers know: it is written into the article and highlighted like the keywords
   const slugNow = slugify(meta.slug, 100) || slugify(meta.keyword);
   const fullUrl = urlBase?.base ? `${urlBase.base}${slugNow}${urlBase.trailing_slash ? '/' : ''}` : '';
   const keywordWords = slugify(meta.keyword).split('-').filter(Boolean);
   const slugHasKeyword = keywordWords.length > 0 && keywordWords.every(w => slugNow.split('-').includes(w));
-  const previewHtml = React.useMemo(() => (mark ? highlightHtml(draft, meta.keyword, secondaryNow, { flag: true }) : draft), [draft, mark, meta.keyword, meta.secondary]); // eslint-disable-line react-hooks/exhaustive-deps
-  const Marked = ({ text }) => (mark ? splitKeywords(text, meta.keyword, secondaryNow).map((x, i) => (x.kind ? <mark key={i} data-kw={x.kind} style={Object.fromEntries(MARK_STYLE[x.kind].split(';').map(d => d.split(':')).map(([k, v]) => [k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v]))}>{x.text}</mark> : <React.Fragment key={i}>{x.text}</React.Fragment>)) : text);
+  const previewHtml = React.useMemo(() => (mark ? highlightHtml(draft, meta.keyword, secondaryNow, { flag: true, brand }) : draft), [draft, mark, meta.keyword, meta.secondary, brand]); // eslint-disable-line react-hooks/exhaustive-deps
+  const Marked = ({ text }) => (mark ? splitKeywords(text, meta.keyword, secondaryNow, brand).map((x, i) => (x.kind ? <mark key={i} data-kw={x.kind} style={Object.fromEntries(MARK_STYLE[x.kind].split(';').map(d => d.split(':')).map(([k, v]) => [k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v]))}>{x.text}</mark> : <React.Fragment key={i}>{x.text}</React.Fragment>)) : text);
   const bodyText = draft.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ');
   const renderPreviewHeader = () => (
     <div className="space-y-2.5 mb-3">
@@ -826,9 +828,11 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[12px]">
         <label className="inline-flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer"><input type="checkbox" checked={mark} onChange={e => setMark(e.target.checked)} /> Colour the keywords</label>
+        <span className="text-[11.5px] text-slate-500">They are bold and highlighted on your website too: it is added when you save and again when you publish.</span>
         {mark && <>
           {meta.keyword.trim() && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#fde68a', boxShadow: 'inset 0 -2px 0 #f59e0b' }} title="Primary keyword: how many times it appears in the article text">Primary: {meta.keyword.trim()} <span className="font-mono">×{countIn(bodyText, meta.keyword)}</span></span>}
           {secondaryNow.map(k => <span key={k} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#bae6fd', boxShadow: 'inset 0 -2px 0 #0ea5e9' }} title="Secondary keyword: how many times it appears in the article text">{k} <span className="font-mono">×{countIn(bodyText, k)}</span></span>)}
+          {brand && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#bbf7d0', boxShadow: 'inset 0 -2px 0 #22c55e' }} title="Your brand name: how many times it appears in the article text">Brand: {brand} <span className="font-mono">×{countIn(bodyText, brand)}</span></span>}
         </>}
       </div>
     </div>
@@ -843,6 +847,16 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       })
       .catch(e => toast(e.message))
       .finally(() => setKwBusyP(false));
+  };
+  const longParas = React.useMemo(() => { // paragraphs of more than 75 words: they read better in short chunks
+    try { const doc = new DOMParser().parseFromString(`<body>${draft || ''}</body>`, 'text/html'); doc.querySelectorAll('script,style').forEach(n => n.remove()); return [...doc.querySelectorAll('p')].filter(p => p.textContent.trim().split(/\s+/).length > 75).length; } catch { return 0; }
+  }, [draft]);
+  const chunkParagraphs = () => {
+    setChunkBusy(true);
+    return api(`/businesses/${b.id}/articles/${selectedArticle.id}/chunk-paragraphs`, { method: 'POST', body: { body: draft, keyword: meta.keyword, secondary_keywords: secondaryNow } })
+      .then(r => { setDraft(r.body); toast(r.split ? `${r.split} long paragraph${r.split === 1 ? '' : 's'} broken into short chunks. Read them, then Save changes.` : 'Nothing could be split cleanly: the long paragraphs have no sentence breaks to cut at.'); })
+      .catch(e => toast(e.message))
+      .finally(() => setChunkBusy(false));
   };
   const loadSitePreview = (view) => {
     const mine = ++siteSeq.current;
@@ -1107,6 +1121,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
                       <div className="text-[11px] font-semibold text-slate-600">Keyword use in this article (updates as you edit)</div>
                       <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                        {longParas > 0 && (<>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-amber-50 border-amber-200 text-amber-900 font-semibold"><AlertTriangle size={12} />{longParas} long paragraph{longParas === 1 ? '' : 's'}</span>
+                          <Button size="sm" busy={chunkBusy} onClick={chunkParagraphs}>Break into short chunks</Button>
+                        </>)}
                         {coverage.total > 0 && (coverage.missing.length === 0
                           ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-emerald-50 border-emerald-200 text-emerald-800 font-semibold"><Check size={12} strokeWidth={3} />Every paragraph ({coverage.total}) has a keyword</span>
                           : <>
@@ -1117,6 +1135,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                       <div className="flex flex-wrap gap-1.5">
                         {meta.keyword.trim() && chip(meta.keyword.trim(), true)}
                         {secondary.map(k => chip(k, false))}
+                        {brand && (() => { const n = countIn(text, brand); return (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11.5px] font-semibold ${n >= 2 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700'}`} title={n >= 2 ? `Your brand name is used ${n} times` : 'Mention your brand name a few times'}>
+                            {n >= 2 ? <Check size={11} strokeWidth={3} /> : <AlertTriangle size={11} />}<span className="text-[10px] uppercase tracking-wide opacity-70">Brand</span>{brand}<span className="font-mono opacity-70">×{n}</span>
+                          </span>); })()}
                         {!secondary.length && <span className="text-[11.5px] text-slate-500">No secondary keywords. Add some above, separated by commas.</span>}
                       </div>
                     </div>

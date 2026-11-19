@@ -43,7 +43,7 @@ CLAIM_PATTERNS = {
     "specific date": rf"\b(?:{_MONTHS})\s+\d{{1,2}}\b|\b\d{{1,2}}(?:st|nd|rd|th)?\s+(?:{_MONTHS})\b",
     "news claim": r"\b(?:announced|unveiled|reportedly|according to|breaking news|just launched|officially launched|press release)\b",
 }
-ALLOWED_TAGS = {"p", "h1", "h2", "h3", "h4", "ul", "ol", "li", "strong", "b", "em", "i", "br", "blockquote", "div", "span", "script"}
+ALLOWED_TAGS = {"p", "h1", "h2", "h3", "h4", "ul", "ol", "li", "strong", "b", "em", "i", "br", "blockquote", "div", "span", "script", "mark"}
 PLACEHOLDER = re.compile(r"\[[^\]]{2,}\]|\b(?:lorem ipsum|write about|insert here|to be added|your text here)\b", re.I)
 
 
@@ -441,11 +441,11 @@ def _html_paragraphs(value) -> str:
 def sanitize_html(body: str) -> str:
     """Keep formatting tags, preserve schema script and img attributes."""
     scripts = re.findall(r'<script type="application/ld\+json">[\s\S]*?</script>', body, re.I)
-    body = re.sub(r'<script type="application/ld\+json">[\s\S]*?</script>', "<!--SCHEMA_PLACEHOLDER-->", body, flags=re.I)
+    body = re.sub(r'<script type="application/ld\+json">[\s\S]*?</script>', "@@SCHEMA_PLACEHOLDER@@", body, flags=re.I)  # not a comment or a tag: the clean-up below would break those
     body = re.sub(r"<figure\b[\s\S]*?</figure>", "", body, flags=re.I)
     body = re.sub(r"<img\b[^>]*>", "", body, flags=re.I)
     body = re.sub(r"<(script|style|iframe|object|embed)\b[\s\S]*?</\1\s*>", "", body, flags=re.I)
-    body = re.sub(r"<!--(?!SCHEMA_PLACEHOLDER)[\s\S]*?-->", "", body)
+    body = re.sub(r"<!--[\s\S]*?-->", "", body)
     body = re.sub(r"<(?![a-zA-Z/])", "&lt;", body)
 
     def tag_clean(m):
@@ -464,7 +464,7 @@ def sanitize_html(body: str) -> str:
 
     body = re.sub(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>", tag_clean, body)
     if scripts:
-        body = body.replace("<!--SCHEMA_PLACEHOLDER-->", "\n" + "\n".join(scripts))
+        body = body.replace("@@SCHEMA_PLACEHOLDER@@", "\n" + "\n".join(scripts))
     return body.strip()
 
 
@@ -661,7 +661,7 @@ def unsupported_claims(title: str, meta: str, body: str, keywords: list[str]) ->
     return list(dict.fromkeys(found))
 
 
-def validate(title: str, meta: str, body: str, primary: str, secondary: list[str]) -> list[str]:
+def validate(title: str, meta: str, body: str, primary: str, secondary: list[str], brand: str | None = None) -> list[str]:
     """Warnings shown to the editor enforcing the complete 10-part SEO blog structure."""
     w = []
     body = _SCHEMA_RE.sub("\n", body or "")  # check the visible article only, not the JSON-LD schema (its [arrays] aren't placeholders)
@@ -739,6 +739,15 @@ def validate(title: str, meta: str, body: str, primary: str, secondary: list[str
     if not re.search(r'application/ld\+json', body or "", re.I):
         w.append("Structure check: Missing Local Business Schema structured data.")
         
+    # Brand name and short chunks
+    if brand:
+        n_brand = len(re.findall(rf"(?<!\w){re.escape(brand)}(?!\w)", text, re.I))
+        if n_brand < 2:
+            w.append(f"The brand name '{brand}' appears {n_brand} time{'s' if n_brand != 1 else ''}: mention it naturally a few times.")
+    n_long = long_paragraphs(body)
+    if n_long:
+        w.append(f"{n_long} paragraph{'s are' if n_long != 1 else ' is'} long: break {'them' if n_long != 1 else 'it'} into short chunks of 2 to 3 sentences.")
+
     # Keywords check
     cov = paragraph_coverage(body, primary, secondary)
     if cov["missing"]:
@@ -916,11 +925,141 @@ def add_keywords_to_paragraphs(body: str, primary: str, secondary: list[str], to
         k = min(keys, key=lambda x: (use[x], keys.index(x)))
         use[k] += 1
         todo.append((n, k, cov["paragraphs"][n - 1]["text"]))
+    done = _ask_rewrites(todo, topic or primary, batch)
+    if not done:
+        return body, {"changed": 0, "left": len(todo), "total": cov["total"]}
+    # the schema block is left out of the numbering (it holds no <p>), so paragraph numbers match paragraph_coverage
+    return _apply_rewrites(body, done), {"changed": len(done), "left": len(todo) - len(done), "total": cov["total"]}
+
+
+# ── the brand name, keyword emphasis on the website, and short chunks ─────────
+
+_LEGAL = re.compile(r"\b(?:pvt\.?|private|ltd\.?|limited|llp|inc\.?|llc|corp\.?)\b.*$", re.I)
+_BRAND_SPLIT = re.compile(r"\s+[–—|:]\s+|\s+-\s+|\s*\|\s*")
+
+
+def brand_of(b) -> str:
+    """The name readers know the business by: "Codigix Infotech" from "Codigix Infotech Pvt. Ltd. – Healthcare Marketing Agency", "CASA Royale" from "CASA Royale - Luxury PG | Co-living Space"."""
+    name = " ".join((getattr(b, "name", "") or "").split())
+    head = _BRAND_SPLIT.split(name)[0].strip()
+    head = _LEGAL.sub("", head).strip(" ,.-") or head or name
+    if len(head) > 40 and "," in head:
+        head = head.split(",")[0].strip()
+    return head[:60]
+
+
+EMPHASIS_STYLES = {
+    "primary": "background:#fde68a;color:inherit;padding:0 .15em;border-radius:3px",
+    "secondary": "background:#bae6fd;color:inherit;padding:0 .15em;border-radius:3px",
+    "brand": "background:#bbf7d0;color:inherit;padding:0 .15em;border-radius:3px",
+}
+_EMPH_RE = re.compile(r'<mark\b[^>]*\bdata-gz="[^"]*"[^>]*>(?:<strong>)?([\s\S]*?)(?:</strong>)?</mark>', re.I)
+_NO_EMPHASIS = {"h1", "h2", "h3", "h4", "h5", "h6", "a", "script", "style", "code", "pre", "mark", "button", "summary", "title"}
+
+
+def strip_emphasis(body: str) -> str:
+    """Take the keyword markup out again (only the marks this app made: they carry data-gz), leaving the plain text."""
+    return _EMPH_RE.sub(r"\1", body or "")
+
+
+def emphasize(body: str, primary: str | None, secondary: list[str] | None, brand: str | None = None) -> str:
+    """Every use of the primary keyword, the secondary keywords and the brand name in the article text becomes bold and highlighted (a coloured <mark> around a <strong>), so it shows
+    on the website itself. Headings, links, code and the JSON-LD block are left alone; the markup is rebuilt from scratch each time, so a changed keyword never leaves an old mark."""
+    body = strip_emphasis(body)
+    phrases: list[tuple[str, str]] = []
+    for k, kind in [(primary, "primary"), *[(s, "secondary") for s in (secondary or [])], (brand, "brand")]:
+        k = " ".join((k or "").split())
+        if len(k) > 1 and k.lower() not in [p[0].lower() for p in phrases]:
+            phrases.append((k, kind))
+    if not phrases:
+        return body
+    kinds = {" ".join(k.lower().split()): kind for k, kind in phrases}
+    rx = re.compile(r"(?<!\w)(" + "|".join(re.escape(k).replace(r"\ ", r"\s+") for k, _ in sorted(phrases, key=lambda x: -len(x[0]))) + r")(?!\w)", re.I)
+
+    def wrap(m: re.Match) -> str:
+        kind = kinds.get(" ".join(m.group(0).lower().split()), "secondary")
+        return f'<mark data-gz="{kind}" style="{EMPHASIS_STYLES[kind]}"><strong>{m.group(0)}</strong></mark>'
+
+    out: list[str] = []
+    depth: Counter = Counter()
+    for tok in re.split(r"(<!--[\s\S]*?-->|<[^>]+>)", body):
+        if tok.startswith("<"):
+            m = re.match(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)", tok)
+            if m and m.group(2).lower() in _NO_EMPHASIS and not tok.endswith("/>"):
+                tag = m.group(2).lower()
+                depth[tag] = max(0, depth[tag] + (-1 if m.group(1) else 1))
+            out.append(tok)
+        elif not tok.strip() or any(depth.values()):
+            out.append(tok)
+        else:
+            out.append(rx.sub(wrap, tok))
+    return "".join(out)
+
+
+def prepare_body(raw: str, primary: str | None, secondary: list[str] | None, brand: str | None) -> str:
+    """Article HTML as it is kept: the old keyword marks out (while their attributes are still there), the HTML cleaned, the marks put back for the current keywords and brand."""
+    return emphasize(sanitize_html(strip_emphasis(raw or "")), primary, secondary, brand)
+
+
+_SENTENCE = re.compile(r"(?<=[.!?])[\"'”’)\]]*\s+(?=[A-Z0-9\"“‘(])")
+_ABBREVIATION = re.compile(r"\b(?:Dr|Mr|Mrs|Ms|Prof|St|Sr|Jr|vs|No|etc|e\.g|i\.e)\.$")
+_PAIRED = ("strong", "em", "b", "i", "mark", "span", "a")
+
+
+def _balanced(h: str) -> bool:
+    return all(len(re.findall(rf"<{t}\b", h, re.I)) == len(re.findall(rf"</{t}>", h, re.I)) for t in _PAIRED)
+
+
+def chunk_paragraphs(body: str, max_words: int = 60, min_tail: int = 8) -> tuple[str, int]:
+    """Break paragraphs that run long into short chunks of whole sentences (about max_words each, never a one-line leftover), so the article reads in small, scannable pieces.
+    A paragraph whose sentences cannot be cut cleanly (a tag would be split) is left as it is. Returns (body, how many paragraphs were split)."""
+    split = 0
+
+    def one(m: re.Match) -> str:
+        nonlocal split
+        attrs, inner = m.group(1), m.group(2).strip()
+        if len(_text(inner).split()) <= int(max_words * 1.25):
+            return m.group(0)
+        sentences: list[str] = []
+        for s in _SENTENCE.split(inner):
+            if sentences and _ABBREVIATION.search(_text(sentences[-1])):
+                sentences[-1] += " " + s
+            else:
+                sentences.append(s)
+        if len(sentences) < 2:
+            return m.group(0)
+        chunks, cur, words = [], [], 0
+        for s in sentences:
+            n = len(_text(s).split())
+            if cur and words + n > max_words:
+                chunks.append(" ".join(cur))
+                cur, words = [s], n
+            else:
+                cur.append(s)
+                words += n
+        if cur:
+            chunks.append(" ".join(cur))
+        if len(chunks) > 1 and len(_text(chunks[-1]).split()) < min_tail:
+            chunks[-2] += " " + chunks.pop()
+        if len(chunks) < 2 or not all(_balanced(c) for c in chunks):
+            return m.group(0)
+        split += 1
+        return "\n".join(f"<p{attrs}>{c}</p>" for c in chunks)
+
+    return _P_RE.sub(one, body or ""), split
+
+
+def long_paragraphs(body: str, limit: int = 75) -> int:
+    return sum(1 for m in _P_RE.finditer(_SCHEMA_RE.sub("\n", body or "")) if len(_text(m.group(2)).split()) > limit)
+
+
+def _ask_rewrites(todo: list[tuple[int, str, str]], topic: str, batch: int = 6) -> dict[int, str]:
+    """Ask for each paragraph (n, phrase, text) to be rewritten with its phrase once, naturally. Only faithful rewrites are returned (see _rewrite_ok)."""
     done: dict[int, str] = {}
     for i in range(0, len(todo), batch):
         chunk = todo[i:i + batch]
         prompt = "\n".join([
-            f"Rewrite each paragraph below so that it contains its exact keyword phrase once, written naturally for a reader (topic: {topic or primary}).",
+            f"Rewrite each paragraph below so that it contains its exact phrase once, written naturally for a reader (topic: {topic}).",
             "Rules: keep the paragraph's meaning, facts and tone; keep about the same length; the phrase must appear exactly as given; do not add statistics, prices, claims or numbers;",
             "do not add other keyword phrases; plain text only, no quotes, labels or markdown.",
             "Paragraphs: " + json.dumps([{"n": n, "keyword": k, "paragraph": t} for n, k, t in chunk], ensure_ascii=False),
@@ -931,22 +1070,41 @@ def add_keywords_to_paragraphs(body: str, primary: str, secondary: list[str], to
         for n, k, t in chunk:
             if _rewrite_ok(t, got.get(n, ""), k):
                 done[n] = got[n]
-    if not done:
-        return body, {"changed": 0, "left": len(todo), "total": cov["total"]}
+    return done
+
+
+def _apply_rewrites(body: str, done: dict[int, str]) -> str:
     count = 0
 
     def swap(m: re.Match) -> str:
         nonlocal count
-        text = _text(m.group(2))
-        if len(text.split()) < 6:
+        if len(_text(m.group(2)).split()) < 6:
             return m.group(0)
         count += 1
         new = done.get(count)
         return f"<p{m.group(1)}>{html.escape(new, quote=False)}</p>" if new else m.group(0)
 
-    # the schema block is left out of the numbering (it holds no <p>), so paragraph numbers match paragraph_coverage
-    out = _P_RE.sub(swap, body)
-    return out, {"changed": len(done), "left": len(todo) - len(done), "total": cov["total"]}
+    return _P_RE.sub(swap, body)
+
+
+def ensure_brand(body: str, brand: str, topic: str = "", want: int = 3) -> tuple[str, int]:
+    """The brand name should be in the article a few times (not in every paragraph): when it is not, the paragraphs best placed for it (an early one, a middle one, one near the end)
+    are rewritten to name it once. Returns (body, paragraphs rewritten)."""
+    visible = _text(_SCHEMA_RE.sub(" ", body or ""))
+    have = len(re.findall(rf"(?<!\w){re.escape(brand)}(?!\w)", visible, re.I)) if brand else want
+    if have >= want:
+        return body, 0
+    cov = paragraph_coverage(body, brand, [])
+    plain = [x for x in cov["paragraphs"] if not x["keywords"]]
+    if not plain:
+        return body, 0
+    picks = []
+    for frac in (0.15, 0.5, 0.8):
+        x = min(plain, key=lambda p: abs(p["n"] - frac * cov["total"]))
+        if x not in picks:
+            picks.append(x)
+    done = _ask_rewrites([(x["n"], brand, x["text"]) for x in picks[: want - have]], topic or brand)
+    return (_apply_rewrites(body, done) if done else body), len(done)
 
 
 # Optimized for 4-core CPU: short and standard run in a single fast call
@@ -960,10 +1118,10 @@ SKIP_HEADING = re.compile(r"(?:introduction|frequently asked questions|faqs?|con
 
 # Paragraph plan per article length for write(): (paragraphs, words per paragraph). Totals with the fixed parts
 # (WH answer, action paragraph, Why Choose, FAQs, CTA) land near the lengths shown on the page (~850 / ~2,000 / ~2,500 words).
-WRITE_PLAN = {
-    "short": {"intro": (2, 70), "sub1": (2, 65), "sub2": (1, 70), "faqs": 3},
-    "standard": {"intro": (2, 110), "sub1": (4, 150), "sub2": (4, 150), "faqs": 4},
-    "long": {"intro": (3, 110), "sub1": (5, 170), "sub2": (5, 170), "faqs": 5},
+WRITE_PLAN = {  # short chunks of 2 to 3 sentences, so the article reads in small pieces
+    "short": {"intro": (2, 45), "sub1": (3, 45), "sub2": (2, 45), "faqs": 3},
+    "standard": {"intro": (4, 55), "sub1": (10, 60), "sub2": (10, 60), "faqs": 4},
+    "long": {"intro": (5, 55), "sub1": (14, 60), "sub2": (14, 60), "faqs": 5},
 }
 _SENTENCE_END = re.compile(r"[.!?…][\"'”’)\]]*$")
 
@@ -1236,6 +1394,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
     """
     cfg = LENGTHS.get(length, LENGTHS["standard"])
     wp = WRITE_PLAN.get(length, WRITE_PLAN["standard"])
+    brand = brand_of(b)  # the short name readers know the business by
     notes: list[str] = []
     run = {"calls": 0, "ollama_seconds": 0.0}
     steps: list[dict] = []
@@ -1316,7 +1475,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                     title = primary.title()[:TITLE_MAX].rsplit(" ", 1)[0]
             if title_hint and title_hint.strip():
                 title = title_hint.strip()  # regenerating: the editor's SEO title is kept as the H1
-            meta = _plain(d_plan.get("meta") or f"Learn everything about {primary} with expert guidance from {b.name}. Discover proven strategies, tips, and actionable insights.")
+            meta = _plain(d_plan.get("meta") or f"Learn everything about {primary} with expert guidance from {brand}. Discover proven strategies, tips, and actionable insights.")
             if len(meta) > META_MAX:
                 meta = fit_meta(meta)
             tags = [_plain(t) for t in d_plan.get("tags") or [] if _plain(t)][:8]
@@ -1333,7 +1492,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 wh_q = wh_q.rstrip(".!:; ") + "?"
             help_h = _plain(d_plan.get("help_heading") or "Don't Wait to Take Action: The Cost of Inaction")
             plan_faqs = [f for f in (d_plan.get("faqs") or []) if isinstance(f, dict) and _plain(f.get("question"))][:wp["faqs"]] or [
-                {"question": f"What is the best way to get started with {primary}?", "answer": f"The best way to get started with {primary} is by conducting an initial assessment of your current position and defining clear goals. Partnering with a reliable service provider like {b.name} ensures a smooth implementation process."},
+                {"question": f"What is the best way to get started with {primary}?", "answer": f"The best way to get started with {primary} is by conducting an initial assessment of your current position and defining clear goals. Partnering with a reliable service provider like {brand} ensures a smooth implementation process."},
                 {"question": f"How long does it take to see results from {primary}?", "answer": f"Results from {primary} typically become noticeable within a few weeks to months depending on consistency and strategy. Continuous optimization is key to long-term success."},
                 {"question": f"Why is professional guidance recommended for {primary}?", "answer": f"Professional guidance helps avoid common pitfalls, saves valuable time, and provides access to advanced industry tools and proven methodologies."}
             ]
@@ -1349,19 +1508,21 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             # Each part is ONE call for N complete paragraphs (sized by the chosen length), so paragraphs never end
             # mid-sentence and are never glued together from separate "expand" calls that restate each other.
             loc_str = f" in {b.city}" if b.city else ""
-            outline = [sub_1, sub_2, wh_q, help_h, f"Why Choose {b.name}?", "Frequently Asked Questions"]
+            outline = [sub_1, sub_2, wh_q, help_h, f"Why Choose {brand}?", "Frequently Asked Questions"]
             all_heads = [title, "Introduction", *outline, "Answer", "Conclusion"]
             used_openings: set[str] = set()  # paragraph openings so far, so later sections don't start the same way
             rules = [
                 "Rules:",
                 "- Output plain-text paragraphs only, separated by ONE blank line. No headings, titles, labels, markdown, bullet points or numbering.",
                 "- Every sentence and every paragraph must be complete.",
+                "- Write SHORT paragraphs: each one is a small chunk of 2 to 3 sentences (about 40 to 60 words), never more than 4 sentences.",
                 "- Each paragraph makes a NEW point and starts with different words; never repeat or restate an earlier paragraph.",
                 "- Stay inside this part's scope; the other outline sections cover their own points, do not repeat them.",
                 "- Do not invent statistics, percentages, prices, study results or guarantees.",
                 "- Clear, warm, professional English for the reader; vary sentence length.",
             ]
             outline_line = "Article outline: Introduction → " + " → ".join(outline)
+            rules.append(f'- Where it fits naturally, mention the brand name "{brand}" (about once per section, not in every paragraph).')
             every_kw = [primary, *clean_secondary]
             rules.append(f"- Every paragraph must naturally contain at least one of these exact keyword phrases: {', '.join(chr(34) + k + chr(34) for k in every_kw)}. "
                          "Use a different one from the paragraph before it, never the same phrase twice in one paragraph, and never force a keyword into a sentence where it reads badly.")
@@ -1376,7 +1537,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             n, w = wp["intro"]
             step(f"Writing Introduction ({n} paragraphs)...")
             intro_prompt = "\n".join([
-                f'You are an expert content writer for {b.name}{loc_str}. Write the INTRODUCTION of the blog article "{title}".',
+                f'You are an expert content writer for {brand}{loc_str}. Write the INTRODUCTION of the blog article "{title}".',
                 outline_line,
                 f"Write exactly {n} paragraphs of about {w} words each.",
                 f'- The very first sentence must contain the exact phrase "{primary}".',
@@ -1387,7 +1548,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             intro_txt = _write_paragraphs(intro_prompt, n, w, all_heads, used=used_openings, on_chunk=live("Writing Introduction..."))
             if not intro_txt:  # never leave the introduction empty
                 intro_txt = (f"{primary.capitalize()} is a topic many people{loc_str} want clear, reliable guidance on. "
-                             f"This guide from {b.name} explains what it involves, what to expect and how to choose the right next step for you.")
+                             f"This guide from {brand} explains what it involves, what to expect and how to choose the right next step for you.")
             parts.append(_paras(intro_txt))
             progress("Introduction complete.", "\n\n".join(parts), title=title, meta=meta)
 
@@ -1397,7 +1558,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             parts.append(f"<h2>{html.escape(sub_1, quote=False)}</h2>")
             progress(f"Writing: {sub_1}", "\n\n".join(parts), title=title, meta=meta)
             sub1_prompt = "\n".join([
-                f'You are an expert content writer for {b.name}{loc_str}. Write the section "{sub_1}" of the blog article "{title}" (primary keyword: "{primary}").',
+                f'You are an expert content writer for {brand}{loc_str}. Write the section "{sub_1}" of the blog article "{title}" (primary keyword: "{primary}").',
                 outline_line,
                 f"Write exactly {n} paragraphs of about {w} words each, covering the core concepts and practical advice of this section,"
                 " moving from foundations to concrete, actionable guidance and common challenges.",
@@ -1415,7 +1576,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             parts.append(f"<h2>{html.escape(sub_2, quote=False)}</h2>")
             progress(f"Writing: {sub_2}", "\n\n".join(parts), title=title, meta=meta)
             sub2_prompt = "\n".join([
-                f'You are an expert content writer for {b.name}{loc_str}. Write the section "{sub_2}" of the blog article "{title}" (primary keyword: "{primary}").',
+                f'You are an expert content writer for {brand}{loc_str}. Write the section "{sub_2}" of the blog article "{title}" (primary keyword: "{primary}").',
                 outline_line,
                 f'The previous section "{sub_1}" already covered the basics; this section goes further: implementation, advanced options and long-term results.',
                 f"Write exactly {n} paragraphs of about {w} words each.",
@@ -1462,8 +1623,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             progress("Action Guidance complete.", "\n\n".join(parts), title=title, meta=meta)
 
             # ── 7. Why Choose [Business Name]? (H2, 3-5 reasons) ──
-            step(f"Writing: Why Choose {b.name}?... ")
-            h2_why = f"<h2>Why Choose {html.escape(b.name, quote=False)}?</h2>"
+            step(f"Writing: Why Choose {brand}?... ")
+            h2_why = f"<h2>Why Choose {html.escape(brand, quote=False)}?</h2>"
             parts.append(h2_why)
             
             reasons = [
@@ -1472,9 +1633,9 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 f"<li><strong>Transparent Communication:</strong> Direct access to experienced professionals with regular progress updates and clear expectations.</li>",
                 f"<li><strong>Proven Methodology:</strong> Systematic execution focused on delivering measurable, sustainable value for your brand.</li>"
             ]
-            why_html = f"<p>When selecting a trusted partner for {primary}, {html.escape(b.name, quote=False)} stands apart through dedicated expertise and customer-first execution:</p>\n<ul>\n" + "\n".join(reasons) + "\n</ul>"
+            why_html = f"<p>When selecting a trusted partner for {primary}, {html.escape(brand, quote=False)} stands apart through dedicated expertise and customer-first execution:</p>\n<ul>\n" + "\n".join(reasons) + "\n</ul>"
             parts.append(why_html)
-            progress(f"Why Choose {b.name} complete.", "\n\n".join(parts), title=title, meta=meta)
+            progress(f"Why Choose {brand} complete.", "\n\n".join(parts), title=title, meta=meta)
 
             # ── 8. FAQs (H2, 3-5 questions and answers) - MANDATORY ──
             step("Writing Mandatory FAQs section (3-5 Q&As)...")
@@ -1499,8 +1660,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             progress("FAQs complete.", "\n\n".join(parts), title=title, meta=meta)
 
             # ── 9. CTA - Call To Action with Verified Business Details ──
-            step(f"Writing CTA for {b.name}...")
-            h2_cta = f"<h2>Ready to Get Started? Contact {html.escape(b.name, quote=False)} Today</h2>"
+            step(f"Writing CTA for {brand}...")
+            h2_cta = f"<h2>Ready to Get Started? Contact {html.escape(brand, quote=False)} Today</h2>"
             contact_items = []
             if b.phone:
                 contact_items.append(f"<li><strong>Phone:</strong> <a href=\"tel:{html.escape(b.phone, quote=True)}\">{html.escape(b.phone, quote=False)}</a></li>")
@@ -1513,7 +1674,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             cta_html = "\n".join([
                 h2_cta,
                 '<div class="blog-cta-box" style="padding: 20px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0; margin-top: 20px;">',
-                f'  <p>Taking your {html.escape(primary, quote=False)} strategy to the next level requires proven expertise and dedicated execution. Partner with the specialists at <strong>{html.escape(b.name, quote=False)}</strong> to receive customized recommendations designed around your specific objectives.</p>',
+                f'  <p>Taking your {html.escape(primary, quote=False)} strategy to the next level requires proven expertise and dedicated execution. Partner with the specialists at <strong>{html.escape(brand, quote=False)}</strong> to receive customized recommendations designed around your specific objectives.</p>',
                 f'  <ul>\n    {"".join(contact_items)}\n  </ul>' if contact_items else '',
                 '</div>'
             ])
@@ -1531,10 +1692,16 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             step("Running SEO validation...")
             fix_seo_fields(draft, primary)
             correct_content(draft, primary, secondary, topic)
+            step("Breaking the article into short chunks...")
+            draft["body"], n_split = chunk_paragraphs(draft["body"])
             step("Putting a keyword in every paragraph...")
             draft["body"], kw_report = add_keywords_to_paragraphs(draft["body"], primary, clean_secondary, topic)
             if kw_report["changed"]:
                 notes.append(f"{kw_report['changed']} paragraph{'s' if kw_report['changed'] != 1 else ''} rewritten to carry a keyword: read them before publishing.")
+            draft["body"], n_brand = ensure_brand(draft["body"], brand, topic)
+            if n_brand:
+                notes.append(f"{n_brand} paragraph{'s' if n_brand != 1 else ''} rewritten to name {brand}: read them before publishing.")
+            draft["body"] = emphasize(draft["body"], primary, clean_secondary, brand)  # bold and highlighted on the website itself
 
             # ── 10. JSON-LD schema (BlogPosting + FAQPage), built last so it uses the final title, meta and FAQs ──
             step("Adding BlogPosting + FAQPage schema...")
@@ -1545,7 +1712,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
         finally:
             _stats.run = None
 
-    draft["warnings"] = validate(draft["title"], draft["meta"], draft["body"], primary, secondary) + notes
+    draft["warnings"] = validate(draft["title"], draft["meta"], draft["body"], primary, secondary, brand) + notes
     draft["stats"] = {
         "length": length,
         "total_seconds": round(time.time() - started, 1),
