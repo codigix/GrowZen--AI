@@ -54,13 +54,14 @@ export function splitKeywords(text, primary, secondary, brand) {
   return out;
 }
 
-/** The article's HTML with each keyword wrapped in a coloured <mark>. Only text is touched: tags, attributes, scripts and styles are left exactly as they are. */
+/** The article's HTML with each keyword wrapped in a coloured <mark> (for checking only). Only text is touched: tags, attributes, scripts and styles are left exactly as they are. */
 export function highlightHtml(html, primary, secondary, opts = {}) {
   const ex = expression(primary, secondary, opts.brand);
   if (!ex || !html) return html || '';
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  doc.body.querySelectorAll('strong[data-gz]').forEach(el => { el.setAttribute('style', MARK_STYLE[el.getAttribute('data-gz')] || MARK_STYLE.secondary); }); // the bold the article carries: coloured here, to check it; on your website it is bold only
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => (n.parentElement && n.parentElement.closest('script,style,mark,textarea') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT), // inside a saved mark (even in its <strong>) the text is left as it is
+    acceptNode: (n) => (n.parentElement && n.parentElement.closest('script,style,mark,textarea,strong,b') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT), // inside a saved mark (even in its <strong>) the text is left as it is
   });
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
@@ -87,7 +88,7 @@ export function highlightHtml(html, primary, secondary, opts = {}) {
   }
   if (opts.flag) { // a paragraph with none of the keywords gets a red bar at its left
     doc.body.querySelectorAll('p').forEach(p => {
-      if (p.textContent.trim().split(/\s+/).length >= 6 && !p.querySelector('mark')) { p.setAttribute('style', `${p.getAttribute('style') || ''};border-left:3px solid #fca5a5;padding-left:8px`); p.setAttribute('title', 'No keyword in this paragraph'); }
+      if (p.textContent.trim().split(/\s+/).length >= 6 && !p.querySelector('mark,strong[data-gz]')) { p.setAttribute('style', `${p.getAttribute('style') || ''};border-left:3px solid #fca5a5;padding-left:8px`); p.setAttribute('title', 'No keyword in this paragraph'); }
     });
   }
   return doc.body.innerHTML;

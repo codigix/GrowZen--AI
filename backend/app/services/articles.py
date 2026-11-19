@@ -693,8 +693,8 @@ def validate(title: str, meta: str, body: str, primary: str, secondary: list[str
     intro_text = _text(first_p.group(1)) if first_p else ""
     if not first_p:
         w.append("Structure check: Introduction paragraph is missing.")
-    elif len(intro_text) < 500:
-        w.append(f"Structure check: Introduction is {len(intro_text)} characters (minimum 500 characters required).")
+    elif len(intro_text) < 120:
+        w.append(f"Structure check: the opening paragraph is only {len(intro_text)} characters: give it at least a couple of full sentences.")
     if first_p and not _has(intro_text, primary):
         w.append(f"The introduction does not contain the primary keyword '{primary}'.")
         
@@ -953,13 +953,13 @@ EMPHASIS_STYLES = {
     "secondary": "background:#bae6fd;color:inherit;padding:0 .15em;border-radius:3px",
     "brand": "background:#bbf7d0;color:inherit;padding:0 .15em;border-radius:3px",
 }
-_EMPH_RE = re.compile(r'<mark\b[^>]*\bdata-gz="[^"]*"[^>]*>(?:<strong>)?([\s\S]*?)(?:</strong>)?</mark>', re.I)
-_NO_EMPHASIS = {"h1", "h2", "h3", "h4", "h5", "h6", "a", "script", "style", "code", "pre", "mark", "button", "summary", "title"}
+_EMPH_RE = re.compile(r'<mark\b[^>]*\bdata-gz="[^"]*"[^>]*>(?:<strong>)?([\s\S]*?)(?:</strong>)?</mark>|<strong\b[^>]*\bdata-gz="[^"]*"[^>]*>([\s\S]*?)</strong>', re.I)
+_NO_EMPHASIS = {"h1", "h2", "h3", "h4", "h5", "h6", "a", "script", "style", "code", "pre", "mark", "strong", "b", "button", "summary", "title"}
 
 
 def strip_emphasis(body: str) -> str:
     """Take the keyword markup out again (only the marks this app made: they carry data-gz), leaving the plain text."""
-    return _EMPH_RE.sub(r"\1", body or "")
+    return _EMPH_RE.sub(lambda m: m.group(1) if m.group(1) is not None else m.group(2), body or "")
 
 
 def emphasize(body: str, primary: str | None, secondary: list[str] | None, brand: str | None = None) -> str:
@@ -978,7 +978,7 @@ def emphasize(body: str, primary: str | None, secondary: list[str] | None, brand
 
     def wrap(m: re.Match) -> str:
         kind = kinds.get(" ".join(m.group(0).lower().split()), "secondary")
-        return f'<mark data-gz="{kind}" style="{EMPHASIS_STYLES[kind]}"><strong>{m.group(0)}</strong></mark>'
+        return f'<strong data-gz="{kind}">{m.group(0)}</strong>'  # bold only: no colour on the website
 
     out: list[str] = []
     depth: Counter = Counter()
@@ -1172,6 +1172,64 @@ def _dedupe_openings(text: str, used: set | None = None) -> str:
         used.add(key)
         out.append(p)
     return "\n\n".join(out)
+
+
+def _item(x) -> str:
+    """One list item or short paragraph from the model: plain text, no markdown marks, no leading bullet."""
+    x = re.sub(r"^\s*(?:[-*\u2022]|\d+[.)])\s+", "", str(x or "")).replace("**", "").replace("__", "")
+    return " ".join(_plain(x).split())
+
+
+def _list_html(items, ordered: bool = False) -> str:
+    rows = [_item(i) for i in (items if isinstance(items, list) else [])]
+    rows = [r for r in rows if len(r.split()) >= 3]
+    if not rows:
+        return ""
+    tag = "ol" if ordered else "ul"
+    return f"<{tag}>\n" + "\n".join(f"<li>{html.escape(r, quote=False)}</li>" for r in rows) + f"\n</{tag}>"
+
+
+def _p(text) -> str:
+    x = _item(text)
+    return f"<p>{html.escape(x, quote=False)}</p>" if len(x.split()) >= 5 else ""
+
+
+def render_structured(d: dict, takeaways_label: str = "Key takeaways") -> str:
+    """A section as small, scannable pieces: a short lead, H3 groups (one or two sentences and a bullet or numbered list each) and a short takeaways list."""
+    out = [_p(d.get("lead"))]
+    for g in (d.get("groups") if isinstance(d.get("groups"), list) else []):
+        if not isinstance(g, dict):
+            continue
+        heading = _item(g.get("heading")).rstrip(":")
+        body = [_p(g.get("text")), _list_html(g.get("points"), bool(g.get("steps")))]
+        if heading and any(body):
+            out += [f"<h3>{html.escape(heading, quote=False)}</h3>", *body]
+    tk = _list_html(d.get("takeaways"))
+    if tk:
+        out += [f"<p><strong>{html.escape(takeaways_label, quote=False)}</strong></p>", tk]
+    return "\n".join(x for x in out if x)
+
+
+STRUCTURE_RULES = [
+    "Write for people who skim: small pieces, never a wall of text.",
+    "- Plain text in every field: no markdown, no HTML, no asterisks, no numbering inside the text.",
+    "- Every sentence must be complete. Do not invent statistics, prices, study results or guarantees.",
+    "- Clear, warm, professional English; vary the wording, never repeat a point.",
+]
+
+
+def _write_structured(prompt: str, n_groups: int, used: set | None = None) -> str:
+    """A section as scannable HTML (see render_structured) from one JSON answer; '' when the model gave nothing usable, so the caller can fall back to plain paragraphs."""
+    budget = n_groups * 320 + 700
+    if used:
+        prompt += "\n- These openings are already used elsewhere in the article, do not start the same way: " + "; ".join(f'"{o}…"' for o in sorted(used) if o)
+    for attempt in range(2):
+        d = _json(prompt, budget)
+        h = render_structured(d)
+        if h.count("<h3") >= max(1, n_groups - 1) and h.count("<li>") >= 2:
+            return h
+        log.warning("Structured section too thin (try %d): %r", attempt + 1, h[:160])
+    return ""
 
 
 def _write_paragraphs(prompt: str, n_paras: int, words_each: int, headings: list[str], on_chunk=None, used: set | None = None) -> str:
@@ -1510,6 +1568,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             loc_str = f" in {b.city}" if b.city else ""
             outline = [sub_1, sub_2, wh_q, help_h, f"Why Choose {brand}?", "Frequently Asked Questions"]
             all_heads = [title, "Introduction", *outline, "Answer", "Conclusion"]
+            groups = {"short": 2, "standard": 3, "long": 4}.get(length, 3)  # H3 groups (each with its own list) per main section
             used_openings: set[str] = set()  # paragraph openings so far, so later sections don't start the same way
             rules = [
                 "Rules:",
@@ -1545,11 +1604,28 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 f"- Hook the reader, explain why {primary} matters to them{loc_str}, and preview what the article covers. Do not go into the details of the later sections.",
                 *rules,
             ])
-            intro_txt = _write_paragraphs(intro_prompt, n, w, all_heads, used=used_openings, on_chunk=live("Writing Introduction..."))
+            intro_json = _json("\n".join([
+                f'You are an expert content writer for {brand}{loc_str}. Write the INTRODUCTION of the blog article "{title}".',
+                outline_line,
+                f'- "paragraphs": exactly 2 short paragraphs of 2 to 3 sentences each (about 40 to 55 words). The very first sentence must contain the exact phrase "{primary}".',
+                f"  Hook the reader, explain why {primary} matters to them{loc_str} and say what the article covers. Do not go into the details of later sections.",
+                '- "learn": 3 to 5 short bullet points (6 to 12 words each) naming what the reader will learn.',
+                *kw_rule(intro_kws),
+                *STRUCTURE_RULES,
+                'Answer with JSON only: {"paragraphs": ["...", "..."], "learn": ["...", "..."]}',
+            ]), 700)
+            intro_html = "\n".join(x for x in [*[_p(x) for x in (intro_json.get("paragraphs") if isinstance(intro_json.get("paragraphs"), list) else [])[:3]],
+                                              (f"<p><strong>What you will learn in this guide</strong></p>\n{_list_html(intro_json.get('learn'))}" if _list_html(intro_json.get("learn")) else "")] if x)
+            if intro_html.count("<p>") >= 2 and primary.lower() in _text(intro_html).lower():
+                parts.append(intro_html)
+                intro_txt = "done"
+            else:
+                intro_txt = _write_paragraphs(intro_prompt, n, w, all_heads, used=used_openings, on_chunk=live("Writing Introduction..."))
             if not intro_txt:  # never leave the introduction empty
                 intro_txt = (f"{primary.capitalize()} is a topic many people{loc_str} want clear, reliable guidance on. "
                              f"This guide from {brand} explains what it involves, what to expect and how to choose the right next step for you.")
-            parts.append(_paras(intro_txt))
+            if intro_txt != "done":
+                parts.append(_paras(intro_txt))
             progress("Introduction complete.", "\n\n".join(parts), title=title, meta=meta)
 
             # 3. Subheading 1
@@ -1565,9 +1641,23 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 *kw_rule(p2_kws + p3_kws),
                 *rules,
             ])
-            sub1_txt = _write_paragraphs(sub1_prompt, n, w, all_heads, used=used_openings, on_chunk=live(f"Writing {sub_1}..."))
-            if sub1_txt:
-                parts.append(_paras(sub1_txt))
+            sub1_html = _write_structured("\n".join([
+                f'You are an expert content writer for {brand}{loc_str}. Write the section "{sub_1}" of the blog article "{title}" (primary keyword: "{primary}").',
+                outline_line,
+                "Move from foundations to concrete, actionable guidance and common challenges.",
+                f'- "lead": one short paragraph of 2 sentences that opens the section.',
+                f'- "groups": exactly {groups} groups. Each has "heading" (a short, specific H3 sub-heading of 3 to 8 words, not a question), "text" (1 or 2 sentences, about 25 to 40 words),'
+                ' "points" (3 or 4 bullet points of 8 to 18 words, each a concrete fact or tip) and "steps" (true only when the points are an ordered process, otherwise false).',
+                '- "takeaways": 3 short bullet points (6 to 14 words) that sum up the section.',
+                *kw_rule(p2_kws + p3_kws),
+                f'- Every "lead" and "text" must naturally contain one of: {", ".join(chr(34) + k + chr(34) for k in every_kw)} (a different one from the one before; never forced).',
+                f'- Mention "{brand}" once in the section, where it fits.',
+                *STRUCTURE_RULES,
+                'Answer with JSON only: {"lead": "...", "groups": [{"heading": "...", "text": "...", "points": ["..."], "steps": false}], "takeaways": ["..."]}',
+            ]), groups, used=used_openings)
+            sub1_txt = "" if sub1_html else _write_paragraphs(sub1_prompt, n, w, all_heads, used=used_openings, on_chunk=live(f"Writing {sub_1}..."))
+            if sub1_html or sub1_txt:
+                parts.append(sub1_html or _paras(sub1_txt))
             progress("Subheading 1 complete.", "\n\n".join(parts), title=title, meta=meta)
 
             # 4. Subheading 2
@@ -1583,9 +1673,22 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 *kw_rule(p4_kws),
                 *rules,
             ])
-            sub2_txt = _write_paragraphs(sub2_prompt, n, w, all_heads, used=used_openings, on_chunk=live(f"Writing {sub_2}..."))
-            if sub2_txt:
-                parts.append(_paras(sub2_txt))
+            sub2_html = _write_structured("\n".join([
+                f'You are an expert content writer for {brand}{loc_str}. Write the section "{sub_2}" of the blog article "{title}" (primary keyword: "{primary}").',
+                outline_line,
+                f'The previous section "{sub_1}" already covered the basics; this section goes further: implementation, advanced options and long-term results.',
+                f'- "lead": one short paragraph of 2 sentences that opens the section.',
+                f'- "groups": exactly {groups} groups. Each has "heading" (a short, specific H3 sub-heading of 3 to 8 words, not a question), "text" (1 or 2 sentences, about 25 to 40 words),'
+                ' "points" (3 or 4 bullet points of 8 to 18 words) and "steps" (true when the points are an ordered process such as a how-to, otherwise false); make at least one group a numbered step-by-step.',
+                '- "takeaways": 3 short bullet points (6 to 14 words) that sum up the section.',
+                *kw_rule(p4_kws),
+                f'- Every "lead" and "text" must naturally contain one of: {", ".join(chr(34) + k + chr(34) for k in every_kw)} (a different one from the one before; never forced).',
+                *STRUCTURE_RULES,
+                'Answer with JSON only: {"lead": "...", "groups": [{"heading": "...", "text": "...", "points": ["..."], "steps": false}], "takeaways": ["..."]}',
+            ]), groups, used=used_openings)
+            sub2_txt = "" if sub2_html else _write_paragraphs(sub2_prompt, n, w, all_heads, used=used_openings, on_chunk=live(f"Writing {sub_2}..."))
+            if sub2_html or sub2_txt:
+                parts.append(sub2_html or _paras(sub2_txt))
             progress("Subheading 2 complete.", "\n\n".join(parts), title=title, meta=meta)
 
             # 5. WH Question (answer up to 750 characters, ending on a full sentence)
@@ -1620,6 +1723,13 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             help_txt = _write_paragraphs(help_prompt, 1, 110, all_heads, used=used_openings, on_chunk=live("Writing Action Guidance..."))
             if help_txt:
                 parts.append(_paras(help_txt))
+                steps_json = _json("\n".join([
+                    f'For the section "{help_h}" of an article about "{primary}", give 3 or 4 short next steps a reader can take now (8 to 16 words each), as an ordered list.',
+                    *STRUCTURE_RULES, 'Answer with JSON only: {"steps": ["...", "..."]}',
+                ]), 350)
+                next_steps = _list_html(steps_json.get("steps"), True)
+                if next_steps:
+                    parts.append("<p><strong>Your next steps</strong></p>\n" + next_steps)
             progress("Action Guidance complete.", "\n\n".join(parts), title=title, meta=meta)
 
             # ── 7. Why Choose [Business Name]? (H2, 3-5 reasons) ──

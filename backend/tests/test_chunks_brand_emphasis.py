@@ -21,13 +21,13 @@ def test_the_brand_is_the_short_name_readers_know():
 
 BODY = ('<h1>Teeth Whitening Pune at Acme</h1><p>Teeth whitening pune at Acme Clinic is popular. We explain whitening cost. <a href="/x">teeth whitening pune link</a></p>'
         '<script type="application/ld+json">{"keywords":["teeth whitening pune"]}</script><h2>Cost of teeth whitening pune</h2><p>Plain text only.</p><ul><li>Acme Clinic is local</li></ul>')
-PRIMARY_MARK = '<mark data-gz="primary" style="background:#fde68a;color:inherit;padding:0 .15em;border-radius:3px"><strong>'
+PRIMARY_MARK = '<strong data-gz="primary">'
 
 
 def test_keywords_and_brand_are_bold_and_highlighted_in_the_text_only():
     out = svc.emphasize(BODY, "teeth whitening pune", ["whitening cost"], "Acme Clinic")
     assert out.count('data-gz="primary"') == 1 and out.count('data-gz="secondary"') == 1 and out.count('data-gz="brand"') == 2  # the list item counts too
-    assert PRIMARY_MARK + "Teeth whitening pune</strong></mark>" in out
+    assert PRIMARY_MARK + "Teeth whitening pune</strong>" in out and "<mark" not in out and "background" not in out  # bold only, no colour
     assert "<h1>Teeth Whitening Pune at Acme</h1>" in out and "<h2>Cost of teeth whitening pune</h2>" in out  # headings are bold already
     assert '<a href="/x">teeth whitening pune link</a>' in out and '{"keywords":["teeth whitening pune"]}' in out  # links and the schema are left alone
     assert svc.emphasize(out, "teeth whitening pune", ["whitening cost"], "Acme Clinic") == out  # again: nothing doubled
@@ -57,7 +57,7 @@ def test_saving_keeps_the_marks_for_the_current_keywords_and_never_leaks_the_sch
     assert "SCHEMA_PLACEHOLDER" not in body and body.count("application/ld+json") == 1  # an old bug: every save left this text in the article
     assert 'data-gz="primary"' in body and 'data-gz="secondary"' in body and body.count('data-gz="brand"') == 2  # the brand is "Acme Dental", not the whole legal name
     again = client.patch(url, json={"body": body}).json()["body"]
-    assert again.count('data-gz="primary"') == body.count('data-gz="primary"') and PRIMARY_MARK + "<mark" not in again  # no nesting
+    assert again.count('data-gz="primary"') == body.count('data-gz="primary"') and PRIMARY_MARK + "<strong" not in again  # no nesting
     new_kw = client.patch(url, json={"keyword": "whitening cost", "secondary_keywords": []}).json()["body"]
     assert 'data-gz="primary"' in new_kw and 'data-gz="secondary"' not in new_kw
     w = client.patch(url, json={"body": "<h1>T</h1><p>A paragraph about whitening cost with enough words in it to count as a real paragraph.</p>"}).json()["warnings"]
@@ -67,7 +67,9 @@ def test_saving_keeps_the_marks_for_the_current_keywords_and_never_leaks_the_sch
 def test_the_wordpress_cleaner_keeps_the_marks_style_but_not_other_inline_styles():
     html = lay.clean_body(svc.emphasize('<h1>T</h1><p style="color:red" class="x">Teeth whitening pune is here.</p>', "teeth whitening pune", [], None))
     assert 'style="color:red"' not in html and 'class="x"' not in html
-    assert '<mark data-gz="primary" style="background:#fde68a' in html and "<strong>Teeth whitening pune</strong>" in html
+    assert '<strong data-gz="primary">Teeth whitening pune</strong>' in html and "background" not in html
+    legacy = '<p><mark data-gz="primary" style="background:#fde68a"><strong>Teeth whitening pune</strong></mark> is here.</p>'
+    assert svc.strip_emphasis(legacy) == "<p>Teeth whitening pune is here.</p>"  # an article saved with the old coloured marks is cleaned
 
 
 LONG = ("<p>Teeth whitening is a popular cosmetic treatment in Pune. It brightens the shade of your teeth in a single visit. The dentist first cleans the surface carefully. "
@@ -118,7 +120,7 @@ def test_publishing_makes_sure_the_marks_are_in_what_is_sent(client):
     try:
         a = db.get(Article, aid)
         ap.ensure_emphasis(db, a)  # an article saved before this existed
-        assert a.body.count("<mark") == 3 and 'data-gz="brand"' in a.body
+        assert a.body.count("<strong data-gz") == 3 and 'data-gz="brand"' in a.body
         before = a.body
         ap.ensure_emphasis(db, a, db.get(Business, bid))
         assert a.body == before
@@ -131,3 +133,15 @@ def test_the_editor_can_break_a_draft_into_chunks_without_saving(client):
     r = client.post(f"/api/v1/businesses/{bid}/articles/{aid}/chunk-paragraphs", json={"body": LONG, "keyword": "teeth whitening"}).json()
     assert r["split"] == 1 and r["long_left"] == 0 and r["body"].count("<p>") >= 3 and 'data-gz="primary"' in r["body"]
     assert client.get(f"/api/v1/businesses/{bid}/articles/{aid}").json()["body"].startswith("<p>placeholder")
+
+
+def test_a_section_is_rendered_as_small_pieces_with_lists_and_takeaways():
+    d = {"lead": "Teeth whitening is a safe way to brighten your smile at the clinic.",
+         "groups": [{"heading": "How the treatment works", "text": "The dentist cleans your teeth first. Then a gel is applied under a light.",
+                     "points": ["**Cleaning** removes surface stains first", "A whitening gel is applied carefully", "x"], "steps": True},
+                    {"heading": "", "text": "dropped because it has no heading", "points": []}],
+         "takeaways": ["Whitening is quick and comfortable", "Aftercare is simple"]}
+    out = svc.render_structured(d)
+    assert out.count("<h3>") == 1 and "<ol>" in out and out.count("<li>") == 4 and "<strong>Key takeaways</strong>" in out
+    assert "**" not in out and "<li>x</li>" not in out and out.startswith("<p>Teeth whitening")
+    assert svc.render_structured({}) == ""

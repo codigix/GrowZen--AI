@@ -221,10 +221,13 @@ def mark_keywords(html: str, primary: str | None, secondary: list[str]) -> str:
     kinds = {" ".join(k.lower().split()): kind for k, kind in phrases}
     rx = re.compile(r"(?<!\w)(" + "|".join(re.escape(k).replace(r"\ ", r"\s+") for k, _ in sorted(phrases, key=lambda x: -len(x[0]))) + r")(?!\w)", re.I)
     styles = {"primary": "background:#fde68a;color:inherit;padding:0 2px;border-radius:3px;font-weight:600;box-shadow:inset 0 -2px 0 #f59e0b",
-              "secondary": "background:#bae6fd;color:inherit;padding:0 2px;border-radius:3px;font-weight:600;box-shadow:inset 0 -2px 0 #0ea5e9"}
+              "secondary": "background:#bae6fd;color:inherit;padding:0 2px;border-radius:3px;font-weight:600;box-shadow:inset 0 -2px 0 #0ea5e9",
+              "brand": "background:#bbf7d0;color:inherit;padding:0 2px;border-radius:3px;font-weight:600;box-shadow:inset 0 -2px 0 #22c55e"}
     soup = BeautifulSoup(html, "html.parser")
+    for st in soup.find_all("strong", attrs={"data-gz": True}):  # the bold the article carries is coloured here, for checking only: the website gets it bold
+        st["style"] = styles.get(st["data-gz"], styles["secondary"])
     for node in list(soup.find_all(string=True)):
-        if isinstance(node, Comment) or node.parent.name in ("script", "style", "mark", "textarea"):
+        if isinstance(node, Comment) or node.parent.name in ("script", "style", "mark", "textarea") or node.find_parent(["strong", "b"]) is not None:
             continue
         text = str(node)
         if not rx.search(text):
@@ -245,7 +248,7 @@ def mark_keywords(html: str, primary: str | None, secondary: list[str]) -> str:
             node.insert_before(piece)
         node.extract()
     for p in soup.find_all("p"):
-        if len(p.get_text(" ", strip=True).split()) >= 6 and not p.find("mark"):
+        if len(p.get_text(" ", strip=True).split()) >= 6 and not p.find("mark") and not p.find("strong", attrs={"data-gz": True}):
             p["style"] = (p.get("style", "") + ";border-left:3px solid #fca5a5;padding-left:8px").lstrip(";")
             p["title"] = "No keyword in this paragraph"
     return str(soup)

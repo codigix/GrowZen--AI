@@ -828,7 +828,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[12px]">
         <label className="inline-flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer"><input type="checkbox" checked={mark} onChange={e => setMark(e.target.checked)} /> Colour the keywords</label>
-        <span className="text-[11.5px] text-slate-500">They are bold and highlighted on your website too: it is added when you save and again when you publish.</span>
+        <span className="text-[11.5px] text-slate-500">Colours are for checking here only. On your website the keywords and brand name are just bold: that is added when you save and again when you publish.</span>
         {mark && <>
           {meta.keyword.trim() && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#fde68a', boxShadow: 'inset 0 -2px 0 #f59e0b' }} title="Primary keyword: how many times it appears in the article text">Primary: {meta.keyword.trim()} <span className="font-mono">×{countIn(bodyText, meta.keyword)}</span></span>}
           {secondaryNow.map(k => <span key={k} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#bae6fd', boxShadow: 'inset 0 -2px 0 #0ea5e9' }} title="Secondary keyword: how many times it appears in the article text">{k} <span className="font-mono">×{countIn(bodyText, k)}</span></span>)}
