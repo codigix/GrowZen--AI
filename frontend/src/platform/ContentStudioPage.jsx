@@ -690,6 +690,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const [device, setDevice] = useState('desktop');
   const [site, setSite] = useState({ busy: false, html: '', error: '', notes: [], ref: '' });
   const siteSeq = useRef(0);
+  const refKey = `growzen.layoutpost.${b.id}`;
+  const [refUrl, setRefUrl] = useState(() => { try { return localStorage.getItem(refKey) || ''; } catch { return ''; } }); // a post of the site whose design the preview copies ('' = chosen automatically)
+  const [refDraft, setRefDraft] = useState('');
+  const useRef2 = (v) => { const clean = v.trim(); setRefUrl(clean); try { if (clean) localStorage.setItem(refKey, clean); else localStorage.removeItem(refKey); } catch { /* kept for this page only */ } };
   const [kwBusyP, setKwBusyP] = useState(false);
   useEffect(() => {
     if (selectedArticle) {
@@ -844,13 +848,13 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     const mine = ++siteSeq.current;
     setSite(x => ({ ...x, busy: true, error: '' }));
     return api(`/businesses/${b.id}/articles/${selectedArticle.id}/site-preview`, { method: 'POST', timeout: 90000,
-      body: { view, title: meta.title, meta_description: meta.meta_description, body: draft, slug: slugify(meta.slug, 100), keyword: meta.keyword, secondary_keywords: secondaryNow, highlight: mark } })
+      body: { view, title: meta.title, meta_description: meta.meta_description, body: draft, slug: slugify(meta.slug, 100), keyword: meta.keyword, secondary_keywords: secondaryNow, highlight: mark, reference_url: refUrl || null } })
       .then(r => { if (mine === siteSeq.current) setSite({ busy: false, html: r.html, error: '', notes: r.notes || [], ref: r.reference_url || '' }); })
       .catch(e => { if (mine === siteSeq.current) setSite(x => ({ ...x, busy: false, html: '', error: e.message || 'The preview could not be built.' })); });
   };
   useEffect(() => {
     if (selectedArticle && bodyTab === 'preview' && previewView !== 'standard') loadSitePreview(previewView);
-  }, [previewView, bodyTab, mark]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [previewView, bodyTab, mark, refUrl]); // eslint-disable-line react-hooks/exhaustive-deps
   const renderViewSwitch = () => (
     <div className="flex flex-wrap items-center gap-2 mb-3">
       <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
@@ -863,6 +867,17 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         </div>
         <Button size="sm" icon={RefreshCw} busy={site.busy} onClick={() => loadSitePreview(previewView)}>Refresh with my edits</Button>
       </>)}
+      {previewView === 'post' && (
+        <details className="basis-full text-[12px] text-slate-600">
+          <summary className="cursor-pointer font-semibold text-slate-700">Design copied from: {site.ref ? <a href={site.ref} target="_blank" rel="noreferrer noopener" className="text-indigo-700 hover:underline font-mono break-all" onClick={e => e.stopPropagation()}>{site.ref}</a> : 'a post chosen automatically'}{refUrl ? ' (your choice)' : ''}. Use another post</summary>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input className={`${inputCls} flex-1 min-w-[260px]`} value={refDraft} onChange={e => setRefDraft(e.target.value)} placeholder={`A post of your site, e.g. ${(b.website || 'https://yoursite.com').replace(/\/$/, '')}/a-post/`} aria-label="Post whose layout to copy" />
+            <Button size="sm" variant="primary" disabled={!/^https?:\/\//i.test(refDraft.trim())} onClick={() => useRef2(refDraft)}>Use this post</Button>
+            {refUrl && <Button size="sm" onClick={() => { useRef2(''); setRefDraft(''); }}>Choose automatically</Button>}
+          </div>
+          <div className="mt-1 text-[11.5px] text-slate-500">The preview copies this post's design: header, title and date, the picture, the sidebar, the FAQ and the blocks below it. Pick the post you like best.</div>
+        </details>
+      )}
     </div>
   );
   const renderSitePreview = () => (

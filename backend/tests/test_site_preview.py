@@ -23,15 +23,38 @@ POST_PAGE = """<html><head><link rel="stylesheet" href="/theme.css"><script>trac
 <div class="entry-content"><p>""" + "Old article text that should be replaced. " * 20 + """</p></div></article>
 <footer>Footer text</footer></body></html>"""
 
-ELEMENTOR_POST = """<html><head><link rel="stylesheet" href="/e.css"></head><body><header><nav>Menu</nav></header>
-<div data-elementor-type="wp-post" class="elementor elementor-9"><section class="elementor-section"><div class="elementor-widget elementor-widget-theme-post-title" data-widget_type="theme-post-title.default"><div class="elementor-widget-container"><h1 class="elementor-heading-title">Old title</h1></div></div>
-<div class="elementor-widget elementor-widget-theme-post-featured-image" data-widget_type="theme-post-featured-image.default"><div class="elementor-widget-container"><img src="/old.jpg"></div></div>
-<div class="elementor-widget elementor-widget-post-info" data-widget_type="post-info.default"><span class="elementor-post-info__item--type-date"><time>May 1, 2025</time></span></div></section>
-<section class="elementor-section"><div class="elementor-widget elementor-widget-text-editor" data-widget_type="text-editor.default"><div class="elementor-widget-container"><p>Old paragraph one that will go.</p></div></div>
-<div class="elementor-widget elementor-widget-heading" data-widget_type="heading.default"><h2>Old heading</h2></div>
-<div class="elementor-widget elementor-widget-text-editor" data-widget_type="text-editor.default"><div class="elementor-widget-container"><p>Old paragraph two that will go.</p></div></div></section>
-<section class="elementor-section"><div class="elementor-widget elementor-widget-nested-accordion" data-widget_type="nested-accordion.default">Old FAQ</div></section></div>
-<footer><div class="elementor-widget elementor-widget-text-editor" data-widget_type="text-editor.default"><div class="elementor-widget-container"><p>Footer contact text</p></div></div></footer></body></html>"""
+def _w(kind, inner, extra=""):
+    return f'<div class="elementor-element elementor-widget elementor-widget-{kind}" data-widget_type="{kind}.default"{extra}>{inner}</div>'
+
+
+ELEMENTOR_POST = ("""<html><head><title>Old post title</title><link rel="stylesheet" href="/e.css"></head><body><header><nav>Menu</nav></header>
+<div data-elementor-type="wp-post" class="elementor elementor-357"><div>Header template</div></div>
+<div data-elementor-type="wp-post" class="elementor elementor-9">
+<div class="e-con hero"><div class="e-con-inner">""" + _w("theme-post-title", '<div class="elementor-widget-container"><h1 class="elementor-heading-title">Old title</h1></div>')
+                  + _w("post-info", '<span class="elementor-post-info__item--type-date"><time>May 1, 2025</time></span>') + """</div></div>
+<div class="e-con main"><div class="e-con-inner"><div class="e-con column-a">"""
+                  + _w("theme-post-featured-image", '<div class="elementor-widget-container"><img src="/old.jpg"></div>')
+                  + _w("heading", '<div class="elementor-widget-container"><h2 class="elementor-heading-title">Old heading one</h2></div>')
+                  + _w("text-editor", '<div class="elementor-widget-container"><p>Old paragraph one that will go.</p></div>')
+                  + _w("heading", '<div class="elementor-widget-container"><h2 class="elementor-heading-title">Old heading two</h2></div>')
+                  + _w("text-editor", '<div class="elementor-widget-container"><p>Old paragraph two that will go.</p></div>')
+                  + '<div class="e-con conclusion">' + _w("heading", '<div class="elementor-widget-container"><h2 class="elementor-heading-title">Old conclusion</h2></div>')
+                  + _w("text-editor", '<div class="elementor-widget-container"><p>Old conclusion text that will go.</p></div>') + """</div></div>
+<div class="e-con column-b">""" + _w("heading", '<div class="elementor-widget-container"><h2 class="elementor-heading-title">Recent Blogs</h2></div>') + _w("ucaddon_post_list", "<ul><li>Another recent post</li></ul>") + """</div></div></div>
+<div class="e-con faq"><div class="e-con-inner">""" + _w("heading", '<div class="elementor-widget-container"><h2 class="elementor-heading-title">Frequently Asked Questions</h2></div>')
+                  + _w("nested-accordion", '<div class="elementor-widget-container"><div class="e-n-accordion">'
+                       + '<details class="e-n-accordion-item" open><summary class="e-n-accordion-item-title"><span class="e-n-accordion-item-title-header"><div class="e-n-accordion-item-title-text">Old question one?</div></span></summary>'
+                       + '<div role="region" class="e-con">' + _w("text-editor", '<div class="elementor-widget-container"><p>Old answer one.</p></div>') + '</div></details>'
+                       + '<details class="e-n-accordion-item"><summary class="e-n-accordion-item-title"><span class="e-n-accordion-item-title-header"><div class="e-n-accordion-item-title-text">Old question two?</div></span></summary>'
+                       + '<div role="region" class="e-con">' + _w("text-editor", '<p>Old answer two.</p>') + '</div></details></div></div>') + """</div></div>
+<div class="e-con reviews"><div class="e-con-inner">""" + _w("heading", '<div class="elementor-widget-container"><h2 class="elementor-heading-title">What Clients Say About Us</h2></div>') + """</div></div>
+</div>
+<div data-elementor-type="wp-post" class="elementor elementor-359"><div>Footer template</div></div>
+<footer>Footer text</footer></body></html>""")
+
+ARTICLE_WITH_FAQ = (BODY.replace("<script>steal()</script>", "")
+                    + "<h2>Frequently Asked Questions</h2><h3>How much does it cost?</h3><p>It depends on the method that suits you best.</p><h3>Is it painful?</h3><p>Most people feel nothing at all.</p>"
+                    + "<h2>Conclusion</h2><p>Teeth whitening pune is a quick way to a brighter smile for most people.</p>")
 
 
 def soup_of(html):
@@ -57,15 +80,38 @@ def test_the_post_goes_into_the_sites_content_area_with_its_title_picture_and_da
     assert "steal()" not in html
 
 
-def test_an_elementor_post_keeps_its_title_picture_and_date_and_swaps_the_old_body():
-    html = sp.render_post(ELEMENTOR_POST, "https://site.example/p/", title="New Elementor Title", body_html=sp.article_html(BODY, drop_h1=True), image=None, notes=[])
+def test_an_elementor_post_keeps_its_whole_layout_and_only_the_article_changes():
+    html = sp.render_post(ELEMENTOR_POST, "https://site.example/p/", title="New Elementor Title", body_html=ARTICLE_WITH_FAQ, image="https://site.example/new.jpg", notes=[],
+                          mark=lambda h: sp.mark_keywords(h, "teeth whitening pune", ["whitening cost"]))
     s = soup_of(html)
-    assert s.select_one(".elementor-widget-theme-post-title h1").get_text() == "New Elementor Title"
-    assert "Old paragraph" not in s.get_text() and "Old heading" not in s.get_text() and "Old FAQ" not in s.get_text()
-    widgets = s.select(".elementor-widget-text-editor")
-    assert len(widgets) == 2 and "Teeth whitening pune is popular" in widgets[0].get_text() and "Footer contact text" in widgets[1].get_text()  # ours, and the footer's own, untouched
-    assert s.select_one(".elementor-widget-theme-post-featured-image img") is not None
+    text = s.get_text(" ", strip=True)
+    # what stays: the hero, the sidebar, the reviews block, the header and footer templates
+    assert s.select_one(".elementor-widget-theme-post-title h1").get_text() == "New Elementor Title" and s.title.get_text() == "New Elementor Title"
+    assert s.select_one(".elementor-widget-theme-post-featured-image img")["src"] == "https://site.example/new.jpg"
     assert s.select_one(".elementor-post-info__item--type-date time").get_text() != "May 1, 2025"
+    assert "Recent Blogs" in text and "Another recent post" in text and "What Clients Say About Us" in text and "Header template" in text and "Footer template" in text and "Footer text" in text
+    # what goes: every old heading, paragraph, the old conclusion group and the old FAQ
+    assert not any(x in text for x in ("Old heading", "Old paragraph", "Old conclusion", "Old question", "Old answer"))
+    # what comes: this article as the site's own widgets, in the same column as the picture
+    col = s.select_one(".column-a")
+    kinds = [w["data-widget_type"].split(".")[0] for w in col.find_all(recursive=False)]
+    assert kinds == ["theme-post-featured-image", "text-editor", "heading", "text-editor", "heading", "text-editor"]  # intro, Cost, Conclusion (the FAQ went to the accordion)
+    heads = [h.get_text() for h in col.select(".elementor-widget-heading h2.elementor-heading-title")]
+    assert heads == ["Cost", "Conclusion"] and "Frequently Asked" not in " ".join(heads)
+    assert "Teeth whitening pune is popular" in col.get_text() and col.find("mark", attrs={"data-kw": "primary"}) is not None
+    assert col.select_one(".elementor-widget-heading")["data-widget_type"] == "heading.default" and "elementor-widget" in col.select_one(".elementor-widget-heading")["class"]  # cloned from the site's own heading, so its style applies
+    # the FAQ accordion holds this article's questions, in the site's own markup
+    items = s.select(".e-n-accordion-item")
+    assert [i.select_one(".e-n-accordion-item-title-text").get_text() for i in items] == ["How much does it cost?", "Is it painful?"]
+    assert "It depends on the method" in items[0].get_text() and "Most people feel nothing" in items[1].get_text() and not any(i.has_attr("open") for i in items)
+    assert "Old answer" not in s.get_text()  # also for the newer Elementor markup, where the answer widget has no inner wrapper (the second item in this page)
+
+
+def test_without_faqs_the_accordion_block_is_dropped_but_the_rest_of_the_page_stays():
+    no_faq = BODY.replace("<script>steal()</script>", "")
+    s = soup_of(sp.render_post(ELEMENTOR_POST, "https://site.example/p/", title="T", body_html=no_faq, image=None, notes=[]))
+    text = s.get_text(" ", strip=True)
+    assert "Frequently Asked Questions" not in text and not s.select(".e-n-accordion-item") and "What Clients Say About Us" in text and "Recent Blogs" in text
 
 
 def test_a_page_without_a_known_content_class_still_gets_the_article_between_header_and_footer():
@@ -110,3 +156,27 @@ def test_build_reads_the_sites_pages_and_says_why_when_it_cannot(client, monkeyp
     monkeypatch.setattr(sp.bc, "_fetch", lambda url: (200, "<html><body><div id='root'></div></body></html>", url, 5, None))  # a page the browser builds with JavaScript
     e = client.post(f"/api/v1/businesses/{bid}/articles/{aid}/site-preview", json={"view": "post"})
     assert e.status_code == 422 and "JavaScript" in e.json()["detail"]
+
+
+def test_the_layout_post_can_be_chosen_and_must_be_on_the_projects_own_site(client, monkeypatch):
+    bid = client.post("/api/v1/businesses", json={"name": "Ref Co", "website": "https://site.example/"}).json()["id"]
+    pages = {"https://site.example/blog/": LIST_PAGE, "https://site.example/my-favourite-post/": ELEMENTOR_POST, "https://site.example/old-one/": POST_PAGE}
+    monkeypatch.setattr(sp.bc, "_fetch", lambda url: (200, pages[url], url, 5, None) if url in pages else (404, "", url, 5, None))
+    monkeypatch.setattr("app.services.sitemap.discover_site_entries", lambda *a, **k: [])
+    sp._cache.clear()
+    from app.db import SessionLocal
+    db = SessionLocal()
+    try:
+        a = Article(business_id=bid, keyword="teeth whitening pune", title="Teeth Whitening Pune: A Guide", status="completed", body=ARTICLE_WITH_FAQ, meta_description="A guide.")
+        db.add(a)
+        db.commit()
+        aid = a.id
+    finally:
+        db.close()
+    url = f"/api/v1/businesses/{bid}/articles/{aid}/site-preview"
+    auto = client.post(url, json={"view": "post"}).json()
+    assert auto["reference_url"] == "https://site.example/old-one/"  # no choice: the first post on the blog page
+    chosen = client.post(url, json={"view": "post", "reference_url": "https://site.example/my-favourite-post/"}).json()
+    assert chosen["reference_url"] == "https://site.example/my-favourite-post/" and "Elementor" in " ".join(chosen["notes"]) and "Recent Blogs" in chosen["html"]
+    other = client.post(url, json={"view": "post", "reference_url": "https://someone-else.example/post/"})
+    assert other.status_code == 422 and "own website" in other.json()["detail"]  # no reading of other people's pages

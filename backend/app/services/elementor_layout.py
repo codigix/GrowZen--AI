@@ -131,8 +131,16 @@ def build(layout: list, *, article_key: str, body: str, faqs: list[tuple[str, st
     head_tpl = next((k for k in kids if k.get("widgetType") == "heading"), None)
     text_tpl = next((k for k in kids if k.get("widgetType") == "text-editor"), None)
     has_cta = any(n.get("widgetType") == "button" for n, _ in _walk(kids))
-    kept_before = [k for k in kids[:first] if k.get("widgetType") not in CONTENT_WIDGETS]
-    kept_after = [k for k in kids[first:] if k.get("widgetType") not in CONTENT_WIDGETS]  # CTA box etc.
+
+    def old_content(k: dict) -> bool:
+        """A heading or text widget, or a group that holds nothing but those (the reference's own conclusion, say): the old article, not layout. A box with a button or a picture is layout."""
+        if k.get("widgetType") in CONTENT_WIDGETS:
+            return True
+        inner = [n.get("widgetType") for n, _ in _walk(k.get("elements") or []) if n.get("elType") == "widget" or n.get("widgetType")]
+        return bool(inner) and all(w in CONTENT_WIDGETS for w in inner)
+
+    kept_before = [k for k in kids[:first] if not old_content(k)]
+    kept_after = [k for k in kids[first:] if not old_content(k)]  # CTA box etc.
 
     intro, sections, schema = split_sections(body)
     accordion = next((n for n, _ in _walk(data) if n.get("widgetType") == "nested-accordion"), None)

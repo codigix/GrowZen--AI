@@ -113,6 +113,7 @@ class SitePreviewIn(BaseModel):
     keyword: str | None = Field(default=None, max_length=255)
     secondary_keywords: list[str] | None = Field(default=None, max_length=20)
     highlight: bool = True
+    reference_url: str | None = Field(default=None, max_length=500)  # a post of the project's own website whose design the preview copies
 
 
 def _image_src(a: Article) -> str | None:
@@ -143,7 +144,7 @@ def site_preview(article_id: int, body: SitePreviewIn, b: Business = Depends(get
     url = f"{base['base']}{slug}" + ("/" if base["trailing_slash"] else "")
     try:
         return site_prev.build(db, b, a, view=body.view, title=(body.title if body.title is not None else a.title) or primary.title(), excerpt=(body.meta_description if body.meta_description is not None else a.meta_description) or "",
-                               body=svc.sanitize_html(body.body) if body.body else (a.body or ""), image=_image_src(a), url=url, primary=primary, secondary=secondary, highlight=body.highlight)
+                               body=svc.sanitize_html(body.body) if body.body else (a.body or ""), image=_image_src(a), url=url, primary=primary, secondary=secondary, highlight=body.highlight, reference_url=(body.reference_url or None))
     except site_prev.PreviewError as exc:
         raise HTTPException(422, str(exc)) from exc
 

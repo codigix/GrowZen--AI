@@ -105,11 +105,41 @@ def listing_page(db: Session, b: Business) -> tuple[str, str]:
     raise PreviewError("The site's blog page could not be found, or it builds its posts with JavaScript, which cannot be read here. Publish one post, then try again.")
 
 
-def reference_post(db: Session, b: Business, list_url: str, list_html: str) -> tuple[str, str]:
-    """(url, html) of one real post of the site: the newest the app published, else the first card of the blog list."""
-    urls = [u for (u,) in db.execute(select(Article.wp_url).where(Article.business_id == b.id, Article.wp_status == "publish", Article.wp_url.is_not(None)).order_by(Article.id.desc()).limit(2))]
+def _same_site(url: str, b: Business) -> bool:
+    host = lambda u: (urlsplit(u).hostname or "").lower().removeprefix("www.")  # noqa: E731
+    return bool(host(url)) and host(url) == host(b.website or "")
+
+
+def configured_reference(db: Session, b: Business) -> str | None:
+    """The post the publisher uses as its layout (the website connection's layout_post_id), as an address."""
+    from ..models import SiteIntegration
+    from .net import site_client
+    row = db.scalar(select(SiteIntegration).where(SiteIntegration.business_id == b.id))
+    pid = str((row.config or {}).get("layout_post_id") or "") if row else ""
+    if not (row and pid.isdigit() and row.base_url):
+        return None
+    try:
+        with site_client(15) as c:
+            r = c.get(f"{row.base_url.rstrip('/')}/wp-json/wp/v2/posts/{pid}", params={"_fields": "link"})
+        return r.json().get("link") if r.status_code == 200 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def reference_post(db: Session, b: Business, list_url: str, list_html: str, explicit: str | None = None) -> tuple[str, str]:
+    """(url, html) of the post whose design the preview copies: the one named (it must be on the project's own website), else the one the publisher uses, else the first post on the
+    site's blog page, else the newest the app published."""
+    if explicit:
+        if not _same_site(explicit, b):
+            raise PreviewError("The layout post must be a page of the project's own website.")
+        return explicit, _fetch(explicit)
+    urls: list[str] = []
+    configured = configured_reference(db, b)
+    if configured:
+        urls.append(configured)
     cards = _cards(BeautifulSoup(list_html, "html.parser"))
     urls += [urljoin(list_url, a["href"]) for c in cards[:3] for a in c.find_all("a", href=True)[:1]]
+    urls += [u for (u,) in db.execute(select(Article.wp_url).where(Article.business_id == b.id, Article.wp_status == "publish", Article.wp_url.is_not(None)).order_by(Article.id.desc()).limit(2))]
     for u in dict.fromkeys(urls):
         try:
             return u, _fetch(u)
@@ -241,21 +271,134 @@ def _prune_empty(root: Tag) -> None:
         el.decompose()
 
 
-def render_post(page: str, base: str, *, title: str, body_html: str, image: str | None, notes: list[str]) -> str:
+CONTENT_KINDS = ("heading", "text-editor")
+
+
+def _kind(el) -> str:
+    return (el.get("data-widget_type") or "").split(".")[0] if isinstance(el, Tag) else ""
+
+
+def _content_column(root: Tag) -> Tag | None:
+    """The element that holds the article's sections: the most direct heading and text widgets (the featured picture counts too). The same rule the publisher uses."""
+    best, score = None, 0
+    for el in root.find_all(True):
+        kids = el.find_all(recursive=False)
+        n = sum(1 for k in kids if _kind(k) in CONTENT_KINDS) + (2 if any(_kind(k) == "theme-post-featured-image" for k in kids) else 0)
+        if n > score:
+            best, score = el, n
+    return best if score >= 2 else None
+
+
+def _render_elementor(soup: BeautifulSoup, body: str, mark, notes: list[str]) -> bool:
+    """Put the article into an Elementor post exactly as the app publishes it: the page keeps everything (header, title, date, featured picture, sidebar with Recent Blogs, the
+    reviews and clients blocks, footer); only the article's own heading and text widgets are replaced by this article's sections, and the FAQ accordion gets this article's FAQs.
+    Returns False when the page is not laid out that way."""
+    import html as html_lib
+
+    from . import elementor_layout as lay
+    root = next((r for r in soup.select('[data-elementor-type="wp-post"]') if r.select_one('[data-widget_type^="theme-post-title"]')), None)
+    col = _content_column(root) if root is not None else None
+    if col is None:
+        return False
+    kids = col.find_all(recursive=False)
+    first = next(i for i, k in enumerate(kids) if _kind(k) in CONTENT_KINDS)
+    head_tpl = next((copy.copy(k) for k in kids if _kind(k) == "heading"), None)
+    text_tpl = next((copy.copy(k) for k in kids if _kind(k) == "text-editor"), None)
+    if head_tpl is None or text_tpl is None:
+        return False
+    has_cta = bool(col.select('[data-widget_type^="button"]'))
+    accordion = root.select_one('[data-widget_type^="nested-accordion"]')
+    intro, sections, _schema = lay.split_sections(lay.clean_body(body))
+    faqs: list[tuple[str, str]] | None = None
+    widgets: list[Tag] = []
+
+    def heading(text: str) -> Tag:
+        w = copy.copy(head_tpl)
+        h = w.select_one(".elementor-heading-title") or w.find(["h1", "h2", "h3", "h4", "h5", "h6"])
+        if h is not None:
+            h.name = "h2"
+            h.clear()
+            h.append(BeautifulSoup(mark(html_lib.escape(text, quote=False)), "html.parser"))
+        return w
+
+    def text(h: str) -> Tag:
+        w = copy.copy(text_tpl)
+        box = w.select_one(".elementor-widget-container") or w
+        box.clear()
+        box.append(BeautifulSoup(mark(h), "html.parser"))
+        return w
+
+    if lay._text(intro):
+        widgets.append(text(intro))
+    for title, sec in sections:
+        if lay._FAQ_H2.match(title) and accordion is not None:
+            faqs = lay.faqs_from(sec)  # shown in the site's FAQ accordion instead
+            continue
+        if has_cta and lay._CTA_H2.match(title):  # the layout's own call-to-action box stands in for the article's contact block
+            continue
+        widgets.append(heading(title))
+        if lay._text(sec):
+            widgets.append(text(sec))
+    def old_content(k: Tag) -> bool:
+        """A heading or text widget, or a group holding nothing but those (the reference's own conclusion): the old article, not layout."""
+        if _kind(k) in CONTENT_KINDS:
+            return True
+        inner = k.select("[data-widget_type]")
+        return bool(inner) and all(_kind(w) in CONTENT_KINDS for w in inner)
+
+    after = [k for k in kids[first:] if not old_content(k)]
+    for k in kids:
+        if old_content(k):
+            k.decompose()
+    for w in widgets:
+        (after[0].insert_before(w) if after else col.append(w))
+    faq_note = ""
+    if accordion is not None:
+        items = accordion.select("details")
+        faqs = faqs or []
+        if faqs and items:
+            tpl, holder = copy.copy(items[0]), items[0].parent
+            for d in items:
+                d.decompose()
+            for q, ans in faqs:
+                d = copy.copy(tpl)
+                d.attrs.pop("open", None)
+                title_el = d.select_one(".e-n-accordion-item-title-text") or d.find("summary")
+                if title_el is not None:
+                    _set_text(title_el, q)
+                answer_widget = d.select_one('[data-widget_type^="text-editor"]')
+                body_box = (answer_widget.select_one(".elementor-widget-container") or answer_widget) if answer_widget is not None else None  # newer Elementor has no inner wrapper
+                if body_box is not None:
+                    body_box.clear()
+                    body_box.append(BeautifulSoup(mark(ans if ans.lstrip().startswith("<") else f"<p>{html_lib.escape(ans, quote=False)}</p>"), "html.parser"))
+                holder.append(d)
+            faq_note = f" and {len(faqs)} FAQ{'s' if len(faqs) != 1 else ''} in its accordion"
+        elif not faqs:
+            top = accordion
+            while top.parent is not None and top.parent is not root:
+                top = top.parent
+            if top is not accordion and top is not col and col not in top.descendants:
+                top.decompose()
+    notes.append(f"Built in your site's Elementor post layout: {sum(1 for w in widgets if _kind(w) == 'heading')} sections{faq_note}. Its sidebar, reviews and footer are kept as they are.")
+    return True
+
+
+def render_post(page: str, base: str, *, title: str, body_html: str, image: str | None, notes: list[str], mark=None) -> str:
+    mark = mark or (lambda h: h)  # colours the keywords in a piece of HTML (the identity when the preview is plain)
     soup = BeautifulSoup(page, "html.parser")
     _clean(soup, base)
     title_el = _first(soup, TITLE_SELECTORS)
     wrapper_open = "<div class='growzen-article'>"
-    done = False
+    done = _render_elementor(soup, body_html, mark, notes)
 
     texts = [e for e in soup.select(".elementor-widget-text-editor") if not _inside(e, ("header", "footer", "nav"))]
     area = _first(soup, CONTENT_SELECTORS)
-    if area is not None and len(area.get_text(" ", strip=True)) >= 150 and not texts:
+    if not done and area is not None and len(area.get_text(" ", strip=True)) >= 150 and not texts:
         area.clear()
-        area.append(BeautifulSoup(article_html(body_html, drop_h1=title_el is not None and title_el not in area.descendants), "html.parser"))
+        area.append(BeautifulSoup(mark(article_html(body_html, drop_h1=title_el is not None and title_el not in area.descendants)), "html.parser"))
         notes.append("Placed in the site's content area.")
         done = True
-    if not done and texts:
+    if not done and texts:  # an Elementor page that is not laid out as heading and text widgets
         keep = copy.copy(texts[0])
         marker = soup.new_tag("div", attrs={"data-growzen": "here"})
         texts[0].insert_before(marker)
@@ -280,24 +423,24 @@ def render_post(page: str, base: str, *, title: str, body_html: str, image: str 
         container = keep.select_one(".elementor-widget-container")
         if container is not None:
             container.clear()
-            container.append(BeautifulSoup(article_html(body_html, drop_h1=title_el is not None), "html.parser"))
+            container.append(BeautifulSoup(mark(article_html(body_html, drop_h1=title_el is not None)), "html.parser"))
             marker.replace_with(keep)
         else:
-            marker.replace_with(BeautifulSoup(wrapper_open + article_html(body_html, drop_h1=title_el is not None) + "</div>", "html.parser"))
+            marker.replace_with(BeautifulSoup(wrapper_open + mark(article_html(body_html, drop_h1=title_el is not None)) + "</div>", "html.parser"))
         notes.append("Built in your site's Elementor post design.")
         done = True
     if not done:
         main = _first(soup, ["article", "main", "#content", ".site-content", "#primary"], skip=("header", "footer", "nav"))
         if main is not None and len(main.get_text(" ", strip=True)) >= 150:
             main.clear()
-            main.append(BeautifulSoup(f"<div style='max-width:820px;margin:0 auto;padding:24px 16px'>{article_html(body_html, drop_h1=False)}</div>", "html.parser"))
+            main.append(BeautifulSoup(f"<div style='max-width:820px;margin:0 auto;padding:24px 16px'>{mark(article_html(body_html, drop_h1=False))}</div>", "html.parser"))
             notes.append("Placed in the site's main content area.")
         elif soup.body is not None:
             keep_tags = [c for c in soup.body.find_all(recursive=False) if c.name in ("header", "footer", "nav", "style") or c.get("data-elementor-type") in ("header", "footer")]
             for c in list(soup.body.find_all(recursive=False)):
                 if c not in keep_tags:
                     c.decompose()
-            holder = BeautifulSoup(f"<main style='max-width:820px;margin:0 auto;padding:32px 16px'>{article_html(body_html, drop_h1=False)}</main>", "html.parser")
+            holder = BeautifulSoup(f"<main style='max-width:820px;margin:0 auto;padding:32px 16px'>{mark(article_html(body_html, drop_h1=False))}</main>", "html.parser")
             foot = next((c for c in keep_tags if c.name == "footer" or c.get("data-elementor-type") == "footer"), None)
             (foot.insert_before(holder) if foot is not None else soup.body.append(holder))
             notes.append("Placed between the site's header and footer.")
@@ -360,15 +503,15 @@ def render_list(page: str, base: str, *, title: str, excerpt: str, image: str | 
 
 # ------------------------------------------------------------------------------------------------------------------------ the entry point
 def build(db: Session, b: Business, a: Article, *, view: str, title: str, excerpt: str, body: str, image: str | None, url: str,
-          primary: str | None, secondary: list[str], highlight: bool) -> dict:
+          primary: str | None, secondary: list[str], highlight: bool, reference_url: str | None = None) -> dict:
     """The page as the site would show it with this article. Raises PreviewError with the reason when the site's design cannot be read."""
     list_url, list_html = listing_page(db, b)
     notes: list[str] = []
-    marked = mark_keywords(body, primary, secondary) if highlight else body
+    mark = (lambda h: mark_keywords(h, primary, secondary)) if highlight else (lambda h: h)
     if view == "list":
         html = render_list(list_html, list_url, title=title, excerpt=excerpt, image=image, url=url, notes=notes)
         return {"html": html, "reference_url": list_url, "view": "list", "notes": notes}
-    ref_url, ref_html = reference_post(db, b, list_url, list_html)
-    html = render_post(ref_html, ref_url, title=title, body_html=marked, image=image, notes=notes)
+    ref_url, ref_html = reference_post(db, b, list_url, list_html, reference_url)
+    html = render_post(ref_html, ref_url, title=title, body_html=body, image=image, notes=notes, mark=mark)
     notes.append(f"Design read from {ref_url}.")
     return {"html": html, "reference_url": ref_url, "view": "post", "notes": notes}
