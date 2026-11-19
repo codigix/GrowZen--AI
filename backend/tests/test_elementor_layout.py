@@ -57,3 +57,11 @@ def test_the_faq_accordion_gets_this_articles_questions_or_is_dropped_without_an
     no_faq = BODY.split("<h2>Frequently")[0]
     data2, report = lay.build(copy.deepcopy(layout()), article_key="a4", body=no_faq)
     assert not any(n.get("widgetType") == "nested-accordion" for n, _ in lay._walk(data2)) and report["faqs"] == 0  # the whole FAQ block goes
+
+
+def test_the_schema_is_moved_into_the_page_head_by_one_line_script():
+    schema = '<script type="application/ld+json">{"@context": "https://schema.org"}</script>'
+    out = lay.in_head(schema)
+    assert out.count('data-gz-schema="1"') == 1 and "document.head.appendChild" in out and out.index("ld+json") < out.index("appendChild")
+    assert lay.in_head(out).count('data-gz-schema="1"') == 1  # again: not marked twice
+    assert lay.in_head("<p>no schema</p>") == ""

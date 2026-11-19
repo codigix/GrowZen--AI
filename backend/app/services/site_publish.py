@@ -214,7 +214,8 @@ def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: dateti
 
     wp_status = {"draft": "draft", "publish": "publish", "schedule": "future"}[mode]
     body = el.clean_body(a.body or "")  # no duplicate H1, no inline styles or empty tags
-    payload = {"title": a.title or a.keyword, "content": body, "excerpt": a.meta_description or "", "status": wp_status}
+    plain = re.sub(r"\s*<script\b[^>]*application/ld\+json[^>]*>[\s\S]*?</script>\s*$", "", body, flags=re.I)  # the schema goes to the page head: see el.in_head
+    payload = {"title": a.title or a.keyword, "content": (plain + "\n\n" + el.in_head(body)).strip(), "excerpt": a.meta_description or "", "status": wp_status}
     slug = article_svc.explicit_slug(a)  # the address ends with the primary keyword (or the slug set on the article); a live post is left where it is
     if slug:
         payload["slug"] = slug
@@ -346,7 +347,8 @@ def _publish_webhook(row: SiteIntegration, a: Article, mode: str, when: datetime
     payload = {
         "event": "article.publish", "mode": mode, "publish_at": when.astimezone(timezone.utc).isoformat() if when else None,
         "article": {"id": a.id, "title": a.title or a.keyword, "slug": _slug_of(a),
-                    "keyword": a.keyword, "secondary_keywords": a.secondary_keywords or [], "meta_description": a.meta_description or "", "html": a.body or ""},
+                    "keyword": a.keyword, "secondary_keywords": a.secondary_keywords or [], "meta_description": a.meta_description or "", "html": a.body or "",
+                    "schema_jsonld": "\n".join(re.findall(r"<script\b[^>]*application/ld\+json[^>]*>([\s\S]*?)</script>", a.body or "")).strip()},  # for the page's <head>
     }
     try:
         r = _post_signed(row.base_url, secret, payload)

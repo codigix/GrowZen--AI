@@ -31,6 +31,16 @@ _CTA_H2 = re.compile(r"^\s*(ready to get started|contact\b|get in touch)", re.I)
 
 # ── clean HTML (also used without Elementor) ────────────────────────────────────
 
+def in_head(schema: str) -> str:
+    """The JSON-LD block(s) followed by a one-line script that moves them into the page's <head> when it loads (WordPress has no way to set a post's head from the API;
+    search engines read the schema from the rendered head). Without scripts running, the block stays where it is, which is valid too."""
+    blocks = [s.strip() if "data-gz-schema" in s else re.sub(r"<script\b", '<script data-gz-schema="1"', s.strip(), count=1) for s in _SCHEMA_RE.findall(schema or "")]
+    if not blocks:
+        return ""
+    mover = "<script>document.querySelectorAll('script[data-gz-schema]').forEach(function(s){document.head.appendChild(s);});</script>"
+    return "\n".join(blocks) + "\n" + mover
+
+
 def clean_body(body: str) -> str:
     """Article HTML for WordPress: no H1 (the theme/Elementor prints the title), no empty tags, no inline styles,
     no runs of blank lines. Headings, paragraphs, lists, links, bold/italic and the schema script are kept."""
@@ -174,7 +184,7 @@ def build(layout: list, *, article_key: str, body: str, faqs: list[tuple[str, st
             widgets.append(text(sec))
     faq_items = faq_items or []
     if schema:
-        widgets.append({"id": new_id(), "elType": "widget", "widgetType": "html", "settings": {"html": schema}, "elements": []})
+        widgets.append({"id": new_id(), "elType": "widget", "widgetType": "html", "settings": {"html": in_head(schema) or schema}, "elements": []})
     col["elements"] = kept_before + widgets + kept_after
 
     # FAQ accordion: this article's questions, or no FAQ block at all

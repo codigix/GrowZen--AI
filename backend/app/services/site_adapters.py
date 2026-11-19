@@ -268,7 +268,9 @@ def verify_ghost(url: str, admin_key: str) -> tuple[list[dict], dict | None]:
 
 def publish_ghost(row: SiteIntegration, a: Article, mode: str, when: datetime | None, steps: list[dict]) -> dict:
     status = {"draft": "draft", "publish": "published", "schedule": "scheduled"}[mode]
-    post = {"title": a.title or a.keyword, "html": a.body or "", "status": status, "custom_excerpt": (a.meta_description or "")[:300] or None,
+    schema = re.findall(r"<script\b[^>]*application/ld\+json[^>]*>[\s\S]*?</script>", a.body or "", re.I)  # Ghost has a head field for it
+    html_body = re.sub(r"\s*<script\b[^>]*application/ld\+json[^>]*>[\s\S]*?</script>\s*", "\n", a.body or "", flags=re.I).strip()
+    post = {"title": a.title or a.keyword, "html": html_body, "codeinjection_head": "\n".join(schema) or None, "status": status, "custom_excerpt": (a.meta_description or "")[:300] or None,
             "tags": [{"name": k} for k in [a.keyword, *(a.secondary_keywords or [])][:5]]}
     from . import articles as article_svc
     if article_svc.explicit_slug(a):
