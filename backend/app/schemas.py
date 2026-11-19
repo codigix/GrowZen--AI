@@ -54,11 +54,15 @@ class BusinessIn(BaseModel):
     target_scope: Literal["local", "national", "international"] | None = None
     target_countries: list[str] | None = None
     target_areas: list[str] | None = None
+    modules: list[Literal["seo", "geo", "aeo", "gmb"]] | None = None
+    target_audience: str | None = Field(default=None, max_length=1000)
+    goals: list[str] | None = None
     services: list[dict[str, Any]] = []
     attributes: list[str] = []
     hours: dict[str, Any] = {}
     tone: str | None = None
     usps: str | None = None
+    languages: str | None = Field(default=None, max_length=120)  # content languages, comma separated: English, Hindi
     plan: str | None = None
     contact_name: str | None = None
     contact_email: str | None = None
@@ -71,6 +75,11 @@ class BusinessIn(BaseModel):
     @classmethod
     def _social(cls, v):
         return clean_social(v)
+
+    @field_validator("website")
+    @classmethod
+    def _website(cls, v):
+        return clean_site(v)
 
     @field_validator("phone")
     @classmethod
@@ -119,6 +128,20 @@ def clean_url(v: str | None) -> str | None:
         return ""
     if not re.match(r"^https?://[^\s/]+\.[^\s]+$", s, re.I):
         raise ValueError("Enter a full link that starts with https://")
+    return s
+
+
+def clean_site(v: str | None) -> str | None:
+    """A website address as https://host/...: a missing scheme is added, a host without a dot (or with spaces) is refused."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return ""
+    if not re.match(r"^https?://", s, re.I):
+        s = "https://" + s
+    if not re.match(r"^https?://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(:\d+)?(/\S*)?$", s):
+        raise ValueError("This does not look like a website address. Use the form example.com")
     return s
 
 
@@ -241,6 +264,9 @@ class BusinessPatch(BaseModel):
     target_scope: Literal["local", "national", "international"] | None = None
     target_countries: list[str] | None = None
     target_areas: list[str] | None = None
+    modules: list[Literal["seo", "geo", "aeo", "gmb"]] | None = None
+    target_audience: str | None = Field(default=None, max_length=1000)
+    goals: list[str] | None = None
     services: list[dict[str, Any]] | None = None
     attributes: list[str] | None = None
     hours: dict[str, Any] | None = None
@@ -248,6 +274,7 @@ class BusinessPatch(BaseModel):
     faqs: list[dict[str, Any]] | None = None
     tone: str | None = None
     usps: str | None = None
+    languages: str | None = Field(default=None, max_length=120)  # content languages, comma separated: English, Hindi
     plan: str | None = None
     status: Literal["active", "needs_approval", "paused"] | None = None
     contact_name: str | None = None
@@ -288,6 +315,11 @@ class BusinessPatch(BaseModel):
     @classmethod
     def _social(cls, v):
         return clean_social(v)
+
+    @field_validator("website")
+    @classmethod
+    def _website(cls, v):
+        return clean_site(v)
 
     @field_validator("phone")
     @classmethod
@@ -537,6 +569,7 @@ class KeywordIn(BaseModel):
     priority: Literal["High", "Medium", "Low"] = "Medium"
     uses: list[Literal["blog", "gmb_post", "aeo", "geo", "chatgpt", "website"]] | None = None
     source: dict | None = None
+    role: Literal["primary", "secondary"] | None = None
 
 
 class KeywordIdeasIn(BaseModel):

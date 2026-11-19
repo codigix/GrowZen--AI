@@ -5,9 +5,14 @@ GET /backlink-intel/crawler/status              the crawler's own health: worker
 
 Read-only. Only what the crawler has stored is returned: a domain it has not seen says so, nothing is estimated."""
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
 from ..auth import current_user
+from ..db import get_db
+from ..deps import get_business
+from ..models import Business
 from ..services import crawler_client as cc
+from . import sync
 
 router = APIRouter(prefix="/backlink-intel/crawler", tags=["backlinks"], dependencies=[Depends(current_user)])
 
@@ -44,3 +49,28 @@ def status() -> dict:
     return {"paused": g.get("paused"), "workers": workers, "discovered_domains": g.get("discovered_domains"), "discovered_urls": g.get("discovered_urls"),
             "outgoing_links": g.get("outgoing_links"), "domains_by_status": g.get("domains_by_status"), "urls_by_status": g.get("urls_by_status"),
             "sources": [{k: s.get(k) for k in ("name", "enabled", "status", "items_imported", "last_run")} for s in d.get("sources", [])]}
+
+
+biz_router = APIRouter(prefix="/businesses/{business_id}/backlink-intel/crawler", tags=["backlinks"], dependencies=[Depends(current_user)])
+
+
+@biz_router.get("/gap")
+def gap(competitor: str | None = Query(None, max_length=300), limit: int = Query(200, ge=1, le=2000), b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Competitor backlink gap from our crawler for this business: who links the competitors but not the business. `competitor` (a domain) narrows it to
+    one competitor; without it all of the business's competitors are included. Also returns the competitors to choose from."""
+    domain = sync._domain_of(b.website)
+    if not domain:
+        raise HTTPException(422, "This project has no website, so there is no domain to compare.")
+    if competitor:
+        try:
+            competitor = cc.normalize_domain(competitor)
+        except ValueError:
+            raise HTTPException(422, f"Not a valid domain: {competitor!r}") from None
+    listed = _guard(cc.business_competitors, domain).get("competitors", [])
+    choices = [{"domain": c.get("competitor_domain"), "status": c.get("discovery_status"), "known_backlinks": c.get("known_backlinks", 0)} for c in listed]
+    if competitor and competitor not in {c["domain"] for c in choices}:
+        raise HTTPException(404, f"{competitor} is not one of this business's competitors on the crawler.")
+    if not choices:
+        return {"business_domain": domain, "competitors_available": [], "selected": None, "gap": None}
+    g = _guard(cc.backlink_gap, domain, competitor, limit)
+    return {"business_domain": domain, "competitors_available": choices, "selected": competitor, "gap": g}

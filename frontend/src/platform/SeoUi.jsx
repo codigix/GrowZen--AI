@@ -514,8 +514,8 @@ export const useUrlTab = (fallback, valid) => {
   return [tab, setTab];
 };
 
-export const Tabs = ({ tabs, value, onChange }) => (onChange && onChange.locked ? null : (
-  <div className="flex gap-1 p-1 bg-white shadow-card rounded mb-5 overflow-x-auto no-scrollbar w-fit max-w-full">
+export const Tabs = ({ tabs, value, onChange, wrap = false }) => (onChange && onChange.locked ? null : (
+  <div className={`flex gap-1 p-1 bg-white shadow-card rounded mb-5 max-w-full ${wrap ? 'flex-wrap' : 'overflow-x-auto no-scrollbar w-fit'}`}>
     {tabs.map(t => {
       const id = typeof t === 'string' ? t : t.id;
       const label = typeof t === 'string' ? t : t.label;

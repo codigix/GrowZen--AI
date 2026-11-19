@@ -3,12 +3,12 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
   LogOut, Menu, X, KeyRound, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen,
-  TrendingUp, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send, Activity
+  TrendingUp, Check, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send, Activity
 } from 'lucide-react';
 import { SIDEBAR_GROUPS, SIDEBAR_SECTIONS } from './sidebarGroups';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '../platform/seoApi';
-import { SkPage } from '../platform/SeoUi';
+import { SkPage, useSeoBusiness } from '../platform/SeoUi';
 import AssistantWidget from './AssistantWidget';
 import ErrorBoundary from './ErrorBoundary';
 
@@ -81,8 +81,19 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
   const connections = useConnections();
   const hidePanel = collapsed && !open; // the mobile drawer always shows the panel
   const mainRef = useRef(null);
+  const [biz] = useSeoBusiness();
+  // Where the project stands on its journey: a stage group gets a tick when its step is done, and the first group still to do opens on its own.
+  const flow = useApi(biz ? `/businesses/${biz.id}/flow` : null).data;
+  const stepDone = Object.fromEntries((flow?.steps || []).map(st => [st.key, st.status === 'done']));
+  const STAGE_STEP = { '1': 'details', '2': 'competitors', '3': 'keywords', '4': 'mapping', '5': 'website', '6a': 'fix', '6b': 'content', '6c': 'links', '6d': 'report' };
+  const stageKey = (t) => STAGE_STEP[String(t || '').split(' ')[0]];
+  // A project that does SEO only is not shown the Google profile, ChatGPT or AI sections it does not use (the section opens again when the page is reached by address).
+  const on = biz?.services_on;
+  const needs = { GMB: 'gmb', chatgpt: ['geo', 'aeo'], ai: ['geo', 'aeo'] };
   const holds = (sec) => sec.groups.some(grp => grp.items.some(i => itemActive(location.pathname, location.search, i)));
-  const section = (picked && SIDEBAR_SECTIONS.find(s => s.id === picked && holds(s))) || SIDEBAR_SECTIONS.find(holds) || SIDEBAR_SECTIONS.find(s => s.id === picked) || SIDEBAR_SECTIONS[0];
+  const shown = (sec) => !on || !needs[sec.id] || [].concat(needs[sec.id]).some(m => on.includes(m)) || holds(sec);
+  const sections = SIDEBAR_SECTIONS.filter(shown);
+  const section = (picked && sections.find(s => s.id === picked && holds(s))) || sections.find(holds) || sections.find(s => s.id === picked) || sections[0];
   const openSection = (sec) => { setPicked(sec.id); setCollapsed(false); if (!holds(sec)) navigate(sec.groups[0].items[0].to); };
 
   useEffect(() => { try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0'); } catch (e) { /* private mode */ } }, [collapsed]);
@@ -111,7 +122,7 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
             <span className="w-9 h-9 rounded bg-white p-1 flex items-center justify-center"><img src="/bevisibe-mark.png" alt="bevisibe" className="w-full h-full object-contain" /></span>
           </NavLink>
           <nav className="flex-1 overflow-y-auto no-scrollbar py-2 px-1.5 space-y-1" aria-label="Sections">
-            {SIDEBAR_SECTIONS.map(sec => {
+            {sections.map(sec => {
               const on = sec.id === section.id;
               const Icon = sec.icon;
               return (
@@ -134,19 +145,24 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
             <span className="text-16 font-bold text-white truncate">{section.title}</span>
             <button className="lg:hidden p-1.5 rounded-md text-topbar-item hover:text-white hover:bg-white/10 cursor-pointer" onClick={() => setOpen(false)} aria-label="Close menu"><X size={18} /></button>
           </div>
-          <nav className="flex-1 overflow-y-auto no-scrollbar px-3 py-3" aria-label={section.title}>
+          <nav className="flex-1 overflow-y-auto px-3 py-3 [scrollbar-width:thin]" aria-label={section.title}>
             {section.groups.map((grp, gi) => {
               const items = grp.items.filter(item => !item.adminOnly || user?.is_admin);
               if (!items.length) return null;
+              const stage = stageKey(grp.title);
               return (
-                <div key={`${grp.title || 'main'}-${gi}`} className={gi ? 'mt-4' : ''}>
-                  {grp.title && <div className="px-3 mb-1.5 text-12 text-slate-500">{grp.title}</div>}
+                <div key={`${grp.title || 'main'}-${gi}`} className={gi ? 'mt-3' : ''}>
+                  {grp.title && (
+                    <div className="flex items-center gap-1.5 px-3 mb-1 text-12 font-semibold text-slate-500">
+                      <span className="flex-1">{grp.title}</span>
+                      {stage && stepDone[stage] && <Check size={13} className="text-emerald-600 shrink-0" aria-label="Done" />}
+                    </div>)}
                   <div className="space-y-0.5">
                     {items.map(item => {
                       const active = itemActive(location.pathname, location.search, item);
                       return (
                         <Link key={item.to} to={item.to} onClick={() => setOpen(false)} aria-current={active ? 'page' : undefined}
-                          className={`flex items-center gap-2 min-h-9 px-3 py-1.5 rounded text-14 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 transition-colors ${active ? 'bg-slate-200/80 text-slate-900 font-semibold' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}>
+                          className={`flex items-center gap-2 min-h-8 px-3 py-1 rounded text-14 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 transition-colors ${active ? 'bg-slate-200/80 text-slate-900 font-semibold' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}>
                           <span className="flex-1 leading-snug">{item.label}</span>
                           {item.badge && <span className={`shrink-0 text-10 font-semibold leading-none px-1.5 py-1 rounded-md ring-1 ring-inset ${BADGE_TONES[item.badge] || 'bg-slate-500/15 text-slate-700 ring-slate-400/25'}`}>{item.badge}</span>}
                         </Link>);

@@ -13,7 +13,8 @@ export function KeywordTopicPlanner({ b, onPick }) {
   const kws = useApi(`${base}/keywords`);
   const memKey = `growzen.blogplan.${b.id}`;
   const mem = (() => { try { return JSON.parse(localStorage.getItem(memKey) || 'null') || {}; } catch { return {}; } })();
-  const [picked, setPicked] = useState(Array.isArray(mem.picked) ? mem.picked : []);
+  const fromUrl = new URLSearchParams(window.location.search).get('keyword'); // sent from Keyword Mapping: that keyword is already ticked
+  const [picked, setPicked] = useState(fromUrl ? [fromUrl.toLowerCase()] : Array.isArray(mem.picked) ? mem.picked : []);
   const [res, setRes] = useState(mem.res || null);
   useEffect(() => { try { localStorage.setItem(memKey, JSON.stringify({ picked, res })); } catch { /* not remembered */ } }, [picked, res, memKey]);
   const [busy, error, run] = useAction();

@@ -1,7 +1,7 @@
 """Keywords, rank grids, GEO / AEO, backlinks and citations for a business."""
 from statistics import mean
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -33,11 +33,11 @@ def list_keywords(b: Business = Depends(get_business), db: Session = Depends(get
 
 
 @router.post("/keywords/ai-suggestions")
-def keyword_ai_suggestions(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+def keyword_ai_suggestions(body: dict | None = Body(default=None), b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """AI keyword and topic suggestions from what this business has really done and could grow into, each with why and where to use it. Nothing is saved."""
     from ..services import keyword_ai  # noqa: PLC0415
     try:
-        return keyword_ai.suggest(db, b)
+        return keyword_ai.suggest(db, b, str((body or {}).get("topic") or ""))
     except ai.AiUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 - a failed AI call is said plainly, not a server error
@@ -105,6 +105,8 @@ def add_keywords(body: list[KeywordIn], b: Business = Depends(get_business), db:
         db.add(row_)
     db.flush()
     note = keyword_metrics.fill([r for r in (db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == " ".join(k.keyword.lower().split()))) for k in body) if r], market.serp_country(b))
+    from ..services import keyword_workspace  # noqa: PLC0415
+    keyword_workspace.mirror(db, b, [r for r in (db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == " ".join(k.keyword.lower().split()))) for k in body) if r])
     db.commit()
     return {"added": added, "total": len(body), "metrics_note": note}
 

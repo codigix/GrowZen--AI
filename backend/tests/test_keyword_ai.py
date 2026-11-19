@@ -96,3 +96,13 @@ def test_aeo_and_chatgpt_use_are_read_from_real_content(client, project):
     assert u["dental implants cost in baner"]["aeo"] is True and u["dental implants cost in baner"]["chatgpt"] is True   # a question heading answers it; the ChatGPT profile mentions it
     assert u["teeth whitening pune"]["aeo"] is False and u["teeth whitening pune"]["chatgpt"] is True                      # a statement heading is not an answer to a question
     assert u["root canal pain"]["chatgpt"] is True and u["root canal pain"]["aeo"] is False                                # the ChatGPT feed item counts
+
+
+def test_a_typed_topic_focuses_the_suggestions(client, project, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(ai, "is_configured", lambda: True)
+    monkeypatch.setattr(ai, "complete_json", lambda system, user, **kw: seen.update(user=user) or {"items": [{"keyword": "dental implants cost", "why": "x", "uses": ["blog"]}]})
+    d = client.post(f"/api/v1/businesses/{project}/keywords/ai-suggestions", json={"topic": "  dental   implants "}).json()
+    assert d["topic"] == "dental implants" and "FOCUS" in seen["user"] and "dental implants" in seen["user"]
+    client.post(f"/api/v1/businesses/{project}/keywords/ai-suggestions")  # no topic: no focus line
+    assert "FOCUS" not in seen["user"]

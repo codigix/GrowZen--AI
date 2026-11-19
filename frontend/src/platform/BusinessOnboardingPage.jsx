@@ -34,10 +34,13 @@ const JOB_LABELS = { full_audit: 'Full SEO audit', rank_scan: 'Rank tracking', t
 const EVERY = { daily: 'daily', weekly: 'weekly', fortnightly: 'every 2 weeks', monthly: 'monthly' };
 const CATEGORIES = ['Dentist', 'Hospital', 'Eye care center', 'Medical clinic', 'Physiotherapist', 'Dermatologist', 'Restaurant', 'Cafe', 'Bakery', 'Hotel', 'Gym', 'Beauty salon',
   'Real estate agency', 'Lawyer', 'Accountant', 'School', 'Coaching center', 'Car repair', 'Interior designer', 'Software company', 'Manufacturer', 'Store'];
-const EMPTY = { name: '', primary_category: '', description: '', phone: '', website: '', address: '', area: '', city: '', country: 'IN', target_scope: 'local', target_countries: [], target_areas: [], contact_name: '', contact_email: '', booking_url: '', plan: 'Growth', services: [], keywords: [], attributes: [], lat: null, lng: null, social_accounts: { facebook: '', instagram: '', meta_business_id: '' } };
+const EMPTY = { modules: ['seo', 'geo', 'aeo'], goals: [], tone: 'Professional', usps: '', languages: ['English'], competitors: [], name: '', primary_category: '', description: '', phone: '', website: '', address: '', area: '', city: '', country: 'IN', target_scope: 'local', target_countries: [], target_areas: [], contact_name: '', contact_email: '', booking_url: '', plan: 'Growth', services: [], keywords: [], attributes: [], lat: null, lng: null, social_accounts: { facebook: '', instagram: '', meta_business_id: '' } };
 
 // Google Maps and schema.org placeholders when they don't know the real category: never a category to keep.
 const realCategory = (c) => (/^(services?|organization|local ?business|corporation|business|point of interest|establishment|store|company|professional ?services?)$/i.test(String(c || '').trim()) ? '' : String(c || '').trim());
+const cleanDomain = (u) => { const d = domainOf(String(u || '').trim()); return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(d) ? d : ''; };
+const TONES = ['Professional', 'Friendly', 'Expert', 'Premium', 'Simple and clear', 'Energetic'];
+const LANGS = ['English', 'Hindi', 'Marathi', 'Gujarati', 'Tamil', 'Telugu', 'Bengali', 'Kannada', 'Malayalam', 'Arabic', 'French', 'German', 'Spanish'];
 const digits = (s) => String(s || '').replace(/\D/g, '').slice(-10);
 const domainOf = (u) => { try { return new URL(/^https?:\/\//i.test(u) ? u : `https://${u}`).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return ''; } };
 const normaliseUrl = (u) => { const s = String(u || '').trim(); if (!s) return ''; return /^https?:\/\//i.test(s) ? s : `https://${s}`; };
@@ -604,7 +607,7 @@ function LocationCard({ form, setForm, source, bare = false }) {
 }
 
 const SECTIONS = [['business', 'Business', Building2], ['contact', 'Contact', Phone], ['location', 'Location', MapPin], ['services', 'Services & keywords', Tags], ['plan', 'Plan', Layers]];
-const ERROR_SECTION = { name: 'business', primary_category: 'business', phone: 'contact', website: 'contact', contact_email: 'contact', city: 'location', country: 'location', services: 'services', facebook: 'contact', instagram: 'contact', meta_business_id: 'contact' };
+const ERROR_SECTION = { modules: 'business', goals: 'business', tone: 'business', languages: 'business', competitors: 'business', name: 'business', primary_category: 'business', phone: 'contact', website: 'contact', contact_email: 'contact', city: 'location', country: 'location', services: 'services', facebook: 'contact', instagram: 'contact', meta_business_id: 'contact' };
 
 /**
  * Customizable searchable select with checkboxes to select multiple international target locations (countries).
@@ -1208,14 +1211,21 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
   const followKey = followUps.map(x => x.title).join('|');
   useEffect(() => { onFollowUps?.(followUps); }, [followKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const seoOn = (form.modules || []).some(m => ['seo', 'geo', 'aeo'].includes(m));
+  const gmbOn = (form.modules || []).includes('gmb');
   const errors = {
     name: !form.name.trim() && 'The business name is required.',
-    phone: !digits(form.phone) ? 'A phone number is needed for the Google profile and citations.' : !phoneOk(form.phone, form.country) && `This phone number doesn't look complete for ${countryInfo(form.country).name}.`,
+    modules: !(form.modules || []).length && 'Choose at least one service for this project.',
+    goals: !(form.goals || []).length && 'Choose at least one goal.',
+    tone: !(form.tone || '').trim() && 'Choose the tone the writing should have.',
+    languages: !(form.languages || []).length && 'Choose at least one language for the content.',
+    competitors: (form.competitors || []).length > 5 ? 'Five competitors are enough.' : (form.competitors || []).some(c => { const d = cleanDomain(c); return !d || d === domainOf(form.website); }) && 'Enter competitor websites like example.com (not your own site).',
+    phone: gmbOn ? (!digits(form.phone) ? 'A phone number is needed for the Google profile and citations.' : !phoneOk(form.phone, form.country) && `This phone number doesn't look complete for ${countryInfo(form.country).name}.`) : (digits(form.phone) && !phoneOk(form.phone, form.country) && `This phone number doesn't look complete for ${countryInfo(form.country).name}.`),
     // Everything the project needs is asked for here, once: its audits, traffic and rank tracking all run on this website, city and category.
-    primary_category: !form.primary_category.trim() && 'Pick the main category so audits and keywords fit the business.',
-    website: !form.website.trim() ? (!source?.place_id && 'The website is required (or link a Google Business Profile): audits, traffic and rankings are shown for this site.') : !domainOf(form.website).includes('.') && 'This doesn\'t look like a website address.',
+    primary_category: gmbOn && !form.primary_category.trim() && 'Pick the main category: the Google profile needs it.',
+    website: !form.website.trim() ? (seoOn && !source?.place_id && 'A website is required for SEO and AI search: the audits, keywords and AI questions are about it.') : !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domainOf(form.website)) && 'This does not look like a website address. Use the form example.com',
     contact_email: !form.contact_email.trim() ? 'A contact email is needed for reports and access.' : !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.contact_email) && 'This doesn\'t look like an email address.',
-    city: !form.city.trim() && 'The city is needed to track local rankings.',
+    city: (gmbOn || (form.target_scope || 'local') === 'local') && !form.city.trim() && !(form.target_areas || []).length && 'The city (or a target area) is needed for local keywords and rankings.',
     country: !form.country && 'Choose the country.',
     services: !form.services.length && 'Add at least one service.',
     ...metaErrors(form.social_accounts)
@@ -1282,13 +1292,54 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
         <div className="p-5">
           {section === 'business' && (
             <div className="space-y-4">
+              <div data-field="modules" className={box('modules')}>
+                <Field label="What will this project use? *" hint="SEO-only projects are not asked for Google profile details like phone, address and category.">
+                  <div className="flex flex-wrap gap-2">
+                    {[['seo', 'SEO (website, keywords, audit)'], ['geo', 'AI search (ChatGPT, Gemini)'], ['aeo', 'Answer engines (Perplexity)'], ['gmb', 'Google Business Profile']].map(([m, l]) => {
+                      const on = (form.modules || []).includes(m);
+                      return <button key={m} type="button" aria-pressed={on} onClick={() => setForm(x => ({ ...x, modules: on ? x.modules.filter(y => y !== m) : [...(x.modules || []), m] }))}
+                        className={`h-9 px-3.5 rounded-full text-13 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{l}</button>;
+                    })}
+                  </div>{err('modules')}
+                </Field>
+              </div>
+              
+              <div data-field="goals" className={box('goals')}>
+                <Field label="Business goals *" hint="What should SEO bring?">
+                  <div className="flex flex-wrap gap-2">{['Phone calls', 'Bookings and appointments', 'Leads and enquiries', 'Online sales', 'Local visibility', 'Brand awareness'].map(g => {
+                    const on = (form.goals || []).includes(g);
+                    return <button key={g} type="button" aria-pressed={on} onClick={() => setForm(x => ({ ...x, goals: on ? x.goals.filter(y => y !== g) : [...(x.goals || []), g] }))}
+                      className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{g}</button>;
+                  })}</div>{err('goals')}
+                </Field>
+              </div>
+              <div data-field="usps" className={box('usps')}>
+                <Field label="What makes the business different" hint="Experience, certifications, prices, results. The writing uses this, so it never sounds like everyone else."><textarea rows={2} maxLength={600} className={areaCls + hl('usps')} value={form.usps || ''} onChange={set('usps')} placeholder="For example: 15 years of experience, painless implants, EMI available, open on Sundays" /></Field>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div data-field="tone" className={box('tone')}>
+                  <Field label="Tone of the writing *">
+                    <div className="flex flex-wrap gap-1.5">{TONES.map(t => <button key={t} type="button" aria-pressed={form.tone === t} onClick={() => setForm(x => ({ ...x, tone: t }))} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${form.tone === t ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{t}</button>)}</div>{err('tone')}
+                  </Field>
+                </div>
+                <div data-field="languages" className={box('languages')}>
+                  <Field label="Content languages *" hint="Blog posts, Google posts and replies are written in these.">
+                    <div className="flex flex-wrap gap-1.5">{LANGS.map(l => { const on = (form.languages || []).includes(l); return <button key={l} type="button" aria-pressed={on} onClick={() => setForm(x => ({ ...x, languages: on ? x.languages.filter(y => y !== l) : [...(x.languages || []), l] }))} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{l}</button>; })}</div>{err('languages')}
+                  </Field>
+                </div>
+              </div>
+              <div data-field="competitors" className={box('competitors')}>
+                <Field label="Competitors you already know" hint="Up to 5 websites. Optional: competitor research finds more, and starts from these.">
+                  <Chips values={form.competitors || []} onChange={v => setForm({ ...form, competitors: v })} placeholder="competitor.com, then Enter" />{err('competitors')}
+                </Field>
+              </div>
               <div>
                 <Field label={label('Business name *', 'name')}><input data-field="name" className={inputCls + hl('name')} value={form.name} onChange={set('name')} placeholder="Registered name, no keywords added" />{err('name')}</Field>
                 <FieldFix field="name" check={f.name} value={form.name} onPick={pick} />
                 {s?.name && <Suggestion label="Registered name" value={s.name.value} source={s.name.source} inUse={form.name === s.name.value} onUse={() => setForm(x => ({ ...x, name: s.name.value }))} />}
               </div>
               <div>
-                <Field label={label('Primary category *', 'primary_category')} hint="The main Google Business Profile category."><input data-field="primary_category" className={inputCls + hl('primary_category')} list="gz-categories" value={form.primary_category} onChange={set('primary_category')} placeholder="e.g. Dentist" /><datalist id="gz-categories">{CATEGORIES.map(c => <option key={c} value={c} />)}</datalist>{err('primary_category')}</Field>
+                <Field label={label('Primary category' + (gmbOn ? ' *' : ''), 'primary_category')} hint="The main Google Business Profile category."><input data-field="primary_category" className={inputCls + hl('primary_category')} list="gz-categories" value={form.primary_category} onChange={set('primary_category')} placeholder="e.g. Dentist" /><datalist id="gz-categories">{CATEGORIES.map(c => <option key={c} value={c} />)}</datalist>{err('primary_category')}</Field>
                 {s?.category.value && <Suggestion label="Suggested category" value={s.category.value} source={s.category.source} inUse={form.primary_category === s.category.value} onUse={() => setForm(x => ({ ...x, primary_category: s.category.value }))} />}
               </div>
               <div>
@@ -1299,8 +1350,8 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
           )}
           {section === 'contact' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><Field label={label('Phone *', 'phone')}><input data-field="phone" className={inputCls + hl('phone')} value={form.phone} onChange={set('phone')} placeholder={countryInfo(form.country).dial ? `+${countryInfo(form.country).dial} …` : 'Phone with country code'} inputMode="tel" />{err('phone')}</Field><FieldFix field="phone" check={f.phone} value={form.phone} onPick={pick} /></div>
-              <div><Field label={label('Website *', 'website')}><input data-field="website" className={inputCls + hl('website')} value={form.website} onChange={set('website')} placeholder="https://…" inputMode="url" />{err('website')}</Field><FieldFix field="website" check={f.website} value={form.website} onPick={pick} /></div>
+              <div><Field label={label('Phone' + (gmbOn ? ' *' : ''), 'phone')}><input data-field="phone" className={inputCls + hl('phone')} value={form.phone} onChange={set('phone')} placeholder={countryInfo(form.country).dial ? `+${countryInfo(form.country).dial} …` : 'Phone with country code'} inputMode="tel" />{err('phone')}</Field><FieldFix field="phone" check={f.phone} value={form.phone} onPick={pick} /></div>
+              <div><Field label={label('Website' + (seoOn ? ' *' : ''), 'website')}><input data-field="website" className={inputCls + hl('website')} value={form.website} onChange={set('website')} placeholder="https://…" inputMode="url" />{err('website')}</Field><FieldFix field="website" check={f.website} value={form.website} onPick={pick} /></div>
               <Field label="Booking link"><input className={inputCls} value={form.booking_url} onChange={set('booking_url')} placeholder="Appointment / order URL" /></Field>
               <Field label="Contact person"><input className={inputCls} value={form.contact_name} onChange={set('contact_name')} placeholder="Owner or manager" /></Field>
               <div className="md:col-span-2"><Field label="Contact email *" hint="Reports are emailed here."><input data-field="contact_email" className={inputCls + hl('contact_email')} value={form.contact_email} onChange={set('contact_email')} placeholder="owner@…" inputMode="email" />{err('contact_email')}</Field></div>
@@ -1321,7 +1372,7 @@ function ReviewStep({ form, setForm, source, plans, existing, onBack, onNext, on
               <div><Field label={label('Street address', 'address')}><input data-field="address" className={inputCls + hl('address')} value={form.address} onChange={set('address')} placeholder="Shop / building, street, area, city, PIN" /></Field><FieldFix field="address" check={f.address} value={form.address} onPick={pick} /></div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Field label="Area / locality"><input data-field="area" className={inputCls + hl('area')} value={form.area} onChange={set('area')} placeholder="e.g. Aundh" /></Field>
-                <Field label="City *"><input data-field="city" className={inputCls + hl('city')} value={form.city} onChange={set('city')} placeholder="e.g. Pune" />{err('city')}</Field>
+                <Field label={gmbOn || (form.target_scope || 'local') === 'local' ? 'City *' : 'City'}><input data-field="city" className={inputCls + hl('city')} value={form.city} onChange={set('city')} placeholder="e.g. Pune" />{err('city')}</Field>
                 <Field label="Country" hint="Google is searched here; phone and address checks follow it."><CountrySelect value={form.country} onChange={v => setForm(x => ({ ...x, country: v }))} className={inputCls} /></Field>
               </div>
               {form.lat == null && s?.pin && <Suggestion label="Map pin" value={`${s.pin.lat.toFixed(5)}, ${s.pin.lng.toFixed(5)}`} source="Google Maps" inUse={false} onUse={() => setForm(x => ({ ...x, lat: s.pin.lat, lng: s.pin.lng }))} />}
@@ -1415,7 +1466,9 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
         booking_url: normaliseUrl(form.booking_url) || null, plan: form.plan, services: form.services.map(name => ({ name })),
         attributes: form.attributes, lat: form.lat, lng: form.lng,
         social_accounts: Object.fromEntries(Object.entries(form.social_accounts || {}).map(([k, v]) => [k, String(v || '').trim()]).filter(([, v]) => v)),
-        target_scope: form.target_scope || 'local', target_countries: form.target_scope === 'international' ? form.target_countries : [], target_areas: (form.target_scope || 'local') === 'local' ? form.target_areas : []
+        target_scope: form.target_scope || 'local', target_countries: form.target_scope === 'international' ? form.target_countries : [], target_areas: (form.target_scope || 'local') === 'local' ? form.target_areas : [],
+        goals: form.goals || [], modules: form.modules,
+        tone: (form.tone || '').trim() || null, usps: (form.usps || '').trim() || null, languages: (form.languages || []).join(', ') || null
       };
       await api(`/businesses/${b.id}`, { method: 'PATCH', repeat: true, body: Object.fromEntries(Object.entries(patch).filter(([k, v]) => v !== null || k === 'services' || k === 'attributes')) });
       mark('details', 'done', `${form.services.length} service${form.services.length === 1 ? '' : 's'}, contact and location saved`);
@@ -1434,12 +1487,15 @@ function LaunchStep({ form, source, existing, plans, followUps = [], onBack, onD
 
       // Step 1 of the process: research the competitors. Keyword discovery then starts from what it finds.
       mark('competitors', 'running');
+      const known = [...new Set((form.competitors || []).map(cleanDomain).filter(Boolean))].slice(0, 5);
+      let saved = 0;
+      for (const d of known) { try { await api(`/businesses/${b.id}/seo/track-competitor`, { method: 'POST', body: { domain: d } }); saved += 1; } catch (e) { /* a refused address is left out */ } }
       try {
         const cr = await api(`/businesses/${b.id}/competitor-research`);
         if (!cr.setup?.google_results) mark('competitors', 'skipped', 'Needs the Google Places key (GOOGLE_PLACES_API_KEY). Run it later from Competitors.');
         else {
           await api(`/businesses/${b.id}/competitor-research`, { method: 'POST', body: { keywords: (form.keywords.length ? form.keywords : cr.defaults.keywords).slice(0, 4), location: cr.defaults.location } });
-          mark('competitors', 'done', 'Competitor research started. Keyword Intelligence builds on it when it finishes.');
+          mark('competitors', 'done', `${saved ? `${saved} known competitor${saved === 1 ? '' : 's'} saved. ` : ''}Competitor research started. Keyword Intelligence builds on it when it finishes.`);
         }
       } catch (e) { mark('competitors', 'skipped', 'Could not start competitor research. Run it from Competitor Research.'); }
 
@@ -1681,23 +1737,59 @@ function QuickFind({ query, setQuery, sources, setSources, onContinue, onOpenExi
   );
 }
 
+const GOALS = ['Phone calls', 'Bookings and appointments', 'Leads and enquiries', 'Online sales', 'Local visibility', 'Brand awareness'];
+const MODULE_OPTIONS = [['seo', 'SEO (website, keywords, audit)'], ['geo', 'AI search (ChatGPT, Gemini)'], ['aeo', 'Answer engines (Perplexity)'], ['gmb', 'Google Business Profile']];
+const pillCls = (on, h = 'h-8') => `${h} px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
+
+/** What every project needs before the stages after onboarding can work: the services it uses, who the customers are, what it wants, and how to write for it. */
+function AnalysisFields({ form, setForm, err }) {
+  const toggle = (key, value) => setForm(x => ({ ...x, [key]: (x[key] || []).includes(value) ? x[key].filter(y => y !== value) : [...(x[key] || []), value] }));
+  return (
+    <div className="space-y-4">
+      <Field label="What will this project use? *" hint="SEO-only projects are not asked for Google profile details like phone and category.">
+        <div className="flex flex-wrap gap-2">{MODULE_OPTIONS.map(([m, l]) => <button key={m} type="button" aria-pressed={(form.modules || []).includes(m)} onClick={() => toggle('modules', m)} className={pillCls((form.modules || []).includes(m), 'h-9')}>{l}</button>)}</div>{err('modules')}
+      </Field>
+      <Field label="Services or products *" hint="What the business sells. Press Enter after each one. Keywords and pages are built from them."><Chips values={form.services} onChange={v => setForm({ ...form, services: v })} placeholder="e.g. Dental implants" />{err('services')}</Field>
+      <div data-field="target_areas"><TargetMarket form={form} setForm={setForm} />{err('city')}</div>
+      <Field label="Business goals *" hint="What should SEO bring?">
+        <div className="flex flex-wrap gap-1.5">{GOALS.map(g => <button key={g} type="button" aria-pressed={(form.goals || []).includes(g)} onClick={() => toggle('goals', g)} className={pillCls((form.goals || []).includes(g))}>{g}</button>)}</div>{err('goals')}
+      </Field>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Tone of the writing *"><div className="flex flex-wrap gap-1.5">{TONES.map(t => <button key={t} type="button" aria-pressed={form.tone === t} onClick={() => setForm({ ...form, tone: t })} className={pillCls(form.tone === t)}>{t}</button>)}</div>{err('tone')}</Field>
+        <Field label="Content languages *"><div className="flex flex-wrap gap-1.5">{LANGS.map(l => <button key={l} type="button" aria-pressed={(form.languages || []).includes(l)} onClick={() => toggle('languages', l)} className={pillCls((form.languages || []).includes(l))}>{l}</button>)}</div>{err('languages')}</Field>
+      </div>
+      <Field label="What makes the business different" hint="Optional. The writing uses it so it never sounds like everyone else."><textarea rows={2} maxLength={600} className={areaCls} value={form.usps || ''} onChange={e => setForm({ ...form, usps: e.target.value })} placeholder="For example: 15 years of experience, painless implants, open on Sundays" /></Field>
+      <Field label="Competitors you already know" hint="Optional, up to 5 websites. Competitor research starts from them."><Chips values={form.competitors || []} onChange={v => setForm({ ...form, competitors: v })} placeholder="competitor.com, then Enter" />{err('competitors')}</Field>
+    </div>
+  );
+}
+
 function QuickConfirm({ form, setForm, source, plans, existing, onBack, onNext, onDetailed }) {
   const rows = useCountries();
   const [tried, setTried] = useState(false);
   const [more, setMore] = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const seoOn = (form.modules || []).some(m => ['seo', 'geo', 'aeo'].includes(m));
+  const gmbOn = (form.modules || []).includes('gmb');
   const errors = {
     name: !form.name.trim() && 'Enter the business name.',
-    city: !form.city.trim() && 'Enter the city: it is used to track local rankings.',
+    modules: !(form.modules || []).length && 'Choose at least one service for this project.',
+    services: !(form.services || []).length && 'Add at least one service or product: keywords and pages are built from them.',
+    goals: !(form.goals || []).length && 'Choose at least one goal.',
+    tone: !(form.tone || '').trim() && 'Choose the tone of the writing.',
+    languages: !(form.languages || []).length && 'Choose at least one language.',
+    competitors: (form.competitors || []).length > 5 ? 'Five competitors are enough.' : (form.competitors || []).some(c => { const d = cleanDomain(c); return !d || d === domainOf(form.website); }) && 'Enter competitor websites like example.com (not your own site).',
+    city: (gmbOn || (form.target_scope || 'local') === 'local') && !form.city.trim() && !(form.target_areas || []).length && 'Enter the city (or a target area): it is used for local keywords and rankings.',
     country: !form.country && 'Choose the country.',
-    phone: form.phone.trim() && !phoneOk(form.phone, form.country) && `This phone number does not look complete for ${countryInfo(form.country)?.name || 'this country'}.`,
-    website: form.website.trim() && !domainOf(form.website).includes('.') && 'This does not look like a website address.',
+    primary_category: gmbOn && !form.primary_category.trim() && 'Pick the main category: the Google profile needs it.',
+    phone: gmbOn ? (!form.phone.trim() ? 'A phone number is needed for the Google profile.' : !phoneOk(form.phone, form.country) && `This phone number does not look complete for ${countryInfo(form.country)?.name || 'this country'}.`) : (form.phone.trim() && !phoneOk(form.phone, form.country) && `This phone number does not look complete for ${countryInfo(form.country)?.name || 'this country'}.`),
+    website: !form.website.trim() ? (seoOn && 'A website is required for SEO and AI search: the audits, keywords and AI questions are about it.') : !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domainOf(form.website)) && 'This does not look like a website address. Use the form example.com',
     contact_email: form.contact_email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.contact_email.trim()) && 'This does not look like an email address.'
   };
   const bad = Object.values(errors).some(Boolean);
   const err = (k) => (tried && errors[k] ? <span className="block text-11.5 text-red-600 mt-1">{errors[k]}</span> : null);
   const next = () => { setTried(true); if (!bad) onNext(); };
-  const missing = [!form.phone.trim() && 'phone', !form.website.trim() && 'website', !form.primary_category.trim() && 'category'].filter(Boolean);
+  const missing = [!gmbOn && !form.phone.trim() && 'phone', !form.primary_category.trim() && !gmbOn && 'category'].filter(Boolean);
   const meta = form.social_accounts || {};
   const setMeta = (k) => (e) => setForm({ ...form, social_accounts: { ...meta, [k]: e.target.value } });
   return (
@@ -1711,21 +1803,25 @@ function QuickConfirm({ form, setForm, source, plans, existing, onBack, onNext, 
       )}
       {existing && <div className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-2.5 text-13 text-amber-900 flex gap-2"><AlertTriangle size={16} className="shrink-0 mt-0.5" /><span>This looks like the existing project <b>{existing.name}</b>. Adding it updates that project instead of making a copy.</span></div>}
 
-      <Card title="Check the details" subtitle="Only the first three are needed. The rest makes the audits and the Google profile better.">
+      <Card title="Check the details" subtitle={gmbOn ? 'Name, city, category, phone and website are needed for the Google profile.' : 'Name and website are needed. The rest makes the audits better.'}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
           <div className="md:col-span-2"><Field label="Business name *" hint="The real name on the signboard, without keywords."><input className={inputCls} value={form.name} onChange={set('name')} autoFocus />{err('name')}</Field></div>
-          <Field label="City *"><input className={inputCls} value={form.city} onChange={set('city')} placeholder="e.g. Pune" />{err('city')}</Field>
+          <Field label={gmbOn || (form.target_scope || 'local') === 'local' ? 'City *' : 'City'}><input className={inputCls} value={form.city} onChange={set('city')} placeholder="e.g. Pune" />{err('city')}</Field>
           <Field label="Country *"><CountrySelect value={form.country} onChange={v => setForm({ ...form, country: v })} className={inputCls} />{err('country')}</Field>
-          <Field label="What kind of business is it?" hint="Pick or type, e.g. Dentist, Restaurant, Clothing rental.">
-            <input className={inputCls} list="onb-categories" value={form.primary_category} onChange={set('primary_category')} placeholder="e.g. Clothing rental service" />
+          <Field label={gmbOn ? 'What kind of business is it? *' : 'What kind of business is it?'} hint="Pick or type, e.g. Dentist, Restaurant, Clothing rental.">
+            <input className={inputCls} list="onb-categories" value={form.primary_category} onChange={set('primary_category')} placeholder="e.g. Clothing rental service" />{err('primary_category')}
             <datalist id="onb-categories">{CATEGORIES.map(c => <option key={c} value={c} />)}</datalist>
           </Field>
-          <Field label="Phone"><input type="tel" className={inputCls} value={form.phone} onChange={set('phone')} placeholder="+91 …" />{err('phone')}</Field>
-          <Field label="Website"><input className={inputCls} value={form.website} onChange={set('website')} placeholder="https://" inputMode="url" />{err('website')}</Field>
+          <Field label={gmbOn ? 'Phone *' : 'Phone'}><input type="tel" className={inputCls} value={form.phone} onChange={set('phone')} placeholder="+91 …" />{err('phone')}</Field>
+          <Field label={seoOn ? 'Website *' : 'Website'}><input className={inputCls} value={form.website} onChange={set('website')} placeholder="https://" inputMode="url" />{err('website')}</Field>
           <Field label="Email for reports" hint="Monthly reports are sent here."><input className={inputCls} value={form.contact_email} onChange={set('contact_email')} placeholder="owner@business.com" inputMode="email" />{err('contact_email')}</Field>
           <div className="md:col-span-2"><Field label="Address"><input className={inputCls} value={form.address} onChange={set('address')} placeholder="Shop number, street, area" /></Field></div>
         </div>
         {missing.length > 0 && <p className="mt-3 text-12.5 text-slate-500">You can add the {missing.join(', ')} later. The audits start with what you have.</p>}
+      </Card>
+
+      <Card title="What the project is" subtitle="The fields marked * are needed: every later step (competitors, keywords, content) starts from them.">
+        <AnalysisFields form={form} setForm={setForm} err={err} />
       </Card>
 
       <div className="rounded-xl bg-white ring-1 ring-slate-200 overflow-hidden">
@@ -1735,8 +1831,6 @@ function QuickConfirm({ form, setForm, source, plans, existing, onBack, onNext, 
         </button>
         {more && (
           <div className="px-4 pb-4 pt-1 space-y-5 border-t border-slate-100">
-            <Field label="Services you offer" hint="Press Enter after each one. They go on the Google profile and shape the keywords."><Chips values={form.services} onChange={v => setForm({ ...form, services: v })} placeholder="e.g. Lehenga rental" max={12} /></Field>
-            <TargetMarket form={form} setForm={setForm} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Facebook page"><input className={inputCls} value={meta.facebook || ''} onChange={setMeta('facebook')} placeholder="facebook.com/yourbusiness" /></Field>
               <Field label="Instagram"><input className={inputCls} value={meta.instagram || ''} onChange={setMeta('instagram')} placeholder="@yourbusiness" /></Field>

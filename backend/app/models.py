@@ -63,6 +63,8 @@ class Business(TimestampMixin, Base):
     target_scope: Mapped[str | None] = mapped_column(String(15))  # local | national | international: who the business wants customers from (services/market.py)
     target_countries: Mapped[list[str]] = mapped_column(JSON, default=list)  # ISO codes, for international
     target_areas: Mapped[list[str]] = mapped_column(JSON, default=list)  # "Aundh, Pune", for local
+    target_audience: Mapped[str | None] = mapped_column(Text)  # who the customers are: the business analysis (services/seo_journey.py)
+    goals: Mapped[list[str]] = mapped_column(JSON, default=list)  # what the business wants from SEO: calls, bookings, leads, sales, brand...
     services: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{name, price, description}]
     attributes: Mapped[list[str]] = mapped_column(JSON, default=list)
     hours: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -173,6 +175,7 @@ class Competitor(TimestampMixin, Base):
     reviews: Mapped[int | None] = mapped_column(Integer)
     maps_link: Mapped[str | None] = mapped_column(String(500))
     source: Mapped[str] = mapped_column(String(20), default="google_places")  # google_places | manual
+    selected: Mapped[bool | None] = mapped_column(Boolean)  # chosen for Competitor Watch and the later steps. NULL = saved before choosing existed (counts as chosen); False = found but not chosen
 
 
 class LighthouseSiteAudit(TimestampMixin, Base):
@@ -410,8 +413,32 @@ class Keyword(TimestampMixin, Base):
     rank_checked_at: Mapped[date | None] = mapped_column(Date)
     priority: Mapped[str] = mapped_column(String(10), default="Medium")
     tracked: Mapped[bool] = mapped_column(Boolean, default=True)
+    role: Mapped[str | None] = mapped_column(String(10))  # primary | secondary: the page's main keyword or one it supports (services/keyword_mapping.py)
     uses: Mapped[list[str] | None] = mapped_column(JSON)  # where it is meant to be used: blog, gmb_post, aeo, geo, chatgpt, website
     source: Mapped[dict | None] = mapped_column(JSON)  # where the keyword was taken from: {kind, label, from, pages: [{url, in}], searches, at}
+
+
+class KeywordCandidate(TimestampMixin, Base):
+    """One keyword found for a project, from any place, before anyone has chosen it. Variants of the same phrase are one row (see services/keyword_workspace.py);
+    every place it was found stays in `sources`. Choosing it saves a Keyword."""
+    __tablename__ = "keyword_candidates"
+    __table_args__ = (UniqueConstraint("business_id", "norm"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    norm: Mapped[str] = mapped_column(String(255))
+    keyword: Mapped[str] = mapped_column(String(255))
+    variants: Mapped[list[str] | None] = mapped_column(JSON)
+    sources: Mapped[list[dict] | None] = mapped_column(JSON)  # [{kind, label, detail, at}]
+    competitors: Mapped[list[str] | None] = mapped_column(JSON)  # competitor domains that use it
+    volume: Mapped[int | None] = mapped_column(Integer)
+    difficulty: Mapped[int | None] = mapped_column(Integer)
+    cpc: Mapped[float | None] = mapped_column(Float)
+    intent: Mapped[str | None] = mapped_column(String(20))
+    own_rank: Mapped[float | None] = mapped_column(Float)  # average Google position from Search Console
+    impressions: Mapped[int | None] = mapped_column(Integer)
+    clicks: Mapped[int | None] = mapped_column(Integer)
+    picked: Mapped[bool] = mapped_column(Boolean, default=False)
+    dismissed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class RankScan(TimestampMixin, Base):

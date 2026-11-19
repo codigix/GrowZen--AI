@@ -22,7 +22,7 @@ from keyword_explorer.api.routes.keywords import router as keyword_explorer_rout
 from .competitors import audit_router as competitor_audits, intel_router as competitor_research, router as competitors
 from .auth import current_user
 from .backlinks import router as backlinks
-from .backlinks.crawler_api import router as crawler_router
+from .backlinks.crawler_api import biz_router as crawler_biz_router, router as crawler_router
 from .backlinks.hub_router import router as hub_router
 from .routers.blog_flow import router as blog_flow_router
 from .routers.fix_plan import router as fix_plan_router
@@ -107,9 +107,14 @@ for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant,
 
 app.include_router(lookup_router, prefix=settings.api_prefix)
 app.include_router(crawler_router, prefix=settings.api_prefix)
+app.include_router(crawler_biz_router, prefix=settings.api_prefix)
 app.include_router(hub_router, prefix=settings.api_prefix)
 app.include_router(blog_flow_router, prefix=settings.api_prefix)
 app.include_router(fix_plan_router, prefix=settings.api_prefix)
+from .routers.keyword_workspace import router as keyword_workspace_router  # noqa: E402
+app.include_router(keyword_workspace_router, prefix=settings.api_prefix)
+from .routers.keyword_mapping import router as keyword_mapping_router  # noqa: E402
+app.include_router(keyword_mapping_router, prefix=settings.api_prefix)
 app.include_router(outcomes_router, prefix=settings.api_prefix)
 app.include_router(watch_router, prefix=settings.api_prefix)
 

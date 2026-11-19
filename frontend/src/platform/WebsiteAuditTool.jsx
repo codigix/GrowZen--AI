@@ -234,6 +234,55 @@ function CategoryTile({ label, icon: Icon, score, sub }) {
   );
 }
 
+const SPEED_KINDS = [['css_js', 'CSS and JavaScript'], ['images', 'Images'], ['fonts', 'Fonts'], ['server', 'Server and caching'], ['network', 'Network requests'], ['third_party', 'Third-party code'], ['layout', 'Layout shifts'], ['errors', 'Errors and warnings in the browser'], ['other', 'Other']];
+const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
+const shortUrl = (u) => { try { const x = new URL(u); return x.hostname.replace(/^www\./, '') + x.pathname + x.search; } catch { return u; } };
+
+/** Every speed problem Lighthouse found: what it is, how much it costs, and the files behind it (CSS, JS, images, fonts, requests). */
+function SpeedProblems({ problems }) {
+  const [open, setOpen] = useState({});
+  if (!problems?.length) return <Card title="Speed problems" subtitle="Google Lighthouse"><div className="py-3 text-13 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={15} /> Lighthouse found no speed problems to fix.</div></Card>;
+  return (
+    <Card title="Speed problems" subtitle={`Google Lighthouse · ${problems.length} found, with the files that cause them`}>
+      <div className="space-y-5">
+        {SPEED_KINDS.map(([k, name]) => { const list = problems.filter(p => p.kind === k); if (!list.length) return null; return (
+          <div key={k}>
+            <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">{name} ({list.length})</div>
+            <div className="divide-y divide-slate-100 rounded-lg ring-1 ring-inset ring-slate-200">
+              {list.map(p => { const on = open[p.id]; return (
+                <div key={p.id}>
+                  <button type="button" onClick={() => setOpen(o => ({ ...o, [p.id]: !on }))} aria-expanded={!!on} className="w-full flex items-start gap-3 px-3 py-2.5 text-left cursor-pointer">
+                    <XCircle size={16} className={`${p.score != null && p.score < 50 ? 'text-red-600' : 'text-amber-500'} shrink-0 mt-0.5`} />
+                    <span className="min-w-0 flex-1"><span className="block text-13 font-medium text-slate-900">{p.title}</span>
+                      <span className="block text-12 text-slate-500">{[p.display_value, p.savings_ms ? `saves about ${(p.savings_ms / 1000).toFixed(1)} s` : '', p.savings_bytes ? `saves ${kb(p.savings_bytes)}` : '', p.item_count ? `${p.item_count} file${p.item_count === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')}</span></span>
+                    <span className="text-11 text-slate-400 shrink-0">{on ? 'Hide' : 'Details'}</span>
+                  </button>
+                  {on && (
+                    <div className="px-3 pb-3 pl-10">
+                      {p.description && <p className="text-12 text-slate-600 leading-relaxed mb-2">{p.description}</p>}
+                      {p.items.length > 0 && (
+                        <ul className="grid gap-1">{p.items.map((it, i) => (
+                          <li key={i} className="text-12 text-slate-700 flex flex-wrap gap-x-3 break-all">
+                            <span className="font-mono text-11.5">{it.url ? shortUrl(it.url) : it.label || it.groupLabel || it.node || it.description || it.source || ''}</span>
+                            {it.totalBytes != null && <span className="text-slate-500">{kb(it.totalBytes)}</span>}
+                            {it.wastedBytes != null && <span className="text-red-600">wasted {kb(it.wastedBytes)}</span>}
+                            {it.wastedMs != null && <span className="text-red-600">blocks {Math.round(it.wastedMs)} ms</span>}
+                            {it.duration != null && <span className="text-slate-500">{Math.round(it.duration)} ms</span>}
+                            {it.total != null && it.duration == null && <span className="text-slate-500">{Math.round(it.total)} ms{it.scripting != null ? `, script ${Math.round(it.scripting)} ms` : ''}</span>}
+                            {it.cacheLifetimeMs === 0 && <span className="text-amber-700">no caching</span>}
+                          </li>))}</ul>
+                      )}
+                      {p.item_count > p.items.length && <p className="text-11.5 text-slate-400 mt-1">Showing {p.items.length} of {p.item_count}. The full list is in the Lighthouse report below.</p>}
+                    </div>
+                  )}
+                </div>); })}
+            </div>
+          </div>); })}
+      </div>
+    </Card>
+  );
+}
+
 function Vitals({ ps }) {
   const field = ps.field || {};
   const hasField = Object.values(field).some(Boolean);
@@ -775,7 +824,7 @@ export function ReportStep({ sa, business, onNext }) {
               { id: 'tasks', label: 'Weekly tasks' },
               { id: 'research', label: 'Website R&D' },
               { id: 'pages', label: 'Pages', count: pages.length },
-              { id: 'speed', label: 'Speed' },
+              { id: 'speed', label: 'Speed', count: (ps?.speed_problems || []).length },
               { id: 'google', label: 'Google checks', count: (ps?.seo_checks || []).filter(c => c.status === 'fail').length }
             ]} />
           </div>
@@ -783,7 +832,7 @@ export function ReportStep({ sa, business, onNext }) {
           {tab === 'research' && (business ? <Suspense fallback={<SkList rows={4} />}><SiteResearch key={business.id} b={business} /></Suspense> : null)}
           {tab === 'fixes' && <Improvements issues={issues} pages={pages} business={subject} score={crawl?.score} technical={ps} onRecheck={rerun} rechecking={sa.busy === 'start' || sa.running} />}
           {tab === 'pages' && (pages.length ? <><PageRewrites pages={pages} subject={subject} /><PagesCard pages={pages} siteIssues={issues} /></> : <Card><div className="py-8 text-center text-13 text-slate-500">No pages were crawled in this audit.</div></Card>)}
-          {tab === 'speed' && (ps ? <Vitals ps={ps} /> : <Card><div className="py-8 text-center text-13 text-slate-500">Google Lighthouse didn't finish for this audit, so there are no speed results. Re-run the audit.</div></Card>)}
+          {tab === 'speed' && (ps ? <><Vitals ps={ps} /><SpeedProblems problems={ps.speed_problems} /></> : <Card><div className="py-8 text-center text-13 text-slate-500">Google Lighthouse didn't finish for this audit, so there are no speed results. Re-run the audit.</div></Card>)}
           {tab === 'google' && <>{ps && <LighthouseChecks checks={ps.seo_checks || []} />}<LighthouseDetails auditId={ps?.lighthouse_audit_id} target={normalise(a.target)} pages={pages} strategy={ps?.strategy || 'mobile'} fallbackReason={ps?.fallback_reason} /></>}
         </div>
         <aside className="space-y-5 min-w-0 xl:sticky xl:top-24">

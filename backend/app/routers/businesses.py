@@ -15,7 +15,7 @@ from ..deps import get_business, in_background, my_business_ids, only_mine, owne
 from ..models import AgentTask, Audit, Business, BusinessManager, InsightDay, Lead, Review, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
-from ..services import project_services, agent, audits, discovery, gbp, reports, schedules, site_guard, site_onboarding, workplan
+from ..services import project_rules, project_services, agent, audits, discovery, gbp, reports, schedules, site_guard, site_onboarding, workplan
 from ..services import analytics as analytics_service, portfolio as portfolio_service, site_health, track_table
 from ..services.activity import log
 from ..services.profile_score import score_profile
@@ -34,7 +34,7 @@ def list_businesses(db: Session = Depends(get_db), user: User = Depends(current_
         r = row(b)
         r["gbp_status"] = {k: v for k, v in (r.get("gbp_status") or {}).items() if k != "live"}
         n = nxt.get(b.id)
-        out.append(r | {"pending_tasks": pending.get(b.id, 0), "next_run_at": n.isoformat() if n else None})
+        out.append(r | {"pending_tasks": pending.get(b.id, 0), "next_run_at": n.isoformat() if n else None, "services_on": project_services.enabled(b)})
     return out
 
 
@@ -169,6 +169,10 @@ def portfolio(db: Session = Depends(get_db), user: User = Depends(current_user))
 
 @router.post("", status_code=201)
 def create_business(body: BusinessIn, background: BackgroundTasks, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    if body.modules is not None:
+        wrong = project_rules.problems(body.model_dump(), body.modules)
+        if wrong:
+            raise HTTPException(422, " ".join(wrong))
     b = Business(**body.model_dump(), source="manual", created_by=user.name, owner_id=user.id)
     db.add(b)
     db.commit()
@@ -182,7 +186,7 @@ def create_business(body: BusinessIn, background: BackgroundTasks, db: Session =
 
 @router.get("/{business_id}")
 def get_one(b: Business = Depends(get_business)):
-    return row(b)
+    return row(b) | {"services_on": project_services.enabled(b)}
 
 
 @router.patch("/{business_id}")
@@ -192,6 +196,10 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
         other = site_guard.website_taken(db, b.owner_id, changes["website"], except_id=b.id)
         if other:
             raise HTTPException(409, f"{changes['website']} is already the website of your project \"{other}\". Each website is its own project, so nothing is mixed.")
+    if changes.get("modules") is not None:
+        wrong = project_rules.problems({**row(b), **changes}, changes["modules"])
+        if wrong:
+            raise HTTPException(422, " ".join(wrong))
     old_site = b.website
     pushed: list[str] = []
     changed = {k: v for k, v in changes.items() if getattr(b, k, None) != v}
@@ -234,6 +242,8 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
         pushed = sorted({*pushed, "placeActionLinks"})
     for k, v in changes.items():
         setattr(b, k, v)
+    if changes.get("modules") is not None:
+        schedules.ensure_jobs(db, b)  # a service switched on gets its recurring jobs, one switched off stops getting them
     log(db, user.name, "business_updated", b.id, fields=list(changes), pushed_to_google=pushed)
     db.commit()
     if b.website and b.website != old_site and site_onboarding.autodetect_enabled():

@@ -210,7 +210,12 @@ def plan(db: Session, b: Business) -> dict[str, Any]:
     phases, current = [], None
     has_site = bool((b.website or "").strip())
     has_scan = bool(crawl.get("pages"))
+    from . import project_services
+    on = project_services.enabled(b)
+    needs = {"gbp": "gmb" in on, "local": "gmb" in on, "ai": "geo" in on or "aeo" in on}  # a project that does SEO only is not given the Google profile or AI phases
     for ph in PHASES:
+        if not needs.get(ph["key"], True):
+            continue
         out_steps, open_n, done_n = [], 0, 0
         for st in ph["steps"]:
             s = steps[(ph["key"], st["key"])]

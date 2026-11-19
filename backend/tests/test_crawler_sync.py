@@ -25,6 +25,8 @@ def crawler(monkeypatch):
         rows = data["links"] if domain == "synced-clinic.in" else []
         return {"domain": domain, "status": "ok" if rows else "not_found_in_current_index", "backlinks": rows[offset:offset + limit]}
     monkeypatch.setattr(cc, "backlinks", backlinks)
+    monkeypatch.setattr(cc, "onboard_business", lambda d: {"created": False, "job": {}})  # never register test domains with the real crawler
+    monkeypatch.setattr(cc, "add_competitors", lambda b, ds: {"business": b, "domains": ds})
     return data
 
 
@@ -108,5 +110,121 @@ def test_a_domain_the_crawler_has_never_seen_is_handed_to_it_as_a_seed(client, c
     try:
         st = crawler_sync.run_cycle(db, bid)
         assert st["error"] is None and st["links_read"] == 0 and st["seeded"] == 1 and seen == [["https://never-crawled.example/"]]
+    finally:
+        db.close()
+
+
+def test_onboarding_registers_the_new_domain_with_the_crawler(client, crawler, monkeypatch):
+    from app.backlinks import autostart
+    from app.models import Business
+    calls: list[str] = []
+    monkeypatch.setattr(cc, "onboard_business", lambda d: calls.append(d) or {"created": True, "job": {"id": 1}})
+    bid = _business(client)
+    db = SessionLocal()
+    try:
+        out = autostart.enable(db, db.get(Business, bid))
+        assert calls == ["synced-clinic.in"] and out["crawler"]["registered"] == ["synced-clinic.in"]
+        autostart.enable(db, db.get(Business, bid))  # onboarding again adds no target, so nothing is sent again
+        assert calls == ["synced-clinic.in"]
+    finally:
+        db.close()
+
+
+def test_registration_never_breaks_onboarding_and_is_retried_by_the_sync(client, crawler, monkeypatch):
+    calls: list[str] = []
+
+    def down(d):
+        calls.append(d)
+        raise cc.CrawlerError("The backlink crawler could not be reached: ConnectError")
+    monkeypatch.setattr(cc, "onboard_business", down)
+    bid = _business(client)
+    db = SessionLocal()
+    try:
+        from app.backlinks import autostart
+        from app.models import Business
+        assert autostart.enable(db, db.get(Business, bid))["enabled"] is True  # no exception
+        monkeypatch.setattr(cc, "onboard_business", lambda d: calls.append("retry:" + d) or {"created": True})
+        st = crawler_sync.run_cycle(db, bid)
+        assert "retry:synced-clinic.in" in calls and st["registered"]["registered"] == ["synced-clinic.in"]
+    finally:
+        db.close()
+
+
+def test_a_competitor_added_by_hand_is_sent_with_the_business_it_belongs_to(client, crawler, monkeypatch):
+    own: list[str] = []
+    comp: list[tuple] = []
+    monkeypatch.setattr(cc, "onboard_business", lambda d: own.append(d) or {"created": True})
+    monkeypatch.setattr(cc, "add_competitors", lambda b, ds: comp.append((b, tuple(ds))) or {})
+    bid = _business(client)
+    from app.backlinks import autostart
+    from app.models import Business
+    db = SessionLocal()
+    try:
+        autostart.enable(db, db.get(Business, bid))  # the business itself is tracked first
+    finally:
+        db.close()
+    assert own == ["synced-clinic.in"] and comp == []
+    r = client.post(f"/api/v1/businesses/{bid}/backlink-intel/targets", json={"domain": "https://www.rival-shop.com/", "is_competitor": True})
+    assert r.status_code == 201, r.text
+    assert comp == [("synced-clinic.in", ("rival-shop.com",))] and own == ["synced-clinic.in"]  # a competitor is not onboarded as a business
+    client.post(f"/api/v1/businesses/{bid}/backlink-intel/targets", json={"domain": "rival-shop.com", "is_competitor": True})
+    assert len(comp) == 1  # already tracked: nothing is sent again
+
+
+def test_competitors_found_or_typed_for_a_business_reach_the_crawler(client, crawler, monkeypatch):
+    from app.competitors import service
+    comp: list[tuple] = []
+    monkeypatch.setattr(cc, "add_competitors", lambda b, ds: comp.append((b, tuple(sorted(ds)))) or {})
+    bid = _business(client)
+    found = [{"name": "Rival One", "website": "https://rival-one.com", "rating": 4.5, "reviews": 10, "address": "x", "phone": "1", "maps_link": "m"},
+             {"name": "Rival Two", "website": "https://rival-two.com", "rating": 4.0, "reviews": 5, "address": "y", "phone": "2", "maps_link": "n"}]
+    monkeypatch.setattr(service, "find_competitors", lambda *a, **k: found)
+    r = client.post("/api/v1/competitors", json={"business_type": "clinic", "location": "Pune", "business_id": bid})  # "found" on Google Maps
+    assert r.status_code == 200, r.text
+    assert not comp  # found, not chosen: nothing is tracked or sent until the competitor is chosen
+    for item in r.json()["registered"]:
+        assert client.patch(f"/api/v1/competitors/{item['id']}", json={"selected": True}).status_code == 200
+    assert comp and comp[-1] == ("synced-clinic.in", ("rival-one.com", "rival-two.com"))  # choosing sends the chosen list
+    r = client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": "rival-three.com"})  # typed by hand: chosen at once
+    assert r.status_code == 201, r.text
+    assert comp[-1] == ("synced-clinic.in", ("rival-one.com", "rival-three.com", "rival-two.com"))  # the whole chosen list is sent each time
+
+
+def test_the_sync_registers_the_business_and_its_competitors_again(client, crawler, monkeypatch):
+    own: list[str] = []
+    comp: list[tuple] = []
+    monkeypatch.setattr(cc, "onboard_business", lambda d: own.append(d) or {"created": False})
+    monkeypatch.setattr(cc, "add_competitors", lambda b, ds: comp.append((b, tuple(ds))) or {})
+    bid = _business(client)
+    client.post(f"/api/v1/businesses/{bid}/backlink-intel/targets", json={"domain": "rival-shop.com", "is_competitor": True})
+    own.clear(); comp.clear()
+    db = SessionLocal()
+    try:
+        st = crawler_sync.run_cycle(db, bid)
+    finally:
+        db.close()
+    assert set(own) == {"synced-clinic.in"} and comp[-1] == ("synced-clinic.in", ("rival-shop.com",)) and st["competitors_registered"]["failed"] is None
+
+
+def test_every_competitor_a_research_run_finds_is_saved_and_sent_to_the_crawler(client, crawler, monkeypatch):
+    from app.competitors import intel_router
+    from app.models import Business, Competitor
+    comp: list[tuple] = []
+    monkeypatch.setattr(cc, "add_competitors", lambda b, ds: comp.append((b, tuple(sorted(ds)))) or {})
+    bid = _business(client)
+    result = {"local_competitors": [
+        {"name": "Awrange", "website": "https://awrange.com/digital-marketing/", "domain": "awrange.com", "rating": 5, "reviews": 238, "phone": "1", "address": "Pune"},
+        {"name": "Ad2brand", "website": "https://www.ad2brand.com/", "domain": "ad2brand.com", "rating": 4.8, "reviews": 10},
+        {"name": "Own site", "website": "https://www.synced-clinic.in/about", "domain": "synced-clinic.in"},   # the business itself: never a competitor
+        {"name": "Insta", "website": "https://www.instagram.com/rival", "domain": "instagram.com"},          # a social page: never a competitor
+        {"name": "No site", "website": "", "domain": ""}],
+        "organic_competitors": [{"domain": "magemarketer.com", "type": "organic"}, {"domain": "awrange.com", "type": "organic"}]}
+    db = SessionLocal()
+    try:
+        b = db.get(Business, bid)
+        assert intel_router.save_found(db, b, result) == 3
+        assert {c.website.split("//")[1].removeprefix("www.").split("/")[0] for c in db.query(Competitor).filter_by(business_id=bid)} == {"awrange.com", "ad2brand.com", "magemarketer.com"}
+        assert comp[-1] == ("synced-clinic.in", ("ad2brand.com", "awrange.com", "magemarketer.com"))  # all of them, tied to this business
+        assert intel_router.save_found(db, b, result) == 0  # the same run again adds nothing
     finally:
         db.close()

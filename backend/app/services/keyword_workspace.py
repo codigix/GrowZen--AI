@@ -1,0 +1,365 @@
+"""The keyword workspace of one project: every keyword from every place in one list, each with where it came from, so the useful ones can be picked.
+
+Order of work: confirm the competitors, collect from the sources, compare and pick, then use. A keyword found in several places is one row with all its
+sources; phrases that differ only in word order, plural or small words ("dentist pune", "dentists in pune") are one row too.
+Nothing is invented: a keyword is here only because a source gave it, and its volume is only what Google Keyword Planner reports (empty without it).
+"""
+from __future__ import annotations
+
+import logging
+import math
+import re
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timedelta, timezone
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..models import Audit, Business, Keyword, KeywordCandidate
+from . import competitor_keywords as ck, keyword_metrics, market
+from .providers.base import intent_of
+
+log = logging.getLogger("seo.keyword_workspace")
+
+SOURCES = {
+    "website": "Your website",
+    "search_console": "Your Google searches (Search Console)",
+    "profile": "Your Google profile and services",
+    "competitors": "Competitor websites",
+    "google_ideas": "Google suggestions",
+    "ai": "AI suggestions",
+}
+OWN = {"website", "search_console", "profile"}  # places that show what you already say or rank for
+_SMALL = frozenset({"in", "for", "of", "the", "a", "an", "to", "and", "best", "top"})
+MAX_COMPETITORS = 5
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _stem(w: str) -> str:
+    return w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+
+
+def merge_key(text: str) -> str:
+    """The same phrase written differently has the same key: lower case, plural and small words removed, words in order."""
+    words = [_stem(w) for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if w not in _SMALL]
+    return " ".join(sorted(words))[:255]
+
+
+def clean(text: str | None) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s'’&-]", " ", (text or "").lower())).strip()
+
+
+def _add(db: Session, b: Business, found: list[dict[str, Any]], existing: dict[str, KeywordCandidate]) -> int:
+    """Save what a source found: a new row for a new phrase, else the source (and any competitor) added to the row it already has."""
+    new = 0
+    for f in found:
+        kw = clean(f.get("keyword"))
+        if not (3 <= len(kw) <= 120 and 1 <= len(kw.split()) <= 10):
+            continue
+        key = merge_key(kw)
+        if not key:
+            continue
+        row = existing.get(key)
+        if row is None:
+            row = KeywordCandidate(business_id=b.id, norm=key, keyword=kw, variants=[], sources=[], competitors=[], intent=intent_of(kw))
+            db.add(row)
+            existing[key] = row
+            new += 1
+        if kw != row.keyword and kw not in (row.variants or []):
+            row.variants = [*(row.variants or []), kw][:6]
+        src = {"kind": f["kind"], "label": f.get("label") or SOURCES.get(f["kind"], f["kind"]), "detail": f.get("detail") or "", "at": date.today().isoformat()}
+        if not any(x.get("kind") == src["kind"] and x.get("label") == src["label"] for x in row.sources or []):
+            row.sources = [*(row.sources or []), src]
+        if f.get("competitor") and f["competitor"] not in (row.competitors or []):
+            row.competitors = [*(row.competitors or []), f["competitor"]]
+        for field in ("volume", "difficulty", "cpc"):
+            if f.get(field) is not None and getattr(row, field) is None:
+                setattr(row, field, f[field])
+        if f.get("position") is not None:
+            row.own_rank, row.impressions, row.clicks = round(float(f["position"]), 1), int(f.get("impressions") or 0), int(f.get("clicks") or 0)
+    db.flush()
+    return new
+
+
+# ----------------------------------------------------------------------------------------------------------------------------- the places keywords come from
+def _latest_crawl(db: Session, b: Business) -> dict[str, Any]:
+    a = db.scalar(select(Audit).where(Audit.business_id == b.id, Audit.kind == "onpage", Audit.status == "done").order_by(Audit.id.desc()))
+    return (a.result or {}) if a else {}
+
+
+def _brand(b: Business, *extra: str) -> set[str]:
+    return ck._brand_words(b.name or "", *extra, hosts=(b.website or "",))
+
+
+def from_website(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
+    crawl = _latest_crawl(db, b)
+    if not crawl.get("pages"):
+        return [], "The website has not been scanned yet. Run the Website Audit first."
+    rows = ck._drop_inside(ck._site_phrases(crawl, _brand(b)))
+    return [{"keyword": k, "kind": "website", "detail": f"{len(v['pages'])} page{'s' if len(v['pages']) != 1 else ''}: " + ", ".join(p.get("url", "").split("//", 1)[-1][:60] for p in v["pages"][:2])}
+            for k, v in rows.items()], None
+
+
+def from_search_console(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
+    from . import google_rank, gsc, gsc_access
+    host = google_rank.host_of(b.website)
+    if not host:
+        return [], "Add the project's website first."
+    state, message, sc, site = gsc_access.search_console(db, b, host)
+    if state != "ok":
+        return [], message
+    end = date.today() - timedelta(days=gsc.LAG_DAYS)
+    try:
+        rows = sc.query(site, gsc._body(end - timedelta(days=89), end, ["query"], 1000, market.serp_country(b)))
+    except Exception as exc:  # noqa: BLE001 - Google's own message is the reason
+        return [], str(exc)[:200]
+    brand = _brand(b)
+    out = []
+    for r in rows:
+        q = clean((r.get("keys") or [""])[0])
+        if not q or any(w in q for w in brand if len(w) > 3) or int(r.get("impressions") or 0) < 3:
+            continue  # searches for the brand name are not keywords to win
+        out.append({"keyword": q, "kind": "search_console", "detail": f"{int(r.get('impressions') or 0)} views, {int(r.get('clicks') or 0)} clicks, position {round(float(r.get('position') or 0), 1)} (last 90 days)",
+                    "position": r.get("position"), "impressions": r.get("impressions"), "clicks": r.get("clicks")})
+    return out, None if out else "Search Console has no searches for this site in the last 90 days."
+
+
+def from_profile(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
+    place = (b.city or b.area or "").strip().lower()
+    names = [str((s or {}).get("name") or "") for s in (b.services or []) if isinstance(s, dict)] + [c for c in [b.primary_category, *(b.secondary_categories or [])] if c]
+    out = []
+    for n in dict.fromkeys(x.strip() for x in names if x and x.strip()):
+        out.append({"keyword": n, "kind": "profile", "detail": "A service or category on the project"})
+        if place and place not in n.lower():
+            out.append({"keyword": f"{n} in {place}", "kind": "profile", "detail": "Service or category with the city"})
+    return out, None if out else "The project has no services or categories yet. Add them in the Google profile."
+
+
+def _competitor_domains(db: Session, b: Business) -> list[str]:
+    from ..competitors import hygiene
+    return hygiene.saved_competitor_domains(db, b, limit=MAX_COMPETITORS)
+
+
+def from_competitors(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
+    from . import crawler
+    domains = _competitor_domains(db, b)
+    if not domains:
+        return [], "No competitors saved yet. Find the competitors first."
+    brand_me = _brand(b)
+
+    def read(d: str) -> tuple[str, dict[str, Any]]:
+        try:
+            return d, crawler.crawl(f"https://{d}", max_pages=6, timeout=12)
+        except Exception as exc:  # noqa: BLE001 - one unreachable competitor must not stop the rest
+            log.info("competitor %s not read: %s", d, exc)
+            return d, {}
+
+    with ThreadPoolExecutor(max_workers=min(4, len(domains))) as pool:
+        crawls = list(pool.map(read, domains))
+    out, read_ok = [], 0
+    for d, crawl in crawls:
+        if not crawl.get("pages"):
+            continue
+        read_ok += 1
+        rows = ck._drop_inside(ck._site_phrases(crawl, brand_me | ck._brand_words("", hosts=(d,))))
+        out += [{"keyword": k, "kind": "competitors", "label": d, "competitor": d, "detail": f"{len(v['pages'])} page{'s' if len(v['pages']) != 1 else ''} of {d}"} for k, v in rows.items()]
+    run = db.scalar(select(Audit).where(Audit.kind == "intel", Audit.target == f"business:{b.id}", Audit.status == "done").order_by(Audit.id.desc()))
+    result = (run.result or {}) if run else {}
+    for g in (result.get("gaps") or {}).get("keywords", []) or []:
+        for c in g.get("competitors") or [{}]:
+            out.append({"keyword": g.get("keyword"), "kind": "competitors", "label": c.get("domain") or "Competitor research", "competitor": c.get("domain"), "detail": "Competitor research: they rank for it and you do not"})
+    for g in (result.get("ideas") or {}).get("competitor_keywords", []) or []:
+        kw = g.get("keyword") if isinstance(g, dict) else g
+        out.append({"keyword": kw, "kind": "competitors", "label": "Competitor research", "detail": "Competitor research"})
+    note = None if read_ok else "None of the competitor websites could be read right now."
+    return out, note
+
+
+def from_google_ideas(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
+    from . import keywords
+    ctx = keywords.context(db, b)
+    seeds = [s if isinstance(s, str) else str((s or {}).get("keyword") or (s or {}).get("name") or "") for s in (ctx.get("seeds") or ctx.get("services") or [])][:4]
+    seeds = [s for s in seeds if s] or [x for x in [b.primary_category] if x]
+    if not seeds:
+        return [], "Add services or a category first, so there is something to search from."
+    res = keywords.discover(db, b, seeds, [])
+    return [{"keyword": x["keyword"], "kind": "google_ideas", "detail": "What people type into Google for " + ", ".join(seeds[:2]), "volume": x.get("volume"), "difficulty": x.get("difficulty"), "cpc": x.get("cpc")}
+            for x in res.get("keywords", [])], None
+
+
+def from_ai(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
+    from . import ai, keyword_ai
+    try:
+        res = keyword_ai.suggest(db, b)
+    except ai.AiUnavailable as exc:
+        return [], str(exc)
+    except Exception as exc:  # noqa: BLE001
+        return [], f"The AI could not write suggestions right now: {str(exc)[:120]}"
+    return [{"keyword": x["keyword"], "kind": "ai", "detail": x.get("why") or "AI suggestion"} for x in res.get("items", [])], None
+
+
+COLLECTORS = {"website": from_website, "search_console": from_search_console, "profile": from_profile, "competitors": from_competitors, "google_ideas": from_google_ideas, "ai": from_ai}
+
+
+def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[str, Any]:
+    """Run the chosen sources and file what they found. A source that cannot run says why; the others still run."""
+    kinds = [k for k in (kinds or list(COLLECTORS)) if k in COLLECTORS]
+    existing = {r.norm: r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))}
+    report: dict[str, Any] = {}
+    for k in kinds:
+        try:
+            found, note = COLLECTORS[k](db, b)
+        except Exception as exc:  # noqa: BLE001 - never lose the other sources
+            log.exception("keyword source %s failed", k)
+            found, note = [], f"This source failed: {str(exc)[:150]}"
+        report[k] = {"label": SOURCES[k], "found": len(found), "new": _add(db, b, found, existing) if found else 0, "note": note}
+    fill_metrics(db, b)
+    db.commit()
+    return report
+
+
+def fill_metrics(db: Session, b: Business, limit: int = 150) -> str | None:
+    """Real monthly searches, difficulty and cost per click from Google Keyword Planner, for the keywords that have none yet."""
+    if not keyword_metrics.enabled():
+        return "Google Ads is not set up, so there are no search volumes. Keywords are ordered by where they were found."
+    todo = [r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.volume.is_(None), KeywordCandidate.dismissed.is_(False)).limit(limit))]
+    if not todo:
+        return None
+    metrics, why = keyword_metrics.lookup([r.keyword for r in todo], market.serp_country(b))
+    for r in todo:
+        m = metrics.get(r.keyword)
+        if m:
+            r.volume, r.difficulty, r.cpc = m.get("volume"), m.get("difficulty"), m.get("cpc")
+    return why
+
+
+# ----------------------------------------------------------------------------------------------------------------------------- reading the list
+def tag_of(r: KeywordCandidate) -> str:
+    kinds = {s.get("kind") for s in r.sources or []}
+    mine, theirs = bool(kinds & OWN) or r.own_rank is not None, bool(r.competitors)
+    if r.own_rank is not None and r.own_rank <= 3:
+        return "win"
+    if r.own_rank is not None and 10 < r.own_rank <= 20:
+        return "almost"
+    if theirs and not mine:
+        return "gap"
+    if theirs and mine:
+        return "shared"
+    if mine:
+        return "yours"
+    return "idea"
+
+
+TAGS = {"gap": "Gap: competitors have it, you do not", "win": "Win: you already rank in the top 3", "almost": "Almost: you are on page 2", "shared": "Shared: you both use it",
+        "yours": "Yours only", "idea": "Idea: from Google or AI"}
+
+
+def score_of(r: KeywordCandidate, tag: str) -> int:
+    """0 to 100, how worth picking this keyword looks. A suggestion only: searches, ease, a gap or page-2 position, intent, and how many places agree."""
+    s = 0.0
+    if r.volume:
+        s += min(40, math.log10(max(r.volume, 1)) * 11)
+    if r.difficulty is not None:
+        s += (100 - r.difficulty) * 0.2
+    elif not r.volume:
+        s += 8
+    s += {"gap": 18, "almost": 16, "idea": 6, "shared": 4, "yours": 3, "win": 0}[tag]
+    s += min(12, len({x.get("kind") for x in r.sources or []}) * 4) + min(6, len(r.competitors or []) * 2)
+    s += 6 if r.intent in ("transactional", "commercial", "local") else 0
+    return min(100, round(s * (0.8 if tag in ("yours", "shared", "win") else 1)))
+
+
+def item(r: KeywordCandidate, saved: set[str]) -> dict[str, Any]:
+    tag = tag_of(r)
+    return {"id": r.id, "keyword": r.keyword, "variants": r.variants or [], "sources": r.sources or [], "competitors": r.competitors or [], "volume": r.volume, "difficulty": r.difficulty, "cpc": r.cpc,
+            "intent": r.intent, "rank": r.own_rank, "impressions": r.impressions, "clicks": r.clicks, "tag": tag, "score": score_of(r, tag), "picked": merge_key(r.keyword) in saved,
+            "dismissed": r.dismissed}
+
+
+def overview(db: Session, b: Business, *, source: str = "", tag: str = "", q: str = "", show: str = "open", limit: int = 400) -> dict[str, Any]:
+    rows = list(db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)))
+    saved = {merge_key(k.keyword) for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id))}
+    items = [item(r, saved) for r in rows]
+    for i in items:
+        i["suggested"] = False
+    pool = sorted((i for i in items if not i["picked"] and not i["dismissed"]), key=lambda i: -i["score"])
+    for i in pool[: max(3, len(pool) // 5)]:
+        i["suggested"] = i["score"] >= 40
+    counts_src = {k: sum(1 for i in items if any(s["kind"] == k for s in i["sources"])) for k in SOURCES}
+    counts_tag = {t: sum(1 for i in items if i["tag"] == t and not i["dismissed"]) for t in TAGS}
+    out = [i for i in items if (show == "all" or (show == "picked" and i["picked"]) or (show == "dismissed" and i["dismissed"]) or (show == "open" and not i["picked"] and not i["dismissed"]))
+           and (not source or any(s["kind"] == source for s in i["sources"])) and (not tag or i["tag"] == tag) and (not q or q.lower() in i["keyword"] or any(q.lower() in v for v in i["variants"]))]
+    out.sort(key=lambda i: (-i["score"], i["keyword"]))
+    domains = _competitor_domains(db, b)
+    last = max((r.updated_at for r in rows if r.updated_at), default=None)
+    return {"competitors": {"count": len(domains), "domains": domains, "done": bool(domains)},
+            "sources": [{"kind": k, "label": v, "count": counts_src[k]} for k, v in SOURCES.items()],
+            "tags": [{"tag": t, "label": v, "count": counts_tag[t]} for t, v in TAGS.items()],
+            "totals": {"suggested": sum(1 for i in items if i["suggested"] and not i["picked"] and not i["dismissed"]), "all": len(items), "open": sum(1 for i in items if not i["picked"] and not i["dismissed"]), "picked": sum(1 for i in items if i["picked"]), "dismissed": sum(1 for i in items if i["dismissed"])},
+            "volumes": keyword_metrics.enabled(), "last_collected": last.isoformat() if last else None, "items": out[:limit], "shown": len(out)}
+
+
+# ----------------------------------------------------------------------------------------------------------------------------- choosing
+def pick(db: Session, b: Business, ids: list[int]) -> dict[str, Any]:
+    """Save the chosen keywords to the project's keyword list with where each came from."""
+    added = 0
+    for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.id.in_(ids))):
+        first = (r.sources or [{}])[0]
+        src = {"kind": first.get("kind") or "workspace", "label": first.get("label") or "Keyword workspace", "from": "keyword_workspace", "searches": r.volume, "at": date.today().isoformat(),
+               "pages": [], "sources": [{"kind": s.get("kind"), "label": s.get("label"), "detail": s.get("detail")} for s in r.sources or []], "competitors": r.competitors or []}
+        k = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == r.keyword))
+        if k is None:
+            k = Keyword(business_id=b.id, keyword=r.keyword, volume=r.volume, difficulty=r.difficulty, cpc=r.cpc, intent=r.intent or intent_of(r.keyword), tracked=True, source=src,
+                        priority="High" if score_of(r, tag_of(r)) >= 70 else "Medium")
+            db.add(k)
+            added += 1
+        r.picked, r.dismissed = True, False
+    db.commit()
+    return {"picked": added}
+
+
+def dismiss(db: Session, b: Business, ids: list[int], on: bool = True) -> int:
+    n = 0
+    for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.id.in_(ids))):
+        r.dismissed = on
+        n += 1
+    db.commit()
+    return n
+
+
+# ----------------------------------------------------------------------------------------------------------------------------- the other keyword pages feed the same list
+def mirror(db: Session, b: Business, keywords: list[Keyword]) -> None:
+    """Keywords saved anywhere (Find Keywords, Check One Keyword, the workspace) also stand in the workspace, each with where it came from."""
+    found = []
+    for k in keywords:
+        src = k.source or {}
+        kind = src.get("kind") if src.get("kind") in SOURCES else "google_ideas" if src.get("kind") in ("discover", "planner", "explorer", "autocomplete") else None
+        found.append({"keyword": k.keyword, "kind": kind or "google_ideas", "label": src.get("label") or ("Saved by hand" if not src else None), "detail": src.get("from") and f"Saved from {src.get('from')}" or "Saved to your list",
+                      "volume": k.volume, "difficulty": k.difficulty, "cpc": k.cpc})
+    existing = {r.norm: r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))}
+    _add(db, b, found, existing)
+    for f in found:
+        row = existing.get(merge_key(clean(f["keyword"])))
+        if row:
+            row.picked, row.dismissed = True, False
+
+
+def add_ideas(db: Session, b: Business, ideas: list[dict[str, Any]], label: str) -> int:
+    """Ideas seen on another page (the related keywords of Check One Keyword) go to the workspace list to be compared, not saved yet."""
+    existing = {r.norm: r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))}
+    n = _add(db, b, [{"keyword": i.get("keyword"), "kind": "google_ideas", "label": label, "detail": i.get("detail") or label, "volume": i.get("volume")} for i in ideas if i.get("keyword")], existing)
+    db.commit()
+    return n
+
+
+def summary(db: Session, b: Business) -> dict[str, Any]:
+    """The small counts the keyword pages show in their shared step bar."""
+    saved = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id)))
+    keys = {merge_key(k.keyword) for k in saved}
+    cands = list(db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)))
+    return {"competitors": len(_competitor_domains(db, b)), "workspace": sum(1 for r in cands if merge_key(r.keyword) not in keys and not r.dismissed), "saved": len(saved),
+            "ranking": sum(1 for k in saved if k.rank and k.rank <= 10)}
