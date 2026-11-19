@@ -11,9 +11,9 @@ from .activity import log
 from .playbook import get_playbook
 
 INTERVALS = {"daily": 1, "weekly": 7, "fortnightly": 14, "monthly": 30}
-JOBS = ["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo", "weekly_plan", "site_research", "site_crawl", "growth_daily", "growth_weekly", "growth_monthly", "autopilot"]
+JOBS = ["full_audit", "rank_scan", "reviews", "posts", "technical", "report", "geo", "weekly_plan", "site_research", "site_crawl", "growth_daily", "growth_weekly", "growth_monthly", "autopilot", "indexing"]
 # Jobs every plan gets even when the playbook saved before they existed has no entry for them.
-JOB_DEFAULTS = {"weekly_plan": "weekly", "site_research": "monthly", "growth_daily": "daily", "growth_weekly": "weekly", "growth_monthly": "monthly", "autopilot": "daily"}
+JOB_DEFAULTS = {"weekly_plan": "weekly", "site_research": "monthly", "growth_daily": "daily", "growth_weekly": "weekly", "growth_monthly": "monthly", "autopilot": "daily", "indexing": "daily"}
 
 
 def _now() -> datetime:
@@ -63,6 +63,9 @@ def run_job(db: Session, s: Schedule) -> None:
     if s.job in ("growth_daily", "growth_weekly", "growth_monthly"):
         from . import growth_plan
         growth_plan.run_job(db, b, s.job)  # the job decides what to roll: it never creates duplicates
+    elif s.job == "indexing":
+        from . import indexing
+        indexing.run_auto(db, b)  # does nothing unless automatic indexing is switched on for the project
     elif s.job == "autopilot":
         from . import autopilot
         autopilot.run_job(db, b)  # prepares drafts only (and only when Autopilot is on); never publishes

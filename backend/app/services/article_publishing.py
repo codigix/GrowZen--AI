@@ -86,6 +86,8 @@ def record_published(db: Session, a: Article, destination: str, out: dict, at: d
     blog = db.get(Business, a.business_id)
     if blog is not None:
         blog_flow.after_published(db, blog, a)  # the promotion plan and its task; never fails the publish
+        from . import indexing
+        indexing.on_published(db, blog, out.get("url"))  # the new page is recorded for indexing; sent on its own when automatic indexing is on
 
 
 def publish_site(db: Session, b: Business, a: Article, target: SiteIntegration, mode: str, when: datetime | None, record: bool = True) -> dict:

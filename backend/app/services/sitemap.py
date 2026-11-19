@@ -26,6 +26,11 @@ class SitemapDiscoveryError(Exception):
 def discover_site_urls(base_url: str, max_pages: int, *, client: httpx.Client | None = None) -> list[str]:
     """Up to max_pages same-host URLs from the site's sitemaps. `client` is for tests only; leave it
     unset so the SSRF-safe transport is always used."""
+    return [u for u, _ in discover_site_entries(base_url, max_pages, client=client)]
+
+
+def discover_site_entries(base_url: str, max_pages: int, *, client: httpx.Client | None = None) -> list[tuple[str, str | None]]:
+    """Up to max_pages (url, lastmod) pairs from the site's sitemaps; lastmod is the sitemap's own date for the page, or None."""
     validated = resolve_and_validate(base_url)
     origin = f"{validated.scheme}://{validated.hostname}" + (f":{validated.port}" if validated.port not in (80, 443) else "")
     candidates = [urljoin(origin + "/", "sitemap.xml")]
@@ -34,7 +39,7 @@ def discover_site_urls(base_url: str, max_pages: int, *, client: httpx.Client | 
     if client is None:
         client = httpx.Client(transport=SSRFSafeTransport(), timeout=FETCH_TIMEOUT_SECONDS, follow_redirects=True,
                               headers={"User-Agent": "Mozilla/5.0 (compatible; CodigixSEOAuditBot/1.0; +https://codigixinfotech.com)"})
-    discovered: list[str] = []
+    discovered: dict[str, str | None] = {}
     try:
         for sm in _sitemaps_from_robots(client, origin):
             if sm not in candidates:
@@ -63,10 +68,12 @@ def discover_site_urls(base_url: str, max_pages: int, *, client: httpx.Client | 
                     if loc.text:
                         queue.append(loc.text.strip())
             elif tag.endswith("urlset"):
-                for loc in root.findall("sm:url/sm:loc", _NS) or root.findall(".//{*}url/{*}loc"):
-                    page = (loc.text or "").strip()
+                for el in root.findall("sm:url", _NS) or root.findall(".//{*}url"):
+                    loc = el.find("sm:loc", _NS) if el.find("sm:loc", _NS) is not None else el.find("{*}loc")
+                    mod = el.find("sm:lastmod", _NS) if el.find("sm:lastmod", _NS) is not None else el.find("{*}lastmod")
+                    page = ((loc.text if loc is not None else "") or "").strip()
                     if page and _same_host(page, validated.hostname) and page not in discovered:
-                        discovered.append(page)
+                        discovered[page] = ((mod.text if mod is not None else "") or "").strip() or None
                         if len(discovered) >= max_pages:
                             break
     finally:
@@ -76,7 +83,7 @@ def discover_site_urls(base_url: str, max_pages: int, *, client: httpx.Client | 
     if not discovered:
         raise SitemapDiscoveryError(f"No sitemap could be found or parsed for {origin} (tried /sitemap.xml and robots.txt's "
                                     "Sitemap: directive). Submit individual page URLs instead, or add a sitemap.xml to the site.")
-    return discovered[:max_pages]
+    return list(discovered.items())[:max_pages]
 
 
 def _sitemaps_from_robots(client: httpx.Client, origin: str) -> list[str]:

@@ -18,6 +18,7 @@ from ..models import GoogleConnection
 from . import gbp
 
 SC = "https://www.googleapis.com/webmasters/v3"
+INSPECT = "https://searchconsole.googleapis.com/v1/urlInspection/index:inspect"
 SCOPE = "https://www.googleapis.com/auth/webmasters.readonly"
 LAG_DAYS = 2  # Search Console data lags about two days
 CACHE_SECONDS = 600
@@ -74,6 +75,14 @@ class SearchConsole:
 
     def query(self, site: str, body: dict[str, Any]) -> list[dict[str, Any]]:
         return self._req("POST", f"{SC}/sites/{quote(site, safe='')}/searchAnalytics/query", json=body).get("rows", [])
+
+    def inspect(self, site: str, url: str) -> dict[str, Any]:
+        """Google's own verdict on one page (URL Inspection API): indexed or not, why, when it was last crawled, which canonical Google chose."""
+        return self._req("POST", INSPECT, json={"inspectionUrl": url, "siteUrl": site, "languageCode": "en"})
+
+    def sitemaps(self, site: str) -> list[dict[str, Any]]:
+        """The sitemaps Google knows for the property, with their submitted counts, errors and warnings."""
+        return self._req("GET", f"{SC}/sites/{quote(site, safe='')}/sitemaps").get("sitemap", [])
 
 
 def match_property(sites: list[dict[str, Any]], host: str) -> str | None:
