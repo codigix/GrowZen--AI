@@ -664,6 +664,7 @@ def unsupported_claims(title: str, meta: str, body: str, keywords: list[str]) ->
 def validate(title: str, meta: str, body: str, primary: str, secondary: list[str], brand: str | None = None) -> list[str]:
     """Warnings shown to the editor enforcing the complete 10-part SEO blog structure."""
     w = []
+    has_schema = bool(_SCHEMA_RE.search(body or ""))
     body = _SCHEMA_RE.sub("\n", body or "")  # check the visible article only, not the JSON-LD schema (its [arrays] aren't placeholders)
     text = _text(body)
 
@@ -736,7 +737,7 @@ def validate(title: str, meta: str, body: str, primary: str, secondary: list[str
         w.append("Structure check: Missing Call To Action (CTA) section.")
         
     # Section 10: Local Business Schema
-    if not re.search(r'application/ld\+json', body or "", re.I):
+    if not has_schema:
         w.append("Structure check: Missing Local Business Schema structured data.")
         
     # Brand name and short chunks
@@ -892,7 +893,7 @@ def paragraph_coverage(body: str, primary: str, secondary: list[str]) -> dict:
     items = []
     for m in _P_RE.finditer(_SCHEMA_RE.sub("\n", body or "")):
         text = _text(m.group(2))
-        if len(text.split()) < 6:  # a label, not a paragraph
+        if len(text.split()) < 6 or re.fullmatch(r"\s*<strong>[^<]*</strong>\s*", m.group(2)):  # a label ("Key takeaways"), not a paragraph
             continue
         items.append({"n": len(items) + 1, "text": text, "keywords": [k for k in keys if _has(text, k)]})
     missing = [x["n"] for x in items if not x["keywords"]]

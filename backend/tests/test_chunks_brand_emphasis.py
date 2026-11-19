@@ -145,3 +145,9 @@ def test_a_section_is_rendered_as_small_pieces_with_lists_and_takeaways():
     assert out.count("<h3>") == 1 and "<ol>" in out and out.count("<li>") == 4 and "<strong>Key takeaways</strong>" in out
     assert "**" not in out and "<li>x</li>" not in out and out.startswith("<p>Teeth whitening")
     assert svc.render_structured({}) == ""
+def test_schema_check_sees_the_schema_and_labels_are_not_paragraphs():
+    sc = svc.with_schema("<p>x</p>", '<script type="application/ld+json">{}</script>')
+    assert not any("Schema" in w for w in svc.validate("t","m",sc,"k",[]))
+    assert any("Schema" in w for w in svc.validate("t","m","<p>x</p>","k",[]))
+    c = svc.paragraph_coverage("<p><strong>What you will learn in this guide</strong></p><p>Plenty of words about the k here for you.</p>", "k", [])
+    assert c["total"] == 1 and c["missing"] == []

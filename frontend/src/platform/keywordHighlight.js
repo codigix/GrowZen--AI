@@ -101,7 +101,8 @@ export function paragraphCoverage(html, primary, secondary) {
   const keys = [primary, ...(secondary || [])].map(k => String(k || '').trim()).filter(Boolean);
   const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html');
   doc.querySelectorAll('script,style').forEach(n => n.remove());
-  const paras = [...doc.querySelectorAll('p')].map(p => p.textContent.trim()).filter(x => x.split(/\s+/).length >= 6);
+  const isLabel = (p) => p.children.length === 1 && p.firstElementChild.tagName === 'STRONG' && !p.firstElementChild.hasAttribute('data-gz') && p.firstElementChild.textContent.trim() === p.textContent.trim(); // a bold label such as "Key takeaways"
+  const paras = [...doc.querySelectorAll('p')].filter(p => !isLabel(p)).map(p => p.textContent.trim()).filter(x => x.split(/\s+/).length >= 6);
   const missing = [];
   paras.forEach((x, i) => { if (!keys.some(k => words(x).includes(words(k)))) missing.push(i + 1); });
   return { total: paras.length, covered: paras.length - missing.length, missing };
