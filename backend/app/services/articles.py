@@ -646,9 +646,14 @@ def unsupported_claims(title: str, meta: str, body: str, keywords: list[str]) ->
     return list(dict.fromkeys(found))
 
 
+# the "Don't Wait to Take Action" section: validate() looks for these words, and write() makes sure its heading has them
+ACTION_RE = re.compile(r"don['’]?t wait|don['’]?t delay|take action|timely action|act now|why wait|first step|next step|get started today|start today", re.I)
+
+
 def validate(title: str, meta: str, body: str, primary: str, secondary: list[str]) -> list[str]:
     """Warnings shown to the editor enforcing the complete 10-part SEO blog structure."""
     w = []
+    has_schema = bool(re.search(r"application/ld\+json", body or "", re.I))  # looked for BEFORE the schema block is removed below
     body = _SCHEMA_RE.sub("\n", body or "")  # check the visible article only, not the JSON-LD schema (its [arrays] aren't placeholders)
     text = _text(body)
 
@@ -699,7 +704,7 @@ def validate(title: str, meta: str, body: str, primary: str, secondary: list[str
             w.append(f"Structure check: WH Question answer is {wh_ans_len} characters (maximum 750 allowed).")
             
     # Section 6: Action / Don't Wait section
-    if not re.search(r"don'?t wait|don'?t delay|take action|timely action|act now|why wait|first step|next step|get started today|start today", body or "", re.I):
+    if not ACTION_RE.search(body or ""):
         w.append("Structure check: Missing 'Don\'t Wait to Take Action' section.")
         
     # Section 7: Why Choose [Business Name]
@@ -721,7 +726,7 @@ def validate(title: str, meta: str, body: str, primary: str, secondary: list[str
         w.append("Structure check: Missing Call To Action (CTA) section.")
         
     # Section 10: Local Business Schema
-    if not re.search(r'application/ld\+json', body or "", re.I):
+    if not has_schema:
         w.append("Structure check: Missing Local Business Schema structured data.")
         
     # Keywords check
@@ -1125,6 +1130,47 @@ def _conclusion(primary: str, topic: str, b: Business) -> str:
     return _conclusion_html(_json(prompt, num_predict=400).get("conclusion"))
 
 
+def _work_in_keywords(body: str, missing: list[str], primary: str, topic: str, b: Business) -> str:
+    """Each secondary keyword the article does not use yet gets ONE natural sentence that contains it, added to the end of
+    a body paragraph (introduction to the Why Choose section; spread out, never in the FAQs, CTA or schema).
+    A sentence without the exact phrase is not used, so a keyword is never forced in as an odd phrase."""
+    prompt = "\n".join([
+        *_context(b, lean=True), "",
+        f'For a blog article about "{topic or primary}", write ONE natural, helpful sentence for each of these phrases.',
+        "Each sentence must contain its phrase exactly as written, read naturally in the article, and add a useful point for the reader.",
+        "Do not invent statistics, prices or guarantees. Plain text, no quotes around the phrase.",
+        "Phrases: " + "; ".join(missing),
+        'Answer with ONE JSON object and nothing else: {"sentences": [{"phrase": "...", "sentence": "..."}]}',
+    ])
+    got = {}
+    for item in (_json(prompt, num_predict=120 + 60 * len(missing)).get("sentences") or []):
+        if isinstance(item, dict):
+            s = " ".join(_plain(item.get("sentence")).split())
+            k = next((m for m in missing if _has(s, m) and m not in got), None)
+            if k and s:
+                got[k] = s if _SENTENCE_END.search(s) else s.rstrip(",;: ") + "."
+    if not got:
+        return body
+    # body paragraphs before "Why Choose": the intro and the sections (not FAQs, CTA or the schema)
+    stop = re.search(r"<h2\b[^>]*>\s*Why Choose", body, re.I)
+    head = body[:stop.start()] if stop else body
+    paras = list(re.finditer(r"<p\b[^>]*>(.*?)</p>", head, re.S | re.I))
+    if not paras:
+        return body
+    targets = paras[1:] or paras  # leave the first paragraph (the introduction's keyword line) as it is
+    adds: dict[int, list[str]] = {}
+    for i, s in enumerate(got.values()):
+        adds.setdefault(int(i * len(targets) / len(got)), []).append(s)
+    out, last = [], 0
+    for idx, sentences in sorted(adds.items()):
+        m = targets[idx]
+        end = m.end() - len("</p>")
+        out += [head[last:end], " " + " ".join(html.escape(s, quote=False) for s in sentences)]
+        last = end
+    log.info("Worked %d secondary keyword(s) into the article: %s", len(got), list(got))
+    return "".join(out) + head[last:] + body[len(head):]
+
+
 def write(primary: str, secondary: list[str], rising: list[str], b: Business, topic: str = "", progress=lambda text, body="", title="", meta="": None, length: str = "standard",
           title_hint: str | None = None, meta_hint: str | None = None) -> dict:
     """Generate one complete blog article strictly adhering to the 10-part SEO Writing Structure:
@@ -1237,6 +1283,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             if not wh_q.endswith("?"):
                 wh_q = wh_q.rstrip(".!:; ") + "?"
             help_h = _plain(d_plan.get("help_heading") or "Don't Wait to Take Action: The Cost of Inaction")
+            if not ACTION_RE.search(help_h):  # the planned heading must read as the "Don't Wait to Take Action" section
+                help_h = f"Don't Wait: {help_h}" if len(help_h) <= 60 else "Don't Wait to Take Action: The Cost of Inaction"
             plan_faqs = [f for f in (d_plan.get("faqs") or []) if isinstance(f, dict) and _plain(f.get("question"))][:wp["faqs"]] or [
                 {"question": f"What is the best way to get started with {primary}?", "answer": f"The best way to get started with {primary} is by conducting an initial assessment of your current position and defining clear goals. Partnering with a reliable service provider like {b.name} ensures a smooth implementation process."},
                 {"question": f"How long does it take to see results from {primary}?", "answer": f"Results from {primary} typically become noticeable within a few weeks to months depending on consistency and strategy. Continuous optimization is key to long-term success."},
@@ -1428,6 +1476,14 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 "tags": tags,
                 "body": "\n\n".join(x for x in parts if x)
             }
+
+            # Secondary keywords the sections left out: one natural sentence each, added to a body paragraph
+            seen = f"{title} {meta} {_text(draft['body'])}"
+            missing = [k for k in clean_secondary if not _has(seen, k)]
+            if missing:
+                step(f"Working in {len(missing)} secondary keyword{'s' if len(missing) > 1 else ''}...")
+                draft["body"] = _work_in_keywords(draft["body"], missing, primary, topic, b)
+                progress("Secondary keywords added.", draft["body"], title=title, meta=meta)
 
             # Final pure-Python corrections
             step("Running SEO validation...")

@@ -5,6 +5,7 @@ import { api, useApi } from './seoApi';
 import { featuredOf, featuredSrc } from './FeaturedImageField';
 import ContentImageUploader from './ContentImageUploader';
 import SiteBlogImages from './SiteBlogImages';
+import SmartImagePlanner from './SmartImagePlanner';
 
 /**
  * Blog Image Analysis: a read-mostly view of every image in this blog (featured + images in the article body,
@@ -256,6 +257,9 @@ export default function BlogImageAnalysis({ b, article, featured, onFeaturedChan
           {onSave && <Button size="sm" busy={saveBusy} onClick={onSave}>Save changes</Button>}
         </div>
       )}
+
+      <SmartImagePlanner b={b} article={article} draft={draft} onDraftChange={onDraftChange} onInsertSave={onInsertSave} onUploaded={() => stored.reload(true)}
+        rows={rows} featSrc={feat.path ? featSrc : ''} toast={toast} />
 
       <ContentImageUploader b={b} article={article} draft={draft} onDraftChange={onDraftChange} onInsertSave={onInsertSave} stored={stored.data?.images} site={{ toReact, facts: react.data?.image_facts || {}, name: react.data?.website_name || hostOf(react.data?.website_url || '') }} caret={caret} limitMb={limitMb}
         onUploaded={() => stored.reload(true)} toast={toast} />

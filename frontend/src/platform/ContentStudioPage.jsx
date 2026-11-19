@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Sparkles, Check, ChevronRight, Globe, ShieldCheck, AlertTriangle, RefreshCw,
   FileText, MapPin, Instagram, Facebook, Linkedin, Copy, Plus, CalendarDays,
@@ -17,7 +18,7 @@ import BlogImageAnalysis from './BlogImageAnalysis';
 import ReactSitePanel from './ReactSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
-import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
+import { LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
 
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'Images & Analysis', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
@@ -583,12 +584,11 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
 
   const done = article && article.status === 'completed';
   const showStart = !openId && !pendingId && !activeTopic;
-  const flowStep = pendingId ? 1 : done ? (article.publishing_status === 'published' ? 4 : article.publishing_status === 'scheduled' || article.publishing_status === 'publishing' ? 3 : 2) : activeTopic || openId ? 1 : 0;
+  // a picked topic stays on "Keywords & topic" (its Topic & Intent form); "Write" starts once the blog is being written
+  const flowStep = pendingId ? 1 : done ? (article.publishing_status === 'published' ? 4 : article.publishing_status === 'scheduled' || article.publishing_status === 'publishing' ? 3 : 2) : openId ? 1 : 0;
   return (
     <div className="space-y-6">
       <FlowSteps step={flowStep} />
-      {showStart && <ResumeCard articles={articles} onOpen={setOpenId} />}
-      {showStart && <KeywordTopicPlanner b={b} onPick={onPickTopic} />}
       {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
           <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
@@ -598,7 +598,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
         </div>
       )}
       {!showStart && !pendingId && <div><button type="button" onClick={() => { setOpenId(null); onPickTopic(null); }} className="text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">← Back to my blogs and a new topic</button></div>}
-      {showStart ? null : openId && !article
+      {/* on "Keywords & topic" the Topic & Intent form is always shown */}
+      {openId && !article
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
         : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
             onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
@@ -624,6 +625,9 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
           </div>
         );
       })()}
+
+      {/* last section: the drafts to carry on with, under the generated-articles summary */}
+      {showStart && <ResumeCard articles={articles} onOpen={setOpenId} />}
     </div>
   );
 }
@@ -646,6 +650,68 @@ function DuplicateNotice({ b, article, title, image }) {
         {titleDup && <p><b>Same title as another article</b> ({names(t)}). Two posts with one title compete with each other in Google: give this one its own SEO title.</p>}
         {im.length > 0 && <p><b>Same image as another article</b> ({names(im)}). Use a picture that shows this blog's topic.</p>}
       </div>
+    </div>
+  );
+}
+
+/** The keywords this project saved (My Keywords), on the Topic & Intent step: tick some and add them to this blog's keywords. */
+function SavedKeywordPicker({ b, inUse, onAdd }) {
+  const kws = useApi(`/businesses/${b.id}/blog-flow/keywords`);
+  const [q, setQ] = useState('');
+  const [picked, setPicked] = useState([]);
+  const list = kws.data?.keywords || [];
+  const used = new Set(inUse.map(k => String(k || '').trim().toLowerCase()).filter(Boolean));
+  const shown = q.trim() ? list.filter(k => k.keyword.toLowerCase().includes(q.trim().toLowerCase())) : list;
+  const toggle = (k) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k]));
+  const add = () => { onAdd(list.filter(k => picked.includes(k.keyword))); setPicked([]); };
+  return (
+    <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-[12px] font-bold text-slate-800">My saved keywords</div>
+          <div className="text-[11.5px] text-slate-500">Tick the keywords this blog is for, then add them. The first one becomes the primary keyword if there is none yet.</div>
+        </div>
+        {list.length > 0 && (
+          <div className="flex items-center gap-2">
+            {picked.length > 0 && <button type="button" onClick={() => setPicked([])} className="text-[12px] font-semibold text-slate-500 hover:underline cursor-pointer">Clear</button>}
+            <Button size="sm" variant="primary" icon={Plus} disabled={!picked.length} onClick={add}>Add {picked.length || ''} to this blog</Button>
+          </div>
+        )}
+      </div>
+      {!kws.data && !kws.error && <div className="text-[11.5px] text-slate-500"><RefreshCw size={12} className="inline animate-spin mr-1" />Loading your keywords…</div>}
+      {kws.error && <ErrorNote>{kws.error.message}</ErrorNote>}
+      {kws.data && !list.length && <p className="text-[12px] text-slate-500">No keywords are saved yet. Save some on <Link to="/keyword-management/ai" className="text-indigo-600 hover:underline">Find Keywords</Link>, or type the topic above and click Generate Keywords.</p>}
+      {list.length > 0 && (
+        <div className="rounded-lg ring-1 ring-inset ring-slate-200 overflow-hidden">
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${list.length} keywords`} aria-label="Search saved keywords" className={`${inputCls} !w-64`} />
+            <span className="text-[11.5px] text-slate-500">{picked.length ? `${picked.length} selected` : shown.length === list.length ? `${list.length} keywords` : `${shown.length} of ${list.length}`}</span>
+          </div>
+          <div className="max-h-[280px] overflow-y-auto divide-y divide-slate-100" role="listbox" aria-multiselectable="true" aria-label="Saved keywords">
+            <div className="grid grid-cols-[28px_minmax(0,1fr)_90px_70px_70px] gap-3 px-3 py-1.5 text-[11px] uppercase tracking-wide text-slate-400 sticky top-0 bg-white">
+              <span /><span>Keyword</span><span className="text-right">Searches/mo</span><span className="text-right">Difficulty</span><span className="text-right">Rank</span>
+            </div>
+            {shown.map(k => {
+              const on = picked.includes(k.keyword);
+              const added = used.has(k.keyword.toLowerCase());
+              return (
+                <button key={k.keyword} type="button" role="option" aria-selected={on} disabled={added} onClick={() => toggle(k.keyword)}
+                  className={`w-full grid grid-cols-[28px_minmax(0,1fr)_90px_70px_70px] items-center gap-3 px-3 py-2 text-left text-[12.5px] ${added ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${on ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
+                  <span className={`h-[18px] w-[18px] rounded border inline-flex items-center justify-center text-white text-[11px] ${on || added ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'}`}>{on || added ? '✓' : ''}</span>
+                  <span className="min-w-0"><span className="font-semibold text-slate-900 break-words">{k.keyword}</span>
+                    {added && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-indigo-50 text-indigo-700">added</span>}
+                    {k.for_blog && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-emerald-50 text-emerald-700">meant for blogs</span>}
+                    {k.used > 0 && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700">used in {k.used} article{k.used > 1 ? 's' : ''}</span>}</span>
+                  <span className="text-right tabular-nums text-slate-700">{k.volume != null ? fmt(k.volume) : <span className="text-slate-300">—</span>}</span>
+                  <span className="text-right tabular-nums text-slate-700">{k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>}</span>
+                  <span className="text-right tabular-nums text-slate-700">{k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>}</span>
+                </button>
+              );
+            })}
+            {!shown.length && <p className="px-3 py-6 text-center text-[12.5px] text-slate-500">No keyword matches “{q}”.</p>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -761,10 +827,30 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const autoKw = useRef(false);
   useEffect(() => { if (selectedTopic && !selectedArticle && !autoKw.current) { autoKw.current = true; suggestKeywords(false); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // saved keywords (My Keywords) picked on this step: the first fills the primary keyword (and the topic) when empty, the rest become secondary
+  const [showSaved, setShowSaved] = useState(true);
+  const addSaved = (items) => {
+    if (!items.length) return;
+    kwSeq.current++; // a keyword request still running must not overwrite what was just added
+    setKwBusy(false);
+    setKwVolumes(v => ({ ...v, ...Object.fromEntries(items.filter(k => k.volume != null).map(k => [k.keyword.toLowerCase(), k.volume])) }));
+    const words = items.map(k => k.keyword);
+    if (!topicText.trim()) setTopicText(words[0]);
+    let rest = words;
+    if (!kw.trim()) { setKw(words[0]); rest = words.slice(1); }
+    const have = new Set([kw, ...secondaryList].map(k => k.trim().toLowerCase()).filter(Boolean));
+    setSecondaryList(l => [...l.filter(k => k.trim()), ...rest.filter(k => !have.has(k.toLowerCase()))].slice(0, 10));
+    setKwReady(true);
+    toast(`${words.length} keyword${words.length > 1 ? 's' : ''} added to this blog`);
+  };
+
   const generateBlog = () => {
     const keywords = [kw, ...secondaryList].map(k => k.trim().toLowerCase()).filter(Boolean);
     setGenBusy(true); setGenError('');
-    return onGenerate({ topic: topicText.trim() || kw.trim(), keywords, length: articleLength }).catch(e => setGenError(e.message || String(e))).finally(() => setGenBusy(false));
+    // once writing starts, go on to the Write step (AI Draft) and show it from the top
+    return onGenerate({ topic: topicText.trim() || kw.trim(), keywords, length: articleLength })
+      .then(() => { setStep(1); setTimeout(() => document.getElementById('eeat-pipeline-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); })
+      .catch(e => setGenError(e.message || String(e))).finally(() => setGenBusy(false));
   };
 
   const articleFields = () => ({
@@ -812,10 +898,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
 
   return (
     <div id="eeat-pipeline-workspace" className="grid grid-cols-1 xl:grid-cols-4 gap-4 scroll-mt-6">
-      {/* Step Navigator */}
-      <Card title="E-E-A-T Content Pipeline" className="xl:col-span-1">
+      {/* Step Navigator: Topic & Intent belongs to "Keywords & topic", so it is shown on its own, full width, without this list */}
+      {step > 0 && <Card title="E-E-A-T Content Pipeline" className="xl:col-span-1">
         <ol className="space-y-1.5">
-          {STEPS.map((s, i) => (
+          {STEPS.map((s, i) => i === 0 ? null : (
             <li key={s}>
               <button
                 onClick={() => (selectedArticle || i <= step) && setStep(i)}
@@ -830,7 +916,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold ${
                   i < step ? 'bg-emerald-500 text-white' : i === step ? 'bg-white text-blue-600' : 'bg-slate-100 text-slate-500'
                 }`}>
-                  {i < step ? <Check size={11} strokeWidth={3} /> : i + 1}
+                  {i < step ? <Check size={11} strokeWidth={3} /> : i}
                 </span>
                 <span className="truncate">{s}</span>
               </button>
@@ -841,25 +927,29 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
           <ShieldCheck size={13} className="text-emerald-700 inline mr-1" />
           The checks on the next steps are computed from your own draft and your business profile. Nothing is assumed or invented.
         </div>
-      </Card>
+      </Card>}
 
       {/* Main Step Workspace */}
       <Card
-        className="xl:col-span-3"
+        className={step === 0 ? 'xl:col-span-4' : 'xl:col-span-3'}
         title={STEPS[step]}
         action={step === PUBLISH_STEP ? null : (
-          <Button variant="secondary" busy={genBusy} onClick={next}>
-            {step === 0 ? 'Generate Blog' : 'Next Step'}
-            <ChevronRight size={13} />
-          </Button>
+          <div className="flex items-center gap-2">
+            {step === 0 && <Button onClick={() => setShowSaved(s => !s)}>{showSaved ? 'Hide My Keywords' : 'My Keywords'}</Button>}
+            <Button variant="secondary" busy={genBusy} onClick={next}>
+              {step === 0 ? 'Generate Blog' : 'Next Step'}
+              <ChevronRight size={13} />
+            </Button>
+          </div>
         )}
       >
         {/* Step 0: Keyword & Intent */}
         {step === 0 && (
-          <div className="space-y-4 max-w-2xl">
+          <div className="space-y-4">
             <Field label="Topic" hint="Picked from Trending Topics Radar, or type your own topic">
               <input className={inputCls} placeholder="e.g. social media marketing" value={topicText} onChange={e => setTopicText(e.target.value)} />
             </Field>
+            {onGenerate && showSaved && <SavedKeywordPicker b={b} inUse={[kw, ...secondaryList]} onAdd={addSaved} />}
             {onGenerate && (
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -901,7 +991,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             {onGenerate && (
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Article length</div>
-                <div className="grid grid-cols-3 gap-2 max-w-xl">
+                <div className="grid grid-cols-3 gap-2">
                   {ARTICLE_LENGTHS.map(l => (
                     <button key={l.id} type="button" onClick={() => pickLength(l.id)}
                       className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${articleLength === l.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'}`}>
