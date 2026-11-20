@@ -79,7 +79,7 @@ function StepCard({ n, s, open, onToggle }) {
                     <Badge tone={tone}>{l}</Badge>
                     <span className="min-w-0 flex-1 text-13 font-semibold text-slate-900">{t.title}{t.points != null && <span className="ml-2 text-12 font-semibold text-emerald-700">+{t.points} score</span>}</span>
                     <span className="text-12 text-slate-500">{t.est_minutes ? `${t.est_minutes} min` : ''}</span>
-                    <Link to={`/growth/fix/${t.id}`}><Button size="sm" variant="primary" icon={ArrowRight}>How to fix</Button></Link>
+                    <Link target="_blank" rel="noopener noreferrer" to={`/growth/fix/${t.id}`}><Button size="sm" variant="primary" icon={ArrowRight}>How to fix</Button></Link>
                   </li>); })}
               </ul>
             </div>

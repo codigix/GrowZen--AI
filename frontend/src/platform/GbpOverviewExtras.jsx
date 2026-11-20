@@ -116,7 +116,7 @@ export function MissingInfoCard({ b, d }) {
             <li key={x.key} className="py-2.5 flex items-center gap-3">
               <Circle size={16} className="text-slate-300 shrink-0" />
               <div className="flex-1 min-w-0"><div className="text-13 font-medium text-slate-900">{x.label}</div><div className="text-12 text-slate-500">{x.why}</div></div>
-              <Button size="sm" icon={Plus} onClick={() => navigate(x.to)}>Add</Button>
+              <Button size="sm" icon={Plus} onClick={() => window.open(x.to, "_blank", "noopener")}>Add</Button>
             </li>
           ))}
         </ul>

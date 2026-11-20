@@ -118,7 +118,7 @@ function Fix({ b }) {
         <p className="mt-2 text-14 text-slate-600 leading-relaxed">{sol?.summary || a.why}</p>
         {sol?.stack && sol.audience === 'developer' && <p className="mt-2 text-12.5 text-slate-500">Your site: {sol.stack.note}.</p>}
         <div className="mt-4 flex flex-wrap gap-2">
-          {inApp(a.link) && <Link to={a.link}><Button variant="primary" icon={ExternalLink}>Open where it is done</Button></Link>}
+          {inApp(a.link) && <Link to={a.link} target="_blank" rel="noopener noreferrer"><Button variant="primary" icon={ExternalLink}>Open where it is done</Button></Link>}
           <Button variant={inApp(a.link) ? undefined : 'primary'} icon={checking ? Loader2 : ShieldCheck} disabled={checking} onClick={runCheck}>{checking ? 'Checking the live data…' : 'Check now'}</Button>
         </div>
         {check && (

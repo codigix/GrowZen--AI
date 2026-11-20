@@ -58,7 +58,7 @@ export default function MergedFindings({ bid }) {
                       {t.page.length === 0 ? <p className="text-slate-500">{d.xray?.has ? 'Not part of the page checks.' : 'Not checked.'}</p> : <ul className="space-y-2">{t.page.map(p => (
                         <li key={p.key} className="flex gap-2"><span className={`mt-0.5 shrink-0 ${p.passed ? 'text-emerald-600' : 'text-red-500'}`}>{p.passed ? <Check size={14} /> : <XCircle size={14} />}</span>
                           <div className="min-w-0"><div className={p.passed ? 'text-slate-500' : 'font-medium text-slate-800'}>{p.label}</div>{!p.passed && p.detail && <div className="text-slate-500">{p.detail}</div>}{!p.passed && p.fix && <div className="text-slate-600">Fix: {p.fix}</div>}
-                            {!p.passed && p.task_id && <Link to={`/growth/fix/${p.task_id}`} className="inline-flex items-center gap-1 text-12.5 font-semibold text-indigo-600 hover:underline"><Wrench size={12} />Exact fix</Link>}</div></li>))}</ul>}</div>
+                            {!p.passed && p.task_id && <Link target="_blank" rel="noopener noreferrer" to={`/growth/fix/${p.task_id}`} className="inline-flex items-center gap-1 text-12.5 font-semibold text-indigo-600 hover:underline"><Wrench size={12} />Exact fix</Link>}</div></li>))}</ul>}</div>
                   </div>
                 </div>
               )}

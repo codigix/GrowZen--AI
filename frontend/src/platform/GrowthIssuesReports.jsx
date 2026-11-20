@@ -83,7 +83,7 @@ const STATUS = {
 const isExt = (l) => !!l && /^https?:\/\//i.test(l);
 const OpenLink = ({ link, children, variant }) => (isExt(link)
   ? <a href={link} target="_blank" rel="noreferrer"><Button size="sm" variant={variant} icon={ExternalLink}>{children}</Button></a>
-  : <Link to={link}><Button size="sm" variant={variant} icon={ExternalLink}>{children}</Button></Link>);
+  : <Link to={link} target="_blank" rel="noopener noreferrer"><Button size="sm" variant={variant} icon={ExternalLink}>{children}</Button></Link>);
 
 function Block({ title, children }) {
   return <div className="min-w-0"><div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1">{title}</div><div className="text-13.5 text-slate-700 leading-relaxed">{children}</div></div>;
@@ -174,7 +174,7 @@ function IssueDetail({ a, bid, onChanged }) {
       )}
       {err && <p className="mt-3 text-13 text-red-700" role="alert">{err}</p>}
       <div className="mt-4 flex flex-wrap gap-2">
-        <Link to={`/growth/fix/${a.id}`}><Button size="sm" variant="primary" icon={WrenchIcon}>Get the exact fix</Button></Link>
+        <Link target="_blank" rel="noopener noreferrer" to={`/growth/fix/${a.id}`}><Button size="sm" variant="primary" icon={WrenchIcon}>Get the exact fix</Button></Link>
         {a.link && <OpenLink link={a.link}>{a.website_side ? 'See the live page check' : 'Open where it is fixed'}</OpenLink>}
         {a.status === 'todo' && !panel && <><Button size="sm" icon={Check} onClick={() => setPanel('done')}>Mark done</Button><Button size="sm" onClick={() => setPanel('skip')}>Skip</Button></>}
         {['todo', 'done', 'unverified', 'failed'].includes(a.status) && <Button size="sm" icon={busy === 'verify' ? Loader2 : ShieldCheck} disabled={busy === 'verify'} onClick={() => call('verify')}>{busy === 'verify' ? 'Checking live data…' : 'Check now'}</Button>}
@@ -222,7 +222,7 @@ function IssueTable({ rows, bid, onChanged }) {
                     <td className="px-3 py-3.5 text-13 text-slate-600 whitespace-nowrap">{fmtDay(a.found_at || a.first_seen)}</td>
                     <td className={`px-3 py-3.5 text-13 whitespace-nowrap ${a.overdue ? 'text-red-600 font-semibold' : 'text-slate-600'}`}>{fmtDay(a.due_on)}{a.overdue && <span className="block text-11 font-medium">overdue</span>}</td>
                     <td className="px-3 py-3.5"><Chip cls={stt[1]}>{stt[0]}</Chip></td>
-                    <td className="px-3 py-3.5 text-right" onClick={e => e.stopPropagation()}><Link to={`/growth/fix/${a.id}`}><Button size="sm" variant="primary" icon={WrenchIcon}>Fix it</Button></Link></td>
+                    <td className="px-3 py-3.5 text-right" onClick={e => e.stopPropagation()}><Link target="_blank" rel="noopener noreferrer" to={`/growth/fix/${a.id}`}><Button size="sm" variant="primary" icon={WrenchIcon}>Fix it</Button></Link></td>
                   </tr>
                   {on && <tr><td colSpan={9} className="p-0"><IssueDetail a={a} bid={bid} onChanged={onChanged} /></td></tr>}
                 </React.Fragment>

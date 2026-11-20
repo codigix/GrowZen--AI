@@ -91,7 +91,7 @@ function Body({ b }) {
             <tbody className="divide-y divide-slate-100">
               {rows.map(x => { const [sl, st] = SEV[x.severity] || SEV.warning; const [stl, stt] = STATUS[x.status] || STATUS.todo; return (
                 <tr key={x.id} className="hover:bg-slate-50 align-middle">
-                  <td className="px-3 py-3 max-w-[340px]"><Link to={`/growth/fix/${x.id}`} className="font-semibold text-slate-900 hover:text-indigo-700 block">{x.title}</Link>{x.last_check && <span className="block text-12 text-slate-500 truncate" title={x.last_check}>{x.last_check}</span>}</td>
+                  <td className="px-3 py-3 max-w-[340px]"><Link target="_blank" rel="noopener noreferrer" to={`/growth/fix/${x.id}`} className="font-semibold text-slate-900 hover:text-indigo-700 block">{x.title}</Link>{x.last_check && <span className="block text-12 text-slate-500 truncate" title={x.last_check}>{x.last_check}</span>}</td>
                   <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{names[x.area] || x.area}</td>
                   <td className="px-3 py-3"><Badge tone={st}>{sl}</Badge></td>
                   <td className="px-3 py-3 text-right tabular-nums font-semibold text-emerald-700">{x.points != null ? `+${x.points}` : <span className="text-slate-300">—</span>}</td>
@@ -99,7 +99,7 @@ function Body({ b }) {
                   <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{x.fix_mode_label || '—'}</td>
                   <td className="px-3 py-3"><Tip text={x.closes_when} wide><Badge tone={stt}>{stl}</Badge></Tip></td>
                   <td className={`px-3 py-3 whitespace-nowrap ${x.overdue ? 'text-red-600 font-semibold' : 'text-slate-600'}`}>{day(tab === 'open' ? x.due_on : x.verified_at)}{x.overdue ? ' · overdue' : ''}</td>
-                  <td className="px-3 py-3 text-right"><Link to={`/growth/fix/${x.id}`}><Button size="sm" variant={tab === 'open' ? 'primary' : 'secondary'} icon={tab === 'open' ? ArrowRight : CheckCircle2}>{tab === 'open' ? 'How to fix' : 'Details'}</Button></Link></td>
+                  <td className="px-3 py-3 text-right"><Link target="_blank" rel="noopener noreferrer" to={`/growth/fix/${x.id}`}><Button size="sm" variant={tab === 'open' ? 'primary' : 'secondary'} icon={tab === 'open' ? ArrowRight : CheckCircle2}>{tab === 'open' ? 'How to fix' : 'Details'}</Button></Link></td>
                 </tr>); })}
               {!rows.length && <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-500">{tab === 'open' ? 'Nothing to change here. Press “Check my fixes” to scan again, or run a scan from the Growth Plan.' : 'Nothing confirmed yet. A fix counts only when a real check of the live site passes.'}</td></tr>}
             </tbody>

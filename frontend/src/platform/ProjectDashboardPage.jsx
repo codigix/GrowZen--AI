@@ -157,7 +157,7 @@ function ProjectDashboard({ b }) {
               ))}
             </ul>
           )}
-          <Link to="/gmb-profile" className="mt-3 inline-flex items-center gap-1 text-13 font-semibold text-indigo-600 hover:underline">Open the Google profile <ArrowRight size={14} /></Link>
+          <Link to="/gmb-profile" target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-13 font-semibold text-indigo-600 hover:underline">Open the Google profile <ArrowRight size={14} /></Link>
         </Card>
       </div>
 

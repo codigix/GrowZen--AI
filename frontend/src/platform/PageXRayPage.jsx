@@ -123,7 +123,7 @@ function FixBox({ t, bad }) {
         {!fixed && <span className="text-12 text-slate-500">{t.overdue ? 'Overdue' : 'Due'} {t.due_on}</span>}
         {!fixed && <span className="text-12 font-semibold text-slate-600 capitalize">{t.severity}</span>}
         {t.fix_mode_label && <span className="text-12 rounded-full bg-indigo-50 text-indigo-700 px-2.5 py-0.5 font-medium">{t.fix_mode_label}</span>}
-        <Link to={`/growth/fix/${t.id}`} className="ml-auto"><Button size="sm" variant={fixed ? undefined : 'primary'} icon={Wrench}>{fixed ? 'See the fix' : 'Fix guide'}</Button></Link>
+        <Link target="_blank" rel="noopener noreferrer" to={`/growth/fix/${t.id}`} className="ml-auto"><Button size="sm" variant={fixed ? undefined : 'primary'} icon={Wrench}>{fixed ? 'See the fix' : 'Fix guide'}</Button></Link>
       </div>
       {!fixed && (
         <>
@@ -209,7 +209,7 @@ function CheckModal({ r, onClose }) {
   const st = t ? (FIX_STATUS[t.status] || FIX_STATUS.todo) : null;
   return (
     <Modal open={Boolean(r)} onClose={onClose} width="max-w-2xl" title={r ? r.label : ''}
-      footer={r && t ? <><Button onClick={onClose}>Close</Button><Link to={`/growth/fix/${t.id}`}><Button variant="primary" icon={Wrench}>{fixed ? 'See the fix' : 'Open the fix guide'}</Button></Link></> : <Button onClick={onClose}>Close</Button>}>
+      footer={r && t ? <><Button onClick={onClose}>Close</Button><Link target="_blank" rel="noopener noreferrer" to={`/growth/fix/${t.id}`}><Button variant="primary" icon={Wrench}>{fixed ? 'See the fix' : 'Open the fix guide'}</Button></Link></> : <Button onClick={onClose}>Close</Button>}>
       {r && (
         <div className="space-y-4 text-13 text-slate-700">
           <div className="flex flex-wrap items-center gap-2">
@@ -302,7 +302,7 @@ function ChecksTable({ d, filter }) {
                   <td className="px-3 py-2.5">{t ? <Tip text={fixed ? 'This scan passes the check.' : `${st[0]}${t.due_on ? `, due ${t.due_on}` : ''}${t.fix_mode_label ? `. ${t.fix_mode_label}.` : ''}`}><span className={`inline-flex items-center gap-1 rounded-full ring-1 ring-inset px-2.5 py-0.5 text-12 font-semibold whitespace-nowrap ${st[1]}`}>{fixed ? <Check size={12} /> : <AlertTriangle size={12} />}{fixed ? 'Fixed' : st[0]}</span></Tip> : <span className="text-slate-400">{r.passed ? '—' : 'No task yet'}</span>}</td>
                   <td className="px-3 py-2.5 text-right whitespace-nowrap">
                     <button type="button" onClick={(e) => { e.stopPropagation(); setOpen(r); }} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Details</button>
-                    {t && <Link to={`/growth/fix/${t.id}`} onClick={e => e.stopPropagation()} title="Open the exact fix" className="ml-2 inline-flex align-middle text-slate-500 hover:text-indigo-700"><Wrench size={14} /></Link>}
+                    {t && <Link target="_blank" rel="noopener noreferrer" to={`/growth/fix/${t.id}`} onClick={e => e.stopPropagation()} title="Open the exact fix" className="ml-2 inline-flex align-middle text-slate-500 hover:text-indigo-700"><Wrench size={14} /></Link>}
                   </td>
                 </tr>
               );
