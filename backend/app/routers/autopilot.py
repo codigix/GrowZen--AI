@@ -47,7 +47,7 @@ def _item(db: Session, b: Business, t: AgentTask) -> dict[str, Any]:
                            "created_at": t.created_at.isoformat() if t.created_at else None, "result": t.result or {}, "source": d.get("source") or "agent"}
     if t.kind == "gbp_post":
         p = db.get(Post, d.get("post_id"))
-        out |= {"text": (p.body if p else d.get("body")) or "", "headline": p.title if p else None, "cta": p.cta_type if p else None, "topic": d.get("topic"), "post_id": d.get("post_id"),
+        out |= {"text": (p.body if p else d.get("body")) or "", "headline": p.title if p else None, "cta": p.cta_type if p else None, "image_url": p.image_url if p else None, "topic": d.get("topic"), "post_id": d.get("post_id"),
                 "published_at": p.published_at.isoformat() if p and p.published_at else None}
     elif t.kind == "review_reply":
         r = db.get(Review, d.get("review_id"))
@@ -151,6 +151,7 @@ class EditIn(BaseModel):
     text: str | None = Field(default=None, min_length=1, max_length=1500)
     publish_at: str | None = None
     description: str | None = Field(default=None, max_length=750)
+    image_url: str | None = Field(default=None, max_length=1000)  # a post's photo: an address, or "" to take the photo off
 
 
 @router.patch("/items/{task_id}")
@@ -176,6 +177,15 @@ def edit_item(task_id: int, body: EditIn, b: Business = Depends(get_business), d
             d["text"] = body.text
         else:
             raise HTTPException(422, "This item has no text to edit.")
+    if body.image_url is not None:
+        if t.kind != "gbp_post":
+            raise HTTPException(422, "Only a post can have a photo.")
+        url = body.image_url.strip()
+        if url and not url.lower().startswith("https://"):
+            raise HTTPException(422, "The photo address must start with https://")
+        p = db.get(Post, d.get("post_id"))
+        if p:
+            p.image_url = url or None
     if body.description is not None and t.kind == "profile_edit" and d.get("changes"):
         d["changes"] = {**d["changes"], "description": " ".join(body.description.split())}
     if when:

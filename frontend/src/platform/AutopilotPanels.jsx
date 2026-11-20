@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, Calendar, Check, CheckCircle2, Clock, Image as ImageIcon, Loader2, MessageSquare, Play, RefreshCw, Settings as SettingsIcon, ShieldCheck, Sparkles, Search, Star, Undo2, Upload, User, X, XCircle } from 'lucide-react';
 import { SeoShell, Button } from './SeoUi';
 import Select from '../components/Select';
-import { api, SEO_API } from './seoApi';
+import { api, useApi, SEO_API } from './seoApi';
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const when = (iso) => { if (!iso) return 'no time set'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }); };
@@ -34,6 +34,26 @@ function ItemCard({ it, bid, onChanged }) {
     } catch (e) { setErr(e.message || 'That did not work.'); } finally { setBusy(''); }
   };
   const pending = it.status === 'pending';
+  const [photo, setPhoto] = useState(it.image_url || '');
+  const [pick, setPick] = useState(false);
+  const live = useApi(pick ? `/businesses/${bid}/gbp/live` : null);
+  const fileRef = useRef(null);
+  const setImage = async (url, label) => {
+    setBusy(label); setErr('');
+    try { await api(base, { method: 'PATCH', body: { image_url: url }, repeat: true }); setPhoto(url); setPick(false); }
+    catch (e) { setErr(e.message || 'That did not work.'); } finally { setBusy(''); }
+  };
+  const upload = async (file) => { // the picture goes to the profile's photos first: Google accepts a post photo only from there
+    if (!file) return;
+    setBusy('up'); setErr('');
+    try {
+      const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(file); });
+      const made = await api(`/businesses/${bid}/gbp/media`, { method: 'POST', body: { category: 'ADDITIONAL', data_base64: data, content_type: file.type || 'image/jpeg' } });
+      if (!made.googleUrl) throw new Error('Google has not returned the picture address yet. Try again in a minute.');
+      await setImage(made.googleUrl, 'up');
+    } catch (e) { setErr(e.message || 'That did not work.'); setBusy(''); }
+  };
+  const mapsPhoto = /\/(gpu-csl|places)\//.test(photo);
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2 mb-3"><Chip cls={k[1]}><Icon size={12} />{k[0]}</Chip>
@@ -63,6 +83,30 @@ function ItemCard({ it, bid, onChanged }) {
           <textarea value={text} onChange={e => setText(e.target.value.slice(0, 1500))} disabled={!pending} rows={it.kind === 'review_reply' ? 3 : 5} aria-label="Text" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-14 text-slate-900 leading-relaxed disabled:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
           <div className="text-11 text-slate-400 text-right">{text.length} characters</div>
         </>
+      )}
+      {it.kind === 'gbp_post' && (
+        <div className="mt-3">
+          <div className="text-12 font-semibold text-slate-700 mb-1">Photo</div>
+          <div className="flex flex-wrap items-start gap-3">
+            {photo ? <img src={photo} alt="Post photo" className="w-36 h-28 object-cover rounded-lg border border-slate-200 bg-slate-50" loading="lazy" /> : <div className="w-36 h-28 rounded-lg border border-dashed border-slate-300 flex items-center justify-center text-12 text-slate-400 text-center px-2">No photo: the post goes out as text</div>}
+            {pending && (
+              <div className="space-y-1.5">
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" disabled={!!busy} icon={busy === 'up' ? Loader2 : Upload} onClick={() => fileRef.current?.click()}>Upload a photo</Button>
+                  <Button size="sm" disabled={!!busy} onClick={() => setPick(v => !v)}>{pick ? 'Hide profile photos' : 'Choose from profile photos'}</Button>
+                  {photo && <Button size="sm" disabled={!!busy} icon={busy === 'rm' ? Loader2 : XCircle} onClick={() => setImage('', 'rm')}>Remove photo</Button>}
+                </div>
+                {mapsPhoto && <p className="text-12 text-amber-700 max-w-md">This is a Google Maps photo link. Google often refuses it for posts. Upload your own photo or choose one from the profile.</p>}
+                <p className="text-11.5 text-slate-500">JPG or PNG. An uploaded photo is also added to the profile's photos.</p>
+              </div>
+            )}
+          </div>
+          {pick && pending && (
+            <div className="mt-2">{!live.data ? <p className="text-12 text-slate-400">Loading profile photos…</p> : (() => { const ph = (live.data?.live?.media || []).filter(m => m.type !== 'VIDEO' && m.url).slice(0, 18); return ph.length === 0 ? <p className="text-12 text-slate-400">No photos on the profile yet: upload one.</p> : (
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">{ph.map(m => <button key={m.id || m.url} type="button" onClick={() => setImage(m.url, 'pk')} className="aspect-square rounded overflow-hidden ring-1 ring-slate-200 hover:ring-indigo-400 cursor-pointer"><img src={m.url} alt="" className="w-full h-full object-cover" loading="lazy" /></button>)}</div>); })()}</div>
+          )}
+        </div>
       )}
       {(it.kind === 'gbp_post' || it.kind === 'gbp_photo') && pending && (
         <div className="mt-2"><label className="text-12 font-semibold text-slate-700 block mb-1" htmlFor={`at-${it.id}`}>Goes out on (your device's time)</label>
