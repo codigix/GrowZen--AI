@@ -436,13 +436,15 @@ def set_featured_image(article_id: int, body: FeaturedImageIn, b: Business = Dep
 
 
 @router.get("/{article_id}/featured-image")
-def get_featured_image(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+def get_featured_image(business_id: int, article_id: int, db: Session = Depends(get_db)):
     from fastapi.responses import FileResponse
-    a = _get(db, b, article_id)
+    a = db.scalar(select(Article).where(Article.id == article_id, Article.business_id == business_id))
+    if not a or not a.featured_image_path:
+        raise HTTPException(404, "This article has no featured image")
     p = fi.path_of(a.featured_image_path)
     if not p:
         raise HTTPException(404, "This article has no featured image")
-    return FileResponse(p, media_type=fi.media_type(a.featured_image_path), headers={"Cache-Control": "private, max-age=86400"})
+    return FileResponse(p, media_type=fi.media_type(a.featured_image_path), headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.delete("/{article_id}/featured-image")
@@ -479,15 +481,14 @@ def list_content_images(article_id: int, b: Business = Depends(get_business), db
 
 
 @router.get("/{article_id}/content-images/{name}")
-def get_content_image(article_id: int, name: str, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+def get_content_image(business_id: int, article_id: int, name: str):
     from fastapi.responses import FileResponse
 
     from ..services import content_images as ci
-    a = _get(db, b, article_id)
-    p = ci.path_of(b.id, a.id, name)
+    p = ci.path_of(business_id, article_id, name)
     if not p:
         raise HTTPException(404, "Image not found")
-    return FileResponse(p, media_type="image/webp", headers={"Cache-Control": "private, max-age=86400"})
+    return FileResponse(p, media_type="image/webp", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.delete("/{article_id}/content-images/{name}")
