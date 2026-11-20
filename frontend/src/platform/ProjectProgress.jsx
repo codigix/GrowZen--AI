@@ -82,8 +82,10 @@ const LEVEL = {
 /** What to do next on this project, most important first: each line says what is wrong, why it matters and opens the page that fixes it in a new tab. */
 export function Attention({ b }) {
   const r = useApi(`/businesses/${b.id}/dashboard?range=all`);
-  const items = r.data?.attention;
+  const all = r.data?.attention;
+  const [more, setMore] = useState(false);
   if (r.error) return null;
+  const items = all && !more ? all.slice(0, 4) : all;
   return (
     <section id="attention" className="scroll-mt-24" aria-label="What needs attention">
       <Card title="What needs attention" subtitle={items ? (items.length ? `${items.length} thing${items.length === 1 ? '' : 's'} to do, the most important first` : 'Nothing urgent: keep it up') : 'Checking this project…'}>
@@ -107,13 +109,14 @@ export function Attention({ b }) {
             })}
           </ul>
         )}
+        {all && all.length > 4 && <button type="button" onClick={() => setMore(v => !v)} className="mt-2 text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">{more ? 'Show fewer' : `Show ${all.length - 4} more`}</button>}
       </Card>
     </section>
   );
 }
 
 /** Everything so far by default; a date range narrows it. Counts, progress over time and the actions taken on this project. */
-export default function ProgressSection({ b }) {
+export default function ProgressSection({ b, view = 'progress' }) {
   const [range, setRange] = useState('all');
   const [group, setGroup] = useState('auto');
   const [from, setFrom] = useState('');
@@ -140,6 +143,7 @@ export default function ProgressSection({ b }) {
     </div>
   );
   const unit = d?.range?.group === 'month' ? 'month' : 'week';
+  const only = view === 'overview';
 
   if (r.error) return <Card title="Progress" action={toggle}><p className="text-13 text-red-600">{r.error.message}</p></Card>;
   if (!ready) return <Card title="Progress" action={toggle}><p className="text-13 text-slate-500">Choose the first date to show the range.</p></Card>;
@@ -154,7 +158,63 @@ export default function ProgressSection({ b }) {
   const nothing = !Object.values(d.series).some(v => v.some(Boolean)) && !d.health.some(x => x != null);
 
   return (
-    <section id="progress" className="space-y-5 scroll-mt-24" aria-label="Progress">
+    <section id="progress" className="space-y-5 scroll-mt-24" aria-label={only ? 'Overview' : 'Progress'}>
+      {view === 'overview' ? (
+        <>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <Kpi icon={Navigation} label="Directions" m={m.directions} days={days} />
+        <Kpi icon={MousePointerClick} label="Website clicks" m={m.website_clicks} days={days} />
+        <Kpi icon={Star} label="Reviews" m={m.reviews} days={days} />
+        <Kpi icon={Wrench} label="Issues fixed" m={m.fixes} days={days} />
+        <Kpi icon={Link2} label="Backlinks found" m={m.backlinks} days={days} />
+      </div>
+
+      <div>
+        <h3 className="text-15 font-semibold text-slate-900 mb-2">Where the project stands</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+          <Stand icon={ClipboardCheck} label="Growth Plan issues fixed" value={`${c.fixes_done} / ${c.fixes_total}`} bar={fixPct} sub={`${c.fixes_open} still to do · ${fixPct}% done`} to="/growth" />
+          <Stand icon={Search} label="Keywords tracked" value={`${fmt(c.keywords_tracked)}${c.keywords_saved > c.keywords_tracked ? ` / ${fmt(c.keywords_saved)}` : ''}`} sub={`${fmt(c.keywords_suggested)} suggestions found${c.ranking_any ? ` · ${c.ranking_top3} top 3 · ${c.ranking_top10} top 10` : ' · positions not read yet'}`} to="/keyword-management/tracked" />
+          <Stand icon={Link2} label="Backlinks found" value={c.backlinks_tracked ? fmt(c.backlinks) : '—'} sub={c.backlinks_tracked ? `${fmt(c.referring_domains)} referring domains · ${fmt(c.backlinks_verified)} verified` : 'The site is not tracked yet'} to="/backlinks/links" />
+          <Stand icon={Send} label="Link opportunities" value={fmt(c.link_opportunities)} sub={c.link_opportunities ? `${c.link_opportunities_contacted} contacted · ${c.link_opportunities_live} live` : 'None planned yet'} to="/backlinks/opportunities" />
+          <Stand icon={Globe} label="Pages indexed on Google" value={`${c.pages_indexed} / ${c.pages_known}`} bar={c.pages_known ? idxPct : null} sub={c.pages_known ? `${idxPct}% of the pages found` : 'Run the page scan'} to="/page-indexing" />
+          <Stand icon={BookOpen} label="Articles" value={fmt(c.articles)} sub={`${c.articles_live} live on the website`} to="/ai-content-generation/articles" />
+          <Stand icon={Send} label="Google posts" value={fmt(c.posts_published)} sub={c.posts_waiting ? `${c.posts_waiting} waiting or scheduled` : 'None waiting'} to="/google-posts" />
+          <Stand icon={MessageSquare} label="Reviews" value={c.rating ? `${c.rating}★ · ${fmt(c.reviews)}` : fmt(c.reviews)} sub={!c.reviews ? 'No reviews yet' : c.reviews_unreplied ? `${c.reviews_unreplied} without a reply` : 'All answered'} to="/reviews" />
+          <Stand icon={ListChecks} label="Waiting for your approval" value={fmt(c.approvals_waiting)} sub={c.approvals_waiting ? 'Open to approve or reject' : 'Nothing waiting'} to="/automation" />
+        </div>
+      </div>
+
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <Card title="Actions taken" subtitle={`${m.actions.total} action${m.actions.total === 1 ? '' : 's'} logged ${d.range.key === 'all' ? 'so far' : 'in this range'}${m.actions.compare ? `, ${m.actions.before} in the ${days} days before` : ''}`}>
+          {d.timeline.length === 0 ? <p className="text-13 text-slate-500 py-2">No actions logged yet.</p> : (
+            <ul className="divide-y divide-slate-100">
+              {d.timeline.map((a, i) => (
+                <li key={i} className="py-2.5 flex items-start gap-3">
+                  <CheckCircle2 size={16} className="text-emerald-600 mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0"><div className="text-13 text-slate-900">{a.what}</div><div className="text-11.5 text-slate-500">{a.who} · {ago(a.at)}</div></div>
+                  {a.pushed && <Badge tone="green">Sent to Google</Badge>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+        <Card title="Recently approved and published" subtitle="What the assistant prepared and you approved">
+          {d.recent_tasks.length === 0 ? <p className="text-13 text-slate-500 py-2">Nothing approved yet.</p> : (
+            <ul className="divide-y divide-slate-100">
+              {d.recent_tasks.map((t, i) => (
+                <li key={i} className="py-2.5 flex items-center gap-3 text-13">
+                  <Clock size={15} className="text-indigo-500 shrink-0" /><span className="flex-1 min-w-0 truncate text-slate-800">{t.title}</span>
+                  <Badge tone={t.status === 'applied' ? 'green' : 'blue'}>{t.status === 'applied' ? 'Done' : t.status === 'scheduled' ? 'Scheduled' : 'Approved'}</Badge><span className="text-11.5 text-slate-400 shrink-0">{ago(t.at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+        </>
+      ) : (
+        <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div><h2 className="text-18 font-semibold text-slate-900">Progress</h2><p className="text-13 text-slate-500">{d.range.key === 'all' ? `Everything so far: from ${nice(d.range.start)} (the first thing stored for this project) to today, ${days} days.` : `${nice(d.range.start)} to ${nice(d.range.end)} (${days} days), shown ${unit} by ${unit}. The change is against the ${days} days before.`}</p></div>
         {toggle}
@@ -205,21 +265,6 @@ export default function ProgressSection({ b }) {
         </Card>
       </div>
 
-      <div>
-        <h3 className="text-15 font-semibold text-slate-900 mb-2">Where the project stands</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-          <Stand icon={ClipboardCheck} label="Growth Plan issues fixed" value={`${c.fixes_done} / ${c.fixes_total}`} bar={fixPct} sub={`${c.fixes_open} still to do · ${fixPct}% done`} to="/growth" />
-          <Stand icon={Search} label="Keywords tracked" value={`${fmt(c.keywords_tracked)}${c.keywords_saved > c.keywords_tracked ? ` / ${fmt(c.keywords_saved)}` : ''}`} sub={`${fmt(c.keywords_suggested)} suggestions found${c.ranking_any ? ` · ${c.ranking_top3} top 3 · ${c.ranking_top10} top 10` : ' · positions not read yet'}`} to="/keyword-management/tracked" />
-          <Stand icon={Link2} label="Backlinks found" value={c.backlinks_tracked ? fmt(c.backlinks) : '—'} sub={c.backlinks_tracked ? `${fmt(c.referring_domains)} referring domains · ${fmt(c.backlinks_verified)} verified` : 'The site is not tracked yet'} to="/backlinks/links" />
-          <Stand icon={Send} label="Link opportunities" value={fmt(c.link_opportunities)} sub={c.link_opportunities ? `${c.link_opportunities_contacted} contacted · ${c.link_opportunities_live} live` : 'None planned yet'} to="/backlinks/opportunities" />
-          <Stand icon={Globe} label="Pages indexed on Google" value={`${c.pages_indexed} / ${c.pages_known}`} bar={c.pages_known ? idxPct : null} sub={c.pages_known ? `${idxPct}% of the pages found` : 'Run the page scan'} to="/page-indexing" />
-          <Stand icon={BookOpen} label="Articles" value={fmt(c.articles)} sub={`${c.articles_live} live on the website`} to="/ai-content-generation/articles" />
-          <Stand icon={Send} label="Google posts" value={fmt(c.posts_published)} sub={c.posts_waiting ? `${c.posts_waiting} waiting or scheduled` : 'None waiting'} to="/google-posts" />
-          <Stand icon={MessageSquare} label="Reviews" value={c.rating ? `${c.rating}★ · ${fmt(c.reviews)}` : fmt(c.reviews)} sub={!c.reviews ? 'No reviews yet' : c.reviews_unreplied ? `${c.reviews_unreplied} without a reply` : 'All answered'} to="/reviews" />
-          <Stand icon={ListChecks} label="Waiting for your approval" value={fmt(c.approvals_waiting)} sub={c.approvals_waiting ? 'Open to approve or reject' : 'Nothing waiting'} to="/automation" />
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <Card title="Keywords" subtitle={`${fmt(c.keywords_saved)} saved · ${fmt(c.keywords_tracked)} tracked · ${fmt(c.keywords_suggested)} suggestions`} action={<Link to="/keyword-management/tracked" className="text-12.5 font-semibold text-indigo-600 hover:underline">All keywords</Link>}>
           {d.top_keywords.length === 0 ? <p className="text-13 text-slate-500 py-2">No keywords saved yet. {c.keywords_suggested ? 'Suggestions are waiting in Keyword Research.' : 'Find some in Keyword Research.'}</p> : (
@@ -248,33 +293,8 @@ export default function ProgressSection({ b }) {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-        <Card title="Actions taken" subtitle={`${m.actions.total} action${m.actions.total === 1 ? '' : 's'} logged ${d.range.key === 'all' ? 'so far' : 'in this range'}${m.actions.compare ? `, ${m.actions.before} in the ${days} days before` : ''}`}>
-          {d.timeline.length === 0 ? <p className="text-13 text-slate-500 py-2">No actions logged yet.</p> : (
-            <ul className="divide-y divide-slate-100">
-              {d.timeline.map((a, i) => (
-                <li key={i} className="py-2.5 flex items-start gap-3">
-                  <CheckCircle2 size={16} className="text-emerald-600 mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0"><div className="text-13 text-slate-900">{a.what}</div><div className="text-11.5 text-slate-500">{a.who} · {ago(a.at)}</div></div>
-                  {a.pushed && <Badge tone="green">Sent to Google</Badge>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-        <Card title="Recently approved and published" subtitle="What the assistant prepared and you approved">
-          {d.recent_tasks.length === 0 ? <p className="text-13 text-slate-500 py-2">Nothing approved yet.</p> : (
-            <ul className="divide-y divide-slate-100">
-              {d.recent_tasks.map((t, i) => (
-                <li key={i} className="py-2.5 flex items-center gap-3 text-13">
-                  <Clock size={15} className="text-indigo-500 shrink-0" /><span className="flex-1 min-w-0 truncate text-slate-800">{t.title}</span>
-                  <Badge tone={t.status === 'applied' ? 'green' : 'blue'}>{t.status === 'applied' ? 'Done' : t.status === 'scheduled' ? 'Scheduled' : 'Approved'}</Badge><span className="text-11.5 text-slate-400 shrink-0">{ago(t.at)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
+        </>
+      )}
     </section>
   );
 }

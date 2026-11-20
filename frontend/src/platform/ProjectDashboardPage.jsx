@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PlugZap, XCircle, Globe, MapPin, Phone, Navigation, MousePointerClick, Users, ListChecks, ArrowRight, ArrowUpRight, ArrowDownRight, Star, ScanSearch, FileText, TrendingUp, Link2, BarChart3, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { SeoShell, useSeoBusiness, Card, Badge, ScoreRing, scoreWord, SkStats, SkCard } from './SeoUi';
 import { useApi, api, fmt } from './seoApi';
@@ -81,19 +81,20 @@ function TargetMarket({ b }) {
   );
 }
 
-const JUMPS = [['attention', 'Needs attention'], ['progress', 'Progress'], ['audit', 'Site audit'], ['scores', 'Scores and fixes'], ['setup', 'Setup']];
+const TABS = [['overview', 'Overview'], ['progress', 'Progress'], ['audit', 'Site audit'], ['setup', 'Google and setup']];
 
-/** Jump links to the sections of this long page: the bar stays in view while scrolling. */
-function JumpBar() {
-  const go = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+/** One screen at a time instead of one long page. */
+function TabBar({ tab, setTab }) {
   return (
-    <nav aria-label="Sections" className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-white/90 backdrop-blur border-b border-slate-200 flex flex-wrap gap-1.5">
-      {JUMPS.map(([id, t]) => <button key={id} type="button" onClick={() => go(id)} className="h-8 px-3 rounded-full text-12.5 font-semibold text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer">{t}</button>)}
+    <nav role="tablist" aria-label="Project dashboard sections" className="flex gap-1 border-b border-slate-200 overflow-x-auto">
+      {TABS.map(([id, t]) => (
+        <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`px-4 py-2.5 text-14 font-semibold whitespace-nowrap border-b-2 -mb-px cursor-pointer ${tab === id ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{t}</button>
+      ))}
     </nav>
   );
 }
 
-function ProjectDashboard({ b, middle }) {
+function ProjectDashboard({ b, tab, setTab }) {
   const ov = useApi(`/businesses/${b.id}/overview`);
   const d = ov.data;
   if (ov.error) return <Card><p className="text-13 text-red-600">{ov.error.message}</p></Card>;
@@ -129,10 +130,14 @@ function ProjectDashboard({ b, middle }) {
         </div>
       </div>
 
-      <JumpBar />
+      <TabBar tab={tab} setTab={setTab} />
 
-      {middle}
+      {tab === 'overview' && <div className="space-y-6"><Attention b={b} /><ProgressSection b={b} view="overview" /></div>}
+      {tab === 'progress' && <ProgressSection b={b} view="progress" />}
+      {tab === 'audit' && <AuditSection b={b} />}
 
+      {tab === 'setup' && (
+        <div className="space-y-5">
       {noData && (
         <div className="rounded bg-sky-50 ring-1 ring-inset ring-sky-100 px-4 py-3 text-13 text-sky-900">
           Nothing has been measured for this project yet. Run a <Link to="/website-audit" className="font-semibold underline">website audit</Link> and connect the Google profile in <Link to="/gmb-profile" className="font-semibold underline">Google Business Profile</Link>: the numbers appear here.
@@ -196,6 +201,8 @@ function ProjectDashboard({ b, middle }) {
           ))}
         </div>
       </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -231,6 +238,9 @@ export default function ProjectDashboardPage() {
   const want = decodeProjectId(projectId) || 0;
   const have = Number(selected?.id ?? selected) || null;
   const asked = React.useRef(false);
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.some(([id]) => id === params.get('tab')) ? params.get('tab') : 'overview';
+  const setTab = (id) => setParams(p => { const n = new URLSearchParams(p); if (id === 'overview') n.delete('tab'); else n.set('tab', id); return n; }, { replace: true });
   React.useEffect(() => { // the address names the project: make it the selected one (two-step check included); if that is declined, go back to the list
     if (!want) { navigate('/projects', { replace: true }); return; } // not a project code
     if (have === want || asked.current) return;
@@ -240,7 +250,7 @@ export default function ProjectDashboardPage() {
   return (
     <SeoShell title="Project dashboard" subtitle="This project's site audit, Google activity, connections and what to do next" hideSwitcher>
       {(b) => (b && b.id === want ? (
-        <ProjectDashboard key={b.id} b={b} middle={<div className="space-y-8"><Attention b={b} /><ProgressSection b={b} /><div id="audit" className="scroll-mt-24"><AuditSection b={b} /></div></div>} />
+        <ProjectDashboard key={b.id} b={b} tab={tab} setTab={setTab} />
       ) : null)}
     </SeoShell>
   );
