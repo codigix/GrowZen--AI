@@ -16,7 +16,7 @@ from ..deps import get_business
 from ..models import AgentTask, Business, Post, Review
 from ..schemas import POST_CTA_TYPES, check_post_dates, clean_url
 from ..serialize import row
-from ..services import agent, gbp
+from ..services import agent, gbp, google_changes
 from ..services.activity import log
 
 router = APIRouter(prefix="/businesses/{business_id}/gbp", tags=["gbp-manage"])
@@ -53,6 +53,14 @@ def _refresh(b: Business, client: gbp.GbpClient) -> None:
     for k, v in gbp.location_to_fields(loc).items():
         if k not in ("gbp_status", "gbp_account", "gbp_location") and v not in (None, "", [], {}):
             setattr(b, k, v)
+
+
+@router.post("/changes-check")
+def changes_check(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Ask Google now whether it has finished reviewing the edits that are waiting (the scheduler also asks every 10 minutes)."""
+    _client(b)
+    result = google_changes.check(db, b, force=True)
+    return {"result": result, "waiting": bool(b.google_watch)}
 
 
 class RulesIn(BaseModel):
@@ -153,6 +161,7 @@ def set_categories(body: CategoriesIn, b: Business = Depends(get_business), db: 
     b.primary_category, b.secondary_categories = body.primary.displayName or b.primary_category, [x.displayName for x in body.additional if x.displayName]
     _refresh(b, c)
     log(db, user.name, "gbp_categories_updated", b.id)
+    google_changes.record(b, ["categories"])
     db.commit()
     return {"primary_category": b.primary_category, "secondary_categories": b.secondary_categories}
 
@@ -183,6 +192,7 @@ def set_address(body: AddressIn, b: Business = Depends(get_business), db: Sessio
     _google(c.update_location, b.gbp_location, {"storefrontAddress": new})
     _refresh(b, c)
     log(db, user.name, "gbp_address_updated", b.id)
+    google_changes.record(b, ["storefrontAddress"])
     db.commit()
     return {"address": b.address, "city": b.city}
 

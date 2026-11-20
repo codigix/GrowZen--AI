@@ -141,6 +141,16 @@ function ProfileTab({ b, toast }) {
     return () => clearTimeout(h);
   }, [b.id, p.name, p.description, p.phone, p.additional_phones, p.website, p.booking_url, p.action_links, p.secondary_categories, p.services]);
   const ruleErrors = rules.filter(i => i.level === 'error');
+  const [checking, setChecking] = useState(false);
+  const ago = (iso) => { const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000)); return m < 2 ? 'just now' : m < 90 ? `${m} minutes ago` : m < 2880 ? `${Math.round(m / 60)} hours ago` : `${Math.round(m / 1440)} days ago`; };
+  const checkNow = async () => {
+    setChecking(true);
+    try {
+      const r = await api(`/businesses/${b.id}/gbp/changes-check`, { method: 'POST' });
+      await refreshBusinesses();
+      toast(r.result === 'live' ? 'Google now shows your changes.' : 'Google is still reviewing the edit. We will tell you when it is live.');
+    } catch (e) { toast(e.message); } finally { setChecking(false); }
+  };
   const [saved, setSaved] = useState(() => JSON.stringify(p));
   const [sec, setSec] = useState(() => { // ?step=contact (and so on) opens that step, so a link can land on it
     try { const q = new URLSearchParams(window.location.search).get('step'); return ['details', 'contact', 'location', 'about', 'services', 'highlights'].includes(q) ? q : 'details'; } catch { return 'details'; }
@@ -334,6 +344,16 @@ function ProfileTab({ b, toast }) {
             <span className="text-12 text-slate-400">Step {at + 1} of {SECS.length}</span>
             <Button variant="primary" disabled={at >= SECS.length - 1} onClick={() => setSec(SECS[at + 1].id)}>Next</Button>
           </div>
+
+          {b.google_watch && (
+            <div className="rounded-lg bg-sky-50 ring-1 ring-sky-100 px-4 py-3 flex flex-wrap items-center gap-3" role="status">
+              <span className="w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
+              <div className="flex-1 min-w-[220px] text-13 text-slate-700">
+                <b className="font-semibold text-slate-900">Waiting for Google to show your changes.</b> Sent {ago(b.google_watch.since)}. Google reviews every edit first (a few hours, sometimes up to 3 days). We check every 10 minutes and will notify you here and by email when it is live.
+              </div>
+              <Button size="sm" busy={checking} onClick={checkNow}>Check now</Button>
+            </div>
+          )}
 
           {rules.length > 0 && (
             <div className="ai-glass-card rounded p-4 space-y-2" role="status">

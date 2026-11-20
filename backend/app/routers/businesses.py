@@ -261,6 +261,9 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
                 changes.pop(k, None)
     for k, v in changes.items():
         setattr(b, k, v)
+    if pushed:
+        from ..services import google_changes
+        google_changes.record(b, pushed)  # we will say when Google shows it
     if changes.get("modules") is not None:
         schedules.ensure_jobs(db, b)  # a service switched on gets its recurring jobs, one switched off stops getting them
     log(db, user.name, "business_updated", b.id, fields=list(changes), pushed_to_google=pushed)

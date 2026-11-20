@@ -42,6 +42,12 @@ def tick() -> dict[str, int]:
         out["jobs"] = schedules.run_due(db)
         out["posts"] = site_publish.run_due_scheduled(db)  # blog posts held for a chosen time
         try:
+            from . import google_changes
+            google_changes.run_due(db)  # tell the owner when Google shows an edit that was waiting for its review
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            log.warning("Google changes check failed: %s", exc)
+        try:
             from . import autopilot
             out["posts"] += autopilot.publish_due(db)  # Google posts and photos a person approved for a time
         except Exception as exc:  # noqa: BLE001

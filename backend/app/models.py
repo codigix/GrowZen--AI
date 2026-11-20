@@ -66,6 +66,7 @@ class Business(TimestampMixin, Base):
     target_audience: Mapped[str | None] = mapped_column(Text)  # who the customers are: the business analysis (services/seo_journey.py)
     goals: Mapped[list[str]] = mapped_column(JSON, default=list)  # what the business wants from SEO: calls, bookings, leads, sales, brand...
     services: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # [{name, price, description}]
+    google_watch: Mapped[dict | None] = mapped_column(JSON)  # an edit sent to Google that is still under its review: {since, fields, last_check} (services/google_changes.py)
     products: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # the Products tab of the profile: [{name, price, description, category, url, image_url}]; kept here, Google has no API for it
     attributes: Mapped[list[str]] = mapped_column(JSON, default=list)
     hours: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
