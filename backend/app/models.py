@@ -178,6 +178,9 @@ class Competitor(TimestampMixin, Base):
     reviews: Mapped[int | None] = mapped_column(Integer)
     maps_link: Mapped[str | None] = mapped_column(String(500))
     source: Mapped[str] = mapped_column(String(20), default="google_places")  # google_places | manual
+    place_id: Mapped[str | None] = mapped_column(String(200))  # its Google Maps place, for a competitor read through its Google listing (it may have no website)
+    listing: Mapped[dict | None] = mapped_column(JSON)  # what was read from that listing: score, checks, the services and keywords the AI found (competitors/listing_audit.py)
+    listing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     selected: Mapped[bool | None] = mapped_column(Boolean)  # chosen for Competitor Watch and the later steps. NULL = saved before choosing existed (counts as chosen); False = found but not chosen
 
 

@@ -88,29 +88,80 @@ def audit_one(place_id: str) -> dict[str, Any]:
     return score_listing(maps_public.read(place_id))
 
 
-def audit(b: Any, items: list[dict[str, Any]], region: str = "IN") -> dict[str, Any]:
-    """Audit the business's own public listing and each competitor's, side by side."""
-    lat, lng = getattr(b, "lat", None), getattr(b, "lng", None)
-    wanted = [i for i in items if isinstance(i, dict)][:15]
+def _facts_text(d: dict[str, Any]) -> dict[str, Any]:
+    bs, rep = d.get("basics") or {}, d.get("reputation") or {}
+    return {"name": bs.get("name"), "main_category": bs.get("category"), "other_categories": (bs.get("categories") or [])[:8], "google_summary": bs.get("summary"), "address": bs.get("address"),
+            "price": bs.get("price"), "attributes": (d.get("features") or [])[:12],
+            "customer_reviews": [str(r.get("text") or "")[:220] for r in (rep.get("reviews") or []) if r.get("text")][:5]}
 
-    def one(item: dict[str, Any]) -> dict[str, Any]:
-        out = {"name": item.get("name"), "cid": item.get("cid"), "website": item.get("website")}
-        try:
-            pid = _resolve(item, region, lat, lng)
-            if not pid:
-                return out | {"error": "Its Google listing could not be found."}
-            return out | audit_one(pid) | {"place_id": pid}
-        except Exception as exc:  # noqa: BLE001 - one listing that cannot be read must not stop the others
-            log.info("Listing audit failed for %s: %s", item.get("name"), exc)
-            return out | {"error": "Its Google listing could not be read."}
 
-    with ThreadPoolExecutor(max_workers=5) as pool:
-        results = list(pool.map(one, wanted))
-    you = None
-    if getattr(b, "place_id", None):
-        try:
-            you = audit_one(b.place_id) | {"name": b.name, "place_id": b.place_id}
-        except Exception as exc:  # noqa: BLE001
-            log.info("Own listing could not be read: %s", exc)
-    return {"you": you, "items": results, "checks": [{"key": k, "label": l, "weight": w} for k, l, w in CHECKS], "read_at": datetime.now(timezone.utc).isoformat(),
-            "note": "Read from each public Google Maps listing: Maps shows at most 10 photos and 5 reviews, and no posts, services or owner replies."}
+def understand(d: dict[str, Any]) -> dict[str, Any]:
+    """What a business with no website does, read from its Google listing: what it is, the services it offers and the words customers find it with. Only from what the listing shows."""
+    facts = _facts_text(d)
+    base = {"kind": facts["main_category"] or "", "services": [c for c in [facts["main_category"], *facts["other_categories"]] if c][:6], "keywords": [], "summary": facts["google_summary"] or "", "by_ai": False}
+    try:
+        from ..services import ai
+        if not ai.is_configured():
+            return base
+        import json
+        system = ("You read a business's Google Maps listing and work out what it really does. Use ONLY the facts given: never invent services, prices or claims. Services are what a customer "
+                  "can buy or hire there, written plainly. Keywords are phrases real customers type into Google to find this kind of business (no city). Reply with JSON only.")
+        user = (f"The listing:\n{json.dumps(facts, ensure_ascii=False)}\n\nAnswer exactly: {{\"kind\": \"2-4 words: what it really is (for example clothing rental, saree shop)\", "
+                "\"services\": [\"up to 8 services or products it offers, shown by the listing or its reviews\"], \"keywords\": [\"up to 10 search phrases customers use to find it\"], "
+                "\"summary\": \"2 sentences on what it does and who it serves\"}")
+        data = ai.complete_json(system, user, temperature=0.1, max_tokens=900)
+    except Exception as exc:  # noqa: BLE001 - the categories alone still say something
+        log.info("Understanding a listing failed: %s", exc)
+        return base
+    clean = lambda xs, n: list(dict.fromkeys(str(x).strip()[:80] for x in (xs or []) if str(x).strip()))[:n]  # noqa: E731
+    return {"kind": str(data.get("kind") or base["kind"])[:60], "services": clean(data.get("services"), 8) or base["services"], "keywords": clean([k.lower() for k in (data.get("keywords") or [])], 10),
+            "summary": str(data.get("summary") or base["summary"])[:400], "by_ai": True}
+
+
+def resolve_and_read(competitor: Any, region: str, lat: float | None, lng: float | None) -> tuple[str, dict[str, Any]]:
+    """(place id, the public listing) of a saved competitor: its stored place, else the first Maps result for its name and address."""
+    from ..services import maps_public
+    pid = competitor.place_id or _resolve({"name": competitor.name, "address": competitor.address}, region, lat, lng)
+    if not pid:
+        raise LookupError("Its Google listing could not be found.")
+    return pid, maps_public.read(pid)
+
+
+def audit_competitor(competitor: Any, region: str, lat: float | None, lng: float | None) -> dict[str, Any]:
+    """The Audit of a competitor with no website: its Google listing checked and understood. The caller stores the result on the competitor."""
+    pid, d = resolve_and_read(competitor, region, lat, lng)
+    return score_listing(d) | {"place_id": pid, "understanding": understand(d), "audited_at": datetime.now(timezone.utc).isoformat()}
+
+
+_STOP = set("the and for with from your our you are on in at of to a an near me best top shop store service services rental rent hire".split())
+
+
+def _tokens(x: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]+", x.lower()) if w not in _STOP and len(w) > 1}
+
+
+def same_thing(a: str, b: str) -> bool:
+    ta, tb = _tokens(a), _tokens(b)
+    return bool(ta and tb and (ta <= tb or tb <= ta or len(ta & tb) / len(ta | tb) >= 0.5))
+
+
+def overlap(ours: list[str], theirs: list[str]) -> dict[str, list[str]]:
+    """Which services or keywords both have, only they have, and only you have."""
+    shared = [t for t in theirs if any(same_thing(t, o) for o in ours)]
+    return {"shared": shared, "only_them": [t for t in theirs if t not in shared], "only_us": [o for o in ours if not any(same_thing(o, t) for t in theirs)]}
+
+
+def compare(b: Any, competitor: Any, our_listing: dict[str, Any] | None, our_services: list[str], our_keywords: list[str]) -> dict[str, Any]:
+    """Their Google listing against yours: the checks side by side, and the services and keywords that overlap or are missing. Reads only what the Audit stored."""
+    theirs = competitor.listing or {}
+    under = theirs.get("understanding") or {}
+    rows = []
+    for ch in CHECKS:
+        o = next((r for r in (our_listing or {}).get("rows", []) if r["key"] == ch[0]), None)
+        c = next((r for r in theirs.get("rows", []) if r["key"] == ch[0]), None)
+        rows.append({"key": ch[0], "label": ch[1], "ours": o and {"status": o["status"], "detail": o["detail"]}, "theirs": c and {"status": c["status"], "detail": c["detail"]}})
+    return {"kind": "listing", "competitor": {"id": competitor.id, "name": competitor.name, "kind": under.get("kind"), "summary": under.get("summary"), "maps_url": (theirs.get("facts") or {}).get("maps_url")},
+            "you": {"name": getattr(b, "name", None), "listing_read": our_listing is not None},
+            "scores": {"ours": (our_listing or {}).get("score"), "theirs": theirs.get("score")}, "checks": rows,
+            "services": overlap(our_services, under.get("services") or []), "keywords": overlap(our_keywords, under.get("keywords") or []),
+            "audited_at": theirs.get("audited_at")}

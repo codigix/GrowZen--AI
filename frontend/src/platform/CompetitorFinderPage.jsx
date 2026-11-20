@@ -192,7 +192,7 @@ function AddCompetitorForm({ onAdd, busy, error }) {
   );
 }
 
-export function CompetitorsTable({ onListings, rows, r, strategy, setStrategy, auditMap, ourAudit, onAuditOur, hasSite, onDetail, onAudit, onCompare, comparing, onFindMaps, findBusy, onAddManual, addBusy, addError, onChoose }) {
+export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, onAuditOur, hasSite, onDetail, onAudit, onCompare, comparing, onFindMaps, findBusy, onAddManual, addBusy, addError, onChoose }) {
   const isChosen = (c) => Boolean(c.reg) && c.reg.selected !== false;
   const chosenCount = rows.filter(isChosen).length;
   const [view, setView] = useState('all'); // all | chosen | others
@@ -246,14 +246,13 @@ export function CompetitorsTable({ onListings, rows, r, strategy, setStrategy, a
               <td className="px-3 py-2.5 text-right tabular-nums">{c.profile ? `${Object.keys(c.profile.positions).length}/${r.keywords.length}` : c.maps ? `${c.maps.appearances}/${r.keywords.length} Maps` : '—'}</td>
               <td className="px-3 py-2.5 text-center">{c.profile?.local ? <span className="inline-flex items-center gap-1.5"><Pos value={c.profile.local.best} maps /><Stars rating={c.profile.local.rating} /></span> : c.maps ? <span className="inline-flex items-center gap-1.5"><Pos value={c.maps.best} maps /><Stars rating={c.maps.rating} /></span> : (c.reg?.rating ? <Stars rating={c.reg.rating} reviews={c.reg.reviews} /> : <span className="text-slate-400">—</span>)}</td>
               <td className="px-3 py-2.5 whitespace-nowrap text-12.5">
-                {!c.reg ? <span className="text-slate-400" title={c.website ? 'Press Audit: it is saved as a competitor and its site is audited' : 'No website on its Google listing: compare its Google listing instead'}>{c.website ? 'Not audited' : 'No website · listing only'}</span>
-                  : a ? <span className={`inline-flex items-center gap-1.5 ${a.status === 'failed' ? 'text-red-600' : a.status === 'done' ? 'text-emerald-700' : 'text-slate-500'}`}>{running(a.status) && <Loader2 size={12} className="animate-spin" />}{AUDIT_LABEL[a.status] || a.status}</span>
+                {!c.reg ? <span className="text-slate-400" title={c.website ? 'Press Audit: it is saved as a competitor and its site is audited' : 'No website: Audit reads its Google Maps listing instead'}>Not audited{!c.website && c.maps ? ' · no website' : ''}</span>
+                  : a ? <span className={`inline-flex items-center gap-1.5 ${a.status === 'failed' ? 'text-red-600' : a.status === 'done' ? 'text-emerald-700' : 'text-slate-500'}`}>{running(a.status) && <Loader2 size={12} className="animate-spin" />}{AUDIT_LABEL[a.status] || a.status}{a.listing && a.score != null ? ` · ${a.score}/100` : ''}{a.listing && <span className="font-normal text-slate-400" title="No website: read from its Google Maps listing">Google listing</span>}</span>
                     : <span className="text-slate-400">Not audited</span>}
               </td>
               <td className="px-3 py-2.5 text-right whitespace-nowrap">
                 <div className="inline-flex gap-1.5">
-                  <Act icon={Gauge} tone="teal" disabled={!c.website || running(a?.status)} onClick={() => onAudit(c.reg || c)} tip={c.reg ? `${a ? 'Re-audit' : 'Audit'}: run PageSpeed and a page crawl on their site.` : 'Audit: save it as a competitor first (choose it), then audit its site.'} />
-                  {!c.website && c.maps && <Act icon={MapPin} tone="indigo" onClick={onListings} tip="No website to audit: compare its Google Maps listing with yours" />}
+                  <Act icon={Gauge} tone="teal" disabled={(!c.website && !c.maps) || running(a?.status)} onClick={() => onAudit(c.reg || c)} tip={c.reg ? `${a ? 'Re-audit' : 'Audit'}: run PageSpeed and a page crawl on their site.` : 'Audit: save it as a competitor first (choose it), then audit its site.'} />
                   <Act icon={ShieldCheck} tone="indigo" busy={comparing === c.reg?.id} disabled={!canCompare(c, a)} onClick={() => onCompare(c.reg)} tip={`Compare: ${compareHint(c, a) || 'show its site next to yours.'}`} />
                 </div>
               </td>
@@ -360,30 +359,43 @@ const SCORE_WORD = { queued: 'Queued…', running: 'Auditing…', done: 'Audited
 
 const DOT = { ok: ['bg-emerald-500', 'Good'], warn: ['bg-amber-400', 'Could be better'], bad: ['bg-red-500', 'Missing or weak'] };
 
-/** Competitors side by side through their public Google Maps listing: for the ones with no website, and a fair check of everyone's profile. */
-function ListingCompare({ data }) {
-  if (!data) return null;
-  if (data.loading) return <p className="mt-3 text-13 text-slate-500 inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Reading the Google listings…</p>;
-  if (data.error) return <p className="mt-3 text-13 text-red-600" role="alert">{data.error}</p>;
-  const cols = [data.you ? { key: 'you', name: `${data.you.name} (you)`, d: data.you, mine: true } : null, ...data.items.map((x, i) => ({ key: `c${i}`, name: x.name, d: x.error ? null : x, error: x.error }))].filter(Boolean);
-  const best = Math.max(...cols.map(c => c.d?.score ?? -1));
+/** The Google-listing comparison, inside the same Compare window as a website comparison: the listing checks, then the services and keywords you share and the ones you do not. */
+export function ListingComparison({ c }) {
+  const Chips = ({ items, tone, empty }) => (items && items.length ? <div className="flex flex-wrap gap-1.5">{items.map(x => <span key={x} className={`px-2.5 py-1 rounded-full text-12.5 border ${tone === 'rose' ? 'bg-rose-50 text-rose-800 border-rose-200' : tone === 'green' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>{x}</span>)}</div> : <p className="text-13 text-slate-500">{empty}</p>);
+  const dot = (row) => { const [col, word] = DOT[row?.status] || ['bg-slate-200', '']; return row ? <span className="inline-flex items-start gap-2 text-left"><span className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${col}`} title={word} /><span className="text-12.5 text-slate-700">{row.detail}</span></span> : <span className="text-slate-400">—</span>; };
   return (
-    <div className="mt-3">
-      <div className="text-13 font-semibold text-slate-900 mb-1.5">Google listing comparison</div>
-      {!data.you && <p className="mb-2 text-12 text-amber-800 bg-amber-50 rounded px-3 py-1.5">Your own Google listing could not be read (the project has no Google place linked), so only the competitors are shown.</p>}
+    <div className="space-y-5">
+      <div className="rounded-lg bg-slate-50 px-4 py-3">
+        <div className="text-12 font-semibold uppercase tracking-wide text-slate-500">Read from its Google Maps listing (it has no website)</div>
+        <p className="mt-1 text-13.5 text-slate-800"><b>{c.competitor.name}</b>{c.competitor.kind ? <> is a <b>{c.competitor.kind}</b>.</> : '.'} {c.competitor.summary}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 max-w-md">
+        <div className="rounded-lg ring-1 ring-emerald-200 bg-emerald-50 px-4 py-3 text-center"><div className="text-11.5 text-emerald-800">Your listing</div><div className="text-24 font-bold text-emerald-700 tabular-nums">{c.scores.ours ?? '—'}</div></div>
+        <div className="rounded-lg ring-1 ring-slate-200 px-4 py-3 text-center"><div className="text-11.5 text-slate-500">{c.competitor.name}</div><div className="text-24 font-bold text-slate-800 tabular-nums">{c.scores.theirs ?? '—'}</div></div>
+      </div>
+      {!c.you.listing_read && <p className="text-12 text-amber-800 bg-amber-50 rounded px-3 py-1.5">Your own Google listing could not be read (no Google place is linked to this project), so only the services and keywords are compared.</p>}
+      <div>
+        <div className="text-13 font-semibold text-slate-900 mb-1.5">Services</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><div className="text-11.5 font-semibold text-emerald-700 mb-1">Both offer</div><Chips items={c.services.shared} tone="green" empty="None in common." /></div>
+          <div><div className="text-11.5 font-semibold text-rose-700 mb-1">Only they offer (you could add)</div><Chips items={c.services.only_them} tone="rose" empty="Nothing they offer that you do not." /></div>
+          <div><div className="text-11.5 font-semibold text-slate-600 mb-1">Only you offer</div><Chips items={c.services.only_us} empty="Nothing only you offer." /></div>
+        </div>
+      </div>
+      <div>
+        <div className="text-13 font-semibold text-slate-900 mb-1.5">Keywords</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><div className="text-11.5 font-semibold text-emerald-700 mb-1">Both target</div><Chips items={c.keywords.shared} tone="green" empty="None in common." /></div>
+          <div><div className="text-11.5 font-semibold text-rose-700 mb-1">Only they target (a gap for you)</div><Chips items={c.keywords.only_them} tone="rose" empty="No gap found." /></div>
+          <div><div className="text-11.5 font-semibold text-slate-600 mb-1">Only you target</div><Chips items={c.keywords.only_us} empty="Nothing only you target." /></div>
+        </div>
+      </div>
       <div className="overflow-x-auto rounded-lg border border-slate-200">
-        <table className="w-full text-13 min-w-[620px]">
-          <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-3 py-2 text-left font-semibold">What a customer sees on Google</th>{cols.map(c => <th key={c.key} className={`px-3 py-2 text-center font-semibold max-w-[150px] truncate ${c.mine ? 'text-emerald-700' : ''}`} title={c.name}>{c.name}</th>)}</tr></thead>
-          <tbody className="divide-y divide-slate-100">
-            <tr className="bg-slate-50/60"><td className="px-3 py-2 font-semibold text-slate-900">Listing score (0-100)</td>{cols.map(c => <td key={c.key} className={`px-3 py-2 text-center tabular-nums text-15 font-bold ${c.d && c.d.score === best ? 'text-emerald-700 bg-emerald-50' : 'text-slate-800'}`} title={c.error || ''}>{c.d ? c.d.score : <span className="text-12 font-normal text-slate-400">not read</span>}</td>)}</tr>
-            {data.checks.map(ch => (
-              <tr key={ch.key}><td className="px-3 py-2 text-slate-700">{ch.label}</td>
-                {cols.map(c => { const row = c.d?.rows.find(x => x.key === ch.key); const [dot, word] = DOT[row?.status] || ['bg-slate-200', '']; return <td key={c.key} className="px-3 py-2 text-center" title={row ? `${word}: ${row.detail}` : ''}>{row ? <span className="inline-flex items-center gap-1.5"><span className={`w-2.5 h-2.5 rounded-full ${dot}`} /><span className="text-12 text-slate-600 tabular-nums">{ch.key === 'reviews' ? c.d.facts.reviews : ch.key === 'rating' ? (c.d.facts.rating ?? '—') : ch.key === 'photos' ? c.d.facts.photos : ''}</span></span> : '—'}</td>; })}
-              </tr>
-            ))}
-          </tbody>
+        <table className="w-full text-13 min-w-[520px]">
+          <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-3 py-2 text-left font-semibold">Google listing</th><th className="px-3 py-2 text-left font-semibold text-emerald-700">You</th><th className="px-3 py-2 text-left font-semibold">{c.competitor.name}</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">{c.checks.map(r => <tr key={r.key}><td className="px-3 py-2 font-medium text-slate-900 align-top">{r.label}</td><td className="px-3 py-2 align-top">{dot(r.ours)}</td><td className="px-3 py-2 align-top">{dot(r.theirs)}</td></tr>)}</tbody>
         </table>
-        <p className="px-3 py-2 text-11.5 text-slate-500 border-t border-slate-100">{data.note} Hover a dot for the detail. A competitor with no website is still compared here.</p>
+        <p className="px-3 py-2 text-11.5 text-slate-500 border-t border-slate-100">Maps shows at most 10 photos and 5 reviews, and no posts, services list or owner replies.</p>
       </div>
     </div>
   );
@@ -391,8 +403,8 @@ function ListingCompare({ data }) {
 
 /** Audit your site and every Maps competitor in one go, then see them side by side: the scores of each audited site against yours. */
 export function MapsAudit({ r, kit }) {
-  const sites = r.local_competitors.filter(e => e.website);
-  const regOf = (e) => kit.registered.find(c => hostOf(c.website) === (e.domain || hostOf(e.website)));
+  const sites = r.local_competitors; // every one: a site audit when it has a website, its Google listing when it has none
+  const regOf = (e) => kit.registered.find(c => (e.website ? hostOf(c.website) === (e.domain || hostOf(e.website)) : (c.place_id && c.place_id === e.cid) || (!c.website && c.name === e.name)));
   const regs = sites.map(regOf).filter(Boolean);
   const done = regs.filter(c => kit.auditMap[c.id]?.status === 'done');
   const busy = regs.filter(c => running(kit.auditMap[c.id]?.status)).length + (running(kit.ourAudit?.status) ? 1 : 0);
@@ -405,14 +417,13 @@ export function MapsAudit({ r, kit }) {
   }
   const metrics = Object.values(rowsByKey);
   return (
-    <Card title="Audit and compare these competitors" subtitle={`${sites.length} Maps competitor${sites.length === 1 ? '' : 's'} with a website · ${done.length} audited${busy ? ` · ${busy} running now` : ''}`}
+    <Card title="Audit and compare these competitors" subtitle={`${sites.length} Maps competitor${sites.length === 1 ? '' : 's'} · ${done.length} audited${busy ? ` · ${busy} running now` : ''}`}
       action={<div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="primary" icon={Gauge} busy={busy > 0} disabled={!kit.hasSite || !sites.length || busy > 0} onClick={kit.onAuditAll} title={kit.hasSite ? 'Runs the site audit on your website and on each competitor' : 'Add your website to the project first'}>Audit your site and all {sites.length}</Button>
-        <Button size="sm" icon={ShieldCheck} busy={sc?.loading} disabled={!done.length || kit.ourAudit?.status !== 'done' || busy > 0} onClick={kit.onScorecard} title="Needs your site and at least one competitor audited">Compare all side by side</Button>
-        <Button size="sm" icon={MapPin} busy={kit.listings?.loading} disabled={!r.local_competitors.length} onClick={kit.onListings} title="Reads each competitor's public Google Maps listing: works for businesses with no website too">Compare Google listings{noSite ? ` (${noSite} with no website)` : ''}</Button>
+        <Button size="sm" variant="primary" icon={Gauge} busy={busy > 0} disabled={!sites.length || busy > 0} onClick={kit.onAuditAll} title="Audits each competitor (its website, or its Google listing when it has none) and your own website">Audit your site and all {sites.length}</Button>
+        <Button size="sm" icon={ShieldCheck} busy={sc?.loading} disabled={!done.length || kit.ourAudit?.status !== 'done' || busy > 0} onClick={kit.onScorecard} title="Compares the website audits with yours. A competitor with no website is compared on its own row">Compare all side by side</Button>
       </div>}>
       <p className="text-12.5 text-slate-600">Each audit reads the site for speed (PageSpeed), SEO checks and pages. {kit.ourAudit?.status === 'done' ? 'Your site is audited.' : kit.hasSite ? 'Your site is audited first so there is something to compare with.' : 'Add your website to the project to compare.'}</p>
-      {noSite > 0 && <p className="mt-1.5 text-12.5 text-indigo-800 bg-indigo-50 rounded px-3 py-1.5">{noSite} competitor{noSite === 1 ? ' has' : 's have'} no website, so there is no site to audit. They are compared through their Google listing instead (press Compare Google listings).</p>}
+      {noSite > 0 && <p className="mt-1.5 text-12.5 text-indigo-800 bg-indigo-50 rounded px-3 py-1.5">{noSite} of them {noSite === 1 ? 'has' : 'have'} no website: Audit reads {noSite === 1 ? 'its' : 'their'} Google Maps listing instead and works out the services and keywords.</p>}
       {sc?.error && <p className="mt-2 text-13 text-red-600" role="alert">{sc.error}</p>}
       {metrics.length > 0 && (
         <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
@@ -429,7 +440,6 @@ export function MapsAudit({ r, kit }) {
           <p className="px-3 py-2 text-11.5 text-slate-500 border-t border-slate-100">The best score in each row is highlighted. Press Compare on a single competitor below for the full side by side: speed measures, matched pages and keyword gaps.</p>
         </div>
       )}
-      <ListingCompare data={kit.listings} />
     </Card>
   );
 }
@@ -452,16 +462,15 @@ export function MapsTab({ r, kit }) {
             <td className="px-4 py-2.5"><div className={`font-medium ${e.mine ? 'text-emerald-800' : 'text-slate-900'}`}>{e.name}</div>{e.category && <div className="text-12 text-slate-500">{e.category}</div>}{e.relevance?.reason && <div className="text-11.5 text-slate-400 max-w-[320px]">{e.relevance.reason}</div>}</td>
             <td className="px-4 py-2.5">{e.mine ? <Badge tone="green">You</Badge> : <MatchCell rel={e.relevance} />}</td>
             {kit && <td className="px-4 py-2.5">{e.mine ? <span className="text-slate-400">—</span> : (() => {
-              const reg = kit.registered.find(c => hostOf(c.website) === (e.domain || hostOf(e.website)));
+              const reg = kit.registered.find(c => (e.website ? hostOf(c.website) === (e.domain || hostOf(e.website)) : (c.place_id && c.place_id === e.cid) || (!c.website && c.name === e.name)));
               const a = reg && kit.auditMap[reg.id];
-              if (!e.website) return <span className="flex flex-col gap-1"><span className="text-12 text-slate-500">No website</span><Button size="sm" icon={MapPin} onClick={kit.onListings} title="Compare its Google listing with yours">Compare listing</Button></span>;
-              if (!reg) return <Button size="sm" icon={Gauge} onClick={() => kit.onAudit(e)} title="Saves it as a competitor and audits its site">Audit</Button>;
+              if (!reg) return <Button size="sm" icon={Gauge} onClick={() => kit.onAudit(e)} title={e.website ? 'Saves it as a competitor and audits its site' : 'No website: reads its Google listing and works out its services and keywords'}>Audit</Button>;
               return (
                 <div className="flex flex-col gap-1 min-w-[120px]">
-                  <span className={`text-12 font-semibold ${a?.status === 'done' ? 'text-emerald-700' : a?.status === 'failed' ? 'text-red-600' : running(a?.status) ? 'text-indigo-600' : 'text-slate-400'}`}>{a ? SCORE_WORD[a.status] || a.status : 'Not audited'}</span>
+                  <span className={`text-12 font-semibold ${a?.status === 'done' ? 'text-emerald-700' : a?.status === 'failed' ? 'text-red-600' : running(a?.status) ? 'text-indigo-600' : 'text-slate-400'}`}>{a ? (SCORE_WORD[a.status] || a.status) + (a.listing && a.score != null ? ` · ${a.score}/100` : '') : 'Not audited'}{a?.listing ? <span className="font-normal text-slate-400"> · Google listing</span> : null}</span>
                   <span className="flex gap-1.5">
                     <Button size="sm" icon={Gauge} disabled={running(a?.status)} onClick={() => kit.onAudit(reg)}>{a ? 'Re-audit' : 'Audit'}</Button>
-                    <Button size="sm" icon={ShieldCheck} busy={kit.comparing === reg.id} disabled={a?.status !== 'done' || kit.ourAudit?.status !== 'done'} onClick={() => kit.onCompare(reg)} title={a?.status !== 'done' ? 'Audit this competitor first' : kit.ourAudit?.status !== 'done' ? 'Audit your own site first' : 'Compare its audit with yours'}>Compare</Button>
+                    <Button size="sm" icon={ShieldCheck} busy={kit.comparing === reg.id} disabled={a?.status !== 'done' || (!a?.listing && kit.ourAudit?.status !== 'done')} onClick={() => kit.onCompare(reg)} title={a?.status !== 'done' ? 'Audit this competitor first' : !a?.listing && kit.ourAudit?.status !== 'done' ? 'Audit your own site first' : 'Compare it with your business'}>Compare</Button>
                   </span>
                 </div>
               );
@@ -710,12 +719,13 @@ function IdeasModal({ open, r, onClose }) {
   );
 }
 
-function CompareModal({ state, onClose }) {
+export function CompareModal({ state, onClose }) {
   return (
     <Modal open={Boolean(state)} onClose={onClose} width="max-w-5xl" title={state ? `Compare with ${state.competitor.name}` : ''}>
       {state?.loading && <div className="space-y-4"><SkStats n={3} cols="grid-cols-3" /><SkTable cols={4} rows={5} /></div>}
       {state?.error && <ErrorNote>{state.error}</ErrorNote>}
       {state?.result && <div className="max-h-[72vh] overflow-y-auto pr-1"><ComparisonResult c={state.result} bare onGo={onClose} /></div>}
+      {state?.listing && <div className="max-h-[72vh] overflow-y-auto pr-1"><ListingComparison c={state.listing} /></div>}
     </Modal>
   );
 }
@@ -753,6 +763,7 @@ function Research({ b }) {
     const hist = await api(`/audit/competitors?business_id=${b.id}&limit=200&slim=true`).catch(() => []);
     const by = {};
     for (const a of hist) if (a.competitor_id && !by[a.competitor_id]) by[a.competitor_id] = { id: a.id, status: a.status };
+    for (const c of list) if (c.listing_done && !c.website && !by[c.id]) by[c.id] = { id: null, status: 'done', listing: true, score: c.listing_score };
     setAuditMap(m => ({ ...by, ...m }));
     setAuditsLoaded(true);
     return list;
@@ -774,7 +785,7 @@ function Research({ b }) {
     if (r?.status === 'done') toast('Competitor research is ready.');
   }, isRunning(current), 2500);
 
-  const pending = Object.entries(auditMap).filter(([, v]) => running(v.status));
+  const pending = Object.entries(auditMap).filter(([, v]) => running(v.status) && v.id);
   usePoll(async () => {
     const ups = await Promise.all(pending.map(([cid, v]) => api(`/audit/competitors/${v.id}`).then(a => [cid, a]).catch(() => null)));
     setAuditMap(m => { const n = { ...m }; for (const u of ups) if (u) n[u[0]] = { id: u[1].id, status: u[1].status }; return n; });
@@ -817,37 +828,40 @@ function Research({ b }) {
     return c;
   });
 
-  const [listings, setListings] = useState(null); // { loading, you, items, checks, note } | { error }
-  const compareListings = async () => {
-    const items = (result?.local_competitors || []).slice(0, 15).map(e => ({ name: e.name, address: e.address, cid: e.cid, website: e.website }));
-    if (!items.length) return;
-    setListings({ loading: true });
-    try { setListings(await api(`/businesses/${b.id}/competitor-research/listing-audit`, { method: 'POST', body: { competitors: items } })); }
-    catch (e) { setListings({ error: e.message }); }
-  };
-  const auditRow = async (c) => { // a saved competitor, or a business found on Maps that is saved first
-    if (c?.id) return auditCompetitor(c);
-    if (!c?.website) return;
+  // A competitor with no website: its Google Maps listing is read, scored, and the AI works out its services and keywords (one request, nothing to wait for)
+  const auditListing = async (c) => {
+    setAuditMap(m => ({ ...m, [c.id]: { id: null, status: 'running', listing: true } }));
     try {
-      const made = await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: c.website, name: c.name } });
+      const r = await api(`/competitors/${c.id}/listing-audit`, { method: 'POST' });
+      setAuditMap(m => ({ ...m, [c.id]: { id: null, status: 'done', listing: true, score: r.score } }));
       await loadRegistered();
-      if (!ourAudit && b.website) auditOurSite();
-      await auditCompetitor(made);
-    } catch (e) { toast(`Could not audit ${c.name}: ${e.message}`); }
+    } catch (e) { setAuditMap(m => ({ ...m, [c.id]: { id: null, status: 'failed', listing: true } })); toast(`Could not read ${c.name}'s Google listing: ${e.message}`); }
+  };
+  const auditRow = async (c) => { // a saved competitor, or a business found on Maps that is saved first; with a website its site is audited, without one its Google listing is
+    if (c?.id) return c.website ? auditCompetitor(c) : auditListing(c);
+    const m = c?.maps || c;
+    if (!m?.name) return;
+    try {
+      let made;
+      if (m.website) made = await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: m.website, name: m.name } });
+      else made = await api('/competitors/maps', { method: 'POST', body: { business_id: b.id, name: m.name, address: m.address, cid: m.cid, phone: m.phone, rating: m.rating, reviews: m.reviews } });
+      await loadRegistered();
+      if (m.website) { if (!ourAudit && b.website) auditOurSite(); await auditCompetitor(made); } else await auditListing(made);
+    } catch (e) { toast(`Could not audit ${m.name}: ${e.message}`); }
   };
   // The Maps competitors: audit your own site and each of them in one go, then compare every finished audit with yours at once.
   const [scorecard, setScorecard] = useState(null); // { loading, items, error }
   const auditAllMaps = () => {
-    const sites = (result?.local_competitors || []).filter(e => e.website);
-    if (!ourAudit || ourAudit.status === 'failed') auditOurSite();
+    const sites = result?.local_competitors || [];
+    if (b.website && (!ourAudit || ourAudit.status === 'failed')) auditOurSite();
     let n = 0;
     for (const e of sites) {
-      const reg = registered.find(c => hostOf(c.website) === (e.domain || hostOf(e.website)));
+      const reg = registered.find(c => (e.website ? hostOf(c.website) === (e.domain || hostOf(e.website)) : (c.place_id && c.place_id === e.cid) || (!c.website && c.name === e.name)));
       if (reg && (running(auditMap[reg.id]?.status) || auditMap[reg.id]?.status === 'done')) continue;
       n += 1;
       auditRow(reg || e);
     }
-    toast(n ? `Auditing your site and ${n} competitor${n === 1 ? '' : 's'}. This takes a few minutes.` : 'Every competitor with a website is already audited or being audited.');
+    toast(n ? `Auditing ${b.website ? 'your site and ' : ''}${n} competitor${n === 1 ? '' : 's'}. Website audits take a few minutes; Google listings are read straight away.` : 'Every competitor is already audited or being audited.');
   };
   const compareAllMaps = async () => {
     const regs = (result?.local_competitors || []).map(e => registered.find(c => hostOf(c.website) === (e.domain || hostOf(e.website)))).filter(c => c && auditMap[c.id]?.status === 'done');
@@ -884,6 +898,10 @@ function Research({ b }) {
   const doCompare = async (c) => {
     if (!c) return;
     setComparing(c.id); setCompare({ competitor: c, loading: true });
+    if (!c.website) {
+      try { setCompare({ competitor: c, listing: await api(`/competitors/${c.id}/listing-compare`, { method: 'POST' }) }); } catch (e) { setCompare({ competitor: c, error: e.message }); } finally { setComparing(null); }
+      return;
+    }
     try {
       const r = await api('/audit/competitors/compare', { method: 'POST', body: { business_id: b.id, competitor_ids: [c.id], strategy } });
       setCompare({ competitor: c, result: r.comparisons?.[0] || null, error: r.comparisons?.[0] ? '' : 'Nothing to compare yet. Audit your site and this competitor first.' });
@@ -905,7 +923,7 @@ function Research({ b }) {
     toast(`${c.name}'s site is being audited first. When it finishes, press Compare on its row.`);
   }, [registered, auditsLoaded, compareHost]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const mapsKit = { registered, auditMap, ourAudit, hasSite: Boolean(b.website), onAudit: auditRow, onAuditAll: auditAllMaps, onCompare: doCompare, comparing, scorecard, onScorecard: compareAllMaps, listings, onListings: compareListings };
+  const mapsKit = { registered, auditMap, ourAudit, hasSite: Boolean(b.website), onAudit: auditRow, onAuditAll: auditAllMaps, onCompare: doCompare, comparing, scorecard, onScorecard: compareAllMaps };
   const chosenTotal = registered.filter(c => c.selected !== false).length;
   const result = current?.status === 'done' ? current.result : state?.last_done?.status === 'done' ? state.last_done.result : null;
   const defaults = useMemo(() => (current?.result?.keywords && !result ? { ...state?.defaults, keywords: current.result.keywords }
@@ -921,7 +939,7 @@ function Research({ b }) {
       row.maps = e; row.website = row.website || e.website || null; byHost.set(host, row);
     }
     for (const c of registered) {
-      const host = hostOf(c.website);
+      const host = hostOf(c.website) || (c.place_id && [...byHost.values()].find(x => x.maps?.cid === c.place_id)?.host) || `maps:${c.name}`;
       if (!host) continue;
       const row = byHost.get(host) || { host, name: c.name, website: c.website, profile: null, reg: null };
       row.reg = c; row.name = row.profile ? row.name : c.name; byHost.set(host, row);
@@ -988,7 +1006,7 @@ function Research({ b }) {
             {tab === 'overview' && <Overview r={result} goto={setTab} />}
             {tab === 'competitors' && <>
               <MapsAudit r={result} kit={mapsKit} />
-              <CompetitorsTable onListings={mapsKit.onListings} rows={rows} r={result} strategy={strategy} setStrategy={setStrategy} auditMap={auditMap} ourAudit={ourAudit} onAuditOur={auditOurSite} hasSite={Boolean(b.website)}
+              <CompetitorsTable rows={rows} r={result} strategy={strategy} setStrategy={setStrategy} auditMap={auditMap} ourAudit={ourAudit} onAuditOur={auditOurSite} hasSite={Boolean(b.website)}
                 onDetail={setDetail} onAudit={auditRow} onCompare={doCompare} comparing={comparing} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'}
                 onAddManual={addManual} addBusy={addBusy === 'add'} addError={addError} onChoose={chooseCompetitor} />
               <ErrorNote>{mapsError}</ErrorNote>

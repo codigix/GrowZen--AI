@@ -21,18 +21,48 @@ def test_a_listing_is_scored_on_what_a_customer_sees():
     assert len(full["rows"]) == len(la.CHECKS)
 
 
-def test_a_competitor_with_no_website_is_audited_through_its_listing_next_to_ours(monkeypatch):
-    listings = {"placeA": FULL, "placeMine": THIN | {"basics": {"name": "Mine", "category": "Clothes market", "phone": "+91 1", "website": "https://mine.in"}}}
-    monkeypatch.setattr("app.services.maps_public.read", lambda pid, fresh=False: listings[pid])
-    monkeypatch.setattr(la, "_resolve", lambda item, region, lat, lng: item.get("cid") or None)
-    b = SimpleNamespace(name="Mine", place_id="placeMine", lat=18.5, lng=73.9)
-    out = la.audit(b, [{"name": "Glam Rental", "cid": "placeA"}, {"name": "Unknown", "cid": None}])
-    assert out["you"]["score"] < out["items"][0]["score"] and out["items"][0]["facts"]["website"] is None
-    assert out["items"][1]["error"] == "Its Google listing could not be found." and len(out["checks"]) == len(la.CHECKS)
-    b2 = SimpleNamespace(name="No pin", place_id=None, lat=None, lng=None)
-    assert la.audit(b2, [{"name": "Glam Rental", "cid": "placeA"}])["you"] is None
+def test_overlap_finds_the_same_service_in_different_words():
+    o = la.overlap(["Lehenga rental", "Designer couture"], ["lehenga on rent", "Bridal gown rental", "saree draping"])
+    assert o["shared"] == ["lehenga on rent"] and o["only_them"] == ["Bridal gown rental", "saree draping"] and o["only_us"] == ["Designer couture"]
+    assert la.same_thing("Clothing rental", "rental clothing") and not la.same_thing("saree shop", "dental clinic")
 
 
-def test_the_endpoint_needs_at_least_one_competitor(client):
-    bid = client.post("/api/v1/businesses", json={"name": "Listing Co", "website": "https://listing.example/"}).json()["id"]
-    assert client.post(f"/api/v1/businesses/{bid}/competitor-research/listing-audit", json={"competitors": []}).status_code == 400
+def test_a_listing_without_an_ai_still_says_what_it_offers(monkeypatch):
+    monkeypatch.setattr("app.services.ai.is_configured", lambda: False)
+    u = la.understand(FULL)
+    assert u["by_ai"] is False and u["services"][0] == "Clothing rental service" and u["summary"] == "Rents lehengas."
+
+
+def test_the_ai_reads_services_and_keywords_from_the_listing(monkeypatch):
+    monkeypatch.setattr("app.services.ai.is_configured", lambda: True)
+    seen = {}
+    def fake(system, user, **kw):
+        seen["user"] = user
+        return {"kind": "clothing rental", "services": ["Lehenga rental", "Gown rental", " "], "keywords": ["Lehenga On Rent", "lehenga on rent"], "summary": "Rents outfits for weddings."}
+    monkeypatch.setattr("app.services.ai.complete_json", fake)
+    u = la.understand(FULL)
+    assert u == {"kind": "clothing rental", "services": ["Lehenga rental", "Gown rental"], "keywords": ["lehenga on rent"], "summary": "Rents outfits for weddings.", "by_ai": True}
+    assert "Clothing rental service" in seen["user"] and "Rents lehengas." in seen["user"]
+
+
+def _biz(client):
+    return client.post("/api/v1/businesses", json={"name": "Listing Co", "website": "https://listing.example/", "services": [{"name": "Lehenga rental"}]}).json()["id"]
+
+
+def test_audit_then_compare_for_a_competitor_with_no_website(client, monkeypatch):
+    monkeypatch.setattr("app.services.maps_public.read", lambda pid, fresh=False: FULL if pid == "placeA" else THIN)
+    monkeypatch.setattr("app.services.ai.is_configured", lambda: True)
+    monkeypatch.setattr("app.services.ai.complete_json", lambda *a, **k: {"kind": "clothing rental", "services": ["Lehenga rental", "Gown rental"], "keywords": ["lehenga on rent"], "summary": "s"})
+    bid = _biz(client)
+    c = client.post("/api/v1/competitors/maps", json={"business_id": bid, "name": "Glam Rental", "cid": "placeA", "address": "Wagholi, Pune", "rating": 4.7, "reviews": 120}).json()
+    assert c["website"] is None and c["place_id"] == "placeA" and "listing" not in c
+    again = client.post("/api/v1/competitors/maps", json={"business_id": bid, "name": "Glam Rental", "cid": "placeA"}).json()
+    assert again["id"] == c["id"]  # saved once
+    assert client.post(f"/api/v1/competitors/{c['id']}/listing-compare").status_code == 409  # audit first
+    out = client.post(f"/api/v1/competitors/{c['id']}/listing-audit").json()
+    assert out["score"] >= 70 and out["understanding"]["services"] == ["Lehenga rental", "Gown rental"]
+    listed = [x for x in client.get("/api/v1/competitors", params={"business_id": bid}).json() if x["id"] == c["id"]][0]
+    assert listed["listing_done"] is True and listed["listing_score"] == out["score"] and "listing" not in listed
+    cmp = client.post(f"/api/v1/competitors/{c['id']}/listing-compare").json()
+    assert cmp["kind"] == "listing" and cmp["services"]["shared"] == ["Lehenga rental"] and cmp["services"]["only_them"] == ["Gown rental"] and len(cmp["checks"]) == len(la.CHECKS)
+    assert cmp["you"]["listing_read"] is False and cmp["scores"]["theirs"] == out["score"]

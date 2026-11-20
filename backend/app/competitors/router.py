@@ -1,6 +1,7 @@
 """Find competitors near a location (Google Maps). When `business_id` is set, competitors that
 have a website are also saved against that business (deduped by website) so they can be audited
 and compared later; without `business_id` this is read-only, same as before."""
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -104,6 +105,87 @@ def add_manual(body: CompetitorManualIn, db: Session = Depends(get_db), user: Us
     return row(c)
 
 
+class MapsCompetitorIn(BaseModel):
+    business_id: int
+    name: str
+    address: str | None = None
+    cid: str | None = None  # its Google place id
+    phone: str | None = None
+    rating: float | None = None
+    reviews: int | None = None
+    maps_link: str | None = None
+    website: str | None = None
+
+
+@router.post("/maps", status_code=201)
+def add_from_maps(body: MapsCompetitorIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Save a business found on Google Maps as a competitor, whether or not it has a website (one without is read through its Google listing)."""
+    b = owned_business(db, user, body.business_id)
+    for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)):
+        if (body.cid and c.place_id == body.cid) or (body.website and c.website and _host(c.website) == _host(body.website)) or (not c.website and not c.place_id and c.name == body.name):
+            c.place_id = c.place_id or body.cid
+            db.commit()
+            return row(c, {"listing"})
+    c = Competitor(business_id=b.id, website=(body.website or None), place_id=body.cid, name=body.name.strip()[:255] or "Competitor", address=body.address, phone=body.phone, rating=body.rating,
+                   reviews=body.reviews, maps_link=body.maps_link, source="google_places", selected=True)
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    if c.website:
+        from ..backlinks import sync as backlink_sync
+        backlink_sync.after_competitors_saved(db, b)
+    return row(c, {"listing"})
+
+
+def _own(db: Session, user: User, competitor_id: int) -> tuple[Competitor, Business]:
+    c = db.get(Competitor, competitor_id)
+    if not c:
+        raise HTTPException(404, "Competitor not found")
+    return c, owned_business(db, user, c.business_id)
+
+
+def _region(b: Business) -> str:
+    from ..services import countries, market
+    return countries.gl(market.serp_country(b)).upper() or "IN"
+
+
+@router.post("/{competitor_id}/listing-audit")
+def listing_audit(competitor_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Audit a competitor through its Google Maps listing (for one with no website): the listing is checked and the AI works out its services and keywords. Stored on the competitor."""
+    from . import listing_audit as la
+    c, b = _own(db, user, competitor_id)
+    try:
+        out = la.audit_competitor(c, _region(b), b.lat, b.lng)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, "Google Maps could not be read right now. Try again in a minute.") from exc
+    c.place_id, c.listing, c.listing_at = out["place_id"], out, datetime.now(timezone.utc)
+    db.commit()
+    return {"id": c.id, "score": out["score"], "understanding": out["understanding"], "audited_at": out["audited_at"]}
+
+
+@router.post("/{competitor_id}/listing-compare")
+def listing_compare(competitor_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Compare a competitor's audited Google listing with this business: the checks, the services and the keywords."""
+    from ..models import Keyword
+    from ..services import business_understanding
+    from . import listing_audit as la
+    c, b = _own(db, user, competitor_id)
+    if not c.listing:
+        raise HTTPException(409, "Audit this competitor first.")
+    ours = None
+    if b.place_id:
+        try:
+            ours = la.audit_one(b.place_id)
+        except Exception:  # noqa: BLE001 - the comparison still shows the services and keywords
+            ours = None
+    brief = b.business_brief or {}
+    services = list(dict.fromkeys([*(s.get("name") for s in (b.services or []) if s.get("name")), *(brief.get("offerings") or [])]))
+    keywords = list(dict.fromkeys([*(k for k in db.scalars(select(Keyword.keyword).where(Keyword.business_id == b.id).limit(80))), *business_understanding.search_terms(b)]))
+    return la.compare(b, c, ours, services, keywords)
+
+
 MAX_CHOSEN = 8  # the weekly watch visits at most this many
 
 
@@ -151,4 +233,10 @@ def list_for_business(business_id: int, db: Session = Depends(get_db), user: Use
     """Competitors already registered against a business, for picking one to audit or compare."""
     owned_business(db, user, business_id)
     q = select(Competitor).where(Competitor.business_id == business_id).order_by(Competitor.name)
-    return rows(db.scalars(q))
+    out = []
+    for c in db.scalars(q):
+        r = row(c, {"listing"})
+        r["listing_done"] = bool(c.listing)
+        r["listing_score"] = (c.listing or {}).get("score")
+        out.append(r)
+    return out
