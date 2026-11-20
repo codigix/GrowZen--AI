@@ -156,7 +156,8 @@ export default function App() {
         <Route path="dashboard" element={<SeoOverviewPage />} />
         <Route path="onboarding" element={<BusinessOnboardingPage />} />
         <Route path="projects" element={<ProjectsPage />} />
-        <Route path="project-dashboard" element={<ProjectDashboardPage />} />
+        <Route path="projects/:projectId" element={<ProjectDashboardPage />} />
+        <Route path="project-dashboard" element={<Navigate to="/projects" replace />} />
         <Route path="work-plan" element={<Navigate to="/dashboard" replace />} />
         <Route path="automation-pipeline" element={<AutomationPipelinePage />} />
         <Route path="gmb-profile" element={<GbpManagerPage />} />

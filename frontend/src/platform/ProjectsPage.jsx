@@ -110,7 +110,7 @@ function Projects() {
   const count = (m) => rows.filter(p => p.modules.includes(m)).length;
   const refresh = async () => { await refreshBusinesses(); list.reload(true); };
 
-  const open = (p) => { choose(p.id).then(ok => ok && navigate('/project-dashboard')); };
+  const open = (p) => { choose(p.id).then(ok => ok && navigate(`/projects/${p.id}`)); };
   const remove = (p, mod) => ask({
     what: `${META[mod].label} from "${p.name}"`,
     effect: `${effectOf(mod, p.stats)} The project and its other services stay. This cannot be undone.`,

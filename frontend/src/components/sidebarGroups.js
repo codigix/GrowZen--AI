@@ -8,7 +8,6 @@ export const SIDEBAR_GROUPS = [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/growth', label: 'Growth Plan', icon: Target, badge: 'New' },
       { to: '/projects', label: 'Projects', icon: Layers },
-      { to: '/project-dashboard', label: 'Project Dashboard', icon: LayoutDashboard },
       { to: '/tracking-overview', label: 'Tracking Overview', icon: MapPin },
       { to: '/onboarding', label: 'Business Onboarding', icon: Building2, badge: 'Phase 1' }
     ]
@@ -105,7 +104,7 @@ export const SIDEBAR_SECTIONS = [
   { id: 'home', label: 'Home', title: 'Home', icon: House, groups: [{ items: [page('/dashboard'), page('/growth'), page('/projects'), page('/tracking-overview'), page('/onboarding')] }] },
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
-      { items: [page('/dashboard'), page('/projects'), page('/project-dashboard')] },
+      { items: [page('/dashboard'), page('/projects')] },
       { title: '1 · Start a project (business analysis)', items: [page('/onboarding', { label: 'Business details' })] },
       { title: '2 · Competitor Research', items: [page('/competitor-finder'), page('/competitor-watch')] },
       { title: '3 · Keyword Research', items: [link('/keyword-management/workspace', 'Keyword Workspace'), page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' })] },

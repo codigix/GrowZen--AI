@@ -1,7 +1,7 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { PlugZap, XCircle, Globe, MapPin, Phone, Navigation, MousePointerClick, Users, ListChecks, ArrowRight, ArrowUpRight, ArrowDownRight, Star, ScanSearch, FileText, TrendingUp, Link2, BarChart3, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { SeoShell, Card, Badge, ScoreRing, scoreWord, SkStats, SkCard } from './SeoUi';
+import { SeoShell, useSeoBusiness, Card, Badge, ScoreRing, scoreWord, SkStats, SkCard } from './SeoUi';
 import { useApi, api, fmt } from './seoApi';
 import SiteAuditOverview from './SiteAuditOverview';
 import { useCountries } from './countries';
@@ -210,9 +210,20 @@ function AuditSection({ b }) {
 }
 
 export default function ProjectDashboardPage() {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
+  const [selected, choose] = useSeoBusiness();
+  const want = Number(projectId);
+  const have = Number(selected?.id ?? selected) || null;
+  const asked = React.useRef(false);
+  React.useEffect(() => { // the address names the project: make it the selected one (two-step check included); if that is declined, go back to the list
+    if (!want || have === want || asked.current) return;
+    asked.current = true;
+    choose(want).then(ok => { if (!ok) navigate('/projects', { replace: true }); });
+  }, [want, have, choose, navigate]);
   return (
-    <SeoShell title="Project dashboard" subtitle="This project's site audit, Google activity, connections and what to do next">
-      {(b) => (b ? (
+    <SeoShell title="Project dashboard" subtitle="This project's site audit, Google activity, connections and what to do next" hideSwitcher>
+      {(b) => (b && b.id === want ? (
         <div className="space-y-8">
           <AuditSection b={b} />
           <section className="space-y-4" aria-label="Project details">
