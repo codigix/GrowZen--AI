@@ -105,6 +105,8 @@ def delete_post(post_id: int, b: Business = Depends(get_business), db: Session =
     p = db.get(Post, post_id)
     if not p or p.business_id != b.id:
         raise HTTPException(404, "Post not found")
+    from ..services import autopilot
+    autopilot.cancel_for_post(db, p.id)  # its approval card goes with it
     db.delete(p)
     db.commit()
 

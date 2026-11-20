@@ -316,6 +316,8 @@ def delete_live_post(post_id: int, b: Business = Depends(get_business), db: Sess
     p = _post(db, b, post_id)
     if p.external_id:
         _google(_client(b).delete_post, p.external_id)
+    from ..services import autopilot
+    autopilot.cancel_for_post(db, p.id)
     db.delete(p)
     log(db, user.name, "gbp_post_deleted", b.id, post_id=post_id)
     db.commit()

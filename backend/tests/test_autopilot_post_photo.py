@@ -29,3 +29,25 @@ def test_a_waiting_post_can_get_and_lose_its_photo(client):
         assert d.get(Post, pid).image_url is None
     finally:
         d.close()
+
+
+def test_deleting_a_post_closes_its_waiting_approval(client):
+    bid = client.post("/api/v1/businesses", json={"name": "Del Co", "website": "https://del.example/"}).json()["id"]
+    db = SessionLocal()
+    try:
+        p = Post(business_id=bid, body="A post that will be deleted before its time", status="scheduled")
+        db.add(p)
+        db.flush()
+        t = AgentTask(business_id=bid, agent="gbp", kind="gbp_post", title="Post", status="scheduled", detail={"post_id": p.id})
+        db.add(t)
+        db.commit()
+        pid, tid = p.id, t.id
+    finally:
+        db.close()
+    assert client.delete(f"/api/v1/businesses/{bid}/posts/{pid}").status_code == 204
+    d = SessionLocal()
+    try:
+        t = d.get(AgentTask, tid)
+        assert t.status == "rejected" and "deleted" in t.result["note"]
+    finally:
+        d.close()

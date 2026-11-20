@@ -441,6 +441,16 @@ def approve(db: Session, b: Business, task: AgentTask, user: str, publish_at: da
     return task
 
 
+def cancel_for_post(db: Session, post_id: int) -> int:
+    """A post was deleted: the approval card that was waiting to send it is closed too (otherwise it shows as scheduled and fails at its time). The caller commits."""
+    n = 0
+    for t in db.scalars(select(AgentTask).where(AgentTask.kind == "gbp_post", AgentTask.status.in_(("pending", "scheduled")))):
+        if str((t.detail or {}).get("post_id")) == str(post_id):
+            t.status, t.result = "rejected", {"note": "The post was deleted, so nothing will be sent."}
+            n += 1
+    return n
+
+
 def publish_due(db: Session, limit: int = 20) -> int:
     """Send what was approved for a time that has come. Refuses anything without an approval record, and anything for a profile that is no longer linked."""
     now = datetime.now(timezone.utc)
@@ -458,7 +468,10 @@ def publish_due(db: Session, limit: int = 20) -> int:
             continue
         if t.kind == "gbp_post":
             p = db.get(Post, d.get("post_id"))
-            if p is None or p.approved_at is None:
+            if p is None:
+                t.status, t.result = "failed", {"error": "The post was deleted before its time, so nothing was sent."}
+                continue
+            if p.approved_at is None:
                 t.status, t.result = "failed", {"error": "The post has no approval record, so it was not sent."}
                 continue
         if not linked(b):
