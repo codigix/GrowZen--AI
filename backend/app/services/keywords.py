@@ -142,10 +142,9 @@ def default_seeds(b: Business) -> list[str]:
     # A rental business is searched as a rental ("lehenga on rent"), not as the shop that sells the same goods (Google's "Clothes market").
     seeds: list[str] = list(categories.rental_seeds(getattr(b, "name", None), getattr(b, "primary_category", None), [(x.get("name") if isinstance(x, dict) else x) for x in (getattr(b, "services", None) or [])], getattr(b, "description", None)))
     rental = bool(seeds)
-    from . import business_understanding  # the words customers use, as written in the business understanding (the first SEO step)
-    for t in business_understanding.search_terms(b)[:4]:
-        if t not in seeds:
-            seeds.append(t)
+    from . import business_understanding  # the words customers use, as written in the business understanding (the first SEO step): they lead
+    written = [t for t in business_understanding.search_terms(b)[:4]]
+    seeds = written + [s for s in seeds if s not in written]
     shop_labels = [] if rental else [b.primary_category, *(b.secondary_categories or [])]  # a rental business's Google category is the shop's ("Clothes market"): it would find shops, not competitors
     for s in [*shop_labels, *[(x.get("name") if isinstance(x, dict) else x) for x in (b.services or [])]]:
         s = " ".join(str(s or "").lower().split())

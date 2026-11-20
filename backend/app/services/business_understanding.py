@@ -161,6 +161,31 @@ def build(db: Session, b: Business) -> dict[str, Any]:
     return brief
 
 
+def prompt_block(b: Any) -> str:
+    """The business understanding as text for an AI prompt: the facts every competitor and keyword decision must respect (empty before the summary was built)."""
+    brief = getattr(b, "business_brief", None) or {}
+    if not brief:
+        return ""
+    lines = [
+        "BUSINESS UNDERSTANDING (decide everything below by this):",
+        f"- Kind of business: {brief.get('business_model')}" if brief.get("business_model") else "",
+        f"- Target area: {brief.get('market')}" if brief.get("market") else "",
+        f"- What it sells: {'; '.join(brief.get('offerings') or [])}" if brief.get("offerings") else "",
+        f"- Customers: {'; '.join(brief.get('audience') or [])}" if brief.get("audience") else "",
+        f"- Words customers search with: {', '.join(brief.get('customer_search_terms') or [])}" if brief.get("customer_search_terms") else "",
+        f"- Counts as a competitor: {brief.get('competitors_are')}" if brief.get("competitors_are") else "",
+        f"- Does NOT count as a competitor, never suggest for it: {brief.get('competitors_are_not')}" if brief.get("competitors_are_not") else "",
+    ]
+    return "\n".join(x for x in lines if x)
+
+
+def basis(b: Any) -> dict[str, Any]:
+    """What a competitor or keyword run was based on, for the page to show: the kind of business, area, search words and whether the summary exists."""
+    brief = getattr(b, "business_brief", None) or {}
+    return {"used": bool(brief), "model": brief.get("business_model"), "market": brief.get("market"), "terms": search_terms(b)[:8], "offerings": (brief.get("offerings") or [])[:6],
+            "counts": brief.get("competitors_are"), "does_not_count": brief.get("competitors_are_not"), "built_at": brief.get("built_at")}
+
+
 def search_terms(b: Business) -> list[str]:
     """The customer search words written in the business understanding (empty before it was built): competitor and keyword research start from these."""
     brief = getattr(b, "business_brief", None) or {}

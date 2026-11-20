@@ -6,7 +6,7 @@ import {
   CheckCircle2, Minus, Layers, ArrowRight, BookOpen, Code2, ListChecks, HelpCircle, Sparkles, ShieldCheck, Smartphone, Monitor, RotateCcw, Eye
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, Field, Tabs, Modal, inputCls, ErrorNote, useToast, useAction, Sk, SkStats, SkTable, SkCard } from './SeoUi';
-import { api, usePoll, fmt, fmtDateTime } from './seoApi';
+import { api, useApi, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
@@ -859,10 +859,43 @@ function Research({ b }) {
   );
 }
 
+/** What the research starts from: the business understanding (kind of business, area, the words customers search with). Without it the page asks for the summary to be built first. */
+function Basis({ b }) {
+  const r = useApi(`/businesses/${b.id}/business-brief`);
+  const br = r.data?.brief;
+  if (r.error || !r.data) return null;
+  if (!br) {
+    return (
+      <div className="rounded-xl border-2 border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[240px] text-13 text-amber-900"><b>Build the business summary first.</b> Competitors and keywords are found from what the business is, what it sells and how customers search for it. Without it the research guesses from the Google category.</div>
+        <Link to="/website-audit" className="h-9 px-4 inline-flex items-center rounded text-13 font-semibold bg-amber-600 text-white hover:bg-amber-700">Open the website audit</Link>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50/60 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-13 font-bold text-indigo-900">Finding competitors from your business understanding</div>
+        <Link to="/website-audit" className="text-12.5 font-semibold text-indigo-700 hover:underline">View or refresh it</Link>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {br.business_model && <span className="px-2.5 py-1 rounded-md bg-white ring-1 ring-indigo-200 text-12.5 font-bold text-slate-900 capitalize">{br.business_model}</span>}
+        {(br.customer_search_terms || []).slice(0, 8).map(x => <span key={x} className="px-2.5 py-1 rounded-full bg-indigo-600 text-white text-12.5 font-semibold">{x}</span>)}
+      </div>
+      {(br.competitors_are || br.competitors_are_not) && (
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-12.5">
+          {br.competitors_are && <div className="rounded-lg bg-emerald-50 ring-1 ring-emerald-200 px-3 py-2 text-slate-800"><b className="text-emerald-800">Counts: </b>{br.competitors_are}</div>}
+          {br.competitors_are_not && <div className="rounded-lg bg-rose-50 ring-1 ring-rose-200 px-3 py-2 text-slate-800"><b className="text-rose-800">Does not count: </b>{br.competitors_are_not}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CompetitorFinderPage() {
   return (
     <SeoShell step="competitors" title="Competitors" subtitle="Who outranks you on Google and Maps, side by side with you, the keywords you are missing, and what to do about it: one research, one place">
-      {(b) => <Research key={b.id} b={b} />}
+      {(b) => <div className="space-y-4"><Basis key={`basis-${b.id}`} b={b} /><Research key={b.id} b={b} /></div>}
     </SeoShell>
   );
 }

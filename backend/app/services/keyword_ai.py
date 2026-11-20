@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Article, Business, GeoPrompt, Keyword, Post
-from . import ai, keywords as kwsvc
+from . import ai, business_understanding, keywords as kwsvc
 
 USES = {"blog": "Blog articles", "gmb_post": "Google Business Profile posts", "aeo": "AEO: direct answers and FAQs", "geo": "GEO: AI search questions", "chatgpt": "ChatGPT business profile", "website": "Website pages"}
 HORIZON = {"done": "Builds on what you already do", "next": "Where you can grow next"}
@@ -73,6 +73,7 @@ def _prompt(b: Business, ev: dict[str, Any], topic: str = "") -> str:
     lines = [
         f"FOCUS: the person asked about this topic: {topic}. Every suggestion must be about it (its services, questions, places and variations). Do not suggest unrelated keywords." if topic else "",
         ai.profile_text(b),
+        business_understanding.prompt_block(b),
         f"Services: {', '.join(ev['services'])}" if ev["services"] else "",
         f"Keywords already saved: {saved}",
         f"Recent Google Business Profile posts: {' | '.join(ev['posts'])}" if ev["posts"] else "No Google posts yet.",

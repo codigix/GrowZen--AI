@@ -83,7 +83,9 @@ def _ai_fit(b: Any, cands: list[dict[str, Any]], keywords: list[str]) -> dict[in
               "Google categories look: a shop that SELLS clothes is not a competitor of a business that RENTS clothes, and a dentist is not a competitor of a dental lab. "
               "Reply with JSON only.")
     import json
-    user = (f"The business:\n{ai.profile_text(b)}\n\nCustomers find it by searching: {', '.join(keywords)}\n\nBusinesses found nearby:\n{json.dumps(listing, ensure_ascii=False)}\n\n"
+    from ..services import business_understanding
+    brief = business_understanding.prompt_block(b)
+    user = (f"The business:\n{ai.profile_text(b)}\n\n{brief + chr(10) + chr(10) if brief else ''}Customers find it by searching: {', '.join(keywords)}\n\nBusinesses found nearby:\n{json.dumps(listing, ensure_ascii=False)}\n\n"
             "For each one give: same_services (0-100: does it offer the same products or services), same_intent (0-100: would a customer who searches the words above be satisfied by it "
             "instead, for example renting versus buying), kind (2 or 3 words: what it really is, e.g. 'clothing rental', 'saree shop', 'makeup studio') and reason (one short sentence naming "
             'the deciding fact). Answer exactly: {"results": [{"i": 0, "same_services": 0, "same_intent": 0, "kind": "", "reason": ""}]}')

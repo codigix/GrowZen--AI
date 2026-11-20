@@ -42,3 +42,15 @@ def test_without_an_ai_the_profile_fills_the_same_shape(client, monkeypatch):
 
 def test_search_terms_are_empty_before_the_brief_exists():
     assert bu.search_terms(SimpleNamespace(business_brief=None)) == [] and bu.search_terms(SimpleNamespace()) == []
+
+
+def test_the_highlighted_data_reaches_the_prompts_and_leads_the_search_words():
+    b = SimpleNamespace(name="X Rental", primary_category="Clothes market", services=[], description="", secondary_categories=[],
+                        business_brief={"business_model": "rental", "market": "Wagholi, Pune", "offerings": ["Lehenga rental"], "audience": ["Brides"],
+                                        "customer_search_terms": ["lehenga on rent", "bridal lehenga rental"], "competitors_are": "Other rental shops.", "competitors_are_not": "Retail shops."})
+    block = bu.prompt_block(b)
+    assert "Kind of business: rental" in block and "Does NOT count as a competitor" in block and "Retail shops." in block and "lehenga on rent, bridal lehenga rental" in block
+    assert keywords.default_seeds(b)[:2] == ["lehenga on rent", "bridal lehenga rental"]
+    info = bu.basis(b)
+    assert info["used"] and info["model"] == "rental" and info["terms"] == ["lehenga on rent", "bridal lehenga rental"] and info["does_not_count"] == "Retail shops."
+    assert bu.prompt_block(SimpleNamespace(business_brief=None)) == "" and bu.basis(SimpleNamespace())["used"] is False

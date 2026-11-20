@@ -467,7 +467,7 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
     # 2b. Which of them are real competitors: rated on similar services, area, keyword overlap, Google presence, search intent and domain authority (see relevance.py).
     # What it sells decides first: a clothes rental is not competing with the shop next door that sells clothes.
     from . import relevance
-    from ..services import categories as _categories
+    from ..services import business_understanding as _bu, categories as _categories
     progress("Checking which businesses are real competitors", live())
     own_rental = bool(_categories.rental_seeds(getattr(b, "name", None), getattr(b, "primary_category", None), [s.get("name") for s in (getattr(b, "services", None) or [])], getattr(b, "description", None)))
     rated = relevance.rate(b, local_competitors, keywords, authority, lambda u: scan_site(u, max_pages=0, timeout=6), own_rental)
@@ -577,6 +577,7 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
         "organic_competitors": organic_competitors[:15],
         "local_competitors": local_competitors[:12],
         "other_places": other_places[:12],
+        "basis": _bu.basis(b),
         "relevance": rated | {"other": len(other_places)},
         "profiles": competitor_profiles,
         "you": {"positions": my_positions, "local": my_local, "site": my_profile, "link_sources": my_sources, "backlinks": backlinks.get(my_host) if my_host else None},
