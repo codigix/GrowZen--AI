@@ -28,7 +28,12 @@ import Select from '../components/Select';
 
 const CTA = { BOOK: 'Book', ORDER: 'Order online', LEARN_MORE: 'Learn more', SIGN_UP: 'Sign up', CALL: 'Call now' };
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
-const pushedMsg = (r, base = 'Saved') => (r?.pushed_to_google?.length ? `${base} and updated on your Google Business Profile` : `${base}. Not sent to Google: connect this client's Google account to publish changes there.`);
+const pushedMsg = (r, base = 'Saved') => {
+  if (!r?.pushed_to_google?.length) return `${base}. Not sent to Google: connect this client's Google account to publish changes there.`;
+  const bad = r.not_confirmed_on_google || [];
+  if (bad.length) return `${base} and sent to Google, but Google does not show ${bad.join(', ')} yet. Wait a few minutes and sync again.`;
+  return `${base} and confirmed on your Google Business Profile. Google Search and Maps can take a few minutes to show it.`;
+};
 const STUFFED = /[|]|\s-\s|\bbest\b|\bcheap\b|no\.?\s?1|\btop\s/i;
 
 function AuditTab({ b, onEditProfile }) {

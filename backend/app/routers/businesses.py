@@ -200,8 +200,11 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
         wrong = project_rules.problems({**row(b), **changes}, changes["modules"])
         if wrong:
             raise HTTPException(422, " ".join(wrong))
+    if changes.get("description"):
+        changes["description"] = gbp.plain_description(changes["description"])  # no markdown marks on Google
     old_site = b.website
     pushed: list[str] = []
+    not_on_google: list[str] = []
     changed = {k: v for k, v in changes.items() if getattr(b, k, None) != v}
     # The booking link and the list of Book / Order links describe the same buttons: keep them in step before saving.
     links_touched = False
@@ -234,6 +237,10 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
         except gbp.GbpError as exc:
             raise HTTPException(502, f"Google did not accept the change, so nothing was saved: {exc}") from exc
         pushed = sorted(patch)
+        try:  # read it back: say plainly whether Google holds the change
+            not_on_google = gbp.unconfirmed(patch, gbp.GbpClient(b.connection).location(b.gbp_location))
+        except gbp.GbpError:
+            not_on_google = []
     if links_touched and b.connection and b.gbp_location:
         try:
             gbp.sync_action_links(gbp.GbpClient(b.connection), b.gbp_location, changes["action_links"])
@@ -248,7 +255,7 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
     db.commit()
     if b.website and b.website != old_site and site_onboarding.autodetect_enabled():
         background.add_task(in_background(workplan.refresh_research_in_background, b.id))  # a new address means a possibly different technology, metadata and plan
-    return row(b) | {"pushed_to_google": pushed}
+    return row(b) | {"pushed_to_google": pushed, "not_confirmed_on_google": not_on_google}
 
 
 @router.delete("/{business_id}", status_code=204)

@@ -13,6 +13,7 @@ APIs used (all need the project to be approved for the Business Profile APIs):
   Verifications        mybusinessverifications.googleapis.com/v1/{location}/VoiceOfMerchantState
 """
 import logging
+import re
 import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -508,6 +509,30 @@ def listing_status(loc: dict[str, Any]) -> dict[str, Any]:
         "account_name": loc.get("account_name"), "account_role": loc.get("account_role"), "account_type": loc.get("account_type"),
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def plain_description(text: str | None) -> str:
+    """Google shows a profile description as plain text: markdown marks (**bold**, # headings, - bullets) would appear as stray symbols."""
+    t = re.sub(r"(\*\*|__)(.+?)\1", r"\2", text or "", flags=re.S)
+    t = re.sub(r"^\s{0,3}#{1,6}\s*", "", t, flags=re.M)
+    t = re.sub(r"^\s*[*\-\u2022]\s+", "", t, flags=re.M).replace("**", "").replace("`", "")
+    return t.strip()
+
+
+def unconfirmed(sent: dict[str, Any], live: dict[str, Any]) -> list[str]:
+    """The fields just sent that Google's own copy does not hold (yet): what to tell the person instead of a blind "saved"."""
+    out = []
+    if "title" in sent and (live.get("title") or "") != sent["title"]:
+        out.append("name")
+    if "websiteUri" in sent and (live.get("websiteUri") or "").rstrip("/") != (sent["websiteUri"] or "").rstrip("/"):
+        out.append("website")
+    if "profile" in sent and ((live.get("profile") or {}).get("description") or "").strip() != (sent["profile"].get("description") or "").strip():
+        out.append("description")
+    if "phoneNumbers" in sent and (live.get("phoneNumbers") or {}).get("primaryPhone") != sent["phoneNumbers"].get("primaryPhone"):
+        out.append("phone")
+    if "regularHours" in sent and len((live.get("regularHours") or {}).get("periods") or []) != len(sent["regularHours"].get("periods") or []):
+        out.append("hours")
+    return out
 
 
 def _mask(body: dict[str, Any]) -> set[str]:

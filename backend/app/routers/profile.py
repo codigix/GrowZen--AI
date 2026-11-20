@@ -13,7 +13,7 @@ from ..deps import get_business
 from ..models import Business, Post, Review
 from ..schemas import PostIn, ReplyIn
 from ..serialize import row, rows
-from ..services import agent, ai
+from ..services import agent, ai, gbp
 from ..services.activity import log
 
 router = APIRouter(prefix="/businesses/{business_id}", tags=["profile"])
@@ -120,7 +120,7 @@ def ai_description(b: Business = Depends(get_business)):
                        "main services and who they serve, what makes them different (only if given). "
                        "No URLs, phone numbers, prices or promotions. Return only the text.",
                        max_tokens=500)
-    return {"text": text[:750]}
+    return {"text": gbp.plain_description(text)[:750]}
 
 
 DAY_NAMES = {"MONDAY": "Monday", "TUESDAY": "Tuesday", "WEDNESDAY": "Wednesday", "THURSDAY": "Thursday", "FRIDAY": "Friday", "SATURDAY": "Saturday", "SUNDAY": "Sunday"}
