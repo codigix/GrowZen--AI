@@ -408,14 +408,15 @@ def _local_rollup(serps: list[dict[str, Any]], n_keywords: int) -> list[dict[str
     return sorted(places.values(), key=lambda e: (-e["visibility"], -(e.get("reviews") or 0)))
 
 
-def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Callable[[dict[str, Any]], None] = lambda e: None, own_positions: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Callable[[dict[str, Any]], None] = lambda e: None, own_positions: dict[str, dict[str, Any]] | None = None,
+            authority: dict[str, int] | None = None) -> dict[str, Any]:
     region_gl = countries.gl(market.serp_country(b))
     if not places_enabled():
         raise IntelError("Competitor research uses the Google Places API: set GOOGLE_PLACES_API_KEY on the SEO backend.")
     settings = get_settings()
     my_host = host_of(b.website)
     keywords = [k.strip() for k in keywords if k.strip()][:10]
-    total_steps = len(keywords) + 6
+    total_steps = len(keywords) + 7
     step = 0
 
     def progress(label: str, found: dict[str, Any] | None = None) -> None:
@@ -463,6 +464,22 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
     organic_competitors = _organic_rollup(serps, len(keywords))
     local_competitors = _local_rollup(serps, len(keywords))
 
+    # 2b. Which of them are real competitors: rated on similar services, area, keyword overlap, Google presence, search intent and domain authority (see relevance.py).
+    # What it sells decides first: a clothes rental is not competing with the shop next door that sells clothes.
+    from . import relevance
+    from ..services import categories as _categories
+    progress("Checking which businesses are real competitors", live())
+    own_rental = bool(_categories.rental_seeds(getattr(b, "name", None), getattr(b, "primary_category", None), [s.get("name") for s in (getattr(b, "services", None) or [])], getattr(b, "description", None)))
+    rated = relevance.rate(b, local_competitors, keywords, authority, lambda u: scan_site(u, max_pages=0, timeout=6), own_rental)
+    unrated = local_competitors[20:]
+    for e in unrated:
+        e["relevance"] = {"score": 0, "label": "unrelated", "label_text": relevance.LABEL["unrelated"], "factors": {}, "kind": None, "reason": "Too far down the results to be rated.", "judged_by": "none"}
+    for e in local_competitors:
+        e["relevance"]["rank_visibility"] = e.get("visibility")
+    real = sorted([e for e in local_competitors if e["relevance"]["label"] != "unrelated"], key=lambda e: (-e["relevance"]["score"], -(e.get("visibility") or 0)))
+    other_places = sorted([e for e in local_competitors if e["relevance"]["label"] == "unrelated"], key=lambda e: -e["relevance"]["score"])
+    local_competitors = real
+
     # 3. Deep look at the top competing businesses (not directories), and at the business itself.
     # Place words (the business's area and city, and localities in competitors' addresses) mark
     # location pages and are left out of service names.
@@ -477,7 +494,7 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
     targets = [d for d in organic_competitors if d["type"] == "business"][:4]
     if not targets:  # no organic results (Maps-only mode): the best Maps businesses that have a website
         targets = [{"domain": e["domain"], "name": e["name"], "type": "business", "visibility": e["visibility"], "positions": e["positions"], "urls": [e["website"]]}
-                   for e in local_competitors if e.get("domain") and not is_directory(e["domain"])][:4]
+                   for e in local_competitors if e.get("domain") and not is_directory(e["domain"])][:4]  # only the real competitors are scanned
     progress("Scanning competitors' websites", live())
     profiles: dict[str, dict[str, Any]] = {}
 
@@ -559,6 +576,8 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
         "serps": serps,
         "organic_competitors": organic_competitors[:15],
         "local_competitors": local_competitors[:12],
+        "other_places": other_places[:12],
+        "relevance": rated | {"other": len(other_places)},
         "profiles": competitor_profiles,
         "you": {"positions": my_positions, "local": my_local, "site": my_profile, "link_sources": my_sources, "backlinks": backlinks.get(my_host) if my_host else None},
         "gaps": {"keywords": keyword_gaps, "listings": listing_gaps},

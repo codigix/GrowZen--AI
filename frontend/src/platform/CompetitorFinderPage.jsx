@@ -281,18 +281,86 @@ function KeywordsTab({ r, onKeyword, onIdeas }) {
   );
 }
 
+const CRITERIA = [
+  ['services', 'Similar services', 'Very high', 'Do they sell what you sell (a clothes rental is not a clothes shop)'],
+  ['area', 'Target area', 'Very high', 'The same customers: distance from your pin'],
+  ['keywords', 'Keyword overlap', 'Very high', 'Do they appear for the same searches'],
+  ['serp', 'Google presence', 'Very high', 'How high they rank on Google Maps for those searches'],
+  ['intent', 'Search intent', 'High', 'Would a customer be happy with either (rent versus buy)'],
+  ['authority', 'Domain authority', 'Medium', 'Strength of their website: never decides relevance alone']
+];
+const MATCH_TONE = { direct: 'green', related: 'amber', unrelated: 'gray' };
+
+function HowChosen({ r }) {
+  const rel = r.relevance;
+  if (!rel) return null;
+  const n = rel.counts || {};
+  return (
+    <Card title="How these competitors were chosen" subtitle={`${n.direct || 0} direct · ${n.related || 0} related · ${rel.other || 0} left out as not real competitors${rel.ai ? ' · judged by AI from Google Maps data and each business\'s website' : ' · judged from the words in their names and websites'}`}>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
+        {CRITERIA.map(([k, label, level, hint]) => (
+          <div key={k} className="rounded bg-slate-50 px-3 py-2">
+            <div className="flex items-center justify-between gap-2"><span className="text-13 font-semibold text-slate-900">{label}</span><span className="text-11 font-semibold text-indigo-700">{level}</span></div>
+            <div className="text-12 text-slate-500 mt-0.5">{hint}{k === 'authority' ? ' (read when already known)' : ''}</div>
+          </div>
+        ))}
+      </div>
+      {rel.rental && <p className="mt-3 text-12.5 text-indigo-800 bg-indigo-50 rounded px-3 py-2">Your business is a <b>rental</b>, so shops that only sell the same goods are not counted as competitors.</p>}
+    </Card>
+  );
+}
+
+function MatchCell({ rel }) {
+  if (!rel) return <span className="text-slate-400">—</span>;
+  const tip = Object.entries(rel.factors || {}).map(([k, v]) => `${(CRITERIA.find(c => c[0] === k) || [k, k])[1]}: ${v}`).join('\n');
+  return (
+    <div title={tip} className="min-w-[110px]">
+      <div className="flex items-center gap-2"><span className="font-semibold tabular-nums">{rel.score}</span><Badge tone={MATCH_TONE[rel.label] || 'gray'}>{rel.label_text}</Badge></div>
+      <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden"><span className={`block h-full rounded-full ${rel.label === 'direct' ? 'bg-emerald-500' : rel.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} style={{ width: `${rel.score}%` }} /></div>
+    </div>
+  );
+}
+
+function OtherPlaces({ r }) {
+  const [open, setOpen] = React.useState(false);
+  const list = r.other_places || [];
+  if (!list.length) return null;
+  return (
+    <Card pad={false}>
+      <button type="button" onClick={() => setOpen(v => !v)} className="w-full px-4 py-3 flex items-center justify-between text-left cursor-pointer">
+        <span className="text-13.5 font-semibold text-slate-900">{list.length} other business{list.length === 1 ? '' : 'es'} on Google Maps, left out as not real competitors</span>
+        <span className="text-12.5 font-semibold text-indigo-700">{open ? 'Hide' : 'Show why'}</span>
+      </button>
+      {open && (
+        <ul className="divide-y divide-slate-100 border-t border-slate-100">
+          {list.map(e => (
+            <li key={e.name} className="px-4 py-2.5 flex items-start gap-3">
+              <div className="flex-1 min-w-0"><div className="text-13 font-medium text-slate-800">{e.name}</div><div className="text-12 text-slate-500">{e.relevance?.kind ? `${e.relevance.kind} · ` : ''}{e.relevance?.reason}</div></div>
+              <MatchCell rel={e.relevance} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 function MapsTab({ r }) {
   const maxReviews = Math.max(1, ...r.local_competitors.map(e => e.reviews || 0), r.business.reviews || 0);
   const you = { name: `${r.business.name} (you)`, rating: r.business.rating, reviews: r.business.reviews || 0, appearances: r.summary.local_ranked, best: Math.min(...Object.values(r.you.local), Infinity), visibility: r.summary.local_visibility, mine: true };
-  const rows = [you, ...r.local_competitors].sort((a, b) => b.visibility - a.visibility);
+  const rows = [you, ...r.local_competitors].sort((a, b) => (a.mine ? -1 : b.mine ? 1 : (b.relevance?.score ?? 0) - (a.relevance?.score ?? 0) || b.visibility - a.visibility));
   const nearOnly = r.local_competitors.some(e => e.distance_m != null);
   return (
+    <div className="space-y-4">
+    <HowChosen r={r} />
+    {r.local_competitors.length === 0 && <Card><p className="text-13 text-slate-600">No real competitor was found on Google Maps for these searches. {r.other_places?.length ? 'The businesses that came up sell something different: see the list below.' : ''}</p></Card>}
     <Card pad={false}>
       {nearOnly && <p className="px-4 py-2.5 border-b border-slate-100 text-12.5 text-slate-600">Only businesses within about 4 km of {r.business.name} are counted: the ones its customers can actually choose between.</p>}
-      <Table head={<><Th>Business</Th><Th c="text-right">Distance</Th><Th c="text-right">Visibility</Th><Th c="text-center">Best</Th><Th c="text-right">In results</Th><Th>Rating</Th><Th cls="w-44">Reviews</Th><Th>Website</Th></>}>
+      <Table head={<><Th>Business</Th><Th>Match</Th><Th c="text-right">Distance</Th><Th c="text-right">Visibility</Th><Th c="text-center">Best</Th><Th c="text-right">In results</Th><Th>Rating</Th><Th cls="w-44">Reviews</Th><Th>Website</Th></>}>
         {rows.map(e => (
           <tr key={e.name} className={e.mine ? 'bg-emerald-50/50' : 'hover:bg-slate-50'}>
-            <td className="px-4 py-2.5"><div className={`font-medium ${e.mine ? 'text-emerald-800' : 'text-slate-900'}`}>{e.name}</div>{e.category && <div className="text-12 text-slate-500">{e.category}</div>}</td>
+            <td className="px-4 py-2.5"><div className={`font-medium ${e.mine ? 'text-emerald-800' : 'text-slate-900'}`}>{e.name}</div>{e.category && <div className="text-12 text-slate-500">{e.category}</div>}{e.relevance?.reason && <div className="text-11.5 text-slate-400 max-w-[320px]">{e.relevance.reason}</div>}</td>
+            <td className="px-4 py-2.5">{e.mine ? <Badge tone="green">You</Badge> : <MatchCell rel={e.relevance} />}</td>
             <td className="px-4 py-2.5 text-right tabular-nums text-slate-600" title="Straight-line distance from your business">{e.mine ? '' : e.distance_m == null ? '—' : e.distance_m < 1000 ? `${e.distance_m} m` : `${(e.distance_m / 1000).toFixed(1)} km`}</td>
             <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{e.visibility}%</td>
             <td className="px-4 py-2.5 text-center"><Pos value={Number.isFinite(e.best) ? e.best : null} maps /></td>
@@ -304,6 +372,8 @@ function MapsTab({ r }) {
         ))}
       </Table>
     </Card>
+    <OtherPlaces r={r} />
+    </div>
   );
 }
 

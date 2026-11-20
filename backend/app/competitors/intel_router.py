@@ -95,7 +95,13 @@ def _run(db: Session, audit_id: int, business_id: int, keywords: list[str], loca
             own = google_rank.organic_positions(db, b, keywords) if b.website else {}
         except Exception:  # noqa: BLE001 - Search Console not connected: the Maps research still stands
             own = {}
-        result = intel.analyse(b, keywords, location, progress, own)
+        authority: dict[str, int] = {}
+        try:  # Domain Authority already read for these domains (cached by Backlink Intelligence): nothing new is bought here
+            from ..backlinks.models import BiDomainMetric
+            authority = {m.domain.lower(): m.da for m in db.scalars(select(BiDomainMetric)).all() if m.da is not None}
+        except Exception:  # noqa: BLE001 - authority is a small factor: the rating stands without it
+            authority = {}
+        result = intel.analyse(b, keywords, location, progress, own, authority)
         audit.result, audit.status, audit.score = result, "done", round(result["summary"]["visibility"])
         db.commit()
         save_found(db, b, result)  # every competitor found is saved, tracked and sent to the backlink crawler
