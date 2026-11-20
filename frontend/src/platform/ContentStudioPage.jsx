@@ -345,9 +345,20 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }
   const [busy, error, run] = useAction();
   const [ask, confirmNode] = useDoubleConfirm();
   const retry = (id) => run(`r-${id}`, async () => { await api(`/businesses/${b.id}/articles/${id}/retry`, { method: 'POST' }); reload(true); });
+  // A post on the React.js website (the WordPress one has its own Delete post below). Only this post is removed there; the article stays in GrowZen.
+  const canDeleteReactPost = (x) => Boolean(x.react_post_id && x.react_status && x.react_status !== 'deleted');
+  const delReactPost = (x) => ask({
+    what: `the post "${x.title || x.keyword}" on your React.js website`,
+    effect: 'Only this post is permanently removed from your website. The article stays in GrowZen, so you can publish it again later.',
+    onConfirm: () => run(`p-${x.id}`, async () => {
+      const r = await api(`/businesses/${b.id}/articles/${x.id}/react-post`, { method: 'DELETE' });
+      setDeletedNote(r.already_gone ? `"${x.title || x.keyword}" was already gone from your website; marked as deleted.` : `"${x.title || x.keyword}" was permanently deleted from your website.`);
+      reload(true);
+    })
+  });
   const del = (x) => ask({
     what: 'this article',
-    effect: canDeletePost(x)
+    effect: canDeletePost(x) || canDeleteReactPost(x)
       ? 'The article and its generated content are deleted from GrowZen. Its post stays on your website: use "Delete post" first to remove it there.'
       : 'The article and its generated content are deleted.',
     onConfirm: () => run(`d-${x.id}`, async () => { await api(`/businesses/${b.id}/articles/${x.id}`, { method: 'DELETE' }); if (openId === x.id) onOpen(null); reload(true); })
@@ -503,6 +514,7 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }
                 ))}
                 <span className="ml-auto flex items-center gap-1">
                   {canDeletePost(x) && <Button size="sm" variant="ghost" className="!text-rose-600" onClick={() => askDeletePost(x)}>Delete post</Button>}
+                  {canDeleteReactPost(x) && <Button size="sm" variant="ghost" className="!text-rose-600" busy={busy === `p-${x.id}`} title="Delete this post from the React.js website" onClick={() => delReactPost(x)}>Delete post</Button>}
                   <Button size="sm" variant="ghost" className="!text-slate-500 hover:!text-rose-600" busy={busy === `d-${x.id}`} title="Remove from GrowZen" onClick={() => del(x)}>Delete</Button>
                 </span>
               </div>

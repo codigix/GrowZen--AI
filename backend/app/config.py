@@ -157,6 +157,10 @@ class Settings(BaseSettings):
     # HTML websites: each site's deployment adapter and credentials (server side only, git-ignored; relative paths are
     # inside backend/). See docs/html-site-deployment.md.
     html_deploy_config: str = "html_deploy.json"
+    # Several GrowZen servers can share one database but each keeps uploaded images on its own disk. When an article's
+    # image is not on this server, it is downloaded once from this GrowZen API (its public image endpoints) and kept.
+    # Set it on development machines to the live API, e.g. https://bevisibe.codigixinfotech.com/api/v1; empty = off.
+    uploads_fallback_url: str = ""
     backlink_bot_auto_enabled: bool = True  # set false to stop the 60s auto-tick; "Run now" in the UI still works
 
     # Lighthouse audits (/lighthouse/...): full Lighthouse reports from PageSpeed Insights (needs

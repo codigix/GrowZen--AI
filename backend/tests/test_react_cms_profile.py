@@ -111,6 +111,45 @@ def test_a_create_answer_without_an_id_is_resolved_by_slug_and_an_existing_post_
     assert again["id"] == "5" and len(posts) == 1
 
 
+def test_a_missing_image_file_keeps_the_sites_image_on_update_and_blocks_only_a_new_post(monkeypatch):
+    """The image was uploaded through another GrowZen server sharing the database: the file is not on this disk."""
+    import contextlib
+
+    import pytest
+
+    from app.services import crypto
+    puts = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        path = req.url.path
+        if path == "/api/auth/login":
+            return httpx.Response(200, json={"token": "a.b.c", "expiresIn": 3600})
+        if req.method == "GET" and path == "/api/blogs":
+            return httpx.Response(200, json=[{"id": 28, "slug": "silk-sarees", "content": "x", "isPublished": True, "coverImage": "/uploads/c.webp", "seoData": {}}])
+        if req.method == "PUT" and path == "/api/blogs/28":
+            puts.update(json.loads(req.content))
+            return httpx.Response(200, json={"id": 28})
+        return httpx.Response(404, json={})
+
+    @contextlib.contextmanager
+    def fake(_timeout=30):
+        with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+            yield c
+
+    monkeypatch.setattr(rs, "site_client", fake)
+    conn = _conn()
+    conn.login_username, conn.password_enc, conn.website_url = "u@x.com", crypto.seal("pw"), "https://site.example"
+    a = Article(id=36, business_id=40, keyword="silk sarees", title="Silk Sarees", meta_description="D", body="<p>text</p>", status="completed",
+                featured_image_path="articles/40/not-on-this-disk.webp", react_post_id="28", react_status="scheduled")
+    out = rs.publish(conn, a, "publish", None)
+    assert out["id"] == "28" and puts["isPublished"] is True
+    assert "coverImage" not in puts and "bannerImage" not in puts  # never sent empty: the site keeps its image
+    assert any(s["step"] == "Featured image" and s.get("warning") for s in out["steps"])
+    new = Article(id=37, business_id=40, keyword="k", title="New Post", body="<p>x</p>", status="completed", featured_image_path="articles/40/gone.webp")
+    with pytest.raises(rs.ReactSiteError, match="featured image file is missing"):
+        rs.publish(conn, new, "publish", None)
+
+
 def test_image_check_reads_the_post_back_by_slug_when_the_site_has_no_read_by_id(monkeypatch):
     import contextlib
 
