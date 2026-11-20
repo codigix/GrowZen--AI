@@ -513,7 +513,9 @@ def listing_status(loc: dict[str, Any]) -> dict[str, Any]:
 def _mask(body: dict[str, Any]) -> set[str]:
     out = set()
     for k, v in body.items():
-        out |= {f"{k}.{c}" for c in v} if k in ("profile", "phoneNumbers") else {k}
+        # Google accepts the field paths "profile.description" but rejects "phoneNumbers.primaryPhone" / "phoneNumbers.additionalPhones" with
+        # "Request contains an invalid argument": phone numbers are replaced as a whole ("phoneNumbers").
+        out |= {f"{k}.{c}" for c in v} if k == "profile" else {k}
     return out
 
 
@@ -569,6 +571,8 @@ def fields_to_location(changes: dict[str, Any], current: Any = None) -> dict[str
     if "phone" in changes or "additional_phones" in changes:
         primary = changes["phone"] if "phone" in changes else getattr(current, "phone", None)
         extra = changes["additional_phones"] if "additional_phones" in changes else getattr(current, "additional_phones", None)
+        if not primary:  # the whole block is replaced, so a blank main number would erase the listing's phone: keep the one saved
+            primary = getattr(current, "phone", None)
         body["phoneNumbers"] = phone_numbers_body(primary, extra)
     if "website" in changes:
         body["websiteUri"] = changes["website"] or ""
