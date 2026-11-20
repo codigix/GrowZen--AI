@@ -154,6 +154,169 @@ def test_overview_with_ai_keeps_the_real_link_and_the_size(client, biz, monkeypa
     assert ov["method"] == "ai" and ov["text"].endswith(BLOG) and len(ov["text"]) <= 250 and ov["hashtags"] == ["#dental"]
 
 
+def test_promotion_shows_where_competitors_promote_their_blog_articles(client, biz, monkeypatch):
+    from app.backlinks.models import BiTrackedTarget
+    from app.backlinks.repository import LinkRecord, upsert_imported_link
+    bid, db = biz
+    a = _article(db, bid)
+    monkeypatch.setattr(ai, "is_configured", lambda: False)
+    base = f"/api/v1/businesses/{bid}/blog-flow/promo/{a.id}"
+    _publish(db, a)
+    assert client.get(base).json()["from_competitors"]["state"] == "no_competitors"
+    db.add_all([BiTrackedTarget(business_id=bid, domain="blogco.example"), BiTrackedTarget(business_id=bid, domain="rival.example", is_competitor=True),
+                BiTrackedTarget(business_id=bid, domain="rival2.example", is_competitor=True)])
+    db.commit()
+    assert client.get(base).json()["from_competitors"]["state"] == "no_data"
+    for src, tgt, anchor in (
+        ("https://dentalforum.example/threads/implants", "https://rival.example/blog/dental-implants-cost-guide", "dental implants cost"),
+        ("https://dentalforum.example/threads/whitening", "https://rival2.example/blog/teeth-whitening-at-home", "whitening"),
+        ("https://citynews.example/health", "https://rival.example/blog/why-we-love-pune", "pune"),
+        ("https://homelink.example/x", "https://rival.example/", "Rival"),  # a home page, not an article: no suggestion
+        ("https://cheap-backlinks-casino.xyz/p", "https://rival.example/blog/dental-implants-cost-guide", "buy cheap backlinks"),  # spammy: never suggested
+        ("https://medium.com/@rival/implants", "https://rival.example/blog/dental-implants-cost-guide", "implants"),  # a fixed platform: a badge on its row
+        ("https://rivalstore.myshopify.com/products/x", "https://rival.example/blog/dental-implants-cost-guide", "shop"),  # the competitor's own shop: not promotion
+        ("https://deals.example/list", "https://rival.example/products/dental-floss-pack-of-three", "floss"),  # a product page, not an article
+    ):
+        upsert_imported_link(db, LinkRecord(src, tgt, anchor), "manual_import")
+    db.commit()
+    st = client.get(base).json()
+    comp = st["from_competitors"]
+    doms = [x["domain"] for x in comp["items"]]
+    assert comp["state"] == "ok" and doms[0] == "dentalforum.example"  # both competitors, same topic: first
+    assert "homelink.example" not in doms and "cheap-backlinks-casino.xyz" not in doms and "medium.com" not in doms
+    first = comp["items"][0]
+    assert first["competitors"] == ["rival.example", "rival2.example"] and first["topic"] == "same" and first["example"]["competitor_article"].endswith("dental-implants-cost-guide")
+    rival = next(c for c in comp["by_competitor"] if c["competitor"] == "rival.example")
+    assert rival["articles"][0]["url"].endswith("dental-implants-cost-guide")  # closest to this blog's topic first
+    linked = {ln["domain"]: ln for ln in rival["articles"][0]["links"]}
+    assert {"dentalforum.example", "medium.com", "cheap-backlinks-casino.xyz"} <= set(linked) and "homelink.example" not in linked and "myshopify.com" not in linked
+    assert "deals.example" not in [x["domain"] for x in comp["items"]]
+    assert linked["cheap-backlinks-casino.xyz"]["useful"] == "risky"  # shown in the analysis, marked, but never suggested
+    medium = next(i for i in st["items"] if i["platform"] == "medium")
+    assert medium["competitor_use"]["competitors"] == ["rival.example"]
+    r = client.post(f"{base}/add-from-competitor", json={"domain": "dentalforum.example"})
+    assert r.status_code == 200
+    row = next(i for i in r.json()["items"] if i["name"] == "dentalforum.example")
+    assert row["open_url"].startswith("https://dentalforum.example/") and row["status"] == "planned"
+    assert "dentalforum.example" not in [x["domain"] for x in r.json()["from_competitors"]["items"]]  # in the plan now: no longer suggested
+    assert client.post(f"{base}/add-from-competitor", json={"domain": "unknown.example"}).status_code == 422
+
+
+RIVAL = {
+    "https://rival.example/": '<html><body><a href="/blog/">Blog</a><a href="https://www.linkedin.com/company/rival">LinkedIn</a><a href="/contact">Contact</a></body></html>',
+    "https://rival.example/blog/": '<html><body><a href="/blog/dental-implants-cost-guide">A</a><a href="/blog/teeth-whitening-at-home">B</a><a href="/blog/category/news">C</a></body></html>',
+    "https://rival.example/blog/dental-implants-cost-guide": '<html><body><article>Also on <a href="https://medium.com/@rival/dental-implants-cost-guide-1a2b">Medium</a></article></body></html>',
+    "https://rival.example/blog/teeth-whitening-at-home": '<html><body><p>No outside links.</p></body></html>',
+}
+
+
+def test_competitor_website_research_finds_its_blog_articles_and_platforms(client, biz, monkeypatch):
+    from app.backlinks.models import BiTrackedTarget
+    from app.services import competitor_blogs as cb
+    monkeypatch.setattr(bc, "_fetch", lambda url: (200, RIVAL[url], url, 5, None) if url in RIVAL else (404, "", url, 5, "missing"))
+    r = cb.research("rival.example")
+    assert r["reachable"] and r["blog_url"] == "https://rival.example/blog/"
+    assert r["articles"] == ["https://rival.example/blog/dental-implants-cost-guide", "https://rival.example/blog/teeth-whitening-at-home"]  # the category page is not an article
+    by = {p["name"]: p for p in r["platforms"]}
+    assert by["Medium"]["posts"] == 1 and by["Medium"]["evidence"].startswith("An article") and by["Medium"]["seen_on"].endswith("dental-implants-cost-guide")
+    assert by["LinkedIn"]["posts"] == 0 and by["LinkedIn"]["kind"] == "social"
+    assert "Medium" not in r["not_found"] and "Blogger" in r["not_found"]
+    assert not cb.research("down.example")["reachable"]
+    bid, db = biz
+    a = _article(db, bid)
+    _publish(db, a)
+    db.add_all([BiTrackedTarget(business_id=bid, domain="blogco.example"), BiTrackedTarget(business_id=bid, domain="rival.example", is_competitor=True)])
+    db.commit()
+    base = f"/api/v1/businesses/{bid}/blog-flow/promo/{a.id}"
+    assert client.get(base).json()["from_competitors"]["research"] == {"running": False, "done": 0, "total": 1}
+    assert client.post(f"{base}/research-competitors").status_code == 202  # the test client runs the background task before it returns
+    comp = client.get(base).json()["from_competitors"]
+    assert comp["research"]["done"] == 1
+    row = comp["by_competitor"][0]
+    assert row["competitor"] == "rival.example" and [p["name"] for p in row["site"]["platforms"]] == ["Medium", "LinkedIn"]
+
+
+LONG = "<p>" + "dental implants explained in plain words " * 60 + "</p>"
+WEB = {
+    "https://smileblog.example/implants-guide": f'<html><body><article><h1>Implants</h1>{LONG}<a href="https://clinic.example/">a clinic</a><a href="/write-for-us">Write for us</a></article></body></html>',
+    "https://smileblog.example/write-for-us": "<html><body><h1>Write for us</h1><p>We accept guest posts on dental health. Submission is free of charge.</p></body></html>",
+    "https://dentalnews.example/sponsored": f'<html><body><article>{LONG}<a rel="nofollow" href="https://x.example/">x</a></article><a href="/advertise">Advertise</a></body></html>',
+    "https://dentalnews.example/advertise": "<html><body>Sponsored posts: ₹5000 per post. Advertise with us.</body></html>",
+    "https://medium.com/@doc/implants-101-abc": f"<html><body><article>{LONG}</article></body></html>",
+    "https://quietsite.example/page": "<html><body><p>Short page.</p></body></html>",
+}
+
+
+def test_web_discovery_finds_publishing_sites_beyond_competitors_and_verifies_them(client, biz, monkeypatch):
+    from app.config import get_settings
+    from app.services import publish_discovery as pd
+    bid, db = biz
+    a = _article(db, bid)
+    base = f"/api/v1/businesses/{bid}/blog-flow/discovery/{a.id}"
+    monkeypatch.setattr(get_settings(), "serper_api_key", "")
+    assert client.get(base).json()["state"] == "no_search"
+    monkeypatch.setattr(get_settings(), "serper_api_key", "k")
+    asked = []
+    hits = [{"link": "https://smileblog.example/implants-guide", "title": "Dental implants guide - Smile Blog"}, {"link": "https://dentalnews.example/sponsored", "title": "Sponsored: implants"},
+            {"link": "https://medium.com/@doc/implants-101-abc", "title": "Implants 101"}, {"link": "https://quietsite.example/page", "title": "Quiet"},
+            {"link": "https://www.youtube.com/watch?v=1", "title": "video"}, {"link": "https://blogco.example/blog/x", "title": "our own site"},
+            {"link": "https://www.facebook.com/somepage", "title": "fb"}]
+    monkeypatch.setattr(pd, "_search", lambda q, country: (asked.append(q), hits)[1])
+    monkeypatch.setattr(bc, "_fetch", lambda url: (200, WEB[url], url, 5, None) if url in WEB else (404, "", url, 5, "missing"))
+    assert client.get(base).json()["state"] == "not_run"
+    assert client.post(f"{base}/run").status_code == 202
+    d = client.get(base).json()
+    assert d["state"] == "ok" and asked and any("dental implants pune" in q for q in asked) and any('"write for us"' in q for q in asked)
+    by = {i["domain"]: i for i in d["items"]}
+    assert set(by) == {"smileblog.example", "dentalnews.example", "medium.com", "quietsite.example"}  # not YouTube, Facebook or our own site
+    s = by["smileblog.example"]
+    assert s["platform"] == "Website / industry blog" and s["article_verified"] and s["publishing"] == {**s["publishing"], "type": "free", "verified": True}
+    assert s["publishing"]["evidence_url"].endswith("/write-for-us") and s["links_out"]["follow"] == 1 and s["backlink"] == "likely"
+    assert by["dentalnews.example"]["publishing"]["type"] == "paid" and by["dentalnews.example"]["publishing"]["verified"]
+    m = by["medium.com"]
+    assert m["platform"] == "Medium" and m["publishing"]["type"] == "open" and m["publishing"]["known"] and not m["publishing"]["verified"]
+    q = by["quietsite.example"]
+    assert q["publishing"] == {"type": "unknown", "verified": False, "evidence_url": None, "evidence": None} and not q["article_verified"]
+    r = client.post(f"{base}/save", json={"domain": "smileblog.example"})
+    assert r.status_code == 200 and next(i for i in r.json()["items"] if i["domain"] == "smileblog.example")["saved"] == "planned"
+    assert client.post(f"{base}/save", json={"domain": "nowhere.example"}).status_code == 422
+
+
+def test_web_discovery_falls_back_to_ai_suggestions_that_are_still_verified(client, biz, monkeypatch):
+    from app.config import get_settings
+    from app.services import publish_discovery as pd
+    bid, db = biz
+    a = _article(db, bid)
+    base = f"/api/v1/businesses/{bid}/blog-flow/discovery/{a.id}"
+    monkeypatch.setattr(get_settings(), "serper_api_key", "k")
+
+    def no_credits(q, country):
+        raise ValueError("The search service (Serper) has no credits left: top up the Serper account, then search again.")
+    monkeypatch.setattr(pd, "_search", no_credits)
+    monkeypatch.setattr(ai, "is_configured", lambda: True)
+    monkeypatch.setattr(ai, "complete_json", lambda s, u, **k: {"sites": [{"domain": "smileblog.example", "name": "Smile Blog", "page": "https://smileblog.example/implants-guide", "topic": "dental implants pune"},
+                                                                        {"domain": "not a domain", "name": "x"}, {"domain": "www.youtube.com", "name": "yt"}]})
+    monkeypatch.setattr(bc, "_fetch", lambda url: (200, WEB[url], url, 5, None) if url in WEB else (404, "", url, 5, "missing"))
+    client.post(f"{base}/run")
+    d = client.get(base).json()
+    assert d["state"] == "ok" and d["source"] == "ai" and "no credits" in d["message"]
+    assert [i["domain"] for i in d["items"]] == ["smileblog.example"] and d["items"][0]["found_by"] == ["AI suggestion"]
+    assert d["items"][0]["publishing"]["verified"] and d["items"][0]["publishing"]["type"] == "free"  # checked on the site itself
+
+
+def test_article_addresses_are_told_apart_from_home_and_category_pages():
+    assert blog_promo._is_article("https://r.example/blog/how-to-choose")
+    assert blog_promo._is_article("https://r.example/2025/04/new-clinic")
+    assert blog_promo._is_article("https://r.example/best-dental-implants-in-pune")
+    assert not blog_promo._is_article("https://r.example/")
+    assert not blog_promo._is_article("https://r.example/contact")
+    assert not blog_promo._is_article("https://r.example/blog/category/news")
+    assert not blog_promo._is_article("https://r.example/tag/modular-kitchen-near-me/page/2")
+    assert not blog_promo._is_article("https://store.r.example/products/3-in-1-emergency-mini-safety-hammer")
+    assert blog_promo._own_site("https://itimpactdealstore.myshopify.com/products/x", "itimpactdeal.in")
+    assert not blog_promo._own_site("https://dentalforum.example/t/1", "rival.example")
+
+
 def test_another_projects_article_is_not_reachable(client, biz):
     bid, db = biz
     other = client.post("/api/v1/businesses", json={"name": "Other"}).json()["id"]

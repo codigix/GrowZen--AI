@@ -1,5 +1,5 @@
 """The blog workflow API: /businesses/{id}/blog-flow/... (keywords, topics, the site's layout, and promoting a published blog)."""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -78,6 +78,75 @@ def promo_add(article_id: int, body: CustomIn, b: Business = Depends(get_busines
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return promo.status(db, b, a)
+
+
+class FromCompetitorIn(BaseModel):
+    domain: str = Field(min_length=3, max_length=255)
+
+
+@router.post("/promo/{article_id}/add-from-competitor")
+def promo_add_from_competitor(article_id: int, body: FromCompetitorIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Add a site where a competitor promotes its blog to this blog's plan."""
+    a = _article(db, b, article_id)
+    try:
+        promo.add_from_competitor(db, b, a, body.domain)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return promo.status(db, b, a)
+
+
+@router.post("/promo/{article_id}/research-competitors", status_code=202)
+def promo_research_competitors(article_id: int, background: BackgroundTasks, force: bool = Query(False), b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Open each competitor's website to find its blog, its articles and the outside platforms it publishes on. Runs in the background; GET /promo/{id} shows the progress."""
+    from ..backlinks import hub
+    from ..deps import in_background
+    from ..services import competitor_blogs as cb
+    _article(db, b, article_id)
+    comps = hub.hygiene_competitors(db, b)
+    if not comps:
+        raise HTTPException(409, "Add your competitors first (Competitors page).")
+    if not cb.start(b.id):
+        return {"started": False, "running": True}
+    background.add_task(in_background(cb.run, b.id, comps, force))
+    return {"started": True, "running": True}
+
+
+@router.get("/discovery/{article_id}")
+def discovery(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Websites across the web that publish articles on this blog's topics, with what was verified about each (last run's result)."""
+    from ..services import publish_discovery as pd
+    return pd.view(db, b, _article(db, b, article_id))
+
+
+@router.post("/discovery/{article_id}/run", status_code=202)
+def discovery_run(article_id: int, background: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Search the web and verify the sites found. Runs in the background; GET /discovery/{id} shows the result."""
+    from ..deps import in_background
+    from ..services import publish_discovery as pd
+    a = _article(db, b, article_id)
+    v = pd.view(db, b, a)
+    if v["state"] in ("no_search", "no_topic"):
+        raise HTTPException(409, v["message"])
+    if not pd.start(b, a):
+        return {"started": False, "running": True}
+    background.add_task(in_background(pd.run, b.id, a.id))
+    return {"started": True, "running": True}
+
+
+class SaveSiteIn(BaseModel):
+    domain: str = Field(min_length=3, max_length=255)
+
+
+@router.post("/discovery/{article_id}/save")
+def discovery_save(article_id: int, body: SaveSiteIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Keep a discovered site in the link-building plan for later."""
+    from ..services import publish_discovery as pd
+    a = _article(db, b, article_id)
+    try:
+        pd.save(db, b, a, body.domain)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return pd.view(db, b, a)
 
 
 @router.post("/promo/{article_id}/check-all")

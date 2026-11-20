@@ -229,6 +229,8 @@ def _serper(q: str, country: str) -> list[dict]:
     r = httpx.post("https://google.serper.dev/search", headers={"X-API-KEY": key, "Content-Type": "application/json"}, json={"q": q, "num": 10, "gl": (country or "in").lower()}, timeout=20)
     if r.status_code in (401, 403):
         raise ValueError("The search service refused the key (check SERPER_API_KEY).")
+    if r.status_code == 400 and "credit" in r.text.lower():
+        raise ValueError("The search service (Serper) has no credits left: top up the Serper account, then search again.")
     if r.status_code == 429:
         raise ValueError("The search service has no searches left for now (quota). Try again later.")
     if r.status_code >= 400:

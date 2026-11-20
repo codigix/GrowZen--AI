@@ -197,8 +197,194 @@ def view(db: Session, p: BlogPromotion) -> dict[str, Any]:
             "checked_at": p.checked_at.isoformat() if p.checked_at else None, "max_chars": c.get("max")}
 
 
+# ------------------------------------------------------------------------------------------------------------------------ where competitors promote their blogs
+# A linking site that is one of the fixed platforms above: it becomes a "used by competitors" badge on that row, not a second row.
+PLATFORM_DOMAINS = {"linkedin.com": "linkedin", "facebook.com": "facebook", "fb.com": "facebook", "x.com": "x", "twitter.com": "x", "medium.com": "medium", "quora.com": "quora",
+                    "reddit.com": "reddit", "tumblr.com": "tumblr", "blogger.com": "blogger", "blogspot.com": "blogger", "flipboard.com": "flipboard", "pinterest.com": "pinterest",
+                    "pin.it": "pinterest", "dev.to": "devto", "hashnode.com": "hashnode", "hashnode.dev": "hashnode"}
+# a competitor page that is an article (a blog post, a guide, news), not its home, contact or a category page
+_ARTICLE_DIR = re.compile(r"/(blogs?|articles?|posts?|news|insights|resources|guides?|learn|knowledge(?:-base)?|stories|tips|updates)/[^/?#]+", re.I)
+_DATED = re.compile(r"/(19|20)\d{2}/\d{1,2}/[^/?#]+")
+_NOT_ARTICLE = re.compile(r"/(tag|tags|category|categories|author|page|search|feed|products?|product-category|collections?|shop|store|cart|checkout|account|services?|locations?)(/|$)", re.I)
+
+
+def _is_article(url: str) -> bool:
+    from urllib.parse import urlsplit
+    path = urlsplit(url or "").path or "/"
+    if path in ("", "/") or _NOT_ARTICLE.search(path):
+        return False
+    if _ARTICLE_DIR.search(path) or _DATED.search(path):
+        return True
+    last = path.rstrip("/").rsplit("/", 1)[-1]
+    return last.count("-") >= 3 and not re.search(r"\.(jpe?g|png|webp|gif|svg|pdf|css|js)$", last, re.I)  # a long slug: an article address
+
+
+def _own_site(source_url: str, competitor: str) -> bool:
+    """A page of the competitor's own (its shop, a subdomain, a mirror named after it): a link from there is not promotion somewhere else."""
+    from urllib.parse import urlsplit
+    host = (urlsplit(source_url or "").hostname or "").lower()
+    stem = competitor.split(".")[0].lower()
+    return len(stem) >= 4 and stem in host.replace("-", "")
+
+
+def _platform_of(domain: str) -> str | None:
+    d = (domain or "").lower()
+    return next((k for dom, k in PLATFORM_DOMAINS.items() if d == dom or d.endswith("." + dom)), None)
+
+
+def _slug_words(url: str) -> str:
+    from urllib.parse import urlsplit
+    return re.sub(r"[-_/]+", " ", urlsplit(url or "").path)
+
+
+def competitor_platforms(db: Session, b: Business, a: Article, limit: int = 15) -> dict[str, Any]:
+    """The sites where the business's competitors promote their own blog articles, from the links our backlink crawler found to the competitors' article pages.
+    Ranked by how many competitors use the site, how close their article there is to this blog's topic, follow type, DA and spam risk. Risky sites are left out.
+    Nothing is fetched here and nothing is invented: a competitor the crawler has not read yet adds nothing."""
+    from sqlalchemy.orm import aliased
+
+    from ..backlinks import hub, quality
+    from ..backlinks.lifecycle import LIVE_STATES
+    from ..backlinks.models import Backlink, BiDomain, BiPage
+    comps = hub.hygiene_competitors(db, b)
+    if not comps:
+        return {"state": "no_competitors", "competitors": [], "items": [], "platforms": {}}
+    me = hub.own_domain(db, b.id)
+    SD, TD = aliased(BiDomain), aliased(BiDomain)
+    rows = db.execute(select(Backlink, BiPage, SD.registrable_domain, TD.registrable_domain).join(BiPage, BiPage.id == Backlink.source_page_id)
+                      .join(SD, SD.id == Backlink.source_domain_id).join(TD, TD.id == Backlink.target_domain_id)
+                      .where(TD.registrable_domain.in_(comps), Backlink.current_status.in_(LIVE_STATES)).order_by(Backlink.id.desc()).limit(5000)).all()
+    if not rows:
+        return {"state": "no_data", "competitors": comps, "items": [], "platforms": {}}
+    topic = quality._words(" ".join([a.keyword or "", a.title or "", " ".join(a.secondary_keywords or [])]))
+    skip = set(comps) | ({me} if me else set())
+    groups: dict[str, dict[str, Any]] = {}
+    articles: set[str] = set()
+    found: dict[str, dict[str, dict[str, Any]]] = {}  # competitor -> its article -> the pages that link to it (the analysis shown first)
+    for bl, page, sdom, tdom in rows:
+        if sdom in skip or not _is_article(bl.target_url) or _own_site(page.normalized_url, tdom):
+            continue
+        art = found.setdefault(tdom, {}).setdefault(bl.target_url, {"url": bl.target_url, "links": [], "topic": 0})
+        art["topic"] = max(art["topic"], len(topic & quality._words(_slug_words(bl.target_url))))
+        if len(art["links"]) < 25:
+            art["links"].append({"url": page.normalized_url, "domain": sdom, "title": page.title, "anchor": " ".join((bl.anchor_text or "").split()) or None,
+                                 "follow": hub.follow_of(bl.rel_attributes), "placement": bl.placement})
+        articles.add(bl.target_url)
+        g = groups.setdefault(sdom, {"competitors": set(), "articles": set(), "links": 0, "dofollow": 0, "overlap": -1, "example": None})
+        g["competitors"].add(tdom)
+        g["articles"].add(bl.target_url)
+        g["links"] += 1
+        g["dofollow"] += 1 if hub.follow_of(bl.rel_attributes) == "dofollow" else 0
+        overlap = len(topic & quality._words(" ".join([page.title or "", bl.anchor_text or "", _slug_words(bl.target_url)])))
+        if overlap > g["overlap"]:  # the example shown: the competitor post closest to this blog's topic
+            g["overlap"] = overlap
+            g["example"] = {"url": page.normalized_url, "title": page.title, "anchor": " ".join((bl.anchor_text or "").split()) or None,
+                            "competitor": tdom, "competitor_article": bl.target_url, "placement": bl.placement}
+    all_links = {c: 0 for c in comps}
+    for _bl, _page, _sdom, tdom in rows:
+        all_links[tdom] = all_links.get(tdom, 0) + 1
+
+    def summary(c: str, arts: list[dict[str, Any]]) -> dict[str, Any]:
+        return {"competitor": c, "articles": arts[:15], "article_count": len(arts), "link_count": sum(len(x["links"]) for x in arts),
+                "sites": len({ln["domain"] for x in arts for ln in x["links"]}), "all_links": all_links.get(c, 0)}
+    if not groups:
+        return {"state": "no_articles", "competitors": comps, "items": [], "platforms": {},
+                "by_competitor": sorted((summary(c, []) for c in comps), key=lambda x: (-x["all_links"], x["competitor"]))}
+    names = list(groups)
+    scores = quality.scores_for(db, b.id)
+    metrics = hub.metrics_for(db, names)
+    missing = [d for d in names if d not in scores]
+    facts = quality.domain_facts(db, b.id, comps, missing) if missing else {}
+    context = quality.business_context(b)
+    have = {r.platform for r in db.scalars(select(BlogPromotion).where(BlogPromotion.article_id == a.id))}
+    items: list[dict[str, Any]] = []
+    platforms: dict[str, dict[str, Any]] = {}
+    verdict: dict[str, dict[str, Any]] = {}  # linking site -> its kind and whether it is useful, risky..., for the analysis
+    for dom, g in groups.items():
+        ex = g["example"]
+        follow = "dofollow" if g["dofollow"] * 2 >= g["links"] else "nofollow"
+        cat = bc.categorize(ex["url"], ex["placement"], ex["title"])
+        sc = scores.get(dom) or quality.rule_score(dom, facts.get(dom, {"links": 0, "pages": 0, "anchors": [], "placements": {}, "nofollow": 0, "titles": [], "snippets": []}), context)
+        mt = metrics.get(dom)
+        j = hub.judge(follow, sc, mt, cat["key"])
+        verdict[dom] = {"category": cat["label"], "useful": j["label"], "why": j["why"], "platform": _platform_of(dom)}
+        if j["label"] == "risky":
+            continue  # never suggest posting on a spammy site just because a competitor is there
+        da = (mt or {}).get("da") or 0
+        overlap = max(g["overlap"], 0)
+        score = len(g["competitors"]) * 15 + min(overlap, 3) * 10 + (15 if follow == "dofollow" else 0) + da * 0.3 + sc["relevance"] * 0.3 - sc["risk"] * 0.5
+        out = {"domain": dom, "category": {"key": cat["key"], "label": cat["label"]}, "follow": follow, "competitors": sorted(g["competitors"]),
+               "articles": len(g["articles"]), "links": g["links"], "example": {k: ex[k] for k in ("url", "title", "anchor", "competitor", "competitor_article")},
+               "topic": "same" if overlap >= 2 else "related" if overlap == 1 else None, "da": (mt or {}).get("da"), "spam": (mt or {}).get("spam"),
+               "useful": j["label"], "why": j["why"], "how": hub.HOW.get(cat["key"], hub.HOW["website"]), "score": round(score, 1)}
+        key = _platform_of(dom)
+        if key:  # one of the fixed platforms: shown on its row
+            if key not in platforms or score > platforms[key]["score"]:
+                platforms[key] = out
+            continue
+        if re.sub(r"[^a-z0-9]+", "-", dom.lower()).strip("-")[:60] in have:
+            continue  # already in this blog's plan
+        items.append(out)
+    items.sort(key=lambda x: -x["score"])
+    by_competitor = []
+    for comp_dom in comps:
+        arts = sorted(found.get(comp_dom, {}).values(), key=lambda x: (-x["topic"], -len(x["links"])))
+        for art in arts:
+            for ln in art["links"]:
+                ln.update(verdict.get(ln["domain"], {}))
+            art["sites"] = len({ln["domain"] for ln in art["links"]})
+        by_competitor.append(summary(comp_dom, arts))
+    by_competitor.sort(key=lambda x: (-x["link_count"], x["competitor"]))
+    return {"state": "ok", "competitors": comps, "competitor_articles": len(articles), "items": items[:limit], "total": len(items), "platforms": platforms, "by_competitor": by_competitor}
+
+
+def add_from_competitor(db: Session, b: Business, a: Article, domain: str) -> BlogPromotion:
+    """Add a site a competitor promotes its blog on to this blog's plan: it then works like any other row (overview, posted, link check)."""
+    d = " ".join((domain or "").lower().split())
+    found = next((x for x in competitor_platforms(db, b, a, limit=500)["items"] if x["domain"] == d), None)
+    if not found:
+        raise ValueError("That site is not among the places your competitors promote their blogs.")
+    return add_custom(db, b, a, d, found["example"]["url"])
+
+
+def _with_research(db: Session, b: Business, comp: dict[str, Any]) -> None:
+    """One entry per competitor: what its own website shows (its blog, its articles, the platforms it publishes on, from competitor_blogs) and the sites
+    the crawler found linking to its articles, each named as a platform where it is one."""
+    from . import competitor_blogs as cb
+    comps = comp.get("competitors") or []
+    res = cb.cached(db, comps)
+    comp["research"] = {"running": cb.is_running(b.id), "done": sum(1 for c in comps if c in res), "total": len(comps)}
+    by = {c["competitor"]: c for c in comp.get("by_competitor") or []}
+    out = []
+    for c in comps:
+        e = dict(by.get(c) or {"competitor": c, "articles": [], "article_count": 0, "link_count": 0, "sites": 0, "all_links": 0})
+        linked: dict[str, dict[str, Any]] = {}
+        for art in e["articles"]:
+            for ln in art["links"]:
+                p = cb.platform_of(ln["domain"])
+                row = linked.setdefault(ln["domain"], {"name": p[0] if p else ln["domain"], "domain": ln["domain"], "url": ln["url"], "article": art["url"],
+                                                       "follow": ln["follow"], "useful": ln.get("useful"), "links": 0})
+                row["links"] += 1
+        e["linked_from"] = sorted(linked.values(), key=lambda r: -r["links"])
+        e["site"] = res.get(c)
+        out.append(e)
+    out.sort(key=lambda e: (-(len((e["site"] or {}).get("platforms") or []) + len(e["linked_from"])), -len((e["site"] or {}).get("articles") or []), e["competitor"]))
+    comp["by_competitor"] = out
+
+
 def status(db: Session, b: Business, a: Article) -> dict[str, Any]:
     url = published_url(db, a)
     rows = list(db.scalars(select(BlogPromotion).where(BlogPromotion.article_id == a.id).order_by(BlogPromotion.id)))
     counts = {s: sum(1 for r in rows if r.status == s) for s in STATUSES}
-    return {"published": bool(url), "url": url, "title": a.title, "items": [view(db, r) for r in rows], "counts": counts}
+    items = [view(db, r) for r in rows]
+    comp: dict[str, Any] | None = None
+    if url:
+        try:
+            comp = competitor_platforms(db, b, a)
+        except Exception:  # noqa: BLE001 - the competitor list is extra: the plan still shows without it
+            log.exception("competitor platforms failed for article %s", a.id)
+            comp = {"state": "error", "competitors": [], "items": [], "platforms": {}}
+        _with_research(db, b, comp)
+        for it in items:
+            it["competitor_use"] = comp["platforms"].get(it["platform"])
+    return {"published": bool(url), "url": url, "title": a.title, "items": items, "counts": counts, "from_competitors": comp}
