@@ -353,7 +353,25 @@ class GbpClient:
             offer = {k: v for k, v in {"couponCode": post.get("coupon_code"), "redeemOnlineUrl": post.get("redeem_url"), "termsConditions": post.get("terms")}.items() if v}
             if offer:
                 body["offer"] = offer
-        return self._req("POST", f"{V4}/{account}/{location}/localPosts", json=body)
+        url = f"{V4}/{account}/{location}/localPosts"
+        dropped: list[str] = []
+        while True:
+            try:
+                made = self._req("POST", url, json=body)
+                return made | ({"dropped": dropped} if dropped else {})
+            except GbpError as exc:
+                # Reading the profile works but writing this post is refused: Google refuses a photo address it cannot use (for example a Google Maps photo link, not one uploaded to
+                # the profile) or a button link that is only the home page. Take those out one at a time and say so, never silently.
+                if "permission" not in str(exc).lower() and "invalid argument" not in str(exc).lower():
+                    raise
+                if "media" in body:
+                    body.pop("media")
+                    dropped.append("the photo")
+                elif "callToAction" in body:
+                    body.pop("callToAction")
+                    dropped.append("the button")
+                else:
+                    raise
 
 
 # Verification, profile managers and deleting the profile (settings section)
