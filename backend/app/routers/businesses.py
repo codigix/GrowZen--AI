@@ -325,6 +325,44 @@ def overview(b: Business = Depends(get_business), db: Session = Depends(get_db))
     }
 
 
+@router.get("/{business_id}/connections")
+def project_connections(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """What this project is connected to, each as connected / not connected with the reason (shown on the project dashboard)."""
+    from ..models import SiteIntegration
+    c = b.connection
+    scopes = (c.scopes or "") if c else ""
+    acct_ok = bool(c and c.status == "active")
+    status = b.gbp_status or {}
+    site = db.scalar(select(SiteIntegration).where(SiteIntegration.business_id == b.id))
+    out = []
+
+    def add(key, label, ok, detail, to=None, level=None):
+        out.append({"key": key, "label": label, "connected": bool(ok), "level": level or ("ok" if ok else "off"), "detail": detail, "to": to})
+
+    if not c:
+        add("google", "Google account", False, "No Google account is connected to this project.", "/gmb-profile")
+    elif not acct_ok:
+        add("google", "Google account", False, f"{c.email} needs to be connected again" + (f": {c.last_error[:120]}" if c.last_error else "."), "/gmb-profile", "warn")
+    else:
+        add("google", "Google account", True, f"Connected as {c.email}.")
+    if b.gbp_location and acct_ok:
+        v = status.get("verification")
+        add("gbp", "Google Business Profile", True, "Linked" + (f" and {v}" if v and v != "unknown" else "") + (f". Last read {status['checked_at'][:10]}." if status.get("checked_at") else "."))
+    elif b.place_id:
+        add("gbp", "Google Business Profile", False, "Only the public Google Maps listing is read. Connect the owner's Google account to edit the profile from here.", "/gmb-profile", "warn")
+    else:
+        add("gbp", "Google Business Profile", False, "No Google profile is linked to this project.", "/gmb-profile")
+    add("search_console", "Google Search Console", acct_ok and "webmasters" in scopes, "Permission granted: search data is read from your account." if acct_ok and "webmasters" in scopes else "Not connected: connect the Google account and allow Search Console.", "/gmb-profile")
+    add("analytics", "Google Analytics", acct_ok and "analytics" in scopes, "Permission granted: website traffic is read from your account." if acct_ok and "analytics" in scopes else "Not connected: connect the Google account and allow Analytics.", "/traffic")
+    if site and site.status == "connected":
+        add("website", "Website publishing", True, f"Blog posts are published through {site.method or site.platform}.")
+    elif site and site.status == "error":
+        add("website", "Website publishing", False, f"Connection error: {(site.last_error or 'unknown')[:120]}", "/ai-content-generation/blog", "warn")
+    else:
+        add("website", "Website publishing", False, "Not connected: blog posts cannot be published to the website yet.", "/ai-content-generation/blog")
+    return {"connections": out, "connected": sum(1 for x in out if x["connected"]), "total": len(out)}
+
+
 @router.get("/{business_id}/gbp/score")
 def gbp_score(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     r = score_profile(b, audits.profile_stats(db, b))

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Globe, MapPin, Phone, Navigation, MousePointerClick, Users, ListChecks, ArrowRight, ArrowUpRight, ArrowDownRight, Star, ScanSearch, FileText, TrendingUp, Link2, BarChart3, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { PlugZap, XCircle, Globe, MapPin, Phone, Navigation, MousePointerClick, Users, ListChecks, ArrowRight, ArrowUpRight, ArrowDownRight, Star, ScanSearch, FileText, TrendingUp, Link2, BarChart3, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { SeoShell, Card, Badge, ScoreRing, scoreWord, SkStats, SkCard } from './SeoUi';
 import { useApi, fmt } from './seoApi';
 
@@ -39,6 +39,50 @@ const LINKS = [
   ['Website traffic', '/traffic', BarChart3, 'Visits and where they come from']
 ];
 
+function Connections({ b }) {
+  const c = useApi(`/businesses/${b.id}/connections`);
+  if (c.error) return null;
+  const d = c.data;
+  return (
+    <Card title="Connections" subtitle={d ? `${d.connected} of ${d.total} connected for this project` : 'Checking…'}>
+      {!d ? <p className="text-13 text-slate-400">Checking…</p> : (
+        <ul className="divide-y divide-slate-100">
+          {d.connections.map(x => (
+            <li key={x.key} className="py-2.5 flex items-start gap-3">
+              {x.connected ? <CheckCircle2 size={17} className="text-emerald-600 mt-0.5 shrink-0" /> : x.level === 'warn' ? <AlertTriangle size={17} className="text-amber-500 mt-0.5 shrink-0" /> : <XCircle size={17} className="text-slate-300 mt-0.5 shrink-0" />}
+              <div className="flex-1 min-w-0"><div className="text-13 font-semibold text-slate-900 flex flex-wrap items-center gap-2">{x.label}<Badge tone={x.connected ? 'green' : x.level === 'warn' ? 'amber' : 'gray'}>{x.connected ? 'Connected' : 'Not connected'}</Badge></div><div className="text-12 text-slate-500">{x.detail}</div></div>
+              {!x.connected && x.to && <Link to={x.to} className="text-12.5 font-semibold text-indigo-600 hover:underline inline-flex items-center gap-1 shrink-0"><PlugZap size={13} />Connect</Link>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function AuditCard({ b }) {
+  const a = useApi(`/businesses/${b.id}/audit-overview`);
+  const d = a.data;
+  return (
+    <Card title="Website audit" subtitle={d ? `${d.target ? d.target.replace(/^https?:\/\//, '') : ''} · ${d.finished_at ? new Date(d.finished_at).toLocaleDateString() : ''}` : 'Site health from the last crawl'} action={<Link to="/website-audit" className="text-12.5 font-semibold text-indigo-600 hover:underline">Full audit</Link>}>
+      {a.error ? <p className="text-13 text-slate-500 py-2">No website audit yet. <Link to="/website-audit" className="font-semibold text-indigo-600 underline">Run one</Link> to see site health, errors and warnings here.</p> : !d ? <p className="text-13 text-slate-400 py-2">Loading…</p> : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            {[['Site health', d.health != null ? `${d.health}%` : '—', 'text-slate-900'], ['Errors', d.errors ?? '—', 'text-red-600'], ['Warnings', d.warnings ?? '—', 'text-amber-600'], ['Pages crawled', d.crawled ?? d.pages ?? '—', 'text-slate-900']].map(([l, v, c]) => (
+              <div key={l} className="rounded bg-slate-50 py-3"><div className={`text-22 font-bold tabular-nums ${c}`}>{v}</div><div className="text-11.5 text-slate-500">{l}</div></div>
+            ))}
+          </div>
+          {(d.top_issues || []).length > 0 && (
+            <ul className="divide-y divide-slate-100">
+              {d.top_issues.slice(0, 4).map(g => <li key={g.code} className="py-2"><div className="text-13 font-medium text-slate-900">{g.title}</div><div className="text-12 text-slate-500">{g.fix}</div></li>)}
+            </ul>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function ProjectDashboard({ b }) {
   const ov = useApi(`/businesses/${b.id}/overview`);
   const d = ov.data;
@@ -70,6 +114,11 @@ function ProjectDashboard({ b }) {
             {d.profile?.score != null && <Badge tone={tone(d.profile.score)}>Profile score {d.profile.score}/100</Badge>}
           </div>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <AuditCard b={b} />
+        <Connections b={b} />
       </div>
 
       {noData && (
