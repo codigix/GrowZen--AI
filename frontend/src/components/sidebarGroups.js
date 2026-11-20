@@ -105,15 +105,14 @@ export const SIDEBAR_SECTIONS = [
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { items: [page('/dashboard'), page('/projects')] },
-      { title: '1 · Start a project (business analysis)', items: [page('/onboarding', { label: 'Business details' })] },
-      { title: '2 · Competitor Research', items: [page('/competitor-finder'), page('/competitor-watch')] },
-      { title: '3 · Keyword Research', items: [link('/keyword-management/workspace', 'Keyword Workspace'), page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' })] },
-      { title: '4 · Keyword Mapping', items: [page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics'] }), link('/keyword-management/mapping', 'Keyword Mapping'), link('/keyword-management/use', 'Keyword Usage')] },
-      { title: '5 · Website SEO Audit', items: [page('/website-audit'), link('/page-indexing', 'Page Indexing')] },
-      { title: '6 · Optimize the Pages', items: [link('/fix-plan', 'Fix Plan')] },
-      { title: '7 · Content', items: [page('/ai-content-generation/trends', { label: 'Topic Research' }), link('/seo-brief', 'SEO Brief Generator'), page('/ai-content-generation/blog', { label: 'Write Content' })] },
-      { title: '8 · Backlinks', items: [{ to: '/backlinks/links', label: 'Backlinks', also: ['/backlinks/sites'] }, link('/backlinks/domains', 'Referring Domains'), link('/backlinks/audit', 'Backlink Audit'), link('/backlinks/opportunities', 'Link Opportunities'), link('/backlinks/gap', 'Competitor Gap'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks'), page('/backlink-checker')] },
-      { title: '9 · Track Results', items: [page('/rank-tracking/landscape', { label: 'Position Tracking', also: ['/rank-tracking'] }), link('/keyword-management/status', 'Keyword Status'), page('/traffic'), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] })] },
+      { title: '1 · Competitor Research', items: [page('/competitor-finder'), page('/competitor-watch')] },
+      { title: '2 · Keyword Research', items: [link('/keyword-management/workspace', 'Keyword Workspace'), page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' })] },
+      { title: '3 · Keyword Mapping', items: [page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics'] }), link('/keyword-management/mapping', 'Keyword Mapping'), link('/keyword-management/use', 'Keyword Usage')] },
+      { title: '4 · Website SEO Audit', items: [page('/website-audit'), link('/page-indexing', 'Page Indexing')] },
+      { title: '5 · Optimize the Pages', items: [link('/fix-plan', 'Fix Plan')] },
+      { title: '6 · Content', items: [page('/ai-content-generation/trends', { label: 'Topic Research' }), link('/seo-brief', 'SEO Brief Generator'), page('/ai-content-generation/blog', { label: 'Write Content' })] },
+      { title: '7 · Backlinks', items: [{ to: '/backlinks/links', label: 'Backlinks', also: ['/backlinks/sites'] }, link('/backlinks/domains', 'Referring Domains'), link('/backlinks/audit', 'Backlink Audit'), link('/backlinks/opportunities', 'Link Opportunities'), link('/backlinks/gap', 'Competitor Gap'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks'), page('/backlink-checker')] },
+      { title: '8 · Track Results', items: [page('/rank-tracking/landscape', { label: 'Position Tracking', also: ['/rank-tracking'] }), link('/keyword-management/status', 'Keyword Status'), page('/traffic'), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] })] },
     ]
   },
   {
