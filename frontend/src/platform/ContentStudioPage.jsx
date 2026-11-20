@@ -1472,7 +1472,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         {step === PUBLISH_STEP && (
           <PublishDestinations key={b.id} b={b}>
             {(dest, setReactConn, setHtmlConn) => dest === 'html' ? (
-              <HtmlSitePanel b={b} article={selectedArticle} toast={toast} onConnection={setHtmlConn} />
+              <HtmlSitePanel b={b} article={selectedArticle} toast={toast} defaultWhen={scheduledDate}
+                onChanged={() => { if (onSaved) onSaved(); }} onConnection={setHtmlConn} />
             ) : dest === 'react' ? (
               <ReactSitePanel b={b} article={selectedArticle} featured={featured} toast={toast} defaultWhen={scheduledDate}
                 onChanged={() => { if (onSaved) onSaved(); }} onConnection={setReactConn} />
