@@ -98,6 +98,20 @@ function usePublicGoogle(b) {
   return { g, m, posts: prof.data?.posts || null };
 }
 
+/** One step of the profile editor. Defined outside ProfileTab on purpose: inside it, it would be a new component on every keystroke and the inputs would lose focus after each letter. */
+function Sect({ sec, id, icon: I, title, hint, children, action }) {
+  return (
+    <section className={`ai-glass-card rounded p-5 ${sec === id ? '' : 'hidden'}`}>
+      <div className="flex items-start gap-3 mb-4">
+        <span className="w-9 h-9 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><I size={16} /></span>
+        <div className="flex-1 min-w-0"><h3 className="text-15 font-semibold text-slate-900">{title}</h3>{hint && <p className="text-12 text-slate-500 mt-0.5">{hint}</p>}</div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function ProfileTab({ b, toast }) {
   const pub = usePublicGoogle(b);
   const countryRows = useCountries();
@@ -136,16 +150,6 @@ function ProfileTab({ b, toast }) {
   const at = SECS.findIndex(x => x.id === sec);
   const dirty = JSON.stringify(p) !== saved;
   const stars = (r) => '★★★★★'.slice(0, Math.round(r || 0)) + '☆☆☆☆☆'.slice(0, 5 - Math.round(r || 0));
-  const Sect = ({ id, icon: I, title, hint, children, action }) => (
-    <section className={`ai-glass-card rounded p-5 ${sec === id ? '' : 'hidden'}`}>
-      <div className="flex items-start gap-3 mb-4">
-        <span className="w-9 h-9 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><I size={16} /></span>
-        <div className="flex-1 min-w-0"><h3 className="text-15 font-semibold text-slate-900">{title}</h3>{hint && <p className="text-12 text-slate-500 mt-0.5">{hint}</p>}</div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
   const Row = ({ icon: I, children }) => <div className="flex items-start gap-3 text-13 text-slate-700"><I size={16} className="text-blue-600 mt-0.5 shrink-0" /><span className="min-w-0 break-words">{children}</span></div>;
   return (
     <div className="space-y-5">
@@ -177,7 +181,7 @@ function ProfileTab({ b, toast }) {
               ))}
             </nav>
           </div>
-          <Sect id="details" icon={Store} title="Business details" hint="The real name on your signage. No keywords or city names.">
+          <Sect sec={sec} id="details" icon={Store} title="Business details" hint="The real name on your signage. No keywords or city names.">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="md:col-span-2"><Field label="Business name">
                 <input className={inputCls} value={p.name} onChange={e => set('name', e.target.value)} />
@@ -193,7 +197,7 @@ function ProfileTab({ b, toast }) {
             {linked && <p className="mt-3 text-12 text-slate-500">Categories, address and map pin are managed in the Google cards below, because Google needs them in its own format.</p>}
           </Sect>
 
-          <Sect id="contact" icon={Phone} title="Phone, website & booking" hint="These are the Call, Website and Book buttons on Google. Saved changes go to your Google profile.">
+          <Sect sec={sec} id="contact" icon={Phone} title="Phone, website & booking" hint="These are the Call, Website and Book buttons on Google. Saved changes go to your Google profile.">
             <div className="space-y-5">
               <div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -244,7 +248,7 @@ function ProfileTab({ b, toast }) {
           </Sect>
 
           {!linked && (
-            <Sect id="location" icon={MapPin} title="Location" hint="Used for local rankings and the map pin.">
+            <Sect sec={sec} id="location" icon={MapPin} title="Location" hint="Used for local rankings and the map pin.">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="md:col-span-2"><Field label="Address"><input className={inputCls} value={p.address} onChange={e => set('address', e.target.value)} /></Field></div>
                 <Field label="Area"><input className={inputCls} value={p.area} onChange={e => set('area', e.target.value)} /></Field>
@@ -255,7 +259,7 @@ function ProfileTab({ b, toast }) {
             </Sect>
           )}
 
-          <Sect id="about" icon={FileText} title="About the business" hint="Aim for 600-750 characters. No URLs, phone numbers or promotions."
+          <Sect sec={sec} id="about" icon={FileText} title="About the business" hint="Aim for 600-750 characters. No URLs, phone numbers or promotions."
             action={<Button size="sm" variant="ai" icon={Sparkles} busy={busy === 'ai'} onClick={aiDesc}>Write with AI</Button>}>
             <textarea rows={6} className={areaCls} value={p.description} onChange={e => set('description', e.target.value.slice(0, 750))} placeholder="What you do, who you serve and what makes you different." />
             <div className="mt-1.5 flex items-center gap-2">
@@ -264,7 +268,7 @@ function ProfileTab({ b, toast }) {
             </div>
           </Sect>
 
-          <Sect id="services" icon={ListChecks} title="Services & prices" hint="Shown under the Services section of your Google profile."
+          <Sect sec={sec} id="services" icon={ListChecks} title="Services & prices" hint="Shown under the Services section of your Google profile."
             action={<Button size="sm" icon={Plus} onClick={() => set('services', [...p.services, { name: '', price: '', description: '' }])}>Add service</Button>}>
             {gsvc.data?.state === 'ok' && !gsvc.data.profile.services.length && (
               <p className="mb-3 rounded-lg bg-slate-50 px-3.5 py-3 text-13 text-slate-600">Google does not share a business's services list with other tools. Paste it below, or connect the Google account to read it and publish changes.</p>
@@ -296,7 +300,7 @@ function ProfileTab({ b, toast }) {
             </div>
           </Sect>
 
-          <Sect id="highlights" icon={Tags} title="Highlights" hint="Short tags such as “Wheelchair accessible” or “Free Wi-Fi”.">
+          <Sect sec={sec} id="highlights" icon={Tags} title="Highlights" hint="Short tags such as “Wheelchair accessible” or “Free Wi-Fi”.">
             <div className="flex flex-wrap gap-1.5">
               {p.attributes.map(a => <span key={a} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-12 text-slate-700">{a}<button onClick={() => set('attributes', p.attributes.filter(x => x !== a))} className="text-slate-400 hover:text-red-600 cursor-pointer" aria-label={`Remove ${a}`}>×</button></span>)}
               <input className="h-7 px-3 text-12 border border-dashed border-slate-300 rounded-full outline-none w-48 focus:border-indigo-400" placeholder="Add highlight + Enter" value={attr} onChange={e => setAttr(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && attr.trim()) { set('attributes', [...p.attributes, attr.trim()]); setAttr(''); } }} />
