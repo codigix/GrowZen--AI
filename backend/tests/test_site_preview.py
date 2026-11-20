@@ -153,9 +153,146 @@ def test_build_reads_the_sites_pages_and_says_why_when_it_cannot(client, monkeyp
     off = client.post(f"/api/v1/businesses/{bid}/articles/{aid}/site-preview", json={"view": "post", "highlight": False}).json()["html"]
     assert "<mark" not in off
     sp._cache.clear()
-    monkeypatch.setattr(sp.bc, "_fetch", lambda url: (200, "<html><body><div id='root'></div></body></html>", url, 5, None))  # a page the browser builds with JavaScript
-    e = client.post(f"/api/v1/businesses/{bid}/articles/{aid}/site-preview", json={"view": "post"})
-    assert e.status_code == 422 and "JavaScript" in e.json()["detail"]
+    # a page the browser builds with JavaScript: no design to copy, so a page in the site's own brand is drawn (name, logo, colour and fonts read from its home page and CSS)
+    shell = ("<html><head><title>Teeth Whitening in Pune | prevco</title><link rel='icon' href='/logo.png'><link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Lora&family=Inter'>"
+             "<link rel='stylesheet' href='/assets/app.css'></head><body><div id='root'></div></body></html>")
+    monkeypatch.setattr(sp.bc, "_fetch", lambda url: (200, shell, url, 5, None))
+    from app.services import site_preview_brand as sb
+    monkeypatch.setattr(sb, "_css_text", lambda url: ".bg-primary{background-color:rgb(6 6 6 / 1)}.bg-accent{background-color:rgb(227 95 20 / 1)}.x{color:#6366f1}.y{color:#6366f1}")
+    e = client.post(f"/api/v1/businesses/{bid}/articles/{aid}/site-preview", json={"view": "post", "keyword": "teeth whitening pune"})
+    assert e.status_code == 200 and e.json()["source"] == "brand" and "JavaScript" not in e.json()["html"]
+    page = e.json()["html"]
+    assert "Prevco" in page and "https://site.example/logo.png" in page and "#e35f14" in page and "'Lora'" in page and "'Inter'" in page  # its accent colour, not a library's indigo
+    assert "Teeth Whitening Pune: A Guide" in page and "In this article" in page and 'data-kw="primary"' in page and "<script" not in page
+    assert "draws its blog in the browser" in " ".join(e.json()["notes"])
+    lst = client.post(f"/api/v1/businesses/{bid}/articles/{aid}/site-preview", json={"view": "list"}).json()
+    assert lst["source"] == "brand" and "gz-new" in lst["html"] and "Prevco Blog" in lst["html"]
+    bad = client.post(f"/api/v1/businesses/{bid}/articles/{aid}/site-preview", json={"view": "post", "reference_url": "https://site.example/a-post/"})
+    assert bad.status_code == 422  # a post the user chose that cannot be read: the reason, not a substitute
+
+
+TW_POST = """<html><body><div class="min-h-screen"><nav class="top"><a href="/">Home</a><a href="/outfits">Outfits</a><a href="/blog">Blog</a><a href="/contact">Contact</a></nav>
+<header class="bg-[#f5ede6]"><nav aria-label="Breadcrumb"><a href="/">Home</a><a href="/blog">Blog</a></nav><div class="grid"><div class="lg:col-span-7"><span>WEDDING</span>
+<h1 class="text-4xl">Old title</h1><p class="text-lg">Planning a wedding on a budget? This old intro line is long enough to be the lead.</p><span>19 November 2026</span><span>6 min read</span></div>
+<div><img src="data:image/webp;base64,OLD"></div></div></header>
+<div class="grid"><aside><p>In this article</p><ol><li><a href="#a"><span>01</span><span>Old section one</span></a></li><li><a href="#b"><span>02</span><span>Old section two</span></a></li></ol></aside>
+<article><div class="blog-content"><p>""" + "Old article text that should be replaced. " * 20 + """</p><h2 id="a">Old section one</h2></div></article></div>
+<section><div class="grid"><a class="group flex" href="/blog/x"><img src="/x.jpg"><h3>Other post</h3><p>18 November 2026</p></a></div></section>
+<footer>Footer</footer></div></body></html>"""
+TW_LIST = """<html><body><nav><a href="/">Home</a><a href="/blog">Blog</a><a href="/a">A</a><a href="/b">B</a></nav><main><h1>Our Blog</h1><div class="grid">
+<div class="rounded-xl shadow"><a href="/blog/one"><img src="/1.jpg"></a><div><h3><a href="/blog/one">Post one</a></h3><p>Excerpt one is long enough.</p></div></div>
+<div class="rounded-xl shadow"><a href="/blog/two"><img src="/2.jpg"></a><div><h3><a href="/blog/two">Post two</a></h3><p>Excerpt two is long enough.</p></div></div>
+</div></main><footer>Footer</footer></body></html>"""
+
+
+def test_a_utility_class_site_is_copied_title_picture_intro_date_and_contents_included():
+    notes: list[str] = []
+    body = "<h1>New</h1><p>A ball gown is the statement piece every formal occasion deserves, and this paragraph is long.</p><h2>Styles</h2><p>x</p><h2>FAQ</h2><p>y</p>"
+    html = sp.render_post(TW_POST, "https://site.example/blog/old", title="Ball Gown Guide", body_html=body, image="https://site.example/new.jpg", notes=notes, excerpt="Learn how to choose a ball gown for any formal event.")
+    s = BeautifulSoup(html, "html.parser")
+    assert s.find("h1").get_text(strip=True) == "Ball Gown Guide"  # the title inside the post's own <header> (it holds a breadcrumb, not the menu)
+    assert 'src="https://site.example/new.jpg"' in html and "base64,OLD" not in html
+    assert "Learn how to choose a ball gown" in html and "Planning a wedding" not in html and "19 November 2026" not in s.find("header").get_text()
+    assert "18 November 2026" in html  # another post's date is left alone
+    toc = [a.get_text(" ", strip=True) for a in s.find("ol").find_all("a")]
+    hrefs = [a["href"] for a in s.find("ol").find_all("a")]
+    assert toc == ["01 Styles", "02 FAQ"] and all(s.find(id=h[1:]) is not None and s.find(id=h[1:]).name == "h2" for h in hrefs)  # each entry jumps to its section
+    assert "statement piece" in s.select_one(".blog-content").get_text() and "Old article text" not in html
+    cards = sp._cards(BeautifulSoup(TW_LIST, "html.parser"))
+    assert len(cards) == 2 and all(c.get("class") == ["rounded-xl", "shadow"] for c in cards)  # cards found by their shape, without a known class name
+    out = sp.render_list(TW_LIST, "https://site.example/blog", title="Ball Gown Guide", excerpt="Learn how to choose.", image=None, url="https://site.example/blog/ball-gown", notes=[])
+    assert out.index("Ball Gown Guide") < out.index("Post one") and "Your new post" in out
+
+
+LINK_CARDS = """<html><body><nav><a href="/">Home</a><a href="/blog">Blog</a></nav><main><div class="grid">
+<a class="group flex" href="/blog/one"><img src="/1.jpg"><h3>Post one</h3><p>Excerpt one is long enough.</p></a>
+<a class="group flex" href="/blog/two"><img src="/2.jpg"><h3>Post two</h3><p>Excerpt two is long enough.</p></a></div></main></body></html>"""
+
+
+def test_a_card_that_is_itself_one_link_is_found_and_its_new_card_links_to_the_new_post():
+    soup = BeautifulSoup(LINK_CARDS, "html.parser")
+    cards = sp._cards(soup)
+    assert len(cards) == 2 and all(c.name == "a" for c in cards)
+    assert [a["href"] for c in cards for a in sp._anchors(c)[:1]] == ["/blog/one", "/blog/two"]  # the post to copy the design from is found even though no link sits inside the card
+    out = sp.render_list(LINK_CARDS, "https://site.example/blog", title="New", excerpt="Fresh excerpt text.", image=None, url="https://site.example/blog/new", notes=[])
+    first = BeautifulSoup(out, "html.parser").find("a", href="https://site.example/blog/new")
+    assert first is not None and "New" in first.get_text() and "Post one" not in first.get_text()  # the new card itself links to the new post, not to the old one
+
+
+PLACEHOLDER_POST = ("<html><body><header><nav><a href='/'>Home</a><a href='/blog'>Blog</a></nav></header><div id='root'><h1>Article could not be loaded</h1>"
+                    "<p>Please try again later.</p></div><footer>Foot</footer></body></html>")
+
+
+def test_a_could_not_be_loaded_placeholder_is_drawn_in_chrome_and_is_never_the_design_to_copy(monkeypatch):
+    from app.services import page_xray as px
+    assert sp._is_error_page(PLACEHOLDER_POST) and not sp._is_error_page("<html><body><h1>Real post</h1><p>" + "A real sentence about teeth. " * 40 + "</p></body></html>")
+    assert sp._needs_render(PLACEHOLDER_POST)  # long enough to look like a page, but its heading says it is a placeholder: only the browser replaces it
+    real = "<html><body><header>Menu</header><h1>Real post</h1><article><p>" + "A real sentence about teeth. " * 150 + "</p></article><footer>Foot</footer></body></html>"
+    monkeypatch.setattr(px, "find_chrome", lambda: "chrome")
+    monkeypatch.setattr(px, "chrome_dump", lambda chrome, url: (real, None))
+    assert sp._rendered("https://site.example/blog/x", PLACEHOLDER_POST) == real
+    monkeypatch.setattr(px, "chrome_dump", lambda chrome, url: (PLACEHOLDER_POST, None))
+    assert sp._rendered("https://site.example/blog/x", PLACEHOLDER_POST) == PLACEHOLDER_POST  # drawing gave nothing better: the plain page is kept
+
+
+def test_the_preview_uses_the_publishing_setup_website_and_says_which(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.services import article_publishing as ap
+    bid = client.post("/api/v1/businesses", json={"name": "Setup Co", "website": "https://old-project-site.example/"}).json()["id"]
+    pages = {"https://blog-site.example/blog/": LIST_PAGE, "https://blog-site.example/old-one/": POST_PAGE}
+    monkeypatch.setattr(sp.bc, "_fetch", lambda url: (200, pages[url], url, 5, None) if url in pages else (404, "", url, 5, None))
+    monkeypatch.setattr("app.services.sitemap.discover_site_entries", lambda *a, **k: [])
+    monkeypatch.setattr(ap, "destinations", lambda db, b: [{"id": "react", "label": "React.js Website", "target": "https://blog-site.example/blog"}])
+    sp._cache.clear()
+    db = SessionLocal()
+    try:
+        a = Article(business_id=bid, keyword="teeth whitening pune", title="Teeth Whitening Pune: A Guide", status="completed", body=BODY, meta_description="A guide.")
+        db.add(a)
+        db.commit()
+        aid = a.id
+    finally:
+        db.close()
+    r = client.post(f"/api/v1/businesses/{bid}/articles/{aid}/site-preview", json={"view": "post"})
+    assert r.status_code == 200 and r.json()["site"] == {"host": "blog-site.example", "label": "React.js Website", "from_setup": True, "site": "https://blog-site.example"}
+    assert r.json()["reference_url"] == "https://blog-site.example/old-one/"  # read from the Publishing Setup website, not the project's old one
+    monkeypatch.setattr(ap, "destinations", lambda db, b: [])
+    pages.update({"https://old-project-site.example/blog/": LIST_PAGE, "https://old-project-site.example/old-one/": POST_PAGE})
+    sp._cache.clear()
+    r2 = client.post(f"/api/v1/businesses/{bid}/articles/{aid}/site-preview", json={"view": "post"}).json()
+    assert r2["site"]["from_setup"] is False and r2["site"]["host"] == "old-project-site.example"  # no Publishing Setup website: the project's own
+
+
+def test_pictures_placed_on_the_images_step_show_in_the_preview(tmp_path, monkeypatch):
+    from app.services import content_images as ci
+    f = tmp_path / "1-aaaaaaaaaaaa.webp"
+    f.write_bytes(b"RIFFxxxxWEBPVP8 data")
+    monkeypatch.setattr(ci, "path_of", lambda bid, aid, name: f if name == "1-aaaaaaaaaaaa.webp" else None)
+    body = ('<p>Intro</p><figure><img data-gz-image="1-aaaaaaaaaaaa.webp" src="/api/v1/businesses/5/articles/9/content-images/1-aaaaaaaaaaaa.webp" alt="A gown"></figure>'
+            '<img data-gz-image="2-bbbbbbbbbbbb.webp" src="/api/v1/x/content-images/2-bbbbbbbbbbbb.webp">')
+    out = sp.inline_content_images(body, 5, 9)
+    assert 'src="data:image/webp;base64,' in out and "/content-images/1-aaaaaaaaaaaa.webp" not in out and 'alt="A gown"' in out  # embedded from its file
+    assert 'src="/api/v1/x/content-images/2-bbbbbbbbbbbb.webp"' in out  # a picture whose file is missing is left as it was
+    assert sp.inline_content_images("<p>No pictures</p>", 5, 9) == "<p>No pictures</p>"
+
+
+def test_a_stylesheet_that_asks_for_cors_still_loads_in_the_sandboxed_frame():
+    page = TW_LIST.replace("<body>", '<head><link rel="stylesheet" crossorigin href="/assets/app.css" integrity="sha384-x"></head><body>', 1)
+    out = sp.render_list(page, "https://site.example/blog", title="T", excerpt="E", image=None, url="https://site.example/blog/t", notes=[])
+    link = BeautifulSoup(out, "html.parser").find("link", href="/assets/app.css")
+    assert link is not None and "crossorigin" not in link.attrs and "integrity" not in link.attrs  # a sandboxed frame has no origin: a CORS-checked stylesheet would be blocked
+
+
+def test_a_javascript_page_is_drawn_in_chrome_only_when_it_is_an_empty_shell(monkeypatch):
+    from app.services import page_xray as px
+    calls = []
+    monkeypatch.setattr(px, "find_chrome", lambda: "chrome")
+    monkeypatch.setattr(px, "chrome_dump", lambda chrome, url: (calls.append(url), (TW_POST, None))[1])
+    normal = POST_PAGE.replace("</body>", "<p>" + "More page text here. " * 200 + "</p></body>")  # a full page (plenty of text): drawn nowhere, used as it is
+    assert sp._rendered("https://site.example/blog/x", normal) == normal and not calls
+    shell = "<html><body><div id='root'></div><script src='/a.js'></script><script src='/b.js'></script></body></html>"
+    assert sp._rendered("https://site.example/blog/x", shell) == TW_POST and calls == ["https://site.example/blog/x"]
+    monkeypatch.setattr(px, "chrome_dump", lambda chrome, url: (None, "failed"))
+    assert sp._rendered("https://site.example/blog/x", shell) == shell  # Chrome failed: the plain page, then the brand preview takes over
 
 
 def test_the_layout_post_can_be_chosen_and_must_be_on_the_projects_own_site(client, monkeypatch):

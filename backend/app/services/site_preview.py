@@ -24,7 +24,7 @@ CACHE_SECONDS = 600
 _cache: dict[str, tuple[float, str]] = {}
 
 CARD_SELECTORS = ["article.elementor-post", "li.wp-block-post", "article.post", ".blog-card", ".post-card", ".blog-item", ".post-item", ".blog-post", "article"]
-CONTENT_SELECTORS = [".elementor-widget-theme-post-content", "[itemprop='articleBody']", ".entry-content", ".post-content", ".single-post-content", ".blog-content", ".article-content",
+CONTENT_SELECTORS = [".elementor-widget-theme-post-content", "[itemprop='articleBody']", ".entry-content", ".post-content", ".single-post-content", ".blog-content", ".blog-body", ".article-content",
                      ".post__content", ".post-body", ".blog-details-content", ".blog-detail-content", ".prose"]
 TITLE_SELECTORS = [".elementor-widget-theme-post-title .elementor-heading-title", ".elementor-widget-theme-post-title h1", "h1.entry-title", "h1.post-title", ".post-title", ".entry-title", "article h1", "main h1", "h1"]
 IMAGE_SELECTORS = [".elementor-widget-theme-post-featured-image img", "img.wp-post-image", ".post-thumbnail img", ".featured-image img", ".blog-details-img img", ".post-image img"]
@@ -33,6 +33,14 @@ LIST_PATHS = ["/blog/", "/blogs/", "/news/", "/articles/", "/insights/", "/resou
 
 REVEAL_CSS = ("<style id='growzen-preview'>.elementor-invisible,.wow,[data-aos],.animated,.fade-in,.reveal{visibility:visible!important;opacity:1!important;transform:none!important;animation:none!important}"
               "html{scroll-behavior:auto!important}[data-elementor-type=popup],.elementor-popup-modal,.cookie-banner,#cookie-notice,.cmplz-cookiebanner{display:none!important}</style>")
+
+
+# Reading comfort for the article we put in: sites that style their posts with a typography class (prose, entry-content...) do not style ours until it carries that class, so
+# paragraphs would touch and headings would be huge. :where() gives these rules no weight, so any rule of the site itself wins.
+FILL_CSS = ("<style id='growzen-fill'>:where(.growzen-fill) p{margin:0 0 1.1em}:where(.growzen-fill) h2{margin:1.6em 0 .5em;font-size:1.55em;line-height:1.25}"
+            ":where(.growzen-fill) h3{margin:1.3em 0 .4em;font-size:1.25em;line-height:1.3}:where(.growzen-fill) ul,:where(.growzen-fill) ol{margin:0 0 1.1em;padding-left:1.4em}"
+            ":where(.growzen-fill) li{margin:.3em 0}:where(.growzen-fill) img{max-width:100%;height:auto}:where(.growzen-fill) table{border-collapse:collapse;width:100%}"
+            ":where(.growzen-fill) th,:where(.growzen-fill) td{border:1px solid #e2e8f0;padding:.5em .7em;text-align:left}</style>")
 
 
 class PreviewError(Exception):
@@ -46,23 +54,109 @@ def _fetch(url: str) -> str:
     status, html, _final, _ms, error = bc._fetch(url)
     if error or status != 200 or not html:
         raise PreviewError(f"Your site's page {url} could not be read ({error or 'HTTP ' + str(status)}).")
+    html = _rendered(url, html)
     if len(_cache) > 40:
         _cache.clear()
     _cache[url] = (time.time(), html)
     return html
 
 
+_ERROR_PAGE = re.compile(r"could not be loaded|couldn['’]?t be loaded|failed to load|page not found|not found|404|something went wrong|loading\s*\.\.\.|enable javascript|no posts? found", re.I)
+
+
+def _text_of(html: str) -> tuple[str, str]:
+    """(visible text, first heading) of a page, without scripts and styles."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    h1 = soup.find("h1")
+    heading = h1.get_text(" ", strip=True) if h1 else ""
+    for t in soup(["script", "style", "noscript", "template"]):
+        t.decompose()
+    return " ".join(soup.get_text(" ", strip=True).split()), heading
+
+
+def _is_error_page(html: str) -> bool:
+    """A page that is a placeholder or an error, not a post: its heading says so, or it has almost no text."""
+    text, heading = _text_of(html)
+    return bool(_ERROR_PAGE.search(heading)) or len(text) < 400 or bool(_ERROR_PAGE.search(text[:1500]) and len(text) < 3500)
+
+
+def _needs_render(html: str) -> bool:
+    from ..backlinks.renderer import looks_js_rendered
+    if looks_js_rendered(html):
+        return True
+    text, heading = _text_of(html)
+    return len(text) < 2500 or bool(_ERROR_PAGE.search(heading))  # a thin page, or a "could not be loaded" placeholder that only the browser replaces
+
+
+def _rendered(url: str, html: str) -> str:
+    """A page the browser builds with JavaScript (React, Vue...): its HTML is an empty shell or a placeholder, so it is drawn in headless Chrome and the finished page is used.
+    Only pages of the project's own website come here (the blog page and its posts). The plain HTML is kept when Chrome is missing or fails, or when drawing it gave less."""
+    if not _needs_render(html):
+        return html
+    from . import page_xray as px
+    chrome = px.find_chrome()
+    if not chrome:
+        return html
+    try:
+        done, _err = px.chrome_dump(chrome, url)
+    except Exception:  # noqa: BLE001 - the plain HTML is still a page
+        return html
+    if not done:
+        return html
+    before, after = _text_of(html), _text_of(done)
+    return done if len(after[0]) > len(before[0]) * 1.3 or (_is_error_page(html) and not _is_error_page(done)) else html
+
+
 # ------------------------------------------------------------------------------------------------------------------------ finding the site's blog pages
 def _cards(soup: BeautifulSoup) -> list[Tag]:
     for sel in CARD_SELECTORS:
-        found = [c for c in soup.select(sel) if c.find("a", href=True) and c.find(["h2", "h3", "h4"]) and not _inside(c, ("header", "footer", "nav"))]
+        found = [c for c in soup.select(sel) if _anchors(c) and c.find(["h2", "h3", "h4"]) and not _inside(c, ("header", "footer", "nav"))]
         if len(found) >= 2:
             return found
-    return []
+    return _cards_by_shape(soup)
+
+
+def _cards_by_shape(soup: BeautifulSoup) -> list[Tag]:
+    """Cards without a known class (Tailwind and other utility-class sites): the largest element around each post link that holds a heading and links to that post only,
+    kept when at least two of them share the same tag and classes."""
+    by_href: dict[str, Tag] = {}
+    for a in soup.find_all("a", href=True):
+        href = a["href"].split("#")[0].rstrip("/")
+        if not href or href.startswith(("mailto:", "tel:", "javascript:")) or _inside(a, ("header", "footer", "nav")) or href in by_href:
+            continue
+        el = a
+        while el.parent is not None and el.parent.name not in ("body", "main", "html", "[document]"):
+            hrefs = {x["href"].split("#")[0].rstrip("/") for x in el.parent.find_all("a", href=True)}
+            if hrefs - {href}:
+                break
+            el = el.parent
+        if el.find(["h2", "h3", "h4", "h5"]) and el.find("img"):
+            by_href[href] = el
+    groups: dict[tuple, list[Tag]] = {}
+    for el in by_href.values():
+        groups.setdefault((el.name, tuple(sorted(el.get("class") or []))), []).append(el)
+    best = max(groups.values(), key=len, default=[])
+    return best if len(best) >= 2 else []
+
+
+def _anchors(card: Tag) -> list[Tag]:
+    """The links of a card, including the card itself when the whole card is one link (<a class="card">...</a>)."""
+    return ([card] if card.name == "a" and card.get("href") else []) + card.find_all("a", href=True)
 
 
 def _inside(el: Tag, names: tuple[str, ...]) -> bool:
-    return any(p.name in names or p.get("data-elementor-type") in ("header", "footer") for p in el.parents if isinstance(p, Tag))
+    return any((p.name in names and not _post_header(p)) or p.get("data-elementor-type") in ("header", "footer") for p in el.parents if isinstance(p, Tag))
+
+
+def _post_header(el: Tag) -> bool:
+    """A <header> that is the post's own heading block (title, picture, date), not the site's top bar: it holds the page title and no menu (a breadcrumb is not a menu)."""
+    if el.name != "header" or el.find("h1") is None:
+        return False
+    for nav in el.find_all("nav"):
+        label = " ".join([nav.get("aria-label") or "", " ".join(nav.get("class") or [])]).lower()
+        if "breadcrumb" not in label and len(nav.find_all("a", href=True)) > 3:
+            return False
+    return True
 
 
 def _origin(url: str) -> str:
@@ -70,13 +164,36 @@ def _origin(url: str) -> str:
     return f"{p.scheme}://{p.netloc}"
 
 
+def publish_site(db: Session, b: Business) -> dict:
+    """The website the preview is drawn from: the one set up in Publishing Setup (WordPress, React.js or HTML website) first, else the project's own website.
+    {site: address of the home page, blog: the blog page when Publishing Setup names it, label: the kind of website, host}."""
+    from . import article_publishing as ap
+    try:
+        dests = ap.destinations(db, b)
+    except Exception:  # noqa: BLE001 - Publishing Setup is only a pointer: the project's website still works
+        dests = []
+    for d in dests:
+        target = str(d.get("target") or "").strip()
+        if target.startswith("http"):
+            p = urlsplit(target)
+            blog = target if BLOG_PATH_RE.search(p.path or "") else None
+            return {"site": f"{p.scheme}://{p.netloc}", "blog": blog, "label": d.get("label"), "host": p.hostname or "", "from_setup": True}
+    site = (b.website or "").strip().rstrip("/")
+    site = site if site.startswith("http") or not site else f"https://{site}"
+    return {"site": site, "blog": None, "label": None, "host": urlsplit(site).hostname or "", "from_setup": False}
+
+
+BLOG_PATH_RE = re.compile(r"/(blog|blogs|news|articles|insights|resources|journal)(/|$)", re.I)
+
+
 def listing_page(db: Session, b: Business) -> tuple[str, str]:
     """(url, html) of the page that lists the site's blog posts."""
     from . import sitemap
-    site = (b.website or "").strip().rstrip("/")
+    ps = publish_site(db, b)
+    site = ps["site"].rstrip("/")
     if not site.startswith("http"):
         raise PreviewError("Add the project's website first: the preview uses its own blog design.")
-    tried: list[str] = []
+    tried: list[str] = [ps["blog"].rstrip("/") + "/"] if ps["blog"] else []
     for (u,) in db.execute(select(Article.wp_url).where(Article.business_id == b.id, Article.wp_status == "publish", Article.wp_url.is_not(None)).order_by(Article.id.desc()).limit(3)):
         parts = [x for x in urlsplit(u or "").path.split("/") if x]
         if len(parts) > 1:
@@ -105,9 +222,10 @@ def listing_page(db: Session, b: Business) -> tuple[str, str]:
     raise PreviewError("The site's blog page could not be found, or it builds its posts with JavaScript, which cannot be read here. Publish one post, then try again.")
 
 
-def _same_site(url: str, b: Business) -> bool:
+def _same_site(url: str, b: Business, extra: str = "") -> bool:
+    """The address is a page of the project's own website, or of the website set up in Publishing Setup (`extra`)."""
     host = lambda u: (urlsplit(u).hostname or "").lower().removeprefix("www.")  # noqa: E731
-    return bool(host(url)) and host(url) == host(b.website or "")
+    return bool(host(url)) and host(url) in {host(b.website or ""), host(extra or "")} - {""}
 
 
 def configured_reference(db: Session, b: Business) -> str | None:
@@ -130,7 +248,7 @@ def reference_post(db: Session, b: Business, list_url: str, list_html: str, expl
     """(url, html) of the post whose design the preview copies: the one named (it must be on the project's own website), else the one the publisher uses, else the first post on the
     site's blog page, else the newest the app published."""
     if explicit:
-        if not _same_site(explicit, b):
+        if not _same_site(explicit, b, publish_site(db, b)["site"]):
             raise PreviewError("The layout post must be a page of the project's own website.")
         return explicit, _fetch(explicit)
     urls: list[str] = []
@@ -138,13 +256,15 @@ def reference_post(db: Session, b: Business, list_url: str, list_html: str, expl
     if configured:
         urls.append(configured)
     cards = _cards(BeautifulSoup(list_html, "html.parser"))
-    urls += [urljoin(list_url, a["href"]) for c in cards[:3] for a in c.find_all("a", href=True)[:1]]
+    urls += [urljoin(list_url, a["href"]) for c in cards[:6] for a in _anchors(c)[:1]]
     urls += [u for (u,) in db.execute(select(Article.wp_url).where(Article.business_id == b.id, Article.wp_status == "publish", Article.wp_url.is_not(None)).order_by(Article.id.desc()).limit(2))]
     for u in dict.fromkeys(urls):
         try:
-            return u, _fetch(u)
+            html = _fetch(u)
         except PreviewError:
             continue
+        if not _is_error_page(html):  # a post that shows "could not be loaded" or has no text is no design to copy: the next one is tried
+            return u, html
     raise PreviewError("None of the site's posts could be read.")
 
 
@@ -161,6 +281,11 @@ def _clean(soup: BeautifulSoup, base: str) -> None:
     for el in soup.find_all(True):
         for attr in [a for a in el.attrs if a.lower().startswith("on")]:
             del el.attrs[attr]
+        if el.name in ("link", "img", "source", "video", "audio"):
+            # The preview frame has no origin of its own (it is sandboxed), so a stylesheet or picture that asks for a CORS check (crossorigin, as Vite and many React builds write it)
+            # is refused by any site that sends no CORS header, and the page then shows without its design. Without the attribute they load as in a normal page.
+            el.attrs.pop("crossorigin", None)
+            el.attrs.pop("integrity", None)
         if el.name == "img":
             lazy = el.get("data-lazy-src") or el.get("data-src")
             if lazy:
@@ -173,7 +298,7 @@ def _clean(soup: BeautifulSoup, base: str) -> None:
     head = soup.head or soup.new_tag("head")
     if soup.head is None:
         (soup.html or soup).insert(0, head)
-    head.insert(0, BeautifulSoup(f"<base href='{base}'><meta name='robots' content='noindex'>{REVEAL_CSS}", "html.parser"))
+    head.insert(0, BeautifulSoup(f"<base href='{base}'><meta name='robots' content='noindex'>{REVEAL_CSS}{FILL_CSS}", "html.parser"))
 
 
 def _today() -> str:
@@ -195,6 +320,30 @@ def _first(soup: Tag, selectors: list[str], skip=("header", "footer", "nav")) ->
 
 
 # ------------------------------------------------------------------------------------------------------------------------ the article's own HTML
+def inline_content_images(body: str, business_id: int, article_id: int) -> str:
+    """The pictures placed on the Images & Analysis step point at GrowZen (/api/v1/.../content-images/x.webp). Inside the preview they would be looked up on the
+    project's website (the page's base address) and need GrowZen's login, so they show as broken. Each one is embedded from its file instead (up to 1.5 MB each).
+    Only the preview gets this: the article that is saved and published keeps its normal address."""
+    import base64
+
+    from . import content_images as ci
+
+    def swap(m: re.Match) -> str:
+        tag = m.group(0)
+        path = ci.path_of(business_id, article_id, m.group(1))
+        try:
+            data = path.read_bytes() if path else b""
+        except OSError:
+            data = b""
+        if not data or len(data) > 1_500_000:
+            return tag
+        uri = f"data:image/webp;base64,{base64.b64encode(data).decode()}"
+        if re.search(r'\bsrc="[^"]*"', tag):
+            return re.sub(r'\bsrc="[^"]*"', lambda _m: f'src="{uri}"', tag, count=1)
+        return tag[:-1].rstrip("/") + f' src="{uri}">'
+    return ci.IMG_RE.sub(swap, body or "")
+
+
 def article_html(body: str, drop_h1: bool) -> str:
     soup = BeautifulSoup(body or "", "html.parser")
     for t in soup.find_all(["script", "style", "iframe"]):
@@ -386,18 +535,107 @@ def _render_elementor(soup: BeautifulSoup, body: str, mark, notes: list[str]) ->
     return True
 
 
-def render_post(page: str, base: str, *, title: str, body_html: str, image: str | None, notes: list[str], mark=None) -> str:
+def _hero_image(soup: BeautifulSoup, title_el: Tag | None) -> Tag | None:
+    """The post's main picture when no known class names it: the first picture in the block around the title (outside the article text, the header and the footer)."""
+    if title_el is None:
+        return None
+    el = title_el
+    for _ in range(5):
+        el = el.parent
+        if el is None or el.name in ("body", "html"):
+            return None
+        img = next((i for i in el.find_all("img") if not _inside(i, ("header", "footer", "nav")) and not i.find_parent(class_=re.compile(r"blog-content|entry-content|post-content|growzen-article"))), None)
+        if img is not None:
+            return img
+    return None
+
+
+_DATE_TEXT = re.compile(r"\b\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*,?\s+\d{4}\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b", re.I)
+
+
+def _post_head_texts(title_el: Tag | None, excerpt: str) -> None:
+    """In the block around the title (outside the article text): the old post's intro line becomes this post's description, and its date becomes today."""
+    if title_el is None:
+        return
+    box = title_el.parent
+    for _ in range(3):
+        if box is None or box.parent is None or box.parent.name in ("body", "html") or box.parent.find(class_=re.compile(r"blog-content|entry-content|post-content|growzen-article")):
+            break
+        box = box.parent
+    if box is None:
+        return
+    root = next((p for p in title_el.parents if p.parent is None), None)
+    areas = [a for a in (root.select(", ".join(CONTENT_SELECTORS + [".growzen-article", ".elementor-widget-text-editor"])) if root is not None else [])]
+    if excerpt:
+        lead = next((p for p in title_el.find_all_next("p", limit=4) if box in p.parents and len(p.get_text(strip=True)) > 40
+                     and not any(a in p.parents for a in areas)), None)  # never a paragraph of the article itself
+        if lead is not None:
+            _set_text(lead, excerpt)
+    for node in list(box.find_all(string=_DATE_TEXT)):
+        node.replace_with(_DATE_TEXT.sub(datetime.now().strftime("%d %B %Y").lstrip("0"), str(node)))
+
+
+_TOC_LABEL = re.compile(r"^\s*(in this (article|post|guide)|table of contents|contents|on this page)\s*$", re.I)
+
+
+def _rebuild_toc(soup: BeautifulSoup) -> None:
+    """The site's own "In this article" list still names the old post's sections: rebuilt from this article's H2s, in the site's style (its first item is the model)."""
+    area = _first(soup, CONTENT_SELECTORS + [".growzen-article"])
+    heads = [h for h in (area.find_all("h2") if area is not None else []) if h.get_text(strip=True)]
+    label = next((t for t in soup.find_all(string=_TOC_LABEL) if area is None or area not in t.parents), None)
+    if label is None or not heads:
+        return
+    box = label.parent
+    links: list[Tag] = []
+    for _ in range(4):
+        if box is None:
+            return
+        links = [a for a in box.find_all("a", href=True) if a["href"].startswith("#")]
+        if len(links) >= 2:
+            break
+        box = box.parent
+    if len(links) < 2:
+        return
+    item = links[0]
+    while item.parent is not None and item.parent is not box and len([a for a in item.parent.find_all("a", href=True) if a["href"].startswith("#")]) == 1:
+        item = item.parent  # the repeated unit: the link itself or its <li>
+    holder = item.parent
+    model = copy.copy(item)
+    for el in [x for x in holder.find_all(recursive=False) if x.find("a", href=lambda h: h and h.startswith("#")) or (x.name == "a" and str(x.get("href", "")).startswith("#"))]:
+        el.decompose()
+    for i, h in enumerate(heads[:12], 1):
+        hid = h.get("id") or f"gz-sec-{i}"
+        h["id"] = hid
+        new = copy.copy(model)
+        a = new if new.name == "a" else new.find("a", href=True)
+        a["href"] = f"#{hid}"
+        texts = [s for s in new.find_all(string=True) if s.strip()]
+        nums = [s for s in texts if re.fullmatch(r"\s*\d{1,2}\.?\s*", s)]
+        for s in nums[:1]:
+            s.replace_with(f"{i:02d}" if len(s.strip().rstrip(".")) == 2 else str(i))
+        words = [s for s in new.find_all(string=True) if s.strip() and not re.fullmatch(r"\s*\d{1,2}\.?\s*", s)]
+        if words:
+            longest = max(words, key=len)
+            longest.replace_with(h.get_text(" ", strip=True))
+            for s in words:
+                if s is not longest:
+                    s.replace_with("")
+        holder.append(new)
+
+
+def render_post(page: str, base: str, *, title: str, body_html: str, image: str | None, notes: list[str], mark=None, excerpt: str = "") -> str:
     mark = mark or (lambda h: h)  # colours the keywords in a piece of HTML (the identity when the preview is plain)
     soup = BeautifulSoup(page, "html.parser")
     _clean(soup, base)
     title_el = _first(soup, TITLE_SELECTORS)
-    wrapper_open = "<div class='growzen-article'>"
+    wrapper_open = "<div class='growzen-article growzen-fill'>"
     done = _render_elementor(soup, body_html, mark, notes)
 
     texts = [e for e in soup.select(".elementor-widget-text-editor") if not _inside(e, ("header", "footer", "nav"))]
     area = _first(soup, CONTENT_SELECTORS)
     if not done and area is not None and len(area.get_text(" ", strip=True)) >= 150 and not texts:
         area.clear()
+        area["class"] = [*(area.get("class") or []), "growzen-fill"]
         area.append(BeautifulSoup(mark(article_html(body_html, drop_h1=title_el is not None and title_el not in area.descendants)), "html.parser"))
         notes.append("Placed in the site's content area.")
         done = True
@@ -436,14 +674,14 @@ def render_post(page: str, base: str, *, title: str, body_html: str, image: str 
         main = _first(soup, ["article", "main", "#content", ".site-content", "#primary"], skip=("header", "footer", "nav"))
         if main is not None and len(main.get_text(" ", strip=True)) >= 150:
             main.clear()
-            main.append(BeautifulSoup(f"<div style='max-width:820px;margin:0 auto;padding:24px 16px'>{mark(article_html(body_html, drop_h1=False))}</div>", "html.parser"))
+            main.append(BeautifulSoup(f"<div class='growzen-article growzen-fill' style='max-width:820px;margin:0 auto;padding:24px 16px'>{mark(article_html(body_html, drop_h1=False))}</div>", "html.parser"))
             notes.append("Placed in the site's main content area.")
         elif soup.body is not None:
             keep_tags = [c for c in soup.body.find_all(recursive=False) if c.name in ("header", "footer", "nav", "style") or c.get("data-elementor-type") in ("header", "footer")]
             for c in list(soup.body.find_all(recursive=False)):
                 if c not in keep_tags:
                     c.decompose()
-            holder = BeautifulSoup(f"<main style='max-width:820px;margin:0 auto;padding:32px 16px'>{mark(article_html(body_html, drop_h1=False))}</main>", "html.parser")
+            holder = BeautifulSoup(f"<main class='growzen-article growzen-fill' style='max-width:820px;margin:0 auto;padding:32px 16px'>{mark(article_html(body_html, drop_h1=False))}</main>", "html.parser")
             foot = next((c for c in keep_tags if c.name == "footer" or c.get("data-elementor-type") == "footer"), None)
             (foot.insert_before(holder) if foot is not None else soup.body.append(holder))
             notes.append("Placed between the site's header and footer.")
@@ -451,10 +689,15 @@ def render_post(page: str, base: str, *, title: str, body_html: str, image: str 
     t = _first(soup, TITLE_SELECTORS)
     if t is not None and title:
         _set_text(t, title)
+    _post_head_texts(t, excerpt)
+    try:
+        _rebuild_toc(soup)
+    except Exception:  # noqa: BLE001 - an unusual contents list is left as it is rather than breaking the preview
+        pass
     if soup.title is not None and title:
         soup.title.string = title
     if image:
-        img = _first(soup, IMAGE_SELECTORS)
+        img = _first(soup, IMAGE_SELECTORS) or _hero_image(soup, t)
         if img is not None:
             img["src"] = image
             for a in ("srcset", "sizes", "data-src", "data-lazy-src"):
@@ -469,7 +712,7 @@ def render_post(page: str, base: str, *, title: str, body_html: str, image: str 
 
 
 # ------------------------------------------------------------------------------------------------------------------------ the blog list
-def render_list(page: str, base: str, *, title: str, excerpt: str, image: str | None, url: str, notes: list[str]) -> str:
+def render_list(page: str, base: str, *, title: str, excerpt: str, image: str | None, url: str, notes: list[str], tag: str = "") -> str:
     soup = BeautifulSoup(page, "html.parser")
     _clean(soup, base)
     cards = _cards(soup)
@@ -479,7 +722,7 @@ def render_list(page: str, base: str, *, title: str, excerpt: str, image: str | 
     new = copy.copy(first)
     classes = [c for c in (new.get("class") or []) if not re.fullmatch(r"post-\d+|category-.*|tag-.*", c)]
     new["class"] = classes
-    for a in new.find_all("a", href=True):
+    for a in _anchors(new):
         a["href"] = url
     head = new.find(["h2", "h3", "h4"])
     if head is not None:
@@ -496,8 +739,20 @@ def render_list(page: str, base: str, *, title: str, excerpt: str, image: str | 
                 img.attrs.pop(a, None)
     for d in new.select("time, .elementor-post-date, .entry-date, .post-date"):
         _set_text(d, _today())
+    now = datetime.now()
+    for node in list(new.find_all(string=re.compile(r"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{4}\b"))):  # a numeric date (11/19/2026, 19-11-2026) in the clone: today, in the same order and separator
+        m = re.search(r"\b(\d{1,2})([/.-])(\d{1,2})[/.-](\d{4})\b", str(node))
+        day_first = int(m.group(1)) > 12  # 19-11-2026 is day first; 11/19/2026 is month first (an ambiguous 05/06/2026 is read month first)
+        part1, part2 = (now.day, now.month) if day_first else (now.month, now.day)
+        text = f"{part1:02d}{m.group(2)}{part2:02d}{m.group(2)}{now.year}"
+        node.replace_with(str(node).replace(m.group(0), text))
+    if tag:  # the small category label over the picture: this post's topic, not the old post's
+        label = next((e for e in new.find_all(True) if "absolute" in (e.get("class") or []) and not e.find(["img", "h2", "h3", "h4"]) and 3 <= len(e.get_text(strip=True)) <= 40), None)
+        node = next((s for s in label.find_all(string=True) if s.strip()), None) if label is not None else None
+        if node is not None:  # only the words: the pill (its own element, colours and icon) stays as the site draws it
+            node.replace_with(tag.upper() if node.strip().isupper() else tag)
     new["style"] = (new.get("style", "") + ";outline:3px solid #4f46e5;outline-offset:2px;position:relative").lstrip(";")
-    new.insert(0, BeautifulSoup("<span style='position:absolute;top:8px;left:8px;z-index:9;background:#4f46e5;color:#fff;font:600 11px/1 sans-serif;padding:5px 9px;border-radius:999px'>Your new post</span>", "html.parser"))
+    new.insert(0, BeautifulSoup("<span style='position:absolute;top:8px;right:8px;z-index:9;background:#4f46e5;color:#fff;font:600 11px/1 sans-serif;padding:5px 9px;border-radius:999px'>Your new post</span>", "html.parser"))
     first.insert_before(new)
     cards[-1].decompose() if len(cards) >= 4 else None  # the newest post takes the place of the oldest on the first page
     notes.append(f"Added to your site's blog page as its newest post ({len(cards)} cards found).")
@@ -507,14 +762,32 @@ def render_list(page: str, base: str, *, title: str, excerpt: str, image: str | 
 # ------------------------------------------------------------------------------------------------------------------------ the entry point
 def build(db: Session, b: Business, a: Article, *, view: str, title: str, excerpt: str, body: str, image: str | None, url: str,
           primary: str | None, secondary: list[str], highlight: bool, reference_url: str | None = None) -> dict:
-    """The page as the site would show it with this article. Raises PreviewError with the reason when the site's design cannot be read."""
+    """The page as the site would show it with this article. When the site's own pages cannot be copied (a site that draws its blog with JavaScript, or a blog page
+    that cannot be found), a page in the site's brand is drawn instead (site_preview_brand) and says so. Raises PreviewError only when neither can be built."""
+    mark = (lambda h: mark_keywords(h, primary, secondary)) if highlight else (lambda h: h)
+    body = inline_content_images(body, b.id, a.id)  # the pictures placed on the Images & Analysis step show in the preview
+    ps = publish_site(db, b)
+    info = {"host": ps["host"], "label": ps["label"], "from_setup": ps["from_setup"], "site": ps["site"]}  # which website this preview is of, and whether Publishing Setup named it
+    try:
+        out = _build_copy(db, b, view=view, title=title, excerpt=excerpt, body=body, image=image, url=url, mark=mark, reference_url=reference_url, primary=primary)
+    except PreviewError as exc:
+        if reference_url:  # a post the user chose: say why it could not be used
+            raise
+        from . import site_preview_brand as brand
+        if not ps["site"]:
+            raise
+        out = brand.render(db, b, a, view=view, title=title, excerpt=excerpt, body_html=body, image=image, url=url, reason=str(exc), mark=mark, site_url=ps["site"])
+    out["site"] = info
+    return out
+
+
+def _build_copy(db: Session, b: Business, *, view: str, title: str, excerpt: str, body: str, image: str | None, url: str, mark, reference_url: str | None, primary: str | None = None) -> dict:
     list_url, list_html = listing_page(db, b)
     notes: list[str] = []
-    mark = (lambda h: mark_keywords(h, primary, secondary)) if highlight else (lambda h: h)
     if view == "list":
-        html = render_list(list_html, list_url, title=title, excerpt=excerpt, image=image, url=url, notes=notes)
+        html = render_list(list_html, list_url, title=title, excerpt=excerpt, image=image, url=url, notes=notes, tag=(primary or "").strip())
         return {"html": html, "reference_url": list_url, "view": "list", "notes": notes}
     ref_url, ref_html = reference_post(db, b, list_url, list_html, reference_url)
-    html = render_post(ref_html, ref_url, title=title, body_html=body, image=image, notes=notes, mark=mark)
+    html = render_post(ref_html, ref_url, title=title, body_html=body, image=image, notes=notes, mark=mark, excerpt=excerpt)
     notes.append(f"Design read from {ref_url}.")
     return {"html": html, "reference_url": ref_url, "view": "post", "notes": notes}

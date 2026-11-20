@@ -743,7 +743,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
 
 
   const [draft, setDraft] = useState(selectedArticle ? selectedArticle.body || '' : '');
-  const [bodyTab, setBodyTab] = useState('editor'); // 'editor' | 'preview'
+  const [bodyTab, setBodyTab] = useState(selectedArticle ? 'preview' : 'editor'); // 'editor' | 'preview': an article opens on its preview
   const caretRef = useRef(null); // the last cursor position in the HTML editor: article images can be placed there
   const [meta, setMeta] = useState({
     keyword: selectedArticle?.keyword || '',
@@ -753,8 +753,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     meta_description: selectedArticle?.meta_description || ''
   });
   const urlBase = useApi(selectedArticle ? `/businesses/${b.id}/articles/url-base` : null).data; // where this site's posts live, learned from the ones already published
-  const [mark, setMark] = useState(true); // colour the keywords in the preview
-  const [previewView, setPreviewView] = useState('standard'); // standard | post (the site's blog details page) | list (the site's blog page)
+  const mark = false; // the preview shows the article as it is: no keyword colouring
+  const [previewView, setPreviewView] = useState('post'); // standard | post (the site's blog details page, the default) | list (the site's blog page)
   const [device, setDevice] = useState('desktop');
   const [site, setSite] = useState({ busy: false, html: '', error: '', notes: [], ref: '' });
   const siteSeq = useRef(0);
@@ -914,15 +914,6 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
           {urlBase && !urlBase.learned && <div className="text-[11px] text-slate-500">Shown as {urlBase.base}: your site may place posts in another folder. It is learned from the first post you publish.</div>}
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2 text-[12px]">
-        <label className="inline-flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer"><input type="checkbox" checked={mark} onChange={e => setMark(e.target.checked)} /> Colour the keywords</label>
-        <span className="text-[11.5px] text-slate-500">Colours are for checking here only. On your website the keywords and brand name are just bold: that is added when you save and again when you publish.</span>
-        {mark && <>
-          {meta.keyword.trim() && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#fde68a', boxShadow: 'inset 0 -2px 0 #f59e0b' }} title="Primary keyword: how many times it appears in the article text">Primary: {meta.keyword.trim()} <span className="font-mono">×{countIn(bodyText, meta.keyword)}</span></span>}
-          {secondaryNow.map(k => <span key={k} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#bae6fd', boxShadow: 'inset 0 -2px 0 #0ea5e9' }} title="Secondary keyword: how many times it appears in the article text">{k} <span className="font-mono">×{countIn(bodyText, k)}</span></span>)}
-          {brand && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: '#bbf7d0', boxShadow: 'inset 0 -2px 0 #22c55e' }} title="Your brand name: how many times it appears in the article text">Brand: {brand} <span className="font-mono">×{countIn(bodyText, brand)}</span></span>}
-        </>}
-      </div>
     </div>
   );
   const coverage = React.useMemo(() => paragraphCoverage(draft, meta.keyword, secondaryNow), [draft, meta.keyword, meta.secondary]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -953,7 +944,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       method: 'POST', timeout: 90000,
       body: { view, title: meta.title, meta_description: meta.meta_description, body: draft, slug: slugify(meta.slug, 100), keyword: meta.keyword, secondary_keywords: secondaryNow, highlight: mark, reference_url: refUrl || null }
     })
-      .then(r => { if (mine === siteSeq.current) setSite({ busy: false, html: r.html, error: '', notes: r.notes || [], ref: r.reference_url || '' }); })
+      .then(r => { if (mine === siteSeq.current) setSite({ busy: false, html: r.html, error: '', notes: r.notes || [], ref: r.reference_url || '', source: r.source || 'copy', info: r.site || null }); })
       .catch(e => { if (mine === siteSeq.current) setSite(x => ({ ...x, busy: false, html: '', error: e.message || 'The preview could not be built.' })); });
   };
   useEffect(() => {
@@ -971,7 +962,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         </div>
         <Button size="sm" icon={RefreshCw} busy={site.busy} onClick={() => loadSitePreview(previewView)}>Refresh with my edits</Button>
       </>)}
-      {previewView === 'post' && (
+      {previewView === 'post' && site.source !== 'brand' && (
         <details className="basis-full text-[12px] text-slate-600">
           <summary className="cursor-pointer font-semibold text-slate-700">Design copied from: {site.ref ? <a href={site.ref} target="_blank" rel="noreferrer noopener" className="text-indigo-700 hover:underline font-mono break-all" onClick={e => e.stopPropagation()}>{site.ref}</a> : 'a post chosen automatically'}{refUrl ? ' (your choice)' : ''}. Use another post</summary>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -990,7 +981,14 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       {site.busy && !site.html && <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-[13px] text-slate-500"><RefreshCw size={20} className="animate-spin text-indigo-500 mx-auto mb-2" />Reading your website's {previewView === 'list' ? 'blog page' : 'post design'}…</div>}
       {site.html && (
         <>
-          <div className="text-[11.5px] text-slate-500">{site.notes.join(' ')} The keywords are coloured only in this preview; scripts on your site are switched off, so menus and sliders will not move.</div>
+          {site.info?.host && (
+            <div className="flex flex-wrap items-center gap-2 mb-1.5 text-[12px]">
+              <span className="font-semibold text-slate-700">Preview of</span>
+              <a href={site.info.site} target="_blank" rel="noreferrer noopener" className="font-mono text-indigo-700 hover:underline">{site.info.host}</a>
+              <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-semibold">{site.info.from_setup ? `Publishing Setup: ${site.info.label || 'connected website'}` : 'Project website (no publishing website is set up yet)'}</span>
+            </div>
+          )}
+          <div className="text-[11.5px] text-slate-500">{site.source === 'brand' &&<span className="inline-block mr-1.5 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold">Your site’s brand</span>}{site.notes.join(' ')}{site.source === 'brand' ? '' : ' Scripts on your site are switched off, so menus and sliders will not move.'}</div>
           <div className="rounded-xl border border-slate-200 bg-slate-100 p-3 flex justify-center overflow-x-auto relative">
             {site.busy && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center"><RefreshCw size={20} className="animate-spin text-indigo-500" /></div>}
             <iframe title="Preview in your website's design" sandbox="" referrerPolicy="no-referrer" srcDoc={site.html}
