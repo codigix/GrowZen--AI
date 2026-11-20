@@ -29,6 +29,7 @@ const pushedMsg = (r, base = 'Saved') => {
   if (!r?.pushed_to_google?.length) return `${base}. Not sent to Google: connect this client's Google account to publish changes there.`;
   const bad = r.not_confirmed_on_google || [];
   if (bad.length) return `${base} and sent to Google, but Google does not show ${bad.join(', ')} yet. Wait a few minutes and sync again.`;
+  if (r.google_reviewing) return `${base} and received by Google. Google is reviewing the edit before it shows on Search and Maps: this can take a few hours, sometimes up to 3 days.`;
   return `${base} and confirmed on your Google Business Profile. Google Search and Maps can take a few minutes to show it.`;
 };
 const STUFFED = /[|]|\s-\s|\bbest\b|\bcheap\b|no\.?\s?1|\btop\s/i;

@@ -205,6 +205,7 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
     old_site = b.website
     pushed: list[str] = []
     not_on_google: list[str] = []
+    under_review = False
     changed = {k: v for k, v in changes.items() if getattr(b, k, None) != v}
     # The booking link and the list of Book / Order links describe the same buttons: keep them in step before saving.
     links_touched = False
@@ -238,7 +239,9 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
             raise HTTPException(502, f"Google did not accept the change, so nothing was saved: {exc}") from exc
         pushed = sorted(patch)
         try:  # read it back: say plainly whether Google holds the change
-            not_on_google = gbp.unconfirmed(patch, gbp.GbpClient(b.connection).location(b.gbp_location))
+            live_loc = gbp.GbpClient(b.connection).location(b.gbp_location)
+            not_on_google = gbp.unconfirmed(patch, live_loc)
+            under_review = bool((live_loc.get("metadata") or {}).get("hasPendingEdits"))  # Google checks edits before showing them on Search and Maps
         except gbp.GbpError:
             not_on_google = []
     if links_touched and b.connection and b.gbp_location:
@@ -255,7 +258,7 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
     db.commit()
     if b.website and b.website != old_site and site_onboarding.autodetect_enabled():
         background.add_task(in_background(workplan.refresh_research_in_background, b.id))  # a new address means a possibly different technology, metadata and plan
-    return row(b) | {"pushed_to_google": pushed, "not_confirmed_on_google": not_on_google}
+    return row(b) | {"pushed_to_google": pushed, "not_confirmed_on_google": not_on_google, "google_reviewing": under_review}
 
 
 @router.delete("/{business_id}", status_code=204)
