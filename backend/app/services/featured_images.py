@@ -232,18 +232,72 @@ def save(business_id: int, article_id: int, data: bytes, ext: str, old_rel: str 
 
 
 def path_of(rel: str | None) -> Path | None:
-    """The absolute file for a stored relative path, only if it is inside the uploads folder and exists."""
+    """The absolute file for a stored relative path, only if it is inside the uploads folder and exists. A featured
+    image that is missing here (uploaded through another GrowZen server sharing the database) is fetched once from
+    settings.uploads_fallback_url when that is set."""
     if not rel:
         return None
     p = (UPLOAD_ROOT / rel).resolve()
-    if UPLOAD_ROOT.resolve() not in p.parents or not p.is_file():
+    if UPLOAD_ROOT.resolve() not in p.parents:
         return None
+    if not p.is_file():
+        m = _FEATURED_REL.match(rel.replace("\\", "/"))
+        if not (m and fetch_missing(f"/businesses/{m.group(1)}/articles/{m.group(2)}/featured-image", p)):
+            return None
     return p
 
 
+_FEATURED_REL = re.compile(r"^articles/(\d+)/(\d+)-[0-9a-f]{12}\.webp$")
+
+
+def fetch_missing(api_path: str, dest: Path) -> bool:
+    """Download an image this server does not have from the GrowZen server that does (settings.uploads_fallback_url)
+    and keep it at dest. False when no fallback is set or it does not serve a real image. Never raises."""
+    import time
+
+    from ..config import get_settings
+    base = (get_settings().uploads_fallback_url or "").strip().rstrip("/")
+    if not base:
+        return False
+    url = base + api_path
+    if time.monotonic() - _fetch_misses.get(url, -1e9) < 600:
+        return False  # tried in the last 10 minutes and it was not there: pages listing articles stay fast
+    ok = _download(url, dest, base)
+    if not ok:
+        _fetch_misses[url] = time.monotonic()
+    return ok
+
+
+_fetch_misses: dict[str, float] = {}
+
+
+def _download(url: str, dest: Path, base: str) -> bool:
+    import logging
+
+    import httpx
+    try:
+        with httpx.Client(timeout=30, follow_redirects=True) as c:
+            r = c.get(url)
+        data = r.content
+        if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image/") or len(data) < MIN_BYTES or len(data) > MAX_INPUT_BYTES:
+            logging.getLogger("seo.uploads").warning("Image %s is not on this server and %s answered %s", dest.name, url, r.status_code)
+            return False
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(dest.name + ".part")
+        tmp.write_bytes(data)
+        tmp.replace(dest)
+        logging.getLogger("seo.uploads").info("Fetched missing image %s from %s", dest.name, base)
+        return True
+    except (httpx.HTTPError, OSError) as exc:
+        logging.getLogger("seo.uploads").warning("Could not fetch missing image %s from %s: %s", dest.name, url, exc)
+        return False
+
+
 def remove(rel: str | None) -> None:
-    p = path_of(rel)
-    if p:
+    if not rel:
+        return
+    p = (UPLOAD_ROOT / rel).resolve()  # the local file only: nothing is downloaded just to be deleted
+    if UPLOAD_ROOT.resolve() in p.parents:
         p.unlink(missing_ok=True)
 
 
