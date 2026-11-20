@@ -66,3 +66,14 @@ def test_audit_then_compare_for_a_competitor_with_no_website(client, monkeypatch
     cmp = client.post(f"/api/v1/competitors/{c['id']}/listing-compare").json()
     assert cmp["kind"] == "listing" and cmp["services"]["shared"] == ["Lehenga rental"] and cmp["services"]["only_them"] == ["Gown rental"] and len(cmp["checks"]) == len(la.CHECKS)
     assert cmp["you"]["listing_read"] is False and cmp["scores"]["theirs"] == out["score"]
+
+
+def test_gap_keywords_from_the_comparison_can_be_added_to_my_keywords(client):
+    bid = _biz(client)
+    body = [{"keyword": "party dress rental", "source": {"kind": "competitor_compare", "label": "Style Story Google listing", "side": "competitor", "from": "Style Story", "pages": [], "searches": None, "at": "2026-11-21"}},
+            {"keyword": "blazer on rent", "source": {"kind": "competitor_compare", "label": "Style Story Google listing", "side": "competitor", "from": "Style Story", "pages": [], "searches": None, "at": "2026-11-21"}}]
+    r = client.post(f"/api/v1/businesses/{bid}/keywords", json=body)
+    assert r.status_code in (200, 201), r.text
+    got = client.get(f"/api/v1/businesses/{bid}/keywords").json()
+    mine = [k["keyword"] for k in (got.get("keywords") if isinstance(got, dict) else got)]
+    assert "party dress rental" in mine and "blazer on rent" in mine

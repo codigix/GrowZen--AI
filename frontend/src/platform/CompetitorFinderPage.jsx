@@ -366,7 +366,21 @@ const SCORE_WORD = { queued: 'Queued…', running: 'Auditing…', done: 'Audited
 const DOT = { ok: ['bg-emerald-500', 'Good'], warn: ['bg-amber-400', 'Could be better'], bad: ['bg-red-500', 'Missing or weak'] };
 
 /** The Google-listing comparison, inside the same Compare window as a website comparison: the listing checks, then the services and keywords you share and the ones you do not. */
-export function ListingComparison({ c }) {
+export function ListingComparison({ c, bid }) {
+  const [pick, setPick] = useState([]);
+  const [added, setAdded] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const toggle = (k) => setPick(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k]));
+  const gaps = c.keywords.only_them.filter(k => !added.includes(k));
+  const save = async () => {
+    if (!pick.length || !bid) return;
+    setSaving(true); setSaveError('');
+    try {
+      await api(`/businesses/${bid}/keywords`, { method: 'POST', body: pick.map(k => ({ keyword: k, source: { kind: 'competitor_compare', label: `${c.competitor.name} Google listing`, side: 'competitor', from: c.competitor.name, pages: [], searches: null, at: new Date().toISOString().slice(0, 10) } })) });
+      setAdded(a => [...a, ...pick]); setPick([]);
+    } catch (e) { setSaveError(e.message || 'The keywords could not be added.'); } finally { setSaving(false); }
+  };
   const Chips = ({ items, tone, empty }) => (items && items.length ? <div className="flex flex-wrap gap-1.5">{items.map(x => <span key={x} className={`px-2.5 py-1 rounded-full text-12.5 border ${tone === 'rose' ? 'bg-rose-50 text-rose-800 border-rose-200' : tone === 'green' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>{x}</span>)}</div> : <p className="text-13 text-slate-500">{empty}</p>);
   const dot = (row) => { const [col, word] = DOT[row?.status] || ['bg-slate-200', '']; return row ? <span className="inline-flex items-start gap-2 text-left"><span className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${col}`} title={word} /><span className="text-12.5 text-slate-700">{row.detail}</span></span> : <span className="text-slate-400">—</span>; };
   return (
@@ -392,7 +406,25 @@ export function ListingComparison({ c }) {
         <div className="text-13 font-semibold text-slate-900 mb-1.5">Keywords</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div><div className="text-11.5 font-semibold text-emerald-700 mb-1">Both target</div><Chips items={c.keywords.shared} tone="green" empty="None in common." /></div>
-          <div><div className="text-11.5 font-semibold text-rose-700 mb-1">Only they target (a gap for you)</div><Chips items={c.keywords.only_them} tone="rose" empty="No gap found." /></div>
+          <div>
+            <div className="text-11.5 font-semibold text-rose-700 mb-1">Only they target (a gap for you)</div>
+            {c.keywords.only_them.length === 0 ? <p className="text-13 text-slate-500">No gap found.</p> : (
+              <div className="flex flex-wrap gap-1.5">
+                {c.keywords.only_them.map(k => {
+                  const done = added.includes(k), on = pick.includes(k);
+                  return <button key={k} type="button" disabled={done} onClick={() => toggle(k)} aria-pressed={on} className={`px-2.5 py-1 rounded-full text-12.5 border inline-flex items-center gap-1.5 ${done ? 'bg-emerald-50 text-emerald-800 border-emerald-200 cursor-default' : on ? 'bg-indigo-600 text-white border-indigo-600 cursor-pointer' : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100 cursor-pointer'}`}>{done ? <CheckCircle2 size={12} /> : <input type="checkbox" readOnly checked={on} tabIndex={-1} className="pointer-events-none" />}{k}</button>;
+                })}
+              </div>
+            )}
+            {c.keywords.only_them.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="primary" icon={Plus} busy={saving} disabled={!pick.length} onClick={save}>Add {pick.length ? pick.length : ''} to my keywords</Button>
+                {gaps.length > 0 && <Button size="sm" onClick={() => setPick(pick.length === gaps.length ? [] : gaps)}>{pick.length === gaps.length ? 'Clear' : `Select all ${gaps.length}`}</Button>}
+                {added.length > 0 && <span className="text-12 text-emerald-700">{added.length} added to My keywords</span>}
+              </div>
+            )}
+            {saveError && <p className="mt-1.5 text-12 text-red-600" role="alert">{saveError}</p>}
+          </div>
           <div><div className="text-11.5 font-semibold text-slate-600 mb-1">Only you target</div><Chips items={c.keywords.only_us} empty="Nothing only you target." /></div>
         </div>
       </div>
@@ -727,13 +759,13 @@ function IdeasModal({ open, r, onClose }) {
   );
 }
 
-export function CompareModal({ state, onClose }) {
+export function CompareModal({ state, onClose, bid }) {
   return (
     <Modal open={Boolean(state)} onClose={onClose} width="max-w-5xl" title={state ? `Compare with ${state.competitor.name}` : ''}>
       {state?.loading && <div className="space-y-4"><SkStats n={3} cols="grid-cols-3" /><SkTable cols={4} rows={5} /></div>}
       {state?.error && <ErrorNote>{state.error}</ErrorNote>}
       {state?.result && <div className="max-h-[72vh] overflow-y-auto pr-1"><ComparisonResult c={state.result} bare onGo={onClose} /></div>}
-      {state?.listing && <div className="max-h-[72vh] overflow-y-auto pr-1"><ListingComparison c={state.listing} /></div>}
+      {state?.listing && <div className="max-h-[72vh] overflow-y-auto pr-1"><ListingComparison key={state.competitor?.id} c={state.listing} bid={bid} /></div>}
     </Modal>
   );
 }
@@ -1039,7 +1071,7 @@ function Research({ b }) {
       {result && <ProfileModal c={detail} r={result} onClose={() => setDetail(null)} onAudit={auditCompetitor} onCompare={doCompare} auditMap={auditMap} />}
       {result && <KeywordModal s={serp} onClose={() => setSerp(null)} />}
       {result && <IdeasModal open={ideas} r={result} onClose={() => setIdeas(false)} />}
-      <CompareModal state={compare} onClose={() => setCompare(null)} />
+      <CompareModal state={compare} onClose={() => setCompare(null)} bid={b.id} />
     </div>
   );
 }
