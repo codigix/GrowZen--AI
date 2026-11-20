@@ -15,7 +15,6 @@ from ..backlinks.lifecycle import LIVE_STATES
 from ..backlinks.models import Backlink, BiOpportunity, BiTrackedTarget
 from ..models import (ActivityLog, AgentTask, Article, Audit, BacklinkCheck, Business, GrowthAction, IndexPage, InsightDay, Keyword, KeywordCandidate, Lead, Post, Review)
 
-WEEKS, MONTHS = 12, 6
 
 ACTION_WORDS = {
     "business_updated": "Profile details updated", "business_imported": "Imported from Google", "gbp_synced": "Synced with Google", "gbp_categories_updated": "Categories updated on Google",
@@ -35,19 +34,6 @@ def _week(d: date) -> date:
 
 def _month(d: date) -> date:
     return d.replace(day=1)
-
-
-def buckets(period: str, today: date | None = None) -> list[date]:
-    """The start dates of the periods shown, oldest first: the last 12 weeks (Monday) or the last 6 months."""
-    today = today or date.today()
-    if period == "month":
-        first, out = _month(today), []
-        for _ in range(MONTHS):
-            out.append(first)
-            first = _month(first - timedelta(days=1))
-        return out[::-1]
-    start = _week(today)
-    return [start - timedelta(weeks=i) for i in range(WEEKS - 1, -1, -1)]
 
 
 def _label(d: date, period: str) -> str:
@@ -70,42 +56,80 @@ def _series(rows: list[date | datetime | None], period: str, keys: list[date], w
     return [got.get(k, 0) for k in keys]
 
 
-def _change(series: list[float]) -> dict[str, Any]:
-    """The last period against the one before it."""
-    if len(series) < 2:
-        return {"now": series[-1] if series else 0, "before": 0, "delta": 0, "pct": None}
-    now, before = series[-1], series[-2]
-    return {"now": now, "before": before, "delta": now - before, "pct": round((now - before) / before * 100) if before else None}
+RANGES = {"30d": 30, "90d": 90, "180d": 180, "365d": 365}
+
+
+def _keys_between(start: date, end: date, group: str) -> list[date]:
+    k, last, out = _key(start, group), _key(end, group), []
+    while k <= last:
+        out.append(k)
+        k = (k + timedelta(days=7)) if group == "week" else _month(k + timedelta(days=32))
+    return out
+
+
+def plan(range_key: str, start: date | None, end: date | None, group: str | None, earliest: date | None, today: date | None = None) -> tuple[str, date, date, str, list[date]]:
+    """The period shown. By default everything so far (from the first thing stored for the project until today); a fixed number of days, this month or a custom range narrows it.
+    Grouped by month when the range is long, by week when it is short, unless the person chose."""
+    today = today or date.today()
+    if range_key == "custom" and start and end:
+        s, e = (start, min(end, today)) if start <= end else (end, min(start, today))
+    elif range_key in RANGES:
+        s, e = today - timedelta(days=RANGES[range_key] - 1), today
+    elif range_key == "this_month":
+        s, e = today.replace(day=1), today
+    else:
+        range_key, s, e = "all", min(earliest or today, today), today
+    days = (e - s).days + 1
+    group = group if group in ("week", "month") else ("month" if days > 120 else "week")
+    keys = _keys_between(s, e, group)
+    if group == "week" and len(keys) > 60:
+        group, keys = "month", _keys_between(s, e, "month")
+    return range_key, s, e, group, keys[-72:]
 
 
 def humanize(action: str) -> str:
     return ACTION_WORDS.get(action) or action.replace("_", " ").replace(".", " ").strip().capitalize()
 
 
-def build(db: Session, b: Business, period: str = "week") -> dict[str, Any]:
-    period = "month" if period == "month" else "week"
-    keys = buckets(period)
-    since = datetime.combine(keys[0], datetime.min.time(), tzinfo=timezone.utc)
-    labels = [_label(k, period) for k in keys]
+def _d(x: date | datetime | None) -> date | None:
+    return x.date() if isinstance(x, datetime) else x
 
-    # ---- series
-    ins = db.execute(select(InsightDay.day, InsightDay.calls, InsightDay.directions, InsightDay.website_clicks, InsightDay.views_search, InsightDay.views_maps)
-                     .where(InsightDay.business_id == b.id, InsightDay.day >= keys[0])).all()
-    ins_days = [r[0] for r in ins]
-    reviews = [_tz(x) for x in db.scalars(select(func.coalesce(Review.review_at, Review.created_at)).where(Review.business_id == b.id)).all()]
-    posts = [_tz(x) for x in db.scalars(select(Post.published_at).where(Post.business_id == b.id, Post.status == "published", Post.published_at.is_not(None))).all()]
-    articles = [_tz(x) for x in db.scalars(select(Article.generated_at).where(Article.business_id == b.id, Article.status == "completed", Article.generated_at.is_not(None))).all()]
-    fixed = [_tz(x) for x in db.scalars(select(GrowthAction.verified_at).where(GrowthAction.business_id == b.id, GrowthAction.verified_at.is_not(None))).all()]
-    leads = list(db.scalars(select(Lead.lead_date).where(Lead.business_id == b.id, Lead.lead_date.is_not(None))).all())
-    acts = [_tz(x) for x in db.scalars(select(ActivityLog.created_at).where(ActivityLog.business_id == b.id, ActivityLog.created_at >= since)).all()]
-    kw_added = [_tz(x) for x in db.scalars(select(Keyword.created_at).where(Keyword.business_id == b.id)).all()]
+
+def build(db: Session, b: Business, range_key: str = "all", start: date | None = None, end: date | None = None, group: str | None = None) -> dict[str, Any]:
+    # ---- every dated thing stored for the project (nothing is cut off here: the range is applied below)
+    ins = db.execute(select(InsightDay.day, InsightDay.calls, InsightDay.directions, InsightDay.website_clicks, InsightDay.views_search, InsightDay.views_maps).where(InsightDay.business_id == b.id)).all()
     own = bl_summary.own_site_links(db, b.id)  # what our own bot has found for the project's site: None when no site is tracked
     links_new: list[datetime | None] = []
     if own:
         links_new = [_tz(x) for x in db.scalars(select(Backlink.first_seen_at).join(TargetDomain, TargetDomain.id == Backlink.target_domain_id)
                                                  .where(TargetDomain.registrable_domain == own["domain"], Backlink.current_status.in_(LIVE_STATES), Backlink.first_seen_at.is_not(None))).all()]
-    audit_rows = db.execute(select(Audit.finished_at, Audit.score).where(Audit.business_id == b.id, Audit.status == "done", Audit.score.is_not(None), Audit.finished_at.is_not(None),
-                                                                        Audit.finished_at >= since)).all()
+    events: dict[str, tuple[list, list[int] | None]] = {
+        "calls": ([r[0] for r in ins], [r[1] or 0 for r in ins]),
+        "directions": ([r[0] for r in ins], [r[2] or 0 for r in ins]),
+        "website_clicks": ([r[0] for r in ins], [r[3] or 0 for r in ins]),
+        "views": ([r[0] for r in ins], [(r[4] or 0) + (r[5] or 0) for r in ins]),
+        "reviews": ([_tz(x) for x in db.scalars(select(func.coalesce(Review.review_at, Review.created_at)).where(Review.business_id == b.id)).all()], None),
+        "posts": ([_tz(x) for x in db.scalars(select(Post.published_at).where(Post.business_id == b.id, Post.status == "published", Post.published_at.is_not(None))).all()], None),
+        "articles": ([_tz(x) for x in db.scalars(select(Article.generated_at).where(Article.business_id == b.id, Article.status == "completed", Article.generated_at.is_not(None))).all()], None),
+        "fixes": ([_tz(x) for x in db.scalars(select(GrowthAction.verified_at).where(GrowthAction.business_id == b.id, GrowthAction.verified_at.is_not(None))).all()], None),
+        "keywords": ([_tz(x) for x in db.scalars(select(Keyword.created_at).where(Keyword.business_id == b.id)).all()], None),
+        "backlinks": (links_new, None),
+        "leads": (list(db.scalars(select(Lead.lead_date).where(Lead.business_id == b.id, Lead.lead_date.is_not(None))).all()), None),
+        "actions": ([_tz(x) for x in db.scalars(select(ActivityLog.created_at).where(ActivityLog.business_id == b.id)).all()], None),
+    }
+    audit_rows = db.execute(select(Audit.finished_at, Audit.score).where(Audit.business_id == b.id, Audit.status == "done", Audit.score.is_not(None), Audit.finished_at.is_not(None))).all()
+    firsts = [d for d in (_d(x) for rows, _w in events.values() for x in rows) if d] + [_d(f) for f, _s in audit_rows] + [_d(b.created_at)]
+    earliest = min((d for d in firsts if d), default=None)
+
+    range_key, s, e, period, keys = plan(range_key, start, end, group, earliest)
+    labels = [_label(k, period) for k in keys]
+    in_range = lambda x, a, z: (d := _d(x)) is not None and a <= d <= z  # noqa: E731
+    days = (e - s).days + 1
+
+    def total(name: str, a: date, z: date) -> int:
+        rows, w = events[name]
+        return sum((w[i] if w else 1) for i, r in enumerate(rows) if in_range(r, a, z))
+
     health: dict[date, list[int]] = defaultdict(list)
     for fin, sc in audit_rows:
         k = _key(fin, period)
@@ -113,21 +137,15 @@ def build(db: Session, b: Business, period: str = "week") -> dict[str, Any]:
             health[k].append(sc)
     health_series = [round(sum(health[k]) / len(health[k])) if health.get(k) else None for k in keys]
 
-    series = {
-        "calls": _series(ins_days, period, keys, [r[1] or 0 for r in ins]),
-        "directions": _series(ins_days, period, keys, [r[2] or 0 for r in ins]),
-        "website_clicks": _series(ins_days, period, keys, [r[3] or 0 for r in ins]),
-        "views": _series(ins_days, period, keys, [(r[4] or 0) + (r[5] or 0) for r in ins]),
-        "reviews": _series(reviews, period, keys),
-        "posts": _series(posts, period, keys),
-        "articles": _series(articles, period, keys),
-        "fixes": _series(fixed, period, keys),
-        "keywords": _series(kw_added, period, keys),
-        "backlinks": _series(links_new, period, keys),
-        "leads": _series(leads, period, keys),
-        "actions": _series(acts, period, keys),
-    }
-    movement = {k: _change(v) for k, v in series.items()}
+    series = {name: _series(rows, period, keys, w) for name, (rows, w) in events.items()}
+    movement: dict[str, Any] = {}
+    for name in events:
+        now = total(name, s, e)
+        if range_key == "all":
+            movement[name] = {"total": now, "before": None, "delta": 0, "pct": None, "compare": False}
+        else:
+            before = total(name, s - timedelta(days=days), s - timedelta(days=1))  # the same number of days just before
+            movement[name] = {"total": now, "before": before, "delta": now - before, "pct": round((now - before) / before * 100) if before else None, "compare": True}
 
     # ---- counts of what exists
     def count(model, *where) -> int:
@@ -155,7 +173,10 @@ def build(db: Session, b: Business, period: str = "week") -> dict[str, Any]:
     }
 
     # ---- actions taken
-    recent = db.scalars(select(ActivityLog).where(ActivityLog.business_id == b.id).order_by(ActivityLog.id.desc()).limit(40)).all()
+    q = select(ActivityLog).where(ActivityLog.business_id == b.id)
+    if range_key != "all":
+        q = q.where(ActivityLog.created_at >= datetime.combine(s, datetime.min.time(), tzinfo=timezone.utc), ActivityLog.created_at < datetime.combine(e + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc))
+    recent = db.scalars(q.order_by(ActivityLog.id.desc()).limit(40)).all()
     noisy = {"gbp_synced"}
     timeline, seen = [], set()
     for a in recent:
@@ -183,6 +204,7 @@ def build(db: Session, b: Business, period: str = "week") -> dict[str, Any]:
     done_tasks = db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.status.in_(("applied", "approved", "scheduled"))).order_by(AgentTask.id.desc()).limit(6)).all()
 
     return {
+        "range": {"key": range_key, "start": s.isoformat(), "end": e.isoformat(), "days": days, "group": period, "earliest": earliest.isoformat() if earliest else None},
         "period": period, "labels": labels, "starts": [k.isoformat() for k in keys], "series": series, "health": health_series, "movement": movement, "counts": counts, "timeline": timeline,
         "top_keywords": top_keywords, "latest_backlinks": top_links, "backlink_domain": own["domain"] if own else None,
         "recent_tasks": [{"title": t.title, "status": t.status, "kind": t.kind, "at": t.updated_at.isoformat() if t.updated_at else None} for t in done_tasks],

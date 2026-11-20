@@ -326,10 +326,10 @@ def overview(b: Business = Depends(get_business), db: Session = Depends(get_db))
 
 
 @router.get("/{business_id}/dashboard")
-def project_dashboard(period: str = "week", b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """Counts, week-by-week or month-by-month movement and the actions taken, for the project dashboard."""
+def project_dashboard(range: str = "all", start: date | None = None, end: date | None = None, group: str | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Counts, movement over time and the actions taken, for the project dashboard. Everything so far by default; `range` (30d, 90d, 180d, 365d, this_month, custom with start and end) narrows it."""
     from ..services import project_dashboard as pd
-    return pd.build(db, b, period)
+    return pd.build(db, b, range, start, end, group)
 
 
 @router.get("/{business_id}/connections")

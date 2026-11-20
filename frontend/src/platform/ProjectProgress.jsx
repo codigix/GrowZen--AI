@@ -16,23 +16,23 @@ const ago = (iso) => {
   return `${Math.round(m / 1440)} days ago`;
 };
 
-function Change({ m, unit }) {
-  if (!m) return null;
-  if (!m.delta) return <span className="text-11.5 text-slate-400 inline-flex items-center gap-0.5"><Minus size={12} />same as last {unit}</span>;
+function Change({ m, days }) {
+  if (!m || !m.compare) return null;
+  if (!m.delta) return <span className="text-11.5 text-slate-400 inline-flex items-center gap-0.5"><Minus size={12} />same as the {days} days before</span>;
   const up = m.delta > 0;
   const I = up ? ArrowUpRight : ArrowDownRight;
-  return <span className={`text-11.5 font-semibold inline-flex items-center gap-0.5 ${up ? 'text-emerald-600' : 'text-red-600'}`}><I size={13} />{up ? '+' : ''}{fmt(m.delta)}{m.pct != null ? ` (${m.pct > 0 ? '+' : ''}${m.pct}%)` : ''} vs last {unit}</span>;
+  return <span className={`text-11.5 font-semibold inline-flex items-center gap-0.5 ${up ? 'text-emerald-600' : 'text-red-600'}`}><I size={13} />{up ? '+' : ''}{fmt(m.delta)}{m.pct != null ? ` (${m.pct > 0 ? '+' : ''}${m.pct}%)` : ''} vs the {days} days before</span>;
 }
 
-function Kpi({ icon: Icon, label, m, unit, total }) {
+function Kpi({ icon: Icon, label, m, days, total }) {
   return (
     <div className="ai-glass-card rounded p-4 flex items-start gap-3 min-w-0">
       <span className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-500 flex items-center justify-center shrink-0"><Icon size={17} /></span>
       <div className="min-w-0">
         <div className="text-12 font-semibold text-slate-500 truncate">{label}</div>
-        <div className="text-24 leading-tight font-bold text-slate-900 tabular-nums">{fmt(m?.now || 0)}</div>
-        <Change m={m} unit={unit} />
-        {total != null && <div className="text-11 text-slate-400">{fmt(total)} in total</div>}
+        <div className="text-24 leading-tight font-bold text-slate-900 tabular-nums">{fmt(m?.total || 0)}</div>
+        <Change m={m} days={days} />
+        {total != null && m && m.compare && <div className="text-11 text-slate-400">{fmt(total)} in total</div>}
       </div>
     </div>
   );
@@ -69,20 +69,41 @@ function Stand({ icon: Icon, label, value, sub, bar, to }) {
 }
 
 /** Counts, progress week by week or month by month, and the actions taken on this project. */
+const RANGES = [['all', 'All time'], ['30d', 'Last 30 days'], ['90d', 'Last 90 days'], ['180d', 'Last 6 months'], ['365d', 'Last 12 months'], ['this_month', 'This month'], ['custom', 'Custom dates']];
+const nice = (iso) => { try { return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return iso; } };
+const today = () => new Date().toISOString().slice(0, 10);
+
+/** Everything so far by default; a date range narrows it. Counts, progress over time and the actions taken on this project. */
 export default function ProgressSection({ b }) {
-  const [period, setPeriod] = useState('week');
-  const r = useApi(`/businesses/${b.id}/dashboard?period=${period}`);
+  const [range, setRange] = useState('all');
+  const [group, setGroup] = useState('auto');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState(today());
+  const custom = range === 'custom';
+  const ready = !custom || (from && to);
+  const q = new URLSearchParams({ range, ...(group !== 'auto' ? { group } : {}), ...(custom && ready ? { start: from, end: to } : {}) });
+  const r = useApi(ready ? `/businesses/${b.id}/dashboard?${q.toString()}` : null);
   const d = r.data;
-  const unit = period === 'month' ? 'month' : 'week';
+  const days = d?.range?.days || 0;
+  const sel = 'h-9 rounded border border-slate-300 bg-white px-2.5 text-13 text-slate-800 cursor-pointer';
   const toggle = (
-    <div className="inline-flex p-0.5 rounded bg-slate-100" role="tablist" aria-label="Period">
-      {[['week', 'Week by week'], ['month', 'Month by month']].map(([id, t]) => (
-        <button key={id} type="button" role="tab" aria-selected={period === id} onClick={() => setPeriod(id)} className={`h-8 px-3 rounded text-12.5 font-semibold cursor-pointer ${period === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{t}</button>
-      ))}
+    <div className="flex flex-wrap items-center gap-2">
+      <select aria-label="Date range" className={sel} value={range} onChange={e => setRange(e.target.value)}>{RANGES.map(([id, t]) => <option key={id} value={id}>{t}</option>)}</select>
+      {custom && <>
+        <input type="date" aria-label="From" className={sel} value={from} max={to || today()} onChange={e => setFrom(e.target.value)} />
+        <span className="text-12 text-slate-500">to</span>
+        <input type="date" aria-label="To" className={sel} value={to} min={from || undefined} max={today()} onChange={e => setTo(e.target.value)} />
+      </>}
+      <select aria-label="Group by" className={sel} value={group} onChange={e => setGroup(e.target.value)}>
+        <option value="auto">Group: automatic</option><option value="week">Group: weekly</option><option value="month">Group: monthly</option>
+      </select>
+      {range !== 'all' && <button type="button" onClick={() => { setRange('all'); setGroup('auto'); }} className="h-9 px-3 rounded text-12.5 font-semibold text-indigo-600 hover:bg-indigo-50 cursor-pointer">Show everything</button>}
     </div>
   );
+  const unit = d?.range?.group === 'month' ? 'month' : 'week';
 
-  if (r.error) return <Card title="Progress"><p className="text-13 text-red-600">{r.error.message}</p></Card>;
+  if (r.error) return <Card title="Progress" action={toggle}><p className="text-13 text-red-600">{r.error.message}</p></Card>;
+  if (!ready) return <Card title="Progress" action={toggle}><p className="text-13 text-slate-500">Choose the first date to show the range.</p></Card>;
   if (!d) return <Card title="Progress" action={toggle}><div className="h-40 flex items-center justify-center text-13 text-slate-400">Loading this project's numbers…</div></Card>;
 
   const rows = d.labels.map((label, i) => ({ label, ...Object.fromEntries(Object.entries(d.series).map(([k, v]) => [k, v[i]])), health: d.health[i] }));
@@ -96,23 +117,23 @@ export default function ProgressSection({ b }) {
   return (
     <section className="space-y-5" aria-label="Progress">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h2 className="text-18 font-semibold text-slate-900">Progress</h2><p className="text-13 text-slate-500">{period === 'month' ? 'The last 6 months' : 'The last 12 weeks'}, from what is stored for this project. The change shown is the latest {unit} against the {unit} before.</p></div>
+        <div><h2 className="text-18 font-semibold text-slate-900">Progress</h2><p className="text-13 text-slate-500">{d.range.key === 'all' ? `Everything so far: from ${nice(d.range.start)} (the first thing stored for this project) to today, ${days} days.` : `${nice(d.range.start)} to ${nice(d.range.end)} (${days} days), shown ${unit} by ${unit}. The change is against the ${days} days before.`}</p></div>
         {toggle}
       </div>
 
-      {nothing && <div className="rounded bg-sky-50 ring-1 ring-inset ring-sky-100 px-4 py-3 text-13 text-sky-900">Nothing has happened in this period yet. Connect the Google profile, run a website audit and start the Growth Plan: each action shows up here as it happens.</div>}
+      {nothing && <div className="rounded bg-sky-50 ring-1 ring-inset ring-sky-100 px-4 py-3 text-13 text-sky-900">Nothing has happened in {d.range.key === 'all' ? 'this project' : 'this date range'} yet. Connect the Google profile, run a website audit and start the Growth Plan: each action shows up here as it happens.</div>}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Kpi icon={Phone} label={`Calls · this ${unit}`} m={m.calls} unit={unit} />
-        <Kpi icon={Navigation} label={`Directions · this ${unit}`} m={m.directions} unit={unit} />
-        <Kpi icon={MousePointerClick} label={`Website clicks · this ${unit}`} m={m.website_clicks} unit={unit} />
-        <Kpi icon={Eye} label={`Profile views · this ${unit}`} m={m.views} unit={unit} />
-        <Kpi icon={Star} label={`New reviews · this ${unit}`} m={m.reviews} unit={unit} total={c.reviews} />
-        <Kpi icon={Users} label={`Leads · this ${unit}`} m={m.leads} unit={unit} total={c.leads} />
-        <Kpi icon={Wrench} label={`Issues fixed · this ${unit}`} m={m.fixes} unit={unit} total={c.fixes_done} />
-        <Kpi icon={FileText} label={`Articles written · this ${unit}`} m={m.articles} unit={unit} total={c.articles} />
-        <Kpi icon={Search} label={`Keywords added · this ${unit}`} m={m.keywords} unit={unit} total={c.keywords_saved} />
-        <Kpi icon={Link2} label={`Backlinks gained · this ${unit}`} m={m.backlinks} unit={unit} total={c.backlinks} />
+        <Kpi icon={Phone} label="Calls" m={m.calls} days={days} />
+        <Kpi icon={Navigation} label="Directions" m={m.directions} days={days} />
+        <Kpi icon={MousePointerClick} label="Website clicks" m={m.website_clicks} days={days} />
+        <Kpi icon={Eye} label="Profile views" m={m.views} days={days} />
+        <Kpi icon={Star} label="New reviews" m={m.reviews} days={days} total={c.reviews} />
+        <Kpi icon={Users} label="Leads" m={m.leads} days={days} total={c.leads} />
+        <Kpi icon={Wrench} label="Issues fixed" m={m.fixes} days={days} total={c.fixes_done} />
+        <Kpi icon={FileText} label="Articles written" m={m.articles} days={days} total={c.articles} />
+        <Kpi icon={Search} label="Keywords added" m={m.keywords} days={days} total={c.keywords_saved} />
+        <Kpi icon={Link2} label="Backlinks gained" m={m.backlinks} days={days} total={c.backlinks} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -189,7 +210,7 @@ export default function ProgressSection({ b }) {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-        <Card title="Actions taken" subtitle={`${m.actions.now} logged this ${unit}${m.actions.before ? `, ${m.actions.before} last ${unit}` : ''}`}>
+        <Card title="Actions taken" subtitle={`${m.actions.total} action${m.actions.total === 1 ? '' : 's'} logged ${d.range.key === 'all' ? 'so far' : 'in this range'}${m.actions.compare ? `, ${m.actions.before} in the ${days} days before` : ''}`}>
           {d.timeline.length === 0 ? <p className="text-13 text-slate-500 py-2">No actions logged yet.</p> : (
             <ul className="divide-y divide-slate-100">
               {d.timeline.map((a, i) => (
