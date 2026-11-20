@@ -132,6 +132,15 @@ function ProfileTab({ b, toast }) {
   });
   const aiDesc = () => run('ai', async () => { const r = await api(`/businesses/${b.id}/ai/description`, { method: 'POST' }); set('description', r.text); toast('AI draft from your profile: check it, then save'); });
   const problems = contactProblems(p);
+  const [rules, setRules] = useState([]); // Google's content rules for what is typed, checked on the server as you type
+  useEffect(() => {
+    const h = setTimeout(() => {
+      api(`/businesses/${b.id}/gbp/rules-check`, { method: 'POST', body: { name: p.name, description: p.description, phone: p.phone, additional_phones: p.additional_phones, website: p.website, booking_url: p.booking_url, action_links: p.action_links, secondary_categories: p.secondary_categories, services: p.services } })
+        .then(r => setRules(r.issues || [])).catch(() => setRules([]));
+    }, 600);
+    return () => clearTimeout(h);
+  }, [b.id, p.name, p.description, p.phone, p.additional_phones, p.website, p.booking_url, p.action_links, p.secondary_categories, p.services]);
+  const ruleErrors = rules.filter(i => i.level === 'error');
   const [saved, setSaved] = useState(() => JSON.stringify(p));
   const [sec, setSec] = useState(() => { // ?step=contact (and so on) opens that step, so a link can land on it
     try { const q = new URLSearchParams(window.location.search).get('step'); return ['details', 'contact', 'location', 'about', 'services', 'highlights'].includes(q) ? q : 'details'; } catch { return 'details'; }
@@ -326,11 +335,26 @@ function ProfileTab({ b, toast }) {
             <Button variant="primary" disabled={at >= SECS.length - 1} onClick={() => setSec(SECS[at + 1].id)}>Next</Button>
           </div>
 
+          {rules.length > 0 && (
+            <div className="ai-glass-card rounded p-4 space-y-2" role="status">
+              <div className="text-13 font-semibold text-slate-900">Google's rules for this profile</div>
+              <ul className="space-y-1.5">
+                {[...rules].sort((a, c) => (a.level === 'error' ? 0 : 1) - (c.level === 'error' ? 0 : 1)).map((i, n) => (
+                  <li key={n} className={`flex items-start gap-2 text-12.5 ${i.level === 'error' ? 'text-red-700' : 'text-amber-800'}`}>
+                    <span className="mt-0.5 shrink-0 font-bold">{i.level === 'error' ? '✕' : '!'}</span>
+                    <span><b className="font-semibold capitalize">{String(i.field).replace(/_/g, ' ')}:</b> {i.message}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-11.5 text-slate-500">✕ must be fixed before saving. ! is allowed but against Google's guidelines and may be removed or hurt the profile.</p>
+            </div>
+          )}
+
           <div className={`sticky bottom-3 z-10 rounded-lg px-4 py-3 flex items-center gap-3 shadow-lg ring-1 transition-colors ${dirty ? 'bg-white ring-indigo-200' : 'bg-white/80 ring-slate-200'}`}>
             <span className={`w-2 h-2 rounded-full ${dirty ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-            <span className="flex-1 text-13 text-slate-600">{problems.any ? <span className="text-red-600">Fix the highlighted fields to save</span> : dirty ? 'You have unsaved changes' : 'All changes saved'}</span>
+            <span className="flex-1 text-13 text-slate-600">{problems.any || ruleErrors.length ? <span className="text-red-600">Fix the highlighted fields to save</span> : dirty ? 'You have unsaved changes' : 'All changes saved'}</span>
             <Button disabled={!dirty} onClick={() => setP(JSON.parse(saved))}>Discard</Button>
-            <Button variant="primary" icon={Save} busy={busy === 'save'} disabled={!dirty || problems.any} title={problems.any ? 'Fix the highlighted phone numbers or links first' : ''} onClick={async () => { const ok = await save(); if (ok) setSaved(JSON.stringify(p)); }}>Save changes</Button>
+            <Button variant="primary" icon={Save} busy={busy === 'save'} disabled={!dirty || problems.any || ruleErrors.length > 0} title={problems.any ? 'Fix the highlighted phone numbers or links first' : ''} onClick={async () => { const ok = await save(); if (ok) setSaved(JSON.stringify(p)); }}>Save changes</Button>
           </div>
         </div>
 

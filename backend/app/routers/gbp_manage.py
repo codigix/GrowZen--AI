@@ -55,6 +55,25 @@ def _refresh(b: Business, client: gbp.GbpClient) -> None:
             setattr(b, k, v)
 
 
+class RulesIn(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    phone: str | None = None
+    additional_phones: list[str] | None = None
+    website: str | None = None
+    booking_url: str | None = None
+    action_links: list[dict[str, Any]] | None = None
+    secondary_categories: list[str] | None = None
+    services: list[dict[str, Any]] | None = None
+
+
+@router.post("/rules-check")
+def rules_check(body: RulesIn, b: Business = Depends(get_business)):
+    """The profile details as typed, checked against Google's content rules (nothing is saved or sent)."""
+    from ..services import profile_rules
+    return {"issues": profile_rules.check(body.model_dump(exclude_none=True))}
+
+
 # Products: Google's Business Profile API has no Products endpoint, so the catalogue is kept here and each product goes to Google as a post (photo, price and a button)
 class ProductIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)

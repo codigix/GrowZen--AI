@@ -202,6 +202,11 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
             raise HTTPException(422, " ".join(wrong))
     if changes.get("description"):
         changes["description"] = gbp.plain_description(changes["description"])  # no markdown marks on Google
+    from ..services import profile_rules
+    asked = profile_rules.check({**{k: v for k, v in changes.items()}})  # only what is being changed is checked against Google's rules
+    hard = [i for i in profile_rules.errors(asked) if i["field"] in changes]
+    if hard:
+        raise HTTPException(422, "Google's rules: " + " ".join(i["message"] for i in hard))
     old_site = b.website
     pushed: list[str] = []
     not_on_google: list[str] = []
