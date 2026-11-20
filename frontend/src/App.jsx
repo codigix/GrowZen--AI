@@ -65,6 +65,7 @@ const ReportsLeadsPage = lazy(() => import('./platform/ReportsLeadsPage'));
 const AiAgentPage = lazy(() => import('./platform/AiAgentPage'));
 const BusinessOnboardingPage = lazy(() => import('./platform/BusinessOnboardingPage'));
 const ProjectsPage = lazy(() => import('./platform/ProjectsPage'));
+const ProjectDashboardPage = lazy(() => import('./platform/ProjectDashboardPage'));
 const ConnectionsPage = lazy(() => import('./platform/ConnectionsPage'));
 const ConnectResultPage = lazy(() => import('./platform/ConnectResultPage'));
 const TrafficPage = lazy(() => import('./platform/TrafficPage'));
@@ -155,6 +156,7 @@ export default function App() {
         <Route path="dashboard" element={<SeoOverviewPage />} />
         <Route path="onboarding" element={<BusinessOnboardingPage />} />
         <Route path="projects" element={<ProjectsPage />} />
+        <Route path="project-dashboard" element={<ProjectDashboardPage />} />
         <Route path="work-plan" element={<Navigate to="/dashboard" replace />} />
         <Route path="automation-pipeline" element={<AutomationPipelinePage />} />
         <Route path="gmb-profile" element={<GbpManagerPage />} />

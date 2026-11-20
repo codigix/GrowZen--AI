@@ -8,6 +8,7 @@ export const SIDEBAR_GROUPS = [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/growth', label: 'Growth Plan', icon: Target, badge: 'New' },
       { to: '/projects', label: 'Projects', icon: Layers },
+      { to: '/project-dashboard', label: 'Project Dashboard', icon: LayoutDashboard },
       { to: '/tracking-overview', label: 'Tracking Overview', icon: MapPin },
       { to: '/onboarding', label: 'Business Onboarding', icon: Building2, badge: 'Phase 1' }
     ]
