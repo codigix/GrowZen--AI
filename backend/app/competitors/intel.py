@@ -397,7 +397,7 @@ def _local_rollup(serps: list[dict[str, Any]], n_keywords: int) -> list[dict[str
             if p["mine"]:
                 continue
             key = str(p.get("cid") or _norm_name(p["name"]))
-            e = places.setdefault(key, {k: p.get(k) for k in ("name", "rating", "reviews", "category", "address", "website", "phone", "distance_m")} | {"positions": {}})
+            e = places.setdefault(key, {k: p.get(k) for k in ("name", "rating", "reviews", "category", "address", "website", "phone", "distance_m", "cid")} | {"positions": {}})
             e["positions"].setdefault(s["keyword"], p["position"])
     for e in places.values():
         e["appearances"] = len(e["positions"])

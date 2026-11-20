@@ -144,6 +144,27 @@ def start(body: ResearchIn, tasks: BackgroundTasks, b: Business = Depends(get_bu
     return row(a)
 
 
+class ListingItem(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+    address: str | None = Field(default=None, max_length=500)
+    cid: str | None = Field(default=None, max_length=200)
+    website: str | None = Field(default=None, max_length=500)
+
+
+class ListingAuditIn(BaseModel):
+    competitors: list[ListingItem] = Field(max_length=15)
+
+
+@router.post("/businesses/{business_id}/competitor-research/listing-audit")
+def listing_audit(body: ListingAuditIn, b: Business = Depends(get_business)):
+    """Audit competitors through their public Google Maps listing (for those with no website), side by side with this business's own listing."""
+    from . import listing_audit as la
+    from ..services import countries, market
+    if not body.competitors:
+        raise HTTPException(400, "Choose at least one competitor.")
+    return la.audit(b, [x.model_dump() for x in body.competitors], countries.gl(market.serp_country(b)).upper() or "IN")
+
+
 @router.get("/competitor-research/{run_id}")
 def get_run(run_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     a = _expire_stale(db, db.get(Audit, run_id))
