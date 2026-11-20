@@ -8,6 +8,7 @@ import SchemaStudio from './SchemaStudio';
 import SiteAuditTable from './SiteAuditTable';
 import SiteAuditOverview from './SiteAuditOverview';
 import WebsiteSnapshot from './WebsiteSnapshot';
+import BusinessUnderstanding from './BusinessUnderstanding';
 import MergedFindings from './MergedFindings';
 import { XRay } from './PageXRayPage';
 import Select from '../components/Select';
@@ -109,6 +110,8 @@ function SiteAudit({ b, openFold }) {
       <NewAuditModal open={setup} onClose={() => setSetup(false)} target={clean(sa.url)} host={hostOf(clean(sa.url) || sa.url)} business={b} own={Boolean(own)} busy={busy} onStart={check} />
 
       {sa.running && <LiveScan audit={sa.audit.data} startedAt={sa.startedAt} />}
+
+      <BusinessUnderstanding key={`bu-${b.id}-${sa.report?.id || 'none'}`} b={b} />
 
       {loading && !sa.running ? <div className="h-24 rounded-xl bg-slate-100 animate-pulse" role="status" aria-busy="true" /> : (
         <>

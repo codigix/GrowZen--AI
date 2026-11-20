@@ -325,6 +325,22 @@ def overview(b: Business = Depends(get_business), db: Session = Depends(get_db))
     }
 
 
+@router.get("/{business_id}/business-brief")
+def get_business_brief(b: Business = Depends(get_business)):
+    """The saved business understanding (None until it was built)."""
+    return {"brief": b.business_brief}
+
+
+@router.post("/{business_id}/business-brief")
+def build_business_brief(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Read the website, the audit results and the profile and write the business understanding that competitor and keyword research start from."""
+    from ..services import business_understanding
+    brief = business_understanding.build(db, b)
+    log(db, user.name, "business_understanding_built", b.id, by_ai=brief["by_ai"], pages=len(brief["pages"]))
+    db.commit()
+    return {"brief": brief}
+
+
 @router.get("/{business_id}/dashboard")
 def project_dashboard(range: str = "all", start: date | None = None, end: date | None = None, group: str | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Counts, movement over time and the actions taken, for the project dashboard. Everything so far by default; `range` (30d, 90d, 180d, 365d, this_month, custom with start and end) narrows it."""

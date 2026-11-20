@@ -1,0 +1,44 @@
+from types import SimpleNamespace
+
+from app.services import business_understanding as bu
+from app.services import keywords
+
+PAGES = [{"url": "https://shop.example/", "title": "Clothing rental in Pune", "description": "Designer lehengas on rent", "h1": ["Rent a lehenga"], "h2": [], "words": 120, "text": "Rent designer lehengas"}]
+
+
+def _biz(client, name="Brief Co"):
+    return client.post("/api/v1/businesses", json={"name": name, "website": "https://shop.example/", "city": "Pune", "services": [{"name": "Lehenga"}],
+                                                   "description": "We rent designer lehengas. Rental durations are 3 and 5 days. Lehenga rental for weddings."}).json()["id"]
+
+
+def test_the_brief_is_built_saved_and_feeds_the_search_words(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import Business
+    bid = _biz(client)
+    monkeypatch.setattr(bu, "read_site", lambda url, max_pages=4: PAGES)
+    monkeypatch.setattr(bu, "_ai", lambda b, pages, fct: {"overview": "A lehenga rental in Pune.", "business_model": "rental", "offerings": ["Lehenga rental"], "audience": ["Brides"],
+                                                          "customer_search_terms": ["Lehenga on Rent", "bridal lehenga rental", "lehenga on rent"], "competitors_are": "Rental shops.",
+                                                          "competitors_are_not": "Retail shops.", "keyword_themes": [{"theme": "Lehenga", "keywords": ["lehenga on rent"]}, {"x": 1}], "next_steps": ["Add schema"]})
+    r = client.post(f"/api/v1/businesses/{bid}/business-brief").json()["brief"]
+    assert r["by_ai"] is True and r["business_model"] == "rental" and r["customer_search_terms"] == ["lehenga on rent", "bridal lehenga rental"]  # lower case, no repeats
+    assert r["keyword_themes"] == [{"theme": "Lehenga", "keywords": ["lehenga on rent"]}] and r["pages"][0]["title"] == "Clothing rental in Pune" and "facts" in r
+    assert client.get(f"/api/v1/businesses/{bid}/business-brief").json()["brief"]["overview"] == "A lehenga rental in Pune."
+    db = SessionLocal()
+    try:
+        b = db.get(Business, bid)
+        assert bu.search_terms(b) == ["lehenga on rent", "bridal lehenga rental"] and "bridal lehenga rental" in keywords.default_seeds(b)
+    finally:
+        db.close()
+
+
+def test_without_an_ai_the_profile_fills_the_same_shape(client, monkeypatch):
+    bid = _biz(client, "Fallback Co")
+    monkeypatch.setattr(bu, "read_site", lambda url, max_pages=4: [])
+    monkeypatch.setattr(bu, "_ai", lambda b, pages, fct: {})
+    r = client.post(f"/api/v1/businesses/{bid}/business-brief").json()["brief"]
+    assert r["by_ai"] is False and r["overview"] and r["business_model"] == "rental" and r["customer_search_terms"]
+    assert set(r) >= {"offerings", "audience", "strengths", "weaknesses", "competitors_are", "keyword_themes", "next_steps", "facts", "pages", "built_at"}
+
+
+def test_search_terms_are_empty_before_the_brief_exists():
+    assert bu.search_terms(SimpleNamespace(business_brief=None)) == [] and bu.search_terms(SimpleNamespace()) == []
