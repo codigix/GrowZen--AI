@@ -6,6 +6,7 @@ import { useApi, api, fmt } from './seoApi';
 import SiteAuditOverview from './SiteAuditOverview';
 import { useCountries } from './countries';
 import { decodeProjectId } from './projectUrl';
+import ProgressSection from './ProjectProgress';
 
 const AREA_LABEL = { technical: 'Technical SEO', onpage: 'On-page SEO', gbp: 'Google Business Profile', content: 'Content', speed: 'Site speed', geo: 'AI search (GEO)', aeo: 'Answer engines (AEO)', local: 'Local SEO', backlinks: 'Backlinks', reviews: 'Reviews' };
 const label = (k) => AREA_LABEL[k] || String(k).replace(/[_-]+/g, ' ').replace(/^./, c => c.toUpperCase());
@@ -80,7 +81,7 @@ function TargetMarket({ b }) {
   );
 }
 
-function ProjectDashboard({ b }) {
+function ProjectDashboard({ b, middle }) {
   const ov = useApi(`/businesses/${b.id}/overview`);
   const d = ov.data;
   if (ov.error) return <Card><p className="text-13 text-red-600">{ov.error.message}</p></Card>;
@@ -113,22 +114,13 @@ function ProjectDashboard({ b }) {
         </div>
       </div>
 
-      <TargetMarket b={b} />
-
-      <Connections b={b} />
+      {middle}
 
       {noData && (
         <div className="rounded bg-sky-50 ring-1 ring-inset ring-sky-100 px-4 py-3 text-13 text-sky-900">
           Nothing has been measured for this project yet. Run a <Link to="/website-audit" className="font-semibold underline">website audit</Link> and connect the Google profile in <Link to="/gmb-profile" className="font-semibold underline">Google Business Profile</Link>: the numbers appear here.
         </div>
       )}
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat icon={Phone} label="Calls · 30 days" value={fmt(cur.calls || 0)}><Delta now={cur.calls} before={prev.calls} /></Stat>
-        <Stat icon={Navigation} label="Directions · 30 days" value={fmt(cur.directions || 0)}><Delta now={cur.directions} before={prev.directions} /></Stat>
-        <Stat icon={MousePointerClick} label="Website clicks · 30 days" value={fmt(cur.website_clicks || 0)}><Delta now={cur.website_clicks} before={prev.website_clicks} /></Stat>
-        <Stat icon={Users} label="Leads · 30 days" value={fmt(d.leads_30 || 0)} />
-      </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <Card title="Scores by area" subtitle="Latest result of each check for this project">
@@ -160,6 +152,11 @@ function ProjectDashboard({ b }) {
           )}
           <Link to="/gmb-profile" target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-13 font-semibold text-indigo-600 hover:underline">Open the Google profile <ArrowRight size={14} /></Link>
         </Card>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <TargetMarket b={b} />
+        <Connections b={b} />
       </div>
 
       {tasks.length > 0 && (
@@ -226,13 +223,7 @@ export default function ProjectDashboardPage() {
   return (
     <SeoShell title="Project dashboard" subtitle="This project's site audit, Google activity, connections and what to do next" hideSwitcher>
       {(b) => (b && b.id === want ? (
-        <div className="space-y-8">
-          <AuditSection b={b} />
-          <section className="space-y-4" aria-label="Project details">
-            <h2 className="text-18 font-semibold text-slate-900">Project details</h2>
-            <ProjectDashboard key={b.id} b={b} />
-          </section>
-        </div>
+        <ProjectDashboard key={b.id} b={b} middle={<div className="space-y-8"><ProgressSection b={b} /><AuditSection b={b} /></div>} />
       ) : null)}
     </SeoShell>
   );

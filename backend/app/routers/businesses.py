@@ -325,6 +325,13 @@ def overview(b: Business = Depends(get_business), db: Session = Depends(get_db))
     }
 
 
+@router.get("/{business_id}/dashboard")
+def project_dashboard(period: str = "week", b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Counts, week-by-week or month-by-month movement and the actions taken, for the project dashboard."""
+    from ..services import project_dashboard as pd
+    return pd.build(db, b, period)
+
+
 @router.get("/{business_id}/connections")
 def project_connections(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """What this project is connected to, each as connected / not connected with the reason (shown on the project dashboard)."""
