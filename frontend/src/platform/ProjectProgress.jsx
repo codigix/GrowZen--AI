@@ -102,7 +102,7 @@ export default function ProgressSection({ b }) {
 
       {nothing && <div className="rounded bg-sky-50 ring-1 ring-inset ring-sky-100 px-4 py-3 text-13 text-sky-900">Nothing has happened in this period yet. Connect the Google profile, run a website audit and start the Growth Plan: each action shows up here as it happens.</div>}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Kpi icon={Phone} label={`Calls · this ${unit}`} m={m.calls} unit={unit} />
         <Kpi icon={Navigation} label={`Directions · this ${unit}`} m={m.directions} unit={unit} />
         <Kpi icon={MousePointerClick} label={`Website clicks · this ${unit}`} m={m.website_clicks} unit={unit} />
@@ -111,6 +111,8 @@ export default function ProgressSection({ b }) {
         <Kpi icon={Users} label={`Leads · this ${unit}`} m={m.leads} unit={unit} total={c.leads} />
         <Kpi icon={Wrench} label={`Issues fixed · this ${unit}`} m={m.fixes} unit={unit} total={c.fixes_done} />
         <Kpi icon={FileText} label={`Articles written · this ${unit}`} m={m.articles} unit={unit} total={c.articles} />
+        <Kpi icon={Search} label={`Keywords added · this ${unit}`} m={m.keywords} unit={unit} total={c.keywords_saved} />
+        <Kpi icon={Link2} label={`Backlinks gained · this ${unit}`} m={m.backlinks} unit={unit} total={c.backlinks} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -135,6 +137,9 @@ export default function ProgressSection({ b }) {
             </div>
           ) : <Empty text="No website audit has finished in this period." />}
         </Card>
+        <Card title="Keywords and backlinks" subtitle="Keywords added and new backlinks found" action={<Legend items={[['Keywords', SERIES[0]], ['Backlinks', SERIES[2]]]} />}>
+          {any('keywords') || any('backlinks') ? <Bars data={rows} keys={[['keywords', 'Keywords', SERIES[0]], ['backlinks', 'Backlinks', SERIES[2]]]} /> : <Empty text="No keywords added or backlinks found in this period." />}
+        </Card>
         <Card title="Reviews and leads" subtitle="New Google reviews and enquiries" action={<Legend items={[['Reviews', SERIES[1]], ['Leads', SERIES[3] || SERIES[2]]]} />}>
           {any('reviews') || any('leads') ? <Bars data={rows} keys={[['reviews', 'Reviews', SERIES[1]], ['leads', 'Leads', SERIES[3] || SERIES[2]]]} /> : <Empty text="No new reviews or leads in this period." />}
         </Card>
@@ -144,14 +149,43 @@ export default function ProgressSection({ b }) {
         <h3 className="text-15 font-semibold text-slate-900 mb-2">Where the project stands</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
           <Stand icon={ClipboardCheck} label="Growth Plan issues fixed" value={`${c.fixes_done} / ${c.fixes_total}`} bar={fixPct} sub={`${c.fixes_open} still to do · ${fixPct}% done`} to="/growth" />
-          <Stand icon={Search} label="Keywords tracked" value={fmt(c.keywords_tracked)} sub={c.ranking_any ? `${c.ranking_top3} in the top 3 · ${c.ranking_top10} in the top 10` : 'No rankings read yet'} to="/rank-tracking/landscape" />
+          <Stand icon={Search} label="Keywords tracked" value={`${fmt(c.keywords_tracked)}${c.keywords_saved > c.keywords_tracked ? ` / ${fmt(c.keywords_saved)}` : ''}`} sub={`${fmt(c.keywords_suggested)} suggestions found${c.ranking_any ? ` · ${c.ranking_top3} top 3 · ${c.ranking_top10} top 10` : ' · positions not read yet'}`} to="/keyword-management/tracked" />
+          <Stand icon={Link2} label="Backlinks found" value={c.backlinks_tracked ? fmt(c.backlinks) : '—'} sub={c.backlinks_tracked ? `${fmt(c.referring_domains)} referring domains · ${fmt(c.backlinks_verified)} verified` : 'The site is not tracked yet'} to="/backlinks/links" />
+          <Stand icon={Send} label="Link opportunities" value={fmt(c.link_opportunities)} sub={c.link_opportunities ? `${c.link_opportunities_contacted} contacted · ${c.link_opportunities_live} live` : 'None planned yet'} to="/backlinks/opportunities" />
           <Stand icon={Globe} label="Pages indexed on Google" value={`${c.pages_indexed} / ${c.pages_known}`} bar={c.pages_known ? idxPct : null} sub={c.pages_known ? `${idxPct}% of the pages found` : 'Run the page scan'} to="/page-indexing" />
           <Stand icon={BookOpen} label="Articles" value={fmt(c.articles)} sub={`${c.articles_live} live on the website`} to="/ai-content-generation/articles" />
           <Stand icon={Send} label="Google posts" value={fmt(c.posts_published)} sub={c.posts_waiting ? `${c.posts_waiting} waiting or scheduled` : 'None waiting'} to="/google-posts" />
           <Stand icon={MessageSquare} label="Reviews" value={c.rating ? `${c.rating}★ · ${fmt(c.reviews)}` : fmt(c.reviews)} sub={!c.reviews ? 'No reviews yet' : c.reviews_unreplied ? `${c.reviews_unreplied} without a reply` : 'All answered'} to="/reviews" />
-          <Stand icon={Link2} label="Backlinks checked" value={fmt(c.backlinks_checked)} to="/backlinks/links" />
           <Stand icon={ListChecks} label="Waiting for your approval" value={fmt(c.approvals_waiting)} sub={c.approvals_waiting ? 'Open to approve or reject' : 'Nothing waiting'} to="/automation" />
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <Card title="Keywords" subtitle={`${fmt(c.keywords_saved)} saved · ${fmt(c.keywords_tracked)} tracked · ${fmt(c.keywords_suggested)} suggestions`} action={<Link to="/keyword-management/tracked" className="text-12.5 font-semibold text-indigo-600 hover:underline">All keywords</Link>}>
+          {d.top_keywords.length === 0 ? <p className="text-13 text-slate-500 py-2">No keywords saved yet. {c.keywords_suggested ? 'Suggestions are waiting in Keyword Research.' : 'Find some in Keyword Research.'}</p> : (
+            <table className="w-full text-13">
+              <thead className="text-11.5 text-slate-500"><tr><th className="py-1.5 text-left font-semibold">Keyword</th><th className="py-1.5 text-right font-semibold">Position</th><th className="py-1.5 text-right font-semibold">Searches / month</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">{d.top_keywords.map(k => {
+                const move = k.rank && k.prev_rank ? k.prev_rank - k.rank : 0;
+                return (<tr key={k.keyword}><td className="py-2 pr-2 text-slate-900">{k.keyword}{!k.tracked && <span className="ml-2 text-11 text-slate-400">not tracked</span>}</td>
+                  <td className="py-2 text-right tabular-nums">{k.rank ? <>#{k.rank}{move !== 0 && <span className={`ml-1.5 text-11.5 font-semibold ${move > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{move > 0 ? '▲' : '▼'}{Math.abs(move)}</span>}</> : <span className="text-slate-400">not read yet</span>}</td>
+                  <td className="py-2 text-right tabular-nums text-slate-600">{k.volume != null ? fmt(k.volume) : '—'}</td></tr>);
+              })}</tbody>
+            </table>
+          )}
+        </Card>
+        <Card title="Latest backlinks" subtitle={d.backlink_domain ? `Links to ${d.backlink_domain} found by our crawler · ${fmt(c.backlinks)} in total from ${fmt(c.referring_domains)} domains` : 'The website of this project is not tracked yet'} action={<Link to="/backlinks/links" className="text-12.5 font-semibold text-indigo-600 hover:underline">All backlinks</Link>}>
+          {d.latest_backlinks.length === 0 ? <p className="text-13 text-slate-500 py-2">{d.backlink_domain ? 'The crawler has not found a link to this site yet. It checks regularly: new links appear here.' : 'Add the website to the project to start finding backlinks.'}</p> : (
+            <ul className="divide-y divide-slate-100">
+              {d.latest_backlinks.map((l, i) => (
+                <li key={i} className="py-2.5 flex items-start gap-3"><Link2 size={15} className="text-indigo-500 mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0"><div className="text-13 text-slate-900 truncate">{l.from}</div><div className="text-11.5 text-slate-500 truncate">{l.anchor ? `“${l.anchor}”` : 'no anchor text'} · {l.first_seen ? ago(l.first_seen) : 'date unknown'}</div></div>
+                  {l.verified && <Badge tone="green">Verified</Badge>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">

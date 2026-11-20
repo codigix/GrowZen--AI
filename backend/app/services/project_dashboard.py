@@ -9,7 +9,11 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import (ActivityLog, AgentTask, Article, Audit, BacklinkCheck, Business, GrowthAction, IndexPage, InsightDay, Keyword, Lead, Post, Review)
+from ..backlinks import summary as bl_summary
+from ..backlinks.analytics import SourceDomain, TargetDomain
+from ..backlinks.lifecycle import LIVE_STATES
+from ..backlinks.models import Backlink, BiOpportunity, BiTrackedTarget
+from ..models import (ActivityLog, AgentTask, Article, Audit, BacklinkCheck, Business, GrowthAction, IndexPage, InsightDay, Keyword, KeywordCandidate, Lead, Post, Review)
 
 WEEKS, MONTHS = 12, 6
 
@@ -94,6 +98,12 @@ def build(db: Session, b: Business, period: str = "week") -> dict[str, Any]:
     fixed = [_tz(x) for x in db.scalars(select(GrowthAction.verified_at).where(GrowthAction.business_id == b.id, GrowthAction.verified_at.is_not(None))).all()]
     leads = list(db.scalars(select(Lead.lead_date).where(Lead.business_id == b.id, Lead.lead_date.is_not(None))).all())
     acts = [_tz(x) for x in db.scalars(select(ActivityLog.created_at).where(ActivityLog.business_id == b.id, ActivityLog.created_at >= since)).all()]
+    kw_added = [_tz(x) for x in db.scalars(select(Keyword.created_at).where(Keyword.business_id == b.id)).all()]
+    own = bl_summary.own_site_links(db, b.id)  # what our own bot has found for the project's site: None when no site is tracked
+    links_new: list[datetime | None] = []
+    if own:
+        links_new = [_tz(x) for x in db.scalars(select(Backlink.first_seen_at).join(TargetDomain, TargetDomain.id == Backlink.target_domain_id)
+                                                 .where(TargetDomain.registrable_domain == own["domain"], Backlink.current_status.in_(LIVE_STATES), Backlink.first_seen_at.is_not(None))).all()]
     audit_rows = db.execute(select(Audit.finished_at, Audit.score).where(Audit.business_id == b.id, Audit.status == "done", Audit.score.is_not(None), Audit.finished_at.is_not(None),
                                                                         Audit.finished_at >= since)).all()
     health: dict[date, list[int]] = defaultdict(list)
@@ -112,6 +122,8 @@ def build(db: Session, b: Business, period: str = "week") -> dict[str, Any]:
         "posts": _series(posts, period, keys),
         "articles": _series(articles, period, keys),
         "fixes": _series(fixed, period, keys),
+        "keywords": _series(kw_added, period, keys),
+        "backlinks": _series(links_new, period, keys),
         "leads": _series(leads, period, keys),
         "actions": _series(acts, period, keys),
     }
@@ -123,17 +135,20 @@ def build(db: Session, b: Business, period: str = "week") -> dict[str, Any]:
 
     rating = db.execute(select(func.avg(Review.rating), func.count()).where(Review.business_id == b.id, Review.rating.is_not(None))).one()
     ranks = [r for r in db.scalars(select(Keyword.rank).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))).all() if r]
+    opp = dict(db.execute(select(BiOpportunity.status, func.count()).where(BiOpportunity.business_id == b.id).group_by(BiOpportunity.status)).all())
     acts_total = db.execute(select(GrowthAction.status, func.count()).where(GrowthAction.business_id == b.id).group_by(GrowthAction.status)).all()
     by_status = {s: n for s, n in acts_total}
     counts = {
-        "keywords_tracked": count(Keyword, Keyword.tracked.is_(True)),
-        "ranking_top3": sum(1 for r in ranks if r <= 3), "ranking_top10": sum(1 for r in ranks if r <= 10), "ranking_any": len(ranks),
+        "keywords_saved": count(Keyword), "keywords_tracked": count(Keyword, Keyword.tracked.is_(True)), "keywords_suggested": count(KeywordCandidate),
+        "ranking_top3": sum(1 for r in ranks if r <= 3), "ranking_top10": sum(1 for r in ranks if r <= 10), "ranking_top20": sum(1 for r in ranks if r <= 20), "ranking_any": len(ranks),
+        "backlinks": own["backlinks"] if own else 0, "referring_domains": own["referring_domains"] if own else 0, "backlinks_verified": own["crawler_verified"] if own else 0,
+        "backlinks_tracked": own is not None, "link_opportunities": sum(opp.values()), "link_opportunities_live": opp.get("live", 0), "link_opportunities_contacted": opp.get("contacted", 0),
         "articles": count(Article, Article.status == "completed"),
         "articles_live": count(Article, Article.wp_status == "publish") + count(Article, Article.react_status == "publish"),
         "posts_published": count(Post, Post.status == "published"), "posts_waiting": count(Post, Post.status.in_(("draft", "scheduled"))),
         "reviews": int(rating[1] or 0), "rating": round(float(rating[0]), 1) if rating[0] else None,
         "reviews_unreplied": count(Review, Review.reply_status != "posted"),
-        "leads": count(Lead), "backlinks_checked": count(BacklinkCheck),
+        "leads": count(Lead), "backlink_checks": count(BacklinkCheck),
         "pages_known": count(IndexPage), "pages_indexed": count(IndexPage, IndexPage.g_state.in_(("indexed", "INDEXED", "Submitted and indexed", "PASS"))),
         "fixes_total": sum(by_status.values()), "fixes_done": by_status.get("verified", 0), "fixes_open": sum(v for k, v in by_status.items() if k in ("todo", "done", "unverified", "failed")),
         "approvals_waiting": int(db.scalar(select(func.count()).select_from(AgentTask).where(AgentTask.business_id == b.id, AgentTask.status == "pending")) or 0),
@@ -157,9 +172,18 @@ def build(db: Session, b: Business, period: str = "week") -> dict[str, Any]:
         timeline.append({"what": what, "who": a.actor, "at": a.created_at.isoformat() if a.created_at else None, "pushed": bool((a.detail or {}).get("pushed_to_google"))})
         if len(timeline) >= 12:
             break
+    kws = db.scalars(select(Keyword).where(Keyword.business_id == b.id).order_by(Keyword.tracked.desc(), Keyword.rank.is_(None), Keyword.rank, Keyword.volume.desc().nulls_last()).limit(8)).all()
+    top_keywords = [{"keyword": k.keyword, "rank": k.rank, "prev_rank": k.prev_rank, "volume": k.volume, "tracked": bool(k.tracked), "url": k.target_url} for k in kws]
+    top_links: list[dict[str, Any]] = []
+    if own:
+        for bl, src in db.execute(select(Backlink, SourceDomain.registrable_domain).join(TargetDomain, TargetDomain.id == Backlink.target_domain_id)
+                                  .join(SourceDomain, SourceDomain.id == Backlink.source_domain_id)
+                                  .where(TargetDomain.registrable_domain == own["domain"], Backlink.current_status.in_(LIVE_STATES)).order_by(Backlink.first_seen_at.desc().nulls_last()).limit(6)).all():
+            top_links.append({"from": src, "anchor": bl.anchor_text, "first_seen": bl.first_seen_at.isoformat() if bl.first_seen_at else None, "verified": bl.verification_status == "CRAWLER_VERIFIED"})
     done_tasks = db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.status.in_(("applied", "approved", "scheduled"))).order_by(AgentTask.id.desc()).limit(6)).all()
 
     return {
         "period": period, "labels": labels, "starts": [k.isoformat() for k in keys], "series": series, "health": health_series, "movement": movement, "counts": counts, "timeline": timeline,
+        "top_keywords": top_keywords, "latest_backlinks": top_links, "backlink_domain": own["domain"] if own else None,
         "recent_tasks": [{"title": t.title, "status": t.status, "kind": t.kind, "at": t.updated_at.isoformat() if t.updated_at else None} for t in done_tasks],
     }
