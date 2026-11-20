@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { PlugZap, XCircle, Globe, MapPin, Phone, Navigation, MousePointerClick, Users, ListChecks, ArrowRight, ArrowUpRight, ArrowDownRight, Star, ScanSearch, FileText, TrendingUp, Link2, BarChart3, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { SeoShell, Card, Badge, ScoreRing, scoreWord, SkStats, SkCard } from './SeoUi';
 import { useApi, fmt } from './seoApi';
+import { useCountries } from './countries';
 
 const AREA_LABEL = { technical: 'Technical SEO', onpage: 'On-page SEO', gbp: 'Google Business Profile', content: 'Content', speed: 'Site speed', geo: 'AI search (GEO)', aeo: 'Answer engines (AEO)', local: 'Local SEO', backlinks: 'Backlinks', reviews: 'Reviews' };
 const label = (k) => AREA_LABEL[k] || String(k).replace(/[_-]+/g, ' ').replace(/^./, c => c.toUpperCase());
@@ -83,6 +84,23 @@ function AuditCard({ b }) {
   );
 }
 
+function TargetMarket({ b }) {
+  const countries = useCountries();
+  const name = (c) => (countries || []).find(x => x.code === c)?.name || c;
+  const scope = b.target_scope || 'local';
+  const places = scope === 'international' ? (b.target_countries || []).map(name) : scope === 'local' ? (b.target_areas || []) : [];
+  return (
+    <Card title="Target market" subtitle="Where this project wants customers from (set when it was onboarded)">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="blue">{scope === 'local' ? 'Local' : scope === 'national' ? 'National' : 'International'}</Badge>
+        {places.map(p => <span key={p} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-12.5 text-slate-700"><MapPin size={12} />{p}</span>)}
+        {scope === 'national' && <span className="text-13 text-slate-600">Customers from across the whole country.</span>}
+        {scope !== 'national' && places.length === 0 && <span className="text-13 text-slate-500">No target {scope === 'local' ? 'areas' : 'countries'} saved yet.</span>}
+      </div>
+    </Card>
+  );
+}
+
 function ProjectDashboard({ b }) {
   const ov = useApi(`/businesses/${b.id}/overview`);
   const d = ov.data;
@@ -115,6 +133,8 @@ function ProjectDashboard({ b }) {
           </div>
         </div>
       </div>
+
+      <TargetMarket b={b} />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <AuditCard b={b} />

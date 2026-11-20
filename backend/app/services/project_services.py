@@ -60,7 +60,7 @@ def stats(db: Session, b: Business) -> dict[str, dict[str, Any]]:
 
 
 def row_for(db: Session, b: Business) -> dict[str, Any]:
-    return {"id": b.id, "name": b.name, "website": b.website, "city": b.city, "plan": b.plan, "status": b.status, "health": b.last_audit_score,
+    return {"id": b.id, "name": b.name, "website": b.website, "city": b.city, "target_scope": b.target_scope, "target_countries": b.target_countries or [], "target_areas": b.target_areas or [], "plan": b.plan, "status": b.status, "health": b.last_audit_score,
             "created_at": b.created_at.isoformat() if b.created_at else None, "owner_id": b.owner_id, "modules": enabled(b), "stats": stats(db, b)}
 
 

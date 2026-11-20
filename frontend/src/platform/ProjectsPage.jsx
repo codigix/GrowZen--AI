@@ -69,6 +69,7 @@ function ProjectsTable({ rows, busy, onOpen, onRemove, onAdd, onDelete }) {
                       {p.website && <span className="inline-flex items-center gap-1 truncate"><Globe size={11} />{String(p.website).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>}
                       {p.city && <span className="inline-flex items-center gap-1 shrink-0"><MapPin size={11} />{p.city}</span>}
                     </div>
+                    {targetText(p) && <div className="text-11.5 text-indigo-700 truncate max-w-[260px]" title={targetText(p)}>Target: {targetText(p)}</div>}
                   </div>
                 </div>
               </td>
@@ -168,6 +169,13 @@ function Projects() {
     </div>
   );
 }
+
+/** Who the project wants customers from, as saved when it was onboarded. */
+export const targetText = (p) => {
+  if (p.target_scope === 'international') return (p.target_countries || []).join(', ') || 'International';
+  if (p.target_scope === 'national') return 'Whole country';
+  return (p.target_areas || []).join(' · ');
+};
 
 export default function ProjectsPage() {
   return (
