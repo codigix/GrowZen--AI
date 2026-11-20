@@ -64,4 +64,23 @@ def search_console(db: Session, b: Business, host: str):
             continue
         notes.append(f"{conn.email} has no verified property for {host}" + (f" (it has: {', '.join(have[:6])}{'…' if len(have) > 6 else ''})." if have else " (it has no verified properties at all)."))
     msg = " ".join(notes) or "No verified Search Console property for this site."
-    return "no_property", msg + " Add and verify the site in Search Console, or link the account that owns it to this project.", None, None
+    return "no_property", msg + " " + _how_to_fix(db, b, host, {c.id for c in conns}), None, None
+
+
+def _how_to_fix(db: Session, b: Business, host: str, tried: set[int]) -> str:
+    """What to do next, from what the owner's OTHER connected Google accounts show for this site (read only: nothing is linked or changed here)."""
+    for c in db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None), GoogleConnection.connected_by == f"user {b.owner_id}")):
+        if c.id in tried or not gsc.has_scope(c):
+            continue
+        try:
+            sites = gsc.SearchConsole(c).sites()
+        except GbpError:
+            continue
+        if gsc.match_property(sites, host):
+            return f"Your other connected account {c.email} already has this site verified: link {c.email} to this project (Integrations) and the data appears."
+        pending = [x["siteUrl"] for x in sites if x.get("permissionLevel") == "siteUnverifiedUser" and host in x["siteUrl"]]
+        if pending:
+            return (f"{c.email} has added {pending[0]} in Search Console but never verified it, so Google shows no data. Sign in to Search Console as {c.email}, open {pending[0]}, choose Verify and "
+                    "pick a method: add the HTML tag to your site's <head> (or upload the HTML file, or add the DNS TXT record at your domain provider). Then connect that account to this project.")
+    return (f"Sign in to search.google.com/search-console with the Google account that should own the site, add {host} (a Domain property with a DNS TXT record verifies the whole site; a URL-prefix "
+            "property can use the HTML tag), then connect that account to this project.")
