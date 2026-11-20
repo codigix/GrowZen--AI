@@ -146,6 +146,7 @@ function ProfileTab({ b, toast }) {
   const pct = Math.round((doneCount / (SECS.length + 2)) * 100);
   const at = SECS.findIndex(x => x.id === sec);
   const dirty = JSON.stringify(p) !== saved;
+  const savedServices = useMemo(() => { try { return JSON.parse(saved).services || []; } catch { return []; } }, [saved]); // what was last saved, to mark each service row
   const stars = (r) => '★★★★★'.slice(0, Math.round(r || 0)) + '☆☆☆☆☆'.slice(0, 5 - Math.round(r || 0));
   const Row = ({ icon: I, children }) => <div className="flex items-start gap-3 text-13 text-slate-700"><I size={16} className="text-blue-600 mt-0.5 shrink-0" /><span className="min-w-0 break-words">{children}</span></div>;
   return (
@@ -292,6 +293,12 @@ function ProfileTab({ b, toast }) {
                   <input className={`${inputCls} col-span-5 sm:col-span-2`} placeholder="Price" value={s.price || ''} onChange={e => set('services', p.services.map((x, j) => j === i ? { ...x, price: e.target.value } : x))} />
                   <input className={`${inputCls} col-span-6 sm:col-span-5`} placeholder="One-line description" value={s.description || ''} onChange={e => set('services', p.services.map((x, j) => j === i ? { ...x, description: e.target.value } : x))} />
                   <button onClick={() => set('services', p.services.filter((_, j) => j !== i))} className="col-span-1 flex items-center justify-center text-slate-400 hover:text-red-600 cursor-pointer" aria-label="Remove"><Trash2 size={14} /></button>
+                  {(() => {
+                    const was = savedServices.find(x => (x.name || '').trim() && (x.name || '').trim() === (s.name || '').trim());
+                    if (!(s.name || '').trim()) return null;
+                    const same = was && (was.price || '') === (s.price || '') && (was.description || '') === (s.description || '');
+                    return <div className={`col-span-12 -mt-1 text-12 font-medium inline-flex items-center gap-1.5 ${same ? 'text-emerald-700' : 'text-amber-700'}`}>{same ? <><CheckCircle2 size={13} />Saved{linked ? ' and live on your Google profile' : ''}</> : <>{was ? 'Changed: click Save changes to update it' : 'Not saved yet: click Save changes'}</>}</div>;
+                  })()}
                 </div>
               ))}
             </div>
