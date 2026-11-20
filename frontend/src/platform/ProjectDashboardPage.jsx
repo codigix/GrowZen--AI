@@ -5,6 +5,7 @@ import { SeoShell, useSeoBusiness, Card, Badge, ScoreRing, scoreWord, SkStats, S
 import { useApi, api, fmt } from './seoApi';
 import SiteAuditOverview from './SiteAuditOverview';
 import { useCountries } from './countries';
+import { decodeProjectId } from './projectUrl';
 
 const AREA_LABEL = { technical: 'Technical SEO', onpage: 'On-page SEO', gbp: 'Google Business Profile', content: 'Content', speed: 'Site speed', geo: 'AI search (GEO)', aeo: 'Answer engines (AEO)', local: 'Local SEO', backlinks: 'Backlinks', reviews: 'Reviews' };
 const label = (k) => AREA_LABEL[k] || String(k).replace(/[_-]+/g, ' ').replace(/^./, c => c.toUpperCase());
@@ -213,11 +214,12 @@ export default function ProjectDashboardPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const [selected, choose] = useSeoBusiness();
-  const want = Number(projectId);
+  const want = decodeProjectId(projectId) || 0;
   const have = Number(selected?.id ?? selected) || null;
   const asked = React.useRef(false);
   React.useEffect(() => { // the address names the project: make it the selected one (two-step check included); if that is declined, go back to the list
-    if (!want || have === want || asked.current) return;
+    if (!want) { navigate('/projects', { replace: true }); return; } // not a project code
+    if (have === want || asked.current) return;
     asked.current = true;
     choose(want).then(ok => { if (!ok) navigate('/projects', { replace: true }); });
   }, [want, have, choose, navigate]);

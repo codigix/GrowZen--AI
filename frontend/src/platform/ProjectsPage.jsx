@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Briefcase, Search, Plus, X, Trash2, ArrowRight, Globe, MapPin, RotateCcw } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, SkTable, useDoubleConfirm, useSeoBusiness, useAction, useToast, refreshBusinesses } from './SeoUi';
+import { encodeProjectId } from './projectUrl';
 import { api, useApi, fmtDate, clearApiCache } from './seoApi';
 
 /**
@@ -110,7 +111,7 @@ function Projects() {
   const count = (m) => rows.filter(p => p.modules.includes(m)).length;
   const refresh = async () => { await refreshBusinesses(); list.reload(true); };
 
-  const open = (p) => { choose(p.id).then(ok => ok && navigate(`/projects/${p.id}`)); };
+  const open = (p) => { choose(p.id).then(ok => ok && navigate(`/projects/${encodeProjectId(p.id)}`)); };
   const remove = (p, mod) => ask({
     what: `${META[mod].label} from "${p.name}"`,
     effect: `${effectOf(mod, p.stats)} The project and its other services stay. This cannot be undone.`,
