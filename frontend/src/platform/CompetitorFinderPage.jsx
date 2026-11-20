@@ -58,7 +58,7 @@ const Label = ({ icon: Icon, children }) => <div className="text-12 font-semibol
 
 /** A table that scrolls inside the page instead of making the page long. */
 const Table = ({ head, children, className = '' }) => (
-  <div className={`overflow-auto max-h-[calc(100vh-390px)] min-h-[200px] ${className}`}>
+  <div className={`overflow-auto max-h-[calc(100vh-270px)] min-h-[320px] ${className}`}>
     <table className="w-full text-13">
       <thead className="sticky top-0 z-10 bg-slate-50 text-left text-11.5  tracking-wide text-slate-500 shadow-[0_1px_0_0_theme(colors.slate.200)]"><tr>{head}</tr></thead>
       <tbody className="divide-y divide-slate-100">{children}</tbody>
@@ -196,12 +196,13 @@ export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, our
   const isChosen = (c) => Boolean(c.reg) && c.reg.selected !== false;
   const chosenCount = rows.filter(isChosen).length;
   const [view, setView] = useState('all'); // all | chosen | others
+  const [adding, setAdding] = useState(false);
   const ordered = [...rows].sort((x, y) => Number(isChosen(y)) - Number(isChosen(x))); // chosen competitors on top (the order inside each group is kept)
   const shown = view === 'chosen' ? ordered.filter(isChosen) : view === 'others' ? ordered.filter(c => !isChosen(c)) : ordered;
   return (
     <Card pad={false}>
-      <div className="px-5 py-3 border-b border-slate-200 flex flex-wrap items-center gap-3">
-        <div className="text-13 font-semibold text-slate-900">{rows.length} found, {chosenCount} chosen <span className="font-normal text-slate-500">· tick the ones that really compete with you (3 to 5). Only those are watched.</span></div>
+      <div className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="text-13 font-semibold text-slate-900">{rows.length} found, {chosenCount} chosen <span className="font-normal text-slate-500 hidden xl:inline">· tick 3 to 5 that really compete with you</span></div>
         <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" role="tablist" aria-label="Show">
           {[['all', `All ${rows.length}`], ['chosen', `Chosen ${chosenCount}`], ['others', `Not chosen ${rows.length - chosenCount}`]].map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-7 px-2.5 text-11.5 font-semibold rounded-md cursor-pointer ${view === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>
@@ -218,9 +219,10 @@ export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, our
           </span>
           <Button size="sm" variant="secondary" icon={RotateCcw} disabled={!hasSite || running(ourAudit?.status)} onClick={onAuditOur}>Audit our site</Button>
           <Button size="sm" variant="secondary" icon={MapPin} busy={findBusy} onClick={onFindMaps}>Find more on Maps</Button>
+          <Button size="sm" variant="secondary" icon={Plus} onClick={() => setAdding(v => !v)} aria-expanded={adding}>{adding ? 'Hide add form' : 'Add a competitor'}</Button>
         </div>
       </div>
-      <AddCompetitorForm onAdd={onAddManual} busy={addBusy} error={addError} />
+      {adding && <AddCompetitorForm onAdd={onAddManual} busy={addBusy} error={addError} />}
       <Table head={<>
         <Th c="text-center"><Head what="Tick the competitors that really compete with you (3 to 5)." why="Only the chosen ones are watched and used by Competitor Watch, the keyword workspace and the backlink gap.">Choose</Head></Th>
         <Th><Head what="A business that ranks for your keywords on Google Maps or Google." why="Click the name for its full profile." from="Google Maps (Places) results and the competitors you added.">Competitor</Head></Th>
@@ -302,21 +304,25 @@ const CRITERIA = [
 const MATCH_TONE = { direct: 'green', related: 'amber', unrelated: 'gray' };
 
 function HowChosen({ r }) {
+  const [open, setOpen] = useState(false);
   const rel = r.relevance;
   if (!rel) return null;
   const n = rel.counts || {};
   return (
-    <Card title="How these competitors were chosen" subtitle={`${n.direct || 0} direct · ${n.related || 0} related · ${rel.other || 0} left out as not real competitors${rel.ai ? ' · judged by AI from Google Maps data and each business\'s website' : ' · judged from the words in their names and websites'}`}>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
-        {CRITERIA.map(([k, label, level, hint]) => (
-          <div key={k} className="rounded bg-slate-50 px-3 py-2">
-            <div className="flex items-center justify-between gap-2"><span className="text-13 font-semibold text-slate-900">{label}</span><span className="text-11 font-semibold text-indigo-700">{level}</span></div>
-            <div className="text-12 text-slate-500 mt-0.5">{hint}{k === 'authority' ? ' (read when already known)' : ''}</div>
-          </div>
-        ))}
-      </div>
-      {rel.rental && <p className="mt-3 text-12.5 text-indigo-800 bg-indigo-50 rounded px-3 py-2">Your business is a <b>rental</b>, so shops that only sell the same goods are not counted as competitors.</p>}
-    </Card>
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5">
+      <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} className="w-full flex flex-wrap items-center gap-x-3 text-left cursor-pointer">
+        <span className="text-12.5 font-semibold text-slate-900">How these were chosen</span>
+        <span className="text-12 text-slate-500">{n.direct || 0} direct · {n.related || 0} related · {rel.other || 0} left out{rel.ai ? ' · judged by AI' : ''}{rel.rental ? ' · rental business: shops that only sell are left out' : ''}</span>
+        <span className="ml-auto text-12 font-semibold text-indigo-700">{open ? 'Hide' : 'Details'}</span>
+      </button>
+      {open && (
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 pb-1">
+          {CRITERIA.map(([k, label, level, hint]) => (
+            <div key={k} className="rounded bg-slate-50 px-3 py-2"><div className="flex items-center justify-between gap-2"><span className="text-13 font-semibold text-slate-900">{label}</span><span className="text-11 font-semibold text-indigo-700">{level}</span></div><div className="text-12 text-slate-500 mt-0.5">{hint}{k === 'authority' ? ' (read when already known)' : ''}</div></div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -417,13 +423,15 @@ export function MapsAudit({ r, kit }) {
   }
   const metrics = Object.values(rowsByKey);
   return (
-    <Card title="Audit and compare these competitors" subtitle={`${sites.length} Maps competitor${sites.length === 1 ? '' : 's'} · ${done.length} audited${busy ? ` · ${busy} running now` : ''}`}
-      action={<div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="primary" icon={Gauge} busy={busy > 0} disabled={!sites.length || busy > 0} onClick={kit.onAuditAll} title="Audits each competitor (its website, or its Google listing when it has none) and your own website">Audit your site and all {sites.length}</Button>
+    <section className="ai-glass-card rounded px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="min-w-0 flex-1"><span className="text-13.5 font-semibold text-slate-900">Audit and compare</span> <span className="text-12 text-slate-500">· {`${sites.length} Maps competitor${sites.length === 1 ? '' : 's'} · ${done.length} audited${busy ? ` · ${busy} running now` : ''}`}</span></div>
+        <div className="flex flex-wrap gap-2">
+<Button size="sm" variant="primary" icon={Gauge} busy={busy > 0} disabled={!sites.length || busy > 0} onClick={kit.onAuditAll} title="Audits each competitor (its website, or its Google listing when it has none) and your own website">Audit your site and all {sites.length}</Button>
         <Button size="sm" icon={ShieldCheck} busy={sc?.loading} disabled={!done.length || kit.ourAudit?.status !== 'done' || busy > 0} onClick={kit.onScorecard} title="Compares the website audits with yours. A competitor with no website is compared on its own row">Compare all side by side</Button>
-      </div>}>
-      <p className="text-12.5 text-slate-600">Each audit reads the site for speed (PageSpeed), SEO checks and pages. {kit.ourAudit?.status === 'done' ? 'Your site is audited.' : kit.hasSite ? 'Your site is audited first so there is something to compare with.' : 'Add your website to the project to compare.'}</p>
-      {noSite > 0 && <p className="mt-1.5 text-12.5 text-indigo-800 bg-indigo-50 rounded px-3 py-1.5">{noSite} of them {noSite === 1 ? 'has' : 'have'} no website: Audit reads {noSite === 1 ? 'its' : 'their'} Google Maps listing instead and works out the services and keywords.</p>}
+        </div>
+      </div>
+      <p className="mt-1 text-11.5 text-slate-500">{kit.ourAudit?.status === 'done' ? 'Your site is audited.' : kit.hasSite ? 'Your own site is audited too, so there is something to compare with.' : 'Add your website to the project to compare site audits.'}{noSite > 0 ? ` ${noSite} without a website ${noSite === 1 ? 'is' : 'are'} read from the Google Maps listing.` : ''}</p>
       {sc?.error && <p className="mt-2 text-13 text-red-600" role="alert">{sc.error}</p>}
       {metrics.length > 0 && (
         <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
@@ -440,7 +448,7 @@ export function MapsAudit({ r, kit }) {
           <p className="px-3 py-2 text-11.5 text-slate-500 border-t border-slate-100">The best score in each row is highlighted. Press Compare on a single competitor below for the full side by side: speed measures, matched pages and keyword gaps.</p>
         </div>
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -953,12 +961,12 @@ function Research({ b }) {
   const s = result?.summary;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {toastNode}
 
 
       {/* One compact bar: status, settings, run */}
-      <div className={`ai-glass-card rounded px-5 py-3 flex flex-wrap items-center gap-3 ${result || isRunning(current) ? '' : 'hidden'}`}>
+      <div className={`ai-glass-card rounded px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 ${result || isRunning(current) ? '' : 'hidden'}`}>
         <div className="min-w-0 flex-1">
           {isRunning(current) ? (
             <div className="flex items-center gap-3">
@@ -967,32 +975,30 @@ function Research({ b }) {
                 <div className="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${p ? Math.round((p.done / p.total) * 100) : 4}%` }} /></div></div>
             </div>
           ) : result ? (
-            <div className="text-13 text-slate-700"><b className="text-slate-900">Researched {fmtDateTime(result.analysed_at)}</b> · {result.location || 'India'} · {result.keywords.length} keyword{result.keywords.length === 1 ? '' : 's'} · {result.ideas?.competitor_keywords?.length || 0} competitor keywords, {result.gaps?.keywords?.length || 0} gaps</div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-12.5 text-slate-600">
+              <span title={`${result.keywords.length} keywords · ${result.ideas?.competitor_keywords?.length || 0} competitor keywords · ${result.gaps?.keywords?.length || 0} gaps`}><b className="text-slate-900">Researched {fmtDateTime(result.analysed_at)}</b> · {result.location || 'India'} · {result.keywords.length} keyword{result.keywords.length === 1 ? '' : 's'}</span>
+              <span title={s.keywords_ranked ? 'from Google Search Console' : 'link Search Console to see it'}>Google <b className={`tabular-nums ${s.keywords_ranked ? (s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600') : 'text-slate-400'}`}>{s.keywords_ranked ? `${s.visibility}%` : '—'}</b> · {s.keywords_ranked}/{s.keywords_total} keywords</span>
+              <span title={`in Maps for ${s.local_ranked} of ${s.keywords_total}`}>Maps <b className="text-slate-900 tabular-nums">{s.local_visibility}%</b></span>
+              <span title={s.local_leader ? `Maps leader: ${s.local_leader.name}` : ''}>Competitors <b className="text-slate-900 tabular-nums">{s.competitors}</b>{s.local_leader ? <span className="text-slate-400"> · leader {s.local_leader.name}</span> : null}</span>
+            </div>
           ) : <div className="text-13 text-slate-600">Research who outranks you on Google and Maps, then find keywords from it.</div>}
         </div>
-        {result && <Button icon={Settings2} onClick={() => setSettings(true)}>Keywords & settings</Button>}
-        {result && <Button variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup.google_results} onClick={() => start(defaults.keywords, defaults.location)}>Run again</Button>}
+        {result && <Button size="sm" icon={Settings2} onClick={() => setSettings(true)}>Keywords & settings</Button>}
+        {result && <Button size="sm" variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup.google_results} onClick={() => start(defaults.keywords, defaults.location)}>Run again</Button>}
+        {result && <Button size="sm" icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors · <b className="tabular-nums">{chosenTotal}</b> chosen</Button>}
       </div>
       {current?.status === 'failed' && <ErrorNote>{current.error || 'The research failed.'}</ErrorNote>}
       {isRunning(current) && <LiveResults progress={p} />}
 
-      <div className="flex flex-wrap items-center justify-end gap-2 -mb-2">
-        <Button icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors · <b className="tabular-nums">{chosenTotal}</b> chosen</Button>
-      </div>
+      {!result && !isRunning(current) && <div className="flex justify-end -mb-2"><Button size="sm" icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors · <b className="tabular-nums">{chosenTotal}</b> chosen</Button></div>}
       <div className="grid gap-5 items-start">
-      <div className="min-w-0 space-y-5">
+      <div className="min-w-0 space-y-3">
       {!result && !isRunning(current) && <Card title="Research your competitors" subtitle="Add the searches your customers type, then run it. The Maps competitors are registered for site audits at the same time."><SetupForm b={b} defaults={defaults} onStart={start} busy={busy === 'start'} error={error} setupInfo={state.setup} hasRun={false} /></Card>}
 
       {result && (
-        <div className={isRunning(current) ? 'space-y-5 opacity-60 pointer-events-none select-none' : 'space-y-5'} aria-busy={isRunning(current)}>
-          <div className="rounded-lg border border-slate-200 bg-white px-4 py-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-13 text-slate-600">
-            <span title={s.keywords_ranked ? 'from Google Search Console' : 'link Search Console to see it'}>Google visibility <b className={`tabular-nums ${s.keywords_ranked ? (s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600') : 'text-slate-400'}`}>{s.keywords_ranked ? `${s.visibility}%` : '—'}</b></span>
-            <span title={`${s.keywords_top3} in the top 3 (Search Console)`}>On Google <b className="text-slate-900 tabular-nums">{s.keywords_ranked}/{s.keywords_total}</b> keywords</span>
-            <span title={`in Maps for ${s.local_ranked} of ${s.keywords_total}`}>Maps visibility <b className="text-slate-900 tabular-nums">{s.local_visibility}%</b></span>
-            <span title={s.local_leader ? `Maps leader: ${s.local_leader.name}` : ''}>Competing businesses <b className="text-slate-900 tabular-nums">{s.competitors}</b>{s.local_leader ? <span className="text-slate-400"> · leader {s.local_leader.name}</span> : null}</span>
-          </div>
+        <div className={isRunning(current) ? 'space-y-3 opacity-60 pointer-events-none select-none' : 'space-y-3'} aria-busy={isRunning(current)}>
           <div>
-            <Tabs wrap value={tab} onChange={setTab} tabs={[
+            <Tabs value={tab} onChange={setTab} tabs={[
               { id: 'overview', label: 'Overview' },
               { id: 'competitors', label: 'All competitors', count: rows.length },
               { id: 'pages', label: 'Traffic and pages' },
@@ -1041,30 +1047,36 @@ function Research({ b }) {
 /** What the research starts from: the business understanding (kind of business, area, the words customers search with). Without it the page asks for the summary to be built first. */
 function Basis({ b }) {
   const r = useApi(`/businesses/${b.id}/business-brief`);
+  const [open, setOpen] = useState(false);
   const br = r.data?.brief;
   if (r.error || !r.data) return null;
   if (!br) {
     return (
-      <div className="rounded-xl border-2 border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-[240px] text-13 text-amber-900"><b>Build the business summary first.</b> Competitors and keywords are found from what the business is, what it sells and how customers search for it. Without it the research guesses from the Google category.</div>
-        <Link to="/website-audit" className="h-9 px-4 inline-flex items-center rounded text-13 font-semibold bg-amber-600 text-white hover:bg-amber-700">Open the website audit</Link>
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 flex flex-wrap items-center gap-3 text-12.5 text-amber-900">
+        <span className="flex-1 min-w-[220px]"><b>Build the business summary first:</b> competitors and keywords are found from what the business is and how customers search.</span>
+        <Link to="/website-audit" className="font-semibold underline">Open the website audit</Link>
       </div>
     );
   }
+  const terms = br.customer_search_terms || [];
   return (
-    <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50/60 px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-13 font-bold text-indigo-900">Finding competitors from your business understanding</div>
-        <Link to="/website-audit" className="text-12.5 font-semibold text-indigo-700 hover:underline">View or refresh it</Link>
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {br.business_model && <span className="px-2.5 py-1 rounded-md bg-white ring-1 ring-indigo-200 text-12.5 font-bold text-slate-900 capitalize">{br.business_model}</span>}
-        {(br.customer_search_terms || []).slice(0, 8).map(x => <span key={x} className="px-2.5 py-1 rounded-full bg-indigo-600 text-white text-12.5 font-semibold">{x}</span>)}
-      </div>
-      {(br.competitors_are || br.competitors_are_not) && (
-        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-12.5">
-          {br.competitors_are && <div className="rounded-lg bg-emerald-50 ring-1 ring-emerald-200 px-3 py-2 text-slate-800"><b className="text-emerald-800">Counts: </b>{br.competitors_are}</div>}
-          {br.competitors_are_not && <div className="rounded-lg bg-rose-50 ring-1 ring-rose-200 px-3 py-2 text-slate-800"><b className="text-rose-800">Does not count: </b>{br.competitors_are_not}</div>}
+    <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-1.5">
+      <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 text-left cursor-pointer">
+        <span className="text-12.5 font-bold text-indigo-900">Based on your business understanding</span>
+        {br.business_model && <span className="px-2 py-0.5 rounded bg-white ring-1 ring-indigo-200 text-12 font-bold text-slate-900 capitalize">{br.business_model}</span>}
+        <span className="text-12 text-indigo-800 truncate max-w-[60%]">{terms.slice(0, 3).join(' · ')}{terms.length > 3 ? ` +${terms.length - 3} more` : ''}</span>
+        <span className="ml-auto text-12 font-semibold text-indigo-700">{open ? 'Hide' : 'Details'}</span>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2 pb-1">
+          <div className="flex flex-wrap items-center gap-1.5">{terms.map(x => <span key={x} className="px-2.5 py-1 rounded-full bg-indigo-600 text-white text-12 font-semibold">{x}</span>)}</div>
+          {(br.competitors_are || br.competitors_are_not) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-12.5">
+              {br.competitors_are && <div className="rounded-lg bg-emerald-50 ring-1 ring-emerald-200 px-3 py-2 text-slate-800"><b className="text-emerald-800">Counts: </b>{br.competitors_are}</div>}
+              {br.competitors_are_not && <div className="rounded-lg bg-rose-50 ring-1 ring-rose-200 px-3 py-2 text-slate-800"><b className="text-rose-800">Does not count: </b>{br.competitors_are_not}</div>}
+            </div>
+          )}
+          <Link to="/website-audit" className="inline-block text-12.5 font-semibold text-indigo-700 hover:underline">View or refresh the business understanding</Link>
         </div>
       )}
     </div>
@@ -1074,7 +1086,7 @@ function Basis({ b }) {
 export default function CompetitorFinderPage() {
   return (
     <SeoShell step="competitors" title="Competitors" subtitle="Who outranks you on Google and Maps, side by side with you, the keywords you are missing, and what to do about it: one research, one place">
-      {(b) => <div className="space-y-4"><Basis key={`basis-${b.id}`} b={b} /><Research key={b.id} b={b} /></div>}
+      {(b) => <div className="space-y-3"><Basis key={`basis-${b.id}`} b={b} /><Research key={b.id} b={b} /></div>}
     </SeoShell>
   );
 }
