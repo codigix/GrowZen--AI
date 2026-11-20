@@ -87,6 +87,65 @@ def plan(range_key: str, start: date | None, end: date | None, group: str | None
     return range_key, s, e, group, keys[-72:]
 
 
+AREA_FIX = {"onpage": ("On-page SEO", "/website-audit"), "technical": ("Technical SEO", "/website-audit"), "gbp": ("Google Business Profile", "/gmb-profile"),
+            "citations": ("Local citations", "/off-page-seo/citations"), "geo": ("AI search visibility", "/geo-optimization")}
+_LEVEL = {"high": 0, "medium": 1, "low": 2}
+
+
+def attention(db: Session, b: Business, counts: dict[str, Any]) -> list[dict[str, str]]:
+    """What to do next on this project, most important first: each item says what is wrong, why it matters and where to fix it. Built only from what is stored."""
+    from . import audits
+    out: list[dict[str, str]] = []
+
+    def add(level: str, title: str, why: str, to: str) -> None:
+        out.append({"level": level, "title": title, "why": why, "to": to})
+
+    linked = bool(b.gbp_location and b.connection_id)
+    if not linked:
+        add("high", "The Google Business Profile is not connected", "Without it nothing can be edited, posted or measured on Google from here.", "/gmb-profile")
+    if b.google_watch:
+        add("low", "Google is reviewing your latest profile edit", "It shows on Search and Maps once Google finishes (a few hours, sometimes up to 3 days). We tell you when it is live.", "/gmb-profile?tab=profile&sub=edit")
+    waiting = db.scalars(select(Post).where(Post.business_id == b.id, Post.status.in_(("draft", "scheduled")))).all()
+    holes = [p for p in waiting if "[" in (p.body or "") and "]" in (p.body or "")]
+    if holes:
+        add("high", f"{len(holes)} waiting post{'s' if len(holes) != 1 else ''} still ha{'ve' if len(holes) != 1 else 's'} [placeholders] to fill in", "The brackets would be published as they are. Fill them in before approving.", "/google-posts")
+    if counts["approvals_waiting"]:
+        add("medium", f"{counts['approvals_waiting']} item{'s' if counts['approvals_waiting'] != 1 else ''} waiting for your approval", "Nothing is posted or changed on Google until you approve it.", "/automation")
+    if counts["reviews_unreplied"]:
+        add("medium", f"{counts['reviews_unreplied']} review{'s' if counts['reviews_unreplied'] != 1 else ''} without a reply", "Replying shows customers (and Google) that the business is active.", "/reviews")
+    for k, a in audits.latest(db, b, with_result=False).items():
+        if a.score is not None and a.data_source != "sample" and k in AREA_FIX and a.score < 50:
+            name, to = AREA_FIX[k]
+            add("high" if a.score < 30 else "medium", f"{name} scores {a.score}/100", "A low score here holds the project back: the audit lists exactly what to fix.", to)
+    gaps = []
+    if not (b.attributes or []):
+        gaps.append("highlights")
+    if len([x for x in (b.services or []) if x.get("name")]) < 3:
+        gaps.append("services (add at least 3)")
+    if (b.photo_count or 0) < 10:
+        gaps.append(f"photos ({b.photo_count or 0} of 10)")
+    if len(b.description or "") < 250:
+        gaps.append("a longer description")
+    if linked and gaps:
+        add("medium", "The Google profile is missing: " + ", ".join(gaps), "A complete profile gets more calls, directions and website visits.", "/gmb-profile?tab=profile&sub=edit")
+    if counts["keywords_tracked"] and not counts["ranking_any"]:
+        add("medium", "Keyword positions have not been read yet", f"{counts['keywords_tracked']} keywords are tracked but there is no position for any of them: run Position Tracking.", "/rank-tracking/landscape")
+    if not counts["keywords_saved"] and counts["keywords_suggested"]:
+        add("medium", f"{counts['keywords_suggested']} keyword suggestions are waiting", "Pick the ones to track so rankings can be measured.", "/keyword-management/ai")
+    not_indexed = int(db.scalar(select(func.count()).select_from(IndexPage).where(IndexPage.business_id == b.id, IndexPage.g_state == "not_indexed")) or 0)
+    if not_indexed:
+        add("medium", f"{not_indexed} page{'s' if not_indexed != 1 else ''} not indexed by Google", "A page Google has not indexed cannot rank.", "/page-indexing")
+    if not counts["backlinks"] and counts["backlinks_tracked"]:
+        add("low", "No backlinks found yet", "Links from other sites are a main ranking factor: start with the link opportunities.", "/backlinks/opportunities")
+    recent_article = db.scalar(select(func.count()).select_from(Article).where(Article.business_id == b.id, Article.status == "completed", Article.generated_at >= datetime.now(timezone.utc) - timedelta(days=30))) or 0
+    if not recent_article:
+        add("low", "No article written in the last 30 days", "Fresh content keeps the site growing: write one from Topic Research.", "/ai-content-generation/blog")
+    if counts["fixes_open"]:
+        add("low", f"{counts['fixes_open']} Growth Plan issue{'s' if counts['fixes_open'] != 1 else ''} still open", f"{counts['fixes_done']} of {counts['fixes_total']} are fixed.", "/growth")
+    out.sort(key=lambda x: _LEVEL[x["level"]])
+    return out[:8]
+
+
 def humanize(action: str) -> str:
     return ACTION_WORDS.get(action) or action.replace("_", " ").replace(".", " ").strip().capitalize()
 
@@ -204,6 +263,7 @@ def build(db: Session, b: Business, range_key: str = "all", start: date | None =
     done_tasks = db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.status.in_(("applied", "approved", "scheduled"))).order_by(AgentTask.id.desc()).limit(6)).all()
 
     return {
+        "attention": attention(db, b, counts),
         "range": {"key": range_key, "start": s.isoformat(), "end": e.isoformat(), "days": days, "group": period, "earliest": earliest.isoformat() if earliest else None},
         "period": period, "labels": labels, "starts": [k.isoformat() for k in keys], "series": series, "health": health_series, "movement": movement, "counts": counts, "timeline": timeline,
         "top_keywords": top_keywords, "latest_backlinks": top_links, "backlink_domain": own["domain"] if own else None,

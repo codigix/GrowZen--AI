@@ -54,3 +54,13 @@ def test_everything_by_default_and_a_range_narrows_it():
     assert (k, s, e, group, keys) == ("custom", date(2026, 9, 1), date(2026, 9, 30), "month", [date(2026, 9, 1)])
     assert pd.plan("custom", date(2026, 9, 30), date(2026, 9, 1), None, None, today)[1:3] == (date(2026, 9, 1), date(2026, 9, 30))  # dates the wrong way round are swapped
     assert pd.plan("bogus", None, None, None, None, today)[0] == "all"
+
+
+def test_attention_lists_what_is_wrong_most_important_first(client):
+    bid = client.post("/api/v1/businesses", json={"name": "Attn Co", "website": "https://attn.example/"}).json()["id"]
+    r = client.get(f"/api/v1/businesses/{bid}/dashboard").json()
+    items = r["attention"]
+    assert items and items[0]["level"] == "high" and "not connected" in items[0]["title"]
+    order = [{"high": 0, "medium": 1, "low": 2}[x["level"]] for x in items]
+    assert order == sorted(order) and len(items) <= 8
+    assert all(x["to"].startswith("/") and x["why"] for x in items)

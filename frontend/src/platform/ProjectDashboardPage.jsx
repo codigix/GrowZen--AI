@@ -6,7 +6,7 @@ import { useApi, api, fmt } from './seoApi';
 import SiteAuditOverview from './SiteAuditOverview';
 import { useCountries } from './countries';
 import { decodeProjectId } from './projectUrl';
-import ProgressSection from './ProjectProgress';
+import ProgressSection, { Attention } from './ProjectProgress';
 
 const AREA_LABEL = { technical: 'Technical SEO', onpage: 'On-page SEO', gbp: 'Google Business Profile', content: 'Content', speed: 'Site speed', geo: 'AI search (GEO)', aeo: 'Answer engines (AEO)', local: 'Local SEO', backlinks: 'Backlinks', reviews: 'Reviews' };
 const label = (k) => AREA_LABEL[k] || String(k).replace(/[_-]+/g, ' ').replace(/^./, c => c.toUpperCase());
@@ -81,6 +81,18 @@ function TargetMarket({ b }) {
   );
 }
 
+const JUMPS = [['attention', 'Needs attention'], ['progress', 'Progress'], ['audit', 'Site audit'], ['scores', 'Scores and fixes'], ['setup', 'Setup']];
+
+/** Jump links to the sections of this long page: the bar stays in view while scrolling. */
+function JumpBar() {
+  const go = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return (
+    <nav aria-label="Sections" className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-white/90 backdrop-blur border-b border-slate-200 flex flex-wrap gap-1.5">
+      {JUMPS.map(([id, t]) => <button key={id} type="button" onClick={() => go(id)} className="h-8 px-3 rounded-full text-12.5 font-semibold text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer">{t}</button>)}
+    </nav>
+  );
+}
+
 function ProjectDashboard({ b, middle }) {
   const ov = useApi(`/businesses/${b.id}/overview`);
   const d = ov.data;
@@ -110,9 +122,14 @@ function ProjectDashboard({ b, middle }) {
             {b.primary_category && <Badge tone="blue">{b.primary_category}</Badge>}
             {(b.gbp_location && b.connection_id) ? <Badge tone="green">Google profile connected</Badge> : <Badge tone="gray">Google profile not connected</Badge>}
             {d.profile?.score != null && <Badge tone={tone(d.profile.score)}>Profile score {d.profile.score}/100</Badge>}
+            {b.verification === 'verified' && <Badge tone="green">Verified on Google</Badge>}
+            {b.verification && b.verification !== 'verified' && b.verification !== 'unknown' && <Badge tone="amber">Google profile: {String(b.verification).replace(/_/g, ' ')}</Badge>}
+            {b.google_watch && <Badge tone="blue">Edit under review by Google</Badge>}
           </div>
         </div>
       </div>
+
+      <JumpBar />
 
       {middle}
 
@@ -122,7 +139,7 @@ function ProjectDashboard({ b, middle }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+      <div id="scores" className="scroll-mt-24 grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <Card title="Scores by area" subtitle="Latest result of each check for this project">
           {areas.length === 0 ? <p className="text-13 text-slate-500 py-2">No checks have run yet.</p> : (
             <ul className="space-y-3">
@@ -154,7 +171,7 @@ function ProjectDashboard({ b, middle }) {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+      <div id="setup" className="scroll-mt-24 grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <TargetMarket b={b} />
         <Connections b={b} />
       </div>
@@ -223,7 +240,7 @@ export default function ProjectDashboardPage() {
   return (
     <SeoShell title="Project dashboard" subtitle="This project's site audit, Google activity, connections and what to do next" hideSwitcher>
       {(b) => (b && b.id === want ? (
-        <ProjectDashboard key={b.id} b={b} middle={<div className="space-y-8"><ProgressSection b={b} /><AuditSection b={b} /></div>} />
+        <ProjectDashboard key={b.id} b={b} middle={<div className="space-y-8"><Attention b={b} /><ProgressSection b={b} /><div id="audit" className="scroll-mt-24"><AuditSection b={b} /></div></div>} />
       ) : null)}
     </SeoShell>
   );

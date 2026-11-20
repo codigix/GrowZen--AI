@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { Phone, Navigation, MousePointerClick, Eye, Star, Users, Wrench, FileText, ArrowUpRight, ArrowDownRight, Minus, CheckCircle2, Clock, ListChecks, Send, Search, Globe, BookOpen, MessageSquare, Link2, ClipboardCheck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Info, Phone, Navigation, MousePointerClick, Eye, Star, Users, Wrench, FileText, ArrowUpRight, ArrowDownRight, Minus, CheckCircle2, Clock, ListChecks, Send, Search, Globe, BookOpen, MessageSquare, Link2, ClipboardCheck } from 'lucide-react';
 import { Card, Badge, ChartTooltip, Legend, SERIES, INK } from './SeoUi';
 import { useApi, fmt } from './seoApi';
 
@@ -73,6 +73,45 @@ const RANGES = [['all', 'All time'], ['30d', 'Last 30 days'], ['90d', 'Last 90 d
 const nice = (iso) => { try { return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return iso; } };
 const today = () => new Date().toISOString().slice(0, 10);
 
+const LEVEL = {
+  high: { dot: 'bg-red-500', chip: 'bg-red-50 text-red-700', word: 'Fix first' },
+  medium: { dot: 'bg-amber-500', chip: 'bg-amber-50 text-amber-800', word: 'Do next' },
+  low: { dot: 'bg-sky-500', chip: 'bg-sky-50 text-sky-700', word: 'When you can' }
+};
+
+/** What to do next on this project, most important first: each line says what is wrong, why it matters and opens the page that fixes it in a new tab. */
+export function Attention({ b }) {
+  const r = useApi(`/businesses/${b.id}/dashboard?range=all`);
+  const items = r.data?.attention;
+  if (r.error) return null;
+  return (
+    <section id="attention" className="scroll-mt-24" aria-label="What needs attention">
+      <Card title="What needs attention" subtitle={items ? (items.length ? `${items.length} thing${items.length === 1 ? '' : 's'} to do, the most important first` : 'Nothing urgent: keep it up') : 'Checking this project…'}>
+        {!items ? <p className="text-13 text-slate-400 py-2">Checking…</p> : items.length === 0 ? (
+          <p className="text-13 text-emerald-700 py-2 inline-flex items-center gap-2"><CheckCircle2 size={16} />Nothing needs attention right now.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {items.map((x, i) => {
+              const L = LEVEL[x.level] || LEVEL.low;
+              const Icon = x.level === 'low' ? Info : AlertTriangle;
+              return (
+                <li key={i} className="py-3 flex items-start gap-3">
+                  <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${L.dot}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-13.5 font-semibold text-slate-900 flex flex-wrap items-center gap-2">{x.title}<span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-11 font-semibold ${L.chip}`}><Icon size={11} />{L.word}</span></div>
+                    <div className="text-12.5 text-slate-500 mt-0.5">{x.why}</div>
+                  </div>
+                  <Link to={x.to} target="_blank" rel="noopener noreferrer" className="shrink-0 h-8 px-3 inline-flex items-center gap-1 rounded ring-1 ring-slate-300 text-12.5 font-semibold text-slate-700 hover:bg-slate-50">Open <ArrowRight size={13} /></Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+    </section>
+  );
+}
+
 /** Everything so far by default; a date range narrows it. Counts, progress over time and the actions taken on this project. */
 export default function ProgressSection({ b }) {
   const [range, setRange] = useState('all');
@@ -115,7 +154,7 @@ export default function ProgressSection({ b }) {
   const nothing = !Object.values(d.series).some(v => v.some(Boolean)) && !d.health.some(x => x != null);
 
   return (
-    <section className="space-y-5" aria-label="Progress">
+    <section id="progress" className="space-y-5 scroll-mt-24" aria-label="Progress">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div><h2 className="text-18 font-semibold text-slate-900">Progress</h2><p className="text-13 text-slate-500">{d.range.key === 'all' ? `Everything so far: from ${nice(d.range.start)} (the first thing stored for this project) to today, ${days} days.` : `${nice(d.range.start)} to ${nice(d.range.end)} (${days} days), shown ${unit} by ${unit}. The change is against the ${days} days before.`}</p></div>
         {toggle}
