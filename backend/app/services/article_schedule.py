@@ -91,13 +91,15 @@ def state_of(a: Article, p: ScheduledPost | None) -> dict:
         status = "publishing"
     elif p and p.status == "failed":
         status = "failed"
-    elif a.wp_status == "publish" or a.react_status == "publish" or (p and p.status == "published"):
+    elif a.wp_status == "publish" or a.react_status == "publish":
         status = "published"
+    elif p and p.status == "published" and a.react_status != "deleted" and a.wp_status != "deleted":
+        status = "published"  # an old schedule row says published; it no longer counts once its website post was deleted
     elif a.status == "completed":
-        status = "draft"
+        status = "draft"  # nothing is live any more: it can be scheduled or published again
     else:
         status = None
-    show = p if p and p.status in (*ACTIVE, "published") else None
+    show = p if p and p.status in (*ACTIVE, "published") and status != "draft" else None
     return {"publishing_status": status, "schedule": _schedule_view(show) if show else None}
 
 

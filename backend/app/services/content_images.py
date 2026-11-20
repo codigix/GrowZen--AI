@@ -48,7 +48,11 @@ def path_of(business_id: int, article_id: int, name: str) -> Path | None:
         return None
     folder = _folder(business_id).resolve()
     p = (folder / name).resolve()
-    return p if p.parent == folder and p.is_file() else None
+    if p.parent != folder:
+        return None
+    if not p.is_file() and not fi.fetch_missing(f"/businesses/{int(business_id)}/articles/{int(article_id)}/content-images/{name}", p):
+        return None  # not here, and not available from another GrowZen server (settings.uploads_fallback_url)
+    return p
 
 
 def _meta_path(p: Path) -> Path:

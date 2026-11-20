@@ -1067,7 +1067,11 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
     base = normalize_base(conn.api_base_url)
     existing = a.react_post_id if a.react_status != "deleted" else None
     img_path = fi.path_of(a.featured_image_path) if a.featured_image_path else None
-    if a.featured_image_path and not img_path:
+    # The image file is not on THIS server's disk (e.g. it was uploaded through another GrowZen server that shares the
+    # database). A post already on the website keeps the image it has: it is updated without touching the image.
+    # A new post cannot be sent without it.
+    img_missing = bool(a.featured_image_path and not img_path)
+    if img_missing and not existing:
         raise ReactSiteError("The featured image file is missing in GrowZen. Upload it again in the Featured image section, then publish.")
     image_url, img_field = None, None
     try:
@@ -1094,6 +1098,11 @@ def publish(conn: ReactSiteConnection, a: Article, mode: str, when: datetime | N
                 if found:
                     existing = found
                     steps.append({"step": "Find the existing post", "ok": True, "detail": f"A post with this address is already on the website (id {found}); it is updated, not created again"})
+            if img_missing:
+                for k in [k for k in data if k in _IMAGE_FIELDS and not data[k]]:
+                    data.pop(k)  # an empty image field would erase the image the post already has on the website
+                steps.append({"step": "Featured image", "ok": True, "warning": True,
+                              "detail": "The image file is not on this GrowZen server, so the post keeps the image it already has on the website."})
             if img_path:
                 img_field = _image_fields(sample, mapping_of(conn))[0]
                 image_url, r, existing = _send_with_image(c, conn, a, img_path, sample, data, steps, base, path, existing)

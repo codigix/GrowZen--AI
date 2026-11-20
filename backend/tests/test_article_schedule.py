@@ -108,6 +108,23 @@ def test_schedule_validates_stores_one_row_shows_on_the_calendar_and_publishes_o
     assert db.scalar(select(ActivityLog).where(ActivityLog.action == "post_published", ActivityLog.business_id == bid))
 
 
+def test_deleting_the_website_post_makes_the_article_a_draft_again_so_it_can_be_published_again(client, db, monkeypatch):
+    fake = FakeReactSite()
+    bid, a, base = _setup(client, db, monkeypatch, fake)
+    now = datetime.now(timezone.utc)
+    db.add(ScheduledPost(business_id=bid, article_id=a.id, method="react", due_at=now, status="published", finished_at=now, result={"id": "41", "direct": True}))
+    a.react_post_id, a.react_status = "41", "publish"
+    db.commit()
+    assert _listed(client, base, a.id)["publishing_status"] == "published"
+    a.react_status = "deleted"  # "Delete post": the post is gone from the website, the article stays in GrowZen
+    db.commit()
+    x = _listed(client, base, a.id)
+    assert x["publishing_status"] == "draft" and x["schedule"] is None  # the list shows Schedule / Publish now again
+    d, t = _ist(now + timedelta(days=1))
+    assert client.put(f"{base}/{a.id}/schedule", json={"date": d, "time": t, "destination": "react"}).status_code == 200
+    assert _listed(client, base, a.id)["publishing_status"] == "scheduled"
+
+
 def test_two_runners_cannot_publish_the_same_row(client, db, monkeypatch):
     fake = FakeReactSite()
     bid, a, base = _setup(client, db, monkeypatch, fake)

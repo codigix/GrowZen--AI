@@ -25,6 +25,7 @@ import json
 import os
 import posixpath
 import re
+import socket
 import time
 from pathlib import Path
 from urllib.parse import quote, urlsplit
@@ -369,7 +370,12 @@ class FTP(Deployer):
 
     def _conn(self):
         f = ftplib.FTP_TLS(timeout=40) if self.cfg.get("tls") else ftplib.FTP(timeout=40)
-        f.connect(self.cfg["host"], int(self.cfg.get("port") or 21))
+        try:
+            f.connect(self.cfg["host"], int(self.cfg.get("port") or 21))
+        except socket.gaierror as exc:
+            site = _host(self.website_url)
+            raise DeployError(f"The FTP server name '{self.cfg['host']}' does not exist (DNS lookup failed)."
+                              + (f" On cPanel hosting the FTP server is usually the domain itself: {site}." if site and site != self.cfg["host"] else "")) from exc
         f.login(self.cfg["user"], self.cfg["password"])
         if self.cfg.get("tls"):
             f.prot_p()
