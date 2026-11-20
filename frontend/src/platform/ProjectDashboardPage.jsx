@@ -1,8 +1,9 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { PlugZap, XCircle, Globe, MapPin, Phone, Navigation, MousePointerClick, Users, ListChecks, ArrowRight, ArrowUpRight, ArrowDownRight, Star, ScanSearch, FileText, TrendingUp, Link2, BarChart3, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { SeoShell, Card, Badge, ScoreRing, scoreWord, SkStats, SkCard } from './SeoUi';
-import { useApi, fmt } from './seoApi';
+import { useApi, api, fmt } from './seoApi';
+import SiteAuditOverview from './SiteAuditOverview';
 import { useCountries } from './countries';
 
 const AREA_LABEL = { technical: 'Technical SEO', onpage: 'On-page SEO', gbp: 'Google Business Profile', content: 'Content', speed: 'Site speed', geo: 'AI search (GEO)', aeo: 'Answer engines (AEO)', local: 'Local SEO', backlinks: 'Backlinks', reviews: 'Reviews' };
@@ -61,29 +62,6 @@ function Connections({ b }) {
   );
 }
 
-function AuditCard({ b }) {
-  const a = useApi(`/businesses/${b.id}/audit-overview`);
-  const d = a.data;
-  return (
-    <Card title="Website audit" subtitle={d ? `${d.target ? d.target.replace(/^https?:\/\//, '') : ''} · ${d.finished_at ? new Date(d.finished_at).toLocaleDateString() : ''}` : 'Site health from the last crawl'} action={<Link to="/website-audit" className="text-12.5 font-semibold text-indigo-600 hover:underline">Full audit</Link>}>
-      {a.error ? <p className="text-13 text-slate-500 py-2">No website audit yet. <Link to="/website-audit" className="font-semibold text-indigo-600 underline">Run one</Link> to see site health, errors and warnings here.</p> : !d ? <p className="text-13 text-slate-400 py-2">Loading…</p> : (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-            {[['Site health', d.health != null ? `${d.health}%` : '—', 'text-slate-900'], ['Errors', d.errors ?? '—', 'text-red-600'], ['Warnings', d.warnings ?? '—', 'text-amber-600'], ['Pages crawled', d.crawled ?? d.pages ?? '—', 'text-slate-900']].map(([l, v, c]) => (
-              <div key={l} className="rounded bg-slate-50 py-3"><div className={`text-22 font-bold tabular-nums ${c}`}>{v}</div><div className="text-11.5 text-slate-500">{l}</div></div>
-            ))}
-          </div>
-          {(d.top_issues || []).length > 0 && (
-            <ul className="divide-y divide-slate-100">
-              {d.top_issues.slice(0, 4).map(g => <li key={g.code} className="py-2"><div className="text-13 font-medium text-slate-900">{g.title}</div><div className="text-12 text-slate-500">{g.fix}</div></li>)}
-            </ul>
-          )}
-        </div>
-      )}
-    </Card>
-  );
-}
-
 function TargetMarket({ b }) {
   const countries = useCountries();
   const name = (c) => (countries || []).find(x => x.code === c)?.name || c;
@@ -136,10 +114,7 @@ function ProjectDashboard({ b }) {
 
       <TargetMarket b={b} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-        <AuditCard b={b} />
-        <Connections b={b} />
-      </div>
+      <Connections b={b} />
 
       {noData && (
         <div className="rounded bg-sky-50 ring-1 ring-inset ring-sky-100 px-4 py-3 text-13 text-sky-900">
@@ -210,10 +185,42 @@ function ProjectDashboard({ b }) {
   );
 }
 
+/** The project's own site audit, in the same layout as the Website Audit page (Overview, Issues, Crawled Pages, Statistics, Compare Crawls, Progress, JS Impact). */
+function AuditSection({ b }) {
+  const navigate = useNavigate();
+  const probe = useApi(`/businesses/${b.id}/audit-overview`);
+  const [starting, setStarting] = React.useState(false);
+  const [note, setNote] = React.useState('');
+  if (!probe.data && !probe.error) return <div className="ai-glass-card rounded p-6 text-13 text-slate-500">Loading the site audit…</div>;
+  if (probe.error) {
+    const run = async () => {
+      setStarting(true); setNote('');
+      try { await api(`/businesses/${b.id}/audits`, { method: 'POST', body: { kinds: ['technical', 'onpage'] } }); setNote('Audit started: this page fills in when it finishes (a few minutes).'); }
+      catch (e) { setNote(e.message); } finally { setStarting(false); }
+    };
+    return (
+      <Card title={`Site Audit: ${(b.website || b.name).replace(/^https?:\/\//, '').replace(/\/$/, '')}`} subtitle="Site health, errors, warnings and crawled pages">
+        <p className="text-13 text-slate-600">{b.website ? 'No website audit has run for this project yet.' : 'This project has no website, so there is nothing to audit.'}</p>
+        {b.website && <button type="button" onClick={run} disabled={starting} className="mt-3 h-9 px-4 rounded text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 cursor-pointer">{starting ? 'Starting…' : 'Run the first audit'}</button>}
+        {note && <p className="mt-2 text-12.5 text-slate-600">{note}</p>}
+      </Card>
+    );
+  }
+  return <SiteAuditOverview key={b.id} projectId={b.id} onBack={() => navigate('/projects')} />;
+}
+
 export default function ProjectDashboardPage() {
   return (
-    <SeoShell title="Project dashboard" subtitle="This project at a glance: scores, Google activity and what to do next">
-      {(b) => (b ? <ProjectDashboard key={b.id} b={b} /> : null)}
+    <SeoShell title="Project dashboard" subtitle="This project's site audit, Google activity, connections and what to do next">
+      {(b) => (b ? (
+        <div className="space-y-8">
+          <AuditSection b={b} />
+          <section className="space-y-4" aria-label="Project details">
+            <h2 className="text-18 font-semibold text-slate-900">Project details</h2>
+            <ProjectDashboard key={b.id} b={b} />
+          </section>
+        </div>
+      ) : null)}
     </SeoShell>
   );
 }
