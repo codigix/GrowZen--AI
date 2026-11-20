@@ -44,15 +44,45 @@ export default function BusinessUnderstanding({ b }) {
   }
   const f = brief.facts || {};
   const sc = f.scores || {};
-  const TABS = [['overview', 'Overview'], ['gaps', 'Strengths and gaps'], ['market', 'Search and competitors'], ['todo', 'What to do first']];
-  const counts = { gaps: (brief.strengths || []).length + (brief.weaknesses || []).length, market: (brief.customer_search_terms || []).length, todo: (brief.next_steps || []).length };
+  const TABS = [['overview', 'Overview'], ['gaps', 'Strengths and gaps'], ['market', 'Keyword themes'], ['todo', 'What to do first']];
+  const counts = { gaps: (brief.strengths || []).length + (brief.weaknesses || []).length, market: (brief.keyword_themes || []).length, todo: (brief.next_steps || []).length };
   return (
     <Card title="Business understanding" subtitle={`Built ${when(brief.built_at)} from ${brief.pages?.length || 0} page${brief.pages?.length === 1 ? '' : 's'} of the website, the audit and the profile${brief.by_ai ? '' : ' (profile only: AI was not available)'}`} action={action}>
       {err && <p className="mb-2 text-13 text-red-600" role="alert">{err}</p>}
 
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        {brief.business_model && <Badge tone="blue">{brief.business_model}</Badge>}
-        {brief.market && <span className="inline-flex items-center gap-1 text-12.5 text-slate-600 max-w-full truncate"><MapPin size={13} className="shrink-0" /><span className="truncate">{brief.market}</span></span>}
+      <div className="mb-4 rounded-xl border-2 border-indigo-200 bg-indigo-50/60 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2 text-13 font-bold text-indigo-900"><Sparkles size={15} className="text-indigo-600" />Used to find competitors and keywords</div>
+          <span className="text-11.5 text-indigo-700">Competitor research and keyword research start from exactly this</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="rounded-lg bg-white px-3 py-2.5 ring-1 ring-indigo-100">
+            <div className="text-11 font-semibold uppercase tracking-wide text-slate-500">Kind of business</div>
+            <div className="mt-0.5 text-15 font-bold text-slate-900 capitalize">{brief.business_model || '—'}</div>
+          </div>
+          <div className="rounded-lg bg-white px-3 py-2.5 ring-1 ring-indigo-100 md:col-span-2">
+            <div className="text-11 font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-1"><MapPin size={11} />Target area</div>
+            <div className="mt-0.5 text-13.5 font-semibold text-slate-900">{brief.market || '—'}</div>
+          </div>
+        </div>
+        <div className="mt-3 rounded-lg bg-white px-3 py-2.5 ring-1 ring-indigo-100">
+          <div className="text-11 font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-1"><Target size={11} />What it sells</div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">{(brief.offerings || []).map(x => <span key={x} className="px-2.5 py-1 rounded-md bg-slate-100 text-12.5 font-semibold text-slate-800">{x}</span>)}{!(brief.offerings || []).length && <span className="text-13 text-slate-400">—</span>}</div>
+        </div>
+        <div className="mt-3 rounded-lg bg-white px-3 py-2.5 ring-1 ring-indigo-100">
+          <div className="text-11 font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-1"><Search size={11} />Words customers search with</div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">{(brief.customer_search_terms || []).map(x => <span key={x} className="px-2.5 py-1 rounded-full bg-indigo-600 text-white text-12.5 font-semibold">{x}</span>)}{!(brief.customer_search_terms || []).length && <span className="text-13 text-slate-400">—</span>}</div>
+        </div>
+        {(brief.competitors_are || brief.competitors_are_not) && (
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+            {brief.competitors_are && <div className="rounded-lg bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200"><div className="flex items-center gap-1.5 text-11 font-bold uppercase tracking-wide text-emerald-800"><Swords size={11} />Counts as a competitor</div><p className="mt-0.5 text-12.5 text-slate-800">{brief.competitors_are}</p></div>}
+            {brief.competitors_are_not && <div className="rounded-lg bg-rose-50 px-3 py-2.5 ring-1 ring-rose-200"><div className="flex items-center gap-1.5 text-11 font-bold uppercase tracking-wide text-rose-800"><Swords size={11} />Does not count</div><p className="mt-0.5 text-12.5 text-slate-800">{brief.competitors_are_not}</p></div>}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 mb-3">
+        <span className="text-11.5 font-semibold text-slate-500 mr-1">Audit scores</span>
         {Object.entries(sc).map(([k, v]) => <Badge key={k} tone={tone(v)}>{k === 'onpage' ? 'On-page' : k === 'gbp' ? 'Google profile' : k.charAt(0).toUpperCase() + k.slice(1)} {v}/100</Badge>)}
       </div>
 
@@ -68,10 +98,7 @@ export default function BusinessUnderstanding({ b }) {
         {tab === 'overview' && (
           <div className="space-y-4">
             <p className="text-14 text-slate-800 leading-relaxed">{brief.overview}</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <List icon={Target} title="What it sells" items={brief.offerings} />
-              <List icon={Users} title="Who it is for" items={brief.audience} />
-            </div>
+            <List icon={Users} title="Who it is for" items={brief.audience} />
             {brief.website_summary && (
               <div className="rounded-lg bg-slate-50 px-4 py-3">
                 <div className="flex items-center gap-1.5 text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1"><Globe size={13} className="text-indigo-500" />The website</div>
@@ -90,17 +117,6 @@ export default function BusinessUnderstanding({ b }) {
 
         {tab === 'market' && (
           <div className="space-y-4">
-            <div>
-              <div className="flex items-center gap-1.5 text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5"><Search size={13} className="text-indigo-500" />How customers search for it</div>
-              <div className="flex flex-wrap gap-1.5">{(brief.customer_search_terms || []).map(x => <span key={x} className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-800 text-12.5 font-medium">{x}</span>)}</div>
-              <p className="mt-1.5 text-11.5 text-slate-500">Competitor and keyword research start from these words.</p>
-            </div>
-            {(brief.competitors_are || brief.competitors_are_not) && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {brief.competitors_are && <div className="rounded-lg bg-emerald-50 px-4 py-3"><div className="flex items-center gap-1.5 text-12 font-semibold text-emerald-800 mb-1"><Swords size={13} />Real competitors</div><p className="text-13 text-slate-700">{brief.competitors_are}</p></div>}
-                {brief.competitors_are_not && <div className="rounded-lg bg-slate-50 px-4 py-3"><div className="flex items-center gap-1.5 text-12 font-semibold text-slate-600 mb-1"><Swords size={13} />Not competitors</div><p className="text-13 text-slate-700">{brief.competitors_are_not}</p></div>}
-              </div>
-            )}
             {(brief.keyword_themes || []).length > 0 && (
               <div>
                 <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Keyword themes</div>
