@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import {
   Pencil, MessageSquareText, Image as ImageIcon, Newspaper, TrendingUp, Megaphone, QrCode, Star, Mail, MessageCircle, Facebook, Copy, Check,
-  Download, ExternalLink, CheckCircle2, Circle, Plus, X, ArrowRight, ShoppingBag
+  Download, ExternalLink, CheckCircle2, Circle, Plus, X, ArrowRight
 } from 'lucide-react';
 import { Card, Button } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
@@ -50,25 +50,24 @@ export function ProfileStrength({ score }) {
 
 // ---------- 2. quick-action tiles
 
-export function QuickTiles({ b, unreplied = 0, onOpen }) {
+export function QuickTiles({ b, unreplied = 0 }) {
   const navigate = useNavigate();
   const tiles = [
-    ['Edit profile', Pencil, 'profile'],
-    ['Read reviews', MessageSquareText, 'reviews', unreplied > 0],
-    ['Photos', ImageIcon, 'photos'],
-    ['Posts', Newspaper, 'posts'],
+    ['Edit profile', Pencil, '/gmb-profile?tab=profile&sub=edit'],
+    ['Read reviews', MessageSquareText, '/gmb-profile?tab=reviews', unreplied > 0],
+    ['Photos', ImageIcon, '/media-management'],
+    ['Posts', Newspaper, '/google-posts'],
     ['Performance', TrendingUp, '/gmb-profile?tab=performance'],
-    ['Advertise', Megaphone, 'advertise'],
-    ['Get profile QR', QrCode, 'share'],
-    ['Edit products', ShoppingBag, 'products'],
-    ['Ask for reviews', Star, 'ask']
+    ['Advertise', Megaphone, '/gmb-profile?tab=settings'],
+    ['Get profile QR', QrCode, '#share-profile'],
+    ['Ask for reviews', Star, '/gmb-profile?tab=reviews']
   ];
-  const open = (to) => { // a name opens that panel on this page; a path goes to another page
-    if (!to.startsWith('/')) { if (onOpen) onOpen(to); return; }
+  const open = (to) => {
+    if (to === '#share-profile') { document.getElementById('share-profile')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     navigate(to);
   };
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-1">
+    <div className="grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-8 gap-1">
       {tiles.map(([label, Icon, to, dot]) => (
         <button key={label} type="button" onClick={() => open(to)} className="relative flex flex-col items-center gap-1.5 px-1 py-3 rounded-lg hover:bg-indigo-50/60 cursor-pointer text-center">
           <span className="relative text-indigo-600"><Icon size={22} />{dot && <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white" aria-label="New" />}</span>

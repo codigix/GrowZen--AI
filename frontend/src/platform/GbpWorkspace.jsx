@@ -184,7 +184,7 @@ export function OverviewSection({ b, go, onOpen }) {
               </div>
               {score.data && <ProfileStrength score={score.data.score} />}
             </div>
-            <QuickTiles b={b} unreplied={m.unreplied_reviews || 0} onOpen={onOpen} />
+            <QuickTiles b={b} unreplied={m.unreplied_reviews || 0} />
             <NewReviewBanner b={b} />
             <p className="text-11.5 text-slate-500">Only managers of this profile can see this. Profile strength is our check of what Google rewards; Google does not share its own number.</p>
           </div>

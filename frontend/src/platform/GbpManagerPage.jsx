@@ -4,9 +4,6 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Save, Store, FileText, ListChecks, Tags, Navigation, CalendarCheck, Clock, ChevronDown, Upload } from 'lucide-react';
 import { SeoShell, Drawer, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useDoubleConfirm, useSeoBusiness, refreshBusinesses, useUrlTab, SkChart, SkList, SkLines, SkScore, SkCard } from './SeoUi';
 import GbpLive from './GbpLive';
-import ProductsManager, { ReviewAsk } from './GbpProducts';
-import { ShareProfileCard } from './GbpOverviewExtras';
-import { AdvertiseCard } from './GbpAdmin';
 import { AutopilotPanel, waitingFor } from './AutopilotPanels';
 import { BusinessTraffic } from './TrafficPage';
 import AccessGate from './AccessGate';
@@ -958,18 +955,6 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
       </Drawer>
       <Drawer open={panel === 'photos'} onClose={closePanel} width="max-w-4xl" title="Photos and media" subtitle="Uploads go straight to your Google Business Profile">
         <div className="gbp-compact"><MediaManager b={b} toast={toast} /></div>
-      </Drawer>
-      <Drawer open={panel === 'products'} onClose={closePanel} width="max-w-3xl" title="Products" subtitle="Your catalogue, sent to Google as posts">
-        <div className="gbp-compact"><ProductsManager b={b} toast={toast} /></div>
-      </Drawer>
-      <Drawer open={panel === 'share'} onClose={closePanel} width="max-w-2xl" title="Get your profile QR code" subtitle="One link and QR code that open this business on Google">
-        <ShareProfileCard b={b} />
-      </Drawer>
-      <Drawer open={panel === 'ask'} onClose={closePanel} width="max-w-2xl" title="Ask for reviews" subtitle="Send customers straight to the review box">
-        <ReviewAsk b={b} />
-      </Drawer>
-      <Drawer open={panel === 'advertise'} onClose={closePanel} width="max-w-2xl" title="Advertise" subtitle="Google Ads, planned here">
-        <AdvertiseCard />
       </Drawer>
       <Drawer open={panel === 'reviews'} onClose={closePanel} width="max-w-4xl" title="Reviews" subtitle="Replies you post here appear on Google">
         <div className="gbp-compact"><ReviewsSection b={b} toast={toast} /></div>
