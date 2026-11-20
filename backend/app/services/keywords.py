@@ -138,8 +138,11 @@ def _website(db: Session, b: Business) -> dict[str, Any] | None:
 
 
 def default_seeds(b: Business) -> list[str]:
-    seeds: list[str] = []
-    for s in [b.primary_category, *(b.secondary_categories or []), *[(x.get("name") if isinstance(x, dict) else x) for x in (b.services or [])]]:
+    from . import categories
+    # A rental business is searched as a rental ("lehenga on rent"), not as the shop that sells the same goods (Google's "Clothes market").
+    seeds: list[str] = list(categories.rental_seeds(getattr(b, "name", None), getattr(b, "primary_category", None), [(x.get("name") if isinstance(x, dict) else x) for x in (getattr(b, "services", None) or [])], getattr(b, "description", None)))
+    shop_labels = [] if seeds else [b.primary_category, *(b.secondary_categories or [])]  # a rental business's Google category is the shop's ("Clothes market"): it would find shops, not competitors
+    for s in [*shop_labels, *[(x.get("name") if isinstance(x, dict) else x) for x in (b.services or [])]]:
         s = " ".join(str(s or "").lower().split())
         if s and len(s) <= 40 and s not in seeds:
             seeds.append(s)

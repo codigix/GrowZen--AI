@@ -50,6 +50,39 @@ SEARCH_TERMS = {
 }
 
 
+_RENT_NAME = re.compile(r"\b(rent|rental|rentals|rented|on rent|for rent|hire|hiring)\b", re.I)
+_RENT_TEXT = re.compile(r"\brentals?\b|\bon rent\b|\bto rent\b|\bfor rent\b", re.I)
+_CLOTHING = re.compile(r"\b(clothes|clothing|couture|fashion|wear|outfits?|garments?|lehengas?|lehnga|sarees?|saris?|gowns?|sherwanis?|dress(?:es)?|costumes?|suits?|ethnic|bridal)\b", re.I)
+_ITEMS = [("lehenga", r"\blehengas?\b|\blehnga\b"), ("saree", r"\bsarees?\b|\bsaris?\b"), ("gown", r"\bgowns?\b"), ("sherwani", r"\bsherwanis?\b"), ("costume", r"\bcostumes?\b"),
+          ("dress", r"\bdress(?:es)?\b"), ("suit", r"\bsuits?\b")]
+
+
+def rental_seeds(name: str | None, category: str | None, services: list[str] | None, description: str | None) -> list[str]:
+    """The searches customers type to find a RENTAL business ("lehenga on rent"), or [] when the business is not one. A rental business is a different business from the shop that sells the
+    same goods: Google files a clothes rental as "Clothes market", and searching that finds every clothing shop in the area, none of them a competitor.
+    It counts as a rental when its name, category or a service says so, or its description speaks of rental more than once (one "rent" in a description is not enough: a PG mentions rent)."""
+    svc = [s for s in (services or []) if s]
+    head = " ".join([name or "", category or "", *svc])
+    desc = description or ""
+    if not (_RENT_NAME.search(head) or len(_RENT_TEXT.findall(desc)) >= 2):
+        return []
+    text = f"{head} {desc}".lower()
+    if _CLOTHING.search(text):
+        items = [label for label, rx in _ITEMS if re.search(rx, text)]
+        out = [f"{i} on rent" for i in items[:2]]
+        out.append("designer clothes rental" if "designer" in text else "clothes on rent")
+        return list(dict.fromkeys(out))[:3]
+    plain = re.compile(r"\b(?:agency|agencies|service|services|company|shop|store|dealer|provider|centre|center)\b", re.I)
+
+    def kind(text: str) -> str:
+        return " ".join(plain.sub("", _RENT_NAME.sub("", text.lower())).split())
+
+    noun = kind(category or "") if (category or "").strip().lower() not in BROAD else ""
+    if not noun and svc:
+        noun = kind(str(svc[0]))
+    return [f"{noun} on rent", f"{noun} rental"] if noun else []
+
+
 def refine(label: str | None, types: list[str] | None = None, name: str | None = None) -> tuple[str | None, bool]:
     """(category, refined). Only a broad Google label is refined; a specific one is returned as it is."""
     label = (label or "").strip() or None
