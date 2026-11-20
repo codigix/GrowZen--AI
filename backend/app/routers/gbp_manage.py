@@ -55,6 +55,60 @@ def _refresh(b: Business, client: gbp.GbpClient) -> None:
             setattr(b, k, v)
 
 
+# Products: Google's Business Profile API has no Products endpoint, so the catalogue is kept here and each product goes to Google as a post (photo, price and a button)
+class ProductIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    price: str | None = Field(default=None, max_length=40)
+    description: str | None = Field(default=None, max_length=1000)
+    category: str | None = Field(default=None, max_length=80)
+    url: str | None = Field(default=None, max_length=500)
+    image_url: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("name", "price", "description", "category", mode="before")
+    @classmethod
+    def _strip(cls, v):
+        return " ".join(str(v).split()) if isinstance(v, str) else v
+
+    @field_validator("url", "image_url", mode="before")
+    @classmethod
+    def _url(cls, v):
+        return clean_url(v) if v else None
+
+
+class ProductsIn(BaseModel):
+    products: list[ProductIn] = Field(max_length=100)
+
+
+@router.get("/products")
+def get_products(b: Business = Depends(get_business)):
+    return {"products": list(b.products or []), "synced_to_google": False}
+
+
+@router.put("/products")
+def set_products(body: ProductsIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    b.products = [p.model_dump() for p in body.products]
+    log(db, user.name, "products.updated", b.id, count=len(b.products))
+    db.commit()
+    return {"products": b.products}
+
+
+@router.post("/products/{index}/post")
+def post_product(index: int, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Publish one product to Google as a post: its name, price and description, the photo and a Learn more button."""
+    items = list(b.products or [])
+    if not 0 <= index < len(items):
+        raise HTTPException(404, "Product not found")
+    it = items[index]
+    _client(b)
+    desc = it.get("description")
+    text = it["name"] + (f" - {it['price']}" if it.get("price") else "") + ("\n\n" + desc if desc else "")
+    p = Post(business_id=b.id, post_type="Update", title=it["name"][:255], body=text[:1500], cta_type="LEARN_MORE" if it.get("url") else None,
+             cta_url=it.get("url"), image_url=it.get("image_url"), status="draft")
+    db.add(p)
+    db.commit()
+    return publish_now(p.id, b, db, user)
+
+
 # Categories
 @router.get("/categories")
 def search_categories(q: str, b: Business = Depends(get_business)):
