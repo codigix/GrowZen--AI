@@ -205,6 +205,7 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
     old_site = b.website
     pushed: list[str] = []
     not_on_google: list[str] = []
+    links_error = ""
     under_review = False
     changed = {k: v for k, v in changes.items() if getattr(b, k, None) != v}
     # The booking link and the list of Book / Order links describe the same buttons: keep them in step before saving.
@@ -247,9 +248,12 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
     if links_touched and b.connection and b.gbp_location:
         try:
             gbp.sync_action_links(gbp.GbpClient(b.connection), b.gbp_location, changes["action_links"])
-        except gbp.GbpError as exc:
-            raise HTTPException(502, f"Google did not accept the booking or order links, so they were not saved: {exc}") from exc
-        pushed = sorted({*pushed, "placeActionLinks"})
+            pushed = sorted({*pushed, "placeActionLinks"})
+        except gbp.GbpError as exc:  # the rest of the profile is already on Google: keep it, leave the links as they were and say why
+            links_error = (f"Google did not accept the booking or order link ({exc}). Google allows a button only for some categories, and the link must open a real "
+                           "booking or order page of your own site (not just the home page). The other changes were saved.")
+            for k in ("action_links", "booking_url"):
+                changes.pop(k, None)
     for k, v in changes.items():
         setattr(b, k, v)
     if changes.get("modules") is not None:
@@ -258,7 +262,7 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
     db.commit()
     if b.website and b.website != old_site and site_onboarding.autodetect_enabled():
         background.add_task(in_background(workplan.refresh_research_in_background, b.id))  # a new address means a possibly different technology, metadata and plan
-    return row(b) | {"pushed_to_google": pushed, "not_confirmed_on_google": not_on_google, "google_reviewing": under_review}
+    return row(b) | {"pushed_to_google": pushed, "not_confirmed_on_google": not_on_google, "google_reviewing": under_review, "action_links_error": links_error}
 
 
 @router.delete("/{business_id}", status_code=204)

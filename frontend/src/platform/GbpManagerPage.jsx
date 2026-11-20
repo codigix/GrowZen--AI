@@ -26,6 +26,7 @@ import Select from '../components/Select';
 const CTA = { BOOK: 'Book', ORDER: 'Order online', LEARN_MORE: 'Learn more', SIGN_UP: 'Sign up', CALL: 'Call now' };
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 const pushedMsg = (r, base = 'Saved') => {
+  if (r?.action_links_error) return `${base}, but the booking or order link was not accepted. ${r.action_links_error}`;
   if (!r?.pushed_to_google?.length) return `${base}. Not sent to Google: connect this client's Google account to publish changes there.`;
   const bad = r.not_confirmed_on_google || [];
   if (bad.length) return `${base} and sent to Google, but Google does not show ${bad.join(', ')} yet. Wait a few minutes and sync again.`;
