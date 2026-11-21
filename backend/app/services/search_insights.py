@@ -128,6 +128,23 @@ def rich_results(sc: gsc.SearchConsole, site: str, pages: list[str]) -> dict[str
     return {"pages": rows}
 
 
+LAB_LIMITS = {"lcp": (2500, 4000), "cls": (0.1, 0.25), "tbt": (200, 600)}
+
+
+def lab(d: dict[str, Any]) -> dict[str, Any]:
+    """The same measures from one Lighthouse test run by PageSpeed Insights: a test on a simulated phone or desktop, not real visitors. Total Blocking Time stands in for Interaction to Next Paint."""
+    audits = (d.get("lighthouseResult") or {}).get("audits") or {}
+    out = {}
+    for k, aid in (("lcp", "largest-contentful-paint"), ("cls", "cumulative-layout-shift"), ("tbt", "total-blocking-time")):
+        v = (audits.get(aid) or {}).get("numericValue")
+        if v is None:
+            continue
+        good, poor = LAB_LIMITS[k]
+        out[k] = {"value": round(v, 3) if k == "cls" else round(v), "display": (audits.get(aid) or {}).get("displayValue"), "rating": "GOOD" if v <= good else "NEEDS_IMPROVEMENT" if v <= poor else "POOR"}
+    perf = ((d.get("lighthouseResult") or {}).get("categories") or {}).get("performance", {}).get("score")
+    return {**out, "score": round(perf * 100) if perf is not None else None}
+
+
 def field_speed(url: str) -> dict[str, Any]:
     """Real visitors' Largest Contentful Paint, Interaction to Next Paint and Layout Shift on the site (Chrome user experience data, through PageSpeed Insights), mobile and desktop."""
     from . import pagespeed
@@ -141,10 +158,10 @@ def field_speed(url: str) -> dict[str, Any]:
             if not m:
                 return None
             return {k: {"p75": (m.get(v) or {}).get("percentile"), "rating": (m.get(v) or {}).get("category")} for k, v in names.items() if m.get(v)} | {"overall": block.get("overall_category")}
-        return {"page": pick(d.get("loadingExperience")), "site": pick(d.get("originLoadingExperience"))}
+        return {"page": pick(d.get("loadingExperience")), "site": pick(d.get("originLoadingExperience")), "lab": lab(d)}
     with ThreadPoolExecutor(max_workers=2) as pool:
         mobile, desktop = pool.map(one, ("mobile", "desktop"))
-    have = any(x for r in (mobile, desktop) for x in r.values())
+    have = any(r.get("page") or r.get("site") for r in (mobile, desktop))
     return {"mobile": mobile, "desktop": desktop, "message": None if have else "Google has no real-visitor data for this site yet: it needs enough Chrome visitors over 28 days."}
 
 

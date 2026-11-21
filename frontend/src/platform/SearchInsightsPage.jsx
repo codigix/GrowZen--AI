@@ -260,7 +260,15 @@ function Speed({ b }) {
       {on && !data && !r.error && <p className="text-13 text-slate-500">Reading Google's speed data…</p>}
       {r.error && <ErrorNote>{r.error.message}</ErrorNote>}
       {data?.state === 'error' && <p className="text-13 text-amber-800">{data.message}</p>}
-      {data?.state === 'ok' && (data.message ? <p className="text-13 text-slate-600">{data.message}</p> : (
+      {data?.state === 'ok' && (data.message ? (
+        <div className="space-y-3">
+          <p className="text-13 text-slate-600">{data.message} This is normal for a site with little traffic: Google only publishes the figures once enough real Chrome visitors have loaded the site.</p>
+          <div className="text-12 font-semibold uppercase tracking-wide text-slate-500">A test instead (not real visitors)</div>
+          <Table head={['Test device', 'Speed score', 'Largest Contentful Paint', 'Layout Shift', 'Total Blocking Time (stands in for interaction)']} empty="">
+            {['mobile', 'desktop'].map(dev => { const l = data[dev]?.lab || {}; const c = (m) => (m ? <span className="inline-flex items-center gap-1.5"><Badge tone={(RATING[m.rating] || [])[1] || 'gray'}>{(RATING[m.rating] || ['—'])[0]}</Badge><span className="text-12 text-slate-500 tabular-nums">{m.display || m.value}</span></span> : <span className="text-slate-400">—</span>); return <tr key={dev}><td className="px-3 py-2 capitalize font-medium">{dev}</td><td className="px-3 py-2 tabular-nums font-semibold">{l.score ?? '—'}</td><td className="px-3 py-2">{c(l.lcp)}</td><td className="px-3 py-2">{c(l.cls)}</td><td className="px-3 py-2">{c(l.tbt)}</td></tr>; })}
+          </Table>
+          <div className="rounded-lg bg-slate-50 ring-1 ring-slate-200 px-4 py-3 text-12.5 text-slate-700"><b>What to do:</b> keep the test scores in the green, and bring more real visitors to the site (Google ranking, your Business Profile, posts). Once enough Chrome users visit over 28 days, the real figures appear here by themselves. You can also measure your own visitors' speed in Google Analytics once it measures this site.</div>
+        </div>) : (
         <Table head={['Device', 'Largest Contentful Paint', 'Interaction to Next Paint', 'Layout Shift']} empty="">
           {['mobile', 'desktop'].map(dev => { const m = data[dev].page || data[dev].site; return <tr key={dev}><td className="px-3 py-2 capitalize font-medium">{dev}{!data[dev].page && data[dev].site ? <span className="text-11 text-slate-400"> (whole site)</span> : ''}</td><td className="px-3 py-2">{cell(m?.lcp)}</td><td className="px-3 py-2">{cell(m?.inp)}</td><td className="px-3 py-2">{cell(m?.cls)}</td></tr>; })}
         </Table>))}
