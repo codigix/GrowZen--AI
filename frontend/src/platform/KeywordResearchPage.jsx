@@ -845,6 +845,10 @@ function Tracked({ b, kw }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <div role="tablist" aria-label="How to see the keywords" className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg mr-1">
+              <span role="tab" aria-selected="true" className="h-9 px-3.5 inline-flex items-center rounded-md text-14 font-semibold bg-white text-slate-900 shadow-sm ring-1 ring-slate-200">My keywords</span>
+              <Link to="/keyword-management/topics" role="tab" aria-selected="false" title="Group the keywords into topics, one page per topic" className="h-9 px-3.5 inline-flex items-center rounded-md text-14 font-semibold text-slate-500 hover:text-slate-800">Grouped by topic</Link>
+            </div>
             <div role="tablist" aria-label="Which keywords" className="flex flex-wrap gap-2">
               {chip('all', 'All', counts.all)}{chip('primary', 'Primary', counts.primary)}{chip('secondary', 'Secondary', counts.secondary)}{chip('norole', 'No role yet', counts.norole)}{chip('nopage', 'No page yet', counts.nopage)}{chip('google', 'On Google', counts.google)}{chip('nogoogle', 'Not on Google yet', counts.nogoogle)}
             </div>
@@ -1687,7 +1691,7 @@ function NextStep({ progress, tab, bid, reload }) {
   );
 }
 
-const FLOW_AT = { workspace: 'workspace', ai: 'find', discover: 'find', planner: 'find', explorer: 'find', tracked: 'mine', topics: 'mine', use: 'use', mapping: 'mapping', status: 'status' };
+const FLOW_AT = { workspace: 'workspace', ai: 'find', discover: 'find', planner: 'find', explorer: 'find', tracked: 'mine', topics: 'topics', use: 'use', mapping: 'mapping', status: 'status' };
 
 const FIND_CARDS = [
   ['ai', 'AI suggestions', 'Written from your business: what it does, what competitors win, what is missing'],

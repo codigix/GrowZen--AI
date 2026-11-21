@@ -11,7 +11,7 @@ export const KEYWORD_STEPS = [
   { n: 1, id: 'find', label: 'Find', to: '/keyword-management/workspace', hint: 'Collect keyword ideas from your website, Google, your competitors and the AI.',
     pages: [['/keyword-management/workspace', 'Keyword Workspace', 'workspace'], ['/keyword-management/ai', 'Find Keywords', 'find'], ['/keyword-overview', 'Check One Keyword', 'check']] },
   { n: 2, id: 'choose', label: 'Choose', to: '/keyword-management/tracked', hint: 'Keep the keywords that fit your business. Each one shows its searches and its Google position.',
-    pages: [['/keyword-management/tracked', 'My Keywords']] },
+    pages: [['/keyword-management/tracked', 'My Keywords', 'mine'], ['/keyword-management/topics', 'Grouped by topic', 'topics']] },
   { n: 3, id: 'where', label: 'Decide where', to: '/keyword-management/mapping', hint: 'For each chosen keyword: which page, FAQ, meta data, blog post or Google post it goes in.',
     pages: [['/keyword-management/mapping', 'Keyword Mapping', 'mapping'], ['/keyword-management/use', 'Usage grid', 'use']] },
   { n: 4, id: 'write', label: 'Write', to: '/ai-content-generation/blog', hint: 'Write the content for the places you chose.',
@@ -23,7 +23,7 @@ export const KEYWORD_STEPS = [
 ];
 
 // the page a bar is shown on -> its step
-const STEP_OF = { workspace: 'find', find: 'find', check: 'find', mine: 'choose', mapping: 'where', use: 'where', status: 'track' };
+const STEP_OF = { workspace: 'find', find: 'find', check: 'find', mine: 'choose', topics: 'choose', mapping: 'where', use: 'where', status: 'track' };
 
 /** The six steps as one line, with how many there are in the steps that have a count, what the current step is for, and its pages. */
 export default function KeywordFlowBar({ b, at }) {
