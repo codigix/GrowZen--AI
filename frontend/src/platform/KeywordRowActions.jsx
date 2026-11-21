@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { MoreHorizontal, Search, PenLine, Trash2, ExternalLink, MapPin, Sparkles, Eye, Pencil, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Search, PenLine, Trash2, ExternalLink, MapPin, Sparkles, Eye, Pencil, Loader2, Star } from 'lucide-react';
 
 const BTN = 'h-8 px-3 rounded-md text-12.5 font-semibold whitespace-nowrap inline-flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
 const TONES = {
@@ -68,7 +68,7 @@ function Menu({ anchor, onClose, children }) {
 const ITEM = 'w-full flex items-center gap-2.5 px-3 py-2 text-13 text-left text-slate-700 hover:bg-slate-50 cursor-pointer';
 
 /** One main action for the keyword, and a menu with everything else you can do with it. */
-export default function KeywordRowActions({ b, k, t, busy, onMap, onChoose, onAskAi, onRemove }) {
+export default function KeywordRowActions({ b, k, t, busy, onMap, onChoose, onAskAi, onRemove, onRole }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef(null);
   const a = nextAction(b, k, t);
@@ -91,6 +91,12 @@ export default function KeywordRowActions({ b, k, t, busy, onMap, onChoose, onAs
           <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`} role="menuitem" onClick={close} className={ITEM}><PenLine size={15} className="text-violet-500" />Write a blog post</Link>
           <button type="button" role="menuitem" className={ITEM} disabled={busy === `g${k.id}`} onClick={() => { close(); onAskAi(); }}><Sparkles size={15} className="text-violet-500" />{t?.ai?.tracked ? 'AI search question added' : 'Ask the AI engines'}</button>
           <Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`} role="menuitem" onClick={close} className={ITEM}><Search size={15} className="text-sky-500" />Check searches and cost</Link>
+          {k.target_url && (
+            <>
+              <div className="my-1 border-t border-slate-100" />
+              {k.role !== 'primary' && <button type="button" role="menuitem" className={ITEM} onClick={() => { close(); onRole('primary'); }}><Star size={15} className="text-indigo-500" />Make it the primary keyword</button>}
+              {k.role !== 'secondary' && <button type="button" role="menuitem" className={ITEM} onClick={() => { close(); onRole('secondary'); }}><Star size={15} className="text-slate-400" />Make it a secondary keyword</button>}
+            </>)}
           <div className="my-1 border-t border-slate-100" />
           <button type="button" role="menuitem" className={`${ITEM} !text-rose-700 hover:!bg-rose-50`} onClick={() => { close(); onRemove(); }}><Trash2 size={15} />Stop tracking it</button>
         </Menu>)}

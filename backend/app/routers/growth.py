@@ -138,6 +138,12 @@ def update_keyword(keyword_id: int, body: KeywordIn, b: Business = Depends(get_b
         raise HTTPException(404, "Keyword not found")
     for f, v in body.model_dump(exclude={"keyword"}, exclude_unset=True).items():
         setattr(k, f, v)
+    if k.role == "primary" and k.target_url:  # one primary keyword per page: the one that held it before becomes secondary
+        from urllib.parse import urlsplit  # noqa: PLC0415
+        path = lambda u: (urlsplit(u or "").path or "/").rstrip("/") or "/"  # noqa: E731
+        for other in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.id != k.id, Keyword.role == "primary", Keyword.tracked.is_(True))):
+            if other.target_url and path(other.target_url) == path(k.target_url):
+                other.role = "secondary"
     db.commit()
     return row(k)
 

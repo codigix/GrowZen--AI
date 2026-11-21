@@ -94,6 +94,7 @@ def merge(db: Session, b: Business, stored: dict[str, Any] | None) -> dict[str, 
     pages = {path_of(p.url): p for p in db.scalars(select(IndexPage).where(IndexPage.business_id == b.id))}
     ga, ga_state = _ga_rows(db, b)
     out = []
+    brand = gc._brand_strict(b)
     for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)).order_by(Keyword.volume.desc().nullslast(), Keyword.keyword)):
         s = slow.get(k.keyword) or {}
         src = k.source or {}
@@ -106,7 +107,8 @@ def merge(db: Session, b: Business, stored: dict[str, Any] | None) -> dict[str, 
                     "ctr": s.get("ctr"), "ranking_url": s.get("ranking_url"), "ranking_path": path_of(s["ranking_url"]) if s.get("ranking_url") else None, "checked": s.get("checked"),
                     "status": s.get("status") or ("unchecked" if not k.rank else None), "label": s.get("label"), "why": s.get("why"), "used_in": s.get("used_in") or [], "articles": s.get("articles") or 0,
                     "ai": s.get("ai") or {"tracked": False, "mentioned": None}, "target_url": target, "target_path": path_of(target) if target else None, "mapped": bool(target),
-                    "suggested": sug, "role": k.role, "index": _index_for(pages, shown), "index_for": path_of(shown) if shown else None,
+                    "suggested": sug, "role": k.role, "role_suggested": ({"main": "primary", "supporting": "secondary"}.get(sug["role"]) if sug else None),
+                    "branded": any(w in brand for w in gc.core(k.keyword)) if brand else False, "index": _index_for(pages, shown), "index_for": path_of(shown) if shown else None,
                     "ga": ({"sessions": landing["sessions"], "engagement_rate": landing["engagement_rate"], "key_events": landing["key_events"], "path": landing["path"]} if landing else None),
                     "ga_state": ga_state if not landing else "ok"})
     return {"rows": out, "state": (stored or {}).get("state"), "ga_state": ga_state, "ready": stored is not None, "window": (stored or {}).get("window"), "google": (stored or {}).get("google"),

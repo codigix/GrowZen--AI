@@ -770,6 +770,7 @@ function Tracked({ b, kw }) {
     const out = await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, ...patch } });
     kw.setData(d => ({ ...d, keywords: d.keywords.map(x => (x.id === k.id ? out : x)) }));
     tbl.reload(true); // the page, its index status and its visits follow the page just chosen
+    if ('role' in patch) kw.reload(true); // a page has one primary keyword: the one that had it before is secondary now
   });
   const askAi = (k) => run(`g${k.id}`, async () => { // track the question this keyword makes in AI search, then read the table again
     await api(`/businesses/${b.id}/keywords/${k.id}/geo-prompt`, { method: 'POST', body: {} });
@@ -792,11 +793,11 @@ function Tracked({ b, kw }) {
   const pages = sitePages.length ? sitePages.map(p => p.path) : [...new Set(['/', '/services', '/contact', ...(b.services || []).map(s => `/services/${String(s.name || s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '')}`), ...tracked.map(k => k.target_url).filter(Boolean)])];
   const mapped = tracked.filter(k => k.target_url).length;
   const onGoogle = tracked.filter(k => k.rank).length;
-  const counts = { all: tracked.length, nopage: tracked.length - mapped, google: onGoogle, nogoogle: tracked.length - onGoogle };
+  const counts = { all: tracked.length, nopage: tracked.length - mapped, google: onGoogle, nogoogle: tracked.length - onGoogle, primary: tracked.filter(k => k.role === 'primary').length, secondary: tracked.filter(k => k.role === 'secondary').length, norole: tracked.filter(k => !k.role).length };
   const go = (v) => { setView(v); setLimit(30); setSel(new Set()); };
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const list = tracked.filter(k => (!needle || k.keyword.includes(needle) || (k.cluster || '').toLowerCase().includes(needle)) && (view === 'all' || (view === 'nopage' && !k.target_url) || (view === 'google' && k.rank) || (view === 'nogoogle' && !k.rank)));
+    const list = tracked.filter(k => (!needle || k.keyword.includes(needle) || (k.cluster || '').toLowerCase().includes(needle)) && (view === 'all' || (view === 'nopage' && !k.target_url) || (view === 'google' && k.rank) || (view === 'nogoogle' && !k.rank) || (view === 'primary' && k.role === 'primary') || (view === 'secondary' && k.role === 'secondary') || (view === 'norole' && !k.role)));
     const v = (k) => (sort.key === 'keyword' ? k.keyword : sort.key === 'rank' ? (k.rank ?? 999) : (k[sort.key] ?? -1));
     return list.sort((a, c) => { const x = v(a); const y = v(c); const o = typeof x === 'string' ? x.localeCompare(y) : x - y; return sort.dir === 'asc' ? o : -o; });
   }, [tracked, view, q, sort]);
@@ -844,7 +845,7 @@ function Tracked({ b, kw }) {
 
           <div className="flex flex-wrap items-center gap-2">
             <div role="tablist" aria-label="Which keywords" className="flex flex-wrap gap-2">
-              {chip('all', 'All', counts.all)}{chip('nopage', 'No page yet', counts.nopage)}{chip('google', 'On Google', counts.google)}{chip('nogoogle', 'Not on Google yet', counts.nogoogle)}
+              {chip('all', 'All', counts.all)}{chip('primary', 'Primary', counts.primary)}{chip('secondary', 'Secondary', counts.secondary)}{chip('norole', 'No role yet', counts.norole)}{chip('nopage', 'No page yet', counts.nopage)}{chip('google', 'On Google', counts.google)}{chip('nogoogle', 'Not on Google yet', counts.nogoogle)}
             </div>
             <label className="relative ml-auto"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(30); }} placeholder="Search my keywords" aria-label="Search my keywords" className="h-10 pl-9 pr-3 text-14 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-60 bg-white" /></label>
             <form onSubmit={(e) => { e.preventDefault(); add(); }} className="flex gap-2">
@@ -891,8 +892,16 @@ function Tracked({ b, kw }) {
                           <Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`} title="Check its searches, cost and related ideas" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline">{k.keyword}</Link>
                           {isNew && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5">Just added</span>}
                           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-12 text-slate-400">
-                            {t?.source?.label && <span title="Where this keyword was found" className="inline-flex items-center rounded bg-slate-100 text-slate-600 px-1.5 py-px max-w-[170px] truncate">{t.source.label}</span>}
-                            {[k.cluster, k.intent].filter(Boolean).join(' · ')}
+                            {k.role === 'primary' ? <span title="The main keyword of its page: the one the page is built to rank for" className="inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white text-11 font-semibold px-2 py-px"><Star size={10} />Primary</span>
+                              : k.role === 'secondary' ? <span title="A supporting keyword: the page also covers it, but it is not the page's main one" className="inline-flex items-center rounded-full bg-slate-200 text-slate-700 text-11 font-semibold px-2 py-px">Secondary</span>
+                                : t?.role_suggested ? <span title="The mapping suggests this role. Map the keyword and save the mapping to keep it." className="inline-flex items-center rounded-full ring-1 ring-dashed ring-slate-300 text-slate-500 text-11 font-semibold px-2 py-px">{t.role_suggested === 'primary' ? 'Primary' : 'Secondary'}?</span>
+                                  : <span title="Not decided yet: map the keyword to a page first" className="inline-flex items-center rounded-full ring-1 ring-slate-200 text-slate-400 text-11 px-2 py-px">No role yet</span>}
+                            {k.intent && <span title={{ local: 'Someone looking for a business near them', commercial: 'Someone comparing or ready to buy or hire', informational: 'Someone looking for an answer or a guide', transactional: 'Someone ready to buy now', navigational: 'Someone looking for a particular site' }[k.intent] || 'What the searcher wants'} className={`inline-flex items-center rounded-full text-11 font-semibold px-2 py-px ${{ local: 'bg-teal-50 text-teal-700', commercial: 'bg-emerald-50 text-emerald-700', informational: 'bg-sky-50 text-sky-700', transactional: 'bg-amber-50 text-amber-700', navigational: 'bg-violet-50 text-violet-700' }[k.intent] || 'bg-slate-100 text-slate-600'}`}>{k.intent}</span>}
+                            {t?.branded && <span title="It contains your brand name: people who already know you" className="inline-flex items-center rounded-full bg-fuchsia-50 text-fuchsia-700 text-11 font-semibold px-2 py-px">Brand</span>}
+                          </span>
+                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-11.5 text-slate-400">
+                            {t?.source?.label && <span title="Where this keyword was found" className="truncate max-w-[170px]">From {t.source.label}</span>}
+                            {k.cluster && <span title="Its topic group">{k.cluster}</span>}
                           </span>
                         </td>
                         <td className="px-3 py-3 text-right whitespace-nowrap">
@@ -938,7 +947,7 @@ function Tracked({ b, kw }) {
                             : <span className="text-slate-300" title="Map the keyword to a page to see its index status">{!t ? '…' : '—'}</span>}
                         </td>
                         <td className="px-3 py-3 text-right whitespace-nowrap">
-                          <KeywordRowActions b={b} k={k} t={t} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} />
+                          <KeywordRowActions b={b} k={k} t={t} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} onRole={(role) => update(k, { role })} />
                         </td>
                       </tr>);
                   })}
