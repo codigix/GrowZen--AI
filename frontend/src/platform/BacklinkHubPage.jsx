@@ -663,7 +663,7 @@ function CompetitorGap({ b }) {
         <ErrorNote>{r.error && /not found/i.test(r.error.message) && comp ? `The backlink crawler has no data for ${comp} yet. A competitor is sent to it when it is chosen, and the crawler needs time to find its links. Try again later, or pick All competitors.` : r.error?.message}</ErrorNote>
       </Card>
 
-      {r.loading && !d ? <SkList rows={4} /> : d && !choices.length ? (
+      {r.loading ? <SkList rows={4} /> : d && !choices.length ? (
         <Card><GapNote>The crawler has no competitors for {d.business_domain} yet. Find them under SEO → Competitors: they are sent to the crawler when saved.</GapNote></Card>
       ) : g && (
         <>

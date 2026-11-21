@@ -62,6 +62,9 @@ export const setProjectCodeHandler = (fn) => { codeHandler = fn; };
 // Reads wait 60 s, changes 150 s (audits, scans and live checks are slow on purpose); `timeout` (ms) overrides it for one call.
 const READ_TIMEOUT_MS = 60000;
 const WRITE_TIMEOUT_MS = 150000;
+// Pages fed by our backlink crawler: it can take over a minute on a first request, and one page asks it twice, so these reads wait up to 200 s (a loader shows meanwhile).
+const CRAWLER_READ_TIMEOUT_MS = 200000;
+const CRAWLER_PATH = /\/backlink-intel\/(crawler\/|lookup)/;
 const SLOW_MESSAGE = 'The server is taking too long to answer. It may be busy: wait a moment and try again.';
 
 async function request(path, { method = 'GET', body, raw = false, repeat = false, codeTried = false, timeout } = {}) {
@@ -70,7 +73,7 @@ async function request(path, { method = 'GET', body, raw = false, repeat = false
   let r;
   for (let attempt = 0; ; attempt += 1) {
     const ctl = new AbortController();
-    const limit = timeout || (method === 'GET' || method === 'HEAD' ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS);
+    const limit = timeout || (method === 'GET' || method === 'HEAD' ? (CRAWLER_PATH.test(path) ? CRAWLER_READ_TIMEOUT_MS : READ_TIMEOUT_MS) : WRITE_TIMEOUT_MS);
     const timer = setTimeout(() => ctl.abort(), limit);
     try {
       r = await fetch(`${SEO_API}${path}`, {
