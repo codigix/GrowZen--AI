@@ -15,7 +15,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urlsplit
+import re
+from urllib.parse import urljoin, urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -384,3 +385,125 @@ def speed(b: Business, refresh: bool = False) -> dict[str, Any]:
     if out["state"] == "ok":
         _cache[key] = (time.time(), out)
     return out
+
+
+# ------------------------------------------------------------------ the row actions: check one page of the site, add searches as keywords
+class PageCheckError(ValueError):
+    pass
+
+
+def _level(ok: bool, bad: str = "warning") -> str:
+    return "good" if ok else bad
+
+
+def check_site_page(db: Session, b: Business, url: str) -> dict[str, Any]:
+    """Read ONE page of the project's own website and say what is right and what to fix for search: the title, description, headings, canonical, noindex, text, images, structured data,
+    set against what Google shows for that page (its clicks and the searches that bring it). Pages of any other site are refused."""
+    import json as _json
+
+    from bs4 import BeautifulSoup
+
+    from .net import site_client
+    host = gsc.host_of(b.website)
+    full = url if url.startswith("http") else f"https://{host}{url if url.startswith('/') else '/' + url}"
+    if not host or gsc.host_of(full) != host:
+        raise PageCheckError("Only pages of this project's own website can be checked.")
+    client = site_client(15)
+    try:
+        r = client.get(full)
+    except Exception as exc:  # noqa: BLE001
+        raise PageCheckError(f"The page could not be loaded: {str(exc)[:100]}") from exc
+    finally:
+        client.close()
+    if gsc.host_of(str(r.url)) != host:
+        raise PageCheckError(f"The page redirects to another site ({gsc.host_of(str(r.url))}), so it is not checked.")
+    out: dict[str, Any] = {"url": full, "status": r.status_code, "findings": []}
+    add = lambda level, title, fix="", **extra: out["findings"].append({"level": level, "title": title, "fix": fix, **extra})  # noqa: E731
+    if r.status_code >= 400:
+        add("critical", f"The page answers HTTP {r.status_code}", "Fix the page or remove its links and sitemap entry: Google will not show an error page.")
+        out["summary"] = {"problems": 1, "good": 0}
+        return out
+    soup = BeautifulSoup(r.text, "html.parser")
+    title = (soup.title.string or "").strip() if soup.title and soup.title.string else ""
+    desc_tag = soup.find("meta", attrs={"name": re.compile("^description$", re.I)})
+    desc = (desc_tag.get("content") or "").strip() if desc_tag else ""
+    h1 = [h.get_text(" ", strip=True) for h in soup.find_all("h1")]
+    robots = soup.find("meta", attrs={"name": re.compile("^(robots|googlebot)$", re.I)})
+    canon = soup.find("link", rel=lambda v: v and "canonical" in (v if isinstance(v, list) else [v]))
+    canon_href = urljoin(str(r.url), (canon.get("href") or "").strip()) if canon and canon.get("href") else ""
+    imgs = soup.find_all("img")
+    no_alt = [i for i in imgs if not (i.get("alt") or "").strip()]
+    types: list[str] = []
+    for s_ in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = _json.loads(s_.string or "")
+        except ValueError:
+            continue
+        for node in (data if isinstance(data, list) else data.get("@graph", [data]) if isinstance(data, dict) else []):
+            t_ = node.get("@type") if isinstance(node, dict) else None
+            types += [t_] if isinstance(t_, str) else list(t_ or [])
+    body = BeautifulSoup(r.text, "html.parser")
+    for t_ in body(["script", "style", "noscript", "nav", "footer", "header"]):
+        t_.decompose()
+    words = len(body.get_text(" ", strip=True).split())
+    out["facts"] = {"title": title, "title_length": len(title), "description": desc, "description_length": len(desc), "h1": h1[:3], "canonical": canon_href or None, "words": words,
+                    "images": len(imgs), "images_without_alt": len(no_alt), "schema_types": sorted(set(types))}
+
+    # what Google shows for this page
+    google: dict[str, Any] | None = None
+    host_state, _m, sc, site = gsc_access.search_console(db, b, host)
+    if host_state == "ok":
+        try:
+            end = date.today() - timedelta(days=gsc.LAG_DAYS)
+            start = end - timedelta(days=DAYS - 1)
+            flt = [{"groupType": "and", "filters": [{"dimension": "page", "operator": "equals", "expression": full}]}]
+            tot = sc.query(site, {"startDate": start.isoformat(), "endDate": end.isoformat(), "dimensionFilterGroups": flt})
+            qs = sc.query(site, {"startDate": start.isoformat(), "endDate": end.isoformat(), "dimensions": ["query"], "rowLimit": 10, "dimensionFilterGroups": flt})
+            t0 = tot[0] if tot else {}
+            google = {"clicks": int(t0.get("clicks", 0)), "impressions": int(t0.get("impressions", 0)), "ctr": round(t0.get("ctr", 0) * 100, 2), "position": round(t0.get("position", 0), 1) or None,
+                      "queries": [{"query": q["keys"][0], "clicks": int(q["clicks"]), "impressions": int(q["impressions"]), "position": round(q["position"], 1)} for q in sorted(qs, key=lambda q: -q["impressions"])]}
+        except Exception as exc:  # noqa: BLE001
+            google = {"error": str(exc)[:160]}
+    out["google"] = google
+
+    ok_title, ok_desc = 30 <= len(title) <= 60, 70 <= len(desc) <= 160
+    if not title:
+        add("critical", "The page has no title", "Add a title tag of 30 to 60 characters with the main search first.")
+    else:
+        add(_level(ok_title), f"Title is {len(title)} characters" + ("" if ok_title else " (30 to 60 shows fully in Google)"), "" if ok_title else "Rewrite it to fit, with the main search near the front.")
+    if not desc:
+        add("critical", "The page has no meta description", "Write 70 to 160 characters that say what the visitor gets and why to click: Google often shows it under the title.")
+    else:
+        add(_level(ok_desc), f"Description is {len(desc)} characters" + ("" if ok_desc else " (70 to 160 shows fully)"), "" if ok_desc else "Rewrite it to fit.")
+    add(_level(len(h1) == 1, "warning" if h1 else "critical"), "One main heading (H1)" if len(h1) == 1 else (f"{len(h1)} H1 headings" if h1 else "No H1 heading"), "" if len(h1) == 1 else "Use exactly one H1 that names what the page is about.")
+    if (robots and "noindex" in (robots.get("content") or "").lower()) or "noindex" in (r.headers.get("x-robots-tag") or "").lower():
+        add("critical", "The page is set to noindex", "Remove the noindex tag if this page should appear in Google.")
+    if canon_href and gsc.host_of(canon_href) == host and path_of(canon_href) != path_of(str(r.url)):
+        add("critical", f"Canonical points to another page ({path_of(canon_href)})", "Google will show that page instead. Point the canonical at this page, or accept that this page never ranks.")
+    elif not canon_href:
+        add("warning", "No canonical tag", "Add a canonical link so Google knows which address to keep.")
+    add(_level(words >= 250, "warning" if words >= 80 else "critical"), f"{words} words of text" + ("" if words >= 250 else " (thin: most ranking pages say more)"), "" if words >= 250 else "Add the useful details a visitor looks for: prices, steps, answers, proof.")
+    if imgs:
+        add(_level(not no_alt), f"{len(no_alt)} of {len(imgs)} images have no alt text" if no_alt else "Every image has alt text", "Describe each image in a few words." if no_alt else "")
+    add(_level(bool(types), "info"), "Structured data: " + (", ".join(sorted(set(types))) if types else "none found"), "" if types else "Add LocalBusiness, FAQ or Product schema that matches the page.")
+    if google and google.get("queries"):
+        top = google["queries"][0]["query"]
+        low = (title + " " + desc).lower()
+        if not all(w in low for w in top.lower().split()[:3]):
+            add("warning", f"The search that shows this page most (\"{top}\") is not in its title or description", f"Work \"{top}\" into the title or description so searchers see it matches.")
+    order = {"critical": 0, "warning": 1, "info": 2, "good": 3}
+    out["findings"].sort(key=lambda f: order.get(f["level"], 2))
+    out["summary"] = {"problems": sum(1 for f in out["findings"] if f["level"] in ("critical", "warning")), "good": sum(1 for f in out["findings"] if f["level"] == "good")}
+    return out
+
+
+def add_keywords(db: Session, b: Business, keywords: list[str], label: str = "Search Console") -> dict[str, Any]:
+    """Put searches people really used into My Keywords (through the keyword workspace, so they are compared and de-duplicated like the others)."""
+    from ..models import KeywordCandidate
+    from . import keyword_workspace as kw
+    clean = list(dict.fromkeys(k.strip() for k in keywords if k and k.strip()))[:50]
+    kw.add_ideas(db, b, [{"keyword": k, "detail": "A search that showed this site on Google (Search Console)"} for k in clean], label)
+    lower = {k.lower() for k in clean}
+    ids = [r.id for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)) if r.keyword.lower() in lower]
+    picked = kw.pick(db, b, ids) if ids else {"picked": 0}
+    return {"asked": len(clean), "added": picked.get("picked", 0)}

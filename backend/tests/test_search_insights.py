@@ -15,3 +15,12 @@ def test_low_ctr_finds_pages_that_earn_less_than_usual():
     assert [r["page"] for r in out] == ["p1"] and out[0]["clicks_missing"] > 60 and out[0]["expected_ctr"] == 8.0
 
 
+
+
+def test_check_page_refuses_another_site():
+    import types
+
+    import pytest
+    b = types.SimpleNamespace(website="https://mine.example/")
+    with pytest.raises(si.PageCheckError):
+        si.check_site_page(None, b, "https://other.example/page")
