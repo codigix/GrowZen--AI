@@ -54,3 +54,22 @@ def test_llms_files_follow_the_format(monkeypatch):
     assert txt.startswith("# X\n\n> X sells x in Pune.") and "## Main pages" in txt and "## Optional" in txt
     assert "- [Products](https://x.com/products)" in txt and "- [Privacy](https://x.com/privacy)" in txt  # same title everywhere: named from the address
     assert out["llms_full_txt"].count("Source: https://x.com/") == 3 and any("same title" in n for n in out["notes"])
+
+
+def test_snapshot_opens_from_storage_and_refreshes_in_the_background(client, monkeypatch):
+    import time
+
+    bid = client.post("/api/v1/businesses", json={"name": "Snap Co", "website": "https://snap.example/"}).json()["id"]
+    calls = []
+    monkeypatch.setattr(si, "build_fresh", lambda db, user, b: calls.append(1) or {"search_console": {"state": "ok"}, "built_at": "now"})
+    url = f"/api/v1/businesses/{bid}/search-insights"
+    first = client.get(url).json()
+    assert first["data"] is None and first["refreshing"] is True  # nothing stored yet: answers at once, reads in the background
+    for _ in range(50):
+        time.sleep(0.1)
+        again = client.get(url).json()
+        if not again["refreshing"]:
+            break
+    assert again["data"]["built_at"] == "now" and again["fetched_at"] and len(calls) == 1
+    assert client.get(url).json()["data"] and len(calls) == 1  # fresh: opens from storage, no new read
+    assert client.post(url + "/refresh?kind=insights").json() == {"insights": True}

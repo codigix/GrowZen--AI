@@ -3,13 +3,36 @@ import { ExternalLink, RefreshCw, Gauge, ClipboardCheck, Plus, Check } from 'luc
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { SeoShell, Card, Button, Badge, ErrorNote, SkList, Modal } from './SeoUi';
 import { Act } from './TableBits';
-import { api, useApi } from './seoApi';
+import { api, useApi, usePoll } from './seoApi';
 
 const TAB_CLS = (on) => `h-8 px-3 text-12.5 font-semibold rounded-md cursor-pointer whitespace-nowrap ${on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`;
 const TH = 'px-3 py-2 text-left font-semibold text-11.5 text-slate-500 whitespace-nowrap';
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'));
 const secs = (s) => (s == null ? '—' : s >= 60 ? `${Math.floor(s / 60)}m ${Math.round(s % 60)}s` : `${Math.round(s)}s`);
 const RATING = { GOOD: ['Good', 'green'], NEEDS_IMPROVEMENT: ['Needs improvement', 'amber'], POOR: ['Poor', 'red'] };
+
+const ago = (iso) => {
+  if (!iso) return 'not read yet';
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+};
+
+/** When the stored data was read, and that a refresh is running in the background. The page shows the stored data at once and swaps in the new data when it arrives. */
+function Freshness({ snap, onRefresh }) {
+  const busy = Boolean(snap?.refreshing);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2 text-12 text-slate-500">
+      <span title={snap?.fetched_at ? new Date(snap.fetched_at).toLocaleString('en-GB') : ''}>Updated {ago(snap?.fetched_at)}{snap?.every_hours ? ` · refreshes itself every ${snap.every_hours} h` : ''}</span>
+      {snap?.error && !busy && <span className="text-amber-700" title={snap.error}>last refresh failed</span>}
+      <Button size="sm" variant="secondary" icon={RefreshCw} busy={busy} disabled={busy} onClick={onRefresh}>{busy ? 'Refreshing…' : 'Refresh now'}</Button>
+    </span>
+  );
+}
+
+/** Nothing is stored yet: the first read of Google is running in the background. */
+function FirstRead({ what }) {
+  return <Card><div className="flex items-center gap-3"><RefreshCw size={16} className="animate-spin text-indigo-600 shrink-0" /><p className="text-13 text-slate-700">Reading {what} for the first time. This takes up to a minute; it is stored, so the next time this page opens at once. It appears here by itself.</p></div></Card>;
+}
 
 const G = { blue: '#4285f4', purple: '#7e57c2', green: '#0f9d58', orange: '#f4811f' };
 const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
@@ -250,14 +273,15 @@ function SearchConsole({ d, site }) {
 }
 
 function Speed({ b }) {
-  const [on, setOn] = useState(false);
-  const r = useApi(on ? `/businesses/${b.id}/search-insights/speed` : null);
-  const data = r.data;
+  const r = useApi(`/businesses/${b.id}/search-insights/speed`);
+  usePoll(() => r.reload(true), Boolean(r.data?.refreshing), 4000);
+  const snap = r.data;
+  const data = snap?.data;
+  const refreshSpeed = async () => { await api(`/businesses/${b.id}/search-insights/refresh?kind=speed`, { method: 'POST' }); await r.reload(true); };
   const cell = (m) => { if (!m) return <span className="text-slate-400">—</span>; const [w, tone] = RATING[m.rating] || ['—', 'gray']; return <span className="inline-flex items-center gap-1.5"><Badge tone={tone}>{w}</Badge><span className="text-12 text-slate-500 tabular-nums">{m.p75 ?? ''}</span></span>; };
   return (
-    <Card title="Speed for real visitors" subtitle="Core Web Vitals from real Chrome users (28 days), not a single test" action={!on && <Button size="sm" icon={Gauge} onClick={() => setOn(true)}>Read it</Button>}>
-      {!on && <p className="text-13 text-slate-600">Reads Google's real-visitor speed data for the site. It takes about a minute.</p>}
-      {on && !data && !r.error && <p className="text-13 text-slate-500">Reading Google's speed data…</p>}
+    <Card title="Speed for real visitors" subtitle="Core Web Vitals from real Chrome users (28 days), not a single test" action={<Freshness snap={snap} onRefresh={refreshSpeed} />}>
+      {snap && !data && <p className="text-13 text-slate-500">{snap.refreshing ? "Reading Google's speed data for the first time (about a minute). It appears here by itself." : snap.error || 'No speed data yet.'}</p>}
       {r.error && <ErrorNote>{r.error.message}</ErrorNote>}
       {data?.state === 'error' && <p className="text-13 text-amber-800">{data.message}</p>}
       {data?.state === 'ok' && (data.message ? (
@@ -418,17 +442,21 @@ function LlmsMaker({ b, missing }) {
 /** The site's own files, read live: the sitemap against the pages the audits found, robots.txt, and the llms.txt files for AI assistants. */
 function SiteFiles({ b }) {
   const r = useApi(`/businesses/${b.id}/search-insights/site-files`);
+  usePoll(() => r.reload(true), Boolean(r.data?.refreshing), 4000);
   const [copied, setCopied] = useState(false);
-  if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
+  if (r.error && !r.data) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!r.data) return <SkList rows={5} />;
-  const d = r.data;
+  const snap = r.data;
+  const d = snap.data;
+  if (!d) return <FirstRead what="your sitemap, robots.txt and llms.txt" />;
+  const refreshFiles = async () => { await api(`/businesses/${b.id}/search-insights/refresh?kind=files`, { method: 'POST' }); await r.reload(true); };
   if (d.state !== 'ok') return <Card><p className="text-13 text-amber-800">{d.message}</p></Card>;
   const sm = d.sitemap, rb = d.robots;
   const copy = async () => { try { await navigator.clipboard.writeText(d.missing_xml); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch { /* the text is shown below */ } };
   const tile = (label, value, tone, sub) => <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3 min-w-[150px] flex-1"><div className="text-12 text-slate-500">{label}</div><div className={`text-26 font-bold tabular-nums ${tone}`}>{value}</div>{sub && <div className="text-11.5 text-slate-500">{sub}</div>}</div>;
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3"><p className="text-12.5 text-slate-500">Read live from <b className="text-slate-700">{d.host}</b></p><Button size="sm" variant="secondary" icon={RefreshCw} className="ml-auto" onClick={() => r.reload(true)}>Read again</Button></div>
+      <div className="flex items-center gap-3"><p className="text-12.5 text-slate-500">Read live from <b className="text-slate-700">{d.host}</b></p><span className="ml-auto"><Freshness snap={snap} onRefresh={refreshFiles} /></span></div>
 
       <Card title="Sitemap" subtitle="Read from your website now, against every page the audits and scans have seen">
         {!sm.found ? <p className="text-13 text-amber-800 bg-amber-50 rounded px-3 py-2">{sm.message} Publish a sitemap.xml and list it in robots.txt.</p> : <>
@@ -485,16 +513,18 @@ function AddAll({ list }) {
 
 function Insights({ b }) {
   const [tab, setTab] = useState('search');
-  const [busy, setBusy] = useState(false);
   const [chk, setChk] = useState(null);
   const [added, setAdded] = useState(() => new Set());
   const [adding, setAdding] = useState('');
   const [note, setNote] = useState('');
   const r = useApi(`/businesses/${b.id}/search-insights`);
-  if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
+  usePoll(() => r.reload(true), Boolean(r.data?.refreshing), 4000);
+  if (r.error && !r.data) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!r.data) return <SkList rows={6} />;
-  const d = r.data;
-  const refresh = async () => { setBusy(true); try { await api(`/businesses/${b.id}/search-insights?refresh=true`, { timeout: 170000 }); await r.reload(true); } finally { setBusy(false); } };
+  const snap = r.data;
+  const d = snap.data;
+  if (!d) return <FirstRead what="Search Console and Analytics" />;
+  const refresh = async () => { await api(`/businesses/${b.id}/search-insights/refresh?kind=all`, { method: 'POST' }); await r.reload(true); };
   const ctx = {
     site: b.website || '', added, adding,
     check: async (url) => { setChk({ url, loading: true }); try { setChk({ url, res: await api(`/businesses/${b.id}/search-insights/check-page`, { method: 'POST', body: { url }, timeout: 60000 }) }); } catch (e) { setChk({ url, error: e.message }); } },
@@ -513,7 +543,7 @@ function Insights({ b }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg overflow-x-auto" role="tablist">{tabs.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={TAB_CLS(tab === id)}>{label}</button>)}</div>
-        <Button size="sm" variant="secondary" icon={RefreshCw} busy={busy} onClick={refresh} className="ml-auto">Refresh</Button>
+        <span className="ml-auto"><Freshness snap={snap} onRefresh={refresh} /></span>
       </div>
       {note && <p role="status" className="text-12.5 text-emerald-800 bg-emerald-50 rounded px-3 py-1.5">{note}</p>}
       {tab === 'search' && <SearchConsole d={d} />}

@@ -891,3 +891,15 @@ class IndexPage(TimestampMixin, Base):
     g_last_crawl: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     g_canonical: Mapped[str | None] = mapped_column(String(1000))
     g_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SearchSnapshot(TimestampMixin, Base):
+    """The last result of a slow Google read for a project (Search Insights), kept so the page opens at once and is refreshed in the background (services/search_insights.py)."""
+    __tablename__ = "search_snapshots"
+    __table_args__ = (UniqueConstraint("business_id", "kind"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # insights | files | speed
+    payload: Mapped[dict | None] = mapped_column(JSON)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)  # why the last refresh failed (the stored payload is kept)

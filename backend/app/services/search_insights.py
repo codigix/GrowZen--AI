@@ -11,6 +11,7 @@ Every figure is read from Google for the project's own site; nothing is estimate
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
@@ -398,30 +399,18 @@ def _before_after(db: Session, b: Business, gs: dict[str, Any]) -> dict[str, Any
 
 
 # ------------------------------------------------------------------ the report
-def build(db: Session, user: Any, b: Business, refresh: bool = False) -> dict[str, Any]:
-    key = (b.id, b.connection_id, b.website)
-    hit = _cache.get(key)
-    if hit and not refresh and time.time() - hit[0] < 900:
-        return hit[1]
+def build_fresh(db: Session, user: Any, b: Business) -> dict[str, Any]:
     gs_out, gs_raw = search_console_block(db, b)
     ga_out, ga_raw = analytics_block(db, user, b)
     out = {"search_console": gs_out, "analytics": ga_out, "joined": joined(db, b, gs_raw, {"landing": ga_raw.get("landing", [])}) if (gs_raw or ga_raw) else {}, "not_available": NOT_AVAILABLE,
            "built_at": datetime.now(timezone.utc).isoformat(), "website": b.website}
-    _cache[key] = (time.time(), out)
     return out
 
 
-def speed(b: Business, refresh: bool = False) -> dict[str, Any]:
-    """Real-visitor speed: slow to read (two PageSpeed runs), so it is its own call and cached for six hours."""
+def speed_fresh(b: Business) -> dict[str, Any]:
+    """Real-visitor speed: slow to read (two PageSpeed runs)."""
     url = b.website if (b.website or "").startswith("http") else f"https://{b.website}"
-    key = ("speed", url)
-    hit = _cache.get(key)
-    if hit and not refresh and time.time() - hit[0] < 6 * 3600:
-        return hit[1]
-    out = _part(field_speed, url) | {"url": url}
-    if out["state"] == "ok":
-        _cache[key] = (time.time(), out)
-    return out
+    return _part(field_speed, url) | {"url": url}
 
 
 # ------------------------------------------------------------------ the row actions: check one page of the site, add searches as keywords
@@ -800,3 +789,83 @@ def build_llms(db: Session, b: Business) -> dict[str, Any]:
         notes.append("No business summary or description was found, so the summary line comes from the home page. Build the business summary on the Website Audit page, then create the files again.")
     return {"host": host, "llms_txt": "\n".join(short).strip() + "\n", "llms_full_txt": "\n".join(full).strip()[:200_000] + "\n", "pages": [{"url": p["url"], "title": clean_title(p), "section": _section(p["url"]), "words": p["words"]} for p in pages],
             "notes": notes, "upload_to": f"https://{host}/llms.txt"}
+
+
+# ------------------------------------------------------------------ stored results: the page opens at once, the refresh runs in the background
+TTL = {"insights": 3 * 3600, "files": 6 * 3600, "speed": 24 * 3600}  # how old a stored result may be before it is refreshed by itself
+_running: dict[tuple[int, str], float] = {}
+_run_lock = threading.Lock()
+
+
+def _system_user(b: Business) -> Any:
+    from ..auth import User
+    return User(id=str(b.owner_id), name="scheduler", role="admin")
+
+
+def _build(kind: str, db: Session, user: Any, b: Business) -> dict[str, Any]:
+    if kind == "insights":
+        return build_fresh(db, user, b)
+    if kind == "files":
+        return site_files(db, b)
+    return speed_fresh(b)
+
+
+def refresh_now(db: Session, b: Business, kind: str, user: Any = None) -> bool:
+    """Read Google (or the site) now and store the result. A failed read keeps the last good result and records why. Used by the background job and the daily routine."""
+    import json
+
+    from ..models import SearchSnapshot
+    payload, err = None, None
+    try:
+        payload = json.loads(json.dumps(_build(kind, db, user or _system_user(b), b), default=str))
+    except Exception as exc:  # noqa: BLE001
+        err = str(exc)[:240]
+        db.rollback()
+    row = db.scalar(select(SearchSnapshot).where(SearchSnapshot.business_id == b.id, SearchSnapshot.kind == kind))
+    if row is None:
+        row = SearchSnapshot(business_id=b.id, kind=kind)
+        db.add(row)
+    if payload is not None and not (kind == "speed" and payload.get("state") != "ok"):
+        row.payload, row.fetched_at, row.error = payload, datetime.now(timezone.utc), None
+    else:
+        row.error = err or (payload or {}).get("message") or "The read failed."
+    db.commit()
+    return err is None
+
+
+def _job(business_id: int, kind: str, user: Any) -> None:
+    from ..db import SessionLocal
+    from ..models import Business as B
+    db = SessionLocal()
+    try:
+        b = db.get(B, business_id)
+        if b is not None:
+            refresh_now(db, b, kind, user)
+    except Exception:  # noqa: BLE001
+        log.exception("search insights refresh failed")
+    finally:
+        db.close()
+        with _run_lock:
+            _running.pop((business_id, kind), None)
+
+
+def snapshot(db: Session, user: Any, b: Business, kind: str, refresh: bool = False) -> dict[str, Any]:
+    """The stored result at once, with when it was read and whether a refresh is running. Missing or old results start a background refresh."""
+    from ..models import SearchSnapshot
+    row = db.scalar(select(SearchSnapshot).where(SearchSnapshot.business_id == b.id, SearchSnapshot.kind == kind))
+    fetched = row.fetched_at if row else None
+    if fetched is not None and fetched.tzinfo is None:
+        fetched = fetched.replace(tzinfo=timezone.utc)
+    stale = fetched is None or (datetime.now(timezone.utc) - fetched).total_seconds() > TTL[kind]
+    key = (b.id, kind)
+    with _run_lock:
+        busy = key in _running and time.time() - _running[key] < 600
+        # a failed refresh is not retried on every page load: wait a few minutes
+        recently_failed = bool(row and row.error and row.updated_at and (datetime.now(timezone.utc) - (row.updated_at if row.updated_at.tzinfo else row.updated_at.replace(tzinfo=timezone.utc))).total_seconds() < 300)
+        start = (refresh or (stale and not recently_failed)) and not busy
+        if start:
+            _running[key] = time.time()
+    if start:
+        threading.Thread(target=_job, args=(b.id, kind, user), daemon=True).start()
+    return {"kind": kind, "data": row.payload if row else None, "fetched_at": fetched.isoformat() if fetched else None, "refreshing": busy or start, "error": row.error if row else None,
+            "every_hours": TTL[kind] // 3600}

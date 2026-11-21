@@ -16,15 +16,24 @@ router = APIRouter(prefix="/businesses/{business_id}/search-insights", tags=["se
 
 
 @router.get("")
-def insights(refresh: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """Search Console and Analytics 4 sections and the joined findings. Cached for 15 minutes."""
-    return search_insights.build(db, user, b, refresh)
+def insights(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The stored Search Console and Analytics 4 insights at once, with when they were read. Old or missing results are refreshed in the background (poll until `refreshing` is false)."""
+    return search_insights.snapshot(db, user, b, "insights")
 
 
 @router.get("/speed")
-def speed(refresh: bool = False, b: Business = Depends(get_business), user: User = Depends(current_user)):
-    """Real-visitor Core Web Vitals (Chrome field data through PageSpeed Insights). Slower, so separate."""
-    return search_insights.speed(b, refresh)
+def speed(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Real-visitor Core Web Vitals (Chrome field data through PageSpeed Insights), stored and refreshed in the background."""
+    return search_insights.snapshot(db, user, b, "speed")
+
+
+@router.post("/refresh")
+def refresh(kind: str = "all", b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Start a background refresh now (insights, files, speed, or all). Returns at once."""
+    kinds = list(search_insights.TTL) if kind == "all" else [kind] if kind in search_insights.TTL else []
+    if not kinds:
+        raise HTTPException(422, "kind must be insights, files, speed or all")
+    return {k: search_insights.snapshot(db, user, b, k, refresh=True)["refreshing"] for k in kinds}
 
 
 class PageIn(BaseModel):
@@ -55,8 +64,8 @@ def add_keywords(body: KeywordsIn, b: Business = Depends(get_business), db: Sess
 
 @router.get("/site-files")
 def site_files(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """The site's sitemap, robots.txt and llms.txt read live, and the pages the audits saw that the sitemap leaves out."""
-    return search_insights.site_files(db, b)
+    """The site's sitemap, robots.txt and llms.txt as last read (refreshed in the background), and the pages the audits saw that the sitemap leaves out."""
+    return search_insights.snapshot(db, user, b, "files")
 
 
 @router.post("/llms")
