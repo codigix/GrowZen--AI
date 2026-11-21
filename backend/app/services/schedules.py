@@ -66,13 +66,12 @@ def run_job(db: Session, s: Schedule) -> None:
     elif s.job == "indexing":
         from . import indexing
         indexing.run_auto(db, b)  # does nothing unless automatic indexing is switched on for the project
-        if b.website:  # the Search Insights page opens from stored results: keep them fresh without anyone opening it
+        if b.website:  # the Search Insights page opens from stored results: keep the cheap ones fresh (only when old, only what is useful, never PageSpeed)
             from . import search_insights
-            for kind in ("insights", "files", "speed"):
-                try:
-                    search_insights.refresh_now(db, b, kind)
-                except Exception as exc:  # noqa: BLE001
-                    log(db, "scheduler", "search_insights_skipped", b.id, kind=kind, error=str(exc)[:200])
+            try:
+                search_insights.refresh_if_stale(b.id, ("insights",) * bool(b.connection_id) + ("files",))
+            except Exception as exc:  # noqa: BLE001
+                log(db, "scheduler", "search_insights_skipped", b.id, error=str(exc)[:200])
     elif s.job == "autopilot":
         from . import autopilot
         autopilot.run_job(db, b)  # prepares drafts only (and only when Autopilot is on); never publishes

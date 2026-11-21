@@ -77,6 +77,24 @@ async def lifespan(_: FastAPI):
     step("interrupted Lighthouse audits", lighthouse_runner.recover_interrupted)
     step("interrupted jobs", lambda db: jobs.recover_stale(db, startup=True))
     scheduler.start()
+    def _warm_dashboard() -> None:  # the dashboard's journeys are worked out once, in the background, so the first page load after a start is quick
+        import time as _t
+        _t.sleep(5)
+        try:
+            from sqlalchemy import select as _select
+            from .db import SessionLocal as _S
+            from .models import Business as _B
+            from .routers import flow as _flow
+            _db = _S()
+            try:
+                _ids = list(_db.scalars(_select(_B.id).order_by(_B.id)))
+            finally:
+                _db.close()
+            _flow._work_out(_ids)
+        except Exception:  # noqa: BLE001 - only a head start
+            pass
+    import threading as _threading
+    _threading.Thread(target=_warm_dashboard, daemon=True).start()
     yield
     from .backlinks import stop as backlink_stop
     backlink_stop.STOP.set()  # let a running crawl finish its current page and leave, so shutdown does not hang

@@ -833,6 +833,34 @@ def refresh_now(db: Session, b: Business, kind: str, user: Any = None) -> bool:
     return err is None
 
 
+_gate = threading.Semaphore(2)  # at most two Google reads at a time, whoever asked: the server is shared
+
+
+def refresh_if_stale(business_id: int, kinds: tuple[str, ...]) -> list[str]:
+    """For the daily routine: refresh only the results older than their limit, on their own database connection, two at a time. Returns what was refreshed."""
+    from ..db import SessionLocal
+    from ..models import Business as B
+    from ..models import SearchSnapshot
+    done: list[str] = []
+    db = SessionLocal()
+    try:
+        b = db.get(B, business_id)
+        if b is None:
+            return done
+        for kind in kinds:
+            row = db.scalar(select(SearchSnapshot).where(SearchSnapshot.business_id == b.id, SearchSnapshot.kind == kind))
+            fetched = row.fetched_at if row else None
+            if fetched is not None and (fetched if fetched.tzinfo else fetched.replace(tzinfo=timezone.utc)) > datetime.now(timezone.utc) - timedelta(seconds=TTL[kind]):
+                continue
+            db.commit()  # no transaction is held open while Google answers
+            with _gate:
+                refresh_now(db, b, kind)
+            done.append(kind)
+    finally:
+        db.close()
+    return done
+
+
 def _job(business_id: int, kind: str, user: Any) -> None:
     from ..db import SessionLocal
     from ..models import Business as B
@@ -840,7 +868,9 @@ def _job(business_id: int, kind: str, user: Any) -> None:
     try:
         b = db.get(B, business_id)
         if b is not None:
-            refresh_now(db, b, kind, user)
+            db.commit()  # no transaction is held open while Google answers
+            with _gate:
+                refresh_now(db, b, kind, user)
     except Exception:  # noqa: BLE001
         log.exception("search insights refresh failed")
     finally:
