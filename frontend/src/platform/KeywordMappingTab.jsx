@@ -140,9 +140,11 @@ export default function KeywordMappingTab({ b }) {
       )}
 
       <div className="flex flex-wrap items-center gap-3 text-13 text-slate-600">
-        <span>Next: see how the keywords rank.</span>
-        <Link to="/keyword-management/status"><Button size="sm" icon={ArrowRight}>Keyword Status</Button></Link>
-        <Link to="/keyword-management/tracked"><Button size="sm">My Keywords</Button></Link>
+        <span><b className="text-slate-900">Next:</b> write the content for the places you chose, put the changes on your site, then track the keywords.</span>
+        <Link to="/ai-content-generation/blog"><Button size="sm" variant="primary" icon={ArrowRight}>4 · Write content</Button></Link>
+        <Link to="/fix-plan"><Button size="sm">5 · Update the site</Button></Link>
+        <Link to="/keyword-management/status"><Button size="sm">6 · Track</Button></Link>
+        <Link to="/keyword-management/use" className="text-12.5 font-semibold text-indigo-700 hover:underline">See the usage grid</Link>
       </div>
       <PageOverview b={b} target={open} onClose={() => setOpen(null)} />
       {toastNode}

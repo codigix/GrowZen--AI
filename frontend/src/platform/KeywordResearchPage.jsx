@@ -1627,7 +1627,7 @@ function NextStep({ progress, tab, bid, reload }) {
   );
 }
 
-const FLOW_AT = { workspace: 'workspace', ai: 'find', discover: 'find', planner: 'find', explorer: 'find', tracked: 'mine', topics: 'mine', use: 'mine', mapping: 'mapping', status: 'status' };
+const FLOW_AT = { workspace: 'workspace', ai: 'find', discover: 'find', planner: 'find', explorer: 'find', tracked: 'mine', topics: 'mine', use: 'use', mapping: 'mapping', status: 'status' };
 
 const FIND_CARDS = [
   ['ai', 'AI suggestions', 'Written from your business: what it does, what competitors win, what is missing'],
