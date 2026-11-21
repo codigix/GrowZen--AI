@@ -192,8 +192,15 @@ def listing_compare(competitor_id: int, db: Session = Depends(get_db), user: Use
     from ..services import business_understanding
     from . import listing_audit as la
     c, b = _own(db, user, competitor_id)
-    if not c.listing:
-        raise HTTPException(409, "Audit this competitor first.")
+    if not c.listing:  # not audited yet: read its Google listing now, so Compare needs no earlier step
+        try:
+            out = la.audit_competitor(c, _region(b), b.lat, b.lng)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, "Google Maps could not be read right now. Try again in a minute.") from exc
+        c.place_id, c.listing, c.listing_at = out["place_id"], out, datetime.now(timezone.utc)
+        db.commit()
     ours = None
     if b.place_id:
         try:

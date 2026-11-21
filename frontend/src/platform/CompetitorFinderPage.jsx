@@ -26,9 +26,8 @@ const running = (s) => s === 'queued' || s === 'running';
 const baseSite = (d) => String(d || '').replace(/^(www|in|en|m)\./, '');
 const hostOf = (u) => { try { return baseSite(new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname); } catch (e) { return ''; } };
 const AUDIT_LABEL = { queued: 'Queued…', running: 'Auditing…', done: 'Audited', failed: 'Failed' };
-const canCompare = (c, a) => Boolean(c?.reg && a && !running(a.status));
-const compareHint = (c, a) => !c?.reg ? 'Register it first with Find more on Maps or Add a competitor'
-  : !a ? 'Audit this competitor first' : running(a.status) ? 'Wait for the audit to finish' : 'Compare its audit with your site';
+// Compare always works: it reads what the competitor has (website, Google listing, or both) and compares each with yours.
+const compareHint = (c) => c?.website ? 'Compare its website and its Google listing with yours' : 'No website: compare its Google listing with yours';
 const PRIORITY = { high: ['red', 'Do first'], medium: ['amber', 'Next'], low: ['gray', 'Later'] };
 
 /** A Google position as a chip: the number is always shown, colour only backs it up. */
@@ -255,7 +254,7 @@ export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, our
               <td className="px-3 py-2.5 text-right whitespace-nowrap">
                 <div className="inline-flex gap-1.5">
                   <Act icon={Gauge} tone="teal" disabled={(!c.website && !c.maps) || running(a?.status)} onClick={() => onAudit(c.reg || c)} tip={c.reg ? `${a ? 'Re-audit' : 'Audit'}: run PageSpeed and a page crawl on their site.` : 'Audit: save it as a competitor first (choose it), then audit its site.'} />
-                  <Act icon={ShieldCheck} tone="indigo" busy={comparing === c.reg?.id} disabled={!canCompare(c, a)} onClick={() => onCompare(c.reg)} tip={`Compare: ${compareHint(c, a) || 'show its site next to yours.'}`} />
+                  <Act icon={ShieldCheck} tone="indigo" busy={comparing === (c.reg?.id ?? `new:${c.name}`)} onClick={() => onCompare(c.reg || c)} tip={`Compare: ${compareHint(c)}`} />
                 </div>
               </td>
             </tr>
@@ -504,13 +503,14 @@ export function MapsTab({ r, kit }) {
             {kit && <td className="px-4 py-2.5">{e.mine ? <span className="text-slate-400">—</span> : (() => {
               const reg = kit.registered.find(c => (e.website ? hostOf(c.website) === (e.domain || hostOf(e.website)) : (c.place_id && c.place_id === e.cid) || (!c.website && c.name === e.name)));
               const a = reg && kit.auditMap[reg.id];
-              if (!reg) return <Button size="sm" icon={Gauge} onClick={() => kit.onAudit(e)} title={e.website ? 'Saves it as a competitor and audits its site' : 'No website: reads its Google listing and works out its services and keywords'}>Audit</Button>;
+              if (!reg) return <span className="flex gap-1.5"><Button size="sm" icon={Gauge} onClick={() => kit.onAudit(e)} title={e.website ? 'Saves it as a competitor and audits its site and its Google listing' : 'No website: reads its Google listing and works out its services and keywords'}>Audit</Button>
+                <Button size="sm" icon={ShieldCheck} busy={kit.comparing === `new:${e.name}`} onClick={() => kit.onCompare(e)} title={compareHint(e)}>Compare</Button></span>;
               return (
                 <div className="flex flex-col gap-1 min-w-[120px]">
                   <span className={`text-12 font-semibold ${a?.status === 'done' ? 'text-emerald-700' : a?.status === 'failed' ? 'text-red-600' : running(a?.status) ? 'text-indigo-600' : 'text-slate-400'}`}>{a ? (SCORE_WORD[a.status] || a.status) + (a.listing && a.score != null ? ` · ${a.score}/100` : '') : 'Not audited'}{a?.listing ? <span className="font-normal text-slate-400"> · Google listing</span> : null}</span>
                   <span className="flex gap-1.5">
                     <Button size="sm" icon={Gauge} disabled={running(a?.status)} onClick={() => kit.onAudit(reg)}>{a ? 'Re-audit' : 'Audit'}</Button>
-                    <Button size="sm" icon={ShieldCheck} busy={kit.comparing === reg.id} disabled={a?.status !== 'done' || (!a?.listing && kit.ourAudit?.status !== 'done')} onClick={() => kit.onCompare(reg)} title={a?.status !== 'done' ? 'Audit this competitor first' : !a?.listing && kit.ourAudit?.status !== 'done' ? 'Audit your own site first' : 'Compare it with your business'}>Compare</Button>
+                    <Button size="sm" icon={ShieldCheck} busy={kit.comparing === reg.id} onClick={() => kit.onCompare(reg)} title={compareHint(reg)}>Compare</Button>
                   </span>
                 </div>
               );
@@ -661,8 +661,8 @@ function ProfileModal({ c, r, onClose, onAudit, onCompare, auditMap }) {
     <Modal open={Boolean(c)} onClose={onClose} width="max-w-5xl" title={c ? <span className="inline-flex items-center gap-2">{c.name}<span className="text-12 font-normal text-slate-500">{c.host}</span></span> : ''}
       footer={c && <>
         {c.website && <a href={c.website} target="_blank" rel="noreferrer" className="mr-auto inline-flex items-center gap-1 text-12.5 font-semibold text-indigo-700 hover:underline"><ExternalLink size={13} /> Visit site</a>}
-        <Button icon={Gauge} disabled={!c.reg || running(a?.status)} onClick={() => onAudit(c.reg)}>{a ? 'Re-audit site' : 'Audit site'}</Button>
-        <Button variant="primary" icon={ShieldCheck} disabled={!canCompare(c, a)} title={compareHint(c, a)} onClick={() => { onClose(); onCompare(c.reg); }}>Compare with my site</Button>
+        <Button icon={Gauge} disabled={running(a?.status)} onClick={() => onAudit(c.reg || c)}>{a ? 'Re-audit' : 'Audit'}</Button>
+        <Button variant="primary" icon={ShieldCheck} title={compareHint(c)} onClick={() => { onClose(); onCompare(c.reg || c); }}>Compare with my business</Button>
       </>}>
       {c && !p && <p className="text-13 text-slate-600">This business was found on Google Maps but did not appear in the research results, so there is no ranking data yet. Run the research again to include it.</p>}
       {c && p && (
@@ -763,8 +763,11 @@ export function CompareModal({ state, onClose, bid }) {
   return (
     <Modal open={Boolean(state)} onClose={onClose} width="max-w-5xl" title={state ? `Compare with ${state.competitor.name}` : ''}>
       {state?.loading && <div className="space-y-4"><SkStats n={3} cols="grid-cols-3" /><SkTable cols={4} rows={5} /></div>}
+      {state?.notes?.length > 0 && <div className="mb-3 space-y-1">{state.notes.map(n => <p key={n} className="text-12.5 text-amber-900 bg-amber-50 rounded px-3 py-1.5">{n}</p>)}</div>}
       {state?.error && <ErrorNote>{state.error}</ErrorNote>}
+      {state?.result && state?.listing && <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Website against website</div>}
       {state?.result && <div className="max-h-[72vh] overflow-y-auto pr-1"><ComparisonResult c={state.result} bare onGo={onClose} /></div>}
+      {state?.result && state?.listing && <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mt-4 mb-1.5">Google listing against Google listing</div>}
       {state?.listing && <div className="max-h-[72vh] overflow-y-auto pr-1"><ListingComparison key={state.competitor?.id} c={state.listing} bid={bid} /></div>}
     </Modal>
   );
@@ -877,17 +880,28 @@ function Research({ b }) {
       await loadRegistered();
     } catch (e) { setAuditMap(m => ({ ...m, [c.id]: { id: null, status: 'failed', listing: true } })); toast(`Could not read ${c.name}'s Google listing: ${e.message}`); }
   };
-  const auditRow = async (c) => { // a saved competitor, or a business found on Maps that is saved first; with a website its site is audited, without one its Google listing is
-    if (c?.id) return c.website ? auditCompetitor(c) : auditListing(c);
+  // A business found on Maps or in the Google results is saved as a competitor first (by its website, else through its Google listing); a saved one is used as it is.
+  const ensureSaved = async (c) => {
+    if (c?.id) return c;
     const m = c?.maps || c;
-    if (!m?.name) return;
+    if (!m?.name) return null;
+    const made = m.website ? await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: m.website, name: m.name } })
+      : await api('/competitors/maps', { method: 'POST', body: { business_id: b.id, name: m.name, address: m.address, cid: m.cid, phone: m.phone, rating: m.rating, reviews: m.reviews } });
+    await loadRegistered();
+    return made;
+  };
+  // Audit reads every source the competitor has: its website (speed and a crawl) and its Google listing. With no website, the listing alone.
+  const auditRow = async (c) => {
+    const name = (c?.maps || c)?.name;
     try {
-      let made;
-      if (m.website) made = await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: m.website, name: m.name } });
-      else made = await api('/competitors/maps', { method: 'POST', body: { business_id: b.id, name: m.name, address: m.address, cid: m.cid, phone: m.phone, rating: m.rating, reviews: m.reviews } });
-      await loadRegistered();
-      if (m.website) { if (!ourAudit && b.website) auditOurSite(); await auditCompetitor(made); } else await auditListing(made);
-    } catch (e) { toast(`Could not audit ${m.name}: ${e.message}`); }
+      const made = await ensureSaved(c);
+      if (!made) return;
+      if (made.website) {
+        if (!ourAudit && b.website) auditOurSite();
+        await auditCompetitor(made);
+        api(`/competitors/${made.id}/listing-audit`, { method: 'POST' }).then(loadRegistered).catch(() => { }); // its Google listing too, when Google has one
+      } else await auditListing(made);
+    } catch (e) { toast(`Could not audit ${name}: ${e.message}`); }
   };
   // The Maps competitors: audit your own site and each of them in one go, then compare every finished audit with yours at once.
   const [scorecard, setScorecard] = useState(null); // { loading, items, error }
@@ -939,17 +953,41 @@ function Research({ b }) {
     if (!registered.length) findOnMaps().catch(() => { }); // the first run also registers the Maps competitors for audits
   });
 
-  const doCompare = async (c) => {
-    if (!c) return;
-    setComparing(c.id); setCompare({ competitor: c, loading: true });
-    if (!c.website) {
-      try { setCompare({ competitor: c, listing: await api(`/competitors/${c.id}/listing-compare`, { method: 'POST' }) }); } catch (e) { setCompare({ competitor: c, error: e.message }); } finally { setComparing(null); }
-      return;
-    }
+  // Compare reads what the competitor has and compares each source with yours: its website against yours, its Google listing against yours, or both.
+  // Nothing has to be audited first: what is missing is read now (a Google listing takes seconds) or started (a website audit takes a few minutes).
+  const doCompare = async (row) => {
+    if (!row) return;
+    setComparing(row.id ?? `new:${(row.maps || row).name}`);
+    setCompare({ competitor: { name: (row.maps || row).name || row.name }, loading: true });
+    const notes = [];
+    let comp = row, result = null, listing = null, error = '';
     try {
-      const r = await api('/audit/competitors/compare', { method: 'POST', body: { business_id: b.id, competitor_ids: [c.id], strategy } });
-      setCompare({ competitor: c, result: r.comparisons?.[0] || null, error: r.comparisons?.[0] ? '' : 'Nothing to compare yet. Audit your site and this competitor first.' });
-    } catch (e) { setCompare({ competitor: c, error: e.message }); } finally { setComparing(null); }
+      comp = await ensureSaved(row);
+      if (!comp) throw new Error('This competitor has no name to look up.');
+      setCompare({ competitor: comp, loading: true });
+      try {
+        listing = await api(`/competitors/${comp.id}/listing-compare`, { method: 'POST' });
+        loadRegistered();
+      } catch (e) { notes.push(comp.website ? 'Its Google listing could not be read, so only the websites are compared.' : `Its Google listing could not be read: ${e.message}`); }
+      if (comp.website) {
+        if (!b.website) notes.push('Your business has no website yet, so the websites cannot be compared. Your Google listing is compared instead.');
+        else {
+          const a = auditMap[comp.id];
+          const mine = ourAudit?.status === 'done';
+          if (a?.status === 'done' && mine) {
+            try { const r = await api('/audit/competitors/compare', { method: 'POST', body: { business_id: b.id, competitor_ids: [comp.id], strategy } }); result = r.comparisons?.[0] || null; } catch (e) { notes.push(`The website comparison failed: ${e.message}`); }
+            if (!result) notes.push('The website comparison has no data yet.');
+          } else {
+            if (!running(a?.status) && a?.status !== 'done') auditCompetitor(comp);
+            if (!mine && !running(ourAudit?.status)) auditOurSite();
+            notes.push('The websites are being audited now (a few minutes). Press Compare again when it finishes to add the website comparison.');
+          }
+        }
+      }
+      if (!result && !listing) error = 'There is no data to compare yet: ' + (comp.website ? 'its website audit is running and its Google listing could not be read.' : 'this business has no website and Google has no readable listing for it.');
+    } catch (e) { error = e.message; }
+    setCompare({ competitor: comp, result, listing, notes, error });
+    setComparing(null);
   };
 
   // Opened from Competitor Watch with ?compare=domain: open that competitor's comparison straight away.

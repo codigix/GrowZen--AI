@@ -58,7 +58,6 @@ def test_audit_then_compare_for_a_competitor_with_no_website(client, monkeypatch
     assert c["website"] is None and c["place_id"] == "placeA" and "listing" not in c
     again = client.post("/api/v1/competitors/maps", json={"business_id": bid, "name": "Glam Rental", "cid": "placeA"}).json()
     assert again["id"] == c["id"]  # saved once
-    assert client.post(f"/api/v1/competitors/{c['id']}/listing-compare").status_code == 409  # audit first
     out = client.post(f"/api/v1/competitors/{c['id']}/listing-audit").json()
     assert out["score"] >= 70 and out["understanding"]["services"] == ["Lehenga rental", "Gown rental"]
     listed = [x for x in client.get("/api/v1/competitors", params={"business_id": bid}).json() if x["id"] == c["id"]][0]
