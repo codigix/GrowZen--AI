@@ -2,7 +2,8 @@ import KeywordWorkspace from './KeywordWorkspace';
 import KeywordFlowBar from './KeywordFlowBar';
 import KeywordMappingTab from './KeywordMappingTab';
 import { Act, Head } from './TableBits';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AutopilotPanel } from './AutopilotPanels';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -678,9 +679,31 @@ function UsedOn({ info, keyword }) {
   );
 }
 
-/** Choose the page a keyword should rank on: every page of the website as a real link (its address, and a button to open it), with a search box. Nothing to guess or type. */
+/** Choose the page a keyword should rank on: every page of the website as a real link (its address, and a button to open it), with a search box. It floats over the table (a layer above the page, placed under the cell, or above it near the bottom of the screen) and closes on a click outside. */
 function PagePicker({ b, pages: fallback, value, onPick, onCancel, listId }) {
   const r = useApi(`/businesses/${b.id}/keywords/site-pages`);
+  const anchor = useRef(null);
+  const panel = useRef(null);
+  const [pos, setPos] = useState(null);
+  useLayoutEffect(() => {
+    const place = () => {
+      if (!anchor.current) return;
+      const a = anchor.current.getBoundingClientRect();
+      const h = Math.min(420, panel.current?.offsetHeight || 420);
+      const below = window.innerHeight - a.bottom - 8;
+      const top = below >= h || below >= a.top ? a.bottom + 4 : Math.max(8, a.top - h - 4);
+      setPos({ top, left: Math.max(8, Math.min(a.left, window.innerWidth - 376)) });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
+  }, [r.data]);
+  useEffect(() => {
+    const away = (e) => { if (panel.current && !panel.current.contains(e.target) && !anchor.current?.contains(e.target)) onCancel(); };
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, [onCancel]);
   const [typing, setTyping] = useState(false);
   const [q, setQ] = useState('');
   const known = r.data?.pages?.length ? r.data.pages : fallback;
@@ -694,7 +717,10 @@ function PagePicker({ b, pages: fallback, value, onPick, onCancel, listId }) {
   const shown = list.filter(p => !needle || `${p.path} ${p.url} ${p.title}`.toLowerCase().includes(needle));
   const current = (p) => p.url === value || p.path === value;
   return (
-    <div className="w-[360px] max-w-full rounded-lg bg-white ring-1 ring-slate-300 shadow-sm" onKeyDown={e => { if (e.key === 'Escape') onCancel(); }}>
+    <>
+      <span ref={anchor} className="block h-8 text-12 text-slate-400">{value ? value.replace(/^https?:\/\/[^/]+/, '') || '/' : 'Choosing a page…'}</span>
+      {createPortal(
+    <div ref={panel} style={{ position: 'fixed', top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: 360, zIndex: 80 }} className="max-w-[calc(100vw-16px)] rounded-lg bg-white ring-1 ring-slate-300 shadow-xl" onKeyDown={e => { if (e.key === 'Escape') onCancel(); }}>
       <div className="p-2 border-b border-slate-100"><input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${list.length} page${list.length === 1 ? '' : 's'}`} aria-label="Search the pages of your website" className={`${inputCls} w-full`} /></div>
       <ul role="listbox" aria-label="Pages of your website" className="max-h-64 overflow-y-auto divide-y divide-slate-100">
         <li><button type="button" role="option" aria-selected={!value} onClick={() => onPick('')} className="w-full text-left px-3 py-2 text-13 text-slate-600 hover:bg-slate-50 cursor-pointer">No page yet</button></li>
@@ -710,7 +736,8 @@ function PagePicker({ b, pages: fallback, value, onPick, onCancel, listId }) {
         {!shown.length && <li className="px-3 py-4 text-12.5 text-slate-500">{r.data ? 'No page matches. Use "Type another address".' : 'Reading your pages…'}</li>}
       </ul>
       <div className="flex gap-3 px-3 py-2 border-t border-slate-100 text-12"><button type="button" onClick={() => setTyping(true)} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Type another address</button><button type="button" onClick={onCancel} className="text-slate-500 hover:underline cursor-pointer">Cancel</button></div>
-    </div>
+    </div>, document.body)}
+    </>
   );
 }
 
