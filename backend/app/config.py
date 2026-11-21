@@ -129,7 +129,7 @@ class Settings(BaseSettings):
     crawler_url: str = ""
     crawler_api_key: str = ""
     crawler_auth_header: str = "X-API-Key"  # or "Authorization" (then the key is sent as "Bearer <key>")
-    crawler_timeout_seconds: float = 30.0
+    crawler_timeout_seconds: float = 90.0  # the crawler is slow on a first request for a domain (30 s and more); Swagger waits, so must we
     google_ads_login_customer_id: str = ""  # manager (MCC) account id, only needed if the account is managed
 
     # Moz API (Domain Authority, Page Authority, Spam Score, referring domains) for the Backlink Checker. Empty = those fields say 'not available'.

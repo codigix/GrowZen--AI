@@ -66,8 +66,18 @@ def gap(competitor: str | None = Query(None, max_length=300), limit: int = Query
             competitor = cc.normalize_domain(competitor)
         except ValueError:
             raise HTTPException(422, f"Not a valid domain: {competitor!r}") from None
-    listed = _guard(cc.business_competitors, domain).get("competitors", [])
-    choices = [{"domain": c.get("competitor_domain"), "status": c.get("discovery_status"), "known_backlinks": c.get("known_backlinks", 0)} for c in listed]
+    g_all = None
+    try:
+        listed = cc.business_competitors(domain).get("competitors", [])
+        choices = [{"domain": c.get("competitor_domain"), "status": c.get("discovery_status"), "known_backlinks": c.get("known_backlinks", 0)} for c in listed]
+    except cc.CrawlerError as exc:
+        # The crawler's competitor list can fail for one business (a 500 from its side) while its gap report still works: the gap report names the
+        # same competitors, so take the choices from it instead of showing nothing.
+        g_all = _guard(cc.backlink_gap, domain, None, 1)
+        if not g_all.get("competitors"):
+            raise HTTPException(503, str(exc)) from exc
+        choices = [{"domain": d, "status": ((g_all.get("coverage") or {}).get("discovery_status") or {}).get(d), "known_backlinks": None} for d in g_all["competitors"]]
+    choices = [c for c in choices if c["domain"] and not c["domain"].startswith(".")]  # a malformed entry such as ".edu.in" is not a website to compare
     if competitor and competitor not in {c["domain"] for c in choices}:
         raise HTTPException(404, f"{competitor} is not one of this business's competitors on the crawler.")
     if not choices:
