@@ -13,7 +13,7 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from sqlalchemy import select
@@ -166,6 +166,113 @@ def pending(db: Session, b: Business) -> list[IndexPage]:
         if sent is None or (ch and ch > sent):
             out.append(p)
     return out
+
+
+# ------------------------------------------------------------------------------------------------------------------------ can the page be indexed at all (our own check: needs no Google account)
+TECH_EVERY = timedelta(days=3)
+TECH_BATCH = 40
+
+
+def _same_page(a: str, b: str) -> bool:
+    """Two addresses of the same page: scheme, www and a trailing slash do not make a different page."""
+    def norm(u: str) -> str:
+        p = urlsplit(u)
+        return f"{(p.hostname or '').lower().removeprefix('www.')}{(p.path or '/').rstrip('/') or '/'}?{p.query}"
+    return norm(a) == norm(b)
+
+
+def _robots_for(url: str):
+    """The site's robots.txt as Googlebot reads it (None when it cannot be read: then nothing is blocked by it)."""
+    from urllib.robotparser import RobotFileParser
+    from .net import site_client
+    p = urlsplit(url)
+    client = site_client(8)
+    try:
+        r = client.get(f"{p.scheme}://{p.netloc}/robots.txt")
+        if r.status_code >= 400:
+            return None
+        rp = RobotFileParser()
+        rp.parse(r.text.splitlines())
+        return rp
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        client.close()
+
+
+def check_page(url: str, robots=None) -> dict[str, Any]:
+    """Can Google index this page? Loads it the way a crawler does and looks for what stops indexing: an error, a redirect, a noindex tag or header, robots.txt, a canonical pointing
+    elsewhere, or no readable text without JavaScript. Says nothing about whether Google HAS indexed it: only Search Console can answer that."""
+    from bs4 import BeautifulSoup
+    from .net import site_client
+    reasons: list[dict[str, str]] = []
+    out: dict[str, Any] = {"status": None, "words": None, "canonical": None}
+    client = site_client(12)
+    try:
+        r = client.get(url)
+    except Exception as exc:  # noqa: BLE001
+        return out | {"verdict": "blocked", "reasons": [{"level": "blocked", "text": f"The page could not be loaded ({str(exc)[:80]}). Google cannot index a page it cannot reach."}]}
+    finally:
+        client.close()
+    out["status"] = r.status_code
+    if r.status_code >= 400:
+        reasons.append({"level": "blocked", "text": f"The page answers HTTP {r.status_code}, so Google will not index it."})
+    final = str(r.url)
+    if not _same_page(url, final):
+        reasons.append({"level": "risky", "text": f"It redirects to {final[:120]}. Google indexes the page it ends on, not this address."})
+    header = (r.headers.get("x-robots-tag") or "").lower()
+    if "noindex" in header:
+        reasons.append({"level": "blocked", "text": "The server sends a noindex header (X-Robots-Tag), so Google will not index it."})
+    if robots is not None:
+        try:
+            if not robots.can_fetch("Googlebot", url):
+                reasons.append({"level": "blocked", "text": "robots.txt does not let Googlebot read this page."})
+        except Exception:  # noqa: BLE001
+            pass
+    if r.status_code < 400 and "html" in (r.headers.get("content-type") or "").lower():
+        soup = BeautifulSoup(r.text, "html.parser")
+        meta = soup.find("meta", attrs={"name": re.compile("^(robots|googlebot)$", re.I)})
+        if meta and "noindex" in (meta.get("content") or "").lower():
+            reasons.append({"level": "blocked", "text": "The page has a noindex tag, so Google will not index it."})
+        canon = soup.find("link", rel=lambda v: v and "canonical" in (v if isinstance(v, list) else [v]))
+        href = (canon.get("href") or "").strip() if canon else ""
+        if href:
+            href = urljoin(final, href)
+            out["canonical"] = href[:300]
+            if not _same_page(href, final):
+                reasons.append({"level": "risky", "text": f"Its canonical tag points to {href[:120]}: Google will index that page instead of this one."})
+        for t in soup(["script", "style", "noscript", "nav", "footer", "header"]):
+            t.decompose()
+        words = len(soup.get_text(" ", strip=True).split())
+        out["words"] = words
+        if words < 40:
+            reasons.append({"level": "risky", "text": f"Only {words} words of text are readable without JavaScript. If the content is drawn by JavaScript, Google may index an almost empty page."})
+    verdict = "blocked" if any(x["level"] == "blocked" for x in reasons) else "risky" if reasons else "indexable"
+    return out | {"verdict": verdict, "reasons": reasons}
+
+
+def check_pages(db: Session, b: Business, urls: list[str] | None = None, limit: int = TECH_BATCH, force: bool = False) -> dict[str, Any]:
+    """Run the check on the pages never checked, changed since, or last checked over 3 days ago (or the given addresses). Returns the counts by verdict."""
+    now = _now()
+    rows = list(db.scalars(select(IndexPage).where(IndexPage.business_id == b.id)))
+    if urls is not None:
+        want = set(urls)
+        todo = [p for p in rows if p.url in want]
+    else:
+        todo = [p for p in rows if force or p.tech is None or (p.tech_at and _aware(p.tech_at) < now - TECH_EVERY) or (p.changed_at and p.tech_at and _aware(p.changed_at) > _aware(p.tech_at))]
+    todo = todo[: max(1, limit)]
+    if not todo:
+        return {"checked": 0, "indexable": 0, "risky": 0, "blocked": 0}
+    robots = _robots_for(todo[0].url)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(pool.map(lambda p: check_page(p.url, robots), todo))
+    counts = {"indexable": 0, "risky": 0, "blocked": 0}
+    for p, res in zip(todo, results):
+        p.tech, p.tech_at = res, now
+        counts[res["verdict"]] += 1
+    db.commit()
+    return {"checked": len(todo), **counts}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ sending to the other search engines
@@ -336,6 +443,11 @@ def run_auto(db: Session, b: Business, force: bool = False) -> dict[str, Any]:
         st.last_scan = {**(st.last_scan or {}), "note": out["note"]}
         db.commit()
         return out
+    try:  # can each page be indexed at all: our own check, no Google account needed
+        t = check_pages(db, b)
+        out["checked_pages"], out["blocked_pages"], out["risky_pages"] = t["checked"], t["blocked"], t["risky"]
+    except Exception as exc:  # noqa: BLE001 - the daily routine goes on
+        out["tech_note"] = str(exc)[:160]
     if st.key_verified_at:
         try:
             r = submit(db, b)

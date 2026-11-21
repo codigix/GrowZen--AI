@@ -883,6 +883,8 @@ class IndexPage(TimestampMixin, Base):
     skip_reason: Mapped[str | None] = mapped_column(String(160))  # why it is not sent: noindex, an error status
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     submitted_to: Mapped[list | None] = mapped_column(JSON)
+    tech: Mapped[dict | None] = mapped_column(JSON)  # our own check of whether the page CAN be indexed: {verdict: indexable|risky|blocked, reasons, status, words, canonical} (services/indexing.py check_page)
+    tech_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     g_state: Mapped[str | None] = mapped_column(String(16))  # indexed | not_indexed | blocked | unknown
     g_reason: Mapped[str | None] = mapped_column(String(255))
     g_last_crawl: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

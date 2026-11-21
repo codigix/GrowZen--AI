@@ -42,6 +42,7 @@ def _page(p: IndexPage, pend: set[int]) -> dict[str, Any]:
     path = urlsplit(p.url).path or "/"
     return {"id": p.id, "url": p.url, "path": path + (f"?{urlsplit(p.url).query}" if urlsplit(p.url).query else ""), "first_seen": _iso(p.first_seen_at), "lastmod": p.lastmod, "changed_at": _iso(p.changed_at),
             "in_sitemap": p.in_sitemap, "source": p.source, "is_new": new, "pending": p.id in pend, "skip_reason": p.skip_reason, "submitted_at": _iso(p.submitted_at), "submitted_to": p.submitted_to or [],
+            "tech": ({"verdict": (p.tech or {}).get("verdict"), "reasons": (p.tech or {}).get("reasons") or [], "status": (p.tech or {}).get("status"), "words": (p.tech or {}).get("words"), "at": _iso(p.tech_at)} if p.tech else None),
             "g_state": p.g_state, "g_reason": p.g_reason, "g_advice": indexing.advice(p.g_reason), "g_last_crawl": _iso(p.g_last_crawl), "g_canonical": p.g_canonical, "g_checked_at": _iso(p.g_checked_at)}
 
 
@@ -52,7 +53,8 @@ def overview(status: str = "all", q: str = "", limit: int = 300, b: Business = D
     rows = list(db.scalars(select(IndexPage).where(IndexPage.business_id == b.id).order_by(IndexPage.first_seen_at.desc(), IndexPage.id.desc())))
     pend = {p.id for p in indexing.pending(db, b)}
     counts = {"total": len(rows), "in_sitemap": sum(1 for p in rows if p.in_sitemap), "indexed": sum(1 for p in rows if p.g_state == "indexed"),
-              "not_indexed": sum(1 for p in rows if p.g_state in ("not_indexed", "blocked")), "unchecked": sum(1 for p in rows if not p.g_state), "sent": sum(1 for p in rows if p.submitted_at),
+              "not_indexed": sum(1 for p in rows if p.g_state in ("not_indexed", "blocked")), "unchecked": sum(1 for p in rows if not p.g_state), "tech_unchecked": sum(1 for p in rows if not p.tech), "tech_ok": sum(1 for p in rows if (p.tech or {}).get("verdict") == "indexable"),
+              "tech_risky": sum(1 for p in rows if (p.tech or {}).get("verdict") == "risky"), "tech_blocked": sum(1 for p in rows if (p.tech or {}).get("verdict") == "blocked"), "sent": sum(1 for p in rows if p.submitted_at),
               "pending": len(pend), "skipped": sum(1 for p in rows if p.skip_reason), "new": sum(1 for p in rows if p.first_seen_at and indexing._aware(p.first_seen_at) > indexing._now() - timedelta(days=7))}
     needle = q.strip().lower()
 
@@ -60,7 +62,7 @@ def overview(status: str = "all", q: str = "", limit: int = 300, b: Business = D
         if needle and needle not in p.url.lower():
             return False
         return {"all": True, "new": bool(p.first_seen_at and indexing._aware(p.first_seen_at) > indexing._now() - timedelta(days=7)), "pending": p.id in pend, "indexed": p.g_state == "indexed",
-                "not_indexed": p.g_state in ("not_indexed", "blocked"), "unchecked": not p.g_state, "skipped": bool(p.skip_reason)}.get(status, True)
+                "not_indexed": p.g_state in ("not_indexed", "blocked"), "tech_problem": (p.tech or {}).get("verdict") in ("risky", "blocked"), "unchecked": not p.g_state, "skipped": bool(p.skip_reason)}.get(status, True)
 
     shown = [_page(p, pend) for p in rows if keep(p)][: max(1, min(limit, 1000))]
     key = st.indexnow_key
@@ -107,6 +109,13 @@ def submit(body: SubmitIn, b: Business = Depends(get_business), db: Session = De
 class InspectIn(BaseModel):
     urls: list[str] | None = Field(default=None, max_length=50)
     limit: int = Field(default=indexing.INSPECT_BATCH, ge=1, le=50)
+
+
+@router.post("/check")
+def check(body: InspectIn | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Check whether the pages can be indexed at all (loads each one like a crawler: errors, redirects, noindex, robots.txt, canonical, readable text). Needs no Google account."""
+    _guard(user)
+    return indexing.check_pages(db, b, (body.urls if body and body.urls else None), force=bool(body and body.urls))
 
 
 @router.post("/inspect")
