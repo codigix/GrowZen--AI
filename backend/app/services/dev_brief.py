@@ -1,8 +1,11 @@
 """The developer brief: one document a developer can work from to put the keyword changes on the website.
 
-For every page that has keywords mapped to it: the page, its main and supporting keywords, and a table of what to REPLACE or ADD (where on the page, what is there now, what to change it to, and for which keyword).
-After the pages: the keywords that still have no page, notes for the whole site, and what to check when it is done. Everything comes from the page overview (the page read live), so what the document says is
-what the page says today. The text proposed is only what the software could write from the business's own facts: the developer or the owner reads it before it goes live.
+For every page that has keywords mapped to it, three short lists, in the order a developer works:
+  1. META DATA (goes in the page's <head>): the page title and the meta description: the text there now, and the text to replace it with (or to add, when the page has none).
+  2. REPLACE existing content: the heading or paragraph that is on the page now (find this), and what to replace it with.
+  3. ADD NEW content: what does not exist yet (a new section, a new paragraph, a heading, image text), what to write, and where on the page to put it.
+After the pages: the keywords that still have no page, notes for the whole site, and what to check when it is done. Everything comes from the page overview (the page read live), so what the document says is what
+the page says today. The text proposed is only what the software could write from the business's own facts: the developer or the owner reads it before it goes live.
 
 Two formats from the same data: PDF (to send) and Markdown (to paste into a ticket).
 """
@@ -24,8 +27,10 @@ from . import keyword_mapping as km
 from . import keyword_placement as kp
 from .gsc import host_of
 
-ELEMENT = {"title": "Page title (the <title> tag)", "description": "Meta description", "heading": "Main heading (H1)", "intro": "First paragraph", "subheading": "New section heading (H2)",
-           "text": "New paragraph", "image": "Image description (alt text)"}
+META_PLACES = {"title": "Page title (the <title> tag in the head)", "description": "Meta description (the description meta tag in the head)"}
+REPLACE_PLACES = {"heading": "Main heading (H1)", "intro": "First paragraph", "image": "Image text (alt)"}
+WHERE_NEW = {"heading": "Put it at the top of the page content as the one main heading (H1).", "intro": "Put it directly under the main heading, as the first paragraph.",
+             "image": "Use it as the alt text of the first image on the page.", "section": "Add it as a new section after the existing content, above the footer: the heading first, then the paragraph under it."}
 MAX_PAGES = 15
 
 
@@ -46,6 +51,27 @@ def _page(business_id: int, url: str, focus: str | None) -> dict[str, Any]:
         return {"url": url, "path": _path(url), "error": f"The page could not be read ({str(exc)[:80]})."}
     finally:
         db.close()
+
+
+def sort_changes(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """The page's suggestions as the three lists a developer works through. rows: {place, current, new, keyword, why}.
+    A section heading and the paragraph for the same keyword become one new section."""
+    meta, replace, add = [], [], []
+    sections: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        place, cur = r["place"], (r.get("current") or "").strip()
+        if place in META_PLACES:
+            meta.append({"element": META_PLACES[place], "action": "REPLACE" if cur else "ADD", "current": cur, "new": r["new"], "keyword": r["keyword"], "why": r.get("why", "")})
+        elif place in REPLACE_PLACES and cur:
+            replace.append({"element": REPLACE_PLACES[place], "current": cur, "new": r["new"], "keyword": r["keyword"], "why": r.get("why", "")})
+        elif place in ("subheading", "text"):
+            s = sections.setdefault(r["keyword"], {"kind": "section", "keyword": r["keyword"], "heading": "", "paragraph": "", "why": r.get("why", "")})
+            s["heading" if place == "subheading" else "paragraph"] = r["new"]
+        else:
+            add.append({"kind": "single", "element": REPLACE_PLACES.get(place, place), "place": place, "new": r["new"], "keyword": r["keyword"], "why": r.get("why", "")})
+    add = [{**s, "element": "New section", "place": "section"} for s in sections.values()] + add
+    meta.sort(key=lambda m: 0 if "title" in m["element"].lower() else 1)
+    return {"meta": meta, "replace": replace, "add": add}
 
 
 def collect(db: Session, b: Business, only_page: str | None = None) -> dict[str, Any]:
@@ -73,21 +99,21 @@ def collect(db: Session, b: Business, only_page: str | None = None) -> dict[str,
         reads = list(pool.map(lambda p: _page(b.id, urls[p], next((k.keyword for k in by_page[p] if k.role == "primary"), by_page[p][0].keyword if by_page[p] else None)), order))
     pages = []
     for path, read in zip(order, reads):
-        entry: dict[str, Any] = {"path": path, "url": urls[path], "keywords": [{"keyword": k.keyword, "role": k.role or "", "volume": k.volume} for k in by_page[path]], "changes": [], "notes": []}
+        entry: dict[str, Any] = {"path": path, "url": urls[path], "keywords": [{"keyword": k.keyword, "role": k.role or "", "volume": k.volume} for k in by_page[path]],
+                                 "meta": [], "replace": [], "add": [], "notes": []}
         if read.get("error"):
             entry["notes"].append(read["error"])
         else:
             entry["scope"] = read["scope"]["label"]
-            entry["notes"] += [n for n in read.get("notes", [])]
+            entry["notes"] += list(read.get("notes", []))
+            rows = []
             for r in read["keywords"]:
                 if r.get("warning"):
                     entry["notes"].append(f"\"{r['keyword']}\": {r['warning']}")
                     continue
-                for a in r["to_add"]:
-                    if not a.get("example"):
-                        continue
-                    entry["changes"].append({"element": ELEMENT.get(a["place"], a["place"]), "action": "Replace" if a.get("current") else "Add", "current": a.get("current") or "", "new": a["example"],
-                                             "keyword": r["keyword"], "why": a["why"]})
+                rows += [{"place": a["place"], "current": a.get("current"), "new": a["example"], "keyword": r["keyword"], "why": a["why"]} for a in r["to_add"] if a.get("example")]
+            entry.update(sort_changes(rows))
+        entry["count"] = len(entry["meta"]) + len(entry["replace"]) + len(entry["add"])
         pages.append(entry)
     plan = km.plan(db, b)
     missing = [{"keyword": m["keyword"], "volume": m.get("volume"), "kind": "Page", "address": m.get("slug"), "title": m.get("title")} for m in plan.get("missing_pages", [])]
@@ -100,19 +126,21 @@ def collect(db: Session, b: Business, only_page: str | None = None) -> dict[str,
     if any("canonical" in n for e in pages for n in e["notes"]):
         site_notes.append("Some pages point their canonical tag at another page: each page should name itself as canonical.")
     return {"business": b.name, "website": b.website, "date": date.today().isoformat(), "pages": pages, "missing": missing, "unmapped": unmapped, "site_notes": site_notes,
-            "totals": {"pages": len(pages), "changes": sum(len(p["changes"]) for p in pages), "keywords": len(kws)}}
+            "totals": {"pages": len(pages), "changes": sum(p["count"] for p in pages), "meta": sum(len(p["meta"]) for p in pages), "replace": sum(len(p["replace"]) for p in pages),
+                       "add": sum(len(p["add"]) for p in pages), "keywords": len(kws)}}
 
 
-STEPS = ["Make each change on the page named, in the place named (title, description, heading, paragraph, alt text).",
+STEPS = ["Open each page below and make the changes in the order given: meta data first, then the text to replace, then the new content to add.",
+         "REPLACE means: find the text shown under Find and swap it for the text under Replace with. ADD NEW means there is nothing there now: add it where it says.",
          "Keep one main heading (H1) per page and write for people first: use the keyword once or twice, in plain words.",
-         "Publish, then open the page and check the change is there.",
-         "In Search Console, use URL Inspection > Request indexing for each changed page.",
-         "Tell the owner: the Website Audit in the software is run again to confirm, and the keywords are tracked for the next weeks."]
+         "Publish, then open the page and check each change is there.",
+         "In Search Console, use URL Inspection > Request indexing for each changed page, and tell the owner so the software can re-check the pages."]
 
 
 def render_md(d: dict[str, Any]) -> str:
-    esc = lambda s: str(s or "").replace("|", "\\|").replace("\n", " ")  # noqa: E731
-    out = [f"# SEO content changes: {d['business']}", "", f"Website: {d['website']}  ", f"Prepared: {d['date']}  ", f"Scope: {d['totals']['pages']} pages, {d['totals']['changes']} changes, {d['totals']['keywords']} chosen keywords", "",
+    t = d["totals"]
+    out = [f"# SEO content changes: {d['business']}", "", f"Website: {d['website']}  ", f"Prepared: {d['date']}  ",
+           f"Scope: {t['pages']} pages. {t['meta']} meta data changes, {t['replace']} texts to replace, {t['add']} new things to add.", "",
            "This document lists what to change on each page so the chosen keywords are on the right pages. The proposed text is a draft written from the business's own facts: read each line and change it so it is true before it goes live.", "",
            "## How to work through it", ""] + [f"{i}. {s}" for i, s in enumerate(STEPS, 1)] + [""]
     if d["site_notes"]:
@@ -124,17 +152,35 @@ def render_md(d: dict[str, Any]) -> str:
         if p["keywords"]:
             out.append("Keywords: " + "; ".join(f"**{k['keyword']}**{' (primary)' if k['role'] == 'primary' else ' (secondary)' if k['role'] == 'secondary' else ''}{f', {k['volume']:,} searches/month' if k.get('volume') else ''}" for k in p["keywords"]))
         out.append("")
-        if p["changes"]:
-            out += ["| Done | # | Where | Now | Change to | Keyword |", "|---|---|---|---|---|---|"]
-            out += [f"| [ ] | {i} | {esc(c['action'])}: {esc(c['element'])} | {esc(c['current']) or '(nothing there)'} | {esc(c['new'])} | {esc(c['keyword'])} |" for i, c in enumerate(p["changes"], 1)]
-            out.append("")
-        else:
+        n = 0
+        if p["meta"]:
+            out += ["### Meta data (goes in the page's head)", ""]
+            for m in p["meta"]:
+                n += 1
+                out += [f"- [ ] **{m['element']}: {m['action']}**"]
+                out += ([f"  - Find: `{m['current']}`", f"  - Replace with: `{m['new']}`"] if m["current"] else ["  - Now: nothing", f"  - Add: `{m['new']}`"]) + [f"  - For keyword: {m['keyword']}", ""]
+        if p["replace"]:
+            out += ["### Replace existing content", ""]
+            for r in p["replace"]:
+                n += 1
+                out += [f"- [ ] **{r['element']}: REPLACE**", f"  - Find: `{r['current']}`", f"  - Replace with: `{r['new']}`", f"  - For keyword: {r['keyword']}", ""]
+        if p["add"]:
+            out += ["### Add new content", ""]
+            for a in p["add"]:
+                n += 1
+                out.append(f"- [ ] **{a['element']}: ADD NEW**")
+                if a["kind"] == "section":
+                    out += ([f"  - Section heading (H2): `{a['heading']}`"] if a["heading"] else []) + ([f"  - Paragraph under it: `{a['paragraph']}`"] if a["paragraph"] else [])
+                else:
+                    out.append(f"  - Text: `{a['new']}`")
+                out += [f"  - Where: {WHERE_NEW.get(a['place'], 'Add it where it fits on the page.')}", f"  - For keyword: {a['keyword']}", ""]
+        if not n:
             out += ["No text changes were found for this page.", ""]
-        out += [f"Note: {n}" for n in p["notes"]] + ([""] if p["notes"] else [])
+        out += [f"Note: {x}" for x in p["notes"]] + ([""] if p["notes"] else [])
     if d["missing"] or d["unmapped"]:
-        out += ["## Keywords that still need a page", ""]
+        out += ["## Keywords that still need a page (ADD NEW)", ""]
         if d["missing"]:
-            out += ["| Keyword | Make a | Suggested address | Suggested title |", "|---|---|---|---|"] + [f"| {esc(m['keyword'])} | {m['kind']} | {esc(m['address'])} | {esc(m['title'])} |" for m in d["missing"]]
+            out += ["| Keyword | Make a | Suggested address | Suggested title |", "|---|---|---|---|"] + [f"| {m['keyword']} | {m['kind']} | {m['address']} | {m['title']} |" for m in d["missing"]]
             out.append("")
         left = [k for k in d["unmapped"] if k not in {m["keyword"] for m in d["missing"]}]
         if left:
@@ -145,7 +191,7 @@ def render_md(d: dict[str, Any]) -> str:
 
 def _safe(s: Any) -> str:
     """Helvetica draws Latin text only: other characters become a plain stand-in rather than a broken box."""
-    s = str(s or "").replace("\u2013", "-").replace("\u2014", "-").replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"').replace("\u2026", "...").replace("\u00b7", "-")
+    s = str(s or "").replace("–", "-").replace("—", "-").replace("‘", "'").replace("’", "'").replace("“", '"').replace("”", '"').replace("…", "...").replace("·", "-")
     return s.encode("latin-1", "replace").decode("latin-1")
 
 
@@ -154,47 +200,70 @@ def render_pdf(d: dict[str, Any]) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
-    from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     st = getSampleStyleSheet()
-    small = ParagraphStyle("small", parent=st["BodyText"], fontSize=8.2, leading=10.4)
+    small = ParagraphStyle("small", parent=st["BodyText"], fontSize=8.8, leading=11.4)
     smallb = ParagraphStyle("smallb", parent=small, fontName="Helvetica-Bold")
+    label = ParagraphStyle("label", parent=small, fontName="Helvetica-Bold", textColor=colors.HexColor("#475569"))
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=14 * mm, rightMargin=14 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title=f"SEO content changes: {_safe(d['business'])}")
     p = lambda t, style="BodyText": Paragraph(escape(_safe(t)), st[style])  # noqa: E731
     c = lambda t, s=small: Paragraph(escape(_safe(t)), s)  # noqa: E731
+    t = d["totals"]
     flow: list[Any] = [p("SEO content changes", "Title"), p(f"{d['business']}  |  {d['website']}  |  prepared {d['date']}"),
-                       p(f"{d['totals']['pages']} pages, {d['totals']['changes']} changes, {d['totals']['keywords']} chosen keywords", "Heading4"), Spacer(1, 4),
+                       p(f"{t['pages']} pages: {t['meta']} meta data changes, {t['replace']} texts to replace, {t['add']} new things to add", "Heading4"), Spacer(1, 4),
                        p("This document lists what to change on each page so the chosen keywords are on the right pages. The proposed text is a draft written from the business's own facts: read each line "
                          "and change it so it is true before it goes live."), Spacer(1, 6), p("How to work through it", "Heading3")]
     flow += [p(f"{i}. {s}") for i, s in enumerate(STEPS, 1)]
     if d["site_notes"]:
         flow += [Spacer(1, 6), p("Notes for the whole site", "Heading3")] + [p("- " + n) for n in d["site_notes"]]
-    grid = [("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")), ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]
+    W = [30 * mm, 152 * mm]
+    TONE = {"REPLACE": "#fef3c7", "ADD NEW": "#dcfce7", "ADD": "#dcfce7"}
+
+    def item(n: int, element: str, action: str, rows: list[tuple[str, str]], keyword: str) -> Any:
+        """One change as a small box: the header says where and what to do, then Find / Replace with (or Where / Text) lines."""
+        head = Table([[c(f"[   ]  {n}.  {element}", smallb), c(action, smallb)]], colWidths=[142 * mm, 40 * mm])
+        head.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(TONE.get(action, "#f1f5f9"))), ("ALIGN", (1, 0), (1, 0), "RIGHT"), ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+        body = Table([[c(a, label), c(b)] for a, b in rows + [("For keyword", keyword)]], colWidths=W)
+        body.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
+        box = Table([[head], [body]], colWidths=[182 * mm])
+        box.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+        return KeepTogether([box, Spacer(1, 5)])
+
     for pg in d["pages"]:
-        block: list[Any] = [Spacer(1, 10), p(f"Page: {pg['path']}", "Heading2"), c(pg["url"])]
+        flow += [Spacer(1, 10), p(f"Page: {pg['path']}", "Heading2"), c(pg["url"])]
         if pg.get("scope"):
-            block.append(c(f"Page type: {pg['scope']}"))
+            flow.append(c(f"Page type: {pg['scope']}"))
         if pg["keywords"]:
-            block.append(c("Keywords: " + "; ".join(f"{k['keyword']}{' (primary)' if k['role'] == 'primary' else ' (secondary)' if k['role'] == 'secondary' else ''}{f' - {k['volume']:,} searches/month' if k.get('volume') else ''}" for k in pg["keywords"])))
-        block.append(Spacer(1, 3))
-        if pg["changes"]:
-            rows = [[c("#", smallb), c("Where", smallb), c("Now", smallb), c("Change to", smallb), c("Keyword", smallb), c("Done", smallb)]]
-            for i, ch in enumerate(pg["changes"], 1):
-                rows.append([c(i), c(f"{ch['action']}: {ch['element']}"), c(ch["current"] or "(nothing there)"), c(ch["new"]), c(ch["keyword"]), c("[   ]")])
-            t = Table(rows, colWidths=[7 * mm, 31 * mm, 48 * mm, 52 * mm, 28 * mm, 12 * mm], repeatRows=1)
-            t.setStyle(TableStyle(grid))
-            block.append(t)
-        else:
-            block.append(p("No text changes were found for this page."))
-        block += [c("Note: " + n) for n in pg["notes"]]
-        flow += [KeepTogether(block[:4])] + block[4:]
+            flow.append(c("Keywords: " + "; ".join(f"{k['keyword']}{' (primary)' if k['role'] == 'primary' else ' (secondary)' if k['role'] == 'secondary' else ''}{f' - {k['volume']:,} searches/month' if k.get('volume') else ''}" for k in pg["keywords"])))
+        flow.append(Spacer(1, 4))
+        n = 0
+        if pg["meta"]:
+            flow.append(p("Meta data (goes in the page's head)", "Heading4"))
+            for m in pg["meta"]:
+                n += 1
+                flow.append(item(n, m["element"], m["action"], [("Find", m["current"]), ("Replace with", m["new"])] if m["current"] else [("Now", "nothing"), ("Add", m["new"])], m["keyword"]))
+        if pg["replace"]:
+            flow.append(p("Replace existing content", "Heading4"))
+            for r in pg["replace"]:
+                n += 1
+                flow.append(item(n, r["element"], "REPLACE", [("Find", r["current"]), ("Replace with", r["new"])], r["keyword"]))
+        if pg["add"]:
+            flow.append(p("Add new content", "Heading4"))
+            for a in pg["add"]:
+                n += 1
+                rows = ([("Section heading (H2)", a["heading"])] if a.get("heading") else []) + ([("Paragraph under it", a["paragraph"])] if a.get("paragraph") else []) if a["kind"] == "section" else [("Text", a["new"])]
+                flow.append(item(n, a["element"], "ADD NEW", rows + [("Where", WHERE_NEW.get(a["place"], "Add it where it fits on the page."))], a["keyword"]))
+        if not n:
+            flow.append(p("No text changes were found for this page."))
+        flow += [c("Note: " + x) for x in pg["notes"]]
     if d["missing"] or d["unmapped"]:
-        flow += [Spacer(1, 12), p("Keywords that still need a page", "Heading2")]
+        flow += [Spacer(1, 12), p("Keywords that still need a page (ADD NEW)", "Heading2")]
         if d["missing"]:
             rows = [[c("Keyword", smallb), c("Make a", smallb), c("Suggested address", smallb), c("Suggested title", smallb)]] + [[c(m["keyword"]), c(m["kind"]), c(m["address"]), c(m["title"])] for m in d["missing"]]
-            t = Table(rows, colWidths=[50 * mm, 22 * mm, 48 * mm, 58 * mm], repeatRows=1)
-            t.setStyle(TableStyle(grid))
-            flow.append(t)
+            tb = Table(rows, colWidths=[50 * mm, 22 * mm, 48 * mm, 62 * mm], repeatRows=1)
+            tb.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")), ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+            flow.append(tb)
         left = [k for k in d["unmapped"] if k not in {m["keyword"] for m in d["missing"]}]
         if left:
             flow += [Spacer(1, 4), c("Chosen but not yet mapped to a page: " + ", ".join(left[:40]) + ".")]
