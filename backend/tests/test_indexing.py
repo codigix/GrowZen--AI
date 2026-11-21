@@ -10,6 +10,13 @@ def bid(client):
     return client.post("/api/v1/businesses", json={"name": "Index Co", "website": "https://index.example/"}).json()["id"]
 
 
+
+@pytest.fixture(autouse=True)
+def _key_file_read_through_the_mocked_fetch(monkeypatch):
+    """These tests describe the key file with the mocked page fetcher; the real key reader (plain text) is tested in test_indexnow_key_text.py."""
+    monkeypatch.setattr(indexing, "_read_key_file", lambda url: (lambda r: (r[0], r[1], r[4]))(bc._fetch(url)))
+
+
 def api(client, bid, path=""):
     return f"/api/v1/businesses/{bid}/indexing{path}"
 

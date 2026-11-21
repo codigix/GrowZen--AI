@@ -72,19 +72,34 @@ def key_location(b: Business, key: str) -> str:
     return f"https://{host_of(b)}/{key}.txt"
 
 
+def _read_key_file(url: str) -> tuple[int | None, str, str | None]:
+    """(status, text, error) of the key file. It is plain text, so it is read as text: the page fetcher used elsewhere only accepts HTML."""
+    from .net import site_client
+    client = site_client(10)
+    try:
+        r = client.get(url)
+        return r.status_code, r.text[:2000], None
+    except Exception as exc:  # noqa: BLE001
+        return None, "", str(exc)[:100]
+    finally:
+        client.close()
+
+
 def verify_key(db: Session, b: Business) -> tuple[bool, str]:
     """Whether the key file is on the site where IndexNow will look for it. It proves the site is ours, so the search engines accept the submissions."""
     st = ensure_key(db, b)
     url = key_location(b, st.indexnow_key)
-    status, html, _final, _ms, error = bc._fetch(url)
+    status, body, error = _read_key_file(url)
     if error or status != 200:
         st.key_verified_at = None
         db.commit()
         return False, f"The key file is not on your site yet: {url} {'answered ' + str(status) if status else 'could not be opened'}. Upload the file to the root of the site and try again."
-    if html.strip() != st.indexnow_key:
+    if body.lstrip("\ufeff").strip() != st.indexnow_key:
         st.key_verified_at = None
         db.commit()
-        return False, f"{url} opens, but its text is not the key. The file must contain only the key."
+        shown = body.strip()[:60].replace("\n", " ")
+        why = "it looks like a web page (the site answers every address with its home page), not the file" if body.lstrip().startswith("<") else f"it contains \"{shown}\""
+        return False, f"{url} opens, but its text is not the key: {why}. The file must contain only the key."
     st.key_verified_at = _now()
     db.commit()
     return True, "The key file is in place: new pages can be sent to the search engines."
