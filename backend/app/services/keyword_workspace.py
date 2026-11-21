@@ -28,11 +28,13 @@ SOURCES = {
     "profile": "Your Google profile and services",
     "competitors": "Competitor websites",
     "google_ideas": "Google suggestions",
+    "planner": "Google Keyword Planner",
     "ai": "AI suggestions",
 }
 OWN = {"website", "search_console", "profile"}  # places that show what you already say or rank for
 _SMALL = frozenset({"in", "for", "of", "the", "a", "an", "to", "and", "best", "top"})
 MAX_COMPETITORS = 5
+PLANNER_MIN_SEARCHES = 30  # a Keyword Planner idea with fewer searches a month than this is not worth a row
 
 
 def _now() -> datetime:
@@ -202,7 +204,37 @@ def from_ai(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]
     return [{"keyword": x["keyword"], "kind": "ai", "detail": x.get("why") or "AI suggestion"} for x in res.get("items", [])], None
 
 
-COLLECTORS = {"website": from_website, "search_console": from_search_console, "profile": from_profile, "competitors": from_competitors, "google_ideas": from_google_ideas, "ai": from_ai}
+def from_planner(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
+    """Related keywords from the Google Ads Keyword Planner (GenerateKeywordIdeas), with Google's own monthly searches, difficulty and cost per click. The seeds are the words customers
+    use as written in the business understanding, then the business's own seeds. Ideas with almost no searches are left out."""
+    from . import google_ads_client as ads
+    from . import keywords
+    if not keyword_metrics.enabled():
+        return [], "Google Ads is not set up, so the Keyword Planner cannot be asked."
+    seeds = list(dict.fromkeys(s for s in keywords.default_seeds(b) if isinstance(s, str) and s.strip()))[:4]
+    if not seeds:
+        return [], "Add services or a category first, so there is something to search from."
+    geo = ads.geo_target_for(market.serp_country(b))
+    out: list[dict[str, Any]] = []
+    failed = ""
+    for seed in seeds:
+        try:
+            ideas = ads.keyword_ideas([seed], limit=40, geo_target=geo)
+        except ads.GoogleAdsNotConfigured as exc:
+            return [], str(exc)
+        except ads.GoogleAdsError as exc:
+            failed = str(exc)[:160]
+            continue
+        for i in ideas:
+            vol = i.get("avg_monthly_searches")
+            if vol is None or vol < PLANNER_MIN_SEARCHES:
+                continue
+            out.append({"keyword": i["keyword"], "kind": "planner", "detail": f"Google Keyword Planner idea for \"{seed}\"", "volume": vol,
+                        "difficulty": i.get("competition_index") if i.get("competition") not in (None, "UNSPECIFIED") else None, "cpc": i.get("high_top_of_page_bid") or None})
+    return out, (failed or None) if not out else None
+
+
+COLLECTORS = {"website": from_website, "search_console": from_search_console, "profile": from_profile, "competitors": from_competitors, "google_ideas": from_google_ideas, "planner": from_planner, "ai": from_ai}
 
 
 def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[str, Any]:

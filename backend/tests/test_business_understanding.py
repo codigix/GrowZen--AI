@@ -54,3 +54,37 @@ def test_the_highlighted_data_reaches_the_prompts_and_leads_the_search_words():
     info = bu.basis(b)
     assert info["used"] and info["model"] == "rental" and info["terms"] == ["lehenga on rent", "bridal lehenga rental"] and info["does_not_count"] == "Retail shops."
     assert bu.prompt_block(SimpleNamespace(business_brief=None)) == "" and bu.basis(SimpleNamespace())["used"] is False
+
+
+def test_keyword_planner_ideas_become_workspace_candidates(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import Business
+    from app.services import google_ads_client as ads, keyword_metrics, keyword_workspace as kw
+    bid = _biz(client, "Planner Co")
+    monkeypatch.setattr(keyword_metrics, "enabled", lambda: True)
+    asked = []
+
+    def fake(seeds, limit=50, include_monthly=False, language="en", geo_target="x"):
+        asked.append(seeds[0])
+        return [{"keyword": "rental dresses near me", "avg_monthly_searches": 40500, "competition": "LOW", "competition_index": 10, "high_top_of_page_bid": 19.5},
+                {"keyword": "rent your wardrobe", "avg_monthly_searches": 12, "competition": "UNSPECIFIED", "competition_index": 0, "high_top_of_page_bid": 0.0},
+                {"keyword": "clothing rental", "avg_monthly_searches": 6600, "competition": "UNSPECIFIED", "competition_index": 11, "high_top_of_page_bid": 0.0}]
+
+    monkeypatch.setattr(ads, "keyword_ideas", fake)
+    db = SessionLocal()
+    try:
+        found, note = kw.from_planner(db, db.get(Business, bid))
+    finally:
+        db.close()
+    assert note is None and asked and [f["keyword"] for f in found].count("rental dresses near me") == len(asked)
+    big = found[0]
+    assert big["kind"] == "planner" and big["volume"] == 40500 and big["difficulty"] == 10 and big["cpc"] == 19.5
+    assert all(f["keyword"] != "rent your wardrobe" for f in found)  # under 30 searches a month: left out
+    assert [f for f in found if f["keyword"] == "clothing rental"][0]["difficulty"] is None and "planner" in kw.COLLECTORS and kw.SOURCES["planner"] == "Google Keyword Planner"
+
+
+def test_without_google_ads_the_planner_source_says_why(monkeypatch):
+    from app.services import keyword_metrics, keyword_workspace as kw
+    monkeypatch.setattr(keyword_metrics, "enabled", lambda: False)
+    found, note = kw.from_planner(None, SimpleNamespace())
+    assert found == [] and "Google Ads is not set up" in note
