@@ -527,3 +527,125 @@ def add_keywords(db: Session, b: Business, keywords: list[str], label: str = "Se
     ids = [r.id for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)) if r.keyword.lower() in lower]
     picked = kw.pick(db, b, ids) if ids else {"picked": 0}
     return {"asked": len(clean), "added": picked.get("picked", 0)}
+
+
+# ------------------------------------------------------------------ the site's own files: sitemap, robots.txt, llms.txt, against the pages the audit found
+AI_BOTS = [("GPTBot", "ChatGPT training"), ("OAI-SearchBot", "ChatGPT search"), ("ChatGPT-User", "ChatGPT browsing"), ("ClaudeBot", "Claude"), ("PerplexityBot", "Perplexity"),
+           ("Google-Extended", "Gemini training"), ("Applebot-Extended", "Apple AI"), ("CCBot", "Common Crawl"), ("Bytespider", "ByteDance")]
+
+
+def norm_url(u: str) -> str:
+    p = urlsplit(u or "")
+    return f"{p.netloc.lower().removeprefix('www.')}{(p.path.rstrip('/') or '/')}"
+
+
+def _audited_pages(db: Session, b: Business, host: str) -> dict[str, dict[str, Any]]:
+    """Every page of the site the software has seen: the website audit's crawl, the page X-Ray scans, and the pages Page Indexing knows. {normalised: {url, sources}}"""
+    from ..models import Audit, PageXRayJob
+    seen: dict[str, dict[str, Any]] = {}
+
+    def add(url: str | None, src: str) -> None:
+        if not url or gsc.host_of(url) != host:
+            return
+        e = seen.setdefault(norm_url(url), {"url": url, "sources": []})
+        if src not in e["sources"]:
+            e["sources"].append(src)
+    for a in db.scalars(select(Audit).where(Audit.kind == "website", Audit.status == "done", Audit.target.ilike(f"%{host}%")).order_by(Audit.id.desc()).limit(3)):
+        for p in ((a.result or {}).get("crawl") or {}).get("pages") or []:
+            add(p.get("url"), "Website audit crawl")
+    for j in db.scalars(select(PageXRayJob).where(PageXRayJob.business_id == b.id).order_by(PageXRayJob.id.desc()).limit(2)):
+        for p in j.pages or []:
+            add(p.get("url"), "Page X-Ray scan")
+    for p in db.scalars(select(IndexPage).where(IndexPage.business_id == b.id)):
+        if not p.in_sitemap:
+            add(p.url, "Page Indexing (not from the sitemap)")
+    return seen
+
+
+def read_sitemap(b: Business, host: str) -> dict[str, Any]:
+    from . import sitemap
+    try:
+        entries = sitemap.discover_site_entries(b.website if b.website.startswith("http") else f"https://{b.website}", 2000)
+    except Exception as exc:  # noqa: BLE001
+        return {"found": False, "message": str(exc)[:200] or "No sitemap could be read.", "urls": []}
+    return {"found": True, "urls": [{"url": u, "lastmod": m} for u, m in entries if gsc.host_of(u) == host]}
+
+
+def read_robots(text: str | None, status: int | None, host: str, sample: list[str]) -> dict[str, Any]:
+    from urllib.robotparser import RobotFileParser
+    if status != 200 or not (text or "").strip():
+        return {"found": False, "status": status, "message": "No robots.txt: search engines may crawl everything. Add one that lists your sitemap." if status in (404, 410) else "robots.txt could not be read.",
+                "sitemaps": [], "rules": [], "ai_bots": [], "blocked_pages": []}
+    rp = RobotFileParser()
+    rp.parse(text.splitlines())
+    groups: list[dict[str, Any]] = []
+    cur: dict[str, Any] | None = None
+    sitemaps: list[str] = []
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if ":" not in line:
+            continue
+        k, v = (x.strip() for x in line.split(":", 1))
+        k = k.lower()
+        if k == "sitemap":
+            sitemaps.append(v)
+        elif k == "user-agent":
+            if cur is None or cur["disallow"] or cur["allow"]:
+                cur = {"agents": [], "disallow": [], "allow": []}
+                groups.append(cur)
+            cur["agents"].append(v)
+        elif k in ("disallow", "allow") and cur is not None and v:
+            cur[k].append(v)
+    base = f"https://{host}"
+    blocks_all = not rp.can_fetch("Googlebot", base + "/")
+    bots = [{"bot": n, "purpose": why, "allowed": rp.can_fetch(n, base + "/")} for n, why in AI_BOTS]
+    blocked = [u for u in sample if not rp.can_fetch("Googlebot", u)][:15]
+    return {"found": True, "status": 200, "lines": len(text.splitlines()), "sitemaps": sitemaps, "rules": [g for g in groups if g["disallow"] or g["allow"]][:12], "blocks_google": blocks_all,
+            "ai_bots": bots, "blocked_pages": blocked, "text": text[:3000]}
+
+
+def read_llms(host: str, sitemap_norm: set[str]) -> list[dict[str, Any]]:
+    """llms.txt and llms-full.txt, the files that tell AI assistants what the site is: read, checked against the format, and its links set against the sitemap."""
+    from .page_xray import fetch_small
+    out = []
+    for name in ("llms.txt", "llms-full.txt"):
+        url = f"https://{host}/{name}"
+        raw = fetch_small(url, 400_000)
+        text = (raw or {}).get("text") or ""
+        ok = bool(raw) and raw["status"] == 200 and text.strip() and not text.lstrip().startswith("<") and "html" not in (raw.get("content_type") or "").lower()
+        if not ok:
+            out.append({"name": name, "url": url, "found": False, "status": (raw or {}).get("status")})
+            continue
+        links = re.findall(r"\[[^\]]*\]\((https?://[^)\s]+|/[^)\s]*)\)", text)
+        links = [u if u.startswith("http") else f"https://{host}{u}" for u in links]
+        own = [u for u in links if gsc.host_of(u) == host]
+        lines = text.splitlines()
+        h1 = next((ln for ln in lines if ln.startswith("# ")), "")
+        checks = [{"ok": bool(h1), "text": "Starts with a title (# Name)"}, {"ok": any(ln.startswith(">") for ln in lines), "text": "Has a short summary (> what the site is)"},
+                  {"ok": any(ln.startswith("## ") for ln in lines), "text": "Has sections (## Pages, ## Services)"}, {"ok": len(links) >= 3, "text": "Links to the important pages"}]
+        out.append({"name": name, "url": url, "found": True, "chars": len(text), "lines": len(lines), "title": h1[2:].strip(), "links": len(links), "checks": checks,
+                    "links_not_in_sitemap": [u for u in own if norm_url(u) not in sitemap_norm][:15] if sitemap_norm else [],
+                    "preview": text[:1200]})
+    return out
+
+
+def site_files(db: Session, b: Business) -> dict[str, Any]:
+    """The site's sitemap, robots.txt and llms.txt read live, with the pages the software has seen that the sitemap leaves out (and the reverse)."""
+    from .page_xray import fetch_small
+    host = gsc.host_of(b.website)
+    if not host:
+        return {"state": "no_website", "message": "Add the project's website first."}
+    sm = read_sitemap(b, host)
+    in_sm = {norm_url(x["url"]) for x in sm["urls"]}
+    seen = _audited_pages(db, b, host)
+    missing = [{"url": v["url"], "sources": v["sources"]} for k, v in seen.items() if k not in in_sm] if sm["found"] else []
+    not_audited = [x["url"] for x in sm["urls"] if norm_url(x["url"]) not in seen][:50]
+    rb = fetch_small(f"https://{host}/robots.txt")
+    robots = read_robots((rb or {}).get("text"), (rb or {}).get("status"), host, [x["url"] for x in sm["urls"]] + [v["url"] for v in seen.values()])
+    sitemap_lines = {norm_url(s) for s in robots.get("sitemaps", [])}
+    robots["lists_sitemap"] = bool(sitemap_lines) and any(norm_url(f"https://{host}/sitemap.xml") == s or s.endswith("sitemap.xml") or "sitemap" in s for s in sitemap_lines)
+    llms = read_llms(host, in_sm)
+    xml = "\n".join(f"  <url><loc>{m['url']}</loc></url>" for m in missing)
+    return {"state": "ok", "host": host, "sitemap": {**sm, "count": len(sm["urls"]), "urls": sm["urls"][:300]}, "audited": len(seen),
+            "missing_from_sitemap": missing, "missing_xml": f"<!-- add inside <urlset> in your sitemap -->\n{xml}" if missing else "", "sitemap_not_audited": not_audited,
+            "robots": robots, "llms": llms}

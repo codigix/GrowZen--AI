@@ -24,3 +24,18 @@ def test_check_page_refuses_another_site():
     b = types.SimpleNamespace(website="https://mine.example/")
     with pytest.raises(si.PageCheckError):
         si.check_site_page(None, b, "https://other.example/page")
+
+
+def test_norm_url_ignores_www_slash_and_query():
+    assert si.norm_url("https://www.x.com/a/?q=1") == si.norm_url("http://x.com/a") == "x.com/a"
+    assert si.norm_url("https://x.com") == "x.com/"
+
+
+def test_read_robots_finds_blocks_sitemaps_and_ai_bots():
+    txt = "User-agent: *\nDisallow: /private\n\nUser-agent: GPTBot\nDisallow: /\n\nSitemap: https://x.com/sitemap.xml\n"
+    r = si.read_robots(txt, 200, "x.com", ["https://x.com/", "https://x.com/private/a"])
+    assert r["found"] and r["sitemaps"] == ["https://x.com/sitemap.xml"] and not r["blocks_google"]
+    assert next(b for b in r["ai_bots"] if b["bot"] == "GPTBot")["allowed"] is False
+    assert next(b for b in r["ai_bots"] if b["bot"] == "ClaudeBot")["allowed"] is True
+    assert r["blocked_pages"] == ["https://x.com/private/a"]
+    assert si.read_robots("", 404, "x.com", [])["found"] is False

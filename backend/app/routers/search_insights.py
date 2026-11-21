@@ -51,3 +51,9 @@ def add_keywords(body: KeywordsIn, b: Business = Depends(get_business), db: Sess
     log(db, user.name, "keywords_from_search_console", b.id, added=out["added"])
     db.commit()
     return out
+
+
+@router.get("/site-files")
+def site_files(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The site's sitemap, robots.txt and llms.txt read live, and the pages the audits saw that the sitemap leaves out."""
+    return search_insights.site_files(db, b)

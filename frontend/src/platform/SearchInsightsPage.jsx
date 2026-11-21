@@ -347,6 +347,66 @@ function NotAvailable({ d }) {
   );
 }
 
+/** The site's own files, read live: the sitemap against the pages the audits found, robots.txt, and the llms.txt files for AI assistants. */
+function SiteFiles({ b }) {
+  const r = useApi(`/businesses/${b.id}/search-insights/site-files`);
+  const [copied, setCopied] = useState(false);
+  if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
+  if (!r.data) return <SkList rows={5} />;
+  const d = r.data;
+  if (d.state !== 'ok') return <Card><p className="text-13 text-amber-800">{d.message}</p></Card>;
+  const sm = d.sitemap, rb = d.robots;
+  const copy = async () => { try { await navigator.clipboard.writeText(d.missing_xml); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch { /* the text is shown below */ } };
+  const tile = (label, value, tone, sub) => <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3 min-w-[150px] flex-1"><div className="text-12 text-slate-500">{label}</div><div className={`text-26 font-bold tabular-nums ${tone}`}>{value}</div>{sub && <div className="text-11.5 text-slate-500">{sub}</div>}</div>;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3"><p className="text-12.5 text-slate-500">Read live from <b className="text-slate-700">{d.host}</b></p><Button size="sm" variant="secondary" icon={RefreshCw} className="ml-auto" onClick={() => r.reload(true)}>Read again</Button></div>
+
+      <Card title="Sitemap" subtitle="Read from your website now, against every page the audits and scans have seen">
+        {!sm.found ? <p className="text-13 text-amber-800 bg-amber-50 rounded px-3 py-2">{sm.message} Publish a sitemap.xml and list it in robots.txt.</p> : <>
+          <div className="flex flex-wrap gap-2.5 mb-3">
+            {tile('Pages in the sitemap', sm.count, 'text-slate-900')}
+            {tile('Pages the software has seen', d.audited, 'text-slate-900', 'audit crawl, scans, indexing')}
+            {tile('Seen but not in the sitemap', d.missing_from_sitemap.length, d.missing_from_sitemap.length ? 'text-amber-700' : 'text-emerald-700', d.missing_from_sitemap.length ? 'add them' : 'nothing missing')}
+            {tile('In the sitemap, never audited', d.sitemap_not_audited.length, d.sitemap_not_audited.length ? 'text-slate-900' : 'text-emerald-700')}
+          </div>
+          <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Seen on the site but missing from the sitemap</div>
+          <Table head={['Page', 'Seen by', 'Actions']} empty="Every page the software has seen is in the sitemap.">
+            {d.missing_from_sitemap.map(m => <tr key={m.url}><td className="px-3 py-2"><Path p={m.url} /></td><td className="px-3 py-2 text-12.5 text-slate-600">{m.sources.join(', ')}</td><td className={ACT_TD}><PageActions url={m.url} /></td></tr>)}
+          </Table>
+          {d.missing_from_sitemap.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-2"><Button size="sm" icon={copied ? Check : Plus} onClick={copy}>{copied ? 'Copied' : 'Copy the XML for these pages'}</Button><span className="text-12 text-slate-500">Paste it inside the sitemap's &lt;urlset&gt;, then submit the sitemap in Search Console. Leave out pages that should not be found (thank-you pages, tests).</span></div>}
+          {d.sitemap_not_audited.length > 0 && <details className="mt-3 text-13"><summary className="cursor-pointer font-semibold text-slate-700">{d.sitemap_not_audited.length} sitemap pages the audits have not seen</summary><ul className="mt-2 space-y-1">{d.sitemap_not_audited.map(u => <li key={u} className="flex items-center gap-2"><Path p={u} /><PageActions url={u} /></li>)}</ul></details>}
+          <details className="mt-3 text-13"><summary className="cursor-pointer font-semibold text-slate-700">All {sm.count} pages in the sitemap</summary><ul className="mt-2 space-y-1">{sm.urls.map(x => <li key={x.url} className="flex flex-wrap items-center gap-x-3"><Path p={x.url} />{x.lastmod && <span className="text-11.5 text-slate-500">updated {x.lastmod}</span>}</li>)}</ul></details></>}
+      </Card>
+
+      <Card title="robots.txt" subtitle="What search engines and AI crawlers may read">
+        {!rb.found ? <p className="text-13 text-amber-800 bg-amber-50 rounded px-3 py-2">{rb.message}</p> : <div className="space-y-3">
+          <div className="flex flex-wrap gap-2"><Badge tone={rb.blocks_google ? 'red' : 'green'}>{rb.blocks_google ? 'Google is blocked from the site' : 'Google may read the site'}</Badge><Badge tone={rb.sitemaps.length ? 'green' : 'amber'}>{rb.sitemaps.length ? `${rb.sitemaps.length} sitemap line${rb.sitemaps.length === 1 ? '' : 's'}` : 'No Sitemap line'}</Badge><Badge tone="gray">{rb.lines} lines</Badge></div>
+          {!rb.sitemaps.length && <p className="text-12.5 text-amber-800">Add <code>Sitemap: https://{d.host}/sitemap.xml</code> so every search engine finds the sitemap.</p>}
+          {rb.sitemaps.length > 0 && <div className="text-12.5 text-slate-600">{rb.sitemaps.map(x => <div key={x}><Path p={x} /></div>)}</div>}
+          {rb.blocked_pages.length > 0 && <div><div className="text-12 font-semibold uppercase tracking-wide text-red-700 mb-1">Pages in your sitemap or audits that robots.txt blocks for Google</div><ul className="space-y-1">{rb.blocked_pages.map(u => <li key={u}><Path p={u} /></li>)}</ul></div>}
+          <div><div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">AI assistants</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">{rb.ai_bots.map(x => <div key={x.bot} className="rounded-lg ring-1 ring-slate-200 px-3 py-2 flex items-center justify-between gap-2"><div><div className="text-13 font-medium text-slate-900">{x.bot}</div><div className="text-11.5 text-slate-500">{x.purpose}</div></div><Badge tone={x.allowed ? 'green' : 'red'}>{x.allowed ? 'Allowed' : 'Blocked'}</Badge></div>)}</div>
+            <p className="mt-1.5 text-11.5 text-slate-500">Blocking an AI crawler keeps your site out of that assistant's answers. Allow the ones you want to appear in.</p></div>
+          {rb.rules.length > 0 && <Table head={['For', 'Blocked paths', 'Allowed paths']} empty="">{rb.rules.map((g, i) => <tr key={i}><td className="px-3 py-2 text-12.5">{g.agents.join(', ')}</td><td className="px-3 py-2 text-12.5 font-mono">{g.disallow.join('  ') || '—'}</td><td className="px-3 py-2 text-12.5 font-mono">{g.allow.join('  ') || '—'}</td></tr>)}</Table>}
+          <details className="text-12.5"><summary className="cursor-pointer font-semibold text-slate-700">The file</summary><pre className="mt-2 p-3 rounded-lg bg-slate-50 ring-1 ring-slate-200 overflow-x-auto text-12 whitespace-pre-wrap">{rb.text}</pre></details>
+        </div>}
+      </Card>
+
+      <Card title="llms.txt" subtitle="The files that tell AI assistants what your site is and which pages matter">
+        <div className="space-y-4">{d.llms.map(f => (
+          <div key={f.name}>
+            <div className="flex flex-wrap items-center gap-2 mb-1.5"><span className="text-13 font-semibold text-slate-900">/{f.name}</span><Badge tone={f.found ? 'green' : f.name === 'llms.txt' ? 'amber' : 'gray'}>{f.found ? 'Found' : 'Not found'}</Badge>{f.found && <span className="text-12 text-slate-500">{f.lines} lines · {f.links} links</span>}</div>
+            {!f.found ? <p className="text-12.5 text-slate-600">{f.name === 'llms.txt' ? 'Publish /llms.txt: a short Markdown file with your name, a one-line summary and links to your main pages and services, so AI assistants describe you correctly.' : 'Optional: the full text of your key pages in one file.'}</p> : <>
+              <ul className="space-y-1 mb-2">{f.checks.map(c => <li key={c.text} className="text-12.5 flex items-center gap-2"><Badge tone={c.ok ? 'green' : 'amber'}>{c.ok ? 'OK' : 'Missing'}</Badge>{c.text}</li>)}</ul>
+              {f.links_not_in_sitemap.length > 0 && <div className="mb-2"><div className="text-12 font-semibold text-amber-800 mb-1">Linked here but not in the sitemap</div><ul className="space-y-1">{f.links_not_in_sitemap.map(u => <li key={u}><Path p={u} /></li>)}</ul></div>}
+              <details className="text-12.5"><summary className="cursor-pointer font-semibold text-slate-700">The file</summary><pre className="mt-2 p-3 rounded-lg bg-slate-50 ring-1 ring-slate-200 overflow-x-auto text-12 whitespace-pre-wrap">{f.preview}{f.chars > 1200 ? '\n…' : ''}</pre></details></>}
+          </div>))}</div>
+      </Card>
+    </div>
+  );
+}
+
 function AddAll({ list }) {
   const c = useContext(Ctx);
   const todo = list.filter(k => !c.added.has(k.toLowerCase()));
@@ -377,7 +437,7 @@ function Insights({ b }) {
       } catch (e) { setNote(`Could not add: ${e.message}`); } finally { setAdding(''); }
     },
   };
-  const tabs = [['search', 'Search Console'], ['speed', 'Speed'], ['analytics', 'Analytics'], ['together', 'Together'], ['na', 'Not available']];
+  const tabs = [['search', 'Search Console'], ['files', 'Site files'], ['speed', 'Speed'], ['analytics', 'Analytics'], ['together', 'Together'], ['na', 'Not available']];
   return (
     <Ctx.Provider value={ctx}>
     <div className="space-y-4">
@@ -387,6 +447,7 @@ function Insights({ b }) {
       </div>
       {note && <p role="status" className="text-12.5 text-emerald-800 bg-emerald-50 rounded px-3 py-1.5">{note}</p>}
       {tab === 'search' && <SearchConsole d={d} />}
+      {tab === 'files' && <SiteFiles b={b} />}
       {tab === 'speed' && <Speed b={b} />}
       {tab === 'analytics' && <Analytics d={d} />}
       {tab === 'together' && <Together d={d} />}
