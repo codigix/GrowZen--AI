@@ -23,7 +23,7 @@ export default function KeywordMappingTab({ b }) {
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
-  const save = () => run('apply', async () => { const out = await api(`/businesses/${b.id}/keyword-mapping/apply`, { method: 'POST' }); r.setData(out); toast('Mapping saved on your keywords'); });
+  const save = () => run('apply', async () => { const out = await api(`/businesses/${b.id}/keyword-mapping/apply`, { method: 'POST' }); await r.reload(true); toast(out.mapped ? `Mapping saved: ${out.mapped} keyword${out.mapped === 1 ? '' : 's'} now point to their page` : 'Mapping saved on your keywords'); });
   const copy = (x, type) => { try { navigator.clipboard.writeText(brief(x, type)); toast('Brief copied'); } catch { toast('Could not copy'); } };
 
   if (!d.keywords) return <Card><p className="py-10 text-center text-13 text-slate-500">No keywords are saved yet. Pick some in the <Link to="/keyword-management/workspace" className="font-semibold text-indigo-700 hover:underline">Keyword Workspace</Link> first.</p></Card>;
@@ -34,6 +34,7 @@ export default function KeywordMappingTab({ b }) {
   return (
     <div className="space-y-4">
       <ErrorNote>{error}</ErrorNote>
+      {d.notes?.map(n => <p key={n} className="text-12.5 text-amber-900 bg-amber-50 rounded px-3 py-2">{n}</p>)}
 
       {/* The state of the mapping, and the one button that saves it */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-13 text-slate-600">
@@ -70,14 +71,14 @@ export default function KeywordMappingTab({ b }) {
                   <td className="px-3 py-2.5 text-right tabular-nums">{n0(p.primary_volume)}</td>
                   <td className="px-3 py-2.5 text-12.5 text-slate-600 max-w-[260px]">{p.secondary.length ? <span title={p.secondary.join(', ')}>{p.secondary.slice(0, 2).join(', ')}{p.secondary.length > 2 ? ` +${p.secondary.length - 2}` : ''}</span> : <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
-                    {!p.primary ? <Link to={`/keyword-management/discover?q=${encodeURIComponent((p.title || p.path).split(/[|\-–:]/)[0].trim().slice(0, 40))}`} className="text-12.5 font-semibold text-amber-700 hover:underline">Find a keyword</Link>
+                    {!p.primary ? <Link to={`/keyword-management/discover?q=${encodeURIComponent((p.path !== '/' ? p.path.replace(/[-_/]+/g, ' ').trim() : (p.title || p.path).split(/[|\-–:]/)[0].trim()).slice(0, 40))}`} className="text-12.5 font-semibold text-amber-700 hover:underline">Find a keyword</Link>
                       : p.saved ? <span title="Written on the keyword: it is saved"><Badge tone="green">Saved</Badge></span> : <span title="Our proposal. Press Save the mapping to keep it"><Badge tone="amber">Suggested</Badge></span>}
                   </td>
                   <td className="px-3 py-2.5 text-right whitespace-nowrap">
                     <span className="inline-flex gap-1.5">
                       <a href={p.url} target="_blank" rel="noreferrer"><Act icon={ExternalLink} tone="slate" tip="Open: show this page on your website in a new tab." /></a>
                       {p.primary ? <Link to={`/keyword-overview?q=${encodeURIComponent(p.primary)}`}><Act icon={Search} tone="sky" tip="Check keyword: open the searches, cost and related ideas for its main keyword." /></Link>
-                        : <Link to={`/keyword-management/discover?q=${encodeURIComponent((p.title || p.path).split(/[|\-–:]/)[0].trim().slice(0, 40))}`}><Act icon={Lightbulb} tone="indigo" tip="Find a keyword: search for keywords this page could rank for." /></Link>}
+                        : <Link to={`/keyword-management/discover?q=${encodeURIComponent((p.path !== '/' ? p.path.replace(/[-_/]+/g, ' ').trim() : (p.title || p.path).split(/[|\-–:]/)[0].trim()).slice(0, 40))}`}><Act icon={Lightbulb} tone="indigo" tip="Find a keyword: search for keywords this page could rank for." /></Link>}
                     </span>
                   </td>
                 </tr>))}

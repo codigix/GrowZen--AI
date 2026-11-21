@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session
 from ..models import Business, Keyword
 from . import growth_content as gc
 
-WEIGHT = {"title": 3, "heading": 2, "description": 1}
+WEIGHT = {"title": 3, "heading": 2, "slug": 2, "description": 1, "phrases": 1}
+NEEDED = 1.0  # a page carries a keyword when its places add up to at least this (a partial match counts half)
 BLOG_WORDS = ("how ", "what ", "why ", "which ", "when ", "guide", "tips", "vs ", " vs", "difference", "benefits", "ideas", "meaning", "examples")
 
 
@@ -38,15 +39,31 @@ def _key(path: str) -> str:
     return path.rstrip("/") or "/"
 
 
+def _cover(words: set[str], keyword: str) -> float:
+    """1 when the place holds every word of the keyword, a half when it holds most of a longer keyword (two of three), else 0."""
+    c = gc.core(keyword)
+    if not c or not words:
+        return 0.0
+    hit = sum(1 for w in c if w in words)
+    return 1.0 if hit == len(c) else 0.5 if len(c) >= 3 and hit / len(c) >= 0.66 else 0.0
+
+
 def plan(db: Session, b: Business) -> dict[str, Any]:
     crawl = gc._crawl(db, b)
     pages = [p for p in (crawl.get("pages") or []) if p.get("status") == 200 and p.get("url")]
     kws = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
     kws.sort(key=lambda k: -(k.volume or 0))
     corp = []
+    # A site that sends the same title and description on most pages (a single-page app) says nothing about which page is which: those two are ignored there and the web address leads.
+    from collections import Counter
+    same = Counter(((p.get("title") or "").strip(), (p.get("meta_description") or "").strip()) for p in pages)
+    shared = {k for k, n in same.items() if n >= 3 and k != ("", "")}
     for p in pages:
-        corp.append({"p": p, "path": _key(urlsplit(p["url"]).path or "/"),
-                     "parts": {"title": gc._corpus([p.get("title")]), "heading": gc._corpus([_h1(p)]), "description": gc._corpus([p.get("meta_description")])}})
+        generic = ((p.get("title") or "").strip(), (p.get("meta_description") or "").strip()) in shared and _key(urlsplit(p["url"]).path or "/") != "/"
+        path = _key(urlsplit(p["url"]).path or "/")
+        corp.append({"p": p, "path": path, "generic": generic,
+                     "parts": {"title": set() if generic else gc._corpus([p.get("title")]), "heading": gc._corpus([_h1(p)]), "description": set() if generic else gc._corpus([p.get("meta_description")]),
+                               "slug": gc._corpus([re.sub(r"[-_/]+", " ", path)]), "phrases": gc._corpus([x.get("keyword") for x in (p.get("top_keywords") or []) if isinstance(x, dict)])}})
     by_path = {c["path"]: c for c in corp}
     assigned: dict[str, list[Keyword]] = {}
     missing, blog = [], []
@@ -55,12 +72,12 @@ def plan(db: Session, b: Business) -> dict[str, Any]:
         manual = _key(urlsplit(k.target_url).path or "/") if k.target_url else None
         best, best_score = None, 0
         for c in corp:
-            score = sum(WEIGHT[part] for part, words in c["parts"].items() if gc.has_keyword(words, k.keyword))
+            score = sum(WEIGHT[part] * _cover(words, k.keyword) for part, words in c["parts"].items())
             if score > best_score or (score == best_score and score and len(c["path"]) < len(best["path"])):
                 best, best_score = c, score
         if manual and manual in by_path:
             best = by_path[manual]
-        elif best_score == 0:
+        elif best_score < NEEDED:
             best = None
         if best is not None:
             assigned.setdefault(best["path"], []).append(k)
@@ -79,7 +96,11 @@ def plan(db: Session, b: Business) -> dict[str, Any]:
         out_pages.append({"url": c["p"]["url"], "path": c["path"], "title": c["p"].get("title") or "", "primary": top.keyword if top else None, "primary_volume": top.volume if top else None,
                           "secondary": [k.keyword for k in ks[1:]], "keywords": len(ks), "saved": saved})
     out_pages.sort(key=lambda x: (-x["keywords"], x["path"]))
-    return {"crawled": bool(pages), "found_at": crawl.get("_found"), "pages": out_pages, "missing_pages": missing, "blog_opportunities": blog, "keywords": len(kws), "mapped": mapped,
+    notes = []
+    if any(c["generic"] for c in corp):
+        notes.append(f"{sum(1 for c in corp if c['generic'])} pages send the same title and description in their HTML (a single-page site), so they are matched by their web address only. "
+                     "Give every page its own title, heading and description and the mapping becomes exact.")
+    return {"crawled": bool(pages), "notes": notes, "found_at": crawl.get("_found"), "pages": out_pages, "missing_pages": missing, "blog_opportunities": blog, "keywords": len(kws), "mapped": mapped,
             "unmapped": len(missing) + len(blog), "pages_without_keyword": sum(1 for p in out_pages if not p["keywords"]), "primaries": sum(1 for p in out_pages if p["primary"])}
 
 

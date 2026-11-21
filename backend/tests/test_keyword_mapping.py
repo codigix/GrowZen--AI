@@ -109,3 +109,12 @@ def test_a_saved_suggestion_is_marked_saved(client):
     client.post(f"/api/v1/businesses/{bid}/keyword-mapping/apply")
     again = {p["path"]: p for p in client.get(f"/api/v1/businesses/{bid}/keyword-mapping").json()["pages"]}
     assert again["/implants"]["saved"] is True
+
+
+def test_cover_counts_a_partial_match_for_longer_keywords_only():
+    from app.services import keyword_mapping as km
+    words = {"pune", "mumbai", "cab", "service"}
+    assert km._cover(words, "pune to mumbai cab service") == 1.0          # every word
+    assert km._cover({"pune", "cab", "service"}, "pune to mumbai cab service") == 0.5  # three of four
+    assert km._cover({"cab"}, "pune cab") == 0.0                           # a two-word keyword needs both
+    assert km._cover(set(), "cab") == 0.0
