@@ -103,4 +103,27 @@ def pages_for_keywords(db: Session, b: Business) -> dict[str, Any]:
                 found.append({"url": p["url"], "path": path, "in": where})
         found.sort(key=lambda x: (-len(x["in"]), x["path"]))
         out[k.keyword] = found
-    return {"crawled": bool(pages), "found_at": crawl.get("_found"), "pages": out}
+    return {"crawled": bool(pages), "found_at": crawl.get("_found"), "pages": out, "site_pages": site_pages(db, b, pages)}
+
+
+def site_pages(db: Session, b: Business, crawled: list[dict[str, Any]] | None = None) -> list[dict[str, str]]:
+    """Every page of the project's own website the software knows: the last site crawl, the sitemap and Page Indexing. For choosing the page a keyword should rank on."""
+    from urllib.parse import urlsplit
+    from ..models import IndexPage
+    from .gsc import host_of
+    host = host_of(b.website)
+    seen: dict[str, dict[str, str]] = {}
+
+    def add(url: str | None, title: str = "") -> None:
+        if not url or (host and host_of(url) != host):
+            return
+        path = (urlsplit(url).path or "/").rstrip("/") or "/"
+        if path not in seen:
+            seen[path] = {"url": url, "path": path, "title": (title or "").strip()}
+        elif title and not seen[path]["title"]:
+            seen[path]["title"] = title.strip()
+    for p in crawled or []:
+        add(p.get("url"), p.get("title") or "")
+    for ip in db.scalars(select(IndexPage).where(IndexPage.business_id == b.id)):
+        add(ip.url)
+    return sorted(seen.values(), key=lambda x: (x["path"] != "/", x["path"]))

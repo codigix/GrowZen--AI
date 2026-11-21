@@ -678,6 +678,26 @@ function UsedOn({ info, keyword }) {
   );
 }
 
+/** Choose the page a keyword should rank on from every page of the website (or type another address). The list opens at once: nothing to guess or type. */
+function PagePicker({ pages, value, onPick, onCancel, listId }) {
+  const [typing, setTyping] = useState(false);
+  const all = pages.some(p => p.url === value || p.path === value) || !value ? pages : [{ url: value, path: value.replace(/^https?:\/\/[^/]+/, '') || '/', title: 'chosen earlier' }, ...pages];
+  if (typing || !all.length) {
+    return <input autoFocus list={listId} className={`${inputCls} max-w-[260px]`} defaultValue={value} placeholder="/page-address"
+      onBlur={e => onPick(e.target.value.trim())} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') onCancel(); }} />;
+  }
+  return (
+    <div className="max-w-[320px] space-y-1.5" onKeyDown={e => { if (e.key === 'Escape') onCancel(); }}>
+      <select autoFocus size={Math.min(9, all.length + 1)} aria-label="Choose the page this keyword should rank on" className={`${inputCls} w-full`} value={all.find(p => p.url === value || p.path === value)?.url || ''}
+        onChange={e => onPick(e.target.value)}>
+        <option value="">No page yet</option>
+        {all.map(p => <option key={p.url} value={p.url}>{p.path}{p.title && all.filter(x => x.title === p.title).length === 1 ? `  ·  ${p.title.slice(0, 40)}` : ''}</option>)}
+      </select>
+      <div className="flex gap-3 text-12"><button type="button" onClick={() => setTyping(true)} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Type another address</button><button type="button" onClick={onCancel} className="text-slate-500 hover:underline cursor-pointer">Cancel</button></div>
+    </div>
+  );
+}
+
 function Tracked({ b, kw }) {
   const [busy, error, run] = useAction();
   const pagesInfo = useApi(`/businesses/${b.id}/keywords/pages`).data;
@@ -714,7 +734,8 @@ function Tracked({ b, kw }) {
   const bulk = (label, fn) => run(label, async () => { for (const k of tracked.filter(x => sel.has(x.id))) await fn(k); setSel(new Set()); kw.reload(true); });
   const bulkDelete = () => ask({ what: `${sel.size} keyword${sel.size === 1 ? '' : 's'}`, effect: 'They stop being tracked, and their rank history is no longer shown.', onConfirm: () => bulk('bulkdel', (k) => api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'DELETE' })) });
   const toggleSel = (id) => setSel(s => { const x = new Set(s); x.has(id) ? x.delete(id) : x.add(id); return x; });
-  const pages = [...new Set(['/', '/services', '/contact', ...(b.services || []).map(s => `/services/${String(s.name || s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '')}`), ...tracked.map(k => k.target_url).filter(Boolean)])];
+  const sitePages = pagesInfo?.site_pages || [];
+  const pages = sitePages.length ? sitePages.map(p => p.path) : [...new Set(['/', '/services', '/contact', ...(b.services || []).map(s => `/services/${String(s.name || s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '')}`), ...tracked.map(k => k.target_url).filter(Boolean)])];
   const mapped = tracked.filter(k => k.target_url).length;
   const onGoogle = tracked.filter(k => k.rank).length;
   const counts = { all: tracked.length, nopage: tracked.length - mapped, google: onGoogle, nogoogle: tracked.length - onGoogle };
@@ -813,8 +834,8 @@ function Tracked({ b, kw }) {
                         </td>
                         <td className="px-4 py-4 min-w-[240px]">
                           {editing === k.id ? (
-                            <input autoFocus list={`pages-${b.id}`} className={`${inputCls} max-w-[260px]`} defaultValue={k.target_url || ''} placeholder="/page-address"
-                              onBlur={e => { setEditing(null); if (e.target.value !== (k.target_url || '')) update(k, { target_url: e.target.value || null }); }} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(null); }} />
+                            <PagePicker pages={sitePages} value={k.target_url || ''} listId={`pages-${b.id}`} onCancel={() => setEditing(null)}
+                              onPick={v => { setEditing(null); if (v !== (k.target_url || '')) update(k, { target_url: v || null }); }} />
                           ) : k.target_url ? (
                             <button type="button" onClick={() => setEditing(k.id)} title="Change the page" className="inline-flex items-center gap-1.5 font-semibold text-slate-800 hover:text-indigo-700 cursor-pointer"><span className="truncate max-w-[230px]">{k.target_url.replace(/^https?:\/\/[^/]+/, '') || '/'}</span><Pencil size={13} className="text-slate-400" /></button>
                           ) : guess ? (
