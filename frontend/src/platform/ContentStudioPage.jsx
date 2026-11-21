@@ -731,7 +731,7 @@ function SavedKeywordPicker({ b, inUse, onAdd }) {
 
 function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pendingLength, elapsed = 0, onGenerate, generating, onSaved, onScheduled, toast }) {
   const [step, setStep] = useState(selectedArticle ? 1 : 0);
-  const urlTopic = React.useMemo(() => (selectedArticle || selectedTopic ? '' : (new URLSearchParams(window.location.search).get('topic') || '').slice(0, 200)), []); // a keyword from My Keywords: the writer opens with it ready
+  const urlTopic = React.useMemo(() => (selectedArticle || selectedTopic ? '' : (() => { const q = new URLSearchParams(window.location.search); return (q.get('topic') || q.get('keyword') || '').slice(0, 200); })()), []); // a keyword sent from My Keywords, Keyword Mapping or the usage grid (?keyword= or ?topic=): the writer opens with it ready
   const [kw, setKw] = useState(selectedArticle ? selectedArticle.keyword : selectedTopic ? selectedTopic.title : urlTopic);  // the primary keyword
   const [topicText, setTopicText] = useState(selectedArticle ? selectedArticle.topic || selectedArticle.keyword : selectedTopic ? selectedTopic.title : urlTopic);
   const [secondaryList, setSecondaryList] = useState(selectedArticle ? selectedArticle.secondary_keywords || [] : selectedTopic?.selected || []);
