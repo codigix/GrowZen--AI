@@ -29,6 +29,8 @@ SOURCES = {
     "competitors": "Competitor websites",
     "google_ideas": "Google suggestions",
     "planner": "Google Keyword Planner",
+    "area": "Searches in your areas (Google)",
+    "brief": "Business summary",
     "ai": "AI suggestions",
 }
 OWN = {"website", "search_console", "profile"}  # places that show what you already say or rank for
@@ -146,11 +148,27 @@ def _competitor_domains(db: Session, b: Business) -> list[str]:
     return hygiene.saved_competitor_domains(db, b, limit=MAX_COMPETITORS)
 
 
+def _listing_rows(db: Session, b: Business) -> list[dict[str, Any]]:
+    """The services and keywords the AI worked out from the Google listing of each competitor (the ones with no website too): evidence read from their own listing."""
+    from ..models import Competitor
+    out = []
+    for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id, Competitor.listing.is_not(None))):
+        if c.selected is False:
+            continue
+        u = (c.listing or {}).get("understanding") or {}
+        for kind, items in (("keyword", u.get("keywords")), ("service", u.get("services"))):
+            for k in items or []:
+                out.append({"keyword": k, "kind": "competitors", "label": c.name, "competitor": c.name,
+                            "detail": f"{c.name}'s Google listing: {'a search word for it' if kind == 'keyword' else 'a service it offers'}"})
+    return out
+
+
 def from_competitors(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
     from . import crawler
     domains = _competitor_domains(db, b)
+    listed = _listing_rows(db, b)
     if not domains:
-        return [], "No competitors saved yet. Find the competitors first."
+        return listed, (None if listed else "No competitors saved yet. Find the competitors first.")
     brand_me = _brand(b)
 
     def read(d: str) -> tuple[str, dict[str, Any]]:
@@ -177,8 +195,61 @@ def from_competitors(db: Session, b: Business) -> tuple[list[dict[str, Any]], st
     for g in (result.get("ideas") or {}).get("competitor_keywords", []) or []:
         kw = g.get("keyword") if isinstance(g, dict) else g
         out.append({"keyword": kw, "kind": "competitors", "label": "Competitor research", "detail": "Competitor research"})
-    note = None if read_ok else "None of the competitor websites could be read right now."
+    out += listed
+    note = None if (read_ok or listed) else "None of the competitor websites could be read right now."
     return out, note
+
+
+def _areas(b: Business) -> list[str]:
+    """The place names customers use: the target areas, the neighbourhood and the city, short and real."""
+    from . import categories
+    raw = [*(getattr(b, "target_areas", None) or []), getattr(b, "area", None), getattr(b, "city", None)]
+    out: list[str] = []
+    for x in raw:
+        name = " ".join(str(x or "").split(",")[0].split())
+        if name and len(name) <= 40 and categories.usable_area(name) and name.lower() not in [o.lower() for o in out]:
+            out.append(name)
+    return out[:4]
+
+
+def from_area(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
+    """Searches that name one of the business's areas. Each is a customer word plus an area put to Google Autocomplete, and only what Google itself suggests is kept: nothing is made up."""
+    from . import business_understanding, countries, keywords
+    areas = _areas(b)
+    terms = business_understanding.search_terms(b)[:4] or [s for s in keywords.default_seeds(b) if isinstance(s, str)][:3]
+    if not areas or not terms:
+        return [], "Add the target areas and some services first, so there is something to search for."
+    gl = countries.gl(countries.of(b))
+    combos = [(t, a) for t in terms for a in areas][:16]
+
+    def ask(ta: tuple[str, str]) -> list[dict[str, Any]]:
+        t, a = ta
+        try:
+            sug = keywords.autocomplete(f"{t} {a}", gl)
+        except Exception:  # noqa: BLE001
+            return []
+        token = a.lower().split()[0]
+        return [{"keyword": s, "kind": "area", "detail": f"Google suggests it for {a} (searched \"{t} {a}\")"} for s, _rank in sug[:6] if token in s.lower() and len(s.split()) >= 2]
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        found = [x for part in pool.map(ask, combos) for x in part]
+    return found, (None if found else "Google has no suggestion that names one of your areas for these search words.")
+
+
+def from_brief(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
+    """What the business summary says: the services and solutions it sells, the keyword themes written for its customers and the words they search with."""
+    brief = getattr(b, "business_brief", None) or {}
+    if not brief:
+        return [], "Build the business summary first (Website Audit page): its services, customers and search words feed this list."
+    out: list[dict[str, Any]] = []
+    for k in brief.get("customer_search_terms") or []:
+        out.append({"keyword": k, "kind": "brief", "detail": "A word your customers search with (business summary)"})
+    for k in brief.get("offerings") or []:
+        out.append({"keyword": k, "kind": "brief", "detail": "A service or solution the business offers (business summary)"})
+    for th in brief.get("keyword_themes") or []:
+        for k in th.get("keywords") or []:
+            out.append({"keyword": k, "kind": "brief", "detail": f"Keyword theme \"{th.get('theme')}\" for {', '.join((brief.get('audience') or [])[:1]) or 'its customers'} (business summary)"})
+    return out, (None if out else "The business summary has no search words yet.")
 
 
 def from_google_ideas(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
@@ -234,7 +305,7 @@ def from_planner(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | 
     return out, (failed or None) if not out else None
 
 
-COLLECTORS = {"website": from_website, "search_console": from_search_console, "profile": from_profile, "competitors": from_competitors, "google_ideas": from_google_ideas, "planner": from_planner, "ai": from_ai}
+COLLECTORS = {"website": from_website, "search_console": from_search_console, "profile": from_profile, "competitors": from_competitors, "google_ideas": from_google_ideas, "planner": from_planner, "area": from_area, "brief": from_brief, "ai": from_ai}
 
 
 def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[str, Any]:
@@ -250,6 +321,13 @@ def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[st
             found, note = [], f"This source failed: {str(exc)[:150]}"
         report[k] = {"label": SOURCES[k], "found": len(found), "new": _add(db, b, found, existing) if found else 0, "note": note}
     fill_metrics(db, b)
+    from . import keyword_fit
+    try:  # hide what does not fit this business (another brand, another service, another place), with the reason
+        checked = keyword_fit.judge(db, b, list(existing.values()))
+        if checked["checked"]:
+            report["fit"] = {"label": "Relevance check", "found": checked["checked"], "new": 0, "note": f"{checked['hidden']} hidden as not a fit (under Set aside), {checked['fit']} kept"}
+    except Exception as exc:  # noqa: BLE001 - the list is kept as it is
+        log.warning("keyword fit check skipped: %s", exc)
     db.commit()
     return report
 
@@ -308,7 +386,7 @@ def score_of(r: KeywordCandidate, tag: str) -> int:
 def item(r: KeywordCandidate, saved: set[str]) -> dict[str, Any]:
     tag = tag_of(r)
     return {"id": r.id, "keyword": r.keyword, "variants": r.variants or [], "sources": r.sources or [], "competitors": r.competitors or [], "volume": r.volume, "difficulty": r.difficulty, "cpc": r.cpc,
-            "intent": r.intent, "rank": r.own_rank, "impressions": r.impressions, "clicks": r.clicks, "tag": tag, "score": score_of(r, tag), "picked": merge_key(r.keyword) in saved,
+            "intent": r.intent, "rank": r.own_rank, "impressions": r.impressions, "clicks": r.clicks, "fit": r.fit, "tag": tag, "score": score_of(r, tag), "picked": merge_key(r.keyword) in saved,
             "dismissed": r.dismissed}
 
 

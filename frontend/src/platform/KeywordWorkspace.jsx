@@ -8,8 +8,8 @@ import { Act, Head } from './TableBits';
 const TAG_TONE = { gap: 'red', win: 'green', almost: 'amber', shared: 'blue', yours: 'gray', idea: 'violet' };
 const TAG_SHORT = { gap: 'Gap', win: 'Win', almost: 'Almost', shared: 'Shared', yours: 'Yours', idea: 'Idea' };
 const TAG_HELP = { gap: 'Competitors use it, you do not', win: 'You already rank in the top 3', almost: 'You are on page 2 of Google', shared: 'You and a competitor both use it', yours: 'Only your own places mention it', idea: 'Suggested by Google or AI' };
-const SRC_SHORT = { website: 'Website', search_console: 'Search Console', profile: 'Profile', competitors: 'Competitor', google_ideas: 'Google', planner: 'Planner', ai: 'AI' };
-const SRC_TONE = { website: 'blue', search_console: 'green', profile: 'amber', competitors: 'red', google_ideas: 'gray', planner: 'blue', ai: 'violet' };
+const SRC_SHORT = { website: 'Website', search_console: 'Search Console', profile: 'Profile', competitors: 'Competitor', google_ideas: 'Google', planner: 'Planner', area: 'Area', brief: 'Summary', ai: 'AI' };
+const SRC_TONE = { website: 'blue', search_console: 'green', profile: 'amber', competitors: 'red', google_ideas: 'gray', planner: 'blue', area: 'amber', brief: 'green', ai: 'violet' };
 const n0 = (v) => (v == null ? '—' : v.toLocaleString('en-US'));
 const PAGE = 50;
 
@@ -190,6 +190,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                             <Link to={`/keyword-overview?q=${encodeURIComponent(i.keyword)}`} onClick={e => e.stopPropagation()} title="Check its searches, cost and related ideas" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline">{i.keyword}</Link>
                             {i.picked && <Badge tone="green">Picked</Badge>}
                           </span>
+                          {i.fit?.why && <span className={`block text-11.5 ${i.fit.fit === 'no' ? 'text-amber-700' : 'text-slate-500'}`}>{i.fit.fit === 'no' ? 'Hidden: ' : i.fit.fit === 'maybe' ? 'Check: ' : i.fit.for ? `Fits ${i.fit.for}: ` : 'Fits: '}{i.fit.why}</span>}
                           {i.competitors.length > 0 && <span className="block text-11.5 text-slate-500">used by {i.competitors.slice(0, 2).join(', ')}{i.competitors.length > 2 ? ` +${i.competitors.length - 2}` : ''}</span>}
                         </td>
                         <td className="px-3 py-2.5 text-right" title="Searches per month in your country (Google Ads Keyword Planner)"><div className="tabular-nums">{n0(i.volume)}</div>{i.volume > 0 && <div className="mt-1 h-1 rounded-full bg-slate-100 ml-auto w-16"><div className="h-1 rounded-full bg-slate-400" style={{ width: `${Math.max(5, (i.volume / topVolume) * 100)}%` }} /></div>}</td>

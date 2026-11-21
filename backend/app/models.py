@@ -446,6 +446,7 @@ class KeywordCandidate(TimestampMixin, Base):
     clicks: Mapped[int | None] = mapped_column(Integer)
     picked: Mapped[bool] = mapped_column(Boolean, default=False)
     dismissed: Mapped[bool] = mapped_column(Boolean, default=False)
+    fit: Mapped[dict | None] = mapped_column(JSON)  # the relevance check: {fit: yes|maybe|no, why, for, auto} (services/keyword_fit.py)
 
 
 class RankScan(TimestampMixin, Base):
