@@ -201,24 +201,24 @@ export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, our
   return (
     <Card pad={false}>
       <div className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <div className="text-13 font-semibold text-slate-900">{rows.length} found, {chosenCount} chosen <span className="font-normal text-slate-500 hidden xl:inline">· tick 3 to 5 that really compete with you</span></div>
+        <div className="text-13 font-semibold text-slate-900 whitespace-nowrap">{rows.length} found <span className="font-normal text-slate-500">· {chosenCount} chosen</span></div>
         <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" role="tablist" aria-label="Show">
           {[['all', `All ${rows.length}`], ['chosen', `Chosen ${chosenCount}`], ['others', `Not chosen ${rows.length - chosenCount}`]].map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-7 px-2.5 text-11.5 font-semibold rounded-md cursor-pointer ${view === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>
           ))}
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5">
+          <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" title="Which PageSpeed test is used for the site audits">
             {[['mobile', Smartphone], ['desktop', Monitor]].map(([s, I]) => (
               <button key={s} type="button" onClick={() => setStrategy(s)} className={`h-7 px-2.5 flex items-center gap-1 text-11.5 font-semibold rounded-md cursor-pointer transition-colors ${strategy === s ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500'}`}><I size={12} />{s}</button>
             ))}
           </div>
-          <span className="text-12 text-slate-500 inline-flex items-center gap-1.5" title="Your own site's audit, used for every comparison">
-            {ourAudit && running(ourAudit.status) && <Loader2 size={12} className="animate-spin" />}Your site: {ourAudit ? AUDIT_LABEL[ourAudit.status] || '—' : 'not audited'}
+          <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 pl-2.5 pr-0.5 py-0.5" title="Your own site's audit, used for every website comparison">
+            <span className="text-12 text-slate-600 inline-flex items-center gap-1.5 whitespace-nowrap">{ourAudit && running(ourAudit.status) && <Loader2 size={12} className="animate-spin" />}Your site <b className={ourAudit?.status === 'done' ? 'text-emerald-700' : 'text-slate-500'}>{ourAudit ? AUDIT_LABEL[ourAudit.status] || '—' : 'not audited'}</b></span>
+            <Button size="sm" variant="ghost" icon={RotateCcw} disabled={!hasSite || running(ourAudit?.status)} onClick={onAuditOur} title="Audit your own website again">{ourAudit ? 'Re-audit' : 'Audit'}</Button>
           </span>
-          <Button size="sm" variant="secondary" icon={RotateCcw} disabled={!hasSite || running(ourAudit?.status)} onClick={onAuditOur}>Audit our site</Button>
-          <Button size="sm" variant="secondary" icon={MapPin} busy={findBusy} onClick={onFindMaps}>Find more on Maps</Button>
-          <Button size="sm" variant="secondary" icon={Plus} onClick={() => setAdding(v => !v)} aria-expanded={adding}>{adding ? 'Hide add form' : 'Add a competitor'}</Button>
+          <Button size="sm" variant="secondary" icon={MapPin} busy={findBusy} onClick={onFindMaps} title="Find more competitors on Google Maps">Find more</Button>
+          <Button size="sm" variant="secondary" icon={Plus} onClick={() => setAdding(v => !v)} aria-expanded={adding} title="Add a competitor by its website">{adding ? 'Hide form' : 'Add'}</Button>
         </div>
       </div>
       {adding && <AddCompetitorForm onAdd={onAddManual} busy={addBusy} error={addError} />}
@@ -462,7 +462,10 @@ export function MapsAudit({ r, kit }) {
         <Button size="sm" icon={ShieldCheck} busy={sc?.loading} disabled={!done.length || kit.ourAudit?.status !== 'done' || busy > 0} onClick={kit.onScorecard} title="Compares the website audits with yours. A competitor with no website is compared on its own row">Compare all side by side</Button>
         </div>
       </div>
-      <p className="mt-1 text-11.5 text-slate-500">{kit.ourAudit?.status === 'done' ? 'Your site is audited.' : kit.hasSite ? 'Your own site is audited too, so there is something to compare with.' : 'Add your website to the project to compare site audits.'}{noSite > 0 ? ` ${noSite} without a website ${noSite === 1 ? 'is' : 'are'} read from the Google Maps listing.` : ''}</p>
+      <div className="mt-1.5 flex flex-wrap gap-1.5 text-11.5">
+        <span className={`px-2 py-0.5 rounded-full ${kit.ourAudit?.status === 'done' ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{kit.ourAudit?.status === 'done' ? 'Your site is audited' : kit.hasSite ? 'Your site is audited with the first audit' : 'Add your website to compare site audits'}</span>
+        {noSite > 0 && <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800">{noSite} without a website: read from Google Maps</span>}
+      </div>
       {sc?.error && <p className="mt-2 text-13 text-red-600" role="alert">{sc.error}</p>}
       {metrics.length > 0 && (
         <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
