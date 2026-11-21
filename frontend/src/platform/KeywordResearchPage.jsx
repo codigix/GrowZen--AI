@@ -793,6 +793,7 @@ function Tracked({ b, kw }) {
   const pages = sitePages.length ? sitePages.map(p => p.path) : [...new Set(['/', '/services', '/contact', ...(b.services || []).map(s => `/services/${String(s.name || s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '')}`), ...tracked.map(k => k.target_url).filter(Boolean)])];
   const mapped = tracked.filter(k => k.target_url).length;
   const onGoogle = tracked.filter(k => k.rank).length;
+  const same = (a, c) => { const p = (u) => ((u || '').replace(/^https?:\/\/[^/]+/, '').replace(/\/+$/, '')) || '/'; return p(a) === p(c); };
   const counts = { all: tracked.length, nopage: tracked.length - mapped, google: onGoogle, nogoogle: tracked.length - onGoogle, primary: tracked.filter(k => k.role === 'primary').length, secondary: tracked.filter(k => k.role === 'secondary').length, norole: tracked.filter(k => !k.role).length };
   const go = (v) => { setView(v); setLimit(30); setSel(new Set()); };
   const rows = useMemo(() => {
@@ -871,7 +872,7 @@ function Tracked({ b, kw }) {
                     <Th id="volume" right what="How many times a month people search it in your country." why="Shows which keywords can bring the most visitors." from="Google Ads Keyword Planner. Blank when Google gave no figure.">Searches</Th>
                     <Th id="difficulty" right what="Keyword difficulty, 0 to 100: how hard it is to rank on Google for this keyword. Green is easier (up to 30), amber is a fair fight (up to 60), red is hard." why="Start with the easier keywords that still have searches: they rank sooner." from="Google Ads Keyword Planner (its competition level). Blank when Google gave no figure.">KD</Th>
                     <th className="px-3 py-3 text-right font-semibold"><Head right what="Impressions: how many times your site appeared in Google for exactly this search. Clicks: how many of those people clicked. CTR (click rate) = clicks divided by impressions. Last 28 days, searches from your target country." why="Many impressions and few clicks means the title and description need work. No impressions means Google is not showing your site for it." from="Google Search Console, the same numbers as Search Console > Performance > Queries (read for this table about every 30 minutes; Google's data is two days behind).">Google: impr / clicks / CTR</Head></th>
-                    <th className="px-3 py-3 text-left font-semibold"><Head what="The page you mapped the keyword to, against the page Google actually shows for it." why="When they differ, Google prefers another page: your pages may compete, or the mapped page needs the keyword." from="your choice (or the mapping suggestion), and Google Search Console.">Target vs ranking page</Head></th>
+                    <th className="px-3 py-3 text-left font-semibold"><Head what="The page of your website this keyword is mapped to, and the pages where the keyword is already used." why="Every keyword needs one page to rank on. Not mapped yet means no page is chosen; Used on shows where the website already says it." from="your choice (or the suggestion from the site scan) and the last website scan: the keyword in a page address, title, heading or description.">Mapped page</Head></th>
                     <th className="px-3 py-3 text-left font-semibold"><Head what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Head></th>
                     <th className="px-3 py-3 text-right font-semibold"><Head right what="Map the keyword to a page (or see the page it is mapped to), check it, write for it, or remove it." why="Every keyword needs one page to rank on.">Actions</Head></th>
                   </tr>
@@ -925,16 +926,19 @@ function Tracked({ b, kw }) {
                             <PagePicker b={b} pages={sitePages} value={k.target_url || ''} listId={`pages-${b.id}`} onCancel={() => setEditing(null)}
                               onPick={v => { setEditing(null); if (v !== (k.target_url || '')) update(k, { target_url: v || null }); }} />
                           ) : (
-                            <div className="text-13 space-y-0.5">
-                              <div className="flex items-center gap-1.5"><span className="text-11.5 text-slate-400 w-12 shrink-0">Target</span>
-                                {k.target_url ? <a href={k.target_url.startsWith('http') ? k.target_url : `${(b.website || '').replace(/\/$/, '')}${k.target_url}`} target="_blank" rel="noreferrer" title="Open the page" className="font-semibold text-slate-800 hover:text-indigo-700 truncate max-w-[150px]">{k.target_url.replace(/^https?:\/\/[^/]+/, '') || '/'}</a>
-                                  : t?.suggested ? <span className="text-slate-500 truncate max-w-[150px]" title="The page the mapping suggests: not saved yet">{t.suggested.path} <span className="text-11 text-amber-700">suggested</span></span> : <span className="text-amber-700">not mapped</span>}</div>
-                              <div className="flex items-center gap-1.5"><span className="text-11.5 text-slate-400 w-12 shrink-0">Google</span>
-                                {t?.ranking_path ? (t.target_path && t.target_path === t.ranking_path
-                                  ? <span className="text-emerald-700 truncate max-w-[150px]" title="Google shows the page you mapped">✓ same page</span>
-                                  : <a href={t.ranking_url} target="_blank" rel="noreferrer" title={t.target_path ? 'Google shows a different page than the one you mapped' : 'The page Google shows for this keyword'} className={`truncate max-w-[150px] hover:underline ${t.target_path ? 'text-amber-700' : 'text-slate-700'}`}>{t.target_path ? '⚠ ' : ''}{t.ranking_path}</a>)
-                                  : <span className="text-slate-300">{!t ? '…' : 'not shown yet'}</span>}</div>
-                              {t?.index && (t.index.state === 'not_indexed' || t.index.state === 'blocked' || t.index.tech === 'blocked' || t.index.tech === 'risky') && (
+                            <div className="text-13 space-y-1">
+                              {k.target_url ? (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-emerald-600" aria-hidden="true">✓</span><span className="text-11.5 text-slate-400 shrink-0">Mapped to</span>
+                                  <a href={k.target_url.startsWith('http') ? k.target_url : `${(b.website || '').replace(/\/$/, '')}${k.target_url}`} target="_blank" rel="noreferrer" title="Open the mapped page" className="font-semibold text-slate-800 hover:text-indigo-700 truncate max-w-[160px]">{k.target_url.replace(/^https?:\/\/[^/]+/, '') || '/'}</a>
+                                </div>
+                              ) : <div className="font-semibold text-amber-700" title="No page is chosen for this keyword yet">Not mapped yet</div>}
+                              <div className="text-12 text-slate-500" title="Pages of your website where the scan found this keyword in the address, title, heading or description">
+                                {used.length ? <>Used on {used.slice(0, 2).map((u, i) => <React.Fragment key={u.url}>{i > 0 && ', '}<a href={u.url} target="_blank" rel="noreferrer" className="font-medium text-slate-700 hover:underline">{u.path}</a></React.Fragment>)}{used.length > 2 ? ` +${used.length - 2}` : ''}</>
+                                  : <span className="text-slate-400">Not used on your website yet</span>}
+                              </div>
+                              {k.target_url && !used.some(u => same(u.path, k.target_url)) && <div className="text-11.5 font-semibold text-amber-700" title="The mapped page does not say this keyword yet">⚠ Not on the mapped page yet</div>}
+                              {k.target_url && t?.index && (t.index.state === 'not_indexed' || t.index.state === 'blocked' || t.index.tech === 'blocked' || t.index.tech === 'risky') && (
                                 <div title={`${t.index.page}${t.index.reason ? `: ${t.index.reason}` : ''}`} className={`text-11.5 font-semibold ${t.index.state === 'blocked' || t.index.tech === 'blocked' ? 'text-red-600' : 'text-amber-700'}`}>⚠ {t.index.state === 'blocked' || t.index.tech === 'blocked' ? 'Google is blocked from this page' : t.index.state === 'not_indexed' ? 'Google has not indexed this page' : 'This page may not be indexed'}</div>)}
                             </div>
                           )}
@@ -943,7 +947,7 @@ function Tracked({ b, kw }) {
                           {t?.label ? <span title={t.why || ''}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' }[t.status] || 'gray'}>{t.label}</Badge></span> : <span className="text-slate-300">{!t ? '…' : '—'}</span>}
                         </td>
                         <td className="px-3 py-3 text-right whitespace-nowrap">
-                          <KeywordRowActions b={b} k={k} t={t} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} onRole={(role) => update(k, { role })} />
+                          <KeywordRowActions b={b} k={k} t={t} usedOn={used} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} onRole={(role) => update(k, { role })} />
                         </td>
                       </tr>);
                   })}

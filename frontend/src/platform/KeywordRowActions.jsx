@@ -12,13 +12,15 @@ const TONES = {
 };
 
 /** The one thing this keyword needs next, from what is known about it. The rest is in the menu. */
-export function nextAction(b, k, t) {
+export function nextAction(b, k, t, usedOn) {
   const base = (b.website || '').replace(/\/$/, '');
   const pageUrl = k.target_url ? (k.target_url.startsWith('http') ? k.target_url : `${base}${k.target_url}`) : '';
   const where = `/keyword-management/mapping?keyword=${encodeURIComponent(k.keyword)}${pageUrl ? `&page=${encodeURIComponent(pageUrl)}` : ''}`;
-  if (!t) return { label: 'Check', tone: 'soft', to: `/keyword-overview?q=${encodeURIComponent(k.keyword)}`, tip: 'Open its searches per month, cost and related ideas.' };
+  if (!t && k.target_url) return { label: 'Check', tone: 'soft', to: `/keyword-overview?q=${encodeURIComponent(k.keyword)}`, tip: 'Open its searches per month, cost and related ideas.' };
+  const same = (a, c) => { const p = (u) => ((u || '').replace(/^https?:\/\/[^/]+/, '').replace(/\/+$/, '')) || '/'; return p(a) === p(c); };
   if (!k.target_url) {
-    return t.suggested
+    if (usedOn && usedOn[0]) return { label: `Map to ${usedOn[0].path}`, tone: 'primary', map: usedOn[0].url, tip: `Your website already uses this keyword on ${usedOn[0].path}: save it as this keyword's page.` };
+    return t?.suggested
       ? { label: `Map to ${t.suggested.path}`, tone: 'primary', map: t.suggested.url, tip: `Save ${t.suggested.path} as this keyword's page (the page the site scan found for it).` }
       : { label: 'Map to a page', tone: 'primary', choose: true, tip: 'Choose the page this keyword should rank on.' };
   }
@@ -26,7 +28,7 @@ export function nextAction(b, k, t) {
   if (idx && (idx.state === 'not_indexed' || idx.state === 'blocked' || idx.tech === 'blocked' || idx.tech === 'risky')) {
     return { label: 'Fix indexing', tone: 'fix', to: '/page-indexing', tip: `${idx.page}: ${idx.reason || 'Google may not index this page, so the keyword cannot rank.'}` };
   }
-  if (!(t.used_in || []).some(u => u === 'website' || u === 'meta')) {
+  if (usedOn ? !usedOn.some(u => same(u.path, k.target_url)) : !(t.used_in || []).some(u => u === 'website' || u === 'meta')) {
     return { label: 'Add to page', tone: 'fix', to: where, tip: 'The mapped page does not say this keyword yet: see exactly where to add it.' };
   }
   if ((t.status === 'weak' || t.status === 'invisible') && !t.articles) {
@@ -68,10 +70,10 @@ function Menu({ anchor, onClose, children }) {
 const ITEM = 'w-full flex items-center gap-2.5 px-3 py-2 text-13 text-left text-slate-700 hover:bg-slate-50 cursor-pointer';
 
 /** One main action for the keyword, and a menu with everything else you can do with it. */
-export default function KeywordRowActions({ b, k, t, busy, onMap, onChoose, onAskAi, onRemove, onRole }) {
+export default function KeywordRowActions({ b, k, t, usedOn, busy, onMap, onChoose, onAskAi, onRemove, onRole }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef(null);
-  const a = nextAction(b, k, t);
+  const a = nextAction(b, k, t, usedOn);
   const close = () => setOpen(false);
   const abs = k.target_url ? (k.target_url.startsWith('http') ? k.target_url : `${(b.website || '').replace(/\/$/, '')}${k.target_url}`) : '';
   const where = `/keyword-management/mapping?keyword=${encodeURIComponent(k.keyword)}${abs ? `&page=${encodeURIComponent(abs)}` : ''}`;
