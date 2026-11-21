@@ -118,3 +118,16 @@ def test_cover_counts_a_partial_match_for_longer_keywords_only():
     assert km._cover({"pune", "cab", "service"}, "pune to mumbai cab service") == 0.5  # three of four
     assert km._cover({"cab"}, "pune cab") == 0.0                           # a two-word keyword needs both
     assert km._cover(set(), "cab") == 0.0
+
+
+def test_page_meta_proposals_fit_and_files_follow_the_pages():
+    import types
+
+    from app.services import page_meta
+    b = types.SimpleNamespace(name="Asha Rental", city="Pune", area=None, primary_category="Clothing rental")
+    home = page_meta.deterministic(b, {"path": "/", "primary": None}, {"description": "Rent designer outfits."})
+    inner = page_meta.deterministic(b, {"path": "/gown-rental", "primary": "gown rental"}, {})
+    assert 30 <= len(home["title"]) <= 60 and len(home["description"]) <= 160 and home["h1"]
+    assert inner["title"].startswith("Gown rental in Pune") and inner["h1"] == "Gown rental" and inner["title"] != home["title"]
+    f = page_meta.files([{"path": "/", "title": "T", "description": "D", "h1": "H", "canonical": "https://x.com/"}])
+    assert '"/"' in f["json"] and "react-helmet-async" in f["react"] and "meta[pathname" in f["react"]

@@ -4,6 +4,7 @@ import { ArrowRight, CheckCircle2, Copy, ExternalLink, Lightbulb, PenLine, Searc
 import { Card, Button, Badge, ErrorNote, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
+import PageMetaCard from './PageMetaCard';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 
@@ -23,7 +24,7 @@ export default function KeywordMappingTab({ b }) {
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
-  const save = () => run('apply', async () => { const out = await api(`/businesses/${b.id}/keyword-mapping/apply`, { method: 'POST' }); await r.reload(true); toast(out.mapped ? `Mapping saved: ${out.mapped} keyword${out.mapped === 1 ? '' : 's'} now point to their page` : 'Mapping saved on your keywords'); });
+  const save = () => run('apply', async () => { const out = await api(`/businesses/${b.id}/keyword-mapping/apply`, { method: 'POST' }); r.setData(out); toast(out.mapped ? `Mapping saved: ${out.mapped} keyword${out.mapped === 1 ? '' : 's'} now point to their page` : 'Mapping saved on your keywords'); });
   const copy = (x, type) => { try { navigator.clipboard.writeText(brief(x, type)); toast('Brief copied'); } catch { toast('Could not copy'); } };
 
   if (!d.keywords) return <Card><p className="py-10 text-center text-13 text-slate-500">No keywords are saved yet. Pick some in the <Link to="/keyword-management/workspace" className="font-semibold text-indigo-700 hover:underline">Keyword Workspace</Link> first.</p></Card>;
@@ -46,6 +47,8 @@ export default function KeywordMappingTab({ b }) {
           <Button variant="primary" icon={CheckCircle2} busy={busy === 'apply'} disabled={waiting === 0} onClick={save} title="Writes the page and the main or supporting role on each keyword. A page you chose yourself is never changed.">Save the mapping</Button>
         </span>
       </div>
+
+      <PageMetaCard b={b} sharedNote={Boolean(d.notes?.length)} />
 
       <Card pad={false} title="Your pages" subtitle={`The keyword each page should rank for, from the website scan of ${d.found_at || 'the last audit'}. The most searched keyword on a page is its main one.`}>
         <div className="overflow-x-auto">
