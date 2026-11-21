@@ -67,7 +67,44 @@ def _pages(db: Session, b: Business) -> list[dict[str, Any]]:
     return pages
 
 
+PURPOSES = [("website", "Page"), ("aeo", "FAQ"), ("meta", "Meta data"), ("blog", "Blog"), ("gmb_post", "Google post"), ("gbp_profile", "Google profile"), ("geo", "AI questions")]
+
+
+def purposes_for(b: Business, k: Keyword, used: dict[str, Any], planned: list[str], meant: dict[str, Any] | None, blog: bool) -> list[dict[str, Any]]:
+    """For one keyword, each purpose it can serve: whether it is used there already, whether it is planned, and the exact thing to add, with where to go."""
+    from . import keyword_ai
+    kw = k.keyword
+    label = kw[:1].upper() + kw[1:]
+    brand, where = (b.name or "").strip(), (b.city or b.area or "").strip()
+    place = f" in {where}" if where and where.lower() not in kw.lower() else ""
+    page = meant["path"] if meant else None
+    q = keyword_ai.geo_question(kw)
+    at_brand = " at " + brand if brand else ""
+    meta_title = page_meta._fit(label + place + (" | " + brand if brand else ""), 60)
+    meta_desc = page_meta._fit(label + place + at_brand + ". Call or visit to know more.", 160)
+    blog_title = label if blog else label + place + ": what to know before you choose"
+    out = {
+        "website": {"headline": f"Use it on {page}" if page else "It needs a page",
+                    "text": (f"Put it in the title, the main heading and the first paragraph of {page}." if page else f"No page carries it yet. Create one at /{_slug_of(kw)} and name it in the title, heading and first paragraph."),
+                    "to": {"kind": "page", "url": meant["url"]} if meant else {"kind": "write", "href": f"/ai-content-generation/blog?keyword={kw}"}, "cta": "Where to add" if meant else "Create it"},
+        "aeo": {"headline": "Answer it as a question on the page", "text": f"Question: {q}\nAnswer in two or three plain sentences with \"{kw}\" in the first one, then mark it up as FAQ schema.", "to": {"kind": "link", "href": "/website-audit?tab=schema"}, "cta": "Add the answer"},
+        "meta": {"headline": "Put it in the page's title and description", "text": "Title: " + meta_title + "\nDescription: " + meta_desc,
+                 "to": {"kind": "page", "url": meant["url"]} if meant else {"kind": "none"}, "cta": "Open the page" if meant else ""},
+        "blog": {"headline": "Write a blog post on it", "text": "Title: " + blog_title + "\nWrite for people first; use the keyword in the title, the first paragraph and one heading.", "to": {"kind": "link", "href": f"/ai-content-generation/blog?keyword={kw}"}, "cta": "Write the post"},
+        "gmb_post": {"headline": "Post about it on Google", "text": f"Post topic: {label}{place}. Say what you offer, show a photo, and end with a call to action (Call now or Book).", "to": {"kind": "link", "href": f"/google-posts?topic={kw}"}, "cta": "Write the post"},
+        "gbp_profile": {"headline": "Mention it in your Google profile", "text": f"Use \"{kw}\" once in the business description, and add it as a service if you really offer it. Never put it in the business name.", "to": {"kind": "link", "href": "/gmb-profile/profile?sub=edit&step=about"}, "cta": "Edit the profile"},
+        "geo": {"headline": "Track it as a question AI assistants are asked", "text": f"Question: {q}", "to": {"kind": "geo"}, "cta": "Ask the AI engines"},
+    }
+    return [{"key": key, "label": lab, "used": bool(used.get(key)), "planned": key in planned, **out[key]} for key, lab in PURPOSES]
+
+
+def _slug_of(text: str) -> str:
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", text.lower())).strip("-")[:60]
+
+
 def by_keyword(db: Session, b: Business) -> dict[str, Any]:
+    from . import keyword_ai
+    usage_items = {i["id"]: i for i in keyword_ai.usage(db, b)["items"]}
     pages = _pages(db, b)
     plan = km.plan(db, b)
     assigned: dict[str, tuple[str, str]] = {}
@@ -99,9 +136,13 @@ def by_keyword(db: Session, b: Business) -> dict[str, Any]:
         strong = [u for u in used if "title" in u["places"] or "heading" in u["places"] or "address" in u["places"]]
         status = "used" if strong else "weak" if used else "unused"
         blog = km.is_blog(k.keyword, k.intent)
+        meant = {"url": target[0], "path": (urlsplit(target[0]).path or "/").rstrip("/") or "/", "role": target[1]} if target else None
+        ui = usage_items.get(k.id) or {"used": {}, "planned": []}
+        # the page and the meta data are judged page by page (the same check as the status), not by words pooled from the whole site
+        ui = {"planned": ui["planned"], "used": {**ui["used"], "website": bool(strong), "meta": any("title" in u["places"] or "description" in u["places"] for u in used)}}
         items.append({"id": k.id, "keyword": k.keyword, "volume": k.volume, "rank": k.rank, "kind": "post" if blog else "page", "status": status, "used_on": used[:8],
-                      "meant_for": {"url": target[0], "path": (urlsplit(target[0]).path or "/").rstrip("/") or "/", "role": target[1]} if target else None,
-                      "other_fits": [f for f in fits if not target or f["url"] != target[0]][:3]})
+                      "meant_for": meant, "other_fits": [f for f in fits if not target or f["url"] != target[0]][:3],
+                      "purposes": purposes_for(b, k, ui["used"], ui["planned"], meant or ({"url": fits[0]["url"], "path": fits[0]["path"], "role": "main"} if fits else None), blog)})
     counts = {s: sum(1 for i in items if i["status"] == s) for s in ("used", "weak", "unused")}
     return {"crawled": bool(pages), "keywords": items, "counts": counts, "pages": [{"url": p["url"], "path": (urlsplit(p["url"]).path or "/").rstrip("/") or "/"} for p in pages]}
 

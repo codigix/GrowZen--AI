@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Eye, Copy, Check, FileSearch } from 'lucide-react';
+import { ExternalLink, Eye, Copy, Check, FileSearch, Sparkles } from 'lucide-react';
 import { Card, Badge, ErrorNote, SkList, Modal } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act } from './TableBits';
@@ -11,43 +11,86 @@ const STATUS = { used: ['Used', 'green', 'In a title, heading or address of a pa
 const ADD_AT = { title: 'the page title', heading: 'the main heading (H1)', description: 'the meta description', intro: 'the first paragraph', subheading: 'a section heading', text: 'the page text', image: "an image's alt text" };
 const scopeTone = { home: 'blue', offer: 'green', blog: 'violet', info: 'gray', policy: 'gray' };
 
-/** Every picked keyword: the pages that use it and where, the page it is meant for, and where else it could go. */
+/** Every picked keyword: where it is used, the page it is meant for, and what to use it for (page, FAQ, meta data, blog, Google post, Google profile, AI questions) with the exact thing to add. */
 export function KeywordsView({ b, onOpen }) {
   const r = useApi(`/businesses/${b.id}/keyword-placement`);
   const [show, setShow] = useState('all');
+  const [open, setOpen] = useState(null); // { id, key }: the suggestion shown under a keyword
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState('');
+  const [copied, setCopied] = useState('');
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!r.data) return <SkList rows={5} />;
   const d = r.data;
   const rows = d.keywords.filter(k => show === 'all' || k.status === show);
   const tab = (id, label) => <button key={id} type="button" onClick={() => setShow(id)} className={`h-7 px-2.5 text-11.5 font-semibold rounded-md cursor-pointer ${show === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>;
+  const setPlan = async (k, key, on) => {
+    const planned = k.purposes.filter(p => p.planned && p.key !== key).map(p => p.key);
+    setBusy(`${k.id}-${key}`);
+    try { await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, uses: on ? [...planned, key] : planned } }); await r.reload(true); } catch (e) { setNote(e.message); } finally { setBusy(''); }
+  };
+  const askAi = async (k) => {
+    setBusy(`${k.id}-geo`);
+    try { const out = await api(`/businesses/${b.id}/keywords/${k.id}/geo-prompt`, { method: 'POST', body: {} }); setNote(out.added ? 'Added to the AI search questions.' : 'It is already one of the AI search questions.'); await r.reload(true); } catch (e) { setNote(e.message); } finally { setBusy(''); }
+  };
+  const copy = async (text, id) => { try { await navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied(''), 1800); } catch { /* the text is shown */ } };
+  const chip = (k, p) => {
+    const on = open?.id === k.id && open.key === p.key;
+    return (
+      <button key={p.key} type="button" onClick={() => setOpen(on ? null : { id: k.id, key: p.key })} aria-expanded={on}
+        title={p.used ? 'Already used here' : p.planned ? 'Planned: not done yet' : 'Not used here yet'}
+        className={`h-7 px-2.5 rounded-full text-12 font-semibold cursor-pointer inline-flex items-center gap-1 ring-1 ring-inset transition-colors ${on ? 'bg-indigo-600 text-white ring-indigo-600' : p.used ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : p.planned ? 'bg-indigo-50 text-indigo-800 ring-indigo-200' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>
+        {p.used ? <Check size={12} /> : null}{p.label}{!p.used && p.planned ? <span className="text-10 font-medium opacity-80">planned</span> : null}
+      </button>
+    );
+  };
+  const suggestion = (k) => {
+    const p = k.purposes.find(x => x.key === open.key);
+    if (!p) return null;
+    const id = `${k.id}-${p.key}`;
+    const action = p.to.kind === 'page' ? <Act icon={Eye} tone="indigo" tip="Open the page overview and see exactly where it goes." onClick={() => onOpen(p.to.url, k.keyword)}>{p.cta}</Act>
+      : p.to.kind === 'geo' ? <Act icon={Sparkles} tone="violet" busy={busy === `${k.id}-geo`} tip="Add this question to the AI search tracker." onClick={() => askAi(k)}>{p.cta}</Act>
+        : p.to.kind === 'none' ? null : <Link to={p.to.href}><Act icon={ExternalLink} tone="indigo" tip={`${p.cta}: open the right place with the keyword ready.`}>{p.cta}</Act></Link>;
+    return (
+      <div className="rounded-lg ring-1 ring-indigo-200 bg-indigo-50/40 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2"><span className="text-13 font-semibold text-slate-900">{p.label}: {p.headline}</span>{p.used && <Badge tone="green">Already used</Badge>}{!p.used && p.planned && <Badge tone="blue">Planned</Badge>}</div>
+        <div className="mt-1.5 flex items-start gap-2"><pre className="flex-1 whitespace-pre-wrap text-12.5 text-slate-800 bg-white rounded px-3 py-2 ring-1 ring-slate-200 font-sans">{p.text}</pre><Act icon={copied === id ? Check : Copy} tone="slate" tip="Copy: copy this text to paste where it goes." onClick={() => copy(p.text, id)} /></div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">{action}
+          <Act tone="slate" busy={busy === id} tip={p.planned ? 'Remove it from the plan for this keyword.' : 'Plan: mark this as something you will do for this keyword.'} onClick={() => setPlan(k, p.key, !p.planned)}>{p.planned ? 'Remove from plan' : 'Plan it'}</Act></div>
+      </div>
+    );
+  };
   return (
-    <Card pad={false} title="Where each picked keyword is used" subtitle="From the last website scan: the places Google reads most (address, title, heading, description)">
+    <Card pad={false} title="Your picked keywords" subtitle="Where each is used, the page it is meant for, and what to use it for. Pick a purpose under a keyword to see exactly what to add.">
       <div className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-2">
         <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg">{tab('all', `All ${d.keywords.length}`)}{tab('used', `Used ${d.counts.used}`)}{tab('weak', `Weak ${d.counts.weak}`)}{tab('unused', `Not used ${d.counts.unused}`)}</div>
-        <span className="text-12 text-slate-500">Press <b>Where to add</b> to open the page and see exactly where the keyword goes.</span>
+        <span className="text-12 text-slate-500">Green = already used there · blue = planned · grey = not yet</span>
+        {note && <span role="status" className="ml-auto text-12.5 text-emerald-800 bg-emerald-50 rounded px-2.5 py-1">{note}</span>}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-13 min-w-[860px]">
+        <table className="w-full text-13 min-w-[820px]">
           <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2 text-left">Keyword</th><th className="px-3 py-2 text-right">Searches / mo</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Used on</th><th className="px-3 py-2 text-left">Meant for</th><th className="px-3 py-2 text-right">Actions</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map(k => {
-              const [w, tone, tip] = STATUS[k.status];
-              const target = k.meant_for?.url || k.other_fits[0]?.url;
-              return (
-                <tr key={k.id} className="hover:bg-slate-50 align-top">
-                  <td className="px-3 py-2.5 font-semibold text-slate-900 min-w-[170px]">{k.keyword}{k.rank ? <span className="block text-11.5 font-normal text-slate-500">Google position {k.rank}</span> : null}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{n0(k.volume)}</td>
-                  <td className="px-3 py-2.5" title={tip}><Badge tone={tone}>{w}</Badge></td>
-                  <td className="px-3 py-2.5 min-w-[200px]">{k.used_on.length ? <div className="space-y-1">{k.used_on.slice(0, 3).map(u => <div key={u.url} className="text-12.5"><button type="button" onClick={() => onOpen(u.url, k.keyword)} className="font-medium text-indigo-700 hover:underline cursor-pointer">{u.path}</button> <span className="text-slate-500">in {u.places.map(p => PLACE[p]).join(', ')}</span></div>)}{k.used_on.length > 3 && <div className="text-11.5 text-slate-500">+{k.used_on.length - 3} more pages</div>}</div> : <span className="text-slate-400">No page yet</span>}</td>
-                  <td className="px-3 py-2.5 text-12.5">{k.meant_for ? <span><button type="button" onClick={() => onOpen(k.meant_for.url, k.keyword)} className="font-medium text-indigo-700 hover:underline cursor-pointer">{k.meant_for.path}</button> <span className="text-slate-500">({k.meant_for.role} keyword)</span></span>
+          {rows.map(k => {
+            const [w, tone, tip] = STATUS[k.status];
+            const target = k.meant_for?.url || k.other_fits[0]?.url;
+            return (
+              <tbody key={k.id} className="border-t border-slate-200">
+                <tr className="hover:bg-slate-50 align-top">
+                  <td className="px-3 pt-2.5 pb-1 font-semibold text-slate-900 min-w-[170px]">{k.keyword}{k.rank ? <span className="block text-11.5 font-normal text-slate-500">Google position {k.rank}</span> : null}</td>
+                  <td className="px-3 pt-2.5 pb-1 text-right tabular-nums">{n0(k.volume)}</td>
+                  <td className="px-3 pt-2.5 pb-1" title={tip}><Badge tone={tone}>{w}</Badge></td>
+                  <td className="px-3 pt-2.5 pb-1 min-w-[200px]">{k.used_on.length ? <div className="space-y-1">{k.used_on.slice(0, 3).map(u => <div key={u.url} className="text-12.5"><button type="button" onClick={() => onOpen(u.url, k.keyword)} className="font-medium text-indigo-700 hover:underline cursor-pointer">{u.path}</button> <span className="text-slate-500">in {u.places.map(p => PLACE[p]).join(', ')}</span></div>)}{k.used_on.length > 3 && <div className="text-11.5 text-slate-500">+{k.used_on.length - 3} more pages</div>}</div> : <span className="text-slate-400">No page yet</span>}</td>
+                  <td className="px-3 pt-2.5 pb-1 text-12.5">{k.meant_for ? <span><button type="button" onClick={() => onOpen(k.meant_for.url, k.keyword)} className="font-medium text-indigo-700 hover:underline cursor-pointer">{k.meant_for.path}</button> <span className="text-slate-500">({k.meant_for.role} keyword)</span></span>
                     : k.other_fits.length ? <span className="text-slate-600">Could go on {k.other_fits.map(f => f.path).join(', ')}</span> : <span className="text-amber-700">{k.kind === 'post' ? 'Needs a blog post' : 'Needs a new page'}</span>}</td>
-                  <td className="px-3 py-2.5 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
-                    {target ? <Act icon={Eye} tone="indigo" tip="Where to add: open the page and see exactly where this keyword goes." onClick={() => onOpen(target, k.keyword)}>Where to add</Act> : <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`}><Act icon={FileSearch} tone="violet" tip="Write: a page or post is needed for this keyword." >Write it</Act></Link>}
-                  </span></td>
-                </tr>);
-            })}
-            {!rows.length && <tr><td colSpan={6} className="px-5 py-8 text-center text-13 text-slate-500">{d.keywords.length ? 'No keyword in this group.' : 'No keywords are picked yet.'}</td></tr>}
-          </tbody>
+                  <td className="px-3 pt-2.5 pb-1 text-right whitespace-nowrap">{target ? <Act icon={Eye} tone="indigo" tip="Where to add: open the page and see exactly where this keyword goes." onClick={() => onOpen(target, k.keyword)}>Where to add</Act> : <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`}><Act icon={FileSearch} tone="violet" tip="Write: a page or post is needed for this keyword.">Write it</Act></Link>}</td>
+                </tr>
+                <tr><td colSpan={6} className="px-3 pb-3">
+                  <div className="flex flex-wrap items-center gap-1.5"><span className="text-11.5 font-semibold uppercase tracking-wide text-slate-500 mr-1">Use it for</span>{k.purposes.map(p => chip(k, p))}</div>
+                  {open?.id === k.id && <div className="mt-2">{suggestion(k)}</div>}
+                </td></tr>
+              </tbody>);
+          })}
+          {!rows.length && <tbody><tr><td colSpan={6} className="px-5 py-8 text-center text-13 text-slate-500">{d.keywords.length ? 'No keyword in this group.' : 'No keywords are picked yet.'}</td></tr></tbody>}
         </table>
       </div>
     </Card>

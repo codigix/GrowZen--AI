@@ -146,3 +146,21 @@ def test_placement_scope_and_where_to_add():
     ok = dict(u, title=True, heading=True, description=True, intro=True, image=True)
     assert kp._place_rules("main", "offer", ok) == []
     assert kp._head_fit(read, "/gown-rental", "gown rental") == 1.0 and kp._head_fit(read, "/gown-rental", "saree on rent") == 0.0
+
+
+def test_keyword_purposes_each_have_a_suggestion_and_a_place_to_go():
+    import types
+
+    from app.services import keyword_placement as kp
+    b = types.SimpleNamespace(name="Asha Rental", city="Pune", area=None)
+    k = types.SimpleNamespace(keyword="gown rental")
+    meant = {"url": "https://x.com/gowns", "path": "/gowns", "role": "main"}
+    ps = {p["key"]: p for p in kp.purposes_for(b, k, {"website": True}, ["blog"], meant, False)}
+    assert list(ps) == ["website", "aeo", "meta", "blog", "gmb_post", "gbp_profile", "geo"]
+    assert ps["website"]["used"] and not ps["aeo"]["used"] and ps["blog"]["planned"] and not ps["meta"]["planned"]
+    assert ps["website"]["to"] == {"kind": "page", "url": "https://x.com/gowns"} and "/gowns" in ps["website"]["text"]
+    assert ps["meta"]["text"].startswith("Title: Gown rental in Pune | Asha Rental\nDescription: ")
+    assert ps["aeo"]["text"].startswith("Question: ") and "FAQ schema" in ps["aeo"]["text"]
+    assert ps["geo"]["to"]["kind"] == "geo" and "never" not in ps["gbp_profile"]["text"].lower().replace("never put", "")
+    none = {p["key"]: p for p in kp.purposes_for(b, k, {}, [], None, False)}
+    assert none["website"]["to"]["kind"] == "write" and none["meta"]["to"] == {"kind": "none"}

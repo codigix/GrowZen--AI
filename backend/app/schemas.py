@@ -567,7 +567,7 @@ class KeywordIn(BaseModel):
     cluster: str | None = None
     target_url: str | None = None
     priority: Literal["High", "Medium", "Low"] = "Medium"
-    uses: list[Literal["blog", "gmb_post", "aeo", "geo", "chatgpt", "website"]] | None = None
+    uses: list[Literal["blog", "gmb_post", "aeo", "geo", "chatgpt", "website", "meta", "gbp_profile"]] | None = None
     source: dict | None = None
     role: Literal["primary", "secondary"] | None = None
 

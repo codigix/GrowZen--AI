@@ -22,7 +22,7 @@ export default function KeywordMappingTab({ b }) {
   const r = useApi(`/businesses/${b.id}/keyword-mapping`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
-  const [view, setView] = useState('pages'); // pages | keywords | create
+  const [view, setView] = useState('keywords'); // keywords | pages | create
   const [open, setOpen] = useState(null); // the page overview: { url, focus }
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
@@ -52,7 +52,7 @@ export default function KeywordMappingTab({ b }) {
       </div>
 
       <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg w-fit" role="tablist" aria-label="Mapping views">
-        {[['pages', `Pages ${d.pages.length}`], ['keywords', `Keywords ${d.keywords}`], ['create', `To create ${todo.length}`]].map(([id, label]) => (
+        {[['keywords', `Keywords ${d.keywords}`], ['pages', `Pages ${d.pages.length}`], ['create', `To create ${todo.length}`]].map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-8 px-3 text-12.5 font-semibold rounded-md cursor-pointer ${view === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>))}
       </div>
 

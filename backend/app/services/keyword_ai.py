@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 from ..models import Article, Business, GeoPrompt, Keyword, Post
 from . import ai, business_understanding, keywords as kwsvc
 
-USES = {"blog": "Blog articles", "gmb_post": "Google Business Profile posts", "aeo": "AEO: direct answers and FAQs", "geo": "GEO: AI search questions", "chatgpt": "ChatGPT business profile", "website": "Website pages"}
+USES = {"blog": "Blog articles", "gmb_post": "Google Business Profile posts", "aeo": "AEO: direct answers and FAQs", "geo": "GEO: AI search questions", "chatgpt": "ChatGPT business profile", "website": "Website pages",
+        "meta": "Meta data: page titles and descriptions", "gbp_profile": "Google Business Profile description and services"}
 HORIZON = {"done": "Builds on what you already do", "next": "Where you can grow next"}
 MAX_ITEMS = 24
 
@@ -167,11 +168,14 @@ def usage(db: Session, b: Business) -> dict[str, Any]:
     text = gc.surfaces_text(db, b, report, gc._crawl(db, b))
     prompts = gc._corpus([p.prompt for p in db.scalars(select(GeoPrompt).where(GeoPrompt.business_id == b.id))])
     heads = [gc._corpus([h]) for h in _question_headings(db, b, report)]
+    crawl_pages = [p for p in (gc._crawl(db, b).get("pages") or []) if p.get("status") == 200]
+    meta_text = gc._corpus([x for p in crawl_pages for x in (p.get("title"), p.get("meta_description")) if x])
     chatgpt = gc._corpus(_chatgpt_texts(db, b))
     items = []
     for k in rows:
         used = {"website": gc.has_keyword(text["website"] | text["services"], k.keyword), "blog": gc.has_keyword(text["blog"], k.keyword), "gmb_post": gc.has_keyword(text["posts"], k.keyword),
-                "geo": gc.has_keyword(prompts, k.keyword), "aeo": any(gc.has_keyword(h, k.keyword) for h in heads), "chatgpt": gc.has_keyword(chatgpt, k.keyword)}
+                "geo": gc.has_keyword(prompts, k.keyword), "aeo": any(gc.has_keyword(h, k.keyword) for h in heads), "chatgpt": gc.has_keyword(chatgpt, k.keyword),
+                "meta": gc.has_keyword(meta_text, k.keyword), "gbp_profile": gc.has_keyword(text["profile"] | text["services"], k.keyword)}
         planned = [u for u in (k.uses or []) if u in USES]
         items.append({"id": k.id, "keyword": k.keyword, "cluster": k.cluster, "rank": k.rank, "volume": k.volume, "planned": planned, "used": used})
     areas = {a: {"label": label, "planned": sum(1 for i in items if a in i["planned"]), "used": sum(1 for i in items if i["used"].get(a))} for a, label in USES.items()}
