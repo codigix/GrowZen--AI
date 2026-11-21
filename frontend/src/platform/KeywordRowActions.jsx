@@ -11,6 +11,20 @@ const TONES = {
   good: 'bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100',
 };
 
+/**
+ * Whether the page's index status is a problem. Google's own answer wins: a page Google reports as indexed is not a problem, whatever our own page check predicts.
+ * Our check ("risky" or "blocked") only counts while Google has not been asked about the page.
+ */
+export function indexProblem(idx) {
+  if (!idx) return null;
+  if (idx.state === 'indexed') return null;
+  if (idx.state === 'blocked') return { level: 'blocked', text: 'Google is blocked from this page' };
+  if (idx.state === 'not_indexed') return { level: 'warn', text: 'Google has not indexed this page' };
+  if (idx.tech === 'blocked') return { level: 'blocked', text: 'This page blocks Google (our page check)' };
+  if (idx.tech === 'risky') return { level: 'warn', text: 'This page may not be indexed (our page check: Google has not been asked yet)' };
+  return null;
+}
+
 /** The one thing this keyword needs next, from what is known about it. The rest is in the menu. */
 export function nextAction(b, k, t, usedOn) {
   const base = (b.website || '').replace(/\/$/, '');
@@ -25,8 +39,9 @@ export function nextAction(b, k, t, usedOn) {
       : { label: 'Map to a page', tone: 'primary', choose: true, tip: 'Choose the page this keyword should rank on.' };
   }
   const idx = t.index;
-  if (idx && (idx.state === 'not_indexed' || idx.state === 'blocked' || idx.tech === 'blocked' || idx.tech === 'risky')) {
-    return { label: 'Fix indexing', tone: 'fix', to: '/page-indexing', tip: `${idx.page}: ${idx.reason || 'Google may not index this page, so the keyword cannot rank.'}` };
+  const problem = indexProblem(idx);
+  if (problem) {
+    return { label: 'Fix indexing', tone: 'fix', to: '/page-indexing', tip: `${idx.page}: ${problem.text}${idx.reason ? ` (${idx.reason})` : ''}` };
   }
   if (usedOn ? !usedOn.some(u => same(u.path, k.target_url)) : !(t.used_in || []).some(u => u === 'website' || u === 'meta')) {
     return { label: 'Add to page', tone: 'fix', to: where, tip: 'The mapped page does not say this keyword yet: see exactly where to add it.' };

@@ -1,7 +1,7 @@
 import KeywordWorkspace from './KeywordWorkspace';
 import KeywordFlowBar from './KeywordFlowBar';
 import KeywordMappingTab from './KeywordMappingTab';
-import KeywordRowActions from './KeywordRowActions';
+import KeywordRowActions, { indexProblem } from './KeywordRowActions';
 import { Act, Head } from './TableBits';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -929,13 +929,13 @@ function Tracked({ b, kw }) {
                             <div className="text-13 leading-tight">
                               {k.target_url ? (() => {
                                 const onIt = used.some(u => same(u.path, k.target_url));
-                                const bad = t?.index && (t.index.state === 'not_indexed' || t.index.state === 'blocked' || t.index.tech === 'blocked' || t.index.tech === 'risky');
+                                const bad = indexProblem(t?.index);
                                 return (
                                   <>
                                     <div className="flex items-center gap-1.5">
                                       <span className={`w-2 h-2 rounded-full shrink-0 ${onIt ? 'bg-emerald-500' : 'border-2 border-amber-500'}`} title={onIt ? 'Mapped, and the page says the keyword' : 'A page was chosen for this keyword, but the page does not say it yet'} aria-hidden="true" />
                                       <a href={k.target_url.startsWith('http') ? k.target_url : `${(b.website || '').replace(/\/$/, '')}${k.target_url}`} target="_blank" rel="noreferrer" title={onIt ? 'Open the mapped page' : 'Open the page chosen for this keyword'} className="font-semibold text-slate-800 hover:text-indigo-700 truncate max-w-[170px]">{k.target_url.replace(/^https?:\/\/[^/]+/, '') || '/'}</a>
-                                      {bad && <span className="text-amber-600 cursor-help" title={`${t.index.page}: ${t.index.state === 'blocked' || t.index.tech === 'blocked' ? 'Google is blocked from this page' : t.index.state === 'not_indexed' ? 'Google has not indexed this page' : 'this page may not be indexed'}${t.index.reason ? ` (${t.index.reason})` : ''}`}>⚠</span>}
+                                      {bad && <span className={`cursor-help ${bad.level === 'blocked' ? 'text-red-600' : 'text-amber-600'}`} title={`${t.index.page}: ${bad.text}${t.index.reason ? ` (${t.index.reason})` : ''}`}>⚠</span>}
                                     </div>
                                     <div className={`mt-0.5 text-12 pl-3.5 ${onIt ? 'text-emerald-700' : 'text-amber-700 font-medium'}`} title={onIt ? 'The website scan found the keyword on this page' : `Mapped only by choice: this page was chosen for the keyword, but the scan does not find it there. ${used.length ? `It is used on: ${used.map(u => u.path).join(', ')}.` : 'It is not on any page yet.'} Add it to the page, or choose the page that already uses it.`}>{onIt ? 'Keyword is on this page' : 'Planned: keyword not on it yet'}</div>
                                   </>);
