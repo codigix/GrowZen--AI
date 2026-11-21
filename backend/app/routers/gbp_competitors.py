@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
@@ -75,10 +76,26 @@ def insights(you: dict[str, Any], comps: list[dict[str, Any]]) -> list[dict[str,
     return out
 
 
-def overview(b: Business) -> dict[str, Any]:
+def _chosen_extras(db: Session | None, b: Business, have: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Competitors chosen in the competitor finder that this page does not hold yet (a business with no website is one of them): their Google profile data is shown here too."""
+    if db is None:
+        return []
+    from ..models import Competitor
+    names = {(c.get("name") or "").strip().lower() for c in have}
+    pids = {c.get("place_id") for c in have if c.get("place_id")}
+    out = []
+    for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id).order_by(Competitor.id)):
+        if c.selected is False or (c.name or "").strip().lower() in names or (c.place_id and c.place_id in pids):
+            continue
+        out.append({"id": f"c{c.id}", "name": c.name, "rating": c.rating, "reviews": int(c.reviews or 0), "address": c.address, "phone": c.phone, "website": c.website, "maps_link": c.maps_link,
+                    "place_id": c.place_id, "source": "chosen"})
+    return out
+
+
+def overview(b: Business, db: Session | None = None) -> dict[str, Any]:
     st = _store(b)
     you = _you(b)
-    comps = st["items"]
+    comps = [*st["items"], *_chosen_extras(db, b, st["items"])]
     ranked = sorted([*comps, you], key=lambda c: (int(c.get("reviews") or 0), float(c.get("rating") or 0)), reverse=True)
     return {"you": you, "competitors": comps, "found_at": st["at"], "keyword": st["keyword"], "insights": insights(you, comps),
             "your_rank": next((i + 1 for i, c in enumerate(ranked) if c.get("you")), None), "total": len(ranked), "can_search": service.competitors_enabled(),
@@ -86,8 +103,19 @@ def overview(b: Business) -> dict[str, Any]:
 
 
 @router.get("")
-def get_competitors(b: Business = Depends(get_business)):
-    return overview(b)
+def get_competitors(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    return overview(b, db)
+
+
+@router.post("/analysis")
+def analysis(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Compare this business's Google listing with each competitor's (saved here or chosen in the competitor finder, with or without a website): the checks, categories, services and advice."""
+    from ..competitors import gbp_analysis
+    from ..services import countries, market
+    comps = gbp_analysis.competitors_for(db, b, _store(b)["items"])
+    if not comps:
+        raise HTTPException(409, "No competitors yet. Find them first.")
+    return gbp_analysis.analyse(db, b, comps, countries.gl(market.serp_country(b)).upper() or "IN")
 
 
 class SearchIn(BaseModel):
@@ -97,8 +125,9 @@ class SearchIn(BaseModel):
 
 def _share(db: Session, b: Business, items: list[dict], source: str = "google_places") -> None:
     """The competitors found here are also saved in the shared competitor list (the Competitors page, Competitor Watch, the backlink gap, the Growth Plan): one list, entered once."""
-    from ..competitors.router import _upsert  # noqa: PLC0415
+    from ..competitors.router import _upsert, upsert_without_website  # noqa: PLC0415
     rows = _upsert(db, b.id, [i for i in items if i.get("website")])
+    upsert_without_website(db, b.id, [i for i in items if not i.get("website")])  # no website: still a competitor on Google Maps
     if source == "manual":
         for c in rows:
             c.source = "manual"
@@ -125,12 +154,12 @@ def search(body: SearchIn, b: Business = Depends(get_business), db: Session = De
             continue  # the profile itself
         items.append({"id": secrets.token_hex(4), "name": f.get("name"), "rating": f.get("rating") if isinstance(f.get("rating"), (int, float)) else None,
                       "reviews": int(f.get("reviews") or 0), "address": f.get("address"), "phone": f.get("phone"), "website": f.get("website") or None,
-                      "maps_link": f.get("maps_link"), "source": "maps"})
+                      "maps_link": f.get("maps_link"), "place_id": f.get("place_id") or None, "category": f.get("category") or None, "source": "maps"})
     b.local_competitors = {"at": datetime.now(timezone.utc).isoformat(), "keyword": kind, "items": [*items, *manual]}
     _share(db, b, items)
     log(db, user.name, "gbp_competitors_found", b.id, count=len(items))
     db.commit()
-    return overview(b)
+    return overview(b, db)
 
 
 class ManualIn(BaseModel):
@@ -159,15 +188,27 @@ def add(body: ManualIn, b: Business = Depends(get_business), db: Session = Depen
     b.local_competitors = {"at": st["at"], "keyword": st["keyword"], "items": st["items"]}
     _share(db, b, [st["items"][-1]], source="manual")
     db.commit()
-    return overview(b)
+    return overview(b, db)
 
 
 @router.delete("/{cid}")
 def remove(cid: str, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Leave a competitor out of this comparison. One chosen in the competitor finder (id like c12) is left out of the shared list as well, so it does not come back."""
+    from ..models import Competitor
     st = _store(b)
+    gone = next((c for c in st["items"] if c.get("id") == cid), None)
     kept = [c for c in st["items"] if c.get("id") != cid]
-    if len(kept) == len(st["items"]):
+    comp = db.get(Competitor, int(cid[1:])) if cid[:1] == "c" and cid[1:].isdigit() else None
+    if comp is not None and comp.business_id != b.id:
+        comp = None
+    if gone is None and comp is None:
         raise HTTPException(404, "Competitor not found")
+    if gone is not None:  # the same business in the shared list is left out too
+        for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)):
+            if (c.name or "").strip().lower() == (gone.get("name") or "").strip().lower() or (gone.get("place_id") and c.place_id == gone["place_id"]):
+                c.selected = False
+    if comp is not None:
+        comp.selected = False
     b.local_competitors = {"at": st["at"], "keyword": st["keyword"], "items": kept}
     db.commit()
-    return overview(b)
+    return overview(b, db)

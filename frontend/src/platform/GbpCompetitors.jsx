@@ -11,6 +11,70 @@ const TONE = {
   info: ['bg-sky-50 ring-sky-200 text-sky-900', Info, 'text-sky-500'],
   good: ['bg-emerald-50 ring-emerald-200 text-emerald-900', CheckCircle2, 'text-emerald-500']
 };
+const DOT = { ok: ['bg-emerald-500', 'Good'], warn: ['bg-amber-400', 'Could be better'], bad: ['bg-red-500', 'Missing or weak'] };
+
+/** Your Google listing against each competitor's, read from Google Maps. A competitor with no website is compared here too: its Google profile is what customers see. */
+export function ProfileComparison({ b, count, initial = null }) {
+  const [res, setRes] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const go = async () => {
+    setBusy(true); setErr('');
+    try { setRes(await api(`/businesses/${b.id}/gbp/competitors/analysis`, { method: 'POST', timeout: 120000 })); }
+    catch (e) { setErr(e.message || 'The comparison could not be made.'); } finally { setBusy(false); }
+  };
+  const action = <Button variant={res ? 'secondary' : 'primary'} busy={busy} disabled={!count} onClick={go}>{res ? 'Compare again' : `Compare ${count || ''} profile${count === 1 ? '' : 's'}`}</Button>;
+  return (
+    <Card title="Your profile against theirs" subtitle="Each competitor's public Google listing is read and checked the same way as yours: businesses with no website included" action={action}>
+      {!res && !busy && !err && <p className="text-13 text-slate-600">Reads each competitor's Google Maps listing (category, description, phone, website, hours, photos, reviews, rating, how recent the reviews are, attributes), then shows where your profile is behind and what to do. It takes about half a minute.</p>}
+      {busy && <p className="text-13 text-slate-500">Reading the Google listings…</p>}
+      {err && <p className="text-13 text-red-600" role="alert">{err}</p>}
+      {res && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2.5">
+            {res.you && <div className="rounded-lg ring-1 ring-emerald-200 bg-emerald-50 px-4 py-2.5 text-center min-w-[110px]"><div className="text-11.5 text-emerald-800">Your listing</div><div className="text-22 font-bold text-emerald-700 tabular-nums">{res.you.score}</div></div>}
+            {res.competitors.map(c => (
+              <div key={c.name} className="rounded-lg ring-1 ring-slate-200 px-4 py-2.5 text-center min-w-[110px] max-w-[190px]" title={c.error || c.name}>
+                <div className="text-11.5 text-slate-500 truncate">{c.name}</div>
+                <div className="text-22 font-bold text-slate-800 tabular-nums">{c.score ?? '—'}</div>
+                {!c.website && <div className="text-11 text-indigo-700">no website</div>}
+              </div>
+            ))}
+          </div>
+          {!res.you && <p className="text-12 text-amber-800 bg-amber-50 rounded px-3 py-1.5">Your own Google listing could not be read (no Google place is linked to this project), so only the competitors are shown.</p>}
+          {res.insights.length > 0 && (
+            <ul className="space-y-2">
+              {res.insights.map((i, k) => { const [cls, Icon, ic] = TONE[i.level] || TONE.info; return (
+                <li key={k} className={`rounded-lg ring-1 px-4 py-2.5 flex gap-3 ${cls}`}><Icon size={16} className={`${ic} mt-0.5 shrink-0`} /><div><div className="text-13 font-semibold">{i.title}</div><div className="text-12.5 opacity-90 mt-0.5">{i.fix}</div></div></li>
+              ); })}
+            </ul>
+          )}
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full text-13 min-w-[420px]">
+              <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-3 py-2 text-left font-semibold">What a customer sees</th><th className="px-3 py-2 text-center font-semibold text-emerald-700">You</th><th className="px-3 py-2 text-center font-semibold">Competitors that are good ({res.read})</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {res.checks.map(c => { const [dot, word] = DOT[c.you] || ['bg-slate-200', 'Not read']; return (
+                  <tr key={c.key} className={c.behind ? 'bg-amber-50/50' : ''}>
+                    <td className="px-3 py-2 text-slate-800">{c.label}{c.behind && <span className="ml-2 text-11 font-semibold text-amber-700">behind</span>}</td>
+                    <td className="px-3 py-2 text-center"><span className="inline-flex items-center gap-1.5" title={word}><span className={`w-2.5 h-2.5 rounded-full ${dot}`} />{word}</span></td>
+                    <td className="px-3 py-2 text-center tabular-nums">{c.competitors_good} of {c.competitors_total}</td>
+                  </tr>); })}
+              </tbody>
+            </table>
+          </div>
+          {(res.categories.length > 0 || res.services_gap.length > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {res.categories.length > 0 && <div><div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Main categories competitors use</div><div className="flex flex-wrap gap-1.5">{res.categories.map(c => <span key={c.category} className="px-2.5 py-1 rounded-full bg-slate-100 text-12.5 text-slate-800">{c.category} <b className="tabular-nums">{c.count}</b></span>)}</div></div>}
+              {res.services_gap.length > 0 && <div><div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Services they list that you do not</div><div className="flex flex-wrap gap-1.5">{res.services_gap.map(x => <span key={x} className="px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-12.5 text-rose-800">{x}</span>)}</div></div>}
+            </div>
+          )}
+          <p className="text-11.5 text-slate-500">{res.note}</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'));
 const Stars = ({ value }) => (value == null ? <span className="text-slate-400">—</span> : <span className="inline-flex items-center gap-1"><Star size={13} className="fill-amber-400 text-amber-400" /><span className="font-medium text-slate-800">{Number(value).toFixed(1)}</span></span>);
 
@@ -99,6 +163,8 @@ export default function CompetitorSection({ b }) {
             </Card>
           )}
 
+          <ProfileComparison b={b} count={d.competitors.length} />
+
           <Card title="You and your competitors" subtitle="Sorted by number of reviews, the strongest signal Google has for local ranking">
             <div className="overflow-x-auto">
               <table className="w-full text-13">
@@ -117,7 +183,7 @@ export default function CompetitorSection({ b }) {
                       </td>
                       <td className="p-2.5 align-top"><Stars value={r.rating} /></td>
                       <td className="p-2.5 align-top"><div className="flex items-center gap-2"><div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${r.you ? 'bg-indigo-500' : 'bg-slate-400'}`} style={{ width: `${Math.max(2, ((r.reviews || 0) / max) * 100)}%` }} /></div><span className="w-12 text-right tabular-nums text-slate-700">{fmt(r.reviews || 0)}</span></div></td>
-                      <td className="p-2.5 align-top text-12">{r.website ? <a href={r.website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1"><ExternalLink size={11} />{r.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').slice(0, 28)}</a> : <span className="text-slate-400">None</span>}</td>
+                      <td className="p-2.5 align-top text-12">{r.website ? <a href={r.website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1"><ExternalLink size={11} />{r.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').slice(0, 28)}</a> : <span className="text-slate-500" title="No website on its Google profile: the profile is all customers see">No website</span>}</td>
                       <td className="p-2.5 align-top text-right">{!r.you && <button type="button" onClick={() => remove(r)} aria-label={`Remove ${r.name}`} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 size={14} /></button>}</td>
                     </tr>
                   ))}

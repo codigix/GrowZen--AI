@@ -52,6 +52,26 @@ def _upsert(db: Session, business_id: int, found: list[dict]) -> list[Competitor
     return saved
 
 
+def upsert_without_website(db: Session, business_id: int, found: list[dict]) -> list[Competitor]:
+    """Competitors found on Google Maps that have no website: saved by their Google place, so they are compared through their Google Business Profile like the others."""
+    have = list(db.scalars(select(Competitor).where(Competitor.business_id == business_id)))
+    saved = []
+    for item in found:
+        if (item.get("website") or "").strip() or not (item.get("name") or "").strip():
+            continue
+        pid, name = item.get("place_id") or item.get("cid") or None, item["name"].strip()
+        if any((pid and c.place_id == pid) or (not c.website and c.name == name) for c in have):
+            continue
+        c = Competitor(business_id=business_id, website=None, place_id=pid, name=name[:255], address=item.get("address"), phone=item.get("phone") or None,
+                       rating=item.get("rating") if isinstance(item.get("rating"), (int, float)) else None, reviews=item.get("reviews"), maps_link=item.get("maps_link"),
+                       source="google_places", selected=False)
+        db.add(c)
+        have.append(c)
+        saved.append(c)
+    db.commit()
+    return saved
+
+
 @router.post("")
 def find(body: CompetitorRegisterIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Top competitors on Google Maps for a type of business near a location. Pass `business_id`
