@@ -77,3 +77,12 @@ def test_gap_keywords_from_the_comparison_can_be_added_to_my_keywords(client):
     got = client.get(f"/api/v1/businesses/{bid}/keywords").json()
     mine = [k["keyword"] for k in (got.get("keywords") if isinstance(got, dict) else got)]
     assert "party dress rental" in mine and "blazer on rent" in mine
+
+
+def test_choosing_a_maps_business_with_no_website_saves_it_as_chosen(client):
+    bid = _biz(client)
+    assert client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": None, "name": "Walk In"}).status_code == 422  # the by-website route needs a website
+    made = client.post("/api/v1/competitors/maps", json={"business_id": bid, "name": "Walk In Studio", "cid": "placeZ", "address": "Wagholi", "rating": 4.6, "reviews": 12})
+    assert made.status_code == 201 and made.json()["selected"] is True and made.json()["website"] is None
+    cid = made.json()["id"]
+    assert client.patch(f"/api/v1/competitors/{cid}", json={"selected": False}).json()["selected"] is False  # and it can be left out again

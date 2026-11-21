@@ -236,7 +236,7 @@ export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, our
           const a = auditMap[c.reg?.id];
           return (
             <tr key={c.host} className={isChosen(c) ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}>
-              <td className="px-3 py-2.5 text-center"><input type="checkbox" aria-label={`Choose ${c.name}`} checked={isChosen(c)} onChange={() => onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website }, !isChosen(c))} className="w-4 h-4 cursor-pointer accent-indigo-600" /></td>
+              <td className="px-3 py-2.5 text-center"><input type="checkbox" aria-label={`Choose ${c.name}`} checked={isChosen(c)} onChange={() => onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website, maps: c.maps }, !isChosen(c))} className="w-4 h-4 cursor-pointer accent-indigo-600" /></td>
               <td className="px-3 py-2.5 min-w-[200px]">
                 <button type="button" onClick={() => onDetail(c)} className="text-left cursor-pointer group max-w-[280px]">
                   <span className="block font-semibold text-slate-900 group-hover:text-indigo-700 truncate">{c.name}</span>
@@ -918,7 +918,11 @@ function Research({ b }) {
   const chooseCompetitor = async (c, on) => {
     try {
       if (c.id) await api(`/competitors/${c.id}`, { method: 'PATCH', body: { selected: on } });
-      else if (on) await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: c.website, name: c.name } });
+      else if (on && c.website) await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: c.website, name: c.name || '' } });
+      else if (on) { // a business found on Google Maps that has no website: it is saved through its Google listing instead
+        const m = c.maps || c;
+        await api('/competitors/maps', { method: 'POST', body: { business_id: b.id, name: m.name || c.name || 'Competitor', address: m.address, cid: m.cid, phone: m.phone, rating: m.rating, reviews: m.reviews } });
+      }
       await loadRegistered();
       toast(on ? `${c.name} chosen: Competitor Watch will follow it` : `${c.name} left out`);
     } catch (e) { toast(e.message); }
