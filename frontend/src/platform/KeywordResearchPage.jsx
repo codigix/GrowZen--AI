@@ -862,13 +862,14 @@ function Tracked({ b, kw }) {
           </div>
           <Card pad={false}>
             <div className="overflow-x-auto">
-              <table className="w-full text-14 min-w-[960px]">
+              <table className="w-full text-14 min-w-[1010px]">
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="w-12 pl-4 py-3"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(k => k.id)))} /></th>
                     <Th id="keyword" what="A keyword you saved and are tracking, and where it was found." why="Click the name to check its searches, cost and related ideas. Click the heading to sort." from="the ones you picked in the Keyword Workspace, Find Keywords or typed in.">Keyword &amp; source</Th>
                     <Th id="rank" right what="Where your website shows on Google for it (average, last 28 days; #1 is the top), whether it moved, and whether AI assistants mention your business for it." why="Shows what is working and what can climb." from="Google Search Console for the position; the AI answers you track for AI search.">Rank / AI</Th>
                     <Th id="volume" right what="How many times a month people search it in your country." why="Shows which keywords can bring the most visitors." from="Google Ads Keyword Planner. Blank when Google gave no figure.">Searches</Th>
+                    <Th id="difficulty" right what="Keyword difficulty, 0 to 100: how hard it is to rank on Google for this keyword. Green is easier (up to 30), amber is a fair fight (up to 60), red is hard." why="Start with the easier keywords that still have searches: they rank sooner." from="Google Ads Keyword Planner (its competition level). Blank when Google gave no figure.">KD</Th>
                     <th className="px-3 py-3 text-right font-semibold"><Head right what="Impressions: how many times your site appeared in Google for exactly this search. Clicks: how many of those people clicked. CTR (click rate) = clicks divided by impressions. Last 28 days, searches from your target country." why="Many impressions and few clicks means the title and description need work. No impressions means Google is not showing your site for it." from="Google Search Console, the same numbers as Search Console > Performance > Queries (read for this table about every 30 minutes; Google's data is two days behind).">Google: impr / clicks / CTR</Head></th>
                     <th className="px-3 py-3 text-left font-semibold"><Head what="The page you mapped the keyword to, against the page Google actually shows for it." why="When they differ, Google prefers another page: your pages may compete, or the mapped page needs the keyword." from="your choice (or the mapping suggestion), and Google Search Console.">Target vs ranking page</Head></th>
                     <th className="px-3 py-3 text-left font-semibold"><Head what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Head></th>
@@ -910,7 +911,10 @@ function Tracked({ b, kw }) {
                           <span className="block mt-0.5">{!t ? null : t.ai?.mentioned ? <span title="AI assistants mention your business for this question" className="text-11.5 font-semibold text-emerald-700">AI ✓ mentioned</span>
                             : t.ai?.tracked ? <span title="You track the question this keyword makes; no assistant names your business yet" className="text-11.5 text-slate-500">AI asked, not named</span> : <span title="Not tracked as an AI search question yet" className="text-11.5 text-slate-300">AI not tracked</span>}</span>
                         </td>
-                        <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}{k.difficulty != null && <span className="block text-11.5 text-slate-400" title="Keyword difficulty: how hard it is to rank">KD {k.difficulty}</span>}</td>
+                        <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap" title={k.difficulty != null ? `Keyword difficulty ${k.difficulty} of 100: ${k.difficulty <= 30 ? 'easier to rank for' : k.difficulty <= 60 ? 'a fair fight' : 'hard to rank for'}` : 'Google gave no difficulty figure for this keyword'}>
+                          {k.difficulty != null ? <span className={`inline-flex items-center justify-center min-w-[36px] rounded-md px-2 py-0.5 text-13 font-semibold tabular-nums ${k.difficulty <= 30 ? 'bg-emerald-50 text-emerald-700' : k.difficulty <= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{k.difficulty}</span> : <span className="text-slate-300">—</span>}
+                        </td>
                         <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap text-13" title="Google Search Console, last 28 days">
                           {t && t.impressions > 0 ? <><span className="text-slate-700">{fmt(t.impressions)}</span> <span className="text-slate-300">/</span> <span className="font-semibold text-slate-900">{fmt(t.clicks || 0)}</span> <span className="text-slate-300">/</span> <span className="text-slate-700">{t.ctr != null ? `${t.ctr}%` : '—'}</span></>
                             : t && t.impressions === 0 ? <span className="text-slate-400" title="Google showed your site 0 times for this exact search in the last 28 days">0 shown</span>
@@ -943,7 +947,7 @@ function Tracked({ b, kw }) {
                         </td>
                       </tr>);
                   })}
-                  {!rows.length && <tr><td colSpan={8} className="px-5 py-12 text-center text-14 text-slate-500">No keyword matches. <button type="button" onClick={() => { go('all'); setQ(''); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button></td></tr>}
+                  {!rows.length && <tr><td colSpan={9} className="px-5 py-12 text-center text-14 text-slate-500">No keyword matches. <button type="button" onClick={() => { go('all'); setQ(''); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button></td></tr>}
                 </tbody>
               </table>
               <datalist id={`pages-${b.id}`}>{pages.map(p => <option key={p} value={p} />)}</datalist>
