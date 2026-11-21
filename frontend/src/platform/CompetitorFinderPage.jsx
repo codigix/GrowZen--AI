@@ -866,7 +866,6 @@ function Research({ b }) {
     const c = await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url, name } });
     await loadRegistered();
     if (!running(auditMap[c.id]?.status)) auditCompetitor(c);
-    if (!ourAudit && b.website) auditOurSite(); // Compare needs our own audit too
     toast(`${c.name} added. Auditing its site…`);
     return c;
   });
@@ -897,7 +896,6 @@ function Research({ b }) {
       const made = await ensureSaved(c);
       if (!made) return;
       if (made.website) {
-        if (!ourAudit && b.website) auditOurSite();
         await auditCompetitor(made);
         api(`/competitors/${made.id}/listing-audit`, { method: 'POST' }).then(loadRegistered).catch(() => { }); // its Google listing too, when Google has one
       } else await auditListing(made);
@@ -1001,7 +999,7 @@ function Research({ b }) {
     const a = auditMap[c.id];
     if (a?.status === 'done') { doCompare(c); return; }
     setTab('competitors');
-    if (!a) { auditCompetitor(c); if (!ourAudit && b.website) auditOurSite(); }
+    if (!a) auditCompetitor(c);
     toast(`${c.name}'s site is being audited first. When it finishes, press Compare on its row.`);
   }, [registered, auditsLoaded, compareHost]); // eslint-disable-line react-hooks/exhaustive-deps
 
