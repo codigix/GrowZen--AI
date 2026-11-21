@@ -692,7 +692,8 @@ function PagePicker({ b, pages: fallback, value, onPick, onCancel, listId }) {
       const h = Math.min(420, panel.current?.offsetHeight || 420);
       const below = window.innerHeight - a.bottom - 8;
       const top = below >= h || below >= a.top ? a.bottom + 4 : Math.max(8, a.top - h - 4);
-      setPos({ top, left: Math.max(8, Math.min(a.left, window.innerWidth - 376)) });
+      const left = Math.max(8, Math.min(a.left, window.innerWidth - 376));
+      setPos(prev => (prev && Math.abs(prev.top - top) < 1 && Math.abs(prev.left - left) < 1 ? prev : { top, left }));
     };
     place();
     window.addEventListener('resize', place);
