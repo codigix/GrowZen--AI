@@ -7,6 +7,7 @@ index status, Analytics for the page) are read from the database on every load, 
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Business, GeoPrompt, GeoResult, IndexPage, Keyword, SearchSnapshot
 from . import growth_content as gc
-from . import keyword_ai, keyword_mapping, keyword_status
+from . import google_rank, gsc, keyword_ai, keyword_mapping, keyword_status, market
 
 
 def path_of(url: str | None) -> str:
@@ -39,16 +40,32 @@ def heavy(db: Session, b: Business) -> dict[str, Any]:
     if prompts:
         for r in db.scalars(select(GeoResult).where(GeoResult.business_id == b.id, GeoResult.prompt_id.in_([p.id for p in prompts]))):
             mentioned[r.prompt_id] = mentioned.get(r.prompt_id, False) or bool(r.mentioned)
+    # Search Console now: one request for every keyword (28 days, the business's own country), so the figures are as fresh as this refresh and not as old as the last saved position check
+    live: dict[str, dict[str, Any]] | None = None
+    google_error = None
+    if b.website:
+        try:
+            live = google_rank.organic_positions(db, b, [it["keyword"] for it in st["items"]], 28)
+        except Exception as exc:  # noqa: BLE001 - the saved checks stand, and the reason is said
+            google_error = str(exc)[:220]
+    end = date.today() - timedelta(days=gsc.LAG_DAYS)
+    window = {"start": (end - timedelta(days=27)).isoformat(), "end": end.isoformat(), "days": 28, "country": market.serp_country(b)}
     rows: dict[str, dict[str, Any]] = {}
     for it in st["items"]:
         kw = it["keyword"]
         asked = [pid for pid, corpus in corpora if gc.has_keyword(corpus, kw)]
-        impressions, clicks = it.get("impressions"), it.get("clicks")
-        rows[kw] = {"rank": it.get("rank"), "change": it.get("change"), "best": it.get("best"), "impressions": impressions, "clicks": clicks,
-                    "ctr": round(clicks * 100 / impressions, 1) if impressions else None, "ranking_url": it.get("ranking_url"), "checked": it.get("checked"),
-                    "status": it["status"], "label": it["label"], "why": it["why"], "used_in": it.get("used_in") or [], "articles": it.get("articles") or 0, "next": it.get("next"),
+        rank, impressions, clicks, ranking_url, status_, label, why = it.get("rank"), it.get("impressions"), it.get("clicks"), it.get("ranking_url"), it["status"], it["label"], it["why"]
+        if live is not None:
+            d = live.get(kw)
+            impressions, clicks = (d["impressions"], d["clicks"]) if d else (0, 0)  # Google was asked: none means it showed the site 0 times for this search
+            rank, ranking_url = (max(1, round(d["position"])) if d else None), (d["url"] if d else None)
+            status_, label, why = keyword_status._verdict({"rank": rank, "clicks": clicks, "impressions": impressions, "checked": True}, bool(it.get("used_in")))
+        rows[kw] = {"rank": rank, "change": it.get("change"), "best": it.get("best"), "impressions": impressions, "clicks": clicks,
+                    "ctr": round(clicks * 100 / impressions, 1) if impressions else None, "ranking_url": ranking_url, "checked": it.get("checked"),
+                    "status": status_, "label": label, "why": why, "used_in": it.get("used_in") or [], "articles": it.get("articles") or 0, "next": it.get("next"),
                     "suggested": suggested.get(kw), "ai": {"tracked": bool(asked), "mentioned": (any(mentioned.get(pid) for pid in asked) if asked else None)}}
-    return {"rows": rows, "state": st["state"], "rank_ready": st.get("rank_ready")}
+    return {"rows": rows, "state": st["state"], "rank_ready": st.get("rank_ready"), "window": window, "google": "live" if live is not None else "saved", "google_error": google_error,
+            "google_total": ({"impressions": sum(r["impressions"] or 0 for r in rows.values()), "clicks": sum(r["clicks"] or 0 for r in rows.values()), "searches": sum(1 for r in rows.values() if r["impressions"])} if live is not None else None)}
 
 
 def _ga_rows(db: Session, b: Business) -> tuple[dict[str, dict[str, Any]], str]:
@@ -92,4 +109,5 @@ def merge(db: Session, b: Business, stored: dict[str, Any] | None) -> dict[str, 
                     "suggested": sug, "role": k.role, "index": _index_for(pages, shown), "index_for": path_of(shown) if shown else None,
                     "ga": ({"sessions": landing["sessions"], "engagement_rate": landing["engagement_rate"], "key_events": landing["key_events"], "path": landing["path"]} if landing else None),
                     "ga_state": ga_state if not landing else "ok"})
-    return {"rows": out, "state": (stored or {}).get("state"), "ga_state": ga_state, "ready": stored is not None}
+    return {"rows": out, "state": (stored or {}).get("state"), "ga_state": ga_state, "ready": stored is not None, "window": (stored or {}).get("window"), "google": (stored or {}).get("google"),
+            "google_error": (stored or {}).get("google_error"), "google_total": (stored or {}).get("google_total")}
