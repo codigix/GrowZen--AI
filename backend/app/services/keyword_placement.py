@@ -168,10 +168,11 @@ def _read(url: str) -> dict[str, Any]:
     alts = [(i.get("alt") or "").strip() for i in soup.find_all("img")]
     for t in soup(["script", "style", "noscript", "nav", "footer", "header", "form"]):
         t.decompose()
-    paras = [p.get_text(" ", strip=True) for p in soup.find_all("p") if len(p.get_text(" ", strip=True).split()) >= 8]
+    all_paras = [p.get_text(" ", strip=True) for p in soup.find_all("p") if p.get_text(" ", strip=True)]
+    paras = [p for p in all_paras if len(p.split()) >= 8]
     text = " ".join(soup.get_text(" ", strip=True).split())
     return {"status": r.status_code, "title": title, "description": (d.get("content") or "").strip() if d else "", "h1": [t for n, t in heads if n == "h1"], "headings": [t for n, t in heads if n != "h1"],
-            "intro": paras[0] if paras else "", "text": text, "words": len(text.split()), "alts": alts, "images": len(alts)}
+            "intro": paras[0] if paras else "", "paragraphs": all_paras[:12], "text": text, "words": len(text.split()), "alts": alts, "images": len(alts)}
 
 
 def _used(read: dict[str, Any], path: str, keyword: str) -> dict[str, Any]:
@@ -298,8 +299,13 @@ def page_detail(db: Session, b: Business, url: str, focus: str | None = None) ->
         role = role or ("supporting" if rel >= 0.5 else "main")
         u = _used(read, path, k.keyword)
         need = _place_rules(role, scope["kind"], u)
+        current_of = {"title": read["title"], "heading": " | ".join(read["h1"]), "description": read["description"], "intro": read["intro"], "image": next((a for a in read["alts"] if a), "")}
+        warning = None
+        if scope["kind"] in ("info", "policy") and role == "main":
+            warning = f"This keyword is mapped to {'an' if scope['label'][0].lower() in 'aeiou' else 'a'} {scope['label'].lower()}, which should not compete for it. Map it to a page that offers it (Change the page on My Keywords), or leave this page as it is."
         rows.append({"id": k.id, "keyword": k.keyword, "volume": k.volume, "rank": k.rank, "role": role, "fit": round(rel * 100), "used": u, "belongs": belongs or bool(role_of.get(k.keyword)),
-                     "focus": bool(focus and focus.lower() == k.keyword.lower()), "to_add": [{"place": pl, "why": why} for pl, why in need]})
+                     "focus": bool(focus and focus.lower() == k.keyword.lower()), "words": gc.core(k.keyword), "warning": warning,
+                     "to_add": [{"place": pl, "why": why, "current": current_of.get(pl) or None} for pl, why in need]})
         todo += [{"keyword": k.keyword, "place": pl} for pl, _ in need]
     rows.sort(key=lambda r: (not r["focus"], r["role"] != "main", -(r["volume"] or 0)))
     rows = rows[:14]
@@ -311,8 +317,7 @@ def page_detail(db: Session, b: Business, url: str, focus: str | None = None) ->
     notes = []
     if read["words"] < 40:
         notes.append("This page shows almost no text without JavaScript (a single-page site), so what is read here is only its address and the HTML head. Search engines and AI assistants see the same.")
-    if scope["kind"] in ("policy", "info"):
-        notes.append(scope["takes"])
     return {"url": full, "path": path, "scope": scope, "title": read["title"], "description": read["description"], "h1": read["h1"], "headings": read["headings"][:12], "intro": read["intro"][:300],
             "words": read["words"], "images": read["images"], "images_without_alt": sum(1 for a in read["alts"] if not a), "keywords": rows, "notes": notes,
+            "content": {"title": read["title"], "description": read["description"], "h1": read["h1"], "headings": read["headings"][:20], "paragraphs": [x[:420] for x in read["paragraphs"]]},
             "main_keyword": mine["primary"] if mine else None}

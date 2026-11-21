@@ -97,6 +97,19 @@ export function KeywordsView({ b, onOpen }) {
   );
 }
 
+const STOP = new Set(['in', 'near', 'me', 'the', 'best', 'top', 'for', 'a', 'an', 'of', 'and', 'to', 'at', 'on', 'with', 'by', 'cheap', 'affordable', 'my', 'your', 'nearby', 'online', 'is', 'are', 'how', 'what']);
+const stem = (w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w);
+/** A text with the words of the chosen keywords marked: the main one strongly, the others lightly. */
+function Highlight({ text, focus = [], others = [] }) {
+  if (!text) return null;
+  const f = new Set(focus.map(stem)), o = new Set(others.map(stem));
+  return <>{String(text).split(/(\s+)/).map((tok, i) => {
+    const w = stem(tok.toLowerCase().replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, ''));
+    if (!w || STOP.has(w)) return <React.Fragment key={i}>{tok}</React.Fragment>;
+    return f.has(w) ? <mark key={i} className="bg-amber-200 text-slate-900 rounded px-0.5">{tok}</mark> : o.has(w) ? <mark key={i} className="bg-indigo-100 text-slate-900 rounded px-0.5">{tok}</mark> : <React.Fragment key={i}>{tok}</React.Fragment>;
+  })}</>;
+}
+
 /** One page read live: what it says, the picked keywords it should carry, and where to add each missing one, with a line to paste. */
 export function PageOverview({ b, target, onClose }) {
   const [res, setRes] = useState(null);
@@ -123,17 +136,37 @@ export function PageOverview({ b, target, onClose }) {
               {res.headings.length > 0 && <div><b>Sections:</b> {res.headings.join(' · ')}</div>}</div>
           </div>
           {res.notes.map(n => <p key={n} className="text-12.5 text-amber-900 bg-amber-50 rounded px-3 py-1.5">{n}</p>)}
+          {(() => {
+            const focusKw = res.keywords.find(k => k.focus) || res.keywords.find(k => k.role === 'main');
+            const focus = focusKw?.words || [];
+            const others = res.keywords.filter(k => k !== focusKw).flatMap(k => k.words || []);
+            const c = res.content;
+            const row = (label, children) => <div className="grid grid-cols-[110px_1fr] gap-3 py-1.5 border-t border-slate-100 first:border-t-0"><div className="text-11.5 font-semibold uppercase tracking-wide text-slate-400 pt-0.5">{label}</div><div className="text-13 text-slate-800 leading-relaxed">{children}</div></div>;
+            const none = <i className="text-slate-400">none</i>;
+            return (
+              <div className="rounded-lg ring-1 ring-slate-200 px-4 py-2">
+                <div className="flex flex-wrap items-center gap-2 py-1.5"><span className="text-13 font-semibold text-slate-900">What the page says now</span>
+                  {focusKw && <span className="text-12 text-slate-500">words of <mark className="bg-amber-200 rounded px-1">{focusKw.keyword}</mark> are marked{others.length ? <>, the other picked keywords <mark className="bg-indigo-100 rounded px-1">lightly</mark></> : null}</span>}</div>
+                {row('Title', c.title ? <Highlight text={c.title} focus={focus} others={others} /> : none)}
+                {row('Description', c.description ? <Highlight text={c.description} focus={focus} others={others} /> : none)}
+                {row('Main heading', c.h1.length ? c.h1.map((h, i) => <div key={i}><Highlight text={h} focus={focus} others={others} /></div>) : none)}
+                {row('Sections', c.headings.length ? <ul className="list-disc pl-4 space-y-0.5">{c.headings.map((h, i) => <li key={i}><Highlight text={h} focus={focus} others={others} /></li>)}</ul> : none)}
+                {row('Text', c.paragraphs.length ? <div className="space-y-2">{c.paragraphs.slice(0, 6).map((p, i) => <p key={i}><Highlight text={p} focus={focus} others={others} /></p>)}{c.paragraphs.length > 6 && <p className="text-12 text-slate-400">+ {c.paragraphs.length - 6} more paragraphs</p>}</div> : <span className="text-slate-400">No paragraphs could be read ({res.words} words). {res.words < 40 ? 'The text is loaded by JavaScript.' : ''}</span>)}
+              </div>);
+          })()}
           {res.keywords.length === 0 && <p className="text-13 text-slate-600">None of your picked keywords belong on this page. {res.scope.takes}</p>}
           <div className="space-y-3">
             {res.keywords.map(k => (
               <div key={k.id} className={`rounded-lg ring-1 p-3 ${k.focus ? 'ring-indigo-300 bg-indigo-50/40' : 'ring-slate-200'}`}>
                 <div className="flex flex-wrap items-center gap-2 mb-2"><span className="text-14 font-semibold text-slate-900">{k.keyword}</span><Badge tone={k.role === 'main' ? 'blue' : 'gray'}>{k.role === 'main' ? 'Main keyword' : 'Supporting'}</Badge>{k.volume ? <span className="text-12 text-slate-500">{n0(k.volume)} searches/mo</span> : null}{k.rank ? <span className="text-12 text-slate-500">· position {k.rank}</span> : null}
                   <span className="ml-auto flex flex-wrap gap-1">{[['title', 'Title'], ['heading', 'Heading'], ['description', 'Description'], ['intro', 'First paragraph'], ['subheading', 'Sections']].map(([key, label]) => <Badge key={key} tone={k.used[key] ? 'green' : 'gray'}>{k.used[key] ? '✓ ' : ''}{label}</Badge>)}</span></div>
+                {k.warning && <p className="mb-2 text-12.5 text-amber-900 bg-amber-50 rounded px-3 py-1.5">⚠ {k.warning}</p>}
                 {k.to_add.length === 0 ? <p className="text-12.5 text-emerald-700 inline-flex items-center gap-1"><Check size={14} />Already in the places that matter on this page.</p> : (
                   <ul className="space-y-2">{k.to_add.map(a => { const id = `${k.id}-${a.place}`; return (
                     <li key={a.place} className="rounded-md bg-white ring-1 ring-slate-200 px-3 py-2">
-                      <div className="text-12.5 text-slate-800"><b>Add it to {ADD_AT[a.place] || a.place}.</b> <span className="text-slate-500">{a.why}</span></div>
-                      {a.example && <div className="mt-1.5 flex items-start gap-2"><div className="flex-1 text-12.5 text-slate-900 bg-slate-50 rounded px-2.5 py-1.5 ring-1 ring-slate-200">{a.example}</div><Act icon={copied === id ? Check : Copy} tone="slate" tip="Copy: copy this line to paste on the page." onClick={() => copy(a.example, id)} /></div>}
+                      <div className="text-12.5 text-slate-800"><b>{a.current ? 'Replace' : 'Add'} {ADD_AT[a.place] || a.place}.</b> <span className="text-slate-500">{a.why}</span></div>
+                      {a.current && <div className="mt-1.5 grid grid-cols-[60px_1fr] gap-2 items-start"><span className="text-11.5 font-semibold uppercase tracking-wide text-red-500 pt-1.5">Now</span><div className="text-12.5 text-slate-600 bg-red-50/50 rounded px-2.5 py-1.5 ring-1 ring-red-100 line-through decoration-red-300"><Highlight text={a.current} focus={k.words} /></div></div>}
+                      {a.example && <div className="mt-1.5 grid grid-cols-[60px_1fr] gap-2 items-start"><span className="text-11.5 font-semibold uppercase tracking-wide text-emerald-600 pt-1.5">{a.current ? 'Change to' : 'Add'}</span><div className="flex items-start gap-2"><div className="flex-1 text-12.5 text-slate-900 bg-emerald-50/60 rounded px-2.5 py-1.5 ring-1 ring-emerald-100"><Highlight text={a.example} focus={k.words} /></div><Act icon={copied === id ? Check : Copy} tone="slate" tip="Copy: copy this text to paste on the page." onClick={() => copy(a.example, id)} /></div></div>}
                     </li>); })}</ul>)}
               </div>))}
           </div>
