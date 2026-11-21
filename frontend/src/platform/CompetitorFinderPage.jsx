@@ -884,7 +884,12 @@ function Research({ b }) {
   };
   // A business found on Maps or in the Google results is saved as a competitor first (by its website, else through its Google listing); a saved one is used as it is.
   const ensureSaved = async (c) => {
-    if (c?.id) return c;
+    if (c?.id) { // an audited or compared business is a competitor you are working with: a saved one that was left unchosen is chosen now
+      if (c.selected === false) {
+        try { await api(`/competitors/${c.id}`, { method: 'PATCH', body: { selected: true } }); await loadRegistered(); } catch (e) { toast(e.message); }
+      }
+      return c;
+    }
     const m = c?.maps || c;
     if (!m?.name) return null;
     const made = m.website ? await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: m.website, name: m.name } })
