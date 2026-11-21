@@ -39,3 +39,18 @@ def test_read_robots_finds_blocks_sitemaps_and_ai_bots():
     assert next(b for b in r["ai_bots"] if b["bot"] == "ClaudeBot")["allowed"] is True
     assert r["blocked_pages"] == ["https://x.com/private/a"]
     assert si.read_robots("", 404, "x.com", [])["found"] is False
+
+
+def test_llms_files_follow_the_format(monkeypatch):
+    import types
+    pages = {"https://x.com/": {"url": "https://x.com/", "title": "X Shop", "description": "We sell x.", "h1": "", "text": "word " * 60, "words": 60},
+             "https://x.com/products": {"url": "https://x.com/products", "title": "X Shop", "description": "We sell x.", "h1": "", "text": "", "words": 0},
+             "https://x.com/privacy": {"url": "https://x.com/privacy", "title": "X Shop", "description": "We sell x.", "h1": "", "text": "", "words": 0}}
+    monkeypatch.setattr(si, "read_sitemap", lambda b, host: {"found": True, "urls": [{"url": u} for u in pages]})
+    monkeypatch.setattr(si, "_page_facts", lambda u: pages[u])
+    b = types.SimpleNamespace(website="https://x.com/", name="X", description="X sells x in Pune.", business_brief=None, primary_category="Shop", services=[], phone="123", address="Pune", area=None, city=None, contact_email=None)
+    out = si.build_llms(None, b)
+    txt = out["llms_txt"]
+    assert txt.startswith("# X\n\n> X sells x in Pune.") and "## Main pages" in txt and "## Optional" in txt
+    assert "- [Products](https://x.com/products)" in txt and "- [Privacy](https://x.com/privacy)" in txt  # same title everywhere: named from the address
+    assert out["llms_full_txt"].count("Source: https://x.com/") == 3 and any("same title" in n for n in out["notes"])

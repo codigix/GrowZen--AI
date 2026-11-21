@@ -649,3 +649,137 @@ def site_files(db: Session, b: Business) -> dict[str, Any]:
     return {"state": "ok", "host": host, "sitemap": {**sm, "count": len(sm["urls"]), "urls": sm["urls"][:300]}, "audited": len(seen),
             "missing_from_sitemap": missing, "missing_xml": f"<!-- add inside <urlset> in your sitemap -->\n{xml}" if missing else "", "sitemap_not_audited": not_audited,
             "robots": robots, "llms": llms}
+
+
+# ------------------------------------------------------------------ creating llms.txt and llms-full.txt from what the software knows
+SECTION_RULES = [
+    ("Optional", ("privacy", "terms", "policy", "policies", "refund", "return", "cookie", "disclaimer", "blog", "news", "sitemap")),
+    ("About and contact", ("about", "contact", "how-it-works", "how_it_works", "faq", "gallery", "team", "story", "reviews", "location", "visit")),
+    ("Products and services", ("product", "service", "rental", "rent", "collection", "catalog", "shop", "store", "menu", "pricing", "packages", "tour", "treatment", "course", "solution", "jewel")),
+]
+
+
+def _section(url: str) -> str:
+    path = urlsplit(url).path.lower().strip("/")
+    if not path:
+        return "Main pages"
+    for name, words in SECTION_RULES:
+        if any(w in path for w in words):
+            return name
+    return "Main pages"
+
+
+def _page_facts(url: str) -> dict[str, Any]:
+    from bs4 import BeautifulSoup
+
+    from .net import site_client
+    client = site_client(12)
+    try:
+        r = client.get(url)
+    except Exception:  # noqa: BLE001
+        return {"url": url, "error": True}
+    finally:
+        client.close()
+    if r.status_code >= 400 or "html" not in (r.headers.get("content-type") or "").lower():
+        return {"url": url, "error": True}
+    soup = BeautifulSoup(r.text, "html.parser")
+    title = (soup.title.string or "").strip() if soup.title and soup.title.string else ""
+    d = soup.find("meta", attrs={"name": re.compile("^description$", re.I)})
+    desc = (d.get("content") or "").strip() if d else ""
+    h1 = next((h.get_text(" ", strip=True) for h in soup.find_all("h1")), "")
+    for t_ in soup(["script", "style", "noscript", "nav", "footer", "header", "form"]):
+        t_.decompose()
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(ln.strip() for ln in soup.get_text("\n").splitlines() if ln.strip()))
+    return {"url": url, "title": title, "description": desc, "h1": h1, "text": text, "words": len(text.split())}
+
+
+def build_llms(db: Session, b: Business) -> dict[str, Any]:
+    """llms.txt (the short guide for AI assistants: a title, a summary and links with a line on each page) and llms-full.txt (the pages' own text), written in the llmstxt.org format
+    from the business's profile, its business summary and what each page of the site really says. Nothing is invented: a fact the software does not have is left out."""
+    host = gsc.host_of(b.website)
+    if not host:
+        raise PageCheckError("Add the project's website first.")
+    sm = read_sitemap(b, host)
+    urls = [x["url"] for x in sm["urls"]] if sm["found"] else [v["url"] for v in _audited_pages(db, b, host).values()]
+    if not urls:
+        urls = [b.website if b.website.startswith("http") else f"https://{host}/"]
+    urls = list(dict.fromkeys(urls))[:30]
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        got = list(pool.map(_page_facts, urls))
+    pages = [g for g in got if not g.get("error")]
+    notes: list[str] = []
+    if len(got) - len(pages):
+        notes.append(f"{len(got) - len(pages)} page(s) could not be read and are left out.")
+    brief = b.business_brief or {}
+    name = (b.name or host).strip()
+    home = next((p for p in pages if path_of(p["url"]) == "/"), pages[0] if pages else {})
+
+    from collections import Counter
+    title_count = Counter((p.get("title") or "").strip() for p in pages)
+    desc_count = Counter((p.get("description") or "").strip() for p in pages)
+    same_titles = len(pages) > 2 and any(c >= max(3, len(pages) // 2) for k, c in title_count.items() if k)
+    if same_titles:
+        notes.append("Most pages send the same title and description in their HTML (a single-page site), so the links are named from their web address and the repeated description is left out. "
+                     "Give every page its own title and description: it also helps Google.")
+
+    def clean_title(p: dict[str, Any]) -> str:
+        path = path_of(p["url"])
+        from_path = path.strip("/").split("/")[-1].replace("-", " ").replace("_", " ").title()
+        if path == "/":
+            return (p.get("h1") or name)[:80] if same_titles else (p.get("h1") or re.split(r"\s[|\u2013\u2014-]\s", p.get("title") or name)[0].strip() or name)[:80]
+        if same_titles and title_count.get((p.get("title") or "").strip(), 0) >= 3:
+            return from_path[:80] or name
+        return ((p.get("h1") or re.split(r"\s[|\u2013\u2014-]\s", p.get("title") or "")[0].strip()) or from_path or name)[:80]
+
+    def short_desc(p: dict[str, Any]) -> str:
+        d_ = (p.get("description") or "").strip()
+        return "" if (d_ and desc_count.get(d_, 0) >= 3 and path_of(p["url"]) != "/") else (d_ if len(d_) <= 200 else d_[:200].rsplit(" ", 1)[0] + "...")
+
+    def trim(text: str, n: int = 320) -> str:
+        text = " ".join(text.split())
+        if len(text) <= n:
+            return text
+        cut = text[:n]
+        stop = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+        return (cut[:stop + 1] if stop > 80 else cut.rsplit(" ", 1)[0] + "...").strip()
+    summary = trim(brief.get("overview") or b.description or home.get("description") or "")
+    summary = summary or f"{name}{f', a {b.primary_category}' if b.primary_category else ''}."
+    where = ", ".join(x for x in [b.address or ", ".join(y for y in [b.area, b.city] if y)] if x)
+    offers = brief.get("offerings") or [s.get("name") for s in (b.services or []) if s.get("name")]
+    facts = []
+    if offers:
+        facts.append("Offers: " + "; ".join(str(o) for o in offers[:8]) + ".")
+    if brief.get("audience"):
+        facts.append("For: " + "; ".join(str(a) for a in brief["audience"][:4]) + ".")
+    if where:
+        facts.append(f"Located at {where}." + (f" Serves {brief['market']}." if brief.get("market") and brief["market"] not in where else ""))
+    if b.phone:
+        facts.append(f"Phone: {b.phone}.")
+    if getattr(b, "contact_email", None):
+        facts.append(f"Email: {b.contact_email}.")
+    sections: dict[str, list[str]] = {}
+    for p in pages:
+        line = f"- [{clean_title(p)}]({p['url']})" + (f": {short_desc(p)}" if short_desc(p) else "")
+        sections.setdefault(_section(p["url"]), []).append(line)
+    order = ["Main pages", "Products and services", "About and contact", "Optional"]
+    short = [f"# {name}", "", f"> {summary}", ""]
+    if facts:
+        short += [" ".join(facts), ""]
+    for sec in order:
+        if sections.get(sec):
+            short += [f"## {sec}", *sections[sec], ""]
+    full = [f"# {name}", "", f"> {summary}", ""]
+    if facts:
+        full += [" ".join(facts), ""]
+    thin = 0
+    for p in pages:
+        body = p["text"] if p["words"] >= 40 else ""
+        if not body:
+            thin += 1
+        full += [f"## {clean_title(p)}", f"Source: {p['url']}", "", body or short_desc(p) or "(This page's text is loaded by JavaScript, so it could not be read.)", ""]
+    if thin:
+        notes.append(f"{thin} page(s) show almost no text without JavaScript, so llms-full.txt carries only their description. AI crawlers read pages the same way: put the text in the page's HTML.")
+    if not (brief or b.description):
+        notes.append("No business summary or description was found, so the summary line comes from the home page. Build the business summary on the Website Audit page, then create the files again.")
+    return {"host": host, "llms_txt": "\n".join(short).strip() + "\n", "llms_full_txt": "\n".join(full).strip()[:200_000] + "\n", "pages": [{"url": p["url"], "title": clean_title(p), "section": _section(p["url"]), "words": p["words"]} for p in pages],
+            "notes": notes, "upload_to": f"https://{host}/llms.txt"}

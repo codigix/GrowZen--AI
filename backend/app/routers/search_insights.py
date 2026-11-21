@@ -57,3 +57,12 @@ def add_keywords(body: KeywordsIn, b: Business = Depends(get_business), db: Sess
 def site_files(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """The site's sitemap, robots.txt and llms.txt read live, and the pages the audits saw that the sitemap leaves out."""
     return search_insights.site_files(db, b)
+
+
+@router.post("/llms")
+def llms(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Write llms.txt and llms-full.txt for the site from the profile, the business summary and what its pages say. Nothing is published: the files are returned to review and download."""
+    try:
+        return search_insights.build_llms(db, b)
+    except search_insights.PageCheckError as exc:
+        raise HTTPException(422, str(exc)) from exc

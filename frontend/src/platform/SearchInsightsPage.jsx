@@ -347,6 +347,43 @@ function NotAvailable({ d }) {
   );
 }
 
+/** Writes llms.txt and llms-full.txt from what the software knows about the business and its pages, to review, edit, download and upload to the site's root. */
+function LlmsMaker({ b, missing }) {
+  const [res, setRes] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [file, setFile] = useState('llms.txt');
+  const [text, setText] = useState({});
+  const [copied, setCopied] = useState(false);
+  const make = async () => {
+    setBusy(true); setErr('');
+    try { const r = await api(`/businesses/${b.id}/search-insights/llms`, { method: 'POST', timeout: 120000 }); setRes(r); setText({ 'llms.txt': r.llms_txt, 'llms-full.txt': r.llms_full_txt }); }
+    catch (e) { setErr(e.message || 'The files could not be written.'); } finally { setBusy(false); }
+  };
+  const download = () => { const url = URL.createObjectURL(new Blob([text[file]], { type: 'text/plain;charset=utf-8' })); const a = document.createElement('a'); a.href = url; a.download = file; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); };
+  const copy = async () => { try { await navigator.clipboard.writeText(text[file]); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the text is in the box */ } };
+  return (
+    <div className="rounded-xl ring-1 ring-indigo-200 bg-indigo-50/40 p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1"><div className="text-13 font-semibold text-slate-900">{missing ? 'Create the files for your site' : 'Create fresh files'}</div><div className="text-12.5 text-slate-600">Written from your business profile, business summary and what each page of the site says. Nothing is invented, and nothing is published: you review and download.</div></div>
+        <Button variant="primary" size="sm" icon={ClipboardCheck} busy={busy} onClick={make}>{res ? 'Write again' : 'Create llms.txt and llms-full.txt'}</Button>
+      </div>
+      {err && <p className="mt-2 text-13 text-red-600" role="alert">{err}</p>}
+      {res && (
+        <div className="mt-3 space-y-3">
+          {res.notes.map(n => <p key={n} className="text-12.5 text-amber-900 bg-amber-50 rounded px-3 py-1.5">{n}</p>)}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg">{['llms.txt', 'llms-full.txt'].map(f => <button key={f} type="button" onClick={() => setFile(f)} className={TAB_CLS(file === f)}>{f}</button>)}</div>
+            <span className="text-12 text-slate-500">{(text[file] || '').length.toLocaleString('en-IN')} characters · {res.pages.length} pages · you can edit the text</span>
+            <span className="ml-auto flex gap-2"><Button size="sm" variant="secondary" icon={copied ? Check : Plus} onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button><Button size="sm" variant="primary" icon={Gauge} onClick={download}>Download {file}</Button></span>
+          </div>
+          <textarea value={text[file] || ''} onChange={e => setText(v => ({ ...v, [file]: e.target.value }))} spellCheck={false} aria-label={file} className="w-full h-72 rounded-lg ring-1 ring-slate-300 bg-white p-3 text-12.5 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+          <div className="text-12.5 text-slate-700 rounded-lg bg-white ring-1 ring-slate-200 px-4 py-3"><b>To put it on your site:</b> upload the file to the root of your website so it opens at <span className="font-mono">{res.upload_to.replace('llms.txt', file)}</span> (the same folder as robots.txt). Then press Read again above to check it.</div>
+        </div>)}
+    </div>
+  );
+}
+
 /** The site's own files, read live: the sitemap against the pages the audits found, robots.txt, and the llms.txt files for AI assistants. */
 function SiteFiles({ b }) {
   const r = useApi(`/businesses/${b.id}/search-insights/site-files`);
@@ -394,7 +431,9 @@ function SiteFiles({ b }) {
       </Card>
 
       <Card title="llms.txt" subtitle="The files that tell AI assistants what your site is and which pages matter">
-        <div className="space-y-4">{d.llms.map(f => (
+        <div className="space-y-4">
+          <LlmsMaker b={b} missing={d.llms.some(f => !f.found)} />
+          {d.llms.map(f => (
           <div key={f.name}>
             <div className="flex flex-wrap items-center gap-2 mb-1.5"><span className="text-13 font-semibold text-slate-900">/{f.name}</span><Badge tone={f.found ? 'green' : f.name === 'llms.txt' ? 'amber' : 'gray'}>{f.found ? 'Found' : 'Not found'}</Badge>{f.found && <span className="text-12 text-slate-500">{f.lines} lines · {f.links} links</span>}</div>
             {!f.found ? <p className="text-12.5 text-slate-600">{f.name === 'llms.txt' ? 'Publish /llms.txt: a short Markdown file with your name, a one-line summary and links to your main pages and services, so AI assistants describe you correctly.' : 'Optional: the full text of your key pages in one file.'}</p> : <>
