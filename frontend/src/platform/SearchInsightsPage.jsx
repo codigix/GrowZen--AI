@@ -355,6 +355,24 @@ function NotAvailable({ d }) {
   );
 }
 
+/** The llmstxt.org format, checked on the text as it is edited: the first line is the title, then a short summary, then link lists. */
+function llmsChecks(text, file) {
+  const lines = (text || '').split('\n');
+  const first = lines.find(l => l.trim());
+  const links = lines.filter(l => /^\s*[-*]\s+\[[^\]]+\]\([^)\s]+\)/.test(l));
+  const bad = links.filter(l => !/\]\(https?:\/\//.test(l));
+  const checks = [
+    [Boolean(first && /^# \S/.test(first)), 'The first line is a title (# Name): the one thing the format requires'],
+    [lines.filter(l => /^# \S/.test(l)).length === 1 || file === 'llms-full.txt', 'Exactly one # title'],
+    [lines.some(l => l.startsWith('>')), 'A short summary in a quote line (> what the site is)'],
+    [!/<\/?[a-z][^>]*>/i.test(text || ''), 'Plain Markdown: no HTML tags'],
+  ];
+  if (file === 'llms.txt') checks.push([lines.some(l => /^## \S/.test(l)), 'Sections with ## headings'], [links.length > 0, `Links as - [Name](https://…): ${links.length} found`], [!bad.length, 'Every link is a full web address']);
+  else checks.push([lines.some(l => /^Source: https?:\/\//.test(l)), 'Each page names its Source address']);
+  checks.push([(text || '').length < 200000, 'Under 200,000 characters']);
+  return checks;
+}
+
 /** Writes llms.txt and llms-full.txt from what the software knows about the business and its pages, to review, edit, download and upload to the site's root. */
 function LlmsMaker({ b, missing }) {
   const [res, setRes] = useState(null);
@@ -386,6 +404,11 @@ function LlmsMaker({ b, missing }) {
             <span className="ml-auto flex gap-2"><Button size="sm" variant="secondary" icon={copied ? Check : Plus} onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button><Button size="sm" variant="primary" icon={Gauge} onClick={download}>Download {file}</Button></span>
           </div>
           <textarea value={text[file] || ''} onChange={e => setText(v => ({ ...v, [file]: e.target.value }))} spellCheck={false} aria-label={file} className="w-full h-72 rounded-lg ring-1 ring-slate-300 bg-white p-3 text-12.5 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+          <div className="rounded-lg bg-white ring-1 ring-slate-200 px-4 py-3">
+            <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Format check (llmstxt.org), live as you edit</div>
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">{llmsChecks(text[file], file).map(([ok, label]) => <li key={label} className="text-12.5 flex items-center gap-2"><Badge tone={ok ? 'green' : 'red'}>{ok ? 'OK' : 'Fix'}</Badge>{label}</li>)}</ul>
+            <p className="mt-2 text-12 text-slate-600">Before you upload, you can also run the file through an outside checker such as <a className="text-indigo-700 hover:underline" href="https://llmstxtvalidator.dev" target="_blank" rel="noreferrer">llmstxtvalidator.dev</a>, <a className="text-indigo-700 hover:underline" href="https://www.seoptimer.com/llms-txt-validator" target="_blank" rel="noreferrer">SEOptimer</a> or <a className="text-indigo-700 hover:underline" href="https://www.rankability.com/tools/llms-txt-checker" target="_blank" rel="noreferrer">Rankability</a>. Most of them read the file from your live site, so upload it first, or paste the text where they allow it. There is no official approval: the format is a proposal at <a className="text-indigo-700 hover:underline" href="https://llmstxt.org" target="_blank" rel="noreferrer">llmstxt.org</a>.</p>
+          </div>
           <div className="text-12.5 text-slate-700 rounded-lg bg-white ring-1 ring-slate-200 px-4 py-3"><b>To put it on your site:</b> upload the file to the root of your website so it opens at <span className="font-mono">{res.upload_to.replace('llms.txt', file)}</span> (the same folder as robots.txt). Then press Read again above to check it.</div>
         </div>)}
     </div>
