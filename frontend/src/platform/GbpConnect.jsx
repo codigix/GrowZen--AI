@@ -33,11 +33,12 @@ export function LocationPicker({ connectionId, onImported }) {
             {l.duplicate_listing && <StatusPill level="warning">Duplicate</StatusPill>}
             <VerifyPill state={l.verification} />
             {l.imported && <Badge tone="gray">Already added</Badge>}
+            {!l.imported && l.joins && <span title="This Business Profile belongs to a project you already have. Connecting adds it there: no second project is made." className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200 text-11.5 font-semibold px-2 py-0.5 max-w-[210px] truncate">Joins your project: {l.joins.name}</span>}
           </label>
         ))}
       </div>
       <ErrorNote>{error}</ErrorNote>
-      <div className="mt-4 flex justify-end"><Button variant="primary" busy={busy === 'import'} disabled={!selected.length} onClick={importNow}>Add {selected.length} and audit</Button></div>
+      <div className="mt-4 flex justify-end"><Button variant="primary" busy={busy === 'import'} disabled={!selected.length} onClick={importNow}>{selected.length && locs.data.filter(l => selected.includes(l.gbp_location)).every(l => l.joins) ? `Connect to ${selected.length === 1 ? 'your project' : `${selected.length} projects`} and audit` : `Add ${selected.length} and audit`}</Button></div>
     </div>
   );
 }

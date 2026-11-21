@@ -145,7 +145,7 @@ function Listings({ connection, onOpenBusiness, toast, onChanged }) {
   const shown = all.filter(l => filter === 'all' || (filter === 'verified' ? l.verification === 'verified' : needsAction(l)));
   const add = (l) => run(`i${l.gbp_location}`, async () => {
     const out = await api(`/connections/${connection.id}/import`, { method: 'POST', body: { locations: [l.gbp_location] } });
-    await refreshBusinesses(); locs.reload(true); onChanged(); toast(`${out[0]?.name || 'Business'} added: synced and audited`);
+    await refreshBusinesses(); locs.reload(true); onChanged(); toast(out[0]?.linked_existing ? `${out[0]?.name || 'Business'}: Google connected to your existing project, synced and audited` : `${out[0]?.name || 'Business'} added: synced and audited`);
   });
   if (locs.loading && !locs.data) return <SkList rows={5} />;
   if (locs.error) return <div className="rounded bg-red-50 ring-1 ring-inset ring-red-200 px-4 py-3 text-13 text-red-800">{locs.error.message} <Button size="sm" className="ml-2" icon={RefreshCw} onClick={() => locs.reload(true)}>Try again</Button></div>;
@@ -163,12 +163,13 @@ function Listings({ connection, onOpenBusiness, toast, onChanged }) {
                 <div className="text-13.5 font-semibold text-slate-900">{l.name}</div>
                 <div className="text-12 text-slate-500 truncate">{l.address || 'Service-area business'}</div>
                 <div className="text-11.5 text-slate-400">{[l.primary_category, ROLE[l.account_role] || l.account_role, st.account_name].filter(Boolean).join(' · ')}</div>
+                {!l.imported && l.joins && <div className="text-11.5 font-semibold text-emerald-700">Joins your project: {l.joins.name}</div>}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <span title={st.verification_text}><VerifyPill state={l.verification} /></span><OpenPill status={st.open_status} />
                 {l.duplicate_listing && <Flag tone="bg-amber-50 text-amber-700 ring-amber-200">Duplicate</Flag>}{st.pending_edits && <Flag>Edits pending</Flag>}{st.google_updated && <Flag tone="bg-sky-50 text-sky-700 ring-sky-200">Google updates</Flag>}
                 {st.maps_url && <a href={st.maps_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-11.5 font-medium text-indigo-700 hover:underline">Maps <ExternalLink size={10} /></a>}
-                {l.imported ? <Button size="sm" onClick={() => onOpenBusiness(l.business_id)}>Manage</Button> : <Button size="sm" variant="primary" icon={Plus} busy={busy === `i${l.gbp_location}`} onClick={() => add(l)}>Add</Button>}
+                {l.imported ? <Button size="sm" onClick={() => onOpenBusiness(l.business_id)}>Manage</Button> : <Button size="sm" variant="primary" icon={Plus} busy={busy === `i${l.gbp_location}`} onClick={() => add(l)} title={l.joins ? `Adds this Business Profile to your project ${l.joins.name}: no second project is made.` : 'Makes a project for this Business Profile'}>{l.joins ? 'Connect to project' : 'Add'}</Button>}
               </div>
             </div>
           );

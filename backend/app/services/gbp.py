@@ -765,12 +765,37 @@ def location_to_fields(loc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# What Google owns on a linked project: always taken from the listing. Everything else (name, description, services...) stays as the owner wrote it and is only filled when empty.
+GOOGLE_OWNED = {"gbp_location", "gbp_account", "gbp_status", "verification", "duplicate_listing", "place_id", "open_status", "opening_date"}
+
+
+def matching_project(db: Session, fields: dict[str, Any], owner_id: str | None) -> Business | None:
+    """The project this owner already has for the same business (same Google place, or the same phone or website with the same name), if it is not linked to another location.
+    Connecting Google adds the Business Profile to that project: it never makes a second one."""
+    from .match import is_same_business  # noqa: PLC0415
+    mine = [Business.owner_id == owner_id] if owner_id else []
+    for cand in db.scalars(select(Business).where(*mine).order_by(Business.id)):
+        if cand.gbp_location and cand.gbp_location != fields.get("gbp_location"):
+            continue  # a project with its own, different location: that is another branch, not this one
+        if is_same_business(cand, fields.get("place_id"), fields.get("name"), fields.get("phone"), fields.get("website")):
+            return cand
+    return None
+
+
 def import_location(db: Session, conn: GoogleConnection, loc: dict[str, Any], actor: str, owner_id: str | None = None) -> Business:
     fields = location_to_fields(loc)
-    b = db.scalar(select(Business).where(Business.gbp_location == fields["gbp_location"])) or Business(source="google", created_by=actor, owner_id=owner_id)
+    b = db.scalar(select(Business).where(Business.gbp_location == fields["gbp_location"]))
+    adopted = False  # a project the owner already had, now getting its Business Profile
+    if b is None:
+        b = matching_project(db, fields, owner_id)
+        adopted = b is not None
+        b = b or Business(source="google", created_by=actor, owner_id=owner_id)
     for k, v in fields.items():
-        if v not in (None, "", [], {}):
-            setattr(b, k, v)
+        if v in (None, "", [], {}):
+            continue
+        if adopted and k not in GOOGLE_OWNED and getattr(b, k, None):
+            continue  # an adopted project keeps what its owner wrote: only the gaps are filled from Google
+        setattr(b, k, v)
     b.connection_id = conn.id
     db.add(b)
     db.flush()

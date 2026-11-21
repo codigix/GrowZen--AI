@@ -92,7 +92,13 @@ def locations(connection_id: int, db: Session = Depends(get_db), user: User = De
     c.last_error = None
     db.commit()
     imported = dict(db.execute(select(Business.gbp_location, Business.id).where(Business.gbp_location.is_not(None), *([Business.owner_id == user.id] if not user.sees_all else []))).all())
-    return [gbp.location_to_fields(l) | {"imported": l.get("name") in imported, "business_id": imported.get(l.get("name")), "account_role": l.get("account_role")} for l in found]
+    out = []
+    for l in found:
+        f = gbp.location_to_fields(l)
+        join = None if l.get("name") in imported else gbp.matching_project(db, f, user.id)
+        out.append(f | {"imported": l.get("name") in imported, "business_id": imported.get(l.get("name")), "account_role": l.get("account_role"),
+                        "joins": {"id": join.id, "name": join.name} if join else None})  # joins: the project it will be added to, instead of making a second one
+    return out
 
 
 @router.post("/{connection_id}/import")
@@ -111,6 +117,7 @@ def import_locations(connection_id: int, body: ImportLocationsIn, db: Session = 
         taken = db.scalar(select(Business).where(Business.gbp_location == name))
         if taken and not (user.sees_all or taken.owner_id == user.id):
             continue  # already another account's project: never taken over or shown
+        existed = bool(taken) or gbp.matching_project(db, gbp.location_to_fields(loc), user.id) is not None
         b = gbp.import_location(db, c, loc, user.name, owner_id=user.id)
         db.commit()
         try:
@@ -120,9 +127,9 @@ def import_locations(connection_id: int, body: ImportLocationsIn, db: Session = 
         audits.run(db, b, "gbp")
         schedules.create_for_plan(db, b)  # the plan's recurring jobs (reviews, posts, audits, reports) start for an imported client too
         backlink_autostart.enable(db, b)  # and so does backlink discovery (the scheduler's bot job runs it)
-        log(db, user.name, "business_imported", b.id, location=name, email=c.email)
+        log(db, user.name, "business_linked" if existed else "business_imported", b.id, location=name, email=c.email)
         db.commit()
-        out.append(row(b))
+        out.append(row(b) | {"linked_existing": existed})
     return out
 
 
