@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ExternalLink, RefreshCw, Gauge } from 'lucide-react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { SeoShell, Card, Button, Badge, ErrorNote, SkList } from './SeoUi';
 import { api, useApi } from './seoApi';
 
@@ -8,6 +9,106 @@ const TH = 'px-3 py-2 text-left font-semibold text-11.5 text-slate-500 whitespac
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'));
 const secs = (s) => (s == null ? '—' : s >= 60 ? `${Math.floor(s / 60)}m ${Math.round(s % 60)}s` : `${Math.round(s)}s`);
 const RATING = { GOOD: ['Good', 'green'], NEEDS_IMPROVEMENT: ['Needs improvement', 'amber'], POOR: ['Poor', 'red'] };
+
+const G = { blue: '#4285f4', purple: '#7e57c2', green: '#0f9d58', orange: '#f4811f' };
+const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+/** One metric tile, in the style of Google's own reports: coloured when switched on, with the change against the period before. */
+function MetricTile({ label, value, change, color, on, onClick, sub }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={on} disabled={!onClick}
+      className={`text-left rounded-xl px-4 py-3 min-w-[150px] flex-1 transition-colors ${onClick ? 'cursor-pointer' : 'cursor-default'} ${on ? 'text-white shadow-sm' : 'bg-white ring-1 ring-slate-200 text-slate-900 hover:ring-slate-300'}`}
+      style={on ? { background: color } : undefined}>
+      <div className={`text-12 font-medium ${on ? 'text-white/90' : 'text-slate-500'}`}>{label}</div>
+      <div className="text-26 font-bold tabular-nums leading-tight mt-0.5">{value}</div>
+      <div className={`text-11.5 mt-0.5 ${on ? 'text-white/85' : change == null ? 'text-slate-500' : change > 0 ? 'text-emerald-700' : change === 0 ? 'text-slate-500' : 'text-red-600'}`}>{sub ?? (change == null ? 'no change figure' : `${change > 0 ? '+' : ''}${change}% vs the period before`)}</div>
+    </button>
+  );
+}
+
+/** Clicks, impressions, click rate and position with a daily line chart: the look of Google Search Console's Performance report. */
+function Performance({ o }) {
+  const [on, setOn] = useState({ clicks: true, impressions: true, ctr: false, position: false });
+  const [view, setView] = useState('queries');
+  if (!o || o.state !== 'ok') return o ? <Card><p className="text-13 text-amber-800">{o.message}</p></Card> : null;
+  const t = o.totals, pv = o.previous, ch = o.change;
+  const dpp = (a, b) => Math.round((a - b) * 10) / 10;
+  const signed = (n) => `${n > 0 ? '+' : ''}${n}`;
+  const tiles = [
+    { k: 'clicks', label: 'Total clicks', value: num(t.clicks), change: ch.clicks, color: G.blue, sub: ch.clicks == null ? `${num(pv.clicks)} in the period before` : undefined },
+    { k: 'impressions', label: 'Total impressions', value: num(t.impressions), change: ch.impressions, color: G.purple },
+    { k: 'ctr', label: 'Average click rate', value: `${t.ctr}%`, color: G.green, sub: pv.ctr ? `${signed(dpp(t.ctr, pv.ctr))} points vs before` : 'no figure before' },
+    { k: 'position', label: 'Average position', value: t.position ?? '—', color: G.orange, sub: pv.position && t.position ? `${signed(dpp(t.position, pv.position))} vs before (lower is better)` : 'no figure before' },
+  ];
+  const lines = tiles.filter(x => on[x.k]);
+  const views = [['queries', 'Searches'], ['pages', 'Pages'], ['devices', 'Devices'], ['countries', 'Countries']];
+  const rows = o[view] || [];
+  const key = { queries: 'query', pages: 'page', devices: 'device', countries: 'code' }[view];
+  const maxImp = Math.max(1, ...rows.map(r => r.impressions));
+  return (
+    <section className="rounded-xl bg-white ring-1 ring-slate-200 shadow-sm overflow-hidden">
+      <div className="flex flex-wrap gap-2.5 p-4">{tiles.map(x => <MetricTile key={x.k} {...x} on={on[x.k]} onClick={() => setOn(v => ({ ...v, [x.k]: !v[x.k] }))} />)}</div>
+      <div className="px-2 pb-2 h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={o.series} margin={{ top: 8, right: 14, left: 6, bottom: 0 }}>
+            <CartesianGrid stroke="#eef0f3" vertical={false} />
+            <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11, fill: '#64748b' }} minTickGap={36} axisLine={false} tickLine={false} />
+            {tiles.map(x => <YAxis key={x.k} yAxisId={x.k} hide reversed={x.k === 'position'} domain={x.k === 'position' ? [1, 'auto'] : [0, 'auto']} />)}
+            <Tooltip labelFormatter={shortDate} formatter={(v, n) => [n === 'Average click rate' ? `${v}%` : v, n]} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+            {lines.map(x => <Line key={x.k} yAxisId={x.k} type="monotone" dataKey={x.k} name={x.label} stroke={x.color} strokeWidth={2} dot={false} connectNulls />)}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="border-t border-slate-200">
+        <div className="flex gap-1 px-3 pt-2 border-b border-slate-200">{views.map(([id, label]) => <button key={id} type="button" onClick={() => setView(id)} className={`px-3 py-2 text-13 font-medium cursor-pointer border-b-2 -mb-px ${view === id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{label}</button>)}</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-13">
+            <thead><tr className="text-11.5 text-slate-500"><th className={TH}>{{ queries: 'Top searches', pages: 'Top pages', devices: 'Device', countries: 'Country' }[view]}</th><th className={`${TH} text-right`} style={{ color: G.blue }}>Clicks</th><th className={`${TH} text-right`} style={{ color: G.purple }}>Impressions</th><th className={`${TH} text-right`}>Click rate</th><th className={`${TH} text-right`}>Position</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.map(r => (
+                <tr key={r[key]} className="hover:bg-slate-50">
+                  <td className="px-3 py-2 text-slate-900 max-w-[420px]">{view === 'pages' ? <Path p={r.page} /> : <span className={view === 'devices' ? 'capitalize' : ''}>{r[key]}</span>}</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-medium">{num(r.clicks)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums"><span className="inline-flex items-center gap-2 justify-end"><span className="hidden sm:block h-1.5 rounded-full" style={{ width: Math.max(2, (r.impressions / maxImp) * 70), background: `${G.purple}55` }} />{num(r.impressions)}</span></td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.ctr}%</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.position}</td>
+                </tr>))}
+              {!rows.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500">Nothing to show for this period.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** The same overview for Analytics 4: visitors, visits, engagement and conversions. */
+function VisitorsOverview({ a }) {
+  const [on, setOn] = useState({ sessions: true, users: true, key_events: false });
+  const t = a.totals;
+  const tiles = [
+    { k: 'users', label: 'Visitors', value: num(t.users), color: G.blue }, { k: 'sessions', label: 'Visits', value: num(t.sessions), color: G.purple },
+    { k: 'engagement', label: 'Engaged visits', value: `${t.engagement_rate}%`, color: G.green, sub: `${secs(t.avg_engagement_seconds)} average time per visit` },
+    { k: 'key_events', label: 'Key events', value: num(t.key_events), color: G.orange, sub: t.key_events ? 'conversions counted' : 'none marked yet' },
+  ];
+  const lines = tiles.filter(x => on[x.k] && x.k !== 'engagement');
+  return (
+    <section className="rounded-xl bg-white ring-1 ring-slate-200 shadow-sm overflow-hidden">
+      <div className="flex flex-wrap gap-2.5 p-4">{tiles.map(x => <MetricTile key={x.k} {...x} sub={x.sub ?? 'in this period'} on={on[x.k]} onClick={x.k === 'engagement' ? undefined : () => setOn(v => ({ ...v, [x.k]: !v[x.k] }))} />)}</div>
+      <div className="px-2 pb-2 h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={a.series} margin={{ top: 8, right: 14, left: 6, bottom: 0 }}>
+            <CartesianGrid stroke="#eef0f3" vertical={false} />
+            <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11, fill: '#64748b' }} minTickGap={36} axisLine={false} tickLine={false} />
+            {tiles.map(x => <YAxis key={x.k} yAxisId={x.k} hide domain={[0, 'auto']} />)}
+            <Tooltip labelFormatter={shortDate} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+            {lines.map(x => <Line key={x.k} yAxisId={x.k} type="monotone" dataKey={x.k} name={x.label} stroke={x.color} strokeWidth={2} dot={false} />)}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}
 
 function Table({ head, children, empty }) {
   const rows = React.Children.toArray(children);
@@ -47,7 +148,8 @@ function SearchConsole({ d, site }) {
   const ix = s.index;
   return (
     <div className="space-y-4">
-      <p className="text-12.5 text-slate-500">Search Console data for {s.property}, the last {s.period.days} days (to {s.period.end}). Read with {s.account}.</p>
+      <p className="text-12.5 text-slate-500">Search Console · <b className="text-slate-700">{s.property}</b> · last {s.period.days} days to {s.period.end} · read with {s.account}</p>
+      <Performance o={s.overview} />
       <Section title="Searches you do not track yet" subtitle="What people really typed before seeing your site, that is not in your keywords" part={s.untracked}
         why="Add the ones that fit your business to My Keywords: they already bring impressions, so they are the cheapest keywords to win.">
         {s.untracked.state === 'ok' && <>
@@ -119,7 +221,8 @@ function Analytics({ d }) {
   const H = ['Sessions', 'Engaged', 'Bounce', 'Time per visit', 'Key events'];
   return (
     <div className="space-y-4">
-      <p className="text-12.5 text-slate-500">Analytics 4 property {a.property_name || a.property}, the last {a.period.days} days (to {a.period.end}).</p>
+      <p className="text-12.5 text-slate-500">Analytics 4 · <b className="text-slate-700">{a.property_name || a.property}</b> · last {a.period.days} days to {a.period.end}</p>
+      <VisitorsOverview a={a} />
       <Section title="Organic landing pages" subtitle="Visitors who arrived from Google search: do they stay and act?" part={{ state: 'ok' }} why="Engaged = a visit longer than 10 seconds, with a key event or 2+ pages. Bounce is the opposite.">
         <Table head={['Landing page', ...H, 'Conversion']} empty="No organic landing-page visits were recorded in this period.">
           {a.landing_pages.rows.map(r => <tr key={r.path}><td className="px-3 py-2"><Path p={r.path} site={d.website} /></td>{eng(r)}<td className="px-3 py-2 tabular-nums">{r.conversion_rate}%</td></tr>)}

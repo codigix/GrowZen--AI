@@ -147,6 +147,29 @@ def field_speed(url: str) -> dict[str, Any]:
     return {"mobile": mobile, "desktop": desktop, "message": None if have else "Google has no real-visitor data for this site yet: it needs enough Chrome visitors over 28 days."}
 
 
+def overview(sc: gsc.SearchConsole, site: str, start: date, end: date, queries: list[dict[str, Any]] | None, pages: list[dict[str, Any]] | None) -> dict[str, Any]:
+    """The Performance view of Search Console: totals with the change against the period before, the daily series, and the top searches, pages, devices and countries."""
+    p_end, p_start = start - timedelta(days=1), start - timedelta(days=DAYS)
+    tot = lambda s_, e_: gsc._totals(sc.query(site, gsc._body(s_, e_)))  # noqa: E731
+    now, prev = tot(start, end), tot(p_start, p_end)
+    by_day = {r["keys"][0]: r for r in sc.query(site, gsc._body(start, end, ["date"], 1000))}
+    series, d = [], start
+    while d <= end:
+        r = by_day.get(d.isoformat())
+        series.append({"date": d.isoformat(), "clicks": int(r["clicks"]) if r else 0, "impressions": int(r["impressions"]) if r else 0,
+                       "ctr": round(r["ctr"] * 100, 2) if r else 0, "position": round(r["position"], 1) if r else None})
+        d += timedelta(days=1)
+    row = lambda r, k: {k: r["key"], "clicks": r["clicks"], "impressions": r["impressions"], "ctr": round(r["ctr"] * 100, 2), "position": round(r["position"], 1)}  # noqa: E731
+    top = lambda rows, k: [row(r, k) for r in sorted(rows or [], key=lambda r: (-r["clicks"], -r["impressions"]))[:25]]  # noqa: E731
+    dev = [{"device": r["keys"][0].lower(), "clicks": int(r["clicks"]), "impressions": int(r["impressions"]), "ctr": round(r["ctr"] * 100, 2), "position": round(r["position"], 1)}
+           for r in sc.query(site, gsc._body(start, end, ["device"], 10))]
+    ctry = [{"code": gsc.A3.get(r["keys"][0], r["keys"][0].upper()[:2]), "clicks": int(r["clicks"]), "impressions": int(r["impressions"]), "ctr": round(r["ctr"] * 100, 2), "position": round(r["position"], 1)}
+            for r in sorted(sc.query(site, gsc._body(start, end, ["country"], 50)), key=lambda r: -r["clicks"])[:8]]
+    change = lambda k: (round((now[k] - prev[k]) * 100 / prev[k], 1) if prev.get(k) else None)  # noqa: E731
+    return {"totals": now, "previous": prev, "change": {"clicks": change("clicks"), "impressions": change("impressions"), "ctr": None, "position": None},
+            "series": series, "queries": top(queries, "query"), "pages": top(pages, "page"), "devices": dev, "countries": ctry}
+
+
 def search_console_block(db: Session, b: Business) -> tuple[dict[str, Any], dict[str, Any]]:
     """(the Search Console sections, the raw rows the joined view needs)"""
     host = gsc.host_of(b.website)
@@ -162,6 +185,7 @@ def search_console_block(db: Session, b: Business) -> tuple[dict[str, Any], dict
     queries, pages = fq.result(), fp.result()
     out: dict[str, Any] = {"state": "ok", "account": msg, "property": site, "period": {"start": start.isoformat(), "end": end.isoformat(), "days": DAYS}}
     top_pages = [p["key"] for p in sorted(pages or [], key=lambda p: -p["clicks"])[:5]] or [f"https://{host}/"]
+    out["overview"] = _part(overview, sc, site, start, end, queries, pages)
     out["untracked"] = _part(lambda: untracked_queries(db, b, queries)) if queries is not None else {"state": "error", "message": "Search Console did not return the queries."}
     out["low_ctr_pages"] = {"state": "ok", "rows": low_ctr(pages, "page")} if pages is not None else {"state": "error", "message": "Search Console did not return the pages."}
     out["low_ctr_queries"] = {"state": "ok", "rows": low_ctr(queries, "query")} if queries is not None else {"state": "error", "message": "Search Console did not return the queries."}
@@ -217,6 +241,8 @@ def analytics_block(db: Session, user: Any, b: Business) -> tuple[dict[str, Any]
     run = lambda body: ga.run(prop, body)  # noqa: E731
     metrics = ["sessions", "engagementRate", "bounceRate", "userEngagementDuration", "keyEvents"]
     jobs = {
+        "totals": lambda: run(_ga_body(start, end, ["activeUsers", "sessions", "engagementRate", "userEngagementDuration", "keyEvents"], [], 1)),
+        "series": lambda: run(_ga_body(start, end, ["sessions", "activeUsers", "keyEvents"], ["date"], 400)),
         "landing": lambda: run(_ga_body(start, end, metrics, ["landingPage"], 250, True, "sessions")),
         "channels": lambda: run(_ga_body(start, end, ["sessions", "keyEvents"], ["landingPage", "sessionDefaultChannelGroup"], 400, False, "sessions")),
         "events": lambda: run(_ga_body(start, end, ["eventCount", "keyEvents"], ["eventName"], 100, False, "eventCount")),
@@ -249,7 +275,13 @@ def analytics_block(db: Session, user: Any, b: Business) -> tuple[dict[str, Any]
     for p in channels:
         p["channels"] = [{"channel": k, "sessions": v, "share": round(v * 100 / p["total"])} for k, v in sorted(p["channels"].items(), key=lambda kv: -kv[1])[:4]]
     events = [{"event": r["eventName"], "count": r["eventCount"], "key_event": bool(r["keyEvents"]), "standard": r["eventName"] in STANDARD_EVENTS} for r in got["events"]]
-    out = {"state": "ok", "property": prop, "property_name": props[0].get("name"), "period": {"start": start.isoformat(), "end": end.isoformat(), "days": DAYS}, "errors": errors,
+    tr = (got["totals"] or [{}])[0]
+    ts = tr.get("sessions") or 0
+    totals = {"users": tr.get("activeUsers") or 0, "sessions": ts, "engagement_rate": round((tr.get("engagementRate") or 0) * 100, 1),
+              "avg_engagement_seconds": round((tr.get("userEngagementDuration") or 0) / ts, 1) if ts else 0, "key_events": tr.get("keyEvents") or 0}
+    day = lambda s_: datetime.strptime(s_, "%Y%m%d").date().isoformat()  # noqa: E731
+    series = sorted(({"date": day(r["date"]), "sessions": r["sessions"], "users": r["activeUsers"], "key_events": r["keyEvents"]} for r in got["series"]), key=lambda x: x["date"])
+    out = {"state": "ok", "totals": totals, "series": series, "property": prop, "property_name": props[0].get("name"), "period": {"start": start.isoformat(), "end": end.isoformat(), "days": DAYS}, "errors": errors,
            "landing_pages": {"rows": landing[:25]}, "landing_channels": {"rows": channels},
            "events": {"key": [e for e in events if e["key_event"]], "other": [e for e in events if not e["key_event"] and not e["standard"]][:12],
                       "message": None if any(e["key_event"] for e in events) else "No key events are marked in this property: mark the ones that matter (form sent, call click, booking) as key events in Analytics, then conversions show here."},
