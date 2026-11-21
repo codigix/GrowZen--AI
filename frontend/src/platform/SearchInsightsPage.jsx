@@ -184,7 +184,15 @@ function Section({ title, subtitle, part, children, why }) {
 
 function Gate({ part, name }) {
   if (!part || part.state === 'ok') return null;
-  return <Card><p className="text-13 text-amber-900">{name} is not available for this project: {part.message}</p></Card>;
+  const todo = (part.steps || []).filter(x => x.action || x.detail);
+  return (
+    <Card title={`${name} is not available yet`} subtitle="What is missing, and what to do">
+      {!todo.length && <p className="text-13 text-amber-900">{part.message}</p>}
+      {todo.length > 0 && <ul className="space-y-2">{todo.map((x, i) => <li key={i} className="rounded-lg ring-1 ring-amber-200 bg-amber-50/60 px-4 py-2.5"><div className="text-13 font-semibold text-slate-900">{x.label}</div><div className="text-12.5 text-slate-700 mt-0.5">{x.detail}</div>{x.url && <a href={x.url} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex items-center gap-1 text-12.5 font-semibold text-indigo-700 hover:underline">{x.button || 'Open'}<ExternalLink size={12} /></a>}</li>)}</ul>}
+      {part.site_tag && <p className="mt-3 text-12.5 text-slate-700 rounded-lg bg-slate-50 ring-1 ring-slate-200 px-3 py-2">Your website sends its visitors to the Google Analytics tag <b className="font-mono">{part.site_tag}</b>. In Google Analytics, open the property that has this measurement ID (Admin &gt; Data streams) and add the linked Google account there as a Viewer. If that property is in another Google account, link that account to this project instead.</p>}
+      <p className="mt-2 text-11.5 text-slate-500">Business Profile access does not include website visitors: Analytics is a separate Google permission and a separate property. Search Console data above works without it.</p>
+    </Card>
+  );
 }
 
 function SearchConsole({ d, site }) {

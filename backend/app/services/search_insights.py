@@ -218,6 +218,23 @@ def _ga_body(start: date, end: date, metrics: list[str], dims: list[str], limit:
     return body
 
 
+def site_analytics_tag(website: str | None) -> str | None:
+    """The Google Analytics measurement id (G-XXXX) the website's own pages send data to, read from its home page: it tells which Analytics property must be opened to see this site's visitors."""
+    if not website:
+        return None
+    try:
+        from .net import site_client
+        client = site_client(10)
+        try:
+            html = client.get(website if website.startswith("http") else f"https://{website}").text[:200000]
+        finally:
+            client.close()
+    except Exception:  # noqa: BLE001
+        return None
+    m = re.search(r"googletagmanager\.com/gtag/js\?id=(G-[A-Z0-9]{6,})", html) or re.search(r"[\"']((?:G)-[A-Z0-9]{8,12})[\"']", html)
+    return m.group(1) if m else None
+
+
 def analytics_block(db: Session, user: Any, b: Business) -> tuple[dict[str, Any], dict[str, Any]]:
     from fastapi import HTTPException
 
@@ -227,7 +244,10 @@ def analytics_block(db: Session, user: Any, b: Business) -> tuple[dict[str, Any]
         props = access.ga4_properties(db, user, b)
     except HTTPException as exc:
         d = exc.detail
-        return {"state": "not_connected", "message": (d.get("message") if isinstance(d, dict) else str(d)) or "Connect Google Analytics 4 for this site first."}, {}
+        todo = [{"label": x.get("label"), "detail": x.get("detail"), "action": (x.get("fix") or {}).get("action"), "url": (x.get("fix") or {}).get("url"), "button": (x.get("fix") or {}).get("label")}
+                for x in (d.get("steps") if isinstance(d, dict) else None) or []]
+        return {"state": "not_connected", "message": (d.get("message") if isinstance(d, dict) else str(d)) or "Connect Google Analytics 4 for this site first.",
+                "steps": todo, "site_tag": site_analytics_tag(b.website)}, {}
     except Exception as exc:  # noqa: BLE001
         return {"state": "error", "message": str(exc)[:240]}, {}
     if not props:
