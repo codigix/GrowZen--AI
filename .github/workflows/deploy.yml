@@ -20,7 +20,11 @@ jobs:
           command_timeout: 15m
           script: |
             export PATH="$PATH:/usr/local/bin:/usr/bin:/root/.nvm/versions/node/current/bin"
+            # nvm.sh can return non-zero and kill the script under set -e, so load it with checks off.
+            set +e
             [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"
+            set -e
+            set -x
 
             cd /var/www/GrowZen--AI
             git pull origin main
