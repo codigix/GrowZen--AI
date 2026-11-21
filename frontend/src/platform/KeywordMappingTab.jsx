@@ -5,6 +5,7 @@ import { Card, Button, Badge, ErrorNote, SkList, useAction, useToast } from './S
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
 import PageMetaCard from './PageMetaCard';
+import BriefButtons from './DevBrief';
 import { KeywordsView, PageOverview } from './KeywordPlacement';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
@@ -59,6 +60,11 @@ export default function KeywordMappingTab({ b }) {
           {waiting > 0 ? <span className="text-amber-700 text-12.5">{waiting} suggestion{waiting === 1 ? '' : 's'} not saved yet</span> : d.primaries > 0 ? <span className="text-emerald-700 text-12.5 inline-flex items-center gap-1"><CheckCircle2 size={14} />All saved</span> : null}
           <Button variant="primary" icon={CheckCircle2} busy={busy === 'apply'} disabled={waiting === 0} onClick={save} title="Writes the page and the main or supporting role on each keyword. A page you chose yourself is never changed.">Save the mapping</Button>
         </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-indigo-50/60 ring-1 ring-indigo-100 px-4 py-2.5">
+        <div className="min-w-0 flex-1"><div className="text-13 font-semibold text-slate-900">Ready to put it on the website?</div><div className="text-12.5 text-slate-600">One document for your developer: each page, what to replace or add, and the text to use.</div></div>
+        <BriefButtons b={b} />
       </div>
 
       <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg w-fit" role="tablist" aria-label="Mapping views">

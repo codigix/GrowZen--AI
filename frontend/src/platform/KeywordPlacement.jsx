@@ -4,6 +4,7 @@ import { ExternalLink, Eye, Copy, Check, FileSearch, Sparkles } from 'lucide-rea
 import { Card, Badge, ErrorNote, SkList, Modal } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act } from './TableBits';
+import BriefButtons from './DevBrief';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 const PLACE = { address: 'address', title: 'title', heading: 'heading', description: 'description', subheading: 'section heading', intro: 'first paragraph', text: 'text', image: 'image text' };
@@ -170,6 +171,7 @@ export function PageOverview({ b, target, onClose }) {
                     </li>); })}</ul>)}
               </div>))}
           </div>
+          <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50/60 ring-1 ring-indigo-100 px-4 py-2.5"><span className="text-12.5 text-slate-700">Send this page's changes to your developer:</span><BriefButtons b={b} page={res.url} size="sm" /></div>
           <p className="text-11.5 text-slate-500">Suggested lines use only what the software knows about your business: read each one and change it to be true to you. Write for people first: use the keyword once or twice, in plain words.</p>
         </div>)}
     </Modal>
