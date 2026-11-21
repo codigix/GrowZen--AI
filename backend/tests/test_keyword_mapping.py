@@ -131,3 +131,18 @@ def test_page_meta_proposals_fit_and_files_follow_the_pages():
     assert inner["title"].startswith("Gown rental in Pune") and inner["h1"] == "Gown rental" and inner["title"] != home["title"]
     f = page_meta.files([{"path": "/", "title": "T", "description": "D", "h1": "H", "canonical": "https://x.com/"}])
     assert '"/"' in f["json"] and "react-helmet-async" in f["react"] and "meta[pathname" in f["react"]
+
+
+def test_placement_scope_and_where_to_add():
+    from app.services import keyword_placement as kp
+    assert kp.scope_of("/")["kind"] == "home" and kp.scope_of("/privacy-policy")["kind"] == "policy" and kp.scope_of("/about")["kind"] == "info"
+    assert kp.scope_of("/blog/how-to-rent")["kind"] == "blog" and kp.scope_of("/gown-rental")["kind"] == "offer"
+    read = {"title": "Home | Asha", "description": "", "h1": ["Welcome"], "headings": [], "intro": "", "text": "We rent gowns.", "alts": [""], "words": 3, "images": 1}
+    u = kp._used(read, "/gown-rental", "gown rental")
+    assert u["address"] and not u["title"] and not u["heading"] and not u["description"]
+    main = [p for p, _ in kp._place_rules("main", "offer", u)]
+    assert main == ["title", "heading", "description", "intro", "image"]
+    assert [p for p, _ in kp._place_rules("supporting", "offer", u)] == ["subheading", "text"]   # a supporting keyword never goes in the title
+    ok = dict(u, title=True, heading=True, description=True, intro=True, image=True)
+    assert kp._place_rules("main", "offer", ok) == []
+    assert kp._head_fit(read, "/gown-rental", "gown rental") == 1.0 and kp._head_fit(read, "/gown-rental", "saree on rent") == 0.0

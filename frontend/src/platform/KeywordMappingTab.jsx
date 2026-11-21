@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Copy, ExternalLink, Lightbulb, PenLine, Search } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Copy, ExternalLink, Eye, Lightbulb, PenLine, Search } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
 import PageMetaCard from './PageMetaCard';
+import { KeywordsView, PageOverview } from './KeywordPlacement';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 
@@ -21,6 +22,8 @@ export default function KeywordMappingTab({ b }) {
   const r = useApi(`/businesses/${b.id}/keyword-mapping`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
+  const [view, setView] = useState('pages'); // pages | keywords | create
+  const [open, setOpen] = useState(null); // the page overview: { url, focus }
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
@@ -48,6 +51,12 @@ export default function KeywordMappingTab({ b }) {
         </span>
       </div>
 
+      <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg w-fit" role="tablist" aria-label="Mapping views">
+        {[['pages', `Pages ${d.pages.length}`], ['keywords', `Keywords ${d.keywords}`], ['create', `To create ${todo.length}`]].map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-8 px-3 text-12.5 font-semibold rounded-md cursor-pointer ${view === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>))}
+      </div>
+
+      {view === 'pages' && <>
       <PageMetaCard b={b} sharedNote={Boolean(d.notes?.length)} />
 
       <Card pad={false} title="Your pages" subtitle={`The keyword each page should rank for, from the website scan of ${d.found_at || 'the last audit'}. The most searched keyword on a page is its main one.`}>
@@ -79,6 +88,7 @@ export default function KeywordMappingTab({ b }) {
                   </td>
                   <td className="px-3 py-2.5 text-right whitespace-nowrap">
                     <span className="inline-flex gap-1.5">
+                      <Act icon={Eye} tone="indigo" tip="Overview: read this page and see where each picked keyword is used and where to add it." onClick={() => setOpen({ url: p.url })}>Overview</Act>
                       <a href={p.url} target="_blank" rel="noreferrer"><Act icon={ExternalLink} tone="slate" tip="Open: show this page on your website in a new tab." /></a>
                       {p.primary ? <Link to={`/keyword-overview?q=${encodeURIComponent(p.primary)}`}><Act icon={Search} tone="sky" tip="Check keyword: open the searches, cost and related ideas for its main keyword." /></Link>
                         : <Link to={`/keyword-management/discover?q=${encodeURIComponent((p.path !== '/' ? p.path.replace(/[-_/]+/g, ' ').trim() : (p.title || p.path).split(/[|\-–:]/)[0].trim()).slice(0, 40))}`}><Act icon={Lightbulb} tone="indigo" tip="Find a keyword: search for keywords this page could rank for." /></Link>}
@@ -90,6 +100,11 @@ export default function KeywordMappingTab({ b }) {
         </div>
       </Card>
 
+      </>}
+
+      {view === 'keywords' && <KeywordsView b={b} onOpen={(url, focus) => setOpen({ url, focus })} />}
+
+      {view === 'create' && (
       <Card pad={false} title="Pages and posts to create" subtitle="Keywords no page carries. People who want to buy or book need a page; questions and guides fit a blog post.">
         {todo.length === 0 ? <p className="px-5 py-6 text-13 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={15} />Every keyword has a page.</p> : (
           <div className="overflow-x-auto">
@@ -122,12 +137,14 @@ export default function KeywordMappingTab({ b }) {
           </div>
         )}
       </Card>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 text-13 text-slate-600">
         <span>Next: see how the keywords rank.</span>
         <Link to="/keyword-management/status"><Button size="sm" icon={ArrowRight}>Keyword Status</Button></Link>
         <Link to="/keyword-management/tracked"><Button size="sm">My Keywords</Button></Link>
       </div>
+      <PageOverview b={b} target={open} onClose={() => setOpen(null)} />
       {toastNode}
     </div>
   );

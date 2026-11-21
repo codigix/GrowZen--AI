@@ -7,7 +7,7 @@ from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business
 from ..models import Business
-from ..services import competitor_pages, keyword_mapping, page_meta
+from ..services import competitor_pages, keyword_mapping, keyword_placement, page_meta
 from ..services.activity import log
 
 router = APIRouter(prefix="/businesses/{business_id}", tags=["keyword-mapping"])
@@ -56,3 +56,23 @@ class MetaFiles(BaseModel):
 def page_meta_files(body: MetaFiles, b: Business = Depends(get_business)):
     """The (edited) metadata as seo-meta.json and the React component that applies it."""
     return page_meta.files([r.model_dump() for r in body.pages])
+
+
+@router.get("/keyword-placement")
+def keyword_placement_overview(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Every picked keyword: the pages that already use it and where, the page it is meant for, and other pages that fit it (from the last site crawl)."""
+    return keyword_placement.by_keyword(db, b)
+
+
+class PlacementIn(BaseModel):
+    url: str = Field(min_length=1, max_length=1000)
+    focus: str | None = Field(default=None, max_length=200)
+
+
+@router.post("/keyword-placement/page")
+def keyword_placement_page(body: PlacementIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """One page of the site read live: what it says, which picked keywords it uses and where, and exactly where to add the missing ones (with a line to paste)."""
+    try:
+        return keyword_placement.page_detail(db, b, body.url, body.focus)
+    except keyword_placement.PlacementError as exc:
+        raise HTTPException(422, str(exc)) from exc
