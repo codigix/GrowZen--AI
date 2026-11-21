@@ -678,22 +678,38 @@ function UsedOn({ info, keyword }) {
   );
 }
 
-/** Choose the page a keyword should rank on from every page of the website (or type another address). The list opens at once: nothing to guess or type. */
-function PagePicker({ pages, value, onPick, onCancel, listId }) {
+/** Choose the page a keyword should rank on: every page of the website as a real link (its address, and a button to open it), with a search box. Nothing to guess or type. */
+function PagePicker({ b, pages: fallback, value, onPick, onCancel, listId }) {
+  const r = useApi(`/businesses/${b.id}/keywords/site-pages`);
   const [typing, setTyping] = useState(false);
-  const all = pages.some(p => p.url === value || p.path === value) || !value ? pages : [{ url: value, path: value.replace(/^https?:\/\/[^/]+/, '') || '/', title: 'chosen earlier' }, ...pages];
-  if (typing || !all.length) {
+  const [q, setQ] = useState('');
+  const known = r.data?.pages?.length ? r.data.pages : fallback;
+  const list = !value || known.some(p => p.url === value || p.path === value) ? known : [{ url: value, path: value.replace(/^https?:\/\/[^/]+/, '') || '/', title: '' }, ...known];
+  if (typing) {
     return <input autoFocus list={listId} className={`${inputCls} max-w-[260px]`} defaultValue={value} placeholder="/page-address"
       onBlur={e => onPick(e.target.value.trim())} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') onCancel(); }} />;
   }
+  const dup = (p) => p.title && list.filter(x => x.title === p.title).length > 1; // a title every page shares says nothing about this one
+  const needle = q.trim().toLowerCase();
+  const shown = list.filter(p => !needle || `${p.path} ${p.url} ${p.title}`.toLowerCase().includes(needle));
+  const current = (p) => p.url === value || p.path === value;
   return (
-    <div className="max-w-[320px] space-y-1.5" onKeyDown={e => { if (e.key === 'Escape') onCancel(); }}>
-      <select autoFocus size={Math.min(9, all.length + 1)} aria-label="Choose the page this keyword should rank on" className={`${inputCls} w-full`} value={all.find(p => p.url === value || p.path === value)?.url || ''}
-        onChange={e => onPick(e.target.value)}>
-        <option value="">No page yet</option>
-        {all.map(p => <option key={p.url} value={p.url}>{p.path}{p.title && all.filter(x => x.title === p.title).length === 1 ? `  ·  ${p.title.slice(0, 40)}` : ''}</option>)}
-      </select>
-      <div className="flex gap-3 text-12"><button type="button" onClick={() => setTyping(true)} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Type another address</button><button type="button" onClick={onCancel} className="text-slate-500 hover:underline cursor-pointer">Cancel</button></div>
+    <div className="w-[360px] max-w-full rounded-lg bg-white ring-1 ring-slate-300 shadow-sm" onKeyDown={e => { if (e.key === 'Escape') onCancel(); }}>
+      <div className="p-2 border-b border-slate-100"><input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${list.length} page${list.length === 1 ? '' : 's'}`} aria-label="Search the pages of your website" className={`${inputCls} w-full`} /></div>
+      <ul role="listbox" aria-label="Pages of your website" className="max-h-64 overflow-y-auto divide-y divide-slate-100">
+        <li><button type="button" role="option" aria-selected={!value} onClick={() => onPick('')} className="w-full text-left px-3 py-2 text-13 text-slate-600 hover:bg-slate-50 cursor-pointer">No page yet</button></li>
+        {shown.map(p => (
+          <li key={p.url} className={`flex items-center ${current(p) ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
+            <button type="button" role="option" aria-selected={current(p)} onClick={() => onPick(p.url)} className="flex-1 min-w-0 text-left px-3 py-2 cursor-pointer">
+              <span className="flex items-center gap-1.5 text-13 font-semibold text-slate-900">{p.path}{current(p) && <Check size={13} className="text-indigo-600" />}</span>
+              <span className="block text-11.5 text-slate-500 truncate" title={p.url}>{p.url}</span>
+              {p.title && !dup(p) && <span className="block text-11.5 text-slate-400 truncate">{p.title}</span>}
+            </button>
+            <a href={p.url} target="_blank" rel="noreferrer noopener" title="Open this page in a new tab" aria-label={`Open ${p.path}`} className="px-2.5 py-2 text-slate-400 hover:text-indigo-700"><ExternalLink size={14} /></a>
+          </li>))}
+        {!shown.length && <li className="px-3 py-4 text-12.5 text-slate-500">{r.data ? 'No page matches. Use "Type another address".' : 'Reading your pages…'}</li>}
+      </ul>
+      <div className="flex gap-3 px-3 py-2 border-t border-slate-100 text-12"><button type="button" onClick={() => setTyping(true)} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Type another address</button><button type="button" onClick={onCancel} className="text-slate-500 hover:underline cursor-pointer">Cancel</button></div>
     </div>
   );
 }
@@ -834,7 +850,7 @@ function Tracked({ b, kw }) {
                         </td>
                         <td className="px-4 py-4 min-w-[240px]">
                           {editing === k.id ? (
-                            <PagePicker pages={sitePages} value={k.target_url || ''} listId={`pages-${b.id}`} onCancel={() => setEditing(null)}
+                            <PagePicker b={b} pages={sitePages} value={k.target_url || ''} listId={`pages-${b.id}`} onCancel={() => setEditing(null)}
                               onPick={v => { setEditing(null); if (v !== (k.target_url || '')) update(k, { target_url: v || null }); }} />
                           ) : k.target_url ? (
                             <button type="button" onClick={() => setEditing(k.id)} title="Change the page" className="inline-flex items-center gap-1.5 font-semibold text-slate-800 hover:text-indigo-700 cursor-pointer"><span className="truncate max-w-[230px]">{k.target_url.replace(/^https?:\/\/[^/]+/, '') || '/'}</span><Pencil size={13} className="text-slate-400" /></button>

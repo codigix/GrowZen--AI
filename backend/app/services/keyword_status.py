@@ -106,7 +106,10 @@ def pages_for_keywords(db: Session, b: Business) -> dict[str, Any]:
     return {"crawled": bool(pages), "found_at": crawl.get("_found"), "pages": out, "site_pages": site_pages(db, b, pages)}
 
 
-def site_pages(db: Session, b: Business, crawled: list[dict[str, Any]] | None = None) -> list[dict[str, str]]:
+_live_pages: dict[int, tuple[float, list[str]]] = {}
+
+
+def site_pages(db: Session, b: Business, crawled: list[dict[str, Any]] | None = None, live: bool = False) -> list[dict[str, str]]:
     """Every page of the project's own website the software knows: the last site crawl, the sitemap and Page Indexing. For choosing the page a keyword should rank on."""
     from urllib.parse import urlsplit
     from ..models import IndexPage
@@ -126,4 +129,18 @@ def site_pages(db: Session, b: Business, crawled: list[dict[str, Any]] | None = 
         add(p.get("url"), p.get("title") or "")
     for ip in db.scalars(select(IndexPage).where(IndexPage.business_id == b.id)):
         add(ip.url)
+    if live and len(seen) < 3 and b.website:  # the scan knows little: read the sitemap now (kept for 10 minutes)
+        import time
+        hit = _live_pages.get(b.id)
+        if not hit or time.time() - hit[0] > 600:
+            try:
+                from . import sitemap
+                urls = [u for u, _ in sitemap.discover_site_entries(b.website if b.website.startswith("http") else f"https://{b.website}", 300)]
+            except Exception:  # noqa: BLE001 - what the scan knows is still shown
+                urls = []
+            hit = _live_pages[b.id] = (time.time(), urls)
+        for u in hit[1]:
+            add(u)
+    if "/" not in seen and b.website:  # the home page is always a page of the site
+        add(b.website if b.website.startswith("http") else f"https://{b.website}/")
     return sorted(seen.values(), key=lambda x: (x["path"] != "/", x["path"]))

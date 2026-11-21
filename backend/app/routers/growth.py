@@ -51,6 +51,15 @@ def keyword_usage(b: Business = Depends(get_business), db: Session = Depends(get
     return keyword_ai.usage(db, b)
 
 
+@router.get("/keywords/site-pages")
+def keyword_site_pages(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Every page of the project's own website (last crawl, Page Indexing, and the sitemap read now when the scan knows little), for choosing a keyword's page."""
+    from ..services import growth_content as gc  # noqa: PLC0415
+    from ..services import keyword_status as ks  # noqa: PLC0415
+    crawled = [p for p in (gc._crawl(db, b).get("pages") or []) if p.get("status") == 200 and p.get("url")]
+    return {"pages": ks.site_pages(db, b, crawled, live=True)}
+
+
 @router.get("/keywords/pages")
 def keyword_pages(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """The website pages that use each tracked keyword (title, heading or description), from the last site crawl."""
