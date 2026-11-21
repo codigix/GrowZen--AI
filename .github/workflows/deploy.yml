@@ -1,39 +1,40 @@
-name: Deploy
+name: Deploy to VPS
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   deploy:
-    name: Deploy to VPS
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy over SSH
+      - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
+          username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || 22 }}
-          script_stop: true
-          command_timeout: 15m
+          port: 22
           script: |
-            export PATH="$PATH:/usr/local/bin:/usr/bin:/root/.nvm/versions/node/current/bin"
-            # nvm.sh can return non-zero and kill the script under set -e, so load it with checks off.
-            set +e
-            [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"
-            set -e
-            set -x
-
+            echo "Starting Deployment..."
             cd /var/www/GrowZen--AI
+
+            # Fetch latest changes
             git pull origin main
 
-            cd frontend
+            # Build frontend
+            echo "Deploying frontend..."
+            cd /var/www/GrowZen--AI/frontend
             npm install
             npm run build
 
-            cd ../backend
+            # Update backend dependencies and restart
+            echo "Deploying backend..."
+            cd /var/www/GrowZen--AI/backend
             .venv/bin/python -m pip install -r requirements.txt
-
             pm2 restart growzen
+
+            # Save PM2 state
+            pm2 save
+            echo "Deployment Complete!"
