@@ -15,14 +15,14 @@ from sqlalchemy.orm import Session
 from ..auth import User, clear_session, current_user, issue_project_claim, issue_session, pw_fingerprint, require_admin
 from ..config import Settings, get_settings
 from ..db import get_db
-from ..models import AppUser
+from ..models import AppUser, BusinessManager
 from ..serialize import row
 from ..services import crypto, ratelimit, totp
 from ..services.activity import log as audit_log
 from ..services.passwords import hash_password, is_known_default, verify_password
 
 router = APIRouter(tags=["auth"])
-ROLES = ("admin", "editor", "viewer")
+ROLES = ("admin", "manager", "editor", "viewer")  # the screens offer admin and manager; editor and viewer stay valid for accounts made before
 
 
 class LoginIn(BaseModel):
@@ -33,15 +33,15 @@ class LoginIn(BaseModel):
 class UserIn(BaseModel):
     email: str = Field(min_length=3)
     name: str = Field(min_length=1)
-    password: str = Field(min_length=10)
-    role: str = "editor"
+    password: str = Field(min_length=8)
+    role: str = "manager"
 
 
 class UserPatch(BaseModel):
     name: str | None = None
     role: str | None = None
     active: bool | None = None
-    password: str | None = Field(default=None, min_length=10)
+    password: str | None = Field(default=None, min_length=8)
     reset_2fa: bool | None = None  # an admin switches off a user's two-step verification (lost phone); the user sets it up again
 
 
@@ -88,14 +88,17 @@ COMMON_PASSWORDS = {
 }
 
 
-def validate_password(password: str, email: str = "") -> None:
-    """The rules for a password someone chooses: 10 to 200 characters, not an email, not a common password, not a repeated character."""
+ADMIN_SET_MIN = 8  # a password an admin sets for a team member (a temporary one they change after signing in): 8 characters is enough here
+
+
+def validate_password(password: str, email: str = "", minimum: int = 10) -> None:
+    """The rules for a password someone chooses: `minimum` (10) to 200 characters, not an email, not a common password, not a repeated character."""
     p = password or ""
     low = p.lower()
     mail = (email or "").strip().lower()
     local = mail.split("@")[0] if mail else ""
-    if len(p) < 10:
-        raise HTTPException(400, "Choose a password of at least 10 characters.")
+    if len(p) < minimum:
+        raise HTTPException(400, f"Choose a password of at least {minimum} characters.")
     if len(p) > 200:
         raise HTTPException(400, "That password is too long (200 characters at most).")
     if low in COMMON_PASSWORDS or low.isdigit() or len(set(low)) <= 3:
@@ -349,7 +352,7 @@ def create_user(body: UserIn, db: Session = Depends(get_db), _: User = Depends(r
         raise HTTPException(400, f"Role must be one of {', '.join(ROLES)}")
     if db.scalar(select(AppUser).where(func.lower(AppUser.email) == body.email.strip().lower())):
         raise HTTPException(409, "A user with this email exists")
-    validate_password(body.password, body.email)
+    validate_password(body.password, body.email, ADMIN_SET_MIN)
     u = AppUser(email=body.email.strip().lower(), name=body.name.strip(), password_hash=hash_password(body.password), role=body.role)
     db.add(u)
     db.commit()
@@ -372,12 +375,29 @@ def update_user(user_id: int, body: UserPatch, db: Session = Depends(get_db), me
             raise HTTPException(400, "You can't disable your own account")
         u.active = body.active
     if body.password:
-        validate_password(body.password, u.email)
+        validate_password(body.password, u.email, ADMIN_SET_MIN)
         u.password_hash = hash_password(body.password)  # the user's other sessions stop working
     if body.reset_2fa:
         u.totp_enabled, u.totp_secret, u.totp_last_step = False, None, None
     db.commit()
     return public(u)
+
+
+@router.delete("/users/{user_id}", status_code=204)
+def delete_user(user_id: int, db: Session = Depends(get_db), me: User = Depends(require_admin)) -> None:
+    """Remove a team member: their sign-in stops working at once and the projects shared with them are no longer theirs. Projects they added stay in the
+    platform (an admin opens them); nothing of the projects is deleted."""
+    u = db.get(AppUser, user_id)
+    if not u:
+        raise HTTPException(404, "User not found")
+    if str(u.id) == me.id:
+        raise HTTPException(400, "You can't delete your own account")
+    if u.role == "admin" and not db.scalar(select(func.count(AppUser.id)).where(AppUser.role == "admin", AppUser.active.is_(True), AppUser.id != u.id)):
+        raise HTTPException(400, "This is the last active admin: make another admin first")
+    db.query(BusinessManager).filter(BusinessManager.email == (u.email or "").strip().lower()).delete(synchronize_session=False)  # so the same email added again starts with no projects
+    audit_log(db, me.name, "user_deleted", None, user=u.email)
+    db.delete(u)
+    db.commit()
 
 
 def seed_admin(db: Session, settings: Settings) -> None:
