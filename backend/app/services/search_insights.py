@@ -792,7 +792,7 @@ def build_llms(db: Session, b: Business) -> dict[str, Any]:
 
 
 # ------------------------------------------------------------------ stored results: the page opens at once, the refresh runs in the background
-TTL = {"insights": 3 * 3600, "files": 6 * 3600, "speed": 24 * 3600}  # how old a stored result may be before it is refreshed by itself
+TTL = {"insights": 3 * 3600, "files": 6 * 3600, "speed": 24 * 3600, "kwtable": 1800}  # how old a stored result may be before it is refreshed by itself
 _running: dict[tuple[int, str], float] = {}
 _run_lock = threading.Lock()
 
@@ -807,6 +807,9 @@ def _build(kind: str, db: Session, user: Any, b: Business) -> dict[str, Any]:
         return build_fresh(db, user, b)
     if kind == "files":
         return site_files(db, b)
+    if kind == "kwtable":
+        from . import keyword_table
+        return keyword_table.heavy(db, b)
     return speed_fresh(b)
 
 
@@ -898,4 +901,4 @@ def snapshot(db: Session, user: Any, b: Business, kind: str, refresh: bool = Fal
     if start:
         threading.Thread(target=_job, args=(b.id, kind, user), daemon=True).start()
     return {"kind": kind, "data": row.payload if row else None, "fetched_at": fetched.isoformat() if fetched else None, "refreshing": busy or start, "error": row.error if row else None,
-            "every_hours": TTL[kind] // 3600}
+            "every_hours": TTL[kind] // 3600, "every_minutes": TTL[kind] // 60}

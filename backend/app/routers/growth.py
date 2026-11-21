@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business, in_background
 from ..models import Business, GeoPrompt, GeoResult, Keyword, RankScan
@@ -49,6 +50,16 @@ def keyword_usage(b: Business = Depends(get_business), db: Session = Depends(get
     """Where each saved keyword is used already (website, blog, Google posts, AI questions) and where it is meant to be used."""
     from ..services import keyword_ai  # noqa: PLC0415
     return keyword_ai.usage(db, b)
+
+
+@router.get("/keywords/table")
+def keyword_table(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The My Keywords table: each chosen keyword with its source, Google position, Search Console figures, AI mentions, mapped page against the page Google shows, index status and Analytics for the page.
+    The slow figures are stored and refreshed in the background (poll while `refreshing`); the fast ones are live."""
+    from ..services import keyword_table as kt  # noqa: PLC0415
+    from ..services import search_insights  # noqa: PLC0415
+    snap = search_insights.snapshot(db, user, b, "kwtable")
+    return {**kt.merge(db, b, snap["data"]), "fetched_at": snap["fetched_at"], "refreshing": snap["refreshing"], "error": snap["error"], "every_minutes": snap.get("every_minutes", 30)}
 
 
 @router.get("/keywords/site-pages")
