@@ -862,7 +862,7 @@ function Tracked({ b, kw }) {
           </div>
           <Card pad={false}>
             <div className="overflow-x-auto">
-              <table className="w-full text-14 min-w-[1180px]">
+              <table className="w-full text-14 min-w-[960px]">
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="w-12 pl-4 py-3"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(k => k.id)))} /></th>
@@ -870,10 +870,8 @@ function Tracked({ b, kw }) {
                     <Th id="rank" right what="Where your website shows on Google for it (average, last 28 days; #1 is the top), whether it moved, and whether AI assistants mention your business for it." why="Shows what is working and what can climb." from="Google Search Console for the position; the AI answers you track for AI search.">Rank / AI</Th>
                     <Th id="volume" right what="How many times a month people search it in your country." why="Shows which keywords can bring the most visitors." from="Google Ads Keyword Planner. Blank when Google gave no figure.">Searches</Th>
                     <th className="px-3 py-3 text-right font-semibold"><Head right what="Impressions: how many times your site appeared in Google for exactly this search. Clicks: how many of those people clicked. CTR (click rate) = clicks divided by impressions. Last 28 days, searches from your target country." why="Many impressions and few clicks means the title and description need work. No impressions means Google is not showing your site for it." from="Google Search Console, the same numbers as Search Console > Performance > Queries (read for this table about every 30 minutes; Google's data is two days behind).">Google: impr / clicks / CTR</Head></th>
-                    <th className="px-3 py-3 text-right font-semibold"><Head right what="Organic visits to the page this keyword is mapped to, and how many stayed." why="Shows whether the visitors the page gets do something." from="Google Analytics 4. It knows pages, not searches, so this is the page's figure.">Page visits (GA4)</Head></th>
                     <th className="px-3 py-3 text-left font-semibold"><Head what="The page you mapped the keyword to, against the page Google actually shows for it." why="When they differ, Google prefers another page: your pages may compete, or the mapped page needs the keyword." from="your choice (or the mapping suggestion), and Google Search Console.">Target vs ranking page</Head></th>
                     <th className="px-3 py-3 text-left font-semibold"><Head what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Head></th>
-                    <th className="px-3 py-3 text-left font-semibold"><Head what="Whether Google has the page this keyword points to in its index." why="A page Google does not index cannot rank." from="Google URL Inspection and the page check in Page Indexing.">Index</Head></th>
                     <th className="px-3 py-3 text-right font-semibold"><Head right what="Map the keyword to a page (or see the page it is mapped to), check it, write for it, or remove it." why="Every keyword needs one page to rank on.">Actions</Head></th>
                   </tr>
                 </thead>
@@ -918,10 +916,6 @@ function Tracked({ b, kw }) {
                             : t && t.impressions === 0 ? <span className="text-slate-400" title="Google showed your site 0 times for this exact search in the last 28 days">0 shown</span>
                               : <span className="text-slate-300" title={!t ? '' : tbl.data?.google_error ? `Search Console could not be read: ${tbl.data.google_error}` : 'Not read yet'}>{!t ? '…' : '—'}</span>}
                         </td>
-                        <td className="px-3 py-3 text-right whitespace-nowrap text-13">
-                          {t?.ga ? <span title={`Organic visits to ${t.ga.path} (Google Analytics 4, 90 days): ${t.ga.key_events} key events`}><span className="font-semibold text-slate-900 tabular-nums">{fmt(t.ga.sessions)}</span><span className="block text-11.5 text-slate-500">{t.ga.engagement_rate}% stayed{t.ga.key_events ? ` · ${t.ga.key_events} leads` : ''}</span></span>
-                            : <span className="text-slate-300" title={!t ? '' : t.ga_state === 'ok' ? 'No organic visits to this page in Google Analytics yet' : 'Connect Google Analytics 4 for this site to see the page visits'}>{!t ? '…' : '—'}</span>}
-                        </td>
                         <td className="px-3 py-3 min-w-[210px]">
                           {editing === k.id ? (
                             <PagePicker b={b} pages={sitePages} value={k.target_url || ''} listId={`pages-${b.id}`} onCancel={() => setEditing(null)}
@@ -936,22 +930,20 @@ function Tracked({ b, kw }) {
                                   ? <span className="text-emerald-700 truncate max-w-[150px]" title="Google shows the page you mapped">✓ same page</span>
                                   : <a href={t.ranking_url} target="_blank" rel="noreferrer" title={t.target_path ? 'Google shows a different page than the one you mapped' : 'The page Google shows for this keyword'} className={`truncate max-w-[150px] hover:underline ${t.target_path ? 'text-amber-700' : 'text-slate-700'}`}>{t.target_path ? '⚠ ' : ''}{t.ranking_path}</a>)
                                   : <span className="text-slate-300">{!t ? '…' : 'not shown yet'}</span>}</div>
+                              {t?.index && (t.index.state === 'not_indexed' || t.index.state === 'blocked' || t.index.tech === 'blocked' || t.index.tech === 'risky') && (
+                                <div title={`${t.index.page}${t.index.reason ? `: ${t.index.reason}` : ''}`} className={`text-11.5 font-semibold ${t.index.state === 'blocked' || t.index.tech === 'blocked' ? 'text-red-600' : 'text-amber-700'}`}>⚠ {t.index.state === 'blocked' || t.index.tech === 'blocked' ? 'Google is blocked from this page' : t.index.state === 'not_indexed' ? 'Google has not indexed this page' : 'This page may not be indexed'}</div>)}
                             </div>
                           )}
                         </td>
                         <td className="px-3 py-3 whitespace-nowrap">
                           {t?.label ? <span title={t.why || ''}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' }[t.status] || 'gray'}>{t.label}</Badge></span> : <span className="text-slate-300">{!t ? '…' : '—'}</span>}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {t?.index ? <span title={`${t.index.page}${t.index.reason ? `: ${t.index.reason}` : ''}`}><Badge tone={{ indexed: 'green', not_indexed: 'amber', blocked: 'red' }[t.index.state] || 'gray'}>{{ indexed: 'Indexed', not_indexed: 'Not indexed', blocked: 'Blocked' }[t.index.state] || 'Not checked'}</Badge>{t.index.tech === 'risky' && <span className="block text-11 text-amber-700">may not index</span>}</span>
-                            : <span className="text-slate-300" title="Map the keyword to a page to see its index status">{!t ? '…' : '—'}</span>}
-                        </td>
                         <td className="px-3 py-3 text-right whitespace-nowrap">
                           <KeywordRowActions b={b} k={k} t={t} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} onRole={(role) => update(k, { role })} />
                         </td>
                       </tr>);
                   })}
-                  {!rows.length && <tr><td colSpan={10} className="px-5 py-12 text-center text-14 text-slate-500">No keyword matches. <button type="button" onClick={() => { go('all'); setQ(''); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button></td></tr>}
+                  {!rows.length && <tr><td colSpan={8} className="px-5 py-12 text-center text-14 text-slate-500">No keyword matches. <button type="button" onClick={() => { go('all'); setQ(''); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button></td></tr>}
                 </tbody>
               </table>
               <datalist id={`pages-${b.id}`}>{pages.map(p => <option key={p} value={p} />)}</datalist>
