@@ -921,25 +921,29 @@ function Tracked({ b, kw }) {
                             : t && t.impressions === 0 ? <span className="text-slate-400" title="Google showed your site 0 times for this exact search in the last 28 days">0 shown</span>
                               : <span className="text-slate-300" title={!t ? '' : tbl.data?.google_error ? `Search Console could not be read: ${tbl.data.google_error}` : 'Not read yet'}>{!t ? '…' : '—'}</span>}
                         </td>
-                        <td className="px-3 py-3 min-w-[210px]">
+                        <td className="px-3 py-3 min-w-[190px]">
                           {editing === k.id ? (
                             <PagePicker b={b} pages={sitePages} value={k.target_url || ''} listId={`pages-${b.id}`} onCancel={() => setEditing(null)}
                               onPick={v => { setEditing(null); if (v !== (k.target_url || '')) update(k, { target_url: v || null }); }} />
                           ) : (
-                            <div className="text-13 space-y-1">
-                              {k.target_url ? (
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-emerald-600" aria-hidden="true">✓</span><span className="text-11.5 text-slate-400 shrink-0">Mapped to</span>
-                                  <a href={k.target_url.startsWith('http') ? k.target_url : `${(b.website || '').replace(/\/$/, '')}${k.target_url}`} target="_blank" rel="noreferrer" title="Open the mapped page" className="font-semibold text-slate-800 hover:text-indigo-700 truncate max-w-[160px]">{k.target_url.replace(/^https?:\/\/[^/]+/, '') || '/'}</a>
-                                </div>
-                              ) : <div className="font-semibold text-amber-700" title="No page is chosen for this keyword yet">Not mapped yet</div>}
-                              <div className="text-12 text-slate-500" title="Pages of your website where the scan found this keyword in the address, title, heading or description">
-                                {used.length ? <>Used on {used.slice(0, 2).map((u, i) => <React.Fragment key={u.url}>{i > 0 && ', '}<a href={u.url} target="_blank" rel="noreferrer" className="font-medium text-slate-700 hover:underline">{u.path}</a></React.Fragment>)}{used.length > 2 ? ` +${used.length - 2}` : ''}</>
-                                  : <span className="text-slate-400">Not used on your website yet</span>}
-                              </div>
-                              {k.target_url && !used.some(u => same(u.path, k.target_url)) && <div className="text-11.5 font-semibold text-amber-700" title="The mapped page does not say this keyword yet">⚠ Not on the mapped page yet</div>}
-                              {k.target_url && t?.index && (t.index.state === 'not_indexed' || t.index.state === 'blocked' || t.index.tech === 'blocked' || t.index.tech === 'risky') && (
-                                <div title={`${t.index.page}${t.index.reason ? `: ${t.index.reason}` : ''}`} className={`text-11.5 font-semibold ${t.index.state === 'blocked' || t.index.tech === 'blocked' ? 'text-red-600' : 'text-amber-700'}`}>⚠ {t.index.state === 'blocked' || t.index.tech === 'blocked' ? 'Google is blocked from this page' : t.index.state === 'not_indexed' ? 'Google has not indexed this page' : 'This page may not be indexed'}</div>)}
+                            <div className="text-13 leading-tight">
+                              {k.target_url ? (() => {
+                                const onIt = used.some(u => same(u.path, k.target_url));
+                                const bad = t?.index && (t.index.state === 'not_indexed' || t.index.state === 'blocked' || t.index.tech === 'blocked' || t.index.tech === 'risky');
+                                return (
+                                  <>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Mapped" aria-hidden="true" />
+                                      <a href={k.target_url.startsWith('http') ? k.target_url : `${(b.website || '').replace(/\/$/, '')}${k.target_url}`} target="_blank" rel="noreferrer" title="Open the mapped page" className="font-semibold text-slate-800 hover:text-indigo-700 truncate max-w-[170px]">{k.target_url.replace(/^https?:\/\/[^/]+/, '') || '/'}</a>
+                                      {bad && <span className="text-amber-600 cursor-help" title={`${t.index.page}: ${t.index.state === 'blocked' || t.index.tech === 'blocked' ? 'Google is blocked from this page' : t.index.state === 'not_indexed' ? 'Google has not indexed this page' : 'this page may not be indexed'}${t.index.reason ? ` (${t.index.reason})` : ''}`}>⚠</span>}
+                                    </div>
+                                    <div className={`mt-0.5 text-12 pl-3.5 ${onIt ? 'text-emerald-700' : 'text-amber-700 font-medium'}`} title={used.length ? `The keyword is used on: ${used.map(u => u.path).join(', ')}` : 'The scan did not find the keyword on any page'}>{onIt ? 'Keyword is on this page' : 'Keyword not on this page yet'}</div>
+                                  </>);
+                              })() : (
+                                <>
+                                  <div className="flex items-center gap-1.5 font-semibold text-amber-700"><span className="w-2 h-2 rounded-full border-2 border-amber-500 shrink-0" aria-hidden="true" />Not mapped yet</div>
+                                  <div className="mt-0.5 text-12 pl-3.5 text-slate-500 truncate max-w-[200px]" title={used.length ? `The keyword is used on: ${used.map(u => u.path).join(', ')}` : 'The scan did not find the keyword on any page'}>{used.length ? `Used on ${used[0].path}${used.length > 1 ? ` +${used.length - 1}` : ''}` : 'Not used on the site yet'}</div>
+                                </>)}
                             </div>
                           )}
                         </td>
