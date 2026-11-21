@@ -1,6 +1,7 @@
 import KeywordWorkspace from './KeywordWorkspace';
 import KeywordFlowBar from './KeywordFlowBar';
 import KeywordMappingTab from './KeywordMappingTab';
+import KeywordRowActions from './KeywordRowActions';
 import { Act, Head } from './TableBits';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -770,6 +771,11 @@ function Tracked({ b, kw }) {
     kw.setData(d => ({ ...d, keywords: d.keywords.map(x => (x.id === k.id ? out : x)) }));
     tbl.reload(true); // the page, its index status and its visits follow the page just chosen
   });
+  const askAi = (k) => run(`g${k.id}`, async () => { // track the question this keyword makes in AI search, then read the table again
+    await api(`/businesses/${b.id}/keywords/${k.id}/geo-prompt`, { method: 'POST', body: {} });
+    await api(`/businesses/${b.id}/search-insights/refresh?kind=kwtable`, { method: 'POST' });
+    tbl.reload(true);
+  });
   const [ask, confirmNode] = useDoubleConfirm();
   const remove = (k) => ask({ what: `the keyword “${k.keyword}”`, effect: 'It stops being tracked, and its rank history is no longer shown.', onConfirm: () => run(`d${k.id}`, async () => { await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'DELETE' }); kw.reload(true); }) });
   const add = () => {
@@ -928,17 +934,9 @@ function Tracked({ b, kw }) {
                           {t?.index ? <span title={`${t.index.page}${t.index.reason ? `: ${t.index.reason}` : ''}`}><Badge tone={{ indexed: 'green', not_indexed: 'amber', blocked: 'red' }[t.index.state] || 'gray'}>{{ indexed: 'Indexed', not_indexed: 'Not indexed', blocked: 'Blocked' }[t.index.state] || 'Not checked'}</Badge>{t.index.tech === 'risky' && <span className="block text-11 text-amber-700">may not index</span>}</span>
                             : <span className="text-slate-300" title="Map the keyword to a page to see its index status">{!t ? '…' : '—'}</span>}
                         </td>
-                        <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex items-center gap-1.5">
-                          {k.target_url
-                            ? <Act tone="slate" tip="Mapped page: pick a different page for this keyword." onClick={() => setEditing(k.id)}>Change page</Act>
-                            : t?.suggested
-                              ? <Act primary tip={`Map: save ${t.suggested.path} as this keyword's page (the page the site scan found for it).`} busy={busy === `u${k.id}`} onClick={() => update(k, { target_url: t.suggested.url })}>Map to {t.suggested.path}</Act>
-                              : <Act primary tip="Map: choose the page this keyword should rank on." onClick={() => setEditing(k.id)}>Map</Act>}
-                          {!k.target_url && t?.suggested && <Act tone="slate" tip="Choose a different page for this keyword." onClick={() => setEditing(k.id)}>Other</Act>}
-                          <Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`}><Act icon={Search} tone="sky" tip="Check: open its searches per month, cost and related ideas." /></Link>
-                          <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`}><Act icon={PenLine} tone="violet" tip="Write: start a blog post for this keyword in the blog writer." /></Link>
-                          <Act icon={Trash2} tone="rose" tip="Remove: stop tracking this keyword. Its rank history is no longer shown." busy={busy === `d${k.id}`} onClick={() => remove(k)} />
-                        </span></td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap">
+                          <KeywordRowActions b={b} k={k} t={t} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} />
+                        </td>
                       </tr>);
                   })}
                   {!rows.length && <tr><td colSpan={10} className="px-5 py-12 text-center text-14 text-slate-500">No keyword matches. <button type="button" onClick={() => { go('all'); setQ(''); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button></td></tr>}

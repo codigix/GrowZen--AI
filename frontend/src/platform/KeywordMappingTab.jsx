@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Copy, ExternalLink, Eye, Lightbulb, PenLine, Search } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
@@ -25,6 +25,16 @@ export default function KeywordMappingTab({ b }) {
   const [view, setView] = useState('keywords'); // keywords | pages | create
   const [open, setOpen] = useState(null); // the page overview: { url, focus }
   const d = r.data;
+  const [params] = useSearchParams();
+  const arrived = useRef(false);
+  useEffect(() => { // sent here from a keyword's "Add to page" or "Where to use it": open that page's overview with the keyword in focus
+    if (arrived.current || !d) return;
+    const pg = params.get('page'), kwd = params.get('keyword');
+    if (!pg && !kwd) return;
+    arrived.current = true;
+    setView('keywords');
+    if (pg) setOpen({ url: pg, focus: kwd || undefined });
+  }, [d]); // eslint-disable-line react-hooks/exhaustive-deps
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
   const save = () => run('apply', async () => { const out = await api(`/businesses/${b.id}/keyword-mapping/apply`, { method: 'POST' }); r.setData(out); toast(out.mapped ? `Mapping saved: ${out.mapped} keyword${out.mapped === 1 ? '' : 's'} now point to their page` : 'Mapping saved on your keywords'); });
