@@ -50,6 +50,7 @@ function BacklinkIntelRedirect() {
 
 const BacklinkCheckerPage = lazy(() => import('./platform/BacklinkCheckerPage'));
 const PageIndexingPage = lazy(() => import('./platform/PageIndexingPage'));
+const SearchInsightsPage = lazy(() => import('./platform/SearchInsightsPage'));
 const GrowthFixPage = lazy(() => import('./platform/GrowthFixPage'));
 const BacklinksCitationsPage = lazy(() => import('./platform/BacklinksCitationsPage'));
 function FixPlanArea() {
@@ -200,6 +201,7 @@ export default function App() {
         <Route path="off-page-seo/:tab" element={<BacklinksCitationsPage />} />
         <Route path="backlink-checker" element={<BacklinkCheckerPage />} />
         <Route path="page-indexing" element={<PageIndexingPage />} />
+        <Route path="search-insights" element={<SearchInsightsPage />} />
         <Route path="projects/:id/journey" element={<Navigate to="/tracking-overview" replace />} />
         <Route path="fix-plan" element={<FixPlanPage />} />
         <Route path="fix-plan/:area" element={<FixPlanArea />} />
