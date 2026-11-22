@@ -26,7 +26,7 @@ import Select from '../components/Select';
 const CTA = { BOOK: 'Book', ORDER: 'Order online', LEARN_MORE: 'Learn more', SIGN_UP: 'Sign up', CALL: 'Call now' };
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 const pushedMsg = (r, base = 'Saved') => {
-  if (r?.action_links_error) return `${base}, but the booking or order link was not accepted. ${r.action_links_error}`;
+  if (r?.action_links_error) return `${base}. The booking or order link is saved here, but it is not on Google: ${r.action_links_error}`;
   if (!r?.pushed_to_google?.length) return `${base}. Not sent to Google: connect this client's Google account to publish changes there.`;
   const bad = r.not_confirmed_on_google || [];
   if (bad.length) return `${base} and sent to Google, but Google does not show ${bad.join(', ')} yet. Wait a few minutes and sync again.`;
@@ -261,6 +261,7 @@ function ProfileTab({ b, toast }) {
                   </div>
                 ))}
                 {Object.keys(ACTION_TYPES).some(k => !usedTypes(p).has(k)) && <button type="button" onClick={() => set('action_links', [...p.action_links, { type: Object.keys(ACTION_TYPES).find(k => !usedTypes(p).has(k)), url: '' }])} className="mt-2 text-13 font-medium text-indigo-600 hover:underline cursor-pointer inline-flex items-center gap-1"><Plus size={14} />Add another button (order online, reserve a table…)</button>}
+                {b.gbp_status?.booking_not_on_google && <p className="mt-3 text-12.5 text-amber-700 bg-amber-50 rounded-lg px-3 py-2">The booking link is saved here, but it is not on Google: {b.gbp_status.booking_not_on_google}</p>}
                 {b.gbp_status?.action_links_error && <p className="mt-3 text-12.5 text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Google would not give the booking and order links on the last sync: {b.gbp_status.action_links_error}</p>}
               </div>
             </div>

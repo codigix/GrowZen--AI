@@ -362,3 +362,30 @@ def test_phones_and_booking_links_are_written_to_google_and_read_back(client, mo
         db.query(Business).filter(Business.gbp_location == "locations/1").delete()
         db.commit()
         db.close()
+
+
+def test_a_booking_link_google_refuses_is_still_saved_here_with_the_reason(client, monkeypatch):
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    try:
+        assert client.post(f"/api/v1/businesses/{bid}/sync").status_code == 200
+        base = gbp.GbpClient._req
+
+        def req(self, method, url, **kw):
+            if "placeActionLinks" in url and method in ("POST", "PATCH", "DELETE"):
+                raise gbp.GbpError("Google API 400: Request contains an invalid argument.")
+            if method in ("PATCH", "POST", "PUT", "DELETE") and "/revoke" not in url:
+                return {}
+            return base(self, method, url, **kw)
+        monkeypatch.setattr(gbp.GbpClient, "_req", req)
+        out = client.patch(f"/api/v1/businesses/{bid}", json={"booking_url": "https://saidental.in/book-here"}).json()
+        assert out["booking_url"] == "https://saidental.in/book-here"  # kept: it is the owner's link
+        assert "Google did not accept it" in out["action_links_error"]
+        got = client.get(f"/api/v1/businesses/{bid}").json()
+        assert got["booking_url"] == "https://saidental.in/book-here" and "not_on_google" in "".join(got["gbp_status"]) or "booking_not_on_google" in got["gbp_status"]
+    finally:
+        db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
