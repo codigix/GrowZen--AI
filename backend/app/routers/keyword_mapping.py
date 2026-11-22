@@ -81,17 +81,21 @@ def keyword_placement_page(body: PlacementIn, b: Business = Depends(get_business
 class BriefIn(BaseModel):
     format: str = Field(default="pdf", pattern="^(pdf|md)$")
     page: str | None = Field(default=None, max_length=1000)
+    focus: str | None = Field(default=None, max_length=200)  # the keyword the page overview was opened for
 
 
 @router.post("/keyword-mapping/dev-brief")
 def developer_brief(body: BriefIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """A document for the developer: for each page with keywords mapped to it, what to replace or add (where, what is there now, what to change it to), the keywords that still need a page, and what to check
     afterwards. PDF to send, Markdown to paste into a ticket. Pass `page` for one page only."""
-    data = dev_brief.collect(db, b, body.page)
+    try:
+        data = dev_brief.collect(db, b, body.page, body.focus)
+    except keyword_placement.PlacementError as exc:
+        raise HTTPException(422, str(exc)) from exc
     if not data["pages"]:
         raise HTTPException(409, "No keyword is mapped to a page yet. Map the keywords first (My Keywords > Map).")
     log(db, user.name, "dev_brief_made", b.id, pages=data["totals"]["pages"], changes=data["totals"]["changes"])
     db.commit()
     if body.format == "md":
-        return Response(dev_brief.render_md(data).encode("utf-8"), media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{dev_brief.filename(b, "md")}"'})
-    return Response(dev_brief.render_pdf(data), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{dev_brief.filename(b, "pdf")}"'})
+        return Response(dev_brief.render_md(data).encode("utf-8"), media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{dev_brief.filename(b, "md", body.page)}"'})
+    return Response(dev_brief.render_pdf(data), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{dev_brief.filename(b, "pdf", body.page)}"'})

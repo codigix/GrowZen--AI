@@ -47,3 +47,25 @@ def test_changes_are_sorted_into_meta_replace_and_add_new():
     assert [(r["element"], r["current"]) for r in out["replace"]] == [("Main heading (H1)", "Old H1")]
     assert out["add"][0] == {"kind": "section", "keyword": "k2", "heading": "Section on k", "paragraph": "Paragraph on k2", "why": "", "element": "New section", "place": "section"}
     assert out["add"][1]["element"] == "First paragraph" and out["add"][1]["place"] == "intro"
+
+
+def test_one_page_document_is_about_that_page_and_its_keywords_only(client, monkeypatch):
+    bid = client.post("/api/v1/businesses", json={"name": "Page Co", "website": "https://page.example/"}).json()["id"]
+    client.post(f"/api/v1/businesses/{bid}/keywords", json=[{"keyword": "gown rental"}, {"keyword": "saree rental"}])
+    ids = {k["keyword"]: k["id"] for k in client.get(f"/api/v1/businesses/{bid}/keywords").json()["keywords"]}
+    client.patch(f"/api/v1/businesses/{bid}/keywords/{ids['saree rental']}", json={"keyword": "x", "target_url": "https://page.example/sarees"})  # another page's keyword
+    seen = {}
+
+    def detail(db, b, url, focus=None):
+        seen["focus"], seen["url"] = focus, url
+        return {"url": url, "path": "/gowns", "scope": {"kind": "offer", "label": "Product or service page", "takes": "x"}, "notes": [], "title": "Old", "description": "d", "h1": [], "headings": [], "words": 3,
+                "keywords": [{"keyword": "gown rental", "role": "main", "volume": 900, "warning": None, "to_add": [{"place": "subheading", "why": "w", "current": None, "example": "Gown rental in Pune"}]}]}
+    monkeypatch.setattr(kp, "page_detail", detail)
+    monkeypatch.setattr(dev_brief, "_page", lambda bid_, u, f: detail(None, None, u, f))
+    r = client.post(f"/api/v1/businesses/{bid}/keyword-mapping/dev-brief", json={"format": "md", "page": "https://page.example/gowns", "focus": "gown rental"})
+    assert r.status_code == 200 and "-page-gowns-" in r.headers["content-disposition"]
+    md = r.text
+    assert seen["focus"] == "gown rental" and "This page only: 0 meta data changes, 0 texts to replace, 1 new thing to add." in md
+    assert "### What the page says now" in md and "- Title: Old" in md and "**gown rental** (primary), 900 searches/month" in md
+    assert "saree rental" not in md and "Keywords that still need a page" not in md and "Notes for the whole site" not in md  # nothing about the rest of the site
+    assert "Paragraph under it: not drafted" in md  # a heading without a paragraph says so

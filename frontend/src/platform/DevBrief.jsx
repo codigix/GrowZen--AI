@@ -3,8 +3,8 @@ import { FileDown, FileText, Loader2 } from 'lucide-react';
 import { api } from './seoApi';
 
 /** Downloads the developer brief: what to replace or add on each page, as a PDF to send or Markdown to paste into a ticket. `page` limits it to one page. */
-export async function downloadBrief(b, format, page) {
-  const r = await api(`/businesses/${b.id}/keyword-mapping/dev-brief`, { method: 'POST', body: { format, page: page || null }, raw: true, timeout: 170000 });
+export async function downloadBrief(b, format, page, focus) {
+  const r = await api(`/businesses/${b.id}/keyword-mapping/dev-brief`, { method: 'POST', body: { format, page: page || null, focus: focus || null }, raw: true, timeout: 170000 });
   const blob = await r.blob();
   const name = ((r.headers.get('content-disposition') || '').match(/filename="([^"]+)"/) || [])[1] || `seo-changes.${format}`;
   const url = URL.createObjectURL(blob);
@@ -14,12 +14,12 @@ export async function downloadBrief(b, format, page) {
   return name;
 }
 
-export default function BriefButtons({ b, page, size = 'md' }) {
+export default function BriefButtons({ b, page, focus, size = 'md' }) {
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
   const go = async (format) => {
     setBusy(format); setMsg('');
-    try { const name = await downloadBrief(b, format, page); setMsg(`Downloaded ${name}`); } catch (e) { setMsg(e.message || 'The document could not be made.'); } finally { setBusy(''); }
+    try { const name = await downloadBrief(b, format, page, focus); setMsg(`Downloaded ${name}`); } catch (e) { setMsg(e.message || 'The document could not be made.'); } finally { setBusy(''); }
   };
   const h = size === 'sm' ? 'h-8 text-12.5' : 'h-9 text-13';
   const btn = (format, label, Icon, primary) => (
