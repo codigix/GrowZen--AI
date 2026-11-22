@@ -20,7 +20,7 @@ import ReactSitePanel from './ReactSitePanel';
 import HtmlSitePanel from './HtmlSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
-import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
+import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, ResumeCard } from './BlogFlow';
 import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage, brandOf } from './keywordHighlight';
 
 
@@ -515,11 +515,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
 
   const done = article && article.status === 'completed';
   const showStart = !openId && !pendingId && !activeTopic;
-  // a picked topic stays on "Keywords & topic" (its Topic & Intent form); "Write" starts once the blog is being written
-  const flowStep = pendingId ? 1 : done ? (article.publishing_status === 'published' ? 4 : article.publishing_status === 'scheduled' || article.publishing_status === 'publishing' ? 3 : 2) : openId ? 1 : 0;
   return (
     <div className="space-y-4">
-      <FlowSteps step={flowStep} />
       {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
           <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
