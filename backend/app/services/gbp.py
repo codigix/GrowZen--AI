@@ -951,7 +951,7 @@ def fill_pin_from_maps(b: Business) -> bool:
     return False
 
 
-def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
+def sync_business(db: Session, b: Business, days: int = 60) -> dict[str, Any]:
     """Refresh the listing's status, then pull reviews, photo count and daily insights for one connected business."""
     if not (b.connection and b.gbp_account and b.gbp_location):
         raise GbpError("This business is not linked to a connected Google account.")

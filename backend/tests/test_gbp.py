@@ -404,3 +404,31 @@ def test_the_buttons_google_offers_this_listing_are_listed(client, monkeypatch):
         db.query(Business).filter(Business.gbp_location == "locations/1").delete()
         db.commit()
         db.close()
+
+
+def test_performance_gives_each_number_with_its_change_and_a_value_for_every_day(client, monkeypatch):
+    from datetime import date, timedelta
+    from app.models import InsightDay
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    db = SessionLocal()
+    try:
+        end = date.today() - timedelta(days=2)
+        for i in range(60):  # the last 28 days: 10 search views and 1 call a day; the 28 before: 5 and 1 a day
+            day = end - timedelta(days=i)
+            recent = i < 28
+            db.merge(InsightDay(business_id=bid, day=day, views_search=10 if recent else 5, views_maps=2, website_clicks=1, calls=1 if i % 2 == 0 else 0, directions=0, bookings=0))
+        db.commit()
+        out = client.get(f"/api/v1/businesses/{bid}/gbp/performance?days=28").json()
+        assert out["has_data"] and out["has_previous"] and out["end"] == end.isoformat() and len(out["days_dates"]) == 28
+        by = {m["key"]: m for m in out["metrics"]}
+        assert by["views_search"]["total"] == 280 and by["views_search"]["previous"] == 140 and by["views_search"]["change_pct"] == 100.0
+        assert len(by["views_search"]["series"]) == 28 and by["views_search"]["best_day"]["value"] == 10
+        assert by["views_maps"]["change_pct"] == 0.0 and by["views"]["total"] == 280 + 56 and by["interactions"]["total"] == 28 + 14
+        assert by["bookings"]["total"] == 0 and by["bookings"]["change_pct"] is None and by["bookings"]["best_day"] is None  # nothing in either period: no change to state
+    finally:
+        db.query(InsightDay).filter(InsightDay.business_id == bid).delete()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
