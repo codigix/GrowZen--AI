@@ -67,10 +67,8 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const [areas, setAreas] = useState(null);
   const [custom, setCustom] = useState('');
   const [result, setResult] = useState(null);
-  const [group, setGroup] = useState('all');
-  const [q, setQ] = useState('');
-  const [onlyGaps, setOnlyGaps] = useState(false);
   const [selected, setSelected] = useState([]);
+  const discRows = React.useRef([]); // the rows the table shows now (after its search and filters)
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
 
@@ -86,7 +84,7 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const find = (extra) => run('find', async () => {
     const list = extra && !activeSeeds.includes(extra) ? [extra, ...activeSeeds] : activeSeeds;
     const r = await api(`/businesses/${b.id}/keywords/discover`, { method: 'POST', body: { seeds: list, areas: activeAreas } });
-    setResult(r); setSelected([]); setGroup('all');
+    setResult(r); setSelected([]);
   });
   // Run once the starting point is ready, so the page opens with results. A keyword typed in the shared search box becomes one of the starting words.
   useEffect(() => {
@@ -113,33 +111,19 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
 
   const trackedSet = new Set(tracked.map(k => k.keyword));
   const all = result?.keywords || [];
-  const shown = all.filter(k => (group === 'all' || k.group === group) && (!onlyGaps || k.coverage?.status === 'gap') && (!q || k.keyword.includes(q.toLowerCase())));
   const live = result?.data_source?.includes('keyword_planner');
   const gaps = all.filter(k => k.coverage?.status === 'gap' && ['service', 'local'].includes(k.group)).slice(0, 8);
   const questions = all.filter(k => k.group === 'question').slice(0, 8);
-  const discoverValue = useMemo(() => (k, key) => (key === 'keyword' ? k.keyword : key === 'demand' ? (live && k.volume != null ? k.volume : k.stars ?? null) : key === 'difficulty' ? k.difficulty ?? null : key === 'website' ? (k.coverage?.status || null)
-    : key === 'status' ? ((k.tracked || trackedSet.has(k.keyword)) ? 0 : 1) : null), [live, tracked]); // eslint-disable-line react-hooks/exhaustive-deps
-  const { sorted: shownSorted, sort: discSort, onSort: onDiscSort } = useSorted(shown, discoverValue);
-  const discPager = usePager(shownSorted, { size: 25, resetKey: `${group}|${q}|${onlyGaps}|${result?.keywords?.length}` });
-
   const track = (rows) => run('track', async () => {
     const body = rows.map(k => ({ keyword: k.keyword, volume: k.volume ?? null, difficulty: k.difficulty ?? null, cpc: k.cpc ?? null, intent: k.intent, target_url: k.coverage?.page ? pathOf(k.coverage.page) : null, priority: k.group === 'near_me' || k.group === 'local' ? 'High' : 'Medium' }));
     const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body });
     setSelected([]); onTracked(rows.map(k => k.keyword), r.added);
     setResult(res => res && { ...res, keywords: res.keywords.map(k => (rows.some(x => x.keyword === k.keyword) ? { ...k, tracked: true } : k)) });
   });
-  const exportCsv = () => {
-    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [['Keyword', 'Group', 'Intent', 'Suggest strength (1-5)', 'Volume', 'Trend %', 'Website', 'Page'], ...shown.map(k => [k.keyword, GROUPS[k.group]?.label, k.intent, k.stars, k.volume, k.trend, k.coverage?.status || 'not audited', k.coverage?.page || ''])].map(l => l.map(esc).join(','));
-    const href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
-    Object.assign(document.createElement('a'), { href, download: `keywords-${b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.csv` }).click();
-    setTimeout(() => URL.revokeObjectURL(href), 1000);
-  };
-
   if (ctx.error) return <ErrorNote>{ctx.error.message}</ErrorNote>;
   if (!c || !seeds) return <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Reading {b.name}'s profile and audits…</div></Card>;
 
-  const selectable = shown.filter(k => !k.tracked && !trackedSet.has(k.keyword));
+  const selectable = (discRows.current.length ? discRows.current : all).filter(k => !k.tracked && !trackedSet.has(k.keyword));
   return (
     <div className="space-y-5">
       {/* Step 1 is competitor research: the keywords below start from it. */}
@@ -157,7 +141,9 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
         </div>
       )}
 
-      {/* Starting point */}
+      {/* Starting point: open until there are results, then folded away to give the table the room */}
+      <details open={!result} className="group"><summary className="list-none cursor-pointer rounded-xl bg-white ring-1 ring-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-13 text-slate-600 group-open:hidden">
+        <span className="font-semibold text-slate-900">What we search from</span><span>{activeSeeds.length} service{activeSeeds.length === 1 ? '' : 's'} · {activeAreas.length} area{activeAreas.length === 1 ? '' : 's'}</span><span className="ml-auto text-indigo-700 font-semibold">Change</span></summary>
       <Card title="What we search from" subtitle={`Built from ${b.name}'s profile and website audit. Switch items on or off, then find keywords.`}
         action={<Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={() => find()}>Find keywords</Button>}>
         <div className="space-y-4">
@@ -197,24 +183,17 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
           </div>
         </div>
         <ErrorNote>{error}</ErrorNote>
-      </Card>
+      </Card></details>
 
       {busy === 'find' && !result && <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Asking Google what people search for…</div></Card>}
 
       {result && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[[Search, 'Keywords found', all.length, `from ${result.queries} Google lookups`],
-            [MapPin, 'Local & near me', (result.counts.local || 0) + (result.counts.near_me || 0), 'ready-to-visit searches'],
-            [HelpCircle, 'Questions', result.counts.question || 0, 'for FAQs and blog posts'],
-            [AlertTriangle, 'Content gaps', result.website_checked ? result.gaps : '—', result.website_checked ? 'no page targets them yet' : 'audit the website to check']
-            ].map(([I, l, v, h]) => (
-              <div key={l} className="ai-glass-card rounded px-4 py-3.5">
-                <div className="text-12 font-semibold text-slate-500 flex items-center gap-1.5"><I size={13} /> {l}</div>
-                <div className="text-24 font-bold text-slate-900 tabular-nums mt-0.5">{v}</div>
-                <div className="text-11.5 text-slate-500">{h}</div>
-              </div>
-            ))}
+          <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-x-8 gap-y-1 text-13 text-slate-500">
+            <span><b className="text-slate-900 tabular-nums">{all.length}</b> keywords <span className="text-slate-400">from {result.queries} Google lookups</span></span>
+            <span><b className="text-slate-900 tabular-nums">{(result.counts.local || 0) + (result.counts.near_me || 0)}</b> local and near me</span>
+            <span><b className="text-slate-900 tabular-nums">{result.counts.question || 0}</b> questions</span>
+            <span><b className={`tabular-nums ${result.website_checked && result.gaps ? 'text-red-600' : 'text-slate-900'}`}>{result.website_checked ? result.gaps : '—'}</b> content gaps <span className="text-slate-400">{result.website_checked ? 'no page targets them yet' : 'audit the website to check'}</span></span>
           </div>
 
           {result.trending_today.length > 0 && (
@@ -225,67 +204,35 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             <div className="xl:col-span-2 min-w-0">
-              <Card pad={false} title={`Keywords (${shown.length})`}
+              <Card pad={false} title={`Keywords (${all.length})`}
                 subtitle={live ? 'Real searches from Google Autocomplete, with monthly volume and 12-month trend from the Google Ads Keyword Planner.' : 'Real searches from Google Autocomplete. Stars show how strongly Google suggests each one. Monthly volumes need the Google Ads Keyword Planner API.'}
-                action={<div className="flex gap-2"><Button size="sm" icon={Download} onClick={exportCsv} disabled={!shown.length}>CSV</Button><Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(all.filter(k => selected.includes(k.keyword)))}>Track {selected.length || ''}</Button></div>}>
-                <div className="px-6 py-3 border-b border-slate-100 space-y-2.5">
-                  <div className="flex flex-wrap gap-1.5">
-                    <button type="button" onClick={() => setGroup('all')} className={`h-8 px-3 rounded-lg text-12 font-semibold ring-1 ring-inset cursor-pointer ${group === 'all' ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>All {all.length}</button>
-                    {ORDER.filter(g => result.counts[g]).map(g => {
-                      const G = GROUPS[g]; return (
-                        <button key={g} type="button" onClick={() => setGroup(g)} title={G.hint} className={`h-8 px-3 rounded-lg text-12 font-semibold ring-1 ring-inset cursor-pointer inline-flex items-center gap-1.5 ${group === g ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}><G.icon size={12} /> {G.label} <span className="opacity-60">{result.counts[g]}</span></button>
-                      );
-                    })}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <label className="relative flex-1 min-w-[180px] max-w-xs"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input className="w-full h-8 pl-8 pr-3 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" placeholder="Filter keywords" value={q} onChange={e => setQ(e.target.value)} /></label>
-                    {result.website_checked && <label className="text-12 text-slate-700 flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="accent-indigo-600" checked={onlyGaps} onChange={e => setOnlyGaps(e.target.checked)} /> Only content gaps</label>}
-                    {group !== 'all' && <span className="text-11.5 text-slate-500">{GROUPS[group].hint}</span>}
-                  </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-13 min-w-[640px]">
-                    <thead className="bg-slate-50 text-11   text-slate-500">
-                      <tr>
-                        <th className="pl-6 pr-2 py-2.5 w-8"><input type="checkbox" className="accent-indigo-600" aria-label="Select all" checked={selectable.length > 0 && selectable.every(k => selected.includes(k.keyword))} onChange={e => setSelected(e.target.checked ? selectable.map(k => k.keyword) : [])} /></th>
-                        <SortTh id="keyword" sort={discSort} onSort={onDiscSort} className="px-2 py-2.5">Keyword</SortTh>
-                        <SortTh id="demand" sort={discSort} onSort={onDiscSort} first="desc" className="px-2 py-2.5">{live ? 'Searches / mo' : 'Demand'}</SortTh>
-                        {live && <SortTh id="difficulty" sort={discSort} onSort={onDiscSort} className="px-2 py-2.5">Difficulty</SortTh>}
-                        <SortTh id="website" sort={discSort} onSort={onDiscSort} className="px-2 py-2.5">Your website</SortTh>
-                        <SortTh id="status" sort={discSort} onSort={onDiscSort} right className="px-2 pr-6 py-2.5">Status</SortTh>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {discPager.rows.map(k => {
-                        const G = GROUPS[k.group];
-                        const isTracked = k.tracked || trackedSet.has(k.keyword);
-                        const [dl, dt] = kd(k.difficulty);
-                        return (
-                          <tr key={k.keyword} className={selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}>
-                            <td className="pl-6 pr-2 py-2"><input type="checkbox" className="accent-indigo-600" disabled={isTracked} checked={selected.includes(k.keyword)} onChange={() => setSelected(s => (s.includes(k.keyword) ? s.filter(x => x !== k.keyword) : [...s, k.keyword]))} aria-label={`Select ${k.keyword}`} /></td>
-                            <td className="px-2 py-2">
-                              <div className="text-slate-900" title={k.from_competitors || undefined}>{k.keyword}</div>{k.from_competitors && <div className="text-11 text-rose-700">{k.from_competitors}</div>}
-                              <div className="mt-0.5 flex items-center gap-1.5"><span className={`text-10.5 font-semibold px-1.5 py-px rounded ring-1 ring-inset inline-flex items-center gap-1 ${G.tone}`}><G.icon size={10} /> {G.label}</span><span className="text-10.5 text-slate-400">{k.intent}</span></div>
-                            </td>
-                            <td className="px-2 py-2">
-                              {live && k.volume != null ? (
-                                <span className="tabular-nums text-slate-900">{fmt(k.volume)}{k.trend != null && k.trend !== 0 && <span className={`ml-1.5 text-11 font-semibold inline-flex items-center ${k.trend > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{k.trend > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(k.trend)}%</span>}</span>
-                              ) : <Stars n={k.stars} />}
-                            </td>
-                            {live && <td className="px-2 py-2">{k.difficulty != null ? <Badge tone={dt}>{dl} · {k.difficulty}</Badge> : '—'}</td>}
-                            <td className="px-2 py-2"><Coverage c={k.coverage} /></td>
-                            <td className="px-2 pr-6 py-2 text-right whitespace-nowrap">
-                              {isTracked ? <span className="text-11.5 text-emerald-700 font-medium">{k.rank ? `Rank ${k.rank}` : 'Tracked'}</span>
-                                : <button type="button" onClick={() => track([k])} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {!shown.length && <div className="py-10 text-center text-13 text-slate-500">{all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}</div>}
-                </div>
-                <Pager p={discPager} label="keywords" />
+                action={<Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(all.filter(k => selected.includes(k.keyword)))}>Track {selected.length || ''}</Button>}>
+                <DataTable bare rows={all} rowKey={k => k.keyword} pageSize={25} exportName="keyword-ideas" label="keywords" searchPlaceholder="Search keywords" minWidth={720}
+                  onState={st => { discRows.current = st.rows; }}
+                  rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
+                  empty={all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}
+                  filters={[
+                    { id: 'group', label: 'Type', options: ORDER.filter(g => result.counts[g]).map(g => [g, `${GROUPS[g].label} (${result.counts[g]})`]), test: (k, v) => k.group === v },
+                    ...(result.website_checked ? [{ id: 'site', label: 'Your website', options: [['gap', 'Content gaps'], ['covered', 'Already covered']], test: (k, v) => (v === 'gap' ? k.coverage?.status === 'gap' : Boolean(k.coverage?.status) && k.coverage.status !== 'gap') }] : []),
+                    { id: 'intent', label: 'Intent', options: [...new Set(all.map(k => k.intent).filter(Boolean))].sort().map(x => [x, x]), test: (k, v) => k.intent === v },
+                    ...(live ? [{ id: 'kd', label: 'Difficulty', options: [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']], test: (k, v) => k.difficulty != null && kd(k.difficulty)[0].toLowerCase() === v }] : []),
+                    { id: 'status', label: 'Status', options: [['new', 'Not tracked yet'], ['tracked', 'Tracked']], test: (k, v) => ((k.tracked || trackedSet.has(k.keyword)) ? v === 'tracked' : v === 'new') }
+                  ]}
+                  columns={[
+                    { id: 'pick', label: 'Select', csv: false, className: 'pl-6 pr-2 py-2 w-8', thClass: 'pl-6 pr-2 py-2.5 w-8',
+                      header: <input type="checkbox" className="accent-indigo-600" aria-label="Select all shown" checked={selectable.length > 0 && selectable.every(k => selected.includes(k.keyword))} onChange={e => setSelected(e.target.checked ? selectable.map(k => k.keyword) : [])} />,
+                      cell: k => { const isTracked = k.tracked || trackedSet.has(k.keyword); return <input type="checkbox" className="accent-indigo-600" disabled={isTracked} checked={selected.includes(k.keyword)} onChange={() => setSelected(s => (s.includes(k.keyword) ? s.filter(x => x !== k.keyword) : [...s, k.keyword]))} aria-label={`Select ${k.keyword}`} />; } },
+                    { id: 'keyword', header: 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
+                      cell: k => { const G = GROUPS[k.group]; return <>
+                        <div className="text-slate-900" title={k.from_competitors || undefined}>{k.keyword}</div>{k.from_competitors && <div className="text-11 text-rose-700">{k.from_competitors}</div>}
+                        <div className="mt-0.5 flex items-center gap-1.5"><span className={`text-10.5 font-semibold px-1.5 py-px rounded ring-1 ring-inset inline-flex items-center gap-1 ${G.tone}`}><G.icon size={10} /> {G.label}</span><span className="text-10.5 text-slate-400">{k.intent}</span></div></>; } },
+                    { id: 'demand', header: live ? 'Searches / mo' : 'Demand', first: 'desc', value: k => (live && k.volume != null ? k.volume : k.stars ?? null), className: 'px-2 py-2',
+                      cell: k => (live && k.volume != null ? <span className="tabular-nums text-slate-900">{fmt(k.volume)}{k.trend != null && k.trend !== 0 && <span className={`ml-1.5 text-11 font-semibold inline-flex items-center ${k.trend > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{k.trend > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(k.trend)}%</span>}</span> : <Stars n={k.stars} />) },
+                    ...(live ? [{ id: 'difficulty', header: 'Difficulty', value: k => k.difficulty ?? null, className: 'px-2 py-2', cell: k => { const [dl, dt] = kd(k.difficulty); return k.difficulty != null ? <Badge tone={dt}>{dl} · {k.difficulty}</Badge> : '—'; } }] : []),
+                    { id: 'website', header: 'Your website', value: k => k.coverage?.status || null, className: 'px-2 py-2', cell: k => <Coverage c={k.coverage} /> },
+                    { id: 'status', header: 'Status', right: true, value: k => ((k.tracked || trackedSet.has(k.keyword)) ? (k.rank ? `Rank ${k.rank}` : 'Tracked') : 'Not tracked'), className: 'px-2 pr-6 py-2 text-right whitespace-nowrap',
+                      cell: k => ((k.tracked || trackedSet.has(k.keyword)) ? <span className="text-11.5 text-emerald-700 font-medium">{k.rank ? `Rank ${k.rank}` : 'Tracked'}</span> : <button type="button" onClick={() => track([k])} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>) }
+                  ]} />
               </Card>
             </div>
 
