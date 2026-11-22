@@ -518,7 +518,7 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
   // a picked topic stays on "Keywords & topic" (its Topic & Intent form); "Write" starts once the blog is being written
   const flowStep = pendingId ? 1 : done ? (article.publishing_status === 'published' ? 4 : article.publishing_status === 'scheduled' || article.publishing_status === 'publishing' ? 3 : 2) : openId ? 1 : 0;
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <FlowSteps step={flowStep} />
       {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
@@ -588,11 +588,10 @@ function DuplicateNotice({ b, article, title, image }) {
 /** The keywords this project saved (My Keywords), on the Topic & Intent step: tick some and add them to this blog's keywords. */
 function SavedKeywordPicker({ b, inUse, onAdd }) {
   const kws = useApi(`/businesses/${b.id}/blog-flow/keywords`);
-  const [q, setQ] = useState('');
   const [picked, setPicked] = useState([]);
+  const shownRows = useRef([]); // the keywords the table shows now, for "select all shown"
   const list = kws.data?.keywords || [];
   const used = new Set(inUse.map(k => String(k || '').trim().toLowerCase()).filter(Boolean));
-  const shown = q.trim() ? list.filter(k => k.keyword.toLowerCase().includes(q.trim().toLowerCase())) : list;
   const toggle = (k) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k]));
   const add = () => { onAdd(list.filter(k => picked.includes(k.keyword))); setPicked([]); };
   return (
@@ -614,33 +613,26 @@ function SavedKeywordPicker({ b, inUse, onAdd }) {
       {kws.data && !list.length && <p className="text-[12px] text-slate-500">No keywords are saved yet. Save some on <Link to="/keyword-management/ai" className="text-indigo-600 hover:underline">Find Keywords</Link>, or type the topic above and click Generate Keywords.</p>}
       {list.length > 0 && (
         <div className="rounded-lg ring-1 ring-inset ring-slate-200 overflow-hidden">
-          <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${list.length} keywords`} aria-label="Search saved keywords" className={`${inputCls} !w-64`} />
-            <span className="text-[11.5px] text-slate-500">{picked.length ? `${picked.length} selected` : shown.length === list.length ? `${list.length} keywords` : `${shown.length} of ${list.length}`}</span>
-          </div>
-          <div className="max-h-[280px] overflow-y-auto divide-y divide-slate-100" role="listbox" aria-multiselectable="true" aria-label="Saved keywords">
-            <div className="grid grid-cols-[28px_minmax(0,1fr)_90px_70px_70px] gap-3 px-3 py-1.5 text-[11px] uppercase tracking-wide text-slate-400 sticky top-0 bg-white">
-              <span /><span>Keyword</span><span className="text-right">Searches/mo</span><span className="text-right">Difficulty</span><span className="text-right">Rank</span>
-            </div>
-            {shown.map(k => {
-              const on = picked.includes(k.keyword);
-              const added = used.has(k.keyword.toLowerCase());
-              return (
-                <button key={k.keyword} type="button" role="option" aria-selected={on} disabled={added} onClick={() => toggle(k.keyword)}
-                  className={`w-full grid grid-cols-[28px_minmax(0,1fr)_90px_70px_70px] items-center gap-3 px-3 py-2 text-left text-[12.5px] ${added ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${on ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
-                  <span className={`h-[18px] w-[18px] rounded border inline-flex items-center justify-center text-white text-[11px] ${on || added ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'}`}>{on || added ? '✓' : ''}</span>
-                  <span className="min-w-0"><span className="font-semibold text-slate-900 break-words">{k.keyword}</span>
-                    {added && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-indigo-50 text-indigo-700">added</span>}
-                    {k.for_blog && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-emerald-50 text-emerald-700">meant for blogs</span>}
-                    {k.used > 0 && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700">used in {k.used} article{k.used > 1 ? 's' : ''}</span>}</span>
-                  <span className="text-right tabular-nums text-slate-700">{k.volume != null ? fmt(k.volume) : <span className="text-slate-300">—</span>}</span>
-                  <span className="text-right tabular-nums text-slate-700">{k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>}</span>
-                  <span className="text-right tabular-nums text-slate-700">{k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>}</span>
-                </button>
-              );
-            })}
-            {!shown.length && <p className="px-3 py-6 text-center text-[12.5px] text-slate-500">No keyword matches “{q}”.</p>}
-          </div>
+          <DataTable bare rows={list} rowKey={k => k.keyword} pageSize={10} sizes={[10, 25, 50]} label="keywords" searchPlaceholder={`Search ${list.length} keywords`} minWidth={520} columnsMenu={false}
+            onState={st => { shownRows.current = st.rows; }}
+            rowClass={k => (picked.includes(k.keyword) ? 'bg-indigo-50' : used.has(k.keyword.toLowerCase()) ? 'opacity-50' : 'hover:bg-slate-50')}
+            filters={[
+              { id: 'blog', label: 'For', options: [['blog', 'Meant for blogs'], ['unused', 'Not used in an article yet']], test: (k, v) => (v === 'blog' ? Boolean(k.for_blog) : !k.used) },
+              { id: 'rank', label: 'Google', options: [['yes', 'Ranks'], ['no', 'Not ranking']], test: (k, v) => (v === 'yes' ? k.rank != null : k.rank == null) }
+            ]}
+            columns={[
+              { id: 'pick', label: 'Select', csv: false, className: 'pl-3 pr-1 py-2 w-8', thClass: 'pl-3 pr-1 py-2.5 w-8',
+                header: <input type="checkbox" aria-label="Select all shown" checked={shownRows.current.length > 0 && shownRows.current.filter(k => !used.has(k.keyword.toLowerCase())).every(k => picked.includes(k.keyword))} onChange={() => { const free = shownRows.current.filter(k => !used.has(k.keyword.toLowerCase())).map(k => k.keyword); const every = free.every(k => picked.includes(k)); setPicked(pk => (every ? pk.filter(k => !free.includes(k)) : [...new Set([...pk, ...free])])); }} />,
+                cell: k => <input type="checkbox" disabled={used.has(k.keyword.toLowerCase())} checked={picked.includes(k.keyword) || used.has(k.keyword.toLowerCase())} onChange={() => toggle(k.keyword)} aria-label={`Pick ${k.keyword}`} /> },
+              { id: 'keyword', header: 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
+                cell: k => <span className="min-w-0"><span className="font-semibold text-slate-900 break-words">{k.keyword}</span>
+                  {used.has(k.keyword.toLowerCase()) && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-indigo-50 text-indigo-700">added</span>}
+                  {k.for_blog && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-emerald-50 text-emerald-700">meant for blogs</span>}
+                  {k.used > 0 && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700">used in {k.used} article{k.used > 1 ? 's' : ''}</span>}</span> },
+              { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: k => k.volume ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-700', cell: k => (k.volume != null ? fmt(k.volume) : <span className="text-slate-300">—</span>) },
+              { id: 'difficulty', header: 'Difficulty', right: true, value: k => k.difficulty ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-700', cell: k => (k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>) },
+              { id: 'rank', header: 'Rank', right: true, value: k => k.rank ?? null, className: 'px-3 py-2 text-right tabular-nums text-slate-700', cell: k => (k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>) }
+            ]} />
         </div>
       )}
     </div>
