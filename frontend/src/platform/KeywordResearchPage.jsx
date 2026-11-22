@@ -67,6 +67,7 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const [seeds, setSeeds] = useState(null); // [{text, on}]
   const [areas, setAreas] = useState(null);
   const [custom, setCustom] = useState('');
+  const [adding, setAdding] = useState(false); // the "Add a service" box is open
   const [result, setResult] = useState(null);
   const ap = useApi(`/businesses/${b.id}/autopilot`); // keywords the weekly Autopilot suggests: rows of the table below, waiting for you
   const [selected, setSelected] = useState([]);
@@ -160,24 +161,29 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
       <AutopilotPanel key={b.id} bid={b.id} feature="keywords" hideItems onChanged={() => ap.reload(true)} />
       {/* What we search from, the one button, and where the keywords come from: one card, three lines */}
       <Card pad={false}>
-        <div className="px-4 py-3 flex flex-wrap items-start gap-x-4 gap-y-3">
-          <div className="flex-1 min-w-[280px] space-y-2">
+        <div className="px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div className="flex-1 min-w-[300px] grid grid-cols-[4.75rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2.5">
+            <div className="pt-1.5 text-11.5 font-semibold uppercase tracking-wide text-slate-500" title="Built from the profile and the website audit: switch items on or off">Services <span className="block font-normal normal-case tracking-normal text-slate-400">{activeSeeds.length} of 6 on</span></div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="w-[4.5rem] text-11.5 font-semibold uppercase tracking-wide text-slate-500" title="Built from the profile and the website audit: switch items on or off">Services</span>
               {seeds.map(s => <Chip key={s.text} on={s.on} onClick={() => (s.on || activeSeeds.length < 6) && toggle(setSeeds, s.text)} onRemove={c.seeds.includes(s.text) ? null : () => setSeeds(list => list.filter(x => x.text !== s.text))}>{s.text}</Chip>)}
-              <span className="inline-flex items-center gap-1">
-                <input className="h-7 w-36 px-2.5 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" placeholder="Add a service…" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => e.key === 'Enter' && addSeed()} />
-                <button type="button" onClick={addSeed} className="h-7 w-7 rounded-lg ring-1 ring-inset ring-slate-200 text-slate-500 hover:text-slate-900 flex items-center justify-center cursor-pointer" aria-label="Add service"><Plus size={13} /></button>
-              </span>
+              {adding
+                ? <form onSubmit={e => { e.preventDefault(); addSeed(); setAdding(false); }} className="inline-flex items-center gap-1">
+                  <input autoFocus className="h-8 w-44 px-2.5 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-indigo-300 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="A service you offer" aria-label="Add a service" value={custom} onChange={e => setCustom(e.target.value)} onBlur={() => { if (!custom.trim()) setAdding(false); }} onKeyDown={e => e.key === 'Escape' && (setCustom(''), setAdding(false))} />
+                  <Button size="sm" type="submit" disabled={!custom.trim()}>Add</Button>
+                </form>
+                : <button type="button" onClick={() => setAdding(true)} className="h-8 px-2.5 rounded-lg ring-1 ring-inset ring-dashed ring-slate-300 text-12 font-medium text-slate-500 hover:text-slate-900 hover:ring-slate-400 inline-flex items-center gap-1 cursor-pointer"><Plus size={12} />Add a service</button>}
             </div>
+            <div className="pt-1.5 text-11.5 font-semibold uppercase tracking-wide text-slate-500">Areas</div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="w-[4.5rem] text-11.5 font-semibold uppercase tracking-wide text-slate-500">Areas</span>
               {areas.map((a, i) => <Chip key={a.text} on={a.on} onClick={() => toggle(setAreas, a.text)} title={i < c.areas.length ? 'From the business profile' : 'Nearby, from OpenStreetMap'}>{i < c.areas.length && <MapPin size={11} className="inline -mt-0.5 mr-1" />}{a.text}</Chip>)}
               {!c.business.has_location && <span className="text-12 text-slate-500">Set the map pin in Business Onboarding to add nearby localities.</span>}
             </div>
-            {!c.seeds.length && <div className="text-12 text-amber-700">No category or services on the profile yet. Add one above, or fill them in GBP Manager.</div>}
+            {!c.seeds.length && <div className="col-span-2 text-12 text-amber-700">No category or services on the profile yet. Add one above, or fill them in GBP Manager.</div>}
           </div>
-          <Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={() => find()}>{result ? 'Find again' : 'Find keywords'}</Button>
+          <div className="flex flex-col items-stretch gap-1.5 sm:ml-auto">
+            <Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={() => find()}>{result ? 'Find again' : 'Find keywords'}</Button>
+            <span className="text-11.5 text-slate-500 text-center">{activeSeeds.length} service{activeSeeds.length === 1 ? '' : 's'} · {activeAreas.length} area{activeAreas.length === 1 ? '' : 's'}</span>
+          </div>
         </div>
         <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/60 rounded-b-xl flex flex-wrap items-center gap-x-6 gap-y-1 text-12 text-slate-600">
           {c.competitor_research
