@@ -92,6 +92,14 @@ export function SortTh({ id, sort, onSort, right = false, first, children, class
   );
 }
 
+/** Save any text as a file (a report, a brief, a JSON or llms.txt): `name` with its extension, `mime` such as text/markdown or application/json. */
+export function downloadFile(name, content, mime = 'text/plain') {
+  const url = URL.createObjectURL(new Blob([content], { type: `${mime};charset=utf-8` }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 export function downloadCsv(name, head, body) {
   const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const url = URL.createObjectURL(new Blob([`﻿${[head, ...body].map(r => r.map(cell).join(',')).join('\r\n')}`], { type: 'text/csv;charset=utf-8' }));
