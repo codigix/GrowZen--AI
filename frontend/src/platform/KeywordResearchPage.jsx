@@ -755,6 +755,13 @@ function Tracked({ b, kw }) {
     a.href = url; a.download = `my-keywords-${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   };
+  const fbox = (key) => {
+    const row = FILTERS.find(x => x[0] === key);
+    if (!row) return null;
+    const [, label, opts] = row;
+    return <select key={key} value={f[key]} onChange={e => setFilter(key, e.target.value)} aria-label={`Filter by ${label.toLowerCase()}`} title={`Filter by ${label.toLowerCase()}`}
+      className={`h-7 min-w-0 flex-1 rounded border text-11.5 font-medium normal-case tracking-normal cursor-pointer ${f[key] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-600'}`}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>;
+  };
   const STATUS_ORDER = { working: 0, climbing: 1, weak: 2, invisible: 3, unchecked: 4 };
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -829,10 +836,6 @@ function Tracked({ b, kw }) {
           </div>
           <Card pad={false}>
             <div role="group" aria-label="Filter the table" className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
-              {FILTERS.map(([key, label, opts]) => (
-                <select key={key} value={f[key]} onChange={e => setFilter(key, e.target.value)} aria-label={`Filter by ${label.toLowerCase()}`} title={`Filter by ${label.toLowerCase()}`} className={`h-8 rounded-md border text-12.5 font-medium cursor-pointer w-[8.75rem] ${f[key] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700'}`}>
-                  {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>))}
               <details className="relative ml-auto">
                 <summary className="h-8 px-3 inline-flex items-center rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer list-none hover:bg-slate-50" title="Choose which columns to show">Columns{hidden.size ? ` (${COLS.length - hidden.size} of ${COLS.length})` : ''}</summary>
                 <div className="absolute right-0 z-20 mt-1 w-60 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 p-2">
@@ -855,6 +858,17 @@ function Tracked({ b, kw }) {
                     {show('page') && <Th id="page" what="The page of your website this keyword is mapped to, and the pages where the keyword is already used." why="Mapped means a page was chosen for the keyword (by you, or from the site scan's suggestion). It is a plan, not proof: a solid green dot means the page also says the keyword; a hollow amber dot means it does not yet, so add it there." from="your choice (or the suggestion from the site scan) and the last website scan: the keyword in a page address, title, heading or description.">Mapped page</Th>}
                     {show('status') && <Th id="status" what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Th>}
                     <th className="px-3 py-3 text-right font-semibold"><Head right what="Map the keyword to a page (or see the page it is mapped to), check it, write for it, or remove it." why="Every keyword needs one page to rank on.">Actions</Head></th>
+                  </tr>
+                  <tr className="bg-white border-t border-slate-100">
+                    <th className="pl-4 py-1.5" />
+                    <th className="px-4 py-1.5 font-normal"><div className="flex gap-1">{fbox('role')}{fbox('intent')}{fbox('topic')}</div></th>
+                    {show('rank') && <th className="px-3 py-1.5 font-normal">{fbox('google')}</th>}
+                    {show('volume') && <th className="px-3 py-1.5" />}
+                    {show('difficulty') && <th className="px-3 py-1.5 font-normal">{fbox('kd')}</th>}
+                    {show('impressions') && <th className="px-3 py-1.5" />}
+                    {show('page') && <th className="px-3 py-1.5 font-normal">{fbox('page')}</th>}
+                    {show('status') && <th className="px-3 py-1.5 font-normal">{fbox('status')}</th>}
+                    <th className="px-3 py-1.5 text-right font-normal">{active > 0 && <button type="button" onClick={clearAll} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer normal-case tracking-normal">Clear filters</button>}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
