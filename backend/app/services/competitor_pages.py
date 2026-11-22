@@ -64,6 +64,7 @@ def report(db: Session, b: Business, limit: int = 5) -> dict[str, Any]:
         pages = sorted(d["pages"].values(), key=lambda p: (-p["visits"], -len(p["keywords"])))
         out.append({"domain": d["domain"], "est_visits": d["visits"], "keywords_top10": d["keywords"], "top_pages": pages[:5]})
     gaps = ((run.result or {}).get("gaps") or {}).get("keywords", [])
-    return {"available": True, "analysed_at": (run.result or {}).get("analysed_at"), "keywords": len(serps), "volumes": any(vol.values()), "competitors": out, "you": mine,
+    return {"available": True, "analysed_at": (run.result or {}).get("analysed_at"), "keywords": len(serps), "volumes": any(vol.values()), "ads": keyword_metrics.enabled(), "organic_results": sum(len(s.get("organic") or []) for s in serps),
+            "competitors": out, "you": mine,
             "gaps": [{"keyword": g.get("keyword"), "volume": vol.get(g.get("keyword")) or None, "competitors": [c.get("domain") for c in g.get("competitors") or []][:3]} for g in gaps][:30],
             "note": "Estimates, not measured visits: monthly searches times the usual click share of each position, for the keywords researched."}

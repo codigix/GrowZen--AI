@@ -15,12 +15,35 @@ export default function CompetitorPagesTab({ b }) {
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={5} />;
   if (!d.available) return <Card title="Competitor traffic and top pages"><p className="py-6 text-13 text-slate-600">{d.reason} <button type="button" className="font-semibold text-indigo-700 hover:underline cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>Run it from the top of this page.</button></p></Card>;
+  if (d.organic_results === 0) { // the research has no Google results for other websites: there is nothing to list, and saying otherwise would mislead
+    return (
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
+        <Card title="Competitor traffic and top pages" subtitle={`From ${d.keywords} researched keywords`}>
+          <div className="space-y-3 text-13 text-slate-700">
+            <p className="rounded-lg bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-amber-900"><b>No competitor pages can be listed for this research.</b> Google gives no way to read other websites' search results, so the competitors found here are the businesses on Google Maps, not websites ranking in Google's top 10. That is why there are no pages and no visit estimates.</p>
+            {d.ads && !d.volumes && <p className="text-12.5 text-slate-500">Google Ads is connected, but its Keyword Planner has no monthly searches for these very specific keywords either.</p>}
+            {!d.ads && <p className="text-12.5 text-slate-500">Google Ads is not connected, so there are also no search volumes.</p>}
+            <p>What you can use instead:</p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li><Link to="/competitor-finder?tab=competitors" className="font-semibold text-indigo-700 hover:underline">Audit and compare</Link> each competitor: its website, or its Google listing when it has no website.</li>
+              <li><Link to="/competitor-finder?tab=keywords" className="font-semibold text-indigo-700 hover:underline">Their keywords</Link>, and the gaps you can add to My Keywords.</li>
+              <li><Link to="/competitor-finder?tab=maps" className="font-semibold text-indigo-700 hover:underline">The Google Maps results</Link>: who shows first for your searches, with ratings and reviews.</li>
+            </ul>
+          </div>
+        </Card>
+        {d.gaps.length > 0 && (
+          <Card title="Keyword gaps" subtitle="Competitors rank for these, you do not." action={<Link to="/keyword-management/workspace?tag=gap" className="text-12.5 font-semibold text-indigo-700 hover:underline">Open in the Keyword Workspace</Link>}>
+            <div className="divide-y divide-slate-100">{d.gaps.map(g => <div key={g.keyword} className="py-2 flex flex-wrap gap-3 text-13"><span className="font-semibold text-slate-900">{g.keyword}</span><span className="text-slate-500">{g.volume ? `${n0(g.volume)}/mo` : ''}</span></div>)}</div>
+          </Card>)}
+      </div>
+    );
+  }
   const top = Math.max(1, d.you.visits, ...d.competitors.map(c => c.est_visits));
   const shown = focus ? d.competitors.filter(c => c.domain.replace(/^www\./, '').toLowerCase() === focus) : d.competitors;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <Card title="Estimated organic visits per month" subtitle={`From ${d.keywords} researched keywords. ${d.note}`}>
-        {!d.volumes && <p className="mb-3 text-12.5 text-amber-700">Google Ads is not connected, so there are no search volumes and the visit estimates are 0. The pages are still listed.</p>}
+        {!d.volumes && <p className="mb-3 text-12.5 text-amber-700">{d.ads ? 'Google Ads is connected, but its Keyword Planner has no monthly searches for these keywords (they are too specific), so the visit estimates are 0.' : 'Google Ads is not connected, so there are no search volumes and the visit estimates are 0.'} The pages are still listed.</p>}
         <div className="space-y-2.5">
           {[{ domain: 'You', est_visits: d.you.visits, keywords_top10: d.you.keywords, me: true }, ...shown].map(c => (
             <div key={c.domain} className="flex items-center gap-3 text-13">
