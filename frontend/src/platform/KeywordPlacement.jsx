@@ -30,6 +30,7 @@ export function KeywordsView({ b, onOpen }) {
   if (!r.data) return <SkList rows={5} />;
   const d = r.data;
   const rows = pager.rows;
+  const areas = (d.keywords[0]?.purposes || []).map(x => ({ key: x.key, label: x.label }));
   const tab = (id, label) => <button key={id} type="button" onClick={() => setShow(id)} className={`h-7 px-2.5 text-11.5 font-semibold rounded-md cursor-pointer ${show === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>;
   const setPlan = async (k, key, on) => {
     const planned = k.purposes.filter(p => p.planned && p.key !== key).map(p => p.key);
@@ -43,18 +44,6 @@ export function KeywordsView({ b, onOpen }) {
   const copy = async (text, id) => { try { await navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied(''), 1800); } catch { /* the text is shown */ } };
   const viewKey = (k, p) => `${k.id}:${p.key}`;
   const toggleView = (k, p) => setOpen(s => { const x = new Set(s); const id = viewKey(k, p); x.has(id) ? x.delete(id) : x.add(id); return x; });
-  // An area is chosen when it is planned for the keyword (saved on the keyword); the chosen ones show what to write below, all at once.
-  const chip = (k, p) => {
-    const chosen = p.planned && !p.used;
-    const seeing = p.used && open.has(viewKey(k, p));
-    return (
-      <button key={p.key} type="button" onClick={() => (p.used ? toggleView(k, p) : setPlan(k, p.key, !p.planned))} aria-pressed={chosen || seeing} disabled={busy === `${k.id}-${p.key}`}
-        title={p.used ? 'Already used here: press to see where' : p.planned ? 'Chosen: press to take it out' : 'Press to choose this area (you can choose several)'}
-        className={`h-7 pl-1.5 pr-2.5 rounded-full text-12 font-semibold cursor-pointer inline-flex items-center gap-1.5 ring-1 ring-inset transition-colors disabled:opacity-60 ${chosen ? 'bg-indigo-600 text-white ring-indigo-600' : p.used ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>
-        <span className={`w-4 h-4 rounded-full inline-flex items-center justify-center shrink-0 ${chosen ? 'bg-white/25 text-white' : p.used ? 'bg-emerald-600 text-white' : 'ring-1 ring-inset ring-slate-300'}`}>{(chosen || p.used) && <Check size={10} strokeWidth={3} />}</span>{p.label}
-      </button>
-    );
-  };
   const suggestion = (k, p) => {
     const id = `${k.id}-${p.key}`;
     const action = p.to.kind === 'page' ? <Act icon={Eye} tone="indigo" tip="Open the page overview and see exactly where it goes." onClick={() => onOpen(p.to.url, k.keyword)}>{p.cta}</Act>
@@ -73,33 +62,51 @@ export function KeywordsView({ b, onOpen }) {
     <Card pad={false} title="Your picked keywords" subtitle="Where each is used, the page it is meant for, and what to use it for. Pick a purpose under a keyword to see exactly what to add.">
       <div className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-2">
         <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg">{tab('all', `All ${d.keywords.length}`)}{tab('used', `Used ${d.counts.used}`)}{tab('weak', `Weak ${d.counts.weak}`)}{tab('unused', `Not used ${d.counts.unused}`)}</div>
-        <span className="text-12 text-slate-500">Pick every area a keyword will be used in: each one you pick shows what to write. Green = already used there</span>
+        <span className="text-12 text-slate-500">Tick every area a keyword will be used in and its text appears below · green tick = already used there · blue tick = chosen</span>
         {note && <span role="status" className="ml-auto text-12.5 text-emerald-800 bg-emerald-50 rounded px-2.5 py-1">{note}</span>}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-13 min-w-[820px]">
-          <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className="px-3 py-2">Keyword</SortTh><SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className="px-3 py-2">Searches / mo</SortTh><SortTh id="status" sort={sort} onSort={onSort} className="px-3 py-2">Status</SortTh><SortTh id="used" sort={sort} onSort={onSort} first="desc" className="px-3 py-2">Used on</SortTh><SortTh id="meant" sort={sort} onSort={onSort} className="px-3 py-2">Meant for</SortTh><th className="px-3 py-2 text-right">Actions</th></tr></thead>
+        <table className="w-full text-13 min-w-[980px]">
+          <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500">
+            <tr>
+              <SortTh id="keyword" sort={sort} onSort={onSort} className="px-3 py-2">Keyword</SortTh>
+              <SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className="px-3 py-2">Searches / mo</SortTh>
+              <SortTh id="meant" sort={sort} onSort={onSort} className="px-3 py-2">Page</SortTh>
+              {areas.map(a => <th key={a.key} scope="col" className="px-1 py-2 text-center font-semibold leading-tight w-[64px]" title={`${a.label}: tick it if this keyword will be used here`}>{a.label}</th>)}
+              <th className="px-3 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
           {rows.map(k => {
-            const [w, tone, tip] = STATUS[k.status];
             const target = k.meant_for?.url || k.other_fits[0]?.url;
+            const shownNow = k.purposes.filter(p => (p.planned && !p.used) || (p.used && open.has(viewKey(k, p))));
             return (
               <tbody key={k.id} className="border-t border-slate-200">
-                <tr className="hover:bg-slate-50 align-top">
-                  <td className="px-3 pt-2.5 pb-1 font-semibold text-slate-900 min-w-[170px]">{k.keyword}{k.rank ? <span className="block text-11.5 font-normal text-slate-500">Google position {k.rank}</span> : null}</td>
-                  <td className="px-3 pt-2.5 pb-1 text-right tabular-nums">{n0(k.volume)}</td>
-                  <td className="px-3 pt-2.5 pb-1" title={tip}><Badge tone={tone}>{w}</Badge></td>
-                  <td className="px-3 pt-2.5 pb-1 min-w-[200px]">{k.used_on.length ? <div className="space-y-1">{k.used_on.slice(0, 3).map(u => <div key={u.url} className="text-12.5"><button type="button" onClick={() => onOpen(u.url, k.keyword)} className="font-medium text-indigo-700 hover:underline cursor-pointer">{u.path}</button> <span className="text-slate-500">in {u.places.map(p => PLACE[p]).join(', ')}</span></div>)}{k.used_on.length > 3 && <div className="text-11.5 text-slate-500">+{k.used_on.length - 3} more pages</div>}</div> : <span className="text-slate-400">No page yet</span>}</td>
-                  <td className="px-3 pt-2.5 pb-1 text-12.5">{k.meant_for ? <span><button type="button" onClick={() => onOpen(k.meant_for.url, k.keyword)} className="font-medium text-indigo-700 hover:underline cursor-pointer">{k.meant_for.path}</button> <span className="text-slate-500">({k.meant_for.role} keyword)</span></span>
-                    : k.other_fits.length ? <span className="text-slate-600">Could go on {k.other_fits.map(f => f.path).join(', ')}</span> : <span className="text-amber-700">{k.kind === 'post' ? 'Needs a blog post' : 'Needs a new page'}</span>}</td>
-                  <td className="px-3 pt-2.5 pb-1 text-right whitespace-nowrap">{target ? <Act icon={Eye} tone="indigo" tip="Where to add: open the page and see exactly where this keyword goes." onClick={() => onOpen(target, k.keyword)}>Where to add</Act> : <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`}><Act icon={FileSearch} tone="violet" tip="Write: a page or post is needed for this keyword.">Write it</Act></Link>}</td>
+                <tr className="hover:bg-slate-50 align-middle">
+                  <td className="px-3 py-2.5 font-semibold text-slate-900 min-w-[170px]">{k.keyword}{k.rank ? <span className="block text-11.5 font-normal text-slate-500">Google position {k.rank}</span> : null}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{n0(k.volume)}</td>
+                  <td className="px-3 py-2.5 min-w-[210px] text-12.5">
+                    {k.meant_for ? <span><button type="button" onClick={() => onOpen(k.meant_for.url, k.keyword)} className="font-semibold text-indigo-700 hover:underline cursor-pointer">{k.meant_for.path}</button> <span className="text-slate-500">({k.meant_for.role})</span></span>
+                      : k.other_fits.length ? <span className="text-slate-600">Could go on {k.other_fits.map(f => f.path).join(', ')}</span> : <span className="text-amber-700">{k.kind === 'post' ? 'Needs a blog post' : 'Needs a new page'}</span>}
+                    {k.used_on.length > 0 && <span className="block text-11.5 text-slate-500" title={k.used_on.map(u => `${u.path} in ${u.places.map(x => PLACE[x]).join(', ')}`).join('\n')}>Already on {k.used_on.slice(0, 2).map(u => u.path).join(', ')}{k.used_on.length > 2 ? ` +${k.used_on.length - 2}` : ''}</span>}
+                  </td>
+                  {k.purposes.map(p => {
+                    const chosen = p.planned && !p.used;
+                    const seeing = p.used && open.has(viewKey(k, p));
+                    return (
+                      <td key={p.key} className="px-1 py-2.5 text-center">
+                        <button type="button" onClick={() => (p.used ? toggleView(k, p) : setPlan(k, p.key, !p.planned))} disabled={busy === `${k.id}-${p.key}`} aria-pressed={chosen || seeing} aria-label={`${p.label} for ${k.keyword}`}
+                          title={p.used ? `Already used in ${p.label}: press to see where` : chosen ? `${p.label}: chosen, press to take it out` : `Press to use it in ${p.label}`}
+                          className={`w-6 h-6 rounded-md inline-flex items-center justify-center cursor-pointer ring-1 ring-inset transition-colors disabled:opacity-50 ${chosen ? 'bg-indigo-600 text-white ring-indigo-600' : p.used ? `bg-emerald-500 text-white ring-emerald-500 ${seeing ? 'outline outline-2 outline-emerald-300' : ''}` : 'bg-white ring-slate-300 hover:ring-indigo-400'}`}>
+                          {(chosen || p.used) && <Check size={14} strokeWidth={3} />}
+                        </button>
+                      </td>);
+                  })}
+                  <td className="px-3 py-2.5 text-right whitespace-nowrap">{target ? <Act icon={Eye} tone="indigo" tip="Where to add: open the page and see exactly where this keyword goes." onClick={() => onOpen(target, k.keyword)}>Where to add</Act> : <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`}><Act icon={FileSearch} tone="violet" tip="Write: a page or post is needed for this keyword.">Write it</Act></Link>}</td>
                 </tr>
-                <tr><td colSpan={6} className="px-3 pb-3">
-                  <div className="flex flex-wrap items-center gap-1.5"><span className="text-11.5 font-semibold uppercase tracking-wide text-slate-500 mr-1" title="Choose every area where this keyword will be used. Each chosen area shows what to write.">Use it for</span>{k.purposes.map(p => chip(k, p))}</div>
-                  {(() => { const shownNow = k.purposes.filter(p => (p.planned && !p.used) || (p.used && open.has(viewKey(k, p)))); return shownNow.length > 0 && <div className="mt-2 grid grid-cols-1 xl:grid-cols-2 gap-2">{shownNow.map(p => suggestion(k, p))}</div>; })()}
-                </td></tr>
+                {shownNow.length > 0 && <tr><td colSpan={4 + areas.length} className="px-3 pb-3"><div className="grid grid-cols-1 xl:grid-cols-2 gap-2">{shownNow.map(p => suggestion(k, p))}</div></td></tr>}
               </tbody>);
           })}
-          {!rows.length && <tbody><tr><td colSpan={6} className="px-5 py-8 text-center text-13 text-slate-500">{d.keywords.length ? 'No keyword in this group.' : 'No keywords are picked yet.'}</td></tr></tbody>}
+          {!rows.length && <tbody><tr><td colSpan={4 + areas.length} className="px-5 py-8 text-center text-13 text-slate-500">{d.keywords.length ? 'No keyword in this group.' : 'No keywords are picked yet.'}</td></tr></tbody>}
         </table>
       </div>
       <Pager p={pager} label="keywords" />
