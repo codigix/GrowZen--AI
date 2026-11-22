@@ -93,7 +93,7 @@ export default function KeywordWorkspace({ b, onUse }) {
   const [view, setView] = useState(params.get('tag') === 'gap' ? 'gap' : 'open');
   const [source, setSource] = useState(params.get('source') || '');
   const [q, setQ] = useState('');
-  const [sort, setSort] = useState({ key: 'score', dir: 'desc' });
+  const [sort, setSort] = useState({ key: 'volume', dir: 'desc' }); // ranked by monthly searches, highest first; the other headings re-sort it
   const [band, setBand] = useState(''); // rank filter: top3 | page1 | page2 | page3 | none
   const [limit, setLimit] = useState(PAGE);
   const [sel, setSel] = useState(() => new Set());
@@ -116,6 +116,7 @@ export default function KeywordWorkspace({ b, onUse }) {
       if (x == null) return 1; // no figure (not ranking, no volume...) always at the end, not at the top
       if (y == null) return -1;
       const o = typeof x === 'string' ? x.localeCompare(y) : x - y;
+      if (o === 0) return (c.score ?? 0) - (a.score ?? 0) || a.keyword.localeCompare(c.keyword); // the same figure: the better opportunity first, then A to Z
       return sort.dir === 'asc' ? o : -o;
     });
     return list;
