@@ -205,13 +205,16 @@ def _now_md(p: dict[str, Any]) -> list[str]:
 def render_md(d: dict[str, Any]) -> str:
     t = d["totals"]
     single = d.get("single")
+    legend = "In the text to use, the **bold** words are the keyword for that change and the _italic_ words are the page's other keywords: keep them in."
     steps = STEPS_PAGE if single else STEPS
     out = [f"# SEO content changes: {d['pages'][0]['path'] if single else d['business']}" + (f" ({d['business']})" if single else ""), "", f"Website: {d['website']}  ", f"Prepared: {d['date']}  ",
            f"{_scope(d)}.", "", _intro(d), "",
-           "## How to work through it", ""] + [f"{i}. {s}" for i, s in enumerate(steps, 1)] + [""]
+           "## How to work through it", ""] + [f"{i}. {s}" for i, s in enumerate(steps, 1)] + ["", legend, ""]
     if d["site_notes"]:
         out += ["## " + ("About this page" if single else "Notes for the whole site"), ""] + [f"- {n}" for n in d["site_notes"]] + [""]
     for p in d["pages"]:
+        page_kw = [k["keyword"] for k in p["keywords"]]
+        H = lambda text, kw: hl_md(text, [kw], page_kw)  # noqa: E731
         out += [f"## Page: {p['path']}", "", f"Address: {p['url']}  "]
         if p.get("scope"):
             out.append(f"Page type: {p['scope']}  ")
@@ -225,22 +228,22 @@ def render_md(d: dict[str, Any]) -> str:
             for m in p["meta"]:
                 n += 1
                 out += [f"- [ ] **{m['element']}: {m['action']}**"]
-                out += ([f"  - Find: `{m['current']}`", f"  - Replace with: `{m['new']}`"] if m["current"] else ["  - Now: nothing", f"  - Add: `{m['new']}`"]) + [f"  - For keyword: {m['keyword']}", ""]
+                out += ([f"  - Find: `{m['current']}`", f"  - Replace with: {H(m['new'], m['keyword'])}"] if m["current"] else ["  - Now: nothing", f"  - Add: {H(m['new'], m['keyword'])}"]) + [f"  - For keyword: **{m['keyword']}**", ""]
         if p["replace"]:
             out += ["### Replace existing content", ""]
             for r in p["replace"]:
                 n += 1
-                out += [f"- [ ] **{r['element']}: REPLACE**", f"  - Find: `{r['current']}`", f"  - Replace with: `{r['new']}`", f"  - For keyword: {r['keyword']}", ""]
+                out += [f"- [ ] **{r['element']}: REPLACE**", f"  - Find: `{r['current']}`", f"  - Replace with: {H(r['new'], r['keyword'])}", f"  - For keyword: **{r['keyword']}**", ""]
         if p["add"]:
             out += ["### Add new content", ""]
             for a in p["add"]:
                 n += 1
                 out.append(f"- [ ] **{a['element']}: ADD NEW**")
                 if a["kind"] == "section":
-                    out += ([f"  - Section heading (H2): `{a['heading']}`"] if a["heading"] else []) + [f"  - Paragraph under it: `{a['paragraph']}`" if a["paragraph"] else f"  - Paragraph under it: {NO_PARAGRAPH}"]
+                    out += ([f"  - Section heading (H2): {H(a['heading'], a['keyword'])}"] if a["heading"] else []) + [f"  - Paragraph under it: {H(a['paragraph'], a['keyword'])}" if a["paragraph"] else f"  - Paragraph under it: {NO_PARAGRAPH}"]
                 else:
-                    out.append(f"  - Text: `{a['new']}`")
-                out += [f"  - Where: {WHERE_NEW.get(a['place'], 'Add it where it fits on the page.')}", f"  - For keyword: {a['keyword']}", ""]
+                    out.append(f"  - Text: {H(a['new'], a['keyword'])}")
+                out += [f"  - Where: {WHERE_NEW.get(a['place'], 'Add it where it fits on the page.')}", f"  - For keyword: **{a['keyword']}**", ""]
         if not n:
             out += ["No text changes were found for this page.", ""]
         out += [f"Note: {x}" for x in p["notes"]] + ([""] if p["notes"] else [])
@@ -254,6 +257,37 @@ def render_md(d: dict[str, Any]) -> str:
             out += ["Chosen but not yet mapped to a page: " + ", ".join(left[:40]) + ".", ""]
     out += ["## When it is done", "", "- [ ] Every change above is on the live page", "- [ ] Indexing requested in Search Console for each changed page", "- [ ] The owner has been told, so the software can re-check the pages", ""]
     return "\n".join(out)
+
+
+_STOP = {"in", "near", "me", "the", "best", "top", "for", "a", "an", "of", "and", "to", "at", "on", "with", "by", "cheap", "affordable", "my", "your", "nearby", "online", "is", "are", "how", "what"}
+
+
+def _stem(w: str) -> str:
+    return w[:-1] if len(w) > 3 and w.endswith("s") else w
+
+
+def _keyset(keywords: list[str]) -> set[str]:
+    return {_stem(w) for k in keywords for w in re.findall(r"[a-z0-9']+", str(k or "").lower())} - _STOP
+
+
+def _mark(text: Any, focus: list[str], others: list[str], fmt) -> str:
+    """The words of the keywords in a text, marked by `fmt(token, strong)`: the keyword the change is for strongly, the page's other keywords lightly."""
+    f, o = _keyset(focus), _keyset(others) - _keyset(focus)
+    out = []
+    for tok in re.split(r"(\s+)", str(text or "")):
+        w = _stem(re.sub(r"^[^a-z0-9']+|[^a-z0-9']+$", "", tok.lower()))
+        out.append(fmt(tok, True) if w and w in f else fmt(tok, False) if w and w in o else fmt(tok, None))
+    return "".join(out)
+
+
+def hl_md(text: Any, focus: list[str], others: list[str]) -> str:
+    """Markdown: the keyword words in bold, the page's other keywords in italics."""
+    return _mark(text, focus, others, lambda tok, strong: tok if strong is None else f"**{tok}**" if strong else f"_{tok}_")
+
+
+def hl_pdf(text: Any, focus: list[str], others: list[str]) -> str:
+    """PDF paragraph markup: the keyword words on yellow, the page's other keywords on lilac. Text is made safe for Helvetica and escaped first."""
+    return _mark(_safe(text), focus, others, lambda tok, strong: escape(tok) if strong is None else f'<font backColor="{"#fde68a" if strong else "#e0e7ff"}">{escape(tok)}</font>')
 
 
 def _safe(s: Any) -> str:
@@ -276,27 +310,37 @@ def render_pdf(d: dict[str, Any]) -> bytes:
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=14 * mm, rightMargin=14 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title=f"SEO content changes: {_safe(d['business'])}")
     p = lambda t, style="BodyText": Paragraph(escape(_safe(t)), st[style])  # noqa: E731
     c = lambda t, s=small: Paragraph(escape(_safe(t)), s)  # noqa: E731
+    legend = Paragraph('In the text to use, <font backColor="#fde68a">this colour</font> is the keyword for that change and <font backColor="#e0e7ff">this colour</font> is the page\'s other keywords: keep them in.', small)
     t = d["totals"]
     flow: list[Any] = [p("SEO content changes", "Title"), p(f"{d['business']}  |  {d['website']}  |  prepared {d['date']}"),
                        p(_scope(d), "Heading4"), Spacer(1, 4), p(_intro(d)), Spacer(1, 6), p("How to work through it", "Heading3")]
     single = d.get("single")
-    flow += [p(f"{i}. {s}") for i, s in enumerate(STEPS_PAGE if single else STEPS, 1)]
+    flow += [p(f"{i}. {s}") for i, s in enumerate(STEPS_PAGE if single else STEPS, 1)] + [Spacer(1, 3), legend]
     if d["site_notes"]:
         flow += [Spacer(1, 6), p("About this page" if single else "Notes for the whole site", "Heading3")] + [p("- " + n) for n in d["site_notes"]]
     W = [30 * mm, 152 * mm]
+    HL_ROWS = {"Replace with", "Add", "Text", "Paragraph under it", "Section heading (H2)"}
+    mark = {"main": [], "all": []}  # the keywords of the page being written, set for each page
     TONE = {"REPLACE": "#fef3c7", "ADD NEW": "#dcfce7", "ADD": "#dcfce7"}
 
     def item(n: int, element: str, action: str, rows: list[tuple[str, str]], keyword: str) -> Any:
         """One change as a small box: the header says where and what to do, then Find / Replace with (or Where / Text) lines."""
         head = Table([[c(f"[   ]  {n}.  {element}", smallb), c(action, smallb)]], colWidths=[142 * mm, 40 * mm])
         head.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(TONE.get(action, "#f1f5f9"))), ("ALIGN", (1, 0), (1, 0), "RIGHT"), ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
-        body = Table([[c(a, label), c(b)] for a, b in rows + [("For keyword", keyword)]], colWidths=W)
+        def cell(a: str, b: str) -> Any:
+            if a in HL_ROWS and b and b != NO_PARAGRAPH:
+                return Paragraph(hl_pdf(b, [keyword], mark["all"]), small)
+            if a == "For keyword":
+                return Paragraph(hl_pdf(b, [keyword], []), small)
+            return c(b)
+        body = Table([[c(a, label), cell(a, b)] for a, b in rows + [("For keyword", keyword)]], colWidths=W)
         body.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
         box = Table([[head], [body]], colWidths=[182 * mm])
         box.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
         return KeepTogether([box, Spacer(1, 5)])
 
     for pg in d["pages"]:
+        mark["all"] = [k["keyword"] for k in pg["keywords"]]
         flow += [Spacer(1, 10), p(f"Page: {pg['path']}", "Heading2"), c(pg["url"])]
         if pg.get("scope"):
             flow.append(c(f"Page type: {pg['scope']}"))
@@ -305,8 +349,9 @@ def render_pdf(d: dict[str, Any]) -> bytes:
         flow.append(Spacer(1, 4))
         if pg.get("now"):
             nw = pg["now"]
-            rows_now = [[c("Title", label), c(nw["title"] or "(none)")], [c("Description", label), c(nw["description"] or "(none)")], [c("Main heading (H1)", label), c(" | ".join(nw["h1"]) or "(none)")],
-                        [c("Section headings", label), c(" | ".join(nw["headings"]) or "(none)")]]
+            now_mark = lambda text: Paragraph(hl_pdf(text, [k["keyword"] for k in pg["keywords"] if k["role"] == "primary"], mark["all"]), small)  # noqa: E731
+            rows_now = [[c("Title", label), now_mark(nw["title"] or "(none)")], [c("Description", label), now_mark(nw["description"] or "(none)")], [c("Main heading (H1)", label), now_mark(" | ".join(nw["h1"]) or "(none)")],
+                        [c("Section headings", label), now_mark(" | ".join(nw["headings"]) or "(none)")]]
             tb = Table(rows_now, colWidths=[34 * mm, 148 * mm])
             tb.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")), ("LINEBELOW", (0, 0), (-1, -2), 0.25, colors.HexColor("#e2e8f0")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f8fafc"))]))
             flow += [p("What the page says now", "Heading4"), tb, Spacer(1, 6)]

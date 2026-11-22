@@ -22,8 +22,8 @@ def test_developer_brief_lists_what_to_replace_and_add(client, monkeypatch):
     assert r.status_code == 200 and "attachment" in r.headers["content-disposition"] and r.headers["content-disposition"].endswith('.md"')
     md = r.text
     assert "## Page: /gowns" in md and "### Meta data (goes in the page's head)" in md
-    assert "Page title (the <title> tag in the head): REPLACE" in md and "Find: `Old title | Shop`" in md and "Replace with: `Gown Rental in Pune | Shop`" in md
-    assert "### Add new content" in md and "Main heading (H1): ADD NEW" in md and "Text: `Gown Rental in Pune`" in md and "Where: Put it at the top of the page content" in md
+    assert "Page title (the <title> tag in the head): REPLACE" in md and "Find: `Old title | Shop`" in md and "Replace with: **Gown** **Rental** in Pune | Shop" in md
+    assert "### Add new content" in md and "Main heading (H1): ADD NEW" in md and "Text: **Gown** **Rental** in Pune" in md and "Where: Put it at the top of the page content" in md
     assert "mapped to an information page" in md
     assert "saree rental" in md  # chosen but not mapped: listed so it is not forgotten
     pdf = client.post(f"/api/v1/businesses/{bid}/keyword-mapping/dev-brief", json={"format": "pdf"})
