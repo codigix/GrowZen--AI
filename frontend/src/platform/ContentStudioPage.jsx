@@ -610,13 +610,9 @@ function SavedKeywordPicker({ b, inUse, onAdd }) {
       {kws.data && !list.length && <p className="text-[12px] text-slate-500">No keywords are saved yet. Save some on <Link to="/keyword-management/ai" className="text-indigo-600 hover:underline">Find Keywords</Link>, or type the topic above and click Generate Keywords.</p>}
       {list.length > 0 && (
         <div className="rounded-lg ring-1 ring-inset ring-slate-200 overflow-hidden">
-          <DataTable bare rows={list} rowKey={k => k.keyword} pageSize={10} sizes={[10, 25, 50]} label="keywords" searchPlaceholder={`Search ${list.length} keywords`} minWidth={520} columnsMenu={false}
+          <DataTable bare rows={list} rowKey={k => k.keyword} pageSize={10} sizes={[10, 25, 50]} label="keywords" search={false} minWidth={520} columnsMenu={false}
             onState={st => { shownRows.current = st.rows; }}
             rowClass={k => (picked.includes(k.keyword) ? 'bg-indigo-50' : used.has(k.keyword.toLowerCase()) ? 'opacity-50' : 'hover:bg-slate-50')}
-            filters={[
-              { id: 'blog', label: 'For', options: [['blog', 'Meant for blogs'], ['unused', 'Not used in an article yet']], test: (k, v) => (v === 'blog' ? Boolean(k.for_blog) : !k.used) },
-              { id: 'rank', label: 'Google', options: [['yes', 'Ranks'], ['no', 'Not ranking']], test: (k, v) => (v === 'yes' ? k.rank != null : k.rank == null) }
-            ]}
             columns={[
               { id: 'pick', label: 'Select', csv: false, className: 'pl-3 pr-1 py-2 w-8', thClass: 'pl-3 pr-1 py-2.5 w-8',
                 header: <input type="checkbox" aria-label="Select all shown" checked={shownRows.current.length > 0 && shownRows.current.filter(k => !used.has(k.keyword.toLowerCase())).every(k => picked.includes(k.keyword))} onChange={() => { const free = shownRows.current.filter(k => !used.has(k.keyword.toLowerCase())).map(k => k.keyword); const every = free.every(k => picked.includes(k)); setPicked(pk => (every ? pk.filter(k => !free.includes(k)) : [...new Set([...pk, ...free])])); }} />,
