@@ -13,11 +13,17 @@ const SRC_TONE = { website: 'blue', search_console: 'green', profile: 'amber', c
 const n0 = (v) => (v == null ? '—' : v.toLocaleString('en-US'));
 const PAGE = 50;
 
+/** Where your site stands on Google for a keyword: the average position as a whole place, and which page of Google that is. */
+const BANDS = [['top3', 'Top 3', (n) => n <= 3, 'bg-emerald-100 text-emerald-800'], ['page1', 'Page 1', (n) => n > 3 && n <= 10, 'bg-green-50 text-green-800'], ['page2', 'Page 2', (n) => n > 10 && n <= 20, 'bg-amber-50 text-amber-800'],
+  ['page3', 'Page 3+', (n) => n > 20, 'bg-slate-100 text-slate-600']];
+const bandOf = (rank) => (rank == null ? null : BANDS.find(b => b[2](Math.max(1, Math.round(rank)))) || null);
+const FIRST = { keyword: 'asc', rank: 'asc', difficulty: 'asc' }; // the first click on these puts the best first: A to Z, position 1 first, easiest first
+
 function SortTh({ id, sort, setSort, children, right, what, why, from }) {
   const on = sort.key === id;
   return (
     <th className={`px-3 py-2 ${right ? 'text-right' : 'text-left'}`} aria-sort={on ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-      <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id && s.dir === 'desc' ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${on ? 'text-slate-900' : ''}`}>
+      <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id ? (s.dir === 'asc' ? 'desc' : 'asc') : (FIRST[id] || 'desc') }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${on ? 'text-slate-900' : ''}`}>
         <Head what={what} why={why} from={from} right={right}>{children}</Head>{on && (sort.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
       </button>
     </th>
@@ -88,6 +94,7 @@ export default function KeywordWorkspace({ b, onUse }) {
   const [source, setSource] = useState(params.get('source') || '');
   const [q, setQ] = useState('');
   const [sort, setSort] = useState({ key: 'score', dir: 'desc' });
+  const [band, setBand] = useState(''); // rank filter: top3 | page1 | page2 | page3 | none
   const [limit, setLimit] = useState(PAGE);
   const [sel, setSel] = useState(() => new Set());
   const [collecting, setCollecting] = useState(false);
@@ -101,10 +108,18 @@ export default function KeywordWorkspace({ b, onUse }) {
   const rows = useMemo(() => {
     let list = [...(d?.items || [])];
     if (view === 'suggested') list = list.filter(i => i.suggested);
-    const v = (i) => (sort.key === 'keyword' ? i.keyword : sort.key === 'rank' ? (i.rank ?? 999) : (i[sort.key] ?? -1));
-    list.sort((a, c) => { const x = v(a); const y = v(c); const o = typeof x === 'string' ? x.localeCompare(y) : x - y; return sort.dir === 'asc' ? o : -o; });
+    if (band) list = list.filter(i => (band === 'none' ? i.rank == null : i.rank != null && bandOf(i.rank)?.[0] === band));
+    const v = (i) => (sort.key === 'keyword' ? i.keyword : i[sort.key]);
+    list.sort((a, c) => {
+      const x = v(a), y = v(c);
+      if (x == null && y == null) return 0;
+      if (x == null) return 1; // no figure (not ranking, no volume...) always at the end, not at the top
+      if (y == null) return -1;
+      const o = typeof x === 'string' ? x.localeCompare(y) : x - y;
+      return sort.dir === 'asc' ? o : -o;
+    });
     return list;
-  }, [d, sort, view]);
+  }, [d, sort, view, band]);
   const topVolume = useMemo(() => Math.max(1, ...rows.map(i => i.volume || 0)), [rows]);
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
@@ -160,7 +175,14 @@ export default function KeywordWorkspace({ b, onUse }) {
                 <button type="button" onClick={() => setSource('')} className={`h-8 px-2.5 rounded-full text-12 font-semibold cursor-pointer ${!source ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:bg-slate-100'}`}>All places</button>
                 {sourcesWith.map(s => <button key={s.kind} type="button" onClick={() => setSource(source === s.kind ? '' : s.kind)} className={`h-8 px-2.5 rounded-full text-12 font-semibold cursor-pointer ${source === s.kind ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:bg-slate-100'}`}>{SRC_SHORT[s.kind]} <span className="tabular-nums text-slate-400">{s.count}</span></button>)}
               </div>
-              {(source || q) && <button type="button" onClick={() => { setSource(''); setQ(''); }} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear</button>}
+              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Your rank on Google">
+                <span className="text-12 text-slate-400">Rank</span>
+                {[['', 'All'], ...BANDS.map(b => [b[0], b[1]]), ['none', 'Not ranking']].map(([id, label]) => {
+                  const n = id === '' ? null : (d.items || []).filter(i => (id === 'none' ? i.rank == null : i.rank != null && bandOf(i.rank)?.[0] === id)).length;
+                  return <button key={id} type="button" onClick={() => { setBand(band === id ? '' : id); setLimit(PAGE); }} aria-pressed={band === id} className={`h-8 px-2.5 rounded-full text-12 font-semibold cursor-pointer ${band === id ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:bg-slate-100'}`}>{label}{n != null && <span className="ml-1 tabular-nums text-slate-400">{n}</span>}</button>;
+                })}
+              </div>
+              {(source || q || band) && <button type="button" onClick={() => { setSource(''); setQ(''); setBand(''); }} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear</button>}
               {view === 'open' || view === 'suggested' ? (
                 suggestedAll.length > 0 && <Button size="sm" className="ml-auto" icon={Star} busy={busy === 'pick'} onClick={() => pick(suggestedAll.map(i => i.id))} title="The best-looking keywords: searches, ease, gaps and how many places agree">Pick {suggestedAll.length} suggested</Button>
               ) : null}
@@ -205,7 +227,9 @@ export default function KeywordWorkspace({ b, onUse }) {
                             {i.sources.length > 2 && <span className="text-12 text-slate-500 self-center">+{i.sources.length - 2}</span>}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums" title="Average position on Google, last 90 days (Search Console)">{i.rank != null ? i.rank.toFixed(1) : '—'}</td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap" title={i.rank != null ? `Average position ${i.rank.toFixed(1)} on Google over the last 90 days${i.impressions ? `: ${i.impressions.toLocaleString('en-IN')} impressions, ${(i.clicks || 0).toLocaleString('en-IN')} clicks` : ''} (Search Console)` : 'Google has not shown your site for this keyword in the last 90 days'}>
+                          {i.rank != null ? (() => { const n = Math.max(1, Math.round(i.rank)); const bd = bandOf(i.rank); return <span className="inline-flex items-center justify-end gap-1.5"><span className={`font-semibold tabular-nums ${n <= 10 ? 'text-emerald-700' : 'text-slate-800'}`}>#{n}</span>{bd && <span className={`rounded-full px-1.5 py-px text-11 font-semibold ${bd[3]}`}>{bd[1]}</span>}</span>; })() : <span className="text-slate-300">—</span>}
+                        </td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                           <span className="inline-flex gap-1.5">
                             {!i.picked && show !== 'dismissed' && <Act icon={Check} tone="green" tip="Pick: save this keyword to your list (My Keywords) so you can give it a page and track it." onClick={() => pick([i.id])} />}
