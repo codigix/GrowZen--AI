@@ -112,8 +112,6 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const trackedSet = new Set(tracked.map(k => k.keyword));
   const all = result?.keywords || [];
   const live = result?.data_source?.includes('keyword_planner');
-  const gaps = all.filter(k => k.coverage?.status === 'gap' && ['service', 'local'].includes(k.group)).slice(0, 8);
-  const questions = all.filter(k => k.group === 'question').slice(0, 8);
   const track = (rows) => run('track', async () => {
     const body = rows.map(k => ({ keyword: k.keyword, volume: k.volume ?? null, difficulty: k.difficulty ?? null, cpc: k.cpc ?? null, intent: k.intent, target_url: k.coverage?.page ? pathOf(k.coverage.page) : null, priority: k.group === 'near_me' || k.group === 'local' ? 'High' : 'Medium' }));
     const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body });
@@ -126,124 +124,77 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const selectable = (discRows.current.length ? discRows.current : all).filter(k => !k.tracked && !trackedSet.has(k.keyword));
   return (
     <div className="space-y-3">
-      {/* Step 1 is competitor research: the keywords below start from it. */}
-      {c.competitor_research ? (
-        <div className="rounded-lg bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-3 py-2 flex flex-wrap items-center gap-2 text-12.5 text-emerald-900">
-          <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-          <span className="flex-1 min-w-[220px]"><b>Built on your competitor research</b> ({fmtDateTime(c.competitor_research.analysed_at)}): {c.competitor_research.ideas} ideas from {c.competitor_research.competitors} competitors are mixed in, marked "From competitors".</span>
-          <Link to="/competitor-finder" className="font-semibold text-emerald-800 hover:underline">Open research</Link>
-        </div>
-      ) : (
-        <div className="rounded-lg bg-amber-50 ring-1 ring-inset ring-amber-200 px-3 py-2 flex flex-wrap items-center gap-2 text-12.5 text-amber-900">
-          <AlertTriangle size={14} className="text-amber-600 shrink-0" />
-          <span className="flex-1 min-w-[220px]"><b>Do competitor research first.</b> It shows which searches your rivals win, so discovery starts from what already works. You can still search without it.</span>
-          <Link to="/competitor-finder" className="h-8 px-3 rounded inline-flex items-center gap-1.5 text-12.5 font-semibold bg-amber-500 text-white hover:bg-amber-600"><ArrowLeft size={13} /> Competitor research</Link>
-        </div>
-      )}
-
-      {/* Starting point */}
-      <Card title="What we search from" subtitle={`Built from ${b.name}'s profile and website audit. Switch items on or off, then find keywords.`}
-        action={<Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={() => find()}>Find keywords</Button>}>
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-3">
-            <div>
-              <div className="text-11 font-semibold text-slate-500 mb-1.5">Services & category <span className="font-normal">({activeSeeds.length}/6 on)</span></div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {seeds.map(s => <Chip key={s.text} on={s.on} onClick={() => (s.on || activeSeeds.length < 6) && toggle(setSeeds, s.text)} onRemove={c.seeds.includes(s.text) ? null : () => setSeeds(list => list.filter(x => x.text !== s.text))}>{s.text}</Chip>)}
-                <span className="inline-flex items-center gap-1">
-                  <input className="h-7 w-40 px-2.5 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" placeholder="Add a service…" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => e.key === 'Enter' && addSeed()} />
-                  <button type="button" onClick={addSeed} className="h-7 w-7 rounded-lg ring-1 ring-inset ring-slate-200 text-slate-500 hover:text-slate-900 flex items-center justify-center cursor-pointer" aria-label="Add service"><Plus size={13} /></button>
-                </span>
-              </div>
-              {!c.seeds.length && <div className="mt-1.5 text-12 text-amber-700">No category or services on the profile yet. Add one above, or fill them in GBP Manager.</div>}
+      {/* What we search from, the one button, and where the keywords come from: one card, three lines */}
+      <Card pad={false}>
+        <div className="px-4 py-3 flex flex-wrap items-start gap-x-4 gap-y-3">
+          <div className="flex-1 min-w-[280px] space-y-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-[4.5rem] text-11.5 font-semibold uppercase tracking-wide text-slate-500" title="Built from the profile and the website audit: switch items on or off">Services</span>
+              {seeds.map(s => <Chip key={s.text} on={s.on} onClick={() => (s.on || activeSeeds.length < 6) && toggle(setSeeds, s.text)} onRemove={c.seeds.includes(s.text) ? null : () => setSeeds(list => list.filter(x => x.text !== s.text))}>{s.text}</Chip>)}
+              <span className="inline-flex items-center gap-1">
+                <input className="h-7 w-36 px-2.5 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" placeholder="Add a service…" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => e.key === 'Enter' && addSeed()} />
+                <button type="button" onClick={addSeed} className="h-7 w-7 rounded-lg ring-1 ring-inset ring-slate-200 text-slate-500 hover:text-slate-900 flex items-center justify-center cursor-pointer" aria-label="Add service"><Plus size={13} /></button>
+              </span>
             </div>
-            <div>
-              <div className="text-11 font-semibold text-slate-500 mb-1.5">Area & nearby localities</div>
-              <div className="flex flex-wrap gap-1.5">
-                {areas.map((a, i) => <Chip key={a.text} on={a.on} onClick={() => toggle(setAreas, a.text)} title={i < c.areas.length ? 'From the business profile' : 'Nearby, from OpenStreetMap'}>{i < c.areas.length && <MapPin size={11} className="inline -mt-0.5 mr-1" />}{a.text}</Chip>)}
-              </div>
-              {!c.business.has_location && <div className="mt-1.5 text-12 text-slate-500">Set the map pin in Business Onboarding to add nearby localities automatically.</div>}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-[4.5rem] text-11.5 font-semibold uppercase tracking-wide text-slate-500">Areas</span>
+              {areas.map((a, i) => <Chip key={a.text} on={a.on} onClick={() => toggle(setAreas, a.text)} title={i < c.areas.length ? 'From the business profile' : 'Nearby, from OpenStreetMap'}>{i < c.areas.length && <MapPin size={11} className="inline -mt-0.5 mr-1" />}{a.text}</Chip>)}
+              {!c.business.has_location && <span className="text-12 text-slate-500">Set the map pin in Business Onboarding to add nearby localities.</span>}
             </div>
+            {!c.seeds.length && <div className="text-12 text-amber-700">No category or services on the profile yet. Add one above, or fill them in GBP Manager.</div>}
           </div>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-slate-100 pt-2.5 text-12 text-slate-600">
-            <span className="inline-flex items-center gap-1.5"><Globe size={13} className="text-slate-400" />{c.website ? <>Website audit: score <b className="text-slate-800">{c.website.score}/100</b>, {c.website.pages} pages, {fmtDateTime(c.website.finished_at)}. Each keyword is checked against them.</> : <>Not audited yet, so content gaps can't be checked. <Link to="/website-audit" className="font-medium text-indigo-700 hover:underline">Audit the website</Link></>}</span>
-            <span className="inline-flex items-center gap-1.5"><Users size={13} className="text-slate-400" />{c.competitors.length ? <>Competitors: {c.competitors.slice(0, 4).join(', ')}{c.competitors.length > 4 ? ` +${c.competitors.length - 4}` : ''}</> : <>No competitors yet. <Link to="/competitor-finder" className="font-medium text-indigo-700 hover:underline">Run competitor research</Link></>}</span>
-          </div>
+          <Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={() => find()}>{result ? 'Find again' : 'Find keywords'}</Button>
         </div>
-        <ErrorNote>{error}</ErrorNote>
+        <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/60 rounded-b-xl flex flex-wrap items-center gap-x-6 gap-y-1 text-12 text-slate-600">
+          {c.competitor_research
+            ? <span className="inline-flex items-center gap-1.5 text-emerald-800"><CheckCircle2 size={13} className="text-emerald-600" />Built on competitor research ({c.competitor_research.ideas} ideas from {c.competitor_research.competitors} competitors, marked "From competitors") <Link to="/competitor-finder" className="font-semibold hover:underline">Open</Link></span>
+            : <span className="inline-flex items-center gap-1.5 text-amber-800"><AlertTriangle size={13} className="text-amber-600" />No competitor research yet: it shows what your rivals win. <Link to="/competitor-finder" className="font-semibold hover:underline">Do it first</Link></span>}
+          <span className="inline-flex items-center gap-1.5"><Globe size={13} className="text-slate-400" />{c.website ? <>Website audit {c.website.score}/100, {c.website.pages} pages</> : <>Website not audited, so gaps can't be checked. <Link to="/website-audit" className="font-semibold text-indigo-700 hover:underline">Audit it</Link></>}</span>
+          {c.competitors.length > 0 && <span className="inline-flex items-center gap-1.5"><Users size={13} className="text-slate-400" />{c.competitors.slice(0, 3).join(', ')}{c.competitors.length > 3 ? ` +${c.competitors.length - 3}` : ''}</span>}
+        </div>
       </Card>
+      <ErrorNote>{error}</ErrorNote>
 
       {busy === 'find' && !result && <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Asking Google what people search for…</div></Card>}
 
       {result && (
         <>
-          <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-x-8 gap-y-1 text-13 text-slate-500">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-1 text-13 text-slate-500">
             <span><b className="text-slate-900 tabular-nums">{all.length}</b> keywords <span className="text-slate-400">from {result.queries} Google lookups</span></span>
             <span><b className="text-slate-900 tabular-nums">{(result.counts.local || 0) + (result.counts.near_me || 0)}</b> local and near me</span>
             <span><b className="text-slate-900 tabular-nums">{result.counts.question || 0}</b> questions</span>
-            <span><b className={`tabular-nums ${result.website_checked && result.gaps ? 'text-red-600' : 'text-slate-900'}`}>{result.website_checked ? result.gaps : '—'}</b> content gaps <span className="text-slate-400">{result.website_checked ? 'no page targets them yet' : 'audit the website to check'}</span></span>
+            <span><b className={`tabular-nums ${result.website_checked && result.gaps ? 'text-red-600' : 'text-slate-900'}`}>{result.website_checked ? result.gaps : '—'}</b> content gaps</span>
+            {result.trending_today.length > 0 && <span className="inline-flex flex-wrap items-center gap-1.5" title="Today's trending searches in India that mention your topics"><Flame size={13} className="text-orange-500" />Trending: {result.trending_today.slice(0, 5).map(x => <span key={x.keyword} className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-800 text-12">{x.keyword}</span>)}</span>}
           </div>
-
-          {result.trending_today.length > 0 && (
-            <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-2" title="Today's trending searches in India that mention your topics">
-              <span className="inline-flex items-center gap-1.5 text-12.5 font-semibold text-slate-700"><Flame size={13} className="text-orange-500" />Trending on Google today</span>
-              {result.trending_today.slice(0, 8).map(x => <span key={x.keyword} className="text-12 px-2 py-0.5 rounded-md bg-orange-50 ring-1 ring-inset ring-orange-200 text-orange-800">{x.keyword}</span>)}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
-            <div className="xl:col-span-2 min-w-0">
-              <Card pad={false} title={`Keywords (${all.length})`}
-                subtitle={live ? 'Real searches from Google Autocomplete, with monthly volume and 12-month trend from the Google Ads Keyword Planner.' : 'Real searches from Google Autocomplete. Stars show how strongly Google suggests each one. Monthly volumes need the Google Ads Keyword Planner API.'}
-                action={<Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(all.filter(k => selected.includes(k.keyword)))}>Track {selected.length || ''}</Button>}>
-                <DataTable bare rows={all} rowKey={k => k.keyword} pageSize={25} exportName="keyword-ideas" label="keywords" searchPlaceholder="Search keywords" minWidth={720}
-                  onState={st => { discRows.current = st.rows; }}
-                  rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
-                  empty={all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}
-                  filters={[
-                    { id: 'group', label: 'Type', options: ORDER.filter(g => result.counts[g]).map(g => [g, `${GROUPS[g].label} (${result.counts[g]})`]), test: (k, v) => k.group === v },
-                    ...(result.website_checked ? [{ id: 'site', label: 'Your website', options: [['gap', 'Content gaps'], ['covered', 'Already covered']], test: (k, v) => (v === 'gap' ? k.coverage?.status === 'gap' : Boolean(k.coverage?.status) && k.coverage.status !== 'gap') }] : []),
-                    { id: 'intent', label: 'Intent', options: [...new Set(all.map(k => k.intent).filter(Boolean))].sort().map(x => [x, x]), test: (k, v) => k.intent === v },
-                    ...(live ? [{ id: 'kd', label: 'Difficulty', options: [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']], test: (k, v) => k.difficulty != null && kd(k.difficulty)[0].toLowerCase() === v }] : []),
-                    { id: 'status', label: 'Status', options: [['new', 'Not tracked yet'], ['tracked', 'Tracked']], test: (k, v) => ((k.tracked || trackedSet.has(k.keyword)) ? v === 'tracked' : v === 'new') }
-                  ]}
-                  columns={[
-                    { id: 'pick', label: 'Select', csv: false, className: 'pl-6 pr-2 py-2 w-8', thClass: 'pl-6 pr-2 py-2.5 w-8',
-                      header: <input type="checkbox" className="accent-indigo-600" aria-label="Select all shown" checked={selectable.length > 0 && selectable.every(k => selected.includes(k.keyword))} onChange={e => setSelected(e.target.checked ? selectable.map(k => k.keyword) : [])} />,
-                      cell: k => { const isTracked = k.tracked || trackedSet.has(k.keyword); return <input type="checkbox" className="accent-indigo-600" disabled={isTracked} checked={selected.includes(k.keyword)} onChange={() => setSelected(s => (s.includes(k.keyword) ? s.filter(x => x !== k.keyword) : [...s, k.keyword]))} aria-label={`Select ${k.keyword}`} />; } },
-                    { id: 'keyword', header: 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
-                      cell: k => { const G = GROUPS[k.group]; return <>
-                        <div className="text-slate-900" title={k.from_competitors || undefined}>{k.keyword}</div>{k.from_competitors && <div className="text-11 text-rose-700">{k.from_competitors}</div>}
-                        <div className="mt-0.5 flex items-center gap-1.5"><span className={`text-10.5 font-semibold px-1.5 py-px rounded ring-1 ring-inset inline-flex items-center gap-1 ${G.tone}`}><G.icon size={10} /> {G.label}</span><span className="text-10.5 text-slate-400">{k.intent}</span></div></>; } },
-                    { id: 'demand', header: live ? 'Searches / mo' : 'Demand', first: 'desc', value: k => (live && k.volume != null ? k.volume : k.stars ?? null), className: 'px-2 py-2',
-                      cell: k => (live && k.volume != null ? <span className="tabular-nums text-slate-900">{fmt(k.volume)}{k.trend != null && k.trend !== 0 && <span className={`ml-1.5 text-11 font-semibold inline-flex items-center ${k.trend > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{k.trend > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(k.trend)}%</span>}</span> : <Stars n={k.stars} />) },
-                    ...(live ? [{ id: 'difficulty', header: 'Difficulty', value: k => k.difficulty ?? null, className: 'px-2 py-2', cell: k => { const [dl, dt] = kd(k.difficulty); return k.difficulty != null ? <Badge tone={dt}>{dl} · {k.difficulty}</Badge> : '—'; } }] : []),
-                    { id: 'website', header: 'Your website', value: k => k.coverage?.status || null, className: 'px-2 py-2', cell: k => <Coverage c={k.coverage} /> },
-                    { id: 'status', header: 'Status', right: true, value: k => ((k.tracked || trackedSet.has(k.keyword)) ? (k.rank ? `Rank ${k.rank}` : 'Tracked') : 'Not tracked'), className: 'px-2 pr-6 py-2 text-right whitespace-nowrap',
-                      cell: k => ((k.tracked || trackedSet.has(k.keyword)) ? <span className="text-11.5 text-emerald-700 font-medium">{k.rank ? `Rank ${k.rank}` : 'Tracked'}</span> : <button type="button" onClick={() => track([k])} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>) }
-                  ]} />
-              </Card>
-            </div>
-
-            <div className="space-y-3 min-w-0">
-              {result.website_checked && (
-                <Card title="Pages to create" subtitle="Searches with no page on the site yet">
-                  {gaps.length ? (
-                    <ul className="space-y-2">
-                      {gaps.map(k => <li key={k.keyword} className="flex items-start gap-2 text-12.5"><AlertTriangle size={13} className="text-red-500 mt-0.5 shrink-0" /><span className="flex-1 text-slate-800">{k.keyword}</span><Stars n={k.stars} /></li>)}
-                    </ul>
-                  ) : <div className="text-12.5 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> The site covers the main service and local searches.</div>}
-                  {gaps.length > 0 && <Link to="/ai-content-generation/blog" className="mt-3 inline-flex items-center gap-1 text-12 font-semibold text-indigo-700 hover:underline">Write an article for these searches <ExternalLink size={11} /></Link>}
-                </Card>
-              )}
-              {questions.length > 0 && (
-                <Card title="Questions customers ask" subtitle="Answer them in FAQs, Google Q&A and blog posts">
-                  <ul className="space-y-2">{questions.map(k => <li key={k.keyword} className="flex items-start gap-2 text-12.5"><HelpCircle size={13} className="text-violet-500 mt-0.5 shrink-0" /><span className="flex-1 text-slate-800">{k.keyword}?</span></li>)}</ul>
-                  <Link to="/ai-content-generation" className="mt-3 inline-flex items-center gap-1 text-12 font-semibold text-indigo-700 hover:underline">Write answers in AI Content Studio <ExternalLink size={11} /></Link>
-                </Card>
-              )}
-            </div>
-          </div>
+      <Card pad={false} title={`Keywords (${all.length})`}
+        action={<Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(all.filter(k => selected.includes(k.keyword)))}>Track {selected.length || ''}</Button>}>
+        <DataTable bare rows={all} rowKey={k => k.keyword} pageSize={25} exportName="keyword-ideas" label="keywords" searchPlaceholder="Search keywords" minWidth={720}
+          onState={st => { discRows.current = st.rows; }}
+          rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
+          empty={all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}
+          filters={[
+            { id: 'group', label: 'Type', options: ORDER.filter(g => result.counts[g]).map(g => [g, `${GROUPS[g].label} (${result.counts[g]})`]), test: (k, v) => k.group === v },
+            ...(result.website_checked ? [{ id: 'site', label: 'Your website', options: [['gap', 'Content gaps'], ['covered', 'Already covered']], test: (k, v) => (v === 'gap' ? k.coverage?.status === 'gap' : Boolean(k.coverage?.status) && k.coverage.status !== 'gap') }] : []),
+            { id: 'intent', label: 'Intent', options: [...new Set(all.map(k => k.intent).filter(Boolean))].sort().map(x => [x, x]), test: (k, v) => k.intent === v },
+            ...(live ? [{ id: 'kd', label: 'Difficulty', options: [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']], test: (k, v) => k.difficulty != null && kd(k.difficulty)[0].toLowerCase() === v }] : []),
+            { id: 'status', label: 'Status', options: [['new', 'Not tracked yet'], ['tracked', 'Tracked']], test: (k, v) => ((k.tracked || trackedSet.has(k.keyword)) ? v === 'tracked' : v === 'new') }
+          ]}
+          columns={[
+            { id: 'pick', label: 'Select', csv: false, className: 'pl-6 pr-2 py-2 w-8', thClass: 'pl-6 pr-2 py-2.5 w-8',
+              header: <input type="checkbox" className="accent-indigo-600" aria-label="Select all shown" checked={selectable.length > 0 && selectable.every(k => selected.includes(k.keyword))} onChange={e => setSelected(e.target.checked ? selectable.map(k => k.keyword) : [])} />,
+              cell: k => { const isTracked = k.tracked || trackedSet.has(k.keyword); return <input type="checkbox" className="accent-indigo-600" disabled={isTracked} checked={selected.includes(k.keyword)} onChange={() => setSelected(s => (s.includes(k.keyword) ? s.filter(x => x !== k.keyword) : [...s, k.keyword]))} aria-label={`Select ${k.keyword}`} />; } },
+            { id: 'keyword', header: 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
+              cell: k => { const G = GROUPS[k.group]; return <>
+                <div className="text-slate-900" title={k.from_competitors || undefined}>{k.keyword}</div>{k.from_competitors && <div className="text-11 text-rose-700">{k.from_competitors}</div>}
+                <div className="mt-0.5 flex items-center gap-1.5"><span className={`text-10.5 font-semibold px-1.5 py-px rounded ring-1 ring-inset inline-flex items-center gap-1 ${G.tone}`}><G.icon size={10} /> {G.label}</span><span className="text-10.5 text-slate-400">{k.intent}</span></div></>; } },
+            { id: 'demand', header: live ? 'Searches / mo' : 'Demand', first: 'desc', value: k => (live && k.volume != null ? k.volume : k.stars ?? null), className: 'px-2 py-2',
+              cell: k => (live && k.volume != null ? <span className="tabular-nums text-slate-900">{fmt(k.volume)}{k.trend != null && k.trend !== 0 && <span className={`ml-1.5 text-11 font-semibold inline-flex items-center ${k.trend > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{k.trend > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(k.trend)}%</span>}</span> : <Stars n={k.stars} />) },
+            ...(live ? [{ id: 'difficulty', header: 'Difficulty', value: k => k.difficulty ?? null, className: 'px-2 py-2', cell: k => { const [dl, dt] = kd(k.difficulty); return k.difficulty != null ? <Badge tone={dt}>{dl} · {k.difficulty}</Badge> : '—'; } }] : []),
+            { id: 'website', header: 'Your website', value: k => k.coverage?.status || null, className: 'px-2 py-2', cell: k => <Coverage c={k.coverage} /> },
+            { id: 'status', header: 'Status', right: true, value: k => ((k.tracked || trackedSet.has(k.keyword)) ? (k.rank ? `Rank ${k.rank}` : 'Tracked') : 'Not tracked'), className: 'px-2 pr-6 py-2 text-right whitespace-nowrap',
+              cell: k => ((k.tracked || trackedSet.has(k.keyword)) ? <span className="text-11.5 text-emerald-700 font-medium">{k.rank ? `Rank ${k.rank}` : 'Tracked'}</span> : <button type="button" onClick={() => track([k])} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>) }
+          ]} />
+      </Card>
         </>
       )}
       {toastNode}
@@ -1764,8 +1715,8 @@ function KeywordPath({ b, tab, setTab }) {
     <>
 
       {FIND_TABS.includes(tab) && <FindHeader tab={tab} setTab={setTab} typed={typed} setTyped={setTyped} onSearch={startSearch} seedText={seedSearch.text} />}
-      {tab === 'discover' && <div className="mb-3"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
       <Keywords b={b} tab={tab} kw={refresh} onSaved={saved} seedSearch={seedSearch} />
+      {tab === 'discover' && <div className="mt-4"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
     </>
   );
 }
