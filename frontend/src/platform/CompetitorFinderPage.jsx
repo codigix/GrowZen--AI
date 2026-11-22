@@ -882,6 +882,9 @@ function Research({ b }) {
       await loadRegistered();
     } catch (e) { setAuditMap(m => ({ ...m, [c.id]: { id: null, status: 'failed', listing: true } })); toast(`Could not read ${c.name}'s Google listing: ${e.message}`); }
   };
+  // A business found on Maps is saved through its Google listing: used when it has no website, and when the "website" is an Instagram or Google business page (the server refuses those as a competitor's own site).
+  const saveFromMaps = (m) => api('/competitors/maps', { method: 'POST', body: { business_id: b.id, name: m.name, address: m.address, cid: m.cid, phone: m.phone, rating: m.rating, reviews: m.reviews } });
+  const notItsOwnSite = (e) => /social network or directory/i.test(e?.message || '');
   // A business found on Maps or in the Google results is saved as a competitor first (by its website, else through its Google listing); a saved one is used as it is.
   const ensureSaved = async (c) => {
     if (c?.id) { // an audited or compared business is a competitor you are working with: a saved one that was left unchosen is chosen now
@@ -892,8 +895,11 @@ function Research({ b }) {
     }
     const m = c?.maps || c;
     if (!m?.name) return null;
-    const made = m.website ? await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: m.website, name: m.name } })
-      : await api('/competitors/maps', { method: 'POST', body: { business_id: b.id, name: m.name, address: m.address, cid: m.cid, phone: m.phone, rating: m.rating, reviews: m.reviews } });
+    let made;
+    if (m.website) {
+      try { made = await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: m.website, name: m.name } }); }
+      catch (e) { if (!(m.cid && notItsOwnSite(e))) throw e; made = await saveFromMaps(m); }
+    } else made = await saveFromMaps(m);
     await loadRegistered();
     return made;
   };
@@ -938,10 +944,12 @@ function Research({ b }) {
   const chooseCompetitor = async (c, on) => {
     try {
       if (c.id) await api(`/competitors/${c.id}`, { method: 'PATCH', body: { selected: on } });
-      else if (on && c.website) await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: c.website, name: c.name || '' } });
-      else if (on) { // a business found on Google Maps that has no website: it is saved through its Google listing instead
+      else if (on && c.website) {
+        try { await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url: c.website, name: c.name || '' } }); }
+        catch (e) { if (!(c.maps && notItsOwnSite(e))) throw e; await saveFromMaps({ ...c.maps, name: c.maps.name || c.name }); } // its "website" is an Instagram or Google page: saved through its Google listing
+      } else if (on) { // a business found on Google Maps that has no website: it is saved through its Google listing instead
         const m = c.maps || c;
-        await api('/competitors/maps', { method: 'POST', body: { business_id: b.id, name: m.name || c.name || 'Competitor', address: m.address, cid: m.cid, phone: m.phone, rating: m.rating, reviews: m.reviews } });
+        await saveFromMaps({ ...m, name: m.name || c.name || 'Competitor' });
       }
       await loadRegistered();
       toast(on ? `${c.name} chosen: Competitor Watch will follow it` : `${c.name} left out`);
