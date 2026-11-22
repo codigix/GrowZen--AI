@@ -20,7 +20,7 @@ class AppUser(TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(160))
     password_hash: Mapped[str] = mapped_column(String(255))
-    role: Mapped[str] = mapped_column(String(20), default="editor")  # admin | editor | viewer
+    role: Mapped[str] = mapped_column(String(20), default="manager")  # admin | manager (editor and viewer: older accounts; a viewer is read-only)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Two-step verification (authenticator app). The secret is sealed (services/crypto); while totp_enabled is false it is only a pending setup.
