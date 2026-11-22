@@ -982,20 +982,23 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         action={step === PUBLISH_STEP ? null : (
           <div className="flex items-center gap-2">
             {step === 0 && <Button onClick={() => setShowSaved(s => !s)}>{showSaved ? 'Hide My Keywords' : 'My Keywords'}</Button>}
-            <Button variant="secondary" busy={genBusy} onClick={next}>
-              {step === 0 ? 'Generate Blog' : 'Next Step'}
+            {step !== 0 && <Button variant="secondary" busy={genBusy} onClick={next}>
+              Next Step
               <ChevronRight size={13} />
-            </Button>
+            </Button>}
           </div>
         )}
       >
         {/* Step 0: Keyword & Intent */}
         {step === 0 && (
-          <div className="space-y-4">
-            <Field label="Topic" hint="Picked from Trending Topics Radar, or type your own topic">
-              <input className={inputCls} placeholder="e.g. social media marketing" value={topicText} onChange={e => setTopicText(e.target.value)} />
-            </Field>
-            {onGenerate && showSaved && <SavedKeywordPicker b={b} inUse={[kw, ...secondaryList]} onAdd={addSaved} />}
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_390px] gap-4 items-start">
+            <div className="space-y-4 min-w-0">
+              <Field label="Topic" hint="Picked from Trending Topics Radar, or type your own topic">
+                <input className={inputCls} placeholder="e.g. social media marketing" value={topicText} onChange={e => setTopicText(e.target.value)} />
+              </Field>
+              {onGenerate && showSaved && <SavedKeywordPicker b={b} inUse={[kw, ...secondaryList]} onAdd={addSaved} />}
+            </div>
+            <aside className="space-y-3 xl:sticky xl:top-4" aria-label="This article">
             {onGenerate && (
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1020,7 +1023,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     </Field>
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Secondary keywords <span className="normal-case tracking-normal font-normal text-slate-400">({secondaryList.filter(k => k.trim()).length}, 5 to 10 works best; edit, add or remove)</span></div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2">
                         {secondaryList.map((k, i) => (
                           <div key={i} className="flex items-center gap-1.5">
                             <input className={inputCls} value={k} onChange={e => setSecondaryList(l => l.map((x, j) => (j === i ? e.target.value : x)))} />
@@ -1038,25 +1041,27 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             {onGenerate && (
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Article length</div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 gap-1.5">
                   {ARTICLE_LENGTHS.map(l => (
-                    <button key={l.id} type="button" onClick={() => pickLength(l.id)}
-                      className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${articleLength === l.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'}`}>
-                      <div className="text-[12px] font-bold">{l.label}</div>
-                      <div className={`text-[10.5px] ${articleLength === l.id ? 'text-indigo-100' : 'text-slate-500'}`}>{l.words} · {l.time}</div>
+                    <button key={l.id} type="button" onClick={() => pickLength(l.id)} aria-pressed={articleLength === l.id}
+                      className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-3 text-left cursor-pointer transition-all ${articleLength === l.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'}`}>
+                      <span className="text-[12.5px] font-bold">{l.label}</span>
+                      <span className={`text-[11px] ${articleLength === l.id ? 'text-indigo-100' : 'text-slate-500'}`}>{l.words} · {l.time}</span>
                     </button>
                   ))}
                 </div>
               </div>
             )}
             {onGenerate && (
-              <div className="flex flex-wrap items-center gap-3">
-                <Button variant="ai" icon={Sparkles} busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={generateBlog}>Generate Blog</Button>
-                {generating && <span className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</span>}
-                <span className="text-[11.5px] text-slate-500">Writes a complete blog (SEO title, meta description, introduction, H2/H3 sections, FAQs, conclusion) using every keyword above, then opens it for review.</span>
+              <div className="space-y-1.5">
+                <Button variant="ai" icon={Sparkles} className="w-full justify-center" busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={generateBlog}>Generate Blog</Button>
+                {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
+                {!kwReady && !kwBusy && <div className="text-[11.5px] text-amber-700">Generate the keywords first.</div>}
+                <div className="text-[11.5px] text-slate-500">Writes a complete blog (SEO title, meta description, introduction, H2/H3 sections, FAQs, conclusion) using the keywords above, then opens it for review.</div>
               </div>
             )}
             {genError && <div className="text-[12px] text-red-600">{genError}</div>}
+            </aside>
           </div>
         )}
 
