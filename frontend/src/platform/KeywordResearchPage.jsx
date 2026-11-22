@@ -125,19 +125,19 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
 
   const selectable = (discRows.current.length ? discRows.current : all).filter(k => !k.tracked && !trackedSet.has(k.keyword));
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Step 1 is competitor research: the keywords below start from it. */}
       {c.competitor_research ? (
-        <div className="rounded bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-4 py-3 flex flex-wrap items-center gap-3 text-13 text-emerald-900">
-          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-          <span className="flex-1 min-w-[220px]"><b>Built on your competitor research</b> ({fmtDateTime(c.competitor_research.analysed_at)}): {c.competitor_research.ideas} keyword ideas from {c.competitor_research.competitors} competitors are mixed in, marked "From competitors".</span>
-          <Link to="/competitor-finder" className="text-12.5 font-semibold text-emerald-800 hover:underline">Open research</Link>
+        <div className="rounded-lg bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-3 py-2 flex flex-wrap items-center gap-2 text-12.5 text-emerald-900">
+          <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+          <span className="flex-1 min-w-[220px]"><b>Built on your competitor research</b> ({fmtDateTime(c.competitor_research.analysed_at)}): {c.competitor_research.ideas} ideas from {c.competitor_research.competitors} competitors are mixed in, marked "From competitors".</span>
+          <Link to="/competitor-finder" className="font-semibold text-emerald-800 hover:underline">Open research</Link>
         </div>
       ) : (
-        <div className="rounded bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 flex flex-wrap items-center gap-3 text-13 text-amber-900">
-          <AlertTriangle size={16} className="text-amber-600 shrink-0" />
-          <span className="flex-1 min-w-[220px]"><b>Do competitor research first.</b> It shows which searches your rivals win on Google, so keyword discovery can start from what already works. You can still search without it.</span>
-          <Link to="/competitor-finder" className="h-9 px-3.5 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-amber-500 text-white hover:bg-amber-600"><ArrowLeft size={14} /> Step 1: competitor research</Link>
+        <div className="rounded-lg bg-amber-50 ring-1 ring-inset ring-amber-200 px-3 py-2 flex flex-wrap items-center gap-2 text-12.5 text-amber-900">
+          <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+          <span className="flex-1 min-w-[220px]"><b>Do competitor research first.</b> It shows which searches your rivals win, so discovery starts from what already works. You can still search without it.</span>
+          <Link to="/competitor-finder" className="h-8 px-3 rounded inline-flex items-center gap-1.5 text-12.5 font-semibold bg-amber-500 text-white hover:bg-amber-600"><ArrowLeft size={13} /> Competitor research</Link>
         </div>
       )}
 
@@ -197,12 +197,13 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
           </div>
 
           {result.trending_today.length > 0 && (
-            <Card title="In Google Trends today" subtitle="Today's trending searches in India that mention your topics">
-              <div className="flex flex-wrap gap-2">{result.trending_today.map(t => <span key={t.keyword} className="inline-flex items-center gap-1.5 text-12.5 px-2.5 py-1 rounded-lg bg-orange-50 ring-1 ring-inset ring-orange-200 text-orange-800"><Flame size={12} /> {t.keyword}{t.traffic && <span className="text-orange-600/70">{t.traffic}</span>}</span>)}</div>
-            </Card>
+            <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-2" title="Today's trending searches in India that mention your topics">
+              <span className="inline-flex items-center gap-1.5 text-12.5 font-semibold text-slate-700"><Flame size={13} className="text-orange-500" />Trending on Google today</span>
+              {result.trending_today.slice(0, 8).map(x => <span key={x.keyword} className="text-12 px-2 py-0.5 rounded-md bg-orange-50 ring-1 ring-inset ring-orange-200 text-orange-800">{x.keyword}</span>)}
+            </div>
           )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
             <div className="xl:col-span-2 min-w-0">
               <Card pad={false} title={`Keywords (${all.length})`}
                 subtitle={live ? 'Real searches from Google Autocomplete, with monthly volume and 12-month trend from the Google Ads Keyword Planner.' : 'Real searches from Google Autocomplete. Stars show how strongly Google suggests each one. Monthly volumes need the Google Ads Keyword Planner API.'}
@@ -236,7 +237,7 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
               </Card>
             </div>
 
-            <div className="space-y-5 min-w-0">
+            <div className="space-y-3 min-w-0">
               {result.website_checked && (
                 <Card title="Pages to create" subtitle="Searches with no page on the site yet">
                   {gaps.length ? (
@@ -1775,7 +1776,11 @@ function KeywordPath({ b, tab, setTab }) {
     <>
 
       {FIND_TABS.includes(tab) && <FindHeader tab={tab} setTab={setTab} typed={typed} setTyped={setTyped} onSearch={startSearch} seedText={seedSearch.text} />}
-      {tab === 'discover' && <div className="mb-5"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
+      {tab === 'discover' && (
+        <details className="mb-3 group rounded-xl bg-white ring-1 ring-slate-200">
+          <summary className="list-none cursor-pointer px-4 py-2.5 flex flex-wrap items-center gap-x-3 text-13 text-slate-600"><Sparkles size={14} className="text-indigo-500" /><span className="font-semibold text-slate-900">Weekly keyword suggestions</span><span className="hidden sm:inline">Suggested for you every week; one is tracked only after you approve it</span><span className="ml-auto text-indigo-700 font-semibold group-open:hidden">Open</span><span className="ml-auto text-slate-500 hidden group-open:inline">Close</span></summary>
+          <div className="px-3 pb-3"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>
+        </details>)}
       <Keywords b={b} tab={tab} kw={refresh} onSaved={saved} seedSearch={seedSearch} />
     </>
   );
