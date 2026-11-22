@@ -1326,101 +1326,31 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
   const avgDiff = results.length ? Math.round(results.reduce((s, x) => s + (x.difficulty || 0), 0) / results.length) : 0;
 
   return (
-    <div className="space-y-5">
-      <Card
-        title="Keyword Explorer"
-        subtitle="Multi-platform search suggestion engine across Google, YouTube, Bing, Amazon, DuckDuckGo, eBay, and App Stores with volume, competition, CPC, and intent."
-      >
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex-1 min-w-[240px]">
-              <div className="text-11 font-semibold text-slate-500 mb-1">Seed Keyword</div>
-              <input
-                className={inputCls}
-                placeholder="e.g. digital marketing, dental clinic, travel agency..."
-                value={keyword}
-                onChange={e => setKeyword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && search()}
-              />
-            </label>
-            <label>
-              <div className="text-11 font-semibold text-slate-500 mb-1">Country</div>
-              <input
-                className={`${inputCls} w-20 uppercase font-mono`}
-                maxLength={2}
-                value={country}
-                onChange={e => setCountry(e.target.value.toUpperCase())}
-              />
-            </label>
-            <label>
-              <div className="text-11 font-semibold text-slate-500 mb-1">Limit</div>
-              <Select
-                className="h-9 px-2.5 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400"
-                value={limit}
-                onChange={e => setLimit(Number(e.target.value))}
-              >
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-                <option value={200}>200</option>
-              </Select>
-            </label>
-            <Button
-              variant="primary"
-              icon={Search}
-              busy={busy === 'search'}
-              disabled={!keyword.trim()}
-              onClick={search}
-            >
-              Explore Keywords
-            </Button>
-          </div>
-
-          <div>
-            <div className="text-11 font-semibold text-slate-500 mb-1.5">Platforms to Query:</div>
-            <div className="flex flex-wrap gap-1.5">
-              {EXPLORER_PLATFORMS.map(p => {
-                const active = platforms.includes(p.id);
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => togglePlatform(p.id)}
-                    className={`px-2.5 py-1 rounded-lg text-11.5 font-semibold transition-all cursor-pointer ring-1 ring-inset ${
-                      active
-                        ? 'bg-indigo-600 text-white ring-indigo-600 shadow-xs'
-                        : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+    <div className="space-y-3">
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2" title="Suggestions from Google, YouTube, Bing, Amazon, DuckDuckGo, eBay and App Stores, with volume, competition, CPC and intent">
+        <span className="text-13 text-slate-600">Seed <b className="text-slate-900">{keyword || 'none yet'}</b></span>
+        <div role="group" aria-label="Platforms to query" className="flex flex-wrap items-center gap-1.5">
+          {EXPLORER_PLATFORMS.map(p => {
+            const active = platforms.includes(p.id);
+            return <button key={p.id} type="button" onClick={() => togglePlatform(p.id)} aria-pressed={active} className={`h-7 px-2.5 rounded-md text-12 font-semibold cursor-pointer ring-1 ring-inset ${active ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'}`}>{p.label}</button>;
+          })}
         </div>
-        <ErrorNote>{error}</ErrorNote>
-      </Card>
+        <label className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">Country<input aria-label="Country" className="h-8 w-14 px-2 text-13 rounded-md border border-slate-200 uppercase font-mono text-slate-800" maxLength={2} value={country} onChange={e => setCountry(e.target.value.toUpperCase())} /></label>
+        <label className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">Limit
+          <select aria-label="Limit" className="h-8 px-2 text-13 rounded-md border border-slate-200 bg-white text-slate-800 cursor-pointer" value={limit} onChange={e => setLimit(Number(e.target.value))}><option value={50}>50</option><option value={100}>100</option><option value={200}>200</option></select>
+        </label>
+        <Button size="sm" variant="primary" icon={Search} busy={busy === 'search'} disabled={!keyword.trim()} onClick={() => search()} className="ml-auto">Explore again</Button>
+      </div>
+      <ErrorNote>{error}</ErrorNote>
 
       {results.length > 0 && (
         <div className="space-y-4">
-          {/* Summary KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Discovered</div>
-              <div className="text-18 font-bold text-slate-900 mt-0.5">{results.length} keywords</div>
-            </div>
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Avg Search Volume</div>
-              <div className="text-18 font-bold text-indigo-600 mt-0.5">{fmt(avgVol)} /mo</div>
-            </div>
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Avg CPC</div>
-              <div className="text-18 font-bold text-emerald-600 mt-0.5">${avgCpc}</div>
-            </div>
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Avg Difficulty</div>
-              <div className="text-18 font-bold text-amber-600 mt-0.5">{avgDiff} / 100</div>
-            </div>
+          {/* Summary: one slim line */}
+          <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-x-8 gap-y-1 text-13 text-slate-500">
+            <span><b className="text-slate-900 tabular-nums">{results.length}</b> keywords</span>
+            <span>Avg searches <b className="text-indigo-600 tabular-nums">{fmt(avgVol)}</b>/mo</span>
+            <span>Avg CPC <b className="text-emerald-600 tabular-nums">${avgCpc}</b></span>
+            <span>Avg difficulty <b className="text-amber-600 tabular-nums">{avgDiff}</b>/100</span>
           </div>
 
           {/* Results Table Card */}
@@ -1838,30 +1768,26 @@ const FIND_HINT = {
 /** The top of Find Keywords: the four places to look (one click shows that source's results) and one search box that asks the one you are on. */
 function FindHeader({ tab, setTab, typed, setTyped, onSearch, seedText }) {
   return (
-    <div className="bg-white rounded-xl ring-1 ring-slate-200 shadow-sm mb-5 overflow-hidden">
-      <div role="tablist" aria-label="Where the ideas come from" className="grid sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 border-b border-slate-200">
-        {FIND_CARDS.map(([id, label, text]) => {
-          const Icon = FIND_ICON[id];
-          const on = tab === id;
-          return (
-            <button key={id} type="button" role="tab" aria-selected={on} onClick={() => setTab(id)}
-              className={`text-left px-5 py-4 cursor-pointer flex items-start gap-3 border-b-2 -mb-px transition-colors ${on ? 'bg-indigo-50/60 border-indigo-600' : 'border-transparent hover:bg-slate-50'}`}>
-              <span className={`mt-0.5 w-9 h-9 rounded-lg inline-flex items-center justify-center shrink-0 ${on ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}><Icon size={17} /></span>
-              <span className="min-w-0">
-                <span className={`block text-14 font-semibold ${on ? 'text-indigo-900' : 'text-slate-900'}`}>{label}</span>
-                <span className="block text-12 text-slate-500 mt-0.5 leading-snug">{text}</span>
-              </span>
-            </button>);
-        })}
-      </div>
-      <div className="px-5 py-4">
-        <form onSubmit={(e) => { e.preventDefault(); onSearch(); }} role="search" className="flex flex-wrap gap-2">
-          <label className="relative flex-1 min-w-[240px]"><Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-            <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search a keyword or topic in every source" aria-label="Search keywords" className="w-full h-11 pl-10 pr-3 text-14 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
-          <Button type="submit" variant="primary" icon={Search} className="h-11 px-6" disabled={typed.trim().length < 2}>Search</Button>
+    <div className="bg-white rounded-xl ring-1 ring-slate-200 shadow-sm mb-3 overflow-hidden">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-3 pt-2 pb-2">
+        <div role="tablist" aria-label="Where the ideas come from" className="flex flex-wrap gap-1">
+          {FIND_CARDS.map(([id, label, text]) => {
+            const Icon = FIND_ICON[id];
+            const on = tab === id;
+            return (
+              <button key={id} type="button" role="tab" aria-selected={on} onClick={() => setTab(id)} title={text}
+                className={`h-9 px-3 rounded-lg text-13.5 font-semibold cursor-pointer inline-flex items-center gap-2 transition-colors ${on ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                <Icon size={15} />{label}
+              </button>);
+          })}
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); onSearch(); }} role="search" className="flex flex-1 min-w-[260px] gap-2 lg:ml-auto lg:max-w-xl">
+          <label className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+            <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search a keyword or topic" aria-label="Search keywords" className="w-full h-9 pl-9 pr-3 text-13.5 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+          <Button type="submit" variant="primary" icon={Search} disabled={typed.trim().length < 2}>Search</Button>
         </form>
-        <p className="mt-2 text-12.5 text-slate-500">{FIND_HINT[tab]}{seedText ? <> Showing results for <b className="text-slate-700">{seedText}</b>.</> : null}</p>
       </div>
+      <p className="px-4 py-1.5 border-t border-slate-100 bg-slate-50/60 text-12 text-slate-500">{FIND_HINT[tab]}{seedText ? <> Showing results for <b className="text-slate-700">{seedText}</b>.</> : null}</p>
     </div>
   );
 }
