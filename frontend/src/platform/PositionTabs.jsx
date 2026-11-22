@@ -5,7 +5,8 @@ import { Card, Badge, Button, useAction, SkList } from './SeoUi';
 import { api, useApi, fmt, fmtDate } from './seoApi';
 import { KeywordActs, OpenAct } from './TableBits';
 import { AllPages } from './TopPagesReport';
-import { AXIS, PALETTE, Th, Chg, Empty, Filter, Segmented, usePager, path } from './PositionUi';
+import { AXIS, PALETTE, Th, Chg, Empty, Filter, Segmented, path } from './PositionUi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 const host = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '');
 const Bar = ({ v, max, color = '#6658dd' }) => <div className="h-2 w-24 rounded-full bg-slate-100 overflow-hidden"><div className="h-full" style={{ width: `${max ? Math.min(100, (v / max) * 100) : 0}%`, background: color }} /></div>;
@@ -15,6 +16,12 @@ function PlatformToggle({ d, on, set }) {
   return <label className="inline-flex items-center gap-1.5 text-12.5 text-slate-600 cursor-pointer"><input type="checkbox" checked={on} onChange={e => set(e.target.checked)} />Include directories &amp; social sites ({d.platform_total})</label>;
 }
 const withPlatforms = (d, on) => (on ? [...(d.competitors_all || []), ...(d.platforms || []).map(p => ({ ...p, platform: true }))] : (d.competitors_all || []));
+const TC = 'px-4 py-2.5 whitespace-nowrap';
+const numOf = (v) => (v == null || v === '' ? null : Number(v));
+const statusRank = (x, ranked) => (x.competing ? 0 : ranked ? 1 : 2);
+const pageValue = (p, k) => ({ page: p.url, status: statusRank(p, p.ranking), affected: numOf(p.affected), pos: numOf(p.avg_position), diff: numOf(p.avg_position_change), traffic: numOf(p.traffic), tdiff: numOf(p.traffic_change), volume: numOf(p.volume) })[k];
+const kwValue = (r, k) => ({ keyword: r.keyword, status: statusRank(r, r.rank), best: numOf(r.rank), pages: (r.pages || []).length, volume: numOf(r.volume) })[k];
+const snipValue = (s, k) => ({ keyword: s.keyword, feature: s.feature, volume: numOf(s.volume), potential: numOf(s.potential), you: s.yours ? 0 : numOf(s.rank) })[k];
 const Dash = <span className="text-slate-300">—</span>;
 const Url = ({ u }) => u ? <a href={u} target="_blank" rel="noreferrer" title={u} className="text-indigo-700 hover:underline inline-flex items-center gap-1 max-w-[360px] truncate">{path(u)}<ExternalLink size={10} /></a> : Dash;
 
@@ -165,8 +172,11 @@ export function Cannibalization({ d, b }) {
   const kwPages = useMemo(() => new Map(allKeywords.map(r => [r.keyword, r.pages || []])), [allKeywords]);
   const pageRows = allPages.filter(p => (!only || p.competing) && (!uq || p.url.toLowerCase().includes(uq.toLowerCase())) && (!kq || p.keywords.some(k => k.keyword.toLowerCase().includes(kq.toLowerCase()))));
   const kwRows = allKeywords.filter(r => (!only || r.competing) && (!kq || r.keyword.toLowerCase().includes(kq.toLowerCase())) && (!uq || r.pages.some(p => p.url.toLowerCase().includes(uq.toLowerCase()))));
-  const list = view === 'pages' ? pageRows : kwRows;
-  const [slice, footer] = usePager(list, 25);
+  const ps = useSorted(pageRows, pageValue);
+  const ks = useSorted(kwRows, kwValue);
+  const list = view === 'pages' ? ps.sorted : ks.sorted;
+  const pg = usePager(list, { size: 25, resetKey: `${view}|${only}|${kq}|${uq}` });
+  const slice = pg.rows;
   const gauge = [{ v: c.health, c: col }, { v: 100 - c.health, c: '#e2e8f0' }];
   const series = c.series.filter(x => x.health != null).map(x => ({ date: x.date.slice(5), health: x.health, affected: x.affected }));
   const caret = (key) => <button type="button" onClick={() => toggle(key)} aria-label="Show details" className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"><ChevronRight size={14} className={`transition-transform ${open.has(key) ? 'rotate-90' : ''}`} /></button>;
@@ -209,7 +219,7 @@ export function Cannibalization({ d, b }) {
         {slice.length ? (view === 'pages' ? (
           <div className="overflow-x-auto">
             <table className="w-full text-13 min-w-[960px]">
-              <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th>Page</Th><Th>Status</Th><Th c="text-right">Affected keywords</Th><Th c="text-right">Avg. pos.</Th><Th c="text-right">Diff</Th><Th c="text-right">Total est. traffic</Th><Th c="text-right">Diff</Th><Th c="text-right">Total volume</Th><Th c="text-right">Actions</Th></tr></thead>
+              <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><SortTh id="page" sort={ps.sort} onSort={ps.onSort} className={TC}>Page</SortTh><SortTh id="status" sort={ps.sort} onSort={ps.onSort} className={TC}>Status</SortTh><SortTh id="affected" sort={ps.sort} onSort={ps.onSort} right first="desc" className={TC}>Affected keywords</SortTh><SortTh id="pos" sort={ps.sort} onSort={ps.onSort} right className={TC}>Avg. pos.</SortTh><SortTh id="diff" sort={ps.sort} onSort={ps.onSort} right className={TC}>Diff</SortTh><SortTh id="traffic" sort={ps.sort} onSort={ps.onSort} right first="desc" className={TC}>Total est. traffic</SortTh><SortTh id="tdiff" sort={ps.sort} onSort={ps.onSort} right first="desc" className={TC}>Diff</SortTh><SortTh id="volume" sort={ps.sort} onSort={ps.onSort} right first="desc" className={TC}>Total volume</SortTh><Th c="text-right">Actions</Th></tr></thead>
               <tbody className="divide-y divide-slate-100">{slice.map(p => (
                 <React.Fragment key={p.url}>
                   <tr className="hover:bg-slate-50">
@@ -246,7 +256,7 @@ export function Cannibalization({ d, b }) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-13 min-w-[760px]">
-              <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th>Keyword</Th><Th>Status</Th><Th c="text-right">Best pos.</Th><Th c="text-right">Pages in results</Th><Th c="text-right">Volume</Th><Th c="text-right">Actions</Th></tr></thead>
+              <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><SortTh id="keyword" sort={ks.sort} onSort={ks.onSort} className={TC}>Keyword</SortTh><SortTh id="status" sort={ks.sort} onSort={ks.onSort} className={TC}>Status</SortTh><SortTh id="best" sort={ks.sort} onSort={ks.onSort} right className={TC}>Best pos.</SortTh><SortTh id="pages" sort={ks.sort} onSort={ks.onSort} right first="desc" className={TC}>Pages in results</SortTh><SortTh id="volume" sort={ks.sort} onSort={ks.onSort} right first="desc" className={TC}>Volume</SortTh><Th c="text-right">Actions</Th></tr></thead>
               <tbody className="divide-y divide-slate-100">{slice.map(r => (
                 <React.Fragment key={r.keyword}>
                   <tr className="hover:bg-slate-50">
@@ -269,7 +279,7 @@ export function Cannibalization({ d, b }) {
             </table>
           </div>
         )) : <Empty>{c.affected ? 'Nothing matches these filters.' : 'No keyword has two of your pages competing in Google. Nothing to merge.'}</Empty>}
-        {footer}
+        <Pager p={pg} label={view === 'pages' ? 'pages' : 'keywords'} />
       </Card>
     </div>
   );
@@ -284,7 +294,9 @@ export function Snippets({ d }) {
   const fresh = all.filter(s => !s.was);
   const rows = view === 'has' ? has : view === 'new' ? fresh : opp;
   const pct = (n) => all.length ? Math.round(n / all.length * 100) : 0;
-  const [slice, footer] = usePager(rows, 25);
+  const { sorted, sort, onSort } = useSorted(rows, snipValue);
+  const pg = usePager(sorted, { size: 25, resetKey: view });
+  const slice = pg.rows;
   return (
     <div className="space-y-4">
       <Card title={`${all.length} keyword${all.length !== 1 ? 's' : ''} with featured snippets on the results page`}>
@@ -298,7 +310,7 @@ export function Snippets({ d }) {
         action={<Segmented value={view} onChange={setView} options={[['opp', 'Opportunities', opp.length], ['has', 'Already featured', has.length], ['new', 'New on SERP', fresh.length]]} />}>
         {slice.length ? (
           <table className="w-full text-13">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th>Feature</Th><Th c="text-right">Volume</Th><Th c="text-right">Est. traffic potential</Th><Th c="text-right">You</Th><Th c="text-right">Actions</Th></tr></thead>
+            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className={TC}>Keyword</SortTh><SortTh id="feature" sort={sort} onSort={onSort} className={TC}>Feature</SortTh><SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className={TC}>Volume</SortTh><SortTh id="potential" sort={sort} onSort={onSort} right first="desc" className={TC}>Est. traffic potential</SortTh><SortTh id="you" sort={sort} onSort={onSort} right className={TC}>You</SortTh><Th c="text-right">Actions</Th></tr></thead>
             <tbody className="divide-y divide-slate-100">{slice.map(s => (
               <tr key={s.keyword}><td className="px-4 py-2.5 font-medium text-indigo-700">{s.keyword}</td><td className="px-4 py-2.5 text-slate-600">{s.feature}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{s.volume != null ? fmt(s.volume) : Dash}</td><td className="px-4 py-2.5 text-right tabular-nums">{s.potential ?? Dash}</td>
@@ -306,7 +318,7 @@ export function Snippets({ d }) {
                 <td className="px-4 py-2.5 text-right whitespace-nowrap"><KeywordActs keyword={s.keyword} /></td></tr>))}</tbody>
           </table>
         ) : <Empty>{all.length ? 'Nothing in this view. Try another tab above the table.' : 'No snippet or answer box was seen on the latest checks.'}</Empty>}
-        {footer}
+        <Pager p={pg} label="keywords" />
         {opp.length > 0 && <p className="px-4 py-3 text-12 text-slate-500 border-t border-slate-100 flex gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />To win one: add a 40-60 word direct answer under a question heading, plus FAQ schema, on the page that ranks.</p>}
       </Card>
     </div>

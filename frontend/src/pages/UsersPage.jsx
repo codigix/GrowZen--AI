@@ -4,6 +4,7 @@ import { api, useApi, fmtDateTime } from '../platform/seoApi';
 import Breadcrumbs from '../platform/Breadcrumbs';
 import { Card, Badge, Button, Modal, Field, inputCls, ErrorNote, Empty, useToast } from '../platform/SeoUi';
 import Select from '../components/Select';
+import DataTable from '../platform/DataTable';
 
 const ROLES = ['admin', 'manager']; // the two roles offered; accounts made earlier as editor or viewer keep working (an editor shows as Manager)
 const LABEL = { admin: 'Admin', manager: 'Manager', viewer: 'Viewer (read-only)' };
@@ -123,104 +124,97 @@ They can no longer sign in and lose access to every shared project. Projects the
           <ErrorNote>{error?.message}</ErrorNote>
           {users?.length === 0 && <Empty>No registered team members yet.</Empty>}
           {users?.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-13 text-left">
-                <thead>
-                  <tr className="text-11 font-bold   text-slate-500  border-b border-slate-100 bg-slate-50/70">
-                    <th className="px-5 py-3.5">User</th>
-                    <th className="px-5 py-3.5">Role</th>
-                    <th className="px-5 py-3.5">Last Active</th>
-                    <th className="px-5 py-3.5">Status</th>
-                    <th className="px-5 py-3.5 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {users.map(u => {
+            <DataTable bare minWidth={0} rows={users} rowKey={u => u.id} exportName="team-members" label="people" searchPlaceholder="Search people" columnsMenu={false} rowClass={() => 'hover:bg-slate-50/60 transition-colors'}
+              columns={[
+                { id: 'user', header: 'User', thClass: 'px-5 py-3.5', className: 'px-5 py-3.5', value: u => `${u.name || ''} ${u.email || ''}`.trim(),
+                  cell: u => {
                     const self = String(u.id) === String(me.id);
                     return (
-                      <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded bg-gradient-to-tr from-indigo-500 to-cyan-500 text-white font-bold flex items-center justify-center text-xs shadow-sm">
-                              {u.name ? u.name.slice(0, 1).toUpperCase() : 'U'}
-                            </div>
-                            <div>
-                              <div className="font-semibold text-slate-900 flex items-center gap-1.5">
-                                <span>{u.name}</span>
-                                {self && (
-                                  <span className="text-10 font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200">
-                                    Current Session
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-12 text-slate-500 flex items-center gap-1 mt-0.5">
-                                <Mail size={12} className="text-slate-500" />
-                                <span>{u.email}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <Select
-                            value={shownRole(u.role)}
-                            disabled={self}
-                            onChange={e => patch(u, { role: e.target.value }, `${u.name} is now ${LABEL[e.target.value]}`)}
-                            className={`${inputCls} w-44 font-medium disabled:bg-slate-50 disabled:text-slate-500`}
-                          >
-                            {(u.role === 'viewer' ? [...ROLES, 'viewer'] : ROLES).map(r => (
-                              <option key={r} value={r}>{LABEL[r]}</option>
-                            ))}
-                          </Select>
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-600">
-                          <div className="flex items-center gap-1.5 text-12">
-                            <Calendar size={13} className="text-slate-500" />
-                            <span>{fmtDateTime(u.last_login_at)}</span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          {u.active ? (
-                            <Badge tone="green">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" /> Active
-                            </Badge>
-                          ) : (
-                            <Badge tone="gray">
-                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1" /> Disabled
-                            </Badge>
-                          )}
-                        </td>
-                        <td className="px-5 py-3.5 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1">
-                            {u.role !== 'admin' && (
-                              <Button size="sm" variant="ghost" icon={FolderOpen} onClick={() => openAccess(u)}>
-                                Projects
-                              </Button>
-                            )}
-                            <Button size="sm" variant="ghost" icon={Key} onClick={() => resetPassword(u)}>
-                              Reset Password
-                            </Button>
-                            {!self && (
-                              <Button
-                                size="sm"
-                                variant={u.active ? 'danger' : 'secondary'}
-                                onClick={() => patch(u, { active: !u.active }, `${u.name} ${u.active ? 'disabled' : 'enabled'}`)}
-                              >
-                                {u.active ? 'Disable' : 'Enable'}
-                              </Button>
-                            )}
-                            {!self && (
-                              <Button size="sm" variant="danger" icon={Trash2} onClick={() => remove(u)}>
-                                Delete
-                              </Button>
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded bg-gradient-to-tr from-indigo-500 to-cyan-500 text-white font-bold flex items-center justify-center text-xs shadow-sm">
+                          {u.name ? u.name.slice(0, 1).toUpperCase() : 'U'}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                            <span>{u.name}</span>
+                            {self && (
+                              <span className="text-10 font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200">
+                                Current Session
+                              </span>
                             )}
                           </div>
-                        </td>
-                      </tr>
+                          <div className="text-12 text-slate-500 flex items-center gap-1 mt-0.5">
+                            <Mail size={12} className="text-slate-500" />
+                            <span>{u.email}</span>
+                          </div>
+                        </div>
+                      </div>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                  } },
+                { id: 'role', header: 'Role', thClass: 'px-5 py-3.5', className: 'px-5 py-3.5', value: u => LABEL[shownRole(u.role)],
+                  cell: u => {
+                    const self = String(u.id) === String(me.id);
+                    return (
+                      <Select
+                        value={shownRole(u.role)}
+                        disabled={self}
+                        onChange={e => patch(u, { role: e.target.value }, `${u.name} is now ${LABEL[e.target.value]}`)}
+                        className={`${inputCls} w-44 font-medium disabled:bg-slate-50 disabled:text-slate-500`}
+                      >
+                        {(u.role === 'viewer' ? [...ROLES, 'viewer'] : ROLES).map(r => (
+                          <option key={r} value={r}>{LABEL[r]}</option>
+                        ))}
+                      </Select>
+                    );
+                  } },
+                { id: 'last', header: 'Last Active', first: 'desc', thClass: 'px-5 py-3.5', className: 'px-5 py-3.5 text-slate-600', value: u => (u.last_login_at ? Date.parse(u.last_login_at) : null), csv: false,
+                  cell: u => (
+                    <div className="flex items-center gap-1.5 text-12">
+                      <Calendar size={13} className="text-slate-500" />
+                      <span>{fmtDateTime(u.last_login_at)}</span>
+                    </div>
+                  ) },
+                { id: 'status', header: 'Status', thClass: 'px-5 py-3.5', className: 'px-5 py-3.5', value: u => (u.active ? 'Active' : 'Disabled'),
+                  cell: u => (u.active ? (
+                    <Badge tone="green">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" /> Active
+                    </Badge>
+                  ) : (
+                    <Badge tone="gray">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1" /> Disabled
+                    </Badge>
+                  )) },
+                { id: 'actions', header: 'Actions', right: true, thClass: 'px-5 py-3.5', className: 'px-5 py-3.5 text-right whitespace-nowrap',
+                  cell: u => {
+                    const self = String(u.id) === String(me.id);
+                    return (
+                      <div className="flex items-center justify-end gap-1">
+                        {u.role !== 'admin' && (
+                          <Button size="sm" variant="ghost" icon={FolderOpen} onClick={() => openAccess(u)}>
+                            Projects
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" icon={Key} onClick={() => resetPassword(u)}>
+                          Reset Password
+                        </Button>
+                        {!self && (
+                          <Button
+                            size="sm"
+                            variant={u.active ? 'danger' : 'secondary'}
+                            onClick={() => patch(u, { active: !u.active }, `${u.name} ${u.active ? 'disabled' : 'enabled'}`)}
+                          >
+                            {u.active ? 'Disable' : 'Enable'}
+                          </Button>
+                        )}
+                        {!self && (
+                          <Button size="sm" variant="danger" icon={Trash2} onClick={() => remove(u)}>
+                            Delete
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  } },
+              ]} />
           )}
         </Card>
 
@@ -228,26 +222,12 @@ They can no longer sign in and lose access to every shared project. Projects the
           <ErrorNote>{overview.error?.message}</ErrorNote>
           {overview.data?.length === 0 && <Empty>No projects yet.</Empty>}
           {overview.data?.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-13 text-left">
-                <thead>
-                  <tr className="text-11 font-bold text-slate-500 border-b border-slate-100 bg-slate-50/70">
-                    <th className="px-4 py-2.5">Project</th>
-                    <th className="px-4 py-2.5">Added by</th>
-                    <th className="px-4 py-2.5">Shared with</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {overview.data.map(p => (
-                    <tr key={p.id}>
-                      <td className="px-4 py-2.5"><div className="font-semibold text-slate-900">{p.name}</div><div className="text-12 text-slate-500">{p.website || '—'}</div></td>
-                      <td className="px-4 py-2.5 text-slate-700">{p.owner}</td>
-                      <td className="px-4 py-2.5">{p.shared_with.length ? <div className="flex flex-wrap gap-1">{p.shared_with.map(e => <Badge key={e} tone="blue">{e}</Badge>)}</div> : <span className="text-slate-400">Only the person who added it, and admins</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable bare minWidth={0} rows={overview.data} rowKey={p => p.id} exportName="projects-and-access" label="projects" searchPlaceholder="Search projects" columnsMenu={false} rowClass={() => ''}
+              columns={[
+                { id: 'project', header: 'Project', thClass: 'px-4 py-2.5', className: 'px-4 py-2.5', value: p => `${p.name} ${p.website || ''}`.trim(), cell: p => <><div className="font-semibold text-slate-900">{p.name}</div><div className="text-12 text-slate-500">{p.website || '—'}</div></> },
+                { id: 'owner', header: 'Added by', thClass: 'px-4 py-2.5', className: 'px-4 py-2.5 text-slate-700', value: p => p.owner },
+                { id: 'shared', header: 'Shared with', thClass: 'px-4 py-2.5', className: 'px-4 py-2.5', value: p => p.shared_with.join(', '), cell: p => (p.shared_with.length ? <div className="flex flex-wrap gap-1">{p.shared_with.map(e => <Badge key={e} tone="blue">{e}</Badge>)}</div> : <span className="text-slate-400">Only the person who added it, and admins</span>) },
+              ]} />
           )}
         </Card>
       </div>

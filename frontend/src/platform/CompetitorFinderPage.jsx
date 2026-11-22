@@ -11,6 +11,7 @@ import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
 import { Act, Head } from './TableBits';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 /**
  * Competitor research for the selected business, from live Google data, in one place: who ranks on Google
@@ -55,16 +56,28 @@ const Chips = ({ items, empty, tone = 'slate' }) => (
 
 const Label = ({ icon: Icon, children }) => <div className="text-12 font-semibold  tracking-wide text-slate-500 mb-2 flex items-center gap-1.5">{Icon && <Icon size={13} />}{children}</div>;
 
-/** A table that scrolls inside the page instead of making the page long. */
-const Table = ({ head, children, className = '' }) => (
-  <div className={`overflow-auto max-h-[calc(100vh-270px)] min-h-[320px] ${className}`}>
-    <table className="w-full text-13">
-      <thead className="sticky top-0 z-10 bg-slate-50 text-left text-11.5  tracking-wide text-slate-500 shadow-[0_1px_0_0_theme(colors.slate.200)]"><tr>{head}</tr></thead>
-      <tbody className="divide-y divide-slate-100">{children}</tbody>
-    </table>
-  </div>
+/** A table that scrolls inside the page instead of making the page long. Give it `pager` (from usePager) for page numbers below it, `bar` for a search row above. */
+const Table = ({ head, children, className = '', pager = null, bar = null }) => (
+  <>
+    {bar}
+    <div className={`overflow-auto max-h-[calc(100vh-270px)] min-h-[320px] ${className}`}>
+      <table className="w-full text-13">
+        <thead className="sticky top-0 z-10 bg-slate-50 text-left text-11.5  tracking-wide text-slate-500 shadow-[0_1px_0_0_theme(colors.slate.200)]"><tr>{head}</tr></thead>
+        <tbody className="divide-y divide-slate-100">{children}</tbody>
+      </table>
+    </div>
+    {pager && <Pager p={pager} label="rows" />}
+  </>
 );
-const Th = ({ children, c = 'text-left', cls = '' }) => <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${c} ${cls}`}>{children}</th>;
+/** A heading cell. With an `id` (and the sort state from useSorted) it sorts when pressed. */
+const Th = ({ children, c = 'text-left', cls = '', id, sort, onSort, first }) => {
+  if (!id) return <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${c} ${cls}`}>{children}</th>;
+  const hd = React.isValidElement(children) && children.type === Head ? children : null;
+  const { what, why, from } = hd ? hd.props : {};
+  return <SortTh id={id} sort={sort} onSort={onSort} first={first} right={c === 'text-right'} tip={{ what, why, from }} className={`px-4 py-2.5 whitespace-nowrap ${c === 'text-center' ? 'text-center' : ''} ${cls}`}>{hd ? hd.props.children : children}</SortTh>;
+};
+/** The search row above a table. */
+const SearchBar = ({ q, setQ, placeholder }) => <div className="px-4 py-2 border-b border-slate-100"><input value={q} onChange={e => setQ(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-8 w-60 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>;
 
 /** Horizontal visibility bars: one hue, the business itself picked out, value labelled on every bar. */
 function VisibilityBars({ rows }) {
@@ -197,7 +210,12 @@ export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, our
   const [view, setView] = useState('all'); // all | chosen | others
   const [adding, setAdding] = useState(false);
   const ordered = [...rows].sort((x, y) => Number(isChosen(y)) - Number(isChosen(x))); // chosen competitors on top (the order inside each group is kept)
-  const shown = view === 'chosen' ? ordered.filter(isChosen) : view === 'others' ? ordered.filter(c => !isChosen(c)) : ordered;
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const shown = (view === 'chosen' ? ordered.filter(isChosen) : view === 'others' ? ordered.filter(c => !isChosen(c)) : ordered).filter(c => !needle || `${c.name} ${c.host}`.toLowerCase().includes(needle));
+  const compVal = (c, k) => (k === 'choose' ? Number(isChosen(c)) : k === 'name' ? c.name : k === 'match' ? c.maps?.relevance?.score : k === 'vis' ? (c.profile ? c.profile.visibility : c.maps?.visibility) : k === 'p1' ? (c.profile ? Object.keys(c.profile.positions).length : c.maps?.appearances) : k === 'best' ? (c.profile?.local ? c.profile.local.best : c.maps?.best) : k === 'audit' ? (!c.reg ? 'Not audited' : (AUDIT_LABEL[auditMap[c.reg.id]?.status] || auditMap[c.reg.id]?.status || 'Not audited')) : undefined);
+  const { sorted, sort, onSort } = useSorted(shown, compVal);
+  const pager = usePager(sorted, { size: 25, resetKey: `${view}|${needle}|${sort?.key}|${sort?.dir}` });
   return (
     <Card pad={false}>
       <div className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -222,16 +240,16 @@ export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, our
         </div>
       </div>
       {adding && <AddCompetitorForm onAdd={onAddManual} busy={addBusy} error={addError} />}
-      <Table head={<>
-        <Th c="text-center"><Head what="Tick the competitors that really compete with you (3 to 5)." why="Only the chosen ones are watched and used by Competitor Watch, the keyword workspace and the backlink gap.">Choose</Head></Th>
-        <Th><Head what="A business that ranks for your keywords on Google Maps or Google." why="Click the name for its full profile." from="Google Maps (Places) results and the competitors you added.">Competitor</Head></Th>
-        <Th><Head what="How well it matches your business on similar services, area, keywords, Google presence, intent and authority." from="the competitor research (Google Maps data and AI).">Match</Head></Th>
-        <Th c="text-right"><Head right what="The share of Google clicks it could expect for your keywords, based on where it ranks." from="the competitor research (Google results). Your own figure comes from Search Console.">Google visibility</Head></Th>
-        <Th c="text-right"><Head right what="How many of your researched keywords it shows on page 1 of Google for." from="the competitor research.">Page-1 keywords</Head></Th>
-        <Th c="text-center"><Head what="Its best position in the Google Maps results and its rating." from="Google Maps (Places).">Maps</Head></Th>
-        <Th><Head what="Whether its website has been audited (speed and a page crawl)." why="Needed before you can compare it with your site." from="the site audit run from this page.">Site audit</Head></Th>
+      <Table pager={pager} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search competitors" /> : null} head={<>
+        <Th id="choose" sort={sort} onSort={onSort} first="desc" c="text-center"><Head what="Tick the competitors that really compete with you (3 to 5)." why="Only the chosen ones are watched and used by Competitor Watch, the keyword workspace and the backlink gap.">Choose</Head></Th>
+        <Th id="name" sort={sort} onSort={onSort}><Head what="A business that ranks for your keywords on Google Maps or Google." why="Click the name for its full profile." from="Google Maps (Places) results and the competitors you added.">Competitor</Head></Th>
+        <Th id="match" sort={sort} onSort={onSort} first="desc"><Head what="How well it matches your business on similar services, area, keywords, Google presence, intent and authority." from="the competitor research (Google Maps data and AI).">Match</Head></Th>
+        <Th id="vis" sort={sort} onSort={onSort} first="desc" c="text-right"><Head right what="The share of Google clicks it could expect for your keywords, based on where it ranks." from="the competitor research (Google results). Your own figure comes from Search Console.">Google visibility</Head></Th>
+        <Th id="p1" sort={sort} onSort={onSort} first="desc" c="text-right"><Head right what="How many of your researched keywords it shows on page 1 of Google for." from="the competitor research.">Page-1 keywords</Head></Th>
+        <Th id="best" sort={sort} onSort={onSort} c="text-center"><Head what="Its best position in the Google Maps results and its rating." from="Google Maps (Places).">Maps</Head></Th>
+        <Th id="audit" sort={sort} onSort={onSort}><Head what="Whether its website has been audited (speed and a page crawl)." why="Needed before you can compare it with your site." from="the site audit run from this page.">Site audit</Head></Th>
         <Th c="text-right"><Head right what="Audit runs the site audit on its website. Compare shows it side by side with yours." from="the audits of its site and yours.">Actions</Head></Th></>}>
-        {shown.map(c => {
+        {pager.rows.map(c => {
           const a = auditMap[c.reg?.id];
           return (
             <tr key={c.host} className={isChosen(c) ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}>
@@ -268,14 +286,20 @@ export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, our
 
 function KeywordsTab({ r, onKeyword, onIdeas }) {
   const cols = r.profiles.slice(0, 3);
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const kwRows = r.serps.filter(x => !needle || x.keyword.toLowerCase().includes(needle));
+  const kwVal = (x, k) => (k === 'kw' ? x.keyword : k === 'g' ? x.you_organic : k === 'm' ? x.you_local : k === 'top' ? x.organic[0]?.domain : k.startsWith('c:') ? cols.find(p => p.domain === k.slice(2))?.positions?.[x.keyword] : undefined);
+  const { sorted, sort, onSort } = useSorted(kwRows, kwVal);
+  const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
     <Card pad={false}>
       <div className="px-5 py-3 border-b border-slate-200 flex items-center gap-3">
         <div className="text-13 font-semibold text-slate-900">{r.keywords.length} keywords <span className="font-normal text-slate-500">· click a row for the full Google and Maps results</span></div>
         <Button size="sm" className="ml-auto" icon={Lightbulb} onClick={onIdeas}>Keyword ideas ({r.ideas.competitor_keywords.length + r.ideas.questions.length + r.ideas.related.length})</Button>
       </div>
-      <Table head={<><Th>Keyword</Th><Th c="text-center">You · Google</Th><Th c="text-center">You · Maps</Th>{cols.map(p => <Th key={p.domain} c="text-center" cls="normal-case max-w-[120px] truncate">{p.domain}</Th>)}<Th>#1 on Google</Th></>}>
-        {r.serps.map(s => (
+      <Table pager={pager} bar={r.serps.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search keywords" /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="g" sort={sort} onSort={onSort} c="text-center">You · Google</Th><Th id="m" sort={sort} onSort={onSort} c="text-center">You · Maps</Th>{cols.map(p => <Th key={p.domain} id={`c:${p.domain}`} sort={sort} onSort={onSort} c="text-center" cls="normal-case max-w-[120px] truncate">{p.domain}</Th>)}<Th id="top" sort={sort} onSort={onSort}>#1 on Google</Th></>}>
+        {pager.rows.map(s => (
           <tr key={s.keyword} className={`cursor-pointer hover:bg-slate-50 ${!s.you_organic ? 'bg-rose-50/30' : ''}`} onClick={() => onKeyword(s)}>
             <td className="px-4 py-2.5 font-semibold text-slate-900">{s.keyword}</td>
             <td className="px-4 py-2.5 text-center"><Pos value={s.you_organic} /></td>
@@ -491,6 +515,12 @@ export function MapsTab({ r, kit }) {
   const you = { name: `${r.business.name} (you)`, rating: r.business.rating, reviews: r.business.reviews || 0, appearances: r.summary.local_ranked, best: Math.min(...Object.values(r.you.local), Infinity), visibility: r.summary.local_visibility, mine: true };
   const rows = [you, ...r.local_competitors].sort((a, b) => (a.mine ? -1 : b.mine ? 1 : (b.relevance?.score ?? 0) - (a.relevance?.score ?? 0) || b.visibility - a.visibility));
   const nearOnly = r.local_competitors.some(e => e.distance_m != null);
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const shownRows = rows.filter(e => !needle || e.mine || `${e.name} ${e.category || ''}`.toLowerCase().includes(needle));
+  const mapVal = (e, k) => (k === 'name' ? e.name : k === 'match' ? (e.mine ? null : e.relevance?.score) : k === 'dist' ? e.distance_m : k === 'vis' ? e.visibility : k === 'best' ? (Number.isFinite(e.best) ? e.best : null) : k === 'res' ? e.appearances : k === 'rating' ? e.rating : k === 'rev' ? e.reviews : k === 'site' ? (e.domain || e.website) : k === 'audit' ? (e.mine || !kit ? null : (() => { const reg = kit.registered.find(c => (e.website ? hostOf(c.website) === (e.domain || hostOf(e.website)) : (c.place_id && c.place_id === e.cid) || (!c.website && c.name === e.name))); const a = reg && kit.auditMap[reg.id]; return a ? (SCORE_WORD[a.status] || a.status) : 'Not audited'; })()) : undefined);
+  const { sorted, sort, onSort } = useSorted(shownRows, mapVal);
+  const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
     <div className="space-y-4">
     <HowChosen r={r} />
@@ -498,8 +528,8 @@ export function MapsTab({ r, kit }) {
     {r.local_competitors.length === 0 && <Card><p className="text-13 text-slate-600">No real competitor was found on Google Maps for these searches. {r.other_places?.length ? 'The businesses that came up sell something different: see the list below.' : ''}</p></Card>}
     <Card pad={false}>
       {nearOnly && <p className="px-4 py-2.5 border-b border-slate-100 text-12.5 text-slate-600">Only businesses within about 4 km of {r.business.name} are counted: the ones its customers can actually choose between.</p>}
-      <Table head={<><Th>Business</Th><Th>Match</Th>{kit && <Th>Site audit</Th>}<Th c="text-right">Distance</Th><Th c="text-right">Visibility</Th><Th c="text-center">Best</Th><Th c="text-right">In results</Th><Th>Rating</Th><Th cls="w-44">Reviews</Th><Th>Website</Th></>}>
-        {rows.map(e => (
+      <Table pager={pager} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search businesses" /> : null} head={<><Th id="name" sort={sort} onSort={onSort}>Business</Th><Th id="match" sort={sort} onSort={onSort} first="desc">Match</Th>{kit && <Th id="audit" sort={sort} onSort={onSort}>Site audit</Th>}<Th id="dist" sort={sort} onSort={onSort} c="text-right">Distance</Th><Th id="vis" sort={sort} onSort={onSort} first="desc" c="text-right">Visibility</Th><Th id="best" sort={sort} onSort={onSort} c="text-center">Best</Th><Th id="res" sort={sort} onSort={onSort} first="desc" c="text-right">In results</Th><Th id="rating" sort={sort} onSort={onSort} first="desc">Rating</Th><Th id="rev" sort={sort} onSort={onSort} first="desc" cls="w-44">Reviews</Th><Th id="site" sort={sort} onSort={onSort}>Website</Th></>}>
+        {pager.rows.map(e => (
           <tr key={e.name} className={e.mine ? 'bg-emerald-50/50' : 'hover:bg-slate-50'}>
             <td className="px-4 py-2.5"><div className={`font-medium ${e.mine ? 'text-emerald-800' : 'text-slate-900'}`}>{e.name}</div>{e.category && <div className="text-12 text-slate-500">{e.category}</div>}{e.relevance?.reason && <div className="text-11.5 text-slate-400 max-w-[320px]">{e.relevance.reason}</div>}</td>
             <td className="px-4 py-2.5">{e.mine ? <Badge tone="green">You</Badge> : <MatchCell rel={e.relevance} />}</td>
@@ -539,6 +569,13 @@ function ListingsTab({ r, setupInfo }) {
   const sites = [...new Set(cols.flatMap(c => c.sources.map(s => baseSite(s.domain))))];
   const count = (site) => cols.slice(1).filter(c => c.sources.some(s => baseSite(s.domain) === site)).length;
   sites.sort((a, b) => count(b) - count(a));
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const siteRows = sites.filter(x => !needle || x.toLowerCase().includes(needle));
+  const hasAt = (c, site) => c.sources.some(x => baseSite(x.domain) === site);
+  const siteVal = (site, k) => (k === 'site' ? site : k.startsWith('c:') ? Number(hasAt(cols.find(c => c.key === k.slice(2)), site)) : undefined);
+  const { sorted, sort, onSort } = useSorted(siteRows, siteVal);
+  const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}|${sites.length}` });
   return (
     <Card pad={false}>
       {r.gaps.listings.length > 0 && (
@@ -550,8 +587,8 @@ function ListingsTab({ r, setupInfo }) {
         </div>
       )}
       {sites.length === 0 ? <p className="px-6 py-10 text-center text-13 text-slate-500">No listings or mentions found.</p> : (
-        <Table head={<><Th>Site</Th>{cols.map(c => <Th key={c.key} c="text-center" cls={`normal-case max-w-[120px] truncate ${c.key === 'you' ? 'text-emerald-700' : ''}`}>{c.label}</Th>)}</>}>
-          {sites.map(site => {
+        <Table pager={pager} bar={sites.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search sites" /> : null} head={<><Th id="site" sort={sort} onSort={onSort}>Site</Th>{cols.map(c => <Th key={c.key} id={`c:${c.key}`} sort={sort} onSort={onSort} first="desc" c="text-center" cls={`normal-case max-w-[120px] truncate ${c.key === 'you' ? 'text-emerald-700' : ''}`}>{c.label}</Th>)}</>}>
+          {pager.rows.map(site => {
             const mineHas = cols[0].sources.some(s => baseSite(s.domain) === site);
             const listing = cols.some(c => c.sources.some(x => baseSite(x.domain) === site && x.type === 'directory'));
             const missing = !mineHas && (listing || count(site) >= 2);

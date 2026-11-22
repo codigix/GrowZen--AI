@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { ChevronRight, ExternalLink, Download, Check, LayoutGrid, BarChart3, Folder, FileText, Search } from 'lucide-react';
 import { Card, Badge, Button } from './SeoUi';
-import { AXIS, PALETTE, Th, Empty, Segmented, usePager } from './PositionUi';
+import { AXIS, PALETTE, Th, Empty, Segmented } from './PositionUi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 import Select from '../components/Select';
 
 const SEV = { error: ['Errors', '#ef4444'], warning: ['Warnings', '#f59e0b'], notice: ['Notices', '#818cf8'] };
@@ -11,6 +12,7 @@ const dash = <span className="text-slate-300">—</span>;
 const short = (u) => { try { const x = new URL(u); return x.hostname.replace(/^www\./, '') + (x.pathname === '/' ? '/' : x.pathname) + x.search; } catch (e) { return u; } };
 const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
+const PAGE_VAL = (p, k) => (k === 'inbound' ? p.inbound : k === 'url' ? p.url : k === 'title' ? p.title : k === 'status' ? p.status : k === 'issues' ? p.issues.length : k === 'depth' ? p.depth : k === 'words' ? p.words : k === 'text' ? p.text_ratio : undefined);
 const Url = ({ u }) => <a href={u} target="_blank" rel="noreferrer" title={u} className="text-indigo-700 hover:underline inline-flex items-center gap-1 break-all">{short(u)}<ExternalLink size={10} className="shrink-0" /></a>;
 
 function csv(name, head, rows) {
@@ -121,7 +123,9 @@ export function CrawledPagesTab({ r }) {
   const [sev, setSev] = useState('');
   const [open, setOpen] = useState(() => new Set());
   const rows = useMemo(() => r.pages.filter(p => (!q || (scope === 'title' ? (p.title || '') : p.url).toLowerCase().includes(q.toLowerCase())) && (!sev || (sev === 'healthy' ? !p.issues.length : p.issues.some(i => i.severity === sev)))), [r.pages, q, scope, sev]);
-  const [slice, footer] = usePager(rows, 25);
+  const { sorted, sort, onSort } = useSorted(rows, PAGE_VAL);
+  const pager = usePager(sorted, { size: 25, resetKey: `${q}|${scope}|${sev}|${sort?.key}|${sort?.dir}` });
+  const slice = pager.rows;
   const toggle = (k) => setOpen(o => { const n = new Set(o); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const code = (s) => <span className={`inline-block px-2.5 py-0.5 rounded-full text-12 font-semibold ${!s ? 'bg-slate-100 text-slate-500' : s < 300 ? 'bg-emerald-100 text-emerald-700' : s < 400 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{s || '—'}</span>;
   const tree = useMemo(() => structure(r.pages), [r.pages]);
@@ -140,7 +144,7 @@ export function CrawledPagesTab({ r }) {
           <Card title={`Crawled Pages (${rows.length})`} pad={false} action={<Button size="sm" icon={Download} onClick={() => csv(`${r.project}-pages.csv`, ['URL', 'Title', 'Status', 'Issues', 'Crawl depth', 'Inbound links', 'Words'], rows.map(p => [p.url, p.title, p.status, p.issues.length, p.depth, p.inbound, p.words]))}>Export</Button>}>
             <div className="overflow-x-auto">
               <table className="w-full text-13 min-w-[1000px]">
-                <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th c="text-right">Inbound links</Th><Th>Page URL</Th><Th>Title</Th><Th>Status Code</Th><Th c="text-right">Issues</Th><Th c="text-right">Crawl Depth</Th><Th c="text-right">Words</Th><Th c="text-right">Text / HTML</Th></tr></thead>
+                <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><SortTh id="inbound" sort={sort} onSort={onSort} right first="desc" className="px-4 py-2.5 whitespace-nowrap">Inbound links</SortTh><SortTh id="url" sort={sort} onSort={onSort} className="px-4 py-2.5 whitespace-nowrap">Page URL</SortTh><SortTh id="title" sort={sort} onSort={onSort} className="px-4 py-2.5 whitespace-nowrap">Title</SortTh><SortTh id="status" sort={sort} onSort={onSort} className="px-4 py-2.5 whitespace-nowrap">Status Code</SortTh><SortTh id="issues" sort={sort} onSort={onSort} right first="desc" className="px-4 py-2.5 whitespace-nowrap">Issues</SortTh><SortTh id="depth" sort={sort} onSort={onSort} right className="px-4 py-2.5 whitespace-nowrap">Crawl Depth</SortTh><SortTh id="words" sort={sort} onSort={onSort} right first="desc" className="px-4 py-2.5 whitespace-nowrap">Words</SortTh><SortTh id="text" sort={sort} onSort={onSort} right first="desc" className="px-4 py-2.5 whitespace-nowrap">Text / HTML</SortTh></tr></thead>
                 <tbody className="divide-y divide-slate-100">{slice.map(p => (
                   <React.Fragment key={p.url}>
                     <tr className="hover:bg-slate-50 align-top">
@@ -159,7 +163,7 @@ export function CrawledPagesTab({ r }) {
                 {!slice.length && <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-500">No page matches.</td></tr>}</tbody>
               </table>
             </div>
-            {footer}
+            <Pager p={pager} label="pages" />
           </Card>
         </>
       )}

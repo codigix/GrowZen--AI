@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Plus, CalendarDays, Monitor, Smartphone, Tablet, ArrowDownUp, ArrowUp, ArrowDown, ArrowRight, FolderKanban, KeyRound, Eye, TrendingUp, Inbox } from 'lucide-react';
 import { ErrorNote, useSeoBusiness, SkTable } from './SeoUi';
 import { useApi } from './seoApi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 import NewTrackingModal from './NewTrackingModal';
 import { JourneyButton, useJourneys } from './JourneyBar';
 
@@ -22,6 +23,8 @@ const range = (p) => {
 const SEO = { name: '/rank-tracking?tab=landscape', place: '/rank-tracking?tab=devices', visibility: '/rank-tracking?tab=landscape', diff: '/rank-tracking?tab=overview',
   improved: '/organic-rankings?tab=changes', declined: '/organic-rankings?tab=changes', keywords: '/rank-tracking?tab=positions', updated: '/rank-tracking?tab=positions' };
 const AI = { name: '/geo-optimization', place: '/geo-optimization', visibility: '/geo-optimization', diff: '/geo-optimization', improved: '/geo-optimization', declined: '/geo-optimization', keywords: '/geo-optimization?tab=prompts', updated: '/geo-optimization?tab=prompts' };
+
+const lineValue = (r, k) => (k === 'name' ? r.name : k === 'place' ? r.location : k === 'updated' ? r.m.updated : r.m[k] ?? null);
 
 const Tile = ({ icon: Icon, label, value, sub, tone = 'indigo' }) => {
   const tones = { indigo: 'bg-indigo-50 text-indigo-600', emerald: 'bg-emerald-50 text-emerald-600', amber: 'bg-amber-50 text-amber-600', sky: 'bg-sky-50 text-sky-600' };
@@ -51,7 +54,6 @@ export default function PositionTrackingHome() {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [target, setTarget] = useState('all');
-  const [sort, setSort] = useState(1);
   const [creating, setCreating] = useState(false);
   const rows = data.data || [];
 
@@ -62,8 +64,9 @@ export default function PositionTrackingHome() {
       if ((target === 'all' || target === 'seo') && r.seo) out.push({ ...r, kind: 'seo', m: r.seo });
       if ((target === 'all' || target === 'ai') && r.ai) out.push({ ...r, kind: 'ai', m: r.ai });
     }
-    return out.sort((a, b) => sort * a.name.localeCompare(b.name));
-  }, [rows, q, target, sort]);
+    return out;
+  }, [rows, q, target]);
+  const { sorted, sort, onSort } = useSorted(lines, lineValue, { key: 'name', dir: 'asc' });
   const without = rows.filter(r => !r.seo && !r.ai && (!q || `${r.name} ${r.domain || ''}`.toLowerCase().includes(q.toLowerCase())));
 
   // The tiles only add up numbers the table already shows.
@@ -72,6 +75,8 @@ export default function PositionTrackingHome() {
   const vis = all.map(m => m.visibility).filter(v => v != null);
   const avgVis = vis.length ? Math.round((vis.reduce((a, v) => a + v, 0) / vis.length) * 10) / 10 : null;
   const tracked = rows.filter(r => r.seo || r.ai).length;
+  const entries = useMemo(() => [...sorted, ...without.map(r => ({ ...r, kind: 'none' }))], [sorted, rows, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pager = usePager(entries, { size: 10, resetKey: `${q}|${target}` });
 
   const open = (r, to) => { choose(r.id).then(ok => ok && navigate(to)); };
   const link = (r, key, children, cls = 'text-slate-900') => <button type="button" onClick={() => open(r, (r.kind === 'ai' ? AI : SEO)[key])} className={`${cls} hover:text-indigo-600 hover:underline cursor-pointer text-left`}>{children}</button>;
@@ -99,9 +104,15 @@ export default function PositionTrackingHome() {
         {!data.data && !data.error ? <SkTable cols={['w-1/4', 'w-1/5', 'w-16', 'w-16', 'w-16', 'w-16', 'w-16']} headers={['Project', 'Device & Location', 'Visibility', 'Change', 'Improved', 'Declined', 'Keywords']} rows={4} /> : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px]">
-              <thead><tr><Th onClick={() => setSort(s => -s)}>Project</Th><Th>Device &amp; location</Th><Th c="text-right">Visibility</Th><Th c="text-right">Change</Th><Th c="text-right">Improved</Th><Th c="text-right">Declined</Th><Th c="text-right">Keywords</Th><Th>Updated</Th><Th c="text-right">Journey / action</Th></tr></thead>
+              <thead><tr><SortTh id="name" sort={sort} onSort={onSort} className="px-4 py-3 whitespace-nowrap">Project</SortTh><SortTh id="place" sort={sort} onSort={onSort} className="px-4 py-3 whitespace-nowrap">Device &amp; location</SortTh><SortTh id="visibility" sort={sort} onSort={onSort} right first="desc" className="px-4 py-3 whitespace-nowrap">Visibility</SortTh><SortTh id="diff" sort={sort} onSort={onSort} right first="desc" className="px-4 py-3 whitespace-nowrap">Change</SortTh><SortTh id="improved" sort={sort} onSort={onSort} right first="desc" className="px-4 py-3 whitespace-nowrap">Improved</SortTh><SortTh id="declined" sort={sort} onSort={onSort} right first="desc" className="px-4 py-3 whitespace-nowrap">Declined</SortTh><SortTh id="keywords" sort={sort} onSort={onSort} right first="desc" className="px-4 py-3 whitespace-nowrap">Keywords</SortTh><SortTh id="updated" sort={sort} onSort={onSort} first="desc" className="px-4 py-3 whitespace-nowrap">Updated</SortTh><Th c="text-right">Journey / action</Th></tr></thead>
               <tbody>
-                {lines.map(r => {
+                {pager.rows.map(r => {
+                  if (r.kind === 'none') return (
+                    <tr key={`${r.id}-none`}>
+                      <td className="px-4"><span className="block font-semibold text-slate-900">{r.name}</span><span className="block text-13 text-slate-500">{r.domain || 'No website'}</span></td>
+                      <td className="px-4 text-slate-500" colSpan={7}>Not tracked yet.</td>
+                      <td className="px-4 text-right"><button type="button" onClick={() => setCreating(r.id)} className="h-8 px-3 rounded-lg inline-flex items-center text-13 font-medium text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50 cursor-pointer">Set up tracking</button></td>
+                    </tr>);
                   const D = DEVICE[r.device] || Monitor;
                   const ai = r.kind === 'ai';
                   return (
@@ -117,17 +128,12 @@ export default function PositionTrackingHome() {
                       <td className="px-4 text-right whitespace-nowrap"><span className="inline-flex items-center gap-2"><JourneyButton bid={r.id} name={r.name} stage={journeys[r.id]} /><button type="button" onClick={() => open(r, (ai ? AI : SEO).name)} className="h-8 px-3 rounded-lg inline-flex items-center gap-1.5 text-13 font-medium text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50 cursor-pointer">Open<ArrowRight size={13} /></button></span></td>
                     </tr>);
                 })}
-                {without.map(r => (
-                  <tr key={`${r.id}-none`}>
-                    <td className="px-4"><span className="block font-semibold text-slate-900">{r.name}</span><span className="block text-13 text-slate-500">{r.domain || 'No website'}</span></td>
-                    <td className="px-4 text-slate-500" colSpan={7}>Not tracked yet.</td>
-                    <td className="px-4 text-right"><button type="button" onClick={() => setCreating(r.id)} className="h-8 px-3 rounded-lg inline-flex items-center text-13 font-medium text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50 cursor-pointer">Set up tracking</button></td>
-                  </tr>))}
                 {!lines.length && !without.length && <tr><td colSpan={9} className="px-5 py-14 text-center text-slate-500"><Inbox size={24} className="mx-auto mb-2 text-slate-300" />{q ? 'No project matches.' : 'No project is tracked yet. Press "Create project".'}</td></tr>}
               </tbody>
             </table>
           </div>
         )}
+        {data.data && <Pager p={pager} label="rows" />}
         <div className="px-5 py-3 border-t border-slate-100 text-13 text-slate-500">{lines.length + without.length} row{lines.length + without.length === 1 ? '' : 's'}</div>
       </section>
       <NewTrackingModal open={Boolean(creating)} onClose={() => setCreating(false)} projects={rows} initialId={typeof creating === 'number' ? creating : undefined}

@@ -4,6 +4,7 @@ import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, Cart
 import { AlertTriangle, ArrowRight, Info, Phone, Navigation, MousePointerClick, Eye, Star, Users, Wrench, FileText, ArrowUpRight, ArrowDownRight, Minus, CheckCircle2, Clock, ListChecks, Send, Search, Globe, BookOpen, MessageSquare, Link2, ClipboardCheck } from 'lucide-react';
 import { Card, Badge, ChartTooltip, Legend, SERIES, INK } from './SeoUi';
 import { useApi, fmt } from './seoApi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 const C = { calls: SERIES[0], directions: SERIES[1], website_clicks: SERIES[2] };
 
@@ -71,6 +72,27 @@ function Stand({ icon: Icon, label, value, sub, bar, to }) {
 /** Counts, progress week by week or month by month, and the actions taken on this project. */
 const RANGES = [['all', 'All time'], ['30d', 'Last 30 days'], ['90d', 'Last 90 days'], ['180d', 'Last 6 months'], ['365d', 'Last 12 months'], ['this_month', 'This month'], ['custom', 'Custom dates']];
 const nice = (iso) => { try { return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return iso; } };
+const kwValue = (k, key) => (key === 'keyword' ? k.keyword : key === 'rank' ? (k.rank || null) : key === 'volume' ? (k.volume ?? null) : null);
+
+function TopKeywords({ rows: all }) {
+  const { sorted, sort, onSort } = useSorted(all, kwValue);
+  const pager = usePager(sorted, { size: 10 });
+  return (
+    <>
+      <table className="w-full text-13">
+        <thead className="text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className="py-1.5">Keyword</SortTh><SortTh id="rank" sort={sort} onSort={onSort} right className="py-1.5">Position</SortTh><SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className="py-1.5">Searches / month</SortTh></tr></thead>
+        <tbody className="divide-y divide-slate-100">{pager.rows.map(k => {
+          const move = k.rank && k.prev_rank ? k.prev_rank - k.rank : 0;
+          return (<tr key={k.keyword}><td className="py-2 pr-2 text-slate-900">{k.keyword}{!k.tracked && <span className="ml-2 text-11 text-slate-400">not tracked</span>}</td>
+            <td className="py-2 text-right tabular-nums">{k.rank ? <>#{k.rank}{move !== 0 && <span className={`ml-1.5 text-11.5 font-semibold ${move > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{move > 0 ? '▲' : '▼'}{Math.abs(move)}</span>}</> : <span className="text-slate-400">not read yet</span>}</td>
+            <td className="py-2 text-right tabular-nums text-slate-600">{k.volume != null ? fmt(k.volume) : '—'}</td></tr>);
+        })}</tbody>
+      </table>
+      <Pager p={pager} label="keywords" />
+    </>
+  );
+}
+
 const today = () => new Date().toISOString().slice(0, 10);
 
 const LEVEL = {
@@ -268,15 +290,7 @@ export default function ProgressSection({ b, view = 'progress' }) {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <Card title="Keywords" subtitle={`${fmt(c.keywords_saved)} saved · ${fmt(c.keywords_tracked)} tracked · ${fmt(c.keywords_suggested)} suggestions`} action={<Link to="/keyword-management/tracked" className="text-12.5 font-semibold text-indigo-600 hover:underline">All keywords</Link>}>
           {d.top_keywords.length === 0 ? <p className="text-13 text-slate-500 py-2">No keywords saved yet. {c.keywords_suggested ? 'Suggestions are waiting in Keyword Research.' : 'Find some in Keyword Research.'}</p> : (
-            <table className="w-full text-13">
-              <thead className="text-11.5 text-slate-500"><tr><th className="py-1.5 text-left font-semibold">Keyword</th><th className="py-1.5 text-right font-semibold">Position</th><th className="py-1.5 text-right font-semibold">Searches / month</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">{d.top_keywords.map(k => {
-                const move = k.rank && k.prev_rank ? k.prev_rank - k.rank : 0;
-                return (<tr key={k.keyword}><td className="py-2 pr-2 text-slate-900">{k.keyword}{!k.tracked && <span className="ml-2 text-11 text-slate-400">not tracked</span>}</td>
-                  <td className="py-2 text-right tabular-nums">{k.rank ? <>#{k.rank}{move !== 0 && <span className={`ml-1.5 text-11.5 font-semibold ${move > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{move > 0 ? '▲' : '▼'}{Math.abs(move)}</span>}</> : <span className="text-slate-400">not read yet</span>}</td>
-                  <td className="py-2 text-right tabular-nums text-slate-600">{k.volume != null ? fmt(k.volume) : '—'}</td></tr>);
-              })}</tbody>
-            </table>
+            <TopKeywords rows={d.top_keywords} />
           )}
         </Card>
         <Card title="Latest backlinks" subtitle={d.backlink_domain ? `Links to ${d.backlink_domain} found by our crawler · ${fmt(c.backlinks)} in total from ${fmt(c.referring_domains)} domains` : 'The website of this project is not tracked yet'} action={<Link to="/backlinks/links" className="text-12.5 font-semibold text-indigo-600 hover:underline">All backlinks</Link>}>

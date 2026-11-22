@@ -1,8 +1,13 @@
 import React from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, Link2 } from 'lucide-react';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 const when = (iso, long) => { if (!iso) return '—'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleDateString('en-GB', long ? { day: '2-digit', month: 'short', year: 'numeric' } : { day: '2-digit', month: 'short' }); };
 const ago = (iso) => { if (!iso) return null; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return Number.isNaN(d) ? null : d <= 0 ? 'today' : d === 1 ? 'yesterday' : d < 60 ? `${d} days ago` : `${Math.round(d / 30)} months ago`; };
+const NONE = [];
+const isNofollow = (l) => (l.rel || []).some(x => ['nofollow', 'sponsored', 'ugc'].includes(x));
+const pageLinkValue = (l, k) => ({ anchor: l.anchor, href: l.href, placement: l.placement, type: isNofollow(l) ? `rel ${(l.rel || []).join(' ')}` : 'Follow' })[k];
+const LTC = 'px-3 py-2 whitespace-nowrap';
 const H = 'text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2';
 const STATE = { working: ['Working', '#059669', CheckCircle2], link_missing: ['Link missing', '#d97706', XCircle], unconfirmed: ['Cannot confirm', '#7c3aed', HelpCircle], page_error: ['Page error', '#dc2626', AlertTriangle] };
 
@@ -39,6 +44,8 @@ const spamWord = (v, thin) => (v == null ? '' : thin ? 'Unreliable: very few lin
 
 /** Everything about one backlink in pictures: its status, its figures and how they moved, its life, and the links on the page. */
 export default function LinkDetail({ r }) {
+  const { sorted: linkRows, sort, onSort } = useSorted(r.links || NONE, pageLinkValue);
+  const pg = usePager(linkRows, { size: 10 });
   const mz = r.moz && r.moz.da != null ? r.moz : null; // Moz's own figures when it answered, DataForSEO's otherwise
   const src = mz ? 'Moz' : r.scores ? 'DataForSEO' : '';
   const s = mz ? { da: mz.da, pa: mz.pa, spam: mz.spam } : (r.scores || {});
@@ -94,9 +101,9 @@ export default function LinkDetail({ r }) {
           <h4 className={H}>Links to your site on this page ({r.links.length})</h4>
           <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200 bg-white">
             <table className="w-full min-w-[640px] text-13">
-              <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2 text-left font-medium">Anchor</th><th className="px-3 py-2 text-left font-medium">Points to</th><th className="px-3 py-2 text-left font-medium">Where on the page</th><th className="px-3 py-2 text-left font-medium">Type</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">{r.links.map((l, i) => {
-                const nofollow = (l.rel || []).some(x => ['nofollow', 'sponsored', 'ugc'].includes(x));
+              <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><SortTh id="anchor" sort={sort} onSort={onSort} className={LTC}>Anchor</SortTh><SortTh id="href" sort={sort} onSort={onSort} className={LTC}>Points to</SortTh><SortTh id="placement" sort={sort} onSort={onSort} className={LTC}>Where on the page</SortTh><SortTh id="type" sort={sort} onSort={onSort} className={LTC}>Type</SortTh></tr></thead>
+              <tbody className="divide-y divide-slate-100">{pg.rows.map((l, i) => {
+                const nofollow = isNofollow(l);
                 return (
                   <tr key={i}>
                     <td className="px-3 py-2 text-slate-800">{l.anchor || <span className="text-slate-400">({l.type} link)</span>}</td>
@@ -106,6 +113,7 @@ export default function LinkDetail({ r }) {
                   </tr>); })}</tbody>
             </table>
           </div>
+          <Pager p={pg} label="links" />
         </div>
       )}
 

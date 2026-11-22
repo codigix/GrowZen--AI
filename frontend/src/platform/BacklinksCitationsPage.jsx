@@ -5,6 +5,7 @@ import { Play, Copy, Check, ExternalLink, Link2, ShieldCheck, Trash2, Clock3, Pe
 import ProcessTasks from './ProcessTasks';
 import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, SourceTag, ErrorNote, SERIES, useToast, useAction, useUrlTab, useDoubleConfirm, inputCls, SkTable, SkList } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 const sameDigits = (a, b) => { const x = String(a || '').replace(/\D/g, ''), y = String(b || '').replace(/\D/g, ''); return x.length >= 7 && y.length >= 7 && (x.endsWith(y.slice(-8)) || y.endsWith(x.slice(-8))); };
 const STATUS_PILL = { listed: ['good', 'Correct'], inconsistent: ['warning', 'Mismatch'], pending: ['info', 'Waiting'], missing: ['critical', 'Missing'] };
@@ -71,6 +72,10 @@ function ListingRow({ d, nap, base, reload, toast }) {
   );
 }
 
+const STATUS_ORDER = { inconsistent: 0, missing: 1, pending: 2, listed: 3 };
+const listingValue = (d, k) => ({ site: d.label, status: STATUS_ORDER[d.status] ?? 1, url: d.url ? d.url.replace(/^https?:\/\/(www\.)?/, '') : null })[k];
+const LTH = 'p-2 whitespace-nowrap';
+
 function Listings({ b, ov, reload, toast, finishedAt, source, running, onRecheck }) {
   const navigate = useNavigate();
   const nap = ov.nap || {};
@@ -78,6 +83,8 @@ function Listings({ b, ov, reload, toast, finishedAt, source, running, onRecheck
   const [filter, setFilter] = useState('all');
   const rows = (ov.directories || []).filter(d => filter === 'all' || (filter === 'fix' ? d.status === 'inconsistent' || d.status === 'missing' : d.status === filter));
   const base = `/businesses/${b.id}/citations`;
+  const { sorted, sort, onSort } = useSorted(rows, listingValue);
+  const pg = usePager(sorted, { size: 25, resetKey: filter });
   return (
     <>
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -109,12 +116,13 @@ function Listings({ b, ov, reload, toast, finishedAt, source, running, onRecheck
         action={<div className="flex gap-1">{[['all', 'All'], ['fix', 'Needs action'], ['listed', 'Correct']].map(([id, l]) => <button key={id} type="button" onClick={() => setFilter(id)} className={`h-7 px-2.5 rounded text-12 font-semibold cursor-pointer ${filter === id ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>)}</div>}>
         <div className="overflow-x-auto">
           <table className="w-full text-13">
-            <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><th className="p-2 text-left font-medium">Site</th><th className="p-2 text-left font-medium">Status</th><th className="p-2 text-left font-medium">Listing</th><th className="p-2 text-right font-medium">Next step</th></tr></thead>
+            <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><SortTh id="site" sort={sort} onSort={onSort} className={LTH}>Site</SortTh><SortTh id="status" sort={sort} onSort={onSort} className={LTH}>Status</SortTh><SortTh id="url" sort={sort} onSort={onSort} className={LTH}>Listing</SortTh><th className="p-2 text-right font-medium">Next step</th></tr></thead>
             <tbody className="divide-y divide-gray-100">
-              {rows.length === 0 ? <tr><td colSpan={4} className="py-8 text-center text-13 text-gray-500">Nothing here.</td></tr> : rows.map(d => <ListingRow key={d.key} d={d} nap={nap} base={base} reload={reload} toast={toast} />)}
+              {rows.length === 0 ? <tr><td colSpan={4} className="py-8 text-center text-13 text-gray-500">Nothing here.</td></tr> : pg.rows.map(d => <ListingRow key={d.key} d={d} nap={nap} base={base} reload={reload} toast={toast} />)}
             </tbody>
           </table>
         </div>
+        <div className="-mx-5 -mb-1"><Pager p={pg} label="listing sites" /></div>
         <p className="text-11 text-gray-500 mt-3">“Not found” means Google search did not return that listing, not that it does not exist. “Correct” from a search match is a good sign; a listing you add and check on its page is confirmed.</p>
       </Card>
     </>

@@ -3,11 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Copy, ExternalLink, Eye, Lightbulb, PenLine, Search } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
-import { Act, Head } from './TableBits';
+import { Act } from './TableBits';
+import DataTable from './DataTable';
 import PageMetaCard from './PageMetaCard';
 import BriefButtons from './DevBrief';
 import { KeywordsView, PageOverview } from './KeywordPlacement';
 
+const guessQ = (p) => encodeURIComponent((p.path !== '/' ? p.path.replace(/[-_/]+/g, ' ').trim() : (p.title || p.path).split(/[|\-–:]/)[0].trim()).slice(0, 40));
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 
 /** Plain words a writer or developer can act on. */
@@ -76,44 +78,30 @@ export default function KeywordMappingTab({ b }) {
       <PageMetaCard b={b} sharedNote={Boolean(d.notes?.length)} />
 
       <Card pad={false} title="Your pages" subtitle={`The keyword each page should rank for, from the website scan of ${d.found_at || 'the last audit'}. The most searched keyword on a page is its main one.`}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-13 min-w-[760px]">
-            <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-3 py-2 text-left"><Head what="A page of your website." why="Click the address to open it." from="the last website scan (Website Audit).">Page</Head></th>
-                <th className="px-3 py-2 text-left"><Head what="The keyword this page should rank for: the most searched keyword found on it." why="One main keyword per page keeps your pages from competing with each other." from="your saved keywords matched to the page title, heading and description from the website scan.">Main keyword</Head></th>
-                <th className="px-3 py-2 text-right"><Head right what="Monthly searches for the main keyword." from="Google Ads Keyword Planner.">Searches / mo</Head></th>
-                <th className="px-3 py-2 text-left"><Head what="Other saved keywords this page also covers." why="They support the main keyword.">Also on this page</Head></th>
-                <th className="px-3 py-2 text-left"><Head what="Saved: written on the keywords already. Suggested: our proposal, not saved yet." why="Press Save the mapping to save the suggestions.">Status</Head></th>
-                <th className="px-3 py-2 text-right"><Head right what="Things you can do for this page." why="Open the page, check its keyword, or find a keyword if it has none.">Actions</Head></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {d.pages.map(p => (
-                <tr key={p.url} className="hover:bg-slate-50">
-                  <td className="px-3 py-2.5 min-w-[200px] max-w-[300px]">
-                    <a href={p.url} target="_blank" rel="noreferrer" className="font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 break-all">{p.path}<ExternalLink size={11} className="shrink-0" /></a>
-                    <span className="block text-11.5 text-slate-400 truncate" title={p.title}>{p.title}</span>
-                  </td>
-                  <td className="px-3 py-2.5">{p.primary ? <Link to={`/keyword-overview?q=${encodeURIComponent(p.primary)}`} title="Check its searches and cost" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline">{p.primary}</Link> : <span className="text-slate-400">none</span>}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{n0(p.primary_volume)}</td>
-                  <td className="px-3 py-2.5 text-12.5 text-slate-600 max-w-[260px]">{p.secondary.length ? <span title={p.secondary.join(', ')}>{p.secondary.slice(0, 2).join(', ')}{p.secondary.length > 2 ? ` +${p.secondary.length - 2}` : ''}</span> : <span className="text-slate-300">—</span>}</td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    {!p.primary ? <Link to={`/keyword-management/discover?q=${encodeURIComponent((p.path !== '/' ? p.path.replace(/[-_/]+/g, ' ').trim() : (p.title || p.path).split(/[|\-–:]/)[0].trim()).slice(0, 40))}`} className="text-12.5 font-semibold text-amber-700 hover:underline">Find a keyword</Link>
-                      : p.saved ? <span title="Written on the keyword: it is saved"><Badge tone="green">Saved</Badge></span> : <span title="Our proposal. Press Save the mapping to keep it"><Badge tone="amber">Suggested</Badge></span>}
-                  </td>
-                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                    <span className="inline-flex gap-1.5">
-                      <Act icon={Eye} tone="indigo" tip="Overview: read this page and see where each picked keyword is used and where to add it." onClick={() => setOpen({ url: p.url })}>Overview</Act>
-                      <a href={p.url} target="_blank" rel="noreferrer"><Act icon={ExternalLink} tone="slate" tip="Open: show this page on your website in a new tab." /></a>
-                      {p.primary ? <Link to={`/keyword-overview?q=${encodeURIComponent(p.primary)}`}><Act icon={Search} tone="sky" tip="Check keyword: open the searches, cost and related ideas for its main keyword." /></Link>
-                        : <Link to={`/keyword-management/discover?q=${encodeURIComponent((p.path !== '/' ? p.path.replace(/[-_/]+/g, ' ').trim() : (p.title || p.path).split(/[|\-–:]/)[0].trim()).slice(0, 40))}`}><Act icon={Lightbulb} tone="indigo" tip="Find a keyword: search for keywords this page could rank for." /></Link>}
-                    </span>
-                  </td>
-                </tr>))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable bare minWidth={760} rows={d.pages} rowKey={p => p.url} exportName="pages-and-keywords" label="pages" searchPlaceholder="Search pages" columnsMenu={false} rowClass={() => 'hover:bg-slate-50'}
+          columns={[
+            { id: 'page', header: 'Page', tip: { what: 'A page of your website.', why: 'Click the address to open it.', from: 'the last website scan (Website Audit).' }, thClass: 'px-3 py-2', value: p => p.path, className: 'px-3 py-2.5 min-w-[200px] max-w-[300px]',
+              cell: p => <>
+                <a href={p.url} target="_blank" rel="noreferrer" className="font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 break-all">{p.path}<ExternalLink size={11} className="shrink-0" /></a>
+                <span className="block text-11.5 text-slate-400 truncate" title={p.title}>{p.title}</span>
+              </> },
+            { id: 'primary', header: 'Main keyword', tip: { what: 'The keyword this page should rank for: the most searched keyword found on it.', why: 'One main keyword per page keeps your pages from competing with each other.', from: 'your saved keywords matched to the page title, heading and description from the website scan.' }, thClass: 'px-3 py-2', value: p => p.primary || null, className: 'px-3 py-2.5',
+              cell: p => (p.primary ? <Link to={`/keyword-overview?q=${encodeURIComponent(p.primary)}`} title="Check its searches and cost" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline">{p.primary}</Link> : <span className="text-slate-400">none</span>) },
+            { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', tip: { what: 'Monthly searches for the main keyword.', from: 'Google Ads Keyword Planner.' }, thClass: 'px-3 py-2', value: p => p.primary_volume ?? null, className: 'px-3 py-2.5 text-right tabular-nums', cell: p => n0(p.primary_volume) },
+            { id: 'secondary', header: 'Also on this page', tip: { what: 'Other saved keywords this page also covers.', why: 'They support the main keyword.' }, thClass: 'px-3 py-2', value: p => p.secondary.join(', '), className: 'px-3 py-2.5 text-12.5 text-slate-600 max-w-[260px]',
+              cell: p => (p.secondary.length ? <span title={p.secondary.join(', ')}>{p.secondary.slice(0, 2).join(', ')}{p.secondary.length > 2 ? ` +${p.secondary.length - 2}` : ''}</span> : <span className="text-slate-300">—</span>) },
+            { id: 'status', header: 'Status', tip: { what: 'Saved: written on the keywords already. Suggested: our proposal, not saved yet.', why: 'Press Save the mapping to save the suggestions.' }, thClass: 'px-3 py-2', value: p => (!p.primary ? 'No keyword' : p.saved ? 'Saved' : 'Suggested'), className: 'px-3 py-2.5 whitespace-nowrap',
+              cell: p => (!p.primary ? <Link to={`/keyword-management/discover?q=${guessQ(p)}`} className="text-12.5 font-semibold text-amber-700 hover:underline">Find a keyword</Link>
+                : p.saved ? <span title="Written on the keyword: it is saved"><Badge tone="green">Saved</Badge></span> : <span title="Our proposal. Press Save the mapping to keep it"><Badge tone="amber">Suggested</Badge></span>) },
+            { id: 'actions', header: 'Actions', right: true, tip: { what: 'Things you can do for this page.', why: 'Open the page, check its keyword, or find a keyword if it has none.' }, thClass: 'px-3 py-2', className: 'px-3 py-2.5 text-right whitespace-nowrap',
+              cell: p => (
+                <span className="inline-flex gap-1.5">
+                  <Act icon={Eye} tone="indigo" tip="Overview: read this page and see where each picked keyword is used and where to add it." onClick={() => setOpen({ url: p.url })}>Overview</Act>
+                  <a href={p.url} target="_blank" rel="noreferrer"><Act icon={ExternalLink} tone="slate" tip="Open: show this page on your website in a new tab." /></a>
+                  {p.primary ? <Link to={`/keyword-overview?q=${encodeURIComponent(p.primary)}`}><Act icon={Search} tone="sky" tip="Check keyword: open the searches, cost and related ideas for its main keyword." /></Link>
+                    : <Link to={`/keyword-management/discover?q=${guessQ(p)}`}><Act icon={Lightbulb} tone="indigo" tip="Find a keyword: search for keywords this page could rank for." /></Link>}
+                </span>) },
+          ]} />
       </Card>
 
       </>}
@@ -123,34 +111,19 @@ export default function KeywordMappingTab({ b }) {
       {view === 'create' && (
       <Card pad={false} title="Pages and posts to create" subtitle="Keywords no page carries. People who want to buy or book need a page; questions and guides fit a blog post.">
         {todo.length === 0 ? <p className="px-5 py-6 text-13 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={15} />Every keyword has a page.</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-13 min-w-[700px]">
-              <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-3 py-2 text-left"><Head what="What to make: a page for people who want to buy or book, or a blog post for questions and guides." why="Keywords no page covers cannot rank.">Make a</Head></th>
-                  <th className="px-3 py-2 text-left"><Head what="The saved keyword that has no page." from="your saved keywords compared with the website scan.">For the keyword</Head></th>
-                  <th className="px-3 py-2 text-right"><Head right what="Monthly searches." from="Google Ads Keyword Planner.">Searches / mo</Head></th>
-                  <th className="px-3 py-2 text-left"><Head what="A web address made from the keyword." why="Use it when you create the page.">Suggested address</Head></th>
-                  <th className="px-3 py-2 text-right"><Head right what="Copy brief: a short note for whoever builds the page. Write: open the blog writer with this keyword ticked.">Actions</Head></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {todo.map(x => (
-                  <tr key={`${x.type}-${x.keyword}`} className="hover:bg-slate-50">
-                    <td className="px-3 py-2.5"><Badge tone={x.type === 'page' ? 'blue' : 'violet'}>{x.type === 'page' ? 'Page' : 'Blog post'}</Badge></td>
-                    <td className="px-3 py-2.5 font-semibold text-slate-900">{x.keyword}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{n0(x.volume)}</td>
-                    <td className="px-3 py-2.5 text-12.5 text-slate-500 font-mono">{x.slug}</td>
-                    <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                      <span className="inline-flex gap-1.5">
-                        <Act icon={Copy} tone="slate" tip="Copy brief: copy the title, address and what to put where, to send to whoever builds the page." onClick={() => copy(x, x.type)} />
-                        <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(x.keyword)}`}><Act icon={PenLine} tone="violet" tip={x.type === 'post' ? 'Write the post: open the blog writer with this keyword ticked.' : 'Write it as a blog post instead: open the blog writer with this keyword ticked.'} /></Link>
-                      </span>
-                    </td>
-                  </tr>))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable bare minWidth={700} rows={todo} rowKey={x => `${x.type}-${x.keyword}`} exportName="pages-and-posts-to-create" label="keywords" searchPlaceholder="Search keywords" columnsMenu={false} rowClass={() => 'hover:bg-slate-50'}
+            columns={[
+              { id: 'type', header: 'Make a', tip: { what: 'What to make: a page for people who want to buy or book, or a blog post for questions and guides.', why: 'Keywords no page covers cannot rank.' }, thClass: 'px-3 py-2', value: x => (x.type === 'page' ? 'Page' : 'Blog post'), className: 'px-3 py-2.5', cell: x => <Badge tone={x.type === 'page' ? 'blue' : 'violet'}>{x.type === 'page' ? 'Page' : 'Blog post'}</Badge> },
+              { id: 'keyword', header: 'For the keyword', tip: { what: 'The saved keyword that has no page.', from: 'your saved keywords compared with the website scan.' }, thClass: 'px-3 py-2', value: x => x.keyword, className: 'px-3 py-2.5 font-semibold text-slate-900' },
+              { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', tip: { what: 'Monthly searches.', from: 'Google Ads Keyword Planner.' }, thClass: 'px-3 py-2', value: x => x.volume ?? null, className: 'px-3 py-2.5 text-right tabular-nums', cell: x => n0(x.volume) },
+              { id: 'slug', header: 'Suggested address', tip: { what: 'A web address made from the keyword.', why: 'Use it when you create the page.' }, thClass: 'px-3 py-2', value: x => x.slug, className: 'px-3 py-2.5 text-12.5 text-slate-500 font-mono' },
+              { id: 'actions', header: 'Actions', right: true, tip: { what: 'Copy brief: a short note for whoever builds the page. Write: open the blog writer with this keyword ticked.' }, thClass: 'px-3 py-2', className: 'px-3 py-2.5 text-right whitespace-nowrap',
+                cell: x => (
+                  <span className="inline-flex gap-1.5">
+                    <Act icon={Copy} tone="slate" tip="Copy brief: copy the title, address and what to put where, to send to whoever builds the page." onClick={() => copy(x, x.type)} />
+                    <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(x.keyword)}`}><Act icon={PenLine} tone="violet" tip={x.type === 'post' ? 'Write the post: open the blog writer with this keyword ticked.' : 'Write it as a blog post instead: open the blog writer with this keyword ticked.'} /></Link>
+                  </span>) },
+            ]} />
         )}
       </Card>
       )}

@@ -2,6 +2,7 @@ import React from 'react';
 import { MapPin, Monitor, Smartphone, Tablet, Copy, Printer, Plus, Trophy, Check, Globe } from 'lucide-react';
 import { Card, Badge, Button, useAction } from './SeoUi';
 import { api, useApi } from './seoApi';
+import DataTable from './DataTable';
 
 export const SECTIONS = [['sec-landscape', 'Landscape'], ['sec-overview', 'Overview'], ['sec-distribution', 'Rankings Distribution'], ['sec-tags', 'Tags'], ['sec-pages', 'Pages'],
   ['sec-cannibal', 'Cannibalization'], ['sec-competitors', 'Competitors Discovery'], ['sec-devices', 'Devices & Locations'], ['sec-snippets', 'Featured Snippets']];
@@ -69,13 +70,13 @@ export function FeaturedSnippets({ d }) {
   return (
     <Card title="Featured snippets" subtitle="Keywords where Google shows a snippet, answer box or People-also-ask, and whether it is yours" pad={false}>
       {rows.length ? (
-        <table className="w-full text-13">
-          <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-4 py-2.5 text-left font-semibold">Keyword</th><th className="px-4 py-2.5 text-left font-semibold">Feature</th><th className="px-4 py-2.5 text-right font-semibold">Your position</th><th className="px-4 py-2.5 text-right font-semibold">Yours?</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">{rows.map(r => (
-            <tr key={r.keyword}><td className="px-4 py-2.5">{r.keyword}</td><td className="px-4 py-2.5 text-slate-600">{r.feature}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{r.rank ? `#${r.rank}` : '—'}</td>
-              <td className="px-4 py-2.5 text-right">{r.yours ? <Badge tone="green"><Check size={11} /> Yes</Badge> : <Badge tone="amber">Opportunity</Badge>}</td></tr>))}</tbody>
-        </table>
+        <DataTable bare minWidth={0} rows={rows} rowKey={r => r.keyword} exportName="featured-snippets" label="keywords" searchPlaceholder="Search keywords" columnsMenu={false}
+          columns={[
+            { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-4 py-2.5', thClass: 'px-4 py-2.5' },
+            { id: 'feature', header: 'Feature', value: r => r.feature, className: 'px-4 py-2.5 text-slate-600', thClass: 'px-4 py-2.5' },
+            { id: 'rank', header: 'Your position', right: true, value: r => r.rank || null, cell: r => (r.rank ? `#${r.rank}` : '—'), className: 'px-4 py-2.5 text-right tabular-nums', thClass: 'px-4 py-2.5' },
+            { id: 'yours', header: 'Yours?', right: true, value: r => (r.yours ? 'Yes' : 'Opportunity'), cell: r => (r.yours ? <Badge tone="green"><Check size={11} /> Yes</Badge> : <Badge tone="amber">Opportunity</Badge>), className: 'px-4 py-2.5 text-right', thClass: 'px-4 py-2.5' },
+          ]} />
       ) : <div className="py-8 text-center text-13 text-slate-500">No snippet or answer box was seen on the latest checks.</div>}
       {rows.some(r => !r.yours) && <p className="px-4 py-3 text-12 text-slate-500 border-t border-slate-100">To win one: add a 40-60 word direct answer under a question heading, plus FAQ schema, on the page that ranks.</p>}
     </Card>
@@ -107,6 +108,8 @@ export function CompetitorsDiscovery({ d, b, onChanged }) {
 
 const DEV = { desktop: ['Desktop', Monitor], mobile: ['Mobile', Smartphone], tablet: ['Tablet', Tablet] };
 const num = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
+// + means mobile ranks lower on the page than desktop
+const devDiff = (r) => { const dp = r.desktop?.position; const mp = r.mobile?.position; return dp != null && mp != null ? Math.round((mp - dp) * 10) / 10 : null; };
 
 /** Where and on which device the site is shown: Search Console's position, impressions and clicks per device, then every keyword on desktop vs mobile. */
 export function DevicesLocations({ d, b }) {
@@ -143,26 +146,15 @@ export function DevicesLocations({ d, b }) {
       </Card>
       {rows.length > 0 && (
         <Card pad={false} title="Keywords by device" subtitle="Average position on desktop and on mobile for every tracked keyword that was shown">
-          <div className="overflow-x-auto">
-            <table className="w-full text-13 min-w-[720px]">
-              <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2.5 text-left font-semibold">Keyword</th><th className="px-4 py-2.5 text-right font-semibold">Desktop</th><th className="px-4 py-2.5 text-right font-semibold">Mobile</th><th className="px-4 py-2.5 text-right font-semibold">Difference</th><th className="px-4 py-2.5 text-right font-semibold">Impressions</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {rows.map(r => {
-                  const dp = r.desktop?.position, mp = r.mobile?.position;
-                  const diff = dp != null && mp != null ? Math.round((mp - dp) * 10) / 10 : null; // + means mobile is lower on the page
-                  return (
-                    <tr key={r.keyword} className="hover:bg-slate-50">
-                      <td className="px-4 py-2.5 font-semibold text-slate-900">{r.keyword}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{dp ?? <span className="text-slate-300">—</span>}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{mp ?? <span className="text-slate-300">—</span>}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{diff == null ? <span className="text-slate-300">—</span> : diff === 0 ? <span className="text-slate-400">same</span> : <span className={diff > 0 ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'} title={diff > 0 ? 'Lower on mobile' : 'Higher on mobile'}>{diff > 0 ? '+' : ''}{diff}</span>}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{num((r.desktop?.impressions || 0) + (r.mobile?.impressions || 0) + (r.tablet?.impressions || 0))}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable bare minWidth={720} rows={rows} rowKey={r => r.keyword} exportName="keywords-by-device" label="keywords" searchPlaceholder="Search keywords" columnsMenu={false}
+            rowClass={() => 'hover:bg-slate-50'}
+            columns={[
+              { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-4 py-2.5 font-semibold text-slate-900', thClass: 'px-4 py-2.5' },
+              { id: 'desktop', header: 'Desktop', right: true, value: r => r.desktop?.position ?? null, cell: r => r.desktop?.position ?? <span className="text-slate-300">—</span>, className: 'px-4 py-2.5 text-right tabular-nums', thClass: 'px-4 py-2.5' },
+              { id: 'mobile', header: 'Mobile', right: true, value: r => r.mobile?.position ?? null, cell: r => r.mobile?.position ?? <span className="text-slate-300">—</span>, className: 'px-4 py-2.5 text-right tabular-nums', thClass: 'px-4 py-2.5' },
+              { id: 'diff', header: 'Difference', right: true, value: devDiff, cell: r => { const diff = devDiff(r); return diff == null ? <span className="text-slate-300">—</span> : diff === 0 ? <span className="text-slate-400">same</span> : <span className={diff > 0 ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'} title={diff > 0 ? 'Lower on mobile' : 'Higher on mobile'}>{diff > 0 ? '+' : ''}{diff}</span>; }, className: 'px-4 py-2.5 text-right tabular-nums', thClass: 'px-4 py-2.5' },
+              { id: 'imp', header: 'Impressions', right: true, value: r => (r.desktop?.impressions || 0) + (r.mobile?.impressions || 0) + (r.tablet?.impressions || 0), cell: r => num((r.desktop?.impressions || 0) + (r.mobile?.impressions || 0) + (r.tablet?.impressions || 0)), className: 'px-4 py-2.5 text-right tabular-nums text-slate-600', thClass: 'px-4 py-2.5' },
+            ]} />
         </Card>
       )}
     </div>

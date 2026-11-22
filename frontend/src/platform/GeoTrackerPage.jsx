@@ -2,6 +2,41 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Play, Plus, Check, Minus, Trash2, Info, Copy } from 'lucide-react';
 import { SeoShell, Card, Tabs, Stat, Badge, Button, inputCls, Meter, SourceTag, ErrorNote, SERIES, useToast, useAction, useDoubleConfirm, SkStats, SkTable, SkCard, useUrlTab } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
+
+/** The prompts and, for each AI engine, whether the business was named: sortable by prompt or by how it ranked in an engine, searchable and paged. */
+function PromptsTable({ prompts, engines, byPrompt, onDelete }) {
+  const [q, setQ] = useState('');
+  const kept = useMemo(() => { const n = q.trim().toLowerCase(); return n ? prompts.filter(p => String(p.prompt).toLowerCase().includes(n)) : prompts; }, [prompts, q]);
+  const valueOf = useMemo(() => (p, key) => {
+    if (key === 'prompt') return p.prompt;
+    const r = byPrompt[p.id]?.[key.slice(2)];
+    return r && r.mentioned ? (r.position ?? 0) : null;
+  }, [byPrompt]);
+  const { sorted, sort, onSort } = useSorted(kept, valueOf);
+  const pager = usePager(sorted, { size: 25, resetKey: q });
+  return (
+    <>
+      {prompts.length > 10 && <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search prompts" aria-label="Search prompts" className="mb-3 h-8 w-full max-w-xs px-3 text-13 rounded-md border border-gray-200 bg-white focus:border-indigo-400 outline-none" />}
+      <div className="overflow-x-auto">
+        <table className="w-full text-13">
+          <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><SortTh id="prompt" sort={sort} onSort={onSort} className="p-2">Prompt</SortTh>{engines.map(e => <SortTh key={e} id={`e:${e}`} sort={sort} onSort={onSort} className="p-2 whitespace-nowrap text-center">{e}</SortTh>)}<th className="p-2" /></tr></thead>
+          <tbody className="divide-y divide-gray-100">
+            {pager.rows.map(p => (
+              <tr key={p.id}>
+                <td className="p-2 text-gray-900 min-w-[220px]">{p.prompt}</td>
+                {engines.map(e => { const r = byPrompt[p.id]?.[e]; return <td key={e} className="p-2 text-center" title={r?.answer_excerpt || ''}>{!r ? <span className="text-gray-300 text-11">—</span> : r.mentioned ? <span className="inline-flex items-center gap-0.5 text-success"><Check size={14} /><span className="text-11">#{r.position}</span></span> : <Minus size={14} className="inline text-gray-300" aria-label="Not named" />}</td>; })}
+                <td className="p-2 text-right"><button onClick={() => onDelete(p.id)} className="text-gray-400 hover:text-red-600 cursor-pointer" aria-label="Delete prompt"><Trash2 size={14} /></button></td>
+              </tr>
+            ))}
+            {!pager.rows.length && <tr><td colSpan={engines.length + 2} className="p-6 text-center text-gray-500">No prompt matches.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pager} label="prompts" />
+    </>
+  );
+}
 
 function Geo({ b, tab }) {
   const geo = useApi(`/businesses/${b.id}/geo`);
@@ -67,20 +102,7 @@ function Geo({ b, tab }) {
             <input className={inputCls} placeholder={`e.g. best ${(b.primaryCategory || 'business').toLowerCase()} near ${b.area || 'me'}`} value={prompt} onChange={e => setPrompt(e.target.value)} onKeyDown={e => e.key === 'Enter' && prompt.trim().length > 2 && add()} />
             <Button icon={Plus} busy={busy === 'add'} disabled={prompt.trim().length < 3} onClick={add}>Add</Button>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-13">
-              <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><th className="p-2 text-left font-medium">Prompt</th>{engines.map(e => <th key={e} className="p-2 text-center font-medium whitespace-nowrap">{e}</th>)}<th className="p-2" /></tr></thead>
-              <tbody className="divide-y divide-gray-100">
-                {d.prompts.map(p => (
-                  <tr key={p.id}>
-                    <td className="p-2 text-gray-900 min-w-[220px]">{p.prompt}</td>
-                    {engines.map(e => { const r = byPrompt[p.id]?.[e]; return <td key={e} className="p-2 text-center" title={r?.answer_excerpt || ''}>{!r ? <span className="text-gray-300 text-11">—</span> : r.mentioned ? <span className="inline-flex items-center gap-0.5 text-success"><Check size={14} /><span className="text-11">#{r.position}</span></span> : <Minus size={14} className="inline text-gray-300" aria-label="Not named" />}</td>; })}
-                    <td className="p-2 text-right"><button onClick={() => del(p.id)} className="text-gray-400 hover:text-red-600 cursor-pointer" aria-label="Delete prompt"><Trash2 size={14} /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <PromptsTable prompts={d.prompts} engines={engines} byPrompt={byPrompt} onDelete={del} />
           <p className="text-11 text-gray-500 mt-2">✓ #n = named at position n in that engine's answer; — = not named. Hover a cell to read the answer.</p>
         </Card>
       )}

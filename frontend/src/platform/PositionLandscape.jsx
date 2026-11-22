@@ -11,6 +11,7 @@ import CurrentPositions from './CurrentPositions';
 import PositionCompetitors from './PositionCompetitors';
 import { Distribution, PagesTab, Cannibalization, Snippets } from './PositionTabs';
 import { AXIS, PALETTE, Th, path, sign, Chg, Spark, Empty } from './PositionUi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 import Select from '../components/Select';
 
 /**
@@ -49,27 +50,43 @@ function Gauge({ improved, declined }) {
   );
 }
 
-const KeywordTable = ({ rows, empty = 'No keywords.' }) => (
-  <div className="overflow-auto max-h-[420px]">
-    <table className="w-full text-13">
-      <thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th c="text-right">Pos.</Th><Th c="text-right">Change</Th><Th c="text-right">Volume</Th><Th c="text-right">Visibility</Th><Th>Tag</Th><Th c="text-right">Actions</Th></tr></thead>
-      <tbody className="divide-y divide-slate-100">
-        {rows.map(r => (
-          <tr key={r.keyword} className="hover:bg-slate-50">
-            <td className="px-4 py-2.5 font-medium text-indigo-700 max-w-[280px] truncate" title={r.keyword}>{r.keyword}</td>
-            <td className="px-4 py-2.5 text-right tabular-nums">{r.rank ?? <span className="text-slate-400">&gt;10</span>}</td>
-            <td className="px-4 py-2.5 text-right"><Chg v={r.change} d={0} /></td>
-            <td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td>
-            <td className="px-4 py-2.5 text-right tabular-nums">{r.visibility}%</td>
-            <td className="px-4 py-2.5 text-slate-500">{r.tag || '—'}</td>
-            <td className="px-4 py-2.5 text-right whitespace-nowrap"><KeywordActs keyword={r.keyword} url={r.url} /></td>
-          </tr>
-        ))}
-        {!rows.length && <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-500">{empty}</td></tr>}
-      </tbody>
-    </table>
-  </div>
-);
+const TC = 'px-4 py-2.5 whitespace-nowrap';
+const numOf = (v) => (v == null || v === '' ? null : Number(v));
+const kwValue = (r, k) => ({ keyword: r.keyword, pos: numOf(r.rank), change: numOf(r.change), volume: numOf(r.volume), visibility: numOf(r.visibility), tag: r.tag })[k];
+const tagValue = (t, k) => ({ tag: t.tag, keywords: numOf(t.keywords), visibility: numOf(t.visibility), traffic: numOf(t.traffic), pos: numOf(t.avg_position), volume: numOf(t.volume) })[k];
+function KeywordTable({ rows: all, empty = 'No keywords.', resetKey = '' }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const kept = useMemo(() => (needle ? all.filter(r => `${r.keyword} ${r.tag || ''}`.toLowerCase().includes(needle)) : all), [all, needle]);
+  const { sorted, sort, onSort } = useSorted(kept, kwValue);
+  const pg = usePager(sorted, { size: 25, resetKey: `${resetKey}|${needle}` });
+  const rows = pg.rows;
+  return (
+    <>
+      {all.length > 10 && <div className="px-4 py-3 border-b border-slate-100"><label className="relative inline-block"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-56 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></label></div>}
+      <div className="overflow-auto max-h-[420px]">
+        <table className="w-full text-13">
+          <thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className={TC}>Keyword</SortTh><SortTh id="pos" sort={sort} onSort={onSort} right className={TC}>Pos.</SortTh><SortTh id="change" sort={sort} onSort={onSort} right first="desc" className={TC}>Change</SortTh><SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className={TC}>Volume</SortTh><SortTh id="visibility" sort={sort} onSort={onSort} right first="desc" className={TC}>Visibility</SortTh><SortTh id="tag" sort={sort} onSort={onSort} className={TC}>Tag</SortTh><Th c="text-right">Actions</Th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map(r => (
+              <tr key={r.keyword} className="hover:bg-slate-50">
+                <td className="px-4 py-2.5 font-medium text-indigo-700 max-w-[280px] truncate" title={r.keyword}>{r.keyword}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{r.rank ?? <span className="text-slate-400">&gt;10</span>}</td>
+                <td className="px-4 py-2.5 text-right"><Chg v={r.change} d={0} /></td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{r.visibility}%</td>
+                <td className="px-4 py-2.5 text-slate-500">{r.tag || '—'}</td>
+                <td className="px-4 py-2.5 text-right whitespace-nowrap"><KeywordActs keyword={r.keyword} url={r.url} /></td>
+              </tr>
+            ))}
+            {!rows.length && <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-500">{all.length ? 'No keyword matches the search.' : empty}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pg} label="keywords" />
+    </>
+  );
+}
 
 function Impact({ title, tone, block, onAll, allLabel }) {
   return (
@@ -162,7 +179,7 @@ export function Landscape({ d, onTab, b }) {
       {kwView && (
         <Card title={kwView === 'all' ? `All keywords (${shownRows.length})` : kwView === 'improved' ? `Improved keywords (${shownRows.length})` : `Declined keywords (${shownRows.length})`} pad={false}
           action={<Button size="sm" onClick={() => setKwView(null)}>Close</Button>}>
-          <KeywordTable rows={shownRows} empty="No keywords in this view." />
+          <KeywordTable rows={shownRows} empty="No keywords in this view." resetKey={kwView} />
         </Card>
       )}
 
@@ -231,12 +248,14 @@ export function Landscape({ d, onTab, b }) {
 }
 
 function TagsTab({ d }) {
+  const { sorted, sort, onSort } = useSorted(d.tags, tagValue);
+  const pg = usePager(sorted, { size: 25 });
   return (
       <Card title={`Tags (${d.tags.length})`} subtitle="Keywords grouped by their cluster" pad={false}>
         {d.tags.length ? (
           <table className="w-full text-13">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Tag</Th><Th c="text-right">Keywords</Th><Th c="text-right">Visibility</Th><Th c="text-right">Est. traffic</Th><Th c="text-right">Avg. pos.</Th><Th c="text-right">Volume</Th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{d.tags.map(t => (
+            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="tag" sort={sort} onSort={onSort} className={TC}>Tag</SortTh><SortTh id="keywords" sort={sort} onSort={onSort} right first="desc" className={TC}>Keywords</SortTh><SortTh id="visibility" sort={sort} onSort={onSort} right first="desc" className={TC}>Visibility</SortTh><SortTh id="traffic" sort={sort} onSort={onSort} right first="desc" className={TC}>Est. traffic</SortTh><SortTh id="pos" sort={sort} onSort={onSort} right className={TC}>Avg. pos.</SortTh><SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className={TC}>Volume</SortTh></tr></thead>
+            <tbody className="divide-y divide-slate-100">{pg.rows.map(t => (
               <tr key={t.tag} className="hover:bg-slate-50">
                 <td className="px-4 py-2.5"><span className="px-2.5 py-0.5 rounded-full border border-slate-200 text-12 text-slate-700">{t.tag}</span></td>
                 <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{t.keywords}</td>
@@ -247,6 +266,7 @@ function TagsTab({ d }) {
               </tr>))}</tbody>
           </table>
         ) : <Empty>No keyword has a tag yet. Group keywords into clusters in Keyword Strategy Builder and they show up here.</Empty>}
+        {d.tags.length > 0 && <Pager p={pg} label="tags" />}
       </Card>
   );
 }

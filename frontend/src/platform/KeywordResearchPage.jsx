@@ -1,5 +1,5 @@
 import KeywordWorkspace from './KeywordWorkspace';
-import KeywordFlowBar from './KeywordFlowBar';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 import KeywordMappingTab from './KeywordMappingTab';
 import { UseKeywordsModal } from './KeywordPlacement';
 import KeywordRowActions, { indexProblem } from './KeywordRowActions';
@@ -117,6 +117,10 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const live = result?.data_source?.includes('keyword_planner');
   const gaps = all.filter(k => k.coverage?.status === 'gap' && ['service', 'local'].includes(k.group)).slice(0, 8);
   const questions = all.filter(k => k.group === 'question').slice(0, 8);
+  const discoverValue = useMemo(() => (k, key) => (key === 'keyword' ? k.keyword : key === 'demand' ? (live && k.volume != null ? k.volume : k.stars ?? null) : key === 'difficulty' ? k.difficulty ?? null : key === 'website' ? (k.coverage?.status || null)
+    : key === 'status' ? ((k.tracked || trackedSet.has(k.keyword)) ? 0 : 1) : null), [live, tracked]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { sorted: shownSorted, sort: discSort, onSort: onDiscSort } = useSorted(shown, discoverValue);
+  const discPager = usePager(shownSorted, { size: 25, resetKey: `${group}|${q}|${onlyGaps}|${result?.keywords?.length}` });
 
   const track = (rows) => run('track', async () => {
     const body = rows.map(k => ({ keyword: k.keyword, volume: k.volume ?? null, difficulty: k.difficulty ?? null, cpc: k.cpc ?? null, intent: k.intent, target_url: k.coverage?.page ? pathOf(k.coverage.page) : null, priority: k.group === 'near_me' || k.group === 'local' ? 'High' : 'Medium' }));
@@ -244,15 +248,15 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
                     <thead className="bg-slate-50 text-11   text-slate-500">
                       <tr>
                         <th className="pl-6 pr-2 py-2.5 w-8"><input type="checkbox" className="accent-indigo-600" aria-label="Select all" checked={selectable.length > 0 && selectable.every(k => selected.includes(k.keyword))} onChange={e => setSelected(e.target.checked ? selectable.map(k => k.keyword) : [])} /></th>
-                        <th className="px-2 py-2.5 text-left font-semibold">Keyword</th>
-                        <th className="px-2 py-2.5 text-left font-semibold">{live ? 'Searches / mo' : 'Demand'}</th>
-                        {live && <th className="px-2 py-2.5 text-left font-semibold">Difficulty</th>}
-                        <th className="px-2 py-2.5 text-left font-semibold">Your website</th>
-                        <th className="px-2 pr-6 py-2.5 text-right font-semibold">Status</th>
+                        <SortTh id="keyword" sort={discSort} onSort={onDiscSort} className="px-2 py-2.5">Keyword</SortTh>
+                        <SortTh id="demand" sort={discSort} onSort={onDiscSort} first="desc" className="px-2 py-2.5">{live ? 'Searches / mo' : 'Demand'}</SortTh>
+                        {live && <SortTh id="difficulty" sort={discSort} onSort={onDiscSort} className="px-2 py-2.5">Difficulty</SortTh>}
+                        <SortTh id="website" sort={discSort} onSort={onDiscSort} className="px-2 py-2.5">Your website</SortTh>
+                        <SortTh id="status" sort={discSort} onSort={onDiscSort} right className="px-2 pr-6 py-2.5">Status</SortTh>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {shown.slice(0, 300).map(k => {
+                      {discPager.rows.map(k => {
                         const G = GROUPS[k.group];
                         const isTracked = k.tracked || trackedSet.has(k.keyword);
                         const [dl, dt] = kd(k.difficulty);
@@ -281,6 +285,7 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
                   </table>
                   {!shown.length && <div className="py-10 text-center text-13 text-slate-500">{all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}</div>}
                 </div>
+                <Pager p={discPager} label="keywords" />
               </Card>
             </div>
 
@@ -347,6 +352,7 @@ function Sparkline({ points }) {
   return <svg width={w} height={h} className="block" aria-hidden="true"><path d={d} fill="none" stroke={up ? '#10b981' : '#f43f5e'} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" /></svg>;
 }
 
+const plannerValue = (r, key) => (key === 'keyword' ? r.keyword : r[key] ?? null);
 const PLANNER_COLS = [
   { id: 'keyword', label: 'Keyword', align: 'left' },
   { id: 'avg_monthly_searches', label: 'Searches / mo', align: 'right' },
@@ -367,7 +373,6 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
   const [focus, setFocus] = useState(null);
   const [q, setQ] = useState('');
   const [comp, setComp] = useState('all');
-  const [sort, setSort] = useState({ key: 'avg_monthly_searches', dir: 'desc' });
   const [selected, setSelected] = useState([]);
   const [busy, error, run, setError] = useAction();
   const [toast, toastNode] = useToast();
@@ -394,26 +399,21 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
     searchedN.current = seedSearch.n;
     search(seedSearch.text);
   }, [seedSearch?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { // one click on the source shows its numbers: it opens with the business's own first service
+    if (!seedSearch?.n) search((b.services || []).map(x => String(x?.name || x || '').trim()).filter(Boolean)[0] || b.category || b.name || '');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const trackedSet = new Set(tracked.map(k => k.keyword));
   const rows = data?.keywords || [];
   const seed = data?.seed_keyword?.toLowerCase();
   const seedRow = rows.find(r => r.keyword.toLowerCase() === seed);
   const focusRow = rows.find(r => r.keyword === focus) || seedRow || rows[0];
 
-  const shown = useMemo(() => {
+  const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const list = rows.filter(r => (comp === 'all' || (COMPETITION[r.competition] ? r.competition : 'UNSPECIFIED') === comp) && (!needle || r.keyword.toLowerCase().includes(needle)));
-    const { key, dir } = sort;
-    const m = dir === 'asc' ? 1 : -1;
-    return [...list].sort((a, c) => {
-      const x = a[key], y = c[key];
-      if (key === 'keyword') return m * String(x).localeCompare(String(y));
-      if (x == null && y == null) return 0;
-      if (x == null) return 1;
-      if (y == null) return -1;
-      return m * (x - y);
-    });
-  }, [rows, q, comp, sort]);
+    return rows.filter(r => (comp === 'all' || (COMPETITION[r.competition] ? r.competition : 'UNSPECIFIED') === comp) && (!needle || r.keyword.toLowerCase().includes(needle)));
+  }, [rows, q, comp]);
+  const { sorted: shown, sort, onSort } = useSorted(filtered, plannerValue, { key: 'avg_monthly_searches', dir: 'desc' });
+  const pager = usePager(shown, { size: 25, resetKey: `${q}|${comp}|${rows.length}` });
 
   const totalVolume = rows.reduce((s, r) => s + (r.avg_monthly_searches || 0), 0);
   const bidRows = rows.filter(r => r.high_top_of_page_bid > 0);
@@ -427,7 +427,6 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
   const peak = chartData.reduce((p, m) => (!p || m.searches > p.searches ? m : p), null);
   const low = chartData.reduce((p, m) => (!p || m.searches < p.searches ? m : p), null);
 
-  const toggleSort = (key) => setSort(s => (s.key === key ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: key === 'keyword' ? 'asc' : 'desc' }));
   const selectable = shown.filter(r => !trackedSet.has(r.keyword));
 
   const track = (list) => run('track', async () => {
@@ -594,20 +593,14 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
                 <thead className="bg-slate-50 text-11 text-slate-500">
                   <tr>
                     <th className="pl-6 pr-2 py-2.5 w-8"><input type="checkbox" className="accent-indigo-600" aria-label="Select all" checked={selectable.length > 0 && selectable.every(r => selected.includes(r.keyword))} onChange={e => setSelected(e.target.checked ? selectable.map(r => r.keyword) : [])} /></th>
-                    {PLANNER_COLS.filter(col => col.id !== 'trend' || data.include_monthly).map(col => (
-                      <th key={col.id} className={`px-2 py-2.5 font-semibold whitespace-nowrap text-${col.align}`}>
-                        {col.sortable === false ? col.label : (
-                          <button type="button" onClick={() => toggleSort(col.id)} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-900 ${sort.key === col.id ? 'text-slate-900' : ''}`}>
-                            {col.label}{sort.key === col.id && <span aria-hidden="true">{sort.dir === 'desc' ? '↓' : '↑'}</span>}
-                          </button>
-                        )}
-                      </th>
-                    ))}
+                    {PLANNER_COLS.filter(col => col.id !== 'trend' || data.include_monthly).map(col => (col.sortable === false
+                      ? <th key={col.id} className={`px-2 py-2.5 font-semibold whitespace-nowrap text-${col.align}`}>{col.label}</th>
+                      : <SortTh key={col.id} id={col.id} sort={sort} onSort={onSort} right={col.align === 'right'} first={col.id === 'keyword' ? 'asc' : 'desc'} className="px-2 py-2.5 whitespace-nowrap">{col.label}</SortTh>))}
                     <th className="px-2 pr-6 py-2.5 text-right font-semibold">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {shown.map(r => {
+                  {pager.rows.map(r => {
                     const isTracked = trackedSet.has(r.keyword);
                     const c = compOf(r.competition);
                     const isFocus = focusRow?.keyword === r.keyword;
@@ -641,6 +634,7 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
               </table>
               {!shown.length && <div className="py-10 text-center text-13 text-slate-500">No keywords match these filters.</div>}
             </div>
+            <Pager p={pager} label="keywords" />
           </Card>
         </>
       )}
@@ -854,7 +848,8 @@ function Tracked({ b, kw }) {
     };
     return list.sort((a, c) => { const x = v(a); const y = v(c); const o = typeof x === 'string' ? x.localeCompare(y) : x - y; return (sort.dir === 'asc' ? o : -o) || a.keyword.localeCompare(c.keyword); });
   }, [tracked, f, q, sort, T]);
-  const shown = rows.slice(0, limit);
+  const pager = usePager(rows, { size: 25, resetKey: `${JSON.stringify(f)}|${q}|${sort.key}|${sort.dir}` });
+  const shown = pager.rows;
   const allOn = shown.length > 0 && shown.every(k => sel.has(k.id));
   const Th = ({ id, children, right, ...tip }) => (
     <th className={`px-4 py-3 font-semibold ${right ? 'text-right' : 'text-left'}`}>
@@ -862,12 +857,7 @@ function Tracked({ b, kw }) {
     </th>
   );
 
-  // The one thing worth doing next, said plainly
   const nopage = tracked.length - mapped;
-  const hint = !tracked.length ? null : nopage > 0
-    ? { text: `${nopage} keyword${nopage === 1 ? ' has' : 's have'} no page yet. Each needs one page on your website to rank.`, action: <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages}>Match them to my pages</Button>, more: <Link to="/keyword-management/mapping" className="text-13 font-semibold text-indigo-700 hover:underline">See the matching</Link> }
-    : onGoogle === 0 ? { text: 'Every keyword has a page. Next: check where they show on Google.', action: <Link to="/keyword-management/status"><Button variant="primary" icon={ArrowRight}>Check rankings</Button></Link> }
-      : { text: 'Every keyword has a page. Next: group them into topics.', action: <Link to="/keyword-management/topics"><Button variant="primary" icon={ArrowRight}>Group into topics</Button></Link> };
 
   return (
     <div className="space-y-5">
@@ -895,10 +885,6 @@ function Tracked({ b, kw }) {
                 </button>))}
               {tbl.data?.google_total?.clicks != null && <span className="px-3 py-1.5" title="Clicks from Google to your site for these keywords, last 28 days (Search Console)"><span className="block text-18 font-semibold tabular-nums leading-tight text-slate-900">{fmt(tbl.data.google_total.clicks)}</span><span className="block text-11.5 text-slate-500">Clicks, 28 days</span></span>}
             </div>
-            {hint && <>
-              <span className="text-13 text-slate-700 flex-1 min-w-[220px]">{hint.text}</span>
-              {hint.more}{hint.action}
-            </>}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -923,6 +909,7 @@ function Tracked({ b, kw }) {
                     {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
                 </label>))}
+              {nopage > 0 && <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages} title={`${nopage} keyword${nopage === 1 ? ' has' : 's have'} no page yet: give each the page where it already appears (a page you chose yourself is never changed)`}>Match {nopage} to my pages</Button>}
               <details className="relative ml-auto">
                 <summary className="h-8 px-3 inline-flex items-center rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer list-none hover:bg-slate-50" title="Choose which columns to show">Columns{hidden.size ? ` (${COLS.length - hidden.size} of ${COLS.length})` : ''}</summary>
                 <div className="absolute right-0 z-20 mt-1 w-60 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 p-2">
@@ -1030,7 +1017,7 @@ function Tracked({ b, kw }) {
               </table>
               <datalist id={`pages-${b.id}`}>{pages.map(p => <option key={p} value={p} />)}</datalist>
             </div>
-            {rows.length > shown.length && <div className="p-4 text-center border-t border-slate-100"><Button onClick={() => setLimit(l => l + 30)}>Show {Math.min(30, rows.length - shown.length)} more ({rows.length - shown.length} left)</Button></div>}
+            <Pager p={pager} label="keywords" />
           </Card>
         </>
       )}
@@ -1192,6 +1179,9 @@ const EXPLORER_PLATFORMS = [
   { id: 'app_stores', label: 'App Stores' }
 ];
 
+const COMP_ORDER = { LOW: 0, MEDIUM: 1, HIGH: 2 };
+const explorerValue = (k, key) => (key === 'keyword' ? k.keyword : key === 'volume' ? k.search_volume ?? null : key === 'intent' ? k.intent || null : key === 'competition' ? (COMP_ORDER[k.competition] ?? null) : key === 'cpc' ? k.cpc ?? null : key === 'difficulty' ? k.difficulty ?? null : null);
+
 function SparkTrend({ values = [] }) {
   if (!values || !values.length) return <span className="text-slate-300 font-mono text-[11px]">—</span>;
   const max = Math.max(...values, 1);
@@ -1264,6 +1254,9 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
     searchedN.current = seedSearch.n;
     search(seedSearch.text);
   }, [seedSearch?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { // one click on the source shows its results: it opens with the business's own first service
+    if (!seedSearch?.n) search((b.services || []).map(x => String(x?.name || x || '').trim()).filter(Boolean)[0] || b.category || b.name || '');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const trackSingle = (kw) => run(`t-${kw}`, async () => {
     await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: kw }] });
@@ -1296,6 +1289,9 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
     });
   }, [results, filterText, filterIntent, filterComp]);
 
+  const { sorted: sortedResults, sort: exSort, onSort: onExSort } = useSorted(filteredResults, explorerValue);
+  const exPager = usePager(sortedResults, { size: 25, resetKey: `${filterText}|${filterIntent}|${filterComp}|${results.length}` });
+
   const toggleSelectAll = () => {
     if (selectedKws.length === filteredResults.length) {
       setSelectedKws([]);
@@ -1307,7 +1303,7 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
   const exportCsv = () => {
     if (!filteredResults.length) return;
     const header = ['Keyword', 'Search Volume', 'Intent', 'Competition', 'CPC', 'Difficulty'];
-    const rows = filteredResults.map(k => [
+    const rows = sortedResults.map(k => [
       `"${(k.keyword || '').replace(/"/g, '""')}"`,
       k.search_volume || 0,
       k.intent || '',
@@ -1502,23 +1498,23 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
                         onChange={toggleSelectAll}
                       />
                     </th>
-                    <th className="p-3 text-left">Keyword</th>
+                    <SortTh id="keyword" sort={exSort} onSort={onExSort} className="p-3">Keyword</SortTh>
                     <th className="p-3 text-left">12m Trend</th>
-                    <th className="p-3 text-right">Volume</th>
-                    <th className="p-3 text-center">Intent</th>
-                    <th className="p-3 text-center">Competition</th>
-                    <th className="p-3 text-right">CPC</th>
-                    <th className="p-3 text-center">Difficulty</th>
+                    <SortTh id="volume" sort={exSort} onSort={onExSort} right first="desc" className="p-3">Volume</SortTh>
+                    <SortTh id="intent" sort={exSort} onSort={onExSort} className="p-3" style={{ textAlign: 'center' }}>Intent</SortTh>
+                    <SortTh id="competition" sort={exSort} onSort={onExSort} className="p-3" style={{ textAlign: 'center' }}>Competition</SortTh>
+                    <SortTh id="cpc" sort={exSort} onSort={onExSort} right first="desc" className="p-3">CPC</SortTh>
+                    <SortTh id="difficulty" sort={exSort} onSort={onExSort} className="p-3" style={{ textAlign: 'center' }}>Difficulty</SortTh>
                     <th className="p-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredResults.map((item, idx) => {
+                  {exPager.rows.map((item, idx) => {
                     const isTracked = trackedSet.has((item.keyword || '').toLowerCase());
                     const isSelected = selectedKws.includes(item.keyword);
                     const intentKey = (item.intent || '').toLowerCase();
                     return (
-                      <tr key={idx} className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-indigo-50/40' : ''}`}>
+                      <tr key={`${exPager.from + idx}-${item.keyword}`} className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-indigo-50/40' : ''}`}>
                         <td className="p-3 text-center">
                           <input
                             type="checkbox"
@@ -1599,6 +1595,7 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
                 </tbody>
               </table>
             </div>
+            <Pager p={exPager} label="keywords" />
           </Card>
         </div>
       )}
@@ -1635,6 +1632,7 @@ function AiSuggestions({ b, tracked, onTracked, seedSearch }) {
     ranFor.current = seedSearch.n;
     suggest(seedSearch.text);
   }, [seedSearch?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!data && !seedSearch?.n) suggest(''); }, []); // eslint-disable-line react-hooks/exhaustive-deps -- one click on the source shows its suggestions: nothing else to press
   const toggle = (k) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k]));
   const save = () => run('save', async () => {
     const chosen = items.filter(i => picked.includes(i.keyword));
@@ -1707,17 +1705,31 @@ const AREA_HELP = {
   chatgpt: 'Your ChatGPT business profile, policies or feed mention it.'
 };
 
+const useItValue = (i, key) => {
+  if (key === 'keyword') return i.keyword;
+  if (key === 'plan') return i.planned.length;
+  const a = key.slice(2);
+  return i.used[a] === true ? 2 : i.planned.includes(a) ? 1 : i.used[a] === null ? null : 0;
+};
+
 function UseIt({ b, kw }) {
   const usage = useApi(`/businesses/${b.id}/keywords/usage`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const [onlyOpen, setOnlyOpen] = useState(false);
+  const [useQ, setUseQ] = useState('');
   const d = usage.data;
+  const useRows = useMemo(() => {
+    const needle = useQ.trim().toLowerCase();
+    return (d?.items || []).filter(i => (!onlyOpen || AREA_ORDER.some(a => i.planned.includes(a) && i.used[a] === false)) && (!needle || String(i.keyword).toLowerCase().includes(needle) || String(i.cluster || '').toLowerCase().includes(needle)));
+  }, [d, onlyOpen, useQ]);
+  const { sorted: useSortedRows, sort: useSort, onSort: onUseSort } = useSorted(useRows, useItValue);
+  const usePage = usePager(useSortedRows, { size: 25, resetKey: `${onlyOpen}|${useQ}` });
   const addQuestion = (k) => run(`g${k.id}`, async () => { const r = await api(`/businesses/${b.id}/keywords/${k.id}/geo-prompt`, { method: 'POST', body: {} }); usage.reload(true); kw.reload(true); toast(r.added ? `Added to AI search: “${r.prompt}”` : 'That question is already tracked in AI search.'); });
   const setUses = (k, uses) => run(`u${k.id}`, async () => { await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, uses } }); usage.reload(true); kw.reload(true); });
   if (!d) return usage.error ? <ErrorNote>{usage.error.message}</ErrorNote> : <SkCard title="Keyword Usage" pad={false}><SkTable headers={['Keyword', 'Website', 'Blog', 'Google posts', 'AEO', 'AI search', 'ChatGPT']} rows={6} bare /></SkCard>;
   if (!d.total) return <Card><p className="py-10 text-center text-13 text-slate-500">Save some keywords first: find them in <Link to="/keyword-management/ai" className="font-semibold text-indigo-600 hover:underline">Find Keywords</Link>, then come back to put them to work.</p></Card>;
-  const rows = d.items.filter(i => !onlyOpen || AREA_ORDER.some(a => i.planned.includes(a) && i.used[a] === false));
+  const rows = usePage.rows;
   const link = (a, i) => ({
     blog: `/ai-content-generation/blog?topic=${encodeURIComponent(i.keyword)}`, gmb_post: `/google-posts?topic=${encodeURIComponent(i.keyword)}`,
     aeo: '/website-audit?tab=schema', chatgpt: '/chatgpt-business/profile', website: '/website-audit?tab=report'
@@ -1750,9 +1762,10 @@ function UseIt({ b, kw }) {
       <ErrorNote>{error}</ErrorNote>
       <Card pad={false} title="Put your keywords to work" subtitle="For every saved keyword: where it already appears, and where it is meant to be used. Each button opens the right place with the keyword ready."
         action={<label className="inline-flex items-center gap-2 text-12.5 text-slate-600 cursor-pointer"><input type="checkbox" checked={onlyOpen} onChange={e => setOnlyOpen(e.target.checked)} />Only what is planned but not done</label>}>
+        {d.items.length > 10 && <div className="px-4 py-3 border-b border-slate-100"><input value={useQ} onChange={e => setUseQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-full max-w-xs px-3 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
         <div className="overflow-x-auto">
           <table className="w-full text-13 min-w-[860px]">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="p-3 text-left font-semibold">Keyword</th>{AREA_ORDER.map(a => <th key={a} className="p-3 text-left font-semibold" title={AREA_HELP[a]}>{USE_LABEL[a]}</th>)}<th className="p-3 text-left font-semibold">Plan</th></tr></thead>
+            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={useSort} onSort={onUseSort} className="p-3">Keyword</SortTh>{AREA_ORDER.map(a => <SortTh key={a} id={`a:${a}`} sort={useSort} onSort={onUseSort} first="desc" className="p-3" title={AREA_HELP[a]}>{USE_LABEL[a]}</SortTh>)}<SortTh id="plan" sort={useSort} onSort={onUseSort} first="desc" className="p-3">Plan</SortTh></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map(i => (
                 <tr key={i.id} className="align-top hover:bg-slate-50">
@@ -1770,6 +1783,7 @@ function UseIt({ b, kw }) {
             </tbody>
           </table>
         </div>
+        <Pager p={usePage} label="keywords" />
       </Card>
       <p className="text-11.5 text-slate-400">“Used” is read from your real content: the website crawl and profile, published posts, blog articles, question headings (AEO), tracked AI questions (GEO) and the ChatGPT profile and feed. A keyword counts as used only when all its words appear together.</p>
     </div>
@@ -1779,17 +1793,24 @@ function UseIt({ b, kw }) {
 const FIND_TABS = ['ai', 'discover', 'planner', 'explorer'];
 const SAVE_TABS = ['tracked', 'topics', 'use', 'status'];
 const SOURCES = [['ai', 'AI suggestions', 'Keywords and questions written from what your business has really done and could grow into'], ['discover', 'Ideas for my business', 'Built from your services, area, website and competitors'], ['planner', 'Google numbers', 'Search volume, competition and bids from the Google Keyword Planner'], ['explorer', 'Other platforms', 'Suggestions from YouTube, Bing, Amazon and more']];
-const SAVED_VIEWS = [['tracked', 'My keywords', 'Every saved keyword with its rank and the page it should rank with'], ['topics', 'Topics', 'Group the keywords into topics, one page per topic'], ['use', 'Keyword Usage', 'Blog, Google posts, AEO, GEO, ChatGPT and the website'], ['status', 'Rankings', 'Where each keyword ranks now, what it earns and whether it is worth pushing']];
-const pill = (on) => `h-9 px-4 rounded-full text-13 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
 
 function Keywords({ b, tab, kw, onSaved, seedSearch }) {
   const tracked = kw.data?.keywords || [];
+  // a source that was opened stays in the page (hidden) while another is on screen: its results are still there when you come back
+  const [opened, setOpened] = useState(() => new Set([tab]));
+  useEffect(() => { setOpened(o => (o.has(tab) ? o : new Set([...o, tab]))); }, [tab]);
+  const live = (id) => opened.has(id) || tab === id;
+  // a source that is hidden keeps the search it last ran: it answers a new one when it is opened, so one search does not ask all four sources at once
+  const last = React.useRef({});
+  if (FIND_TABS.includes(tab)) last.current[tab] = seedSearch;
+  const seedOf = (id) => last.current[id] || seedSearch;
+  const keep = (id, node) => live(id) && <div key={id} hidden={tab !== id}>{node}</div>;
   return (
     <>
-      {tab === 'ai' && <AiSuggestions b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
-      {tab === 'discover' && <Discover b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
-      {tab === 'planner' && <GooglePlanner b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
-      {tab === 'explorer' && <KeywordExplorer b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
+      {keep('ai', <AiSuggestions b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedOf('ai')} />)}
+      {keep('discover', <Discover b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedOf('discover')} />)}
+      {keep('planner', <GooglePlanner b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedOf('planner')} />)}
+      {keep('explorer', <KeywordExplorer b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedOf('explorer')} />)}
       {tab === 'tracked' && <Tracked b={b} kw={kw} />}
       {tab === 'topics' && <Topics b={b} kw={kw} />}
       {tab === 'use' && <UseIt b={b} kw={kw} />}
@@ -1798,60 +1819,9 @@ function Keywords({ b, tab, kw, onSaved, seedSearch }) {
   );
 }
 
-/** The four steps (find, save, group, track), where the project stands on each. */
-function PathBar({ progress, tab, setTab }) {
-  const at = FIND_TABS.includes(tab) ? 'find' : tab === 'tracked' ? 'save' : tab === 'topics' ? 'group' : tab === 'status' ? 'track' : 'use';
-  const go = { find: 'ai', save: 'tracked', group: 'topics', use: 'use' };
-  const steps = progress?.steps || [];
-  if (!steps.length) return <div className="h-16 rounded-xl bg-slate-100 animate-pulse mb-5" role="status" aria-busy="true" />;
-  return (
-    <nav aria-label="Keyword steps" className="bg-white rounded-xl border border-slate-200 shadow-sm p-1.5 flex flex-wrap items-stretch gap-1 mb-5">
-      {steps.map((st, i) => {
-        const current = st.key === at;
-        const inner = (
-          <>
-            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-12 font-bold shrink-0 ${current ? 'bg-white/20 text-white' : st.done ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>{st.done && !current ? <Check size={14} /> : i + 1}</span>
-            <span className="min-w-0 text-left"><span className={`block text-13 font-semibold ${current ? 'text-white' : 'text-slate-800'}`}>{st.title}</span><span className={`block text-11.5 truncate ${current ? 'text-indigo-100' : 'text-slate-500'}`} title={st.detail}>{st.detail}</span></span>
-          </>
-        );
-        const cls = `flex-1 min-w-[150px] rounded-lg px-3 py-2 flex items-center gap-2.5 cursor-pointer ${current ? 'bg-indigo-600' : 'hover:bg-slate-50'}`;
-        return st.key === 'track'
-          ? <Link key={st.key} to={st.to} className={cls}>{inner}</Link>
-          : <button key={st.key} type="button" onClick={() => setTab(go[st.key])} aria-current={current ? 'step' : undefined} className={cls}>{inner}</button>;
-      })}
-    </nav>
-  );
-}
-
-function NextStep({ progress, tab, bid, reload }) {
-  const navigate = useNavigate();
-  const [busy, error, run] = useAction();
-  if (!progress) return null;
-  if (progress.complete) return <div className="mt-6 rounded-xl bg-emerald-50 text-emerald-900 px-4 py-3 text-13 flex items-center gap-2"><CheckCircle2 size={16} /> All four steps are done: {progress.saved} keywords saved, grouped, and checked on Google. Check the positions again in <Link to="/rank-tracking/positions" className="font-semibold underline">Position Tracking</Link>.</div>;
-  const n = progress.next;
-  // On the page of the very step that is open, a link to itself does nothing: offer the action that finishes it
-  let action = <Link to={n.to} className="h-9 px-4 rounded-lg inline-flex items-center gap-1.5 text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">{n.key === 'track' ? 'Open Position Tracking' : `Go to ${n.title}`}<ArrowRight size={14} /></Link>;
-  let detail = n.detail;
-  if (n.key === 'group' && tab === 'topics') {
-    if (progress.ungrouped?.length) {
-      detail = `${n.detail} Not in a topic yet: ${progress.ungrouped.join(', ')}.`;
-      action = <Button variant="ai" icon={Sparkles} busy={busy === 'group'} onClick={() => run('group', async () => { await api(`/businesses/${bid}/keywords/cluster`, { method: 'POST' }); reload(); })}>Group them into topics</Button>;
-    } else if (progress.unmapped?.length) {
-      detail = `${n.detail} Still without a page: ${progress.unmapped.join(', ')}.`;
-      action = <Button variant="primary" icon={ArrowRight} onClick={() => navigate('/keyword-management/tracked')}>Give {progress.unmapped.length === 1 ? 'it' : 'them'} a page</Button>;
-    }
-  }
-  return (
-    <div className="mt-6 mb-16 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 flex flex-wrap items-center gap-3 sm:pr-24">
-      <div className="flex-1 min-w-[220px] text-13 text-indigo-950"><b>Next step: {n.title}.</b> {detail}</div>
-      {action}
-      {error && <p className="basis-full text-12 text-red-600">{error}</p>}
-    </div>
-  );
-}
-
 const FLOW_AT = { workspace: 'workspace', ai: 'find', discover: 'find', planner: 'find', explorer: 'find', tracked: 'mine', topics: 'topics', use: 'use', mapping: 'mapping', status: 'status' };
 
+const FIND_ICON = { ai: Sparkles, discover: MapPin, planner: BarChart2, explorer: Globe };
 const FIND_CARDS = [
   ['ai', 'AI suggestions', 'Written from your business: what it does, what competitors win, what is missing'],
   ['discover', 'Ideas for my business', 'Real Google searches around your services and your areas'],
@@ -1865,24 +1835,32 @@ const FIND_HINT = {
   explorer: 'Type a keyword to see what people search for on other platforms.',
 };
 
-/** The top of Find Keywords: one search box, and the four places to look as cards. */
+/** The top of Find Keywords: the four places to look (one click shows that source's results) and one search box that asks the one you are on. */
 function FindHeader({ tab, setTab, typed, setTyped, onSearch, seedText }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-5">
-      <form onSubmit={(e) => { e.preventDefault(); onSearch(); }} role="search" className="flex flex-wrap gap-2">
-        <label className="relative flex-1 min-w-[240px]"><Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-          <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search a keyword or topic" aria-label="Search keywords" className="w-full h-11 pl-10 pr-3 text-14 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
-        <Button type="submit" variant="primary" icon={Search} className="h-11 px-6" disabled={typed.trim().length < 2}>Search</Button>
-      </form>
-      <p className="mt-1.5 text-12 text-slate-500">{FIND_HINT[tab]}{seedText ? <> Showing results for <b className="text-slate-700">{seedText}</b>.</> : null}</p>
-      <div className="mt-4 text-12 font-semibold uppercase tracking-wide text-slate-500">Where to look</div>
-      <div role="tablist" aria-label="Where the ideas come from" className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        {FIND_CARDS.map(([id, label, text]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-            className={`text-left rounded-lg px-3.5 py-3 cursor-pointer ring-1 ring-inset transition-colors ${tab === id ? 'bg-indigo-50 ring-indigo-400' : 'bg-white ring-slate-200 hover:bg-slate-50'}`}>
-            <span className={`block text-13.5 font-semibold ${tab === id ? 'text-indigo-800' : 'text-slate-900'}`}>{label}</span>
-            <span className="block text-12 text-slate-500 mt-0.5 leading-snug">{text}</span>
-          </button>))}
+    <div className="bg-white rounded-xl ring-1 ring-slate-200 shadow-sm mb-5 overflow-hidden">
+      <div role="tablist" aria-label="Where the ideas come from" className="grid sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 border-b border-slate-200">
+        {FIND_CARDS.map(([id, label, text]) => {
+          const Icon = FIND_ICON[id];
+          const on = tab === id;
+          return (
+            <button key={id} type="button" role="tab" aria-selected={on} onClick={() => setTab(id)}
+              className={`text-left px-5 py-4 cursor-pointer flex items-start gap-3 border-b-2 -mb-px transition-colors ${on ? 'bg-indigo-50/60 border-indigo-600' : 'border-transparent hover:bg-slate-50'}`}>
+              <span className={`mt-0.5 w-9 h-9 rounded-lg inline-flex items-center justify-center shrink-0 ${on ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}><Icon size={17} /></span>
+              <span className="min-w-0">
+                <span className={`block text-14 font-semibold ${on ? 'text-indigo-900' : 'text-slate-900'}`}>{label}</span>
+                <span className="block text-12 text-slate-500 mt-0.5 leading-snug">{text}</span>
+              </span>
+            </button>);
+        })}
+      </div>
+      <div className="px-5 py-4">
+        <form onSubmit={(e) => { e.preventDefault(); onSearch(); }} role="search" className="flex flex-wrap gap-2">
+          <label className="relative flex-1 min-w-[240px]"><Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+            <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search a keyword or topic in every source" aria-label="Search keywords" className="w-full h-11 pl-10 pr-3 text-14 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+          <Button type="submit" variant="primary" icon={Search} className="h-11 px-6" disabled={typed.trim().length < 2}>Search</Button>
+        </form>
+        <p className="mt-2 text-12.5 text-slate-500">{FIND_HINT[tab]}{seedText ? <> Showing results for <b className="text-slate-700">{seedText}</b>.</> : null}</p>
       </div>
     </div>
   );
@@ -1890,7 +1868,6 @@ function FindHeader({ tab, setTab, typed, setTyped, onSearch, seedText }) {
 
 function KeywordPath({ b, tab, setTab }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
-  const progress = useApi(`/businesses/${b.id}/keywords/progress`);
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const fromUrl = (params.get('q') || '').trim();
@@ -1903,16 +1880,15 @@ function KeywordPath({ b, tab, setTab }) {
     setSeedSearch(x => ({ n: x.n + 1, text: t }));
     navigate(`/keyword-management/${tab}?q=${encodeURIComponent(t)}`, { replace: true });
   };
-  const refresh = { ...kw, reload: (q) => { kw.reload(q); progress.reload(true); } };
+  const refresh = { ...kw, reload: (q) => { kw.reload(q); } };
   // Saving a keyword from any source ends on My Keywords, with what was just saved marked.
   const saved = (names, added) => {
-    kw.reload(true); progress.reload(true);
+    kw.reload(true);
     navigate('/keyword-management/tracked', { state: { added: names || [], newCount: added ?? (names || []).length } });
   };
   if (tab === 'mapping') {
     return (
       <>
-        <KeywordFlowBar b={b} at="mapping" />
         <KeywordMappingTab b={b} />
       </>
     );
@@ -1920,24 +1896,16 @@ function KeywordPath({ b, tab, setTab }) {
   if (tab === 'workspace') {
     return (
       <>
-        <KeywordFlowBar b={b} at={FLOW_AT[tab] || 'find'} />
         <KeywordWorkspace b={b} onUse={setTab} />
       </>
     );
   }
   return (
     <>
-      <KeywordFlowBar b={b} at={FLOW_AT[tab] || 'find'} />
 
       {FIND_TABS.includes(tab) && <FindHeader tab={tab} setTab={setTab} typed={typed} setTyped={setTyped} onSearch={startSearch} seedText={seedSearch.text} />}
-      {SAVE_TABS.includes(tab) && tab !== 'tracked' && (
-        <div role="tablist" aria-label="My keywords" className="flex flex-wrap gap-2 mb-5">
-          {SAVED_VIEWS.map(([id, label, hint]) => <button key={id} type="button" role="tab" aria-selected={tab === id} title={hint} onClick={() => setTab(id)} className={pill(tab === id)}>{label}</button>)}
-        </div>
-      )}
       {tab === 'discover' && <div className="mb-5"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
       <Keywords b={b} tab={tab} kw={refresh} onSaved={saved} seedSearch={seedSearch} />
-      {!FIND_TABS.includes(tab) && tab !== 'tracked' && <NextStep progress={progress.data} tab={tab} bid={b.id} reload={() => { kw.reload(true); progress.reload(true); }} />}
     </>
   );
 }

@@ -3,6 +3,7 @@ import { ExternalLink, RefreshCw, Gauge, ClipboardCheck, Plus, Check } from 'luc
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { SeoShell, Card, Button, Badge, ErrorNote, SkList, Modal } from './SeoUi';
 import { Act } from './TableBits';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 import { api, useApi, usePoll } from './seoApi';
 
 const TAB_CLS = (on) => `h-8 px-3 text-12.5 font-semibold rounded-md cursor-pointer whitespace-nowrap ${on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`;
@@ -50,6 +51,39 @@ function MetricTile({ label, value, change, color, on, onClick, sub }) {
   );
 }
 
+/** The table under the Performance chart: sortable headings, a search box for a long list and real pages. */
+function PerfTable({ view, rows, rowKey: key, maxImp }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const kept = needle ? rows.filter(r => String(r[key] ?? '').toLowerCase().includes(needle)) : rows;
+  const { sorted, sort, onSort } = useSorted(kept, (r, k) => (k === 'first' ? r[key] : r[k]));
+  const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
+  const sh = (id, label, color, right = true) => <SortTh id={id} sort={sort} onSort={onSort} right={right} first={id === 'first' || id === 'position' ? 'asc' : 'desc'} className="px-3 py-2 text-11.5 text-slate-500 whitespace-nowrap" style={color ? { color } : undefined}>{label}</SortTh>;
+  return (
+    <>
+      {rows.length > 12 && <div className="px-3 py-2 border-b border-slate-100"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search this table" aria-label="Search this table" className="h-8 w-56 px-2.5 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
+      <div className="overflow-x-auto">
+        <table className="w-full text-13">
+          <thead><tr className="text-11.5 text-slate-500">{sh('first', { queries: 'Top searches', pages: 'Top pages', devices: 'Device', countries: 'Country' }[view], null, false)}{sh('clicks', 'Clicks', G.blue)}{sh('impressions', 'Impressions', G.purple)}{sh('ctr', 'Click rate')}{sh('position', 'Position')}<th scope="col" className={`${TH} text-right`}>Actions</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pager.rows.map(r => (
+              <tr key={r[key]} className="hover:bg-slate-50">
+                <td className="px-3 py-2 text-slate-900 max-w-[420px]">{view === 'pages' ? <Path p={r.page} /> : <span className={view === 'devices' ? 'capitalize' : ''}>{r[key]}</span>}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-medium">{num(r.clicks)}</td>
+                <td className="px-3 py-2 text-right tabular-nums"><span className="inline-flex items-center gap-2 justify-end"><span className="hidden sm:block h-1.5 rounded-full" style={{ width: Math.max(2, (r.impressions / maxImp) * 70), background: `${G.purple}55` }} />{num(r.impressions)}</span></td>
+                <td className="px-3 py-2 text-right tabular-nums">{r.ctr}%</td>
+                <td className="px-3 py-2 text-right tabular-nums">{r.position}</td>
+                <td className={ACT_TD}>{view === 'queries' ? <KeywordAction q={r.query} /> : view === 'pages' ? <PageActions url={r.page} /> : null}</td>
+              </tr>))}
+            {!pager.rows.length && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500">{rows.length ? 'Nothing matches the search.' : 'Nothing to show for this period.'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pager} label="rows" />
+    </>
+  );
+}
+
 /** Clicks, impressions, click rate and position with a daily line chart: the look of Google Search Console's Performance report. */
 function Performance({ o }) {
   const [on, setOn] = useState({ clicks: true, impressions: true, ctr: false, position: false });
@@ -85,23 +119,7 @@ function Performance({ o }) {
       </div>
       <div className="border-t border-slate-200">
         <div className="flex gap-1 px-3 pt-2 border-b border-slate-200">{views.map(([id, label]) => <button key={id} type="button" onClick={() => setView(id)} className={`px-3 py-2 text-13 font-medium cursor-pointer border-b-2 -mb-px ${view === id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{label}</button>)}</div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-13">
-            <thead><tr className="text-11.5 text-slate-500"><th className={TH}>{{ queries: 'Top searches', pages: 'Top pages', devices: 'Device', countries: 'Country' }[view]}</th><th className={`${TH} text-right`} style={{ color: G.blue }}>Clicks</th><th className={`${TH} text-right`} style={{ color: G.purple }}>Impressions</th><th className={`${TH} text-right`}>Click rate</th><th className={`${TH} text-right`}>Position</th><th className={`${TH} text-right`}>Actions</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.map(r => (
-                <tr key={r[key]} className="hover:bg-slate-50">
-                  <td className="px-3 py-2 text-slate-900 max-w-[420px]">{view === 'pages' ? <Path p={r.page} /> : <span className={view === 'devices' ? 'capitalize' : ''}>{r[key]}</span>}</td>
-                  <td className="px-3 py-2 text-right tabular-nums font-medium">{num(r.clicks)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums"><span className="inline-flex items-center gap-2 justify-end"><span className="hidden sm:block h-1.5 rounded-full" style={{ width: Math.max(2, (r.impressions / maxImp) * 70), background: `${G.purple}55` }} />{num(r.impressions)}</span></td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.ctr}%</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.position}</td>
-                  <td className={ACT_TD}>{view === 'queries' ? <KeywordAction q={r.query} /> : view === 'pages' ? <PageActions url={r.page} /> : null}</td>
-                </tr>))}
-              {!rows.length && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500">Nothing to show for this period.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <PerfTable key={view} view={view} rows={rows} rowKey={key} maxImp={maxImp} />
       </div>
     </section>
   );
@@ -178,13 +196,27 @@ function CheckModal({ s, onClose }) {
   );
 }
 
-function Table({ head, children, empty }) {
-  const rows = React.Children.toArray(children);
-  if (!rows.length) return <p className="text-13 text-slate-500 px-1 py-2">{empty}</p>;
+/** A table with paging. Give `data` + `row(item)` + `by` (a value per heading, or null) to also sort by a heading and search a long list; plain `children` rows are only paged. */
+function Table({ head, children, empty, data, row, by, size = 10, init = null }) {
+  const list = data || React.Children.toArray(children);
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const searchable = Boolean(data && by);
+  const kept = needle && searchable ? data.filter(r => by.some(f => f && String(f(r) ?? '').toLowerCase().includes(needle))) : list;
+  const { sorted, sort, onSort } = useSorted(kept, (r, k) => (by && by[k] ? by[k](r) : null), init);
+  const pager = usePager(sorted, { size, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
+  if (!list.length) return <p className="text-13 text-slate-500 px-1 py-2">{empty}</p>;
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200">
-      <table className="w-full text-13"><thead className="bg-slate-50"><tr>{head.map((h, i) => <th key={h} className={`${TH} ${i && !String(h).startsWith('_') ? '' : ''}`}>{h}</th>)}</tr></thead>
-        <tbody className="divide-y divide-slate-100">{rows}</tbody></table>
+    <div className="rounded-lg border border-slate-200 overflow-hidden">
+      {searchable && list.length > 12 && <div className="px-3 py-2 border-b border-slate-100"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search this table" aria-label="Search this table" className="h-8 w-56 px-2.5 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
+      <div className="overflow-x-auto">
+        <table className="w-full text-13"><thead className="bg-slate-50"><tr>{head.map((h, i) => (data && by && by[i]
+          ? <SortTh key={h} id={i} sort={sort} onSort={onSort} className="px-3 py-2 text-11.5 text-slate-500 whitespace-nowrap">{h}</SortTh>
+          : <th key={h} scope="col" className={TH}>{h}</th>))}</tr></thead>
+          <tbody className="divide-y divide-slate-100">{data ? pager.rows.map((r, i) => <React.Fragment key={pager.from + i}>{row(r)}</React.Fragment>) : pager.rows}
+            {!pager.rows.length && <tr><td colSpan={head.length} className="px-3 py-6 text-center text-slate-500">Nothing matches the search.</td></tr>}</tbody></table>
+      </div>
+      <Pager p={pager} label="rows" />
     </div>
   );
 }
@@ -230,21 +262,15 @@ function SearchConsole({ d, site }) {
         why="Add the ones that fit your business to My Keywords: they already bring impressions, so they are the cheapest keywords to win.">
         {s.untracked.state === 'ok' && <>
           <p className="text-13 text-slate-600 mb-2"><b>{num(s.untracked.untracked)}</b> of the {num(s.untracked.total)} searches that showed your site are not tracked.</p>
-          <Table head={['Search', 'Impressions', 'Clicks', 'Click rate', 'Position', 'Actions']} empty="Every search that showed your site is already in your keywords.">
-            {s.untracked.rows.map(r => <tr key={r.query}><td className="px-3 py-2 font-medium text-slate-900">{r.query}</td><td className="px-3 py-2 tabular-nums">{num(r.impressions)}</td><td className="px-3 py-2 tabular-nums">{num(r.clicks)}</td><td className="px-3 py-2 tabular-nums">{r.ctr}%</td><td className="px-3 py-2 tabular-nums">{r.position}</td><td className={ACT_TD}><KeywordAction q={r.query} /></td></tr>)}
-          </Table>
+          <Table head={['Search', 'Impressions', 'Clicks', 'Click rate', 'Position', 'Actions']} empty="Every search that showed your site is already in your keywords." data={s.untracked.rows} by={[r => r.query, r => r.impressions, r => r.clicks, r => r.ctr, r => r.position, null]} row={r => <tr key={r.query}><td className="px-3 py-2 font-medium text-slate-900">{r.query}</td><td className="px-3 py-2 tabular-nums">{num(r.impressions)}</td><td className="px-3 py-2 tabular-nums">{num(r.clicks)}</td><td className="px-3 py-2 tabular-nums">{r.ctr}%</td><td className="px-3 py-2 tabular-nums">{r.position}</td><td className={ACT_TD}><KeywordAction q={r.query} /></td></tr>}></Table>
           {s.untracked.rows.length > 1 && <div className="mt-2"><AddAll list={s.untracked.rows.map(r => r.query)} /></div>}</>}
       </Section>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <Section title="Pages that show but are not clicked" subtitle="Position 3 to 12, clicked clearly less than usual for that position" part={s.low_ctr_pages} why="The usual click rate by position is an industry average: it only points to pages worth a better title and description.">
-          <Table head={['Page', 'Position', 'Click rate', 'Usual', 'Clicks missing', 'Actions']} empty="No page with enough impressions earns clearly less than usual.">
-            {s.low_ctr_pages.rows.map(r => <tr key={r.page}><td className="px-3 py-2"><Path p={r.page} site={d.website} /></td><td className="px-3 py-2 tabular-nums">{r.position}</td><td className="px-3 py-2 tabular-nums">{r.ctr}%</td><td className="px-3 py-2 tabular-nums">{r.expected_ctr}%</td><td className="px-3 py-2 tabular-nums font-semibold text-amber-700">~{num(r.clicks_missing)}</td><td className={ACT_TD}><PageActions url={r.page} /></td></tr>)}
-          </Table>
+          <Table head={['Page', 'Position', 'Click rate', 'Usual', 'Clicks missing', 'Actions']} empty="No page with enough impressions earns clearly less than usual." data={s.low_ctr_pages.rows} by={[r => r.page, r => r.position, r => r.ctr, r => r.expected_ctr, r => r.clicks_missing, null]} row={r => <tr key={r.page}><td className="px-3 py-2"><Path p={r.page} site={d.website} /></td><td className="px-3 py-2 tabular-nums">{r.position}</td><td className="px-3 py-2 tabular-nums">{r.ctr}%</td><td className="px-3 py-2 tabular-nums">{r.expected_ctr}%</td><td className="px-3 py-2 tabular-nums font-semibold text-amber-700">~{num(r.clicks_missing)}</td><td className={ACT_TD}><PageActions url={r.page} /></td></tr>}></Table>
         </Section>
         <Section title="Searches that show but are not clicked" subtitle="The same check for the searches" part={s.low_ctr_queries}>
-          <Table head={['Search', 'Position', 'Click rate', 'Usual', 'Clicks missing', 'Actions']} empty="No search with enough impressions earns clearly less than usual.">
-            {s.low_ctr_queries.rows.map(r => <tr key={r.query}><td className="px-3 py-2 font-medium text-slate-900">{r.query}</td><td className="px-3 py-2 tabular-nums">{r.position}</td><td className="px-3 py-2 tabular-nums">{r.ctr}%</td><td className="px-3 py-2 tabular-nums">{r.expected_ctr}%</td><td className="px-3 py-2 tabular-nums font-semibold text-amber-700">~{num(r.clicks_missing)}</td><td className={ACT_TD}><KeywordAction q={r.query} /></td></tr>)}
-          </Table>
+          <Table head={['Search', 'Position', 'Click rate', 'Usual', 'Clicks missing', 'Actions']} empty="No search with enough impressions earns clearly less than usual." data={s.low_ctr_queries.rows} by={[r => r.query, r => r.position, r => r.ctr, r => r.expected_ctr, r => r.clicks_missing, null]} row={r => <tr key={r.query}><td className="px-3 py-2 font-medium text-slate-900">{r.query}</td><td className="px-3 py-2 tabular-nums">{r.position}</td><td className="px-3 py-2 tabular-nums">{r.ctr}%</td><td className="px-3 py-2 tabular-nums">{r.expected_ctr}%</td><td className="px-3 py-2 tabular-nums font-semibold text-amber-700">~{num(r.clicks_missing)}</td><td className={ACT_TD}><KeywordAction q={r.query} /></td></tr>}></Table>
         </Section>
       </div>
       <Section title="Which pages Google indexed, and why not" subtitle="Google's own reason for each page it was asked about" part={ix} why="Pages are checked from Page Indexing. Press Check there to refresh Google's answers.">
@@ -252,21 +278,15 @@ function SearchConsole({ d, site }) {
           <div className="flex flex-wrap gap-2 mb-3">
             <Badge tone="green">{ix.states.indexed || 0} indexed</Badge><Badge tone="amber">{ix.states.not_indexed || 0} not indexed</Badge>{ix.states.blocked ? <Badge tone="red">{ix.states.blocked} blocked</Badge> : null}{ix.unchecked ? <Badge tone="gray">{ix.unchecked} not asked yet</Badge> : null}
           </div>
-          <Table head={['Google says', 'Pages', 'Example', 'Actions']} empty="Google has not been asked about any page yet.">
-            {ix.reasons.map(r => <tr key={r.reason}><td className="px-3 py-2 text-slate-900">{r.reason}</td><td className="px-3 py-2 tabular-nums">{r.pages}</td><td className="px-3 py-2">{r.example ? <Path p={r.example} site={d.website} /> : '—'}</td><td className={ACT_TD}>{r.example ? <PageActions url={r.example} /> : null}</td></tr>)}
-          </Table></>)}
+          <Table head={['Google says', 'Pages', 'Example', 'Actions']} empty="Google has not been asked about any page yet." data={ix.reasons} by={[r => r.reason, r => r.pages, r => r.example, null]} row={r => <tr key={r.reason}><td className="px-3 py-2 text-slate-900">{r.reason}</td><td className="px-3 py-2 tabular-nums">{r.pages}</td><td className="px-3 py-2">{r.example ? <Path p={r.example} site={d.website} /> : '—'}</td><td className={ACT_TD}>{r.example ? <PageActions url={r.example} /> : null}</td></tr>}></Table></>)}
       </Section>
       <Section title="Sitemaps" subtitle="What Google read from each sitemap" part={s.sitemaps}>
-        {s.sitemaps.state === 'ok' && (s.sitemaps.sitemaps.length ? <Table head={['Sitemap', 'Pages submitted', 'Errors', 'Warnings', 'Last read by Google']} empty="">
-          {s.sitemaps.sitemaps.map(m => <tr key={m.path}><td className="px-3 py-2"><Path p={m.path} /></td><td className="px-3 py-2 tabular-nums">{m.submitted}</td><td className={`px-3 py-2 tabular-nums ${m.errors ? 'text-red-600 font-semibold' : ''}`}>{m.errors}</td><td className={`px-3 py-2 tabular-nums ${m.warnings ? 'text-amber-700 font-semibold' : ''}`}>{m.warnings}</td><td className="px-3 py-2">{m.last_read ? new Date(m.last_read).toLocaleDateString('en-GB') : 'Not read yet'}</td></tr>)}
-        </Table> : <p className="text-13 text-amber-800">{s.sitemaps.message}</p>)}
+        {s.sitemaps.state === 'ok' && (s.sitemaps.sitemaps.length ? <Table head={['Sitemap', 'Pages submitted', 'Errors', 'Warnings', 'Last read by Google']} empty="" data={s.sitemaps.sitemaps} by={[r => r.path, r => r.submitted, r => r.errors, r => r.warnings, r => (r.last_read ? Date.parse(r.last_read) : null)]} row={m => <tr key={m.path}><td className="px-3 py-2"><Path p={m.path} /></td><td className="px-3 py-2 tabular-nums">{m.submitted}</td><td className={`px-3 py-2 tabular-nums ${m.errors ? 'text-red-600 font-semibold' : ''}`}>{m.errors}</td><td className={`px-3 py-2 tabular-nums ${m.warnings ? 'text-amber-700 font-semibold' : ''}`}>{m.warnings}</td><td className="px-3 py-2">{m.last_read ? new Date(m.last_read).toLocaleDateString('en-GB') : 'Not read yet'}</td></tr>}></Table> : <p className="text-13 text-amber-800">{s.sitemaps.message}</p>)}
       </Section>
       <Section title="Rich results Google found" subtitle="Structured data Google itself detected on your busiest pages" part={s.rich_results}>
-        {s.rich_results.state === 'ok' && <Table head={['Page', 'Google found', 'Problems']} empty="">
-          {s.rich_results.pages.map(p => <tr key={p.url}><td className="px-3 py-2"><Path p={p.url} /></td>
+        {s.rich_results.state === 'ok' && <Table head={['Page', 'Google found', 'Problems']} empty="" data={s.rich_results.pages} by={[r => r.url, r => (r.types || []).length, r => (r.types || []).reduce((n, x) => n + (x.errors || 0) + (x.warnings || 0), 0)]} row={p => <tr key={p.url}><td className="px-3 py-2"><Path p={p.url} /></td>
             <td className="px-3 py-2">{p.error ? <span className="text-slate-500">{p.error}</span> : p.types.length ? p.types.map(t => <Badge key={t.type} tone={t.errors ? 'red' : t.warnings ? 'amber' : 'green'}>{t.type}</Badge>) : <span className="text-slate-500">Nothing detected</span>}</td>
-            <td className="px-3 py-2 text-12.5">{(p.types || []).filter(t => t.errors || t.warnings).map(t => <div key={t.type}>{t.type}: {t.errors} errors, {t.warnings} warnings{t.message ? ` (${t.message})` : ''}</div>)}</td></tr>)}
-        </Table>}
+            <td className="px-3 py-2 text-12.5">{(p.types || []).filter(t => t.errors || t.warnings).map(t => <div key={t.type}>{t.type}: {t.errors} errors, {t.warnings} warnings{t.message ? ` (${t.message})` : ''}</div>)}</td></tr>}></Table>}
       </Section>
     </div>
   );
@@ -310,19 +330,15 @@ function Analytics({ d }) {
       <p className="text-12.5 text-slate-500">Analytics 4 · <b className="text-slate-700">{a.property_name || a.property}</b> · last {a.period.days} days to {a.period.end}</p>
       <VisitorsOverview a={a} />
       <Section title="Organic landing pages" subtitle="Visitors who arrived from Google search: do they stay and act?" part={{ state: 'ok' }} why="Engaged = a visit longer than 10 seconds, with a key event or 2+ pages. Bounce is the opposite.">
-        <Table head={['Landing page', ...H, 'Conversion', 'Actions']} empty="No organic landing-page visits were recorded in this period.">
-          {a.landing_pages.rows.map(r => <tr key={r.path}><td className="px-3 py-2"><Path p={r.path} site={d.website} /></td>{eng(r)}<td className="px-3 py-2 tabular-nums">{r.conversion_rate}%</td><td className={ACT_TD}><PageActions url={r.path} /></td></tr>)}
-        </Table>
+        <Table head={['Landing page', ...H, 'Conversion', 'Actions']} empty="No organic landing-page visits were recorded in this period." data={a.landing_pages.rows} by={[r => r.path, r => r.sessions, r => r.engagement_rate, r => r.bounce_rate, r => r.avg_engagement_seconds, r => r.key_events, r => r.conversion_rate, null]} row={r => <tr key={r.path}><td className="px-3 py-2"><Path p={r.path} site={d.website} /></td>{eng(r)}<td className="px-3 py-2 tabular-nums">{r.conversion_rate}%</td><td className={ACT_TD}><PageActions url={r.path} /></td></tr>}></Table>
       </Section>
       <Section title="Where each landing page's visitors come from" subtitle="Organic search apart from social, referral, direct and paid" part={{ state: 'ok' }}>
-        <Table head={['Landing page', 'Sessions', 'Channels']} empty="No visits were recorded.">
-          {a.landing_channels.rows.map(r => <tr key={r.path}><td className="px-3 py-2"><Path p={r.path} site={d.website} /></td><td className="px-3 py-2 tabular-nums">{num(r.total)}</td><td className="px-3 py-2"><div className="flex flex-wrap gap-1.5">{r.channels.map(c => <span key={c.channel} className="px-2 py-0.5 rounded-full bg-slate-100 text-12 text-slate-700">{c.channel} <b className="tabular-nums">{c.share}%</b></span>)}</div></td></tr>)}
-        </Table>
+        <Table head={['Landing page', 'Sessions', 'Channels']} empty="No visits were recorded." data={a.landing_channels.rows} by={[r => r.path, r => r.total, null]} row={r => <tr key={r.path}><td className="px-3 py-2"><Path p={r.path} site={d.website} /></td><td className="px-3 py-2 tabular-nums">{num(r.total)}</td><td className="px-3 py-2"><div className="flex flex-wrap gap-1.5">{r.channels.map(c => <span key={c.channel} className="px-2 py-0.5 rounded-full bg-slate-100 text-12 text-slate-700">{c.channel} <b className="tabular-nums">{c.share}%</b></span>)}</div></td></tr>}></Table>
       </Section>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <Section title="Conversions and actions" subtitle="Key events your property counts, and other events visitors trigger" part={{ state: 'ok' }}>
           {a.events.message && <p className="text-13 text-amber-800 bg-amber-50 rounded px-3 py-2 mb-2">{a.events.message}</p>}
-          {a.events.key.length > 0 && <Table head={['Key event', 'Times']} empty=""> {a.events.key.map(e => <tr key={e.event}><td className="px-3 py-2 font-medium">{e.event}</td><td className="px-3 py-2 tabular-nums">{num(e.count)}</td></tr>)}</Table>}
+          {a.events.key.length > 0 && <Table head={['Key event', 'Times']} empty="" data={a.events.key} by={[r => r.event, r => r.count]} row={e => <tr key={e.event}><td className="px-3 py-2 font-medium">{e.event}</td><td className="px-3 py-2 tabular-nums">{num(e.count)}</td></tr>}></Table>}
           {a.events.other.length > 0 && <div className="mt-3"><div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Other events (not marked as key)</div><div className="flex flex-wrap gap-1.5">{a.events.other.map(e => <span key={e.event} className="px-2.5 py-1 rounded-full bg-slate-100 text-12.5 text-slate-800">{e.event} <b className="tabular-nums">{num(e.count)}</b></span>)}</div></div>}
         </Section>
         <Section title="New and returning visitors" subtitle="Whether visitors come back" part={{ state: 'ok' }}>
@@ -336,7 +352,7 @@ function Analytics({ d }) {
           <Table head={['Device', ...H]} empty="No data.">{a.devices.rows.map(r => <tr key={r.device}><td className="px-3 py-2 font-medium capitalize">{r.device}</td>{eng(r)}</tr>)}</Table>
         </Section>
         <Section title="Cities" subtitle="Where engaged visitors are" part={{ state: 'ok' }}>
-          <Table head={['City', ...H]} empty="No city data.">{a.cities.rows.map(r => <tr key={r.city}><td className="px-3 py-2 font-medium">{r.city}</td>{eng(r)}</tr>)}</Table>
+          <Table head={['City', ...H]} empty="No city data." data={a.cities.rows} by={[r => r.city, r => r.sessions, r => r.engagement_rate, r => r.bounce_rate, r => r.avg_engagement_seconds, r => r.key_events]} row={r => <tr key={r.city}><td className="px-3 py-2 font-medium">{r.city}</td>{eng(r)}</tr>}></Table>
         </Section>
       </div>
       {Object.keys(a.errors || {}).length > 0 && <p className="text-12 text-amber-800">Google refused {Object.keys(a.errors).length} report(s): {Object.values(a.errors)[0]}</p>}
@@ -358,14 +374,12 @@ function Together({ d }) {
           </div>) : <p className="text-13 text-slate-600">{ch?.message}</p>}
       </Section>
       <Section title="Visitors arrive but do not engage or act" subtitle="Organic landing pages with many visits and a weak result" part={none(j.engagement_gaps) ? j.engagement_gaps : { state: 'ok' }}>
-        <Table head={['Page', 'Organic visits', 'Engaged', 'Key events', 'Why', 'What to check', 'Actions']} empty="No busy organic page has a weak engagement or conversion.">
-          {(j.engagement_gaps?.rows || []).map(r => <tr key={r.path}><td className="px-3 py-2"><Path p={r.path} site={d.website} /></td><td className="px-3 py-2 tabular-nums">{num(r.organic_sessions)}</td><td className="px-3 py-2 tabular-nums">{r.engagement_rate}%</td><td className="px-3 py-2 tabular-nums">{r.key_events}</td><td className="px-3 py-2 text-12.5">{r.why}</td><td className="px-3 py-2 text-12.5 text-slate-600">{r.fix}</td><td className={ACT_TD}><PageActions url={r.path} /></td></tr>)}
-        </Table>
+        <Table head={['Page', 'Organic visits', 'Engaged', 'Key events', 'Why', 'What to check', 'Actions']} empty="No busy organic page has a weak engagement or conversion." data={(j.engagement_gaps?.rows || [])} by={[r => r.path, r => r.organic_sessions, r => r.engagement_rate, r => r.key_events, r => r.why, r => r.fix, null]} row={r => <tr key={r.path}><td className="px-3 py-2"><Path p={r.path} site={d.website} /></td><td className="px-3 py-2 tabular-nums">{num(r.organic_sessions)}</td><td className="px-3 py-2 tabular-nums">{r.engagement_rate}%</td><td className="px-3 py-2 tabular-nums">{r.key_events}</td><td className="px-3 py-2 text-12.5">{r.why}</td><td className="px-3 py-2 text-12.5 text-slate-600">{r.fix}</td><td className={ACT_TD}><PageActions url={r.path} /></td></tr>}></Table>
       </Section>
       <Section title="Indexed but unseen pages" subtitle="Google has them, nobody sees or visits them" part={none(j.zombies) ? j.zombies : { state: 'ok' }} why={j.zombies?.basis}>
         {j.zombies?.state === 'ok' && <>
           <p className="text-13 text-slate-600 mb-2"><b>{j.zombies.count}</b> of {j.zombies.of} indexed pages. {j.zombies.fix}</p>
-          <Table head={['Page', 'Last crawled by Google', 'Actions']} empty="Every indexed page shows in search results.">{j.zombies.rows.map(r => <tr key={r.url}><td className="px-3 py-2"><Path p={r.url} /></td><td className="px-3 py-2">{r.last_crawl ? new Date(r.last_crawl).toLocaleDateString('en-GB') : '—'}</td><td className={ACT_TD}><PageActions url={r.url} /></td></tr>)}</Table></>}
+          <Table head={['Page', 'Last crawled by Google', 'Actions']} empty="Every indexed page shows in search results." data={j.zombies.rows} by={[r => r.url, r => (r.last_crawl ? Date.parse(r.last_crawl) : null), null]} row={r => <tr key={r.url}><td className="px-3 py-2"><Path p={r.url} /></td><td className="px-3 py-2">{r.last_crawl ? new Date(r.last_crawl).toLocaleDateString('en-GB') : '—'}</td><td className={ACT_TD}><PageActions url={r.url} /></td></tr>}></Table></>}
       </Section>
     </div>
   );
@@ -467,9 +481,7 @@ function SiteFiles({ b }) {
             {tile('In the sitemap, never audited', d.sitemap_not_audited.length, d.sitemap_not_audited.length ? 'text-slate-900' : 'text-emerald-700')}
           </div>
           <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Seen on the site but missing from the sitemap</div>
-          <Table head={['Page', 'Seen by', 'Actions']} empty="Every page the software has seen is in the sitemap.">
-            {d.missing_from_sitemap.map(m => <tr key={m.url}><td className="px-3 py-2"><Path p={m.url} /></td><td className="px-3 py-2 text-12.5 text-slate-600">{m.sources.join(', ')}</td><td className={ACT_TD}><PageActions url={m.url} /></td></tr>)}
-          </Table>
+          <Table head={['Page', 'Seen by', 'Actions']} empty="Every page the software has seen is in the sitemap." data={d.missing_from_sitemap} by={[r => r.url, r => (r.sources || []).join(', '), null]} row={m => <tr key={m.url}><td className="px-3 py-2"><Path p={m.url} /></td><td className="px-3 py-2 text-12.5 text-slate-600">{m.sources.join(', ')}</td><td className={ACT_TD}><PageActions url={m.url} /></td></tr>}></Table>
           {d.missing_from_sitemap.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-2"><Button size="sm" icon={copied ? Check : Plus} onClick={copy}>{copied ? 'Copied' : 'Copy the XML for these pages'}</Button><span className="text-12 text-slate-500">Paste it inside the sitemap's &lt;urlset&gt;, then submit the sitemap in Search Console. Leave out pages that should not be found (thank-you pages, tests).</span></div>}
           {d.sitemap_not_audited.length > 0 && <details className="mt-3 text-13"><summary className="cursor-pointer font-semibold text-slate-700">{d.sitemap_not_audited.length} sitemap pages the audits have not seen</summary><ul className="mt-2 space-y-1">{d.sitemap_not_audited.map(u => <li key={u} className="flex items-center gap-2"><Path p={u} /><PageActions url={u} /></li>)}</ul></details>}
           <details className="mt-3 text-13"><summary className="cursor-pointer font-semibold text-slate-700">All {sm.count} pages in the sitemap</summary><ul className="mt-2 space-y-1">{sm.urls.map(x => <li key={x.url} className="flex flex-wrap items-center gap-x-3"><Path p={x.url} />{x.lastmod && <span className="text-11.5 text-slate-500">updated {x.lastmod}</span>}</li>)}</ul></details></>}

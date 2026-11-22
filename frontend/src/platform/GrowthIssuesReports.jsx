@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Wrench as WrenchIcon, Download, AlertTriangle, Bell, Sparkles, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, ExternalLink, ShieldCheck, FileText, Loader2, Mail, Play, RefreshCw, Search, SkipForward, Wrench, XCircle } from 'lucide-react';
 import { Button, Drawer } from './SeoUi';
 import Select from '../components/Select';
 import { api, SEO_API } from './seoApi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -183,8 +184,14 @@ function IssueDetail({ a, bid, onChanged }) {
   );
 }
 
-function IssueTable({ rows, bid, onChanged }) {
+const SEV_ORDER = Object.keys(SEV);
+const ISSUE_VAL = (a, k) => (k === 'severity' ? SEV_ORDER.indexOf(a.severity) : k === 'title' ? a.title : k === 'area' ? (AREA[a.area] || a.area) : k === 'source' ? a.source_label : k === 'found' ? (a.found_at || a.first_seen) : k === 'due' ? a.due_on : k === 'status' ? (STATUS[a.status] || STATUS.todo)[0] : undefined);
+
+function IssueTable({ rows: allRows, bid, onChanged }) {
   const [openId, setOpenId] = useState(null);
+  const { sorted, sort, onSort } = useSorted(allRows, ISSUE_VAL);
+  const pager = usePager(sorted, { size: 25, resetKey: `${allRows.length}|${sort?.key}|${sort?.dir}` });
+  const rows = pager.rows;
   const th = 'px-3 py-3 text-left font-medium whitespace-nowrap';
   return (
     <Card className="overflow-hidden">
@@ -206,7 +213,7 @@ function IssueTable({ rows, bid, onChanged }) {
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-14 min-w-[980px]">
           <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200">
-            <th className={`${th} w-10`}><span className="sr-only">Expand</span></th><th className={th}>Severity</th><th className={`${th} w-[34%]`}>Issue</th><th className={th}>Area</th><th className={th}>Source</th><th className={th}>Found</th><th className={th}>Due</th><th className={th}>Status</th><th className={`${th} text-right`}>Fix</th>
+            <th className={`${th} w-10`}><span className="sr-only">Expand</span></th><SortTh id="severity" sort={sort} onSort={onSort} className={th}>Severity</SortTh><SortTh id="title" sort={sort} onSort={onSort} className={`${th} w-[34%]`}>Issue</SortTh><SortTh id="area" sort={sort} onSort={onSort} className={th}>Area</SortTh><SortTh id="source" sort={sort} onSort={onSort} className={th}>Source</SortTh><SortTh id="found" sort={sort} onSort={onSort} first="desc" className={th}>Found</SortTh><SortTh id="due" sort={sort} onSort={onSort} className={th}>Due</SortTh><SortTh id="status" sort={sort} onSort={onSort} className={th}>Status</SortTh><th className={`${th} text-right`}>Fix</th>
           </tr></thead>
           <tbody>
             {rows.map(a => {
@@ -231,6 +238,7 @@ function IssueTable({ rows, bid, onChanged }) {
           </tbody>
         </table>
       </div>
+      <Pager p={pager} label="issues" />
       <p className="px-4 py-3 text-12 text-slate-500 border-t border-slate-100 bg-slate-50/60">Click a row to read what is wrong, the steps to fix it, how it will be verified and where it came from. Severity sets the deadline: critical 3 days, serious 7, warning 14, improvement 30.</p>
     </Card>
   );
@@ -344,6 +352,24 @@ function Delta({ v, invert }) {
   return <span className={`tabular-nums font-semibold ${good ? 'text-emerald-600' : 'text-red-600'}`}>{signed(v)}</span>;
 }
 
+const RK_VAL = (k, key) => (key === 'keyword' ? k.keyword : key === 'start' ? k.start : key === 'end' ? k.end : key === 'change' ? k.change : key === 'maps' ? k.maps_end : undefined);
+
+function ReportKeywords({ keywords }) {
+  const { sorted, sort, onSort } = useSorted(keywords, RK_VAL);
+  const pager = usePager(sorted, { size: 10, resetKey: `${keywords.length}|${sort?.key}|${sort?.dir}` });
+  return (
+    <div className="rounded-xl border border-slate-200 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-13.5">
+      <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200">
+        <SortTh id="keyword" sort={sort} onSort={onSort} className="px-4 py-2.5 font-medium">Keyword (Google position)</SortTh>
+        <SortTh id="start" sort={sort} onSort={onSort} right className="px-4 py-2.5 font-medium">Start</SortTh>
+        <SortTh id="end" sort={sort} onSort={onSort} right className="px-4 py-2.5 font-medium">End</SortTh>
+        <SortTh id="change" sort={sort} onSort={onSort} right first="desc" className="px-4 py-2.5 font-medium">Change</SortTh>
+        <SortTh id="maps" sort={sort} onSort={onSort} right className="px-4 py-2.5 font-medium">Maps now</SortTh></tr></thead>
+      <tbody className="divide-y divide-slate-100">{pager.rows.map(k => <tr key={k.keyword} className="h-10"><td className="px-4 text-slate-800">{k.keyword}</td><td className="px-4 text-right tabular-nums text-slate-600">{num(k.start)}</td><td className="px-4 text-right tabular-nums text-slate-900">{k.end == null ? <span className="text-slate-400">not in results</span> : k.end}</td><td className="px-4 text-right"><Delta v={k.change} /></td><td className="px-4 text-right tabular-nums text-slate-600">{num(k.maps_end)}</td></tr>)}</tbody>
+    </table></div><Pager p={pager} label="keywords" sizes={[10, 25, 50, 100]} /></div>
+  );
+}
+
 function ReportBody({ r }) {
   const d = r.data || {};
   const p = d.presence || {};
@@ -376,10 +402,7 @@ function ReportBody({ r }) {
         </table></div>
       )}
       {arr(d.keywords).length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full text-13.5">
-          <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200"><th className="px-4 py-2.5 text-left font-medium">Keyword (Google position)</th><th className="px-4 py-2.5 text-right font-medium">Start</th><th className="px-4 py-2.5 text-right font-medium">End</th><th className="px-4 py-2.5 text-right font-medium">Change</th><th className="px-4 py-2.5 text-right font-medium">Maps now</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">{d.keywords.map(k => <tr key={k.keyword} className="h-10"><td className="px-4 text-slate-800">{k.keyword}</td><td className="px-4 text-right tabular-nums text-slate-600">{num(k.start)}</td><td className="px-4 text-right tabular-nums text-slate-900">{k.end == null ? <span className="text-slate-400">not in results</span> : k.end}</td><td className="px-4 text-right"><Delta v={k.change} /></td><td className="px-4 text-right tabular-nums text-slate-600">{num(k.maps_end)}</td></tr>)}</tbody>
-        </table></div>
+        <ReportKeywords keywords={d.keywords} />
       )}
       {arr(t.items).length > 0 && (
         <div><h4 className="text-14 font-semibold text-slate-900 mb-2">Targets</h4>
@@ -510,6 +533,41 @@ export function ReportsView({ bid }) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------- keyword-to-content plan
+const cover = (t, k) => { const c = t.coverage?.[k]; return c ? (c.done ? 0 : c.missing.length) : undefined; };
+const CP_VAL = (t, key) => (key === 'topic' ? t.topic : key === 'volume' ? (t.volume || null) : key.startsWith('s:') ? cover(t, key.slice(2)) : undefined);
+
+function ContentPlanTable({ topics, surfaces }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const kept = useMemo(() => (needle ? topics.filter(t => `${t.topic} ${t.keywords.map(k => k.keyword).join(' ')}`.toLowerCase().includes(needle)) : topics), [topics, needle]);
+  const { sorted, sort, onSort } = useSorted(kept, CP_VAL);
+  const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
+  return (
+    <Card className="overflow-hidden">
+      {topics.length > 10 && <div className="px-4 py-3 border-b border-slate-100"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search topics and keywords" aria-label="Search topics and keywords" className="h-8 w-64 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
+      <div className="overflow-x-auto">
+        <table className="w-full text-14 min-w-[860px]">
+          <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200">
+            <SortTh id="topic" sort={sort} onSort={onSort} className="px-4 py-3 font-medium">Topic and keywords</SortTh>
+            <SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className="px-3 py-3 font-medium">Searches / mo</SortTh>
+            {surfaces.map(([k, v]) => <SortTh key={k} id={`s:${k}`} sort={sort} onSort={onSort} first="desc" className="px-3 py-3 font-medium whitespace-nowrap capitalize">{v.label.replace("the ", "")}</SortTh>)}</tr></thead>
+          <tbody>{pager.rows.map(t => (
+            <tr key={t.topic} className="border-b border-slate-100 align-top">
+              <td className="px-4 py-3.5"><div className="font-medium text-slate-900">{t.topic}</div><ul className="mt-1 space-y-0.5">{t.keywords.map(k => <li key={k.keyword} className="text-12.5 text-slate-600">{k.keyword}{k.rank ? <span className="text-slate-400"> · rank {k.rank}</span> : null}{k.target_url ? <span className="block text-11 text-slate-400 break-all">page: {k.target_url}</span> : <span className="block text-11 text-amber-600">no target page</span>}</li>)}</ul></td>
+              <td className="px-3 py-3.5 text-right tabular-nums text-slate-700">{t.volume || '—'}</td>
+              {surfaces.map(([k, v]) => { const c = t.coverage[k]; return (
+                <td key={k} className="px-3 py-3.5 text-center">{c.done ? <CheckCircle2 size={18} className="inline text-emerald-600" aria-label="Covered" />
+                  : <Link to={v.link} title={`Missing: ${c.missing.join(', ')}`}><Chip cls="bg-amber-50 text-amber-700">{c.missing.length} missing</Chip></Link>}</td>); })}
+            </tr>))}
+            {!pager.rows.length && <tr><td colSpan={2 + surfaces.length} className="px-4 py-8 text-center text-13 text-slate-500">No topic matches.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pager} label="topics" />
+    </Card>
+  );
+}
+
 export function ContentPlanView({ bid }) {
   const [d, setD] = useState(null);
   const [error, setError] = useState('');
@@ -524,20 +582,7 @@ export function ContentPlanView({ bid }) {
         <p className="mt-0.5 text-12.5 text-slate-500">Each keyword topic against every place it should appear. A tick means every keyword of the topic is already used there (read from your real pages, profile, posts and articles). A number is how many keywords are still missing; its fix task, with an AI draft, is in the Issues tab. {d.tracked} keywords tracked, {d.grouped} grouped; Start plan groups the rest.</p>
       </Card>
       {arr(d.topics).length === 0 ? <Card className="p-8 text-center text-13 text-slate-500">No keywords to plan yet. Track keywords in Keyword Management, then press Start plan.</Card> : (
-        <Card className="overflow-hidden"><div className="overflow-x-auto">
-          <table className="w-full text-14 min-w-[860px]">
-            <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200"><th className="px-4 py-3 text-left font-medium">Topic and keywords</th><th className="px-3 py-3 text-right font-medium">Searches / mo</th>
-              {surfaces.map(([k, v]) => <th key={k} className="px-3 py-3 text-center font-medium whitespace-nowrap capitalize">{v.label.replace("the ", "")}</th>)}</tr></thead>
-            <tbody>{d.topics.map(t => (
-              <tr key={t.topic} className="border-b border-slate-100 align-top">
-                <td className="px-4 py-3.5"><div className="font-medium text-slate-900">{t.topic}</div><ul className="mt-1 space-y-0.5">{t.keywords.map(k => <li key={k.keyword} className="text-12.5 text-slate-600">{k.keyword}{k.rank ? <span className="text-slate-400"> · rank {k.rank}</span> : null}{k.target_url ? <span className="block text-11 text-slate-400 break-all">page: {k.target_url}</span> : <span className="block text-11 text-amber-600">no target page</span>}</li>)}</ul></td>
-                <td className="px-3 py-3.5 text-right tabular-nums text-slate-700">{t.volume || '—'}</td>
-                {surfaces.map(([k, v]) => { const c = t.coverage[k]; return (
-                  <td key={k} className="px-3 py-3.5 text-center">{c.done ? <CheckCircle2 size={18} className="inline text-emerald-600" aria-label="Covered" />
-                    : <Link to={v.link} title={`Missing: ${c.missing.join(', ')}`}><Chip cls="bg-amber-50 text-amber-700">{c.missing.length} missing</Chip></Link>}</td>); })}
-              </tr>))}</tbody>
-          </table>
-        </div></Card>
+        <ContentPlanTable topics={d.topics} surfaces={surfaces} />
       )}
     </div>
   );

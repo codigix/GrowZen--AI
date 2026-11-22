@@ -1,5 +1,5 @@
 import ProcessTasks from './ProcessTasks';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   LayoutDashboard, Store, BarChart3, Star, Newspaper, Image as ImageIcon, MapPinned, MessageCircleQuestion, Sparkles, Swords, Bot, FileText,
@@ -10,6 +10,7 @@ import { ProfileStrength, QuickTiles, MissingInfoCard, ShareProfileCard, NewRevi
 import { VerificationCard, ManagersCard, AdvertiseCard, DangerCard } from './GbpAdmin';
 import { refreshBusinesses, Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill, areaCls, useAction, useDoubleConfirm, Sk, SkStats, SkTable, SkList, SkScore, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 import { useGbpLive } from './AccessGate';
 import { VerifyPill } from './GbpAccounts';
 
@@ -213,6 +214,25 @@ export function OverviewSection({ b, go, onOpen }) {
   );
 }
 
+const kwImpr = (k, key) => (key === 'keyword' ? k.keyword : k.impressions ?? (k.below != null ? k.below - 0.5 : null));
+
+/** The searches that showed the profile: sortable, searchable and paged (Google rounds low values to "< n"). */
+function SearchKeywordsTable({ keywords, pad }) {
+  const [q, setQ] = useState('');
+  const kept = useMemo(() => { const n = q.trim().toLowerCase(); return n ? keywords.filter(k => String(k.keyword).toLowerCase().includes(n)) : keywords; }, [keywords, q]);
+  const { sorted, sort, onSort } = useSorted(kept, kwImpr);
+  const pager = usePager(sorted, { size: 10, resetKey: q });
+  return (
+    <>
+      {keywords.length > 10 && <div className={`${pad} py-2 border-b border-slate-100`}><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search these keywords" aria-label="Search these keywords" className="h-8 w-full max-w-xs px-3 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
+      <div className="max-h-96 overflow-auto"><table className="w-full text-13"><thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className={`${pad} py-2`}>Keyword</SortTh><SortTh id="impressions" sort={sort} onSort={onSort} right first="desc" className={`${pad} py-2`}>Impressions</SortTh></tr></thead>
+        <tbody className="divide-y divide-slate-100">{pager.rows.map(k => <tr key={k.keyword}><td className={`${pad} py-2 text-slate-800`}>{k.keyword}</td><td className={`${pad} py-2 text-right tabular-nums`}>{k.impressions != null ? fmt(k.impressions) : <span className="text-slate-400">&lt; {k.below}</span>}</td></tr>)}
+          {!pager.rows.length && <tr><td colSpan={2} className="px-5 py-6 text-center text-slate-500">No keyword matches.</td></tr>}</tbody></table></div>
+      <Pager p={pager} label="keywords" />
+    </>
+  );
+}
+
 /** Every Google performance metric Google returns for the profile. Anything it does not return is said so, never faked. */
 export function PerformanceMetrics({ b }) {
   const live = useApi(`/businesses/${b.id}/gbp/live`);
@@ -233,8 +253,7 @@ export function PerformanceMetrics({ b }) {
       </div>
       <Card title="Monthly search keywords" subtitle="Searches that showed the profile, by monthly impressions (Google rounds low values to “< n”)" pad={false} action={<SourceBadge type="google" />}>
         {kws.length ? (
-          <div className="max-h-96 overflow-auto"><table className="w-full text-13"><thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-5 py-2 text-left font-semibold">Keyword</th><th className="px-5 py-2 text-right font-semibold">Impressions</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{kws.slice(0, 100).map(k => <tr key={k.keyword}><td className="px-5 py-2 text-slate-800">{k.keyword}</td><td className="px-5 py-2 text-right tabular-nums">{k.impressions != null ? fmt(k.impressions) : <span className="text-slate-400">&lt; {k.below}</span>}</td></tr>)}</tbody></table></div>
+          <SearchKeywordsTable keywords={kws} pad="px-5" />
         ) : <p className="text-13 text-slate-500 px-5 py-8 text-center">No keyword data from Google yet.</p>}
       </Card>
       <p className="text-12 text-slate-500">Desktop vs. mobile split, food-menu clicks and messaging clicks are shown only when Google returns them for this profile category; none were returned here, so none are shown.</p>

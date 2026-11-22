@@ -4,6 +4,7 @@ import { SeoShell, Card, Button, Badge, ErrorNote, useAction, useToast, SkList }
 import { Act, OpenAct } from './TableBits';
 import Select from '../components/Select';
 import { api, useApi } from './seoApi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 const when = (iso) => { if (!iso) return '—'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
 const TH = 'px-3 py-2.5 text-left font-medium whitespace-nowrap';
@@ -13,6 +14,40 @@ const FILTERS = [['all', 'Every page'], ['tech_problem', 'Blocked or risky: may 
 
 function Tile({ label, value, tone = 'text-slate-900', hint }) {
   return <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4 shadow-sm" title={hint}><div className="text-12 text-slate-500">{label}</div><div className={`text-26 font-bold tabular-nums ${tone}`}>{value ?? '—'}</div></div>;
+}
+
+const PAGE_VALUE = (p, k) => (k === 'page' ? p.path : k === 'tech' ? p.tech?.verdict ?? null : k === 'google' ? p.g_state ?? null : k === 'crawl' ? (p.g_last_crawl ? Date.parse(p.g_last_crawl) : null) : (p.submitted_at ? Date.parse(p.submitted_at) : null));
+
+/** The pages table: sortable headings and real pages over the rows the server sent for the filter and search above it. */
+function IndexTable({ pages, d, gs, busy, inspect, send, total, resetKey }) {
+  const { sorted, sort, onSort } = useSorted(pages, PAGE_VALUE);
+  const pager = usePager(sorted, { size: 25, resetKey: `${resetKey}|${sort?.key}|${sort?.dir}` });
+  return (
+    <>
+      <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] text-13">
+            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>{[['page', 'Page'], ['tech', 'Can it be indexed?'], ['google', 'In Google'], ['crawl', 'Last crawled by Google'], ['sent', 'Sent to other engines']].map(([k, l]) => <SortTh key={k} id={k} sort={sort} onSort={onSort} className={TH.replace(' text-left', '').replace(' font-medium', '')}>{l}</SortTh>)}<th className={`${TH} text-right`}>Actions</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {pager.rows.map(p => { const [lab, tone] = STATE[p.g_state] || ['Not checked', 'gray']; return (
+                <tr key={p.id} className="align-top hover:bg-slate-50">
+                  <td className="px-3 py-3 max-w-[340px]"><div className="font-medium text-slate-900 truncate" title={p.url}>{p.path}</div><div className="text-12 text-slate-500">First seen {when(p.first_seen)}{p.is_new && <span className="ml-1.5"><Badge tone="blue">New</Badge></span>}{p.changed_at && <span className="ml-1.5"><Badge tone="amber">Changed</Badge></span>}{!p.in_sitemap && <span className="ml-1.5 text-slate-400">no longer in the sitemap</span>}</div></td>
+                  <td className="px-3 py-3 max-w-[300px]">{p.tech ? <><Badge tone={(TECH[p.tech.verdict] || ['', 'gray'])[1]}>{(TECH[p.tech.verdict] || ['Not checked'])[0]}</Badge>{p.tech.reasons.slice(0, 2).map((r, i) => <div key={i} className="text-12 text-slate-600 mt-1">{r.text}</div>)}{p.tech.reasons.length > 2 && <div className="text-11.5 text-slate-400 mt-0.5">+{p.tech.reasons.length - 2} more</div>}</> : <Badge tone="gray">Not checked</Badge>}</td>
+                  <td className="px-3 py-3 max-w-[320px]"><Badge tone={tone}>{lab}</Badge>{!p.g_state && gs && gs.state !== 'ok' && <div className="text-11.5 text-amber-800 mt-1">Google cannot be asked yet: connect Search Console (see the Google box)</div>}{p.g_reason && <div className="text-12 text-slate-600 mt-1">{p.g_reason}</div>}{p.g_advice && <div className="text-12 text-indigo-800 mt-0.5">{p.g_advice}</div>}{p.g_checked_at && <div className="text-11 text-slate-400 mt-0.5">checked {when(p.g_checked_at)}</div>}</td>
+                  <td className="px-3 py-3 whitespace-nowrap text-slate-600">{when(p.g_last_crawl)}</td>
+                  <td className="px-3 py-3 max-w-[240px]">{p.skip_reason ? <span className="text-amber-800 inline-flex gap-1"><AlertTriangle size={13} className="mt-0.5 shrink-0" />{p.skip_reason}</span> : p.submitted_at ? <span className="text-emerald-700 inline-flex gap-1"><CheckCircle2 size={13} className="mt-0.5 shrink-0" />Sent {when(p.submitted_at)}</span> : p.pending ? <span className="text-indigo-700">Waiting to be sent</span> : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                    <Act tip="Check: ask Google about this page now." busy={busy === `check${p.url}`} onClick={() => inspect([p.url])}>Check</Act>
+                    {d.key.ready && <Act tone="violet" tip="Send: tell Bing, Yandex and the others about this page now." busy={busy === `send${p.url}`} onClick={() => send([p.url])}>Send</Act>}
+                    <OpenAct url={p.url} tip="Open: show the page in a new tab." />
+                  </span></td>
+                </tr>); })}
+              {!d.pages.length && <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-500">{total ? 'No page matches this filter.' : 'No pages yet. Press “Read the sitemap now” to find the pages of your site.'}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      <Pager p={pager} label="pages" />
+    </>
+  );
 }
 
 function Indexing({ b }) {
@@ -123,27 +158,7 @@ function Indexing({ b }) {
           <Button size="sm" icon={SearchIcon} busy={busy === 'inspect'} onClick={() => inspect()}>Check Google for 25 pages</Button>
           <Button size="sm" variant="primary" icon={Send} busy={busy === 'send'} disabled={!c.pending || !d.key.ready} title={d.key.ready ? '' : 'Put the key file on the site first'} onClick={() => send()}>Send {c.pending} waiting page{c.pending === 1 ? '' : 's'}</Button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-13">
-            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className={TH}>Page</th><th className={TH}>Can it be indexed?</th><th className={TH}>In Google</th><th className={TH}>Last crawled by Google</th><th className={TH}>Sent to other engines</th><th className={`${TH} text-right`}>Actions</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              {d.pages.map(p => { const [lab, tone] = STATE[p.g_state] || ['Not checked', 'gray']; return (
-                <tr key={p.id} className="align-top hover:bg-slate-50">
-                  <td className="px-3 py-3 max-w-[340px]"><div className="font-medium text-slate-900 truncate" title={p.url}>{p.path}</div><div className="text-12 text-slate-500">First seen {when(p.first_seen)}{p.is_new && <span className="ml-1.5"><Badge tone="blue">New</Badge></span>}{p.changed_at && <span className="ml-1.5"><Badge tone="amber">Changed</Badge></span>}{!p.in_sitemap && <span className="ml-1.5 text-slate-400">no longer in the sitemap</span>}</div></td>
-                  <td className="px-3 py-3 max-w-[300px]">{p.tech ? <><Badge tone={(TECH[p.tech.verdict] || ['', 'gray'])[1]}>{(TECH[p.tech.verdict] || ['Not checked'])[0]}</Badge>{p.tech.reasons.slice(0, 2).map((r, i) => <div key={i} className="text-12 text-slate-600 mt-1">{r.text}</div>)}{p.tech.reasons.length > 2 && <div className="text-11.5 text-slate-400 mt-0.5">+{p.tech.reasons.length - 2} more</div>}</> : <Badge tone="gray">Not checked</Badge>}</td>
-                  <td className="px-3 py-3 max-w-[320px]"><Badge tone={tone}>{lab}</Badge>{!p.g_state && gs && gs.state !== 'ok' && <div className="text-11.5 text-amber-800 mt-1">Google cannot be asked yet: connect Search Console (see the Google box)</div>}{p.g_reason && <div className="text-12 text-slate-600 mt-1">{p.g_reason}</div>}{p.g_advice && <div className="text-12 text-indigo-800 mt-0.5">{p.g_advice}</div>}{p.g_checked_at && <div className="text-11 text-slate-400 mt-0.5">checked {when(p.g_checked_at)}</div>}</td>
-                  <td className="px-3 py-3 whitespace-nowrap text-slate-600">{when(p.g_last_crawl)}</td>
-                  <td className="px-3 py-3 max-w-[240px]">{p.skip_reason ? <span className="text-amber-800 inline-flex gap-1"><AlertTriangle size={13} className="mt-0.5 shrink-0" />{p.skip_reason}</span> : p.submitted_at ? <span className="text-emerald-700 inline-flex gap-1"><CheckCircle2 size={13} className="mt-0.5 shrink-0" />Sent {when(p.submitted_at)}</span> : p.pending ? <span className="text-indigo-700">Waiting to be sent</span> : <span className="text-slate-300">—</span>}</td>
-                  <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
-                    <Act tip="Check: ask Google about this page now." busy={busy === `check${p.url}`} onClick={() => inspect([p.url])}>Check</Act>
-                    {d.key.ready && <Act tone="violet" tip="Send: tell Bing, Yandex and the others about this page now." busy={busy === `send${p.url}`} onClick={() => send([p.url])}>Send</Act>}
-                    <OpenAct url={p.url} tip="Open: show the page in a new tab." />
-                  </span></td>
-                </tr>); })}
-              {!d.pages.length && <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-500">{c.total ? 'No page matches this filter.' : 'No pages yet. Press “Read the sitemap now” to find the pages of your site.'}</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <IndexTable pages={d.pages} d={d} gs={gs} busy={busy} inspect={inspect} send={send} total={c.total} resetKey={`${status}|${q}`} />
       </Card>
       {toastNode}
     </div>

@@ -1,15 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Eye, Copy, Check, FileSearch, Sparkles } from 'lucide-react';
 import { Card, Badge, ErrorNote, SkList, Modal } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act } from './TableBits';
 import BriefButtons from './DevBrief';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 const PLACE = { address: 'address', title: 'title', heading: 'heading', description: 'description', subheading: 'section heading', intro: 'first paragraph', text: 'text', image: 'image text' };
 const STATUS = { used: ['Used', 'green', 'In a title, heading or address of a page'], weak: ['Weak', 'amber', 'Only in a description'], unused: ['Not used', 'red', 'No page says it yet'] };
 const ADD_AT = { title: 'the page title', heading: 'the main heading (H1)', description: 'the meta description', intro: 'the first paragraph', subheading: 'a section heading', text: 'the page text', image: "an image's alt text" };
+const STATUS_ORDER = { used: 0, weak: 1, unused: 2 };
+const placementValue = (k, key) => (key === 'keyword' ? k.keyword : key === 'volume' ? k.volume ?? null : key === 'status' ? (STATUS_ORDER[k.status] ?? null) : key === 'used' ? k.used_on.length : key === 'meant' ? (k.meant_for?.path ?? null) : null);
 const scopeTone = { home: 'blue', offer: 'green', blog: 'violet', info: 'gray', policy: 'gray' };
 
 /** Every picked keyword: where it is used, the page it is meant for, and what to use it for (page, FAQ, meta data, blog, Google post, Google profile, AI questions) with the exact thing to add. */
@@ -20,10 +23,13 @@ export function KeywordsView({ b, onOpen }) {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState('');
   const [copied, setCopied] = useState('');
+  const filtered = useMemo(() => (r.data ? r.data.keywords.filter(k => show === 'all' || k.status === show) : []), [r.data, show]);
+  const { sorted, sort, onSort } = useSorted(filtered, placementValue);
+  const pager = usePager(sorted, { size: 10, resetKey: show });
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!r.data) return <SkList rows={5} />;
   const d = r.data;
-  const rows = d.keywords.filter(k => show === 'all' || k.status === show);
+  const rows = pager.rows;
   const tab = (id, label) => <button key={id} type="button" onClick={() => setShow(id)} className={`h-7 px-2.5 text-11.5 font-semibold rounded-md cursor-pointer ${show === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>;
   const setPlan = async (k, key, on) => {
     const planned = k.purposes.filter(p => p.planned && p.key !== key).map(p => p.key);
@@ -70,7 +76,7 @@ export function KeywordsView({ b, onOpen }) {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-13 min-w-[820px]">
-          <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2 text-left">Keyword</th><th className="px-3 py-2 text-right">Searches / mo</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Used on</th><th className="px-3 py-2 text-left">Meant for</th><th className="px-3 py-2 text-right">Actions</th></tr></thead>
+          <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className="px-3 py-2">Keyword</SortTh><SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className="px-3 py-2">Searches / mo</SortTh><SortTh id="status" sort={sort} onSort={onSort} className="px-3 py-2">Status</SortTh><SortTh id="used" sort={sort} onSort={onSort} first="desc" className="px-3 py-2">Used on</SortTh><SortTh id="meant" sort={sort} onSort={onSort} className="px-3 py-2">Meant for</SortTh><th className="px-3 py-2 text-right">Actions</th></tr></thead>
           {rows.map(k => {
             const [w, tone, tip] = STATUS[k.status];
             const target = k.meant_for?.url || k.other_fits[0]?.url;
@@ -94,6 +100,7 @@ export function KeywordsView({ b, onOpen }) {
           {!rows.length && <tbody><tr><td colSpan={6} className="px-5 py-8 text-center text-13 text-slate-500">{d.keywords.length ? 'No keyword in this group.' : 'No keywords are picked yet.'}</td></tr></tbody>}
         </table>
       </div>
+      <Pager p={pager} label="keywords" />
     </Card>
   );
 }
