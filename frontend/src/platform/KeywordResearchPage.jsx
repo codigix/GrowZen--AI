@@ -1,5 +1,5 @@
 import KeywordWorkspace from './KeywordWorkspace';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import DataTable, { usePager, Pager, useSorted, SortTh } from './DataTable';
 import KeywordMappingTab from './KeywordMappingTab';
 import { UseKeywordsModal } from './KeywordPlacement';
 import KeywordRowActions, { indexProblem } from './KeywordRowActions';
@@ -1546,16 +1546,15 @@ function AiSuggestions({ b, tracked, onTracked, seedSearch }) {
   const cacheKey = `kwai:${b.id}`;
   const [data, setData] = useState(() => { try { return JSON.parse(sessionStorage.getItem(cacheKey) || 'null'); } catch { return null; } });
   const [picked, setPicked] = useState([]);
-  const [area, setArea] = useState('all');
   const [busy, error, run] = useAction();
   const have = useMemo(() => new Set((tracked || []).map(k => k.keyword)), [tracked]);
   const items = (data?.items || []).filter(i => !have.has(i.keyword));
-  const shown = items.filter(i => area === 'all' || (i.uses || []).includes(area));
   const suggest = (topic = '') => run('suggest', async () => {
     const r = await api(`/businesses/${b.id}/keywords/ai-suggestions`, { method: 'POST', body: topic ? { topic } : {}, timeout: 120000 });
     setData(r); setPicked([]);
     try { sessionStorage.setItem(cacheKey, JSON.stringify(r)); } catch { /* optional */ }
   });
+  const aiRows = React.useRef([]); // the rows the table shows now (after its search and filters), for "Pick all shown"
   const ranFor = React.useRef(0);
   useEffect(() => { // a topic typed in the search box above: the AI writes its suggestions around it
     if (!seedSearch?.n || ranFor.current === seedSearch.n) return;
@@ -1585,35 +1584,34 @@ function AiSuggestions({ b, tracked, onTracked, seedSearch }) {
         {data && busy !== 'suggest' && (
           <>
             {facts.length > 0 && <p className="text-12.5 text-slate-500">Built from {facts.map(([n, l]) => `${n} ${l}`).join(' · ')}{ev.researched ? ' · competitor research' : ''}.</p>}
-            <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Filter by where it is for">
-              {[['all', 'All'], ...Object.entries(USE_LABEL)].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={area === id} onClick={() => setArea(id)} className={`h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${area === id ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{label}</button>)}
-            </div>
           </>
         )}
       </Card>
-      {data && busy !== 'suggest' && HORIZONS.map(([hz, title, hint]) => {
-        const list = shown.filter(i => i.horizon === hz);
-        if (!list.length) return null;
-        return (
-          <Card key={hz} pad={false} title={title} subtitle={hint}>
-            <ul className="divide-y divide-slate-100">
-              {list.map(i => (
-                <li key={i.keyword}>
-                  <label className="flex items-start gap-3 px-5 py-3.5 cursor-pointer hover:bg-slate-50">
-                    <input type="checkbox" className="mt-1.5" checked={picked.includes(i.keyword)} onChange={() => toggle(i.keyword)} aria-label={`Pick ${i.keyword}`} />
-                    <span className="flex-1 min-w-0">
-                      <span className="flex flex-wrap items-center gap-2"><span className="text-14 font-semibold text-slate-900">{i.keyword}</span>{i.topic && <Badge tone="gray">{i.topic}</Badge>}{i.intent && <Badge tone={INTENT_TONE[i.intent] || 'gray'}>{i.intent}</Badge>}{i.priority === 'High' && <Badge tone="orange">high priority</Badge>}</span>
-                      {i.why && <span className="block text-12.5 text-slate-600 mt-0.5">{i.why}</span>}
-                      <span className="mt-1.5 flex flex-wrap items-center gap-1.5 text-11.5 text-slate-500">Use it for: {(i.uses || []).map(u => <UseChip key={u} u={u} />)}</span>
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        );
-      })}
-      {data && busy !== 'suggest' && shown.length === 0 && <Card><p className="py-8 text-center text-13 text-slate-500">{items.length ? 'Nothing in this filter. Choose All.' : 'Every suggestion is already saved. Press Suggest again for new ones.'}</p></Card>}
+      {data && busy !== 'suggest' && items.length > 0 && (
+        <Card pad={false}>
+          <DataTable bare rows={items} rowKey={i => i.keyword} pageSize={25} exportName="ai-keyword-suggestions" label="suggestions" searchPlaceholder="Search suggestions" minWidth={900}
+            onState={s => { aiRows.current = s.rows; }}
+            rowClass={i => (picked.includes(i.keyword) ? 'bg-indigo-50/60' : 'hover:bg-slate-50')}
+            filters={[
+              { id: 'when', label: 'When', options: HORIZONS.map(([id, label]) => [id, label]), test: (i, v) => i.horizon === v },
+              { id: 'intent', label: 'Intent', options: [...new Set(items.map(i => i.intent).filter(Boolean))].sort().map(x => [x, x]), test: (i, v) => i.intent === v },
+              { id: 'priority', label: 'Priority', options: ['High', 'Medium', 'Low'].map(x => [x, x]), test: (i, v) => i.priority === v },
+              { id: 'use', label: 'Use it for', options: Object.entries(USE_LABEL), test: (i, v) => (i.uses || []).includes(v) },
+              { id: 'topic', label: 'Topic', options: [...new Set(items.map(i => i.topic).filter(Boolean))].sort().map(x => [x, x]), test: (i, v) => i.topic === v }
+            ].filter(f => f.options.length > 1)}
+            columns={[
+              { id: 'pick', label: 'Pick', csv: false, className: 'pl-4 pr-1 py-3 w-10', thClass: 'pl-4 pr-1 py-3 w-10',
+                header: <input type="checkbox" aria-label="Pick all shown" checked={aiRows.current.length > 0 && aiRows.current.every(i => picked.includes(i.keyword))} onChange={() => { const every = aiRows.current.every(i => picked.includes(i.keyword)); setPicked(p => (every ? p.filter(k => !aiRows.current.some(i => i.keyword === k)) : [...new Set([...p, ...aiRows.current.map(i => i.keyword)])])); }} />,
+                cell: i => <input type="checkbox" checked={picked.includes(i.keyword)} onChange={() => toggle(i.keyword)} aria-label={`Pick ${i.keyword}`} /> },
+              { id: 'keyword', header: 'Keyword and why', value: i => i.keyword, className: 'px-3 py-3 min-w-[260px]', cell: i => <><div className="text-14 font-semibold text-slate-900">{i.keyword}</div>{i.why && <div className="text-12.5 text-slate-600 mt-0.5">{i.why}</div>}</> },
+              { id: 'topic', header: 'Topic', value: i => i.topic || null, cell: i => (i.topic ? <Badge tone="gray">{i.topic}</Badge> : <span className="text-slate-300">—</span>) },
+              { id: 'intent', header: 'Intent', value: i => i.intent || null, cell: i => (i.intent ? <Badge tone={INTENT_TONE[i.intent] || 'gray'}>{i.intent}</Badge> : <span className="text-slate-300">—</span>) },
+              { id: 'priority', header: 'Priority', value: i => ({ High: 0, Medium: 1, Low: 2 })[i.priority] ?? 1, cell: i => <Badge tone={{ High: 'red', Medium: 'amber', Low: 'gray' }[i.priority] || 'gray'}>{i.priority || 'Medium'}</Badge>, csv: true },
+              { id: 'horizon', header: 'When', value: i => (i.horizon === 'next' ? 'Grow next' : 'Builds on what you do'), cell: i => <span className="text-12.5 text-slate-600 whitespace-nowrap">{i.horizon === 'next' ? 'Grow next' : 'Builds on what you do'}</span> },
+              { id: 'uses', header: 'Use it for', value: i => (i.uses || []).map(u => USE_LABEL[u] || u).join(', '), className: 'px-3 py-3', cell: i => <span className="flex flex-wrap gap-1">{(i.uses || []).map(u => <UseChip key={u} u={u} />)}</span> }
+            ]} />
+        </Card>)}
+      {data && busy !== 'suggest' && items.length === 0 && <Card><p className="py-8 text-center text-13 text-slate-500">{items.length ? 'Nothing in this filter. Choose All.' : 'Every suggestion is already saved. Press Suggest again for new ones.'}</p></Card>}
       {picked.length > 0 && (
         <div className="sticky bottom-3 z-10 rounded-xl bg-white border border-indigo-200 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
           <div className="flex-1 min-w-[200px] text-13 text-slate-800"><b>{picked.length}</b> picked. They are saved with the topic and the areas shown, then you group and use them on the next page.</div>
