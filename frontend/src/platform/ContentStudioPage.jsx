@@ -593,15 +593,15 @@ function SavedKeywordPicker({ b, inUse, onAdd }) {
   const add = () => { onAdd(list.filter(k => picked.includes(k.keyword))); setPicked([]); };
   return (
     <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-[12px] font-bold text-slate-800">My saved keywords</div>
-          <div className="text-[11.5px] text-slate-500">Tick the keywords this blog is for, then add them. The first one becomes the primary keyword if there is none yet.</div>
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2"><span className="text-[13px] font-bold text-slate-900">My saved keywords</span>{list.length > 0 && <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 tabular-nums">{list.length}</span>}</div>
+          <div className="text-[11.5px] text-slate-500 mt-0.5">Tick the keywords this blog is for, then add them. The first becomes the primary keyword.</div>
         </div>
         {list.length > 0 && (
-          <div className="flex items-center gap-2">
-            {picked.length > 0 && <button type="button" onClick={() => setPicked([])} className="text-[12px] font-semibold text-slate-500 hover:underline cursor-pointer">Clear</button>}
-            <Button size="sm" variant="primary" icon={Plus} disabled={!picked.length} onClick={add}>Add {picked.length || ''} to this blog</Button>
+          <div className="flex items-center gap-2 shrink-0">
+            {picked.length > 0 && <><span className="text-[12px] font-semibold text-indigo-700 tabular-nums">{picked.length} ticked</span><button type="button" onClick={() => setPicked([])} className="text-[12px] font-semibold text-slate-500 hover:underline cursor-pointer">Clear</button></>}
+            <Button size="sm" variant="primary" icon={Plus} disabled={!picked.length} onClick={add}>Add to this blog</Button>
           </div>
         )}
       </div>
