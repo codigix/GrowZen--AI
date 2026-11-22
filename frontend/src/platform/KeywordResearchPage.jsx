@@ -1,6 +1,7 @@
 import KeywordWorkspace from './KeywordWorkspace';
 import KeywordFlowBar from './KeywordFlowBar';
 import KeywordMappingTab from './KeywordMappingTab';
+import { UseKeywordsModal } from './KeywordPlacement';
 import KeywordRowActions, { indexProblem } from './KeywordRowActions';
 import { Act, Head } from './TableBits';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -754,6 +755,7 @@ function Tracked({ b, kw }) {
   const tracked = kw.data?.keywords || [];
   const location = useLocation();
   const fresh = useMemo(() => new Set((location.state?.added || []).map(x => String(x).toLowerCase())), [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [useIds, setUseIds] = useState(null); // the keywords the "Where to use" window is open for
   const [view, setView] = useState('all');
   const [q, setQ] = useState('');
   const [sort, setSort] = useState({ key: 'volume', dir: 'desc' });
@@ -955,7 +957,7 @@ function Tracked({ b, kw }) {
                           {t?.label ? <span title={t.why || ''}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' }[t.status] || 'gray'}>{t.label}</Badge></span> : <span className="text-slate-300">{!t ? '…' : '—'}</span>}
                         </td>
                         <td className="px-3 py-3 text-right whitespace-nowrap">
-                          <KeywordRowActions b={b} k={k} t={t} usedOn={used} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} onRole={(role) => update(k, { role })} />
+                          <KeywordRowActions b={b} k={k} t={t} usedOn={used} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} onRole={(role) => update(k, { role })} onUse={() => setUseIds([k.id])} />
                         </td>
                       </tr>);
                   })}
@@ -976,10 +978,12 @@ function Tracked({ b, kw }) {
           </div>
         </>
       )}
+      <UseKeywordsModal b={b} ids={useIds} onClose={() => setUseIds(null)} />
       {sel.size > 0 && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-32px)]">
           <div role="toolbar" aria-label="Selected keywords" className="bg-slate-900 text-white rounded-xl shadow-xl px-4 py-2.5 flex flex-wrap items-center gap-3">
             <span className="text-13 font-semibold">{sel.size} selected</span>
+            <Button size="sm" variant="primary" icon={Sparkles} onClick={() => setUseIds([...sel])} title="Where each selected keyword can be used: your pages, blog, FAQ, Google posts and more, with text ready to copy">Where to use</Button>
             <span className="text-12 text-slate-300">Importance</span>
             {['High', 'Medium', 'Low'].map(p => <Button key={p} size="sm" busy={busy === `bulk${p}`} onClick={() => bulk(`bulk${p}`, (k) => api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, priority: p } }))}>{p}</Button>)}
             <Button size="sm" variant="danger" icon={Trash2} busy={busy === 'bulkdel'} onClick={bulkDelete}>Delete</Button>

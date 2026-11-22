@@ -111,6 +111,65 @@ function Highlight({ text, focus = [], others = [] }) {
   })}</>;
 }
 
+const PURPOSE_TONE = (p) => (p.used ? 'ring-emerald-200 bg-emerald-50/50' : p.planned ? 'ring-indigo-200 bg-indigo-50/40' : 'ring-slate-200 bg-white');
+
+/** For the keywords selected on My Keywords: one card each, with what to do in every place it can be used (the page, FAQ, meta data, blog, Google post, Google profile, AI questions), the text ready to copy, and the button to go and do it. */
+export function UseKeywordsModal({ b, ids, onClose }) {
+  const r = useApi(ids?.length ? `/businesses/${b.id}/keyword-placement?ids=${ids.join(',')}` : null);
+  const [copied, setCopied] = useState('');
+  const [busy, setBusy] = useState('');
+  const [note, setNote] = useState('');
+  const d = r.data;
+  const copy = async (text, id) => { try { await navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied(''), 1800); } catch { /* the text is shown */ } };
+  const plan = async (k, key, on) => {
+    setBusy(`${k.id}-${key}`);
+    try { await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, uses: [...k.purposes.filter(p => p.planned && p.key !== key).map(p => p.key), ...(on ? [key] : [])] } }); await r.reload(true); } catch (e) { setNote(e.message); } finally { setBusy(''); }
+  };
+  const askAi = async (k) => {
+    setBusy(`${k.id}-geo`);
+    try { const out = await api(`/businesses/${b.id}/keywords/${k.id}/geo-prompt`, { method: 'POST', body: {} }); setNote(out.added ? `"${k.keyword}" added to the AI search questions.` : `"${k.keyword}" is already one of the AI search questions.`); } catch (e) { setNote(e.message); } finally { setBusy(''); }
+  };
+  const go = (p, k) => {
+    if (p.to.kind === 'page') return <Link to={`/keyword-management/mapping?keyword=${encodeURIComponent(k.keyword)}&page=${encodeURIComponent(p.to.url)}`} onClick={onClose}><Act icon={Eye} tone="indigo" tip="Open the page overview and see exactly where it goes.">{p.cta}</Act></Link>;
+    if (p.to.kind === 'geo') return <Act icon={Sparkles} tone="violet" busy={busy === `${k.id}-geo`} tip="Add this question to the AI search tracker." onClick={() => askAi(k)}>{p.cta}</Act>;
+    if (p.to.kind === 'none') return null;
+    return <Link to={p.to.href} onClick={onClose}><Act icon={ExternalLink} tone="indigo" tip={`${p.cta}: open the right place with the keyword ready.`}>{p.cta}</Act></Link>;
+  };
+  return (
+    <Modal open={Boolean(ids?.length)} onClose={onClose} width="max-w-4xl" title={`Where to use ${ids?.length === 1 ? 'this keyword' : `these ${ids?.length || ''} keywords`}`}>
+      {!d && !r.error && <p className="text-13 text-slate-500">Working out where each keyword can go…</p>}
+      {r.error && <ErrorNote>{r.error.message}</ErrorNote>}
+      {note && <p role="status" className="mb-3 text-12.5 text-emerald-800 bg-emerald-50 rounded px-3 py-1.5">{note}</p>}
+      {d && (
+        <div className="max-h-[74vh] overflow-y-auto pr-1 space-y-5">
+          <p className="text-12.5 text-slate-600">For each keyword, what to do in every place it can be used. Green is already used there, blue is planned. The text is a draft from your business facts: read it and make it true before you use it.</p>
+          {d.keywords.map(k => (
+            <section key={k.id} className="rounded-xl ring-1 ring-slate-200 overflow-hidden">
+              <header className="px-4 py-3 bg-slate-50 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="text-15 font-semibold text-slate-900">{k.keyword}</span>
+                {k.volume ? <span className="text-12 text-slate-500">{n0(k.volume)} searches/mo</span> : null}
+                <Badge tone={STATUS[k.status][1]}>{STATUS[k.status][0]}</Badge>
+                <span className="ml-auto text-12.5 text-slate-600">{k.meant_for ? <>Mapped to <b className="text-slate-800">{k.meant_for.path}</b> ({k.meant_for.role} keyword)</> : k.other_fits.length ? <>Could go on {k.other_fits.map(f => f.path).join(', ')}</> : <span className="text-amber-700">{k.kind === 'post' ? 'Needs a blog post' : 'Needs a new page'}</span>}</span>
+              </header>
+              {k.meant_for && ['info', 'policy'].includes(k.meant_for.scope) && <p className="px-4 py-2 text-12.5 text-amber-900 bg-amber-50 border-t border-amber-100">⚠ It is mapped to {k.meant_for.path}, {k.meant_for.scope === 'policy' ? 'a policy page' : 'an information page'}, which should not compete for it. Pick the page that offers it (Change the page in the keyword's menu) before you add it there.</p>}
+              <ul className="divide-y divide-slate-100">
+                {k.purposes.map(p => { const id = `${k.id}-${p.key}`; return (
+                  <li key={p.key} className={`px-4 py-3 grid grid-cols-1 md:grid-cols-[130px_1fr] gap-x-4 gap-y-1.5 ring-1 ring-inset ${PURPOSE_TONE(p)}`}>
+                    <div><div className="text-12.5 font-semibold text-slate-900">{p.label}</div>{p.used ? <Badge tone="green">Already used</Badge> : p.planned ? <Badge tone="blue">Planned</Badge> : <span className="text-11.5 text-slate-400">Not yet</span>}</div>
+                    <div className="min-w-0">
+                      <div className="text-13 font-semibold text-slate-800">{p.headline}</div>
+                      <div className="mt-1 flex items-start gap-2"><pre className="flex-1 whitespace-pre-wrap text-12.5 text-slate-800 bg-white rounded px-3 py-2 ring-1 ring-slate-200 font-sans">{p.text}</pre><Act icon={copied === id ? Check : Copy} tone="slate" tip="Copy: copy this text to paste where it goes." onClick={() => copy(p.text, id)} /></div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">{go(p, k)}<Act tone="slate" busy={busy === id} tip={p.planned ? 'Remove it from the plan for this keyword.' : 'Plan: mark this as something you will do for this keyword.'} onClick={() => plan(k, p.key, !p.planned)}>{p.planned ? 'Remove from plan' : 'Plan it'}</Act></div>
+                    </div>
+                  </li>); })}
+              </ul>
+            </section>))}
+          {!d.keywords.length && <p className="text-13 text-slate-500">None of the selected keywords were found.</p>}
+        </div>)}
+    </Modal>
+  );
+}
+
 /** One page read live: what it says, the picked keywords it should carry, and where to add each missing one, with a line to paste. */
 export function PageOverview({ b, target, onClose }) {
   const [res, setRes] = useState(null);

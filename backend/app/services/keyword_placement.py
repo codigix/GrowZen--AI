@@ -102,7 +102,7 @@ def _slug_of(text: str) -> str:
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", text.lower())).strip("-")[:60]
 
 
-def by_keyword(db: Session, b: Business) -> dict[str, Any]:
+def by_keyword(db: Session, b: Business, ids: list[int] | None = None) -> dict[str, Any]:
     from . import keyword_ai
     usage_items = {i["id"]: i for i in keyword_ai.usage(db, b)["items"]}
     pages = _pages(db, b)
@@ -115,6 +115,8 @@ def by_keyword(db: Session, b: Business) -> dict[str, Any]:
             assigned[s] = (pg["url"], "supporting")
     kws = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
     kws.sort(key=lambda k: (-(k.volume or 0), k.keyword))
+    if ids:  # only the keywords asked for (the ones selected on My Keywords)
+        kws = [k for k in kws if k.id in set(ids)]
     items = []
     for k in kws:
         used, fits = [], []
@@ -137,6 +139,8 @@ def by_keyword(db: Session, b: Business) -> dict[str, Any]:
         status = "used" if strong else "weak" if used else "unused"
         blog = km.is_blog(k.keyword, k.intent)
         meant = {"url": target[0], "path": (urlsplit(target[0]).path or "/").rstrip("/") or "/", "role": target[1]} if target else None
+        if meant:
+            meant["scope"] = scope_of(meant["path"])["kind"]
         ui = usage_items.get(k.id) or {"used": {}, "planned": []}
         # the page and the meta data are judged page by page (the same check as the status), not by words pooled from the whole site
         ui = {"planned": ui["planned"], "used": {**ui["used"], "website": bool(strong), "meta": any("title" in u["places"] or "description" in u["places"] for u in used)}}

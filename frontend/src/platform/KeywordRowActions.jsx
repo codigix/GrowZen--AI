@@ -85,7 +85,7 @@ function Menu({ anchor, onClose, children }) {
 const ITEM = 'w-full flex items-center gap-2.5 px-3 py-2 text-13 text-left text-slate-700 hover:bg-slate-50 cursor-pointer';
 
 /** One main action for the keyword, and a menu with everything else you can do with it. */
-export default function KeywordRowActions({ b, k, t, usedOn, busy, onMap, onChoose, onAskAi, onRemove, onRole }) {
+export default function KeywordRowActions({ b, k, t, usedOn, busy, onMap, onChoose, onAskAi, onRemove, onRole, onUse }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef(null);
   const a = nextAction(b, k, t, usedOn);
@@ -102,7 +102,7 @@ export default function KeywordRowActions({ b, k, t, usedOn, busy, onMap, onChoo
         className="h-8 w-8 rounded-md inline-flex items-center justify-center text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 cursor-pointer"><MoreHorizontal size={16} /></button>
       {open && (
         <Menu anchor={anchor} onClose={close}>
-          <Link to={where} role="menuitem" onClick={close} className={ITEM}><Eye size={15} className="text-indigo-500" />Where to use it</Link>
+          <button type="button" role="menuitem" className={ITEM} onClick={() => { close(); onUse(); }}><Eye size={15} className="text-indigo-500" />Where to use it</button>
           <button type="button" role="menuitem" className={ITEM} onClick={() => { close(); onChoose(); }}>{k.target_url ? <Pencil size={15} className="text-slate-400" /> : <MapPin size={15} className="text-slate-400" />}{k.target_url ? 'Change the page' : 'Choose a page'}</button>
           {abs && <a href={abs} target="_blank" rel="noreferrer noopener" role="menuitem" onClick={close} className={ITEM}><ExternalLink size={15} className="text-slate-400" />Open the mapped page</a>}
           <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`} role="menuitem" onClick={close} className={ITEM}><PenLine size={15} className="text-violet-500" />Write a blog post</Link>

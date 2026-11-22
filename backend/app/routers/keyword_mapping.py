@@ -59,9 +59,10 @@ def page_meta_files(body: MetaFiles, b: Business = Depends(get_business)):
 
 
 @router.get("/keyword-placement")
-def keyword_placement_overview(b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """Every picked keyword: the pages that already use it and where, the page it is meant for, and other pages that fit it (from the last site crawl)."""
-    return keyword_placement.by_keyword(db, b)
+def keyword_placement_overview(ids: str = "", b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Every picked keyword (or only those in `ids`, comma separated): the pages that already use it and where, the page it is meant for, other pages that fit it, and what to use it for (from the last site crawl)."""
+    chosen = [int(x) for x in ids.split(",") if x.strip().isdigit()][:200]
+    return keyword_placement.by_keyword(db, b, chosen or None)
 
 
 class PlacementIn(BaseModel):

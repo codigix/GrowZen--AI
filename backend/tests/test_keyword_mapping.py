@@ -164,3 +164,17 @@ def test_keyword_purposes_each_have_a_suggestion_and_a_place_to_go():
     assert ps["geo"]["to"]["kind"] == "geo" and "never" not in ps["gbp_profile"]["text"].lower().replace("never put", "")
     none = {p["key"]: p for p in kp.purposes_for(b, k, {}, [], None, False)}
     assert none["website"]["to"]["kind"] == "write" and none["meta"]["to"] == {"kind": "none"}
+
+
+def test_where_to_use_can_be_asked_for_only_the_selected_keywords(client):
+    bid = client.post("/api/v1/businesses", json={"name": "Sel Co", "website": "https://sel.example/"}).json()["id"]
+    client.post(f"/api/v1/businesses/{bid}/keywords", json=[{"keyword": "gown rental"}, {"keyword": "saree rental"}, {"keyword": "lehenga rental"}])
+    ids = {k["keyword"]: k["id"] for k in client.get(f"/api/v1/businesses/{bid}/keywords").json()["keywords"]}
+    client.patch(f"/api/v1/businesses/{bid}/keywords/{ids['gown rental']}", json={"keyword": "x", "target_url": "https://sel.example/about"})
+    url = f"/api/v1/businesses/{bid}/keyword-placement"
+    assert len(client.get(url).json()["keywords"]) == 3
+    two = client.get(url, params={"ids": f"{ids['gown rental']},{ids['saree rental']}"}).json()["keywords"]
+    assert sorted(k["keyword"] for k in two) == ["gown rental", "saree rental"]
+    assert [p["key"] for p in two[0]["purposes"]] == ["website", "aeo", "meta", "blog", "gmb_post", "gbp_profile", "geo"]
+    gown = next(k for k in two if k["keyword"] == "gown rental")
+    assert gown["meant_for"]["path"] == "/about" and gown["meant_for"]["scope"] == "info"  # mapped to an information page: the window warns about it
