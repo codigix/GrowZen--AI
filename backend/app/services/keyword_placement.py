@@ -135,6 +135,10 @@ def by_keyword(db: Session, b: Business, ids: list[int] | None = None) -> dict[s
                 fits.append({"url": p["url"], "path": path, "score": round(score, 1)})
         fits.sort(key=lambda f: -f["score"])
         target = assigned.get(k.keyword)
+        if target is None and k.target_url:  # a page the owner chose always counts, even when the last site scan did not see that page
+            host = host_of(b.website)
+            full = k.target_url if k.target_url.startswith("http") else f"https://{host}{k.target_url if k.target_url.startswith('/') else '/' + k.target_url}"
+            target = (full, "main" if k.role == "primary" else "supporting")
         strong = [u for u in used if "title" in u["places"] or "heading" in u["places"] or "address" in u["places"]]
         status = "used" if strong else "weak" if used else "unused"
         blog = km.is_blog(k.keyword, k.intent)
