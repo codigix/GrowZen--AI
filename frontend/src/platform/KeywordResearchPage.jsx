@@ -141,49 +141,37 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
         </div>
       )}
 
-      {/* Starting point: open until there are results, then folded away to give the table the room */}
-      <details open={!result} className="group"><summary className="list-none cursor-pointer rounded-xl bg-white ring-1 ring-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-13 text-slate-600 group-open:hidden">
-        <span className="font-semibold text-slate-900">What we search from</span><span>{activeSeeds.length} service{activeSeeds.length === 1 ? '' : 's'} · {activeAreas.length} area{activeAreas.length === 1 ? '' : 's'}</span><span className="ml-auto text-indigo-700 font-semibold">Change</span></summary>
+      {/* Starting point */}
       <Card title="What we search from" subtitle={`Built from ${b.name}'s profile and website audit. Switch items on or off, then find keywords.`}
         action={<Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={() => find()}>Find keywords</Button>}>
-        <div className="space-y-4">
-          <div>
-            <div className="text-11 font-semibold   text-slate-500 mb-1.5">Services & category <span className="normal-case font-normal tracking-normal">({activeSeeds.length}/6 on)</span></div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {seeds.map(s => <Chip key={s.text} on={s.on} onClick={() => (s.on || activeSeeds.length < 6) && toggle(setSeeds, s.text)} onRemove={c.seeds.includes(s.text) ? null : () => setSeeds(list => list.filter(x => x.text !== s.text))}>{s.text}</Chip>)}
-              <span className="inline-flex items-center gap-1">
-                <input className="h-7 w-44 px-2.5 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" placeholder="Add a service…" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => e.key === 'Enter' && addSeed()} />
-                <button type="button" onClick={addSeed} className="h-7 w-7 rounded-lg ring-1 ring-inset ring-slate-200 text-slate-500 hover:text-slate-900 flex items-center justify-center cursor-pointer" aria-label="Add service"><Plus size={13} /></button>
-              </span>
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-3">
+            <div>
+              <div className="text-11 font-semibold text-slate-500 mb-1.5">Services & category <span className="font-normal">({activeSeeds.length}/6 on)</span></div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {seeds.map(s => <Chip key={s.text} on={s.on} onClick={() => (s.on || activeSeeds.length < 6) && toggle(setSeeds, s.text)} onRemove={c.seeds.includes(s.text) ? null : () => setSeeds(list => list.filter(x => x.text !== s.text))}>{s.text}</Chip>)}
+                <span className="inline-flex items-center gap-1">
+                  <input className="h-7 w-40 px-2.5 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" placeholder="Add a service…" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => e.key === 'Enter' && addSeed()} />
+                  <button type="button" onClick={addSeed} className="h-7 w-7 rounded-lg ring-1 ring-inset ring-slate-200 text-slate-500 hover:text-slate-900 flex items-center justify-center cursor-pointer" aria-label="Add service"><Plus size={13} /></button>
+                </span>
+              </div>
+              {!c.seeds.length && <div className="mt-1.5 text-12 text-amber-700">No category or services on the profile yet. Add one above, or fill them in GBP Manager.</div>}
             </div>
-            {!c.seeds.length && <div className="mt-1.5 text-12 text-amber-700">No category or services on the profile yet. Add one above, or fill them in GBP Manager.</div>}
+            <div>
+              <div className="text-11 font-semibold text-slate-500 mb-1.5">Area & nearby localities</div>
+              <div className="flex flex-wrap gap-1.5">
+                {areas.map((a, i) => <Chip key={a.text} on={a.on} onClick={() => toggle(setAreas, a.text)} title={i < c.areas.length ? 'From the business profile' : 'Nearby, from OpenStreetMap'}>{i < c.areas.length && <MapPin size={11} className="inline -mt-0.5 mr-1" />}{a.text}</Chip>)}
+              </div>
+              {!c.business.has_location && <div className="mt-1.5 text-12 text-slate-500">Set the map pin in Business Onboarding to add nearby localities automatically.</div>}
+            </div>
           </div>
-          <div>
-            <div className="text-11 font-semibold   text-slate-500 mb-1.5">Area & nearby localities</div>
-            <div className="flex flex-wrap gap-1.5">
-              {areas.map((a, i) => <Chip key={a.text} on={a.on} onClick={() => toggle(setAreas, a.text)} title={i < c.areas.length ? 'From the business profile' : 'Nearby, from OpenStreetMap'}>{i < c.areas.length && <MapPin size={11} className="inline -mt-0.5 mr-1" />}{a.text}</Chip>)}
-            </div>
-            {!c.business.has_location && <div className="mt-1.5 text-12 text-slate-500">Set the map pin in Business Onboarding to add nearby localities automatically.</div>}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="rounded bg-slate-50 ring-1 ring-inset ring-slate-200 px-3.5 py-3">
-              <div className="text-12 font-semibold text-slate-800 flex items-center gap-1.5"><Globe size={13} /> Website audit</div>
-              {c.website ? (
-                <>
-                  <div className="text-12 text-slate-600 mt-0.5">Score {c.website.score}/100 · {c.website.pages} pages · {fmtDateTime(c.website.finished_at)}. Each keyword is checked against these pages.</div>
-                  {c.website.topics.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{c.website.topics.map(t => <span key={t} className="text-11 px-1.5 py-0.5 rounded bg-white ring-1 ring-inset ring-slate-200 text-slate-600">{t}</span>)}</div>}
-                </>
-              ) : <div className="text-12 text-slate-600 mt-0.5">Not audited yet, so content gaps can't be checked. <Link to="/website-audit" className="font-medium text-indigo-700 hover:underline">Audit the website</Link></div>}
-            </div>
-            <div className="rounded bg-slate-50 ring-1 ring-inset ring-slate-200 px-3.5 py-3">
-              <div className="text-12 font-semibold text-slate-800 flex items-center gap-1.5"><Users size={13} /> Competitors</div>
-              {c.competitors.length ? <div className="mt-1.5 flex flex-wrap gap-1">{c.competitors.map(n => <span key={n} className="text-11 px-1.5 py-0.5 rounded bg-white ring-1 ring-inset ring-slate-200 text-slate-600">{n}</span>)}</div>
-                : <div className="text-12 text-slate-600 mt-0.5">None yet. <Link to="/competitor-finder" className="font-medium text-indigo-700 hover:underline">Run competitor research</Link> to find who outranks you.</div>}
-            </div>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-slate-100 pt-2.5 text-12 text-slate-600">
+            <span className="inline-flex items-center gap-1.5"><Globe size={13} className="text-slate-400" />{c.website ? <>Website audit: score <b className="text-slate-800">{c.website.score}/100</b>, {c.website.pages} pages, {fmtDateTime(c.website.finished_at)}. Each keyword is checked against them.</> : <>Not audited yet, so content gaps can't be checked. <Link to="/website-audit" className="font-medium text-indigo-700 hover:underline">Audit the website</Link></>}</span>
+            <span className="inline-flex items-center gap-1.5"><Users size={13} className="text-slate-400" />{c.competitors.length ? <>Competitors: {c.competitors.slice(0, 4).join(', ')}{c.competitors.length > 4 ? ` +${c.competitors.length - 4}` : ''}</> : <>No competitors yet. <Link to="/competitor-finder" className="font-medium text-indigo-700 hover:underline">Run competitor research</Link></>}</span>
           </div>
         </div>
         <ErrorNote>{error}</ErrorNote>
-      </Card></details>
+      </Card>
 
       {busy === 'find' && !result && <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Asking Google what people search for…</div></Card>}
 
@@ -1776,11 +1764,7 @@ function KeywordPath({ b, tab, setTab }) {
     <>
 
       {FIND_TABS.includes(tab) && <FindHeader tab={tab} setTab={setTab} typed={typed} setTyped={setTyped} onSearch={startSearch} seedText={seedSearch.text} />}
-      {tab === 'discover' && (
-        <details className="mb-3 group rounded-xl bg-white ring-1 ring-slate-200">
-          <summary className="list-none cursor-pointer px-4 py-2.5 flex flex-wrap items-center gap-x-3 text-13 text-slate-600"><Sparkles size={14} className="text-indigo-500" /><span className="font-semibold text-slate-900">Weekly keyword suggestions</span><span className="hidden sm:inline">Suggested for you every week; one is tracked only after you approve it</span><span className="ml-auto text-indigo-700 font-semibold group-open:hidden">Open</span><span className="ml-auto text-slate-500 hidden group-open:inline">Close</span></summary>
-          <div className="px-3 pb-3"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>
-        </details>)}
+      {tab === 'discover' && <div className="mb-3"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
       <Keywords b={b} tab={tab} kw={refresh} onSaved={saved} seedSearch={seedSearch} />
     </>
   );
