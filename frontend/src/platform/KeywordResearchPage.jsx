@@ -41,9 +41,11 @@ const kd = (d) => (d == null ? ['—', 'gray'] : d < 30 ? ['Easy', 'green'] : d 
 
 function Chip({ on, children, onClick, onRemove, title }) {
   return (
-    <span className={`inline-flex items-center rounded-lg ring-1 ring-inset text-12 font-medium transition-colors ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`} title={title}>
-      <button type="button" onClick={onClick} className="px-2.5 py-1 cursor-pointer">{children}</button>
-      {onRemove && <button type="button" onClick={onRemove} className={`pr-2 cursor-pointer ${on ? 'text-indigo-200 hover:text-white' : 'text-slate-400 hover:text-slate-700'}`} aria-label="Remove"><X size={12} /></button>}
+    <span className={`inline-flex items-center rounded-lg ring-1 ring-inset text-12.5 font-medium transition-colors ${on ? 'bg-indigo-50 text-indigo-900 ring-indigo-300' : 'bg-white text-slate-500 ring-slate-200 hover:ring-slate-300'}`} title={title}>
+      <button type="button" onClick={onClick} aria-pressed={Boolean(on)} className="pl-2 pr-2.5 py-1 cursor-pointer inline-flex items-center gap-1.5">
+        <span className={`w-3.5 h-3.5 rounded-full inline-flex items-center justify-center shrink-0 ${on ? 'bg-indigo-600 text-white' : 'ring-1 ring-inset ring-slate-300'}`}>{on && <Check size={9} strokeWidth={3} />}</span>{children}
+      </button>
+      {onRemove && <button type="button" onClick={onRemove} className="pr-2 text-slate-400 hover:text-slate-700 cursor-pointer" aria-label="Remove"><X size={11} /></button>}
     </span>
   );
 }
@@ -163,7 +165,9 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
       <Card pad={false}>
         <div className="px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-3">
           <div className="flex-1 min-w-[300px] grid grid-cols-[4.75rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2.5">
-            <div className="pt-1.5 text-11.5 font-semibold uppercase tracking-wide text-slate-500" title="Built from the profile and the website audit: switch items on or off">Services <span className="block font-normal normal-case tracking-normal text-slate-400">{activeSeeds.length} of 6 on</span></div>
+            <div className="pt-1 text-11.5 font-semibold uppercase tracking-wide text-slate-500" title="Built from the profile and the website audit. Tick the ones to search from (up to 6)">Services
+              <span className={`block font-normal normal-case tracking-normal ${activeSeeds.length ? 'text-slate-400' : 'text-amber-700 font-medium'}`}>{activeSeeds.length} of 6 chosen</span>
+              <span className="block font-normal normal-case tracking-normal mt-0.5"><button type="button" onClick={() => setSeeds(l => l.map((x, i) => ({ ...x, on: i < 6 })))} className="text-indigo-700 hover:underline cursor-pointer">First 6</button>{activeSeeds.length > 0 && <> · <button type="button" onClick={() => setSeeds(l => l.map(x => ({ ...x, on: false })))} className="text-slate-500 hover:underline cursor-pointer">Clear</button></>}</span></div>
             <div className="flex flex-wrap items-center gap-1.5">
               {seeds.map(s => <Chip key={s.text} on={s.on} onClick={() => (s.on || activeSeeds.length < 6) && toggle(setSeeds, s.text)} onRemove={c.seeds.includes(s.text) ? null : () => setSeeds(list => list.filter(x => x.text !== s.text))}>{s.text}</Chip>)}
               {adding
@@ -173,7 +177,7 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
                 </form>
                 : <button type="button" onClick={() => setAdding(true)} className="h-8 px-2.5 rounded-lg ring-1 ring-inset ring-dashed ring-slate-300 text-12 font-medium text-slate-500 hover:text-slate-900 hover:ring-slate-400 inline-flex items-center gap-1 cursor-pointer"><Plus size={12} />Add a service</button>}
             </div>
-            <div className="pt-1.5 text-11.5 font-semibold uppercase tracking-wide text-slate-500">Areas</div>
+            <div className="pt-1 text-11.5 font-semibold uppercase tracking-wide text-slate-500" title="Where people search from: tick the places to include">Areas<span className="block font-normal normal-case tracking-normal text-slate-400">{activeAreas.length} chosen</span></div>
             <div className="flex flex-wrap items-center gap-1.5">
               {areas.map((a, i) => <Chip key={a.text} on={a.on} onClick={() => toggle(setAreas, a.text)} title={i < c.areas.length ? 'From the business profile' : 'Nearby, from OpenStreetMap'}>{i < c.areas.length && <MapPin size={11} className="inline -mt-0.5 mr-1" />}{a.text}</Chip>)}
               {!c.business.has_location && <span className="text-12 text-slate-500">Set the map pin in Business Onboarding to add nearby localities.</span>}
@@ -182,7 +186,7 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
           </div>
           <div className="flex flex-col items-stretch gap-1.5 sm:ml-auto">
             <Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={() => find()}>{result ? 'Find again' : 'Find keywords'}</Button>
-            <span className="text-11.5 text-slate-500 text-center">{activeSeeds.length} service{activeSeeds.length === 1 ? '' : 's'} · {activeAreas.length} area{activeAreas.length === 1 ? '' : 's'}</span>
+            <span className={`text-11.5 text-center ${activeSeeds.length ? 'text-slate-500' : 'text-amber-700 font-medium'}`}>{activeSeeds.length ? `${activeSeeds.length} service${activeSeeds.length === 1 ? '' : 's'} · ${activeAreas.length} area${activeAreas.length === 1 ? '' : 's'}` : 'Choose a service first'}</span>
           </div>
         </div>
         <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/60 rounded-b-xl flex flex-wrap items-center gap-x-6 gap-y-1 text-12 text-slate-600">
