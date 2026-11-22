@@ -33,6 +33,7 @@ const GROUPS = {
   question: { label: 'Questions', icon: HelpCircle, tone: 'bg-violet-50 text-violet-700 ring-violet-200', hint: 'Questions to answer in FAQs and blog posts' },
   fresh: { label: 'Fresh & seasonal', icon: Flame, tone: 'bg-orange-50 text-orange-700 ring-orange-200', hint: 'What people are searching this year: offers, latest, new' },
   competitor: { label: 'From competitors', icon: Users, tone: 'bg-rose-50 text-rose-700 ring-rose-200', hint: 'Keywords competitors rank or build pages for (from competitor research)' },
+  suggested: { label: 'Suggested', icon: Sparkles, tone: 'bg-violet-50 text-violet-700 ring-violet-200', hint: 'Weekly Autopilot suggestions waiting for you: track one or reject it' },
   brand: { label: 'Your brand', icon: Tag, tone: 'bg-emerald-50 text-emerald-700 ring-emerald-200', hint: 'People searching for you by name' }
 };
 const ORDER = ['competitor', 'local', 'near_me', 'service', 'question', 'fresh', 'brand'];
@@ -67,6 +68,7 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const [areas, setAreas] = useState(null);
   const [custom, setCustom] = useState('');
   const [result, setResult] = useState(null);
+  const ap = useApi(`/businesses/${b.id}/autopilot`); // keywords the weekly Autopilot suggests: rows of the table below, waiting for you
   const [selected, setSelected] = useState([]);
   const discRows = React.useRef({}); // the rows each table shows now (after its search and filters), by table
   const [busy, error, run] = useAction();
@@ -112,17 +114,28 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const trackedSet = new Set(tracked.map(k => k.keyword));
   const all = result?.keywords || [];
   const live = result?.data_source?.includes('keyword_planner');
-  const track = (rows) => run('track', async () => {
+  const track = (all_rows) => run('track', async () => {
+    const fromAp = all_rows.filter(k => k.apId);
+    const rows = all_rows.filter(k => !k.apId);
+    for (const k of fromAp) await api(`/businesses/${b.id}/autopilot/items/${k.apId}/approve`, { method: 'POST', body: {} });
+    if (fromAp.length) { ap.reload(true); onTracked(fromAp.map(k => k.keyword), fromAp.length); }
+    if (!rows.length) { setSelected([]); return; }
     const body = rows.map(k => ({ keyword: k.keyword, volume: k.volume ?? null, difficulty: k.difficulty ?? null, cpc: k.cpc ?? null, intent: k.intent, target_url: k.coverage?.page ? pathOf(k.coverage.page) : null, priority: k.group === 'near_me' || k.group === 'local' ? 'High' : 'Medium' }));
     const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body });
     setSelected([]); onTracked(rows.map(k => k.keyword), r.added);
     setResult(res => res && { ...res, keywords: res.keywords.map(k => (rows.some(x => x.keyword === k.keyword) ? { ...k, tracked: true } : k)) });
   });
+  const reject = (k) => run('reject', async () => { await api(`/businesses/${b.id}/autopilot/items/${k.apId}/reject`, { method: 'POST', body: {} }); setSelected(s => s.filter(x => x !== k.keyword)); ap.reload(true); });
   if (ctx.error) return <ErrorNote>{ctx.error.message}</ErrorNote>;
   if (!c || !seeds) return <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Reading {b.name}'s profile and audits…</div></Card>;
 
-  const searches = all.filter(k => k.group !== 'question');
-  const questions = all.filter(k => k.group === 'question');
+  const waiting = (ap.data?.inbox || []).filter(i => i.kind === 'keyword_add');
+  const waitBy = Object.fromEntries(waiting.map(i => [i.keyword, i]));
+  const have = new Set(all.map(k => k.keyword));
+  const suggestedRows = waiting.filter(i => !have.has(i.keyword)).map(i => ({ keyword: i.keyword, group: 'suggested', intent: null, stars: null, volume: null, difficulty: null, coverage: null, reason: i.reason, apId: i.id }));
+  const marked = all.map(k => (waitBy[k.keyword] ? { ...k, reason: waitBy[k.keyword].reason, apId: waitBy[k.keyword].id } : k));
+  const searches = [...suggestedRows, ...marked.filter(k => k.group !== 'question')];
+  const questions = marked.filter(k => k.group === 'question');
   const isTracked = (k) => k.tracked || trackedSet.has(k.keyword);
   const pickCol = (id, list) => ({ id: 'pick', label: 'Select', csv: false, className: 'pl-4 pr-1 py-2 w-8', thClass: 'pl-4 pr-1 py-2.5 w-8',
     header: (() => { const sel = list.filter(k => !isTracked(k)); const shownNow = (discRows.current[id] || sel).filter(k => !isTracked(k)); return <input type="checkbox" className="accent-indigo-600" aria-label="Select all shown" checked={shownNow.length > 0 && shownNow.every(k => selected.includes(k.keyword))} onChange={e => setSelected(s => (e.target.checked ? [...new Set([...s, ...shownNow.map(k => k.keyword)])] : s.filter(x => !shownNow.some(k => k.keyword === x))))} />; })(),
@@ -130,13 +143,14 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const keywordCol = (tag) => ({ id: 'keyword', header: tag ? 'Question' : 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
     cell: k => { const G = GROUPS[k.group]; return <>
       <div className="text-slate-900" title={k.from_competitors || undefined}>{k.keyword}</div>{k.from_competitors && <div className="text-11 text-rose-700">{k.from_competitors}</div>}
+      {k.reason && <div className="text-11.5 text-slate-500 mt-0.5">{k.reason}</div>}
       {!tag && <div className="mt-0.5 flex items-center gap-1.5"><span className={`text-10.5 font-semibold px-1.5 py-px rounded ring-1 ring-inset inline-flex items-center gap-1 ${G.tone}`}><G.icon size={10} /> {G.label}</span><span className="text-10.5 text-slate-400">{k.intent}</span></div>}</>; } });
   const demandCol = { id: 'demand', header: live ? 'Searches / mo' : 'Demand', first: 'desc', value: k => (live && k.volume != null ? k.volume : k.stars ?? null), className: 'px-2 py-2 whitespace-nowrap',
     cell: k => (live && k.volume != null ? <span className="tabular-nums text-slate-900">{fmt(k.volume)}{k.trend != null && k.trend !== 0 && <span className={`ml-1.5 text-11 font-semibold inline-flex items-center ${k.trend > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{k.trend > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(k.trend)}%</span>}</span> : <Stars n={k.stars} />) };
   const difficultyCol = { id: 'difficulty', header: 'Difficulty', value: k => k.difficulty ?? null, className: 'px-2 py-2 whitespace-nowrap', cell: k => { const [dl, dt] = kd(k.difficulty); return k.difficulty != null ? <Badge tone={dt}>{dl} · {k.difficulty}</Badge> : '—'; } };
   const websiteCol = { id: 'website', header: 'Your website', value: k => k.coverage?.status || null, className: 'px-2 py-2', cell: k => <Coverage c={k.coverage} /> };
   const statusCol = { id: 'status', header: 'Status', right: true, value: k => (isTracked(k) ? (k.rank ? `Rank ${k.rank}` : 'Tracked') : 'Not tracked'), className: 'px-2 pr-4 py-2 text-right whitespace-nowrap',
-    cell: k => (isTracked(k) ? <span className="text-11.5 text-emerald-700 font-medium">{k.rank ? `Rank ${k.rank}` : 'Tracked'}</span> : <button type="button" onClick={() => track([k])} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>) };
+    cell: k => (isTracked(k) ? <span className="text-11.5 text-emerald-700 font-medium">{k.rank ? `Rank ${k.rank}` : 'Tracked'}</span> : <span className="inline-flex items-center gap-3"><button type="button" onClick={() => track([k])} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>{k.apId && <button type="button" onClick={() => reject(k)} title="Not for me: do not suggest it again" className="text-11.5 font-semibold text-slate-500 hover:text-red-600 hover:underline cursor-pointer">Reject</button>}</span>) };
   const statusFilter = { id: 'status', label: 'Status', options: [['new', 'Not tracked yet'], ['tracked', 'Tracked']], test: (k, v) => (isTracked(k) ? v === 'tracked' : v === 'new') };
   const siteFilter = result?.website_checked ? [{ id: 'site', label: 'Website', options: [['gap', 'Content gaps'], ['covered', 'Covered']], test: (k, v) => (v === 'gap' ? k.coverage?.status === 'gap' : Boolean(k.coverage?.status) && k.coverage.status !== 'gap') }] : [];
 
@@ -192,7 +206,7 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
             rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
             empty={all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}
             filters={[
-              { id: 'group', label: 'Type', options: ORDER.filter(g => g !== 'question' && result.counts[g]).map(g => [g, `${GROUPS[g].label} (${result.counts[g]})`]), test: (k, v) => k.group === v },
+              { id: 'group', label: 'Type', options: [...(suggestedRows.length ? [['suggested', `Suggested (${suggestedRows.length})`]] : []), ...ORDER.filter(g => g !== 'question' && result.counts[g]).map(g => [g, `${GROUPS[g].label} (${result.counts[g]})`])], test: (k, v) => k.group === v },
               ...siteFilter,
               { id: 'intent', label: 'Intent', options: [...new Set(searches.map(k => k.intent).filter(Boolean))].sort().map(x => [x, x]), test: (k, v) => k.intent === v },
               ...(live ? [{ id: 'kd', label: 'Difficulty', options: [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']], test: (k, v) => k.difficulty != null && kd(k.difficulty)[0].toLowerCase() === v }] : []),
@@ -219,6 +233,7 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
       </div>
         </>
       )}
+      <AutopilotPanel key={b.id} bid={b.id} feature="keywords" hideItems onChanged={() => ap.reload(true)} />
       {toastNode}
     </div>
   );
@@ -1738,7 +1753,6 @@ function KeywordPath({ b, tab, setTab }) {
 
       {FIND_TABS.includes(tab) && <FindHeader tab={tab} setTab={setTab} typed={typed} setTyped={setTyped} onSearch={startSearch} seedText={seedSearch.text} />}
       <Keywords b={b} tab={tab} kw={refresh} onSaved={saved} seedSearch={seedSearch} />
-      {tab === 'discover' && <div className="mt-4"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
     </>
   );
 }

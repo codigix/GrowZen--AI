@@ -242,7 +242,7 @@ export function waitingFor(d, feature) {
   return cfg ? (d?.inbox || []).filter(i => cfg.kinds.includes(i.kind) && (feature !== 'profile' || i.source === 'autopilot')).length : 0;
 }
 
-export function AutopilotPanel({ bid, feature }) {
+export function AutopilotPanel({ bid, feature, hideItems = false, onChanged }) {
   const cfg = FEATURES[feature];
   const [d, setD] = useState(null);
   const [error, setError] = useState('');
@@ -258,10 +258,10 @@ export function AutopilotPanel({ bid, feature }) {
   const inbox = d.inbox.filter(mine), scheduled = d.scheduled.filter(mine), recent = d.recent.filter(mine).slice(0, 8);
   const posts = inbox.filter(i => i.kind === 'gbp_post');
   const on = d.settings.enabled;
-  const flip = async () => { try { await api(`/businesses/${bid}/autopilot/settings`, { method: 'PUT', body: { enabled: !on }, repeat: true }); await load(); } catch (e) { setNote(e.message); } };
+  const flip = async () => { try { await api(`/businesses/${bid}/autopilot/settings`, { method: 'PUT', body: { enabled: !on }, repeat: true }); await load(); onChanged?.(); } catch (e) { setNote(e.message); } };
   const generate = async () => {
     setGenerating(true); setNote('');
-    try { const r = await api(`/businesses/${bid}/autopilot/generate`, { method: 'POST', body: { what: cfg.what }, timeout: 170000 }); setNote(Object.values(r).map(v => (v.made ? `${v.made} new draft${v.made === 1 ? '' : 's'} ready below.` : v.note || 'Nothing new right now.')).join(' ')); await load(); }
+    try { const r = await api(`/businesses/${bid}/autopilot/generate`, { method: 'POST', body: { what: cfg.what }, timeout: 170000 }); onChanged?.(); setNote(Object.values(r).map(v => (v.made ? `${v.made} new draft${v.made === 1 ? '' : 's'} ready below.` : v.note || 'Nothing new right now.')).join(' ')); await load(); }
     catch (e) { setNote(e.message || 'Could not prepare drafts.'); } finally { setGenerating(false); }
   };
   const approveAll = async () => {
@@ -289,6 +289,7 @@ export function AutopilotPanel({ bid, feature }) {
         {note && <p className="mt-2 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{note}</p>}
         {showSet && <PanelSettings feature={feature} d={d} bid={bid} onChanged={load} />}
       </Card>
+      {hideItems ? null : <>
       {feature === 'photos' && <PhotoUploader bid={bid} onChanged={load} queued={inbox.length} />}
       {posts.length > 1 && d.linked && <div><Button size="sm" icon={bulk ? Loader2 : Check} disabled={bulk} onClick={approveAll}>Approve all {posts.length} posts at their times</Button></div>}
       {feature === 'keywords' ? ((inbox.length + scheduled.length + recent.length) > 0 && <KeywordItemsTable items={[...inbox, ...scheduled, ...d.recent.filter(mine)]} bid={bid} onChanged={load} />) : <>
@@ -302,6 +303,7 @@ export function AutopilotPanel({ bid, feature }) {
       {inbox.length === 0 && scheduled.length === 0 && <p className="text-13 text-slate-500">Nothing waits for you here. {on ? 'The next drafts appear after the next automatic run, or press “Prepare drafts now”.' : 'Turn Autopilot on to have drafts prepared for you every day.'}</p>}
       </>}
       {feature === 'keywords' && inbox.length === 0 && scheduled.length === 0 && recent.length === 0 && <p className="text-13 text-slate-500">Nothing waits for you here. {on ? 'The next suggestions appear after the next automatic run, or press “Prepare” above.' : 'Turn it on, or press “Prepare” above.'}</p>}
+      </>}
     </section>
   );
 }
