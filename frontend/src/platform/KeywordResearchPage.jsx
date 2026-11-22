@@ -811,26 +811,21 @@ function Tracked({ b, kw }) {
         </div></Card>
       ) : (
         <>
-          {/* Where you stand and the one thing to do next: one slim row, so the list starts high on the page */}
-          <div className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2">
-            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Where you stand: click one to filter the table">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Where you stand: click one to filter the table">
               {[['Saved', tracked.length, () => clearAll(), !active, 'Every saved keyword'], ['Primary', cnt(k => k.role === 'primary'), () => { clearAll(); setFilter('role', 'primary'); }, f.role === 'primary', 'The main keyword of a page'], ['Have a page', mapped, () => { clearAll(); setFilter('page', 'mapped'); }, f.page === 'mapped', 'A page of your website is chosen for them'], ['On Google', onGoogle, () => { clearAll(); setFilter('google', 'yes'); }, f.google === 'yes', 'Your site shows for them in Google'], ['Top 10', cnt(k => k.rank && k.rank <= 10), () => { clearAll(); setFilter('google', 'top10'); }, f.google === 'top10', 'Ranking 1 to 10 on Google']].map(([label, num, fn, on, tip]) => (
-                <button key={label} type="button" onClick={fn} title={tip} aria-pressed={on} className={`rounded-lg px-3 py-1.5 text-left cursor-pointer ring-1 ring-inset ${on ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>
-                  <span className="block text-18 font-semibold tabular-nums leading-tight">{num}</span><span className={`block text-11.5 ${on ? 'text-slate-300' : 'text-slate-500'}`}>{label}</span>
-                </button>))}
-              {tbl.data?.google_total?.clicks != null && <span className="px-3 py-1.5" title="Clicks from Google to your site for these keywords, last 28 days (Search Console)"><span className="block text-18 font-semibold tabular-nums leading-tight text-slate-900">{fmt(tbl.data.google_total.clicks)}</span><span className="block text-11.5 text-slate-500">Clicks, 28 days</span></span>}
+                <button key={label} type="button" onClick={fn} title={tip} aria-pressed={on} className={`h-8 px-2.5 rounded-lg cursor-pointer ring-1 ring-inset inline-flex items-baseline gap-1.5 text-12.5 ${on ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'}`}><b className="tabular-nums text-14 self-center">{num}</b>{label}</button>))}
+              {tbl.data?.google_total?.clicks != null && <span className="h-8 px-2.5 inline-flex items-baseline gap-1.5 text-12.5 text-slate-600" title="Clicks from Google to your site for these keywords, last 28 days (Search Console)"><b className="tabular-nums text-14 self-center text-slate-900">{fmt(tbl.data.google_total.clicks)}</b>clicks, 28 days</span>}
+            </div>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+            <label className="relative w-56"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(30); }} placeholder="Search my keywords or topics" aria-label="Search my keywords" className="h-8 w-full pl-9 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" /></label>
+            <form onSubmit={(e) => { e.preventDefault(); add(); }} className="flex gap-1.5">
+              <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Add a keyword" aria-label="Add a keyword" className="h-8 w-40 px-2.5 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
+              <Button size="sm" type="submit" icon={Plus} busy={busy === 'add'} disabled={typed.trim().length < 2}>Add</Button>
+            </form>
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="relative flex-1 min-w-[220px] max-w-md"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(30); }} placeholder="Search my keywords or topics" aria-label="Search my keywords" className="h-10 w-full pl-9 pr-3 text-14 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" /></label>
-            <form onSubmit={(e) => { e.preventDefault(); add(); }} className="flex gap-2 ml-auto">
-              <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Add a keyword" aria-label="Add a keyword" className="h-10 w-48 px-3 text-14 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
-              <Button type="submit" icon={Plus} busy={busy === 'add'} disabled={typed.trim().length < 2}>Add</Button>
-            </form>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-12 text-slate-500 -mb-2">
+          <div className="flex flex-wrap items-center gap-2 text-11.5 text-slate-500 px-1 -mt-1 -mb-1">
             {tbl.data?.refreshing && <span className="inline-flex items-center gap-1.5 text-indigo-700"><Loader2 size={12} className="animate-spin" />Reading positions and Search Console figures… they appear here by themselves.</span>}
             {!tbl.data?.refreshing && tbl.data?.fetched_at && <span>Google figures: Search Console{tbl.data.window ? `, ${tbl.data.window.days} days (${new Date(`${tbl.data.window.start}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} to ${new Date(`${tbl.data.window.end}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}), searches from ${tbl.data.window.country || 'your country'}` : ''}{tbl.data.google_total ? ` · ${fmt(tbl.data.google_total.impressions)} impressions and ${fmt(tbl.data.google_total.clicks)} clicks from ${tbl.data.google_total.searches} of your ${(tbl.data.rows || []).length} keywords` : ''} · read {new Date(tbl.data.fetched_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}, refreshed every {tbl.data.every_minutes} min</span>}
             {!tbl.data?.refreshing && tbl.data?.google === 'saved' && <span className="text-amber-700" title={tbl.data.google_error || ''}>Search Console could not be read just now: showing the last saved position check{tbl.data.google_error ? ` (${tbl.data.google_error})` : ''}</span>}
@@ -879,11 +874,11 @@ function Tracked({ b, kw }) {
                     const t = T[k.id];
                     return (
                       <tr key={k.id} data-just-added={isNew ? '1' : undefined} className={sel.has(k.id) ? 'bg-indigo-50/60' : isNew ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}>
-                        <td className="pl-4 py-4"><input type="checkbox" aria-label={`Select ${k.keyword}`} checked={sel.has(k.id)} onChange={() => toggleSel(k.id)} /></td>
-                        <td className="px-4 py-3 min-w-[230px]">
+                        <td className="pl-4 py-2"><input type="checkbox" aria-label={`Select ${k.keyword}`} checked={sel.has(k.id)} onChange={() => toggleSel(k.id)} /></td>
+                        <td className="px-4 py-2 min-w-[230px]">
                           <Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`} title="Check its searches, cost and related ideas" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline">{k.keyword}</Link>
                           {isNew && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5">Just added</span>}
-                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-12 text-slate-400">
+                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-12 text-slate-400">
                             {k.role === 'primary' ? <span title="The main keyword of its page: the one the page is built to rank for" className="inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white text-11 font-semibold px-2 py-px"><Star size={10} />Primary</span>
                               : k.role === 'secondary' ? <span title="A supporting keyword: the page also covers it, but it is not the page's main one" className="inline-flex items-center rounded-full bg-slate-200 text-slate-700 text-11 font-semibold px-2 py-px">Secondary</span>
                                 : t?.role_suggested ? <span title="The mapping suggests this role. Map the keyword and save the mapping to keep it." className="inline-flex items-center rounded-full ring-1 ring-dashed ring-slate-300 text-slate-500 text-11 font-semibold px-2 py-px">{t.role_suggested === 'primary' ? 'Primary' : 'Secondary'}?</span>
@@ -891,12 +886,12 @@ function Tracked({ b, kw }) {
                             {k.intent && <span title={{ local: 'Someone looking for a business near them', commercial: 'Someone comparing or ready to buy or hire', informational: 'Someone looking for an answer or a guide', transactional: 'Someone ready to buy now', navigational: 'Someone looking for a particular site' }[k.intent] || 'What the searcher wants'} className={`inline-flex items-center rounded-full text-11 font-semibold px-2 py-px ${{ local: 'bg-teal-50 text-teal-700', commercial: 'bg-emerald-50 text-emerald-700', informational: 'bg-sky-50 text-sky-700', transactional: 'bg-amber-50 text-amber-700', navigational: 'bg-violet-50 text-violet-700' }[k.intent] || 'bg-slate-100 text-slate-600'}`}>{k.intent}</span>}
                             {t?.branded && <span title="It contains your brand name: people who already know you" className="inline-flex items-center rounded-full bg-fuchsia-50 text-fuchsia-700 text-11 font-semibold px-2 py-px">Brand</span>}
                           </span>
-                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-11.5 text-slate-400">
+                          <span className="flex flex-wrap items-center gap-x-2 text-11 text-slate-400 leading-tight">
                             {t?.source?.label && <span title="Where this keyword was found" className="truncate max-w-[170px]">From {t.source.label}</span>}
                             {k.cluster && <span title="Its topic group">{k.cluster}</span>}
                           </span>
                         </td>
-                        {show('rank') && (<td className="px-3 py-3 text-right whitespace-nowrap">
+                        {show('rank') && (<td className="px-3 py-2 text-right whitespace-nowrap">
                           {(t?.rank ?? k.rank) ? <span className="inline-flex items-center justify-end gap-1.5" title="Average position on Google, last 28 days (Search Console)">
                             <span className={`font-semibold tabular-nums ${(t?.rank ?? k.rank) <= 10 ? 'text-emerald-700' : 'text-slate-800'}`}>#{t?.rank ?? k.rank}</span>
                             {t?.change ? <span className={`inline-flex items-center text-12 ${t.change > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{t.change > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{Math.abs(t.change)}</span> : null}
@@ -904,16 +899,16 @@ function Tracked({ b, kw }) {
                           <span className="block mt-0.5">{!t ? null : t.ai?.mentioned ? <span title="AI assistants mention your business for this question" className="text-11.5 font-semibold text-emerald-700">AI ✓ mentioned</span>
                             : t.ai?.tracked ? <span title="You track the question this keyword makes; no assistant names your business yet" className="text-11.5 text-slate-500">AI asked, not named</span> : <span title="Not tracked as an AI search question yet" className="text-11.5 text-slate-300">AI not tracked</span>}</span>
                         </td>)}
-                        {show('volume') && (<td className="px-3 py-3 text-right tabular-nums whitespace-nowrap" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>)}
-                        {show('difficulty') && (<td className="px-3 py-3 text-right whitespace-nowrap" title={k.difficulty != null ? `Keyword difficulty ${k.difficulty} of 100: ${k.difficulty <= 30 ? 'easier to rank for' : k.difficulty <= 60 ? 'a fair fight' : 'hard to rank for'}` : 'Google gave no difficulty figure for this keyword'}>
+                        {show('volume') && (<td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>)}
+                        {show('difficulty') && (<td className="px-3 py-2 text-right whitespace-nowrap" title={k.difficulty != null ? `Keyword difficulty ${k.difficulty} of 100: ${k.difficulty <= 30 ? 'easier to rank for' : k.difficulty <= 60 ? 'a fair fight' : 'hard to rank for'}` : 'Google gave no difficulty figure for this keyword'}>
                           {k.difficulty != null ? <span className={`inline-flex items-center justify-center min-w-[36px] rounded-md px-2 py-0.5 text-13 font-semibold tabular-nums ${k.difficulty <= 30 ? 'bg-emerald-50 text-emerald-700' : k.difficulty <= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{k.difficulty}</span> : <span className="text-slate-300">—</span>}
                         </td>)}
-                        {show('impressions') && (<td className="px-3 py-3 text-right tabular-nums whitespace-nowrap text-13" title="Google Search Console, last 28 days">
+                        {show('impressions') && (<td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-13" title="Google Search Console, last 28 days">
                           {t && t.impressions > 0 ? <><span className="text-slate-700">{fmt(t.impressions)}</span> <span className="text-slate-300">/</span> <span className="font-semibold text-slate-900">{fmt(t.clicks || 0)}</span> <span className="text-slate-300">/</span> <span className="text-slate-700">{t.ctr != null ? `${t.ctr}%` : '—'}</span></>
                             : t && t.impressions === 0 ? <span className="text-slate-400" title="Google showed your site 0 times for this exact search in the last 28 days">0 shown</span>
                               : <span className="text-slate-300" title={!t ? '' : tbl.data?.google_error ? `Search Console could not be read: ${tbl.data.google_error}` : 'Not read yet'}>{!t ? '…' : '—'}</span>}
                         </td>)}
-                        {show('page') && (<td className="px-3 py-3 min-w-[190px]">
+                        {show('page') && (<td className="px-3 py-2 min-w-[190px]">
                           {editing === k.id ? (
                             <PagePicker b={b} pages={sitePages} value={k.target_url || ''} listId={`pages-${b.id}`} onCancel={() => setEditing(null)}
                               onPick={v => { setEditing(null); if (v !== (k.target_url || '')) update(k, { target_url: v || null }); }} />
@@ -939,10 +934,10 @@ function Tracked({ b, kw }) {
                             </div>
                           )}
                         </td>)}
-                        {show('status') && (<td className="px-3 py-3 whitespace-nowrap">
+                        {show('status') && (<td className="px-3 py-2 whitespace-nowrap">
                           {t?.label ? <span title={t.why || ''}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' }[t.status] || 'gray'}>{t.label}</Badge></span> : <span className="text-slate-300">{!t ? '…' : '—'}</span>}
                         </td>)}
-                        <td className="px-3 py-3 text-right whitespace-nowrap">
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
                           <KeywordRowActions b={b} k={k} t={t} usedOn={used} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} onRole={(role) => update(k, { role })} onUse={() => setUseIds([k.id])} />
                         </td>
                       </tr>);
