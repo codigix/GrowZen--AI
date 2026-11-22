@@ -295,7 +295,8 @@ class GbpClient:
     def available_attributes(self, location: str, region: str = "IN", language: str = "en") -> list[dict[str, Any]]:
         out, token = [], None
         while True:
-            d = self._req("GET", f"{INFO}/attributes", params={"parent": location, "languageCode": language, "pageSize": 200, **({"pageToken": token} if token else {})})
+            # With `parent` Google wants nothing else that picks the list (regionCode, languageCode, categoryName, showAll must not be sent): it answers 400 "invalid argument" if they are
+            d = self._req("GET", f"{INFO}/attributes", params={"parent": location, "pageSize": 200, **({"pageToken": token} if token else {})})
             out += d.get("attributeMetadata", [])
             token = d.get("nextPageToken")
             if not token:

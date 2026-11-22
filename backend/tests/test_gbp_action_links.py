@@ -48,3 +48,16 @@ def test_one_refused_link_changes_nothing_for_the_others():
     with pytest.raises(gbp.GbpError):
         gbp.sync_action_links(c, "locations/1", [{"type": "APPOINTMENT", "url": "https://x.com/book"}, {"type": "SHOP_ONLINE", "url": "https://x.com/shop"}])
     assert c.calls == []
+
+
+def test_the_attribute_list_for_a_location_sends_no_language_or_region(monkeypatch):
+    """Google answers 400 'invalid argument' when `parent` comes with languageCode, regionCode, categoryName or showAll."""
+    sent = []
+
+    def req(self, method, url, **kw):
+        sent.append(kw.get("params"))
+        return {"attributeMetadata": []}
+
+    monkeypatch.setattr(gbp.GbpClient, "_req", req)
+    gbp.GbpClient.__new__(gbp.GbpClient).available_attributes("locations/1", "IN", "en")
+    assert sent == [{"parent": "locations/1", "pageSize": 200}]
