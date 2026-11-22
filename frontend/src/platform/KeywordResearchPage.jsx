@@ -137,8 +137,6 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
     cell: k => (isTracked(k) ? <span className="text-11.5 text-emerald-700 font-medium">{k.rank ? `Rank ${k.rank}` : 'Tracked'}</span> : <button type="button" onClick={() => track([k])} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>) };
   const statusFilter = { id: 'status', label: 'Status', options: [['new', 'Not tracked yet'], ['tracked', 'Tracked']], test: (k, v) => (isTracked(k) ? v === 'tracked' : v === 'new') };
   const siteFilter = result?.website_checked ? [{ id: 'site', label: 'Website', options: [['gap', 'Content gaps'], ['covered', 'Covered']], test: (k, v) => (v === 'gap' ? k.coverage?.status === 'gap' : Boolean(k.coverage?.status) && k.coverage.status !== 'gap') }] : [];
-  const searches = all.filter(k => k.group !== 'question');
-  const questions = all.filter(k => k.group === 'question');
 
   return (
     <div className="space-y-3">
@@ -184,32 +182,21 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
             <span><b className={`tabular-nums ${result.website_checked && result.gaps ? 'text-red-600' : 'text-slate-900'}`}>{result.website_checked ? result.gaps : '—'}</b> content gaps</span>
             {result.trending_today.length > 0 && <span className="inline-flex flex-wrap items-center gap-1.5" title="Today's trending searches in India that mention your topics"><Flame size={13} className="text-orange-500" />Trending: {result.trending_today.slice(0, 5).map(x => <span key={x.keyword} className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-800 text-12">{x.keyword}</span>)}</span>}
           </div>
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
-        <Card pad={false} title={`Search keywords (${searches.length})`}
-          action={<Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(all.filter(k => selected.includes(k.keyword) && !isTracked(k)))}>Track {selected.length || ''}</Button>}>
-          <DataTable bare rows={searches} rowKey={k => k.keyword} pageSize={15} exportName="keyword-ideas" label="keywords" searchPlaceholder="Search keywords" minWidth={520} sizes={[10, 15, 25, 50]}
-            onState={st => { discRows.current.main = st.rows; }}
-            rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
-            empty={all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}
-            filters={[
-              { id: 'group', label: 'Type', options: ORDER.filter(g => g !== 'question' && result.counts[g]).map(g => [g, `${GROUPS[g].label} (${result.counts[g]})`]), test: (k, v) => k.group === v },
-              ...siteFilter,
-              { id: 'intent', label: 'Intent', options: [...new Set(searches.map(k => k.intent).filter(Boolean))].sort().map(x => [x, x]), test: (k, v) => k.intent === v },
-              ...(live ? [{ id: 'kd', label: 'Difficulty', options: [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']], test: (k, v) => k.difficulty != null && kd(k.difficulty)[0].toLowerCase() === v }] : []),
-              statusFilter
-            ]}
-            columns={[pickCol('main', searches), keywordCol(false), demandCol, ...(live ? [difficultyCol] : []), { ...websiteCol, hide: true }, statusCol]} />
-        </Card>
-        <Card pad={false} title={`Questions customers ask (${questions.length})`}
-          action={<span className="text-12 text-slate-500 hidden sm:inline">Answer them in FAQs, Google Q&A and blog posts</span>}>
-          <DataTable bare rows={questions} rowKey={k => k.keyword} pageSize={15} exportName="keyword-questions" label="questions" searchPlaceholder="Search questions" minWidth={520} sizes={[10, 15, 25, 50]}
-            onState={st => { discRows.current.q = st.rows; }}
-            rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
-            empty="Google had no questions for these services."
-            filters={[...siteFilter, statusFilter]}
-            columns={[pickCol('q', questions), keywordCol(true), demandCol, websiteCol, statusCol]} />
-        </Card>
-      </div>
+      <Card pad={false} title={`Keywords (${all.length})`}
+        action={<Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(all.filter(k => selected.includes(k.keyword) && !isTracked(k)))}>Track {selected.length || ''}</Button>}>
+        <DataTable bare rows={all} rowKey={k => k.keyword} pageSize={25} exportName="keyword-ideas" label="keywords" searchPlaceholder="Search keywords and questions" minWidth={720}
+          onState={st => { discRows.current.main = st.rows; }}
+          rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
+          empty={all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}
+          filters={[
+            { id: 'group', label: 'Type', options: ORDER.filter(g => result.counts[g]).map(g => [g, `${GROUPS[g].label} (${result.counts[g]})`]), test: (k, v) => k.group === v },
+            ...siteFilter,
+            { id: 'intent', label: 'Intent', options: [...new Set(all.map(k => k.intent).filter(Boolean))].sort().map(x => [x, x]), test: (k, v) => k.intent === v },
+            ...(live ? [{ id: 'kd', label: 'Difficulty', options: [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']], test: (k, v) => k.difficulty != null && kd(k.difficulty)[0].toLowerCase() === v }] : []),
+            statusFilter
+          ]}
+          columns={[pickCol('main', all), keywordCol(false), demandCol, ...(live ? [difficultyCol] : []), websiteCol, statusCol]} />
+      </Card>
         </>
       )}
       {toastNode}
