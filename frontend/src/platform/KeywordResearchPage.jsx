@@ -756,7 +756,8 @@ function Tracked({ b, kw }) {
   const location = useLocation();
   const fresh = useMemo(() => new Set((location.state?.added || []).map(x => String(x).toLowerCase())), [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const [useIds, setUseIds] = useState(null); // the keywords the "Where to use" window is open for
-  const [view, setView] = useState('all');
+  const NO_FILTER = { role: '', page: '', google: '', kd: '', intent: '', status: '', topic: '' };
+  const [f, setF] = useState(NO_FILTER); // the filters of the table: one box for each column worth filtering
   const [q, setQ] = useState('');
   const [sort, setSort] = useState({ key: 'volume', dir: 'desc' });
   const [limit, setLimit] = useState(30);
@@ -796,25 +797,60 @@ function Tracked({ b, kw }) {
   const mapped = tracked.filter(k => k.target_url).length;
   const onGoogle = tracked.filter(k => k.rank).length;
   const same = (a, c) => { const p = (u) => ((u || '').replace(/^https?:\/\/[^/]+/, '').replace(/\/+$/, '')) || '/'; return p(a) === p(c); };
-  const counts = { all: tracked.length, nopage: tracked.length - mapped, google: onGoogle, nogoogle: tracked.length - onGoogle, primary: tracked.filter(k => k.role === 'primary').length, secondary: tracked.filter(k => k.role === 'secondary').length, norole: tracked.filter(k => !k.role).length };
-  const go = (v) => { setView(v); setLimit(30); setSel(new Set()); };
+  const setFilter = (key, v) => { setF(x => ({ ...x, [key]: v })); setLimit(30); setSel(new Set()); };
+  const clearAll = () => { setF(NO_FILTER); setQ(''); setLimit(30); setSel(new Set()); };
+  const active = Object.values(f).filter(Boolean).length + (q.trim() ? 1 : 0);
+  const kdBand = (d) => (d == null ? 'none' : d <= 30 ? 'easy' : d <= 60 ? 'medium' : 'hard');
+  const topics = [...new Set(tracked.map(k => k.cluster).filter(Boolean))].sort();
+  const intents = [...new Set(tracked.map(k => k.intent).filter(Boolean))].sort();
+  const cnt = (fn) => tracked.filter(fn).length;
+  const FILTERS = [
+    ['role', 'Role', [['', 'Any role'], ['primary', `Primary (${cnt(k => k.role === 'primary')})`], ['secondary', `Secondary (${cnt(k => k.role === 'secondary')})`], ['none', `No role yet (${cnt(k => !k.role)})`]]],
+    ['page', 'Page', [['', 'Any page status'], ['mapped', `Has a page (${mapped})`], ['none', `No page yet (${tracked.length - mapped})`]]],
+    ['google', 'Google', [['', 'On Google or not'], ['yes', `Ranks on Google (${onGoogle})`], ['no', `Not on Google yet (${tracked.length - onGoogle})`]]],
+    ['kd', 'Difficulty', [['', 'Any difficulty'], ['easy', `Easy, up to 30 (${cnt(k => kdBand(k.difficulty) === 'easy')})`], ['medium', `Medium, 31 to 60 (${cnt(k => kdBand(k.difficulty) === 'medium')})`], ['hard', `Hard, over 60 (${cnt(k => kdBand(k.difficulty) === 'hard')})`], ['none', `No figure (${cnt(k => kdBand(k.difficulty) === 'none')})`]]],
+    ['status', 'Status', [['', 'Any status'], ['working', 'Working'], ['climbing', 'Climbing'], ['weak', 'Weak'], ['invisible', 'Not seen'], ['unchecked', 'Not checked']]],
+    ...(intents.length ? [['intent', 'Intent', [['', 'Any intent'], ...intents.map(i => [i, i])]]] : []),
+    ...(topics.length ? [['topic', 'Topic', [['', 'Any topic'], ['__none', 'No topic yet'], ...topics.map(i => [i, i])]]] : [])
+  ];
+  const STATUS_ORDER = { working: 0, climbing: 1, weak: 2, invisible: 3, unchecked: 4 };
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const list = tracked.filter(k => (!needle || k.keyword.includes(needle) || (k.cluster || '').toLowerCase().includes(needle)) && (view === 'all' || (view === 'nopage' && !k.target_url) || (view === 'google' && k.rank) || (view === 'nogoogle' && !k.rank) || (view === 'primary' && k.role === 'primary') || (view === 'secondary' && k.role === 'secondary') || (view === 'norole' && !k.role)));
-    const v = (k) => (sort.key === 'keyword' ? k.keyword : sort.key === 'rank' ? (k.rank ?? 999) : (k[sort.key] ?? -1));
-    return list.sort((a, c) => { const x = v(a); const y = v(c); const o = typeof x === 'string' ? x.localeCompare(y) : x - y; return sort.dir === 'asc' ? o : -o; });
-  }, [tracked, view, q, sort]);
+    const list = tracked.filter(k => {
+      const t = T[k.id];
+      return (!needle || k.keyword.includes(needle) || (k.cluster || '').toLowerCase().includes(needle))
+        && (!f.role || (f.role === 'none' ? !k.role : k.role === f.role))
+        && (!f.page || (f.page === 'mapped' ? k.target_url : !k.target_url))
+        && (!f.google || (f.google === 'yes' ? k.rank : !k.rank))
+        && (!f.kd || kdBand(k.difficulty) === f.kd)
+        && (!f.intent || k.intent === f.intent)
+        && (!f.topic || (f.topic === '__none' ? !k.cluster : k.cluster === f.topic))
+        && (!f.status || (t?.status || 'unchecked') === f.status);
+    });
+    const v = (k) => {
+      const t = T[k.id];
+      switch (sort.key) {
+        case 'keyword': return k.keyword;
+        case 'rank': return k.rank ?? 999;
+        case 'impressions': return t?.impressions ?? -1;
+        case 'clicks': return t?.clicks ?? -1;
+        case 'page': return (k.target_url || '~').toLowerCase();
+        case 'status': return STATUS_ORDER[t?.status || 'unchecked'] ?? 5;
+        default: return k[sort.key] ?? -1;
+      }
+    };
+    return list.sort((a, c) => { const x = v(a); const y = v(c); const o = typeof x === 'string' ? x.localeCompare(y) : x - y; return (sort.dir === 'asc' ? o : -o) || a.keyword.localeCompare(c.keyword); });
+  }, [tracked, f, q, sort, T]);
   const shown = rows.slice(0, limit);
   const allOn = shown.length > 0 && shown.every(k => sel.has(k.id));
   const Th = ({ id, children, right, ...tip }) => (
     <th className={`px-4 py-3 font-semibold ${right ? 'text-right' : 'text-left'}`}>
-      <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id && s.dir === 'desc' ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${sort.key === id ? 'text-slate-900' : ''}`}><Head right={right} {...tip}>{children}</Head>{sort.key === id && (sort.dir === 'asc' ? '▲' : '▼')}</button>
+      <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id ? (s.dir === 'desc' ? 'asc' : 'desc') : ['keyword', 'rank', 'page', 'status'].includes(id) ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${sort.key === id ? 'text-slate-900' : ''}`}><Head right={right} {...tip}>{children}</Head>{sort.key === id && (sort.dir === 'asc' ? '▲' : '▼')}</button>
     </th>
   );
-  const chip = (id, label, n) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => go(id)} className={`h-10 px-4 rounded-lg text-14 font-semibold cursor-pointer inline-flex items-center gap-2 ${view === id ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'}`}>{label}<span className={`tabular-nums ${view === id ? 'text-slate-300' : 'text-slate-400'}`}>{n}</span></button>;
 
   // The one thing worth doing next, said plainly
-  const nopage = counts.nopage;
+  const nopage = tracked.length - mapped;
   const hint = !tracked.length ? null : nopage > 0
     ? { text: `${nopage} keyword${nopage === 1 ? ' has' : 's have'} no page yet. Each needs one page on your website to rank.`, action: <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages}>Match them to my pages</Button>, more: <Link to="/keyword-management/mapping" className="text-13 font-semibold text-indigo-700 hover:underline">See the matching</Link> }
     : onGoogle === 0 ? { text: 'Every keyword has a page. Next: check where they show on Google.', action: <Link to="/keyword-management/status"><Button variant="primary" icon={ArrowRight}>Check rankings</Button></Link> }
@@ -847,15 +883,8 @@ function Tracked({ b, kw }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div role="tablist" aria-label="How to see the keywords" className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg mr-1">
-              <span role="tab" aria-selected="true" className="h-9 px-3.5 inline-flex items-center rounded-md text-14 font-semibold bg-white text-slate-900 shadow-sm ring-1 ring-slate-200">My keywords</span>
-              <Link to="/keyword-management/topics" role="tab" aria-selected="false" title="Group the keywords into topics, one page per topic" className="h-9 px-3.5 inline-flex items-center rounded-md text-14 font-semibold text-slate-500 hover:text-slate-800">Grouped by topic</Link>
-            </div>
-            <div role="tablist" aria-label="Which keywords" className="flex flex-wrap gap-2">
-              {chip('all', 'All', counts.all)}{chip('primary', 'Primary', counts.primary)}{chip('secondary', 'Secondary', counts.secondary)}{chip('norole', 'No role yet', counts.norole)}{chip('nopage', 'No page yet', counts.nopage)}{chip('google', 'On Google', counts.google)}{chip('nogoogle', 'Not on Google yet', counts.nogoogle)}
-            </div>
-            <label className="relative ml-auto"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(30); }} placeholder="Search my keywords" aria-label="Search my keywords" className="h-10 pl-9 pr-3 text-14 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-60 bg-white" /></label>
-            <form onSubmit={(e) => { e.preventDefault(); add(); }} className="flex gap-2">
+            <label className="relative flex-1 min-w-[220px] max-w-md"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(30); }} placeholder="Search my keywords or topics" aria-label="Search my keywords" className="h-10 w-full pl-9 pr-3 text-14 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" /></label>
+            <form onSubmit={(e) => { e.preventDefault(); add(); }} className="flex gap-2 ml-auto">
               <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Add a keyword" aria-label="Add a keyword" className="h-10 w-48 px-3 text-14 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
               <Button type="submit" icon={Plus} busy={busy === 'add'} disabled={typed.trim().length < 2}>Add</Button>
             </form>
@@ -868,6 +897,15 @@ function Tracked({ b, kw }) {
             {tbl.data?.error && !tbl.data?.refreshing && <span className="text-amber-700" title={tbl.data.error}>last refresh failed</span>}
           </div>
           <Card pad={false}>
+            <div role="group" aria-label="Filter the table" className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
+              {FILTERS.map(([key, label, opts]) => (
+                <label key={key} className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">{label}
+                  <select value={f[key]} onChange={e => setFilter(key, e.target.value)} aria-label={`Filter by ${label.toLowerCase()}`} className={`h-8 rounded-md border text-12.5 font-medium cursor-pointer max-w-[11rem] ${f[key] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700'}`}>
+                    {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </label>))}
+              <span className="ml-auto text-12.5 text-slate-500" role="status">{active ? <>Showing <b className="text-slate-800">{rows.length}</b> of {tracked.length} · <button type="button" onClick={clearAll} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></> : <>{tracked.length} keywords · click a heading to sort</>}</span>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-14 min-w-[1010px]">
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
@@ -877,9 +915,9 @@ function Tracked({ b, kw }) {
                     <Th id="rank" right what="Where your website shows on Google for it (average, last 28 days; #1 is the top), whether it moved, and whether AI assistants mention your business for it." why="Shows what is working and what can climb." from="Google Search Console for the position; the AI answers you track for AI search.">Rank / AI</Th>
                     <Th id="volume" right what="How many times a month people search it in your country." why="Shows which keywords can bring the most visitors." from="Google Ads Keyword Planner. Blank when Google gave no figure.">Searches</Th>
                     <Th id="difficulty" right what="Keyword difficulty, 0 to 100: how hard it is to rank on Google for this keyword. Green is easier (up to 30), amber is a fair fight (up to 60), red is hard." why="Start with the easier keywords that still have searches: they rank sooner." from="Google Ads Keyword Planner (its competition level). Blank when Google gave no figure.">KD</Th>
-                    <th className="px-3 py-3 text-right font-semibold"><Head right what="Impressions: how many times your site appeared in Google for exactly this search. Clicks: how many of those people clicked. CTR (click rate) = clicks divided by impressions. Last 28 days, searches from your target country." why="Many impressions and few clicks means the title and description need work. No impressions means Google is not showing your site for it." from="Google Search Console, the same numbers as Search Console > Performance > Queries (read for this table about every 30 minutes; Google's data is two days behind).">Google: impr / clicks / CTR</Head></th>
-                    <th className="px-3 py-3 text-left font-semibold"><Head what="The page of your website this keyword is mapped to, and the pages where the keyword is already used." why="Mapped means a page was chosen for the keyword (by you, or from the site scan's suggestion). It is a plan, not proof: a solid green dot means the page also says the keyword; a hollow amber dot means it does not yet, so add it there." from="your choice (or the suggestion from the site scan) and the last website scan: the keyword in a page address, title, heading or description.">Mapped page</Head></th>
-                    <th className="px-3 py-3 text-left font-semibold"><Head what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Head></th>
+                    <Th id="impressions" right what="Impressions: how many times your site appeared in Google for exactly this search. Clicks: how many of those people clicked. CTR (click rate) = clicks divided by impressions. Last 28 days, searches from your target country." why="Many impressions and few clicks means the title and description need work. No impressions means Google is not showing your site for it." from="Google Search Console, the same numbers as Search Console > Performance > Queries (read for this table about every 30 minutes; Google's data is two days behind).">Google: impr / clicks / CTR</Th>
+                    <Th id="page" what="The page of your website this keyword is mapped to, and the pages where the keyword is already used." why="Mapped means a page was chosen for the keyword (by you, or from the site scan's suggestion). It is a plan, not proof: a solid green dot means the page also says the keyword; a hollow amber dot means it does not yet, so add it there." from="your choice (or the suggestion from the site scan) and the last website scan: the keyword in a page address, title, heading or description.">Mapped page</Th>
+                    <Th id="status" what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Th>
                     <th className="px-3 py-3 text-right font-semibold"><Head right what="Map the keyword to a page (or see the page it is mapped to), check it, write for it, or remove it." why="Every keyword needs one page to rank on.">Actions</Head></th>
                   </tr>
                 </thead>
@@ -961,21 +999,13 @@ function Tracked({ b, kw }) {
                         </td>
                       </tr>);
                   })}
-                  {!rows.length && <tr><td colSpan={9} className="px-5 py-12 text-center text-14 text-slate-500">No keyword matches. <button type="button" onClick={() => { go('all'); setQ(''); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button></td></tr>}
+                  {!rows.length && <tr><td colSpan={9} className="px-5 py-12 text-center text-14 text-slate-500">No keyword matches. <button type="button" onClick={clearAll} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></td></tr>}
                 </tbody>
               </table>
               <datalist id={`pages-${b.id}`}>{pages.map(p => <option key={p} value={p} />)}</datalist>
             </div>
             {rows.length > shown.length && <div className="p-4 text-center border-t border-slate-100"><Button onClick={() => setLimit(l => l + 30)}>Show {Math.min(30, rows.length - shown.length)} more ({rows.length - shown.length} left)</Button></div>}
           </Card>
-
-          <div className="flex flex-wrap items-center gap-3 text-13 text-slate-600">
-            <span>More:</span>
-            <Link to="/keyword-management/mapping"><Button size="sm">Keyword Mapping</Button></Link>
-            <Link to="/keyword-management/topics"><Button size="sm">Topics</Button></Link>
-            <Link to="/keyword-management/use"><Button size="sm">Keyword Usage</Button></Link>
-            <Link to="/keyword-management/status"><Button size="sm">Rankings</Button></Link>
-          </div>
         </>
       )}
       <UseKeywordsModal b={b} ids={useIds} onClose={() => setUseIds(null)} />
