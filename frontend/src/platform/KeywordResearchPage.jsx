@@ -10,7 +10,7 @@ import { AutopilotPanel } from './AutopilotPanels';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Sparkles, FileText, Trash2, Loader2, MapPin, Globe, Users, X, Star, CheckCircle2, CircleDashed, AlertTriangle, Copy, Check, BarChart2,
-  Pencil, PenLine, TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft, ArrowRight
+  Pencil, PenLine, Eye, TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft, ArrowRight
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction, useUrlTab, useDoubleConfirm, SkTable, SkCard } from './SeoUi';
@@ -995,32 +995,131 @@ function Tracked({ b, kw }) {
   );
 }
 
+const NOT_GROUPED = 'Not grouped';
+
+/** Topics: the saved keywords grouped by what they are about, one page per topic. Each card shows the topic's lead keyword, its searches, where it ranks and the page it is on, with the next step for it. */
 function Topics({ b, kw }) {
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
+  const [q, setQ] = useState('');
+  const [view, setView] = useState('all');
+  const [useIds, setUseIds] = useState(null);
+  const [renaming, setRenaming] = useState(null);
+  const [name, setName] = useState('');
   const tracked = kw.data?.keywords || [];
   const cluster = () => run('cluster', async () => { const r = await api(`/businesses/${b.id}/keywords/cluster`, { method: 'POST' }); kw.reload(true); toast(`${r.updated} keywords grouped into topics`); });
+  const topics = useMemo(() => {
+    const m = new Map();
+    for (const k of tracked) {
+      const key = k.cluster || NOT_GROUPED;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key).push(k);
+    }
+    return [...m.entries()].map(([topic, list]) => {
+      const sorted = [...list].sort((x, y) => (y.volume || 0) - (x.volume || 0) || x.keyword.localeCompare(y.keyword));
+      const ranks = list.map(k => k.rank).filter(Boolean);
+      const pages = [...new Set(list.map(k => k.target_url).filter(Boolean))];
+      return {
+        topic, list: sorted, lead: sorted.find(k => k.role === 'primary') || sorted[0], volume: list.reduce((n, k) => n + (k.volume || 0), 0),
+        best: ranks.length ? Math.min(...ranks) : null, ranking: ranks.length, pages, mapped: list.filter(k => k.target_url).length
+      };
+    }).sort((x, y) => (x.topic === NOT_GROUPED) - (y.topic === NOT_GROUPED) || y.volume - x.volume);
+  }, [tracked]);
+  const names = topics.map(x => x.topic).filter(x => x !== NOT_GROUPED);
+  const needle = q.trim().toLowerCase();
+  const shown = topics.filter(x => (!needle || x.topic.toLowerCase().includes(needle) || x.list.some(k => k.keyword.includes(needle)))
+    && (view === 'all' || (view === 'nopage' && x.mapped < x.list.length) || (view === 'split' && x.pages.length > 1) || (view === 'ungrouped' && x.topic === NOT_GROUPED) || (view === 'ranking' && x.ranking)));
+  const stats = {
+    topics: names.length, keywords: tracked.length, loose: topics.find(x => x.topic === NOT_GROUPED)?.list.length || 0,
+    nopage: topics.filter(x => x.topic !== NOT_GROUPED && x.mapped < x.list.length).length, volume: tracked.reduce((n, k) => n + (k.volume || 0), 0)
+  };
+  const move = (k, to) => run(`m${k.id}`, async () => {
+    const out = await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, cluster: to === NOT_GROUPED ? '' : to } });
+    kw.setData(d => ({ ...d, keywords: d.keywords.map(x => (x.id === k.id ? out : x)) }));
+    kw.reload(true);
+    toast(`"${k.keyword}" moved to ${to}`);
+  });
+  const rename = (x) => {
+    const to = name.trim();
+    setRenaming(null);
+    if (!to || to === x.topic) return undefined;
+    return run(`r${x.topic}`, async () => { for (const k of x.list) await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, cluster: to } }); kw.reload(true); toast(`Topic renamed to ${to}`); });
+  };
+  const pageOf = (u) => pathOf(u) || u;
+  const Stat = ({ label, value, tone = 'text-slate-900', hint }) => <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3" title={hint}><div className="text-11.5 font-semibold uppercase tracking-wide text-slate-500">{label}</div><div className={`text-22 font-semibold tabular-nums ${tone}`}>{value}</div></div>;
+  const VIEWS = [['all', 'All topics'], ['nopage', 'Missing a page'], ['split', 'On more than one page'], ['ranking', 'Ranking on Google'], ['ungrouped', 'Not grouped']];
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-13 text-slate-600">Group tracked keywords into topics; each topic should get one page.</div>
-        <Button variant="ai" icon={Sparkles} busy={busy === 'cluster'} disabled={!tracked.length} onClick={cluster}>Group into topics with AI</Button>
+      {kw.data && tracked.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Stat label="Topics" value={stats.topics} hint="Groups of keywords about the same thing: each should get one page" />
+          <Stat label="Keywords" value={stats.keywords} hint="Saved keywords" />
+          <Stat label="Searches / month" value={fmt(stats.volume)} hint="All the saved keywords together, from Google Ads" />
+          <Stat label="Topics missing a page" value={stats.nopage} tone={stats.nopage ? 'text-amber-700' : 'text-emerald-700'} hint="A topic with a keyword that has no page chosen yet" />
+        </div>)}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Find a topic or keyword" className={`${inputCls} pl-8 w-64`} aria-label="Find a topic or keyword" /></div>
+        <div role="tablist" className="inline-flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">{VIEWS.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-8 px-3 rounded-md text-12.5 font-semibold cursor-pointer ${view === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>{label}{id === 'ungrouped' && stats.loose ? ` ${stats.loose}` : ''}</button>)}</div>
+        <div className="ml-auto flex items-center gap-2">
+          <Link to="/keyword-management/mapping"><Button icon={FileText}>Choose pages</Button></Link>
+          <Button variant="ai" icon={Sparkles} busy={busy === 'cluster'} disabled={!tracked.length} onClick={cluster} title="Let AI put all the saved keywords into topics again. Topics you renamed or moved by hand are replaced.">{stats.topics ? 'Group again with AI' : 'Group into topics with AI'}</Button>
+        </div>
       </div>
       <ErrorNote>{error}</ErrorNote>
-      {!kw.data ? <SkCard title="Topic clusters" subtitle="Keywords grouped into topics, one page per topic"><SkTable headers={["Keyword", "Volume", "Difficulty", "Rank"]} rows={5} bare /></SkCard> : !kw.data.clusters.length ? <Card><div className="py-10 text-center text-13 text-slate-500">Track some keywords first.</div></Card> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {kw.data.clusters.map(cl => {
-            const list = tracked.filter(k => (k.cluster || 'Not grouped') === cl.name);
-            const page = list.find(k => k.target_url)?.target_url;
-            return (
-              <Card key={cl.name} title={cl.name} subtitle={`${cl.keywords} keywords${cl.volume ? ` · ${fmt(cl.volume)} searches / month` : ''}`}>
-                <div className="space-y-1.5">{list.slice(0, 8).map(k => <div key={k.id} className="flex items-center gap-2 text-12"><span className="flex-1 truncate text-slate-800">{k.keyword}</span>{k.rank && <span className="tabular-nums text-slate-500">#{k.rank}</span>}</div>)}</div>
-                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 text-12"><FileText size={13} className="text-slate-400" />{page ? <span className=" text-slate-700 truncate">{page}</span> : <span className="text-amber-700">No page yet</span>}</div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+      {!kw.data ? <SkCard title="Topics" subtitle="Keywords grouped into topics, one page per topic"><SkTable headers={["Keyword", "Volume", "Difficulty", "Rank"]} rows={5} bare /></SkCard>
+        : !tracked.length ? <Card><div className="py-10 text-center text-13 text-slate-500">Save some keywords first: they are grouped into topics here.<div className="mt-3"><Link to="/keyword-management/workspace"><Button variant="primary" icon={Search}>Find keywords</Button></Link></div></div></Card>
+        : !shown.length ? <Card><div className="py-8 text-center text-13 text-slate-500">No topic matches this.</div></Card> : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {shown.map(x => {
+              const loose = x.topic === NOT_GROUPED;
+              const full = x.mapped === x.list.length;
+              return (
+                <section key={x.topic} className={`rounded-xl bg-white ring-1 ${loose ? 'ring-amber-200' : 'ring-slate-200'} overflow-hidden flex flex-col`}>
+                  <header className="px-4 pt-3.5 pb-3">
+                    <div className="flex items-start gap-2">
+                      {renaming === x.topic
+                        ? <input autoFocus value={name} onChange={e => setName(e.target.value)} onBlur={() => rename(x)} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setRenaming(null); } }} className={`${inputCls} h-8 flex-1`} aria-label="Topic name" />
+                        : <h3 className="flex-1 text-15 font-semibold text-slate-900 capitalize">{x.topic}</h3>}
+                      {!loose && renaming !== x.topic && <button type="button" onClick={() => { setName(x.topic); setRenaming(x.topic); }} title="Rename this topic" className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"><Pencil size={14} /></button>}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-12.5 text-slate-600">
+                      <span><b className="text-slate-900">{x.list.length}</b> keywords</span>
+                      <span><b className="text-slate-900 tabular-nums">{x.volume ? fmt(x.volume) : '—'}</b> searches/mo</span>
+                      <span>{x.best ? <>Best rank <b className="text-slate-900">#{x.best}</b> · {x.ranking} of {x.list.length} on Google</> : 'Not on Google yet'}</span>
+                    </div>
+                    {loose && <p className="mt-2 text-12.5 text-amber-800 bg-amber-50 rounded px-2.5 py-1.5">These have no topic yet. Use "Group again with AI", or move each one with the list beside it.</p>}
+                    {!loose && x.lead && <p className="mt-2 text-12.5 text-slate-600">Lead keyword: <b className="text-slate-900">{x.lead.keyword}</b>{x.lead.role === 'primary' ? ' (main keyword of its page)' : ''}</p>}
+                  </header>
+                  <ul className="px-4 divide-y divide-slate-100 border-t border-slate-100">
+                    {x.list.slice(0, 8).map(k => (
+                      <li key={k.id} className="py-1.5 flex items-center gap-2 text-12.5">
+                        <span className="flex-1 min-w-0 truncate text-slate-800" title={k.keyword}>{k.keyword}</span>
+                        {k.volume ? <span className="tabular-nums text-slate-500 w-14 text-right" title="Searches a month">{fmt(k.volume)}</span> : null}
+                        <span className={`tabular-nums w-10 text-right ${k.rank ? 'text-slate-800 font-semibold' : 'text-slate-300'}`} title="Where it ranks on Google">{k.rank ? `#${k.rank}` : '—'}</span>
+                        <select value={loose ? '' : x.topic} disabled={busy === `m${k.id}`} onChange={e => e.target.value && move(k, e.target.value)} aria-label={`Move ${k.keyword} to another topic`} title="Move to another topic" className="h-7 max-w-[8.5rem] rounded border border-slate-200 bg-white text-12 text-slate-600 cursor-pointer">
+                          <option value="">{loose ? 'Choose a topic' : 'Move to…'}</option>
+                          {names.filter(n => n !== x.topic).map(n => <option key={n} value={n}>{n}</option>)}
+                          {!loose && <option value={NOT_GROUPED}>Not grouped</option>}
+                        </select>
+                      </li>))}
+                  </ul>
+                  {x.list.length > 8 && <p className="px-4 pb-1 text-12 text-slate-500">and {x.list.length - 8} more</p>}
+                  <footer className="mt-auto px-4 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                    <div className="flex-1 min-w-[10rem] text-12.5">
+                      {!x.pages.length ? <span className="inline-flex items-center gap-1.5 text-amber-800"><AlertTriangle size={13} />No page chosen yet</span>
+                        : <span className="inline-flex items-center gap-1.5 text-slate-700 min-w-0"><FileText size={13} className="text-slate-400 shrink-0" /><span className="truncate" title={x.pages.join('\n')}>{x.pages.length === 1 ? pageOf(x.pages[0]) : `${x.pages.length} different pages`}</span></span>}
+                      {x.pages.length > 0 && !full && <span className="block text-11.5 text-amber-700">{x.list.length - x.mapped} of {x.list.length} keywords have no page</span>}
+                      {x.pages.length > 1 && <span className="block text-11.5 text-amber-700">One topic should be one page: pick a single page for it.</span>}
+                    </div>
+                    {!loose && <Act icon={Eye} tone="indigo" tip="Where each keyword of this topic can be used: pages, FAQ, blog, Google posts" onClick={() => setUseIds(x.list.map(k => k.id))}>Where to use</Act>}
+                    {!loose && x.lead && <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(x.lead.keyword)}`}><Act icon={PenLine} tone="primary" tip={`Write a blog post for "${x.lead.keyword}"`}>Write</Act></Link>}
+                    <Link to={`/keyword-management/mapping${x.lead ? `?keyword=${encodeURIComponent(x.lead.keyword)}` : ''}`}><Act icon={FileText} tone="slate" tip="Choose the page for this topic">{x.pages.length ? 'Change page' : 'Choose page'}</Act></Link>
+                  </footer>
+                </section>
+              );
+            })}
+          </div>)}
+      <UseKeywordsModal b={b} ids={useIds} onClose={() => setUseIds(null)} />
       {toastNode}
     </div>
   );
