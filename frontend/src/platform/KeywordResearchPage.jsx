@@ -156,6 +156,8 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
 
   return (
     <div className="space-y-3">
+      {/* The weekly suggestions' switch: one slim bar at the top; the suggestions themselves are rows of the table below */}
+      <AutopilotPanel key={b.id} bid={b.id} feature="keywords" hideItems onChanged={() => ap.reload(true)} />
       {/* What we search from, the one button, and where the keywords come from: one card, three lines */}
       <Card pad={false}>
         <div className="px-4 py-3 flex flex-wrap items-start gap-x-4 gap-y-3">
@@ -233,7 +235,6 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
       </div>
         </>
       )}
-      <AutopilotPanel key={b.id} bid={b.id} feature="keywords" hideItems onChanged={() => ap.reload(true)} />
       {toastNode}
     </div>
   );

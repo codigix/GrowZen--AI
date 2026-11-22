@@ -271,22 +271,22 @@ export function AutopilotPanel({ bid, feature, hideItems = false, onChanged }) {
   };
   return (
     <section className="space-y-3" aria-label={cfg.title}>
-      <Card className="p-4 sm:p-5">
+      <Card className={hideItems ? 'px-4 py-2.5' : 'p-4 sm:p-5'}>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 inline-flex items-center justify-center shrink-0"><ShieldCheck size={18} /></span>
+          <span className={`${hideItems ? 'w-8 h-8' : 'w-10 h-10'} rounded-full bg-indigo-50 text-indigo-600 inline-flex items-center justify-center shrink-0`} title={hideItems ? d.rule : undefined}><ShieldCheck size={hideItems ? 15 : 18} /></span>
           <div className="flex-1 min-w-[240px]"><div className="text-15 font-semibold text-slate-900 flex flex-wrap items-center gap-2">{cfg.title}<Chip cls={on ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}>Autopilot {on ? 'on' : 'off'}</Chip></div>
-            <p className="text-12.5 text-slate-600">{cfg.hint}</p></div>
+            {hideItems ? (note ? <p className="text-12.5 text-slate-700" role="status">{note}</p> : <p className="text-12 text-slate-500 truncate" title={cfg.hint}>{cfg.hint}</p>) : <p className="text-12.5 text-slate-600">{cfg.hint}</p>}</div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={flip}>{on ? 'Turn off' : 'Turn on'}</Button>
             {cfg.what && <Button size="sm" variant="primary" icon={generating ? Loader2 : Sparkles} disabled={generating || !d.ai_ready} onClick={generate}>{generating ? 'Preparing…' : 'Prepare drafts now'}</Button>}
             <Button size="sm" icon={SettingsIcon} onClick={() => setShowSet(s => !s)} aria-expanded={showSet}>Settings</Button>
           </div>
         </div>
-        <p className="mt-2 text-12 text-slate-500 flex items-center gap-1.5"><ShieldCheck size={12} className="text-emerald-600" />{d.rule}</p>
-        {on && d.next_run && <p className="mt-1 text-12 text-slate-500">Next automatic run: {when(d.next_run)}.</p>}
+        {!hideItems && <p className="mt-2 text-12 text-slate-500 flex items-center gap-1.5"><ShieldCheck size={12} className="text-emerald-600" />{d.rule}</p>}
+        {on && !hideItems && d.next_run && <p className="mt-1 text-12 text-slate-500">Next automatic run: {when(d.next_run)}.</p>}
         {!d.ai_ready && cfg.what && <p className="mt-2 text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">AI is not set up on this server, so drafts cannot be written.</p>}
         {!d.linked && feature !== 'keywords' && <p className="mt-2 text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex gap-2"><AlertTriangle size={15} className="mt-0.5 shrink-0" />The Google Business Profile is not linked, so nothing can be published yet. Drafts are still prepared.</p>}
-        {note && <p className="mt-2 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{note}</p>}
+        {note && !hideItems && <p className="mt-2 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{note}</p>}
         {showSet && <PanelSettings feature={feature} d={d} bid={bid} onChanged={load} />}
       </Card>
       {hideItems ? null : <>
