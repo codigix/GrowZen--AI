@@ -153,8 +153,71 @@ function MetricRow({ m }) {
 /** The comparison without its own card: inside a modal the modal is the frame. */
 const BareShell = ({ note, children }) => <div><p className="text-12.5 text-slate-500 mb-4">{note}</p>{children}</div>;
 
-export function ComparisonResult({ c, bare = false, onGo }) {
-  const [tab, setTab] = useState('report');
+/** One measure, you against them: two bars, the better side in green, and who leads in words. */
+function PairRow({ m }) {
+  const a = Number(m.ours), b = Number(m.competitor);
+  const max = Math.max(Number.isFinite(a) ? a : 0, Number.isFinite(b) ? b : 0, 1);
+  const lead = m.better;
+  const bar = (v, mine) => {
+    const good = lead === (mine ? 'ours' : 'competitor');
+    const bad = lead && lead !== 'tie' && !good;
+    return <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${good ? 'bg-emerald-500' : bad ? 'bg-rose-400' : 'bg-slate-400'}`} style={{ width: `${Number.isFinite(v) ? Math.max(3, (v / max) * 100) : 0}%` }} /></div>;
+  };
+  return (
+    <div className="py-2.5">
+      <div className="flex items-center justify-between gap-2 mb-1.5"><span className="text-13 font-medium text-slate-900">{m.label}</span>
+        <span className={`text-11.5 font-semibold ${lead === 'ours' ? 'text-emerald-700' : lead === 'competitor' ? 'text-rose-700' : 'text-slate-400'}`}>{!m.available ? 'no data' : lead === 'tie' ? 'Tie' : lead === 'ours' ? 'You lead' : 'They lead'}</span></div>
+      <div className="grid grid-cols-[44px_1fr_70px] items-center gap-x-2 gap-y-1 text-12">
+        <span className="text-slate-500">You</span>{bar(a, true)}<span className="text-right tabular-nums text-slate-800">{m.ours_display ?? m.ours ?? '—'}</span>
+        <span className="text-slate-500">Them</span>{bar(b, false)}<span className="text-right tabular-nums text-slate-800">{m.competitor_display ?? m.competitor ?? '—'}</span>
+      </div>
+    </div>
+  );
+}
+
+/** The first thing to read: who is ahead, the few things to do first, and where you already lead. The rest is in the tabs. */
+function CompareSummary({ c, setTab }) {
+  const u = c.upgrade;
+  const name = c.competitor?.name || c.competitor?.target || 'They';
+  const first = (u?.items || []).filter(i => i.priority === 'high').slice(0, 3);
+  const counts = Object.fromEntries(Object.keys(PRI).map(k => [k, (u?.items || []).filter(i => i.priority === k).length]));
+  const scores = (c.overall?.scores || []).filter(m => m.available);
+  const vitals = (c.overall?.core_web_vitals || []).filter(m => m.available).slice(0, 5);
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 p-4">
+        <p className="text-15 font-semibold text-slate-900">{u?.headline || `${name} compared with your site.`}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {Object.entries(PRI).map(([k, [l, tone]]) => counts[k] > 0 && <button key={k} type="button" onClick={() => setTab('report')} className="cursor-pointer" title="See them in What to fix"><Badge tone={tone}>{l} {counts[k]}</Badge></button>)}
+          {u && <button type="button" onClick={() => setTab('report')} className="ml-auto text-12.5 font-semibold text-indigo-700 hover:underline cursor-pointer">See the full list of {u.items.length} →</button>}
+        </div>
+      </div>
+      {(scores.length > 0 || vitals.length > 0) ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+          <div><div className="text-12 font-semibold uppercase tracking-wide text-slate-500">Scores (0 to 100, higher is better)</div><div className="divide-y divide-slate-100">{scores.map(m => <PairRow key={m.key} m={m} />)}</div></div>
+          <div><div className="text-12 font-semibold uppercase tracking-wide text-slate-500">What visitors feel (lower is better)</div><div className="divide-y divide-slate-100">{vitals.map(m => <PairRow key={m.key} m={m} />)}</div></div>
+        </div>
+      ) : <p className="text-13 text-slate-500">No speed data on one side yet: audit both sites to compare scores.</p>}
+      {first.length > 0 && (
+        <div>
+          <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Do these first</div>
+          <ol className="space-y-2">{first.map((i, n) => (
+            <li key={n} className="rounded-lg ring-1 ring-slate-200 px-4 py-2.5 flex gap-3">
+              <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-700 text-12 font-bold inline-flex items-center justify-center shrink-0">{n + 1}</span>
+              <div className="min-w-0"><div className="text-13 font-semibold text-slate-900">{i.title}</div>
+                <div className="text-12 text-slate-500">You <b className="text-slate-700">{i.you}</b> · Them <b className="text-slate-700">{i.them}</b></div>
+                <div className="text-12.5 text-slate-600 mt-0.5">{i.fix}</div></div>
+            </li>))}</ol>
+        </div>)}
+      {(u?.strengths || []).length > 0 && (
+        <div><div className="text-12 font-semibold uppercase tracking-wide text-emerald-700 mb-1.5">Where you already lead</div>
+          <ul className="grid gap-1 text-13 text-slate-700">{u.strengths.slice(0, 3).map((x, n) => <li key={n} className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-600 mt-0.5 shrink-0" />{x}</li>)}</ul></div>)}
+    </div>
+  );
+}
+
+export function ComparisonResult({ c, bare = false, onGo, extraTabs = [] }) {
+  const [tab, setTab] = useState('summary');
   if (c.error) return <ErrorNote>{c.error}</ErrorNote>;
   const checks = c.technical_seo?.checks || [];
   const pages = c.pages || {};
@@ -169,17 +232,24 @@ export function ComparisonResult({ c, bare = false, onGo }) {
           <AlertTriangle size={14} className="shrink-0" /> {c.compatibility?.note || 'Strategies differ (mobile vs desktop); scores are not directly comparable.'}
         </div>
       )}
+      {/* in the order you read them: the verdict, what to do, then the evidence, then the Google listing */}
       <Tabs value={tab} onChange={setTab} tabs={[
-        { id: 'report', label: 'Upgrade report', count: c.upgrade?.total },
-        { id: 'overview', label: 'Scores & vitals' },
+        { id: 'summary', label: 'Summary' },
+        { id: 'report', label: 'What to fix', count: c.upgrade?.total },
+        { id: 'scores', label: 'Speed & scores' },
         { id: 'technical', label: 'Technical SEO', count: checks.length },
         { id: 'pages', label: 'Pages', count: pages.matched?.length || 0 },
-        { id: 'keywords', label: 'Keywords & content' }
+        { id: 'keywords', label: 'Keywords & content' },
+        ...extraTabs.map(({ id, label, count }) => ({ id, label, count }))
       ]} />
+
+      {tab === 'summary' && <CompareSummary c={c} setTab={setTab} />}
 
       {tab === 'report' && <UpgradeReport c={c} onGo={onGo} />}
 
-      {tab === 'overview' && (
+      {extraTabs.map(x => tab === x.id && <div key={x.id}>{x.node}</div>)}
+
+      {tab === 'scores' && (
         <div className="space-y-5">
           {!c.overall?.available && <p className="text-13 text-slate-500">No PageSpeed data on one side yet.</p>}
           <div className="overflow-x-auto rounded-xl border border-slate-200">

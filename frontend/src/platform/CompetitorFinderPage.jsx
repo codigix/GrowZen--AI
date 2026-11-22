@@ -763,15 +763,17 @@ function IdeasModal({ open, r, onClose }) {
 }
 
 export function CompareModal({ state, onClose, bid }) {
+  const c = state?.competitor;
+  const has = (k) => Boolean(state?.[k]);
+  // what was compared: the website, the Google listing, or both; they are tabs of one window, not two long sections one under the other
+  const listing = has('listing') ? [{ id: 'listing', label: 'Google listing', node: <ListingComparison key={c?.id} c={state.listing} bid={bid} /> }] : [];
   return (
-    <Modal open={Boolean(state)} onClose={onClose} width="max-w-5xl" title={state ? `Compare with ${state.competitor.name}` : ''}>
+    <Modal open={Boolean(state)} onClose={onClose} width="max-w-5xl" title={c ? <span className="inline-flex flex-wrap items-center gap-x-3">Compare with {c.name}<span className="text-12 font-normal text-slate-500">{[has('result') && 'website', has('listing') && 'Google listing'].filter(Boolean).join(' + ')}</span></span> : ''}>
       {state?.loading && <div className="space-y-4"><SkStats n={3} cols="grid-cols-3" /><SkTable cols={4} rows={5} /></div>}
       {state?.notes?.length > 0 && <div className="mb-3 space-y-1">{state.notes.map(n => <p key={n} className="text-12.5 text-amber-900 bg-amber-50 rounded px-3 py-1.5">{n}</p>)}</div>}
       {state?.error && <ErrorNote>{state.error}</ErrorNote>}
-      {state?.result && state?.listing && <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Website against website</div>}
-      {state?.result && <div className="max-h-[72vh] overflow-y-auto pr-1"><ComparisonResult c={state.result} bare onGo={onClose} /></div>}
-      {state?.result && state?.listing && <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mt-4 mb-1.5">Google listing against Google listing</div>}
-      {state?.listing && <div className="max-h-[72vh] overflow-y-auto pr-1"><ListingComparison key={state.competitor?.id} c={state.listing} bid={bid} /></div>}
+      {state?.result && <div className="max-h-[74vh] overflow-y-auto pr-1"><ComparisonResult key={c?.id} c={state.result} bare onGo={onClose} extraTabs={listing} /></div>}
+      {!state?.result && state?.listing && <div className="max-h-[74vh] overflow-y-auto pr-1"><ListingComparison key={c?.id} c={state.listing} bid={bid} /></div>}
     </Modal>
   );
 }
