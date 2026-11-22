@@ -197,6 +197,15 @@ def set_address(body: AddressIn, b: Business = Depends(get_business), db: Sessio
     return {"address": b.address, "city": b.city}
 
 
+# Booking and order buttons: which ones Google offers this listing (it depends on the category)
+@router.get("/action-types")
+def action_types(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    access.require(db, user, b, "gmb")
+    offered = _client(b).place_action_types(b.gbp_location)
+    return {"known": bool(offered), "category": b.primary_category,
+            "offered": [{"type": k, "name": gbp.BUTTON_NAME.get(k, v)} for k, v in sorted(offered.items(), key=lambda x: gbp.BUTTON_NAME.get(x[0], x[1]))]}
+
+
 # Attributes
 @router.get("/attributes")
 def attributes(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):

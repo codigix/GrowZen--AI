@@ -389,3 +389,18 @@ def test_a_booking_link_google_refuses_is_still_saved_here_with_the_reason(clien
         db.query(Business).filter(Business.gbp_location == "locations/1").delete()
         db.commit()
         db.close()
+
+
+def test_the_buttons_google_offers_this_listing_are_listed(client, monkeypatch):
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    try:
+        r = client.get(f"/api/v1/businesses/{bid}/gbp/action-types")
+        assert r.status_code == 200 and r.json()["known"] is True
+        assert {x["type"] for x in r.json()["offered"]} == {"APPOINTMENT", "FOOD_ORDERING", "SHOP_ONLINE"}
+    finally:
+        db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()

@@ -74,6 +74,25 @@ function AuditTab({ b, onEditProfile }) {
 
 const ACTION_TYPES = { ONLINE_APPOINTMENT: 'Book online', FOOD_ORDERING: 'Order food', DINING_RESERVATION: 'Reserve a table', FOOD_DELIVERY: 'Food delivery', FOOD_TAKEOUT: 'Takeaway', SHOP_ONLINE: 'Shop online' };
 const usedTypes = (p) => new Set(p.action_links.map(x => x.type));
+
+/** What Google offers THIS listing as a button, and exactly what the link must be, so a "Book" button is not tried where Google has none. */
+function ButtonHelp({ b }) {
+  const linked = Boolean(b.gbp_location && b.connection_id);
+  const t = useApi(linked ? `/businesses/${b.id}/gbp/action-types` : null);
+  const offered = t.data?.offered || [];
+  return (
+    <div className="mb-3 rounded-lg bg-slate-50 ring-1 ring-inset ring-slate-200 px-3 py-2.5 text-12.5 text-slate-600 space-y-1.5">
+      <p>
+        {!linked ? 'Connect the Google account to see which buttons Google offers this business.'
+          : !t.data ? 'Asking Google which buttons it offers this business…'
+            : t.data.known ? <>Google offers these buttons for <b className="text-slate-800">{t.data.category || 'this category'}</b>: {offered.length ? offered.map(x => <span key={x.type} className="inline-block mr-1 px-1.5 py-0.5 rounded bg-white ring-1 ring-slate-200 text-slate-800 font-medium">{x.name}</span>) : <b className="text-amber-700">none</b>}{!offered.some(x => x.type === 'APPOINTMENT') && <span className="block mt-1 text-amber-700">"Book" is not one of them, so a booking link cannot become a button for this category.</span>}</>
+              : 'Google did not say which buttons it offers this business: try saving, and the message will tell you.'}
+      </p>
+      <p><b className="text-slate-700">The link must</b> start with <span className="font-mono">https://</span> and open the page where people book or order (for example <span className="font-mono">https://yoursite.com/book</span>), not the home page.</p>
+      <p>No button for your category? A Google post can carry a <b className="text-slate-700">Book</b> button for any business: <Link to="/google-posts" className="font-semibold text-indigo-700 hover:underline">write a post with a Book button</Link>.</p>
+    </div>
+  );
+}
 const phoneProblem = (v) => { const t = String(v || '').trim(); if (!t) return ''; const d = t.replace(/\D/g, ''); return /[^\d+()\-\s.]/.test(t) || d.length < 7 || d.length > 15 ? 'Enter a valid phone number (7 to 15 digits, with the country code if it is not local).' : ''; };
 const urlProblem = (v) => { const t = String(v || '').trim(); return !t || /^https?:\/\/[^\s/]+\.[^\s]+$/i.test(t) ? '' : 'Enter a full link that starts with https://'; };
 /** What is wrong with the contact fields, before anything is sent to Google. */
@@ -244,6 +263,7 @@ function ProfileTab({ b, toast }) {
               <div className="pt-4 border-t border-slate-100">
                 <div className="text-13 font-semibold text-slate-800">Booking and order buttons</div>
                 <p className="text-12 text-slate-500 mt-0.5 mb-3">Each one becomes a button on your Google profile. Leave a link empty to remove that button.</p>
+                <ButtonHelp b={b} />
                 <Field label="Book an appointment link">
                   <input className={`${inputCls} ${problems.booking ? '!border-red-300' : ''}`} value={p.booking_url} onChange={e => set('booking_url', e.target.value)} placeholder="https://" />
                   {problems.booking && <p className="text-12 text-red-600 mt-1">{problems.booking}</p>}
