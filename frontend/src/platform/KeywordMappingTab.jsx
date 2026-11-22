@@ -49,35 +49,29 @@ export default function KeywordMappingTab({ b }) {
   const waiting = d.pages.filter(p => p.primary && !p.saved).length;
   const todo = [...d.missing_pages.map(x => ({ ...x, type: 'page' })), ...d.blog_opportunities.map(x => ({ ...x, type: 'post' }))].sort((a, c) => (c.volume || 0) - (a.volume || 0));
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <ErrorNote>{error}</ErrorNote>
       {d.notes?.map(n => <p key={n} className="text-12.5 text-amber-900 bg-amber-50 rounded px-3 py-2">{n}</p>)}
 
-      {/* The state of the mapping, and the one button that saves it */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-13 text-slate-600">
-        <span><b className="text-slate-900 tabular-nums">{d.mapped}/{d.keywords}</b> keywords have a page</span>
-        <span><b className="text-slate-900 tabular-nums">{d.primaries}/{d.pages.length}</b> pages have a main keyword</span>
-        <span><b className="text-slate-900 tabular-nums">{todo.length}</b> to create</span>
-        <span className="ml-auto flex flex-wrap items-center gap-3">
-          {waiting > 0 ? <span className="text-amber-700 text-12.5">{waiting} suggestion{waiting === 1 ? '' : 's'} not saved yet</span> : d.primaries > 0 ? <span className="text-emerald-700 text-12.5 inline-flex items-center gap-1"><CheckCircle2 size={14} />All saved</span> : null}
-          <Button variant="primary" icon={CheckCircle2} busy={busy === 'apply'} disabled={waiting === 0} onClick={save} title="Writes the page and the main or supporting role on each keyword. A page you chose yourself is never changed.">Save the mapping</Button>
+      {/* One slim toolbar: the three views, how far the mapping is, the button that saves it, and the document for the developer */}
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" role="tablist" aria-label="Mapping views">
+          {[['keywords', `Keywords ${d.keywords}`], ['pages', `Pages ${d.pages.length}`], ['create', `To create ${todo.length}`]].map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-8 px-3 text-12.5 font-semibold rounded-md cursor-pointer ${view === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>))}
+        </div>
+        <span className="text-12.5 text-slate-600" title={`${d.mapped} of ${d.keywords} keywords have a page. ${d.primaries} of ${d.pages.length} pages have a main keyword.`}><b className="text-slate-900 tabular-nums">{d.mapped}/{d.keywords}</b> keywords have a page · <b className="text-slate-900 tabular-nums">{d.primaries}/{d.pages.length}</b> pages have a main keyword</span>
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          {waiting > 0 ? <span className="text-amber-700 text-12.5">{waiting} suggestion{waiting === 1 ? '' : 's'} not saved</span> : d.primaries > 0 ? <span className="text-emerald-700 text-12.5 inline-flex items-center gap-1"><CheckCircle2 size={14} />All saved</span> : null}
+          <Button size="sm" variant="primary" icon={CheckCircle2} busy={busy === 'apply'} disabled={waiting === 0} onClick={save} title="Writes the page and the main or supporting role on each keyword. A page you chose yourself is never changed.">Save the mapping</Button>
+          <span className="hidden lg:block w-px h-6 bg-slate-200" aria-hidden="true" />
+          <BriefButtons b={b} size="sm" />
         </span>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-indigo-50/60 ring-1 ring-indigo-100 px-4 py-2.5">
-        <div className="min-w-0 flex-1"><div className="text-13 font-semibold text-slate-900">Ready to put it on the website?</div><div className="text-12.5 text-slate-600">One document for your developer: each page, what to replace or add, and the text to use.</div></div>
-        <BriefButtons b={b} />
-      </div>
-
-      <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg w-fit" role="tablist" aria-label="Mapping views">
-        {[['keywords', `Keywords ${d.keywords}`], ['pages', `Pages ${d.pages.length}`], ['create', `To create ${todo.length}`]].map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-8 px-3 text-12.5 font-semibold rounded-md cursor-pointer ${view === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>))}
       </div>
 
       {view === 'pages' && <>
       <PageMetaCard b={b} sharedNote={Boolean(d.notes?.length)} />
 
-      <Card pad={false} title="Your pages" subtitle={`The keyword each page should rank for, from the website scan of ${d.found_at || 'the last audit'}. The most searched keyword on a page is its main one.`}>
+      <Card pad={false} title={`Your pages (${d.pages.length})`} subtitle={`Website scan of ${d.found_at || 'the last audit'}. A page's most searched keyword is its main one.`}>
         <DataTable bare minWidth={760} rows={d.pages} rowKey={p => p.url} exportName="pages-and-keywords" label="pages" searchPlaceholder="Search pages" columnsMenu={false} rowClass={() => 'hover:bg-slate-50'}
           columns={[
             { id: 'page', header: 'Page', tip: { what: 'A page of your website.', why: 'Click the address to open it.', from: 'the last website scan (Website Audit).' }, thClass: 'px-3 py-2', value: p => p.path, className: 'px-3 py-2.5 min-w-[200px] max-w-[300px]',
@@ -109,7 +103,7 @@ export default function KeywordMappingTab({ b }) {
       {view === 'keywords' && <KeywordsView b={b} onOpen={(url, focus) => setOpen({ url, focus })} />}
 
       {view === 'create' && (
-      <Card pad={false} title="Pages and posts to create" subtitle="Keywords no page carries. People who want to buy or book need a page; questions and guides fit a blog post.">
+      <Card pad={false} title={`Pages and posts to create (${todo.length})`} subtitle="Keywords no page carries: a page for buying or booking, a blog post for questions.">
         {todo.length === 0 ? <p className="px-5 py-6 text-13 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={15} />Every keyword has a page.</p> : (
           <DataTable bare minWidth={700} rows={todo} rowKey={x => `${x.type}-${x.keyword}`} exportName="pages-and-posts-to-create" label="keywords" searchPlaceholder="Search keywords" columnsMenu={false} rowClass={() => 'hover:bg-slate-50'}
             columns={[
@@ -128,13 +122,6 @@ export default function KeywordMappingTab({ b }) {
       </Card>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 text-13 text-slate-600">
-        <span><b className="text-slate-900">Next:</b> write the content for the places you chose, put the changes on your site, then track the keywords.</span>
-        <Link to="/ai-content-generation/blog"><Button size="sm" variant="primary" icon={ArrowRight}>4 · Write content</Button></Link>
-        <Link to="/fix-plan"><Button size="sm">5 · Update the site</Button></Link>
-        <Link to="/keyword-management/status"><Button size="sm">6 · Track</Button></Link>
-        <Link to="/keyword-management/use" className="text-12.5 font-semibold text-indigo-700 hover:underline">See the usage grid</Link>
-      </div>
       <PageOverview b={b} target={open} onClose={() => setOpen(null)} />
       {toastNode}
     </div>
