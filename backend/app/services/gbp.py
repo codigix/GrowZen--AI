@@ -19,7 +19,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 import jwt
@@ -268,6 +268,14 @@ class GbpClient:
             token = d.get("nextPageToken")
             if not token:
                 return out
+
+    def place_action_types(self, location: str) -> dict[str, str]:
+        """The button types Google offers THIS listing (it depends on the category): {type: display name}. Empty when Google could not say."""
+        try:
+            d = self._req("GET", f"{PLACE_ACTIONS}/placeActionTypeMetadata", params={"filter": f"location={location}", "pageSize": 100})
+        except GbpError:
+            return {}
+        return {m["placeActionType"]: m.get("displayName") or m["placeActionType"] for m in d.get("placeActionTypeMetadata", []) if m.get("placeActionType")}
 
     def create_place_action_link(self, location: str, kind: str, url: str) -> dict[str, Any]:
         return self._req("POST", f"{PLACE_ACTIONS}/{location}/placeActionLinks", json={"placeActionType": kind, "uri": url})
@@ -587,8 +595,27 @@ def desired_action_links(links: list[dict[str, Any]] | None, booking_url: str | 
     return out
 
 
+BUTTON_NAME = {"APPOINTMENT": "Book", "ONLINE_APPOINTMENT": "Online appointment", "DINING_RESERVATION": "Reserve a table", "FOOD_ORDERING": "Order food", "FOOD_DELIVERY": "Order delivery", "FOOD_TAKEOUT": "Order takeout", "SHOP_ONLINE": "Shop online"}
+
+
+def check_action_link(kind: str, url: str, offered: dict[str, str]) -> None:
+    """Say plainly, before Google answers with 'invalid argument', why a button cannot be added: the category has no such button, or the link is not a page of its own."""
+    name = BUTTON_NAME.get(kind, kind)
+    if offered and kind not in offered:
+        have = ", ".join(sorted(offered.values())) or "none"
+        raise GbpError(f"Google offers no '{name}' button for this business's category. Buttons Google offers it: {have}. Choose a category that has one, or take the link out")
+    parts = urlsplit(url or "")
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise GbpError(f"'{url}' is not a web address (it must start with https://)")
+    if parts.path.strip("/") == "" and not parts.query:
+        raise GbpError(f"'{url}' is the home page. The '{name}' link must open the page where people actually book or order")
+
+
 def sync_action_links(client: "GbpClient", location: str, wanted: list[dict[str, Any]]) -> None:
     """Make Google's Book / Order buttons match `wanted` (one link per type): create the new, change the different, remove the dropped."""
+    offered = client.place_action_types(location) if wanted else {}
+    for w in wanted:
+        check_action_link(w["type"], w["url"], offered)  # before anything is changed: a refused link must not leave the others half done
     have: dict[str, dict[str, Any]] = {}
     for link in client.place_action_links(location):
         have.setdefault(link.get("placeActionType"), link)

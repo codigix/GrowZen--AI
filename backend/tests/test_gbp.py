@@ -46,6 +46,8 @@ def fake_google(monkeypatch, vom_enabled=True):
                                     "createTime": "2026-10-01T00:00:00Z", "locationAssociation": {"category": "EXTERIOR"}, "insights": {"viewCount": str(i * 10)}} for i in range(7)], "totalMediaItemCount": 7}
         if "fetchMultiDailyMetricsTimeSeries" in url:
             return {}
+        if "placeActionTypeMetadata" in url:
+            return {"placeActionTypeMetadata": [{"placeActionType": k, "displayName": k.title()} for k in ("APPOINTMENT", "FOOD_ORDERING", "SHOP_ONLINE")]}
         if "placeActionLinks" in url and method == "GET":
             return {"placeActionLinks": ACTION_LINKS}
         raise AssertionError(f"unexpected Google call {url}")
