@@ -19,7 +19,7 @@ const scopeTone = { home: 'blue', offer: 'green', blog: 'violet', info: 'gray', 
 export function KeywordsView({ b, onOpen }) {
   const r = useApi(`/businesses/${b.id}/keyword-placement`);
   const [show, setShow] = useState('all');
-  const [open, setOpen] = useState(null); // { id, key }: the suggestion shown under a keyword
+  const [open, setOpen] = useState(() => new Set()); // 'id:key' of an already-used area whose text is being looked at (a chosen area always shows its text)
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState('');
   const [copied, setCopied] = useState('');
@@ -41,25 +41,27 @@ export function KeywordsView({ b, onOpen }) {
     try { const out = await api(`/businesses/${b.id}/keywords/${k.id}/geo-prompt`, { method: 'POST', body: {} }); setNote(out.added ? 'Added to the AI search questions.' : 'It is already one of the AI search questions.'); await r.reload(true); } catch (e) { setNote(e.message); } finally { setBusy(''); }
   };
   const copy = async (text, id) => { try { await navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied(''), 1800); } catch { /* the text is shown */ } };
+  const viewKey = (k, p) => `${k.id}:${p.key}`;
+  const toggleView = (k, p) => setOpen(s => { const x = new Set(s); const id = viewKey(k, p); x.has(id) ? x.delete(id) : x.add(id); return x; });
+  // An area is chosen when it is planned for the keyword (saved on the keyword); the chosen ones show what to write below, all at once.
   const chip = (k, p) => {
-    const on = open?.id === k.id && open.key === p.key;
+    const chosen = p.planned && !p.used;
+    const seeing = p.used && open.has(viewKey(k, p));
     return (
-      <button key={p.key} type="button" onClick={() => setOpen(on ? null : { id: k.id, key: p.key })} aria-expanded={on}
-        title={p.used ? 'Already used here' : p.planned ? 'Planned: not done yet' : 'Not used here yet'}
-        className={`h-7 px-2.5 rounded-full text-12 font-semibold cursor-pointer inline-flex items-center gap-1 ring-1 ring-inset transition-colors ${on ? 'bg-indigo-600 text-white ring-indigo-600' : p.used ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : p.planned ? 'bg-indigo-50 text-indigo-800 ring-indigo-200' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>
-        {p.used ? <Check size={12} /> : null}{p.label}{!p.used && p.planned ? <span className="text-10 font-medium opacity-80">planned</span> : null}
+      <button key={p.key} type="button" onClick={() => (p.used ? toggleView(k, p) : setPlan(k, p.key, !p.planned))} aria-pressed={chosen || seeing} disabled={busy === `${k.id}-${p.key}`}
+        title={p.used ? 'Already used here: press to see where' : p.planned ? 'Chosen: press to take it out' : 'Press to choose this area (you can choose several)'}
+        className={`h-7 pl-1.5 pr-2.5 rounded-full text-12 font-semibold cursor-pointer inline-flex items-center gap-1.5 ring-1 ring-inset transition-colors disabled:opacity-60 ${chosen ? 'bg-indigo-600 text-white ring-indigo-600' : p.used ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>
+        <span className={`w-4 h-4 rounded-full inline-flex items-center justify-center shrink-0 ${chosen ? 'bg-white/25 text-white' : p.used ? 'bg-emerald-600 text-white' : 'ring-1 ring-inset ring-slate-300'}`}>{(chosen || p.used) && <Check size={10} strokeWidth={3} />}</span>{p.label}
       </button>
     );
   };
-  const suggestion = (k) => {
-    const p = k.purposes.find(x => x.key === open.key);
-    if (!p) return null;
+  const suggestion = (k, p) => {
     const id = `${k.id}-${p.key}`;
     const action = p.to.kind === 'page' ? <Act icon={Eye} tone="indigo" tip="Open the page overview and see exactly where it goes." onClick={() => onOpen(p.to.url, k.keyword)}>{p.cta}</Act>
       : p.to.kind === 'geo' ? <Act icon={Sparkles} tone="violet" busy={busy === `${k.id}-geo`} tip="Add this question to the AI search tracker." onClick={() => askAi(k)}>{p.cta}</Act>
         : p.to.kind === 'none' ? null : <Link to={p.to.href}><Act icon={ExternalLink} tone="indigo" tip={`${p.cta}: open the right place with the keyword ready.`}>{p.cta}</Act></Link>;
     return (
-      <div className="rounded-lg ring-1 ring-indigo-200 bg-indigo-50/40 px-4 py-3">
+      <div key={p.key} className="rounded-lg ring-1 ring-indigo-200 bg-indigo-50/40 px-4 py-3 min-w-0">
         <div className="flex flex-wrap items-center gap-2"><span className="text-13 font-semibold text-slate-900">{p.label}: {p.headline}</span>{p.used && <Badge tone="green">Already used</Badge>}{!p.used && p.planned && <Badge tone="blue">Planned</Badge>}</div>
         <div className="mt-1.5 flex items-start gap-2"><pre className="flex-1 whitespace-pre-wrap text-12.5 text-slate-800 bg-white rounded px-3 py-2 ring-1 ring-slate-200 font-sans">{p.text}</pre><Act icon={copied === id ? Check : Copy} tone="slate" tip="Copy: copy this text to paste where it goes." onClick={() => copy(p.text, id)} /></div>
         <div className="mt-2 flex flex-wrap items-center gap-2">{action}
@@ -71,7 +73,7 @@ export function KeywordsView({ b, onOpen }) {
     <Card pad={false} title="Your picked keywords" subtitle="Where each is used, the page it is meant for, and what to use it for. Pick a purpose under a keyword to see exactly what to add.">
       <div className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-2">
         <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg">{tab('all', `All ${d.keywords.length}`)}{tab('used', `Used ${d.counts.used}`)}{tab('weak', `Weak ${d.counts.weak}`)}{tab('unused', `Not used ${d.counts.unused}`)}</div>
-        <span className="text-12 text-slate-500">Green = already used there · blue = planned · grey = not yet</span>
+        <span className="text-12 text-slate-500">Pick every area a keyword will be used in: each one you pick shows what to write. Green = already used there</span>
         {note && <span role="status" className="ml-auto text-12.5 text-emerald-800 bg-emerald-50 rounded px-2.5 py-1">{note}</span>}
       </div>
       <div className="overflow-x-auto">
@@ -92,8 +94,8 @@ export function KeywordsView({ b, onOpen }) {
                   <td className="px-3 pt-2.5 pb-1 text-right whitespace-nowrap">{target ? <Act icon={Eye} tone="indigo" tip="Where to add: open the page and see exactly where this keyword goes." onClick={() => onOpen(target, k.keyword)}>Where to add</Act> : <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`}><Act icon={FileSearch} tone="violet" tip="Write: a page or post is needed for this keyword.">Write it</Act></Link>}</td>
                 </tr>
                 <tr><td colSpan={6} className="px-3 pb-3">
-                  <div className="flex flex-wrap items-center gap-1.5"><span className="text-11.5 font-semibold uppercase tracking-wide text-slate-500 mr-1">Use it for</span>{k.purposes.map(p => chip(k, p))}</div>
-                  {open?.id === k.id && <div className="mt-2">{suggestion(k)}</div>}
+                  <div className="flex flex-wrap items-center gap-1.5"><span className="text-11.5 font-semibold uppercase tracking-wide text-slate-500 mr-1" title="Choose every area where this keyword will be used. Each chosen area shows what to write.">Use it for</span>{k.purposes.map(p => chip(k, p))}</div>
+                  {(() => { const shownNow = k.purposes.filter(p => (p.planned && !p.used) || (p.used && open.has(viewKey(k, p)))); return shownNow.length > 0 && <div className="mt-2 grid grid-cols-1 xl:grid-cols-2 gap-2">{shownNow.map(p => suggestion(k, p))}</div>; })()}
                 </td></tr>
               </tbody>);
           })}
