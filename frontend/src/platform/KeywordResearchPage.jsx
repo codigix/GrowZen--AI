@@ -783,6 +783,7 @@ function Tracked({ b, kw }) {
     };
     return list.sort((a, c) => { const x = v(a); const y = v(c); const o = typeof x === 'string' ? x.localeCompare(y) : x - y; return (sort.dir === 'asc' ? o : -o) || a.keyword.localeCompare(c.keyword); });
   }, [tracked, f, q, sort, T]);
+  const googleNote = !tbl.data?.fetched_at ? '' : `Google figures: Search Console${tbl.data.window ? `, ${tbl.data.window.days} days (${tbl.data.window.start} to ${tbl.data.window.end}), searches from ${tbl.data.window.country || 'your country'}` : ''}${tbl.data.google_total ? `. ${fmt(tbl.data.google_total.impressions)} impressions and ${fmt(tbl.data.google_total.clicks)} clicks from ${tbl.data.google_total.searches} of your ${(tbl.data.rows || []).length} keywords` : ''}. Read ${new Date(tbl.data.fetched_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}, refreshed every ${tbl.data.every_minutes} min. Click a heading to sort.`;
   const pager = usePager(rows, { size: 25, resetKey: `${JSON.stringify(f)}|${q}|${sort.key}|${sort.dir}` });
   const shown = pager.rows;
   const allOn = shown.length > 0 && shown.every(k => sel.has(k.id));
@@ -811,14 +812,10 @@ function Tracked({ b, kw }) {
         </div></Card>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Where you stand: click one to filter the table">
-              {[['Saved', tracked.length, () => clearAll(), !active, 'Every saved keyword'], ['Primary', cnt(k => k.role === 'primary'), () => { clearAll(); setFilter('role', 'primary'); }, f.role === 'primary', 'The main keyword of a page'], ['Have a page', mapped, () => { clearAll(); setFilter('page', 'mapped'); }, f.page === 'mapped', 'A page of your website is chosen for them'], ['On Google', onGoogle, () => { clearAll(); setFilter('google', 'yes'); }, f.google === 'yes', 'Your site shows for them in Google'], ['Top 10', cnt(k => k.rank && k.rank <= 10), () => { clearAll(); setFilter('google', 'top10'); }, f.google === 'top10', 'Ranking 1 to 10 on Google']].map(([label, num, fn, on, tip]) => (
-                <button key={label} type="button" onClick={fn} title={tip} aria-pressed={on} className={`h-8 px-2.5 rounded-lg cursor-pointer ring-1 ring-inset inline-flex items-baseline gap-1.5 text-12.5 ${on ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'}`}><b className="tabular-nums text-14 self-center">{num}</b>{label}</button>))}
-              {tbl.data?.google_total?.clicks != null && <span className="h-8 px-2.5 inline-flex items-baseline gap-1.5 text-12.5 text-slate-600" title="Clicks from Google to your site for these keywords, last 28 days (Search Console)"><b className="tabular-nums text-14 self-center text-slate-900">{fmt(tbl.data.google_total.clicks)}</b>clicks, 28 days</span>}
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="relative flex-1 min-w-[220px] max-w-md"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(30); }} placeholder="Search my keywords or topics" aria-label="Search my keywords" className="h-8 w-full pl-9 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" /></label>
             <div className="ml-auto flex flex-wrap items-center gap-2">
-            <label className="relative w-56"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(30); }} placeholder="Search my keywords or topics" aria-label="Search my keywords" className="h-8 w-full pl-9 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" /></label>
+            {nopage > 0 && <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages} title={`${nopage} keyword${nopage === 1 ? ' has' : 's have'} no page yet: give each the page where it already appears (a page you chose yourself is never changed)`}>Match {nopage} to my pages</Button>}
             <form onSubmit={(e) => { e.preventDefault(); add(); }} className="flex gap-1.5">
               <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Add a keyword" aria-label="Add a keyword" className="h-8 w-40 px-2.5 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
               <Button size="sm" type="submit" icon={Plus} busy={busy === 'add'} disabled={typed.trim().length < 2}>Add</Button>
@@ -827,19 +824,15 @@ function Tracked({ b, kw }) {
           </div>
           <div className="flex flex-wrap items-center gap-2 text-11.5 text-slate-500 px-1 -mt-1 -mb-1">
             {tbl.data?.refreshing && <span className="inline-flex items-center gap-1.5 text-indigo-700"><Loader2 size={12} className="animate-spin" />Reading positions and Search Console figures… they appear here by themselves.</span>}
-            {!tbl.data?.refreshing && tbl.data?.fetched_at && <span>Google figures: Search Console{tbl.data.window ? `, ${tbl.data.window.days} days (${new Date(`${tbl.data.window.start}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} to ${new Date(`${tbl.data.window.end}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}), searches from ${tbl.data.window.country || 'your country'}` : ''}{tbl.data.google_total ? ` · ${fmt(tbl.data.google_total.impressions)} impressions and ${fmt(tbl.data.google_total.clicks)} clicks from ${tbl.data.google_total.searches} of your ${(tbl.data.rows || []).length} keywords` : ''} · read {new Date(tbl.data.fetched_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}, refreshed every {tbl.data.every_minutes} min</span>}
             {!tbl.data?.refreshing && tbl.data?.google === 'saved' && <span className="text-amber-700" title={tbl.data.google_error || ''}>Search Console could not be read just now: showing the last saved position check{tbl.data.google_error ? ` (${tbl.data.google_error})` : ''}</span>}
             {tbl.data?.error && !tbl.data?.refreshing && <span className="text-amber-700" title={tbl.data.error}>last refresh failed</span>}
           </div>
           <Card pad={false}>
             <div role="group" aria-label="Filter the table" className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
               {FILTERS.map(([key, label, opts]) => (
-                <label key={key} className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">{label}
-                  <select value={f[key]} onChange={e => setFilter(key, e.target.value)} aria-label={`Filter by ${label.toLowerCase()}`} className={`h-8 rounded-md border text-12.5 font-medium cursor-pointer max-w-[11rem] ${f[key] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700'}`}>
-                    {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </label>))}
-              {nopage > 0 && <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages} title={`${nopage} keyword${nopage === 1 ? ' has' : 's have'} no page yet: give each the page where it already appears (a page you chose yourself is never changed)`}>Match {nopage} to my pages</Button>}
+                <select key={key} value={f[key]} onChange={e => setFilter(key, e.target.value)} aria-label={`Filter by ${label.toLowerCase()}`} title={`Filter by ${label.toLowerCase()}`} className={`h-8 rounded-md border text-12.5 font-medium cursor-pointer w-[8.75rem] ${f[key] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700'}`}>
+                  {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>))}
               <details className="relative ml-auto">
                 <summary className="h-8 px-3 inline-flex items-center rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer list-none hover:bg-slate-50" title="Choose which columns to show">Columns{hidden.size ? ` (${COLS.length - hidden.size} of ${COLS.length})` : ''}</summary>
                 <div className="absolute right-0 z-20 mt-1 w-60 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 p-2">
@@ -847,7 +840,7 @@ function Tracked({ b, kw }) {
                 </div>
               </details>
               <Button size="sm" icon={Download} onClick={exportCsv} title="Download the keywords shown in the table (with the filters applied) as a CSV file">Export CSV</Button>
-              <span className="text-12.5 text-slate-500" role="status">{active ? <>Showing <b className="text-slate-800">{rows.length}</b> of {tracked.length} · <button type="button" onClick={clearAll} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></> : <>{tracked.length} keywords · click a heading to sort</>}</span>
+              <span className="text-12.5 text-slate-500" role="status" title={googleNote}>{active ? <>Showing <b className="text-slate-800">{rows.length}</b> of {tracked.length} · <button type="button" onClick={clearAll} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></> : <><b className="text-slate-800">{tracked.length}</b> keywords</>}{tbl.data?.fetched_at && !active ? <span className="text-slate-400"> · Google data from {tbl.data.window ? `${new Date(`${tbl.data.window.end}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Search Console'}</span> : null}</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-14 min-w-[1010px]">
