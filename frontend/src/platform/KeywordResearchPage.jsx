@@ -745,7 +745,7 @@ function Tracked({ b, kw }) {
     ...(intents.length ? [['intent', 'Intent', [['', 'Any intent'], ...intents.map(i => [i, i])]]] : []),
     ...(topics.length ? [['topic', 'Topic', [['', 'Any topic'], ['__none', 'No topic yet'], ...topics.map(i => [i, i])]]] : [])
   ];
-  const COLS = [['rank', 'Rank / AI'], ['volume', 'Searches'], ['difficulty', 'KD'], ['impressions', 'Google: impr / clicks / CTR'], ['page', 'Mapped page'], ['status', 'Status']];
+  const COLS = [['rank', 'Rank / AI'], ['volume', 'Searches'], ['difficulty', 'KD'], ['impressions', 'Impr / clicks / CTR'], ['page', 'Mapped page'], ['status', 'Status']];
   const exportCsv = () => {
     const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const head = ['Keyword', 'Role', 'Topic', 'Intent', 'Rank', 'Searches per month', 'Difficulty', 'Impressions', 'Clicks', 'CTR %', 'Page', 'Status'];
@@ -795,7 +795,7 @@ function Tracked({ b, kw }) {
   const shown = pager.rows;
   const allOn = shown.length > 0 && shown.every(k => sel.has(k.id));
   const Th = ({ id, children, right, ...tip }) => (
-    <th className={`px-4 py-3 font-semibold ${right ? 'text-right' : 'text-left'}`}>
+    <th className={`px-4 py-3 font-semibold whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}>
       <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id ? (s.dir === 'desc' ? 'asc' : 'desc') : ['keyword', 'rank', 'page', 'status'].includes(id) ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${sort.key === id ? 'text-slate-900' : ''}`}><Head right={right} {...tip}>{children}</Head>{sort.key === id && (sort.dir === 'asc' ? '▲' : '▼')}</button>
     </th>
   );
@@ -854,7 +854,7 @@ function Tracked({ b, kw }) {
                     {show('rank') && <Th id="rank" right what="Where your website shows on Google for it (average, last 28 days; #1 is the top), whether it moved, and whether AI assistants mention your business for it." why="Shows what is working and what can climb." from="Google Search Console for the position; the AI answers you track for AI search.">Rank / AI</Th>}
                     {show('volume') && <Th id="volume" right what="How many times a month people search it in your country." why="Shows which keywords can bring the most visitors." from="Google Ads Keyword Planner. Blank when Google gave no figure.">Searches</Th>}
                     {show('difficulty') && <Th id="difficulty" right what="Keyword difficulty, 0 to 100: how hard it is to rank on Google for this keyword. Green is easier (up to 30), amber is a fair fight (up to 60), red is hard." why="Start with the easier keywords that still have searches: they rank sooner." from="Google Ads Keyword Planner (its competition level). Blank when Google gave no figure.">KD</Th>}
-                    {show('impressions') && <Th id="impressions" right what="Impressions: how many times your site appeared in Google for exactly this search. Clicks: how many of those people clicked. CTR (click rate) = clicks divided by impressions. Last 28 days, searches from your target country." why="Many impressions and few clicks means the title and description need work. No impressions means Google is not showing your site for it." from="Google Search Console, the same numbers as Search Console > Performance > Queries (read for this table about every 30 minutes; Google's data is two days behind).">Google: impr / clicks / CTR</Th>}
+                    {show('impressions') && <Th id="impressions" right what="Impressions: how many times your site appeared in Google for exactly this search. Clicks: how many of those people clicked. CTR (click rate) = clicks divided by impressions. Last 28 days, searches from your target country." why="Many impressions and few clicks means the title and description need work. No impressions means Google is not showing your site for it." from="Google Search Console, the same numbers as Search Console > Performance > Queries (read for this table about every 30 minutes; Google's data is two days behind).">Impr / clicks / CTR</Th>}
                     {show('page') && <Th id="page" what="The page of your website this keyword is mapped to, and the pages where the keyword is already used." why="Mapped means a page was chosen for the keyword (by you, or from the site scan's suggestion). It is a plan, not proof: a solid green dot means the page also says the keyword; a hollow amber dot means it does not yet, so add it there." from="your choice (or the suggestion from the site scan) and the last website scan: the keyword in a page address, title, heading or description.">Mapped page</Th>}
                     {show('status') && <Th id="status" what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Th>}
                     <th className="px-3 py-3 text-right font-semibold"><Head right what="Map the keyword to a page (or see the page it is mapped to), check it, write for it, or remove it." why="Every keyword needs one page to rank on.">Actions</Head></th>
