@@ -82,7 +82,7 @@ def test_the_business_summary_and_competitor_listings_feed_the_list(client):
     db = SessionLocal()
     try:
         b = db.get(Business, bid)
-        assert kw.from_brief(db, b)[0] == [] and "Build the business summary" in kw.from_brief(db, b)[1]
+        assert kw.from_brief(db, b)[0] == [] and "no business summary yet" in kw.from_brief(db, b)[1]
         b.business_brief = {"customer_search_terms": ["lehenga on rent"], "offerings": ["Bridal lehenga rental"], "audience": ["Brides"], "keyword_themes": [{"theme": "Weddings", "keywords": ["wedding dress rental"]}]}
         db.add(Competitor(business_id=bid, name="Style Story", website=None, selected=True, listing={"understanding": {"keywords": ["party dress rental"], "services": ["Blazer rental"]}}))
         db.add(Competitor(business_id=bid, name="Left Out", website=None, selected=False, listing={"understanding": {"keywords": ["ignored phrase"], "services": []}}))
@@ -94,4 +94,29 @@ def test_the_business_summary_and_competitor_listings_feed_the_list(client):
     finally:
         db.query(Competitor).filter_by(business_id=bid).delete()
         db.commit()
+        db.close()
+
+
+def test_collect_builds_the_business_summary_first_when_it_is_missing(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import Business
+    from app.services import business_understanding, keyword_workspace as kw
+    bid = client.post("/api/v1/businesses", json={"name": "Sum Co", "website": "https://sum.example/"}).json()["id"]
+    built = []
+
+    def fake_build(db, b):
+        built.append(b.id)
+        b.business_brief = {"offerings": ["gown rental"], "customer_search_terms": ["gown on rent"], "audience": ["brides"]}
+        db.commit()
+        return b.business_brief
+    monkeypatch.setattr(business_understanding, "build", fake_build)
+    db = SessionLocal()
+    try:
+        b = db.get(Business, bid)
+        rep = kw.collect(db, b, ["brief"])
+        assert built == [bid] and rep["summary"]["note"].startswith("The business summary was built first")
+        assert rep["brief"]["found"] >= 2 and rep["brief"]["note"] is None  # the source found what the summary says
+        again = kw.collect(db, db.get(Business, bid), ["brief"])
+        assert built == [bid] and "summary" not in again  # built once: a second collect does not build it again
+    finally:
         db.close()

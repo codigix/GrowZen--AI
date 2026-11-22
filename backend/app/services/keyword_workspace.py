@@ -240,7 +240,7 @@ def from_brief(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | No
     """What the business summary says: the services and solutions it sells, the keyword themes written for its customers and the words they search with."""
     brief = getattr(b, "business_brief", None) or {}
     if not brief:
-        return [], "Build the business summary first (Website Audit page): its services, customers and search words feed this list."
+        return [], "There is no business summary yet and it could not be built from the website. Add the website to the project, then collect again."
     out: list[dict[str, Any]] = []
     for k in brief.get("customer_search_terms") or []:
         out.append({"keyword": k, "kind": "brief", "detail": "A word your customers search with (business summary)"})
@@ -313,6 +313,17 @@ def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[st
     kinds = [k for k in (kinds or list(COLLECTORS)) if k in COLLECTORS]
     existing = {r.norm: r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))}
     report: dict[str, Any] = {}
+    summary_note = None
+    if not (b.business_brief or {}) and b.website and any(k in kinds for k in ("brief", "area", "ai", "google_ideas")):
+        # the business summary feeds several sources: it is built now (the site is read and the AI asked once) instead of sending the owner to another page first
+        from . import business_understanding
+        try:
+            business_understanding.build(db, b)
+            summary_note = "The business summary was built first, from your website."
+        except Exception as exc:  # noqa: BLE001 - the sources that do not need it still run
+            log.warning("business summary could not be built: %s", exc)
+            db.rollback()
+            summary_note = "The business summary could not be built just now, so sources that use it may find less."
     for k in kinds:
         try:
             found, note = COLLECTORS[k](db, b)
@@ -320,6 +331,8 @@ def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[st
             log.exception("keyword source %s failed", k)
             found, note = [], f"This source failed: {str(exc)[:150]}"
         report[k] = {"label": SOURCES[k], "found": len(found), "new": _add(db, b, found, existing) if found else 0, "note": note}
+    if summary_note:
+        report["summary"] = {"label": "Business summary", "found": 0, "new": 0, "note": summary_note}
     fill_metrics(db, b)
     from . import keyword_fit
     try:  # hide what does not fit this business (another brand, another service, another place), with the reason

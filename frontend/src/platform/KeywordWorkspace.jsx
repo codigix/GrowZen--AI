@@ -38,6 +38,7 @@ function View({ on, onClick, children, count, tone = 'slate' }) {
 function CollectModal({ d, open, onClose, onDone }) {
   const [chosen, setChosen] = useState(null);
   const [progress, setProgress] = useState({});
+  const [info, setInfo] = useState('');
   const [busy, error, run] = useAction();
   const kinds = d.sources.map(s => s.kind);
   const on = chosen || kinds;
@@ -48,6 +49,7 @@ function CollectModal({ d, open, onClose, onDone }) {
     for (const k of on) { // one place at a time, so each shows its own result as it finishes
       const out = await api(`/businesses/${d.bid}/keyword-workspace/collect`, { method: 'POST', body: { sources: [k] }, timeout: 240000 });
       setProgress(p => ({ ...p, [k]: out.report[k] }));
+      if (out.report.summary?.note) setInfo(out.report.summary.note); // the business summary was missing and was built first
       added += out.report[k].new;
       onDone(false);
     }
@@ -58,6 +60,7 @@ function CollectModal({ d, open, onClose, onDone }) {
       footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" icon={RefreshCw} busy={busy === 'go'} disabled={!on.length} onClick={go}>{d.totals.all ? 'Collect again' : 'Collect'} ({on.length})</Button></>}>
       <p className="text-13 text-slate-600 mb-3">Each place adds to one list. A keyword found in several places stays one row with every place shown.</p>
       <ErrorNote>{error}</ErrorNote>
+      {info && <p role="status" className="mb-3 text-12.5 text-emerald-800 bg-emerald-50 rounded px-3 py-1.5">{info}</p>}
       <ul className="divide-y divide-slate-100 rounded-lg ring-1 ring-inset ring-slate-200">
         {d.sources.map(s => {
           const p = progress[s.kind];
