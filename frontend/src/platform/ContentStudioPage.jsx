@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DataTable from './DataTable';
 import { Link } from 'react-router-dom';
 import {
   Sparkles, Check, ChevronRight, Globe, ShieldCheck, AlertTriangle, RefreshCw,
@@ -98,7 +99,6 @@ const intentOf = (kw, b) => {
  *    (same API as Keyword Intelligence → Google Planner)
  */
 function TrendingTopicsTab({ b, onSelectTopic }) {
-  const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState({});  // keyword -> { keyword, rising }
   const pickedCount = Object.keys(selected).length;
   const toggle = (t) => setSelected(m => {
@@ -137,177 +137,95 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
     openWriter(topics.find(t => t.title === first) || { title: first }, rest);
   };
 
-  const passes = (t) => filter === 'all' ||
-    (filter === 'local' && t.intent === 'Local') ||
-    (filter === 'high' && (t.velocity === 'Breakout' || ratio(t.velocity) >= 30)) ||
-    (filter === 'transactional' && t.intent === 'Transactional');
 
+  const MON = { JANUARY: 'Jan', FEBRUARY: 'Feb', MARCH: 'Mar', APRIL: 'Apr', MAY: 'May', JUNE: 'Jun', JULY: 'Jul', AUGUST: 'Aug', SEPTEMBER: 'Sep', OCTOBER: 'Oct', NOVEMBER: 'Nov', DECEMBER: 'Dec' };
+  const hist = seedIdea?.monthly_search_volumes || [];
+  const pts = hist.map(m => ({ date: `${MON[m.month] || String(m.month).slice(0, 3)} '${String(m.year).slice(2)}`, value: m.monthly_searches || 0 }));
+  const ch = seedIdea?.three_month_change;
+  const classification = ch == null ? null : ch >= 10 ? 'rising' : ch <= -10 ? 'declining' : 'stable';
+  const pctOf = (t) => (t.velocity === 'Breakout' ? 9999 : /^[+-]\d+%$/.test(t.velocity || '') ? parseInt(t.velocity, 10) : null);
+  const COMP = { LOW: ['Low', 'green'], MEDIUM: ['Medium', 'amber'], HIGH: ['High', 'red'] };
+  const tableFor = (rows, id) => (
+    <DataTable bare rows={rows} rowKey={x => x.id} pageSize={10} sizes={[10, 20, 50]} exportName={`${id}-queries`} label="queries" searchPlaceholder="Search queries" minWidth={520} columnsMenu={false}
+      rowClass={x => (selected[x.title] ? 'bg-indigo-50/60' : 'hover:bg-slate-50')}
+      empty="Nothing found."
+      filters={[
+        { id: 'intent', label: 'Intent', options: [...new Set(rows.map(x => x.intent).filter(Boolean))].sort().map(x => [x, x]), test: (x, v) => x.intent === v },
+        { id: 'change', label: 'Change', options: [['up', 'Growing'], ['30', 'Over +30%']], test: (x, v) => { const c = pctOf(x); return v === 'up' ? c != null && c > 0 : c != null && c >= 30; } },
+        { id: 'comp', label: 'Competition', options: [['LOW', 'Low'], ['MEDIUM', 'Medium'], ['HIGH', 'High']], test: (x, v) => x.competition === v }
+      ].filter(f => f.options.length > 1)}
+      columns={[
+        { id: 'pick', label: 'Select', csv: false, className: 'pl-4 pr-1 py-2 w-8', thClass: 'pl-4 pr-1 py-2.5 w-8', header: <span className="sr-only">Select</span>,
+          cell: x => <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[x.title])} onChange={() => toggle(x)} aria-label={`Select ${x.title}`} title="Select to write an article (up to 10)" /> },
+        { id: 'query', header: 'Query', value: x => x.title, className: 'px-2 py-2 text-slate-800' },
+        { id: 'searches', header: 'Searches / mo', right: true, first: 'desc', value: x => x.score ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-600', cell: x => (x.score != null ? fmt(x.score) : <span className="text-slate-300">—</span>) },
+        { id: 'change', header: 'Change', right: true, first: 'desc', value: x => pctOf(x), className: 'px-2 py-2 text-right whitespace-nowrap',
+          cell: x => { const c = pctOf(x); return x.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge> : c != null ? <span className={`inline-flex items-center gap-0.5 text-12 font-semibold tabular-nums ${c >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{c >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(c)}%</span> : <span className="text-slate-300">—</span>; } },
+        { id: 'comp', header: 'Competition', value: x => ({ LOW: 0, MEDIUM: 1, HIGH: 2 })[x.competition] ?? null, className: 'px-2 py-2', cell: x => (COMP[x.competition] ? <Badge tone={COMP[x.competition][1]}>{COMP[x.competition][0]}</Badge> : <span className="text-slate-300">—</span>) },
+        { id: 'draft', header: 'Action', right: true, className: 'px-3 py-2 text-right whitespace-nowrap', thClass: 'px-3 py-2.5', cell: x => <button type="button" onClick={() => openWriter(x)} title="Create the brief and a draft for this query" className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Write it</button> }
+      ]} />
+  );
   return (
-    <div className="space-y-4">
-      {/* Search & Filter Header */}
-      <div className="ai-glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1 min-w-[280px]">
-          <div className="relative flex-1 max-w-md">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Enter a keyword to find trending topics (e.g. seo services)"
-              value={typed}
-              onChange={e => setTyped(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && doSearch()}
-              className="w-full h-9 pl-9 pr-3 text-[12px] bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl text-slate-900 placeholder-slate-400 outline-none"
-            />
-          </div>
-          <Button variant="primary" icon={Search} disabled={!typed.trim()} onClick={doSearch}>Search</Button>
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            {[
-              { id: 'all', label: 'All Trends' },
-              { id: 'local', label: 'Local Intent' },
-              { id: 'high', label: 'High Velocity (🔥 +30%)' },
-              { id: 'transactional', label: 'Transactional / Booking' }
-            ].map(f => (
-              <button
-                key={f.id}
-                onClick={() => setFilter(f.id)}
-                className={`h-8 px-3 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap cursor-pointer ${filter === f.id
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-white text-slate-700 hover:text-slate-900 border border-slate-200'
-                  }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-500 font-mono">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Google Keyword Planner · India · Last 12 months</span>
-        </div>
+    <div className="space-y-3">
+      {/* One toolbar: search, the seed keywords, and where the numbers come from */}
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <form onSubmit={e => { e.preventDefault(); doSearch(); }} role="search" className="flex gap-2 flex-1 min-w-[260px] max-w-xl">
+          <label className="relative flex-1"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input type="text" placeholder="A keyword to find topics for (e.g. wedding dress rental)" aria-label="Keyword to find topics for" value={typed} onChange={e => setTyped(e.target.value)} className="w-full h-9 pl-9 pr-3 text-13 bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 rounded-lg outline-none" /></label>
+          <Button type="submit" variant="primary" icon={Search} disabled={!typed.trim()}>Search</Button>
+        </form>
+        {seeds.length > 0 && <div className="flex flex-wrap items-center gap-1.5 text-12"><span className="text-slate-500">Topics for</span>{seeds.map(x => <button key={x} type="button" onClick={() => setPicked(x)} aria-pressed={x === seed} className={`h-7 px-2.5 rounded-full font-semibold cursor-pointer ring-1 ring-inset ${x === seed ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>{x}</button>)}</div>}
+        <span className="ml-auto inline-flex items-center gap-1.5 text-11.5 text-slate-500"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Google Keyword Planner · India · last 12 months</span>
       </div>
 
       {pickedCount > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-[12px]">
-          <span className="text-indigo-900 font-semibold">{pickedCount} topic{pickedCount > 1 ? 's' : ''} selected{pickedCount >= 10 ? ' (maximum)' : ''}. Start topic: {Object.keys(selected)[0]}{pickedCount > 1 ? ` · Also include: ${Object.keys(selected).slice(1).join(', ')}` : ''}. The writer then generates the primary and secondary keywords for you to edit.</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-indigo-50 ring-1 ring-indigo-200 text-12.5">
+          <span className="text-indigo-900 font-semibold">{pickedCount} selected{pickedCount >= 10 ? ' (the most)' : ''} · starts with “{Object.keys(selected)[0]}”{pickedCount > 1 ? `, also: ${Object.keys(selected).slice(1).join(', ')}` : ''}</span>
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={() => setSelected({})}>Clear</Button>
-            <Button size="sm" variant="ai" icon={Sparkles} onClick={createFromSelection}>Create Article</Button>
+            <Button size="sm" variant="ai" icon={Sparkles} onClick={createFromSelection}>Write an article</Button>
           </div>
         </div>
       )}
 
-      {seeds.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-          <span className="text-slate-500 font-mono uppercase">Seed keyword:</span>
-          {seeds.map(s => (
-            <button
-              key={s}
-              onClick={() => setPicked(s)}
-              className={`h-7 px-2.5 rounded-lg font-semibold cursor-pointer border ${s === seed ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200 hover:text-slate-900'}`}
-            >
-              {s}
-            </button>
-          ))}
+      {trend.error && !noData && !trend.loading && <ErrorNote>Google Keyword Planner is not answering right now ({trend.error.message}). Try again in a minute.</ErrorNote>}
+
+      {trend.data && !noData && !trend.loading && (
+        <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4 grid grid-cols-1 md:grid-cols-[minmax(220px,300px)_minmax(0,1fr)] gap-x-6 gap-y-3 items-center">
+          <div>
+            <div className="flex items-center gap-2 text-14 font-semibold text-slate-900">“{trend.data.seed_keyword}”{classification && <span className={`text-11.5 font-semibold capitalize px-2 py-0.5 rounded-full ${classification === 'rising' ? 'bg-emerald-50 text-emerald-700' : classification === 'declining' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{classification}</span>}</div>
+            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-12">
+              {[['Latest month', pts.length ? fmt(pts[pts.length - 1].value) : null], ['Average a month', seedIdea ? fmt(seedIdea.avg_monthly_searches) : null], ['3-month change', pctLabel(ch)], ['Topics found', relatedAll.length]].map(([l, v]) => (
+                <div key={l}><dt className="text-slate-500">{l}</dt><dd className="text-16 font-semibold tabular-nums text-slate-900">{v ?? '—'}</dd></div>))}
+            </dl>
+          </div>
+          {pts.length > 1 ? (
+            <div className="h-36 min-w-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={pts} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} minTickGap={24} />
+                  <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} width={48} tickFormatter={v => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : v)} />
+                  <Tooltip formatter={(v) => [fmt(v), 'Searches']} />
+                  <Line type="monotone" dataKey="value" name="Searches" stroke="#4f46e5" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <p className="text-12.5 text-slate-500">No month-by-month figures for this keyword.</p>}
         </div>
       )}
 
-      {trend.error && !noData && !trend.loading && (
-        <ErrorNote>Google Keyword Planner is not answering right now ({trend.error.message}). Try again in a minute.</ErrorNote>
-      )}
-      {trend.data && !noData && !trend.loading && (() => {
-        const MON = { JANUARY: 'Jan', FEBRUARY: 'Feb', MARCH: 'Mar', APRIL: 'Apr', MAY: 'May', JUNE: 'Jun', JULY: 'Jul', AUGUST: 'Aug', SEPTEMBER: 'Sep', OCTOBER: 'Oct', NOVEMBER: 'Nov', DECEMBER: 'Dec' };
-        const hist = seedIdea?.monthly_search_volumes || [];
-        const pts = hist.map(m => ({ date: `${MON[m.month] || String(m.month).slice(0, 3)} '${String(m.year).slice(2)}`, value: m.monthly_searches || 0 }));
-        const ch = seedIdea?.three_month_change;
-        const classification = ch == null ? null : ch >= 10 ? 'rising' : ch <= -10 ? 'declining' : 'stable';
-        return (
-          <div className="ai-glass-card rounded-2xl p-4 border border-slate-200">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <div className="text-[13px] font-bold text-slate-900">Trend analysis: “{trend.data.seed_keyword}”</div>
-              {classification && <span className="text-[11px] font-mono font-bold capitalize text-indigo-700">{classification}</span>}
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
-              {[['Latest month searches', pts.length ? fmt(pts[pts.length - 1].value) : null], ['Avg monthly searches', seedIdea ? fmt(seedIdea.avg_monthly_searches) : null], ['3-month change', pctLabel(ch)], ['Topics found', relatedAll.length]].map(([l, v]) => (
-                <div key={l} className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 block text-[10px] uppercase font-mono">{l}</span>
-                  <strong className="text-slate-800 font-mono">{v ?? '—'}</strong>
-                </div>
-              ))}
-            </div>
-            {pts.length > 1 && (
-              <div className="h-40 mt-3">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={pts} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} minTickGap={24} />
-                    <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} width={48} tickFormatter={v => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : v)} />
-                    <Tooltip formatter={(v) => [fmt(v), 'Searches']} />
-                    <Line type="monotone" dataKey="value" name="Searches" stroke="#4f46e5" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-      {/* Trending Topics Cards */}
       {trend.error && !noData ? (
-        <div className="py-10 text-center text-[13px] text-red-600">{trend.error.message}</div>
+        <div className="py-10 text-center text-13 text-red-600">{trend.error.message}</div>
       ) : !seed ? (
-        <div className="py-10 text-center text-[13px] text-slate-500">Add a primary category, a service or a tracked keyword to this business to load trending topics.</div>
+        <div className="py-10 text-center text-13 text-slate-500">Add a primary category, a service or a tracked keyword to this business to load topics.</div>
       ) : trend.loading ? (
-        <div className="py-10 text-center text-[13px] text-slate-500">Fetching Google Keyword Planner ideas for “{seed}”…</div>
+        <div className="py-10 text-center text-13 text-slate-500">Fetching Google Keyword Planner ideas for “{seed}”…</div>
       ) : !topics.length ? (
-        <div className="py-10 text-center text-[13px] text-slate-500">No trending topics found for “{seed}”.</div>
+        <div className="py-10 text-center text-13 text-slate-500">No topics found for “{seed}”.</div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {[
-            ['Top queries', 'Most-searched related keywords, by average monthly searches', topQueries],
-            ['Rising queries', 'Keywords whose searches grew most over the last 3 months', risingQueries]
-          ].map(([title, subtitle, rows]) => {
-            const shown = rows.filter(passes);
-            return (
-              <Card key={title} title={title} subtitle={subtitle}>
-                {shown.length ? (
-                  <>
-                    <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
-                      <span className="w-4" />
-                      <span className="flex-1">Query</span>
-                      <span className="w-16 text-right" title="Average monthly searches (Google Keyword Planner)">Searches</span>
-                      <span className="w-16 text-right">Change</span>
-                      <span className="w-14 text-right"> </span>
-                    </div>
-                    <ul className="space-y-2">
-                      {shown.map(t => {
-                        const pct = /^[+-]\d+%$/.test(t.velocity || '') ? parseInt(t.velocity, 10) : null;
-                        return (
-                          <li key={t.id} className="flex items-center gap-2 text-[12.5px]">
-                            <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[t.title])} onChange={() => toggle(t)} title="Select to generate an article" />
-                            <span className="flex-1 text-slate-800">{t.title}</span>
-                            <span className="tabular-nums text-slate-500 w-16 text-right">{t.score != null ? fmt(t.score) : <span className="text-slate-300">—</span>}</span>
-                            <span className="w-16 text-right">
-                              {t.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge>
-                                : pct != null ? (
-                                  <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums ${pct >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                                    {pct >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(pct)}%
-                                  </span>
-                                ) : t.velocity ? (
-                                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums text-emerald-700">
-                                    <TrendingUp size={11} />{t.velocity}
-                                  </span>
-                                ) : <span className="text-slate-300">—</span>}
-                            </span>
-                            <span className="w-14 text-right">
-                              <button type="button" onClick={() => openWriter(t)} title="Create Brief & Draft" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer">Draft</button>
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </>
-                ) : <div className="py-6 text-center text-[13px] text-slate-500">No {title.toLowerCase()} found.</div>}
-              </Card>
-            );
-          })}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+          <Card pad={false} title={`Top queries (${topQueries.length})`} subtitle="Most searched, by average searches a month">{tableFor(topQueries, 'top')}</Card>
+          <Card pad={false} title={`Rising queries (${risingQueries.length})`} subtitle="Searches grew most in the last 3 months">{tableFor(risingQueries, 'rising')}</Card>
         </div>
       )}
     </div>
