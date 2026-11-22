@@ -755,13 +755,16 @@ function Tracked({ b, kw }) {
     a.href = url; a.download = `my-keywords-${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   };
-  const fbox = (key) => {
-    const row = FILTERS.find(x => x[0] === key);
-    if (!row) return null;
-    const [, label, opts] = row;
-    return <select key={key} value={f[key]} onChange={e => setFilter(key, e.target.value)} aria-label={`Filter by ${label.toLowerCase()}`} title={`Filter by ${label.toLowerCase()}`}
-      className={`h-7 min-w-0 flex-1 rounded border text-11.5 font-medium normal-case tracking-normal cursor-pointer ${f[key] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-600'}`}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>;
+  // Click a value in a row (its role, intent, topic, rank, difficulty, page or status) to show only the rows that have it; click it again to stop.
+  const rowFilter = (e) => {
+    const el = e.target.closest?.('[data-f]');
+    if (!el) return;
+    const [key, ...rest] = el.dataset.f.split(':');
+    const v = rest.join(':');
+    setFilter(key, f[key] === v ? '' : v);
   };
+  // what is filtered now, as chips that can each be removed
+  const chips = Object.entries(f).filter(([, v]) => v).map(([key, v]) => { const row = FILTERS.find(x => x[0] === key); return { key, label: row ? ((row[2].find(o => o[0] === v) || [])[1] || v) : v }; });
   const STATUS_ORDER = { working: 0, climbing: 1, weak: 2, invisible: 3, unchecked: 4 };
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -836,6 +839,7 @@ function Tracked({ b, kw }) {
           </div>
           <Card pad={false}>
             <div role="group" aria-label="Filter the table" className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
+              {chips.map(c => <button key={c.key} type="button" onClick={() => setFilter(c.key, '')} title="Remove this filter" className="h-7 px-2.5 rounded-full bg-indigo-50 ring-1 ring-inset ring-indigo-200 text-12 font-semibold text-indigo-800 inline-flex items-center gap-1 cursor-pointer hover:bg-indigo-100">{c.label}<X size={11} /></button>)}
               <details className="relative ml-auto">
                 <summary className="h-8 px-3 inline-flex items-center rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer list-none hover:bg-slate-50" title="Choose which columns to show">Columns{hidden.size ? ` (${COLS.length - hidden.size} of ${COLS.length})` : ''}</summary>
                 <div className="absolute right-0 z-20 mt-1 w-60 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 p-2">
@@ -843,7 +847,7 @@ function Tracked({ b, kw }) {
                 </div>
               </details>
               <Button size="sm" icon={Download} onClick={exportCsv} title="Download the keywords shown in the table (with the filters applied) as a CSV file">Export CSV</Button>
-              <span className="text-12.5 text-slate-500" role="status" title={googleNote}>{active ? <>Showing <b className="text-slate-800">{rows.length}</b> of {tracked.length} · <button type="button" onClick={clearAll} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></> : <><b className="text-slate-800">{tracked.length}</b> keywords</>}{tbl.data?.fetched_at && !active ? <span className="text-slate-400"> · Google data from {tbl.data.window ? `${new Date(`${tbl.data.window.end}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Search Console'}</span> : null}</span>
+              <span className="text-12.5 text-slate-500" role="status" title={googleNote}>{active ? <>Showing <b className="text-slate-800">{rows.length}</b> of {tracked.length} · <button type="button" onClick={clearAll} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></> : <><b className="text-slate-800">{tracked.length}</b> keywords · click a value in a row to filter</>}{tbl.data?.fetched_at && !active ? <span className="text-slate-400"> · Google data from {tbl.data.window ? `${new Date(`${tbl.data.window.end}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Search Console'}</span> : null}</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-14 min-w-[1010px]">
@@ -859,19 +863,8 @@ function Tracked({ b, kw }) {
                     {show('status') && <Th id="status" what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Th>}
                     <th className="px-3 py-3 text-right font-semibold"><Head right what="Map the keyword to a page (or see the page it is mapped to), check it, write for it, or remove it." why="Every keyword needs one page to rank on.">Actions</Head></th>
                   </tr>
-                  <tr className="bg-white border-t border-slate-100">
-                    <th className="pl-4 py-1.5" />
-                    <th className="px-4 py-1.5 font-normal"><div className="flex gap-1">{fbox('role')}{fbox('intent')}{fbox('topic')}</div></th>
-                    {show('rank') && <th className="px-3 py-1.5 font-normal">{fbox('google')}</th>}
-                    {show('volume') && <th className="px-3 py-1.5" />}
-                    {show('difficulty') && <th className="px-3 py-1.5 font-normal">{fbox('kd')}</th>}
-                    {show('impressions') && <th className="px-3 py-1.5" />}
-                    {show('page') && <th className="px-3 py-1.5 font-normal">{fbox('page')}</th>}
-                    {show('status') && <th className="px-3 py-1.5 font-normal">{fbox('status')}</th>}
-                    <th className="px-3 py-1.5 text-right font-normal">{active > 0 && <button type="button" onClick={clearAll} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer normal-case tracking-normal">Clear filters</button>}</th>
-                  </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 [&_[data-f]]:cursor-pointer [&_[data-f]:hover]:opacity-75" onClick={rowFilter}>
                   {shown.map(k => {
                     const used = pagesInfo?.pages?.[k.keyword] || [];
                     const guess = !k.target_url && used[0];
@@ -886,29 +879,29 @@ function Tracked({ b, kw }) {
                           <Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`} title="Check its searches, cost and related ideas" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline">{k.keyword}</Link>
                           {isNew && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5">Just added</span>}
                           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-12 text-slate-400">
-                            {k.role === 'primary' ? <span title="The main keyword of its page: the one the page is built to rank for" className="inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white text-11 font-semibold px-2 py-px"><Star size={10} />Primary</span>
-                              : k.role === 'secondary' ? <span title="A supporting keyword: the page also covers it, but it is not the page's main one" className="inline-flex items-center rounded-full bg-slate-200 text-slate-700 text-11 font-semibold px-2 py-px">Secondary</span>
-                                : t?.role_suggested ? <span title="The mapping suggests this role. Map the keyword and save the mapping to keep it." className="inline-flex items-center rounded-full ring-1 ring-dashed ring-slate-300 text-slate-500 text-11 font-semibold px-2 py-px">{t.role_suggested === 'primary' ? 'Primary' : 'Secondary'}?</span>
-                                  : <span title="Not decided yet: map the keyword to a page first" className="inline-flex items-center rounded-full ring-1 ring-slate-200 text-slate-400 text-11 px-2 py-px">No role yet</span>}
-                            {k.intent && <span title={{ local: 'Someone looking for a business near them', commercial: 'Someone comparing or ready to buy or hire', informational: 'Someone looking for an answer or a guide', transactional: 'Someone ready to buy now', navigational: 'Someone looking for a particular site' }[k.intent] || 'What the searcher wants'} className={`inline-flex items-center rounded-full text-11 font-semibold px-2 py-px ${{ local: 'bg-teal-50 text-teal-700', commercial: 'bg-emerald-50 text-emerald-700', informational: 'bg-sky-50 text-sky-700', transactional: 'bg-amber-50 text-amber-700', navigational: 'bg-violet-50 text-violet-700' }[k.intent] || 'bg-slate-100 text-slate-600'}`}>{k.intent}</span>}
+                            {k.role === 'primary' ? <span data-f="role:primary" title="The main keyword of its page: the one the page is built to rank for" className="inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white text-11 font-semibold px-2 py-px"><Star size={10} />Primary</span>
+                              : k.role === 'secondary' ? <span data-f="role:secondary" title="A supporting keyword: the page also covers it, but it is not the page's main one" className="inline-flex items-center rounded-full bg-slate-200 text-slate-700 text-11 font-semibold px-2 py-px">Secondary</span>
+                                : t?.role_suggested ? <span data-f="role:none" title="The mapping suggests this role. Map the keyword and save the mapping to keep it." className="inline-flex items-center rounded-full ring-1 ring-dashed ring-slate-300 text-slate-500 text-11 font-semibold px-2 py-px">{t.role_suggested === 'primary' ? 'Primary' : 'Secondary'}?</span>
+                                  : <span data-f="role:none" title="Not decided yet: map the keyword to a page first" className="inline-flex items-center rounded-full ring-1 ring-slate-200 text-slate-400 text-11 px-2 py-px">No role yet</span>}
+                            {k.intent && <span data-f={`intent:${k.intent}`} title={{ local: 'Someone looking for a business near them', commercial: 'Someone comparing or ready to buy or hire', informational: 'Someone looking for an answer or a guide', transactional: 'Someone ready to buy now', navigational: 'Someone looking for a particular site' }[k.intent] || 'What the searcher wants'} className={`inline-flex items-center rounded-full text-11 font-semibold px-2 py-px ${{ local: 'bg-teal-50 text-teal-700', commercial: 'bg-emerald-50 text-emerald-700', informational: 'bg-sky-50 text-sky-700', transactional: 'bg-amber-50 text-amber-700', navigational: 'bg-violet-50 text-violet-700' }[k.intent] || 'bg-slate-100 text-slate-600'}`}>{k.intent}</span>}
                             {t?.branded && <span title="It contains your brand name: people who already know you" className="inline-flex items-center rounded-full bg-fuchsia-50 text-fuchsia-700 text-11 font-semibold px-2 py-px">Brand</span>}
                           </span>
                           <span className="flex flex-wrap items-center gap-x-2 text-11 text-slate-400 leading-tight">
                             {t?.source?.label && <span title="Where this keyword was found" className="truncate max-w-[170px]">From {t.source.label}</span>}
-                            {k.cluster && <span title="Its topic group">{k.cluster}</span>}
+                            {k.cluster && <span data-f={`topic:${k.cluster}`} title="Its topic group">{k.cluster}</span>}
                           </span>
                         </td>
                         {show('rank') && (<td className="px-3 py-2 text-right whitespace-nowrap">
-                          {(t?.rank ?? k.rank) ? <span className="inline-flex items-center justify-end gap-1.5" title="Average position on Google, last 28 days (Search Console)">
+                          {(t?.rank ?? k.rank) ? <span data-f="google:yes" className="inline-flex items-center justify-end gap-1.5" title="Average position on Google, last 28 days (Search Console). Click to show only keywords that rank">
                             <span className={`font-semibold tabular-nums ${(t?.rank ?? k.rank) <= 10 ? 'text-emerald-700' : 'text-slate-800'}`}>#{t?.rank ?? k.rank}</span>
                             {t?.change ? <span className={`inline-flex items-center text-12 ${t.change > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{t.change > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{Math.abs(t.change)}</span> : null}
-                          </span> : <span className="text-slate-400 text-13" title="Google has not shown your site for this keyword yet, or positions have not been checked">Not seen yet</span>}
+                          </span> : <span data-f="google:no" className="text-slate-400 text-13" title="Google has not shown your site for this keyword yet, or positions have not been checked. Click to show only these">Not seen yet</span>}
                           <span className="block mt-0.5">{!t ? null : t.ai?.mentioned ? <span title="AI assistants mention your business for this question" className="text-11.5 font-semibold text-emerald-700">AI ✓ mentioned</span>
                             : t.ai?.tracked ? <span title="You track the question this keyword makes; no assistant names your business yet" className="text-11.5 text-slate-500">AI asked, not named</span> : <span title="Not tracked as an AI search question yet" className="text-11.5 text-slate-300">AI not tracked</span>}</span>
                         </td>)}
                         {show('volume') && (<td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>)}
                         {show('difficulty') && (<td className="px-3 py-2 text-right whitespace-nowrap" title={k.difficulty != null ? `Keyword difficulty ${k.difficulty} of 100: ${k.difficulty <= 30 ? 'easier to rank for' : k.difficulty <= 60 ? 'a fair fight' : 'hard to rank for'}` : 'Google gave no difficulty figure for this keyword'}>
-                          {k.difficulty != null ? <span className={`inline-flex items-center justify-center min-w-[36px] rounded-md px-2 py-0.5 text-13 font-semibold tabular-nums ${k.difficulty <= 30 ? 'bg-emerald-50 text-emerald-700' : k.difficulty <= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{k.difficulty}</span> : <span className="text-slate-300">—</span>}
+                          {k.difficulty != null ? <span data-f={`kd:${kdBand(k.difficulty)}`} className={`inline-flex items-center justify-center min-w-[36px] rounded-md px-2 py-0.5 text-13 font-semibold tabular-nums ${k.difficulty <= 30 ? 'bg-emerald-50 text-emerald-700' : k.difficulty <= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{k.difficulty}</span> : <span className="text-slate-300">—</span>}
                         </td>)}
                         {show('impressions') && (<td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-13" title="Google Search Console, last 28 days">
                           {t && t.impressions > 0 ? <><span className="text-slate-700">{fmt(t.impressions)}</span> <span className="text-slate-300">/</span> <span className="font-semibold text-slate-900">{fmt(t.clicks || 0)}</span> <span className="text-slate-300">/</span> <span className="text-slate-700">{t.ctr != null ? `${t.ctr}%` : '—'}</span></>
@@ -927,7 +920,7 @@ function Tracked({ b, kw }) {
                                 return (
                                   <>
                                     <div className="flex items-center gap-1.5">
-                                      <span className={`w-2 h-2 rounded-full shrink-0 ${onIt ? 'bg-emerald-500' : 'border-2 border-amber-500'}`} title={onIt ? 'Mapped, and the page says the keyword' : 'A page was chosen for this keyword, but the page does not say it yet'} aria-hidden="true" />
+                                      <span data-f="page:mapped" className={`w-2 h-2 rounded-full shrink-0 ${onIt ? 'bg-emerald-500' : 'border-2 border-amber-500'}`} title={onIt ? 'Mapped, and the page says the keyword' : 'A page was chosen for this keyword, but the page does not say it yet'} aria-hidden="true" />
                                       <a href={k.target_url.startsWith('http') ? k.target_url : `${(b.website || '').replace(/\/$/, '')}${k.target_url}`} target="_blank" rel="noreferrer" title={onIt ? 'Open the mapped page' : 'Open the page chosen for this keyword'} className="font-semibold text-slate-800 hover:text-indigo-700 truncate max-w-[170px]">{k.target_url.replace(/^https?:\/\/[^/]+/, '') || '/'}</a>
                                       {bad && <span className={`cursor-help ${bad.level === 'blocked' ? 'text-red-600' : 'text-amber-600'}`} title={`${t.index.page}: ${bad.text}${t.index.reason ? ` (${t.index.reason})` : ''}`}>⚠</span>}
                                     </div>
@@ -935,14 +928,14 @@ function Tracked({ b, kw }) {
                                   </>);
                               })() : (
                                 <>
-                                  <div className="flex items-center gap-1.5 font-semibold text-amber-700"><span className="w-2 h-2 rounded-full border-2 border-amber-500 shrink-0" aria-hidden="true" />Not mapped yet</div>
+                                  <div data-f="page:none" className="flex items-center gap-1.5 font-semibold text-amber-700" title="Click to show only keywords without a page"><span className="w-2 h-2 rounded-full border-2 border-amber-500 shrink-0" aria-hidden="true" />Not mapped yet</div>
                                   <div className="mt-0.5 text-12 pl-3.5 text-slate-500 truncate max-w-[200px]" title={used.length ? `The keyword is used on: ${used.map(u => u.path).join(', ')}` : 'The scan did not find the keyword on any page'}>{used.length ? `Used on ${used[0].path}${used.length > 1 ? ` +${used.length - 1}` : ''}` : 'Not used on the site yet'}</div>
                                 </>)}
                             </div>
                           )}
                         </td>)}
                         {show('status') && (<td className="px-3 py-2 whitespace-nowrap">
-                          {t?.label ? <span title={t.why || ''}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' }[t.status] || 'gray'}>{t.label}</Badge></span> : <span className="text-slate-300">{!t ? '…' : '—'}</span>}
+                          {t?.label ? <span data-f={`status:${t.status}`} title={t.why || ''}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' }[t.status] || 'gray'}>{t.label}</Badge></span> : <span className="text-slate-300">{!t ? '…' : '—'}</span>}
                         </td>)}
                         <td className="px-3 py-2 text-right whitespace-nowrap">
                           <KeywordRowActions b={b} k={k} t={t} usedOn={used} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} onRole={(role) => update(k, { role })} onUse={() => setUseIds([k.id])} />
