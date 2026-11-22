@@ -757,6 +757,9 @@ function Tracked({ b, kw }) {
   const fresh = useMemo(() => new Set((location.state?.added || []).map(x => String(x).toLowerCase())), [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const [useIds, setUseIds] = useState(null); // the keywords the "Where to use" window is open for
   const NO_FILTER = { role: '', page: '', google: '', kd: '', intent: '', status: '', topic: '' };
+  const [hidden, setHidden] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('kw-hidden-cols') || '[]')); } catch { return new Set(); } });
+  const show = (c) => !hidden.has(c);
+  const toggleCol = (c) => setHidden(h => { const x = new Set(h); x.has(c) ? x.delete(c) : x.add(c); try { localStorage.setItem('kw-hidden-cols', JSON.stringify([...x])); } catch { /* not remembered */ } return x; });
   const [f, setF] = useState(NO_FILTER); // the filters of the table: one box for each column worth filtering
   const [q, setQ] = useState('');
   const [sort, setSort] = useState({ key: 'volume', dir: 'desc' });
@@ -807,12 +810,22 @@ function Tracked({ b, kw }) {
   const FILTERS = [
     ['role', 'Role', [['', 'Any role'], ['primary', `Primary (${cnt(k => k.role === 'primary')})`], ['secondary', `Secondary (${cnt(k => k.role === 'secondary')})`], ['none', `No role yet (${cnt(k => !k.role)})`]]],
     ['page', 'Page', [['', 'Any page status'], ['mapped', `Has a page (${mapped})`], ['none', `No page yet (${tracked.length - mapped})`]]],
-    ['google', 'Google', [['', 'On Google or not'], ['yes', `Ranks on Google (${onGoogle})`], ['no', `Not on Google yet (${tracked.length - onGoogle})`]]],
+    ['google', 'Google', [['', 'On Google or not'], ['yes', `Ranks on Google (${onGoogle})`], ['top10', `Top 10 (${cnt(k => k.rank && k.rank <= 10)})`], ['no', `Not on Google yet (${tracked.length - onGoogle})`]]],
     ['kd', 'Difficulty', [['', 'Any difficulty'], ['easy', `Easy, up to 30 (${cnt(k => kdBand(k.difficulty) === 'easy')})`], ['medium', `Medium, 31 to 60 (${cnt(k => kdBand(k.difficulty) === 'medium')})`], ['hard', `Hard, over 60 (${cnt(k => kdBand(k.difficulty) === 'hard')})`], ['none', `No figure (${cnt(k => kdBand(k.difficulty) === 'none')})`]]],
     ['status', 'Status', [['', 'Any status'], ['working', 'Working'], ['climbing', 'Climbing'], ['weak', 'Weak'], ['invisible', 'Not seen'], ['unchecked', 'Not checked']]],
     ...(intents.length ? [['intent', 'Intent', [['', 'Any intent'], ...intents.map(i => [i, i])]]] : []),
     ...(topics.length ? [['topic', 'Topic', [['', 'Any topic'], ['__none', 'No topic yet'], ...topics.map(i => [i, i])]]] : [])
   ];
+  const COLS = [['rank', 'Rank / AI'], ['volume', 'Searches'], ['difficulty', 'KD'], ['impressions', 'Google: impr / clicks / CTR'], ['page', 'Mapped page'], ['status', 'Status']];
+  const exportCsv = () => {
+    const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const head = ['Keyword', 'Role', 'Topic', 'Intent', 'Rank', 'Searches per month', 'Difficulty', 'Impressions', 'Clicks', 'CTR %', 'Page', 'Status'];
+    const body = rows.map(k => { const t = T[k.id]; return [k.keyword, k.role || '', k.cluster || '', k.intent || '', k.rank || '', k.volume ?? '', k.difficulty ?? '', t?.impressions ?? '', t?.clicks ?? '', t?.ctr ?? '', k.target_url || '', t?.label || ''].map(cell).join(','); });
+    const url = URL.createObjectURL(new Blob([`\ufeff${[head.map(cell).join(','), ...body].join('\r\n')}`], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `my-keywords-${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
   const STATUS_ORDER = { working: 0, climbing: 1, weak: 2, invisible: 3, unchecked: 4 };
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -821,7 +834,7 @@ function Tracked({ b, kw }) {
       return (!needle || k.keyword.includes(needle) || (k.cluster || '').toLowerCase().includes(needle))
         && (!f.role || (f.role === 'none' ? !k.role : k.role === f.role))
         && (!f.page || (f.page === 'mapped' ? k.target_url : !k.target_url))
-        && (!f.google || (f.google === 'yes' ? k.rank : !k.rank))
+        && (!f.google || (f.google === 'yes' ? k.rank : f.google === 'top10' ? k.rank && k.rank <= 10 : !k.rank))
         && (!f.kd || kdBand(k.difficulty) === f.kd)
         && (!f.intent || k.intent === f.intent)
         && (!f.topic || (f.topic === '__none' ? !k.cluster : k.cluster === f.topic))
@@ -875,7 +888,13 @@ function Tracked({ b, kw }) {
         <>
           {/* Where you stand and the one thing to do next: one slim row, so the list starts high on the page */}
           <div className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2">
-            <span className="text-14 text-slate-600"><b className="text-slate-900 tabular-nums">{tracked.length}</b> saved · <b className="text-slate-900 tabular-nums">{mapped}</b> have a page · <b className="text-slate-900 tabular-nums">{onGoogle}</b> show on Google</span>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Where you stand: click one to filter the table">
+              {[['Saved', tracked.length, () => clearAll(), !active, 'Every saved keyword'], ['Primary', cnt(k => k.role === 'primary'), () => { clearAll(); setFilter('role', 'primary'); }, f.role === 'primary', 'The main keyword of a page'], ['Have a page', mapped, () => { clearAll(); setFilter('page', 'mapped'); }, f.page === 'mapped', 'A page of your website is chosen for them'], ['On Google', onGoogle, () => { clearAll(); setFilter('google', 'yes'); }, f.google === 'yes', 'Your site shows for them in Google'], ['Top 10', cnt(k => k.rank && k.rank <= 10), () => { clearAll(); setFilter('google', 'top10'); }, f.google === 'top10', 'Ranking 1 to 10 on Google']].map(([label, num, fn, on, tip]) => (
+                <button key={label} type="button" onClick={fn} title={tip} aria-pressed={on} className={`rounded-lg px-3 py-1.5 text-left cursor-pointer ring-1 ring-inset ${on ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>
+                  <span className="block text-18 font-semibold tabular-nums leading-tight">{num}</span><span className={`block text-11.5 ${on ? 'text-slate-300' : 'text-slate-500'}`}>{label}</span>
+                </button>))}
+              {tbl.data?.google_total?.clicks != null && <span className="px-3 py-1.5" title="Clicks from Google to your site for these keywords, last 28 days (Search Console)"><span className="block text-18 font-semibold tabular-nums leading-tight text-slate-900">{fmt(tbl.data.google_total.clicks)}</span><span className="block text-11.5 text-slate-500">Clicks, 28 days</span></span>}
+            </div>
             {hint && <>
               <span className="text-13 text-slate-700 flex-1 min-w-[220px]">{hint.text}</span>
               {hint.more}{hint.action}
@@ -904,7 +923,14 @@ function Tracked({ b, kw }) {
                     {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
                 </label>))}
-              <span className="ml-auto text-12.5 text-slate-500" role="status">{active ? <>Showing <b className="text-slate-800">{rows.length}</b> of {tracked.length} · <button type="button" onClick={clearAll} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></> : <>{tracked.length} keywords · click a heading to sort</>}</span>
+              <details className="relative ml-auto">
+                <summary className="h-8 px-3 inline-flex items-center rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer list-none hover:bg-slate-50" title="Choose which columns to show">Columns{hidden.size ? ` (${COLS.length - hidden.size} of ${COLS.length})` : ''}</summary>
+                <div className="absolute right-0 z-20 mt-1 w-60 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 p-2">
+                  {COLS.map(([c, label]) => <label key={c} className="flex items-center gap-2 px-2 py-1.5 text-13 text-slate-700 rounded hover:bg-slate-50 cursor-pointer"><input type="checkbox" checked={show(c)} onChange={() => toggleCol(c)} />{label}</label>)}
+                </div>
+              </details>
+              <Button size="sm" icon={Download} onClick={exportCsv} title="Download the keywords shown in the table (with the filters applied) as a CSV file">Export CSV</Button>
+              <span className="text-12.5 text-slate-500" role="status">{active ? <>Showing <b className="text-slate-800">{rows.length}</b> of {tracked.length} · <button type="button" onClick={clearAll} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></> : <>{tracked.length} keywords · click a heading to sort</>}</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-14 min-w-[1010px]">
@@ -912,12 +938,12 @@ function Tracked({ b, kw }) {
                   <tr>
                     <th className="w-12 pl-4 py-3"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(k => k.id)))} /></th>
                     <Th id="keyword" what="A keyword you saved and are tracking, and where it was found." why="Click the name to check its searches, cost and related ideas. Click the heading to sort." from="the ones you picked in the Keyword Workspace, Find Keywords or typed in.">Keyword &amp; source</Th>
-                    <Th id="rank" right what="Where your website shows on Google for it (average, last 28 days; #1 is the top), whether it moved, and whether AI assistants mention your business for it." why="Shows what is working and what can climb." from="Google Search Console for the position; the AI answers you track for AI search.">Rank / AI</Th>
-                    <Th id="volume" right what="How many times a month people search it in your country." why="Shows which keywords can bring the most visitors." from="Google Ads Keyword Planner. Blank when Google gave no figure.">Searches</Th>
-                    <Th id="difficulty" right what="Keyword difficulty, 0 to 100: how hard it is to rank on Google for this keyword. Green is easier (up to 30), amber is a fair fight (up to 60), red is hard." why="Start with the easier keywords that still have searches: they rank sooner." from="Google Ads Keyword Planner (its competition level). Blank when Google gave no figure.">KD</Th>
-                    <Th id="impressions" right what="Impressions: how many times your site appeared in Google for exactly this search. Clicks: how many of those people clicked. CTR (click rate) = clicks divided by impressions. Last 28 days, searches from your target country." why="Many impressions and few clicks means the title and description need work. No impressions means Google is not showing your site for it." from="Google Search Console, the same numbers as Search Console > Performance > Queries (read for this table about every 30 minutes; Google's data is two days behind).">Google: impr / clicks / CTR</Th>
-                    <Th id="page" what="The page of your website this keyword is mapped to, and the pages where the keyword is already used." why="Mapped means a page was chosen for the keyword (by you, or from the site scan's suggestion). It is a plan, not proof: a solid green dot means the page also says the keyword; a hollow amber dot means it does not yet, so add it there." from="your choice (or the suggestion from the site scan) and the last website scan: the keyword in a page address, title, heading or description.">Mapped page</Th>
-                    <Th id="status" what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Th>
+                    {show('rank') && <Th id="rank" right what="Where your website shows on Google for it (average, last 28 days; #1 is the top), whether it moved, and whether AI assistants mention your business for it." why="Shows what is working and what can climb." from="Google Search Console for the position; the AI answers you track for AI search.">Rank / AI</Th>}
+                    {show('volume') && <Th id="volume" right what="How many times a month people search it in your country." why="Shows which keywords can bring the most visitors." from="Google Ads Keyword Planner. Blank when Google gave no figure.">Searches</Th>}
+                    {show('difficulty') && <Th id="difficulty" right what="Keyword difficulty, 0 to 100: how hard it is to rank on Google for this keyword. Green is easier (up to 30), amber is a fair fight (up to 60), red is hard." why="Start with the easier keywords that still have searches: they rank sooner." from="Google Ads Keyword Planner (its competition level). Blank when Google gave no figure.">KD</Th>}
+                    {show('impressions') && <Th id="impressions" right what="Impressions: how many times your site appeared in Google for exactly this search. Clicks: how many of those people clicked. CTR (click rate) = clicks divided by impressions. Last 28 days, searches from your target country." why="Many impressions and few clicks means the title and description need work. No impressions means Google is not showing your site for it." from="Google Search Console, the same numbers as Search Console > Performance > Queries (read for this table about every 30 minutes; Google's data is two days behind).">Google: impr / clicks / CTR</Th>}
+                    {show('page') && <Th id="page" what="The page of your website this keyword is mapped to, and the pages where the keyword is already used." why="Mapped means a page was chosen for the keyword (by you, or from the site scan's suggestion). It is a plan, not proof: a solid green dot means the page also says the keyword; a hollow amber dot means it does not yet, so add it there." from="your choice (or the suggestion from the site scan) and the last website scan: the keyword in a page address, title, heading or description.">Mapped page</Th>}
+                    {show('status') && <Th id="status" what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Th>}
                     <th className="px-3 py-3 text-right font-semibold"><Head right what="Map the keyword to a page (or see the page it is mapped to), check it, write for it, or remove it." why="Every keyword needs one page to rank on.">Actions</Head></th>
                   </tr>
                 </thead>
@@ -948,24 +974,24 @@ function Tracked({ b, kw }) {
                             {k.cluster && <span title="Its topic group">{k.cluster}</span>}
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-right whitespace-nowrap">
+                        {show('rank') && (<td className="px-3 py-3 text-right whitespace-nowrap">
                           {(t?.rank ?? k.rank) ? <span className="inline-flex items-center justify-end gap-1.5" title="Average position on Google, last 28 days (Search Console)">
                             <span className={`font-semibold tabular-nums ${(t?.rank ?? k.rank) <= 10 ? 'text-emerald-700' : 'text-slate-800'}`}>#{t?.rank ?? k.rank}</span>
                             {t?.change ? <span className={`inline-flex items-center text-12 ${t.change > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{t.change > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{Math.abs(t.change)}</span> : null}
                           </span> : <span className="text-slate-400 text-13" title="Google has not shown your site for this keyword yet, or positions have not been checked">Not seen yet</span>}
                           <span className="block mt-0.5">{!t ? null : t.ai?.mentioned ? <span title="AI assistants mention your business for this question" className="text-11.5 font-semibold text-emerald-700">AI ✓ mentioned</span>
                             : t.ai?.tracked ? <span title="You track the question this keyword makes; no assistant names your business yet" className="text-11.5 text-slate-500">AI asked, not named</span> : <span title="Not tracked as an AI search question yet" className="text-11.5 text-slate-300">AI not tracked</span>}</span>
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>
-                        <td className="px-3 py-3 text-right whitespace-nowrap" title={k.difficulty != null ? `Keyword difficulty ${k.difficulty} of 100: ${k.difficulty <= 30 ? 'easier to rank for' : k.difficulty <= 60 ? 'a fair fight' : 'hard to rank for'}` : 'Google gave no difficulty figure for this keyword'}>
+                        </td>)}
+                        {show('volume') && (<td className="px-3 py-3 text-right tabular-nums whitespace-nowrap" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>)}
+                        {show('difficulty') && (<td className="px-3 py-3 text-right whitespace-nowrap" title={k.difficulty != null ? `Keyword difficulty ${k.difficulty} of 100: ${k.difficulty <= 30 ? 'easier to rank for' : k.difficulty <= 60 ? 'a fair fight' : 'hard to rank for'}` : 'Google gave no difficulty figure for this keyword'}>
                           {k.difficulty != null ? <span className={`inline-flex items-center justify-center min-w-[36px] rounded-md px-2 py-0.5 text-13 font-semibold tabular-nums ${k.difficulty <= 30 ? 'bg-emerald-50 text-emerald-700' : k.difficulty <= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{k.difficulty}</span> : <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap text-13" title="Google Search Console, last 28 days">
+                        </td>)}
+                        {show('impressions') && (<td className="px-3 py-3 text-right tabular-nums whitespace-nowrap text-13" title="Google Search Console, last 28 days">
                           {t && t.impressions > 0 ? <><span className="text-slate-700">{fmt(t.impressions)}</span> <span className="text-slate-300">/</span> <span className="font-semibold text-slate-900">{fmt(t.clicks || 0)}</span> <span className="text-slate-300">/</span> <span className="text-slate-700">{t.ctr != null ? `${t.ctr}%` : '—'}</span></>
                             : t && t.impressions === 0 ? <span className="text-slate-400" title="Google showed your site 0 times for this exact search in the last 28 days">0 shown</span>
                               : <span className="text-slate-300" title={!t ? '' : tbl.data?.google_error ? `Search Console could not be read: ${tbl.data.google_error}` : 'Not read yet'}>{!t ? '…' : '—'}</span>}
-                        </td>
-                        <td className="px-3 py-3 min-w-[190px]">
+                        </td>)}
+                        {show('page') && (<td className="px-3 py-3 min-w-[190px]">
                           {editing === k.id ? (
                             <PagePicker b={b} pages={sitePages} value={k.target_url || ''} listId={`pages-${b.id}`} onCancel={() => setEditing(null)}
                               onPick={v => { setEditing(null); if (v !== (k.target_url || '')) update(k, { target_url: v || null }); }} />
@@ -990,10 +1016,10 @@ function Tracked({ b, kw }) {
                                 </>)}
                             </div>
                           )}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
+                        </td>)}
+                        {show('status') && (<td className="px-3 py-3 whitespace-nowrap">
                           {t?.label ? <span title={t.why || ''}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' }[t.status] || 'gray'}>{t.label}</Badge></span> : <span className="text-slate-300">{!t ? '…' : '—'}</span>}
-                        </td>
+                        </td>)}
                         <td className="px-3 py-3 text-right whitespace-nowrap">
                           <KeywordRowActions b={b} k={k} t={t} usedOn={used} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} onRole={(role) => update(k, { role })} onUse={() => setUseIds([k.id])} />
                         </td>
