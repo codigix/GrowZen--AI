@@ -68,7 +68,19 @@ function BacklinkChecker({ b }) {
   };
   const fillScores = async () => {
     setBusy(true); setNote('');
-    try { const r = await api(`/businesses/${b.id}/backlink-check/scores`, { method: 'POST', timeout: 170000 }); setNote(r.note || `DA, PA and Spam found for ${r.filled} of ${r.tried} pages.${r.left ? ` ${r.left} more are waiting: press the button again.` : ''}${r.tried > r.filled && !r.note ? ' The rest have no data at DataForSEO yet.' : ''}`); await load(); } catch (e) { setNote(e.message || 'Could not get the figures.'); } finally { setBusy(false); }
+    try {
+      const r = await api(`/businesses/${b.id}/backlink-check/scores`, { method: 'POST', timeout: 60000 });
+      if (r.running === undefined) { setNote(r.note || `DA, PA and Spam found for ${r.filled} of ${r.tried} pages.`); await load(); return; }  // a Moz / DataForSEO answer comes back whole
+      let st = r;
+      while (st.running) {  // each site's figures are saved and shown as soon as its lookup ends
+        setNote(`Reading DA, PA and Spam: ${st.done} of ${st.sites} sites done…`);
+        await new Promise(res => setTimeout(res, 2500));
+        st = await api(`/businesses/${b.id}/backlink-check/scores/status`);
+        await load();
+      }
+      await load();
+      setNote(st.error || (st.failed.length ? `Could not read ${st.failed.length} site(s): ${st.failed.slice(0, 3).join('; ')}.` : '') || `DA, PA and Spam found for ${st.filled} pages.${st.left ? ` ${st.left} more are waiting: press the button again.` : ''}`);
+    } catch (e) { setNote(e.message || 'Could not get the figures.'); } finally { setBusy(false); }
   };
   const remove = async (id) => { try { await api(`/businesses/${b.id}/backlink-check/${id}`, { method: 'DELETE' }); await load(); } catch (e) { setNote(e.message); } };
 
@@ -76,7 +88,7 @@ function BacklinkChecker({ b }) {
   const { sorted, sort, onSort } = useSorted(rows, checkValue);
   const pg = usePager(sorted, { size: 25, resetKey: `${status}|${follow}|${q}` });
   const csv = () => {
-    const withMoz = d.moz || d.dfs;
+    const withMoz = d.moz || d.dfs || d.apify;
     const head = ['Source page', 'Page title', 'Status', 'HTTP status', 'Link type', 'Anchor text', 'Kind of site', 'Placement', 'Page indexable', 'Domain rank (0-10)', 'Links from this site', 'Linked by (sites)', ...(withMoz ? ['DA', 'PA', 'Spam score'] : []), ...(d.moz ? ['Referring domains'] : []), 'Target', 'Last checked', 'Times checked'];
     const body = sorted.map(r => [r.source_url, r.title || '', r.lost ? 'Link lost' : { working: 'Working', link_missing: 'Link missing', unconfirmed: 'Cannot confirm', page_error: 'Page error' }[r.state] || r.state, numOf(r.http_status), r.follow ? (FOLLOW[r.follow] || FOLLOW.nofollow)[0] : '', r.link?.anchor || '', r.category?.label || '', r.link?.placement || '', r.page_noindex == null ? '' : r.page_noindex ? 'No (noindex)' : 'Yes',
       numOf(r.domain_rank), numOf(r.site?.links), numOf(r.site?.linked_by), ...(withMoz ? [numOf(r.moz?.da ?? r.scores?.da), numOf(r.moz?.pa ?? r.scores?.pa), numOf(r.moz?.spam ?? r.scores?.spam)] : []), ...(d.moz ? [numOf(r.moz?.ref_domains)] : []), r.target || '', r.checked_at || '', numOf(r.checks)]);
@@ -117,12 +129,12 @@ function BacklinkChecker({ b }) {
                 <option value="all">Every status</option><option value="working">Working</option><option value="link_missing">Link missing</option><option value="lost">Lost since last check</option><option value="unconfirmed">Cannot confirm</option><option value="page_error">Page error</option></Select>
               <Select className="h-9 w-40 rounded-lg border border-slate-300 bg-white px-3 text-13" aria-label="Follow" value={follow} onChange={e => setFollow(e.target.value)}>
                 <option value="all">Follow and nofollow</option><option value="dofollow">Follow only</option><option value="nofollow">Nofollow only</option></Select>
-              <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search pages" aria-label="Search pages" className="h-9 w-44 pl-8 pr-3 text-13 rounded-lg border border-slate-300 bg-white" /></label><span className="flex-1" />{d.dfs && d.missing_scores > 0 && <Button size="sm" variant="primary" busy={busy} onClick={fillScores}>Get DA, PA and Spam for {d.missing_scores} pages</Button>}<Button size="sm" icon={Download} onClick={csv} title={`Download all ${sorted.length} pages in this list (with the filters applied) as a CSV file`}>Export CSV</Button>
+              <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search pages" aria-label="Search pages" className="h-9 w-44 pl-8 pr-3 text-13 rounded-lg border border-slate-300 bg-white" /></label><span className="flex-1" />{(d.dfs || d.apify) && d.missing_scores > 0 && <Button size="sm" variant="primary" busy={busy} onClick={fillScores}>Get DA, PA and Spam for {d.missing_scores} pages</Button>}<Button size="sm" icon={Download} onClick={csv} title={`Download all ${sorted.length} pages in this list (with the filters applied) as a CSV file`}>Export CSV</Button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-13.5 min-w-[1100px]">
                 <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200">
-                  {['Linking page', 'Status', 'Link type', 'Anchor text', 'Kind of site', 'Indexable', 'In Google', 'Domain rank', 'Links from site', 'Linked by', 'Spam report', 'DA', 'PA', 'Spam', 'Ref. domains', 'Checked', 'Actions'].filter(h => ((d.moz || d.dfs) && ['DA', 'PA', 'Spam'].includes(h) || d.moz && h === 'Ref. domains' || !['DA', 'PA', 'Spam', 'Ref. domains'].includes(h)) && (d.opr || h !== 'Domain rank') && (d.google || h !== 'In Google')).map((h) => { const right = ['DA', 'PA', 'Spam', 'Ref. domains', 'Links from site', 'Linked by', 'Domain rank'].includes(h); return HEAD_KEY[h] ? <SortTh key={h} id={HEAD_KEY[h]} sort={sort} onSort={onSort} right={right} first={DESC_FIRST.has(HEAD_KEY[h]) ? 'desc' : 'asc'} className="px-3 py-2.5 whitespace-nowrap">{h}</SortTh> : <th key={h} className={`px-3 py-2.5 font-medium whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}>{h}</th>; })}</tr></thead>
+                  {['Linking page', 'Status', 'Link type', 'Anchor text', 'Kind of site', 'Indexable', 'In Google', 'Domain rank', 'Links from site', 'Linked by', 'Spam report', 'DA', 'PA', 'Spam', 'Ref. domains', 'Checked', 'Actions'].filter(h => ((d.moz || d.dfs || d.apify) && ['DA', 'PA', 'Spam'].includes(h) || d.moz && h === 'Ref. domains' || !['DA', 'PA', 'Spam', 'Ref. domains'].includes(h)) && (d.opr || h !== 'Domain rank') && (d.google || h !== 'In Google')).map((h) => { const right = ['DA', 'PA', 'Spam', 'Ref. domains', 'Links from site', 'Linked by', 'Domain rank'].includes(h); return HEAD_KEY[h] ? <SortTh key={h} id={HEAD_KEY[h]} sort={sort} onSort={onSort} right={right} first={DESC_FIRST.has(HEAD_KEY[h]) ? 'desc' : 'asc'} className="px-3 py-2.5 whitespace-nowrap">{h}</SortTh> : <th key={h} className={`px-3 py-2.5 font-medium whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}>{h}</th>; })}</tr></thead>
                 <tbody>{pg.rows.map(r => (
                   <React.Fragment key={r.id}>
                     <tr className="border-b border-slate-100 align-top hover:bg-slate-50 cursor-pointer" onClick={() => setOpenId(openId === r.id ? null : r.id)}>
@@ -137,16 +149,16 @@ function BacklinkChecker({ b }) {
                       <td className="px-3 py-3 text-right tabular-nums" title="Live links this site gives the sites you track (our crawler)">{r.site ? <>{r.site.links}<span className="block text-11.5 text-slate-400">{r.site.pages} pages</span></> : <span className="text-slate-300">—</span>}</td>
                       <td className="px-3 py-3 text-right tabular-nums" title="Different sites our crawler has seen linking to this site">{r.site ? r.site.linked_by : <span className="text-slate-300">—</span>}</td>
                       <td className="px-3 py-3" title={(r.spam_report?.flags || []).join('; ') || 'No warning signs found'}>{r.spam_report ? <><Chip cls={{ clean: 'bg-emerald-50 text-emerald-700', check: 'bg-amber-50 text-amber-700', risky: 'bg-red-50 text-red-700' }[r.spam_report.level]}>{{ clean: 'Clean', check: 'Check', risky: 'Risky' }[r.spam_report.level]}{r.spam_report.count ? ` · ${r.spam_report.count}` : ''}</Chip>{r.spam_report.flags[0] && <span className="block text-11.5 text-slate-500 max-w-[190px] truncate">{r.spam_report.flags[0]}</span>}</> : <span className="text-slate-300">—</span>}</td>
-                      {(d.moz || d.dfs) && <>
-                        <td className="px-3 py-3 text-right" title={r.moz?.da != null ? 'Moz Domain Authority' : r.scores?.site_level ? 'The site figure, shared by all its pages (taken from another page of the same site).' : 'DataForSEO domain rank scaled to 0-100. Not Moz DA. A 0 means DataForSEO has almost no link data for this site (small or new), not that it is penalised.'}><Moz v={r.moz?.da ?? r.scores?.da} on={d.moz || d.dfs} /></td>
-                        <td className="px-3 py-3 text-right" title={r.moz?.pa != null ? 'Moz Page Authority' : (r.scores?.site_level || r.moz?.site_level) ? 'Not known for this page: only the site figure is available now. Press Get DA, PA and Spam when a service has quota.' : 'DataForSEO page rank scaled to 0-100. Not Moz PA.'}><Moz v={r.moz?.pa ?? r.scores?.pa} on={d.moz || d.dfs} /></td>
-                        <td className="px-3 py-3 text-right" title={r.moz?.spam != null ? 'Moz Spam Score' : 'DataForSEO backlink spam score, 0-100.'}><Moz v={(r.moz?.spam ?? r.scores?.spam) != null ? `${r.moz?.spam ?? r.scores?.spam}%` : null} on={d.moz || d.dfs} /></td>
+                      {(d.moz || d.dfs || d.apify) && <>
+                        <td className="px-3 py-3 text-right" title={r.moz?.da != null ? 'Moz Domain Authority' : r.scores?.source === 'Apify' ? 'Domain Authority (Moz figure through Apify): the site figure, shared by all its pages.' : r.scores?.site_level ? 'The site figure, shared by all its pages (taken from another page of the same site).' : 'DataForSEO domain rank scaled to 0-100. Not Moz DA. A 0 means DataForSEO has almost no link data for this site (small or new), not that it is penalised.'}><Moz v={r.moz?.da ?? r.scores?.da} on={d.moz || d.dfs || d.apify} /></td>
+                        <td className="px-3 py-3 text-right" title={r.moz?.pa != null ? 'Moz Page Authority' : r.scores?.source === 'Apify' ? 'Page Authority of the site home page (Moz figure through Apify), not of this page.' : (r.scores?.site_level || r.moz?.site_level) ? 'Not known for this page: only the site figure is available now. Press Get DA, PA and Spam when a service has quota.' : 'DataForSEO page rank scaled to 0-100. Not Moz PA.'}><Moz v={r.moz?.pa ?? r.scores?.pa} on={d.moz || d.dfs || d.apify} /></td>
+                        <td className="px-3 py-3 text-right" title={r.moz?.spam != null ? 'Moz Spam Score' : r.scores?.source === 'Apify' ? 'Spam Score (Moz figure through Apify).' : 'DataForSEO backlink spam score, 0-100.'}><Moz v={(r.moz?.spam ?? r.scores?.spam) != null ? `${r.moz?.spam ?? r.scores?.spam}%` : null} on={d.moz || d.dfs || d.apify} /></td>
                         {d.moz && <td className="px-3 py-3 text-right"><Moz v={r.moz?.ref_domains} on={d.moz} /></td>}</>}
                       <td className="px-3 py-3 text-12 text-slate-500 whitespace-nowrap">{when(r.checked_at)}<div>{r.checks}× checked</div></td>
                       <td className="px-3 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}><span className="inline-flex gap-1.5"><OpenAct url={r.source_url} tip="Open: show the linking page in a new tab." /><Act icon={Trash2} tone="rose" tip="Remove: take this link off your list." onClick={() => remove(r.id)} /></span></td>
                     </tr>
                     {openId === r.id && (
-                      <tr className="bg-slate-50/70"><td colSpan={11 + (d.google ? 1 : 0) + (d.opr ? 1 : 0) + (d.moz ? 4 : d.dfs ? 3 : 0)} className="px-5 py-4 text-13">
+                      <tr className="bg-slate-50/70"><td colSpan={11 + (d.google ? 1 : 0) + (d.opr ? 1 : 0) + (d.moz ? 4 : (d.dfs || d.apify) ? 3 : 0)} className="px-5 py-4 text-13">
                         <div className="sticky left-0 w-[min(88vw,1040px)]"><LinkDetail r={r} /></div>
                       </td></tr>
                     )}

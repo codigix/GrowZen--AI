@@ -46,8 +46,9 @@ const spamWord = (v, thin) => (v == null ? '' : thin ? 'Unreliable: very few lin
 export default function LinkDetail({ r }) {
   const { sorted: linkRows, sort, onSort } = useSorted(r.links || NONE, pageLinkValue);
   const pg = usePager(linkRows, { size: 10 });
-  const mz = r.moz && r.moz.da != null ? r.moz : null; // Moz's own figures when it answered, DataForSEO's otherwise
-  const src = mz ? 'Moz' : r.scores ? 'DataForSEO' : '';
+  const ap = r.scores?.source === 'Apify' ? r.scores : null; // Apify's Moz-checker figures (site level; PA is the home page's)
+  const mz = r.moz && r.moz.da != null ? r.moz : ap; // Moz's own figures when it answered, DataForSEO's otherwise
+  const src = ap && mz === ap ? 'Moz via Apify' : mz ? 'Moz' : r.scores ? 'DataForSEO' : '';
   const s = mz ? { da: mz.da, pa: mz.pa, spam: mz.spam } : (r.scores || {});
   const hist = Array.isArray(r.history) && r.history.length ? r.history : (r.checked_at ? [{ at: r.checked_at, state: r.state, follow: r.follow, links: (r.links || []).length, da: s.da, pa: s.pa, spam: s.spam }] : []); // a row checked before histories were kept starts from its last check
   const [stLabel, stColor, StIcon] = STATE[r.lost ? 'link_missing' : r.state] || STATE.page_error;

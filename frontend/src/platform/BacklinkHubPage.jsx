@@ -171,7 +171,7 @@ function LinksTable({ d, showScores, resetKey, site }) {
                 <td className="px-3 py-3 max-w-[160px]"><span className="block truncate text-slate-600" title={x.target_url}>{path(x.target_url)}</span></td>
                 <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
                 <td className="px-3 py-3 capitalize text-slate-600">{x.category.label}</td>
-                {showScores ? <><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td><td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
+                {showScores ? <><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'apify' ? 'Figure from Apify (Moz checker)' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td><td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
                 <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                 <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(x.first_seen)}</td>
                 <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
@@ -228,22 +228,22 @@ function Links({ b }) {
 
 const domainValue = (x, k) => ({
   domain: x.domain, live: num(x.live), follow: num(x.dofollow), category: x.category?.label, anchors: (x.anchors || []).join(', '),
-  da: num(x.metrics?.da), spam: num(x.metrics?.spam), site: num(x.metrics?.crawler?.links), relevance: num(x.quality?.relevance), useful: x.useful, seen: stamp(x.last_seen)
+  da: num(x.metrics?.da), pa: num(x.metrics?.pa), spam: num(x.metrics?.spam), site: num(x.metrics?.crawler?.links), relevance: num(x.quality?.relevance), useful: x.useful, seen: stamp(x.last_seen)
 })[k];
-function DomainsTable({ d, resetKey, site }) {
+function DomainsTable({ d, resetKey, site }) {  // the DA / PA / Spam columns are there as soon as a data service can fill them
   const { sorted, sort, onSort } = useSorted(d.domains || NONE, domainValue);
   const pg = usePager(sorted, { size: 25, resetKey });
-  const moz = hasMoz(d.domains);
+  const moz = hasMoz(d.domains) || !!d.scores?.configured;
   const csv = () => sorted.map(x => [x.domain, x.sample_url || '', num(x.live), num(x.lost), num(x.dofollow), num(x.nofollow), x.category?.label || '', (x.anchors || []).join(', '),
-    ...(moz ? [num(x.metrics?.da), num(x.metrics?.spam)] : []), num(x.metrics?.crawler?.links), num(x.metrics?.crawler?.pages), num(x.quality?.relevance), (USEFUL[x.useful] || USEFUL.unscored)[0], x.useful_why || '', x.last_seen || '']);
+    ...(moz ? [num(x.metrics?.da), num(x.metrics?.pa), num(x.metrics?.spam)] : []), num(x.metrics?.crawler?.links), num(x.metrics?.crawler?.pages), num(x.quality?.relevance), (USEFUL[x.useful] || USEFUL.unscored)[0], x.useful_why || '', x.last_seen || '']);
   return (
     <>
-      <CsvBar name={`referring-domains-${site}`} head={['Domain', 'Example linking page', 'Live links', 'Lost links', 'Follow links', 'Other links', 'Category', 'Top anchors', ...(moz ? ['DA', 'Spam score'] : []), 'Links from this site', 'Pages with the links', 'Relevance', 'Useful?', 'Why', 'Last seen']} rows={csv} tip={`Exports all ${sorted.length} loaded referring domains`} />
+      <CsvBar name={`referring-domains-${site}`} head={['Domain', 'Example linking page', 'Live links', 'Lost links', 'Follow links', 'Other links', 'Category', 'Top anchors', ...(moz ? ['DA', 'PA', 'Spam score'] : []), 'Links from this site', 'Pages with the links', 'Relevance', 'Useful?', 'Why', 'Last seen']} rows={csv} tip={`Exports all ${sorted.length} loaded referring domains`} />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1050px] text-13">
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
             <SortTh id="domain" sort={sort} onSort={onSort} className={TC}>Domain</SortTh><SortTh id="live" sort={sort} onSort={onSort} right first="desc" className={TC}>Live links</SortTh><SortTh id="follow" sort={sort} onSort={onSort} first="desc" className={TC}>Follow</SortTh><SortTh id="category" sort={sort} onSort={onSort} className={TC}>Category</SortTh><SortTh id="anchors" sort={sort} onSort={onSort} className={TC}>Top anchors</SortTh>
-            {moz ? <><SortTh id="da" sort={sort} onSort={onSort} right first="desc" className={TC}>DA</SortTh><SortTh id="spam" sort={sort} onSort={onSort} right first="desc" className={TC}>Spam</SortTh></> : <SortTh id="site" sort={sort} onSort={onSort} first="desc" className={TC} tip={{ what: 'How many live links and pages this site gives you.', from: 'our backlink crawler.' }}>Site gives you</SortTh>}<SortTh id="relevance" sort={sort} onSort={onSort} right first="desc" className={TC}>Relevance</SortTh><SortTh id="useful" sort={sort} onSort={onSort} className={TC}>Useful?</SortTh><SortTh id="seen" sort={sort} onSort={onSort} first="desc" className={TC}>Last seen</SortTh><th className={`${TH} text-right`}><Head right what="Open the site, or list only the links this site gives you." why="Check what a site links to before you reply to it.">Actions</Head></th></tr></thead>
+            {moz ? <><SortTh id="da" sort={sort} onSort={onSort} right first="desc" className={TC}>DA</SortTh><SortTh id="pa" sort={sort} onSort={onSort} right first="desc" className={TC}>PA</SortTh><SortTh id="spam" sort={sort} onSort={onSort} right first="desc" className={TC}>Spam</SortTh></> : <SortTh id="site" sort={sort} onSort={onSort} first="desc" className={TC} tip={{ what: 'How many live links and pages this site gives you.', from: 'our backlink crawler.' }}>Site gives you</SortTh>}<SortTh id="relevance" sort={sort} onSort={onSort} right first="desc" className={TC}>Relevance</SortTh><SortTh id="useful" sort={sort} onSort={onSort} className={TC}>Useful?</SortTh><SortTh id="seen" sort={sort} onSort={onSort} first="desc" className={TC}>Last seen</SortTh><th className={`${TH} text-right`}><Head right what="Open the site, or list only the links this site gives you." why="Check what a site links to before you reply to it.">Actions</Head></th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {pg.rows.map(x => (
               <tr key={x.domain} className="hover:bg-slate-50 align-middle">
@@ -252,7 +252,7 @@ function DomainsTable({ d, resetKey, site }) {
                 <td className="px-3 py-3 text-12 text-slate-600">{x.dofollow} follow · {x.nofollow} other</td>
                 <td className="px-3 py-3 text-slate-600">{x.category.label}</td>
                 <td className="px-3 py-3 max-w-[220px]"><span className="block truncate text-slate-600" title={x.anchors.join(', ')}>{x.anchors.join(', ') || '—'}</span></td>
-                {moz ? <><td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
+                {moz ? <><td className="px-3 py-3 text-right" title={x.metrics?.source === 'apify' ? 'Figure from Apify (Moz checker): the site DA' : undefined}><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right" title={x.metrics?.source === 'apify' ? 'Home page authority of the site' : undefined}><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
                 <td className="px-3 py-3 text-right tabular-nums">{x.quality ? x.quality.relevance : <span className="text-slate-300">—</span>}</td>
                 <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                 <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(x.last_seen)}</td>
@@ -277,10 +277,21 @@ function Domains({ b }) {
   const dq = useDebounced(q);
   const r = useList(b, 'domains', { ...f, q: dq });
   const d = r.data;
+  const [busyScores, errScores, runScores] = useAction();
+  const [toastS, toastSNode] = useToast();
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
+  const sc = d.scores || {};
+  const getScores = () => runScores('scores', async () => { const x = await api(`/businesses/${b.id}/backlink-hub/metrics/refresh`, { method: 'POST' }); toastS(x.message); r.reload(true); });
   return (
     <Card pad={false}>
+      {sc.configured && (
+        <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3 text-13">
+          <Button size="sm" variant={sc.missing ? 'primary' : undefined} icon={RefreshCw} busy={busyScores === 'scores'} onClick={getScores}>{sc.missing ? `Get DA, PA and Spam for ${sc.missing} site${sc.missing === 1 ? '' : 's'}` : 'Refresh DA, PA and Spam'}</Button>
+          <span className="text-slate-500">{sc.sites - sc.missing - sc.no_data} of {sc.sites} linking sites have figures. From {sc.source}: DA is the site's rank, PA its home page's rank (0-100), Spam is the spam score (lower is better).</span>
+          <ErrorNote>{errScores}</ErrorNote>
+        </div>)}
+      {toastSNode}
       <Filters q={q} setQ={setQ}>
         <Select value={f.verdict} onChange={e => setF({ ...f, verdict: e.target.value })} className={sel} aria-label="Useful"><option value="">Useful or not</option>{Object.entries(USEFUL).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</Select>
         <Select value={f.sort} onChange={e => setF({ ...f, sort: e.target.value })} className={sel} aria-label="Sort"><option value="links">Most links</option><option value="da">Highest DA</option><option value="risk">Highest risk</option><option value="recent">Newest</option><option value="domain">A to Z</option></Select>

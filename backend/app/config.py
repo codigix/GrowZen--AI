@@ -139,6 +139,18 @@ class Settings(BaseSettings):
     serper_api_key: str = ""  # Serper.dev (Google results API): finds platforms that take emailed links. Empty = the searches are only offered as links.
     moz_access_id: str = ""
     moz_secret_key: str = ""
+    apify_key: str = ""  # Apify API token (env APIFY_KEY): DA, home-page PA and spam score through the moz-domain-authority-checker actor. Paid per run, so one lookup per linking site.
+    apify_cache_hours: int = 24  # a domain Apify answered for is not asked again for this long (figures do not change within a day)
+    apify_key_1: str = ""
+    apify_key_2: str = ""
+    apify_key_3: str = ""
+    apify_key_4: str = ""
+    apify_key_5: str = ""
+    apify_key_6: str = ""
+    apify_key_7: str = ""
+    apify_key_8: str = ""
+    apify_key_9: str = ""
+    apify_key_10: str = ""  # APIFY_KEY_1 .. APIFY_KEY_10: more accounts; when one is out of credit or limit the next is used
 
     # Development only: the same for the Position Tracking landscape (generated rank checks).
     rank_landscape_mock: bool = False
