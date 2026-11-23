@@ -10,7 +10,7 @@ import { ProfileStrength, QuickTiles, MissingInfoCard, ShareProfileCard, NewRevi
 import { VerificationCard, ManagersCard, AdvertiseCard, DangerCard } from './GbpAdmin';
 import { refreshBusinesses, Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill, areaCls, useAction, useDoubleConfirm, Sk, SkStats, SkTable, SkList, SkScore, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import DataTable, { usePager, Pager, useSorted, SortTh } from './DataTable';
 import { useGbpLive } from './AccessGate';
 import { VerifyPill } from './GbpAccounts';
 
@@ -499,28 +499,50 @@ export function ToolSection({ id, go }) {
   );
 }
 
+const nice = (v) => String(v || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+
 export function TasksSection({ b }) {
   const pending = useApi(`/tasks?status=pending&business_id=${b.id}`);
-  const activity = useApi(`/activity?business_id=${b.id}&limit=40`);
+  const activity = useApi(`/activity?business_id=${b.id}&limit=200`);
+  const waiting = pending.data || [];
+  const done = (activity.data || []).filter(a => Date.now() - Date.parse(a.created_at) < 7 * 86400000).length;
   return (
-    <div className="space-y-4">
-      <SectionHead title="Tasks & Activities" subtitle="Work waiting for approval and everything done on this client" sources={['calc', 'manual']}>
-        <Link to="/automation"><Button>Open approvals</Button></Link>
-      </SectionHead>
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-        <Card title="Waiting for approval" subtitle={pending.data ? `${pending.data.length} task${pending.data.length === 1 ? '' : 's'}` : ''}>
-          {!pending.data ? <Loading /> : pending.data.length === 0 ? <p className="text-13 text-slate-500 py-4 text-center">Nothing waiting.</p> : (
-            <ul className="divide-y divide-slate-100 max-h-96 overflow-y-auto">{pending.data.map(t => <li key={t.id} className="py-2.5"><div className="text-13 text-slate-900">{t.title}</div><div className="text-11.5 text-slate-500">{t.kind || t.type} · created {fmtDateTime(t.created_at)}</div></li>)}</ul>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 mr-auto"><h2 className="text-16 font-semibold text-slate-900">Tasks &amp; Activities</h2><p className="text-12 text-slate-500">Work waiting for approval, this week's tasks, and everything done on this client</p></div>
+        <div className="flex gap-2">
+          {[[waiting.length, 'Waiting for approval', waiting.length ? '#f59e0b' : '#10b981'], [done, 'Actions this week', '#6366f1']].map(([n, l, c]) => (
+            <div key={l} className="rounded-lg bg-white ring-1 ring-slate-200 px-3.5 py-1.5 min-w-[120px]"><span className="block text-20 leading-tight font-bold tabular-nums" style={{ color: c }}>{pending.data || l !== 'Waiting for approval' ? n : '—'}</span><span className="block text-11.5 text-slate-500">{l}</span></div>))}
+        </div>
+        <Link to="/automation"><Button variant="primary">Open approvals</Button></Link>
+      </div>
+      <ErrorNote>{pending.error?.message || activity.error?.message}</ErrorNote>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+        <Card pad={false} title={`Waiting for approval (${waiting.length})`} subtitle="Review each one in Approvals before it is applied">
+          {!pending.data ? <div className="px-5 pb-4"><SkList rows={3} avatar={false} /></div> : (
+            <DataTable bare rows={waiting} rowKey={t => t.id} pageSize={8} sizes={[8, 25, 50]} exportName="tasks-waiting" label="tasks" searchPlaceholder="Search tasks" columnsMenu={false} headClass="bg-slate-100 text-slate-700"
+              empty="Nothing is waiting for you."
+              columns={[
+                { id: 'task', header: 'Task', value: t => t.title, className: 'px-3 py-2 min-w-[220px]', cell: t => <span className="text-13 font-medium text-slate-900">{t.title}</span> },
+                { id: 'kind', header: 'Type', value: t => nice(t.kind || t.type), className: 'px-3 py-2 whitespace-nowrap', cell: t => <Badge tone="blue">{nice(t.kind || t.type)}</Badge> },
+                { id: 'when', header: 'Created', first: 'desc', value: t => Date.parse(t.created_at) || null, className: 'px-3 py-2 whitespace-nowrap text-12 text-slate-500', cell: t => fmtDateTime(t.created_at) },
+                { id: 'go', header: '', csv: false, right: true, className: 'px-3 py-2 text-right', cell: () => <Link to="/automation"><Button size="sm">Review</Button></Link> },
+              ]} />
           )}
         </Card>
-        <Card title="Activity history" subtitle="Latest changes, newest first">
-          {!activity.data ? <Loading /> : activity.data.length === 0 ? <p className="text-13 text-slate-500 py-4 text-center">No activity yet.</p> : (
-            <ul className="divide-y divide-slate-100 max-h-96 overflow-y-auto">{activity.data.map(a => <li key={a.id} className="py-2 flex gap-3"><span className="text-11.5 text-slate-400 w-24 shrink-0">{fmtDateTime(a.created_at)}</span><span className="text-13 text-slate-700 min-w-0"><b className="font-medium">{String(a.action || a.kind || '').replace(/_/g, ' ')}</b>{a.actor ? <span className="text-slate-500"> · {a.actor}</span> : null}</span></li>)}</ul>
+        <Card pad={false} title="Activity history" subtitle="Latest changes, newest first">
+          {!activity.data ? <div className="px-5 pb-4"><SkList rows={3} avatar={false} /></div> : (
+            <DataTable bare rows={activity.data} rowKey={a => a.id} pageSize={8} sizes={[8, 25, 50]} exportName="activity-history" label="actions" searchPlaceholder="Search activity" columnsMenu={false} headClass="bg-slate-100 text-slate-700"
+              empty="No activity yet."
+              columns={[
+                { id: 'when', header: 'When', first: 'desc', value: a => Date.parse(a.created_at) || null, className: 'px-3 py-2 whitespace-nowrap text-12 text-slate-500', cell: a => fmtDateTime(a.created_at) },
+                { id: 'what', header: 'What happened', value: a => nice(a.action || a.kind), className: 'px-3 py-2 text-13 text-slate-800', cell: a => nice(a.action || a.kind) },
+                { id: 'who', header: 'By', value: a => a.actor || '', className: 'px-3 py-2 whitespace-nowrap text-12 text-slate-500', cell: a => a.actor || '—' },
+              ]} />
           )}
         </Card>
       </div>
       <ProcessTasks b={b} areas={['gmb']} />
-      <ErrorNote>{pending.error?.message || activity.error?.message}</ErrorNote>
     </div>
   );
 }
