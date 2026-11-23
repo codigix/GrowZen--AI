@@ -88,38 +88,20 @@ export function JourneyButton({ bid, name, stage, link = false }) {
 }
 
 /** A slim bar at the top of a page: which step this page belongs to, what it needs first, and what comes next. */
-const HIDE_KEY = 'seo:hideStepBar';
 export function StepBar({ bid, step }) {
   const f = useFlow(bid);
-  const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState(false);
-  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(HIDE_KEY) === '1'; } catch (e) { return false; } });
-  const hide = (v) => { setHidden(v); try { localStorage.setItem(HIDE_KEY, v ? '1' : '0'); } catch (e) { /* private window */ } };
   const d = f.data;
   const s = d && arr(d.steps).find(x => x.key === step);
   if (!s) return null;
-  if (hidden) return <div className="-mt-1 mb-1 text-right"><button type="button" onClick={() => hide(false)} className="text-11.5 text-slate-400 hover:text-slate-700 underline cursor-pointer">Show progress</button></div>;
-  const nxt = arr(d.steps).find(x => x.order > s.order && x.status !== 'done') || arr(d.steps).find(x => x.order > s.order);
-  const tone = s.status === 'done' ? 'border-emerald-200 bg-emerald-50/60 text-emerald-900' : s.status === 'blocked' ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-indigo-100 bg-indigo-50/60 text-indigo-900';
+  const tone = s.status === 'done' ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100' : s.status === 'blocked' ? 'border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100' : 'border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100';
   return (
-    <div className={`rounded-lg border px-3 py-1.5 text-12.5 ${tone}`}>
-      <div className="flex items-center gap-x-3 min-w-0">
-        <span className="inline-flex items-center gap-1.5 font-semibold shrink-0"><Icon s={s.status} />Step {s.order} of {d.total}: {s.title}</span>
-        <span className="opacity-90 truncate min-w-0" title={s.detail}>{s.status === 'done' ? 'Done. ' : ''}{s.detail}</span>
-        {s.status === 'blocked' && <span className="shrink-0 hidden md:inline"><b>First:</b> {s.waiting_for.map(w => <Link key={w.key} to={w.link} className="underline font-semibold mr-1.5">{w.title}</Link>)}</span>}
-        <span className="flex-1" />
-        <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} className="shrink-0 text-12 font-semibold underline underline-offset-2 cursor-pointer">{open ? 'Less' : 'How this fits'}</button>
-        <button type="button" onClick={() => hide(true)} aria-label="Hide the progress bar" title="Hide this bar" className="shrink-0 text-slate-400 hover:text-slate-800 cursor-pointer leading-none px-1">×</button>
-      </div>
-      {open && (
-        <div className="mt-2 pt-2 border-t border-black/10 space-y-1 text-12.5">
-          <p>{s.why}</p>
-          {s.requires.length > 0 && <p>Needs first: {s.requires.map(r => <span key={r.key} className="inline-flex items-center gap-1 mr-2">{r.done ? <Check size={11} /> : <Lock size={11} />}{r.title}</span>)}</p>}
-          {nxt && <p>Comes next: <Link to={nxt.link} className="underline font-semibold">{nxt.order}. {nxt.title}</Link></p>}
-          <p><button type="button" onClick={() => setPanel(true)} className="underline font-semibold cursor-pointer">See this project's whole journey</button></p>
-        </div>
-      )}
-      <JourneyDrawer bid={bid} open={panel} onClose={() => setPanel(false)} />
-    </div>
+    <>
+      <button type="button" onClick={() => setPanel(true)} aria-haspopup="dialog" title={`${s.detail || ''} Open this project's journey and status.`}
+        className={`h-8 px-3 rounded-lg border inline-flex items-center gap-1.5 text-12.5 font-semibold cursor-pointer ${tone}`}>
+        <MapIcon size={13} />Step {s.order} of {d.total}: {s.title}
+      </button>
+      {panel && <JourneyDrawer bid={bid} open onClose={() => setPanel(false)} />}
+    </>
   );
 }

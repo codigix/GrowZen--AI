@@ -321,8 +321,8 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
             <h1 className="text-18 font-semibold text-slate-900 tracking-tight flex flex-wrap items-center gap-2">{title}{business && needsBusiness && <MarketBadge business={business} />}</h1>
             {subtitle && <p className="text-12 text-slate-400 mt-0.5 max-w-3xl truncate" title={subtitle}>{subtitle}</p>}
           </div>
+          {step && business && !error && <StepBar bid={business.id} step={step} />}
         </div>
-        {step && business && !error && <div className="mb-3"><StepBar bid={business.id} step={step} /></div>}
         {body}
       </div>
     </div>
