@@ -9,6 +9,7 @@ import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useAction, useToast, Sk
 import { api, useApi, fmt } from './seoApi';
 import { IntelBar, IntelSections, headline } from './DomainIntel';
 import Select from '../components/Select';
+import { StatCard, Delta } from './StatBits';
 import DataTable, { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const CsvBtn = ({ onClick, disabled = false, label = 'Export CSV', className = '', title = 'Download every row of this table (all pages) as a CSV file' }) => <button type="button" onClick={onClick} disabled={disabled} title={title} className={`h-8 px-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-40 ${className}`}><Download size={13} />{label}</button>;
@@ -123,14 +124,37 @@ function BacklinksSection({ businessId }) {
   );
 }
 
+/** The four numbers Google Search Console leads with, each with its change against the period before and its graph. */
+function GoogleStrip({ r }) {
+  const t = r.totals, p = r.previous;
+  const days = r.timeline || [];
+  return (
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <StatCard label="Total clicks" value={t.clicks} before={p.clicks} since="vs previous period" series={days.map(x => x.clicks)} tone="#6658dd" hint="Visits from Google Search to the site" />
+      <StatCard label="Total impressions" value={t.impressions} before={p.impressions} since="vs previous period" series={days.map(x => x.impressions)} tone="#1abc9c" hint="Times the site was shown in Google Search" />
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4 min-w-0" title="Clicks divided by impressions">
+        <div className="text-12.5 font-semibold text-slate-500">Average CTR</div>
+        <div className="mt-1.5 text-[28px] leading-none font-bold tabular-nums text-slate-900">{t.ctr}%</div>
+        <div className="mt-1.5"><Delta now={t.ctr} before={p.ctr || null} since="vs previous period" /></div>
+      </div>
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4 min-w-0" title="Where the site stands on average in Google Search results: lower is better">
+        <div className="text-12.5 font-semibold text-slate-500">Average position</div>
+        <div className="mt-1.5 text-[28px] leading-none font-bold tabular-nums text-slate-900">{t.position ?? '—'}</div>
+        <div className="mt-1.5"><Delta now={t.position ?? 0} before={p.position || null} lowerIsBetter since="vs previous period" /></div>
+      </div>
+    </div>
+  );
+}
+
 function Overview({ d, r, setFilter, filters, intel, businessId }) {
   const h = headline(intel);
   const t = r?.totals;
   const p = r?.previous;
   const ai = d.ai;
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+    <div className="space-y-3">
+      {r && <GoogleStrip r={r} />}
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
         {/* AI Search: every AI platform, 0 where nothing was found */}
         <Card className="xl:col-span-2" title={<span className="inline-flex items-center gap-2"><Sparkles size={15} className="text-violet-500" />AI Search</span>}
           action={<Link to="/geo-optimization" className="text-12.5 font-semibold text-indigo-600 hover:underline">Open →</Link>}>
@@ -157,13 +181,13 @@ function Overview({ d, r, setFilter, filters, intel, businessId }) {
         <Card className="xl:col-span-3" title={<span className="inline-flex items-center gap-2"><Search size={15} className="text-indigo-500" />SEO</span>}
           action={r && <span className="text-11.5 text-slate-400">{r.period.start} → {r.period.end}</span>}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-5">
-            <Metric label="Authority score" value={h.authority ?? d.links.authority ?? null} why={h.authority == null && d.links.authority == null ? 'Not available from Google' : null} />
+            {(h.authority ?? d.links.authority) != null && <Metric label="Authority score" value={h.authority ?? d.links.authority ?? null} why={h.authority == null && d.links.authority == null ? 'Not available from Google' : null} />}
             <Metric label={t ? 'Organic traffic (clicks)' : 'Organic traffic (est.)'} icon={MousePointerClick} value={t ? fmt(t.clicks) : h.organicTraffic != null ? fmt(Math.round(h.organicTraffic)) : null} change={t && <Change now={t.clicks} before={p.clicks} />} why={!t && h.organicTraffic == null ? 'Connect Search Console' : null} tone="text-indigo-600" />
-            <Metric label="Paid traffic (est.)" value={h.paidTraffic != null ? fmt(Math.round(h.paidTraffic)) : null} why={h.paidTraffic == null ? 'Not available from Google' : null} />
+            {h.paidTraffic != null && <Metric label="Paid traffic (est.)" value={h.paidTraffic != null ? fmt(Math.round(h.paidTraffic)) : null} why={h.paidTraffic == null ? 'Not available from Google' : null} />}
             <Metric label="Ref. domains" icon={Link2} value={h.referring != null ? fmt(h.referring) : d.links.referring_domains != null ? fmt(d.links.referring_domains) : null} why={h.referring == null && d.links.referring_domains == null ? 'Not available from Google' : null} />
             <Metric label="Impressions" icon={Eye} value={t ? fmt(t.impressions) : null} change={t && <Change now={t.impressions} before={p.impressions} />} why={!t ? 'Needs Search Console' : null} tone="text-indigo-600" />
             <Metric label="Organic keywords" icon={KeyRound} value={h.organicKeywords != null ? fmt(h.organicKeywords) : t ? `${fmt(t.keywords)}${r.keywords_capped ? '+' : ''}` : null} change={h.organicKeywords == null && t && <Change now={t.keywords} before={p.keywords} />} why={!t && h.organicKeywords == null ? 'Connect Search Console' : null} tone="text-indigo-600" />
-            <Metric label="Paid keywords" value={h.paidKeywords != null ? fmt(h.paidKeywords) : null} why={h.paidKeywords == null ? 'Not available from Google' : null} />
+            {h.paidKeywords != null && <Metric label="Paid keywords" value={h.paidKeywords != null ? fmt(h.paidKeywords) : null} why={h.paidKeywords == null ? 'Not available from Google' : null} />}
             <Metric label="Backlinks" icon={Link2} value={h.backlinks != null ? fmt(h.backlinks) : d.links.backlinks != null ? fmt(d.links.backlinks) : null} why={h.backlinks == null && d.links.backlinks == null ? 'Not available from Google' : null} />
           </div>
           {t && (
@@ -195,27 +219,22 @@ function TrafficPanel({ d, r, filters, setFilter }) {
   }, [r, months]);
   const exportCsv = () => downloadCsv(`traffic-by-day-${d.domain || 'site'}`, ['Date', 'Clicks', 'Impressions'], r.timeline.map(x => [x.date, x.clicks, x.impressions]));
   const maxClicks = Math.max(1, ...r.countries.map(c => c.clicks));
-  const cs = useSorted(r.countries, countryValue);
-  const cpg = usePager(cs.sorted, { size: 25 });
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 items-start">
-      <Card className="xl:col-span-2" title="Distribution by country" subtitle="Google Search clicks by the searcher's country" pad={false} action={<CsvBtn disabled={!cs.sorted.length} onClick={() => downloadCsv(`traffic-by-country-${d.domain || 'site'}`, ['Country', 'Country code', 'Clicks', 'Share of clicks (%)', 'Impressions', 'Click rate (%)', 'Position'], cs.sorted.map(c => [country(c.code), c.code, c.clicks, r.totals.clicks ? Math.round((c.clicks / r.totals.clicks) * 10000) / 100 : '', c.impressions, c.ctr ?? '', c.position ?? '']))} />}>
-        <div className="overflow-auto max-h-[430px]">
-          <table className="w-full text-13">
-            <thead className="sticky top-0 bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><SortTh id="country" sort={cs.sort} onSort={cs.onSort} className={TC}>Country</SortTh><SortTh id="clicks" sort={cs.sort} onSort={cs.onSort} right first="desc" className={TC}>Clicks</SortTh><SortTh id="impressions" sort={cs.sort} onSort={cs.onSort} right first="desc" className={TC}>Impr.</SortTh><SortTh id="position" sort={cs.sort} onSort={cs.onSort} right className={TC}>Pos.</SortTh></tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              <tr onClick={() => setFilter({ country: '' })} className={`cursor-pointer hover:bg-slate-50 ${!filters.country ? 'bg-indigo-50/50 font-semibold' : ''}`}><td className="px-4 py-2.5">🌐 Worldwide</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-600">{fmt(r.totals.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(r.totals.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.totals.position ?? '—'}</td></tr>
-              {cpg.rows.map(c => (
-                <tr key={c.code} onClick={() => setFilter({ country: c.code })} className={`cursor-pointer hover:bg-slate-50 ${filters.country === c.code ? 'bg-indigo-50/50 font-semibold' : ''}`}>
-                  <td className="px-4 py-2.5"><span className="mr-1.5">{flag(c.code)}</span>{country(c.code)}<span className="block h-1 mt-1 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-400" style={{ width: `${(c.clicks / maxClicks) * 100}%` }} /></span></td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-indigo-600">{fmt(c.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(c.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{c.position}</td>
-                </tr>
-              ))}
-              {!r.countries.length && <tr><td colSpan={4} className="px-5 py-8 text-center text-slate-500">No country data for this period.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        <Pager p={cpg} label="countries" />
+    <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 items-start">
+      <Card className="xl:col-span-2" title="Distribution by country" subtitle="Google Search clicks by the searcher's country. Pick a country to filter the whole page." pad={false}>
+        <DataTable bare rows={r.countries} rowKey={c => c.code} pageSize={10} sizes={[10, 25, 50]} exportName={`countries-${d.domain || 'site'}`} label="countries" searchPlaceholder="Search countries" minWidth={0} columnsMenu={false} headClass="bg-slate-100 text-slate-700"
+          rowClass={c => (filters.country === c.code ? 'bg-indigo-50/60' : '')} empty="No country data for this period."
+          toolbar={filters.country ? <button type="button" onClick={() => setFilter({ country: '' })} className="h-8 px-3 rounded-lg text-12.5 font-semibold bg-indigo-500 text-white cursor-pointer">Worldwide: clear filter</button> : null}
+          columns={[
+            { id: 'country', header: 'Country', value: c => country(c.code), className: 'px-3 py-2', cell: c => (
+              <button type="button" onClick={() => setFilter({ country: filters.country === c.code ? '' : c.code })} className="text-left cursor-pointer hover:text-indigo-700 w-full" title="Show only this country">
+                <span className="mr-1.5">{flag(c.code)}</span>{country(c.code)}<span className="block h-1 mt-1 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-400 rounded-full" style={{ width: `${Math.round((c.clicks / maxClicks) * 100)}%` }} /></span>
+              </button>) },
+            { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: c => numOf(c.clicks), className: 'px-3 py-2 text-right tabular-nums text-indigo-600', cell: c => fmt(c.clicks) },
+            { id: 'impressions', header: 'Impressions', right: true, first: 'desc', value: c => numOf(c.impressions), className: 'px-3 py-2 text-right tabular-nums', cell: c => fmt(c.impressions) },
+            { id: 'ctr', header: 'CTR', right: true, first: 'desc', value: c => numOf(c.ctr), className: 'px-3 py-2 text-right tabular-nums', cell: c => `${c.ctr}%` },
+            { id: 'position', header: 'Position', right: true, value: c => numOf(c.position), className: 'px-3 py-2 text-right tabular-nums', cell: c => c.position ?? '—' },
+          ]} />
       </Card>
 
       <Card className="xl:col-span-3" title="Traffic" subtitle={`Google Search, ${r.period.start} → ${r.period.end}`}
@@ -251,33 +270,19 @@ function TrafficPanel({ d, r, filters, setFilter }) {
 
 function KeywordsPanel({ r }) {
   const [tab, setTab] = useState('keywords');
-  const [q, setQ] = useState('');
-  const all = (tab === 'keywords' ? r.keywords : r.pages).filter(x => !q || (x.query || x.page).toLowerCase().includes(q.toLowerCase()));
-  const { sorted: rows, sort, onSort } = useSorted(all, kwValue);
-  const pg = usePager(rows, { size: 25, resetKey: `${tab}|${q}` });
+  const rows = tab === 'keywords' ? r.keywords : r.pages;
   return (
     <Card pad={false} title="Keywords & pages" subtitle="From Google Search: what people searched and which pages they landed on">
-      <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
-        <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded">{[['keywords', `Organic keywords (${r.keywords.length}${r.keywords_capped ? '+' : ''})`], ['pages', `Top pages (${r.pages.length})`]].map(([id, l]) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-8 px-3 text-12.5 font-semibold rounded cursor-pointer ${tab === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>{l}</button>)}<span title="Paid keywords need Google Ads or a paid index" className="h-8 px-3 text-12.5 font-semibold text-slate-300 inline-flex items-center cursor-not-allowed">Paid</span></div>
-        <label className="relative ml-auto"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter" className="h-8 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></label>
-        <CsvBtn disabled={!rows.length} title="Download every row (all pages, with the filter applied) as a CSV file" onClick={() => downloadCsv(`${tab === 'keywords' ? 'organic-keywords' : 'top-pages'}-${r.property || 'site'}`, [tab === 'keywords' ? 'Keyword' : 'Page address', 'Clicks', 'Impressions', 'Click rate (%)', 'Position'], rows.map(x => [x.query || x.page, x.clicks, x.impressions, x.ctr ?? '', x.position ?? '']))} />
-      </div>
-      <div className="overflow-auto max-h-[460px]">
-        <table className="w-full text-13">
-          <thead className="sticky top-0 bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><SortTh id="name" sort={sort} onSort={onSort} className={TC}>{tab === 'keywords' ? 'Keyword' : 'Page'}</SortTh><SortTh id="clicks" sort={sort} onSort={onSort} right first="desc" className={TC}>Clicks</SortTh><SortTh id="impressions" sort={sort} onSort={onSort} right first="desc" className={TC}>Impressions</SortTh><SortTh id="ctr" sort={sort} onSort={onSort} right first="desc" className={TC}>CTR</SortTh><SortTh id="position" sort={sort} onSort={onSort} right className={TC}>Position</SortTh></tr></thead>
-          <tbody className="divide-y divide-slate-100">
-            {pg.rows.map(x => (
-              <tr key={x.query || x.page} className="hover:bg-slate-50">
-                <td className="px-4 py-2.5 max-w-[420px] truncate font-medium text-slate-900">{x.query || <a href={x.page} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1">{x.page.replace(/^https?:\/\/[^/]+/, '') || '/'}<ExternalLink size={10} /></a>}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-indigo-600">{fmt(x.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(x.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{x.ctr}%</td>
-                <td className="px-4 py-2.5 text-right tabular-nums"><Badge tone={x.position <= 3 ? 'green' : x.position <= 10 ? 'amber' : 'gray'}>{x.position}</Badge></td>
-              </tr>
-            ))}
-            {!rows.length && <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-500">Nothing matches.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <Pager p={pg} label={tab === 'keywords' ? 'keywords' : 'pages'} />
+      <DataTable bare key={tab} rows={rows} rowKey={x => x.query || x.page} pageSize={10} sizes={[10, 25, 50, 100]} exportName={`${tab === 'keywords' ? 'organic-keywords' : 'top-pages'}-${r.property || 'site'}`} label={tab === 'keywords' ? 'keywords' : 'pages'}
+        searchPlaceholder={tab === 'keywords' ? 'Search keywords' : 'Search pages'} minWidth={0} columnsMenu={false} headClass="bg-slate-100 text-slate-700" empty="Nothing matches."
+        toolbar={<div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg">{[['keywords', `Organic keywords (${r.keywords.length}${r.keywords_capped ? '+' : ''})`], ['pages', `Top pages (${r.pages.length})`]].map(([id, l]) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-8 px-3 text-12.5 font-semibold rounded-md cursor-pointer ${tab === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>{l}</button>)}</div>}
+        columns={[
+          { id: 'name', header: tab === 'keywords' ? 'Keyword' : 'Page', value: x => x.query || x.page, className: 'px-3 py-2 max-w-[420px] truncate font-medium text-slate-900', cell: x => x.query || <a href={x.page} target="_blank" rel="noreferrer" title={x.page} className="text-indigo-600 hover:underline inline-flex items-center gap-1">{short(x.page)}<ExternalLink size={11} /></a> },
+          { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: x => numOf(x.clicks), className: 'px-3 py-2 text-right tabular-nums text-indigo-600', cell: x => fmt(x.clicks) },
+          { id: 'impressions', header: 'Impressions', right: true, first: 'desc', value: x => numOf(x.impressions), className: 'px-3 py-2 text-right tabular-nums', cell: x => fmt(x.impressions) },
+          { id: 'ctr', header: 'CTR', right: true, first: 'desc', value: x => numOf(x.ctr), className: 'px-3 py-2 text-right tabular-nums', cell: x => `${x.ctr}%` },
+          { id: 'position', header: 'Position', right: true, value: x => numOf(x.position), className: 'px-3 py-2 text-right', cell: x => <Badge tone={x.position <= 3 ? 'green' : x.position <= 10 ? 'amber' : 'gray'}>{x.position}</Badge> },
+        ]} />
     </Card>
   );
 }
@@ -289,8 +294,6 @@ function Growth({ r }) {
     return Object.values(by).map((m, i, a) => ({ ...m, ctr: m.impressions ? Math.round((m.clicks / m.impressions) * 1000) / 10 : 0, change: i ? pct(m.clicks, a[i - 1].clicks) : null }));
   }, [r]);
   const newest = useMemo(() => [...months].reverse(), [months]);
-  const ms = useSorted(newest, monthValue);
-  const mpg = usePager(ms.sorted, { size: 12 });
   const t = r.totals, p = r.previous;
   return (
     <div className="space-y-4">
@@ -302,39 +305,17 @@ function Growth({ r }) {
       <Card title="Clicks by month" subtitle="The current period against its own growth month by month">
         <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={months} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}><CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} /><XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} /><YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} allowDecimals={false} /><Tooltip /><Bar dataKey="clicks" name="Clicks" fill="#6658dd" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
       </Card>
-      <Card pad={false} title="Month by month" action={<CsvBtn disabled={!ms.sorted.length} onClick={() => downloadCsv(`traffic-by-month-${r.property || 'site'}`, ['Month', 'Clicks', 'Change in clicks (%)', 'Impressions', 'Click rate (%)'], ms.sorted.map(m => [m.month, m.clicks, m.change ?? '', m.impressions, m.ctr]))} />}>
-        <table className="w-full text-13"><thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><SortTh id="month" sort={ms.sort} onSort={ms.onSort} first="desc" className={TC}>Month</SortTh><SortTh id="clicks" sort={ms.sort} onSort={ms.onSort} right first="desc" className={TC}>Clicks</SortTh><SortTh id="change" sort={ms.sort} onSort={ms.onSort} right first="desc" className={TC}>Change</SortTh><SortTh id="impressions" sort={ms.sort} onSort={ms.onSort} right first="desc" className={TC}>Impressions</SortTh><SortTh id="ctr" sort={ms.sort} onSort={ms.onSort} right first="desc" className={TC}>CTR</SortTh></tr></thead>
-          <tbody className="divide-y divide-slate-100">{mpg.rows.map(m => <tr key={m.month} className="hover:bg-slate-50"><td className="px-4 py-2.5 font-medium text-slate-900">{m.month}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-600">{fmt(m.clicks)}</td><td className="px-4 py-2.5 text-right">{m.change != null ? <Change now={1 + (m.change / 100)} before={1} /> : '—'}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(m.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.ctr}%</td></tr>)}</tbody></table>
-        <Pager p={mpg} label="months" />
+      <Card pad={false} title="Month by month" subtitle="Each month against the one before">
+        <DataTable bare rows={newest} rowKey={m => m.month} pageSize={12} sizes={[12, 24]} search={false} exportName={`traffic-by-month-${r.property || 'site'}`} label="months" minWidth={0} columnsMenu={false} headClass="bg-slate-100 text-slate-700"
+          columns={[
+            { id: 'month', header: 'Month', first: 'desc', value: m => m.month, className: 'px-3 py-2 font-medium text-slate-900', cell: m => m.month },
+            { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: m => numOf(m.clicks), className: 'px-3 py-2 text-right tabular-nums text-indigo-600', cell: m => fmt(m.clicks) },
+            { id: 'change', header: 'Change in clicks', right: true, first: 'desc', value: m => numOf(m.change), className: 'px-3 py-2 text-right tabular-nums', cell: m => (m.change == null ? <span className="text-slate-300">—</span> : <span className={m.change > 0 ? 'text-emerald-600 font-semibold' : m.change < 0 ? 'text-rose-600 font-semibold' : 'text-slate-400'}>{m.change > 0 ? '▲' : m.change < 0 ? '▼' : '–'} {Math.abs(m.change)}%</span>) },
+            { id: 'impressions', header: 'Impressions', right: true, first: 'desc', value: m => numOf(m.impressions), className: 'px-3 py-2 text-right tabular-nums', cell: m => fmt(m.impressions) },
+            { id: 'ctr', header: 'CTR', right: true, first: 'desc', value: m => numOf(m.ctr), className: 'px-3 py-2 text-right tabular-nums', cell: m => `${m.ctr}%` },
+          ]} />
       </Card>
     </div>
-  );
-}
-
-function Compare({ r, setFilter }) {
-  const total = r.countries.reduce((s, c) => s + c.clicks, 0) || 1;
-  const { sorted, sort, onSort } = useSorted(r.countries, countryValue);
-  const pg = usePager(sorted, { size: 25 });
-  return (
-    <Card pad={false} title="Compare by countries" subtitle="Where the clicks come from and how the site ranks there. Click a country to filter the whole page." action={<CsvBtn disabled={!sorted.length} onClick={() => downloadCsv(`traffic-by-country-${r.property || 'site'}`, ['Country', 'Country code', 'Clicks', 'Share of clicks (%)', 'Impressions', 'Click rate (%)', 'Position'], sorted.map(c => [country(c.code), c.code, c.clicks, total ? Math.round((c.clicks / total) * 10000) / 100 : '', c.impressions, c.ctr ?? '', c.position ?? '']))} />}>
-      <div className="overflow-auto">
-        <table className="w-full text-13">
-          <thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><SortTh id="country" sort={sort} onSort={onSort} className={TC}>Country</SortTh><SortTh id="clicks" sort={sort} onSort={onSort} right first="desc" className={TC}>Clicks</SortTh><SortTh id="share" sort={sort} onSort={onSort} right first="desc" className={TC}>Share</SortTh><SortTh id="impressions" sort={sort} onSort={onSort} right first="desc" className={TC}>Impressions</SortTh><SortTh id="ctr" sort={sort} onSort={onSort} right first="desc" className={TC}>CTR</SortTh><SortTh id="position" sort={sort} onSort={onSort} right className={TC}>Avg position</SortTh></tr></thead>
-          <tbody className="divide-y divide-slate-100">
-            {pg.rows.map(c => (
-              <tr key={c.code} onClick={() => setFilter({ country: c.code })} className="cursor-pointer hover:bg-slate-50">
-                <td className="px-4 py-2.5 font-medium text-slate-900"><span className="mr-1.5">{flag(c.code)}</span>{country(c.code)}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-indigo-600">{fmt(c.clicks)}</td>
-                <td className="px-4 py-2.5 w-44"><span className="flex items-center gap-2"><span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-400 rounded-full" style={{ width: `${(c.clicks / total) * 100}%` }} /></span><span className="w-10 text-right tabular-nums text-slate-600">{Math.round((c.clicks / total) * 100)}%</span></span></td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{fmt(c.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{c.ctr}%</td><td className="px-4 py-2.5 text-right tabular-nums">{c.position}</td>
-              </tr>
-            ))}
-            {!r.countries.length && <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-500">No country data for this period.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <Pager p={pg} label="countries" />
-    </Card>
   );
 }
 
@@ -409,8 +390,8 @@ function Page({ b }) {
   if (!d) return data.error ? <ErrorNote>{data.error.message}</ErrorNote> : <SkPage statLabels={["Clicks", "Impressions", "Organic keywords", "Authority score"]} chartTitle="Clicks by month" tableTitle="Keywords & pages" tableHeaders={["Keyword", "Clicks", "Impressions", "Position"]} />;
   const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
   return (
-    <div className="space-y-4">
-      <div className="ai-glass-card rounded px-5 py-3.5 flex flex-wrap items-center gap-3">
+    <div className="space-y-3">
+      <div className="ai-glass-card rounded px-5 py-2.5 flex flex-wrap items-center gap-3">
         <span className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-500 flex items-center justify-center shrink-0"><Globe size={18} /></span>
         <div className="min-w-0 flex-1"><div className="text-16 font-semibold text-slate-900 truncate flex items-center gap-2">{d.domain || 'No website yet'}<Badge tone={d.internal ? 'violet' : 'gray'} title={d.internal ? 'One of our own websites (INTERNAL_DOMAINS)' : 'A client website'}>{d.internal ? 'Internal' : 'Client'}</Badge></div><div className="text-12 text-slate-500">{d.name} · {d.market.label}{d.traffic.account ? ` · Search Console: ${d.traffic.account}` : ''}</div></div>
         {r && (
@@ -428,11 +409,10 @@ function Page({ b }) {
       <ErrorNote>{error}</ErrorNote>
       <Checks checks={(d.checks || []).filter(c => !(c.id === 'google' && c.level !== 'error' && d.traffic.state !== 'ok' && d.traffic.state !== 'no_website'))} internal={d.internal} />
       {d.traffic.state !== 'ok' && d.traffic.state !== 'no_website' && <Connect t={d.traffic} busy={busy === 'connect'} onConnect={connect} internal={d.internal} domain={d.domain} businessId={b.id} onLinked={() => { data.reload(true); intel.reload(true); }} />}
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'overview', label: 'Overview' }, ...(r ? [{ id: 'growth', label: 'Growth report' }, { id: 'countries', label: 'Compare by countries' }] : [])]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'overview', label: 'Overview' }, ...(r ? [{ id: 'growth', label: 'Growth report' }] : [])]} />
       {tab === 'overview' && d.traffic.state === 'ok' && <IntelBar intel={intel.data} loading={intel.loading} market={market} setMarket={setMarket} onRefresh={refreshIntel} refreshing={refreshing} />}
       {tab === 'overview' && <Overview d={d} r={r} setFilter={set} filters={filters} intel={intel} businessId={b.id} />}
       {tab === 'growth' && r && <Growth r={r} />}
-      {tab === 'countries' && r && <Compare r={r} setFilter={(p) => { set(p); setTab('overview'); }} />}
       <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />{r ? `Clicks and impressions are from Google Search Console (${r.property}), ${r.period.days} days. ` : ''}Clicks, impressions, keywords and pages come from Search Console. Authority, backlinks and paid figures are not available from Google. Anything a source does not provide shows as “—” or an empty card with the reason.</p>
       {toastNode}
     </div>
