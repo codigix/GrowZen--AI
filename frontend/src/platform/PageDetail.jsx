@@ -37,6 +37,34 @@ const Facts = ({ title, rows }) => (
 
 const A = ({ href }) => (href ? <a href={href} target="_blank" rel="noreferrer noopener" className="text-indigo-600 hover:underline break-all">{href}</a> : '—');
 
+const LEVEL = { blocker: ['Stops indexing', 'bg-rose-100 text-rose-800'], cause: ['Likely cause', 'bg-amber-100 text-amber-900'], warning: ['Improve', 'bg-slate-100 text-slate-700'] };
+
+/** Why the page is not (or may not stay) in Google, with the evidence and the exact steps to fix each cause. Shown above both tabs. */
+function Diagnosis({ dg, indexed }) {
+  if (!dg) return null;
+  const main = dg.items.filter(i => i.level !== 'warning');
+  const small = dg.items.filter(i => i.level === 'warning');
+  const tone = indexed && !main.length ? 'good' : main.length ? (main.some(i => i.level === 'blocker') ? 'bad' : 'warn') : 'good';
+  return (
+    <div className="space-y-2.5">
+      <Verdict tone={tone} title={indexed ? 'Why this page may not stay in Google' : 'Why this page is not in Google'} text={dg.headline} />
+      {[...main, ...small].map((i, k) => (
+        <div key={i.title} className="rounded-xl bg-white ring-1 ring-slate-200 p-4">
+          <div className="flex items-start gap-2.5">
+            <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-12 font-bold flex items-center justify-center shrink-0">{k + 1}</span>
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex flex-wrap items-center gap-2"><h4 className="text-14 font-semibold text-slate-900">{i.title}</h4><span className={`px-2 py-0.5 rounded-full text-11 font-semibold ${LEVEL[i.level][1]}`}>{LEVEL[i.level][0]}</span></div>
+              <p className="text-12.5 text-slate-700"><b className="text-slate-900">What we found: </b>{i.evidence}</p>
+              <p className="text-12.5 text-slate-700"><b className="text-slate-900">Why it matters: </b>{i.why}</p>
+              <div className="rounded-lg bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-3 py-2"><div className="text-12 font-semibold text-emerald-900 mb-1">How to fix it</div>
+                <ol className="list-decimal pl-4 space-y-0.5 text-12.5 text-slate-800">{i.fix.map((f, n) => <li key={n} className="break-words">{f}</li>)}</ol></div>
+            </div>
+          </div>
+        </div>))}
+    </div>
+  );
+}
+
 function GoogleView({ d }) {
   const g = d.google;
   if (!g) return <Verdict tone="none" title="Google has not told us about this page" text={d.google_error || 'Connect Search Console for this project to ask Google.'} />;
@@ -122,7 +150,8 @@ export default function PageDetail({ bid, url, onClose, onChanged }) {
       <ErrorNote>{error}</ErrorNote>
       {!d ? <div className="py-16 text-center text-13 text-slate-500 flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" />Asking Google and testing the page…</div> : (
         <div className="space-y-3">
-          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'google', label: 'Google index' }, { id: 'live', label: 'Live test' }]} />
+          <Diagnosis dg={d.diagnosis} indexed={d.google?.state === 'indexed'} />
+          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'google', label: 'Google index details' }, { id: 'live', label: 'Live test' }]} />
           {tab === 'google' ? <GoogleView d={d} /> : <LiveView d={d} onRetest={() => load(false)} busy={busy} />}
         </div>
       )}

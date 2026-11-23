@@ -290,3 +290,18 @@ def test_the_page_detail_still_gives_the_live_test_when_google_is_not_connected(
     monkeypatch.setattr(indexing, "live_test", lambda u: {"ok": True, "status": 200, "html": "", "check": {"verdict": "indexable", "reasons": []}})
     d = client.post(api(client, bid, "/page-detail"), json={"url": "https://index.example/a"}).json()
     assert d["google"] is None and "No Google account" in d["google_error"] and d["live"]["ok"]
+
+
+def test_the_diagnosis_names_the_exact_causes_and_their_fixes():
+    url = "https://index.example/blog/post"
+    live = {"ok": True, "status": 200, "final_url": url, "redirects": [], "canonical": "https://index.example/", "title": "Home | Shop", "description": "Same", "h1": [], "schema_types": [], "html": '<div id="root"></div>',
+            "check": {"words": 6, "verdict": "risky", "reasons": []}}
+    google = {"state": "not_indexed", "coverage": "Crawled - currently not indexed", "robots": "ALLOWED", "sitemaps": [], "referring": []}
+    d = indexing.diagnose(url, google, live, {"title": "Home | Shop", "description": "Same"}, True, "React")
+    titles = [i["title"] for i in d["items"]]
+    assert any("copy of another page" in t for t in titles) and any("almost no text" in t for t in titles) and any("repeats the home page" in t for t in titles)
+    canon = next(i for i in d["items"] if "copy of another page" in i["title"])
+    assert f'<link rel="canonical" href="{url}">' in canon["fix"][0] and canon["level"] == "cause"
+    assert "problems found" in d["headline"] and "Crawled - currently not indexed" in d["headline"]
+    blocked = indexing.diagnose(url, {"state": "blocked", "robots": "DISALLOWED", "coverage": "Blocked by robots.txt"}, {"ok": True, "status": 200, "check": {"words": 500, "reasons": []}, "h1": ["x"], "schema_types": ["Article"]}, {}, True)
+    assert blocked["items"][0]["level"] == "blocker" and "robots.txt" in blocked["items"][0]["title"]

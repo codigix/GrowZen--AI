@@ -447,6 +447,132 @@ def live_test(url: str) -> dict[str, Any]:
     }
 
 
+def _home_head(url: str) -> dict[str, Any]:
+    """The home page's title, description and canonical: a page that repeats them is, to Google, the home page again."""
+    from bs4 import BeautifulSoup
+
+    from .net import site_client
+    p = urlsplit(url)
+    home = f"{p.scheme}://{p.netloc}/"
+    if _same_page(url, home):
+        return {}
+    client = site_client(10)
+    try:
+        r = client.get(home)
+        soup = BeautifulSoup(r.text, "html.parser")
+        m = soup.find("meta", attrs={"name": re.compile("^description$", re.I)})
+        return {"title": (soup.title.string or "").strip() if soup.title and soup.title.string else None, "description": (m.get("content") or "").strip() if m else None}
+    except Exception:  # noqa: BLE001
+        return {}
+    finally:
+        client.close()
+
+
+def _step(*lines: str) -> list[str]:
+    return [x for x in lines if x]
+
+
+def diagnose(url: str, google: dict[str, Any] | None, live: dict[str, Any], home: dict[str, Any], in_sitemap: bool | None = None, stack: str | None = None) -> dict[str, Any]:
+    """Why the page is not (or may not be) in Google, in plain words, with the evidence for each cause and the exact fix. Causes are ordered: what stops indexing first, then what makes Google
+    skip a page it can read. Each is {level: blocker | cause | warning, title, evidence, why, fix: [steps]}."""
+    items: list[dict[str, Any]] = []
+
+    def add(level: str, title: str, evidence: str, why: str, fix: list[str]) -> None:
+        items.append({"level": level, "title": title, "evidence": evidence, "why": why, "fix": fix})
+
+    g = google or {}
+    cov = (g.get("coverage") or "").strip()
+    low = cov.lower()
+    ok = bool(live.get("ok"))
+    status = live.get("status")
+    check = live.get("check") or {}
+    words = check.get("words")
+    canon = live.get("canonical")
+    page_canon_other = bool(canon) and not _same_page(canon, url)
+    head_same = bool(home) and bool(live.get("title")) and live.get("title") == home.get("title")
+    desc_same = bool(home) and bool(live.get("description")) and live.get("description") == home.get("description")
+    shell = ok and words is not None and words < 40
+    spa = ok and bool(re.search(r'id=["\'](root|app|__next|__nuxt)["\']', live.get("html") or "")) or shell
+    framework = "React" if "react" in (stack or "").lower() else (stack or "")
+
+    if not ok:
+        add("blocker", "The page cannot be loaded", live.get("error") or "No answer from the server.", "Google cannot index a page it cannot open.",
+            _step("Open the address in a browser: if it fails, the server or the address is wrong.", "Check the hosting, DNS and SSL certificate of the site.", "Then press Test again."))
+    elif status and status >= 500:
+        add("blocker", f"The server answers with an error (HTTP {status})", f"HTTP {status}", "Google retries later, but a page that keeps failing is dropped from the index.",
+            _step("Open the server error log for this address and fix the error.", "Make the page answer HTTP 200."))
+    elif status and status >= 400:
+        add("blocker", f"The page does not exist (HTTP {status})", f"HTTP {status}", "Google does not index pages that answer an error.",
+            _step("If the page should exist: restore it, or fix the link or sitemap entry that points here.", "If it was removed on purpose: take it out of the sitemap and the internal links."))
+    if ok and live.get("redirects"):
+        add("blocker", "The address redirects to another page", f"{url} → {live.get('final_url')}", "Google indexes the page the redirect ends on, not this address.",
+            _step(f"Use {live.get('final_url')} in your sitemap and internal links instead of this address.", "If the redirect is a mistake, remove it."))
+    robots_blocked = g.get("robots") == "DISALLOWED" or any("robots.txt" in (r.get("text") or "") for r in check.get("reasons") or [])
+    if robots_blocked or "blocked by robots" in low:
+        add("blocker", "robots.txt stops Google from reading the page", "robots.txt disallows Googlebot for this address.", "Google may list the address but cannot read it.",
+            _step("Open /robots.txt on the site and find the Disallow line that matches this path.", "Remove or narrow that rule.", "Test it with Search Console's robots.txt report."))
+    noindex_header = bool(live.get("x_robots")) and "noindex" in str(live.get("x_robots")).lower()
+    noindex_meta = bool(live.get("robots_meta")) and "noindex" in str(live.get("robots_meta")).lower()
+    if noindex_header or noindex_meta or "noindex" in low:
+        where = "the X-Robots-Tag header" if noindex_header else "the robots meta tag" if noindex_meta else "the page"
+        add("blocker", "A noindex instruction keeps the page out of Google", f"noindex found in {where}.", "Google obeys noindex: the page is never listed while it is there.",
+            _step("Remove the noindex from the robots meta tag" + (" and from the server's X-Robots-Tag header" if noindex_header else "") + ".", "Then request indexing in Search Console."))
+    if ok and page_canon_other:
+        to_home = _same_page(canon, urlsplit(url).scheme + "://" + urlsplit(url).netloc + "/")
+        add("cause", "The page tells Google it is a copy of another page" + (" (the home page)" if to_home else ""), f"The canonical tag on this page is {canon}, not {url}.",
+            "A canonical to another address means \"index that page, not this one\". Google follows it, so this address is left out as a duplicate.",
+            _step(f'Change the canonical tag of this page to point to itself: <link rel="canonical" href="{url}">.',
+                  "On a React or JavaScript site the tag is often one fixed tag in index.html: set the canonical per page (React Helmet, Next.js metadata, or your CMS's SEO field)." if spa else "Set the canonical in the page's SEO field of your CMS or template.",
+                  "Check it with Page indexing > Details > Live test (the Canonical tag line)."))
+    if shell:
+        add("cause", "The page has almost no text for Google to read", f"Only {words} words are in the page as the server sends it (before JavaScript runs).",
+            "Google may render JavaScript, but it often indexes a page late or not at all when the content is drawn only by scripts, and \"Crawled - currently not indexed\" is the usual result.",
+            _step(f"Make the server send the real content in the HTML: server-side rendering or pre-rendering ({framework or 'your framework'}'s SSR/static export, or a pre-render service).",
+                  "Or publish the post as a static HTML page with its text, heading and images in the page itself.", "After the change, Test again: the word count here should be in the hundreds."))
+    elif ok and words is not None and words < 150 and "currently not indexed" in low:
+        add("cause", "The page has very little content", f"About {words} words are readable.", "Google skips pages it sees as thin, with little that is not already on the site.",
+            _step("Add useful, original content: answer the questions a customer would ask, add details, images with captions and internal links.", "Aim for what the page needs to be complete, not a word count."))
+    if ok and (head_same or desc_same):
+        same = "title and meta description" if head_same and desc_same else "title" if head_same else "meta description"
+        add("cause", f"The page repeats the home page's {same}", f"Title: \"{(live.get('title') or '')[:80]}\"" + (" (same as the home page)" if head_same else ""),
+            "Pages with the same title and description look like duplicates of each other, so Google keeps one and drops the rest.",
+            _step("Write a title (50 to 60 characters) and a description (130 to 155) that describe THIS page and its topic.",
+                  "On a single-page app, set them per route: the home page's tags are being served for every address." if spa else ""))
+    if "duplicate" in low or "alternate page" in low:
+        add("cause", "Google treats the page as a duplicate", cov, "Google picks one version of duplicate pages and does not index the others.",
+            _step("Decide which address is the real one and use it in the canonical tag, the sitemap and internal links.", "Make the duplicate redirect (301) to it, or give it its own content."))
+    if "soft 404" in low:
+        add("cause", "Google thinks the page is an error page", cov, "The page loads but looks empty or like \"not found\" to Google.", _step("Add the real content, or answer with a proper 404 if the page should not exist."))
+    if "discovered - currently not indexed" in low:
+        add("cause", "Google knows the page but has not read it yet", cov, "Google queues new pages and reaches them when it has time; weak internal links slow this down.",
+            _step("Link to this page from your home page and from related pages.", "Make sure it is in the sitemap.", "Request indexing in Search Console (Open in Search Console above)."))
+    if "unknown to google" in low:
+        add("cause", "Google has never seen this address", cov, "No link or sitemap has led Google here yet.", _step("Add it to the sitemap and link to it from another page.", "Request indexing in Search Console."))
+    if in_sitemap is False or (google and not g.get("sitemaps") and in_sitemap is not True):
+        add("warning", "Google has no sitemap that lists this page", "The inspection reports no sitemap containing the address.", "A sitemap tells Google the page exists and when it changed.",
+            _step("Add the page to your sitemap.xml and submit the sitemap in Search Console (Sitemaps)."))
+    if google and not g.get("referring"):
+        add("warning", "Google found no links to this page", "No referring page was reported.", "Pages nothing links to look unimportant and are crawled less.",
+            _step("Link to this page from the home page, the blog index and two or three related pages."))
+    if ok and not live.get("h1"):
+        add("warning", "The page has no main heading (H1)", "No H1 in the page as sent by the server.", "A clear heading helps Google understand the topic.", _step("Add one H1 with the page's main topic."))
+    if ok and not live.get("schema_types"):
+        add("warning", "No structured data", "No schema.org markup found.", "Structured data helps Google show richer results. It does not decide indexing.", _step("For a blog post add Article or BlogPosting markup (JSON-LD)."))
+
+    if not items and (g.get("state") == "indexed"):
+        headline = "Nothing is wrong: this page is in Google."
+    elif not items:
+        headline = "No technical problem was found. Google has simply not indexed the page yet."
+        add("warning", "Wait and request indexing", cov or "Google gave no reason.", "New pages can take days to weeks.", _step("Request indexing in Search Console (Open in Search Console above).", "Keep the page in the sitemap and link to it from other pages."))
+    else:
+        n = sum(1 for i in items if i["level"] in ("blocker", "cause"))
+        if g.get("state") == "indexed":
+            headline = f"The page is in Google (\"{cov}\"), but {n} thing{'s' if n != 1 else ''} put it at risk of dropping out or hold it back." if n else "The page is in Google. Only small improvements found."
+        else:
+            headline = f"{n} problem{'s' if n != 1 else ''} found" + (f": Google says \"{cov}\"." if cov else ".") if n else "Only small improvements found."
+    return {"headline": headline, "reason_google": cov or None, "items": items}
+
+
 def page_detail(db: Session, b: Business, url: str) -> dict[str, Any]:
     """The page's two views: what Google holds for it (URL Inspection API) and a fresh test of the page itself. Google's side is saved on the page's row too."""
     from . import gsc_access
@@ -455,6 +581,8 @@ def page_detail(db: Session, b: Business, url: str) -> dict[str, Any]:
         raise IndexingError("Add the project's website first.")
     if (urlsplit(url).hostname or "").lower().removeprefix("www.") != host.lower().removeprefix("www."):
         raise IndexingError("That address is not on this project's website.")
+    pool = ThreadPoolExecutor(max_workers=2)  # the page test and the home page read run while Google answers: the panel opens in the time of the slowest, not the sum
+    live_f, home_f = pool.submit(live_test, url), pool.submit(_home_head, url)
     google, gerr = None, None
     state, msg, sc, site = gsc_access.search_console(db, b, host)
     if state != "ok":
@@ -474,7 +602,15 @@ def page_detail(db: Session, b: Business, url: str) -> dict[str, Any]:
                 db.commit()
         except Exception as exc:  # noqa: BLE001 - Google's reason (quota, permission)
             gerr = str(exc)[:240]
-    return {"url": url, "google": google, "google_error": gerr, "live": live_test(url)}
+    live, home = live_f.result(), home_f.result()
+    pool.shutdown(wait=False)
+    row = db.scalar(select(IndexPage).where(IndexPage.business_id == b.id, IndexPage.url == url))
+    try:
+        from . import site_research
+        stack = ((site_research.get(db, b).stack or {}).get("name") or (site_research.get(db, b).stack or {}).get("framework") or "") if site_research.get(db, b) else ""
+    except Exception:  # noqa: BLE001
+        stack = ""
+    return {"url": url, "google": google, "google_error": gerr, "live": live, "diagnosis": diagnose(url, google, live, home, row.in_sitemap if row else None, str(stack))}
 
 
 def inspect(db: Session, b: Business, urls: list[str] | None = None, limit: int = INSPECT_BATCH) -> dict[str, Any]:
