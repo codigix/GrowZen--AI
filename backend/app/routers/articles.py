@@ -175,21 +175,60 @@ def blogs_on_the_website(b: Business = Depends(get_business), db: Session = Depe
     from ..services import sitemap
     if not b.website:
         raise HTTPException(409, "Add the project's website first.")
-    try:
-        entries = sitemap.discover_site_entries(b.website, 400)
-    except Exception as exc:  # noqa: BLE001 - an unreachable site or a missing sitemap is explained, not a crash
-        raise HTTPException(502, f"The sitemap could not be read: {str(exc)[:160]}") from exc
     have = {_norm_url(x.wp_url or x.react_url or "") for x in db.scalars(select(Article).where(Article.business_id == b.id)) if x.wp_status != "deleted" and (x.wp_url or x.react_url)}
-    out = []
-    for url, lastmod in entries:
-        path = urlsplit(url).path.rstrip("/")
-        parts = [p for p in path.split("/") if p]
-        if len(parts) < 2 or not _BLOGISH.search(path + "/"):  # the blog's own index page is not a blog
-            continue
-        if _norm_url(url) in have:
-            continue
-        out.append({"url": url, "lastmod": lastmod, "title": parts[-1].replace("-", " ").replace("_", " ").strip().capitalize()})
-    return {"blogs": out[:200], "found": len(out)}
+    # 1. a WordPress site says exactly which pages are posts, with their titles and dates; 2. else the sitemap of posts (post-sitemap.xml, blog-sitemap.xml...); 3. else addresses that look like a blog
+    found = _wordpress_posts(b.website)
+    source = "wordpress"
+    if not found:
+        try:
+            everything = sitemap.discover_site_entries(b.website, 400)
+        except Exception as exc:  # noqa: BLE001 - an unreachable site or a missing sitemap is explained, not a crash
+            raise HTTPException(502, f"The sitemap could not be read: {str(exc)[:160]}") from exc
+        try:  # a site that keeps its posts in their own sitemap (post-sitemap.xml, blog-sitemap.xml): everything in it is a post
+            posts_only = sitemap.discover_site_entries(b.website, 400, child_filter=re.compile(r"(post|blog|article|news)", re.I))
+        except Exception:  # noqa: BLE001
+            posts_only = []
+        if posts_only and len(posts_only) < len(everything):
+            source = "sitemap"
+            found = [{"url": u, "lastmod": m, "title": (urlsplit(u).path.strip("/").rsplit("/", 1)[-1]).replace("-", " ").replace("_", " ").capitalize()} for u, m in posts_only]
+        else:  # one flat sitemap: only addresses that look like a blog count
+            source = "addresses"
+            for url, lastmod in everything:
+                path = urlsplit(url).path.rstrip("/")
+                parts = [p for p in path.split("/") if p]
+                if len(parts) >= 2 and _BLOGISH.search(path + "/"):  # the blog's own index page is not a blog
+                    found.append({"url": url, "lastmod": lastmod, "title": parts[-1].replace("-", " ").replace("_", " ").strip().capitalize()})
+    out = [x for x in found if urlsplit(x["url"]).path.strip("/") and _norm_url(x["url"]) not in have]
+    return {"blogs": out[:200], "found": len(out), "source": source}
+
+
+def _wordpress_posts(website: str | None) -> list[dict]:
+    """The posts of a WordPress site from its public REST address (/wp-json/wp/v2/posts): address, title and date of each. Empty when the site is not WordPress or hides it."""
+    import html
+    from urllib.parse import urlsplit
+    from ..services.net import site_client
+    p = urlsplit(website if (website or "").startswith("http") else f"https://{website or ''}")
+    if not p.hostname:
+        return []
+    origin = f"{p.scheme}://{p.netloc}"
+    out: list[dict] = []
+    client = site_client(12)
+    try:
+        for page in (1, 2, 3):
+            r = client.get(f"{origin}/wp-json/wp/v2/posts", params={"per_page": 100, "page": page, "_fields": "link,title,date,status"})
+            if r.status_code != 200 or "json" not in (r.headers.get("content-type") or ""):
+                break
+            rows = r.json()
+            if not isinstance(rows, list) or not rows:
+                break
+            out += [{"url": x["link"], "lastmod": str(x.get("date") or "")[:10] or None, "title": html.unescape(((x.get("title") or {}).get("rendered") or "")).strip()} for x in rows if x.get("link") and x.get("status", "publish") == "publish"]
+            if len(rows) < 100:
+                break
+    except Exception:  # noqa: BLE001 - not WordPress, blocked or slow: the sitemap is used instead
+        return []
+    finally:
+        client.close()
+    return out
 
 
 @router.get("/calendar")

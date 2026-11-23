@@ -56,7 +56,7 @@ export default function PostedBlogs({ b, toast, onWrite }) {
         </div>}>
         {only === 'site' && (
           <div className="px-5 pb-3">
-            {site.error ? <ErrorNote>{site.error.message}</ErrorNote> : !site.data ? <p className="text-13 text-slate-500 flex items-center gap-2"><SearchIcon size={14} />Reading your website's sitemap for blogs…</p> : (
+            {site.error ? <ErrorNote>{site.error.message}</ErrorNote> : !site.data ? <p className="text-13 text-slate-500 flex items-center gap-2"><SearchIcon size={14} />Reading your website for its blogs…</p> : (
               <div className="flex flex-wrap items-center gap-2"><span className="text-13 text-slate-600">{found.length ? `${found.length} blog${found.length === 1 ? '' : 's'} on your website are not in the list yet. Tick the ones to add.` : 'Every blog the sitemap lists is already in the list.'}</span>
                 {found.length > 0 && <><Button size="sm" variant="primary" busy={busy === 'bulk'} disabled={!picked.length} onClick={() => addPicked(picked)}>Add {picked.length || ''} ticked</Button><Button size="sm" busy={busy === 'bulk'} onClick={() => addPicked(found.slice(0, 40).map(x => x.url))}>Add all (up to 40)</Button></>}</div>)}
           </div>)}
@@ -64,7 +64,7 @@ export default function PostedBlogs({ b, toast, onWrite }) {
           <DataTable bare rows={found} rowKey={x => x.url} pageSize={10} sizes={[10, 25, 50]} exportName="blogs-on-website" label="blogs" searchPlaceholder="Search blogs" minWidth={700} columnsMenu={false} headClass="bg-slate-100 text-slate-700" empty={site.data ? 'Nothing new was found in the sitemap.' : 'Reading the sitemap…'}
             columns={[
               { id: 'pick', header: <span className="sr-only">Select</span>, csv: false, className: 'pl-4 pr-1 py-2 w-8', thClass: 'pl-4 pr-1 py-2.5 w-8', cell: x => <input type="checkbox" checked={picked.includes(x.url)} onChange={e => setPicked(p => (e.target.checked ? [...p, x.url] : p.filter(u => u !== x.url)))} aria-label={`Select ${x.title}`} /> },
-              { id: 'title', header: 'Blog (from its address)', value: x => x.title, className: 'px-3 py-2.5 min-w-[260px]', cell: x => <div><div className="text-13 font-semibold text-slate-900">{x.title}</div><a href={x.url} target="_blank" rel="noreferrer noopener" className="block text-11.5 text-indigo-600 hover:underline truncate max-w-[420px]">{x.url.replace(/^https?:\/\/(www\.)?/, '')}</a></div> },
+              { id: 'title', header: 'Blog', value: x => x.title, className: 'px-3 py-2.5 min-w-[260px]', cell: x => <div><div className="text-13 font-semibold text-slate-900">{x.title}</div><a href={x.url} target="_blank" rel="noreferrer noopener" className="block text-11.5 text-indigo-600 hover:underline truncate max-w-[420px]">{x.url.replace(/^https?:\/\/(www\.)?/, '')}</a></div> },
               { id: 'lastmod', header: 'Changed', first: 'desc', value: x => Date.parse(x.lastmod) || null, className: 'px-3 py-2.5 whitespace-nowrap text-12 text-slate-500', cell: x => (x.lastmod ? String(x.lastmod).slice(0, 10) : '—') },
               { id: 'add', header: 'Action', csv: false, right: true, className: 'px-3 py-2.5 text-right', thClass: 'px-3 py-2.5', cell: x => <Act icon={Plus} tone="indigo" busy={busy === 'bulk'} tip="Add this blog to the list." onClick={() => addPicked([x.url])}>Add</Act> },
             ]} />

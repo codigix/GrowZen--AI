@@ -458,3 +458,24 @@ def test_the_blogs_on_the_website_are_found_and_added_in_one_go(client, monkeypa
     r = client.post(f"{base}/existing/bulk", json={"urls": ["https://site.example/blog/second-post/", "https://elsewhere.example/blog/x", "https://site.example/blog/first-post"]}).json()
     assert r == {"added": 1, "skipped": 2}  # another site's address and one already listed are skipped
     assert "Second Post Heading" in [a["title"] for a in client.get(base).json()["articles"]]
+
+
+def test_a_wordpress_site_lists_its_own_posts_with_titles_even_when_they_are_not_under_blog(client, monkeypatch):
+    from app.routers import articles as ar
+    bid = client.post("/api/v1/businesses", json={"name": "Wp Co", "website": "https://wp.example/"}).json()["id"]
+    monkeypatch.setattr(ar, "_wordpress_posts", lambda w: [{"url": "https://wp.example/what-digital-marketing-do/", "lastmod": "2026-11-23", "title": "What Digital Marketing Do? A Simple Guide"}, {"url": "https://wp.example/", "lastmod": None, "title": "Home"}])
+    r = client.get(f"/api/v1/businesses/{bid}/articles/site-blogs").json()
+    assert r["source"] == "wordpress" and [x["title"] for x in r["blogs"]] == ["What Digital Marketing Do? A Simple Guide"]  # the home page is never a blog
+
+
+def test_a_site_with_a_sitemap_of_posts_takes_everything_in_it(client, monkeypatch):
+    from app.routers import articles as ar
+    from app.services import sitemap
+    bid = client.post("/api/v1/businesses", json={"name": "Sm Co", "website": "https://sm.example/"}).json()["id"]
+    monkeypatch.setattr(ar, "_wordpress_posts", lambda w: [])
+    def fake(url, n, child_filter=None, **k):
+        allp = [("https://sm.example/post-one/", "2026-10-01"), ("https://sm.example/post-two/", None), ("https://sm.example/contact/", None)]
+        return allp[:2] if child_filter else allp
+    monkeypatch.setattr(sitemap, "discover_site_entries", fake)
+    r = client.get(f"/api/v1/businesses/{bid}/articles/site-blogs").json()
+    assert r["source"] == "sitemap" and [x["title"] for x in r["blogs"]] == ["Post one", "Post two"]
