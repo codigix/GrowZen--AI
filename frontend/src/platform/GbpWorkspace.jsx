@@ -10,7 +10,7 @@ import { ProfileStrength, QuickTiles, MissingInfoCard, ShareProfileCard, NewRevi
 import { VerificationCard, ManagersCard, AdvertiseCard, DangerCard } from './GbpAdmin';
 import { refreshBusinesses, Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill, areaCls, useAction, useDoubleConfirm, Sk, SkStats, SkTable, SkList, SkScore, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
-import DataTable, { usePager, Pager, useSorted, SortTh } from './DataTable';
+import DataTable, { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import { useGbpLive } from './AccessGate';
 import { VerifyPill } from './GbpAccounts';
 
@@ -547,24 +547,88 @@ export function TasksSection({ b }) {
   );
 }
 
+/** One log entry in plain words: what it was, which part of the profile it touched, and the proof the log holds (what was sent, what came back, the link). */
+const AREAS = { post: 'Posts', review: 'Reviews', profile: 'Profile', photo: 'Photos', sync: 'Sync', task: 'Tasks', other: 'Other' };
+const FIELD = { phoneNumbers: 'phone numbers', phone: 'phone', title: 'name', name: 'name', websiteUri: 'website', website: 'website', profile: 'description', description: 'description', regularHours: 'opening hours', serviceItems: 'services', services: 'services', labels: 'labels', categories: 'categories', storefrontAddress: 'address', placeActionLinks: 'booking links', booking_url: 'booking link', action_links: 'booking links', attributes: 'attributes', additional_phones: 'extra phones' };
+const fieldList = (l) => [...new Set((l || []).map(f => FIELD[f] || String(f).replace(/_/g, ' ')))].join(', ');
+function explain(a) {
+  const d = a.detail || {};
+  const act = String(a.action || '');
+  const area = /post/.test(act) ? 'post' : /review|reply/.test(act) ? 'review' : /media|photo|logo/.test(act) ? 'photo' : /gbp_synced|sync/.test(act) ? 'sync' : /task|autopilot/.test(act) ? 'task' : /business_updated|profile|category|address|hours|attribute|link|special|verification/.test(act) ? 'profile' : 'other';
+  let what = nice(act), proof = '', link = d.url || null;
+  if (act === 'gbp_synced') { what = 'Pulled the profile from Google'; proof = `${d.reviews ?? 0} reviews (${d.new_reviews ?? 0} new), ${d.photos ?? 0} photos, ${d.posts ?? 0} posts, ${d.keywords ?? 0} search keywords${d.verification ? ` · ${String(d.verification).toLowerCase()}` : ''}`; }
+  else if (act === 'business_updated') { const sent = fieldList(d.pushed_to_google); what = sent ? 'Changed the profile and sent it to Google' : 'Saved profile details here'; proof = `${sent ? `Sent to Google: ${sent}. ` : ''}Fields in the form: ${fieldList(d.fields).slice(0, 140)}`; }
+  else if (act === 'task_applied') { what = 'Applied an approved item on Google'; const r = d.result || {}; proof = r.note || (r.published ? 'Published on Google' : r.posted ? 'Posted on Google' : Object.keys(r).length ? JSON.stringify(r).slice(0, 140) : ''); }
+  else if (act === 'task_failed') { what = 'An approved item failed on Google'; proof = d.error || ''; }
+  else if (act === 'autopilot_scheduled') { what = 'Approved a post for a time'; proof = d.at ? `It goes live ${fmtDateTime(d.at)}` : ''; }
+  else if (act === 'autopilot_unscheduled' || act === 'post_unscheduled') { what = 'Took a scheduled post back to a draft'; }
+  else if (act === 'post_published') { what = 'Published a post'; proof = d.url ? String(d.url) : ''; }
+  else if (/gbp_media/.test(act)) { what = /deleted/.test(act) ? 'Deleted a photo from Google' : 'Added a photo to Google'; }
+  else if (d && typeof d === 'object') { proof = Object.entries(d).filter(([, v]) => v != null && typeof v !== 'object').slice(0, 4).map(([k, v]) => `${String(k).replace(/_/g, ' ')}: ${String(v).slice(0, 60)}`).join(' · '); }
+  return { area, what, proof, link };
+}
+
+const monthStart = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}-01`;
+
+/** Month by month: everything done on this profile, grouped by day, with the proof the log keeps for each. */
+function MonthHistory({ b }) {
+  const now = new Date();
+  const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
+  const [area, setArea] = useState('all');
+  const next = ym.m === 11 ? { y: ym.y + 1, m: 0 } : { y: ym.y, m: ym.m + 1 };
+  const log = useApi(`/activity?business_id=${b.id}&limit=1000&since=${monthStart(ym.y, ym.m)}&until=${monthStart(next.y, next.m)}`);
+  const items = useMemo(() => (log.data || []).map(a => ({ ...a, ...explain(a) })).filter(a => !/^(login|audit_started|indexing_)/.test(String(a.action))), [log.data]);
+  const counts = useMemo(() => Object.fromEntries(Object.keys(AREAS).map(k => [k, items.filter(a => a.area === k).length])), [items]);
+  const shown = area === 'all' ? items : items.filter(a => a.area === area);
+  const days = useMemo(() => { const g = new Map(); for (const a of shown) { const k = String(a.created_at).slice(0, 10); (g.get(k) || g.set(k, []).get(k)).push(a); } return [...g.entries()]; }, [shown]);
+  const label = new Date(ym.y, ym.m, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const step = (n) => setYm(v => { const d = new Date(v.y, v.m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const atNow = ym.y === now.getFullYear() && ym.m === now.getMonth();
+  const exportCsv = () => downloadCsv(`profile-history-${ym.y}-${String(ym.m + 1).padStart(2, '0')}`, ['Date', 'Area', 'What was done', 'Proof', 'By', 'Link'], shown.map(a => [fmtDateTime(a.created_at), AREAS[a.area], a.what, a.proof, a.actor || '', a.link || '']));
+  return (
+    <Card pad={false} title={`What we did in ${label}`} subtitle="Every change and action on this profile, with the proof the log keeps: what was sent to Google and what came back."
+      action={<div className="flex items-center gap-1.5">
+        <button type="button" onClick={() => step(-1)} aria-label="Previous month" className="h-8 w-8 rounded-lg ring-1 ring-slate-200 bg-white hover:bg-slate-50 cursor-pointer text-slate-600">‹</button>
+        <span className="text-13 font-semibold text-slate-800 min-w-[110px] text-center">{label}</span>
+        <button type="button" onClick={() => step(1)} disabled={atNow} aria-label="Next month" className="h-8 w-8 rounded-lg ring-1 ring-slate-200 bg-white hover:bg-slate-50 cursor-pointer text-slate-600 disabled:opacity-40 disabled:cursor-default">›</button>
+        <Button size="sm" onClick={exportCsv} disabled={!shown.length}>Export CSV</Button></div>}>
+      <div className="px-5 pb-3 flex flex-wrap gap-2">
+        {[['all', 'All', items.length], ...Object.keys(AREAS).filter(k => counts[k]).map(k => [k, AREAS[k], counts[k]])].map(([k, l, n]) => (
+          <button key={k} type="button" onClick={() => setArea(k)} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ${area === k ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l} <span className="tabular-nums opacity-80">{n}</span></button>))}
+      </div>
+      {!log.data ? <div className="px-5 pb-4"><SkList rows={4} avatar={false} /></div> : days.length === 0 ? <p className="text-13 text-slate-500 py-8 text-center border-t border-slate-100">Nothing was recorded in {label}.</p> : (
+        <div className="border-t border-slate-100 max-h-[560px] overflow-y-auto">
+          {days.map(([day, list]) => (
+            <div key={day}>
+              <div className="sticky top-0 bg-slate-100 px-5 py-1.5 text-12 font-semibold text-slate-700 flex items-center justify-between"><span>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</span><span className="text-slate-500 font-medium">{list.length} action{list.length === 1 ? '' : 's'}</span></div>
+              <ul className="divide-y divide-slate-100">
+                {list.map(a => (
+                  <li key={a.id} className="px-5 py-2 flex gap-3 items-start">
+                    <span className="text-11.5 text-slate-400 w-11 shrink-0 pt-0.5 tabular-nums">{new Date(a.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <Badge tone={a.area === 'post' ? 'blue' : a.area === 'review' ? 'orange' : a.area === 'profile' ? 'violet' : a.area === 'photo' ? 'green' : 'gray'}>{AREAS[a.area]}</Badge>
+                    <div className="min-w-0 flex-1"><div className="text-13 text-slate-900">{a.what}{a.actor ? <span className="text-slate-400"> · {a.actor}</span> : null}</div>
+                      {(a.proof || a.link) && <div className="text-12 text-slate-500 break-words">{a.proof}{a.link && !String(a.proof).includes(a.link) ? <> <a href={a.link} target="_blank" rel="noreferrer noopener" className="text-indigo-600 hover:underline">Open</a></> : null}</div>}</div>
+                  </li>))}
+              </ul>
+            </div>))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function SyncSection({ b, onSync, syncing }) {
   const live = useGbpLive(b);
-  const activity = useApi(`/activity?business_id=${b.id}&limit=200`);
   const d = live.data;
-  const events = (activity.data || []).filter(a => /sync|connect|import/i.test(String(a.action || a.kind || '')));
   return (
-    <div className="space-y-4">
-      <SectionHead title="Sync History" subtitle="When this client's data was last pulled from Google" sources={['google']}>
+    <div className="space-y-3">
+      <SectionHead title="Sync & History" subtitle="When this client's data was last pulled from Google, and what was done on the profile month by month" sources={['google']}>
         {d?.linked && <Button variant="primary" busy={syncing} onClick={onSync}>Sync now</Button>}
       </SectionHead>
       <Card title="Last synchronisation">
         {!d ? <Loading /> : <div className="text-13 text-slate-700">{d.linked ? <>Last synced <b>{ago(d.live?.synced_at || d.connection?.last_sync_at)}</b> ({fmtDateTime(d.live?.synced_at || d.connection?.last_sync_at)}). Data refreshes automatically on a schedule and while this page is open.</> : 'Not connected to Google, so nothing has been synced.'}{d.connection?.last_error && <div className="text-red-600 mt-1">{d.connection.last_error}</div>}</div>}
       </Card>
-      <Card title="Sync and connection events">
-        {!activity.data ? <Loading /> : events.length === 0 ? <p className="text-13 text-slate-500 py-4 text-center">No sync events recorded for this client yet.</p> : (
-          <ul className="divide-y divide-slate-100">{events.map(a => <li key={a.id} className="py-2 flex gap-3 text-13"><span className="text-11.5 text-slate-400 w-24 shrink-0">{fmtDateTime(a.created_at)}</span><span className="text-slate-700">{String(a.action || a.kind).replace(/_/g, ' ')}{a.actor ? <span className="text-slate-500"> · {a.actor}</span> : null}</span></li>)}</ul>
-        )}
-      </Card>
+      <MonthHistory b={b} />
     </div>
   );
 }

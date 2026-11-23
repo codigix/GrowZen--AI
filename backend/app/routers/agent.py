@@ -179,8 +179,18 @@ def reject(task_id: int, body: DecisionIn | None = None, db: Session = Depends(g
 
 
 @router.get("/activity")
-def activity(business_id: int | None = None, limit: int = 100, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    q = select(ActivityLog).order_by(ActivityLog.created_at.desc()).limit(min(limit, 500))
+def activity(business_id: int | None = None, limit: int = 100, since: str | None = None, until: str | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The activity log, newest first. `since` and `until` (YYYY-MM-DD, until is exclusive) cut it to a period, e.g. one month."""
+    q = select(ActivityLog).order_by(ActivityLog.created_at.desc())
+    from datetime import datetime, timezone
+    for raw, op in ((since, "ge"), (until, "lt")):
+        if raw:
+            try:
+                d = datetime.fromisoformat(raw[:10]).replace(tzinfo=timezone.utc)
+            except ValueError:
+                raise HTTPException(422, "Use dates like 2026-11-01.")
+            q = q.where(ActivityLog.created_at >= d if op == "ge" else ActivityLog.created_at < d)
+    q = q.limit(min(limit, 1000))
     q = _scope(db, user, q, ActivityLog.business_id, business_id)
     return rows(db.scalars(q))
 
