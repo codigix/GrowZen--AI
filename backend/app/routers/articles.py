@@ -635,6 +635,35 @@ def publish_wordpress(article_id: int, b: Business = Depends(get_business), db: 
     return publish(article_id, PublishIn(), b, db)
 
 
+class ExistingIn(BaseModel):
+    title: str = Field(min_length=3, max_length=255)
+    url: str = Field(min_length=8, max_length=500)
+    keyword: str | None = Field(default=None, max_length=255)
+
+
+@router.post("/existing", status_code=201)
+def add_existing(body: ExistingIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Add a blog that is already live on the business's website (written elsewhere), so it is in the list of posted blogs. Nothing is published or changed on the website."""
+    from urllib.parse import urlsplit
+    url = body.url.strip()
+    p = urlsplit(url)
+    if p.scheme not in ("http", "https") or not p.hostname:
+        raise HTTPException(422, "Enter the full address of the blog, starting with https://")
+    site = (urlsplit(b.website or "").hostname or "").lower().removeprefix("www.")
+    if site and (p.hostname or "").lower().removeprefix("www.") != site:
+        raise HTTPException(422, f"That address is not on this project's website ({site}).")
+    def same(u: str) -> str:  # www, scheme and a trailing slash do not make a different blog
+        q = urlsplit(u or "")
+        return f"{(q.hostname or '').lower().removeprefix('www.')}{q.path.rstrip('/')}?{q.query}"
+    if any(same(x.wp_url or x.react_url or "") == same(url) and x.wp_status != "deleted" for x in db.scalars(select(Article).where(Article.business_id == b.id))):
+        raise HTTPException(409, "This blog is already in the list.")
+    a = Article(business_id=b.id, keyword=(body.keyword or body.title).strip()[:255], title=body.title.strip(), status="completed", body="", wp_url=url, wp_status="publish", publish_method="existing",
+                slug=(p.path.rstrip("/").rsplit("/", 1)[-1] or None), generated_at=datetime.now(timezone.utc))
+    db.add(a)
+    db.commit()
+    return row(a, exclude={"body"})
+
+
 @router.delete("/{article_id}", status_code=204)
 def delete_article(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     a = db.get(Article, article_id)

@@ -417,3 +417,17 @@ def test_another_projects_article_is_not_reachable(client, biz):
     other = client.post("/api/v1/businesses", json={"name": "Other"}).json()["id"]
     a = _article(db, bid)
     assert client.get(f"/api/v1/businesses/{other}/blog-flow/promo/{a.id}").status_code == 404
+
+
+def test_a_blog_already_on_the_website_can_be_added_listed_and_deleted(client):
+    bid = client.post("/api/v1/businesses", json={"name": "Posted Co", "website": "https://posted.example/"}).json()["id"]
+    base = f"/api/v1/businesses/{bid}/articles"
+    r = client.post(f"{base}/existing", json={"title": "How to choose a clinic agency", "url": "https://www.posted.example/blog/choose-agency/", "keyword": "clinic agency"})
+    assert r.status_code == 201 and r.json()["wp_status"] == "publish" and r.json()["slug"] == "choose-agency"
+    listed = client.get(base).json()["articles"]
+    assert [a["title"] for a in listed if a["wp_status"] == "publish"] == ["How to choose a clinic agency"] and listed[0]["publishing_status"] == "published"
+    assert client.post(f"{base}/existing", json={"title": "Same again", "url": "https://posted.example/blog/choose-agency"}).status_code == 409
+    assert client.post(f"{base}/existing", json={"title": "Elsewhere", "url": "https://other.example/blog/x"}).status_code == 422
+    assert client.post(f"{base}/existing", json={"title": "Not a link", "url": "blog/x/yyyy"}).status_code == 422
+    assert client.delete(f"{base}/{r.json()['id']}").status_code == 204
+    assert client.get(base).json()["articles"] == []

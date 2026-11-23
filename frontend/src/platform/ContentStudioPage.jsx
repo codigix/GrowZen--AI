@@ -20,6 +20,7 @@ import ReactSitePanel from './ReactSitePanel';
 import HtmlSitePanel from './HtmlSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
+import PostedBlogs from './PostedBlogs';
 import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, ResumeCard, ArticleDownloads } from './BlogFlow';
 import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage, brandOf } from './keywordHighlight';
 
@@ -1506,7 +1507,7 @@ const TOPIC_HANDOFF = 'growzen.writerTopic';
  * Main AI Content Studio Component
  */
 export default function ContentStudioPage() {
-  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'articles', 'calendar', 'publishing']);
+  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'articles', 'posted', 'calendar', 'publishing']);
   const openInWriter = (id) => { if (!id) { setOpenArticleId(null); return; } setActiveTopic(null); setOpenArticleId(id); setTab('blog'); };
   // Moving from /trends to /blog remounts this page (the layout resets on every address), so a topic picked in
   // Topic Finder is handed over through sessionStorage and taken once here.
@@ -1540,6 +1541,7 @@ export default function ContentStudioPage() {
               { id: 'trends', label: 'Trending Topics Radar' },
               { id: 'blog', label: 'AI Blog & Article Writer' },
               { id: 'articles', label: 'Generated Articles' },
+              { id: 'posted', label: 'Posted Blogs' },
               { id: 'calendar', label: 'Publishing Calendar & CMS Queue' }
             ]}
           />
@@ -1548,6 +1550,7 @@ export default function ContentStudioPage() {
           {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} onPickTopic={handleSelectTopic} onShowArticles={() => setTab('articles')} toast={window.__seoToast || console.log} />}
           {tab === 'articles' && <GeneratedArticlesTab b={b} openId={openArticleId} onOpen={openInWriter} toast={window.__seoToast || console.log}
             onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
+          {tab === 'posted' && <PostedBlogs b={b} toast={window.__seoToast || console.log} onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
           {tab === 'calendar' && <PublishingCalendar b={b} toast={window.__seoToast || console.log} onOpenArticle={openInWriter} />}
           {tab === 'publishing' && <PublishingSetup b={b} />}
         </div>
