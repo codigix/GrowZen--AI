@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { RefreshCw, Send, Search as SearchIcon, ShieldCheck, Download, CheckCircle2, AlertTriangle, ExternalLink, Play } from 'lucide-react';
+import { RefreshCw, Send, Search as SearchIcon, ShieldCheck, Download, CheckCircle2, AlertTriangle, ExternalLink, Play, Eye } from 'lucide-react';
 import { SeoShell, Card, Button, Badge, ErrorNote, useAction, useToast, SkList } from './SeoUi';
 import { Act, OpenAct } from './TableBits';
+import PageDetail from './PageDetail';
 import Select from '../components/Select';
 import { api, useApi } from './seoApi';
 import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
@@ -16,7 +17,7 @@ const FILTERS = [['all', 'Every page'], ['tech_problem', 'Blocked or risky: may 
 const PAGE_VALUE = (p, k) => (k === 'page' ? p.path : k === 'tech' ? p.tech?.verdict ?? null : k === 'google' ? p.g_state ?? null : k === 'crawl' ? (p.g_last_crawl ? Date.parse(p.g_last_crawl) : null) : (p.submitted_at ? Date.parse(p.submitted_at) : null));
 
 /** The pages table: sortable headings and real pages over the rows the server sent for the filter and search above it. */
-function IndexTable({ pages, d, gs, busy, goGoogle, total, resetKey }) {
+function IndexTable({ pages, d, gs, busy, goGoogle, onDetails, total, resetKey }) {
   const { sorted, sort, onSort } = useSorted(pages, PAGE_VALUE);
   const pager = usePager(sorted, { size: 25, resetKey: `${resetKey}|${sort?.key}|${sort?.dir}` });
   return (
@@ -38,6 +39,7 @@ function IndexTable({ pages, d, gs, busy, goGoogle, total, resetKey }) {
                   <td className="px-3 py-2 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
                     <Act icon={ExternalLink} tone={p.g_state === 'indexed' ? 'sky' : 'indigo'} busy={busy === `go${p.url}`} onClick={() => goGoogle(p)}
                       tip={p.g_state === 'indexed' ? "Check: ask Google about this page and open its report in Search Console." : "Index it: ask Google about this page, send it to the other search engines, and open its report in Search Console, where you press Request indexing."}>{p.g_state === 'indexed' ? 'Check' : 'Index it'}</Act>
+                    <Act icon={Eye} tone="violet" tip="Details: what Google holds for this page (like Search Console's URL inspection) and a fresh test of the page." onClick={() => onDetails(p.url)}>Details</Act>
                     <OpenAct url={p.url} tip="Open: show the page in a new tab." />
                   </span></td>
                 </tr>); })}
@@ -58,6 +60,7 @@ function Indexing({ b }) {
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const [keyMsg, setKeyMsg] = useState(null);
+  const [detail, setDetail] = useState(null); // the address of the page whose details are open
   const d = o.data;
   const tried = useRef(false);
   // The first time the page opens with pages nobody has checked, check them: no button to press.
@@ -155,7 +158,7 @@ function Indexing({ b }) {
           <Button size="sm" icon={SearchIcon} busy={busy === 'inspect'} onClick={() => inspect()}>Check Google for 25 pages</Button>
           <Button size="sm" variant="primary" icon={Send} busy={busy === 'send'} disabled={!c.pending || !d.key.ready} title={d.key.ready ? '' : 'Put the key file on the site first'} onClick={() => send()}>Send {c.pending} waiting page{c.pending === 1 ? '' : 's'}</Button>
         </div>
-        <IndexTable pages={d.pages} d={d} gs={gs} busy={busy} goGoogle={goGoogle} total={c.total} resetKey={`${status}|${q}`} />
+        <IndexTable pages={d.pages} d={d} gs={gs} busy={busy} goGoogle={goGoogle} onDetails={setDetail} total={c.total} resetKey={`${status}|${q}`} />
       </Card>
       <Card title="Automatic indexing" subtitle="Every day the software reads your sitemap, finds new and changed pages, sends them to the other search engines, and asks Google how each page is doing."
         action={<span className="flex gap-2"><Button size="sm" icon={Play} busy={busy === 'run'} onClick={runNow}>Run it now</Button>{d.auto ? <Button size="sm" onClick={() => auto(false)} busy={busy === 'auto'}>Turn off</Button> : <Button size="sm" variant="primary" onClick={() => auto(true)} busy={busy === 'auto'}>Turn on</Button>}</span>}>
@@ -197,6 +200,7 @@ function Indexing({ b }) {
       </div>
 
       {toastNode}
+      <PageDetail bid={b.id} url={detail} onClose={() => setDetail(null)} onChanged={() => o.reload(true)} />
     </div>
   );
 }

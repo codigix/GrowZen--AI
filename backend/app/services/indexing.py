@@ -390,6 +390,93 @@ def parse_inspection(js: dict[str, Any]) -> dict[str, Any]:
     return {"state": state, "reason": cov[:250] or None, "last_crawl": crawled, "canonical": (r.get("googleCanonical") or None), "link": ((js.get("inspectionResult") or {}).get("inspectionResultLink") or None)}
 
 
+def parse_detail(js: dict[str, Any]) -> dict[str, Any]:
+    """Everything the URL Inspection API says about one page, in the order Search Console shows it: the verdict, the page's availability, and the enhancements (mobile, rich results)."""
+    res = js.get("inspectionResult") or {}
+    r = res.get("indexStatusResult") or {}
+    mob = res.get("mobileUsabilityResult") or {}
+    rich = res.get("richResultsResult") or {}
+    base = parse_inspection(js)
+    verdict = r.get("verdict")
+    return {
+        "state": base["state"], "verdict": verdict, "coverage": r.get("coverageState"), "advice": advice(r.get("coverageState")), "link": base["link"],
+        "robots": r.get("robotsTxtState"), "indexing": r.get("indexingState"), "fetch": r.get("pageFetchState"), "crawled_as": r.get("crawledAs"),
+        "last_crawl": r.get("lastCrawlTime"), "google_canonical": r.get("googleCanonical"), "user_canonical": r.get("userCanonical"),
+        "sitemaps": list(r.get("sitemap") or [])[:10], "referring": list(r.get("referringUrls") or [])[:10],
+        "mobile": {"verdict": mob.get("verdict"), "issues": [{"type": i.get("issueType"), "severity": i.get("severity"), "message": i.get("message")} for i in mob.get("issues") or []]} if mob else None,
+        "rich": {"verdict": rich.get("verdict"), "items": [{"type": d.get("richResultType"), "items": [{"name": it.get("name"), "issues": [{"message": x.get("issueMessage"), "severity": x.get("severity")} for x in it.get("issues") or []]} for it in d.get("items") or []]} for d in rich.get("detectedItems") or []]} if rich else None,
+    }
+
+
+def live_test(url: str) -> dict[str, Any]:
+    """Load the page right now, the way a crawler would, and report what came back: status, redirects, headers that matter, the tags Google reads and the HTML itself.
+    This is OUR fetch, not Google's: Google's own live test is only available inside Search Console and is not offered through its API."""
+    import time as _time
+
+    from bs4 import BeautifulSoup
+
+    from .net import site_client
+    client = site_client(15)
+    t0 = _time.time()
+    try:
+        r = client.get(url)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"The page could not be loaded: {str(exc)[:160]}", "check": check_page(url)}
+    finally:
+        client.close()
+    html = r.text if "html" in (r.headers.get("content-type") or "").lower() else ""
+    soup = BeautifulSoup(html, "html.parser") if html else None
+
+    def meta(name: str) -> str | None:
+        m = soup.find("meta", attrs={"name": re.compile(f"^{name}$", re.I)}) if soup else None
+        return (m.get("content") or "").strip() if m else None
+
+    og = {}
+    if soup:
+        for m in soup.find_all("meta", attrs={"property": re.compile(r"^og:", re.I)}):
+            og[(m.get("property") or "")[3:]] = (m.get("content") or "")[:200]
+    chain = [str(h.url) for h in r.history] + [str(r.url)]
+    return {
+        "ok": True, "status": r.status_code, "final_url": str(r.url), "redirects": chain if len(chain) > 1 else [], "ms": int((_time.time() - t0) * 1000), "bytes": len(r.content),
+        "content_type": r.headers.get("content-type"), "x_robots": r.headers.get("x-robots-tag"), "server": r.headers.get("server"), "tested_at": _now().isoformat(),
+        "title": (soup.title.string.strip() if soup and soup.title and soup.title.string else None), "description": meta("description"), "robots_meta": meta("robots") or meta("googlebot"),
+        "canonical": next((urljoin(str(r.url), (l.get("href") or "")) for l in (soup.find_all("link") if soup else []) if "canonical" in (l.get("rel") or [])), None),
+        "h1": [h.get_text(" ", strip=True)[:140] for h in (soup.find_all("h1") if soup else [])][:3], "lang": (soup.html.get("lang") if soup and soup.html else None),
+        "og": og, "schema_types": sorted({str(x)[:40] for s in (soup.find_all("script", type="application/ld+json") if soup else []) for x in re.findall(r'"@type"\s*:\s*"([^"]+)"', s.string or "")})[:12],
+        "html": html[:60000], "html_truncated": len(html) > 60000, "check": check_page(url),
+    }
+
+
+def page_detail(db: Session, b: Business, url: str) -> dict[str, Any]:
+    """The page's two views: what Google holds for it (URL Inspection API) and a fresh test of the page itself. Google's side is saved on the page's row too."""
+    from . import gsc_access
+    host = host_of(b)
+    if not host:
+        raise IndexingError("Add the project's website first.")
+    if (urlsplit(url).hostname or "").lower().removeprefix("www.") != host.lower().removeprefix("www."):
+        raise IndexingError("That address is not on this project's website.")
+    google, gerr = None, None
+    state, msg, sc, site = gsc_access.search_console(db, b, host)
+    if state != "ok":
+        gerr = msg
+    else:
+        try:
+            google = parse_detail(sc.inspect(site, url))
+            row = db.scalar(select(IndexPage).where(IndexPage.business_id == b.id, IndexPage.url == url))
+            if row is not None:
+                crawl = google["last_crawl"]
+                try:
+                    row.g_last_crawl = datetime.fromisoformat(crawl.replace("Z", "+00:00")) if crawl else row.g_last_crawl
+                except ValueError:
+                    pass
+                row.g_state, row.g_reason, row.g_canonical, row.g_checked_at = google["state"], (google["coverage"] or "")[:250] or None, google["google_canonical"], _now()
+                row.g_link = google["link"] or row.g_link
+                db.commit()
+        except Exception as exc:  # noqa: BLE001 - Google's reason (quota, permission)
+            gerr = str(exc)[:240]
+    return {"url": url, "google": google, "google_error": gerr, "live": live_test(url)}
+
+
 def inspect(db: Session, b: Business, urls: list[str] | None = None, limit: int = INSPECT_BATCH) -> dict[str, Any]:
     """Ask Google (URL Inspection API) about pages: the chosen ones, else the pages never checked, then the ones checked longest ago."""
     from . import gsc_access

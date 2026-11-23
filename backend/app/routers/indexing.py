@@ -129,6 +129,20 @@ def inspect(body: InspectIn, b: Business = Depends(get_business), db: Session = 
         raise HTTPException(422, str(exc)) from exc
 
 
+class DetailIn(BaseModel):
+    url: str = Field(min_length=8, max_length=1000)
+
+
+@router.post("/page-detail")
+def page_detail(body: DetailIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """One page in full: Google's inspection result (verdict, availability, canonical, last crawl, mobile, rich results) and a fresh live test (status, tags, HTML)."""
+    _guard(user)
+    try:
+        return indexing.page_detail(db, b, body.url.strip())
+    except indexing.IndexingError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @router.post("/verify-key")
 def verify_key(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     _guard(user)

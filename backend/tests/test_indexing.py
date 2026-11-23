@@ -271,3 +271,22 @@ def test_the_daily_counts_are_kept_and_give_back_the_last_days_oldest_first(clie
         db.query(Business).filter(Business.id == b.id).delete()
         db.commit()
         db.close()
+
+
+def test_one_page_in_full_shows_googles_answer_and_a_live_test(client, bid, monkeypatch):
+    url = "https://index.example/blog/post"
+    with_google(monkeypatch, {url: {"verdict": "NEUTRAL", "coverageState": "Crawled - currently not indexed", "robotsTxtState": "ALLOWED", "pageFetchState": "SUCCESSFUL", "crawledAs": "MOBILE", "lastCrawlTime": "2026-11-23T07:14:23Z"}})
+    monkeypatch.setattr(indexing, "live_test", lambda u: {"ok": True, "status": 200, "html": "<html></html>", "check": {"verdict": "indexable", "reasons": []}})
+    r = client.post(api(client, bid, "/page-detail"), json={"url": url})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["google"]["state"] == "not_indexed" and d["google"]["coverage"] == "Crawled - currently not indexed" and d["google"]["crawled_as"] == "MOBILE" and d["google_error"] is None
+    assert d["live"]["status"] == 200
+    assert client.post(api(client, bid, "/page-detail"), json={"url": "https://other.example/x"}).status_code == 422  # only this project's own website
+
+
+def test_the_page_detail_still_gives_the_live_test_when_google_is_not_connected(client, bid, monkeypatch):
+    no_google(monkeypatch)
+    monkeypatch.setattr(indexing, "live_test", lambda u: {"ok": True, "status": 200, "html": "", "check": {"verdict": "indexable", "reasons": []}})
+    d = client.post(api(client, bid, "/page-detail"), json={"url": "https://index.example/a"}).json()
+    assert d["google"] is None and "No Google account" in d["google_error"] and d["live"]["ok"]
