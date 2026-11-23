@@ -6,6 +6,7 @@ import ProcessTasks from './ProcessTasks';
 import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, SourceTag, ErrorNote, SERIES, useToast, useAction, useUrlTab, useDoubleConfirm, inputCls, SkTable, SkList } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
+import { Segments } from './StatBits';
 
 const sameDigits = (a, b) => { const x = String(a || '').replace(/\D/g, ''), y = String(b || '').replace(/\D/g, ''); return x.length >= 7 && y.length >= 7 && (x.endsWith(y.slice(-8)) || y.endsWith(x.slice(-8))); };
 const STATUS_PILL = { listed: ['good', 'Correct'], inconsistent: ['warning', 'Mismatch'], pending: ['info', 'Waiting'], missing: ['critical', 'Missing'] };
@@ -17,7 +18,7 @@ function CopyButton({ text, label }) {
 }
 
 /** One listing site: its state, the listing link, and what to do next (add the business there, save the link, check it against the profile). */
-function ListingRow({ d, nap, base, reload, toast }) {
+function ListingRow({ d, n, nap, base, reload, toast }) {
   const navigate = useNavigate();
   const [busy, error, run, setError] = useAction();
   const [editing, setEditing] = useState(false);
@@ -37,16 +38,17 @@ function ListingRow({ d, nap, base, reload, toast }) {
   const remove = () => ask({ what: `your saved ${d.label} listing`, effect: 'The saved link and its check are removed from this list. The listing on the site itself is not touched.', onConfirm: () => run('remove', async () => { await api(`${base}/listings/${d.key}`, { method: 'DELETE' }); setUrl(''); reload(); }) });
   const badPhone = d.found?.phone && nap.phone && !sameDigits(d.found.phone, nap.phone);
   return (
-    <tr className="align-top">
-      <td className="p-2.5">
+    <tr className="align-top hover:bg-slate-50/60">
+      <td className="px-2.5 py-2 text-12 text-slate-400 tabular-nums">{n}</td>
+      <td className="px-2.5 py-2">
         {confirmNode}
         <div className="flex items-center gap-2.5">
           <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 text-12 font-bold flex items-center justify-center shrink-0">{d.label.charAt(0)}</span>
           <div className="min-w-0"><div className="text-13 font-medium text-slate-900">{d.label}</div><div className="text-11 text-slate-400">{d.kind_label}{d.source === 'manual' ? ' · added by you' : d.source === 'auto' ? ' · found automatically' : ''}</div></div>
         </div>
       </td>
-      <td className="p-2.5"><span title={d.evidence}><StatusPill level={tone}>{label}</StatusPill></span>{proof && <div className="text-10.5 text-slate-400 mt-1 max-w-[150px] leading-tight">{proof}</div>}</td>
-      <td className="p-2.5 text-12 max-w-[300px]">
+      <td className="px-2.5 py-2"><span title={d.evidence}><StatusPill level={tone}>{label}</StatusPill></span>{proof && <div className="text-10.5 text-slate-400 mt-1 max-w-[150px] leading-tight">{proof}</div>}</td>
+      <td className="px-2.5 py-2 text-12 max-w-[300px]">
         {editing ? (
           <div className="flex flex-wrap gap-1.5"><input autoFocus className={`${inputCls} !h-8 text-12 flex-1 min-w-[160px]`} value={url} onChange={e => setUrl(e.target.value)} placeholder="https://… (your listing page)" aria-label={`${d.label} listing link`} onKeyDown={e => { if (e.key === 'Enter' && /^https?:\/\//i.test(url.trim())) saveUrl(); if (e.key === 'Escape') setEditing(false); }} />
             <Button size="sm" variant="primary" busy={busy === 'save'} disabled={!/^https?:\/\//i.test(url.trim())} onClick={saveUrl}>Save and check</Button><Button size="sm" onClick={() => { setEditing(false); setUrl(d.url || ''); }}>Cancel</Button></div>
@@ -55,7 +57,7 @@ function ListingRow({ d, nap, base, reload, toast }) {
         {d.note && !editing && <div className="mt-1 text-11.5 text-slate-500">{d.note}</div>}
         {error && <div className="mt-1 text-11.5 text-red-600">{error}</div>}
       </td>
-      <td className="p-2.5">
+      <td className="px-2.5 py-2">
         <div className="flex flex-wrap gap-1.5 justify-end">
           {d.managed ? <Button size="sm" onClick={() => navigate('/gmb-profile?tab=profile')}>Manage</Button> : (
             <>
@@ -83,7 +85,7 @@ function Listings({ b, ov, reload, toast, finishedAt, source, running, onRecheck
   const nap = ov.nap || {};
   const s = ov.summary || {};
   const [filter, setFilter] = useState('all');
-  const rows = (ov.directories || []).filter(d => filter === 'all' || (filter === 'fix' ? d.status === 'inconsistent' || d.status === 'missing' : d.status === filter));
+  const rows = (ov.directories || []).filter(d => filter === 'all' || d.status === filter);
   const base = `/businesses/${b.id}/citations`;
   const { sorted, sort, onSort } = useSorted(rows, listingValue);
   const pg = usePager(sorted, { size: 25, resetKey: filter });
@@ -92,44 +94,53 @@ function Listings({ b, ov, reload, toast, finishedAt, source, running, onRecheck
       d.url || '', d.found?.name || '', d.found?.phone || '', d.note || '', d.source === 'manual' ? 'Added by you' : d.source === 'auto' ? 'Found automatically' : '']));
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <span className="text-12 text-gray-500">{finishedAt ? `Automatic check ${fmtDateTime(finishedAt)}` : 'Automatic check not run yet'}</span>
-        <SourceTag source={source} />
-        <Button className="ml-auto" variant="primary" icon={Play} busy={running} onClick={onRecheck}>Re-check now</Button>
-      </div>
-
-      <Card title="Your business details (NAP)" subtitle="Use exactly this name, address and phone on every listing site. Copy them with one click."
-        action={<Button size="sm" onClick={() => navigate('/gmb-profile?tab=profile&sub=edit&step=contact')}>Edit in profile</Button>}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {[['Name', nap.name], ['Address', nap.address], ['Phone', nap.phone]].map(([k, v]) => (
-            <div key={k} className="rounded-lg bg-slate-50 px-3 py-2.5 min-w-0">
-              <div className="flex items-center justify-between text-11.5 font-medium text-slate-500">{k}<CopyButton text={v} label={k} /></div>
-              <div className={`text-13 mt-0.5 break-words ${v ? 'text-slate-900' : 'text-amber-700'}`}>{v || `Add the ${k.toLowerCase()} first`}</div>
-            </div>
-          ))}
+      <div className="space-y-3 mb-3">
+        <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+          <div className="min-w-0">
+            <div className="text-11.5 font-semibold uppercase tracking-wide text-slate-500">Your business details (NAP)</div>
+            <div className="text-11.5 text-slate-400">Use exactly these on every listing site</div>
+          </div>
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2 min-w-[300px]">
+            {[['Name', nap.name], ['Address', nap.address], ['Phone', nap.phone]].map(([k, v]) => (
+              <div key={k} className="rounded-lg bg-slate-50 px-3 py-1.5 min-w-0">
+                <div className="flex items-center justify-between text-11 font-semibold text-slate-500">{k}<CopyButton text={v} label={k} /></div>
+                <div className={`text-13 truncate ${v ? 'text-slate-900' : 'text-amber-700'}`} title={v || ''}>{v || `Add the ${k.toLowerCase()} first`}</div>
+              </div>
+            ))}
+          </div>
+          <Button size="sm" onClick={() => navigate('/gmb-profile?tab=profile&sub=edit&step=contact')}>Edit in profile</Button>
         </div>
-      </Card>
 
-      <div className="my-3 rounded-lg border border-slate-200 bg-white px-4 py-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-13 text-slate-600">
-        <span title={`${s.verified ?? 0} checked on the page · ${s.score ?? 0}% of the sites`}>Correct <b className="text-emerald-700 tabular-nums">{s.total ? `${s.listed}/${s.total}` : '—'}</b></span>
-        <span title="name or phone differs">Need fixing <b className="text-amber-700 tabular-nums">{s.inconsistent ?? 0}</b></span>
-        <span title="add the business">Not listed yet <b className="text-rose-700 tabular-nums">{s.missing ?? 0}</b></span>
-        <span title="submitted, not live yet">Waiting <b className="text-slate-900 tabular-nums">{s.pending ?? 0}</b></span>
+        <div className="rounded-xl bg-white ring-1 ring-slate-200 p-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            {[['listed', 'Correct', s.total ? `${s.listed}/${s.total}` : '—', '#10b981', `${s.verified ?? 0} checked on the page · ${s.score ?? 0}% of the sites`],
+              ['inconsistent', 'Need fixing', s.inconsistent ?? 0, '#f59e0b', 'Name or phone differs'], ['missing', 'Not listed yet', s.missing ?? 0, '#f43f5e', 'Add the business there'], ['pending', 'Waiting', s.pending ?? 0, '#64748b', 'Submitted, not live yet']].map(([id, label, value, color, hint]) => {
+              const on = filter === id;
+              return (
+                <button key={id} type="button" onClick={() => setFilter(on ? 'all' : id)} title={`${hint}. Click to show only these.`}
+                  className={`rounded-lg px-3 py-2 text-left ring-1 ring-inset cursor-pointer ${on ? 'bg-white ring-2' : 'bg-slate-50 ring-slate-200 hover:bg-white'}`} style={on ? { '--tw-ring-color': color, boxShadow: `inset 0 -3px 0 ${color}` } : undefined}>
+                  <span className="block text-20 leading-tight font-bold tabular-nums" style={{ color }}>{value}</span><span className="block text-11.5 text-slate-500">{label}</span>
+                </button>);
+            })}
+          </div>
+          <div className="mt-2.5"><Segments total={s.total || 1} parts={[{ label: 'Correct', value: s.listed ?? 0, color: '#10b981' }, { label: 'Need fixing', value: s.inconsistent ?? 0, color: '#f59e0b' }, { label: 'Waiting', value: s.pending ?? 0, color: '#94a3b8' }, { label: 'Not listed yet', value: s.missing ?? 0, color: '#f43f5e' }]} /></div>
+        </div>
       </div>
 
-      <Card title="Listing sites" subtitle="Add the business on each site, save its link, then press Check: we open the page and compare the name and phone with the profile."
-        action={<div className="flex gap-1">{[['all', 'All'], ['fix', 'Needs action'], ['listed', 'Correct']].map(([id, l]) => <button key={id} type="button" onClick={() => setFilter(id)} className={`h-7 px-2.5 rounded text-12 font-semibold cursor-pointer ${filter === id ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>)}
-          <button type="button" onClick={exportListings} disabled={!sorted.length} title="Download every listing site in the current filter as a CSV file" className={`${CSV_BTN} disabled:opacity-40`}><Download size={13} />Export CSV</button></div>}>
+      <Card pad={false} title={`Listing sites (${rows.length})`} subtitle="Add the business on each site, save its link, then press Check: we open the page and compare the name and phone."
+        action={<div className="flex flex-wrap items-center gap-2"><span className="text-12 text-slate-500 hidden md:inline">{finishedAt ? `Checked ${fmtDateTime(finishedAt)}` : 'Not checked yet'}</span><SourceTag source={source} />
+          <button type="button" onClick={exportListings} disabled={!sorted.length} title="Download every listing site in the current table as a CSV file" className={`${CSV_BTN} disabled:opacity-40`}><Download size={13} />Export CSV</button>
+          <Button size="sm" variant="primary" icon={Play} busy={running} onClick={onRecheck}>Re-check now</Button></div>}>
         <div className="overflow-x-auto">
           <table className="w-full text-13">
-            <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><SortTh id="site" sort={sort} onSort={onSort} className={LTH}>Site</SortTh><SortTh id="status" sort={sort} onSort={onSort} className={LTH}>Status</SortTh><SortTh id="url" sort={sort} onSort={onSort} className={LTH}>Listing</SortTh><th className="p-2 text-right font-medium">Next step</th></tr></thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.length === 0 ? <tr><td colSpan={4} className="py-8 text-center text-13 text-gray-500">Nothing here.</td></tr> : pg.rows.map(d => <ListingRow key={d.key} d={d} nap={nap} base={base} reload={reload} toast={toast} />)}
+            <thead className="text-12 uppercase tracking-wide text-slate-600 bg-slate-100"><tr><th className={`${LTH} w-10`}>#</th><SortTh id="site" sort={sort} onSort={onSort} className={LTH}>Site</SortTh><SortTh id="status" sort={sort} onSort={onSort} className={LTH}>Status</SortTh><SortTh id="url" sort={sort} onSort={onSort} className={LTH}>Listing</SortTh><th className="p-2 text-right font-medium">Next step</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.length === 0 ? <tr><td colSpan={5} className="py-8 text-center text-13 text-gray-500">Nothing here.</td></tr> : pg.rows.map((d, i) => <ListingRow key={d.key} n={(pg.from || 0) + i + 1} d={d} nap={nap} base={base} reload={reload} toast={toast} />)}
             </tbody>
           </table>
         </div>
-        <div className="-mx-5 -mb-1"><Pager p={pg} label="listing sites" /></div>
-        <p className="text-11 text-gray-500 mt-3">“Not found” means Google search did not return that listing, not that it does not exist. “Correct” from a search match is a good sign; a listing you add and check on its page is confirmed.</p>
+        <Pager p={pg} label="listing sites" />
+        <p className="px-5 py-2 text-11.5 text-slate-500 border-t border-slate-100">“Not found” means Google search did not return that listing, not that it does not exist. A listing you add and check on its page is confirmed.</p>
       </Card>
     </>
   );
