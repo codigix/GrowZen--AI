@@ -819,7 +819,6 @@ function PostsTab({ b, toast }) {
   const auto = useApi(`/businesses/${b.id}/autopilot`); // the drafts the software prepared (and the ones approved for a time): each is a row of the table, edited in a window
   const [review, setReview] = useState(null);
   const taskOf = useMemo(() => Object.fromEntries([...(auto.data?.inbox || []), ...(auto.data?.scheduled || [])].filter(i => i.kind === 'gbp_post' && i.post_id != null).map(i => [String(i.post_id), i])), [auto.data]);
-  const [only, setOnly] = useState('all'); // the status the table shows: from the strip above it
   const [edit, setEdit] = useState(null);
   const [busy, error, run, setError] = useAction();
   const openedFromKeyword = React.useRef(false);
@@ -876,20 +875,11 @@ function PostsTab({ b, toast }) {
         action={<div className="flex gap-2"><Button variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={aiDraft}>AI draft</Button><Button variant="primary" icon={Plus} onClick={open}>New post</Button></div>}>
         <ErrorNote>{!edit && error}</ErrorNote>
         {clicks.data && !clicks.data.available && <p className="px-5 pb-2 text-12 text-amber-800">{clicks.data.reason}</p>}
-        {posts.data && (
-          <div className="px-5 pb-3 flex flex-wrap items-stretch gap-2" role="tablist" aria-label="Show posts">
-            {[['all', 'All posts', tableRows.length, '#475569'], ...['live', 'scheduled', 'draft', 'failed'].map(k => [k, POST_LOOK[k][2], tableRows.filter(r => r.status === k).length, POST_LOOK[k][0]])].map(([k, label, n, color]) => (
-              <button key={k} type="button" role="tab" aria-selected={only === k} onClick={() => setOnly(k)} disabled={k !== 'all' && !n}
-                className={`rounded-lg px-3.5 py-2 text-left ring-1 ring-inset cursor-pointer disabled:opacity-40 disabled:cursor-default min-w-[110px] ${only === k ? 'bg-white ring-2' : 'bg-slate-50 ring-slate-200 hover:bg-white'}`} style={only === k ? { borderColor: color, boxShadow: `inset 0 -3px 0 ${color}`, '--tw-ring-color': color } : undefined}>
-                <span className="block text-20 leading-tight font-bold tabular-nums" style={{ color }}>{n}</span><span className="block text-11.5 text-slate-500">{label}</span>
-              </button>))}
-            {clicks.data?.available && <div className="rounded-lg px-3.5 py-2 bg-indigo-50 ring-1 ring-inset ring-indigo-100 min-w-[110px] ml-auto" title="Visits to the post button links counted by Google Analytics (posts published from this software)"><span className="block text-20 leading-tight font-bold tabular-nums text-indigo-700">{tableRows.reduce((a, r) => a + (r.clicks || 0), 0)}</span><span className="block text-11.5 text-indigo-700/80">Clicks counted</span></div>}
-          </div>
-        )}
         {!posts.data ? <div className="px-5 pb-4"><SkList rows={4} thumb /></div> : (
-          <DataTable bare rows={only === 'all' ? tableRows : tableRows.filter(r => r.status === only)} rowKey={r => r.key} pageSize={10} sizes={[10, 25, 50]} exportName="google-posts" label="posts" searchPlaceholder="Search posts" minWidth={980} columnsMenu={false}
+          <DataTable bare rows={tableRows} rowKey={r => r.key} pageSize={10} sizes={[10, 25, 50]} exportName="google-posts" label="posts" searchPlaceholder="Search posts" minWidth={980} columnsMenu={false}
             headClass="bg-slate-100 text-slate-700" rowClass={r => (POST_LOOK[r.status] || POST_LOOK.draft)[1]}
             empty="No posts yet. Press New post."
+            filters={[{ id: 'status', label: 'Status', options: [['live', 'Live'], ['scheduled', 'Scheduled'], ['draft', 'Draft'], ['failed', 'Failed']], test: (r, v) => r.status === v }]}
             columns={[
               { id: 'heading', header: 'Heading and text', value: r => r.heading, className: 'px-3 py-2.5 min-w-[280px] max-w-[420px]', thClass: 'px-3 py-2.5',
                 cell: r => <div className="flex gap-3 border-l-4 pl-3 -ml-1" style={{ borderColor: (POST_LOOK[r.status] || POST_LOOK.draft)[0] }}>{r.image && <img src={r.image} alt="" referrerPolicy="no-referrer" className="w-12 h-12 rounded object-cover shrink-0 bg-slate-100" />}<div className="min-w-0"><div className="text-13 font-semibold text-slate-900 truncate" title={r.heading}>{r.heading}</div><p className="text-12 text-slate-500 line-clamp-2" title={r.text}>{r.text}</p></div></div> },
