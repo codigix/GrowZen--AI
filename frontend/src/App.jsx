@@ -24,6 +24,7 @@ const LegalPage = lazy(() => import('./public/LegalPage'));
 const ClientReportPage = lazy(() => import('./platform/ClientReportPage'));
 const PublicReviewPage = lazy(() => import('./platform/ReviewLink').then(m => ({ default: m.PublicReviewPage })));
 import LoginPage from './pages/LoginPage';
+const DataSourcesPage = lazy(() => import('./platform/DataSourcesPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const SeoOverviewPage = lazy(() => import('./platform/SeoOverviewPage'));
 const AutomationPipelinePage = lazy(() => import('./platform/AutomationPipelinePage'));
@@ -221,6 +222,7 @@ export default function App() {
         <Route path="automation" element={<AiAgentPage />} />
         <Route path="website-builder" element={<Navigate to="/ai-content-generation/publishing" replace />} />
         <Route path="google-integrations" element={<ConnectionsPage />} />
+        <Route path="data-sources" element={<DataSourcesPage />} />
         <Route path="connect-result" element={<ConnectResultPage />} />
         {user.is_admin && <Route path="users" element={<UsersPage me={user} />} />}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

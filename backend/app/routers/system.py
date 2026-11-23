@@ -48,6 +48,14 @@ def status(_: User = Depends(current_user)):
     }
 
 
+@router.get("/system/data-sources")
+def data_sources(db: Session = Depends(get_db), _: User = Depends(current_user)):
+    """Every source the software takes values from, what it provides, the pages that show it and whether it is switched on (never a key)."""
+    from ..services import data_sources as ds  # noqa: PLC0415
+    s = get_settings()
+    return {"sources": ds.registry(s, db)}
+
+
 @router.get("/system/diagnostics")
 def diagnostics(db: Session = Depends(get_db), user: User = Depends(require_admin)):
     """What is wrong or stuck, in plain facts: unfinished runs, failing schedules, the task backlog, missing keys,

@@ -189,5 +189,5 @@ export const SIDEBAR_SECTIONS = [
     ]
   },
   { id: 'apps', label: 'Apps', title: 'App Center', icon: LayoutGrid, groups: [{ items: [soon('apps-store'), soon('apps-mine'), page('/google-integrations')] }] },
-  { id: 'settings', label: 'Settings', title: 'Settings', icon: Settings, groups: [{ items: [page('/google-integrations'), link('/gmb-profile/settings', 'GBP Settings & Integrations'), page('/users')] }] }
+  { id: 'settings', label: 'Settings', title: 'Settings', icon: Settings, groups: [{ items: [page('/google-integrations'), link('/data-sources', 'Data Source Map'), link('/gmb-profile/settings', 'GBP Settings & Integrations'), page('/users')] }] }
 ];

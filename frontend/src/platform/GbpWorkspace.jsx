@@ -31,7 +31,7 @@ export const SourceBadge = ({ type }) => {
 };
 
 export const Sources = ({ types }) => (
-  <div className="flex flex-wrap items-center gap-1.5 text-11.5 text-slate-500"><span>Data source:</span>{types.map(t => <SourceBadge key={t} type={t} />)}</div>
+  <div className="flex flex-wrap items-center gap-1.5 text-11.5 text-slate-500"><Link to="/data-sources" className="hover:underline" title="Open the list of every data source and the pages that use it">Data source:</Link>{types.map(t => <Link key={t} to="/data-sources"><SourceBadge type={t} /></Link>)}</div>
 );
 
 /** Section header: title, one line, and where the data comes from. */
