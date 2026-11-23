@@ -234,9 +234,13 @@ def test_the_key_is_also_given_as_json_for_the_download_button(client, bid):
     assert client.get(api(client, bid, "/key")).json()["content"] == k["content"]  # the same key every time
 
 
-def test_console_links_open_the_page_indexing_report_and_a_pages_own_inspection():
+def test_the_page_indexing_report_link_and_a_pages_own_link_comes_from_google():
     from app.services import indexing
     for site in ("sc-domain:shop.example", "https://shop.example/"):
         l = indexing.console_links(site)
-        assert l["index_url"].startswith("https://search.google.com/search-console/index?resource_id=") and ":" not in l["index_url"].split("resource_id=")[1] and "/" not in l["index_url"].split("resource_id=")[1]
-        assert l["inspect_base"].startswith("https://search.google.com/search-console/inspect?resource_id=") and l["inspect_base"].endswith("&id=")
+        assert list(l) == ["index_url"] and l["index_url"].startswith("https://search.google.com/search-console/index?resource_id=")
+        assert ":" not in l["index_url"].split("resource_id=")[1] and "/" not in l["index_url"].split("resource_id=")[1]
+    # a page's own link is the one Google returns with the inspection, never one we build
+    got = indexing.parse_inspection({"inspectionResult": {"inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Ashop.example&id=AbC123", "indexStatusResult": {"verdict": "PASS", "coverageState": "Submitted and indexed"}}})
+    assert got["state"] == "indexed" and got["link"].endswith("&id=AbC123")
+    assert indexing.parse_inspection({"inspectionResult": {"indexStatusResult": {"verdict": "FAIL"}}})["link"] is None

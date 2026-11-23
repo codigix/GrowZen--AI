@@ -43,7 +43,7 @@ def _page(p: IndexPage, pend: set[int]) -> dict[str, Any]:
     return {"id": p.id, "url": p.url, "path": path + (f"?{urlsplit(p.url).query}" if urlsplit(p.url).query else ""), "first_seen": _iso(p.first_seen_at), "lastmod": p.lastmod, "changed_at": _iso(p.changed_at),
             "in_sitemap": p.in_sitemap, "source": p.source, "is_new": new, "pending": p.id in pend, "skip_reason": p.skip_reason, "submitted_at": _iso(p.submitted_at), "submitted_to": p.submitted_to or [],
             "tech": ({"verdict": (p.tech or {}).get("verdict"), "reasons": (p.tech or {}).get("reasons") or [], "status": (p.tech or {}).get("status"), "words": (p.tech or {}).get("words"), "at": _iso(p.tech_at)} if p.tech else None),
-            "g_state": p.g_state, "g_reason": p.g_reason, "g_advice": indexing.advice(p.g_reason), "g_last_crawl": _iso(p.g_last_crawl), "g_canonical": p.g_canonical, "g_checked_at": _iso(p.g_checked_at)}
+            "g_state": p.g_state, "g_reason": p.g_reason, "g_advice": indexing.advice(p.g_reason), "g_last_crawl": _iso(p.g_last_crawl), "g_canonical": p.g_canonical, "g_checked_at": _iso(p.g_checked_at), "g_link": p.g_link}
 
 
 @router.get("")

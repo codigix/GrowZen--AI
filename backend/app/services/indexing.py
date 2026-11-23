@@ -387,7 +387,7 @@ def parse_inspection(js: dict[str, Any]) -> dict[str, Any]:
         crawled = datetime.fromisoformat(crawl.replace("Z", "+00:00")) if crawl else None
     except ValueError:
         crawled = None
-    return {"state": state, "reason": cov[:250] or None, "last_crawl": crawled, "canonical": (r.get("googleCanonical") or None)}
+    return {"state": state, "reason": cov[:250] or None, "last_crawl": crawled, "canonical": (r.get("googleCanonical") or None), "link": ((js.get("inspectionResult") or {}).get("inspectionResultLink") or None)}
 
 
 def inspect(db: Session, b: Business, urls: list[str] | None = None, limit: int = INSPECT_BATCH) -> dict[str, Any]:
@@ -417,15 +417,16 @@ def inspect(db: Session, b: Business, urls: list[str] | None = None, limit: int 
                 error = error or err
                 continue
             row.g_state, row.g_reason, row.g_last_crawl, row.g_canonical, row.g_checked_at = res["state"], res["reason"], res["last_crawl"], res["canonical"], _now()
+            row.g_link = res["link"] or row.g_link
             done[res["state"]] += 1
     db.commit()
     return {"checked": sum(done.values()), **done, "error": error}
 
 
 def console_links(site: str) -> dict[str, str]:
-    """Where to look in Search Console itself: the site's Page indexing report, and Google's own check of one page (URL Inspection, where 'Request indexing' is pressed: no API does that for ordinary pages)."""
-    rid = quote(site, safe="")
-    return {"index_url": f"https://search.google.com/search-console/index?resource_id={rid}", "inspect_base": f"https://search.google.com/search-console/inspect?resource_id={rid}&id="}
+    """Where to look in Search Console itself: the site's Page indexing report. A page's own inspection link is NOT built here: its `id` is one Google makes up, so the
+    link comes from the URL Inspection API (inspectionResultLink) when the page is checked."""
+    return {"index_url": f"https://search.google.com/search-console/index?resource_id={quote(site, safe='')}"}
 
 
 def google_status(db: Session, b: Business) -> dict[str, Any]:

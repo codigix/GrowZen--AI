@@ -891,6 +891,7 @@ class IndexPage(TimestampMixin, Base):
     g_last_crawl: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     g_canonical: Mapped[str | None] = mapped_column(String(1000))
     g_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    g_link: Mapped[str | None] = mapped_column(String(1000))  # Google's own link to this page's inspection in Search Console (the API gives it; it cannot be built from the page address)
 
 
 class SearchSnapshot(TimestampMixin, Base):
