@@ -202,6 +202,15 @@ def _now_md(p: dict[str, Any]) -> list[str]:
             f"- Section headings: {' | '.join(n['headings']) or '(none)'}", ""]
 
 
+
+def _keyword_label(k: dict, plain: bool = False) -> str:
+    """One keyword as "**keyword** (primary), 1,200 searches/month" (the PDF uses plain=True: no bold marks and " - " before the volume).
+    Written without nested quotes, so it also runs on Python 3.11."""
+    role = " (primary)" if k["role"] == "primary" else " (secondary)" if k["role"] == "secondary" else ""
+    volume = (f"{' - ' if plain else ', '}{k['volume']:,} searches/month") if k.get("volume") else ""
+    name = k["keyword"] if plain else f"**{k['keyword']}**"
+    return f"{name}{role}{volume}"
+
 def render_md(d: dict[str, Any]) -> str:
     t = d["totals"]
     single = d.get("single")
@@ -219,7 +228,7 @@ def render_md(d: dict[str, Any]) -> str:
         if p.get("scope"):
             out.append(f"Page type: {p['scope']}  ")
         if p["keywords"]:
-            out.append("Keywords: " + "; ".join(f"**{k['keyword']}**{' (primary)' if k['role'] == 'primary' else ' (secondary)' if k['role'] == 'secondary' else ''}{f', {k['volume']:,} searches/month' if k.get('volume') else ''}" for k in p["keywords"]))
+            out.append("Keywords: " + "; ".join(_keyword_label(k) for k in p["keywords"]))
         out.append("")
         out += _now_md(p)
         n = 0
@@ -345,7 +354,7 @@ def render_pdf(d: dict[str, Any]) -> bytes:
         if pg.get("scope"):
             flow.append(c(f"Page type: {pg['scope']}"))
         if pg["keywords"]:
-            flow.append(c("Keywords: " + "; ".join(f"{k['keyword']}{' (primary)' if k['role'] == 'primary' else ' (secondary)' if k['role'] == 'secondary' else ''}{f' - {k['volume']:,} searches/month' if k.get('volume') else ''}" for k in pg["keywords"])))
+            flow.append(c("Keywords: " + "; ".join(_keyword_label(k, plain=True) for k in pg["keywords"])))
         flow.append(Spacer(1, 4))
         if pg.get("now"):
             nw = pg["now"]
