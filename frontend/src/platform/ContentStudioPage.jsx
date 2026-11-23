@@ -462,12 +462,17 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }
 }
 
 /** "Generated Articles" tab: every article of this account, with its status and actions. */
-function GeneratedArticlesTab({ b, openId, onOpen, onWrite, toast }) {
+/** What is written in bevisibe and still to be posted. A blog that is already live is listed once, in Posted Blogs, not here again (it shows only when "All" is chosen). */
+function GeneratedArticlesTab({ b, openId, onOpen, onWrite, onShowPosted, toast }) {
   const list = useApi(`/businesses/${b.id}/articles`);
-  const articles = list.data?.articles || [];
+  const [view, setView] = useState('todo');
+  const everything = list.data?.articles || [];
+  const isLive = (x) => x.publishing_status === 'published' || x.wp_status === 'publish' || x.react_status === 'publish';
+  const live = everything.filter(isLive);
+  const articles = view === 'all' ? everything : everything.filter(x => !isLive(x));
   if (!list.data && !list.error) return <div className="py-10 text-center text-[13px] text-slate-500"><RefreshCw size={14} className="inline animate-spin mr-1.5" />Loading articles…</div>;
   if (list.error) return <ErrorNote>{list.error.message || String(list.error)}</ErrorNote>;
-  if (!articles.length) {
+  if (!everything.length) {
     return (
       <Card title="Generated articles">
         <div className="py-10 text-center">
@@ -478,7 +483,18 @@ function GeneratedArticlesTab({ b, openId, onOpen, onWrite, toast }) {
       </Card>
     );
   }
-  return <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={onOpen} toast={toast} />;
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {[['todo', `Not posted yet ${everything.length - live.length}`], ['all', `All ${everything.length}`]].map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setView(k)} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ${view === k ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>))}
+        {live.length > 0 && <span className="text-12.5 text-slate-600 ml-1">{live.length} blog{live.length === 1 ? ' is' : 's are'} live on your website: <button type="button" onClick={onShowPosted} className="font-semibold text-indigo-600 hover:underline cursor-pointer">see Posted Blogs</button></span>}
+      </div>
+      {articles.length === 0 ? (
+        <Card title="Generated articles"><div className="py-8 text-center"><p className="text-[13px] text-slate-600">Everything you wrote is already posted. Write a new one, or open Posted Blogs.</p><div className="mt-3"><Button variant="primary" icon={Sparkles} onClick={onWrite}>Write an article</Button></div></div></Card>
+      ) : <ArticlesList b={b} articles={articles} reload={list.reload} openId={openId} onOpen={onOpen} toast={toast} />}
+    </div>
+  );
 }
 
 /** The single "AI Blog & Article Writer" tab: the generated articles on top, the E-E-A-T pipeline for the open one below. */
@@ -1540,7 +1556,7 @@ export default function ContentStudioPage() {
             tabs={[
               { id: 'trends', label: 'Trending Topics Radar' },
               { id: 'blog', label: 'AI Blog & Article Writer' },
-              { id: 'articles', label: 'Generated Articles' },
+              { id: 'articles', label: 'Written, not posted' },
               { id: 'posted', label: 'Posted Blogs' },
               { id: 'calendar', label: 'Publishing Calendar & CMS Queue' }
             ]}
@@ -1549,7 +1565,7 @@ export default function ContentStudioPage() {
           {tab === 'trends' && <TrendingTopicsTab b={b} onSelectTopic={handleSelectTopic} />}
           {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} onPickTopic={handleSelectTopic} onShowArticles={() => setTab('articles')} toast={window.__seoToast || console.log} />}
           {tab === 'articles' && <GeneratedArticlesTab b={b} openId={openArticleId} onOpen={openInWriter} toast={window.__seoToast || console.log}
-            onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
+            onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} onShowPosted={() => setTab('posted')} />}
           {tab === 'posted' && <PostedBlogs b={b} toast={window.__seoToast || console.log} onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
           {tab === 'calendar' && <PublishingCalendar b={b} toast={window.__seoToast || console.log} onOpenArticle={openInWriter} />}
           {tab === 'publishing' && <PublishingSetup b={b} />}

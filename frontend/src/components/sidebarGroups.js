@@ -136,8 +136,8 @@ export const SIDEBAR_SECTIONS = [
   },
   {
     id: 'Blogs', label: 'Blogs', title: 'Blogs', icon: FileText, groups: [
-      { items: [link('/ai-content-generation/blog', 'AI Article Generator'), link('/ai-content-generation/articles', 'Content Optimizer'), link('/ai-content-generation/trends', 'Topic Finder'), link('/seo-brief', 'SEO Brief Generator')] },
-      { items: [link('/ai-content-generation/articles', 'My Content'), link('/ai-content-generation/posted', 'Posted Blogs'), link('/ai-content-generation/calendar', 'Content Calendar'), link('/ai-content-generation/publishing', 'Publishing Setup')] }
+      { items: [link('/ai-content-generation/blog', 'AI Article Generator'), link('/ai-content-generation/trends', 'Topic Finder'), link('/seo-brief', 'SEO Brief Generator')] },
+      { items: [link('/ai-content-generation/articles', 'Written, Not Posted'), link('/ai-content-generation/posted', 'Posted Blogs'), link('/ai-content-generation/calendar', 'Content Calendar'), link('/ai-content-generation/publishing', 'Publishing Setup')] }
     ]
   },
   {
