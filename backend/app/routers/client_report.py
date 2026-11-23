@@ -96,7 +96,8 @@ def growth_view(month: str | None = None, b: Business = Depends(get_business), d
 
 @router.get("")
 def status(b: Business = Depends(get_business)):
-    return {"enabled": bool(b.report_key), "url": _url(b), "public": not any(h in get_settings().site_url for h in ("localhost", "127.0.0.1", "192.168.", "10.", "172.16."))}
+    return {"enabled": bool(b.report_key), "url": _url(b), "path": f"/report/{b.id}-{b.report_key}" if b.report_key else None,
+            "public": not any(h in get_settings().site_url for h in ("localhost", "127.0.0.1", "192.168.", "10.", "172.16."))}
 
 
 @router.post("")

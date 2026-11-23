@@ -47,7 +47,10 @@ function ShareCard({ b, toast }) {
   const d = st.data;
   const make = () => run('make', async () => { await api(base, { method: 'POST' }); await st.reload(true); toast(d?.enabled ? 'New link made: the old one no longer works' : 'Live report link made'); });
   const off = () => run('off', async () => { await api(base, { method: 'DELETE' }); await st.reload(true); toast('Link switched off'); });
-  const copy = async () => { try { await navigator.clipboard.writeText(d.url); toast('Link copied'); } catch { toast('Select the link and copy it'); } };
+  const copy = async (url) => { try { await navigator.clipboard.writeText(url); toast('Link copied'); } catch { toast('Select the link and copy it'); } };
+  // Local when this page is open on this computer, Live when the site address is a real domain: each opens on the site it is made for.
+  const onLocal = /^(localhost|127\.|192\.168\.|10\.)/.test(window.location.hostname);
+  const links = (x) => [...(x.public ? [['Live link', x.url]] : []), ...(onLocal || !x.public ? [['Local link', `${window.location.origin}${x.path}`]] : [])];
   return (
     <Card title="Live report link for your client" subtitle="One address that always shows this client's latest results, month by month, with graphs. No sign-in needed."
       action={d?.enabled ? <Button size="sm" icon={Power} busy={busy === 'off'} onClick={off}>Switch off</Button> : null}>
@@ -55,13 +58,15 @@ function ShareCard({ b, toast }) {
         <div className="flex flex-wrap items-center gap-3"><p className="text-13 text-slate-600 flex-1 min-w-[240px]">Make a link and send it to the client. They see growth, calls, directions, website clicks, reviews and search positions. Nothing private is shown.</p><Button variant="primary" icon={Link2} busy={busy === 'make'} onClick={make}>Make the link</Button></div>
       ) : (
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <input readOnly value={d.url} onFocus={e => e.target.select()} className={`${inputCls} flex-1 min-w-[260px] font-mono text-12.5`} aria-label="Live report link" />
-            <Button icon={Copy} onClick={copy}>Copy</Button>
-            <a href={d.url} target="_blank" rel="noreferrer noopener"><Button icon={ExternalLink}>Open</Button></a>
-            <Button icon={RefreshCw} busy={busy === 'make'} onClick={make} title="Make a new link: the old one stops working at once">New link</Button>
-          </div>
-          {!d.public && <p className="text-12 text-amber-700">This address points to your local computer ({d.url.split('/report/')[0]}), so a client cannot open it. Set the site address (SITE_URL) to your live domain.</p>}
+          {links(d).map(([label, url]) => (
+            <div key={label} className="flex flex-wrap items-center gap-2">
+              <span className="w-24 shrink-0 text-12 font-semibold text-slate-600">{label}</span>
+              <input readOnly value={url} onFocus={e => e.target.select()} className={`${inputCls} flex-1 min-w-[260px] font-mono text-12.5`} aria-label={`${label} report link`} />
+              <Button icon={Copy} onClick={() => copy(url)}>Copy</Button>
+              <a href={url} target="_blank" rel="noreferrer noopener"><Button icon={ExternalLink}>Open</Button></a>
+            </div>))}
+          <div className="flex flex-wrap items-center gap-3"><Button size="sm" icon={RefreshCw} busy={busy === 'make'} onClick={make} title="Make a new link: the old ones stop working at once">New link</Button>
+            <span className="text-12 text-slate-500">The live link works only once this version of the software is running on the live site, and it reads the same project data as this one.</span></div>
         </div>
       )}
       <ErrorNote>{error}</ErrorNote>
