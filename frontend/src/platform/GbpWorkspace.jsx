@@ -171,44 +171,43 @@ export function OverviewSection({ b, go, onOpen }) {
   const linked = Boolean(d?.linked);
   const missing = score.data ? [...score.data.items].filter(i => !i.ok).sort((a, c) => (c.weight * (1 - c.score)) - (a.weight * (1 - a.score))).slice(0, 5) : [];
   return (
-    <div className="space-y-4">
-      <SectionHead title="Overview" subtitle="This client's Google Business Profile at a glance" sources={['google', 'calc']} />
+    <div className="space-y-3">
       {!d ? <div className="space-y-4"><SkStats labels={["Average rating", "Search views · 30 days", "Calls · 30 days", "Website clicks · 30 days"]} /><div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><SkCard title="Profile health score" subtitle="Calculated by Codigix from the profile; not a Google score"><SkScore /></SkCard><SkCard title="Fix next" subtitle="Highest-impact gaps first" className="xl:col-span-2"><SkList rows={4} avatar={false} /></SkCard></div></div> : (
         <>
           {!linked && <div className="rounded bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-13 text-amber-900">This client has no Google account connected, so the numbers below are empty. Use <b>Connect Google account</b> above.</div>}
 
-          <div className="rounded-2xl bg-sky-50/70 ring-1 ring-sky-100 p-5 space-y-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <BusinessAvatar name={b.name} src={d?.profile?.logo || b.logo || siteIcon(b.website)} size="w-12 h-12" />
+          <div className="rounded-2xl bg-sky-50/70 ring-1 ring-sky-100 p-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <BusinessAvatar name={b.name} src={d?.profile?.logo || b.logo || siteIcon(b.website)} size="w-10 h-10" />
               <div className="flex-1 min-w-[200px]">
-                <div className="text-18 font-medium text-slate-900">Your business on Google</div>
+                <div className="text-16 font-medium text-slate-900" title="Only managers of this profile can see this. Profile strength is our check of what Google rewards; Google does not share its own number.">Your business on Google</div>
                 <div className="text-12.5 text-sky-700 flex items-center gap-1.5"><BarChart3 size={13} />{interactions(m)} customer interactions · last 30 days</div>
               </div>
               {score.data && <ProfileStrength score={score.data.score} />}
             </div>
+            <div className="rounded-xl bg-white ring-1 ring-sky-100 grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-slate-100 overflow-hidden">
+              {[[Star, 'text-amber-500', 'Average rating', m.rating ? `${m.rating}★` : '—', `${fmt(m.review_count || 0)} reviews`], [Search, 'text-violet-500', 'Search views', fmt(m.views_search_30), '30 days'],
+                [Phone, 'text-emerald-500', 'Calls', fmt(m.calls_30), '30 days'], [MousePointerClick, 'text-indigo-500', 'Website clicks', fmt(m.website_clicks_30), '30 days']].map(([Ic, tone, label, value, sub]) => (
+                <div key={label} className="px-3.5 py-2.5 min-w-0">
+                  <div className="flex items-center gap-1.5 text-11.5 font-semibold text-slate-500 truncate"><Ic size={13} className={tone} />{label}</div>
+                  <div className="text-18 leading-tight font-bold text-slate-900 tabular-nums">{value ?? '—'}</div>
+                  <div className="text-11 text-slate-400 truncate">{sub}</div>
+                </div>))}
+            </div>
             <QuickTiles b={b} unreplied={m.unreplied_reviews || 0} />
             <NewReviewBanner b={b} />
-            <p className="text-11.5 text-slate-500">Only managers of this profile can see this. Profile strength is our check of what Google rewards; Google does not share its own number.</p>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Kpi icon={Star} label="Average rating" value={m.rating ? `${m.rating}★` : '—'} sub={`${fmt(m.review_count || 0)} reviews`} />
-            <Kpi icon={Search} label="Search views · 30 days" value={fmt(m.views_search_30)} />
-            <Kpi icon={Phone} label="Calls · 30 days" value={fmt(m.calls_30)} />
-            <Kpi icon={MousePointerClick} label="Website clicks · 30 days" value={fmt(m.website_clicks_30)} />
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 items-start">
             <MissingInfoCard b={b} d={d} />
             <ShareProfileCard b={b} />
+            <Card title="Fix next" subtitle="Highest-impact gaps from the profile check">
+              {!score.data ? <SkList rows={4} avatar={false} /> : missing.length === 0 ? <p className="text-13 text-slate-500 py-3">Nothing missing. The profile checklist is complete.</p> : (
+                <ul className="divide-y divide-slate-100">{missing.map(i => <li key={i.key} className="py-2 flex items-start gap-3"><div className="flex-1 min-w-0"><div className="text-13 text-slate-900">{i.label}</div><div className="text-12 text-slate-500">{i.fix}</div></div><Badge tone="gray">{i.factor}</Badge></li>)}</ul>
+              )}
+              {score.data && <button type="button" onClick={() => go('ai')} className="mt-2 text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">See all recommendations</button>}
+            </Card>
           </div>
-
-          <Card title="Fix next" subtitle="Highest-impact gaps from the full profile check" action={<SourceBadge type="calc" />}>
-            {!score.data ? <SkList rows={4} avatar={false} /> : missing.length === 0 ? <p className="text-13 text-slate-500 py-3">Nothing missing. The profile checklist is complete.</p> : (
-              <ul className="divide-y divide-slate-100">{missing.map(i => <li key={i.key} className="py-2 flex items-start gap-3"><div className="flex-1 min-w-0"><div className="text-13 text-slate-900">{i.label}</div><div className="text-12 text-slate-500">{i.fix}</div></div><Badge tone="gray">{i.factor}</Badge></li>)}</ul>
-            )}
-            {score.data && <button type="button" onClick={() => go('ai')} className="mt-2 text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">See all recommendations</button>}
-          </Card>
         </>
       )}
     </div>
