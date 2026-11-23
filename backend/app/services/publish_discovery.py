@@ -31,7 +31,7 @@ from . import backlink_checker as bc
 from . import competitor_blogs as cb
 
 log = logging.getLogger("seo.publish_discovery")
-CACHE_TIER = "v1"
+CACHE_TIER = "v3"  # v3: relevance-checked results that also say what platform each site is built on (older lists are not shown again)
 SITES_READ = 24
 _running: set[tuple[int, str]] = set()
 _lock = threading.Lock()
@@ -56,38 +56,127 @@ def _registrable(host: str) -> str:
     return ".".join(parts[-2:]) if len(parts) >= 2 else host
 
 
-# ------------------------------------------------------------------------------------------------------------------------ the searches
+# ------------------------------------------------------------------------------------------------------------------------ the niche
+# Words that mean (nearly) the same thing in a niche. A topic such as "rental cloths" is only matched by a page that has a
+# word of the clothing group AND a word of the rental group, so a general fashion or news site does not pass for it.
+_GROUPS_RAW = [
+    {"cloth", "cloths", "clothes", "clothing", "apparel", "garment", "garments", "dress", "dresses", "outfit", "outfits", "attire", "wear", "costume", "costumes",
+     "gown", "gowns", "lehenga", "lehengas", "saree", "sarees", "sherwani", "fashion", "wardrobe", "couture", "boutique", "ethnic", "designer", "suit", "suits"},
+    {"rent", "rental", "rentals", "hire", "lease", "borrow"},
+    {"wedding", "weddings", "bridal", "bride", "brides", "groom", "engagement", "reception", "festive", "occasion", "occasions"},
+]
+# What else a business in a niche is worth reaching: the audiences that read about it (so a clothing-rental shop also looks at wedding and fashion blogs)
+_AUDIENCES = [(0, ["fashion", "wedding", "bridal"])]
+_STOP = frozenset("near me in on for the and of a an to best top how with at by from my your our online shop store shops stores service services company companies "
+                  "market markets center centre agency consultant consultants buy sale cheap price prices cost".split())
+_WORD = re.compile(r"[a-z]+")
+
+
+def _stem(w: str) -> str:
+    return w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+
+
+_GROUPS = [frozenset(_stem(w) for w in g) for g in _GROUPS_RAW]
+
+
+def _tokens(text: str, skip: frozenset[str] = frozenset()) -> set[str]:
+    out = set()
+    for w in _WORD.findall((text or "").lower()):
+        if len(w) > 2 and w not in _STOP:
+            t = _stem(w)
+            if t not in skip and t not in _STOP:
+                out.add(t)
+    return out
+
+
+def _expand(tokens: set[str]) -> set[str]:
+    out = set(tokens)
+    for g in _GROUPS:
+        if g & tokens:
+            out |= g
+    return out
+
+
+def _offers(b: Business) -> list[str]:
+    """What the business sells, in its own words (the services of its profile)."""
+    return [" ".join((s.get("name") or "").lower().split()) for s in (b.services or []) if (s.get("name") or "").strip()][:3]
+
+
 def topics_of(b: Business, a: Article | None) -> list[str]:
-    """This blog's keyword and secondary keywords first, then the business's category and services: what the searches are about."""
+    """What the searches are about: this blog's keyword, then what the business offers (its services), then the secondary keywords and the category."""
     raw = []
     if a is not None:
-        raw += [a.keyword or "", *(a.secondary_keywords or [])[:2]]
-    raw += [b.primary_category or "", *[(s.get("name") or "") for s in (b.services or [])[:2]]]
+        raw += [a.keyword or ""]
+    raw += _offers(b)[:2]
+    if a is not None:
+        raw += list(a.secondary_keywords or [])[:2]
+    raw += [b.primary_category or ""]
     out: list[str] = []
     for t in raw:
         t = " ".join(t.lower().split())
         if len(t) >= 3 and t not in out:
             out.append(t)
-    return out[:4]
+    return out[:5]
 
 
+class Niche:
+    """The business's niche as words, to check whether a site is about it: the site's own pages must use them."""
+
+    def __init__(self, b: Business, a: Article | None):
+        place = " ".join([b.city or "", b.area or "", *(b.target_areas or [])])
+        self.skip = frozenset(_tokens(place))  # a place name is not what the site is about
+        self.topics = topics_of(b, a)
+        self.core = _expand(_tokens(" ".join(_offers(b)) + " " + (b.primary_category or ""), self.skip))
+        kw = " ".join([(a.keyword or ""), *(a.secondary_keywords or [])]) if a is not None else ""
+        self.plus = _expand(_tokens(kw, self.skip)) - self.core
+        self.need = {t: _tokens(t, self.skip) for t in self.topics}
+
+    def audiences(self) -> list[str]:
+        have = self.core | self.plus
+        out: list[str] = []
+        for gi, names in _AUDIENCES:
+            if _GROUPS[gi] & have:
+                out += [n for n in names if n not in out]
+        return out
+
+    def read(self, text: str) -> dict[str, Any]:
+        """What a page's words say: how well it fits (0 = not at all), the niche words it uses, and which of the topics it covers completely."""
+        words = _tokens(text)
+        core, plus = words & self.core, words & self.plus
+        covered = [t for t, need in self.need.items() if need and all(_expand({n}) & words for n in need)]
+        shown: dict[str, str] = {}  # the niche words as the page writes them, in the order they appear
+        for w in _WORD.findall((text or "").lower()):
+            t = _stem(w)
+            if len(w) > 2 and w not in _STOP and t in (core | plus) and t not in shown:
+                shown[t] = w
+        return {"relevance": len(core) * 2 + len(plus), "match": list(shown.values())[:6], "topics": covered}
+
+
+# ------------------------------------------------------------------------------------------------------------------------ the searches
 def queries(b: Business, a: Article | None) -> list[dict[str, str]]:
     ts = topics_of(b, a)
     if not ts:
         return []
     main, second = ts[0], (ts[1] if len(ts) > 1 else ts[0])
-    industry = " ".join((b.primary_category or main).lower().split())
+    offer = (_offers(b) or [" ".join((b.primary_category or main).lower().split())])[0]  # what the business sells: guest posts are looked for in that niche
+    city = " ".join((b.city or "").split())
     q = [
         {"q": f"{main} blog", "kind": "Articles on the topic", "topic": main},
         {"q": f'"{main}" article', "kind": "Articles on the topic", "topic": main},
         {"q": f"{second} blog", "kind": "Articles on the topic", "topic": second},
-        {"q": f'{industry} "write for us"', "kind": "Guest posts", "topic": industry},
+        {"q": f'{offer} "write for us"', "kind": "Guest posts", "topic": offer},
         {"q": f'{main} "guest post"', "kind": "Guest posts", "topic": main},
-        {"q": f'{industry} "submit an article" OR "submit a guest post"', "kind": "Guest posts", "topic": industry},
+        {"q": f'{offer} "submit an article" OR "submit a guest post"', "kind": "Guest posts", "topic": offer},
+    ]
+    for aud in Niche(b, a).audiences():  # the readers of the niche: e.g. wedding and fashion blogs for a clothing-rental shop
+        q.append({"q": f'{aud} blog "write for us"', "kind": "Guest posts", "topic": offer})
+    if city:
+        q.append({"q": f'{city} lifestyle blog "write for us"', "kind": "Guest posts", "topic": offer})
+    q += [
         {"q": f"{main} site:medium.com", "kind": "Open platforms", "topic": main},
         {"q": f"{main} site:linkedin.com/pulse", "kind": "Open platforms", "topic": main},
         {"q": f"{main} site:blogspot.com OR site:wordpress.com", "kind": "Open platforms", "topic": main},
-        {"q": f'{industry} "sponsored post" OR "advertise with us" blog', "kind": "Paid publishing", "topic": industry},
+        {"q": f'{offer} "sponsored post" OR "advertise with us" blog', "kind": "Paid publishing", "topic": offer},
     ]
     seen: set[str] = set()
     return [x for x in q if not (x["q"] in seen or seen.add(x["q"]))]
@@ -98,18 +187,30 @@ def _search(q: str, country: str) -> list[dict]:
     return pitch._serper(q, country)
 
 
-AI_SYSTEM = """You list real, existing websites where a business can publish an article (guest post, contributed article, free submission, sponsored post)
-or open platforms where anyone can publish, for the topics given. Only sites you are confident exist and publish articles on these topics; prefer sites read in
-the country given. Never invent a domain. Return JSON: {"sites": [{"domain": "example.com", "name": "Example Blog", "page": "https://example.com/write-for-us",
-"topic": "one of the topics given"}]} with 10 to 15 sites. "page" is the site's guest-post or submission page if you know it, otherwise its home page."""
+AI_SYSTEM = """You list real, existing websites where a business can get an article or a backlink: guest posts, contributed articles, free submissions, sponsored posts,
+niche directories, or open platforms where anyone can publish.
+
+EVERY site must be about the business's own niche (what it sells, given below) or about the people who read about that niche (for a clothing-rental shop: wedding,
+bridal, fashion, ethnic-wear, rental and lifestyle blogs, and city lifestyle blogs). Prefer sites read in the country and city given, and local niche publications.
+Do NOT list general news portals, newspapers, startup or business magazines, tech sites or big general magazines, unless the site has a dedicated section for this niche
+that accepts contributions. Only list sites you are confident exist; never invent a domain.
+
+Return JSON: {"sites": [{"domain": "example.com", "name": "Example Blog", "page": "https://example.com/write-for-us", "topic": "one of the topics given",
+"fit": 5}]} with 15 to 20 sites. "fit" is how well the site matches the niche: 5 = it is about exactly this niche, 4 = it is about the closely related audience,
+3 or less = a general site (do not list those). "page" is the site's guest-post or submission page if you know it, otherwise its home page."""
 
 
 def _ai_sites(b: Business, topics: list[str]) -> list[dict[str, Any]]:
-    """When the web search cannot run: sites suggested by the AI, to be opened and verified like search results (and labelled as suggestions)."""
+    """When the web search cannot run: sites suggested by the AI, to be opened and verified like search results (and labelled as suggestions).
+    Only sites the AI rates as the niche itself or its readers are kept (the page check after opening them decides the rest)."""
     from . import ai
     if not ai.is_configured():
         return []
-    out = ai.complete_json(AI_SYSTEM, f"Business: {b.name} ({b.primary_category or ''}), {b.city or ''} {b.country or ''}\nTopics: {topics}", max_tokens=1500)
+    place = ", ".join(x for x in [b.area or "", b.city or "", b.country or ""] if x)
+    offers = _offers(b) or [b.primary_category or ""]
+    desc = " ".join((b.description or "").split())[:300]
+    out = ai.complete_json(AI_SYSTEM, f"Business: {b.name}\nWhat it sells (its services): {offers}\nCategory: {b.primary_category or ''}\nWhere: {place}\n"
+                                      f"About it: {desc}\nTopics: {topics}", max_tokens=2000)
     sites = []
     for s in (out.get("sites") or []) if isinstance(out, dict) else []:
         try:
@@ -118,11 +219,17 @@ def _ai_sites(b: Business, topics: list[str]) -> list[dict[str, Any]]:
             continue
         if not re.match(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$", d):
             continue
+        try:
+            fit = int(s["fit"]) if s.get("fit") is not None else None
+        except (TypeError, ValueError):
+            fit = None
+        if fit is not None and fit < 4:
+            continue  # the AI itself says it is a general site
         page = str(s.get("page") or "")
         if _registrable(urlsplit(page).hostname or "") != _registrable(d):
             page = f"https://{d}/"
-        sites.append({"domain": d, "name": str(s.get("name") or d)[:80], "page": page, "topic": str(s.get("topic") or (topics[0] if topics else ""))[:80]})
-    return sites[:15]
+        sites.append({"domain": d, "name": str(s.get("name") or d)[:80], "page": page, "topic": str(s.get("topic") or (topics[0] if topics else ""))[:80], "fit": fit})
+    return sites[:20]
 
 
 # ------------------------------------------------------------------------------------------------------------------------ verifying one site
@@ -188,8 +295,26 @@ def _publishing(soup: BeautifulSoup, url: str) -> dict[str, Any]:
     return {"type": kind, "verified": True, "evidence_url": page, "evidence": " ".join(text[max(0, i - 80): i + 140].split())}
 
 
-def verify(item: dict[str, Any]) -> dict[str, Any]:
-    """Open the article (and, for a site that is not an open platform, its publishing page) and record what was seen."""
+def _fit_text(soup: BeautifulSoup | None, item: dict[str, Any]) -> str:
+    """The words that say what a site is about: what the search or the AI said, and the page's title, description, headings, menu and opening text."""
+    parts = [item.get("title") or "", item.get("snippet") or "", item.get("site") or ""]
+    if soup is not None:
+        if soup.title and soup.title.string:
+            parts.append(soup.title.string)
+        for attrs in ({"name": "description"}, {"property": "og:description"}, {"name": "keywords"}):
+            m = soup.find("meta", attrs=attrs)
+            if m and m.get("content"):
+                parts.append(m["content"])
+        parts += [h.get_text(" ", strip=True) for h in soup.find_all(["h1", "h2", "h3"])[:40]]
+        parts += [a.get_text(" ", strip=True) for a in soup.find_all("a")[:80]]  # the menu and category links
+        if soup.body:
+            parts.append(soup.body.get_text(" ", strip=True)[:1200])
+    return " ".join(parts)
+
+
+def verify(item: dict[str, Any], niche: Niche | None = None) -> dict[str, Any]:
+    """Open the article (and, for a site that is not an open platform, its publishing page) and record what was seen.
+    With a niche, also how well the site fits it (relevance), which niche words it uses (match) and which topics it covers (topics)."""
     out = dict(item)
     if item["platform"] in OPEN:
         out["publishing"] = {"type": "open", "verified": False, "known": True, "evidence_url": None,
@@ -210,10 +335,43 @@ def verify(item: dict[str, Any]) -> dict[str, Any]:
     pub = out["publishing"]
     out["backlink"] = ("likely" if (pub["type"] in ("guest", "free", "open") and (lo.get("follow") or pub["type"] == "open"))
                        else "possible" if pub["type"] in ("guest", "free", "paid", "open") else "unknown")
+    out["cms"] = _cms(soup) if soup is not None and item["platform"] not in OPEN else None
+    if niche is not None:
+        out.update(niche.read(_fit_text(soup, item)))
     return out
 
 
+def _cms(soup: BeautifulSoup) -> dict[str, Any] | None:
+    """The platform the site is built on (WordPress, Wix, Shopify, Ghost, Webflow...), read from the page itself with the same detector the Publishing Setup uses.
+    Only said when the page shows it clearly: a site with no signs is not called anything."""
+    from . import site_stack as ss
+    try:
+        f = ss.fingerprint(str(soup), {}, set())
+        key, confidence = ss.decide(f)
+    except Exception:  # noqa: BLE001 - the platform is extra information: never stop the check
+        return None
+    if key in ("static", "unknown") or confidence == "low":
+        return None
+    return {"key": key, "name": ss.PLATFORMS[key][0], "version": f.versions.get(key), "confidence": confidence, "evidence": f.evidence[:2]}
+
+
 # ------------------------------------------------------------------------------------------------------------------------ a run
+def _relevant(items: list[dict[str, Any]], source: str) -> list[dict[str, Any]]:
+    """Keep the sites whose own pages are about the business's niche, best matches first. A site the AI suggested must be rated as the niche (or its readers),
+    must open, and must use the niche's words. For web-search results (already found with niche searches) the check only trims the list when enough
+    sites pass, so a niche with few sites still shows what exists."""
+    def fits(i: dict[str, Any]) -> bool:
+        covered, rel = bool(i.get("topics")), i.get("relevance") or 0
+        if i.get("fit") is not None:
+            # an AI suggestion whose site cannot be opened cannot be checked at all (it may not even exist): it is not shown
+            return i["fit"] >= 4 and bool(i.get("reachable")) and (covered or rel > 0)
+        return (covered or rel > 0) if source == "ai" else (covered or rel >= 4)
+    good = [i for i in items if fits(i)]
+    keep = good if (source == "ai" or len(good) >= 5) else list(items)
+    keep.sort(key=lambda i: (-len(i.get("topics") or []), -(i.get("relevance") or 0), not (i.get("publishing") or {}).get("verified"), i["platform"] in OPEN))
+    return keep
+
+
 def _key(b: Business, a: Article | None) -> tuple[str, str]:
     topics = "|".join(topics_of(b, a))
     return f"biz:{b.id}", "pubdisc:" + hashlib.sha1(topics.encode()).hexdigest()[:16]
@@ -286,19 +444,22 @@ def run(db: Session, business_id: int, article_id: int | None) -> None:
                     if reg == own or reg in found or (any(x in s["domain"] for x in SKIP) and not p) or (p and p[0] not in OPEN):
                         continue
                     found[reg] = {"domain": reg, "site": s["name"], "platform": p[0] if p and p[0] in OPEN else "Website / industry blog", "title": s["name"], "url": s["page"],
-                                  "snippet": "", "found_by": ["AI suggestion"], "topics": [s["topic"]], "competitor": reg in comps}
+                                  "snippet": "", "found_by": ["AI suggestion"], "topics": [s["topic"]], "competitor": reg in comps, "fit": s.get("fit")}
                 source = "ai" if found else source
             except Exception as exc:  # noqa: BLE001 - the fallback is extra: keep the search error
                 log.warning("AI publishing-site suggestions failed: %s", exc)
         ranked = sorted(found.values(), key=lambda i: (-len(i["found_by"]) - len(i["topics"]), i["platform"] in OPEN))[:SITES_READ]
+        niche = Niche(b, a)
         with ThreadPoolExecutor(max_workers=6) as pool:
-            items = list(pool.map(verify, ranked))
+            checked = list(pool.map(lambda i: verify(i, niche), ranked))
+        items = _relevant(checked, source)
+        left_out = len(checked) - len(items)
         metrics = hub.metrics_for(db, list({_registrable(i["domain"]) for i in items}))
         for i in items:
             m = metrics.get(_registrable(i["domain"])) or {}
             i["da"], i["spam"] = m.get("da"), m.get("spam")
         payload = {"state": "error" if errors and not items else "ok", "message": errors[0] if errors else "", "source": source, "searched": 0 if source == "ai" else len(qs), "queries": [x["q"] for x in qs],
-                   "topics": topics_of(b, a), "items": items, "checked_at": datetime.now(timezone.utc).isoformat()}
+                   "topics": topics_of(b, a), "items": items, "left_out": left_out, "checked_at": datetime.now(timezone.utc).isoformat()}
         dom, ckey = _key(b, a)
         row = db.scalar(select(DomainIntelCache).where(DomainIntelCache.domain == dom, DomainIntelCache.key == ckey, DomainIntelCache.tier == CACHE_TIER))
         if row is None:

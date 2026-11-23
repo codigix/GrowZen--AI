@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Sparkles, CheckCircle2, AlertTriangle, Copy, RefreshCw, Plus, Layout, Megaphone, ArrowRight, FileText, Download } from 'lucide-react';
+import { ExternalLink, Sparkles, CheckCircle2, AlertTriangle, Copy, RefreshCw, Plus, Layout, Megaphone, ArrowRight, FileText, Globe, Users, ListChecks, Link2, Send, ShieldCheck, Download } from 'lucide-react';
 import { Card, Button, Badge, Stat, ErrorNote, useAction, useToast, SkList, inputCls } from './SeoUi';
 import { api, useApi } from './seoApi';
 import Tip from './Tip';
-import { downloadCsv, downloadFile } from './DataTable';
+import { downloadFile } from './DataTable';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 
@@ -99,9 +99,30 @@ export function ArticleDownloads({ b, article }) {
   );
 }
 
-const CsvButton = ({ name, head, rows, tip = 'Download this list as a CSV file', label = 'Export CSV' }) => (
-  <Button size="sm" icon={Download} onClick={() => downloadCsv(name, head, rows())} title={tip}>{label}</Button>
-);
+
+/** The look of the "Promote this blog" section: one panel per job, each with an icon, a title and a line saying what it is for. */
+function SectionHead({ icon: Icon, title, hint, right }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <span className="h-9 w-9 shrink-0 rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-100 inline-flex items-center justify-center"><Icon size={16} /></span>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-14 font-semibold text-slate-900 leading-tight">{title}</h3>
+        {hint && <p className="text-12.5 text-slate-500 mt-0.5">{hint}</p>}
+      </div>
+      {right}
+    </div>
+  );
+}
+const Panel = ({ children }) => <section className="rounded-2xl bg-white ring-1 ring-inset ring-slate-200 p-4 grid gap-3.5">{children}</section>;
+const STAT_TONE = { slate: 'bg-slate-100 text-slate-600', indigo: 'bg-indigo-50 text-indigo-600', emerald: 'bg-emerald-50 text-emerald-600', rose: 'bg-rose-50 text-rose-600' };
+function StatTile({ icon: Icon, label, value, tone = 'slate' }) {
+  return (
+    <div className="rounded-xl bg-white ring-1 ring-inset ring-slate-200 p-3 flex items-center gap-3">
+      <span className={`h-10 w-10 shrink-0 rounded-xl inline-flex items-center justify-center ${STAT_TONE[tone]}`}><Icon size={17} /></span>
+      <div className="min-w-0"><div className="text-20 font-semibold text-slate-900 leading-none">{n0(value)}</div><div className="text-12 text-slate-500 mt-1 truncate">{label}</div></div>
+    </div>
+  );
+}
 
 /** Step 1 and 2: the keywords this project tracks, then topics written for the ones you pick. */
 export function KeywordTopicPlanner({ b, onPick }) {
@@ -139,7 +160,6 @@ export function KeywordTopicPlanner({ b, onPick }) {
           <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
             <input value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${list.length} keywords`} aria-label="Search keywords" className={`${inputCls} !w-64`} />
             <span className="text-12 text-slate-500">{shown.length === list.length ? `${list.length} keywords` : `${shown.length} of ${list.length}`}</span>
-            <CsvButton name={`tracked-keywords-${siteOf(b)}`} head={['Keyword', 'Searches per month', 'Difficulty', 'Rank', 'Meant for blogs', 'Used in articles']} rows={() => shown.map(k => [k.keyword, numOrBlank(k.volume), numOrBlank(k.difficulty), numOrBlank(k.rank), k.for_blog ? 'Yes' : 'No', numOrBlank(k.used) || 0])} tip={`Download all ${shown.length} keywords in this list as a CSV file`} />
             {picked.length > 0 && <button type="button" onClick={() => setPicked([])} className="ml-auto text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">Clear {picked.length} selected</button>}
           </div>
           <div className="max-h-[340px] overflow-y-auto divide-y divide-slate-100" role="listbox" aria-multiselectable="true" aria-label="Keywords">
@@ -176,12 +196,6 @@ export function KeywordTopicPlanner({ b, onPick }) {
       {res && (
         <div className="mt-5 border-t border-slate-100 pt-4">
           <p className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Pick a topic {res.method === 'ai' ? '(written by AI for your business)' : '(standard patterns: add an AI key for topics written for your business)'}</p>
-          {res.topics.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <CsvButton name={`blog-topic-ideas-${siteOf(b)}`} head={['Topic', 'Keyword', 'Intent', 'Angle', 'Why']} rows={() => res.topics.map(t => [t.title, t.keyword, t.intent, t.angle, t.why])} tip={`Download all ${res.topics.length} topic ideas as a CSV file`} />
-              <Button size="sm" icon={Download} title="Download the topic ideas as a Markdown file" onClick={() => downloadFile(`blog-topic-ideas-${siteOf(b)}-${today()}.md`, `# Blog topic ideas for ${b.name || siteOf(b)}\n\n${res.topics.map(t => `## ${t.title}\n\n- Keyword: ${t.keyword}\n- Intent: ${t.intent}\n- Angle: ${t.angle}\n- Why: ${t.why}\n`).join('\n')}`, 'text/markdown')}>Download .md</Button>
-            </div>
-          )}
           {res.topics.length === 0 ? <p className="text-13 text-slate-500">Nothing new to suggest: every idea already has an article.</p> : (
             <div className="grid gap-3 md:grid-cols-2">
               {res.topics.map((t, i) => (
@@ -269,7 +283,6 @@ export function LayoutCheckCard({ b, article }) {
           )}
           {!article && <p className="text-12 text-slate-500">Open an article to see how it compares.</p>}
           <p className="text-12 text-slate-500">{d.note}</p>
-          <div><Button size="sm" icon={Download} title="Download this layout check as a Markdown file" onClick={() => downloadFile(`blog-layout-check-${siteOf(b)}-${today()}.md`, [`# Blog layout check for ${b.name || siteOf(b)}`, '', `- Blog page: ${d.listing_url || ''}`, `- Post checked: ${d.sample_post || ''}`, `- Posts on the blog page: ${d.listing.posts_found}`, `- Typical post: ${d.post?.words ?? ''} words, ${d.post?.h2 ?? ''} H2, ${d.post?.h3 ?? ''} H3, ${d.post?.images ?? ''} images`, `- Cards show: ${d.listing.cards_with_image ? 'image' : 'no image'}, ${d.listing.cards_with_date ? 'date' : 'no date'}, ${d.listing.cards_with_excerpt ? 'excerpt' : 'no excerpt'}`, '', article ? `## How "${article.title || article.keyword}" compares` : '## Comparison', '', ...(d.fit || []).map(x => `- [${x.ok === true ? 'x' : ' '}] ${x.label}${x.detail ? `: ${x.detail}` : ''}`), '', d.note || ''].join('\n'), 'text/markdown')}>Download report (.md)</Button></div>
         </div>
       )}
     </Card>
@@ -277,6 +290,7 @@ export function LayoutCheckCard({ b, article }) {
 }
 
 const ST = { planned: ['To do', 'gray'], posted: ['Posted', 'blue'], verified: ['Link confirmed', 'green'], problem: ['Link not found', 'red'], skipped: ['Skipped', 'gray'] };
+const ST_ACCENT = { planned: 'bg-slate-300', posted: 'bg-blue-400', verified: 'bg-emerald-500', problem: 'bg-rose-500', skipped: 'bg-slate-200' };
 
 function PlatformRow({ b, article, p, reload }) {
   const base = `/businesses/${b.id}/blog-flow/promo/${article.id}/${p.id}`;
@@ -292,7 +306,8 @@ function PlatformRow({ b, article, p, reload }) {
   const recheck = () => run('check', async () => { await api(`${base}/check`, { method: 'POST' }); reload(true); });
   const skip = (status) => run('skip', async () => { await api(`${base}/status`, { method: 'POST', body: { status } }); reload(true); });
   return (
-    <div className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-2 text-13">
+    <div className={`relative overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200 p-3.5 pl-5 grid gap-2 text-13 ${p.status === 'skipped' ? 'opacity-70' : ''}`}>
+      <span className={`absolute left-0 inset-y-0 w-1 ${ST_ACCENT[p.status] || ST_ACCENT.planned}`} aria-hidden="true" />
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold text-slate-900">{p.name}</span><Badge tone={tone}>{st}</Badge>
         {p.link_note && <Tip text={p.link_note} wide><span className="text-12 text-slate-400 underline decoration-dotted cursor-help">about the link</span></Tip>}
@@ -312,7 +327,6 @@ function PlatformRow({ b, article, p, reload }) {
           <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 ring-1 ring-inset ring-slate-200 p-3 text-12.5 text-slate-700 font-sans">{ov.text}{ov.hashtags?.length ? `\n\n${ov.hashtags.join(' ')}` : ''}</pre>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" icon={Copy} onClick={copy}>Copy</Button>
-            <Button size="sm" icon={Download} title="Download this overview as a text file" onClick={() => downloadFile(`promo-overview-${fileStem(p.name, 30)}-${siteOf(b)}-${today()}.txt`, `${ov.text}${ov.hashtags?.length ? `\n\n${ov.hashtags.join(' ')}` : ''}\n`, 'text/plain')}>Download</Button>
             {p.open_url && (p.internal ? <Link to={p.open_url}><Button size="sm" variant="primary" icon={ExternalLink}>Open Posts</Button></Link>
               : <a href={p.open_url} target="_blank" rel="noreferrer"><Button size="sm" variant="primary" icon={ExternalLink}>Open {p.name}</Button></a>)}
             <button type="button" onClick={() => write(true)} className="text-12 text-slate-500 hover:underline cursor-pointer">Write it again</button>
@@ -360,24 +374,47 @@ function CompetitorPlaces({ b, base, comp, onAdded, reload }) {
   if (!comp || comp.state === 'error') return null;
   const add = (x) => run(`a${x.domain}`, async () => { onAdded(await api(`${base}/add-from-competitor`, { method: 'POST', body: { domain: x.domain } })); toast(`${x.domain} added to the plan`); });
   if (comp.state === 'no_competitors') {
-    return <p className="text-13 text-slate-600"><Link to="/competitor-finder" className="text-indigo-600 hover:underline">Add your competitors</Link> to see the platforms where they post their blogs.</p>;
+    const sv = comp.saved || {};
+    // switch a saved competitor on (the same choice as on the Competitors page); its blog platforms are then looked up by themselves
+    const use = (c) => run(`u${c.id}`, async () => { await api(`/competitors/${c.id}`, { method: 'PATCH', body: { selected: true } }); toast(`${c.name} is now used`); reload(true); });
+    return (
+      <Panel>
+        <SectionHead icon={Users} title="Where your competitors post their blogs"
+          hint={sv.total
+            ? `You have ${sv.total} competitor${sv.total === 1 ? '' : 's'} saved, but none can be read yet: their blog platforms are found from their websites.`
+            : <><Link to="/competitor-finder" className="text-indigo-600 hover:underline">Add your competitors</Link> to see the platforms where they post their blogs.</>} />
+        {sv.left_out?.length > 0 && (
+          <div className="rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 p-3 grid gap-2 text-13">
+            <div className="text-slate-700">These have a website but are <b>left out</b> (not selected). Use them to see where they post their blogs:</div>
+            {sv.left_out.map(c => (
+              <div key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white ring-1 ring-inset ring-slate-200 px-3 py-2">
+                <span className="font-medium text-slate-900">{c.name}</span>
+                <a href={`https://${c.domain}`} target="_blank" rel="noreferrer" className="text-12 text-slate-400 hover:text-indigo-600 inline-flex items-center gap-1">{c.domain}<ExternalLink size={10} /></a>
+                <span className="ml-auto"><Button size="sm" variant="primary" icon={Plus} busy={busy === `u${c.id}`} onClick={() => use(c)}>Use this competitor</Button></span>
+              </div>
+            ))}
+          </div>
+        )}
+        {sv.no_website?.length > 0 && (
+          <p className="text-12.5 text-slate-600">Only on Google Maps, without a website (nothing to read): {sv.no_website.join(', ')}. Add their website on the <Link to="/competitor-finder" className="text-indigo-600 hover:underline">Competitors page</Link> to include them.</p>
+        )}
+        <ErrorNote>{error}</ErrorNote>
+        {toastNode}
+      </Panel>
+    );
   }
   const list = comp.by_competitor || [];
   return (
-    <div className="grid gap-2">
-      <div className="flex flex-wrap items-center gap-2 text-12.5 text-slate-500">
-        <span className="font-semibold text-slate-900 text-13">Competitor blog platforms</span>
-        {research?.running ? <span className="inline-flex items-center gap-1 text-indigo-600"><RefreshCw size={12} className="animate-spin" />Checking competitor websites ({research.done}/{research.total})…</span>
-          : <span>{research?.done || 0} of {research?.total || list.length} checked</span>}
-        <span className="ml-auto flex items-center gap-2"><CsvButton name={`competitor-blog-platforms-${siteOf(b)}`} head={['Competitor', 'Blog address', 'Article pages found', 'Platforms it posts on', 'Platform links', 'Sites linking to its articles', 'Not found', 'Article addresses']}
-          rows={() => list.map(c => { const s = c.site; return [c.competitor, s?.blog_url || '', (s?.articles || []).length, (s?.platforms || []).map(p => p.name).join('; '), (s?.platforms || []).map(p => p.url).join('; '), (c.linked_from || []).map(l => `${l.name} (${l.domain})`).join('; '), (s?.not_found || []).join('; '), (s?.articles || []).join('; ')]; })} tip="Download one row per competitor as a CSV file" />
-          <Button size="sm" icon={RefreshCw} busy={busy === 'research'} disabled={research?.running} onClick={() => go(true)}>Check again</Button></span>
-      </div>
+    <Panel>
+      <SectionHead icon={Users} title="Where your competitors post their blogs"
+        hint={research?.running ? <span className="inline-flex items-center gap-1 text-indigo-600"><RefreshCw size={12} className="animate-spin" />Checking competitor websites ({research.done}/{research.total})…</span>
+          : `${research?.done || 0} of ${research?.total || list.length} competitor websites checked`}
+        right={<Button size="sm" icon={RefreshCw} busy={busy === 'research'} disabled={research?.running} onClick={() => go(true)}>Check again</Button>} />
       <ErrorNote>{error}</ErrorNote>
-      {list.map(c => <CompetitorRow key={c.competitor} c={c} running={research?.running} />)}
-      {comp.items?.length > 0 && <SuggestedPlaces comp={comp} busy={busy} add={add} site={siteOf(b)} />}
+      <div className="grid gap-2.5">{list.map(c => <CompetitorRow key={c.competitor} c={c} running={research?.running} />)}</div>
+      {comp.items?.length > 0 && <SuggestedPlaces comp={comp} busy={busy} add={add} />}
       {toastNode}
-    </div>
+    </Panel>
   );
 }
 
@@ -402,7 +439,7 @@ function CompetitorRow({ c, running }) {
   const linked = c.linked_from || [];
   const articles = s?.articles || [];
   return (
-    <div className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-2 text-13">
+    <div className="rounded-xl bg-slate-50/60 ring-1 ring-inset ring-slate-200 p-3.5 grid gap-2 text-13">
       <div className="flex flex-wrap items-center gap-2">
         <a href={`https://${c.competitor}`} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 hover:text-indigo-600">{c.competitor}</a>
         {!s ? <span className="text-12.5 text-slate-400">{running ? 'Checking…' : 'Not checked yet'}</span>
@@ -433,107 +470,12 @@ function CompetitorRow({ c, running }) {
   );
 }
 
-const PUB_TYPE = { guest: ['Guest posts', 'green'], free: ['Free submission', 'green'], paid: ['Paid publishing', 'amber'], open: ['Open platform', 'blue'], unknown: ['Not verified', 'gray'] };
-const BACKLINK = { likely: ['Backlink likely', 'green'], possible: ['Backlink possible', 'blue'], unknown: ['Backlink unknown', 'gray'] };
 const selCls = 'h-8 rounded-lg border border-slate-200 bg-white px-2 text-12.5 text-slate-700';
 
-/** Websites across the web that publish articles on this blog's topics (Google searches, not the competitor list), with what was verified on each. */
-function PublishingDiscovery({ b, article }) {
-  const base = `/businesses/${b.id}/blog-flow/discovery/${article.id}`;
-  const r = useApi(base);
-  const [busy, error, run] = useAction();
-  const [toast, toastNode] = useToast();
-  const [f, setF] = useState({ platform: '', topic: '', type: '', da: 0, verified: false, saved: false });
-  const auto = React.useRef(false);
-  const d = r.data;
-  const go = () => run('run', async () => { await api(`${base}/run`, { method: 'POST' }); r.reload(true); });
-  useEffect(() => { if (d?.state === 'not_run' && !d.running && !auto.current) { auto.current = true; go(); } }, [d?.state, d?.running]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!d?.running) return undefined;
-    const t = setInterval(() => r.reload(true), 5000);
-    return () => clearInterval(t);
-  }, [d?.running]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (r.error) return <ErrorNote>{r.error.message}</ErrorNote>;
-  if (!d) return <SkList rows={2} />;
-  const save = (i) => run(`s${i.url}`, async () => { r.setData(await api(`${base}/save`, { method: 'POST', body: { domain: i.domain } })); toast(`${i.domain} saved to your link-building plan`); });
-  const items = d.items || [];
-  const platforms = [...new Set(items.map(i => i.platform))].sort();
-  const topics = [...new Set(items.flatMap(i => i.topics || []))];
-  const shown = items.filter(i => (!f.platform || i.platform === f.platform) && (!f.topic || (i.topics || []).includes(f.topic)) && (!f.type || i.publishing?.type === f.type)
-    && (!f.da || (i.da ?? -1) >= f.da) && (!f.verified || i.publishing?.verified || i.article_verified) && (!f.saved || i.saved));
-  const verified = items.filter(i => i.publishing?.verified).length;
-  return (
-    <div className="grid gap-2 border-t border-slate-200 pt-4">
-      <div className="flex flex-wrap items-center gap-2 text-12.5 text-slate-500">
-        <span className="font-semibold text-slate-900 text-13">Publishing sites on the web</span>
-        {d.running ? <span className="inline-flex items-center gap-1 text-indigo-600"><RefreshCw size={12} className="animate-spin" />Searching the web and checking each site…</span>
-          : d.state === 'ok' && <span>{items.length} sites · {verified} verified · topics: {(d.topics || []).join(', ')}</span>}
-        <span className="ml-auto flex items-center gap-2">{items.length > 0 && <CsvButton name={`publishing-sites-${siteOf(b)}`} head={['Site', 'Domain', 'Page', 'Page title', 'Platform', 'Publishing type', 'Publishing verified', 'Publishing page', 'Backlink', 'Followed links out', 'Nofollow links out', 'DA', 'Competitor', 'Saved', 'Article verified', 'Found by', 'Topics']}
-          rows={() => shown.map(i => [i.site || i.domain, i.domain, i.url, i.title || '', i.platform, (PUB_TYPE[i.publishing?.type] || PUB_TYPE.unknown)[0], i.publishing?.verified ? 'Yes' : 'No', i.publishing?.evidence_url || '', (BACKLINK[i.backlink] || BACKLINK.unknown)[0], numOrBlank(i.links_out?.follow), numOrBlank(i.links_out?.nofollow), numOrBlank(i.da), i.competitor ? 'Yes' : 'No', i.saved ? 'Yes' : 'No', i.article_verified ? 'Yes' : 'No', (i.found_by || []).join('; '), (i.topics || []).join('; ')])}
-          tip={`Download the ${shown.length} sites shown (with the filters applied) as a CSV file`} />}<Button size="sm" icon={RefreshCw} busy={busy === 'run'} disabled={d.running || d.state === 'no_search' || d.state === 'no_topic'} onClick={go}>Search again</Button></span>
-      </div>
-      <ErrorNote>{error || (d.state === 'error' ? d.message : null)}</ErrorNote>
-      {d.source === 'ai' && items.length > 0 && (
-        <p className="flex gap-2 rounded-lg bg-amber-50 ring-1 ring-inset ring-amber-200 p-2.5 text-12.5 text-amber-900">
-          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-          <span>The web search could not run{d.message ? ` (${d.message})` : ''}. These sites are <b>AI suggestions</b>, not search results: each one was opened and checked, and only what is marked “verified” was seen on the site itself.</span>
-        </p>
-      )}
-      {(d.state === 'no_search' || d.state === 'no_topic') && <p className="text-13 text-slate-600">{d.message}</p>}
-      {items.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <select aria-label="Platform" className={selCls} value={f.platform} onChange={e => setF(s => ({ ...s, platform: e.target.value }))}><option value="">All platforms</option>{platforms.map(p => <option key={p}>{p}</option>)}</select>
-          <select aria-label="Topic" className={selCls} value={f.topic} onChange={e => setF(s => ({ ...s, topic: e.target.value }))}><option value="">All topics</option>{topics.map(t => <option key={t}>{t}</option>)}</select>
-          <select aria-label="Publishing type" className={selCls} value={f.type} onChange={e => setF(s => ({ ...s, type: e.target.value }))}><option value="">All publishing types</option>{Object.entries(PUB_TYPE).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</select>
-          <select aria-label="Domain authority" className={selCls} value={f.da} onChange={e => setF(s => ({ ...s, da: Number(e.target.value) }))}><option value={0}>Any DA</option>{[10, 20, 30, 40, 50].map(n => <option key={n} value={n}>DA {n}+</option>)}</select>
-          <label className="inline-flex items-center gap-1.5 text-12.5 text-slate-700"><input type="checkbox" checked={f.verified} onChange={e => setF(s => ({ ...s, verified: e.target.checked }))} />Verified only</label>
-          <label className="inline-flex items-center gap-1.5 text-12.5 text-slate-700"><input type="checkbox" checked={f.saved} onChange={e => setF(s => ({ ...s, saved: e.target.checked }))} />Saved</label>
-          <span className="text-12 text-slate-400">{shown.length} shown</span>
-        </div>
-      )}
-      {d.state === 'ok' && !items.length && !d.running && <p className="text-13 text-slate-600">The searches found no publishing sites for these topics.</p>}
-      <div className="grid gap-2">
-        {shown.map(i => {
-          const pub = i.publishing || {};
-          const [pl, pt] = PUB_TYPE[pub.type] || PUB_TYPE.unknown;
-          const [bl, bt] = BACKLINK[i.backlink] || BACKLINK.unknown;
-          return (
-            <div key={i.url} className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-1 text-13">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-slate-900">{i.site || i.domain}</span>
-                <span className="text-12 text-slate-400">{i.domain}</span>
-                <Badge tone="violet">{i.platform}</Badge>
-                <Tip wide text={pub.verified ? `Verified on ${pub.evidence_url}: “${pub.evidence}”` : pub.known ? pub.evidence : 'No “write for us”, guest-post or submission page was found on this site.'}>
-                  <span><Badge tone={pt}>{pub.verified && <CheckCircle2 size={11} className="inline mr-0.5" />}{pl}{pub.verified ? ' · verified' : ''}</Badge></span>
-                </Tip>
-                <Tip wide text={i.links_out ? `Its article links out to other sites ${i.links_out.follow} time(s) with followed links and ${i.links_out.nofollow} with nofollow.` : 'The article could not be opened.'}><span><Badge tone={bt}>{bl}</Badge></span></Tip>
-                {i.da != null && <span className="text-12 text-slate-500">DA {i.da}</span>}
-                {i.competitor && <Badge tone="amber">Competitor</Badge>}
-                <span className="ml-auto">{i.saved ? <Badge tone="green"><CheckCircle2 size={11} className="inline mr-0.5" />Saved</Badge>
-                  : <Button size="sm" icon={Plus} busy={busy === `s${i.url}`} onClick={() => save(i)}>Save</Button>}</span>
-              </div>
-              <a href={i.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1 break-all">{i.title || i.url}<ExternalLink size={11} className="shrink-0" /></a>
-              <div className="text-12 text-slate-500 flex flex-wrap gap-x-3">
-                <span className={i.article_verified ? 'text-emerald-700' : ''}>{i.article_verified ? '✓ Article verified' : i.reachable === false ? 'Page could not be opened' : 'Article not verified'}</span>
-                <span>Found by: {(i.found_by || []).join(', ')}</span>
-                {pub.verified && pub.evidence_url && <a href={pub.evidence_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">Their publishing page</a>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {toastNode}
-    </div>
-  );
-}
-
 /** Step 2: the linking sites worth posting this blog on, best first; each one can be added to the plan. */
-function SuggestedPlaces({ comp, busy, add, site }) {
+function SuggestedPlaces({ comp, busy, add }) {
   return (
       <div className="grid gap-2">
-        <div><CsvButton name={`places-to-post-${site}`} head={['Site', 'Category', 'Follow', 'Topic', 'DA', 'Used by competitors', 'Articles', 'Example page', 'Competitor article', 'How to get the link']}
-          rows={() => comp.items.map(x => [x.domain, x.category?.label || '', x.follow === 'dofollow' ? 'Follow' : 'Nofollow', x.topic ? TOPIC[x.topic][0] : '', numOrBlank(x.da), (x.competitors || []).join('; '), numOrBlank(x.articles), x.example?.url || '', x.example?.competitor_article || '', x.how || ''])}
-          tip={comp.total > comp.items.length ? `Exports the ${comp.items.length} best places shown (of ${comp.total})` : `Download all ${comp.items.length} places as a CSV file`} /></div>
         {comp.items.map(x => (
           <div key={x.domain} className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-1.5 text-13">
             <div className="flex flex-wrap items-center gap-2">
@@ -557,6 +499,105 @@ function SuggestedPlaces({ comp, busy, add, site }) {
   );
 }
 
+/** The top blogging and article-publishing platforms: always listed (a built-in list), plus the ones Claude picks for this business, which come first with a reason.
+ *  Each platform is opened in the background to see that it is online; one that is not is hidden. */
+function TopPlatforms({ b, article }) {
+  const base = `/businesses/${b.id}/blog-flow/platforms/${article.id}`;
+  const r = useApi(base);
+  const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
+  const [f, setF] = useState({ q: '', kind: '', free: false, suggested: false, all: false });
+  const auto = React.useRef(false);
+  const d = r.data;
+  const go = () => run('check', async () => { await api(`${base}/check`, { method: 'POST' }); r.reload(true); });
+  useEffect(() => { if (d?.stale && !d.running && !auto.current) { auto.current = true; go(); } }, [d?.stale, d?.running]); // eslint-disable-line react-hooks/exhaustive-deps
+  const busyNow = Boolean(d?.running || d?.rental?.running);
+  useEffect(() => {
+    if (!busyNow) return undefined;
+    const t = setInterval(() => r.reload(true), 5000);
+    return () => clearInterval(t);
+  }, [busyNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rentalTried = React.useRef(false);  // the clothing-rental websites are looked up and opened in the background (once a day at most)
+  useEffect(() => {
+    if (d?.rental?.show && d.rental.stale && !d.rental.running && !d.running && !rentalTried.current) {
+      rentalTried.current = true;
+      api(`${base}/rental/refresh`, { method: 'POST' }).then(() => r.reload(true)).catch(() => { });
+    }
+  }, [d?.rental?.show, d?.rental?.stale, d?.rental?.running, d?.running]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (r.error) return <ErrorNote>{r.error.message}</ErrorNote>;
+  if (!d) return <SkList rows={2} />;
+  const save = (i) => run(`p${i.domain}`, async () => { r.setData(await api(`${base}/save`, { method: 'POST', body: { domain: i.domain } })); toast(`${i.name} saved to your link-building plan`); });
+  const items = d.items.filter(i => i.live !== false);  // a platform that could not be opened is not shown
+  const offline = d.items.length - items.length;
+  const q = f.q.trim().toLowerCase();
+  const shown = items.filter(i => (!q || `${i.name} ${i.domain}`.toLowerCase().includes(q)) && (!f.kind || i.kind === f.kind)
+    && (!f.free || i.price === 'free' || i.price === 'free plan') && (!f.suggested || i.suggested));
+  const TOP = 20;  // only the best 20 are listed (Claude's picks first); search or a filter reaches the others
+  const list = shown.slice(0, TOP);
+  const picked = items.filter(i => i.suggested).length;
+  const chk = 'inline-flex items-center gap-1.5 text-12.5 text-slate-700 cursor-pointer';
+  return (
+    <Panel>
+      <SectionHead icon={Layout} title="Top blogging platforms"
+        hint={busyNow ? <span className="inline-flex items-center gap-1 text-indigo-600"><RefreshCw size={12} className="animate-spin" />{d.running ? 'Asking Claude for the platforms that suit your business and checking each one is online…' : 'Looking up clothing rental websites and opening each one…'}</span>
+          : `The best 20 of ${items.length} platforms where you can publish this blog from your own account${picked ? ' · Claude picked the best fits for your business first' : ''}${d.checked_at ? ` · checked ${new Date(d.checked_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}` : ''}${offline ? ` · ${offline} offline, hidden` : ''}`}
+        right={<Button size="sm" icon={RefreshCw} busy={busy === 'check'} disabled={d.running} onClick={go}>Refresh</Button>} />
+      <ErrorNote>{error}</ErrorNote>
+      {d.source === 'built-in' && d.message && !d.running && (
+        <p className="flex gap-2 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 p-3 text-12.5 text-amber-900">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" /><span>Claude could not add platforms for your business ({d.message}). The built-in list below is always shown.</span>
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 p-2.5">
+        <input value={f.q} onChange={e => setF(s => ({ ...s, q: e.target.value }))} placeholder="Search platforms" aria-label="Search platforms" className={`${selCls} !w-48`} />
+        <select aria-label="Type" className={selCls} value={f.kind} onChange={e => setF(s => ({ ...s, kind: e.target.value }))}><option value="">All types</option>{(d.kinds || []).map(k => <option key={k}>{k}</option>)}</select>
+        <label className={chk}><input type="checkbox" checked={f.free} onChange={e => setF(s => ({ ...s, free: e.target.checked }))} />Free to publish</label>
+        {picked > 0 && <label className={chk}><input type="checkbox" checked={f.suggested} onChange={e => setF(s => ({ ...s, suggested: e.target.checked }))} />Picked for my business</label>}
+        <span className="ml-auto text-12 text-slate-400">{list.length} shown</span>
+      </div>
+      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+        {list.map(i => (
+          <div key={i.domain} className="rounded-xl bg-white ring-1 ring-inset ring-slate-200 hover:ring-indigo-200 transition-shadow hover:shadow-sm p-3.5 grid gap-1.5 text-13 content-start">
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-slate-900 truncate">{i.name}</div>
+                <div className="text-12 text-slate-400 truncate">{i.domain}</div>
+              </div>
+              {i.saved ? <Badge tone="green"><CheckCircle2 size={11} className="inline mr-0.5" />Saved</Badge>
+                : <Button size="sm" icon={Plus} busy={busy === `p${i.domain}`} onClick={() => save(i)}>Save</Button>}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge tone="violet">{i.kind}</Badge>
+              {i.price && <Badge tone={i.price === 'paid' ? 'amber' : 'green'}>{i.price === 'free' ? 'Free' : i.price === 'free plan' ? 'Free plan' : 'Paid'}</Badge>}
+              {i.suggested && <Badge tone="blue">Picked for you</Badge>}
+              {i.suits && <Tip wide text={`${i.name} is a fashion platform where anyone can publish an article, so it suits clothing rental articles. This comes from the kind of platform, not from reading its pages.`}><span><Badge tone="green">Suits clothing rental articles</Badge></span></Tip>}
+            </div>
+            {i.why && <p className="text-12.5 text-slate-600">{i.why}</p>}
+            {i.related?.length > 0 && (
+              <div className="mt-0.5 rounded-lg bg-slate-50/70 ring-1 ring-inset ring-slate-100 p-2.5 grid gap-1.5">
+                <div className="text-12 font-semibold text-slate-700">Related Clothing Rental Websites</div>
+                {i.related.map(s => (
+                  <div key={s.domain} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-12.5">
+                    {s.why || s.found_by ? <Tip text={[s.why, s.found_by && `Found by ${s.found_by === 'earlier' ? 'an earlier search' : s.found_by}, then opened and checked`].filter(Boolean).join(' · ')}><span className="font-medium text-slate-800 cursor-help">{s.name}</span></Tip> : <span className="font-medium text-slate-800">{s.name}</span>}
+                    {s.verified === true && <Tip text="The website was opened and its page is about renting clothes."><span className="inline-flex items-center gap-0.5 text-12 text-emerald-600"><CheckCircle2 size={11} />Verified</span></Tip>}
+                    {s.verified === false && <Tip text={s.error || 'The website could not be opened.'}><span className="text-12 text-rose-600">Could not be opened</span></Tip>}
+                    <a href={s.url} target="_blank" rel="noreferrer" className="ml-auto text-indigo-700 hover:underline inline-flex items-center gap-1">Visit Website<ExternalLink size={11} className="shrink-0" /></a>
+                  </div>
+                ))}
+                <p className="text-11.5 text-slate-500">Reference websites for clothing rental content. You publish your blog on {i.name}, not on these sites.</p>
+              </div>
+            )}
+            <a href={i.url} target="_blank" rel="noreferrer" className="text-12.5 text-indigo-700 hover:underline inline-flex items-center gap-1">Start publishing<ExternalLink size={11} className="shrink-0" /></a>
+          </div>
+        ))}
+      </div>
+      {!list.length && <p className="rounded-xl border border-dashed border-slate-300 p-4 text-13 text-slate-600 text-center">No platform matches these filters.</p>}
+      {shown.length > TOP && <p className="text-12.5 text-slate-500">Showing the best {TOP} of {shown.length} platforms. Search or use a filter to find the others.</p>}
+      {toastNode}
+    </Panel>
+  );
+}
+
 /** After publishing: where to promote the blog, an overview for each place with the blog's link, and the check that the posted link is there. */
 export function PromoteCard({ b, article }) {
   const base = `/businesses/${b.id}/blog-flow/promo/${article.id}`;
@@ -564,6 +605,7 @@ export function PromoteCard({ b, article }) {
   const [name, setName] = useState('');
   const [site, setSite] = useState('');
   const [busy, error, run] = useAction();
+  const [toast, toastNode] = useToast();
   const [ask, setAsk] = useState(false);
   const d = r.data;
   useEffect(() => { r.reload(true); }, [article.id, article.wp_url, article.react_url]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -571,33 +613,83 @@ export function PromoteCard({ b, article }) {
   if (!d) return <SkList rows={3} />;
   const add = () => run('add', async () => { await api(`${base}/add`, { method: 'POST', body: { name, url: site || null } }); setName(''); setSite(''); setAsk(false); r.reload(true); });
   const all = () => run('all', async () => { await api(`${base}/check-all`, { method: 'POST' }); r.reload(true); });
+  const copyLink = () => { try { navigator.clipboard.writeText(d.url); toast('Link copied'); } catch { toast('Select the link and copy it'); } };
   const c = d.counts;
+  const active = d.items.filter(p => p.status !== 'skipped').length;
+  const pct = active ? Math.round((c.verified / active) * 100) : 0;
   return (
-    <Card title="Promote this blog and track the links" subtitle="After it is published: post a short overview with the blog's link on other platforms, then the software checks that each link is really there."
-      action={d.published && <Button size="sm" icon={RefreshCw} busy={busy === 'all'} onClick={all}>Check all links</Button>}>
-      {!d.published && <p className="text-13 text-slate-600"><Megaphone size={14} className="inline mr-1" />This blog is not published yet. Publish it (or schedule it) first: the places to promote it, and an overview with its real link, appear here once it is live.</p>}
-      {d.published && (
-        <div className="grid gap-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><Stat label="Platforms" value={d.items.length} /><Stat label="Posted" value={c.posted + c.verified + c.problem} /><Stat label="Links confirmed" value={c.verified} /><Stat label="Link not found" value={c.problem} /></div>
-          <p className="text-12.5 text-slate-600">Blog: <a href={d.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1">{d.url}<ExternalLink size={11} /></a>. Posting is done by you, on your own accounts: nothing is posted for you. Most social links are nofollow: they bring visitors, not ranking value.</p>
-          <ErrorNote>{error}</ErrorNote>
-          <CompetitorPlaces b={b} base={base} comp={d.from_competitors} onAdded={(next) => r.setData(next)} reload={r.reload} />
-          <PublishingDiscovery b={b} article={article} />
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4"><h3 className="text-14 font-semibold text-slate-900">Your promotion plan</h3>
-            <span className="ml-auto"><CsvButton name={`promotion-plan-${siteOf(b)}`} head={['Platform', 'Status', 'What a link there gives', 'About the link', 'Where to post', 'Address of your post', 'Link check', 'Link type', 'Anchor text', 'Used by competitors']}
-              rows={() => d.items.map(p => [p.name, (ST[p.status] || ST.planned)[0], p.gives || '', p.link_note || '', p.open_url || '', p.posted_url || '', p.check ? ({ working: 'Link found', link_missing: 'Link missing', unconfirmed: 'Could not confirm' }[p.check.state] || p.check.state) : '', p.check?.follow || '', p.check?.anchor || '', (p.competitor_use?.competitors || []).join('; ')])} tip={`Download all ${d.items.length} platforms as a CSV file`} /></span></div>
-          <div className="grid gap-3">{d.items.map(p => <PlatformRow key={p.id} b={b} article={article} p={p} reload={r.reload} />)}</div>
-          {ask ? (
-            <div className="flex flex-wrap items-end gap-2">
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="Site name, for example an industry forum" aria-label="Site name" className={`${inputCls} !w-64`} />
-              <input value={site} onChange={e => setSite(e.target.value)} placeholder="Page to open (optional)" aria-label="Page to open" className={`${inputCls} !w-64`} />
-              <Button size="sm" variant="primary" busy={busy === 'add'} disabled={name.trim().length < 2} onClick={add}>Add</Button>
-              <Button size="sm" onClick={() => setAsk(false)}>Cancel</Button>
-            </div>
-          ) : <div><Button size="sm" icon={Plus} onClick={() => setAsk(true)}>Add another platform</Button> <Link to="/backlinks/opportunities" className="text-12.5 text-indigo-600 hover:underline ml-2">Find more places for links</Link></div>}
+    <section className="rounded-2xl bg-slate-50 ring-1 ring-inset ring-slate-200 overflow-hidden">
+      <header className="flex flex-wrap items-center gap-3 px-5 py-4 bg-gradient-to-r from-indigo-50 via-white to-violet-50 border-b border-slate-200">
+        <span className="h-11 w-11 shrink-0 rounded-2xl bg-indigo-600 text-white inline-flex items-center justify-center shadow-sm"><Megaphone size={20} /></span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-16 font-semibold text-slate-900 leading-tight">Promote this blog and track the links</h2>
+          <p className="text-12.5 text-slate-500 mt-0.5 max-w-2xl">After it is published: post a short overview with the blog's link on other platforms, then the software checks that each link is really there.</p>
         </div>
-      )}
-    </Card>
+        {d.published && <Button size="sm" icon={RefreshCw} busy={busy === 'all'} onClick={all}>Check all links</Button>}
+      </header>
+
+      <div className="p-4 grid gap-4">
+        {!d.published && (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center grid gap-1.5 justify-items-center">
+            <span className="h-10 w-10 rounded-full bg-slate-100 text-slate-500 inline-flex items-center justify-center"><Megaphone size={18} /></span>
+            <p className="text-14 font-semibold text-slate-800">This blog is not published yet</p>
+            <p className="text-13 text-slate-500 max-w-xl">Publish it (or schedule it) first. The places to promote it, and an overview with its real link, appear here once it is live.</p>
+          </div>
+        )}
+        {d.published && (
+          <>
+            {/* the live blog, and how far the promotion is */}
+            <div className="rounded-2xl bg-white ring-1 ring-inset ring-slate-200 p-4 grid gap-3.5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Badge tone="green"><span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1 align-middle" />Live</Badge>
+                <a href={d.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-13 text-indigo-700 hover:underline" title={d.url}>{d.url}</a>
+                <Button size="sm" icon={Copy} onClick={copyLink}>Copy link</Button>
+                <a href={d.url} target="_blank" rel="noreferrer"><Button size="sm" icon={ExternalLink}>Open</Button></a>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                <StatTile icon={ListChecks} label="Places to post" value={d.items.length} tone="indigo" />
+                <StatTile icon={Send} label="Posted" value={c.posted + c.verified + c.problem} tone="slate" />
+                <StatTile icon={Link2} label="Links confirmed" value={c.verified} tone="emerald" />
+                <StatTile icon={AlertTriangle} label="Link not found" value={c.problem} tone="rose" />
+              </div>
+              <div>
+                <div className="flex items-center justify-between text-12 text-slate-500 mb-1.5"><span>Promotion progress</span><span className="font-medium text-slate-700">{c.verified} of {active} links confirmed · {pct}%</span></div>
+                <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-500 transition-all" style={{ width: `${pct}%` }} /></div>
+              </div>
+              <p className="flex gap-2 rounded-xl bg-indigo-50/60 ring-1 ring-inset ring-indigo-100 p-3 text-12.5 text-slate-600">
+                <ShieldCheck size={14} className="shrink-0 mt-0.5 text-indigo-500" />
+                <span>Posting is done by you, on your own accounts: nothing is posted for you. Most social links are nofollow: they bring visitors, not ranking value.</span>
+              </p>
+            </div>
+            <ErrorNote>{error}</ErrorNote>
+
+            <CompetitorPlaces b={b} base={base} comp={d.from_competitors} onAdded={(next) => r.setData(next)} reload={r.reload} />
+            <TopPlatforms b={b} article={article} />
+
+            {/* your own plan: one card per place, with the overview and the link check */}
+            <Panel>
+              <SectionHead icon={ListChecks} title="Your promotion plan" hint="Write the overview for a place, post it there yourself, then paste the address of your post so the link can be checked."
+                right={<Badge tone="gray">{d.items.length} place{d.items.length === 1 ? '' : 's'}</Badge>} />
+              <div className="grid gap-2.5">{d.items.map(p => <PlatformRow key={p.id} b={b} article={article} p={p} reload={r.reload} />)}</div>
+              {ask ? (
+                <div className="flex flex-wrap items-end gap-2 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 p-3">
+                  <input value={name} onChange={e => setName(e.target.value)} placeholder="Site name, for example an industry forum" aria-label="Site name" className={`${inputCls} !w-64`} />
+                  <input value={site} onChange={e => setSite(e.target.value)} placeholder="Page to open (optional)" aria-label="Page to open" className={`${inputCls} !w-64`} />
+                  <Button size="sm" variant="primary" busy={busy === 'add'} disabled={name.trim().length < 2} onClick={add}>Add</Button>
+                  <Button size="sm" onClick={() => setAsk(false)}>Cancel</Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-slate-300 p-3">
+                  <Button size="sm" icon={Plus} onClick={() => setAsk(true)}>Add another platform</Button>
+                  <Link to="/backlinks/opportunities" className="text-12.5 text-indigo-600 hover:underline inline-flex items-center gap-1">Find more places for links<ArrowRight size={12} /></Link>
+                </div>
+              )}
+            </Panel>
+          </>
+        )}
+      </div>
+      {toastNode}
+    </section>
   );
 }
 

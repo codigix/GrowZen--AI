@@ -271,3 +271,37 @@ def test_the_daily_counts_are_kept_and_give_back_the_last_days_oldest_first(clie
         db.query(Business).filter(Business.id == b.id).delete()
         db.commit()
         db.close()
+
+
+def test_one_page_in_full_shows_googles_answer_and_a_live_test(client, bid, monkeypatch):
+    url = "https://index.example/blog/post"
+    with_google(monkeypatch, {url: {"verdict": "NEUTRAL", "coverageState": "Crawled - currently not indexed", "robotsTxtState": "ALLOWED", "pageFetchState": "SUCCESSFUL", "crawledAs": "MOBILE", "lastCrawlTime": "2026-11-23T07:14:23Z"}})
+    monkeypatch.setattr(indexing, "live_test", lambda u: {"ok": True, "status": 200, "html": "<html></html>", "check": {"verdict": "indexable", "reasons": []}})
+    r = client.post(api(client, bid, "/page-detail"), json={"url": url})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["google"]["state"] == "not_indexed" and d["google"]["coverage"] == "Crawled - currently not indexed" and d["google"]["crawled_as"] == "MOBILE" and d["google_error"] is None
+    assert d["live"]["status"] == 200
+    assert client.post(api(client, bid, "/page-detail"), json={"url": "https://other.example/x"}).status_code == 422  # only this project's own website
+
+
+def test_the_page_detail_still_gives_the_live_test_when_google_is_not_connected(client, bid, monkeypatch):
+    no_google(monkeypatch)
+    monkeypatch.setattr(indexing, "live_test", lambda u: {"ok": True, "status": 200, "html": "", "check": {"verdict": "indexable", "reasons": []}})
+    d = client.post(api(client, bid, "/page-detail"), json={"url": "https://index.example/a"}).json()
+    assert d["google"] is None and "No Google account" in d["google_error"] and d["live"]["ok"]
+
+
+def test_the_diagnosis_names_the_exact_causes_and_their_fixes():
+    url = "https://index.example/blog/post"
+    live = {"ok": True, "status": 200, "final_url": url, "redirects": [], "canonical": "https://index.example/", "title": "Home | Shop", "description": "Same", "h1": [], "schema_types": [], "html": '<div id="root"></div>',
+            "check": {"words": 6, "verdict": "risky", "reasons": []}}
+    google = {"state": "not_indexed", "coverage": "Crawled - currently not indexed", "robots": "ALLOWED", "sitemaps": [], "referring": []}
+    d = indexing.diagnose(url, google, live, {"title": "Home | Shop", "description": "Same"}, True, "React")
+    titles = [i["title"] for i in d["items"]]
+    assert any("copy of another page" in t for t in titles) and any("almost no text" in t for t in titles) and any("repeats the home page" in t for t in titles)
+    canon = next(i for i in d["items"] if "copy of another page" in i["title"])
+    assert f'<link rel="canonical" href="{url}">' in canon["fix"][0] and canon["level"] == "cause"
+    assert "problems found" in d["headline"] and "Crawled - currently not indexed" in d["headline"]
+    blocked = indexing.diagnose(url, {"state": "blocked", "robots": "DISALLOWED", "coverage": "Blocked by robots.txt"}, {"ok": True, "status": 200, "check": {"words": 500, "reasons": []}, "h1": ["x"], "schema_types": ["Article"]}, {}, True)
+    assert blocked["items"][0]["level"] == "blocker" and "robots.txt" in blocked["items"][0]["title"]

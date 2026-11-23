@@ -157,6 +157,7 @@ class Settings(BaseSettings):
     # TESTS AND DEMOS ONLY (ALLOW_SAMPLE_DATA=true): lets the data providers fall back to generated sample numbers when a key is missing. Off by default: with it off,
     # a missing key means "not available" (HTTP 503 / a failed audit with the reason), never invented rankings, keywords, backlinks, listings or AI mentions.
     allow_sample_data: bool = False
+    competitor_watch_max: int = 8  # most competitors a project can choose for the weekly watch (COMPETITOR_WATCH_MAX): each one is visited every week
 
     # Our own sites (comma separated domains): these businesses are "internal", all others are clients. See services/domain_checks.py.
     internal_domains: str = "codigix.co,codigixinfotech.com"
