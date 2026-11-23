@@ -238,6 +238,7 @@ class Review(TimestampMixin, Base):
     replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sentiment: Mapped[str | None] = mapped_column(String(10))
     topics: Mapped[list[str]] = mapped_column(JSON, default=list)
+    gone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # the Business Profile no longer lists this review (removed, filtered, or only ever on the public Maps copy): it is kept for the record, never counted, never replied to
 
 
 class Notification(TimestampMixin, Base):

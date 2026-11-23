@@ -20,6 +20,7 @@ function ReviewCard({ r, b, onSaved, toast }) {
   const [editing, setEditing] = useState(false);
   const [busy, error, run] = useAction();
   const posted = r.reply_status === 'posted';
+  const gone = Boolean(r.gone_at);
   const draft = () => run('draft', async () => { const out = await api(`/businesses/${b.id}/reviews/${r.id}/draft`, { method: 'POST', body: { language } }); setText(out.reply_text); onSaved(out); });
   const approve = () => run('approve', async () => {
     const out = await api(`/businesses/${b.id}/reviews/${r.id}/approve`, { method: 'POST', body: { text, language } });
@@ -28,17 +29,19 @@ function ReviewCard({ r, b, onSaved, toast }) {
     toast(out.task?.result?.posted ? 'Reply posted on Google' : 'Reply approved and saved (not linked to Google: post it from the Google app)');
   });
   return (
-    <div className={`p-4 border rounded ${r.rating <= 2 && !posted ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'}`}>
+    <div className={`p-4 border rounded ${gone ? 'border-slate-200 bg-slate-50 opacity-90' : r.rating <= 2 && !posted ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'}`}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-13 font-medium text-gray-900">{r.author || 'Customer'}</span>
         <Stars n={r.rating} />
         <span className="text-12 text-gray-500">{fmtDate(r.review_date)}</span>
         {(r.topics || []).map(t => <Badge key={t} tone="gray">{t}</Badge>)}
-        <span className="ml-auto">{posted ? <StatusPill level="good">Replied</StatusPill> : r.rating <= 2 ? <StatusPill level="critical">Needs reply</StatusPill> : <StatusPill level="warning">No reply yet</StatusPill>}</span>
+        <span className="ml-auto">{gone ? <StatusPill level="warning">Not on Google now</StatusPill> : posted ? <StatusPill level="good">Replied</StatusPill> : r.rating <= 2 ? <StatusPill level="critical">Needs reply</StatusPill> : <StatusPill level="warning">No reply yet</StatusPill>}</span>
       </div>
       {r.body && <p className="text-13 text-gray-700 mt-1.5">{r.body}</p>}
       <div className="mt-3 pl-3 border-l-2 border-gray-200">
-        {posted ? (
+        {gone ? (
+          <p className="text-12.5 text-slate-600">Google's Business Profile does not list this review (it was removed or filtered, or it is only on a public copy of the listing). It is kept here for the record but not counted, and a reply cannot be posted to it. If it shows on Google Maps, reply there; when the Business Profile lists it, it comes back here by itself.</p>
+        ) : posted ? (
           <><div className="text-11 text-gray-500 mb-1">Your reply</div><p className="text-13 text-gray-800 whitespace-pre-line">{r.reply_text}</p></>
         ) : (
           <>
@@ -67,10 +70,10 @@ function Reviews({ b, tab }) {
   if (!rv.data) return rv.error ? <ErrorNote>{rv.error.message}</ErrorNote> : <div className="space-y-4"><SkStats labels={["Average rating", "Reviews here", "Reply rate", "Waiting for a reply"]} /><SkCard title="Reviews"><SkList rows={5} /></SkCard></div>;
   const { reviews, summary } = rv.data;
   const n = summary.count;
-  const shown = reviews.filter(r => filter === 'all' ? true : filter === 'unreplied' ? r.reply_status !== 'posted' : filter === 'negative' ? r.rating <= 2 : r.rating >= 4);
+  const shown = reviews.filter(r => filter === 'all' ? true : r.gone_at ? false : filter === 'unreplied' ? r.reply_status !== 'posted' : filter === 'negative' ? r.rating <= 2 : r.rating >= 4);
   const saved = (next) => rv.setData(d => ({ ...d, reviews: d.reviews.map(x => x.id === next.id ? { ...x, ...next } : x) }));
   const draftAll = () => run('all', async () => {
-    const todo = reviews.filter(r => r.reply_status === 'none');
+    const todo = reviews.filter(r => !r.gone_at && r.reply_status === 'none');
     for (const r of todo) await api(`/businesses/${b.id}/reviews/${r.id}/draft`, { method: 'POST', body: { language: 'English' } });
     rv.reload(true);
     toast(`Drafted ${todo.length} replies`);
@@ -88,7 +91,7 @@ function Reviews({ b, tab }) {
         <Stat label="Reviews here" value={n} />
         <Stat label="Reply rate" value={`${summary.reply_rate}%`} hint="target 90%+" />
         <Stat label="Waiting for a reply" value={summary.awaiting_reply} hint="reply within 24 h" />
-        <Stat label="Negative, unanswered" value={reviews.filter(r => r.rating <= 2 && r.reply_status !== 'posted').length} />
+        <Stat label="Negative, unanswered" value={reviews.filter(r => !r.gone_at && r.rating <= 2 && r.reply_status !== 'posted').length} />
       </div>
 
       {tab === 'inbox' && (
@@ -98,7 +101,7 @@ function Reviews({ b, tab }) {
               {[['all', 'All'], ['unreplied', 'Waiting for reply'], ['negative', '1–2 stars'], ['positive', '4–5 stars']].map(([k, l]) => <button key={k} onClick={() => setFilter(k)} className={`h-7 px-2.5 text-xs rounded border cursor-pointer ${filter === k ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-300 text-gray-700'}`}>{l}</button>)}
               <div className="ml-auto flex gap-2">
                 {b.gbp_location && <Button size="sm" icon={RefreshCw} busy={busy === 'sync'} onClick={sync}>Sync from Google</Button>}
-                <Button size="sm" variant="ai" icon={Sparkles} busy={busy === 'all'} disabled={!reviews.some(r => r.reply_status === 'none')} onClick={draftAll}>Draft all</Button>
+                <Button size="sm" variant="ai" icon={Sparkles} busy={busy === 'all'} disabled={!reviews.some(r => !r.gone_at && r.reply_status === 'none')} onClick={draftAll}>Draft all</Button>
               </div>
             </div>
             <ErrorNote>{error}</ErrorNote>

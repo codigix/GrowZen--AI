@@ -412,7 +412,7 @@ def gbp_live(b: Business = Depends(get_business), db: Session = Depends(get_db),
     totals = db.execute(select(func.coalesce(func.sum(InsightDay.calls), 0), func.coalesce(func.sum(InsightDay.directions), 0), func.coalesce(func.sum(InsightDay.website_clicks), 0),
                                 func.coalesce(func.sum(InsightDay.views_search), 0), func.coalesce(func.sum(InsightDay.views_maps), 0), func.coalesce(func.sum(InsightDay.bookings), 0))
                         .where(InsightDay.business_id == b.id, InsightDay.day > since)).one()
-    reviews = list(db.scalars(select(Review).where(Review.business_id == b.id).order_by(Review.review_date.desc().nullslast(), Review.id.desc())))
+    reviews = list(db.scalars(select(Review).where(Review.business_id == b.id, Review.gone_at.is_(None)).order_by(Review.review_date.desc().nullslast(), Review.id.desc())))
     c = b.connection
     status = dict(b.gbp_status or {})
     live = status.pop("live", None)

@@ -478,3 +478,32 @@ def test_a_review_from_the_public_listing_gets_the_business_profile_id_before_a_
         db.query(Business).filter(Business.gbp_location == "locations/1").delete()
         db.commit()
         db.close()
+
+
+def test_a_saved_public_review_takes_the_business_profile_id_and_one_google_no_longer_lists_is_marked_gone(client, monkeypatch):
+    from datetime import date
+    from app.models import Review
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    db = SessionLocal()
+    try:
+        db.add_all([Review(business_id=bid, external_id="places/p/reviews/a", author="Great", rating=5, body="Great", review_date=date(2026, 10, 1), reply_status="none"),
+                    Review(business_id=bid, external_id="places/p/reviews/b", author="Vanished", rating=5, body="Was here", review_date=date(2026, 10, 2), reply_status="none")])
+        db.commit()
+        # the fake Google lists one review ("Great") for locations/1
+        monkeypatch.setattr(gbp.GbpClient, "reviews", lambda self, account, location: [{"reviewId": "BP1", "reviewer": {"displayName": "Great"}, "starRating": "FIVE", "comment": "Great", "createTime": "2026-10-01T10:00:00Z"}])
+        assert client.post(f"/api/v1/businesses/{bid}/sync").status_code == 200
+        db.expire_all()
+        rows = {r.author: r for r in db.query(Review).filter(Review.business_id == bid) if r.author}  # (the import's own fake review has no author)
+        assert len(rows) == 2 and rows["Great"].external_id == "BP1" and rows["Great"].gone_at is None  # the public copy became the Business Profile's review: not a duplicate
+        assert rows["Vanished"].gone_at is not None
+        out = client.get(f"/api/v1/businesses/{bid}/reviews").json()
+        named = [r for r in out["reviews"] if r["author"]]
+        assert out["summary"]["count"] == 1 and out["summary"]["avg_rating"] == 5.0 and out["summary"]["not_on_google"] >= 1
+        assert [r["gone_at"] is not None for r in named] == [False, True]  # the live one first, the gone one last and flagged
+    finally:
+        db.query(Review).filter(Review.business_id == bid).delete()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()

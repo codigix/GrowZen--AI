@@ -400,7 +400,7 @@ export function ReviewsSection({ b, toast = () => {} }) {
   const sum = all.data.summary;
   const split = d.rating_split || {};
   const total = Object.values(split).reduce((a, v) => a + v, 0) || 0;
-  const rows = all.data.reviews.map(r => ({ id: r.id, author: r.author, rating: r.rating, body: r.body, date: r.review_date, at: r.review_at, repliedAt: r.replied_at, replied: r.reply_status === 'posted', reply: r.reply_text }));
+  const rows = all.data.reviews.filter(r => !r.gone_at).map(r => ({ id: r.id, author: r.author, rating: r.rating, body: r.body, date: r.review_date, at: r.review_at, repliedAt: r.replied_at, replied: r.reply_status === 'posted', reply: r.reply_text }));
   const shown = onlyOpen ? rows.filter(r => !r.replied) : rows;
   const positive = [4, 5].reduce((s2, n) => s2 + (split[String(n)] || 0), 0);
   const negative = [1, 2].reduce((s2, n) => s2 + (split[String(n)] || 0), 0);

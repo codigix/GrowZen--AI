@@ -174,15 +174,17 @@ def ai_faqs(b: Business = Depends(get_business)):
 @router.get("/reviews")
 def list_reviews(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     access.require(db, user, b, "gmb")  # Google reviews: only once the project's Google access is complete
-    found = list(db.scalars(select(Review).where(Review.business_id == b.id).order_by(Review.review_date.desc().nullslast())))
+    every = list(db.scalars(select(Review).where(Review.business_id == b.id).order_by(Review.review_date.desc().nullslast())))
+    found = [r for r in every if not r.gone_at]  # a review Google no longer lists is shown, but is not counted
     n = len(found)
     topics: dict[str, int] = {}
     for r in found:
         for t in r.topics or []:
             topics[t] = topics.get(t, 0) + 1
     return {
-        "reviews": rows(found),
+        "reviews": rows(found) + rows([r for r in every if r.gone_at]),
         "summary": {
+            "not_on_google": len(every) - n,
             "count": n, "avg_rating": round(sum(r.rating for r in found) / n, 1) if n else None,
             "reply_rate": round(sum(1 for r in found if r.reply_status == "posted") / n * 100) if n else 0,
             "awaiting_reply": sum(1 for r in found if r.reply_status != "posted"),

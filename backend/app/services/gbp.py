@@ -1005,6 +1005,11 @@ def sync_business(db: Session, b: Business, days: int = 60) -> dict[str, Any]:
     for rv in reviews:
         ext = rv.get("reviewId") or rv.get("name")
         row = db.scalar(select(Review).where(Review.business_id == b.id, Review.external_id == ext))
+        if not row:  # a review saved earlier from the public Maps listing is this very review: it takes the Business Profile's id (replies need it) and is not a new one
+            who, said = ((rv.get("reviewer") or {}).get("displayName") or "").strip(), (rv.get("comment") or "").strip()
+            row = db.scalar(select(Review).where(Review.business_id == b.id, Review.external_id.like("places/%"), Review.author == who, Review.body == (said or None))) if who else None
+            if row:
+                row.external_id = ext
         if not row:
             row = Review(business_id=b.id, external_id=ext)
             added += 1
@@ -1019,7 +1024,13 @@ def sync_business(db: Session, b: Business, days: int = 60) -> dict[str, Any]:
             row.reply_status = "posted"
             row.replied_at = _google_time(rv["reviewReply"].get("updateTime")) or row.replied_at
         row.sentiment = row.sentiment or ("positive" if row.rating >= 4 else "negative" if row.rating <= 2 else "neutral")
+        row.gone_at = None
         db.add(row)
+    db.flush()
+    listed = {rv.get("reviewId") or rv.get("name") for rv in reviews}
+    for old in db.scalars(select(Review).where(Review.business_id == b.id, Review.external_id.is_not(None))):  # Google answered: a saved review it does not list is not on the profile now
+        if old.external_id not in listed and old.gone_at is None:
+            old.gone_at = datetime.now(timezone.utc)
     if fresh:
         db.flush()  # the new rows get their ids, so each notification can point at its review
         from . import notify
