@@ -110,3 +110,14 @@ def test_the_prompt_names_the_specific_kind_of_business_and_the_phrases_that_fin
     b = SimpleNamespace(business_brief={"business_type": "healthcare digital marketing agency", "business_model": "agency", "industry_focus": "clinics", "competitor_queries": ["clinic seo pune"], "competitors_are": "Agencies for clinics"})
     text = bu.prompt_block(b)
     assert "healthcare digital marketing agency" in text and "clinics" in text and "clinic seo pune" in text and bu.basis(b)["model"] == "healthcare digital marketing agency"
+
+
+def test_the_competitor_research_searches_by_the_business_understanding_not_by_a_word_in_the_name():
+    from app.competitors import intel
+    b = SimpleNamespace(name="Codigix Infotech Pvt. Ltd.", primary_category="Marketing agency", secondary_categories=["Web Designer"], services=[], area="MIDC", city="Pune", lat=None, target_scope="local",
+                        target_countries=[], target_areas=[], business_brief={"competitor_queries": ["healthcare digital marketing agency pune"], "customer_search_terms": ["seo for doctors", "digital marketing for clinics"]})
+    out = intel.default_keywords(b)
+    assert out[0] == "healthcare digital marketing agency pune" and "seo for doctors in Pune" in out
+    assert not any("software" in k.lower() for k in out)
+    b.business_brief = None  # before the understanding exists, the old wording is used
+    assert any("software" in k.lower() for k in intel.default_keywords(b))
