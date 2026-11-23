@@ -935,15 +935,17 @@ function PhotosTab({ b, toast }) {
   const [busy, error, run] = useAction();
   const save = () => run('save', async () => { await api(`/businesses/${b.id}`, { method: 'PATCH', body: { cover_photo: cover || null, logo: logo || null } }); await refreshBusinesses(); toast('Saved'); });
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-      <div className="xl:col-span-2"><MediaManager b={b} toast={toast} /></div>
-      <Card title="Photo checklist" subtitle="The photos themselves are on the Live from Google tab">
-        <div className="text-3xl font-semibold text-gray-900">{b.photo_count ?? '—'}</div>
-        <div className="text-12 text-gray-500 mt-1">{b.photo_count == null ? 'Connect the Google profile to count photos.' : b.photo_count >= 10 ? 'Good: keep adding real photos weekly.' : 'Aim for 10+ real photos: outside, inside, team, work. No stock images.'}</div>
-        <div className="mt-4 space-y-2 text-13">
-          {[['10 or more photos', (b.photo_count || 0) >= 10], ['Cover photo set', Boolean(b.cover_photo)], ['Logo set', Boolean(b.logo)]].map(([l, ok]) => <div key={l} className="flex items-center gap-2">{ok ? <CheckCircle2 size={15} className="text-emerald-600" /> : <Circle size={15} className="text-gray-300" />}<span className={ok ? 'text-gray-800' : 'text-gray-500'}>{l}</span></div>)}
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-3 items-start">
+      <MediaManager b={b} toast={toast} />
+      <div className="space-y-3">
+      <Card title="Photo checklist" subtitle="What Google likes to see">
+        <div className="flex items-baseline gap-2"><span className="text-3xl font-semibold text-slate-900 tabular-nums">{b.photo_count ?? '—'}</span><span className="text-12 text-slate-500">{b.photo_count == null ? 'Connect Google to count photos.' : 'photos on Google'}</span></div>
+        <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.min(100, ((b.photo_count || 0) / 10) * 100)}%` }} /></div>
+        <div className="text-12 text-slate-500 mt-1.5">{(b.photo_count || 0) >= 10 ? 'Good: keep adding real photos weekly.' : 'Aim for 10 or more real photos: outside, inside, team, work. No stock images.'}</div>
+        <div className="mt-3 space-y-1.5 text-13">
+          {[['10 or more photos', (b.photo_count || 0) >= 10], ['Cover photo set', Boolean(b.cover_photo)], ['Logo set', Boolean(b.logo)]].map(([l, ok]) => <div key={l} className="flex items-center gap-2">{ok ? <CheckCircle2 size={15} className="text-emerald-600" /> : <Circle size={15} className="text-slate-300" />}<span className={ok ? 'text-slate-700' : 'text-slate-500'}>{l}</span></div>)}
         </div>
-        <p className="text-11 text-gray-500 mt-4">Upload photos in the Google Business Profile app; geo-relevant file names help (e.g. {`${(b.primaryCategory || 'business').toLowerCase().replace(/\s/g, '-')}-${(b.area || 'area').toLowerCase()}.webp`}).</p>
+        <p className="text-11.5 text-slate-500 mt-3">Name files with the place, e.g. {`${(b.primaryCategory || 'business').toLowerCase().replace(/\s/g, '-')}-${(b.area || 'area').toLowerCase()}.webp`}.</p>
       </Card>
       {!isLinked(b) && <Card title="Cover photo and logo">
         <div className="space-y-3">
@@ -953,6 +955,7 @@ function PhotosTab({ b, toast }) {
           <Button variant="primary" icon={Save} busy={busy === 'save'} onClick={save}>Save</Button>
         </div>
       </Card>}
+      </div>
     </div>
   );
 }

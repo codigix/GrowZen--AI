@@ -229,27 +229,27 @@ export function MediaManager({ b, toast }) {
   const [ask, confirmNode] = useDoubleConfirm();
   const del = (m) => ask({ what: m.type === 'VIDEO' ? 'this video' : `this ${String(m.category || 'photo').replace(/_/g, ' ').toLowerCase()} photo`, effect: 'It is removed from your Google Business Profile and can no longer be shown on Google Search or Maps.', onConfirm: () => run(`d${m.id}`, async () => { await api(`/businesses/${b.id}/gbp/media?name=${encodeURIComponent(m.id)}`, { method: 'DELETE' }); toast('Photo deleted from your Google Business Profile'); live.reload(true); await refreshBusinesses(); }) });
   return (
-    <Card title="Manage photos on Google" subtitle="Uploads go straight to the profile. Google may review new photos before showing them.">
+    <Card pad={false} title={`Photos and videos (${allMedia.length})`} subtitle="Uploads go straight to your Google profile. Google may review new ones before showing them."
+      action={<div className="flex gap-1" role="tablist" aria-label="Show">
+        {[['all', `All ${allMedia.length}`], ['photos', `Photos ${allMedia.length - videos.length}`], ['videos', `Videos ${videos.length}`]].map(([k, l]) => (
+          <button key={k} type="button" role="tab" aria-selected={kind === k} onClick={() => setKind(k)} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ${kind === k ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>))}
+      </div>}>
       <Linked b={b}>
         {confirmNode}
-        <div className="flex flex-wrap gap-2 items-center mb-4">
-          <Select className={`${inputCls} w-44`} value={category} onChange={e => setCategory(e.target.value)} aria-label="Photo category">{MEDIA.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
+        <div className="px-5 pb-3 flex flex-wrap gap-2 items-center">
+          <Select className={`${inputCls} w-40`} value={category} onChange={e => setCategory(e.target.value)} aria-label="Photo category">{MEDIA.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,video/mp4" className="hidden" onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
-          <Button icon={Upload} busy={busy === 'up'} onClick={() => fileRef.current?.click()}>Upload photo or video</Button>
-          <input className={`${inputCls} flex-1 min-w-[200px]`} placeholder="or paste a public image link (https://…)" value={url} onChange={e => setUrl(e.target.value)} />
+          <Button variant="primary" icon={Upload} busy={busy === 'up'} onClick={() => fileRef.current?.click()}>Upload photo or video</Button>
+          <span className="text-12 text-slate-400 hidden md:inline">or</span>
+          <input className={`${inputCls} flex-1 min-w-[200px]`} placeholder="Paste a public image link (https://…)" value={url} onChange={e => setUrl(e.target.value)} />
           <Button busy={busy === 'url'} disabled={!/^https?:\/\//.test(url.trim())} onClick={addUrl}>Add link</Button>
+          <span title="Photos: JPG or PNG, 10 KB to 5 MB, at least 250 × 250 px. Videos: MP4, up to 30 seconds, 720p or higher, up to 75 MB on Google (this page uploads up to 25 MB)." className="text-12 text-slate-400 underline decoration-dotted cursor-help">Size rules</span>
         </div>
-        <p className="text-12 text-slate-500 -mt-2 mb-3">Photos: JPG or PNG, 10 KB to 5 MB, at least 250 × 250 px. Videos: MP4, up to 30 seconds, 720p or higher, up to 75 MB on Google (this page uploads up to 25 MB).</p>
-        <ErrorNote>{error}</ErrorNote>
-        <div className="flex gap-1 mb-3" role="tablist" aria-label="Show">
-          {[['all', `All (${allMedia.length})`], ['photos', `Photos (${allMedia.length - videos.length})`], ['videos', `Videos (${videos.length})`]].map(([k, l]) => (
-            <button key={k} type="button" role="tab" aria-selected={kind === k} onClick={() => setKind(k)} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ${kind === k ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>
-          ))}
-        </div>
-        {media.length === 0 ? <p className="text-13 text-slate-500 py-4 text-center">{kind === 'videos' ? 'No videos on the profile yet.' : kind === 'photos' ? 'No photos on the profile yet.' : 'No photos or videos on the profile yet.'}</p> : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+        {error && <div className="px-5 pb-3"><ErrorNote>{error}</ErrorNote></div>}
+        {media.length === 0 ? <p className="text-13 text-slate-500 py-8 text-center border-t border-slate-100">{kind === 'videos' ? 'No videos on the profile yet.' : kind === 'photos' ? 'No photos on the profile yet.' : 'No photos or videos on the profile yet.'}</p> : (
+          <div className="px-5 pb-5 pt-1 grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-2.5">
             {media.map(m => (
-              <div key={m.id} className="group relative aspect-square rounded overflow-hidden bg-slate-100">
+              <div key={m.id} className="group relative aspect-square rounded-lg overflow-hidden bg-slate-100 ring-1 ring-slate-200">
                 {m.type === 'VIDEO' ? <VideoTile m={m} /> : <Thumb m={m} />}
                 {m.type === 'VIDEO' && <span className="absolute left-1 top-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900/70 text-white text-10 font-semibold pointer-events-none"><Play size={9} />Video</span>}
                 <span className="absolute left-1 bottom-1 px-1.5 py-0.5 rounded bg-slate-900/70 text-white text-10 font-semibold pointer-events-none">{String(m.category || (m.type === 'VIDEO' ? 'video' : 'photo')).replace(/_/g, ' ').toLowerCase()}</span>
