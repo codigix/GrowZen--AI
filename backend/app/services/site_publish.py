@@ -319,6 +319,31 @@ def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: dateti
         raise PublishError(f"Could not reach WordPress: {str(exc)[:160]}") from exc
 
 
+def wordpress_posts(row: SiteIntegration) -> list[dict]:
+    """Every live or scheduled post of the connected WordPress site, with its WordPress id: address, title, date and status of each. (WordPress does not say which tool made a post, and many sites
+    have one login for everything, so these are all the site's posts, including the ones bevisibe published.)"""
+    import html
+    if row.method != "wordpress" or not row.base_url:
+        raise PublishError("The connected website is not WordPress.")
+    base = row.base_url.rstrip("/")
+    out: list[dict] = []
+    try:
+        with site_client(30) as c:
+            for page in range(1, 6):
+                r = c.get(f"{base}/wp-json/wp/v2/posts", params={"status": "publish,future", "per_page": 100, "page": page, "_fields": "id,link,title,date,status"}, auth=_wp_auth(row))
+                if r.status_code in (401, 403):
+                    raise PublishError("WordPress refused the login. Reconnect the website.")
+                rows = r.json() if r.status_code == 200 else []
+                if not isinstance(rows, list) or not rows:
+                    break
+                out += [{"id": str(x["id"]), "url": x.get("link") or "", "title": html.unescape(((x.get("title") or {}).get("rendered") or "")).strip(), "date": str(x.get("date") or "")[:10], "status": x.get("status")} for x in rows if x.get("id") and x.get("link")]
+                if len(rows) < 100:
+                    break
+    except (httpx.HTTPError, SSRFValidationError, ValueError) as exc:
+        raise PublishError(f"Could not reach WordPress: {str(exc)[:160]}") from exc
+    return out
+
+
 def find_wordpress_post_id(row: SiteIntegration, url: str) -> str | None:
     """The WordPress id of the post at an address (for a blog that was posted outside bevisibe, so its id was never saved): looked up by its slug with the site's own login."""
     from urllib.parse import urlsplit

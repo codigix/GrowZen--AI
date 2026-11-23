@@ -707,6 +707,36 @@ def publish_wordpress(article_id: int, b: Business = Depends(get_business), db: 
     return publish(article_id, PublishIn(), b, db)
 
 
+@router.post("/sync-from-website")
+def sync_from_website(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Bring in the connected WordPress site's posts. New ones are added (with their WordPress id, so deleting works), and a blog added by hand that is the same post is linked to it. WordPress does not say which tool made a post, so every post of the site comes in."""
+    from ..services import article_publishing as ap
+    target = ap.site_target(db, b)
+    if target is None:
+        raise HTTPException(409, "Your website is not connected yet (Publishing Setup), so its posts cannot be fetched.")
+    if target.method != "wordpress":
+        raise HTTPException(409, f"Your website is connected as {target.method}. Fetching posted blogs works for WordPress only.")
+    try:
+        posts = sp.wordpress_posts(target)
+    except sp.PublishError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    mine = {_norm_url(x.wp_url or ""): x for x in db.scalars(select(Article).where(Article.business_id == b.id)) if x.wp_url and x.wp_status != "deleted"}
+    added = linked = 0
+    for p in posts:
+        have = mine.get(_norm_url(p["url"]))
+        status = "publish" if p["status"] == "publish" else "future"
+        if have is not None:
+            if not have.wp_post_id or have.publish_method == "existing":
+                have.wp_post_id, have.publish_method, have.wp_status = p["id"], "wordpress", status
+                linked += 1
+            continue
+        db.add(Article(business_id=b.id, keyword=(p["title"] or "Blog")[:255], title=(p["title"] or None), status="completed", body="", wp_post_id=p["id"], wp_url=p["url"], wp_status=status,
+                       publish_method="wordpress", slug=(p["url"].rstrip("/").rsplit("/", 1)[-1] or None), generated_at=datetime.now(timezone.utc)))
+        added += 1
+    db.commit()
+    return {"found": len(posts), "added": added, "linked": linked}
+
+
 class BulkIn(BaseModel):
     urls: list[str] = Field(min_length=1, max_length=40)
 

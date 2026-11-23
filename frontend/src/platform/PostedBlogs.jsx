@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { ExternalLink, Plus, Trash2, PenLine, EyeOff, Search as SearchIcon } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ExternalLink, Plus, Trash2, PenLine, EyeOff, RefreshCw, Search as SearchIcon } from 'lucide-react';
 import { Card, Badge, Button, Modal, Field, ErrorNote, inputCls, useAction, useDoubleConfirm, SkList } from './SeoUi';
 import { Act } from './TableBits';
 import DataTable from './DataTable';
@@ -25,6 +25,17 @@ export default function PostedBlogs({ b, toast, onWrite }) {
   const found = site.data?.blogs || [];
   const rows = only === 'live' ? live : only === 'drafts' ? drafts : only === 'removed' ? removed : found;
   const say = toast || (() => {});
+  const [note, setNote] = useState('');
+  // The connected WordPress site's posts are fetched into the list (WordPress does not say which tool made a post, so all of them come in): on the first visit, when the list is empty, and then on the button.
+  const fetchPosted = (quiet) => run('sync', async () => {
+    try {
+      const r = await api(`/businesses/${b.id}/articles/sync-from-website`, { method: 'POST', timeout: 90000 });
+      setNote(`${r.found} blog${r.found === 1 ? '' : 's'} found on your WordPress website${r.added ? `, ${r.added} new in the list` : ', all already in the list'}.`);
+      if (r.added || r.linked) { if (!quiet) say(`${r.added} added${r.linked ? `, ${r.linked} linked to their website post` : ''}`); await list.reload(true); } else if (!quiet) say('Already up to date');
+    } catch (e) { setNote(e.message || 'Could not fetch the blogs from your website.'); }
+  });
+  const first = useRef(false);
+  useEffect(() => { if (list.data && !first.current) { first.current = true; if (!(list.data.articles || []).some(a => a.wp_status === 'publish' || a.react_status === 'publish')) fetchPosted(true); } }, [list.data]); // eslint-disable-line react-hooks/exhaustive-deps -- once, when the list first loads empty
 
   const add = () => run('add', async () => {
     await api(`/businesses/${b.id}/articles/existing`, { method: 'POST', body: { title: form.title.trim(), url: form.url.trim(), keyword: form.keyword.trim() || null } });
@@ -51,10 +62,12 @@ export default function PostedBlogs({ b, toast, onWrite }) {
     <div className="space-y-3">
       {confirmNode}
       <ErrorNote>{error || list.error?.message}</ErrorNote>
+      {note && <p className="text-12.5 text-slate-600">{note}</p>}
       <Card pad={false} title={`Posted blogs (${live.length})`} subtitle="Every blog that is live on your website. Delete removes it from your connected website and from this list."
         action={<div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1" role="tablist" aria-label="Show">{[['live', `Live ${live.length}`], ['drafts', `Not posted yet ${drafts.length}`], ['site', `Found on my website${site.data ? ` ${found.length}` : ''}`], ['removed', `Removed ${removed.length}`]].map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={only === k} onClick={() => setOnly(k)} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ${only === k ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>))}</div>
+          <Button size="sm" icon={RefreshCw} busy={busy === 'sync'} onClick={() => fetchPosted(false)} title="Fetch the posts of your connected WordPress website into this list">Fetch from my website</Button>
           <Button size="sm" icon={Plus} onClick={() => setAdding(true)}>Add a blog already on my site</Button>
           <Button size="sm" variant="primary" icon={PenLine} onClick={onWrite}>Write a new blog</Button>
         </div>}>

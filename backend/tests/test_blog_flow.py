@@ -511,3 +511,23 @@ def test_deleting_a_posted_blog_deletes_it_from_the_connected_website_too(client
     # another kind of site: bevisibe cannot delete there
     monkeypatch.setattr(ap, "site_target", lambda db, b: SimpleNamespace(method="ghost", base_url="https://del.example"))
     assert client.delete(f"{base}/{a3}/with-website").status_code == 409
+
+
+def test_the_connected_wordpress_sites_posts_are_fetched_once_and_linked(client, monkeypatch):
+    from types import SimpleNamespace
+    from app.services import article_publishing as ap
+    from app.services import site_publish as sp
+    bid = client.post("/api/v1/businesses", json={"name": "Sync Co", "website": "https://sync.example/"}).json()["id"]
+    base = f"/api/v1/businesses/{bid}/articles"
+    monkeypatch.setattr(ap, "site_target", lambda db, b: None)
+    assert client.post(f"{base}/sync-from-website").status_code == 409  # not connected
+    monkeypatch.setattr(ap, "site_target", lambda db, b: SimpleNamespace(method="wordpress", base_url="https://sync.example"))
+    client.post(f"{base}/existing", json={"title": "By hand", "url": "https://sync.example/by-hand/"})
+    posts = [{"id": "11", "url": "https://sync.example/by-hand/", "title": "By hand", "date": "2026-11-01", "status": "publish"}, {"id": "12", "url": "https://sync.example/other/", "title": "Other", "date": "2026-11-02", "status": "publish"}]
+    monkeypatch.setattr(sp, "wordpress_posts", lambda row: posts)
+    assert client.post(f"{base}/sync-from-website").json() == {"found": 2, "added": 1, "linked": 1}
+    arts = {a["title"]: a for a in client.get(base).json()["articles"]}
+    assert arts["By hand"]["wp_post_id"] == "11" and arts["By hand"]["publish_method"] == "wordpress" and arts["Other"]["wp_post_id"] == "12"
+    assert client.post(f"{base}/sync-from-website").json() == {"found": 2, "added": 0, "linked": 0}  # again: nothing twice
+    monkeypatch.setattr(sp, "wordpress_posts", lambda row: (_ for _ in ()).throw(sp.PublishError("WordPress refused the login. Reconnect the website.")))
+    assert client.post(f"{base}/sync-from-website").status_code == 502
