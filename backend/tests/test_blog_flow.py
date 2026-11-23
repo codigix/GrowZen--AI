@@ -479,3 +479,35 @@ def test_a_site_with_a_sitemap_of_posts_takes_everything_in_it(client, monkeypat
     monkeypatch.setattr(sitemap, "discover_site_entries", fake)
     r = client.get(f"/api/v1/businesses/{bid}/articles/site-blogs").json()
     assert r["source"] == "sitemap" and [x["title"] for x in r["blogs"]] == ["Post one", "Post two"]
+
+
+def test_deleting_a_posted_blog_deletes_it_from_the_connected_website_too(client, monkeypatch):
+    from types import SimpleNamespace
+    from app.services import article_publishing as ap
+    from app.services import site_publish as sp
+    bid = client.post("/api/v1/businesses", json={"name": "Del Co", "website": "https://del.example/"}).json()["id"]
+    base = f"/api/v1/businesses/{bid}/articles"
+    mk = lambda slug: client.post(f"{base}/existing", json={"title": slug, "url": f"https://del.example/{slug}/"}).json()["id"]  # noqa: E731
+    calls = []
+    # not connected: refused, kept; the list-only way still works
+    monkeypatch.setattr(ap, "site_target", lambda db, b: None)
+    a1 = mk("one-post")
+    r = client.delete(f"{base}/{a1}/with-website")
+    assert r.status_code == 409 and "not connected" in r.json()["detail"] and len(client.get(base).json()["articles"]) == 1
+    assert client.delete(f"{base}/{a1}/with-website?list_only=true").json() == {"deleted": True, "from_website": False} and client.get(base).json()["articles"] == []
+    # connected to WordPress: found by its address, deleted on the site, then removed from the list
+    monkeypatch.setattr(ap, "site_target", lambda db, b: SimpleNamespace(method="wordpress", base_url="https://del.example"))
+    monkeypatch.setattr(sp, "find_wordpress_post_id", lambda row, url: "77")
+    monkeypatch.setattr(sp, "delete_wordpress", lambda row, pid: calls.append(pid) or {"steps": []})
+    a2 = mk("two-post")
+    assert client.delete(f"{base}/{a2}/with-website").json() == {"deleted": True, "from_website": True} and calls == ["77"] and client.get(base).json()["articles"] == []
+    # WordPress refuses: the blog stays in the list, with the reason
+    def refuse(row, pid):
+        raise sp.PublishError("rest_cannot_delete: not allowed")
+    monkeypatch.setattr(sp, "delete_wordpress", refuse)
+    a3 = mk("three-post")
+    r = client.delete(f"{base}/{a3}/with-website")
+    assert r.status_code == 502 and "still in the list" in r.json()["detail"] and len(client.get(base).json()["articles"]) == 1
+    # another kind of site: bevisibe cannot delete there
+    monkeypatch.setattr(ap, "site_target", lambda db, b: SimpleNamespace(method="ghost", base_url="https://del.example"))
+    assert client.delete(f"{base}/{a3}/with-website").status_code == 409

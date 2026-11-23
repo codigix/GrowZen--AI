@@ -319,6 +319,30 @@ def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: dateti
         raise PublishError(f"Could not reach WordPress: {str(exc)[:160]}") from exc
 
 
+def find_wordpress_post_id(row: SiteIntegration, url: str) -> str | None:
+    """The WordPress id of the post at an address (for a blog that was posted outside bevisibe, so its id was never saved): looked up by its slug with the site's own login."""
+    from urllib.parse import urlsplit
+    if row.method != "wordpress" or not row.base_url or not url:
+        return None
+    slug = urlsplit(url).path.strip("/").rsplit("/", 1)[-1]
+    if not slug:
+        return None
+
+    def norm(u: str) -> str:
+        q = urlsplit(u or "")
+        return f"{(q.hostname or '').lower().removeprefix('www.')}{q.path.rstrip('/')}"
+    try:
+        with site_client(20) as c:
+            r = c.get(f"{row.base_url.rstrip('/')}/wp-json/wp/v2/posts", params={"slug": slug, "status": "any", "_fields": "id,link"}, auth=_wp_auth(row))
+        rows = r.json() if r.status_code == 200 else []
+    except (httpx.HTTPError, SSRFValidationError, ValueError):
+        return None
+    for x in rows if isinstance(rows, list) else []:
+        if norm(x.get("link", "")) == norm(url) and str(x.get("id", "")).isdigit():
+            return str(x["id"])
+    return None
+
+
 def delete_wordpress(row: SiteIntegration, post_id: str) -> dict:
     """Permanently delete ONE WordPress post by its id: DELETE /wp-json/wp/v2/posts/{id}?force=true (skips the Trash).
     Success only when WordPress answers {"deleted": true, "previous": {"id": <the same id>}}. A post that no longer

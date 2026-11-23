@@ -38,8 +38,12 @@ export default function PostedBlogs({ b, toast, onWrite }) {
     await api(`/businesses/${b.id}/articles/${a.id}/${a.react_status === 'publish' && a.wp_status !== 'publish' ? 'react-post' : 'website-post'}`, { method: 'DELETE' });
     say('Taken down from the website'); list.reload(true);
   }) });
-  const remove = (a) => ask({ what: 'this blog from the list', effect: a.wp_status === 'publish' || a.react_status === 'publish' ? 'It is removed from bevisibe only. The post stays live on your website until you take it down.' : 'The saved text and its history are removed from bevisibe.', onConfirm: () => run(`r${a.id}`, async () => {
-    await api(`/businesses/${b.id}/articles/${a.id}`, { method: 'DELETE' }); say('Removed from the list'); list.reload(true);
+  const isLive = (a) => a.wp_status === 'publish' || a.react_status === 'publish';
+  const remove = (a) => ask({ what: isLive(a) ? 'this blog from your website and from the list' : 'this blog from the list', effect: isLive(a) ? 'It is deleted from your connected website, so visitors can no longer read it, and it is removed from this list. This cannot be undone.' : 'The saved text and its history are removed from bevisibe.', onConfirm: () => run(`r${a.id}`, async () => {
+    const r = await api(`/businesses/${b.id}/articles/${a.id}/with-website`, { method: 'DELETE' }); say(r.from_website ? 'Deleted from your website and from the list' : 'Removed from the list'); list.reload(true);
+  }) });
+  const removeListOnly = (a) => ask({ what: 'this blog from the list only', effect: 'It stays live on your website. Only the list in bevisibe changes.', onConfirm: () => run(`l${a.id}`, async () => {
+    await api(`/businesses/${b.id}/articles/${a.id}/with-website?list_only=true`, { method: 'DELETE' }); say('Removed from the list'); list.reload(true);
   }) });
   const canTakeDown = (a) => (a.publish_method || 'wordpress') === 'wordpress' && a.wp_status === 'publish' ? true : a.react_status === 'publish';
 
@@ -47,7 +51,7 @@ export default function PostedBlogs({ b, toast, onWrite }) {
     <div className="space-y-3">
       {confirmNode}
       <ErrorNote>{error || list.error?.message}</ErrorNote>
-      <Card pad={false} title={`Posted blogs (${live.length})`} subtitle="Every blog that is live on your website. Add one that is already there, or delete one."
+      <Card pad={false} title={`Posted blogs (${live.length})`} subtitle="Every blog that is live on your website. Delete removes it from your connected website and from this list."
         action={<div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1" role="tablist" aria-label="Show">{[['live', `Live ${live.length}`], ['drafts', `Not posted yet ${drafts.length}`], ['site', `Found on my website${site.data ? ` ${found.length}` : ''}`], ['removed', `Removed ${removed.length}`]].map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={only === k} onClick={() => setOnly(k)} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ${only === k ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>))}</div>
@@ -82,8 +86,9 @@ export default function PostedBlogs({ b, toast, onWrite }) {
               { id: 'actions', header: 'Actions', csv: false, right: true, className: 'px-3 py-2.5 text-right whitespace-nowrap', thClass: 'px-3 py-2.5', cell: a => (
                 <span className="inline-flex gap-1.5">
                   {urlOf(a) && <a href={urlOf(a)} target="_blank" rel="noreferrer noopener"><Act icon={ExternalLink} tone="sky" tip="Open the blog on your website." /></a>}
-                  {only === 'live' && canTakeDown(a) && <Act icon={EyeOff} tone="amber" busy={busy === `d${a.id}`} tip="Take down: delete it from your website. The text stays here." onClick={() => takeDown(a)}>Take down</Act>}
-                  <Act icon={Trash2} tone="rose" busy={busy === `r${a.id}`} tip="Delete from the list." onClick={() => remove(a)}>Delete</Act>
+                  {only === 'live' && canTakeDown(a) && <Act icon={EyeOff} tone="amber" busy={busy === `d${a.id}`} tip="Take down: delete it from your website but keep the text here, so you can post it again." onClick={() => takeDown(a)}>Take down</Act>}
+                  <Act icon={Trash2} tone="rose" busy={busy === `r${a.id}`} tip={isLive(a) ? 'Delete: removes it from your connected website and from this list.' : 'Delete from the list.'} onClick={() => remove(a)}>Delete</Act>
+                  {isLive(a) && <button type="button" onClick={() => removeListOnly(a)} disabled={busy === `l${a.id}`} title="Remove it from this list only. It stays live on your website." className="text-11.5 text-slate-500 hover:text-slate-800 underline cursor-pointer px-1">List only</button>}
                 </span>) },
             ]} />
         )}

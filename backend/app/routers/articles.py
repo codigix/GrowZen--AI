@@ -777,6 +777,47 @@ def add_existing(body: ExistingIn, b: Business = Depends(get_business), db: Sess
     return row(a, exclude={"body"})
 
 
+@router.delete("/{article_id}/with-website")
+def delete_article_and_website_post(article_id: int, list_only: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Delete the blog from the connected website AND from the list. The list entry is kept when the website refuses, so nothing is lost and it can be tried again.
+    `list_only=true` removes it from the list without touching the website (for a site bevisibe cannot delete from)."""
+    from ..models import ScheduledPost
+    a = _get(db, b, article_id)
+    gone_from_site = False
+    if not list_only:
+        on_wp = a.wp_status not in (None, "deleted") and bool(a.wp_url or a.wp_post_id)
+        on_react = bool(a.react_post_id) and a.react_status not in (None, "deleted")
+        if on_wp:
+            from ..services import article_publishing as ap
+            target = ap.site_target(db, b)
+            if target is None:
+                raise HTTPException(409, "Your website is not connected in the setup, so the blog cannot be deleted from it. Connect it, or delete the blog on the website yourself and use \"Remove from the list only\".")
+            if target.method != "wordpress":
+                raise HTTPException(409, f"Your website is connected as {target.method}, and bevisibe can delete posts from WordPress and the React website only. Delete the blog on the website yourself, then use \"Remove from the list only\".")
+            pid = a.wp_post_id or sp.find_wordpress_post_id(target, a.wp_url or "")
+            if not pid:
+                raise HTTPException(409, "The blog could not be found on WordPress by its address, so it was not deleted. Check the address, or delete it on the website and use \"Remove from the list only\".")
+            try:
+                sp.delete_wordpress(target, pid)
+            except sp.PublishError as exc:
+                raise HTTPException(502, f"WordPress did not delete it, so it is still in the list: {exc}") from exc
+            gone_from_site = True
+        if on_react:
+            from ..services import react_site as rs
+            conn = _react_conn(db, b)
+            try:
+                rs.delete(conn, a.react_post_id)
+            except rs.ReactSiteError as exc:
+                _react_failed(db, conn, exc)
+                raise HTTPException(502, f"The React website did not delete it, so it is still in the list: {exc}") from exc
+            gone_from_site = True
+    for p in db.scalars(select(ScheduledPost).where(ScheduledPost.article_id == a.id, ScheduledPost.status == "pending")):
+        p.status = "cancelled"  # nothing held for later should bring it back
+    db.delete(a)
+    db.commit()
+    return {"deleted": True, "from_website": gone_from_site}
+
+
 @router.delete("/{article_id}", status_code=204)
 def delete_article(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     a = db.get(Article, article_id)
