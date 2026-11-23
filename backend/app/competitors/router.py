@@ -4,6 +4,7 @@ and compared later; without `business_id` this is read-only, same as before."""
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
+from ..config import get_settings
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -213,7 +214,7 @@ def listing_compare(competitor_id: int, db: Session = Depends(get_db), user: Use
     return la.compare(b, c, ours, services, keywords)
 
 
-MAX_CHOSEN = 8  # the weekly watch visits at most this many
+MAX_CHOSEN = 8  # default; the real limit is COMPETITOR_WATCH_MAX
 
 
 class ChooseIn(BaseModel):
@@ -229,8 +230,9 @@ def choose(competitor_id: int, body: ChooseIn, db: Session = Depends(get_db), us
     b = owned_business(db, user, c.business_id)
     if body.selected and c.selected is False:
         chosen = sum(1 for x in db.scalars(select(Competitor).where(Competitor.business_id == b.id)) if x.selected is not False)
-        if chosen >= MAX_CHOSEN:
-            raise HTTPException(400, f"Choose up to {MAX_CHOSEN} competitors: the weekly watch visits that many. Leave one out first.")
+        limit = max(1, get_settings().competitor_watch_max)
+        if chosen >= limit:
+            raise HTTPException(400, f"{chosen} competitors are already chosen, and the weekly watch visits up to {limit}. Untick one first, or raise COMPETITOR_WATCH_MAX in the server settings.")
     c.selected = body.selected
     from ..backlinks.models import BiTrackedTarget
     from ..backlinks import sync
