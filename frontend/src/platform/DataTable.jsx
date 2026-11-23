@@ -114,7 +114,7 @@ export function downloadCsv(name, head, body) {
  */
 export default function DataTable({
   columns, rows, rowKey = (r, i) => r.id ?? i, initialSort = null, pageSize = 25, search = true, searchPlaceholder = 'Search this table', filters = [], exportName = '',
-  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, onState
+  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, serial = true, onState
 }) {
   const [q, setQ] = useState('');
   const [fv, setFv] = useState({});
@@ -158,16 +158,17 @@ export default function DataTable({
       <div className="overflow-x-auto">
         <table className="w-full text-13" style={{ minWidth }}>
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
-            <tr>{cols.map(c => (c.value
+            <tr>{serial && <th scope="col" className="pl-4 pr-1 py-3 w-10 text-left font-semibold" title="Row number">#</th>}{cols.map(c => (c.value
               ? <SortTh key={c.id} id={c.id} sort={sort} onSort={onSort} right={c.right} first={c.first} tip={c.tip} className={c.thClass || 'px-3 py-3'}>{c.header}</SortTh>
               : <th key={c.id} scope="col" className={`${c.thClass || 'px-3 py-3'} font-semibold ${c.right ? 'text-right' : 'text-left'}`}><Head right={c.right} {...(c.tip || {})}>{c.header}</Head></th>))}</tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {pager.rows.map((r, i) => (
               <tr key={rowKey(r, pager.from + i)} className={rowClass ? rowClass(r) : 'hover:bg-slate-50'}>
+                {serial && <td className="pl-4 pr-1 py-2.5 text-12 text-slate-400 tabular-nums">{pager.from + i + 1}</td>}
                 {cols.map(c => <td key={c.id} className={c.className || `px-3 py-2.5 ${c.right ? 'text-right tabular-nums' : ''}`}>{c.cell ? c.cell(r) : (c.value ? (c.value(r) ?? '—') : '')}</td>)}
               </tr>))}
-            {!pager.rows.length && <tr><td colSpan={Math.max(1, cols.length)} className="px-5 py-10 text-center text-13 text-slate-500">{active ? <>Nothing matches. <button type="button" onClick={() => { setQ(''); setFv({}); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></> : empty}</td></tr>}
+            {!pager.rows.length && <tr><td colSpan={Math.max(1, cols.length + (serial ? 1 : 0))} className="px-5 py-10 text-center text-13 text-slate-500">{active ? <>Nothing matches. <button type="button" onClick={() => { setQ(''); setFv({}); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></> : empty}</td></tr>}
           </tbody>
         </table>
       </div>

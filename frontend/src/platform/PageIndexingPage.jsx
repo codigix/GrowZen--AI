@@ -25,10 +25,11 @@ function IndexTable({ pages, d, gs, busy, goGoogle, total, resetKey }) {
         sorted.map(p => [p.url, p.first_seen || '', p.is_new ? 'yes' : 'no', p.tech ? (TECH[p.tech.verdict] || ['Not checked'])[0] : 'Not checked', (p.tech?.reasons || []).join('; '), (STATE[p.g_state] || ['Not checked'])[0], p.g_last_crawl || '', p.submitted_at || '', p.skip_reason || '']))}>Export CSV</Button></div>
       <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-13">
-            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>{[['page', 'Page'], ['tech', 'Can it be indexed?'], ['google', 'In Google'], ['crawl', 'Last crawled by Google'], ['sent', 'Sent to other engines']].map(([k, l]) => <SortTh key={k} id={k} sort={sort} onSort={onSort} className={TH.replace(' text-left', '').replace(' font-medium', '')}>{l}</SortTh>)}<th className={`${TH} text-right`}>Actions</th></tr></thead>
+            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th scope="col" className={`${TH} w-12`}>#</th>{[['page', 'Page'], ['tech', 'Can it be indexed?'], ['google', 'In Google'], ['crawl', 'Last crawled by Google'], ['sent', 'Sent to other engines']].map(([k, l]) => <SortTh key={k} id={k} sort={sort} onSort={onSort} className={TH.replace(' text-left', '').replace(' font-medium', '')}>{l}</SortTh>)}<th className={`${TH} text-right`}>Actions</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {pager.rows.map(p => { const [lab, tone] = STATE[p.g_state] || ['Not checked', 'gray']; return (
+              {pager.rows.map((p, i) => { const [lab, tone] = STATE[p.g_state] || ['Not checked', 'gray']; return (
                 <tr key={p.id} className="align-middle hover:bg-slate-50">
+                  <td className="pl-4 pr-2 py-2 text-12 text-slate-400 tabular-nums">{pager.from + i + 1}</td>
                   <td className="px-3 py-2 max-w-[260px]"><div className="font-medium text-slate-900 truncate" title={p.url}>{p.path}</div><div className="text-11.5 text-slate-500 flex items-center gap-1.5">{when(p.first_seen)}{p.is_new && <Badge tone="blue">New</Badge>}{p.changed_at && <Badge tone="amber">Changed</Badge>}{!p.in_sitemap && <span className="text-slate-400">not in the sitemap now</span>}</div></td>
                   <td className="px-3 py-2 max-w-[300px]">{p.tech ? <><Badge tone={(TECH[p.tech.verdict] || ['', 'gray'])[1]}>{(TECH[p.tech.verdict] || ['Not checked'])[0]}</Badge>{p.tech.reasons.length > 0 && <div className="text-11.5 text-slate-600 mt-0.5 truncate cursor-help" title={p.tech.reasons.map(r => r.text).join('\n')}>{p.tech.reasons[0].text}{p.tech.reasons.length > 1 ? ` (+${p.tech.reasons.length - 1} more)` : ''}</div>}</> : <Badge tone="gray">Not checked</Badge>}</td>
                   <td className="px-3 py-2 max-w-[280px]"><Badge tone={tone}>{lab}</Badge>{!p.g_state && gs && gs.state !== 'ok' && <div className="text-11.5 text-amber-800 mt-0.5">Connect Search Console to ask Google</div>}{p.g_reason && <div className="text-11.5 text-slate-600 mt-0.5 truncate cursor-help" title={[p.g_reason, p.g_advice].filter(Boolean).join('\n\n')}>{p.g_reason}</div>}{p.g_checked_at && <div className="text-11 text-slate-400">checked {when(p.g_checked_at)}</div>}</td>
@@ -40,7 +41,7 @@ function IndexTable({ pages, d, gs, busy, goGoogle, total, resetKey }) {
                     <OpenAct url={p.url} tip="Open: show the page in a new tab." />
                   </span></td>
                 </tr>); })}
-              {!d.pages.length && <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-500">{total ? 'No page matches this filter.' : 'No pages yet. Press “Read the sitemap now” to find the pages of your site.'}</td></tr>}
+              {!d.pages.length && <tr><td colSpan={7} className="px-5 py-10 text-center text-slate-500">{total ? 'No page matches this filter.' : 'No pages yet. Press “Read the sitemap now” to find the pages of your site.'}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -187,8 +188,8 @@ function Indexing({ b }) {
           {gs?.state === 'ok' && (
             <div className="grid gap-3 text-13">
               <p className="text-slate-600">Reading {gs.property} through {gs.account}.</p>
-              {gs.sitemaps?.length ? <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200"><table className="w-full min-w-[420px]"><thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className={TH}>Sitemap Google knows</th><th className={`${TH} text-right`}>Pages</th><th className={`${TH} text-right`}>Problems</th><th className={TH}>Last read</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{gs.sitemaps.map(m => <tr key={m.path}><td className="px-3 py-2 break-all">{m.path}</td><td className="px-3 py-2 text-right tabular-nums">{m.submitted}</td><td className="px-3 py-2 text-right tabular-nums">{m.errors + m.warnings ? <span className="text-amber-700">{m.errors} errors, {m.warnings} warnings</span> : <span className="text-emerald-700">None</span>}</td><td className="px-3 py-2 whitespace-nowrap">{when(m.last_downloaded)}</td></tr>)}</tbody></table></div>
+              {gs.sitemaps?.length ? <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200"><table className="w-full min-w-[420px]"><thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className={`${TH} w-10`}>#</th><th className={TH}>Sitemap Google knows</th><th className={`${TH} text-right`}>Pages</th><th className={`${TH} text-right`}>Problems</th><th className={TH}>Last read</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">{gs.sitemaps.map((m, i) => <tr key={m.path}><td className="px-3 py-2 text-12 text-slate-400 tabular-nums">{i + 1}</td><td className="px-3 py-2 break-all">{m.path}</td><td className="px-3 py-2 text-right tabular-nums">{m.submitted}</td><td className="px-3 py-2 text-right tabular-nums">{m.errors + m.warnings ? <span className="text-amber-700">{m.errors} errors, {m.warnings} warnings</span> : <span className="text-emerald-700">None</span>}</td><td className="px-3 py-2 whitespace-nowrap">{when(m.last_downloaded)}</td></tr>)}</tbody></table></div>
                 : <p className="text-amber-800">Google has no sitemap for this site. In Search Console open Sitemaps and submit your sitemap address.</p>}
               <p className="text-slate-500">For an important page that is not indexed, fix what the reason says, then press “Request indexing” for it in Search Console (that step is manual, by Google's design).</p>
             </div>)}
