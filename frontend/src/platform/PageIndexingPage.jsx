@@ -39,6 +39,7 @@ function IndexTable({ pages, d, gs, busy, inspect, send, total, resetKey }) {
                   <td className="px-3 py-3 max-w-[240px]">{p.skip_reason ? <span className="text-amber-800 inline-flex gap-1"><AlertTriangle size={13} className="mt-0.5 shrink-0" />{p.skip_reason}</span> : p.submitted_at ? <span className="text-emerald-700 inline-flex gap-1"><CheckCircle2 size={13} className="mt-0.5 shrink-0" />Sent {when(p.submitted_at)}</span> : p.pending ? <span className="text-indigo-700">Waiting to be sent</span> : <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
                     <Act tip="Check: ask Google about this page now." busy={busy === `check${p.url}`} onClick={() => inspect([p.url])}>Check</Act>
+                    {gs?.inspect_base && <a href={`${gs.inspect_base}${encodeURIComponent(p.url)}`} target="_blank" rel="noreferrer noopener"><Act icon={ExternalLink} tone="sky" tip="Search Console: open Google's own check of this page. It shows the live page, why it is not indexed, and has the Request indexing button.">Search Console</Act></a>}
                     {d.key.ready && <Act tone="violet" tip="Send: tell Bing, Yandex and the others about this page now." busy={busy === `send${p.url}`} onClick={() => send([p.url])}>Send</Act>}
                     <OpenAct url={p.url} tip="Open: show the page in a new tab." />
                   </span></td>
@@ -158,6 +159,7 @@ function Indexing({ b }) {
           <Button size="sm" icon={RefreshCw} busy={busy === 'scan'} onClick={scan}>Read the sitemap now</Button>
           <Button size="sm" icon={ShieldCheck} busy={busy === 'tech'} onClick={() => techCheck()} title="Load each page like a crawler and check what could stop indexing">Check pages now</Button>
           <Button size="sm" icon={SearchIcon} busy={busy === 'inspect'} onClick={() => inspect()}>Check Google for 25 pages</Button>
+          {gs?.index_url && <a href={gs.index_url} target="_blank" rel="noreferrer noopener"><Button size="sm" icon={ExternalLink} title="Open the Page indexing report in Search Console: every page Google knows, and why some are not indexed">Page indexing in Search Console</Button></a>}
           <Button size="sm" variant="primary" icon={Send} busy={busy === 'send'} disabled={!c.pending || !d.key.ready} title={d.key.ready ? '' : 'Put the key file on the site first'} onClick={() => send()}>Send {c.pending} waiting page{c.pending === 1 ? '' : 's'}</Button>
         </div>
         <IndexTable pages={d.pages} d={d} gs={gs} busy={busy} inspect={inspect} send={send} total={c.total} resetKey={`${status}|${q}`} />

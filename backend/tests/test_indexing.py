@@ -232,3 +232,11 @@ def test_the_key_is_also_given_as_json_for_the_download_button(client, bid):
     k = client.get(api(client, bid, "/key")).json()
     assert k["name"] == k["content"] + ".txt" and k["url"] == f"https://index.example/{k['content']}.txt"
     assert client.get(api(client, bid, "/key")).json()["content"] == k["content"]  # the same key every time
+
+
+def test_console_links_open_the_page_indexing_report_and_a_pages_own_inspection():
+    from app.services import indexing
+    for site in ("sc-domain:shop.example", "https://shop.example/"):
+        l = indexing.console_links(site)
+        assert l["index_url"].startswith("https://search.google.com/search-console/index?resource_id=") and ":" not in l["index_url"].split("resource_id=")[1] and "/" not in l["index_url"].split("resource_id=")[1]
+        assert l["inspect_base"].startswith("https://search.google.com/search-console/inspect?resource_id=") and l["inspect_base"].endswith("&id=")

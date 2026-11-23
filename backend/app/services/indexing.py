@@ -13,7 +13,7 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 from sqlalchemy import select
@@ -422,6 +422,12 @@ def inspect(db: Session, b: Business, urls: list[str] | None = None, limit: int 
     return {"checked": sum(done.values()), **done, "error": error}
 
 
+def console_links(site: str) -> dict[str, str]:
+    """Where to look in Search Console itself: the site's Page indexing report, and Google's own check of one page (URL Inspection, where 'Request indexing' is pressed: no API does that for ordinary pages)."""
+    rid = quote(site, safe="")
+    return {"index_url": f"https://search.google.com/search-console/index?resource_id={rid}", "inspect_base": f"https://search.google.com/search-console/inspect?resource_id={rid}&id="}
+
+
 def google_status(db: Session, b: Business) -> dict[str, Any]:
     """Whether Google can be asked about this site, and the sitemaps it knows."""
     from . import gsc_access
@@ -440,8 +446,8 @@ def google_status(db: Session, b: Business) -> dict[str, Any]:
             maps.append({"path": m.get("path"), "last_submitted": m.get("lastSubmitted"), "last_downloaded": m.get("lastDownloaded"), "pending": m.get("isPending"),
                          "errors": int(m.get("errors") or 0), "warnings": int(m.get("warnings") or 0), "submitted": sum(int(c.get("submitted") or 0) for c in (m.get("contents") or []))})
     except Exception as exc:  # noqa: BLE001
-        return {"state": "ok", "account": msg, "property": site, "sitemaps": [], "sitemaps_note": str(exc)[:200]}
-    return {"state": "ok", "account": msg, "property": site, "sitemaps": maps, "console_url": f"https://search.google.com/search-console/sitemaps?resource_id={site}"}
+        return {"state": "ok", "account": msg, "property": site, "sitemaps": [], "sitemaps_note": str(exc)[:200], **console_links(site)}
+    return {"state": "ok", "account": msg, "property": site, "sitemaps": maps, "console_url": f"https://search.google.com/search-console/sitemaps?resource_id={site}", **console_links(site)}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ on its own
