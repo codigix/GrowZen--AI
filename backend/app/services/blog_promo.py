@@ -237,6 +237,25 @@ def _slug_words(url: str) -> str:
     return re.sub(r"[-_/]+", " ", urlsplit(url or "").path)
 
 
+def saved_competitors(db: Session, b: Business) -> dict[str, Any]:
+    """Why no competitor can be used to find blog platforms, when competitors are saved: their blogs are found from their websites, so a competitor
+    only on Google Maps (no website) cannot be read, and one with a website that was left out (not selected) is not used. Says which, so the page can explain."""
+    from urllib.parse import urlsplit
+
+    from ..competitors import hygiene
+    from ..models import Competitor
+
+    def host(raw: str | None) -> str:
+        h = (urlsplit(raw if "//" in (raw or "") else f"//{raw or ''}").hostname or "").lower()
+        return h[4:] if h.startswith("www.") else h
+    rows = list(db.scalars(select(Competitor).where(Competitor.business_id == b.id).order_by(Competitor.id)))
+    usable = set(hygiene.real_competitor_domains(b, [host(c.website) for c in rows if c.website]))
+    return {"total": len(rows),
+            "no_website": [c.name or "Unnamed" for c in rows if c.selected is not False and not host(c.website)],
+            "left_out": [{"id": c.id, "name": c.name or host(c.website), "domain": host(c.website)} for c in rows
+                         if c.selected is False and host(c.website) in usable]}
+
+
 def competitor_platforms(db: Session, b: Business, a: Article, limit: int = 15) -> dict[str, Any]:
     """The sites where the business's competitors promote their own blog articles, from the links our backlink crawler found to the competitors' article pages.
     Ranked by how many competitors use the site, how close their article there is to this blog's topic, follow type, DA and spam risk. Risky sites are left out.
@@ -248,7 +267,7 @@ def competitor_platforms(db: Session, b: Business, a: Article, limit: int = 15) 
     from ..backlinks.models import Backlink, BiDomain, BiPage
     comps = hub.hygiene_competitors(db, b)
     if not comps:
-        return {"state": "no_competitors", "competitors": [], "items": [], "platforms": {}}
+        return {"state": "no_competitors", "competitors": [], "items": [], "platforms": {}, "saved": saved_competitors(db, b)}
     me = hub.own_domain(db, b.id)
     SD, TD = aliased(BiDomain), aliased(BiDomain)
     rows = db.execute(select(Backlink, BiPage, SD.registrable_domain, TD.registrable_domain).join(BiPage, BiPage.id == Backlink.source_page_id)

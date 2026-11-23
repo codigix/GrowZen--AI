@@ -154,6 +154,31 @@ def test_overview_with_ai_keeps_the_real_link_and_the_size(client, biz, monkeypa
     assert ov["method"] == "ai" and ov["text"].endswith(BLOG) and len(ov["text"]) <= 250 and ov["hashtags"] == ["#dental"]
 
 
+def test_saved_competitors_that_cannot_be_read_are_explained_and_one_can_be_switched_on(client, biz, monkeypatch):
+    """Competitors are saved, but the selected ones are only on Google Maps (no website) and the ones with a website were left out: the page says so,
+    instead of asking to add competitors, and offers to use the ones with a website."""
+    from app.models import Competitor
+    bid, db = biz
+    a = _article(db, bid)
+    monkeypatch.setattr(ai, "is_configured", lambda: False)
+    base = f"/api/v1/businesses/{bid}/blog-flow/promo/{a.id}"
+    _publish(db, a)
+    assert client.get(base).json()["from_competitors"]["saved"] == {"total": 0, "no_website": [], "left_out": []}  # truly none: "Add your competitors"
+    db.add_all([Competitor(business_id=bid, name="Mrugini Rental Studio", website=None, source="google_places", selected=True),
+                Competitor(business_id=bid, name="Yashodhara Boutique", website=None, source="google_places", selected=False),
+                Competitor(business_id=bid, name="Rentozone", website="http://www.rentozone.example/", source="research", selected=False),
+                Competitor(business_id=bid, name="Instagram page", website="https://www.instagram.com/x", source="research", selected=False)])  # never a competitor domain
+    db.commit()
+    comp = client.get(base).json()["from_competitors"]
+    assert comp["state"] == "no_competitors"
+    assert comp["saved"]["total"] == 4 and comp["saved"]["no_website"] == ["Mrugini Rental Studio"]  # selected, but nothing to read
+    left = comp["saved"]["left_out"]
+    assert [(c["name"], c["domain"]) for c in left] == [("Rentozone", "rentozone.example")]  # has a website, left out; Instagram is not offered
+    assert client.patch(f"/api/v1/competitors/{left[0]['id']}", json={"selected": True}).status_code == 200  # "Use this competitor"
+    comp = client.get(base).json()["from_competitors"]
+    assert comp["state"] != "no_competitors" and comp["competitors"] == ["rentozone.example"]
+
+
 def test_promotion_shows_where_competitors_promote_their_blog_articles(client, biz, monkeypatch):
     from app.backlinks.models import BiTrackedTarget
     from app.backlinks.repository import LinkRecord, upsert_imported_link
@@ -302,6 +327,76 @@ def test_web_discovery_falls_back_to_ai_suggestions_that_are_still_verified(clie
     assert d["state"] == "ok" and d["source"] == "ai" and "no credits" in d["message"]
     assert [i["domain"] for i in d["items"]] == ["smileblog.example"] and d["items"][0]["found_by"] == ["AI suggestion"]
     assert d["items"][0]["publishing"]["verified"] and d["items"][0]["publishing"]["type"] == "free"  # checked on the site itself
+
+
+def _rental_shop():
+    """A clothing-rental shop in Pune whose category ("Clothes market") says less than its services do."""
+    b = Business(name="Rental Shop", category=None) if False else Business(name="Rental Shop")
+    b.primary_category, b.city, b.area, b.country = "Clothes market", "Pune", "Wagholi", "IN"
+    b.services = [{"name": "Rental cloths"}, {"name": "Cloths on rent in wagholi"}]
+    a = Article(keyword="fashion cloth", secondary_keywords=["fashion designer clothes", "mens fashion clothes"], status="completed")
+    return b, a
+
+
+def test_the_niche_is_what_the_business_sells_not_just_its_category():
+    from app.services import publish_discovery as pd
+    b, a = _rental_shop()
+    assert pd.topics_of(b, a) == ["fashion cloth", "rental cloths", "cloths on rent in wagholi", "fashion designer clothes", "mens fashion clothes"]
+    assert pd.topics_of(b, None) == ["rental cloths", "cloths on rent in wagholi", "clothes market"]
+    qs = [x["q"] for x in pd.queries(b, a)]
+    assert any(q.startswith('rental cloths "write for us"') for q in qs)  # guest posts are looked for in what it sells, not in "clothes market"
+    assert any(q.startswith("wedding blog") for q in qs) and any(q.startswith("bridal blog") for q in qs) and any(q.startswith("fashion blog") for q in qs)
+    assert any("Pune lifestyle blog" in q for q in qs) and not any('"clothes market" "write for us"' in q for q in qs)
+
+
+def test_a_site_must_be_about_the_niche_to_match_it():
+    from app.services import publish_discovery as pd
+    b, a = _rental_shop()
+    niche = pd.Niche(b, a)
+    rental = niche.read("Lehenga on rent in Pune | Bridal outfit rental guide. Hire designer dresses for weddings.")
+    fashion = niche.read("Vogue India: fashion news, celebrity style and runway reports. Dresses, outfits and trends.")
+    startup = niche.read("Inc42: startup funding news, fintech, SaaS and unicorn reports from India's tech ecosystem.")
+    assert "rental cloths" in rental["topics"] and rental["relevance"] > fashion["relevance"] > startup["relevance"] == 0
+    assert "rental cloths" not in fashion["topics"] and not startup["topics"]  # a general fashion or business site is not "rental cloths"
+    assert "rental" in rental["match"]
+
+
+def test_ai_suggestions_are_kept_only_when_they_are_about_the_niche(client, monkeypatch):
+    from app.services import publish_discovery as pd
+    monkeypatch.setattr(ai, "is_configured", lambda: True)
+    b, _ = _rental_shop()
+    b.description = "We rent lehengas and sherwanis."
+    monkeypatch.setattr(ai, "complete_json", lambda s, u, **k: {"sites": [
+        {"domain": "weddingblog.example", "name": "Wedding Blog", "page": "https://weddingblog.example/", "topic": "rental cloths", "fit": 5},
+        {"domain": "bigmagazine.example", "name": "Big Magazine", "page": "https://bigmagazine.example/", "topic": "rental cloths", "fit": 3},
+        {"domain": "startups.example", "name": "Startups", "page": "https://startups.example/", "topic": "rental cloths", "fit": 5},
+        {"domain": "norating.example", "name": "No rating", "page": "https://norating.example/", "topic": "rental cloths"}]})
+    got = pd._ai_sites(b, pd.topics_of(b, None))
+    assert [s["domain"] for s in got] == ["weddingblog.example", "startups.example", "norating.example"]  # the AI's own "general site" rating (3) drops one
+    pages = {"https://weddingblog.example/": "<html><head><title>Lehenga on rent</title></head><body><h1>Bridal outfit rental</h1></body></html>",
+             "https://startups.example/": "<html><head><title>Startup funding news</title></head><body><h1>Fintech unicorns</h1></body></html>",
+             "https://norating.example/": "<html><body><h1>Dress hire for weddings</h1></body></html>"}
+    monkeypatch.setattr(bc, "_fetch", lambda url: (200, pages[url], url, 5, None) if url in pages else (404, "", url, 5, "missing"))
+    niche = pd.Niche(b, None)
+    checked = [pd.verify({"domain": s["domain"], "site": s["name"], "platform": "Website / industry blog", "title": s["name"], "url": s["page"], "snippet": "",
+                          "found_by": ["AI suggestion"], "topics": [s["topic"]], "fit": s["fit"]}, niche) for s in got]
+    kept = pd._relevant(checked, "ai")
+    assert [i["domain"] for i in kept] == ["weddingblog.example", "norating.example"]  # the startup site's pages are not about clothes or renting
+    assert "rental cloths" in kept[0]["topics"] and "rental" in kept[0]["match"]  # the topic filter now lists only sites whose pages cover that topic
+
+
+def test_a_publishing_site_shows_the_platform_it_is_built_on(monkeypatch):
+    from app.services import publish_discovery as pd
+    wp = ('<html><head><meta name="generator" content="WordPress 6.5.2"><link rel="stylesheet" href="/wp-content/themes/x/s.css"></head>'
+          '<body><a href="/advertise">Advertise with us</a></body></html>')
+    plain = "<html><body><h1>Our blog</h1><p>Short page.</p></body></html>"
+    pages = {"https://wp.example/blog/": wp, "https://plain.example/blog/": plain}
+    monkeypatch.setattr(bc, "_fetch", lambda url: (200, pages[url], url, 5, None) if url in pages else (404, "", url, 5, "missing"))
+    item = lambda d, p="Website / industry blog": {"domain": d, "site": d, "platform": p, "title": d, "url": f"https://{d}/blog/", "snippet": "", "found_by": ["AI suggestion"], "topics": []}  # noqa: E731
+    out = pd.verify(item("wp.example"))
+    assert out["cms"]["name"] == "WordPress" and out["cms"]["confidence"] in ("high", "medium") and out["cms"]["evidence"]
+    assert pd.verify(item("plain.example"))["cms"] is None  # no signs, so it is not called anything
+    assert pd.verify(item("medium.com", "Medium"))["cms"] is None  # an open platform is already named by its platform
 
 
 def test_article_addresses_are_told_apart_from_home_and_category_pages():

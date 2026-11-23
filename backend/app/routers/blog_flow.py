@@ -149,6 +149,51 @@ def discovery_save(article_id: int, body: SaveSiteIn, b: Business = Depends(get_
     return pd.view(db, b, a)
 
 
+@router.get("/platforms/{article_id}")
+def platforms(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """The top blogging and article-publishing platforms, ranked for this business, with which ones were found online at the last check."""
+    from ..services import blog_platforms as bp
+    return bp.view(db, b, _article(db, b, article_id))
+
+
+@router.post("/platforms/{article_id}/check", status_code=202)
+def platforms_check(article_id: int, background: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Ask Claude for the platforms that suit this business and open every platform to see that it is online. Runs in the background; GET /platforms/{id} shows the result."""
+    from ..deps import in_background
+    from ..services import blog_platforms as bp
+    a = _article(db, b, article_id)
+    if not bp.start(b.id):
+        return {"started": False, "running": True}
+    background.add_task(in_background(bp.run, b.id, a.id))
+    return {"started": True, "running": True}
+
+
+@router.post("/platforms/{article_id}/rental/refresh", status_code=202)
+def platforms_rental_refresh(article_id: int, background: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Ask Claude for clothing-rental websites for this business and open each to keep the real ones. Runs in the background; GET /platforms/{id} shows the result."""
+    from ..deps import in_background
+    from ..services import blog_platforms as bp
+    a = _article(db, b, article_id)
+    if not bp.is_rental(b, a):
+        raise HTTPException(409, "This business does not rent anything out.")
+    if not bp.start_rental(b.id):
+        return {"started": False, "running": True}
+    background.add_task(in_background(bp.refresh_rental, b.id, a.id))
+    return {"started": True, "running": True}
+
+
+@router.post("/platforms/{article_id}/save")
+def platforms_save(article_id: int, body: SaveSiteIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """Keep a platform in the link-building plan for later."""
+    from ..services import blog_platforms as bp
+    a = _article(db, b, article_id)
+    try:
+        bp.save(db, b, a, body.domain)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return bp.view(db, b, a)
+
+
 @router.post("/promo/{article_id}/check-all")
 def promo_check_all(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     a = _article(db, b, article_id)
