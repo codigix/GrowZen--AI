@@ -998,7 +998,11 @@ def sync_business(db: Session, b: Business, days: int = 60) -> dict[str, Any]:
     if (b.gbp_status or {}).get("site_mismatch"):
         b.gbp_status = {k: v for k, v in b.gbp_status.items() if k != "site_mismatch"}
     # Google is the source of truth for a linked profile: bring its name, categories, contact, address and hours in.
+    from . import google_changes
+    held = google_changes.held_fields(b)  # an edit still under Google's review: its copy may be the old value, which must not undo what the owner just saved
     for k, v in location_to_fields(loc).items():
+        if k in held:
+            continue
         if k not in ("gbp_status", "gbp_account", "gbp_location") and v not in (None, "", [], {}):
             if k == "website" and ".grexa.site" in str(v) and b.website and ".grexa.site" not in b.website:
                 continue  # Grexa's auto-generated placeholder site on the profile must not replace the business's real website
