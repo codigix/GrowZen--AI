@@ -980,8 +980,8 @@ function InsightsTab({ b }) {
   }, [ins.data]);
   return (
     <Card title="Profile views per week" subtitle="From the Business Profile Performance API (synced daily)" action={<Legend items={[['Google Search', SERIES[0]], ['Google Maps', SERIES[1]]]} />}>
-      {!ins.data ? <SkChart h="h-64" /> : weekly.length === 0 ? <div className="py-12 text-center text-13 text-gray-500">No insights yet: they arrive once the Google profile is connected and synced.</div> : (
-        <div className="h-64">
+      {!ins.data ? <SkChart h="h-56" /> : weekly.length === 0 ? <div className="py-12 text-center text-13 text-gray-500">No insights yet: they arrive once the Google profile is connected and synced.</div> : (
+        <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={weekly} margin={{ top: 8, right: 8, left: -14, bottom: 0 }}>
               <CartesianGrid stroke={INK.grid} vertical={false} />
@@ -1051,7 +1051,7 @@ function Manager({ b, tab, setTab, toast, onConnect, onCreate }) {
           {section === 'performance' && (
             <>
               <SectionHead title="Performance" subtitle="How customers find and act on the profile" sources={['google']} />
-              <AccessGate b={b} kind="gmb"><div className="space-y-4"><PerformanceMetrics b={b} /><InsightsTab b={b} /></div></AccessGate>
+              <AccessGate b={b} kind="gmb"><PerformanceMetrics b={b}><InsightsTab b={b} /></PerformanceMetrics></AccessGate>
             </>
           )}
           {section === 'traffic' && (

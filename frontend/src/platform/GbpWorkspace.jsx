@@ -235,7 +235,7 @@ function SearchKeywordsTable({ keywords, pad }) {
 
 /** Every Google performance metric Google returns for the profile. Anything it does not return is said so, never faked. */
 /** A small graph of one number over the period: the line, a soft fill under it, and a dot on the last day. */
-function Spark({ values, tone = '#4f46e5', width = 132, height = 40 }) {
+function Spark({ values, tone = '#4f46e5', width = 132, height = 40, fluid = false }) {
   const id = React.useId();
   const max = Math.max(...values, 1);
   const n = values.length;
@@ -246,11 +246,11 @@ function Spark({ values, tone = '#4f46e5', width = 132, height = 40 }) {
   const line = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const area = `${line} L${x(n - 1).toFixed(1)},${height} L${x(0).toFixed(1)},${height} Z`;
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Daily values over ${n} days, highest ${max}`} className="shrink-0 overflow-visible">
+    <svg width={fluid ? '100%' : width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio={fluid ? 'none' : undefined} role="img" aria-label={`Daily values over ${n} days, highest ${max}`} className={fluid ? 'block' : 'shrink-0 overflow-visible'}>
       <defs><linearGradient id={id} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={tone} stopOpacity="0.22" /><stop offset="100%" stopColor={tone} stopOpacity="0" /></linearGradient></defs>
       {!flat && <path d={area} fill={`url(#${id})`} />}
-      <path d={line} fill="none" stroke={flat ? '#cbd5e1' : tone} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
-      {!flat && <circle cx={x(n - 1)} cy={y(values[n - 1])} r="2.6" fill={tone} />}
+      <path d={line} fill="none" stroke={flat ? '#cbd5e1' : tone} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" vectorEffect={fluid ? 'non-scaling-stroke' : undefined} />
+      {!flat && !fluid && <circle cx={x(n - 1)} cy={y(values[n - 1])} r="2.6" fill={tone} />}
     </svg>
   );
 }
@@ -273,24 +273,23 @@ const PERF_LOOK = {
 const shortDay = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
 /** One number the way Google's own reports show it: the count, how it moved against the period before, and its daily graph. */
-function StatCard({ m, days, hasPrev, big = false }) {
+function StatCard({ m, days, hasPrev }) {
   const [Icon, tone, chip] = PERF_LOOK[m.key] || PERF_LOOK.views;
   return (
-    <div className={`rounded-xl bg-white ring-1 ring-slate-200 p-4 min-w-0 ${big ? 'bg-gradient-to-br from-indigo-50/60 to-white' : ''}`} title={m.hint}>
-      <div className="flex items-center gap-2 text-12.5 font-semibold text-slate-500"><span className={`w-7 h-7 rounded-lg inline-flex items-center justify-center ${chip}`}><Icon size={14} /></span><span className="truncate">{m.label}</span></div>
-      <div className="mt-2 flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className={`${big ? 'text-[32px]' : 'text-[28px]'} leading-none font-bold text-slate-900 tabular-nums`}>{Number(m.total).toLocaleString('en-IN')}</div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5"><Change pct={m.change_pct} has={hasPrev} />{hasPrev && m.previous != null && <span className="text-11.5 text-slate-400 tabular-nums">vs {Number(m.previous).toLocaleString('en-IN')}</span>}</div>
-        </div>
-        <Spark values={m.series} tone={tone} width={big ? 150 : 124} />
+    <div className="rounded-xl bg-white ring-1 ring-slate-200 p-3.5 min-w-0 flex flex-col" title={m.hint}>
+      <div className="flex items-center gap-2 text-12.5 font-semibold text-slate-500"><span className={`w-6 h-6 rounded-md inline-flex items-center justify-center shrink-0 ${chip}`}><Icon size={13} /></span><span className="truncate">{m.label}</span></div>
+      <div className="mt-2 flex items-baseline justify-between gap-2">
+        <div className="text-[26px] leading-none font-bold text-slate-900 tabular-nums">{Number(m.total).toLocaleString('en-IN')}</div>
+        <div className="flex items-center gap-1.5 shrink-0"><Change pct={m.change_pct} has={hasPrev} /></div>
       </div>
-      <div className="mt-2 text-11.5 text-slate-400">{m.best_day ? <>Best day {shortDay(m.best_day.day)}: <b className="text-slate-600 tabular-nums">{m.best_day.value}</b></> : 'Nothing in this period'}</div>
+      <div className="mt-0.5 h-4 text-11.5 text-slate-400 tabular-nums">{hasPrev && m.previous != null ? `vs ${Number(m.previous).toLocaleString('en-IN')} before` : ''}</div>
+      <div className="mt-1"><Spark values={m.series} tone={tone} width={240} height={36} fluid /></div>
+      <div className="mt-1.5 text-11.5 text-slate-400">{m.best_day ? <>Best day {shortDay(m.best_day.day)}: <b className="text-slate-600 tabular-nums">{m.best_day.value}</b></> : 'Nothing in this period'}</div>
     </div>
   );
 }
 
-export function PerformanceMetrics({ b }) {
+export function PerformanceMetrics({ b, children }) {
   const [days, setDays] = useState(28);
   const perf = useApi(`/businesses/${b.id}/gbp/performance?days=${days}`);
   const live = useApi(`/businesses/${b.id}/gbp/live`);
@@ -310,27 +309,26 @@ export function PerformanceMetrics({ b }) {
   if (!p) return <div className="space-y-4">{header}<SkStats cols="grid-cols-2 lg:grid-cols-4" labels={["Total profile views", "Customer actions", "Google Search impressions", "Google Maps impressions"]} /></div>;
   const by = Object.fromEntries(p.metrics.map(m => [m.key, m]));
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {header}
       {!p.has_data ? (
         <Card><p className="py-8 text-center text-13 text-slate-500">No daily numbers from Google have been read for this profile yet. Press <b>Sync</b> on the Google profile to read them (Google reports each day two days late).</p></Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <StatCard big m={by.views} days={days} hasPrev={p.has_previous} />
-            <StatCard big m={by.interactions} days={days} hasPrev={p.has_previous} />
-          </div>
-          <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-            {['views_search', 'views_maps', 'website_clicks', 'calls', 'directions', 'bookings'].map(k => by[k] && <StatCard key={k} m={by[k]} days={days} hasPrev={p.has_previous} />)}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {['views', 'interactions', 'views_search', 'views_maps', 'website_clicks', 'calls', 'directions', 'bookings'].map(k => by[k] && <StatCard key={k} m={by[k]} days={days} hasPrev={p.has_previous} />)}
           </div>
           <p className="text-12 text-slate-500">Each number is the total for the period, the arrow is the change against the same number of days just before, and the small graph is one value per day. Google reports the newest days late, so the period ends on {shortDay(p.end)}. Booking interactions show only where the category has a Book button.</p>
         </>
       )}
-      <Card title="Monthly search keywords" subtitle="Searches that showed the profile, by monthly impressions (Google rounds low values to “< n”)" pad={false}>
-        {kws.length ? (
-          <SearchKeywordsTable keywords={kws} pad="px-5" />
-        ) : <p className="text-13 text-slate-500 px-5 py-8 text-center">No keyword data from Google yet.</p>}
-      </Card>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 items-start">
+        <div className="xl:col-span-2 min-w-0">{children}</div>
+        <Card title="Monthly search keywords" subtitle="What showed the profile, by monthly impressions (low values are rounded to “< n”)" pad={false}>
+          {kws.length ? (
+            <SearchKeywordsTable keywords={kws} pad="px-4" />
+          ) : <p className="text-13 text-slate-500 px-5 py-8 text-center">No keyword data from Google yet.</p>}
+        </Card>
+      </div>
     </div>
   );
 }
