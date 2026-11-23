@@ -10,6 +10,7 @@ import { ProfileStrength, QuickTiles, MissingInfoCard, ShareProfileCard, NewRevi
 import { VerificationCard, ManagersCard, AdvertiseCard, DangerCard } from './GbpAdmin';
 import { refreshBusinesses, Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill, areaCls, useAction, useDoubleConfirm, Sk, SkStats, SkTable, SkList, SkScore, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
+import { Growth, Tile as GrowthTile } from './ClientReportPage';
 import DataTable, { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import { useGbpLive } from './AccessGate';
 import { VerifyPill } from './GbpAccounts';
@@ -163,6 +164,28 @@ function Kpi({ icon: Icon, label, value, sub }) {
   );
 }
 
+/** The project's progress, month by month: this month's numbers against last month, the 12-month growth chart and the table of changes. */
+function ProgressByMonth({ b, go }) {
+  const g = useApi(`/businesses/${b.id}/gbp/reports/growth`);
+  const rows = g.data?.months || [];
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="mr-auto"><h3 className="text-16 font-semibold text-slate-900">Progress month by month</h3><p className="text-12 text-slate-500">What customers did on the Google profile each month, and how it changed.</p></div>
+        <Button size="sm" onClick={() => go('reports')}>Reports and client link</Button>
+      </div>
+      {!g.data ? <Card><SkList rows={4} avatar={false} /></Card> : rows.length === 0 ? null : (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[['Profile views', '#6366f1', 'views'], ['Calls', '#10b981', 'calls'], ['Directions', '#f59e0b', 'directions'], ['Website clicks', '#0ea5e9', 'website_clicks']].map(([label, color, k]) => <GrowthTile key={k} icon={BarChart3} label={label} color={color} rows={rows} k={k} />)}
+          </div>
+          <Growth rows={rows} current={g.data.month} />
+        </>
+      )}
+    </div>
+  );
+}
+
 export function OverviewSection({ b, go, onOpen }) {
   const live = useApi(`/businesses/${b.id}/gbp/live`);
   const score = useApi(`/businesses/${b.id}/gbp/score`);
@@ -210,6 +233,7 @@ export function OverviewSection({ b, go, onOpen }) {
           </div>
         </>
       )}
+      <ProgressByMonth b={b} go={go} />
     </div>
   );
 }

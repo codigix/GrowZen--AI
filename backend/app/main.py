@@ -138,6 +138,7 @@ app.include_router(watch_router, prefix=settings.api_prefix)
 
 from .routers import review_link  # noqa: E402
 from .routers import client_report  # noqa: E402
+from .routers import gbp_portfolio  # noqa: E402
 from .routers import maps_public  # noqa: E402
 from .routers import indexing as indexing_router  # noqa: E402
 from .routers import search_insights as search_insights_router  # noqa: E402
@@ -177,6 +178,7 @@ app.include_router(indexing_router.router, prefix=settings.api_prefix)
 app.include_router(search_insights_router.router, prefix=settings.api_prefix)
 app.include_router(review_link.public_router, prefix=settings.api_prefix)
 app.include_router(client_report.router, prefix=settings.api_prefix)
+app.include_router(gbp_portfolio.router, prefix=settings.api_prefix)
 app.include_router(client_report.growth_router, prefix=settings.api_prefix)
 app.include_router(client_report.public_router, prefix=settings.api_prefix)
 from .routers import chatgpt_business  # noqa: E402
