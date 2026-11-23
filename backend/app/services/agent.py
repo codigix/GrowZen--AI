@@ -187,11 +187,37 @@ def apply(db: Session, task: AgentTask, actor: str = "agent") -> AgentTask:
         task.status, task.applied_at = "applied", datetime.now(timezone.utc)
         log(db, actor, "task_applied", task.business_id, task_id=task.id, kind=task.kind, result=task.result)
         _track_outcome(db, task)
+        if task.kind == "gbp_post":
+            _tell_post(db, b, task, True)
     except Exception as exc:
         task.status, task.result = "failed", {"error": str(exc)[:500]}
         log(db, actor, "task_failed", task.business_id, task_id=task.id, error=str(exc)[:200])
+        if task.kind == "gbp_post":
+            _tell_post(db, b, task, False)
     db.commit()
     return task
+
+
+def _tell_post(db: Session, b: Business | None, task: AgentTask, ok: bool) -> None:
+    """A Google post went out (or could not): its status follows, and the owner is told in the bell. A post that was not linked stays as it was."""
+    try:
+        p = db.get(Post, (task.detail or {}).get("post_id"))
+        if b is None or p is None:
+            return
+        published = ok and p.status == "published"
+        if not ok:
+            p.status = "failed"
+        elif not published:
+            return
+        from ..models import Notification
+        what = (p.title or p.body or "Post")[:70]
+        if published:
+            title, body = f"Your Google post is live: {what}", "It was published on your Google Business Profile at the time you set."
+        else:
+            title, body = f"Your Google post could not be published: {what}", f"Google did not accept it ({(task.result or {}).get('error', 'unknown error')[:200]}). Open Google posts to try again."
+        db.add(Notification(business_id=b.id, owner_id=b.owner_id, kind="post_published" if published else "post_failed", title=title, body=body, link="/google-posts"))
+    except Exception:  # noqa: BLE001 - telling the owner must never undo the post
+        logging.getLogger("seo.agent").warning("Post notification skipped for task %s", task.id)
 
 
 def auto_apply_pending(db: Session) -> int:

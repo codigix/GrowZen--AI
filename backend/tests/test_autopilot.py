@@ -134,6 +134,9 @@ def test_a_post_is_sent_only_after_its_approval_and_only_at_its_time(project, mo
         db.commit()
         assert ap.publish_due(db) == 1 and [c[0] for c in FakeGoogle.calls] == ["photo", "post"]  # the picture is made and added first
         assert db.get(AgentTask, t.id).status == "applied" and db.get(Post, d["post_id"]).status == "published"
+        from app.models import Notification
+        from sqlalchemy import select
+        assert [n.kind for n in db.scalars(select(Notification).where(Notification.business_id == b.id))][-1:] == ["post_published"]  # the owner is told once it is live
     finally:
         db.close()
 
