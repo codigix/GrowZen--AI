@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # Database: its own PostgreSQL database in prod; SQLite for local dev out of the box.
     database_url: str = _default_db
 
+    @field_validator("apify_cache_hours", mode="before")
+    @classmethod
+    def _blank_hours(cls, v):
+        """`APIFY_CACHE_HOURS=` left empty in .env means "use the default" (24), not a crash at start-up."""
+        return 24 if v is None or (isinstance(v, str) and not v.strip()) else v
+
     @field_validator("database_url")
     @classmethod
     def _psycopg3(cls, url: str) -> str:

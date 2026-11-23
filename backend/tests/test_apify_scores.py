@@ -174,3 +174,11 @@ def test_a_refused_key_or_network_failure_is_not_remembered(monkeypatch):
     monkeypatch.setattr(am, "lookup", refuse)
     assert "error" in am.check(["fail1.example"])[0]
     assert am.cached(["fail1.example"]) == {}  # the next press tries again
+
+
+def test_a_blank_apify_cache_hours_in_env_uses_the_default_instead_of_crashing(monkeypatch):
+    from app.config import Settings
+    monkeypatch.setenv("APIFY_CACHE_HOURS", "")
+    assert Settings().apify_cache_hours == 24
+    monkeypatch.setenv("APIFY_CACHE_HOURS", "12")
+    assert Settings().apify_cache_hours == 12
