@@ -2,7 +2,7 @@ import { useCrumb } from './crumbs';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { ChevronDown, Globe, Loader2, Search, Check, ScanSearch, ShieldCheck, SlidersHorizontal } from 'lucide-react';
-import { SeoShell, Card, Button } from './SeoUi';
+import { SeoShell, Card, Button, Tabs } from './SeoUi';
 import { useSiteAudit, ReportStep, LiveScan } from './WebsiteAuditTool';
 import SchemaStudio from './SchemaStudio';
 import SiteAuditTable from './SiteAuditTable';
@@ -23,19 +23,6 @@ const clean = (raw) => {
   try { return `${new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`).origin}/`; } catch { return ''; }
 };
 
-/** A section that stays closed until opened, but is always mounted so its work (the Page X-Ray run) happens either way. */
-function Fold({ id, open, onToggle, title, hint, children }) {
-  return (
-    <section id={id} className="bg-white rounded-xl border border-slate-200 shadow-sm">
-      <button type="button" onClick={onToggle} aria-expanded={open} className="w-full flex items-center gap-3 px-4 sm:px-5 py-3.5 text-left cursor-pointer">
-        <span className="flex-1 min-w-0"><span className="block text-15 font-semibold text-slate-900">{title}</span><span className="block text-12.5 text-slate-500">{hint}</span></span>
-        <ChevronDown size={16} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      <div className={open ? 'border-t border-slate-100 p-4 sm:p-5' : 'hidden'}>{children}</div>
-    </section>
-  );
-}
-
 const Pill = ({ state, label, sub }) => (
   <span className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-12.5 ring-1 ${state === 'busy' ? 'ring-indigo-200 bg-indigo-50 text-indigo-900' : state === 'done' ? 'ring-emerald-200 bg-emerald-50 text-emerald-900' : 'ring-slate-200 bg-white text-slate-600'}`}>
     {state === 'busy' ? <Loader2 size={13} className="animate-spin" /> : state === 'done' ? <Check size={13} /> : null}
@@ -49,13 +36,12 @@ function SiteAudit({ b, openFold }) {
   const [trigger, setTrigger] = useState({ n: 0, url: '' });
   const [xrayBusy, setXrayBusy] = useState(false);
   const [xrayTick, setXrayTick] = useState(0);
-  const [open, setOpen] = useState(openFold ? { [openFold]: true } : {});
+  const [picked, setView] = useState(openFold || 'overview'); // the tab on show: the overview first, or the section a link asked for
   const [formError, setFormError] = useState('');
   const location = useLocation();
   useCrumb(overview ? 'Overview' : undefined);
   useEffect(() => { setOverview(null); }, [location.key]);
 
-  const toggle = (k) => setOpen(o => ({ ...o, [k]: !o[k] }));
   const [setup, setSetup] = useState(false); // the audit settings window (crawl limits, exclusions, user agent)
   const check = (cfg) => {
     const target = clean(sa.url);
@@ -69,6 +55,7 @@ function SiteAudit({ b, openFold }) {
     setTrigger(t => ({ n: t.n + 1, url: target })); // … and the Page X-Ray of the homepage, from the same click
   };
 
+  const view = picked === 'report' && !sa.report ? 'overview' : picked; // the report tab exists once there is a report
   const loading = !sa.history.data || (sa.current && !sa.audit.data);
   const failed = !sa.running && sa.audit.data?.status === 'failed';
   const busy = sa.running || sa.busy === 'start' || xrayBusy;
@@ -111,25 +98,34 @@ function SiteAudit({ b, openFold }) {
 
       {sa.running && <LiveScan audit={sa.audit.data} startedAt={sa.startedAt} />}
 
-      <BusinessUnderstanding key={`bu-${b.id}-${sa.report?.id || 'none'}`} b={b} />
+      <Tabs value={view} onChange={setView} tabs={[
+        { id: 'overview', label: 'Overview' },
+        ...(sa.report ? [{ id: 'report', label: 'Site audit report' }] : []),
+        { id: 'xray', label: 'Page X-Ray' },
+        { id: 'schema', label: 'Schema' },
+        { id: 'sites', label: 'Other audits' }
+      ]} />
 
-      {loading && !sa.running ? <div className="h-24 rounded-xl bg-slate-100 animate-pulse" role="status" aria-busy="true" /> : (
-        <>
-          <WebsiteSnapshot b={b} sa={sa} tick={xrayTick} />
-          {b.website && <MergedFindings key={`${b.id}-${sa.report?.id || 'none'}-${xrayTick}`} bid={b.id} />}
-          {!sa.report && !sa.running && !busy && <Card><div className="py-6 text-center text-13 text-slate-500"><ScanSearch size={18} className="inline mr-1.5 -mt-0.5" /><ShieldCheck size={18} className="inline mr-1.5 -mt-0.5" />Press <b>Check website</b> to run the audit and Page X-Ray. The scores and what to fix appear here.</div></Card>}
-        </>
+      {view === 'overview' && (
+        <div className="space-y-5">
+        <BusinessUnderstanding key={`bu-${b.id}-${sa.report?.id || 'none'}`} b={b} />
+
+        {loading && !sa.running ? <div className="h-24 rounded-xl bg-slate-100 animate-pulse" role="status" aria-busy="true" /> : (
+          <>
+            <WebsiteSnapshot b={b} sa={sa} tick={xrayTick} />
+            {b.website && <MergedFindings key={`${b.id}-${sa.report?.id || 'none'}-${xrayTick}`} bid={b.id} />}
+            {!sa.report && !sa.running && !busy && <Card><div className="py-6 text-center text-13 text-slate-500"><ScanSearch size={18} className="inline mr-1.5 -mt-0.5" /><ShieldCheck size={18} className="inline mr-1.5 -mt-0.5" />Press <b>Check website</b> to run the audit and Page X-Ray. The scores and what to fix appear here.</div></Card>}
+          </>
+        )}
+        </div>
       )}
-
-      <div className="space-y-3">
-        <div className="text-12 font-semibold uppercase tracking-wide text-slate-500 px-1">Full details</div>
-        {sa.report && <Fold id="report" open={!!open.report} onToggle={() => toggle('report')} title="Site audit report" hint="Every issue with its fix, pages crawled, Lighthouse speed, Google tools, PDF download.">{open.report && <ReportStep sa={sa} business={b} onNext={() => {}} />}</Fold>}
-        <Fold id="xray" open={!!open.xray} onToggle={() => toggle('xray')} title="Page X-Ray report" hint="The homepage in depth: SEO, AEO and GEO checks, technology, SSL, security headers, domain. Check any other page here too.">
-          <XRay key={b.id} b={b} embedded trigger={trigger} onBusy={setXrayBusy} onSaved={() => setXrayTick(t => t + 1)} />
-        </Fold>
-        <Fold id="schema" open={!!open.schema} onToggle={() => toggle('schema')} title="Schema (structured data)" hint="Create and check the structured data that helps Google and AI understand the business.">{open.schema && <SchemaStudio b={b} report={sa.report} />}</Fold>
-        <Fold id="sites" open={!!open.sites} onToggle={() => toggle('sites')} title="Other audits" hint="Earlier audits of this and other websites.">{open.sites && <SiteAuditTable projectId={b.id} onOverview={(id, initial) => setOverview({ id, initial })} />}</Fold>
+      {sa.report && view === 'report' && (<ReportStep sa={sa} business={b} onNext={() => {}} />)}
+      {/* the Page X-Ray works whichever tab is on show (it runs from the Check button), so it stays in the page and is only hidden */}
+      <div hidden={view !== 'xray'}>
+        <XRay key={b.id} b={b} embedded trigger={trigger} onBusy={setXrayBusy} onSaved={() => setXrayTick(t => t + 1)} />
       </div>
+      {view === 'schema' && (<SchemaStudio b={b} report={sa.report} />)}
+      {view === 'sites' && (<SiteAuditTable projectId={b.id} onOverview={(id, initial) => setOverview({ id, initial })} />)}
     </div>
   );
 }
