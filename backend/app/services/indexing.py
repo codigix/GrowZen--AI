@@ -19,7 +19,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Business, IndexPage, IndexSetting
+from ..models import Business, IndexPage, IndexSetting, IndexStatDay
 from . import backlink_checker as bc
 from . import sitemap
 from .activity import log
@@ -421,6 +421,23 @@ def inspect(db: Session, b: Business, urls: list[str] | None = None, limit: int 
             done[res["state"]] += 1
     db.commit()
     return {"checked": sum(done.values()), **done, "error": error}
+
+
+STAT_KEYS = ("total", "in_sitemap", "indexed", "not_indexed", "unchecked", "tech_ok", "tech_risky", "tech_blocked", "tech_unchecked", "sent", "pending")
+
+
+def record_stats(db: Session, b: Business, counts: dict[str, int]) -> list[dict[str, Any]]:
+    """Keep today's counts (the last look of the day wins) and give back the last 30 days, oldest first, for the graphs. A day nobody looked has no row: the graph skips it."""
+    today = _now().date()
+    row = db.get(IndexStatDay, (b.id, today))
+    stats = {k: int(counts.get(k) or 0) for k in STAT_KEYS}
+    if row is None:
+        db.add(IndexStatDay(business_id=b.id, day=today, stats=stats))
+    elif row.stats != stats:
+        row.stats = stats
+    db.flush()
+    rows = list(db.scalars(select(IndexStatDay).where(IndexStatDay.business_id == b.id, IndexStatDay.day > today - timedelta(days=30)).order_by(IndexStatDay.day)))
+    return [{"day": r.day.isoformat(), **(r.stats or {})} for r in rows]
 
 
 def console_links(site: str) -> dict[str, str]:

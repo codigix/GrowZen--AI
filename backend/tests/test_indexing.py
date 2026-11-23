@@ -244,3 +244,28 @@ def test_the_page_indexing_report_link_and_a_pages_own_link_comes_from_google():
     got = indexing.parse_inspection({"inspectionResult": {"inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Ashop.example&id=AbC123", "indexStatusResult": {"verdict": "PASS", "coverageState": "Submitted and indexed"}}})
     assert got["state"] == "indexed" and got["link"].endswith("&id=AbC123")
     assert indexing.parse_inspection({"inspectionResult": {"indexStatusResult": {"verdict": "FAIL"}}})["link"] is None
+
+
+def test_the_daily_counts_are_kept_and_give_back_the_last_days_oldest_first(client):
+    from datetime import timedelta
+    from app.db import SessionLocal
+    from app.models import Business, IndexStatDay
+    from app.services import indexing
+    db = SessionLocal()
+    try:
+        b = Business(name="Stats Shop", website="https://stats.example")
+        db.add(b)
+        db.commit()
+        today = indexing._now().date()
+        for i, n in ((3, 5), (1, 8)):
+            db.add(IndexStatDay(business_id=b.id, day=today - timedelta(days=i), stats={"indexed": n}))
+        db.commit()
+        h = indexing.record_stats(db, b, {"indexed": 11, "total": 20})
+        assert [x["indexed"] for x in h] == [5, 8, 11] and h[-1]["total"] == 20 and h[-1]["day"] == today.isoformat()
+        h = indexing.record_stats(db, b, {"indexed": 12, "total": 20})  # looking again the same day replaces that day's numbers
+        assert [x["indexed"] for x in h] == [5, 8, 12] and len(h) == 3
+    finally:
+        db.query(IndexStatDay).filter(IndexStatDay.business_id == b.id).delete()
+        db.query(Business).filter(Business.id == b.id).delete()
+        db.commit()
+        db.close()

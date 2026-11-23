@@ -868,6 +868,14 @@ class IndexSetting(TimestampMixin, Base):
     last_scan: Mapped[dict | None] = mapped_column(JSON)  # {found, new, changed, submitted, inspected, note}
 
 
+class IndexStatDay(Base):
+    """The page-indexing counts of one project on one day (the last look of that day): what the page shows as a graph and as a change against a week ago."""
+    __tablename__ = "index_stats_daily"
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    stats: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class IndexPage(TimestampMixin, Base):
     """A page of a project's site: when it was first seen, whether it was sent to the search engines that accept submissions, and what Google says about it."""
     __tablename__ = "index_pages"

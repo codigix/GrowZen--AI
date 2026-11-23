@@ -5,16 +5,13 @@ import { Act, OpenAct } from './TableBits';
 import Select from '../components/Select';
 import { api, useApi } from './seoApi';
 import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
+import { Ring, Segments, StatCard, Spark, Delta, trendOf } from './StatBits';
 
 const when = (iso) => { if (!iso) return '—'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
 const TH = 'px-3 py-2.5 text-left font-medium whitespace-nowrap';
 const STATE = { indexed: ['Indexed', 'green'], not_indexed: ['Not indexed', 'amber'], blocked: ['Blocked', 'red'], unknown: ['Unknown', 'gray'] };
 const TECH = { indexable: ['Can be indexed', 'green'], risky: ['Risky', 'amber'], blocked: ['Blocked', 'red'] };
 const FILTERS = [['all', 'Every page'], ['tech_problem', 'Blocked or risky: may not be indexed'], ['new', 'New this week'], ['pending', 'Waiting to be sent'], ['indexed', 'Indexed in Google'], ['not_indexed', 'Not indexed in Google'], ['unchecked', 'Not checked yet'], ['skipped', 'Not sent: a problem']];
-
-function Tile({ label, value, tone = 'text-slate-900', hint }) {
-  return <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4 shadow-sm" title={hint}><div className="text-12 text-slate-500">{label}</div><div className={`text-26 font-bold tabular-nums ${tone}`}>{value ?? '—'}</div></div>;
-}
 
 const PAGE_VALUE = (p, k) => (k === 'page' ? p.path : k === 'tech' ? p.tech?.verdict ?? null : k === 'google' ? p.g_state ?? null : k === 'crawl' ? (p.g_last_crawl ? Date.parse(p.g_last_crawl) : null) : (p.submitted_at ? Date.parse(p.submitted_at) : null));
 
@@ -90,26 +87,55 @@ function Indexing({ b }) {
   const last = d.last_scan || {};
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Tile label="Pages in your sitemap" value={c.in_sitemap} />
-        <Tile label="Indexed in Google" value={c.indexed} tone="text-emerald-700" hint="Google shows these in search, or told us so when we checked" />
-        <Tile label="Not indexed in Google" value={c.not_indexed} tone={c.not_indexed ? 'text-amber-600' : 'text-slate-900'} />
-        <Tile label="Sent to other engines" value={c.sent} hint="Bing, Yandex, Seznam, Naver, Yep (IndexNow)" />
-        <Tile label="Waiting to be sent" value={c.pending} tone={c.pending ? 'text-indigo-700' : 'text-slate-900'} />
-      </div>
+      {(() => {
+        const hist = d.history || [];
+        const tr = (k) => trendOf(hist, k);
+        const total = c.in_sitemap || c.total || 0;
+        const share = (n) => (total ? Math.round((n / total) * 100) : 0);
+        const idx = tr('indexed');
+        return (
+          <div className="space-y-3">
+            <div className="rounded-xl bg-white ring-1 ring-slate-200 p-5 flex flex-wrap items-center gap-x-8 gap-y-4">
+              <Ring value={c.indexed} total={total} label="indexed" />
+              <div className="flex-1 min-w-[260px]">
+                <div className="text-15 font-semibold text-slate-900"><span className="tabular-nums">{c.indexed}</span> of <span className="tabular-nums">{total}</span> sitemap pages are indexed in Google</div>
+                <div className="mt-1 text-12.5 text-slate-500">{c.unchecked ? `${c.unchecked} have not been asked yet: press “Check Google for 25 pages”. ` : 'Every page has been asked. '}{c.not_indexed ? `${c.not_indexed} are not indexed.` : ''}</div>
+                <div className="mt-3"><Segments total={total} parts={[{ label: 'Indexed', value: c.indexed, color: '#10b981' }, { label: 'Not indexed', value: c.not_indexed, color: '#f59e0b' }, { label: 'Not asked yet', value: c.unchecked, color: '#cbd5e1' }]} /></div>
+                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-12 text-slate-600">
+                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />Indexed <b className="tabular-nums text-slate-900">{c.indexed}</b></span>
+                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" />Not indexed <b className="tabular-nums text-slate-900">{c.not_indexed}</b></span>
+                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-300" />Not asked yet <b className="tabular-nums text-slate-900">{c.unchecked}</b></span>
+                </div>
+              </div>
+              <div className="min-w-[170px]">
+                <div className="text-12 font-semibold text-slate-500 mb-1">Indexed pages, last 30 days</div>
+                {idx.series.length > 1 ? <Spark values={idx.series} tone="#10b981" width={170} height={48} /> : <div className="text-12 text-slate-400">The graph fills in as days pass: this page keeps each day's count from now on.</div>}
+                <div className="mt-1"><Delta now={c.indexed} before={idx.before} since={idx.since} /></div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <StatCard label="Pages in your sitemap" value={c.in_sitemap} tone="#6366f1" {...tr('in_sitemap')} />
+              <StatCard label="Indexed in Google" value={c.indexed} tone="#10b981" valueTone="text-emerald-700" hint="Google shows these in search, or told us so when we checked" share={share(c.indexed)} {...tr('indexed')} />
+              <StatCard label="Not indexed in Google" value={c.not_indexed} tone="#f59e0b" valueTone={c.not_indexed ? 'text-amber-600' : 'text-slate-900'} lowerIsBetter share={share(c.not_indexed)} {...tr('not_indexed')} />
+              <StatCard label="Sent to other engines" value={c.sent} tone="#0ea5e9" hint="Bing, Yandex, Seznam, Naver, Yep (IndexNow)" share={share(c.sent)} {...tr('sent')} />
+              <StatCard label="Waiting to be sent" value={c.pending} tone="#8b5cf6" valueTone={c.pending ? 'text-indigo-700' : 'text-slate-900'} lowerIsBetter share={share(c.pending)} {...tr('pending')} />
+            </div>
 
-      <div>
-        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-          <h3 className="text-15 font-semibold text-slate-900">Can Google index these pages?</h3>
-          <span className="text-12 text-slate-500">Our own check: each page is loaded like a crawler. It needs no Google account. {c.tech_unchecked ? `${c.tech_unchecked} not checked yet.` : ''}</span>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Tile label="Can be indexed" value={c.tech_ok} tone="text-emerald-700" hint="Loads, no noindex, allowed by robots.txt, its own canonical and readable text" />
-          <Tile label="Risky" value={c.tech_risky} tone={c.tech_risky ? 'text-amber-600' : 'text-slate-900'} hint="It loads but something may keep Google from indexing it: a canonical to another page, a redirect, almost no readable text" />
-          <Tile label="Blocked" value={c.tech_blocked} tone={c.tech_blocked ? 'text-red-600' : 'text-slate-900'} hint="An error, a noindex tag or header, or robots.txt stops Google" />
-          <Tile label="Not checked yet" value={c.tech_unchecked} hint="Checked automatically when this page opens and every day" />
-        </div>
-      </div>
+            <div>
+              <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2 mt-2">
+                <h3 className="text-15 font-semibold text-slate-900">Can Google index these pages?</h3>
+                <span className="text-12 text-slate-500">Our own check: each page is loaded like a crawler. It needs no Google account. {c.tech_unchecked ? `${c.tech_unchecked} not checked yet.` : ''}</span>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <StatCard label="Can be indexed" value={c.tech_ok} tone="#10b981" valueTone="text-emerald-700" hint="Loads, no noindex, allowed by robots.txt, its own canonical and readable text" share={share(c.tech_ok)} {...tr('tech_ok')} />
+                <StatCard label="Risky" value={c.tech_risky} tone="#f59e0b" valueTone={c.tech_risky ? 'text-amber-600' : 'text-slate-900'} lowerIsBetter hint="It loads but something may keep Google from indexing it: a canonical to another page, a redirect, almost no readable text" share={share(c.tech_risky)} {...tr('tech_risky')} />
+                <StatCard label="Blocked" value={c.tech_blocked} tone="#ef4444" valueTone={c.tech_blocked ? 'text-red-600' : 'text-slate-900'} lowerIsBetter hint="An error, a noindex tag or header, or robots.txt stops Google" share={share(c.tech_blocked)} {...tr('tech_blocked')} />
+                <StatCard label="Not checked yet" value={c.tech_unchecked} tone="#94a3b8" lowerIsBetter hint="Checked automatically when this page opens and every day" share={share(c.tech_unchecked)} {...tr('tech_unchecked')} />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <Card title="Automatic indexing" subtitle="Every day the software reads your sitemap, finds new and changed pages, sends them to the other search engines, and asks Google how each page is doing."
         action={<span className="flex gap-2"><Button size="sm" icon={Play} busy={busy === 'run'} onClick={runNow}>Run it now</Button>{d.auto ? <Button size="sm" onClick={() => auto(false)} busy={busy === 'auto'}>Turn off</Button> : <Button size="sm" variant="primary" onClick={() => auto(true)} busy={busy === 'auto'}>Turn on</Button>}</span>}>
