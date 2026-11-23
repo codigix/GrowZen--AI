@@ -3,18 +3,13 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { Download, History, Loader2, Minus, ScanSearch, Trash2, TrendingDown, TrendingUp, Cpu, AlertTriangle } from 'lucide-react';
 import { Button, Card, useDoubleConfirm } from './SeoUi';
 import { api } from './seoApi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const tone = (s) => (s == null ? 'text-slate-400' : s >= 75 ? 'text-emerald-600' : s >= 45 ? 'text-amber-500' : 'text-red-500');
 const when = (iso) => { if (!iso) return '—'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); };
 const short = (iso) => { const t = new Date(iso); return Number.isNaN(t.getTime()) ? '' : t.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }); };
 const pathOf = (u) => { try { const x = new URL(u); return `${x.pathname}${x.search}` || '/'; } catch { return u; } };
-/** CSV cell: quoted, quotes doubled, a leading = + - @ neutralised so a spreadsheet never runs it as a formula. */
-const csvCell = (v) => { let s = v == null ? '' : String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return `"${s.replace(/"/g, '""')}"`; };
-const toCsv = (rows) => rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-const saveFile = (name, text) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' })); a.download = name; a.click(); URL.revokeObjectURL(a.href); };
-
 const NO_ROWS = [];
 const HIST_VALUE = (r, k) => (k === 'when' ? (r.created_at ? Date.parse(r.created_at) : null) : k === 'words' ? r.word_count : r[k]);
 
@@ -75,6 +70,7 @@ export function HistoryPanel({ b, url, tick, onOpen, onError }) {
               </ResponsiveContainer>
             </div>
           ) : <p className="text-12 text-slate-400 mb-2">The chart appears after two runs.</p>}
+          <div className="flex justify-end mb-2"><Button size="sm" icon={Download} onClick={() => downloadCsv(`page-xray-history-${pathOf(url).replace(/[^a-z0-9]+/gi, '-')}`, ['Checked', 'Page URL', 'SEO score', 'AEO score', 'GEO score', 'SEO change', 'AEO change', 'GEO change', 'Words', 'Read with Chrome'], sorted.map(r => [r.created_at || '', url, r.seo, r.aeo, r.geo, r.change ? r.change.seo : '', r.change ? r.change.aeo : '', r.change ? r.change.geo : '', r.word_count, r.render ? 'yes' : 'no']))}>Export CSV</Button></div>
           <div className="overflow-x-auto">
             <table className="w-full text-13">
               <thead className="text-12 text-slate-500 border-b border-slate-200"><tr>{[['when', 'Checked'], ['seo', 'SEO'], ['aeo', 'AEO'], ['geo', 'GEO'], ['words', 'Words']].map(([k, l]) => <SortTh key={k} id={k} sort={sort} onSort={onSort} first={k === 'when' ? 'desc' : 'asc'} className="p-2 font-medium">{l}</SortTh>)}<th className="p-2" /></tr></thead>
@@ -172,7 +168,7 @@ export function SiteScan({ b, onOpen, onDone }) {
     try { const full = await api(`/businesses/${b.id}/page-xray/history/${p.run_id}`); if (!full.report) setError('Only the scores of this page were kept (its full report was too large to store).'); else onOpen(full.report, full.created_at); }
     catch (e) { setError(e.message || 'The saved report could not be opened.'); } finally { setBusy(''); }
   };
-  const csv = () => saveFile(`${(b.name || 'site').replace(/\W+/g, '-')}-page-xray.csv`, toCsv([['url', 'seo', 'aeo', 'geo', 'top_fix', 'error'], ...rows.map(p => [p.url, p.seo, p.aeo, p.geo, p.top_fix, p.error])]));
+  const csv = () => downloadCsv(`page-xray-site-scan-${(b.name || 'site').replace(/\W+/g, '-')}`, ['Page URL', 'SEO score', 'AEO score', 'GEO score', 'Top fix', 'Error'], rows.map(p => [p.url, p.seo, p.aeo, p.geo, p.top_fix, p.error]));
   const pct = job?.total ? Math.round((job.done / job.total) * 100) : 0;
   const scored = arr(job?.pages).filter(p => p.seo != null);
   const mean = (k) => (scored.length ? Math.round(scored.reduce((s, p) => s + (p[k] || 0), 0) / scored.length) : null);

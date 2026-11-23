@@ -5,13 +5,13 @@ import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, ScatterChart, Scat
 import { ArrowUp, ArrowDown, RefreshCw, ExternalLink, AlertTriangle, Search, Inbox, Info } from 'lucide-react';
 import { Card, Badge, Button, ErrorNote, useAction, useToast, useModulePath, SkPage } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
-import { TrackingHeader, ExportButtons, DevicesLocations, TabBar } from './PositionExtras';
+import { TrackingHeader, ExportButtons, DevicesLocations, TabBar, CsvButton } from './PositionExtras';
 import PositionOverview from './PositionOverview';
 import CurrentPositions from './CurrentPositions';
 import PositionCompetitors from './PositionCompetitors';
 import { Distribution, PagesTab, Cannibalization, Snippets } from './PositionTabs';
 import { AXIS, PALETTE, Th, path, sign, Chg, Spark, Empty } from './PositionUi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import Select from '../components/Select';
 
 /**
@@ -54,7 +54,7 @@ const TC = 'px-4 py-2.5 whitespace-nowrap';
 const numOf = (v) => (v == null || v === '' ? null : Number(v));
 const kwValue = (r, k) => ({ keyword: r.keyword, pos: numOf(r.rank), change: numOf(r.change), volume: numOf(r.volume), visibility: numOf(r.visibility), tag: r.tag })[k];
 const tagValue = (t, k) => ({ tag: t.tag, keywords: numOf(t.keywords), visibility: numOf(t.visibility), traffic: numOf(t.traffic), pos: numOf(t.avg_position), volume: numOf(t.volume) })[k];
-function KeywordTable({ rows: all, empty = 'No keywords.', resetKey = '' }) {
+function KeywordTable({ rows: all, empty = 'No keywords.', resetKey = '', name = 'tracked-keywords' }) {
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
   const kept = useMemo(() => (needle ? all.filter(r => `${r.keyword} ${r.tag || ''}`.toLowerCase().includes(needle)) : all), [all, needle]);
@@ -63,7 +63,8 @@ function KeywordTable({ rows: all, empty = 'No keywords.', resetKey = '' }) {
   const rows = pg.rows;
   return (
     <>
-      {all.length > 10 && <div className="px-4 py-3 border-b border-slate-100"><label className="relative inline-block"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-56 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></label></div>}
+      {all.length > 0 && <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">{all.length > 10 && <label className="relative inline-block"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-56 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></label>}
+        <CsvButton className="ml-auto" onClick={() => downloadCsv(name, ['Keyword', 'Position', 'Change in position', 'Searches per month', 'Visibility (%)', 'Tag', 'Ranking page'], sorted.map(r => [r.keyword, r.rank ?? '', r.change ?? '', r.volume ?? '', r.visibility ?? '', r.tag || '', r.url || '']))} /></div>}
       <div className="overflow-auto max-h-[420px]">
         <table className="w-full text-13">
           <thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className={TC}>Keyword</SortTh><SortTh id="pos" sort={sort} onSort={onSort} right className={TC}>Pos.</SortTh><SortTh id="change" sort={sort} onSort={onSort} right first="desc" className={TC}>Change</SortTh><SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className={TC}>Volume</SortTh><SortTh id="visibility" sort={sort} onSort={onSort} right first="desc" className={TC}>Visibility</SortTh><SortTh id="tag" sort={sort} onSort={onSort} className={TC}>Tag</SortTh><Th c="text-right">Actions</Th></tr></thead>
@@ -179,7 +180,7 @@ export function Landscape({ d, onTab, b }) {
       {kwView && (
         <Card title={kwView === 'all' ? `All keywords (${shownRows.length})` : kwView === 'improved' ? `Improved keywords (${shownRows.length})` : `Declined keywords (${shownRows.length})`} pad={false}
           action={<Button size="sm" onClick={() => setKwView(null)}>Close</Button>}>
-          <KeywordTable rows={shownRows} empty="No keywords in this view." resetKey={kwView} />
+          <KeywordTable rows={shownRows} empty="No keywords in this view." resetKey={kwView} name={`${kwView}-keywords-${d.domain}`} />
         </Card>
       )}
 
@@ -266,6 +267,7 @@ function TagsTab({ d }) {
               </tr>))}</tbody>
           </table>
         ) : <Empty>No keyword has a tag yet. Group keywords into clusters in Keyword Strategy Builder and they show up here.</Empty>}
+        {d.tags.length > 0 && <div className="px-4 py-3 border-t border-slate-100"><CsvButton onClick={() => downloadCsv(`keyword-tags-${d.domain}`, ['Tag', 'Keywords', 'Visibility (%)', 'Estimated traffic', 'Average position', 'Searches per month'], sorted.map(t => [t.tag, t.keywords, t.visibility ?? '', d.has_volume ? (t.traffic ?? '') : '', t.avg_position ?? '', t.volume ?? '']))} /></div>}
         {d.tags.length > 0 && <Pager p={pg} label="tags" />}
       </Card>
   );

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { usePager, Pager } from './DataTable';
+import { usePager, Pager, downloadCsv } from './DataTable';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, Download, EyeOff, Loader2, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
@@ -153,7 +153,7 @@ export default function KeywordWorkspace({ b, onUse }) {
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Link to="/keyword-management/ai"><Button>Find more ideas</Button></Link>
-            {!empty && <Button icon={Download} onClick={() => exportCsv(rows)} disabled={!rows.length}>Export</Button>}
+            {!empty && <Button icon={Download} onClick={() => exportCsv(rows, b.name)} disabled={!rows.length} title="Download every keyword in this list (all pages, with the search and view applied) as a CSV file">Export CSV</Button>}
             <Button variant="primary" icon={RefreshCw} onClick={() => setCollecting(true)}>{empty ? 'Collect keywords' : 'Collect again'}</Button>
           </div>
         </div>
@@ -272,10 +272,7 @@ export default function KeywordWorkspace({ b, onUse }) {
   );
 }
 
-function exportCsv(items) {
-  const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['Keyword', 'Searches per month', 'Difficulty', 'Your rank', 'Kind', 'Score', 'Sources', 'Competitors'], ...items.map(i => [i.keyword, i.volume, i.difficulty, i.rank, i.tag, i.score, i.sources.map(s => s.label).join('; '), i.competitors.join('; ')])];
-  const blob = new Blob([rows.map(r => r.map(cell).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'keywords.csv'; a.click(); URL.revokeObjectURL(a.href);
+function exportCsv(items, name) {
+  downloadCsv(`keywords-${name || 'site'}`, ['Keyword', 'Searches per month', 'Difficulty', 'Your rank', 'Kind', 'Score', 'Sources', 'Competitors'],
+    items.map(i => [i.keyword, i.volume ?? '', i.difficulty ?? '', i.rank ?? '', i.tag || '', i.score ?? '', i.sources.map(s => s.label).join('; '), i.competitors.join('; ')]));
 }

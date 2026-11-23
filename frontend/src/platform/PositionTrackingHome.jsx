@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, CalendarDays, Monitor, Smartphone, Tablet, ArrowDownUp, ArrowUp, ArrowDown, ArrowRight, FolderKanban, KeyRound, Eye, TrendingUp, Inbox } from 'lucide-react';
+import { Search, Plus, Download, CalendarDays, Monitor, Smartphone, Tablet, ArrowDownUp, ArrowUp, ArrowDown, ArrowRight, FolderKanban, KeyRound, Eye, TrendingUp, Inbox } from 'lucide-react';
 import { ErrorNote, useSeoBusiness, SkTable } from './SeoUi';
 import { useApi } from './seoApi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import NewTrackingModal from './NewTrackingModal';
 import { JourneyButton, useJourneys } from './JourneyBar';
 
@@ -98,7 +98,9 @@ export default function PositionTrackingHome() {
           <label className="relative w-full max-w-xs"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Project name or domain" aria-label="Search projects" className="w-full h-10 pl-9 pr-3 text-14 rounded-lg border border-slate-300 bg-white outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" /></label>
           <div role="tablist" aria-label="Target" className="inline-flex rounded-lg bg-slate-100 p-1">{seg('all', 'All targets')}{seg('ai', 'AI Search')}{seg('seo', 'SEO')}</div>
           {rows[0]?.period && <span className="h-10 px-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 text-13 text-slate-600"><CalendarDays size={15} className="text-slate-400" />{range(rows[0].period)}</span>}
-          <button type="button" onClick={() => setCreating(true)} className="ml-auto h-10 px-4 rounded-lg inline-flex items-center gap-2 text-14 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer"><Plus size={16} />Create project</button>
+          <button type="button" disabled={!entries.length} onClick={() => downloadCsv('position-tracking-projects', ['Project', 'Website', 'Target', 'Device', 'Location', 'Visibility (%)', 'Change in visibility', 'Improved keywords', 'Declined keywords', 'Keywords', 'Last updated'],
+            entries.map(r => (r.kind === 'none' ? [r.name, r.domain || '', 'Not tracked yet', '', '', '', '', '', '', '', ''] : [r.name, r.domain || '', r.kind === 'ai' ? 'AI Search' : 'SEO', r.device || '', r.location || '', r.m.visibility ?? '', r.m.diff ?? '', r.m.improved ?? '', r.m.declined ?? '', r.m.keywords ?? '', r.m.updated || ''])))} title="Download every project row (all pages, with the search and target applied) as a CSV file" className="ml-auto h-10 px-3 rounded-lg inline-flex items-center gap-2 text-13 font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"><Download size={14} />Export CSV</button>
+          <button type="button" onClick={() => setCreating(true)} className="h-10 px-4 rounded-lg inline-flex items-center gap-2 text-14 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer"><Plus size={16} />Create project</button>
         </div>
         <ErrorNote>{data.error?.message}</ErrorNote>
         {!data.data && !data.error ? <SkTable cols={['w-1/4', 'w-1/5', 'w-16', 'w-16', 'w-16', 'w-16', 'w-16']} headers={['Project', 'Device & Location', 'Visibility', 'Change', 'Improved', 'Declined', 'Keywords']} rows={4} /> : (

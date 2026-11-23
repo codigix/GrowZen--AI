@@ -4,7 +4,8 @@ import { Card, Badge, Button, ErrorNote, useAction, useToast, SkTable } from './
 import { api, useApi, fmtDateTime } from './seoApi';
 import { path } from './PositionUi';
 import Select from '../components/Select';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
+import { CsvButton } from './PositionExtras';
 
 /**
  * "Where you rank on Google right now" (GET /businesses/{id}/seo/current-positions, POST /seo/check-ranks): for every tracked keyword,
@@ -133,6 +134,8 @@ export default function CurrentPositions({ b, onChecked }) {
                 </label>
                 <Select className={sel} value={sort} onChange={e => setSort(e.target.value)} aria-label="Sort">{SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
                 {bucket !== 'all' && <button type="button" onClick={() => setBucket('all')} className="text-12 text-indigo-600 hover:underline cursor-pointer">Show all</button>}
+                <CsvButton className="ml-auto" disabled={!sorted.length} onClick={() => downloadCsv(`current-positions-${d.domain || b.name}`, ['Keyword', 'Checked', 'Google page', 'Position', 'Impressions', 'Clicks', 'Position in Google Maps', 'In the Maps top 3', 'Change in position', 'Ranking page', 'First in Maps'],
+                  sorted.map(r => { const o = r.organic || {}; return [r.keyword, r.checked ? 'Yes' : 'No', r.checked ? (o.page ?? '') : '', r.checked && o.found ? (o.average_position ?? o.position ?? '') : '', r.checked ? (o.impressions ?? '') : '', r.checked ? (o.clicks ?? '') : '', r.maps?.found ? r.maps.position : '', r.maps?.in_pack ? 'Yes' : 'No', r.checked ? (o.change_vs_previous ?? '') : '', o.url || '', r.who_is_first?.maps || '']; }))} />
               </div>
 
               <div className="overflow-auto max-h-[680px] rounded ring-1 ring-inset ring-slate-100">

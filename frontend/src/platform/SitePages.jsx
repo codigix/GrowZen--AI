@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Download, Search, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { Card, Button, Badge, useToast } from './SeoUi';
 import { pathOf, LEVEL_ORDER, SEVERITY_TONE } from './siteUtils';
-import { usePager, Pager } from './DataTable';
+import { usePager, Pager, downloadCsv } from './DataTable';
 
 /** Every crawled page with its checks: sortable, searchable, expandable rows, CSV export. */
 
@@ -63,11 +63,7 @@ export function PagesCard({ pages, siteIssues }) {
 
   const exportCsv = () => {
     const head = ['URL', 'HTTP status', 'Title', 'Title length', 'Meta description length', 'H1 count', 'Words', 'Images', 'Images without alt', 'Canonical', 'Noindex', 'Schema types', 'Issues'];
-    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [head, ...rows.map(r => [r.url, r.status, r.title, r.title_length, r.meta_description_length, r.h1_count, r.word_count, r.images, r.images_missing_alt, r.canonical, r.noindex ? 'yes' : 'no', (r.schema_types || []).join(' '), r.issues.map(i => i.title).join('; ')])].map(l => l.map(esc).join(','));
-    const href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
-    Object.assign(document.createElement('a'), { href, download: 'site-pages.csv' }).click();
-    setTimeout(() => URL.revokeObjectURL(href), 1000);
+    downloadCsv('site-pages', head, rows.map(r => [r.url, r.status, r.title, r.title_length, r.meta_description_length, r.h1_count, r.word_count, r.images, r.images_missing_alt, r.canonical, r.noindex ? 'yes' : 'no', (r.schema_types || []).join(' '), r.issues.map(i => i.title).join('; ')]));
     toast('Page report downloaded');
   };
 

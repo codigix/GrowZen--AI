@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { Card, Button, useModulePath, useAction } from './SeoUi';
 import { api, fmt } from './seoApi';
 import { AXIS, PALETTE, Th, Chg, Empty, Filter, path } from './PositionUi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import Select from '../components/Select';
 
 const METRICS = [['visibility', 'Visibility', '%', false], ['traffic', 'Est. Traffic', '', false], ['avg_position', 'Avg. Position', '', true]];
@@ -99,13 +99,9 @@ function PositionChart({ r, domains, colorOf, me }) {
 }
 
 function download(name, rows) {
-  const head = ['Keyword', 'Intent', 'KD %', 'Position first', 'Position last', 'Diff', 'Visibility %', 'Est. traffic', 'Volume', 'CPC', 'URL'];
-  const body = rows.map(r => [r.keyword, r.intent || '', r.kd ?? '', r.was ?? '', r.rank ?? '', r.change ?? '', r.visibility, r.traffic ?? '', r.volume ?? '', r.cpc ?? '', r.url || '']);
-  const csv = [head, ...body].map(l => l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = name;
-  a.click();
+  const head = ['Keyword', 'Intent', 'Keyword difficulty (%)', 'Position at the start', 'Position now', 'Change in position', 'Visibility (%)', 'Estimated traffic', 'Searches per month', 'Cost per click', 'Ranking page'];
+  const body = rows.map(r => [r.keyword, r.intent || '', r.kd ?? '', r.was ?? '', r.rank ?? '', r.change ?? '', r.visibility ?? '', r.traffic ?? '', r.volume ?? '', r.cpc ?? '', r.url || '']);
+  downloadCsv(name, head, body);
 }
 
 /** Overview: one figure over time for your domain and up to four others from the results, and the Rankings Overview table. */
@@ -222,7 +218,7 @@ export default function PositionOverview({ d, b, onChanged }) {
         </div>}>
         <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
           <Link to={path_('keyword-management')} className="h-9 px-3 rounded inline-flex items-center text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">Add keywords</Link>
-          <Button size="sm" icon={Download} onClick={() => download(`${me}-rankings.csv`, sorted)}>Export</Button>
+          <Button size="sm" icon={Download} onClick={() => download(`keyword-rankings-${me}`, sorted)} title="Download every keyword (all pages, with the search and filters applied) as a CSV file">Export CSV</Button>
           <div className="inline-flex rounded border border-slate-200 overflow-hidden ml-1">
             {TABS.map(([id, l]) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-9 px-3 text-13 border-r last:border-r-0 border-slate-200 cursor-pointer ${tab === id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{id === 'all' ? `All for ${me}` : l}</button>)}
           </div>

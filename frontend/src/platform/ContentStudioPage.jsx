@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import DataTable from './DataTable';
+import DataTable, { downloadCsv } from './DataTable';
 import { Link } from 'react-router-dom';
 import {
   Sparkles, Check, ChevronRight, Globe, ShieldCheck, AlertTriangle, RefreshCw,
   FileText, MapPin, Instagram, Facebook, Linkedin, Copy, Plus, CalendarDays,
   Flame, TrendingUp, TrendingDown, Search, Clock, ArrowUpRight, CheckCircle2, Lock, Sliders,
-  Send, ExternalLink, Link2, Share2, Layers, Award, Tag, BarChart3, Code, Eye
+  Send, ExternalLink, Link2, Share2, Layers, Award, Tag, BarChart3, Code, Eye, Download
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
@@ -20,7 +20,7 @@ import ReactSitePanel from './ReactSitePanel';
 import HtmlSitePanel from './HtmlSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
-import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, ResumeCard } from './BlogFlow';
+import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, ResumeCard, ArticleDownloads } from './BlogFlow';
 import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage, brandOf } from './keywordHighlight';
 
 
@@ -146,7 +146,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
   const pctOf = (t) => (t.velocity === 'Breakout' ? 9999 : /^[+-]\d+%$/.test(t.velocity || '') ? parseInt(t.velocity, 10) : null);
   const COMP = { LOW: ['Low', 'green'], MEDIUM: ['Medium', 'amber'], HIGH: ['High', 'red'] };
   const tableFor = (rows, id) => (
-    <DataTable bare rows={rows} rowKey={x => x.id} pageSize={10} sizes={[10, 20, 50]} exportName={`${id}-queries`} label="queries" searchPlaceholder="Search queries" minWidth={520} columnsMenu={false}
+    <DataTable bare rows={rows} rowKey={x => x.id} pageSize={10} sizes={[10, 20, 50]} exportName={`${id}-queries-${siteStem(b)}`} label="queries" searchPlaceholder="Search queries" minWidth={520} columnsMenu={false}
       rowClass={x => (selected[x.title] ? 'bg-indigo-50/60' : 'hover:bg-slate-50')}
       empty="Nothing found."
       filters={[
@@ -159,9 +159,12 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
           cell: x => <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[x.title])} onChange={() => toggle(x)} aria-label={`Select ${x.title}`} title="Select to write an article (up to 10)" /> },
         { id: 'query', header: 'Query', value: x => x.title, className: 'px-2 py-2 text-slate-800' },
         { id: 'searches', header: 'Searches / mo', right: true, first: 'desc', value: x => x.score ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-600', cell: x => (x.score != null ? fmt(x.score) : <span className="text-slate-300">—</span>) },
-        { id: 'change', header: 'Change', right: true, first: 'desc', value: x => pctOf(x), className: 'px-2 py-2 text-right whitespace-nowrap',
+        { id: 'change', header: 'Change', csv: false, right: true, first: 'desc', value: x => pctOf(x), className: 'px-2 py-2 text-right whitespace-nowrap',
           cell: x => { const c = pctOf(x); return x.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge> : c != null ? <span className={`inline-flex items-center gap-0.5 text-12 font-semibold tabular-nums ${c >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{c >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(c)}%</span> : <span className="text-slate-300">—</span>; } },
-        { id: 'comp', header: 'Competition', value: x => ({ LOW: 0, MEDIUM: 1, HIGH: 2 })[x.competition] ?? null, className: 'px-2 py-2', cell: x => (COMP[x.competition] ? <Badge tone={COMP[x.competition][1]}>{COMP[x.competition][0]}</Badge> : <span className="text-slate-300">—</span>) },
+        { id: 'comp', header: 'Competition', csv: false, value: x => ({ LOW: 0, MEDIUM: 1, HIGH: 2 })[x.competition] ?? null, className: 'px-2 py-2', cell: x => (COMP[x.competition] ? <Badge tone={COMP[x.competition][1]}>{COMP[x.competition][0]}</Badge> : <span className="text-slate-300">—</span>) },
+        { id: 'x_intent', header: 'Intent', hide: true, value: x => x.intent || '' }, // not shown, but part of the CSV so the file has the same facts as the filters
+        { id: 'x_change', header: 'Change over 3 months (%)', hide: true, value: x => (x.velocity === 'Breakout' ? 'Breakout' : pctOf(x) ?? '') },
+        { id: 'x_comp', header: 'Competition', hide: true, value: x => (COMP[x.competition] ? COMP[x.competition][0] : '') },
         { id: 'draft', header: 'Action', right: true, className: 'px-3 py-2 text-right whitespace-nowrap', thClass: 'px-3 py-2.5', cell: x => <button type="button" onClick={() => openWriter(x)} title="Create the brief and a draft for this query" className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Write it</button> }
       ]} />
   );
@@ -232,6 +235,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
   );
 }
 
+const siteStem = (b) => String(b?.website || b?.name || 'site').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '') || 'site';
 const ARTICLE_LENGTHS = [
   { id: 'short', label: 'Short', words: '~850 words', time: '~4 min' },
   { id: 'standard', label: 'Standard', words: '~2,000 words', time: '~12–13 min' },
@@ -331,6 +335,10 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input className={`${inputCls} pl-8`} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search title or keyword" />
         </label>
+        <Button size="sm" icon={Download} disabled={!shown.length} title={`Download the ${shown.length} article${shown.length === 1 ? '' : 's'} in this list (with the filter and search applied) as a CSV file`}
+          onClick={() => downloadCsv(`generated-articles-${siteStem(b)}`, ['Title', 'Primary keyword', 'Other keywords', 'Status', 'Web address slug', 'Words', 'Length', 'Written in (minutes)', 'Created', 'Scheduled for', 'Published address'],
+            shown.map(x => { const ps = x.status === 'completed' ? x.publishing_status : null; const views = [x.react_url && x.react_status !== 'deleted' && x.react_url, x.wp_url && x.wp_status !== 'deleted' && x.wp_url].filter(Boolean);
+              return [x.title || '', x.keyword || '', (x.secondary_keywords || []).join(', '), (ps ? (PUB_STATUS[ps] || PUB_STATUS.draft)[0] : x.status === 'failed' ? 'Writing failed' : (ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending)[0]), x.slug || '', x.stats?.words ?? '', x.stats ? (ARTICLE_LENGTHS.find(l => l.id === x.stats.length)?.label || 'Standard') : '', x.stats?.total_seconds != null ? Math.round(x.stats.total_seconds / 6) / 10 : '', x.created_at || '', x.schedule?.planned_for || '', views.join('; ')]; }))}>Export CSV</Button>
       </div>
 
       <div className="space-y-3">
@@ -418,6 +426,7 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }
                 {x.status === 'completed' && (isOpen
                   ? <span className="h-[30px] px-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700"><CheckCircle2 size={13} /> Open in the writer</span>
                   : <Button size="sm" icon={Eye} onClick={() => handleOpen(x.id)}>Review &amp; edit</Button>)}
+                {x.status === 'completed' && <ArticleDownloads b={b} article={x} />}
                 {ps === 'draft' && <Button size="sm" icon={CalendarDays} onClick={() => setScheduling({ article: x, mode: 'schedule' })}>Schedule</Button>}
                 {ps === 'draft' && <Button size="sm" variant="primary" icon={Send} onClick={() => setScheduling({ article: x, mode: 'publish' })}>Publish now</Button>}
                 {ps === 'failed' && <Button size="sm" variant="primary" icon={RefreshCw} busy={busy === `t-${x.id}`} onClick={() => retrySched(x)}>Retry now</Button>}
@@ -610,7 +619,7 @@ function SavedKeywordPicker({ b, inUse, onAdd }) {
       {kws.data && !list.length && <p className="text-[12px] text-slate-500">No keywords are saved yet. Save some on <Link to="/keyword-management/ai" className="text-indigo-600 hover:underline">Find Keywords</Link>, or type the topic above and click Generate Keywords.</p>}
       {list.length > 0 && (
         <div className="rounded-lg ring-1 ring-inset ring-slate-200 overflow-hidden">
-          <DataTable bare rows={list} rowKey={k => k.keyword} pageSize={10} sizes={[10, 25, 50]} label="keywords" search={false} minWidth={520} columnsMenu={false}
+          <DataTable bare rows={list} rowKey={k => k.keyword} pageSize={10} sizes={[10, 25, 50]} label="keywords" search={false} exportName={`saved-keywords-${siteStem(b)}`} minWidth={520} columnsMenu={false}
             onState={st => { shownRows.current = st.rows; }}
             rowClass={k => (picked.includes(k.keyword) ? 'bg-indigo-50' : used.has(k.keyword.toLowerCase()) ? 'opacity-50' : 'hover:bg-slate-50')}
             columns={[
@@ -1182,6 +1191,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                       <div className="text-[11px] text-slate-500">Edit raw HTML or switch to Preview to inspect the formatted blog layout</div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      {selectedArticle && <ArticleDownloads b={b} article={{ ...selectedArticle, body: draft, title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, slug: meta.slug.trim() || slugify(meta.keyword), secondary_keywords: secondaryNow }} />}
                       {selectedArticle && <RegenerateContent ref={regenRef} b={b} article={selectedArticle} body={draft} onAccept={setDraft} toast={toast} onFieldBusy={setFieldBusy}
                         fields={{ title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean) }}
                         onField={(field, value) => setMeta(m => ({ ...m, [field]: value }))} />}

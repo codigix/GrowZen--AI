@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Sparkles, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { Search, Sparkles, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Plus, Download } from 'lucide-react';
 import { Card, ErrorNote, useModulePath, useSeoBusiness, SkTable } from './SeoUi';
 import { useApi } from './seoApi';
 import SiteAuditOverview from './SiteAuditOverview';
-import { usePager, Pager } from './DataTable';
+import { usePager, Pager, downloadCsv } from './DataTable';
 
 /**
  * Site Audit overview: one row per project with its site health broken into the parameters an SEO tool
@@ -72,6 +72,8 @@ export default function SiteAuditTable({ onNew, onOverview, projectId }) { // pr
   }, [data.data, q, sort, projectId]);
   const pager = usePager(rows, { size: 10, resetKey: `${q}|${sort.key}|${sort.dir}|${projectId ?? ''}` });
   const shown = pager.rows;
+  const exportCsv = () => downloadCsv('site-audit-projects', ['Project', 'Domain', 'Last update', 'Pages crawled', ...COLUMNS.flatMap(c => [`${c.label}${c.count ? '' : ' (%)'}`, `${c.label}: change`])],
+    rows.map(r => [r.name, r.domain || '', r.last_update || '', r.pages_crawled ?? '', ...COLUMNS.flatMap(c => [r.metrics[c.key]?.value ?? '', r.metrics[c.key]?.delta ?? ''])]));
   const open = (id) => { choose(id).then(ok => ok && navigate(`${path('website-audit')}?tab=report`)); };
   const [overviewOf, setOverviewOf] = useState(null); // {id, initial}: that project's audit Overview replaces the table until closed
   const go = (id, key) => { const initial = GO[key]; choose(id).then(ok => { if (!ok) return; if (onOverview) onOverview(id, initial); else setOverviewOf({ id, initial }); }); };
@@ -91,7 +93,10 @@ export default function SiteAuditTable({ onNew, onOverview, projectId }) { // pr
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={q} onChange={e => { setQ(e.target.value); }} placeholder="Project name or domain" aria-label="Search projects" className="w-full h-9 pl-9 pr-3 text-13 rounded bg-white border border-slate-200 focus:border-indigo-400 outline-none" />
         </label>
+        <div className="flex items-center gap-2 ml-auto">
+        {projectId == null && <button type="button" onClick={exportCsv} disabled={!rows.length} className="h-9 px-3.5 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-white ring-1 ring-inset ring-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer disabled:opacity-50" title="Download every project row as a CSV file"><Download size={14} /> Export CSV</button>}
         {onNew && <button type="button" onClick={onNew} className="h-9 px-3.5 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800 cursor-pointer"><Plus size={14} /> Create project</button>}
+        </div>
       </div>
       <ErrorNote>{data.error?.message}</ErrorNote>
       {!data.data && !data.error ? <SkTable cols={['w-1/3', 'w-20', 'w-16', 'w-16', 'w-16', 'w-16']} headers={['Project', 'Last update', 'Pages crawled', ...COLUMNS.slice(0, 3).map(c => c.label)]} rows={6} /> : (

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { KeywordGap, CompareDomains } from './SeoToolkit';
 import {
   Users, Search, MapPin, Star, Globe, ExternalLink, Loader2, AlertTriangle, Lightbulb, Plus, X, Link2, FileText, Gauge, Settings2, Play,
-  CheckCircle2, Minus, Layers, ArrowRight, BookOpen, Code2, ListChecks, HelpCircle, Sparkles, ShieldCheck, Smartphone, Monitor, RotateCcw, Eye
+  CheckCircle2, Minus, Layers, ArrowRight, BookOpen, Code2, ListChecks, HelpCircle, Sparkles, ShieldCheck, Smartphone, Monitor, RotateCcw, Eye, Download
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, Drawer, Field, Tabs, Modal, inputCls, ErrorNote, useToast, useAction, Sk, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmt, fmtDateTime } from './seoApi';
@@ -11,7 +11,24 @@ import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
 import { Act, Head } from './TableBits';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
+
+const slugOf = (t) => String(t || 'project').toLowerCase().replace(/^https?:\/\//, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const today = () => new Date().toISOString().slice(0, 10);
+const csvBtn = (onClick, label = 'Export CSV') => <Button size="sm" icon={Download} onClick={onClick}>{label}</Button>;
+/** The whole research as one readable document: what was found, who competes, where you stand and what to do. */
+function researchMd(r) {
+  const s = r.summary || {};
+  const list = (items) => (items && items.length ? items.map(x => `- ${x}`) : ['- None.']);
+  return [`# Competitor research: ${r.business?.name || 'project'}`, '', `Researched ${r.analysed_at ? String(r.analysed_at).slice(0, 10) : today()} · ${r.location || ''} · ${r.keywords.length} keywords`, '',
+    '## Where you stand', '', `- Google visibility: ${s.keywords_ranked ? `${s.visibility}%` : 'not available (link Search Console)'}`, `- Google Maps visibility: ${s.local_visibility}%`, `- Competitors found: ${s.competitors}`, '',
+    '## What to do first', '', ...(r.actions.length ? r.actions.map((a, i) => `${i + 1}. **${a.title}** (${(PRIORITY[a.priority] || PRIORITY.low)[1]}): ${a.why}`) : ['No gaps found for these keywords.']), '',
+    '## Keywords where competitors are on page 1 and you are not', '', ...(r.gaps.keywords.length ? r.gaps.keywords.map(g => `- ${g.keyword}: ${g.competitors.map(c => `${c.domain} (#${c.position})`).join(', ')}`) : ['None.']), '',
+    '## Competitors on Google', '', ...(r.organic_competitors.length ? r.organic_competitors.map(d => `- ${d.domain}${d.type === 'directory' ? ' (listing site)' : ''}: ${d.visibility}% visibility, ${d.keywords_top10} keywords on page 1`) : ['None.']), '',
+    '## Competitors on Google Maps', '', ...(r.local_competitors.length ? r.local_competitors.map(e => `- ${e.name}: ${e.visibility}% visibility, rating ${e.rating ?? 'n/a'} (${e.reviews ?? 0} reviews)${e.website ? `, ${e.website}` : ''}`) : ['None.']), '',
+    '## Keywords researched', '', ...list(r.keywords), '',
+    '## Keyword ideas', '', '### Keywords competitors target', ...list(r.ideas?.competitor_keywords), '', '### Questions people ask', ...list(r.ideas?.questions), '', '### Related searches', ...list(r.ideas?.related), ''].join('\n');
+}
 
 /**
  * Competitor research for the selected business, from live Google data, in one place: who ranks on Google
@@ -57,8 +74,9 @@ const Chips = ({ items, empty, tone = 'slate' }) => (
 const Label = ({ icon: Icon, children }) => <div className="text-12 font-semibold  tracking-wide text-slate-500 mb-2 flex items-center gap-1.5">{Icon && <Icon size={13} />}{children}</div>;
 
 /** A table that scrolls inside the page instead of making the page long. Give it `pager` (from usePager) for page numbers below it, `bar` for a search row above. */
-const Table = ({ head, children, className = '', pager = null, bar = null }) => (
+const Table = ({ head, children, className = '', pager = null, bar = null, exportCsv = null }) => (
   <>
+    {exportCsv && <div className="px-4 py-2 border-b border-slate-100 flex justify-end">{csvBtn(exportCsv)}</div>}
     {bar}
     <div className={`overflow-auto max-h-[calc(100vh-270px)] min-h-[320px] ${className}`}>
       <table className="w-full text-13">
@@ -240,7 +258,8 @@ export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, our
         </div>
       </div>
       {adding && <AddCompetitorForm onAdd={onAddManual} busy={addBusy} error={addError} />}
-      <Table pager={pager} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search competitors" /> : null} head={<>
+      <Table pager={pager} exportCsv={() => downloadCsv(`competitors-${slugOf(r.business?.name)}`, ['Chosen', 'Competitor', 'Website', 'Match score', 'Match', 'Google visibility (%)', 'Keywords on page 1 or Maps result lists', 'Best Maps position', 'Rating', 'Reviews', 'Site audit'],
+        sorted.map(c => { const a = auditMap[c.reg?.id]; const loc = c.profile?.local || c.maps; return [isChosen(c) ? 'yes' : 'no', c.name, c.website || c.host || '', c.maps?.relevance?.score ?? '', c.maps?.relevance?.label_text || '', c.profile ? c.profile.visibility : (c.maps?.visibility ?? ''), c.profile ? Object.keys(c.profile.positions).length : (c.maps?.appearances ?? ''), loc?.best ?? '', loc?.rating ?? c.reg?.rating ?? '', loc?.reviews ?? c.reg?.reviews ?? '', !c.reg ? 'Not audited' : a ? `${AUDIT_LABEL[a.status] || a.status}${a.listing && a.score != null ? ` (${a.score}/100)` : ''}` : 'Not audited']; }))} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search competitors" /> : null} head={<>
         <Th id="choose" sort={sort} onSort={onSort} first="desc" c="text-center"><Head what="Tick the competitors that really compete with you (3 to 5)." why="Only the chosen ones are watched and used by Competitor Watch, the keyword workspace and the backlink gap.">Choose</Head></Th>
         <Th id="name" sort={sort} onSort={onSort}><Head what="A business that ranks for your keywords on Google Maps or Google." why="Click the name for its full profile." from="Google Maps (Places) results and the competitors you added.">Competitor</Head></Th>
         <Th id="match" sort={sort} onSort={onSort} first="desc"><Head what="How well it matches your business on similar services, area, keywords, Google presence, intent and authority." from="the competitor research (Google Maps data and AI).">Match</Head></Th>
@@ -298,7 +317,8 @@ function KeywordsTab({ r, onKeyword, onIdeas }) {
         <div className="text-13 font-semibold text-slate-900">{r.keywords.length} keywords <span className="font-normal text-slate-500">· click a row for the full Google and Maps results</span></div>
         <Button size="sm" className="ml-auto" icon={Lightbulb} onClick={onIdeas}>Keyword ideas ({r.ideas.competitor_keywords.length + r.ideas.questions.length + r.ideas.related.length})</Button>
       </div>
-      <Table pager={pager} bar={r.serps.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search keywords" /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="g" sort={sort} onSort={onSort} c="text-center">You · Google</Th><Th id="m" sort={sort} onSort={onSort} c="text-center">You · Maps</Th>{cols.map(p => <Th key={p.domain} id={`c:${p.domain}`} sort={sort} onSort={onSort} c="text-center" cls="normal-case max-w-[120px] truncate">{p.domain}</Th>)}<Th id="top" sort={sort} onSort={onSort}>#1 on Google</Th></>}>
+      <Table pager={pager} exportCsv={() => downloadCsv(`competitor-keywords-${slugOf(r.business?.name)}`, ['Keyword', 'You: Google position', 'You: Maps position', ...cols.map(p => `${p.domain}: Google position`), '#1 on Google'],
+        sorted.map(x => [x.keyword, x.you_organic ?? '', x.you_local ?? '', ...cols.map(p => p.positions?.[x.keyword] ?? ''), x.organic[0]?.domain || '']))} bar={r.serps.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search keywords" /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="g" sort={sort} onSort={onSort} c="text-center">You · Google</Th><Th id="m" sort={sort} onSort={onSort} c="text-center">You · Maps</Th>{cols.map(p => <Th key={p.domain} id={`c:${p.domain}`} sort={sort} onSort={onSort} c="text-center" cls="normal-case max-w-[120px] truncate">{p.domain}</Th>)}<Th id="top" sort={sort} onSort={onSort}>#1 on Google</Th></>}>
         {pager.rows.map(s => (
           <tr key={s.keyword} className={`cursor-pointer hover:bg-slate-50 ${!s.you_organic ? 'bg-rose-50/30' : ''}`} onClick={() => onKeyword(s)}>
             <td className="px-4 py-2.5 font-semibold text-slate-900">{s.keyword}</td>
@@ -416,6 +436,10 @@ export function ListingComparison({ c, bid }) {
         <div className="rounded-lg ring-1 ring-emerald-200 bg-emerald-50 px-4 py-3 text-center"><div className="text-11.5 text-emerald-800">Your listing</div><div className="text-24 font-bold text-emerald-700 tabular-nums">{c.scores.ours ?? '—'}</div></div>
         <div className="rounded-lg ring-1 ring-slate-200 px-4 py-3 text-center"><div className="text-11.5 text-slate-500">{c.competitor.name}</div><div className="text-24 font-bold text-slate-800 tabular-nums">{c.scores.theirs ?? '—'}</div></div>
       </div>
+      <div className="flex flex-wrap gap-2">
+        {csvBtn(() => downloadCsv(`google-listing-comparison-${slugOf(c.competitor.name)}`, ['Google listing check', 'You: result', 'You: detail', `${c.competitor.name}: result`, `${c.competitor.name}: detail`], c.checks.map(x => [x.label, x.ours?.status || '', x.ours?.detail || '', x.theirs?.status || '', x.theirs?.detail || ''])), 'Checks CSV')}
+        {csvBtn(() => downloadFile(`google-listing-comparison-${slugOf(c.competitor.name)}-${today()}.md`, [`# Google listing comparison: ${c.competitor.name}`, '', c.competitor.summary || '', '', `Listing score: you ${c.scores.ours ?? 'n/a'}, ${c.competitor.name} ${c.scores.theirs ?? 'n/a'}`, '', '## Services', '', `Both offer: ${c.services.shared.join(', ') || 'none'}`, `Only they offer: ${c.services.only_them.join(', ') || 'none'}`, `Only you offer: ${c.services.only_us.join(', ') || 'none'}`, '', '## Keywords', '', `Both target: ${c.keywords.shared.join(', ') || 'none'}`, `Only they target (gap): ${c.keywords.only_them.join(', ') || 'none'}`, `Only you target: ${c.keywords.only_us.join(', ') || 'none'}`, '', '## Listing checks', '', ...c.checks.map(x => `- ${x.label}: you ${x.ours?.detail || 'n/a'}; ${c.competitor.name} ${x.theirs?.detail || 'n/a'}`), ''].join('\n'), 'text/markdown'), 'Download comparison')}
+      </div>
       {!c.you.listing_read && <p className="text-12 text-amber-800 bg-amber-50 rounded px-3 py-1.5">Your own Google listing could not be read (no Google place is linked to this project), so only the services and keywords are compared.</p>}
       <div>
         <div className="text-13 font-semibold text-slate-900 mb-1.5">Services</div>
@@ -493,6 +517,7 @@ export function MapsAudit({ r, kit }) {
       {sc?.error && <p className="mt-2 text-13 text-red-600" role="alert">{sc.error}</p>}
       {metrics.length > 0 && (
         <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+          <div className="px-3 py-2 border-b border-slate-100 flex justify-end">{csvBtn(() => downloadCsv(`competitor-site-scores-${slugOf(r.business?.name)}`, ['Score (0-100)', 'You', ...sc.items.map(i => i.competitor?.name || i.competitor?.target)], metrics.map(m => [m.label, m.ours ?? '', ...m.theirs.map(x => x.value ?? '')])))}</div>
           <table className="w-full text-13 min-w-[560px]">
             <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-3 py-2 text-left font-semibold">Score (0-100)</th><th className="px-3 py-2 text-center font-semibold text-emerald-700">You</th>{sc.items.map(i => <th key={i.competitor?.audit_id} className="px-3 py-2 text-center font-semibold max-w-[140px] truncate" title={i.competitor?.name}>{i.competitor?.name || i.competitor?.target}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
@@ -528,7 +553,8 @@ export function MapsTab({ r, kit }) {
     {r.local_competitors.length === 0 && <Card><p className="text-13 text-slate-600">No real competitor was found on Google Maps for these searches. {r.other_places?.length ? 'The businesses that came up sell something different: see the list below.' : ''}</p></Card>}
     <Card pad={false}>
       {nearOnly && <p className="px-4 py-2.5 border-b border-slate-100 text-12.5 text-slate-600">Only businesses within about 4 km of {r.business.name} are counted: the ones its customers can actually choose between.</p>}
-      <Table pager={pager} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search businesses" /> : null} head={<><Th id="name" sort={sort} onSort={onSort}>Business</Th><Th id="match" sort={sort} onSort={onSort} first="desc">Match</Th>{kit && <Th id="audit" sort={sort} onSort={onSort}>Site audit</Th>}<Th id="dist" sort={sort} onSort={onSort} c="text-right">Distance</Th><Th id="vis" sort={sort} onSort={onSort} first="desc" c="text-right">Visibility</Th><Th id="best" sort={sort} onSort={onSort} c="text-center">Best</Th><Th id="res" sort={sort} onSort={onSort} first="desc" c="text-right">In results</Th><Th id="rating" sort={sort} onSort={onSort} first="desc">Rating</Th><Th id="rev" sort={sort} onSort={onSort} first="desc" cls="w-44">Reviews</Th><Th id="site" sort={sort} onSort={onSort}>Website</Th></>}>
+      <Table pager={pager} exportCsv={() => downloadCsv(`google-maps-competitors-${slugOf(r.business?.name)}`, ['Business', 'Category', 'Match score', 'Match', 'Why it matches', 'Distance (metres)', 'Visibility (%)', 'Best Maps position', 'Keywords it appears for', 'Rating', 'Reviews', 'Website'],
+        sorted.map(e => [e.name, e.category || '', e.mine ? '' : (e.relevance?.score ?? ''), e.mine ? 'You' : (e.relevance?.label_text || ''), e.relevance?.reason || '', e.distance_m ?? '', e.visibility ?? '', Number.isFinite(e.best) ? e.best : '', e.appearances ?? '', e.rating ?? '', e.reviews ?? '', e.website || '']))} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search businesses" /> : null} head={<><Th id="name" sort={sort} onSort={onSort}>Business</Th><Th id="match" sort={sort} onSort={onSort} first="desc">Match</Th>{kit && <Th id="audit" sort={sort} onSort={onSort}>Site audit</Th>}<Th id="dist" sort={sort} onSort={onSort} c="text-right">Distance</Th><Th id="vis" sort={sort} onSort={onSort} first="desc" c="text-right">Visibility</Th><Th id="best" sort={sort} onSort={onSort} c="text-center">Best</Th><Th id="res" sort={sort} onSort={onSort} first="desc" c="text-right">In results</Th><Th id="rating" sort={sort} onSort={onSort} first="desc">Rating</Th><Th id="rev" sort={sort} onSort={onSort} first="desc" cls="w-44">Reviews</Th><Th id="site" sort={sort} onSort={onSort}>Website</Th></>}>
         {pager.rows.map(e => (
           <tr key={e.name} className={e.mine ? 'bg-emerald-50/50' : 'hover:bg-slate-50'}>
             <td className="px-4 py-2.5"><div className={`font-medium ${e.mine ? 'text-emerald-800' : 'text-slate-900'}`}>{e.name}</div>{e.category && <div className="text-12 text-slate-500">{e.category}</div>}{e.relevance?.reason && <div className="text-11.5 text-slate-400 max-w-[320px]">{e.relevance.reason}</div>}</td>
@@ -587,7 +613,8 @@ function ListingsTab({ r, setupInfo }) {
         </div>
       )}
       {sites.length === 0 ? <p className="px-6 py-10 text-center text-13 text-slate-500">No listings or mentions found.</p> : (
-        <Table pager={pager} bar={sites.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search sites" /> : null} head={<><Th id="site" sort={sort} onSort={onSort}>Site</Th>{cols.map(c => <Th key={c.key} id={`c:${c.key}`} sort={sort} onSort={onSort} first="desc" c="text-center" cls={`normal-case max-w-[120px] truncate ${c.key === 'you' ? 'text-emerald-700' : ''}`}>{c.label}</Th>)}</>}>
+        <Table pager={pager} exportCsv={() => downloadCsv(`listings-and-mentions-${slugOf(r.business?.name)}`, ['Site', ...cols.map(c => `${c.label}: page where listed`), 'You are missing'],
+          sorted.map(site => { const mineHas = cols[0].sources.some(x => baseSite(x.domain) === site); const listing = cols.some(c => c.sources.some(x => baseSite(x.domain) === site && x.type === 'directory')); return [site, ...cols.map(c => c.sources.find(x => baseSite(x.domain) === site)?.url || ''), !mineHas && (listing || count(site) >= 2) ? 'yes' : 'no']; }))} bar={sites.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search sites" /> : null} head={<><Th id="site" sort={sort} onSort={onSort}>Site</Th>{cols.map(c => <Th key={c.key} id={`c:${c.key}`} sort={sort} onSort={onSort} first="desc" c="text-center" cls={`normal-case max-w-[120px] truncate ${c.key === 'you' ? 'text-emerald-700' : ''}`}>{c.label}</Th>)}</>}>
           {pager.rows.map(site => {
             const mineHas = cols[0].sources.some(s => baseSite(s.domain) === site);
             const listing = cols.some(c => c.sources.some(x => baseSite(x.domain) === site && x.type === 'directory'));
@@ -614,7 +641,8 @@ function ListingsTab({ r, setupInfo }) {
 function PlanTab({ r }) {
   return (
     <Card pad={false}>
-      <Table head={<><Th cls="w-10">#</Th><Th>Action</Th><Th>Priority</Th><Th>Why</Th><Th c="text-right"> </Th></>}>
+      <Table bar={<div className="px-4 py-2 border-b border-slate-100 flex flex-wrap justify-end gap-2">{csvBtn(() => downloadCsv(`competitor-action-plan-${slugOf(r.business?.name)}`, ['Type', 'Action or keyword', 'Priority', 'Why or competitors on page 1', 'Link'],
+        [...r.actions.map(a => ['Action', a.title, (PRIORITY[a.priority] || PRIORITY.low)[1], a.why || '', a.to || '']), ...r.gaps.keywords.map(g => ['Keyword gap', g.keyword, '', g.competitors.map(c => `${c.domain} (#${c.position})`).join('; '), ''])]))}{csvBtn(() => downloadFile(`competitor-research-${slugOf(r.business?.name)}-${today()}.md`, researchMd(r), 'text/markdown'), 'Download plan')}</div>} head={<><Th cls="w-10">#</Th><Th>Action</Th><Th>Priority</Th><Th>Why</Th><Th c="text-right"> </Th></>}>
         {r.actions.map((a, i) => {
           const [tone, label] = PRIORITY[a.priority] || PRIORITY.low;
           return (
@@ -701,6 +729,7 @@ function ProfileModal({ c, r, onClose, onAudit, onCompare, auditMap }) {
     <Modal open={Boolean(c)} onClose={onClose} width="max-w-5xl" title={c ? <span className="inline-flex items-center gap-2">{c.name}<span className="text-12 font-normal text-slate-500">{c.host}</span></span> : ''}
       footer={c && <>
         {c.website && <a href={c.website} target="_blank" rel="noreferrer" className="mr-auto inline-flex items-center gap-1 text-12.5 font-semibold text-indigo-700 hover:underline"><ExternalLink size={13} /> Visit site</a>}
+        {p && <Button icon={Download} onClick={() => downloadFile(`competitor-profile-${slugOf(c.name)}-${today()}.md`, [`# Competitor profile: ${c.name}`, '', c.website || c.host || '', '', `- Google visibility: ${p.visibility}%`, `- Keywords on page 1: ${Object.keys(p.positions).length} of ${r.keywords.length}`, p.local ? `- Google Maps: best position #${p.local.best}, rating ${p.local.rating ?? 'n/a'} (${p.local.reviews ?? 0} reviews)` : '- Google Maps: not in the results', site.scanned ? `- Words per page: ${site.avg_words}` : '- Its site could not be read', '', '## Their strategy', '', ...p.strategy.map(x => `- ${x}`), '', '## Rankings', '', ...r.keywords.map(k => `- ${k}: ${p.positions[k] ? `#${p.positions[k]}` : 'not in the results'}`), '', '## Service pages', '', ...((site.services || []).length ? site.services.map(x => `- ${x}`) : ['- None found.']), '', '## Listed or linked on', '', ...(p.link_sources.length ? p.link_sources.map(x => `- ${baseSite(x.domain)}: ${x.url}`) : ['- None found.']), ''].join('\n'), 'text/markdown')}>Download profile</Button>}
         <Button icon={Gauge} disabled={running(a?.status)} onClick={() => onAudit(c.reg || c)}>{a ? 'Re-audit' : 'Audit'}</Button>
         <Button variant="primary" icon={ShieldCheck} title={compareHint(c)} onClick={() => { onClose(); onCompare(c.reg || c); }}>Compare with my business</Button>
       </>}>
@@ -750,7 +779,8 @@ function ProfileModal({ c, r, onClose, onAudit, onCompare, auditMap }) {
 
 function KeywordModal({ s, onClose }) {
   return (
-    <Modal open={Boolean(s)} onClose={onClose} width="max-w-4xl" title={s ? `“${s.keyword}”` : ''}>
+    <Modal open={Boolean(s)} onClose={onClose} width="max-w-4xl" title={s ? `“${s.keyword}”` : ''}
+      footer={s && csvBtn(() => downloadCsv(`google-results-${slugOf(s.keyword)}`, ['Source', 'Position', 'Title or business', 'Address', 'Rating', 'Reviews', 'You'], [...s.organic.map(o => ['Google', o.position, o.title || o.domain, o.url, '', '', o.mine ? 'yes' : 'no']), ...s.local.map(x => ['Google Maps', x.position, x.name, '', x.rating ?? '', x.reviews ?? '', x.mine ? 'yes' : 'no']), ...(s.questions || []).map(q => ['People also ask', '', q, '', '', '', ''])]))}>
       {s && (
         <div className="max-h-[68vh] overflow-y-auto pr-1 grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div>
@@ -789,7 +819,7 @@ function KeywordModal({ s, onClose }) {
 function IdeasModal({ open, r, onClose }) {
   return (
     <Modal open={open} onClose={onClose} width="max-w-3xl" title="Keyword ideas from the research"
-      footer={<Link to="/keyword-management" className="inline-flex items-center gap-1.5 text-13 font-semibold text-indigo-700 hover:underline">Step 2: find keywords <ArrowRight size={14} /></Link>}>
+      footer={<>{csvBtn(() => downloadCsv(`keyword-ideas-${slugOf(r.business?.name)}`, ['Type', 'Idea'], [...r.ideas.competitor_keywords.map(x => ['Keyword competitors target', x]), ...r.ideas.questions.map(x => ['Question people ask', x]), ...r.ideas.related.map(x => ['Related search', x])]))}<Link to="/keyword-management" className="inline-flex items-center gap-1.5 text-13 font-semibold text-indigo-700 hover:underline">Step 2: find keywords <ArrowRight size={14} /></Link></>}>
       <div className="max-h-[66vh] overflow-y-auto pr-1 space-y-5">
         <div><Label icon={Search}>Keywords competitors target</Label><Chips items={r.ideas.competitor_keywords} empty="None found." /></div>
         <div><Label icon={HelpCircle}>Questions people ask</Label>{r.ideas.questions.length ? <ul className="space-y-1.5">{r.ideas.questions.map(q => <li key={q} className="flex gap-2 text-13 text-slate-700"><HelpCircle size={14} className="text-violet-500 mt-0.5 shrink-0" />{q}</li>)}</ul> : <p className="text-13 text-slate-500">Google showed no questions for these searches.</p>}</div>
@@ -1110,6 +1140,8 @@ function Research({ b }) {
             </div>
           ) : <div className="text-13 text-slate-600">Research who outranks you on Google and Maps, then find keywords from it.</div>}
         </div>
+        {result && <Button size="sm" icon={Download} onClick={() => downloadFile(`competitor-research-${slugOf(b.name)}-${today()}.md`, researchMd(result), 'text/markdown')}>Download research</Button>}
+        {result && <Button size="sm" icon={Download} onClick={() => downloadFile(`competitor-research-data-${slugOf(b.name)}-${today()}.json`, JSON.stringify(result, null, 2), 'application/json')}>Download data (JSON)</Button>}
         {result && <Button size="sm" icon={Settings2} onClick={() => setSettings(true)}>Keywords & settings</Button>}
         {result && <Button size="sm" variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup.google_results} onClick={() => start(defaults.keywords, defaults.location)}>Run again</Button>}
         {result && <Button size="sm" icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors · <b className="tabular-nums">{chosenTotal}</b> chosen</Button>}

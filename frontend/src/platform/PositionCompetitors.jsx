@@ -6,7 +6,8 @@ import { Card, Badge, Button, useAction, useModulePath } from './SeoUi';
 import { api } from './seoApi';
 import { AXIS, PALETTE, Chg, Empty, Filter } from './PositionUi';
 import Select from '../components/Select';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
+import { CsvButton } from './PositionExtras';
 
 const DEPTHS = [[20, 'Top 20'], [10, 'Top 10'], [5, 'Top 5'], [3, 'Top 3']]; // Google results are read to the top 20
 const host = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '');
@@ -163,7 +164,8 @@ export default function PositionCompetitors({ d, b, onChanged }) {
       </Card>
 
       <Card title={<span>Competitors <span className="text-slate-500 font-normal">{others.length ? `${pager.from + 1}-${pager.to}` : '0'} ({others.length})</span></span>} pad={false}
-        action={(d.tracked_competitors || []).length === 0 ? <Link to={path_('competitor-finder')} className="h-8 px-3 rounded inline-flex items-center text-12.5 font-semibold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">Find more competitors</Link> : null}>
+        action={<span className="inline-flex items-center gap-2">{(d.tracked_competitors || []).length === 0 ? <Link to={path_('competitor-finder')} className="h-8 px-3 rounded inline-flex items-center text-12.5 font-semibold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">Find more competitors</Link> : null}
+          <CsvButton disabled={!rows.length} title="Download every competitor in the table (all pages, with the depth and filters applied) as a CSV file" onClick={() => downloadCsv(`competitors-${d.domain}`, ['Rank', 'Domain', 'Your domain', 'Directory or social site', 'Tracked as competitor', 'Visibility (%)', 'Change in visibility', 'Estimated traffic', 'Change in traffic', 'Keywords', 'Average position'], [...(mine ? [mine] : []), ...sortedOthers].map(c => [c.you && c.not_ranking ? '' : rankOf(c), c.domain, c.you ? 'Yes' : 'No', c.platform ? 'Yes' : 'No', tracked.has(c.domain) ? 'Yes' : 'No', c.visibility ?? '', c.change ?? '', d.has_volume ? (c.traffic ?? '') : '', d.has_volume ? (c.traffic_change ?? '') : '', c.keywords ?? '', c.avg_position ?? '']))} /></span>}>
         <div className="overflow-x-auto">
           <table className="w-full text-14 min-w-[900px]">
             <thead className="bg-slate-50 text-12 text-slate-600">

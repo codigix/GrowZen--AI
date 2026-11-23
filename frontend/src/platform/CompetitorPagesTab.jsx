@@ -1,9 +1,13 @@
 import React from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ExternalLink } from 'lucide-react';
-import { Card, Badge, ErrorNote, SkList } from './SeoUi';
+import { ExternalLink, Download } from 'lucide-react';
+import { Card, Badge, Button, ErrorNote, SkList } from './SeoUi';
 import { useApi } from './seoApi';
+import { downloadCsv } from './DataTable';
 
+const exportGaps = (b, d) => downloadCsv(`keyword-gaps-${b.name || 'project'}`, ['Keyword', 'Monthly searches'], d.gaps.map(g => [g.keyword, g.volume ?? '']));
+const exportPages = (b, d, list) => downloadCsv(`competitor-top-pages-${b.name || 'project'}`, ['Competitor', 'Page URL', 'Page title', 'Estimated visits per month', 'Keywords in the top 10 (position)', 'Competitor estimated visits', 'Competitor keywords in the top 10'],
+  list.flatMap(c => c.top_pages.map(p => [c.domain, p.url, p.title || '', p.visits ?? '', p.keywords.map(k => `${k.keyword} (#${k.position}${k.volume ? `, ${k.volume}/mo` : ''})`).join('; '), c.est_visits ?? '', c.keywords_top10 ?? ''])));
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 
 /** The competitors' pages that are in Google's top 10 for the project's keywords, with an estimate of the visits they bring, beside the same estimate for the project. */
@@ -32,7 +36,7 @@ export default function CompetitorPagesTab({ b }) {
           </div>
         </Card>
         {d.gaps.length > 0 && (
-          <Card title="Keyword gaps" subtitle="Competitors rank for these, you do not." action={<Link to="/keyword-management/workspace?tag=gap" className="text-12.5 font-semibold text-indigo-700 hover:underline">Open in the Keyword Workspace</Link>}>
+          <Card title="Keyword gaps" subtitle="Competitors rank for these, you do not." action={<span className="flex items-center gap-3"><Button size="sm" icon={Download} onClick={() => exportGaps(b, d)}>Export CSV</Button><Link to="/keyword-management/workspace?tag=gap" className="text-12.5 font-semibold text-indigo-700 hover:underline">Open in the Keyword Workspace</Link></span>}>
             <div className="divide-y divide-slate-100">{d.gaps.map(g => <div key={g.keyword} className="py-2 flex flex-wrap gap-3 text-13"><span className="font-semibold text-slate-900">{g.keyword}</span><span className="text-slate-500">{g.volume ? `${n0(g.volume)}/mo` : ''}</span></div>)}</div>
           </Card>)}
       </div>
@@ -42,7 +46,7 @@ export default function CompetitorPagesTab({ b }) {
   const shown = focus ? d.competitors.filter(c => c.domain.replace(/^www\./, '').toLowerCase() === focus) : d.competitors;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      <Card title="Estimated organic visits per month" subtitle={`From ${d.keywords} researched keywords. ${d.note}`}>
+      <Card title="Estimated organic visits per month" subtitle={`From ${d.keywords} researched keywords. ${d.note}`} action={shown.some(c => c.top_pages.length) ? <Button size="sm" icon={Download} onClick={() => exportPages(b, d, shown)}>Export top pages CSV</Button> : null}>
         {!d.volumes && <p className="mb-3 text-12.5 text-amber-700">{d.ads ? 'Google Ads is connected, but its Keyword Planner has no monthly searches for these keywords (they are too specific), so the visit estimates are 0.' : 'Google Ads is not connected, so there are no search volumes and the visit estimates are 0.'} The pages are still listed.</p>}
         <div className="space-y-2.5">
           {[{ domain: 'You', est_visits: d.you.visits, keywords_top10: d.you.keywords, me: true }, ...shown].map(c => (
@@ -74,7 +78,7 @@ export default function CompetitorPagesTab({ b }) {
           </div>
         </Card>))}
       {d.gaps.length > 0 && (
-        <Card title="Keyword gaps" subtitle="Competitors rank for these, you do not." action={<Link to="/keyword-management/workspace?tag=gap" className="text-12.5 font-semibold text-indigo-700 hover:underline">Open in the Keyword Workspace</Link>}>
+        <Card title="Keyword gaps" subtitle="Competitors rank for these, you do not." action={<span className="flex items-center gap-3"><Button size="sm" icon={Download} onClick={() => exportGaps(b, d)}>Export CSV</Button><Link to="/keyword-management/workspace?tag=gap" className="text-12.5 font-semibold text-indigo-700 hover:underline">Open in the Keyword Workspace</Link></span>}>
           <div className="divide-y divide-slate-100">{d.gaps.map(g => <div key={g.keyword} className="py-2 flex flex-wrap gap-3 text-13"><span className="font-semibold text-slate-900">{g.keyword}</span><span className="text-slate-500">{g.volume ? `${n0(g.volume)}/mo` : ''}</span><span className="text-slate-500 ml-auto">{g.competitors.join(', ')}</span></div>)}</div>
         </Card>)}
     </div>

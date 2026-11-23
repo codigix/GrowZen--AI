@@ -5,7 +5,7 @@ import { Check, X, Plus, Search, Globe, Copy, Download, RefreshCw, ChevronDown, 
 import { SeoShell, Card, Button, Badge, Modal } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { HistoryPanel, RenderingCard, SiteScan } from './PageXRayHistory';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 import FullPageCard from './PageXRayLighthouse';
 
 const MAX_URLS = 3;
@@ -32,18 +32,15 @@ const aiAllowed = (d) => arr(d?.robots?.ai_crawlers).filter(x => x.allowed).leng
 const aiTotal = (d) => arr(d?.robots?.ai_crawlers).length;
 const analyticsCount = (d) => arr(d?.tech?.analytics).length + arr(d?.tech?.tag_managers).length;
 
-/** CSV cell: quoted, quotes doubled, and a leading = + - @ neutralised so a spreadsheet never runs it as a formula. */
-const csvCell = (v) => { let s = v == null ? '' : String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return `"${s.replace(/"/g, '""')}"`; };
-const toCsv = (rows) => rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-const download = (name, text, mime) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: mime })); a.download = name; a.click(); URL.revokeObjectURL(a.href); };
 const copyText = async (text) => { try { await navigator.clipboard.writeText(text); } catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); } catch { /* ignore */ } t.remove(); } };
 const slug = (u) => hostOf(u).replace(/[^a-z0-9]+/gi, '-');
 
-function checksCsv(d) {
-  const rows = [['area', 'key', 'label', 'passed', 'weight', 'detail', 'fix']];
-  for (const [k] of SCORE_AREAS) for (const c of arr(d.scores?.[k]?.checks)) rows.push([k.toUpperCase(), c.key, c.label, c.passed ? 'yes' : 'no', c.weight, c.detail, c.passed ? '' : c.fix]);
-  return toCsv(rows);
+function exportChecks(d) {
+  const rows = [];
+  for (const [k, label] of SCORE_AREAS) for (const c of arr(d.scores?.[k]?.checks)) rows.push([label, c.label, c.passed ? 'Passed' : 'Failed', Number(c.weight) || 0, c.detail || '', c.passed ? '' : (c.fix || '')]);
+  downloadCsv(`page-xray-checks-${slug(d.final_url || d.url)}`, ['Area', 'Check', 'Result', 'Points', 'What was found', 'How to fix it'], rows);
 }
+const today = () => new Date().toISOString().slice(0, 10);
 
 function reportText(d) {
   const lines = [`Page X-Ray: ${d.final_url || d.url}`, `Checked ${d.fetched_at || ''} · status ${dash(d.status)} · ${dash(d.response_ms)} ms`, ''];
@@ -418,8 +415,9 @@ function Report({ d, onRerun, busy, extra, deep, history, siteScan }) {
         <div className="grid grid-cols-2 gap-1.5 w-full sm:w-auto">
           <Button size="sm" icon={copied ? Check : Copy} onClick={doCopy}>{copied ? 'Copied' : 'Copy report'}</Button>
           <Button size="sm" variant="primary" icon={RefreshCw} busy={busy} onClick={onRerun}>Re-run</Button>
-          <Button size="sm" icon={Download} onClick={() => download(`page-xray-${slug(d.final_url || d.url)}.json`, JSON.stringify(d, null, 2), 'application/json')}>JSON</Button>
-          <Button size="sm" icon={Download} onClick={() => download(`page-xray-${slug(d.final_url || d.url)}.csv`, checksCsv(d), 'text/csv;charset=utf-8')}>CSV</Button>
+          <Button size="sm" icon={Download} onClick={() => downloadFile(`page-xray-report-${slug(d.final_url || d.url)}-${today()}.json`, JSON.stringify(d, null, 2), 'application/json')}>Download JSON</Button>
+          <Button size="sm" icon={Download} onClick={() => downloadFile(`page-xray-report-${slug(d.final_url || d.url)}-${today()}.md`, reportText(d), 'text/markdown')}>Download report</Button>
+          <Button size="sm" icon={Download} onClick={() => exportChecks(d)}>Checks CSV</Button>
         </div>
       </div>
     </div>
@@ -649,7 +647,7 @@ function Compare({ items, onOpen, active }) {
     const best = dir === 'high' ? Math.max(...nums) : Math.min(...nums), worst = dir === 'high' ? Math.min(...nums) : Math.max(...nums);
     return { best, worst };
   };
-  const exportCsv = () => download('page-xray-comparison.csv', toCsv([['Metric', ...cols.map(c => c.data.final_url || c.url)], ...COMPARE.map(def => [def[0], ...cols.map(c => cell(c.data, def))])]), 'text/csv;charset=utf-8');
+  const exportCsv = () => downloadCsv('page-xray-comparison', ['Metric', ...cols.map(c => c.data.final_url || c.url)], COMPARE.map(def => [def[0], ...cols.map(c => cell(c.data, def))]));
   return (
     <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 min-w-0">
       <header className="flex flex-wrap items-center gap-3 mb-4">

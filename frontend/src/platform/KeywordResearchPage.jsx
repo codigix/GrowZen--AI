@@ -1,5 +1,5 @@
 import KeywordWorkspace from './KeywordWorkspace';
-import DataTable, { usePager, Pager, useSorted, SortTh } from './DataTable';
+import DataTable, { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import KeywordMappingTab from './KeywordMappingTab';
 import { UseKeywordsModal } from './KeywordPlacement';
 import KeywordRowActions, { indexProblem } from './KeywordRowActions';
@@ -370,14 +370,9 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
     setSelected([]); onTracked(list.map(r => r.keyword), res?.added ?? list.length);
   });
 
-  const exportCsv = () => {
-    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [['Keyword', 'Avg monthly searches', 'Competition', 'Competition index', 'Top-of-page bid (low)', 'Top-of-page bid (high)', '3-month change %', 'YoY change %'],
-      ...shown.map(r => [r.keyword, r.avg_monthly_searches, compOf(r.competition).label, r.competition_index, r.low_top_of_page_bid, r.high_top_of_page_bid, r.three_month_change, r.yoy_change])].map(l => l.map(esc).join(','));
-    const href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
-    Object.assign(document.createElement('a'), { href, download: `keyword-planner-${(data?.seed_keyword || 'ideas').replace(/[^a-z0-9]+/gi, '-')}.csv` }).click();
-    setTimeout(() => URL.revokeObjectURL(href), 1000);
-  };
+  const exportCsv = () => downloadCsv(`keyword-planner-${(data?.seed_keyword || 'ideas').replace(/[^a-z0-9]+/gi, '-')}`,
+    ['Keyword', 'Avg monthly searches', 'Competition', 'Competition index', 'Top-of-page bid (low)', 'Top-of-page bid (high)', '3-month change %', 'YoY change %'],
+    shown.map(r => [r.keyword, r.avg_monthly_searches, compOf(r.competition).label, r.competition_index, r.low_top_of_page_bid, r.high_top_of_page_bid, r.three_month_change, r.yoy_change]));
 
   return (
     <div className="space-y-5">
@@ -512,7 +507,7 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
           </div>
 
           <Card pad={false} title={`Keyword ideas (${shown.length})`} subtitle="Click a keyword to chart it. Click a column header to sort."
-            action={<div className="flex gap-2"><Button size="sm" icon={Download} onClick={exportCsv} disabled={!shown.length}>CSV</Button><Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(rows.filter(r => selected.includes(r.keyword)))}>Track {selected.length || ''}</Button></div>}>
+            action={<div className="flex gap-2"><Button size="sm" icon={Download} onClick={exportCsv} disabled={!shown.length} title="Download all the keyword ideas shown (with the search and filters applied) as a CSV file">Export CSV</Button><Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(rows.filter(r => selected.includes(r.keyword)))}>Track {selected.length || ''}</Button></div>}>
             <div className="px-6 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
               <label className="relative flex-1 min-w-[180px] max-w-xs"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input className="w-full h-8 pl-8 pr-3 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" placeholder="Filter keywords" value={q} onChange={e => setQ(e.target.value)} /></label>
               <div className="flex flex-wrap gap-1.5">
@@ -1034,6 +1029,8 @@ function Topics({ b, kw }) {
         <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Find a topic or keyword" className={`${inputCls} pl-8 w-64`} aria-label="Find a topic or keyword" /></div>
         <div role="tablist" className="inline-flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">{VIEWS.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-8 px-3 rounded-md text-12.5 font-semibold cursor-pointer ${view === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>{label}{id === 'ungrouped' && stats.loose ? ` ${stats.loose}` : ''}</button>)}</div>
         <div className="ml-auto flex items-center gap-2">
+          <Button icon={Download} disabled={!shown.length} onClick={() => downloadCsv(`keyword-topics-${b.name}`, ['Topic', 'Keyword', 'Searches per month', 'Google rank', 'Page'],
+            shown.flatMap(x => x.list.map(k => [x.topic === NOT_GROUPED ? 'Not grouped' : x.topic, k.keyword, k.volume ?? '', k.rank ?? '', k.target_url || ''])))} title="Download every keyword of the topics shown, with its topic, searches, rank and page, as a CSV file">Export CSV</Button>
           <Link to="/keyword-management/mapping"><Button icon={FileText}>Choose pages</Button></Link>
           <Button variant="ai" icon={Sparkles} busy={busy === 'cluster'} disabled={!tracked.length} onClick={cluster} title="Let AI put all the saved keywords into topics again. Topics you renamed or moved by hand are replaced.">{stats.topics ? 'Group again with AI' : 'Group into topics with AI'}</Button>
         </div>
@@ -1232,23 +1229,8 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
 
   const exportCsv = () => {
     if (!filteredResults.length) return;
-    const header = ['Keyword', 'Search Volume', 'Intent', 'Competition', 'CPC', 'Difficulty'];
-    const rows = sortedResults.map(k => [
-      `"${(k.keyword || '').replace(/"/g, '""')}"`,
-      k.search_volume || 0,
-      k.intent || '',
-      k.competition || '',
-      k.cpc || 0,
-      k.difficulty || 0
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [header.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encoded = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encoded);
-    link.setAttribute('download', `keywords_${keyword.trim().replace(/\s+/g, '_')}_${country}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsv(`keywords-${keyword.trim().replace(/\s+/g, '-')}-${country}`, ['Keyword', 'Search volume', 'Intent', 'Competition', 'CPC', 'Difficulty'],
+      sortedResults.map(k => [k.keyword || '', k.search_volume ?? '', k.intent || '', k.competition || '', k.cpc ?? '', k.difficulty ?? '']));
   };
 
   const avgVol = results.length ? Math.round(results.reduce((s, x) => s + (x.search_volume || 0), 0) / results.length) : 0;
@@ -1536,7 +1518,8 @@ function AiSuggestions({ b, tracked, onTracked, seedSearch }) {
               { id: 'keyword', header: 'Keyword and why', value: i => i.keyword, className: 'px-3 py-3 min-w-[260px]', cell: i => <><div className="text-14 font-semibold text-slate-900">{i.keyword}</div>{i.why && <div className="text-12.5 text-slate-600 mt-0.5">{i.why}</div>}</> },
               { id: 'topic', header: 'Topic', value: i => i.topic || null, cell: i => (i.topic ? <Badge tone="gray">{i.topic}</Badge> : <span className="text-slate-300">—</span>) },
               { id: 'intent', header: 'Intent', value: i => i.intent || null, cell: i => (i.intent ? <Badge tone={INTENT_TONE[i.intent] || 'gray'}>{i.intent}</Badge> : <span className="text-slate-300">—</span>) },
-              { id: 'priority', header: 'Priority', value: i => ({ High: 0, Medium: 1, Low: 2 })[i.priority] ?? 1, cell: i => <Badge tone={{ High: 'red', Medium: 'amber', Low: 'gray' }[i.priority] || 'gray'}>{i.priority || 'Medium'}</Badge>, csv: true },
+              { id: 'priority', header: 'Priority', csv: false, value: i => ({ High: 0, Medium: 1, Low: 2 })[i.priority] ?? 1, cell: i => <Badge tone={{ High: 'red', Medium: 'amber', Low: 'gray' }[i.priority] || 'gray'}>{i.priority || 'Medium'}</Badge> },
+              { id: 'priority_name', header: 'Priority name', hide: true, value: i => i.priority || 'Medium' },
               { id: 'horizon', header: 'When', value: i => (i.horizon === 'next' ? 'Grow next' : 'Builds on what you do'), cell: i => <span className="text-12.5 text-slate-600 whitespace-nowrap">{i.horizon === 'next' ? 'Grow next' : 'Builds on what you do'}</span> },
               { id: 'uses', header: 'Use it for', value: i => (i.uses || []).map(u => USE_LABEL[u] || u).join(', '), className: 'px-3 py-3', cell: i => <span className="flex flex-wrap gap-1">{(i.uses || []).map(u => <UseChip key={u} u={u} />)}</span> }
             ]} />
@@ -1619,7 +1602,10 @@ function UseIt({ b, kw }) {
       </div>
       <ErrorNote>{error}</ErrorNote>
       <Card pad={false} title="Put your keywords to work" subtitle="For every saved keyword: where it already appears, and where it is meant to be used. Each button opens the right place with the keyword ready."
-        action={<label className="inline-flex items-center gap-2 text-12.5 text-slate-600 cursor-pointer"><input type="checkbox" checked={onlyOpen} onChange={e => setOnlyOpen(e.target.checked)} />Only what is planned but not done</label>}>
+        action={<span className="inline-flex flex-wrap items-center gap-3"><label className="inline-flex items-center gap-2 text-12.5 text-slate-600 cursor-pointer"><input type="checkbox" checked={onlyOpen} onChange={e => setOnlyOpen(e.target.checked)} />Only what is planned but not done</label>
+          <Button size="sm" icon={Download} disabled={!useSortedRows.length} title="Download all the keywords listed, with where each is used or planned, as a CSV file"
+            onClick={() => downloadCsv(`keyword-usage-${b.name}`, ['Keyword', 'Topic', 'Google rank', ...AREA_ORDER.map(a => USE_LABEL[a]), 'Planned areas'],
+              useSortedRows.map(i => [i.keyword, i.cluster || '', i.rank ?? '', ...AREA_ORDER.map(a => (i.used[a] === true ? 'Used' : i.planned.includes(a) ? 'Planned' : i.used[a] === null ? 'Not checked' : 'Not yet')), i.planned.map(a => USE_LABEL[a] || a).join(', ')]))}>Export CSV</Button></span>}>
         {d.items.length > 10 && <div className="px-4 py-3 border-b border-slate-100"><input value={useQ} onChange={e => setUseQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-full max-w-xs px-3 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
         <div className="overflow-x-auto">
           <table className="w-full text-13 min-w-[860px]">

@@ -1,11 +1,11 @@
 import { useCrumb } from './crumbs';
 import React, { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Play, Copy, Check, ExternalLink, Link2, ShieldCheck, Trash2, Clock3, Pencil } from 'lucide-react';
+import { Play, Copy, Check, ExternalLink, Link2, ShieldCheck, Trash2, Clock3, Pencil, Download } from 'lucide-react';
 import ProcessTasks from './ProcessTasks';
 import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, SourceTag, ErrorNote, SERIES, useToast, useAction, useUrlTab, useDoubleConfirm, inputCls, SkTable, SkList } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const sameDigits = (a, b) => { const x = String(a || '').replace(/\D/g, ''), y = String(b || '').replace(/\D/g, ''); return x.length >= 7 && y.length >= 7 && (x.endsWith(y.slice(-8)) || y.endsWith(x.slice(-8))); };
 const STATUS_PILL = { listed: ['good', 'Correct'], inconsistent: ['warning', 'Mismatch'], pending: ['info', 'Waiting'], missing: ['critical', 'Missing'] };
@@ -75,6 +75,8 @@ function ListingRow({ d, nap, base, reload, toast }) {
 const STATUS_ORDER = { inconsistent: 0, missing: 1, pending: 2, listed: 3 };
 const listingValue = (d, k) => ({ site: d.label, status: STATUS_ORDER[d.status] ?? 1, url: d.url ? d.url.replace(/^https?:\/\/(www\.)?/, '') : null })[k];
 const LTH = 'p-2 whitespace-nowrap';
+const CSV_BTN = 'h-7 px-2.5 inline-flex items-center gap-1.5 rounded text-12 font-semibold cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200';
+const siteSlug = (b) => String(b?.website || b?.name || 'site').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].replace(/[^a-z0-9.-]+/gi, '-');
 
 function Listings({ b, ov, reload, toast, finishedAt, source, running, onRecheck }) {
   const navigate = useNavigate();
@@ -85,6 +87,9 @@ function Listings({ b, ov, reload, toast, finishedAt, source, running, onRecheck
   const base = `/businesses/${b.id}/citations`;
   const { sorted, sort, onSort } = useSorted(rows, listingValue);
   const pg = usePager(sorted, { size: 25, resetKey: filter });
+  const exportListings = () => downloadCsv(`citations-${siteSlug(b)}`, ['Site', 'Kind', 'Status', 'How sure we are', 'Listing link', 'Name on the listing', 'Phone on the listing', 'Note', 'Where it came from'],
+    sorted.map(d => [d.label, d.kind_label || '', (STATUS_PILL[d.status] || STATUS_PILL.missing)[1], { verified: 'Checked on the listing page', search: 'Matched from a Google search result', self_reported: 'Entered by you, not checked yet', not_found: 'Not in Google search results', unchecked: 'Not checked yet' }[d.confidence] || '',
+      d.url || '', d.found?.name || '', d.found?.phone || '', d.note || '', d.source === 'manual' ? 'Added by you' : d.source === 'auto' ? 'Found automatically' : '']));
   return (
     <>
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -113,7 +118,8 @@ function Listings({ b, ov, reload, toast, finishedAt, source, running, onRecheck
       </div>
 
       <Card title="Listing sites" subtitle="Add the business on each site, save its link, then press Check: we open the page and compare the name and phone with the profile."
-        action={<div className="flex gap-1">{[['all', 'All'], ['fix', 'Needs action'], ['listed', 'Correct']].map(([id, l]) => <button key={id} type="button" onClick={() => setFilter(id)} className={`h-7 px-2.5 rounded text-12 font-semibold cursor-pointer ${filter === id ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>)}</div>}>
+        action={<div className="flex gap-1">{[['all', 'All'], ['fix', 'Needs action'], ['listed', 'Correct']].map(([id, l]) => <button key={id} type="button" onClick={() => setFilter(id)} className={`h-7 px-2.5 rounded text-12 font-semibold cursor-pointer ${filter === id ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>)}
+          <button type="button" onClick={exportListings} disabled={!sorted.length} title="Download every listing site in the current filter as a CSV file" className={`${CSV_BTN} disabled:opacity-40`}><Download size={13} />Export CSV</button></div>}>
         <div className="overflow-x-auto">
           <table className="w-full text-13">
             <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><SortTh id="site" sort={sort} onSort={onSort} className={LTH}>Site</SortTh><SortTh id="status" sort={sort} onSort={onSort} className={LTH}>Status</SortTh><SortTh id="url" sort={sort} onSort={onSort} className={LTH}>Listing</SortTh><th className="p-2 text-right font-medium">Next step</th></tr></thead>
@@ -154,7 +160,8 @@ function Links({ b, tab }) {
         : <Listings b={b} ov={ov.data} reload={() => ov.reload(true)} toast={toast} finishedAt={ct.data?.finished_at || ov.data.finished_at} source={ov.data.data_source || ct.data?.data_source} running={busy === 'run' || waiting !== null} onRecheck={runAudit} />)}
 
       {tab === 'outreach' && (
-        <Card title="Outreach tasks" subtitle="The AI drafts outreach; a person approves and sends it. No bought links or link exchanges.">
+        <Card title="Outreach tasks" subtitle="The AI drafts outreach; a person approves and sends it. No bought links or link exchanges."
+          action={outreach.length > 0 && <button type="button" className={CSV_BTN} title="Download every outreach task as a CSV file" onClick={() => downloadCsv(`outreach-tasks-${siteSlug(b)}`, ['Task', 'What to do', 'Status'], outreach.map(t => [t.title, t.detail?.fix || '', t.status]))}><Download size={13} />Export CSV</button>}>
           {!tasks.data ? <SkList rows={4} avatar={false} /> : outreach.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No outreach tasks yet. They're created from backlink and citation issues after an audit.</div> : (
             <div className="divide-y divide-gray-100">
               {outreach.map(t => (

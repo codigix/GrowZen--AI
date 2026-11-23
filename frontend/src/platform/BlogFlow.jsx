@@ -1,11 +1,107 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Sparkles, CheckCircle2, AlertTriangle, Copy, RefreshCw, Plus, Layout, Megaphone, ArrowRight, FileText } from 'lucide-react';
+import { ExternalLink, Sparkles, CheckCircle2, AlertTriangle, Copy, RefreshCw, Plus, Layout, Megaphone, ArrowRight, FileText, Download } from 'lucide-react';
 import { Card, Button, Badge, Stat, ErrorNote, useAction, useToast, SkList, inputCls } from './SeoUi';
 import { api, useApi } from './seoApi';
 import Tip from './Tip';
+import { downloadCsv, downloadFile } from './DataTable';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
+
+// ---- Downloads: everything the owner may want to use outside the software ----
+const today = () => new Date().toISOString().slice(0, 10);
+const stem = (s) => String(s || 'site').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '') || 'site';
+const siteOf = (b) => stem(b?.website || b?.name);
+const fileStem = (s, max = 50) => String(s || '').toLowerCase().replace(/<[^>]+>/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, max).replace(/-+$/, '') || 'untitled';
+const numOrBlank = (v) => (v == null || v === '' || Number.isNaN(Number(v)) ? '' : Number(v));
+const looksHtml = (s) => /<\/?(p|h[1-6]|ul|ol|li|div|br|img|a|table|blockquote|strong|em|section|article)\b/i.test(s);
+const escHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const unescHtml = (s) => String(s).replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&');
+const attrOf = (tag, name) => { const m = String(tag).match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i')); return m ? (m[1] ?? m[2] ?? '') : ''; };
+
+/** The article's HTML as Markdown: headings, paragraphs, lists, links, images, bold, italics, quotes and tables. */
+export function htmlToMarkdown(html) {
+  const inline = (t) => unescHtml(String(t || '')
+    .replace(/<img\b[^>]*>/gi, (tag) => `![${attrOf(tag, 'alt')}](${attrOf(tag, 'src')})`)
+    .replace(/<a\b[^>]*>[\s\S]*?<\/a>/gi, (m) => { const href = attrOf(m.slice(0, m.indexOf('>') + 1), 'href'); const text = m.replace(/<[^>]+>/g, ''); return href ? `[${text}](${href})` : text; })
+    .replace(/<(strong|b)\b[^>]*>([\s\S]*?)<\/\1>/gi, '**$2**')
+    .replace(/<(em|i)\b[^>]*>([\s\S]*?)<\/\1>/gi, '*$2*')
+    .replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, '`$1`')
+    .replace(/<br\s*\/?>/gi, '  \n')
+    .replace(/<[^>]+>/g, '')).trim();
+  const out = [];
+  const keep = (t) => { out.push(t); return `\n\n\u0000${out.length - 1}\u0000\n\n`; };
+  let s = String(html || '').replace(/\r/g, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '');
+  s = s.replace(/<table\b[^>]*>([\s\S]*?)<\/table>/gi, (_, t) => {
+    const rows = [...t.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(r => [...r[1].matchAll(/<(?:td|th)\b[^>]*>([\s\S]*?)<\/(?:td|th)>/gi)].map(c => inline(c[1]).replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ')));
+    if (!rows.length) return '';
+    const w = Math.max(...rows.map(r => r.length));
+    const pad = (r) => [...r, ...Array(w - r.length).fill('')];
+    return keep([`| ${pad(rows[0]).join(' | ')} |`, `| ${Array(w).fill('---').join(' | ')} |`, ...rows.slice(1).map(r => `| ${pad(r).join(' | ')} |`)].join('\n'));
+  });
+  s = s.replace(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi, (_, n, t) => keep(`${'#'.repeat(Number(n))} ${inline(t).replace(/\s*\n\s*/g, ' ')}`));
+  s = s.replace(/<(ul|ol)\b[^>]*>([\s\S]*?)<\/\1>/gi, (_, kind, inner) => { let n = 0; return keep([...inner.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)].map(m => `${kind.toLowerCase() === 'ol' ? `${++n}.` : '-'} ${inline(m[1]).replace(/\s*\n\s*/g, ' ')}`).join('\n')); });
+  s = s.replace(/<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi, (_, t) => keep(inline(t).split('\n').map(l => `> ${l}`).join('\n')));
+  s = s.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, (_, t) => keep(inline(t)));
+  s = s.replace(/<hr\b[^>]*>/gi, () => keep('---'));
+  s = inline(s);
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => out[Number(i)]).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Markdown as HTML (for an article that was stored as Markdown). */
+export function markdownToHtml(md) {
+  const inl = (t) => escHtml(t).replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<img src="$2" alt="$1">').replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\*([^*]+)\*/g, '<em>$1</em>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  return String(md || '').replace(/\r/g, '').split(/\n{2,}/).map(raw => {
+    const x = raw.trim(); let m;
+    if (!x) return '';
+    if ((m = x.match(/^(#{1,6})\s+(.+)$/))) return `<h${m[1].length}>${inl(m[2])}</h${m[1].length}>`;
+    if (/^([-*]\s+.+(\n|$))+$/.test(x)) return `<ul>${x.split('\n').map(l => `<li>${inl(l.replace(/^[-*]\s+/, ''))}</li>`).join('')}</ul>`;
+    if (/^(\d+\.\s+.+(\n|$))+$/.test(x)) return `<ol>${x.split('\n').map(l => `<li>${inl(l.replace(/^\d+\.\s+/, ''))}</li>`).join('')}</ol>`;
+    if (/^>/.test(x)) return `<blockquote>${inl(x.replace(/^>\s?/gm, ''))}</blockquote>`;
+    return `<p>${inl(x).replace(/\n/g, '<br>')}</p>`;
+  }).filter(Boolean).join('\n');
+}
+
+/** Save one article as a file: kind 'md' (Markdown with its SEO details on top) or 'html' (a complete page). */
+export function downloadArticle(a, kind, b) {
+  const body = String(a.body || '');
+  const title = a.title || a.keyword || 'Article';
+  const sec = Array.isArray(a.secondary_keywords) ? a.secondary_keywords : String(a.secondary_keywords || '').split(',').map(x => x.trim()).filter(Boolean);
+  const name = `article-${fileStem(title)}-${siteOf(b)}-${today()}`;
+  if (kind === 'md') {
+    const md = looksHtml(body) ? htmlToMarkdown(body) : body;
+    const front = ['---', `title: ${JSON.stringify(title)}`, a.meta_description && `description: ${JSON.stringify(a.meta_description)}`, a.keyword && `keyword: ${JSON.stringify(a.keyword)}`, sec.length && `secondary_keywords: ${JSON.stringify(sec)}`, a.slug && `slug: ${JSON.stringify(a.slug)}`, '---'].filter(Boolean).join('\n');
+    downloadFile(`${name}.md`, `${front}\n\n${/^#\s/m.test(md) ? '' : `# ${title}\n\n`}${md}\n`, 'text/markdown');
+    return;
+  }
+  const inner = looksHtml(body) ? body : markdownToHtml(body);
+  const page = `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${escHtml(title)}</title>\n${a.meta_description ? `<meta name="description" content="${escHtml(a.meta_description)}">\n` : ''}${[a.keyword, ...sec].filter(Boolean).length ? `<meta name="keywords" content="${escHtml([a.keyword, ...sec].filter(Boolean).join(', '))}">\n` : ''}<style>body{font-family:Georgia,serif;max-width:46rem;margin:2rem auto;padding:0 1rem;line-height:1.65;color:#1e293b}h1,h2,h3{font-family:system-ui,sans-serif;line-height:1.25}img{max-width:100%;height:auto}table{border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:.4rem .6rem}blockquote{border-left:4px solid #cbd5e1;margin-left:0;padding-left:1rem;color:#475569}</style>\n</head>\n<body>\n<article>\n${/<h1\b/i.test(inner) ? '' : `<h1>${escHtml(title)}</h1>\n`}${inner}\n</article>\n</body>\n</html>\n`;
+  downloadFile(`${name}.html`, page, 'text/html');
+}
+
+/** Download an article as Markdown and as HTML. `article` needs a `body`; when it has none (a list row) the full article is read first. */
+export function ArticleDownloads({ b, article }) {
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const go = async (kind) => {
+    setBusy(kind); setErr('');
+    try {
+      const a = article.body == null && b ? await api(`/businesses/${b.id}/articles/${article.id}`) : article;
+      downloadArticle(a, kind, b);
+    } catch (e) { setErr(e.message || 'Could not read the article.'); } finally { setBusy(''); }
+  };
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <Button size="sm" icon={Download} busy={busy === 'md'} onClick={() => go('md')} title="Download the article as a Markdown (.md) file">Download .md</Button>
+      <Button size="sm" icon={Download} busy={busy === 'html'} onClick={() => go('html')} title="Download the article as a web page (.html) file">Download .html</Button>
+      {err && <span className="text-12 text-red-600">{err}</span>}
+    </span>
+  );
+}
+
+const CsvButton = ({ name, head, rows, tip = 'Download this list as a CSV file', label = 'Export CSV' }) => (
+  <Button size="sm" icon={Download} onClick={() => downloadCsv(name, head, rows())} title={tip}>{label}</Button>
+);
 
 /** Step 1 and 2: the keywords this project tracks, then topics written for the ones you pick. */
 export function KeywordTopicPlanner({ b, onPick }) {
@@ -43,6 +139,7 @@ export function KeywordTopicPlanner({ b, onPick }) {
           <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
             <input value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${list.length} keywords`} aria-label="Search keywords" className={`${inputCls} !w-64`} />
             <span className="text-12 text-slate-500">{shown.length === list.length ? `${list.length} keywords` : `${shown.length} of ${list.length}`}</span>
+            <CsvButton name={`tracked-keywords-${siteOf(b)}`} head={['Keyword', 'Searches per month', 'Difficulty', 'Rank', 'Meant for blogs', 'Used in articles']} rows={() => shown.map(k => [k.keyword, numOrBlank(k.volume), numOrBlank(k.difficulty), numOrBlank(k.rank), k.for_blog ? 'Yes' : 'No', numOrBlank(k.used) || 0])} tip={`Download all ${shown.length} keywords in this list as a CSV file`} />
             {picked.length > 0 && <button type="button" onClick={() => setPicked([])} className="ml-auto text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">Clear {picked.length} selected</button>}
           </div>
           <div className="max-h-[340px] overflow-y-auto divide-y divide-slate-100" role="listbox" aria-multiselectable="true" aria-label="Keywords">
@@ -79,6 +176,12 @@ export function KeywordTopicPlanner({ b, onPick }) {
       {res && (
         <div className="mt-5 border-t border-slate-100 pt-4">
           <p className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Pick a topic {res.method === 'ai' ? '(written by AI for your business)' : '(standard patterns: add an AI key for topics written for your business)'}</p>
+          {res.topics.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <CsvButton name={`blog-topic-ideas-${siteOf(b)}`} head={['Topic', 'Keyword', 'Intent', 'Angle', 'Why']} rows={() => res.topics.map(t => [t.title, t.keyword, t.intent, t.angle, t.why])} tip={`Download all ${res.topics.length} topic ideas as a CSV file`} />
+              <Button size="sm" icon={Download} title="Download the topic ideas as a Markdown file" onClick={() => downloadFile(`blog-topic-ideas-${siteOf(b)}-${today()}.md`, `# Blog topic ideas for ${b.name || siteOf(b)}\n\n${res.topics.map(t => `## ${t.title}\n\n- Keyword: ${t.keyword}\n- Intent: ${t.intent}\n- Angle: ${t.angle}\n- Why: ${t.why}\n`).join('\n')}`, 'text/markdown')}>Download .md</Button>
+            </div>
+          )}
           {res.topics.length === 0 ? <p className="text-13 text-slate-500">Nothing new to suggest: every idea already has an article.</p> : (
             <div className="grid gap-3 md:grid-cols-2">
               {res.topics.map((t, i) => (
@@ -166,6 +269,7 @@ export function LayoutCheckCard({ b, article }) {
           )}
           {!article && <p className="text-12 text-slate-500">Open an article to see how it compares.</p>}
           <p className="text-12 text-slate-500">{d.note}</p>
+          <div><Button size="sm" icon={Download} title="Download this layout check as a Markdown file" onClick={() => downloadFile(`blog-layout-check-${siteOf(b)}-${today()}.md`, [`# Blog layout check for ${b.name || siteOf(b)}`, '', `- Blog page: ${d.listing_url || ''}`, `- Post checked: ${d.sample_post || ''}`, `- Posts on the blog page: ${d.listing.posts_found}`, `- Typical post: ${d.post?.words ?? ''} words, ${d.post?.h2 ?? ''} H2, ${d.post?.h3 ?? ''} H3, ${d.post?.images ?? ''} images`, `- Cards show: ${d.listing.cards_with_image ? 'image' : 'no image'}, ${d.listing.cards_with_date ? 'date' : 'no date'}, ${d.listing.cards_with_excerpt ? 'excerpt' : 'no excerpt'}`, '', article ? `## How "${article.title || article.keyword}" compares` : '## Comparison', '', ...(d.fit || []).map(x => `- [${x.ok === true ? 'x' : ' '}] ${x.label}${x.detail ? `: ${x.detail}` : ''}`), '', d.note || ''].join('\n'), 'text/markdown')}>Download report (.md)</Button></div>
         </div>
       )}
     </Card>
@@ -208,6 +312,7 @@ function PlatformRow({ b, article, p, reload }) {
           <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 ring-1 ring-inset ring-slate-200 p-3 text-12.5 text-slate-700 font-sans">{ov.text}{ov.hashtags?.length ? `\n\n${ov.hashtags.join(' ')}` : ''}</pre>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" icon={Copy} onClick={copy}>Copy</Button>
+            <Button size="sm" icon={Download} title="Download this overview as a text file" onClick={() => downloadFile(`promo-overview-${fileStem(p.name, 30)}-${siteOf(b)}-${today()}.txt`, `${ov.text}${ov.hashtags?.length ? `\n\n${ov.hashtags.join(' ')}` : ''}\n`, 'text/plain')}>Download</Button>
             {p.open_url && (p.internal ? <Link to={p.open_url}><Button size="sm" variant="primary" icon={ExternalLink}>Open Posts</Button></Link>
               : <a href={p.open_url} target="_blank" rel="noreferrer"><Button size="sm" variant="primary" icon={ExternalLink}>Open {p.name}</Button></a>)}
             <button type="button" onClick={() => write(true)} className="text-12 text-slate-500 hover:underline cursor-pointer">Write it again</button>
@@ -264,11 +369,13 @@ function CompetitorPlaces({ b, base, comp, onAdded, reload }) {
         <span className="font-semibold text-slate-900 text-13">Competitor blog platforms</span>
         {research?.running ? <span className="inline-flex items-center gap-1 text-indigo-600"><RefreshCw size={12} className="animate-spin" />Checking competitor websites ({research.done}/{research.total})…</span>
           : <span>{research?.done || 0} of {research?.total || list.length} checked</span>}
-        <span className="ml-auto"><Button size="sm" icon={RefreshCw} busy={busy === 'research'} disabled={research?.running} onClick={() => go(true)}>Check again</Button></span>
+        <span className="ml-auto flex items-center gap-2"><CsvButton name={`competitor-blog-platforms-${siteOf(b)}`} head={['Competitor', 'Blog address', 'Article pages found', 'Platforms it posts on', 'Platform links', 'Sites linking to its articles', 'Not found', 'Article addresses']}
+          rows={() => list.map(c => { const s = c.site; return [c.competitor, s?.blog_url || '', (s?.articles || []).length, (s?.platforms || []).map(p => p.name).join('; '), (s?.platforms || []).map(p => p.url).join('; '), (c.linked_from || []).map(l => `${l.name} (${l.domain})`).join('; '), (s?.not_found || []).join('; '), (s?.articles || []).join('; ')]; })} tip="Download one row per competitor as a CSV file" />
+          <Button size="sm" icon={RefreshCw} busy={busy === 'research'} disabled={research?.running} onClick={() => go(true)}>Check again</Button></span>
       </div>
       <ErrorNote>{error}</ErrorNote>
       {list.map(c => <CompetitorRow key={c.competitor} c={c} running={research?.running} />)}
-      {comp.items?.length > 0 && <SuggestedPlaces comp={comp} busy={busy} add={add} />}
+      {comp.items?.length > 0 && <SuggestedPlaces comp={comp} busy={busy} add={add} site={siteOf(b)} />}
       {toastNode}
     </div>
   );
@@ -361,7 +468,9 @@ function PublishingDiscovery({ b, article }) {
         <span className="font-semibold text-slate-900 text-13">Publishing sites on the web</span>
         {d.running ? <span className="inline-flex items-center gap-1 text-indigo-600"><RefreshCw size={12} className="animate-spin" />Searching the web and checking each site…</span>
           : d.state === 'ok' && <span>{items.length} sites · {verified} verified · topics: {(d.topics || []).join(', ')}</span>}
-        <span className="ml-auto"><Button size="sm" icon={RefreshCw} busy={busy === 'run'} disabled={d.running || d.state === 'no_search' || d.state === 'no_topic'} onClick={go}>Search again</Button></span>
+        <span className="ml-auto flex items-center gap-2">{items.length > 0 && <CsvButton name={`publishing-sites-${siteOf(b)}`} head={['Site', 'Domain', 'Page', 'Page title', 'Platform', 'Publishing type', 'Publishing verified', 'Publishing page', 'Backlink', 'Followed links out', 'Nofollow links out', 'DA', 'Competitor', 'Saved', 'Article verified', 'Found by', 'Topics']}
+          rows={() => shown.map(i => [i.site || i.domain, i.domain, i.url, i.title || '', i.platform, (PUB_TYPE[i.publishing?.type] || PUB_TYPE.unknown)[0], i.publishing?.verified ? 'Yes' : 'No', i.publishing?.evidence_url || '', (BACKLINK[i.backlink] || BACKLINK.unknown)[0], numOrBlank(i.links_out?.follow), numOrBlank(i.links_out?.nofollow), numOrBlank(i.da), i.competitor ? 'Yes' : 'No', i.saved ? 'Yes' : 'No', i.article_verified ? 'Yes' : 'No', (i.found_by || []).join('; '), (i.topics || []).join('; ')])}
+          tip={`Download the ${shown.length} sites shown (with the filters applied) as a CSV file`} />}<Button size="sm" icon={RefreshCw} busy={busy === 'run'} disabled={d.running || d.state === 'no_search' || d.state === 'no_topic'} onClick={go}>Search again</Button></span>
       </div>
       <ErrorNote>{error || (d.state === 'error' ? d.message : null)}</ErrorNote>
       {d.source === 'ai' && items.length > 0 && (
@@ -419,9 +528,12 @@ function PublishingDiscovery({ b, article }) {
 }
 
 /** Step 2: the linking sites worth posting this blog on, best first; each one can be added to the plan. */
-function SuggestedPlaces({ comp, busy, add }) {
+function SuggestedPlaces({ comp, busy, add, site }) {
   return (
       <div className="grid gap-2">
+        <div><CsvButton name={`places-to-post-${site}`} head={['Site', 'Category', 'Follow', 'Topic', 'DA', 'Used by competitors', 'Articles', 'Example page', 'Competitor article', 'How to get the link']}
+          rows={() => comp.items.map(x => [x.domain, x.category?.label || '', x.follow === 'dofollow' ? 'Follow' : 'Nofollow', x.topic ? TOPIC[x.topic][0] : '', numOrBlank(x.da), (x.competitors || []).join('; '), numOrBlank(x.articles), x.example?.url || '', x.example?.competitor_article || '', x.how || ''])}
+          tip={comp.total > comp.items.length ? `Exports the ${comp.items.length} best places shown (of ${comp.total})` : `Download all ${comp.items.length} places as a CSV file`} /></div>
         {comp.items.map(x => (
           <div key={x.domain} className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-1.5 text-13">
             <div className="flex flex-wrap items-center gap-2">
@@ -471,7 +583,9 @@ export function PromoteCard({ b, article }) {
           <ErrorNote>{error}</ErrorNote>
           <CompetitorPlaces b={b} base={base} comp={d.from_competitors} onAdded={(next) => r.setData(next)} reload={r.reload} />
           <PublishingDiscovery b={b} article={article} />
-          <h3 className="text-14 font-semibold text-slate-900 border-t border-slate-200 pt-4">Your promotion plan</h3>
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4"><h3 className="text-14 font-semibold text-slate-900">Your promotion plan</h3>
+            <span className="ml-auto"><CsvButton name={`promotion-plan-${siteOf(b)}`} head={['Platform', 'Status', 'What a link there gives', 'About the link', 'Where to post', 'Address of your post', 'Link check', 'Link type', 'Anchor text', 'Used by competitors']}
+              rows={() => d.items.map(p => [p.name, (ST[p.status] || ST.planned)[0], p.gives || '', p.link_note || '', p.open_url || '', p.posted_url || '', p.check ? ({ working: 'Link found', link_missing: 'Link missing', unconfirmed: 'Could not confirm' }[p.check.state] || p.check.state) : '', p.check?.follow || '', p.check?.anchor || '', (p.competitor_use?.competitors || []).join('; ')])} tip={`Download all ${d.items.length} platforms as a CSV file`} /></span></div>
           <div className="grid gap-3">{d.items.map(p => <PlatformRow key={p.id} b={b} article={article} p={p} reload={r.reload} />)}</div>
           {ask ? (
             <div className="flex flex-wrap items-end gap-2">

@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Star, ArrowUp, ArrowDown, Plus, RefreshCw, KeyRound, ScanSearch, Swords, Sparkles, Link2, MapPin, Gauge, Layers, FileText, ExternalLink,
-  AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot
+  AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot, Download
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, ScoreRing, scoreLevel, useAction, useToast, useModulePath, Sk, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 /**
  * The SEO toolkit pages, each on data the platform really has (its own crawl, tracked keywords, Google results
@@ -43,7 +43,8 @@ export const Th = ({ children, c = 'text-left', cls = '', id, sort, onSort, firs
   ? <SortTh id={id} sort={sort} onSort={onSort} first={first} right={c === 'text-right'} className={`px-4 py-2.5 whitespace-nowrap ${c === 'text-center' ? 'text-center' : ''} ${cls}`}>{children}</SortTh>
   : <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${c} ${cls}`}>{children}</th>);
 /** The search row above a table. */
-const SearchBar = ({ q, setQ, placeholder }) => <div className="px-4 py-2 border-b border-slate-100"><input value={q} onChange={e => setQ(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-8 w-60 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>;
+const ExportBtn = ({ onClick, disabled, className = '' }) => <button type="button" onClick={onClick} disabled={disabled} className={`h-8 px-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-40 ${className}`} title="Download every row of this table (all pages, with the search applied) as a CSV file"><Download size={13} />Export CSV</button>;
+const SearchBar = ({ q, setQ, placeholder, search = true, onExport }) => <div className="px-4 py-2 border-b border-slate-100 flex flex-wrap items-center gap-2">{search && <input value={q} onChange={e => setQ(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-8 w-60 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" />}{onExport && <ExportBtn onClick={onExport} className="ml-auto" />}</div>;
 const Table = ({ head, children, max = 'max-h-[calc(100vh-360px)]', pager = null, bar = null }) => (
   <>
     {bar}
@@ -119,6 +120,7 @@ export function TrackedPositions({ b }) {
         <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
           {chip('all', 'All', rows.length)}{chip('top3', 'Top 3', ranked.filter(k => k.rank <= 3).length)}{chip('top10', 'Top 10', ranked.filter(k => k.rank <= 10).length)}{chip('ranking', 'Ranking', ranked.length)}{chip('none', 'Not ranking', rows.length - ranked.length)}
           <label className="relative ml-auto"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search keywords" className="h-8 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></label>
+          <ExportBtn disabled={!sorted.length} onClick={() => downloadCsv(`tracked-keyword-positions-${b.name}`, ['Keyword', 'Position', 'Previous position', 'Searches per month', 'Intent', 'Ranking page', 'Checked'], sorted.map(k => [k.keyword, k.rank ?? '', k.prev_rank ?? '', k.volume ?? '', k.intent || '', urls[k.keyword] || k.target_url || '', k.rank_checked_at || '']))} />
           <Button size="sm" variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={!rows.length} onClick={check}>Check positions now</Button>
         </div>
         {error && <div className="px-5 pt-3"><ErrorNote>{error}</ErrorNote></div>}
@@ -148,14 +150,14 @@ export function TrackedPositions({ b }) {
 
 const UNT_VAL = (k) => k;
 
-function UntappedTable({ list, busy, track }) {
+function UntappedTable({ list, busy, track, name }) {
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
   const kept = useMemo(() => (needle ? list.filter(k => k.toLowerCase().includes(needle)) : list), [list, needle]);
   const { sorted, sort, onSort } = useSorted(kept, UNT_VAL);
   const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
-    <Table pager={pager} bar={list.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search keywords" /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword competitors’ pages target</Th><Th c="text-right"> </Th></>}>
+    <Table pager={pager} bar={list.length > 0 ? <SearchBar q={q} setQ={setQ} placeholder="Search keywords" search={list.length > 10} onExport={() => downloadCsv(name, ['Keyword competitors’ pages target'], sorted.map(k => [k]))} /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword competitors’ pages target</Th><Th c="text-right"> </Th></>}>
       {pager.rows.map(kwd => <tr key={kwd} className="hover:bg-slate-50"><td className="px-4 py-2.5 font-semibold text-slate-900">{kwd}</td><td className="px-4 py-2.5 text-right"><Button size="sm" icon={Plus} busy={busy === `t${kwd}`} onClick={() => track(kwd)}>Track</Button></td></tr>)}
       {!pager.rows.length && <tr><td colSpan={2} className="px-5 py-10 text-center text-slate-500">{list.length ? 'No keyword matches.' : 'Nothing untapped.'}</td></tr>}
     </Table>
@@ -164,14 +166,14 @@ function UntappedTable({ list, busy, track }) {
 
 const GAP_VAL = (x, k) => (k === 'kw' ? x.keyword : k === 'you' ? x.you : k === 'best' ? x.best : k.startsWith('c:') ? x.them[Number(k.slice(2))] : undefined);
 
-function GapTable({ list, comps, busy, track }) {
+function GapTable({ list, comps, busy, track, name }) {
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
   const kept = useMemo(() => (needle ? list.filter(x => x.keyword.toLowerCase().includes(needle)) : list), [list, needle]);
   const { sorted, sort, onSort } = useSorted(kept, GAP_VAL);
   const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
-    <Table pager={pager} bar={list.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search keywords" /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="you" sort={sort} onSort={onSort} c="text-center">You</Th>{comps.map((c, i) => <Th key={c.domain} id={`c:${i}`} sort={sort} onSort={onSort} c="text-center" cls="normal-case max-w-[130px] truncate">{c.domain}</Th>)}<Th id="best" sort={sort} onSort={onSort} c="text-right">Best competitor</Th><Th c="text-right"> </Th></>}>
+    <Table pager={pager} bar={list.length > 0 ? <SearchBar q={q} setQ={setQ} placeholder="Search keywords" search={list.length > 10} onExport={() => downloadCsv(name, ['Keyword', 'Your position', ...comps.map(c => `${c.domain} position`), 'Best competitor position'], sorted.map(x => [x.keyword, x.you ?? '', ...x.them.map(p => p ?? ''), x.best ?? '']))} /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="you" sort={sort} onSort={onSort} c="text-center">You</Th>{comps.map((c, i) => <Th key={c.domain} id={`c:${i}`} sort={sort} onSort={onSort} c="text-center" cls="normal-case max-w-[130px] truncate">{c.domain}</Th>)}<Th id="best" sort={sort} onSort={onSort} c="text-right">Best competitor</Th><Th c="text-right"> </Th></>}>
       {pager.rows.map(x => (
         <tr key={x.keyword} className="hover:bg-slate-50">
           <td className="px-4 py-2.5 font-semibold text-slate-900">{x.keyword}</td>
@@ -219,9 +221,9 @@ export function KeywordGap({ b, result = null }) {
       {error && <ErrorNote>{error}</ErrorNote>}
       <Card pad={false}>
         {tab === 'untapped' ? (
-          <UntappedTable list={model.untapped} busy={busy} track={track} />
+          <UntappedTable list={model.untapped} busy={busy} track={track} name={`keyword-gap-untapped-${b.name}`} />
         ) : (
-          <GapTable key={tab} list={list} comps={model.comps} busy={busy} track={track} />
+          <GapTable key={tab} list={list} comps={model.comps} busy={busy} track={track} name={`keyword-gap-${tab}-${b.name}`} />
         )}
       </Card>
       <p className="text-11.5 text-slate-400">Positions are the places in Google Maps for each researched search (Google Places API). Google gives no data on other websites' organic rankings. Search volume is in Find Keywords.</p>
@@ -254,7 +256,7 @@ export function CompareDomains({ b, result = null }) {
       <Card title="Google visibility" subtitle="Expected share of clicks from your researched keywords" action={<span className="text-12 text-slate-400">Researched {fmtDateTime(x.analysed_at)}</span>}>
         <ul className="space-y-2">{cols.map(c => <li key={c.domain} className="grid grid-cols-[minmax(0,180px)_1fr_48px] items-center gap-3"><span className={`text-13 truncate ${c.mine ? 'font-bold text-emerald-700' : 'text-slate-700'}`}>{c.domain}{c.mine ? ' (you)' : ''}</span><span className="h-2.5 rounded-full bg-slate-100 overflow-hidden"><span className={`block h-full rounded-full ${c.mine ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${Math.max(c.visibility > 0 ? 2 : 0, (c.visibility / top) * 100)}%` }} /></span><span className="text-right text-12.5 font-semibold tabular-nums">{c.visibility}%</span></li>)}</ul>
       </Card>
-      <Card pad={false} title="Side by side" subtitle="The best figure in each row is highlighted">
+      <Card pad={false} title="Side by side" subtitle="The best figure in each row is highlighted" action={<ExportBtn onClick={() => downloadCsv(`compare-domains-${b.name}`, ['Metric', ...cols.map(c => `${c.domain}${c.mine ? ' (you)' : ''}`)], rows.map(([label, get]) => [label, ...cols.map(c => { const v = get(c); return v == null ? '' : label === 'Has a blog' ? (v ? 'Yes' : 'No') : v; })]))} />}>
         <div className="overflow-x-auto"><table className="w-full text-13 min-w-[640px]">
           <thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><Th>Metric</Th>{cols.map(c => <Th key={c.domain} c="text-right" cls={`normal-case ${c.mine ? 'text-emerald-700' : ''}`}>{c.domain}{c.mine ? ' (you)' : ''}</Th>)}</tr></thead>
           <tbody className="divide-y divide-slate-100">{rows.map(([label, get, fmtv, better]) => {
@@ -277,14 +279,14 @@ const pct = (v) => (v == null ? null : `${v > 0 ? '+' : ''}${Number(v).toFixed(0
 
 const IDEA_VAL = (i, k) => (k === 'kw' ? i.keyword : k === 'vol' ? i.volume : k === 'comp' ? ({ LOW: 1, MEDIUM: 2, HIGH: 3 })[i.competition] : k === 'cpc' ? i.cpc : undefined);
 
-function IdeasTable({ ideas, go, busy, track, isTracked }) {
+function IdeasTable({ ideas, go, busy, track, isTracked, name }) {
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
   const kept = useMemo(() => (needle ? ideas.filter(i => i.keyword.toLowerCase().includes(needle)) : ideas), [ideas, needle]);
   const { sorted, sort, onSort } = useSorted(kept, IDEA_VAL);
   const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
-    <Table pager={pager} bar={ideas.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search ideas" /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="vol" sort={sort} onSort={onSort} first="desc" c="text-right">Searches / month</Th><Th id="comp" sort={sort} onSort={onSort}>Competition</Th><Th id="cpc" sort={sort} onSort={onSort} first="desc" c="text-right">Top-of-page bid</Th><Th c="text-right"> </Th></>}>
+    <Table pager={pager} bar={ideas.length > 0 ? <SearchBar q={q} setQ={setQ} placeholder="Search ideas" search={ideas.length > 10} onExport={() => downloadCsv(name, ['Keyword', 'Searches per month', 'Competition', 'Top-of-page bid', 'Tracked'], sorted.map(i => [i.keyword, i.volume ?? '', i.competition && i.competition !== 'UNSPECIFIED' ? i.competition.toLowerCase() : '', i.cpc ?? '', isTracked(i.keyword) ? 'Yes' : 'No']))} /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="vol" sort={sort} onSort={onSort} first="desc" c="text-right">Searches / month</Th><Th id="comp" sort={sort} onSort={onSort}>Competition</Th><Th id="cpc" sort={sort} onSort={onSort} first="desc" c="text-right">Top-of-page bid</Th><Th c="text-right"> </Th></>}>
       {pager.rows.map(i => (
         <tr key={i.keyword} className="hover:bg-slate-50">
           <td className="px-4 py-2.5"><button type="button" onClick={() => go(i.keyword)} className="font-semibold text-slate-900 hover:text-indigo-600 text-left cursor-pointer" title="Analyze this keyword">{i.keyword}</button></td>
@@ -345,7 +347,7 @@ function KeywordOverview({ b }) {
           <Card pad={false} title="Related keyword ideas" subtitle="What Google's Keyword Planner suggests around it, with real numbers"
             action={data.ideas.length > 0 && <Button size="sm" busy={busy === 'ws'} onClick={() => toWorkspace(data.ideas)}>Add all to the Keyword Workspace</Button>}>
             {data.ideas.length === 0 ? <p className="px-5 py-8 text-center text-13 text-slate-500">No related ideas.</p> : (
-              <IdeasTable ideas={data.ideas} go={go} busy={busy} track={track} isTracked={isTracked} />
+              <IdeasTable ideas={data.ideas} go={go} busy={busy} track={track} isTracked={isTracked} name={`related-keyword-ideas-${data.keyword}-${b.name}`} />
             )}
           </Card>
         </>

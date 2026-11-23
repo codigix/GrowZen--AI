@@ -4,7 +4,7 @@ import { SeoShell, Card, Tabs, Badge, Button, Meter, Modal, Drawer, Field, input
 import { Act } from './TableBits';
 import { api, useApi, usePoll, fmtDate } from './seoApi';
 import Select from '../components/Select';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const AREA = { gmb: 'Google Business', seo: 'On-page & content SEO', technical: 'Technical', metadata: 'Metadata', content: 'Content', backlinks: 'Backlinks, listings & off-site', rankings: 'Rankings', reviews: 'Reviews', other: 'Other' };
 const AREA_ORDER = Object.keys(AREA);
@@ -162,6 +162,7 @@ export function ThisWeek({ b, areas }) {
             <Button size="sm" icon={ChevronLeft} aria-label="Previous week" onClick={() => setWeek(shift(week, -7))} />
             <Button size="sm" icon={ChevronRight} aria-label="Next week" onClick={() => setWeek(shift(week, 7))} />
             <Button size="sm" icon={RefreshCw} busy={busy === 'plan'} onClick={generate}>Plan week</Button>
+            <Button size="sm" icon={Download} disabled={!scoped.length} title="Every item of this week's plan, with its area, what to do and where it stands" onClick={() => downloadCsv(`work-plan-${(b.name || 'project').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-week-${d.week_start}`, ['Area', 'Task', 'How', 'Status'], scoped.map(i => [i.area, i.title, i.how || '', i.status]))}>Export CSV</Button>
             <Button size="sm" variant="primary" icon={Plus} onClick={() => setAdding(true)}>Add task</Button>
           </div>
         )}>

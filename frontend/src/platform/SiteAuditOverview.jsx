@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { ArrowLeft, AlertTriangle, XCircle, Info, Smartphone, Monitor, Printer, RefreshCw, ChevronDown, Calendar } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, XCircle, Info, Smartphone, Monitor, Printer, RefreshCw, ChevronDown, Calendar, Download } from 'lucide-react';
 import { Card, Button, Badge, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { IssuesTab, CrawledPagesTab, StatisticsTab, CompareTab, ProgressTab, JsTab } from './SiteAuditTabs';
 import { AXIS } from './PositionUi';
+import { downloadFile } from './DataTable';
 import Select from '../components/Select';
 
 const host = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
@@ -96,6 +97,17 @@ export default function SiteAuditOverview({ projectId, onBack, initial }) {
   const days = [...new Set(dated.map(x => x.date))].reverse().map(iso => ({ iso, label: new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) }));
   const last = days[0]?.iso || '';
   const shown = dated.filter(x => x.date <= (upTo || last) && (series !== 'ai' || x.ai != null)).map(x => ({ ...x, date: x.date.slice(5) }));
+  const downloadReport = () => {
+    const pct = (v) => (v == null ? 'not available' : `${v}%`);
+    const md = [`# Site audit report: ${host(d.target)}`, '', `Updated: ${updated}`, `Device: ${d.strategy === 'desktop' ? 'Desktop' : 'Mobile'}`, `Pages crawled: ${d.pages}${d.limit ? ` of ${d.limit}` : ''}`, '',
+      '## Scores', '', `- Site Health: ${pct(d.health)}`, `- AI Search Health: ${pct(d.ai)}`, `- Errors: ${d.errors}`, `- Warnings: ${d.warnings}`, `- Crawled pages: ${d.crawled} (broken ${d.broken}, with issues ${d.with_issues})`, '',
+      '## Thematic reports', '', `- Crawlability: ${pct(d.crawlability)}`, `- HTTPS: ${pct(d.https)}`, `- International SEO: ${pct(d.intl)}`, `- Site Performance: ${pct(d.performance)}`, `- Internal Linking: ${pct(d.linking)}`, `- Markup: ${pct(d.markups)}`,
+      d.vitals ? `- Core Web Vitals: ${d.vitals.pass} of ${d.vitals.of} pass (LCP ${d.vitals.lcp || 'n/a'}, CLS ${d.vitals.cls || 'n/a'}, TBT ${d.vitals.tbt || 'n/a'})` : '- Core Web Vitals: no Lighthouse data', '',
+      '## Top issues', '', ...(d.top_issues.length ? d.top_issues.map(g => `- ${g.title} (${g.count}): ${g.fix}`) : ['No issues found.']), '',
+      '## Pages to improve', '', ...(d.pages_to_improve.length ? d.pages_to_improve.map(r => `- ${r.url} (${r.issues} issues): ${r.items.map(x => x.title).join('; ')}`) : ['Every crawled page is clean.']), '',
+      '## Health trend', '', ...dated.map(x => `- ${x.date}: Site Health ${x.health ?? 'n/a'}%${x.ai != null ? `, AI Search Health ${x.ai}%` : ''}`), ''].join('\n');
+    downloadFile(`site-audit-report-${host(d.target).replace(/[^a-z0-9.-]+/gi, '-')}-${new Date().toISOString().slice(0, 10)}.md`, md, 'text/markdown');
+  };
   const okPages = Math.max(0, d.crawled - d.with_issues - d.broken);
   const bar = d.crawled ? [[okPages, '#34d399'], [d.with_issues, '#fbbf24'], [d.broken, '#ef4444']] : [];
   const updated = d.finished_at ? new Date(d.finished_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '—';
@@ -111,7 +123,7 @@ export default function SiteAuditOverview({ projectId, onBack, initial }) {
             <span>JS rendering: Disabled</span><span>Pages crawled: {d.pages}{d.limit ? `/${d.limit}` : ''}</span>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2"><Button size="sm" variant="primary" icon={RefreshCw} busy={busy === 'rerun'} onClick={rerun}>Rerun campaign</Button><Button size="sm" icon={Printer} onClick={() => window.print()}>PDF</Button><Button size="sm" icon={ArrowLeft} onClick={onBack}>All projects</Button></div>
+        <div className="flex flex-wrap gap-2"><Button size="sm" variant="primary" icon={RefreshCw} busy={busy === 'rerun'} onClick={rerun}>Rerun campaign</Button><Button size="sm" icon={Download} onClick={downloadReport}>Download report</Button><Button size="sm" icon={Printer} onClick={() => window.print()}>Print / PDF</Button><Button size="sm" icon={ArrowLeft} onClick={onBack}>All projects</Button></div>
       </div>
 
       <div role="tablist" className="flex gap-1 overflow-x-auto border-b border-slate-200">

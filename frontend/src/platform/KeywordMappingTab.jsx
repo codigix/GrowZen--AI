@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Copy, ExternalLink, Eye, Lightbulb, PenLine, Search } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Copy, Download, ExternalLink, Eye, Lightbulb, PenLine, Search } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act } from './TableBits';
-import DataTable from './DataTable';
+import DataTable, { downloadFile } from './DataTable';
 import PageMetaCard from './PageMetaCard';
 import BriefButtons from './DevBrief';
 import { KeywordsView, PageOverview } from './KeywordPlacement';
@@ -74,11 +74,12 @@ export default function KeywordMappingTab({ b }) {
       <Card pad={false} title={`Your pages (${d.pages.length})`} subtitle={`Website scan of ${d.found_at || 'the last audit'}. A page's most searched keyword is its main one.`}>
         <DataTable bare minWidth={760} rows={d.pages} rowKey={p => p.url} exportName="pages-and-keywords" label="pages" searchPlaceholder="Search pages" columnsMenu={false} rowClass={() => 'hover:bg-slate-50'}
           columns={[
-            { id: 'page', header: 'Page', tip: { what: 'A page of your website.', why: 'Click the address to open it.', from: 'the last website scan (Website Audit).' }, thClass: 'px-3 py-2', value: p => p.path, className: 'px-3 py-2.5 min-w-[200px] max-w-[300px]',
+            { id: 'page', header: 'Page', tip: { what: 'A page of your website.', why: 'Click the address to open it.', from: 'the last website scan (Website Audit).' }, thClass: 'px-3 py-2', value: p => p.url, className: 'px-3 py-2.5 min-w-[200px] max-w-[300px]',
               cell: p => <>
                 <a href={p.url} target="_blank" rel="noreferrer" className="font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 break-all">{p.path}<ExternalLink size={11} className="shrink-0" /></a>
                 <span className="block text-11.5 text-slate-400 truncate" title={p.title}>{p.title}</span>
               </> },
+            { id: 'page_title', header: 'Page title', hide: true, value: p => p.title || '' },
             { id: 'primary', header: 'Main keyword', tip: { what: 'The keyword this page should rank for: the most searched keyword found on it.', why: 'One main keyword per page keeps your pages from competing with each other.', from: 'your saved keywords matched to the page title, heading and description from the website scan.' }, thClass: 'px-3 py-2', value: p => p.primary || null, className: 'px-3 py-2.5',
               cell: p => (p.primary ? <Link to={`/keyword-overview?q=${encodeURIComponent(p.primary)}`} title="Check its searches and cost" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline">{p.primary}</Link> : <span className="text-slate-400">none</span>) },
             { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', tip: { what: 'Monthly searches for the main keyword.', from: 'Google Ads Keyword Planner.' }, thClass: 'px-3 py-2', value: p => p.primary_volume ?? null, className: 'px-3 py-2.5 text-right tabular-nums', cell: p => n0(p.primary_volume) },
@@ -103,7 +104,8 @@ export default function KeywordMappingTab({ b }) {
       {view === 'keywords' && <KeywordsView b={b} onOpen={(url, focus) => setOpen({ url, focus })} />}
 
       {view === 'create' && (
-      <Card pad={false} title={`Pages and posts to create (${todo.length})`} subtitle="Keywords no page carries: a page for buying or booking, a blog post for questions.">
+      <Card pad={false} title={`Pages and posts to create (${todo.length})`} subtitle="Keywords no page carries: a page for buying or booking, a blog post for questions."
+        action={todo.length > 0 && <Button size="sm" icon={Download} onClick={() => downloadFile(`pages-and-posts-to-create-${b.name}-${new Date().toISOString().slice(0, 10)}.md`, `# Pages and posts to create for ${b.name}\n\n${todo.map(x => `## ${x.title}\n\n${brief(x, x.type).split('\n').map(l => `- ${l}`).join('\n')}`).join('\n\n')}\n`, 'text/markdown')} title="Download a short brief for every page and post to create, to send to whoever builds them">Download briefs</Button>}>
         {todo.length === 0 ? <p className="px-5 py-6 text-13 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={15} />Every keyword has a page.</p> : (
           <DataTable bare minWidth={700} rows={todo} rowKey={x => `${x.type}-${x.keyword}`} exportName="pages-and-posts-to-create" label="keywords" searchPlaceholder="Search keywords" columnsMenu={false} rowClass={() => 'hover:bg-slate-50'}
             columns={[

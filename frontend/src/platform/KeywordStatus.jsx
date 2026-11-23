@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowUp, ArrowDown, Search, MapPin, CheckCircle2, ExternalLink } from 'lucide-react';
+import { ArrowUp, ArrowDown, Download, Search, MapPin, CheckCircle2, ExternalLink } from 'lucide-react';
 import { Card, Badge, Stat, ErrorNote, SkList } from './SeoUi';
 import { useApi } from './seoApi';
 import Tip from './Tip';
 import { Head } from './TableBits';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const TONE = { working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' };
 const FILTERS = [['all', 'All'], ['working', 'Working'], ['climbing', 'Can climb'], ['weak', 'Weak'], ['invisible', 'Not showing'], ['unchecked', 'Not checked']];
@@ -48,6 +48,8 @@ export default function KeywordStatus({ b }) {
         <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-slate-100">
           {FILTERS.map(([id, label]) => <button key={id} type="button" aria-pressed={f === id} onClick={() => setF(id)} className={pill(f === id)}>{label} <span className="opacity-70">{id === 'all' ? d.total : c[id]}</span></button>)}
           <label className="relative ml-auto"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-52 pl-8 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+          <button type="button" disabled={!sorted.length} onClick={() => downloadCsv(`keyword-status-${b.name}`, ['Keyword', 'Status', 'Position', 'Change in position', 'Impressions', 'Clicks', 'Searches per month', 'Potential extra clicks', 'Used in', 'Page that ranks', 'Page chosen', 'Suggested action'],
+            sorted.map(x => [x.keyword, x.label || x.status, x.rank ?? '', x.change ?? '', x.impressions ?? '', x.clicks ?? '', x.volume ?? '', x.potential ?? '', (x.used_in || []).map(a => AREA_SHORT[a] || a).join('; '), x.ranking_url || '', x.target_url || '', x.next?.text || '']))} className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg ring-1 ring-inset ring-slate-300 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-40" title="Download every keyword listed (all pages, with the filter and search applied) as a CSV file"><Download size={13} />Export CSV</button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px] text-13">

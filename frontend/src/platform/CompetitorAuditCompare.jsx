@@ -3,7 +3,10 @@ import { AlertTriangle, CheckCircle2, XCircle, MinusCircle, Download, Printer, A
 import { Link } from 'react-router-dom';
 import { Card, Badge, Tabs, ErrorNote, Button, useAction } from './SeoUi';
 import { api } from './seoApi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
+
+const slugOf = (t) => String(t || 'competitor').toLowerCase().replace(/^https?:\/\//, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const exportBtn = (onClick, disabled) => <Button size="sm" icon={Download} onClick={onClick} disabled={disabled}>Export CSV</Button>;
 
 /**
  * The side-by-side result of comparing a competitor's site audit with the business's own (PageSpeed scores,
@@ -23,7 +26,7 @@ const SIDE = { both: ['Both sites', 'green'], competitor: ['Competitor', 'rose']
 const KW_VAL = (i, k) => (k === 'keyword' ? i.keyword : k === 'volume' ? i.volume : k === 'side' ? SIDE[i.side]?.[0] : k === 'pages' ? i.pages : undefined);
 
 /** The researched keywords as a table: search, sortable headings and pages. */
-function KeywordTable({ items, added, pick, setPick, open, setOpen, save }) {
+function KeywordTable({ items, added, pick, setPick, open, setOpen, save, tag }) {
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
   const kept = useMemo(() => (needle ? items.filter(i => i.keyword.toLowerCase().includes(needle)) : items), [items, needle]);
@@ -31,6 +34,7 @@ function KeywordTable({ items, added, pick, setPick, open, setOpen, save }) {
   const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
     <div className="rounded-xl border border-slate-200 overflow-hidden">
+      <div className="px-3 py-2 border-b border-slate-100 flex justify-end">{exportBtn(() => downloadCsv(`competitor-keywords-${tag}`, ['Keyword', 'Searches per month', 'Taken from', 'Pages', 'In My Keywords', 'Source pages'], sorted.map(i => [i.keyword, i.volume ?? '', SIDE[i.side]?.[0] || '', i.pages ?? '', (i.tracked || added[i.keyword]) ? 'yes' : 'no', (i.sources || []).map(x => x.url).join(' ')])), !sorted.length)}</div>
       {items.length > 10 && <div className="px-3 py-2 border-b border-slate-100"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search these keywords" aria-label="Search these keywords" className="h-8 w-56 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
       <div className="overflow-x-auto">
         <table className="w-full text-13 min-w-[720px]">
@@ -90,7 +94,7 @@ function ResearchedKeywords({ r, bid, competitor }) {
         </span>
       </div>
       <ErrorNote>{error}</ErrorNote>
-      <KeywordTable items={items} added={added} pick={pick} setPick={setPick} open={open} setOpen={setOpen} save={save} />
+      <KeywordTable tag={slugOf(competitor)} items={items} added={added} pick={pick} setPick={setPick} open={open} setOpen={setOpen} save={save} />
     </div>
   );
 }
@@ -107,11 +111,12 @@ function reportHtml(c) {
 
 const UP_VAL = (i, k) => (k === 'priority' ? ({ high: 0, medium: 1, low: 2 })[i.priority] : k === 'title' ? i.title : k === 'you' ? i.you : k === 'them' ? i.them : k === 'fix' ? i.fix : undefined);
 
-function UpgradeTable({ items, onGo }) {
+function UpgradeTable({ items, onGo, tag }) {
   const { sorted, sort, onSort } = useSorted(items, UP_VAL);
   const pager = usePager(sorted, { size: 25, resetKey: `${items.length}|${sort?.key}|${sort?.dir}` });
   return (
     <div className="rounded-xl border border-slate-200 overflow-hidden">
+      <div className="px-3 py-2 border-b border-slate-100 flex justify-end">{exportBtn(() => downloadCsv(`upgrade-list-${tag}`, ['Priority', 'Area', 'What to improve', 'Why it matters', 'You', 'Them', 'How to fix'], sorted.map(i => [PRI[i.priority]?.[0] || i.priority, i.area || '', i.title, i.why || '', i.you ?? '', i.them ?? '', i.fix || ''])), !sorted.length)}</div>
       <div className="overflow-x-auto">
         <table className="w-full text-13 min-w-[860px]">
           <thead className="bg-slate-50 text-left text-11 uppercase tracking-wide text-slate-500"><tr>
@@ -145,10 +150,8 @@ function UpgradeReport({ c, onGo }) {
   const [pri, setPri] = useState('all');
   if (!u) return <p className="text-13 text-slate-500">This comparison has no report yet. Compare again.</p>;
   const items = u.items.filter(i => pri === 'all' || i.priority === pri);
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([reportHtml(c)], { type: 'text/html' }));
-    const a = document.createElement('a'); a.href = url; a.download = `upgrade-report-${(c.competitor?.name || 'competitor').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.html`; a.click(); URL.revokeObjectURL(url);
-  };
+  const download = () => downloadFile(`comparison-report-${slugOf(c.ours?.target)}-vs-${slugOf(c.competitor?.name || c.competitor?.target)}-${new Date().toISOString().slice(0, 10)}.html`, reportHtml(c), 'text/html');
+  const downloadData = () => downloadFile(`comparison-data-${slugOf(c.ours?.target)}-vs-${slugOf(c.competitor?.name || c.competitor?.target)}-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(c, null, 2), 'application/json');
   const print = () => { const w = window.open('', '_blank'); if (!w) return; w.document.write(reportHtml(c)); w.document.close(); w.focus(); w.print(); };
   return (
     <div className="space-y-4">
@@ -156,11 +159,11 @@ function UpgradeReport({ c, onGo }) {
         <p className="text-14 font-semibold text-slate-900">{u.headline}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {Object.entries(PRI).map(([k, [l, t]]) => <button key={k} type="button" onClick={() => setPri(pri === k ? 'all' : k)} aria-pressed={pri === k} className={`cursor-pointer rounded-full ${pri === k ? 'ring-2 ring-indigo-400' : ''}`}><Badge tone={t}>{l} {u.counts[k]}</Badge></button>)}
-          <span className="ml-auto flex gap-2"><Button size="sm" icon={Download} onClick={download}>Download report</Button><Button size="sm" icon={Printer} onClick={print}>Print</Button></span>
+          <span className="ml-auto flex gap-2"><Button size="sm" icon={Download} onClick={download}>Download report</Button><Button size="sm" icon={Download} onClick={downloadData}>Download data (JSON)</Button><Button size="sm" icon={Printer} onClick={print}>Print</Button></span>
         </div>
       </div>
       {!items.length ? <p className="text-13 text-slate-500">Nothing to upgrade here.</p> : (
-        <UpgradeTable items={items} onGo={onGo} />
+        <UpgradeTable items={items} onGo={onGo} tag={slugOf(c.competitor?.name || c.competitor?.target)} />
       )}
       {u.strengths.length > 0 && (
         <div><div className="text-12 font-semibold uppercase tracking-wide text-emerald-700 mb-1.5">Where you already lead</div>
@@ -262,7 +265,7 @@ function CompareSummary({ c, setTab }) {
 
 const CK_VAL = (ch, k) => (k === 'title' ? (ch.title || ch.id) : k === 'ours' ? ch.ours?.status : k === 'competitor' ? ch.competitor?.status : k === 'status' ? (STATUS_TONE[ch.status] || STATUS_TONE.incomparable)[2] : undefined);
 
-function ChecksTable({ checks }) {
+function ChecksTable({ checks, tag }) {
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
   const kept = useMemo(() => (needle ? checks.filter(ch => String(ch.title || ch.id).toLowerCase().includes(needle)) : checks), [checks, needle]);
@@ -270,6 +273,7 @@ function ChecksTable({ checks }) {
   const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
     <div>
+      <div className="pb-2 flex justify-end">{exportBtn(() => downloadCsv(`competitor-technical-checks-${tag}`, ['Check', 'Description', 'You', 'Competitor', 'Status'], sorted.map(ch => [ch.title || ch.id, ch.description || '', ch.ours?.status || '', ch.competitor?.status || '', (STATUS_TONE[ch.status] || STATUS_TONE.incomparable)[2]])), !sorted.length)}</div>
       {checks.length > 10 && <div className="px-1 pb-2"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search the checks" aria-label="Search the checks" className="h-8 w-56 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
       <div className="overflow-x-auto">
         <table className="w-full text-13">
@@ -304,7 +308,7 @@ function ChecksTable({ checks }) {
 
 const PG_VAL = (m, k) => (k === 'path' ? m.path : k === 'ours' ? m.ours?.title : k === 'competitor' ? m.competitor?.title : k === 'words' ? m.ours?.word_count : undefined);
 
-function PagesTable({ matched }) {
+function PagesTable({ matched, tag }) {
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
   const kept = useMemo(() => (needle ? matched.filter(m => `${m.path} ${m.ours?.title || ''} ${m.competitor?.title || ''}`.toLowerCase().includes(needle)) : matched), [matched, needle]);
@@ -312,6 +316,7 @@ function PagesTable({ matched }) {
   const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
     <div className="rounded-xl border border-slate-200 overflow-hidden">
+      <div className="px-3 py-2 border-b border-slate-100 flex justify-end">{exportBtn(() => downloadCsv(`competitor-matched-pages-${tag}`, ['Page', 'Your page URL', 'Their page URL', 'Your title', 'Their title', 'Your words', 'Their words'], sorted.map(m => [m.path, m.ours?.url || '', m.competitor?.url || '', m.ours?.title || '', m.competitor?.title || '', m.ours?.word_count ?? '', m.competitor?.word_count ?? ''])), !sorted.length)}</div>
       {matched.length > 10 && <div className="px-3 py-2 border-b border-slate-100"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search the pages" aria-label="Search the pages" className="h-8 w-56 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
       <div className="overflow-x-auto">
         <table className="w-full text-13">
@@ -377,6 +382,7 @@ export function ComparisonResult({ c, bare = false, onGo, extraTabs = [] }) {
       {tab === 'scores' && (
         <div className="space-y-5">
           {!c.overall?.available && <p className="text-13 text-slate-500">No PageSpeed data on one side yet.</p>}
+          <div className="flex justify-end">{exportBtn(() => downloadCsv(`competitor-speed-scores-${slugOf(c.competitor?.name || c.competitor?.target)}`, ['Metric', 'You', 'Competitor', 'Edge'], [...(c.overall?.scores || []), ...(c.overall?.core_web_vitals || [])].map(m => [m.label, m.ours ?? '', m.competitor ?? '', !m.available ? '' : m.better === 'tie' ? 'Tie' : m.better === 'ours' ? 'You lead' : 'They lead'])), !((c.overall?.scores || []).length + (c.overall?.core_web_vitals || []).length))}</div>
           <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="w-full">
               <thead className="bg-slate-50 text-left text-11  tracking-wide text-slate-500">
@@ -404,7 +410,7 @@ export function ComparisonResult({ c, bare = false, onGo, extraTabs = [] }) {
       {tab === 'technical' && (
         <div>
           {!checks.length ? <p className="text-13 text-slate-500">No Lighthouse SEO checks on one side yet.</p> : (
-            <ChecksTable checks={checks} />
+            <ChecksTable checks={checks} tag={slugOf(c.competitor?.name || c.competitor?.target)} />
           )}
         </div>
       )}
@@ -413,7 +419,7 @@ export function ComparisonResult({ c, bare = false, onGo, extraTabs = [] }) {
         <div className="space-y-4">
           <p className="text-12 text-slate-500">{pages.note}</p>
           {!pages.matched?.length ? <p className="text-13 text-slate-500">No matching pages found between the two crawls.</p> : (
-            <PagesTable matched={pages.matched} />
+            <PagesTable matched={pages.matched} tag={slugOf(c.competitor?.name || c.competitor?.target)} />
           )}
           <div className="grid grid-cols-2 gap-3 text-12 text-slate-500">
             <span>Pages only you crawled: {pages.unmatched_ours?.length || 0}</span>
@@ -460,6 +466,8 @@ export function ComparisonResult({ c, bare = false, onGo, extraTabs = [] }) {
               <div className="space-y-3">
                 {gaps.search.note && <p className="text-12 text-slate-500">{gaps.search.note}</p>}
                 {!gaps.search.keyword_gaps?.length ? <p className="text-13 text-slate-500">No search keyword gaps found against this competitor.</p> : (
+                  <>
+                  <div className="flex justify-end">{exportBtn(() => downloadCsv(`competitor-keyword-gaps-${slugOf(c.competitor?.name || c.competitor?.target)}`, ['Keyword', 'Outranked by'], gaps.search.keyword_gaps.map(g => [g.keyword, (g.competitors || []).map(x => x.domain).join('; ')])))}</div>
                   <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
                     {gaps.search.keyword_gaps.map(g => (
                       <li key={g.keyword} className="px-4 py-2.5 text-13 flex flex-wrap items-center gap-2">
@@ -468,6 +476,7 @@ export function ComparisonResult({ c, bare = false, onGo, extraTabs = [] }) {
                       </li>
                     ))}
                   </ul>
+                  </>
                 )}
               </div>
             ) : (

@@ -6,7 +6,7 @@ import { ChevronRight, ExternalLink, Download, Settings2, ArrowUp, ArrowDown, Sp
 import { Card, Button, Badge } from './SeoUi';
 import { fmt } from './seoApi';
 import { AXIS, Th, Chg, Empty, path } from './PositionUi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import { RankedUrls } from './OrganicPositions';
 
 const dash = <span className="text-slate-300">—</span>;
@@ -35,12 +35,8 @@ const when = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, 
 const ago = (iso) => { if (!iso) return null; const d = Math.round((Date.now() - new Date(`${iso}T00:00:00`).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day' : `${d} days`; };
 
 function download(name, rows) {
-  const head = ['Keyword', 'Previous', 'Current', 'Diff', 'Traffic change', 'Volume', 'KD %', 'CPC', 'URL'];
-  const csv = [head, ...rows.map(r => [r.keyword, r.was ?? '', r.rank ?? '', r.change ?? '', r.traffic_diff ?? '', r.volume ?? '', r.kd ?? '', r.cpc ?? '', r.url || ''])].map(l => l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = name;
-  a.click();
+  const head = ['Keyword', 'Previous position', 'Current position', 'Change in position', 'Change in traffic', 'Searches per month', 'Keyword difficulty (%)', 'Cost per click', 'Ranking page'];
+  downloadCsv(name, head, rows.map(r => [r.keyword, r.was ?? '', r.rank ?? '', r.change ?? '', r.traffic_diff ?? '', r.volume ?? '', r.kd ?? '', r.cpc ?? '', r.url || '']));
 }
 
 /** Position Changes: how many keywords moved up or down on each check, the pages that moved, and every keyword that changed with the cause. */
@@ -187,7 +183,7 @@ export default function PositionChanges({ research }) {
       <Card pad={false} title={<span>All Position Changes: <b>{rows.length}</b></span>}
         action={<div className="relative flex items-center gap-2">
           <Button size="sm" icon={Settings2} onClick={() => setShowCols(o => !o)}>Manage columns <span className="ml-1 text-slate-500">{cols.size + 3}/{COLS.length + 3}</span></Button>
-          <Button size="sm" icon={Download} onClick={() => download(`${r.domain}-position-changes.csv`, sorted)}>Export</Button>
+          <Button size="sm" icon={Download} onClick={() => download(`position-changes-${r.domain}`, sorted)} title="Download every keyword that changed (all pages, with the filter applied) as a CSV file">Export CSV</Button>
           {showCols && (
             <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded bg-white shadow-lg ring-1 ring-slate-200 p-2 text-13">
               {COLS.map(([c, l]) => <label key={c} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-slate-50 rounded"><input type="checkbox" checked={cols.has(c)} onChange={() => toggleCol(c)} />{l}</label>)}

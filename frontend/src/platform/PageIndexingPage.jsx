@@ -4,7 +4,7 @@ import { SeoShell, Card, Button, Badge, ErrorNote, useAction, useToast, SkList }
 import { Act, OpenAct } from './TableBits';
 import Select from '../components/Select';
 import { api, useApi } from './seoApi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const when = (iso) => { if (!iso) return '—'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
 const TH = 'px-3 py-2.5 text-left font-medium whitespace-nowrap';
@@ -24,6 +24,8 @@ function IndexTable({ pages, d, gs, busy, inspect, send, total, resetKey }) {
   const pager = usePager(sorted, { size: 25, resetKey: `${resetKey}|${sort?.key}|${sort?.dir}` });
   return (
     <>
+      <div className="px-5 py-2 flex justify-end border-b border-slate-100"><Button size="sm" icon={Download} disabled={!sorted.length} onClick={() => downloadCsv('page-indexing', ['Page URL', 'First seen', 'New this week', 'Can it be indexed?', 'Reasons', 'In Google', 'Last crawled by Google', 'Sent to other engines', 'Not sent because'],
+        sorted.map(p => [p.url, p.first_seen || '', p.is_new ? 'yes' : 'no', p.tech ? (TECH[p.tech.verdict] || ['Not checked'])[0] : 'Not checked', (p.tech?.reasons || []).join('; '), (STATE[p.g_state] || ['Not checked'])[0], p.g_last_crawl || '', p.submitted_at || '', p.skip_reason || '']))}>Export CSV</Button></div>
       <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-13">
             <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>{[['page', 'Page'], ['tech', 'Can it be indexed?'], ['google', 'In Google'], ['crawl', 'Last crawled by Google'], ['sent', 'Sent to other engines']].map(([k, l]) => <SortTh key={k} id={k} sort={sort} onSort={onSort} className={TH.replace(' text-left', '').replace(' font-medium', '')}>{l}</SortTh>)}<th className={`${TH} text-right`}>Actions</th></tr></thead>

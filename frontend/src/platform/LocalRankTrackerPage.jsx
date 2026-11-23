@@ -9,8 +9,8 @@ import { Play, MapPin, Clock, ArrowUp, ArrowDown, ArrowLeft, Crosshair, Layers, 
 import PagePositions from './PagePositions';
 import { SeoShell, Card, Button, SourceTag, ErrorNote, STATUS, Tabs, useUrlTab, useToast, useAction, useModulePath, SkPage } from './SeoUi';
 import PositionLandscape from './PositionLandscape';
-import { TABS as LANDSCAPE_TABS } from './PositionExtras';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { TABS as LANDSCAPE_TABS, CsvButton } from './PositionExtras';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import { api, useApi, usePoll, fmtDateTime, fmtDate } from './seoApi';
 import { marketOf } from './MarketBadge';
 import Select from '../components/Select';
@@ -97,11 +97,12 @@ function Spark({ values }) {
 const RANK_NONE = [];
 
 /** Businesses that beat you in a scan: every one of them, sortable, in pages. */
-function CompetitorsTable({ competitors }) {
+function CompetitorsTable({ competitors, name = 'competitors' }) {
   const { sorted, sort, onSort } = useSorted(competitors || RANK_NONE, (c, k) => c[k]);
   const pager = usePager(sorted, { size: 10, resetKey: `${sort?.key}|${sort?.dir}` });
   return (
     <>
+      <div className="px-5 py-2.5 border-b border-slate-100 flex justify-end"><CsvButton disabled={!sorted.length} onClick={() => downloadCsv(name, ['Business', 'Average rank', 'Points in the top 3'], sorted.map(c => [c.name, c.avg_rank ?? '', c.top3 ?? '']))} /></div>
       <table className="w-full text-13">
         <thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><SortTh id="name" sort={sort} onSort={onSort} className="px-5 py-2">Business</SortTh><SortTh id="avg_rank" sort={sort} onSort={onSort} right className="px-3 py-2">Avg</SortTh><SortTh id="top3" sort={sort} onSort={onSort} right first="desc" className="px-5 py-2">Top 3</SortTh></tr></thead>
         <tbody className="divide-y divide-slate-100">{pager.rows.map(c => <tr key={c.name}><td className="px-5 py-2 text-slate-800 max-w-[200px] truncate" title={c.name}>{c.name}</td><td className="px-3 py-2 text-right tabular-nums">{c.avg_rank}</td><td className="px-5 py-2 text-right tabular-nums">{c.top3}</td></tr>)}</tbody>
@@ -114,7 +115,7 @@ function CompetitorsTable({ competitors }) {
 const KW_VALUE = (r, k) => (k === 'keyword' ? r.keyword : !r.latest ? null : k === 'scan' ? Date.parse(r.latest.created_at) : k === 'avg' ? r.latest.avg_rank : k === 'top3' ? topPct(r.latest) : foundPct(r.latest));
 
 /** Every keyword with its latest scan: sortable headings, a search box and real pages. A click on a row opens its grid. */
-function KeywordsTable({ rows, kwNow, waiting, start, onPick }) {
+function KeywordsTable({ rows, kwNow, waiting, start, onPick, name = 'maps-keywords' }) {
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
   const kept = needle ? rows.filter(r => r.keyword.toLowerCase().includes(needle)) : rows;
@@ -122,7 +123,8 @@ function KeywordsTable({ rows, kwNow, waiting, start, onPick }) {
   const pager = usePager(sorted, { size: 10, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
     <>
-      {rows.length > 10 && <div className="px-5 py-2.5 border-b border-slate-100"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-56 px-2.5 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
+      {rows.length > 0 && <div className="px-5 py-2.5 border-b border-slate-100 flex flex-wrap items-center gap-2">{rows.length > 10 && <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-56 px-2.5 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" />}
+        <CsvButton className="ml-auto" disabled={!sorted.length} onClick={() => downloadCsv(name, ['Keyword', 'Last scan', 'Average rank', 'Average rank before', 'Points in the top 3 (%)', 'Points found in the top 20 (%)', 'Scans so far'], sorted.map(r => [r.keyword, r.latest ? r.latest.created_at : '', r.latest?.avg_rank ?? '', r.previous?.avg_rank ?? '', r.latest ? topPct(r.latest) : '', r.latest ? foundPct(r.latest) : '', r.history.length]))} /></div>}
       <div className="overflow-x-auto">
         <table className="w-full text-13 min-w-[760px]">
           <thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr>
@@ -267,10 +269,11 @@ function Tracker({ b }) {
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
             <Card className="xl:col-span-2" title={`“${shownScan.keyword}”`} subtitle={`${shownScan.grid_size}×${shownScan.grid_size} points, ${shownScan.radius_km} km around the pin (white ring)`}
-              action={history.length > 1 && (
+              action={<span className="inline-flex items-center gap-2">{history.length > 1 && (
                 <Select className="h-8 px-2 text-12.5 rounded border border-slate-200 bg-white text-slate-700" value={shownScan.id} onChange={e => setScanId(Number(e.target.value))} aria-label="Scan to show">
                   {[...history].reverse().map(s => <option key={s.id} value={s.id}>{fmtDateTime(s.created_at)} · avg {s.avg_rank ?? '—'}</option>)}
-                </Select>)}>
+                </Select>)}
+                <CsvButton label="Export grid CSV" title="Download every point of this scan (position on the map and rank) as a CSV file" onClick={() => downloadCsv(`maps-grid-${shownScan.keyword}-${b.name}`, ['Point', 'Latitude', 'Longitude', 'Rank in the Maps results (blank = not in the top 20)'], shownScan.points.map((p, i) => [i + 1, p.lat ?? '', p.lng ?? '', p.rank ?? '']))} /></span>}>
               <RankMap points={shownScan.points} center={hasPin ? { lat: b.lat, lng: b.lng } : null} />
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-12 text-slate-600">
                 {dist.map(([l, c, n]) => <span key={l} className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full" style={{ background: c }} />{l}<b className="text-slate-900 tabular-nums">{n}</b></span>)}
@@ -279,7 +282,7 @@ function Tracker({ b }) {
             <div className="space-y-4">
               <Card title="Who beats you here" subtitle="Businesses that show most often in the top 10" pad={false}>
                 {competitors.length === 0 ? <p className="px-6 py-6 text-13 text-slate-500">None recorded for this scan.</p> : (
-                  <CompetitorsTable competitors={competitors} />
+                  <CompetitorsTable competitors={competitors} name={`maps-competitors-${shownScan.keyword}-${b.name}`} />
                 )}
               </Card>
               {trend.length > 1 && (
@@ -306,7 +309,7 @@ function Tracker({ b }) {
       {/* Every keyword, its latest scan and the change since the one before */}
       {rows.length > 0 && (
         <Card title={`Keywords (${rows.length})`} subtitle="Click a row to see its grid. The change is against the scan before the latest." pad={false}>
-          <KeywordsTable rows={rows} kwNow={kwNow} waiting={waiting} start={start} onPick={(k) => { setKeyword(k); setScanId(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
+          <KeywordsTable name={`maps-keywords-${b.name}`} rows={rows} kwNow={kwNow} waiting={waiting} start={start} onPick={(k) => { setKeyword(k); setScanId(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
         </Card>
       )}
       {toastNode}

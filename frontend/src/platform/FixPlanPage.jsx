@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Clock, RefreshCw, TrendingUp, ExternalLink } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock, RefreshCw, TrendingUp, ExternalLink, Download } from 'lucide-react';
 import { SeoShell, Card, Button, Badge, ScoreRing, ErrorNote, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import Tip from './Tip';
 import OnboardingPhases from './OnboardingPhases';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 
 const SEV = { critical: ['Critical', 'red'], serious: ['Serious', 'amber'], warning: ['Warning', 'blue'], info: ['Notice', 'gray'] };
 const STATUS = { todo: ['To do', 'gray'], done: ['Marked done: not confirmed', 'amber'], unverified: ['Check still fails', 'red'], failed: ['Check failed', 'red'], blocked: ['Blocked', 'gray'], verified: ['Confirmed', 'green'] };
@@ -52,6 +52,8 @@ function FixTable({ rows: all, tab, names }) {
   const rows = pager.rows;
   return (
     <>
+      <div className="px-5 py-2 border-b border-slate-100 flex justify-end"><Button size="sm" icon={Download} disabled={!sorted.length} onClick={() => downloadCsv(tab === 'open' ? 'fix-plan-changes-to-make' : 'fix-plan-confirmed', ['Change to make', 'Area', 'Priority', 'Score points', 'Time (minutes)', 'Who', 'Status', tab === 'open' ? 'Due date' : 'Confirmed on', 'Overdue', 'Closes when'],
+        sorted.map(x => [x.title, names[x.area] || x.area, (SEV[x.severity] || SEV.warning)[0], x.points ?? '', x.est_minutes ?? '', x.fix_mode_label || '', (STATUS[x.status] || STATUS.todo)[0], (tab === 'open' ? x.due_on : x.verified_at) || '', x.overdue ? 'yes' : 'no', x.closes_when || '']))}>Export CSV</Button></div>
       {all.length > 10 && <div className="px-5 py-2 border-b border-slate-100"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search the changes" aria-label="Search the changes" className="h-8 w-60 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-13">
@@ -105,10 +107,19 @@ function Body({ b }) {
   const rows = src.filter(x => (area === 'all' || x.area === area) && (sev === 'all' || x.severity === sev));
   const names = Object.fromEntries(d.areas.map(a => [a.key, a.label]));
   const scored = d.areas.filter(a => a.scored && a.score);
+  const downloadPlan = () => {
+    const item = (x) => `- **${x.title}** (${(SEV[x.severity] || SEV.warning)[0]}${x.points != null ? `, +${x.points} points` : ''}${x.est_minutes ? `, about ${x.est_minutes} min` : ''}${x.fix_mode_label ? `, ${x.fix_mode_label}` : ''})${x.closes_when ? `
+  Confirmed when: ${x.closes_when}` : ''}`;
+    const md = [`# Fix plan: ${b.name || 'project'}`, '', `Made ${new Date().toISOString().slice(0, 10)}. ${d.open_total} changes to make, ${d.closed.length} confirmed.`, '',
+      '## Scores', '', ...d.areas.map(a => `- ${a.label}: ${a.score ? `${a.score.now}/100${a.potential ? `, up to ${a.score.potential} if fixed` : ''}` : 'no page score'}; ${a.open_total} to do, ${a.closed_total || 0} confirmed`), '',
+      ...d.areas.flatMap(a => { const list = d.open.filter(x => x.area === a.key); return list.length ? [`## ${a.label}: changes to make`, '', ...list.map(item), ''] : []; }),
+      '## Confirmed', '', ...(d.closed.length ? d.closed.map(x => `- ${x.title} (${names[x.area] || x.area}${x.verified_at ? `, ${x.verified_at.slice(0, 10)}` : ''})`) : ['Nothing confirmed yet.']), ''].join('\n');
+    downloadFile(`fix-plan-${String(b.name || 'project').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${new Date().toISOString().slice(0, 10)}.md`, md, 'text/markdown');
+  };
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <Card title="Everything to change on your website and profile" subtitle="Pick an area to filter. A fix counts, and the score rises, only after a real scan of the live site confirms it."
-        action={<Button size="sm" variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={!d.has_website} onClick={check}>Check my fixes</Button>}>
+        action={<span className="flex gap-2"><Button size="sm" icon={Download} onClick={downloadPlan}>Download plan</Button><Button size="sm" variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={!d.has_website} onClick={check}>Check my fixes</Button></span>}>
         <ErrorNote>{error}</ErrorNote>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{d.areas.map(a => <AreaCard key={a.key} a={a} on={area === a.key} onPick={() => setArea(area === a.key ? 'all' : a.key)} />)}</div>
         {!scored.length && <p className="mt-3 text-13 text-amber-700">{d.has_website ? 'No website score yet: press “Check my fixes” to scan the homepage.' : 'Add the project’s website to get the website scores.'}</p>}

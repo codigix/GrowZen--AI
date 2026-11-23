@@ -6,7 +6,8 @@ import { api, useApi, fmt, fmtDate } from './seoApi';
 import { KeywordActs, OpenAct } from './TableBits';
 import { AllPages } from './TopPagesReport';
 import { AXIS, PALETTE, Th, Chg, Empty, Filter, Segmented, path } from './PositionUi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
+import { CsvButton } from './PositionExtras';
 
 const host = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '');
 const Bar = ({ v, max, color = '#6658dd' }) => <div className="h-2 w-24 rounded-full bg-slate-100 overflow-hidden"><div className="h-full" style={{ width: `${max ? Math.min(100, (v / max) * 100) : 0}%`, background: color }} /></div>;
@@ -39,7 +40,7 @@ export function Distribution({ d }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-4"><Segmented value={scope} onChange={setScope} options={[['all', 'All competitors'], ['me', 'My domain only']]} /><PlatformToggle d={d} on={plat} set={setPlat} /></div>
-      <Card title="Rankings overview" pad={false}>
+      <Card title="Rankings overview" pad={false} action={<CsvButton disabled={!list.length} title="Download the domains shown with their visibility and how many keywords each has in the top 3, 10 and 20, as a CSV file" onClick={() => downloadCsv(`rankings-overview-${d.domain}`, ['Domain', 'Your domain', 'Visibility (%)', 'Change in visibility', 'Estimated traffic', 'Change in traffic', 'Keywords in top 3', 'New in top 3', 'Lost from top 3', 'Keywords in top 10', 'New in top 10', 'Lost from top 10', 'Keywords in top 20', 'New in top 20', 'Lost from top 20', 'Improved keywords', 'Declined keywords'], list.map(c => [c.domain, c.you ? 'Yes' : 'No', c.visibility ?? '', c.change ?? '', d.has_volume ? (c.traffic ?? '') : '', d.has_volume ? (c.traffic_change ?? '') : '', c.top3.count, c.top3.new ?? '', c.top3.lost ?? '', c.top10.count, c.top10.new ?? '', c.top10.lost ?? '', c.top20.count, c.top20.new ?? '', c.top20.lost ?? '', c.improved ?? '', c.declined ?? '']))} />}>
         <table className="w-full text-13">
           <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Domain</Th><Th c="text-right">Visibility</Th><Th> </Th><Th c="text-right">Diff</Th><Th c="text-right">Est. traffic</Th><Th c="text-right">Diff</Th><Th c="text-right">Top 3</Th><Th c="text-right">Top 10</Th><Th c="text-right">Top 20</Th></tr></thead>
           <tbody className="divide-y divide-slate-100">{list.map(c => (
@@ -213,7 +214,10 @@ export function Cannibalization({ d, b }) {
       </Card>
 
       <Card title={`Cannibalization (${list.length})`} pad={false}
-        action={<div className="flex flex-wrap gap-2 items-center"><Filter value={kq} onChange={setKq} placeholder="Filter by keyword" /><Filter value={uq} onChange={setUq} placeholder="Filter by URL" /></div>}>
+        action={<div className="flex flex-wrap gap-2 items-center"><Filter value={kq} onChange={setKq} placeholder="Filter by keyword" /><Filter value={uq} onChange={setUq} placeholder="Filter by URL" />
+          <CsvButton disabled={!list.length} onClick={() => (view === 'pages'
+            ? downloadCsv(`cannibalization-pages-${d.domain}`, ['Page address', 'Status', 'Competing keywords', 'Average position', 'Change in position', 'Estimated traffic', 'Change in traffic', 'Searches per month', 'Keywords it competes for'], ps.sorted.map(p => [p.url, p.competing ? 'Competing' : p.ranking ? 'OK' : 'Not ranking', p.affected, p.avg_position ?? '', p.avg_position_change ?? '', d.has_volume ? (p.traffic ?? '') : '', d.has_volume ? (p.traffic_change ?? '') : '', p.volume ?? '', (p.keywords || []).map(k => k.keyword).join('; ')]))
+            : downloadCsv(`cannibalization-keywords-${d.domain}`, ['Keyword', 'Status', 'Best position', 'Your pages in the results', 'Searches per month', 'Pages and positions'], ks.sorted.map(r => [r.keyword, r.competing ? 'Competing' : r.rank ? 'OK' : 'Not ranking', r.rank ?? '', (r.pages || []).length, r.volume ?? '', (r.pages || []).map(p => `${p.url} (position ${p.position || 'none'})`).join('; ')])))} /></div>}>
         <div className="px-5 pt-3 pb-3"><Segmented value={view} onChange={setView} options={[['pages', 'Pages', allPages.length], ['keywords', 'Keywords', allKeywords.length]]} />
           <label className="ml-4 inline-flex items-center gap-1.5 text-12.5 text-slate-600 cursor-pointer align-middle"><input type="checkbox" checked={only} onChange={e => setOnly(e.target.checked)} />Competing only ({c.page_rows?.length || 0} pages)</label></div>
         {slice.length ? (view === 'pages' ? (
@@ -307,7 +311,8 @@ export function Snippets({ d }) {
         </div>
       </Card>
       <Card title="Featured snippets" subtitle="Answer boxes, featured snippets and People-also-ask seen on the latest check" pad={false}
-        action={<Segmented value={view} onChange={setView} options={[['opp', 'Opportunities', opp.length], ['has', 'Already featured', has.length], ['new', 'New on SERP', fresh.length]]} />}>
+        action={<div className="flex flex-wrap items-center gap-2"><Segmented value={view} onChange={setView} options={[['opp', 'Opportunities', opp.length], ['has', 'Already featured', has.length], ['new', 'New on SERP', fresh.length]]} />
+          <CsvButton disabled={!sorted.length} onClick={() => downloadCsv(`featured-snippets-${view}-${d.domain}`, ['Keyword', 'Feature', 'Searches per month', 'Potential', 'Your position', 'Yours'], sorted.map(s => [s.keyword, s.feature, s.volume ?? '', s.potential ?? '', s.rank ?? '', s.yours ? 'Yes' : 'No']))} /></div>}>
         {slice.length ? (
           <table className="w-full text-13">
             <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className={TC}>Keyword</SortTh><SortTh id="feature" sort={sort} onSort={onSort} className={TC}>Feature</SortTh><SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className={TC}>Volume</SortTh><SortTh id="potential" sort={sort} onSort={onSort} right first="desc" className={TC}>Est. traffic potential</SortTh><SortTh id="you" sort={sort} onSort={onSort} right className={TC}>You</SortTh><Th c="text-right">Actions</Th></tr></thead>

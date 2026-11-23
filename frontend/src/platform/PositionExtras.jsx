@@ -1,11 +1,16 @@
 import React from 'react';
-import { MapPin, Monitor, Smartphone, Tablet, Copy, Printer, Plus, Trophy, Check, Globe } from 'lucide-react';
+import { MapPin, Monitor, Smartphone, Tablet, Copy, Download, Printer, Plus, Trophy, Check, Globe } from 'lucide-react';
 import { Card, Badge, Button, useAction } from './SeoUi';
 import { api, useApi } from './seoApi';
-import DataTable from './DataTable';
+import DataTable, { downloadCsv, downloadFile } from './DataTable';
 
 export const SECTIONS = [['sec-landscape', 'Landscape'], ['sec-overview', 'Overview'], ['sec-distribution', 'Rankings Distribution'], ['sec-tags', 'Tags'], ['sec-pages', 'Pages'],
   ['sec-cannibal', 'Cannibalization'], ['sec-competitors', 'Competitors Discovery'], ['sec-devices', 'Devices & Locations'], ['sec-snippets', 'Featured Snippets']];
+
+/** The small Export CSV button of a table with its own markup: put it next to the search box or the pager, and give it the FULL sorted and filtered list. */
+export function CsvButton({ onClick, disabled = false, label = 'Export CSV', className = '', title = 'Download every row of this table (all pages, with the search and filters applied) as a CSV file' }) {
+  return <button type="button" onClick={onClick} disabled={disabled} title={title} className={`h-8 px-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-40 ${className}`}><Download size={13} />{label}</button>;
+}
 
 export const Anchor = ({ id }) => <span id={id} className="block scroll-mt-24" aria-hidden="true" />;
 
@@ -45,6 +50,7 @@ export function ExportButtons({ d, toast }) {
   return (
     <div className="flex gap-2">
       <Button size="sm" icon={Copy} onClick={copy}>Copy all</Button>
+      <Button size="sm" icon={Download} onClick={() => downloadFile(`position-tracking-summary-${d.domain}-${new Date().toISOString().slice(0, 10)}.md`, `# Position tracking: ${d.domain}\n\n${d.period.start} to ${d.period.end}\n\n${d.summary.map(s => `- ${s}`).join('\n')}\n`, 'text/markdown')} title="Download the summary as a Markdown file">Download summary</Button>
       <Button size="sm" icon={Printer} onClick={() => window.print()}>PDF</Button>
     </div>
   );
@@ -70,7 +76,7 @@ export function FeaturedSnippets({ d }) {
   return (
     <Card title="Featured snippets" subtitle="Keywords where Google shows a snippet, answer box or People-also-ask, and whether it is yours" pad={false}>
       {rows.length ? (
-        <DataTable bare minWidth={0} rows={rows} rowKey={r => r.keyword} exportName="featured-snippets" label="keywords" searchPlaceholder="Search keywords" columnsMenu={false}
+        <DataTable bare minWidth={0} rows={rows} rowKey={r => r.keyword} exportName={`featured-snippets-${d.domain}`} label="keywords" searchPlaceholder="Search keywords" columnsMenu={false}
           columns={[
             { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-4 py-2.5', thClass: 'px-4 py-2.5' },
             { id: 'feature', header: 'Feature', value: r => r.feature, className: 'px-4 py-2.5 text-slate-600', thClass: 'px-4 py-2.5' },
@@ -90,7 +96,8 @@ export function CompetitorsDiscovery({ d, b, onChanged }) {
   const rivals = (d.competitors || []).filter(c => !c.you && c.domain).slice(0, 10);
   const add = (domain) => run(domain, async () => { await api(`/businesses/${b.id}/seo/track-competitor`, { method: 'POST', body: { domain } }); onChanged(); });
   return (
-    <Card title="Competitors discovery" subtitle="Domains found in the Google results of your keywords">
+    <Card title="Competitors discovery" subtitle="Domains found in the Google results of your keywords"
+      action={(d.competitors || []).some(c => !c.you && c.domain) && <Button size="sm" icon={Download} onClick={() => downloadCsv(`competitors-discovered-${d.domain}`, ['Domain', 'Keywords', 'Average position', 'Visibility (%)', 'Tracked as competitor'], (d.competitors || []).filter(c => !c.you && c.domain).map(c => [c.domain, c.keywords, c.avg_position ?? '', c.visibility ?? '', tracked.has(c.domain) ? 'Yes' : 'No']))} title="Download every domain found in the results (not only the first 10) as a CSV file">Export CSV</Button>}>
       {rivals.length ? (
         <ul className="divide-y divide-slate-100 -my-2">{rivals.map(c => (
           <li key={c.domain} className="flex items-center gap-3 py-2.5 text-13">
@@ -146,7 +153,7 @@ export function DevicesLocations({ d, b }) {
       </Card>
       {rows.length > 0 && (
         <Card pad={false} title="Keywords by device" subtitle="Average position on desktop and on mobile for every tracked keyword that was shown">
-          <DataTable bare minWidth={720} rows={rows} rowKey={r => r.keyword} exportName="keywords-by-device" label="keywords" searchPlaceholder="Search keywords" columnsMenu={false}
+          <DataTable bare minWidth={720} rows={rows} rowKey={r => r.keyword} exportName={`keywords-by-device-${d?.domain || 'site'}`} label="keywords" searchPlaceholder="Search keywords" columnsMenu={false}
             rowClass={() => 'hover:bg-slate-50'}
             columns={[
               { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-4 py-2.5 font-semibold text-slate-900', thClass: 'px-4 py-2.5' },

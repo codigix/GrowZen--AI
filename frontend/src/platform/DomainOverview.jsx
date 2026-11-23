@@ -9,7 +9,9 @@ import { SeoShell, Card, Badge, Button, ErrorNote, Tabs, useAction, useToast, Sk
 import { api, useApi, fmt } from './seoApi';
 import { IntelBar, IntelSections, headline } from './DomainIntel';
 import Select from '../components/Select';
-import DataTable, { usePager, Pager, useSorted, SortTh } from './DataTable';
+import DataTable, { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
+
+const CsvBtn = ({ onClick, disabled = false, label = 'Export CSV', className = '', title = 'Download every row of this table (all pages) as a CSV file' }) => <button type="button" onClick={onClick} disabled={disabled} title={title} className={`h-8 px-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-40 ${className}`}><Download size={13} />{label}</button>;
 
 /**
  * Domain Overview from real sources only: Google traffic (clicks, impressions, position, keywords, pages, countries,
@@ -31,7 +33,7 @@ const TC = 'px-4 py-2.5 whitespace-nowrap';
 const numOf = (v) => (v == null || v === '' ? null : Number(v));
 const numCell = `${LI} text-right tabular-nums`;
 const SAMPLE_COLS = [
-  { id: 'page', header: 'Referring page', value: x => short(x.source_url), cell: x => <a href={x.source_url} target="_blank" rel="noreferrer" title={x.source_url} className="text-indigo-700 hover:underline">{short(x.source_url)}</a>, className: `${LI} max-w-[280px] truncate`, thClass: LI },
+  { id: 'page', header: 'Referring page', value: x => x.source_url, cell: x => <a href={x.source_url} target="_blank" rel="noreferrer" title={x.source_url} className="text-indigo-700 hover:underline">{short(x.source_url)}</a>, className: `${LI} max-w-[280px] truncate`, thClass: LI },
   { id: 'anchor', header: 'Anchor', value: x => x.anchor_text, cell: x => <span title={x.anchor_text}>{x.anchor_text || '—'}</span>, className: `${LI} max-w-[200px] truncate text-slate-700`, thClass: LI },
   { id: 'type', header: 'Type', right: true, value: x => ((x.rel_attributes || []).some(r => /nofollow|ugc|sponsored/i.test(r)) ? 'nofollow' : 'follow'), cell: x => <Badge tone="gray">{(x.rel_attributes || []).some(r => /nofollow|ugc|sponsored/i.test(r)) ? 'nofollow' : 'follow'}</Badge>, className: `${LI} text-right`, thClass: LI }
 ];
@@ -46,7 +48,7 @@ const DOMAIN_COLS = [
   { id: 'backlinks', header: 'Backlinks', right: true, first: 'desc', value: x => numOf(x.backlinks), cell: x => fmt(x.backlinks), className: `${numCell} text-indigo-700`, thClass: LI }
 ];
 const PAGE_COLS = [
-  { id: 'page', header: 'Page', value: x => short(x.url), cell: x => <a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">{short(x.url)}</a>, className: `${LI} max-w-[420px] truncate`, thClass: LI },
+  { id: 'page', header: 'Page', value: x => x.url, cell: x => <a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">{short(x.url)}</a>, className: `${LI} max-w-[420px] truncate`, thClass: LI },
   { id: 'domains', header: 'Domains', right: true, first: 'desc', value: x => numOf(x.domains), cell: x => fmt(x.domains), className: numCell, thClass: LI },
   { id: 'backlinks', header: 'Backlinks', right: true, first: 'desc', value: x => numOf(x.backlinks), cell: x => fmt(x.backlinks), className: `${numCell} text-indigo-700`, thClass: LI }
 ];
@@ -98,7 +100,7 @@ function BacklinksSection({ businessId }) {
       <h2 className="text-18 font-bold text-slate-900 flex items-center gap-2"><Link2 size={17} className="text-indigo-500" />Backlinks <span className="text-12 font-normal text-slate-500">found by our discovery bot · {fmt(d.verified)} of {fmt(d.backlinks)} verified by crawl</span></h2>
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 items-start">
         <Card className="xl:col-span-3" title="Backlinks" pad={false} action={<Link to="/backlinks/links" className="text-12.5 font-semibold text-indigo-600 hover:underline">Open the explorer →</Link>}>
-          <DataTable bare columns={SAMPLE_COLS} rows={d.sample} rowKey={x => x.id} empty="No sample links yet." minWidth={0} columnsMenu={false} pageSize={10} />
+          <DataTable bare columns={SAMPLE_COLS} rows={d.sample} rowKey={x => x.id} empty="No sample links yet." minWidth={0} columnsMenu={false} pageSize={10} exportName="backlinks-sample" />
         </Card>
         <div className="xl:col-span-2 space-y-4">
           <Card title="Follow vs Nofollow">
@@ -191,18 +193,13 @@ function TrafficPanel({ d, r, filters, setFilter }) {
     r.timeline.forEach(x => { const k = x.date.slice(0, 7); by[k] = by[k] || { date: k, label: k, clicks: 0, impressions: 0 }; by[k].clicks += x.clicks; by[k].impressions += x.impressions; });
     return Object.values(by);
   }, [r, months]);
-  const exportCsv = () => {
-    const lines = [['date', 'clicks', 'impressions'], ...r.timeline.map(x => [x.date, x.clicks, x.impressions])].map(l => l.join(',')).join('\n');
-    const href = URL.createObjectURL(new Blob([lines], { type: 'text/csv' }));
-    Object.assign(document.createElement('a'), { href, download: `${d.domain || 'domain'}-traffic.csv` }).click();
-    setTimeout(() => URL.revokeObjectURL(href), 1000);
-  };
+  const exportCsv = () => downloadCsv(`traffic-by-day-${d.domain || 'site'}`, ['Date', 'Clicks', 'Impressions'], r.timeline.map(x => [x.date, x.clicks, x.impressions]));
   const maxClicks = Math.max(1, ...r.countries.map(c => c.clicks));
   const cs = useSorted(r.countries, countryValue);
   const cpg = usePager(cs.sorted, { size: 25 });
   return (
     <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 items-start">
-      <Card className="xl:col-span-2" title="Distribution by country" subtitle="Google Search clicks by the searcher's country" pad={false}>
+      <Card className="xl:col-span-2" title="Distribution by country" subtitle="Google Search clicks by the searcher's country" pad={false} action={<CsvBtn disabled={!cs.sorted.length} onClick={() => downloadCsv(`traffic-by-country-${d.domain || 'site'}`, ['Country', 'Country code', 'Clicks', 'Share of clicks (%)', 'Impressions', 'Click rate (%)', 'Position'], cs.sorted.map(c => [country(c.code), c.code, c.clicks, r.totals.clicks ? Math.round((c.clicks / r.totals.clicks) * 10000) / 100 : '', c.impressions, c.ctr ?? '', c.position ?? '']))} />}>
         <div className="overflow-auto max-h-[430px]">
           <table className="w-full text-13">
             <thead className="sticky top-0 bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><SortTh id="country" sort={cs.sort} onSort={cs.onSort} className={TC}>Country</SortTh><SortTh id="clicks" sort={cs.sort} onSort={cs.onSort} right first="desc" className={TC}>Clicks</SortTh><SortTh id="impressions" sort={cs.sort} onSort={cs.onSort} right first="desc" className={TC}>Impr.</SortTh><SortTh id="position" sort={cs.sort} onSort={cs.onSort} right className={TC}>Pos.</SortTh></tr></thead>
@@ -222,7 +219,7 @@ function TrafficPanel({ d, r, filters, setFilter }) {
       </Card>
 
       <Card className="xl:col-span-3" title="Traffic" subtitle={`Google Search, ${r.period.start} → ${r.period.end}`}
-        action={<div className="flex items-center gap-2"><div className="flex gap-0.5 p-0.5 bg-slate-100 rounded">{[['Days', false], ['Months', true]].map(([l, v]) => <button key={l} type="button" onClick={() => setMonths(v)} className={`h-7 px-2.5 text-12 font-semibold rounded cursor-pointer ${months === v ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>{l}</button>)}</div><Button size="sm" icon={Download} onClick={exportCsv}>Export</Button></div>}>
+        action={<div className="flex items-center gap-2"><div className="flex gap-0.5 p-0.5 bg-slate-100 rounded">{[['Days', false], ['Months', true]].map(([l, v]) => <button key={l} type="button" onClick={() => setMonths(v)} className={`h-7 px-2.5 text-12 font-semibold rounded cursor-pointer ${months === v ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>{l}</button>)}</div><Button size="sm" icon={Download} onClick={exportCsv} title="Download the clicks and impressions of every day in this period as a CSV file">Export CSV</Button></div>}>
         <div className="flex flex-wrap gap-4 mb-2 text-12.5">
           {[['clicks', 'Organic traffic (clicks)', '#6658dd'], ['impressions', 'Impressions', '#1abc9c']].map(([k, l, c]) => (
             <label key={k} className="inline-flex items-center gap-1.5 cursor-pointer text-slate-700"><input type="checkbox" checked={show[k]} onChange={e => setShow(s => ({ ...s, [k]: e.target.checked }))} className="accent-indigo-600" style={{ accentColor: c }} />{l}</label>
@@ -263,6 +260,7 @@ function KeywordsPanel({ r }) {
       <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
         <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded">{[['keywords', `Organic keywords (${r.keywords.length}${r.keywords_capped ? '+' : ''})`], ['pages', `Top pages (${r.pages.length})`]].map(([id, l]) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-8 px-3 text-12.5 font-semibold rounded cursor-pointer ${tab === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>{l}</button>)}<span title="Paid keywords need Google Ads or a paid index" className="h-8 px-3 text-12.5 font-semibold text-slate-300 inline-flex items-center cursor-not-allowed">Paid</span></div>
         <label className="relative ml-auto"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter" className="h-8 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></label>
+        <CsvBtn disabled={!rows.length} title="Download every row (all pages, with the filter applied) as a CSV file" onClick={() => downloadCsv(`${tab === 'keywords' ? 'organic-keywords' : 'top-pages'}-${r.property || 'site'}`, [tab === 'keywords' ? 'Keyword' : 'Page address', 'Clicks', 'Impressions', 'Click rate (%)', 'Position'], rows.map(x => [x.query || x.page, x.clicks, x.impressions, x.ctr ?? '', x.position ?? '']))} />
       </div>
       <div className="overflow-auto max-h-[460px]">
         <table className="w-full text-13">
@@ -304,7 +302,7 @@ function Growth({ r }) {
       <Card title="Clicks by month" subtitle="The current period against its own growth month by month">
         <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={months} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}><CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} /><XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} /><YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} allowDecimals={false} /><Tooltip /><Bar dataKey="clicks" name="Clicks" fill="#6658dd" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
       </Card>
-      <Card pad={false} title="Month by month">
+      <Card pad={false} title="Month by month" action={<CsvBtn disabled={!ms.sorted.length} onClick={() => downloadCsv(`traffic-by-month-${r.property || 'site'}`, ['Month', 'Clicks', 'Change in clicks (%)', 'Impressions', 'Click rate (%)'], ms.sorted.map(m => [m.month, m.clicks, m.change ?? '', m.impressions, m.ctr]))} />}>
         <table className="w-full text-13"><thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><SortTh id="month" sort={ms.sort} onSort={ms.onSort} first="desc" className={TC}>Month</SortTh><SortTh id="clicks" sort={ms.sort} onSort={ms.onSort} right first="desc" className={TC}>Clicks</SortTh><SortTh id="change" sort={ms.sort} onSort={ms.onSort} right first="desc" className={TC}>Change</SortTh><SortTh id="impressions" sort={ms.sort} onSort={ms.onSort} right first="desc" className={TC}>Impressions</SortTh><SortTh id="ctr" sort={ms.sort} onSort={ms.onSort} right first="desc" className={TC}>CTR</SortTh></tr></thead>
           <tbody className="divide-y divide-slate-100">{mpg.rows.map(m => <tr key={m.month} className="hover:bg-slate-50"><td className="px-4 py-2.5 font-medium text-slate-900">{m.month}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-600">{fmt(m.clicks)}</td><td className="px-4 py-2.5 text-right">{m.change != null ? <Change now={1 + (m.change / 100)} before={1} /> : '—'}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(m.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.ctr}%</td></tr>)}</tbody></table>
         <Pager p={mpg} label="months" />
@@ -318,7 +316,7 @@ function Compare({ r, setFilter }) {
   const { sorted, sort, onSort } = useSorted(r.countries, countryValue);
   const pg = usePager(sorted, { size: 25 });
   return (
-    <Card pad={false} title="Compare by countries" subtitle="Where the clicks come from and how the site ranks there. Click a country to filter the whole page.">
+    <Card pad={false} title="Compare by countries" subtitle="Where the clicks come from and how the site ranks there. Click a country to filter the whole page." action={<CsvBtn disabled={!sorted.length} onClick={() => downloadCsv(`traffic-by-country-${r.property || 'site'}`, ['Country', 'Country code', 'Clicks', 'Share of clicks (%)', 'Impressions', 'Click rate (%)', 'Position'], sorted.map(c => [country(c.code), c.code, c.clicks, total ? Math.round((c.clicks / total) * 10000) / 100 : '', c.impressions, c.ctr ?? '', c.position ?? '']))} />}>
       <div className="overflow-auto">
         <table className="w-full text-13">
           <thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><SortTh id="country" sort={sort} onSort={onSort} className={TC}>Country</SortTh><SortTh id="clicks" sort={sort} onSort={onSort} right first="desc" className={TC}>Clicks</SortTh><SortTh id="share" sort={sort} onSort={onSort} right first="desc" className={TC}>Share</SortTh><SortTh id="impressions" sort={sort} onSort={onSort} right first="desc" className={TC}>Impressions</SortTh><SortTh id="ctr" sort={sort} onSort={onSort} right first="desc" className={TC}>CTR</SortTh><SortTh id="position" sort={sort} onSort={onSort} right className={TC}>Avg position</SortTh></tr></thead>

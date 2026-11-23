@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { RefreshCw, Sparkles, ExternalLink, ArrowUp, ArrowDown, ChevronDown, ChevronRight, MapPin, Search } from 'lucide-react';
+import { RefreshCw, Sparkles, Download, ExternalLink, ArrowUp, ArrowDown, ChevronDown, ChevronRight, MapPin, Search } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Stat, useAction, useToast, SkList } from './SeoUi';
 import { api, useApi, fmtDate } from './seoApi';
 import Tip from './Tip';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const LEVEL = { fix: ['Fix', 'red'], improve: ['Improve', 'amber'], keep: ['Keep', 'green'] };
 const tone = (r) => (r == null ? 'gray' : r <= 3 ? 'green' : r <= 10 ? 'blue' : 'amber');
@@ -78,6 +78,8 @@ export default function PagePositions({ b }) {
           <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-slate-100">
             {FILTERS.map(([id, label, f]) => <button key={id} type="button" onClick={() => setFilter(id)} aria-pressed={filter === id} className={pill(filter === id)}>{label} <span className="opacity-70">{d.rows.filter(f).length}</span></button>)}
             <label className="relative ml-auto"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-52 pl-8 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+            <button type="button" disabled={!sorted.length} onClick={() => downloadCsv(`page-positions-${b.name}`, ['Keyword', 'Checked on', 'Position', 'Change in position', 'Impressions', 'Clicks', 'Position in Google Maps', 'Page that ranks', 'Page chosen for the keyword', 'Searches per month', 'Ahead of you', 'What to do'],
+              sorted.map(r => [r.keyword, r.checked || '', r.rank == null ? '' : (r.average_position ?? r.rank), r.change ?? '', r.impressions ?? '', r.clicks ?? '', r.maps_rank ?? '', r.url || '', r.target_url || '', r.volume ?? '', (r.ahead || []).join('; '), (r.advice || []).map(a => `${(LEVEL[a.level] || LEVEL.improve)[0]}: ${a.text}`).join(' | ')]))} title="Download every keyword (all pages, with the filter and search applied) as a CSV file" className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg ring-1 ring-inset ring-slate-300 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-40"><Download size={13} />Export CSV</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1000px] text-13">

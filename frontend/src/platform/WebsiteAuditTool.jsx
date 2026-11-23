@@ -51,6 +51,7 @@ const SiteResearch = lazy(() => import('./WorkPlanPage').then(m => ({ default: m
 const SITE_AREAS = ['technical', 'metadata', 'content', 'seo'];
 import { AuditSummary, PageRewrites } from './AuditAI';
 import Select from '../components/Select';
+import { downloadCsv } from './DataTable';
 
 /**
  * Audit any website through the SEO backend: Google PageSpeed (Lighthouse) for SEO, speed,
@@ -787,6 +788,7 @@ export function ReportStep({ sa, business, onNext }) {
             )}
             {business && <Button size="sm" icon={ListChecks} busy={planning} onClick={createTasks}>Create weekly tasks</Button>}
             <Button size="sm" icon={Download} onClick={downloadPdf}>PDF report</Button>
+            <Button size="sm" icon={Download} onClick={() => downloadCsv(`seo-audit-issues-${hostOf(a.target)}`, ['Severity', 'Issue', 'How to fix'], issues.map(i => [i.level, i.title, i.fix || '']))} disabled={!issues.length}>Issues CSV</Button>
             <Button size="sm" variant="primary" icon={RotateCw} busy={sa.busy === 'start' || sa.running} onClick={rerun}>Re-check</Button>
           </div>
         </div>

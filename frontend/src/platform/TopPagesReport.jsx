@@ -7,7 +7,7 @@ import SearchPerfNav from './SearchPerfNav';
 import { SeoShell, Card, Badge, Button, ErrorNote, useModulePath, SkPage } from './SeoUi';
 import { useApi, fmt } from './seoApi';
 import { IntelBar } from './DomainIntel';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import Select from '../components/Select';
 
 /**
@@ -94,14 +94,8 @@ function Summary({ d }) {
   );
 }
 
-const csv = (name, rows) => {
-  const head = ['url', 'sources', 'traffic', 'traffic %', 'keywords', 'ai prompts', 'ref domains', 'avg position', 'top keyword', 'intent', 'words', 'issues', 'status'];
-  const text = [head, ...rows.map(r => [r.url, r.sources.join('+'), r.traffic, r.traffic_share, r.keywords, r.llm_prompts, r.ref_domains, r.avg_position, r.top_keyword, r.intent, r.words, r.issues, r.status])]
-    .map(l => l.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-  const href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
-  Object.assign(document.createElement('a'), { href, download: name }).click();
-  setTimeout(() => URL.revokeObjectURL(href), 1000);
-};
+const csv = (name, rows) => downloadCsv(name, ['Page address', 'Page title', 'Status', 'Top keyword', 'Keyword difficulty (%)', 'Cost per click (USD)', 'Searches per month', 'Average position', 'Change in position', 'Traffic', 'Share of traffic (%)', 'Keywords', 'Intent', 'Issues', 'AI prompts', 'Referring domains', 'Words', 'Inbound links', 'Structured data', 'Sources'],
+  rows.map(r => [r.url, r.title || '', r.status && r.status !== 'all' ? r.status : '', r.top_keyword || '', r.kd ?? '', r.cpc ?? '', r.volume ?? '', r.avg_position ?? '', r.position_change ?? '', r.traffic ?? '', r.traffic_share ?? '', r.keywords ?? '', r.intent || '', r.issues ?? '', r.llm_prompts ?? '', r.ref_domains ?? '', r.words ?? '', r.inbound ?? '', (r.schema || []).join('; '), (r.sources || []).join('; ')]));
 
 export function AllPages({ d }) {
   const [q, setQ] = useState('');
@@ -117,7 +111,7 @@ export function AllPages({ d }) {
   const chip = (id, l, n) => <button key={id} type="button" onClick={() => { setView(id); }} className={`h-8 px-3 text-12.5 font-semibold rounded border cursor-pointer ${view === id ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}>{l}{n != null && <span className="ml-1 opacity-60">{n}</span>}</button>;
   const has = d.has;
   return (
-    <Card title={<span>All pages <span className="text-slate-400 font-normal">{d.total}</span></span>} pad={false} action={<Button size="sm" icon={Download} onClick={() => csv(`${d.domain}-top-pages.csv`, sorted)}>Export</Button>}>
+    <Card title={<span>All pages <span className="text-slate-400 font-normal">{d.total}</span></span>} pad={false} action={<Button size="sm" icon={Download} onClick={() => csv(`top-pages-${d.domain}`, sorted)} title="Download every page (all pages, with the filters applied) as a CSV file">Export CSV</Button>}>
       <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
         <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={reset(e => setQ(e.target.value))} placeholder="Filter by URL" className="h-8 pl-8 pr-3 w-52 text-13 rounded border border-slate-200 bg-white outline-none focus:border-indigo-400" /></label>
         <div className="flex gap-1">{chip('all', 'All URLs')}{chip('new', 'New', d.comparable ? d.new : null)}{chip('lost', 'Lost', d.comparable ? d.lost : null)}</div>

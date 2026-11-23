@@ -1,6 +1,6 @@
 import React from 'react';
-import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, Link2 } from 'lucide-react';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, Link2, Download } from 'lucide-react';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const when = (iso, long) => { if (!iso) return '—'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleDateString('en-GB', long ? { day: '2-digit', month: 'short', year: 'numeric' } : { day: '2-digit', month: 'short' }); };
 const ago = (iso) => { if (!iso) return null; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return Number.isNaN(d) ? null : d <= 0 ? 'today' : d === 1 ? 'yesterday' : d < 60 ? `${d} days ago` : `${Math.round(d / 30)} months ago`; };
@@ -98,7 +98,8 @@ export default function LinkDetail({ r }) {
 
       {r.links?.length > 0 && (
         <div>
-          <h4 className={H}>Links to your site on this page ({r.links.length})</h4>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2"><h4 className={`${H} !mb-0`}>Links to your site on this page ({r.links.length})</h4>
+            <button type="button" onClick={() => downloadCsv(`links-on-page-${String(r.source_domain || r.domain || 'page').replace(/[^a-z0-9.-]+/gi, '-')}`, ['Anchor', 'Points to', 'Placement', 'Follow type'], linkRows.map(l => [l.anchor || '', l.href || '', l.placement || '', isNofollow(l) ? `rel ${(l.rel || []).join(' ')}` : 'Follow']))} title={`Download all ${linkRows.length} links on this page as a CSV file`} className="h-8 px-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50"><Download size={13} />Export CSV</button></div>
           <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200 bg-white">
             <table className="w-full min-w-[640px] text-13">
               <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><SortTh id="anchor" sort={sort} onSort={onSort} className={LTC}>Anchor</SortTh><SortTh id="href" sort={sort} onSort={onSort} className={LTC}>Points to</SortTh><SortTh id="placement" sort={sort} onSort={onSort} className={LTC}>Where on the page</SortTh><SortTh id="type" sort={sort} onSort={onSort} className={LTC}>Type</SortTh></tr></thead>

@@ -6,7 +6,7 @@ import Select from '../components/Select';
 import { Act, Head, OpenAct } from './TableBits';
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 import Tip from './Tip';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const VIEWS = {
   links: ['Backlinks', 'Every link to your website that the crawler found: follow or nofollow, anchor text, kind of site, authority and whether it is worth having.'],
@@ -30,6 +30,12 @@ const norm = (s) => String(s ?? '').toLowerCase();
 function ListSearch({ q, setQ, placeholder = 'Search this list' }) {
   return <label className="relative inline-block mb-3"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-8 w-56 pl-8 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>;
 }
+/** Download every row of a list as a CSV: `rows()` gives the full sorted list as arrays, so the file is not limited to the page shown. */
+function CsvButton({ name, head, rows, tip = 'Download every row of this table as a CSV file' }) {
+  return <button type="button" onClick={() => downloadCsv(name, head, rows())} title={tip} className="h-8 px-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50"><Download size={13} />Export CSV</button>;
+}
+const CsvBar = ({ pad = 'px-5', ...p }) => <div className={`${pad} py-2 border-b border-slate-100 flex justify-end`}><CsvButton {...p} /></div>;
+const siteName = (b) => String(b?.website || b?.name || 'site').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].replace(/[^a-z0-9.-]+/gi, '-');
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 const path = (u) => { try { const x = new URL(u); return (x.pathname + x.search) || '/'; } catch { return u; } };
 const day = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
@@ -139,11 +145,14 @@ const linkValue = (x, k) => ({
   page: x.source_domain, anchor: x.anchor, target: path(x.target_url), follow: x.follow, category: x.category?.label,
   da: num(x.metrics?.da), pa: num(x.metrics?.pa), spam: num(x.metrics?.spam), site: num(x.metrics?.crawler?.links), useful: x.useful, seen: stamp(x.first_seen)
 })[k];
-function LinksTable({ d, showScores, resetKey }) {
+function LinksTable({ d, showScores, resetKey, site }) {
   const { sorted, sort, onSort } = useSorted(d.links || NONE, linkValue);
   const pg = usePager(sorted, { size: 25, resetKey });
+  const csv = () => sorted.map(x => [x.source_url, x.source_domain, x.is_live ? 'Live' : x.status_label, x.anchor || '', x.target_url, (FOLLOW[x.follow] || FOLLOW.dofollow)[0], x.category?.label || '',
+    ...(showScores ? [num(x.metrics?.da), num(x.metrics?.pa), num(x.metrics?.spam)] : []), num(x.metrics?.crawler?.links), num(x.metrics?.crawler?.pages), (USEFUL[x.useful] || USEFUL.unscored)[0], x.useful_why || '', x.first_seen || '']);
   return (
     <>
+      <CsvBar name={`backlinks-${site}`} head={['Linking page', 'Linking site', 'Status', 'Anchor text', 'Goes to', 'Follow', 'Category', ...(showScores ? ['DA', 'PA', 'Spam score'] : []), 'Links from this site', 'Pages with the links', 'Useful?', 'Why', 'First seen']} rows={csv} tip={`Exports the ${sorted.length} loaded links (the page loads at most 100 at a time)`} />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-13">
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
@@ -210,7 +219,7 @@ function Links({ b }) {
         <Select value={f.category} onChange={set('category')} className={sel} aria-label="Category"><option value="">Any category</option>{Object.keys(d.facets?.category || {}).map(k => <option key={k} value={k}>{k}</option>)}</Select>
         <Select value={f.sort} onChange={set('sort')} className={sel} aria-label="Sort"><option value="recent">Newest first</option><option value="da">Highest DA</option><option value="domain">By site</option></Select>
       </Filters>
-      <LinksTable d={d} showScores={showScores} resetKey={`${JSON.stringify(f)}|${dq}`} />
+      <LinksTable d={d} showScores={showScores} resetKey={`${JSON.stringify(f)}|${dq}`} site={siteName(b)} />
       <p className="px-5 py-3 border-t border-slate-100 text-11.5 text-slate-400">{d.total} link{d.total !== 1 ? 's' : ''}. Follow type and anchor are read from the page by your crawler. “Useful?” is our own judgement, not a Google or Moz metric.</p>
       {toastSNode}
     </Card>
@@ -221,12 +230,15 @@ const domainValue = (x, k) => ({
   domain: x.domain, live: num(x.live), follow: num(x.dofollow), category: x.category?.label, anchors: (x.anchors || []).join(', '),
   da: num(x.metrics?.da), spam: num(x.metrics?.spam), site: num(x.metrics?.crawler?.links), relevance: num(x.quality?.relevance), useful: x.useful, seen: stamp(x.last_seen)
 })[k];
-function DomainsTable({ d, resetKey }) {
+function DomainsTable({ d, resetKey, site }) {
   const { sorted, sort, onSort } = useSorted(d.domains || NONE, domainValue);
   const pg = usePager(sorted, { size: 25, resetKey });
   const moz = hasMoz(d.domains);
+  const csv = () => sorted.map(x => [x.domain, x.sample_url || '', num(x.live), num(x.lost), num(x.dofollow), num(x.nofollow), x.category?.label || '', (x.anchors || []).join(', '),
+    ...(moz ? [num(x.metrics?.da), num(x.metrics?.spam)] : []), num(x.metrics?.crawler?.links), num(x.metrics?.crawler?.pages), num(x.quality?.relevance), (USEFUL[x.useful] || USEFUL.unscored)[0], x.useful_why || '', x.last_seen || '']);
   return (
     <>
+      <CsvBar name={`referring-domains-${site}`} head={['Domain', 'Example linking page', 'Live links', 'Lost links', 'Follow links', 'Other links', 'Category', 'Top anchors', ...(moz ? ['DA', 'Spam score'] : []), 'Links from this site', 'Pages with the links', 'Relevance', 'Useful?', 'Why', 'Last seen']} rows={csv} tip={`Exports all ${sorted.length} loaded referring domains`} />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1050px] text-13">
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
@@ -273,7 +285,7 @@ function Domains({ b }) {
         <Select value={f.verdict} onChange={e => setF({ ...f, verdict: e.target.value })} className={sel} aria-label="Useful"><option value="">Useful or not</option>{Object.entries(USEFUL).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</Select>
         <Select value={f.sort} onChange={e => setF({ ...f, sort: e.target.value })} className={sel} aria-label="Sort"><option value="links">Most links</option><option value="da">Highest DA</option><option value="risk">Highest risk</option><option value="recent">Newest</option><option value="domain">A to Z</option></Select>
       </Filters>
-      <DomainsTable d={d} resetKey={`${JSON.stringify(f)}|${dq}`} />
+      <DomainsTable d={d} resetKey={`${JSON.stringify(f)}|${dq}`} site={siteName(b)} />
     </Card>
   );
 }
@@ -405,11 +417,12 @@ function AdviceModal({ b, item, onClose, onChanged }) {
 }
 
 const aiValue = (p, k) => ({ site: p.name, kind: p.kind, why: p.why, how: p.how })[k];
-function AiTable({ rows, busy, add, onOpen }) {
+function AiTable({ rows, busy, add, onOpen, site }) {
   const { sorted, sort, onSort } = useSorted(rows, aiValue);
   const pg = usePager(sorted, { size: 10 });
   return (
     <>
+        <CsvBar pad="" name={`link-places-suggested-${site}`} head={['Site', 'Domain', 'Kind', 'You get', 'First step']} rows={() => sorted.map(p => [p.name, p.domain, p.kind, p.why, p.how])} tip={`Exports all ${sorted.length} suggested places`} />
         <div className="overflow-x-auto -mx-5">
           <table className="w-full min-w-[820px] text-13">
             <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
@@ -456,7 +469,7 @@ function AiPlatforms({ b, onOpen, onChanged }) {
       {res?.state === 'no_ai' && <p className="text-13 text-amber-800">{res.message}</p>}
       {res?.state === 'error' && <p className="text-13 text-amber-800">{res.message}</p>}
       {res?.state === 'ok' && (res.platforms.length === 0 ? <p className="text-13 text-slate-500">Nothing new to suggest right now.</p> : (
-        <AiTable rows={res.platforms} busy={busy} add={add} onOpen={onOpen} />
+        <AiTable rows={res.platforms} busy={busy} add={add} onOpen={onOpen} site={siteName(b)} />
       ))}
       {res?.note && <p className="text-11.5 text-slate-400 mt-3">{res.note}</p>}
       {toastNode}
@@ -515,11 +528,12 @@ function BulkModal({ b, platforms, onClose, onSent }) {
 }
 
 const foundValue = (p, k) => ({ domain: p.domain, kinds: (p.kinds || []).join(', '), email: p.emails?.[0]?.email, plan: p.in_plan })[k];
-function FoundTable({ rows, picked, setPicked, busy, take }) {
+function FoundTable({ rows, picked, setPicked, busy, take, site }) {
   const { sorted, sort, onSort } = useSorted(rows, foundValue);
   const pg = usePager(sorted, { size: 25 });
   return (
     <div className="border-b border-slate-100">
+        <CsvBar name={`outreach-platforms-${site}`} head={['Platform', 'Page found', 'Title', 'Found by', 'Emails', 'In plan']} rows={() => sorted.map(p => [p.domain, p.page || '', p.title || '', (p.kinds || []).join(', '), (p.emails || []).map(e => e.email).join('; '), p.in_plan || ''])} tip={`Exports all ${sorted.length} platforms found`} />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-13">
             <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
@@ -579,7 +593,7 @@ function FindSites({ b, onOpen, onChanged }) {
       </div>
       {found?.state && found.state !== 'ok' && <p className="px-5 py-3 text-13 text-amber-800">{found.message}</p>}
       {found?.state === 'ok' && (
-        <FoundTable rows={found.platforms} picked={picked} setPicked={setPicked} busy={busy} take={take} />
+        <FoundTable rows={found.platforms} picked={picked} setPicked={setPicked} busy={busy} take={take} site={siteName(b)} />
       )}
       <ErrorNote>{error}</ErrorNote>
       {r.error && <p className="px-5 py-4 text-13 text-red-600">{r.error.message}</p>}
@@ -587,6 +601,7 @@ function FindSites({ b, onOpen, onChanged }) {
       {d?.state === 'no_topic' && <p className="px-5 py-6 text-13 text-slate-500">{d.note}</p>}
       {d?.state === 'ok' && (
         <div className="overflow-x-auto">
+          <CsvBar name={`outreach-searches-${siteName(b)}`} head={['Kind of site', 'Search', 'Search link', 'Finds', 'What to ask']} rows={() => d.groups.flatMap(g => g.queries.map(x => [g.title, x.q, x.url || '', x.why || '', g.ask || '']))} tip="Exports every search, with the kind of site and what to ask" />
           <table className="w-full min-w-[860px] text-13">
             <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
               <th className={TH}><Head what="The kind of site this search finds." why="Each kind needs a different ask.">Kind of site</Head></th>
@@ -617,11 +632,12 @@ function FindSites({ b, onOpen, onChanged }) {
 
 const doneSource = (x) => (x.source === 'ai' ? 'Suggested by AI' : x.source === 'manual' ? 'Found by you' : 'Competitor gap');
 const doneValue = (x, k) => ({ domain: x.domain, source: doneSource(x), result: x.confirmed ? 0 : 1, note: x.note })[k];
-function DoneTable({ rows }) {
+function DoneTable({ rows, site }) {
   const { sorted, sort, onSort } = useSorted(rows, doneValue);
   const pg = usePager(sorted, { size: 25 });
   return (
     <>
+    <CsvBar name={`links-won-${site}`} head={['Site', 'Where it came from', 'Result', 'Note']} rows={() => sorted.map(x => [x.domain, doneSource(x), x.confirmed ? 'Confirmed by the crawler' : 'Marked by you: not seen by the crawler yet', x.note || ''])} tip={`Exports all ${sorted.length} sites`} />
     <div className="overflow-x-auto">
               <table className="w-full min-w-[600px] text-13">
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><SortTh id="domain" sort={sort} onSort={onSort} className={TC}>Site</SortTh><SortTh id="source" sort={sort} onSort={onSort} className={TC}>Where it came from</SortTh><SortTh id="result" sort={sort} onSort={onSort} className={TC}>Result</SortTh><SortTh id="note" sort={sort} onSort={onSort} className={TC}>Note</SortTh><th className={`${TH} text-right`}>Actions</th></tr></thead>
@@ -641,13 +657,16 @@ const oppValue = (planMap) => (x, k) => ({
   priority: PRI[x.priority] || 1, domain: x.domain, competitors: (x.competitors || []).length, category: x.category?.label, follow: x.follow,
   da: num(x.metrics?.da), useful: x.useful, status: x.status, email: stamp(planMap[x.domain]?.emailed_at)
 })[k];
-function OppTable({ rows, all, stage, planMap, busy, setStatus, setOpen, resetKey }) {
+function OppTable({ rows, all, stage, planMap, busy, setStatus, setOpen, resetKey, site }) {
   const valueOf = useMemo(() => oppValue(planMap), [planMap]);
   const { sorted, sort, onSort } = useSorted(rows, valueOf);
   const pg = usePager(sorted, { size: 25, resetKey });
   const moz = hasMoz(rows);
+  const csv = () => sorted.map(x => { const m = planMap[x.domain]; return [(PRIORITY[x.priority] || PRIORITY.low)[0], x.domain, x.sample?.url || '', (x.competitors || []).join(', '), x.category?.label || '', (FOLLOW[x.follow] || FOLLOW.dofollow)[0], ...(moz ? [num(x.metrics?.da)] : []),
+    (USEFUL[x.useful] || USEFUL.unscored)[0], (WORK[x.status] || WORK.new)[0], m?.emailed_at ? (m.replied_at ? 'Replied' : m.follow_up_due ? 'Follow up' : 'Sent') : 'Not emailed', m?.emailed_at || '', m?.contact_email || '', x.note || '']; });
   return (
     <>
+    <CsvBar name={`link-opportunities-${site}`} head={['Priority', 'Site', 'Page that links to a competitor', 'Competitors linked there', 'Category', 'Follow', ...(moz ? ['DA'] : []), 'Useful?', 'Status', 'Email', 'Email sent on', 'Emailed to', 'Note']} rows={csv} tip={`Exports all ${sorted.length} sites in this list (up to 200 are loaded)`} />
     <div className="overflow-x-auto">
               <table className="w-full min-w-[1000px] text-13">
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
@@ -717,9 +736,9 @@ function Opportunities({ b }) {
           <ErrorNote>{error}</ErrorNote>
           <div className="overflow-x-auto">
             {stage === 'done' ? (
-              <DoneTable rows={done} />
+              <DoneTable rows={done} site={siteName(b)} />
             ) : (
-              <OppTable rows={shown} all={all} stage={stage} planMap={planMap} busy={busy} setStatus={setStatus} setOpen={setOpen} resetKey={`${stage}|${cat}|${dq}`} />
+              <OppTable rows={shown} all={all} stage={stage} planMap={planMap} busy={busy} setStatus={setStatus} setOpen={setOpen} resetKey={`${stage}|${cat}|${dq}`} site={siteName(b)} />
             )}
           </div>
           <p className="px-5 py-3 border-t border-slate-100 text-11.5 text-slate-400">Listed because a competitor has a link there and you do not: a place to ask, not a promise. “Got the link” is confirmed automatically once the crawler finds your link on that site. The best ones also become tasks in your <Link to="/growth#issues" className="text-indigo-600 hover:underline">Growth Plan</Link>.</p>
@@ -737,7 +756,7 @@ const SEV = { serious: ['Serious', 'red'], warning: ['Fix soon', 'amber'], info:
 const GapNote = ({ children }) => <p className="py-6 text-center text-13 text-slate-500">{children}</p>;
 
 const gapOppValue = (o, k) => ({ site: o.referring_domain, targets: (o.competitor_targets || []).join(', '), page: o.source_pages?.[0] })[k];
-function GapOppsTable({ rows, busy, addToPlan, resetKey }) {
+function GapOppsTable({ rows, busy, addToPlan, resetKey, site }) {
   const [q, setQ] = useState('');
   const needle = norm(q.trim());
   const kept = useMemo(() => (needle ? rows.filter(o => norm(`${o.referring_domain} ${(o.competitor_targets || []).join(' ')} ${o.source_pages?.[0] || ''}`).includes(needle)) : rows), [rows, needle]);
@@ -745,7 +764,8 @@ function GapOppsTable({ rows, busy, addToPlan, resetKey }) {
   const pg = usePager(sorted, { size: 25, resetKey: `${resetKey}|${needle}` });
   return (
     <>
-      <ListSearch q={q} setQ={setQ} placeholder="Search these websites" />
+      <div className="flex flex-wrap items-center justify-between gap-2"><ListSearch q={q} setQ={setQ} placeholder="Search these websites" />
+        <span className="mb-3"><CsvButton name={`competitor-gap-sites-${site}`} head={['Website', 'Links to', 'Example page']} rows={() => sorted.map(o => [o.referring_domain, (o.competitor_targets || []).join(', '), o.source_pages?.[0] || ''])} tip={`Exports all ${sorted.length} websites (up to 500 are loaded)`} /></span></div>
       <div className="overflow-x-auto"><table className="w-full text-13">
                 <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><SortTh id="site" sort={sort} onSort={onSort} className={TC}>Website</SortTh><SortTh id="targets" sort={sort} onSort={onSort} className={TC}>Links to</SortTh><SortTh id="page" sort={sort} onSort={onSort} className={TC}>Example page</SortTh><th className={`${TH} text-right`}><Head right what="Open the site or its example page, or add the site to your link plan." why="The plan keeps the sites you will ask for a link, with their status." from="the Link Opportunities list.">Actions</Head></th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{pg.rows.map(o => (
@@ -766,7 +786,7 @@ function GapOppsTable({ rows, busy, addToPlan, resetKey }) {
 }
 
 const gapPageValue = (p, k) => { const l = p.links?.[0] || {}; return ({ page: p.source_url, targets: (p.competitor_targets || []).join(', '), anchor: l.anchor_text, follow: l.nofollow ? 'Nofollow' : l.sponsored ? 'Sponsored' : 'Follow', seen: stamp(l.last_seen) })[k]; };
-function GapPagesTable({ rows, resetKey }) {
+function GapPagesTable({ rows, resetKey, site }) {
   const [q, setQ] = useState('');
   const needle = norm(q.trim());
   const kept = useMemo(() => (needle ? rows.filter(p => norm(`${p.source_url} ${(p.competitor_targets || []).join(' ')} ${p.links?.[0]?.anchor_text || ''}`).includes(needle)) : rows), [rows, needle]);
@@ -774,7 +794,8 @@ function GapPagesTable({ rows, resetKey }) {
   const pg = usePager(sorted, { size: 25, resetKey: `${resetKey}|${needle}` });
   return (
     <>
-      <ListSearch q={q} setQ={setQ} placeholder="Search these pages" />
+      <div className="flex flex-wrap items-center justify-between gap-2"><ListSearch q={q} setQ={setQ} placeholder="Search these pages" />
+        <span className="mb-3"><CsvButton name={`competitor-gap-pages-${site}`} head={['Linking page', 'Competitor', 'Anchor', 'Follow', 'Last seen']} rows={() => sorted.map(p => { const l = p.links?.[0] || {}; return [p.source_url, (p.competitor_targets || []).join(', '), l.anchor_text || '', l.nofollow ? 'Nofollow' : l.sponsored ? 'Sponsored' : 'Follow', l.last_seen || '']; })} tip={`Exports all ${sorted.length} pages (up to 500 are loaded)`} /></span></div>
       <div className="overflow-x-auto"><table className="w-full text-13">
                 <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><SortTh id="page" sort={sort} onSort={onSort} className={TC}>Linking page</SortTh><SortTh id="targets" sort={sort} onSort={onSort} className={TC}>Competitor</SortTh><SortTh id="anchor" sort={sort} onSort={onSort} className={TC}>Anchor</SortTh><SortTh id="follow" sort={sort} onSort={onSort} className={TC}>Follow</SortTh><SortTh id="seen" sort={sort} onSort={onSort} first="desc" className={TC}>Last seen</SortTh><th className={`${TH} text-right`}><Head right what="Open the page that links to your competitor." why="Contact its owner and ask for a link to you too.">Actions</Head></th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{pg.rows.map(p => { const l = p.links?.[0] || {}; return (
@@ -837,12 +858,12 @@ function CompetitorGap({ b }) {
           )}
           <Card title="Websites to get links from" subtitle={comp ? `Sites that link ${comp} but not you.` : 'Sites that link your competitors but not you.'}>
             {!g.opportunities.length ? <GapNote>No gap found yet. As the crawler finds more links to your competitors, sites appear here.</GapNote> : (
-              <GapOppsTable rows={g.opportunities} busy={busy} addToPlan={addToPlan} resetKey={comp} />
+              <GapOppsTable rows={g.opportunities} busy={busy} addToPlan={addToPlan} resetKey={comp} site={siteName(b)} />
             )}
           </Card>
           <Card title="Pages that link them" subtitle="The exact pages, which competitor page they link to and the words used. Ask these sites to link you too.">
             {!pages.length ? <GapNote>None yet.</GapNote> : (
-              <GapPagesTable rows={pages} resetKey={comp} />
+              <GapPagesTable rows={pages} resetKey={comp} site={siteName(b)} />
             )}
           </Card>
         </>
@@ -878,7 +899,7 @@ function Audit({ b }) {
           <span><b className="tabular-nums text-red-600">{d.counts.serious}</b> serious</span><span><b className="tabular-nums text-amber-600">{d.counts.warning}</b> fix soon</span><span><b className="tabular-nums text-blue-600">{d.counts.info}</b> to know</span>
         </div>
       </div>
-      <Card title={`Problems found (${items.length})`} pad={false}>
+      <Card title={`Problems found (${items.length})`} pad={false} action={items.length > 0 && <CsvButton name={`backlink-audit-${siteName(b)}`} head={['Priority', 'Problem', 'Why it matters', 'Affects', 'What to do', 'Examples']} rows={() => items.map(i => [SEV[i.severity][0], i.title, i.why || '', num(i.count), i.fix || '', (i.examples || []).map(e => `${e.url} (${e.note})`).join('; ')])} tip="Exports every problem found, with what to do about it" />}>
         {items.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-13">

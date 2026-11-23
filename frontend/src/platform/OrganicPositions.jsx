@@ -5,7 +5,7 @@ import { ChevronRight, ExternalLink, Download, Sparkles } from 'lucide-react';
 import { Card, Badge, Button } from './SeoUi';
 import { fmt } from './seoApi';
 import { AXIS, Th, Chg, Empty, Filter, Segmented, path, Spark } from './PositionUi';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import Select from '../components/Select';
 
 const SERIES = [['top3', 'Top 3', '#f59e0b'], ['p4_10', '4-10', '#4338ca'], ['p11_20', '11-20', '#818cf8'], ['features', 'SERP Features', '#22c55e']];
@@ -16,13 +16,9 @@ const dash = <span className="text-slate-300">—</span>;
 const Url = ({ u }) => u ? <a href={u} target="_blank" rel="noreferrer" title={u} className="text-indigo-700 hover:underline inline-flex items-center gap-1 break-all">{u.replace(/^https?:\/\/(www\.)?/, '')}<ExternalLink size={10} className="shrink-0" /></a> : dash;
 
 function download(name, rows) {
-  const head = ['Keyword', 'Intent', 'Position', 'Previous', 'Change', 'SERP features', 'Est. traffic', 'Volume', 'URL', 'Checked'];
+  const head = ['Keyword', 'Intent', 'Position', 'Previous position', 'Change in position', 'Search result features', 'Estimated traffic', 'Searches per month', 'Ranking page', 'Checked'];
   const body = rows.map(r => [r.keyword, r.intent || '', r.rank ?? '', r.was ?? '', r.change ?? '', (r.feature_list || []).join('; '), r.traffic ?? '', r.volume ?? '', r.url || '', r.checked || '']);
-  const csv = [head, ...body].map(l => l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = name;
-  a.click();
+  downloadCsv(name, head, body);
 }
 
 /** Position of one keyword over time, with the page that ranked on each check. */
@@ -128,7 +124,7 @@ export default function OrganicPositions({ research, days, setDays }) {
         <p className="text-11.5 text-slate-400 mt-1">Google results are read to the top 20, so there are no 21-50 or 51-100 bands.</p>
       </Card>
 
-      <Card title={<span>Organic Search Positions: <b>{rows.length}</b></span>} pad={false} action={<Button size="sm" icon={Download} onClick={() => download(`${r.domain}-positions.csv`, sorted)}>Export</Button>}>
+      <Card title={<span>Organic Search Positions: <b>{rows.length}</b></span>} pad={false} action={<Button size="sm" icon={Download} onClick={() => download(`organic-positions-${r.domain}`, sorted)} title="Download every keyword (all pages, with the filters applied) as a CSV file">Export CSV</Button>}>
         <div className="overflow-x-auto">
           <table className="w-full text-13 min-w-[1300px]">
             <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th>{oth('keyword', 'Keyword', sort, onSort)}{oth('kd', 'KD, %', sort, onSort, true)}{oth('volume', 'Vol.', sort, onSort, true)}{oth('tdiff', 'Traffic Change', sort, onSort, true)}<Th c="text-right">Comp.</Th>{oth('cpc', 'CPC', sort, onSort, true)}{oth('checked', 'Crawled Time', sort, onSort, false, 'desc')}{oth('rank', 'Position', sort, onSort, true, 'asc')}<Th c="text-right">Results</Th>{oth('sf', 'SF', sort, onSort, true)}{oth('intent', 'Intent', sort, onSort)}{oth('url', 'URL', sort, onSort)}<Th c="text-right">Actions</Th></tr></thead>

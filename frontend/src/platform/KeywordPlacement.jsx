@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Eye, Copy, Check, FileSearch, Sparkles } from 'lucide-react';
+import { ExternalLink, Eye, Copy, Check, Download, FileSearch, Sparkles } from 'lucide-react';
 import { Card, Badge, ErrorNote, SkList, Modal } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act } from './TableBits';
 import BriefButtons from './DevBrief';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 const PLACE = { address: 'address', title: 'title', heading: 'heading', description: 'description', subheading: 'section heading', intro: 'first paragraph', text: 'text', image: 'image text' };
@@ -63,7 +63,9 @@ export function KeywordsView({ b, onOpen }) {
       <div className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-2">
         <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg">{tab('all', `All ${d.keywords.length}`)}{tab('used', `Used ${d.counts.used}`)}{tab('weak', `Weak ${d.counts.weak}`)}{tab('unused', `Not used ${d.counts.unused}`)}</div>
         <span className="text-12 text-slate-500">Tick every area a keyword will be used in and its text appears below · green tick = already used there · blue tick = chosen</span>
-        {note && <span role="status" className="ml-auto text-12.5 text-emerald-800 bg-emerald-50 rounded px-2.5 py-1">{note}</span>}
+        {note && <span role="status" className="text-12.5 text-emerald-800 bg-emerald-50 rounded px-2.5 py-1">{note}</span>}
+        <button type="button" disabled={!sorted.length} onClick={() => downloadCsv(`picked-keywords-${b.name}`, ['Keyword', 'Searches per month', 'Google position', 'Status', 'Page', 'Role on the page', 'Already used on', ...areas.map(a => `${a.label} (used or planned)`), ...areas.map(a => `${a.label}: text to use`)],
+          sorted.map(k => [k.keyword, k.volume ?? '', k.rank ?? '', STATUS[k.status]?.[0] || k.status, k.meant_for?.url || '', k.meant_for?.role || '', k.used_on.map(u => u.url || u.path).join('; '), ...areas.map(a => { const p = k.purposes.find(x => x.key === a.key); return p?.used ? 'Used' : p?.planned ? 'Planned' : 'Not yet'; }), ...areas.map(a => k.purposes.find(x => x.key === a.key)?.text || '')]))} className="ml-auto h-8 px-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-40" title="Download every picked keyword (all pages, with the filter applied) with its page, where it is used and the text to use, as a CSV file"><Download size={13} />Export CSV</button>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-13 min-w-[980px]">
@@ -158,7 +160,8 @@ export function UseKeywordsModal({ b, ids, onClose }) {
       {note && <p role="status" className="mb-3 text-12.5 text-emerald-800 bg-emerald-50 rounded px-3 py-1.5">{note}</p>}
       {d && (
         <div className="max-h-[74vh] overflow-y-auto pr-1 space-y-5">
-          <p className="text-12.5 text-slate-600">For each keyword, what to do in every place it can be used. Green is already used there, blue is planned. The text is a draft from your business facts: read it and make it true before you use it.</p>
+          <div className="flex flex-wrap items-center gap-3"><p className="flex-1 min-w-[260px] text-12.5 text-slate-600">For each keyword, what to do in every place it can be used. Green is already used there, blue is planned. The text is a draft from your business facts: read it and make it true before you use it.</p>
+            <button type="button" disabled={!d.keywords.length} onClick={() => downloadFile(`where-to-use-keywords-${b.name}-${new Date().toISOString().slice(0, 10)}.md`, `# Where to use these keywords (${b.name})\n\n${d.keywords.map(k => `## ${k.keyword}\n\n${k.volume ? `${n0(k.volume)} searches a month. ` : ''}${k.meant_for ? `Page: ${k.meant_for.url || k.meant_for.path} (${k.meant_for.role} keyword)` : 'No page chosen yet'}\n\n${k.purposes.map(p => `### ${p.label}: ${p.headline}\n\n${p.used ? 'Already used' : p.planned ? 'Planned' : 'Not yet'}\n\n${p.text}`).join('\n\n')}`).join('\n\n')}\n`, 'text/markdown')} className="h-8 px-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-40" title="Download all these keywords with the text to use in every place, as a Markdown file"><Download size={13} />Download as Markdown</button></div>
           {d.keywords.map(k => (
             <section key={k.id} className="rounded-xl ring-1 ring-slate-200 overflow-hidden">
               <header className="px-4 py-3 bg-slate-50 flex flex-wrap items-center gap-x-3 gap-y-1">

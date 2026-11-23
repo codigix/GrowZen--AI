@@ -1,9 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Loader2, FilePlus2, Pencil, FileX2, ExternalLink, ArrowRight, Star, Plus, FileText, Columns3, Link2, UserMinus } from 'lucide-react';
+import { Play, Loader2, FilePlus2, Pencil, FileX2, ExternalLink, ArrowRight, Star, Plus, FileText, Columns3, Link2, UserMinus, Download } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, useAction, useToast, SkList, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 import { Act, Head } from './TableBits';
+import { downloadCsv, downloadFile } from './DataTable';
 
 const KIND = {
   new_page: { label: 'New page', tone: 'green', icon: FilePlus2 },
@@ -30,6 +31,8 @@ const Report = ({ r, compact }) => (
   </div>
 );
 
+const reportMd = (r) => [`## ${r.headline}`, '', `Week of ${String(r.week_start || '').slice(0, 10)} · ${r.events} change${r.events === 1 ? '' : 's'}${r.baseline ? ' · first visit' : ''}`, '', r.summary || '', '', ...(r.what_it_means ? [`**What it means for you:** ${r.what_it_means}`, ''] : []), ...(r.actions?.length ? ['**What to do:**', ...r.actions.map(a => `- ${a}`), ''] : [])].join('\n');
+
 function Body({ b }) {
   const base = `/businesses/${b.id}/competitor-watch`;
   const w = useApi(base);
@@ -43,6 +46,12 @@ function Body({ b }) {
   const toggle = (enabled) => run('cfg', async () => { await api(base, { method: 'PUT', body: { enabled } }); w.reload(true); });
   if (!d) return <SkCard title="Weekly competitor watch" subtitle="Each week we visit your competitors' websites and tell you what is new, what changed and what disappeared"><SkList rows={4} /></SkCard>;
   const none = d.competitors.length === 0;
+  const slug = String(b.name || 'project').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const exportCompetitors = () => downloadCsv(`competitor-watch-competitors-${slug}`, ['Competitor', 'Website', 'Rating', 'Reviews', 'Pages watched', 'New pages (30 days)', 'Changed pages (30 days)', 'Removed pages (30 days)', 'Last change'],
+    d.competitors.map(c => [c.name, c.website || c.domain, c.rating ?? '', c.reviews ?? '', c.pages_watched ?? 0, c.changes_30d?.new_page || 0, c.changes_30d?.changed || 0, c.changes_30d?.removed || 0, c.last_change_at || '']));
+  const exportEvents = () => downloadCsv(`competitor-watch-changes-${slug}`, ['Date', 'Type', 'Competitor', 'Page title', 'Page URL', 'What changed', 'Title before', 'Title after', 'Words before', 'Words after'],
+    d.events.map(e => [e.at || '', KIND[e.kind]?.label || e.kind, e.domain, e.title || '', e.url, (e.detail?.fields || []).map(f => FIELD[f] || f).join(', '), e.detail?.title_before || '', e.detail?.title_after || '', e.detail?.words_before ?? '', e.detail?.words_after ?? '']));
+  const exportReport = (list, what) => downloadFile(`competitor-watch-${what}-${slug}-${new Date().toISOString().slice(0, 10)}.md`, [`# Competitor watch: ${b.name || 'project'}`, '', ...list.map(reportMd)].join('\n'), 'text/markdown');
   return (
     <>
       <ErrorNote>{w.error?.message || error}</ErrorNote>
@@ -64,7 +73,7 @@ function Body({ b }) {
 
       {!none && (
         <Card className="mb-4" title="Competitors you chose" subtitle="Chosen in Competitor Research. The watch follows these."
-          action={<Link to="/competitor-finder?tab=competitors" className="text-12.5 font-semibold text-indigo-700 hover:underline">Change the choice →</Link>}>
+          action={<span className="flex items-center gap-3"><Button size="sm" icon={Download} onClick={exportCompetitors}>Export CSV</Button><Link to="/competitor-finder?tab=competitors" className="text-12.5 font-semibold text-indigo-700 hover:underline">Change the choice →</Link></span>}>
           <div className="overflow-x-auto rounded-lg ring-1 ring-inset ring-gray-200">
             <table className="w-full text-13 min-w-[760px]">
               <thead className="bg-gray-50 text-11.5 uppercase tracking-wide text-gray-500">
@@ -113,9 +122,9 @@ function Body({ b }) {
         </Card>
       )}
 
-      {d.latest && <Card className="mb-4" title="This week"><Report r={d.latest} /></Card>}
+      {d.latest && <Card className="mb-4" title="This week" action={<Button size="sm" icon={Download} onClick={() => exportReport([d.latest], 'report')}>Download report</Button>}><Report r={d.latest} /></Card>}
 
-      <Card className="mb-4" title="What changed" subtitle="Newest first">
+      <Card className="mb-4" title="What changed" subtitle="Newest first" action={d.events.length ? <Button size="sm" icon={Download} onClick={exportEvents}>Export CSV</Button> : null}>
         {d.events.length === 0 ? <div className="py-6 text-center text-13 text-gray-500">{none ? 'Nothing to show yet.' : 'No changes recorded yet. The first visit only sets the starting point.'}</div> : (
           <div className="divide-y divide-gray-100">{d.events.map((e, i) => {
             const K = KIND[e.kind]; const Icon = K.icon;
@@ -141,7 +150,7 @@ function Body({ b }) {
       </Card>
 
       {d.history.length > 0 && (
-        <Card title="Earlier weeks">
+        <Card title="Earlier weeks" action={<Button size="sm" icon={Download} onClick={() => exportReport(d.history, 'earlier-weeks')}>Download reports</Button>}>
           <div className="divide-y divide-gray-100">{d.history.map(r => <div key={r.week_start} className="py-3"><Report r={r} compact /></div>)}</div>
         </Card>
       )}

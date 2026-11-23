@@ -5,7 +5,7 @@ import { Act, OpenAct } from './TableBits';
 import Select from '../components/Select';
 import { api } from './seoApi';
 import LinkDetail from './BacklinkLinkDetail';
-import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const when = (iso) => { if (!iso) return '—'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }); };
@@ -76,10 +76,11 @@ function BacklinkChecker({ b }) {
   const { sorted, sort, onSort } = useSorted(rows, checkValue);
   const pg = usePager(sorted, { size: 25, resetKey: `${status}|${follow}|${q}` });
   const csv = () => {
-    const head = ['Source page', 'Status', 'HTTP', 'Follow', 'Anchor', 'Category', 'Placement', 'Page indexable', 'DA', 'PA', 'Spam score', 'Referring domains', 'Target', 'Checked'];
-    const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [head.join(',')].concat(rows.map(r => [r.source_url, r.lost ? 'lost' : r.state, r.http_status, r.follow, r.link?.anchor, r.category?.label, r.link?.placement, r.page_noindex == null ? '' : r.page_noindex ? 'noindex' : 'yes', r.moz?.da ?? r.scores?.da, r.moz?.pa ?? r.scores?.pa, r.moz?.spam ?? r.scores?.spam, r.moz?.ref_domains, r.target, r.checked_at].map(q).join(',')));
-    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = 'backlink-check.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const withMoz = d.moz || d.dfs;
+    const head = ['Source page', 'Page title', 'Status', 'HTTP status', 'Link type', 'Anchor text', 'Kind of site', 'Placement', 'Page indexable', 'Domain rank (0-10)', 'Links from this site', 'Linked by (sites)', ...(withMoz ? ['DA', 'PA', 'Spam score'] : []), ...(d.moz ? ['Referring domains'] : []), 'Target', 'Last checked', 'Times checked'];
+    const body = sorted.map(r => [r.source_url, r.title || '', r.lost ? 'Link lost' : { working: 'Working', link_missing: 'Link missing', unconfirmed: 'Cannot confirm', page_error: 'Page error' }[r.state] || r.state, numOf(r.http_status), r.follow ? (FOLLOW[r.follow] || FOLLOW.nofollow)[0] : '', r.link?.anchor || '', r.category?.label || '', r.link?.placement || '', r.page_noindex == null ? '' : r.page_noindex ? 'No (noindex)' : 'Yes',
+      numOf(r.domain_rank), numOf(r.site?.links), numOf(r.site?.linked_by), ...(withMoz ? [numOf(r.moz?.da ?? r.scores?.da), numOf(r.moz?.pa ?? r.scores?.pa), numOf(r.moz?.spam ?? r.scores?.spam)] : []), ...(d.moz ? [numOf(r.moz?.ref_domains)] : []), r.target || '', r.checked_at || '', numOf(r.checks)]);
+    downloadCsv(`backlink-check-${String(d.default_target || b.website || b.name || 'site').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].replace(/[^a-z0-9.-]+/gi, '-')}`, head, body);
   };
 
   if (error && !d) return <Card className="p-6 text-13 text-red-700">{error} <button type="button" className="font-semibold underline cursor-pointer" onClick={load}>Try again</button></Card>;
@@ -116,7 +117,7 @@ function BacklinkChecker({ b }) {
                 <option value="all">Every status</option><option value="working">Working</option><option value="link_missing">Link missing</option><option value="lost">Lost since last check</option><option value="unconfirmed">Cannot confirm</option><option value="page_error">Page error</option></Select>
               <Select className="h-9 w-40 rounded-lg border border-slate-300 bg-white px-3 text-13" aria-label="Follow" value={follow} onChange={e => setFollow(e.target.value)}>
                 <option value="all">Follow and nofollow</option><option value="dofollow">Follow only</option><option value="nofollow">Nofollow only</option></Select>
-              <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search pages" aria-label="Search pages" className="h-9 w-44 pl-8 pr-3 text-13 rounded-lg border border-slate-300 bg-white" /></label><span className="flex-1" />{d.dfs && d.missing_scores > 0 && <Button size="sm" variant="primary" busy={busy} onClick={fillScores}>Get DA, PA and Spam for {d.missing_scores} pages</Button>}<Button size="sm" icon={Download} onClick={csv}>Download CSV</Button>
+              <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search pages" aria-label="Search pages" className="h-9 w-44 pl-8 pr-3 text-13 rounded-lg border border-slate-300 bg-white" /></label><span className="flex-1" />{d.dfs && d.missing_scores > 0 && <Button size="sm" variant="primary" busy={busy} onClick={fillScores}>Get DA, PA and Spam for {d.missing_scores} pages</Button>}<Button size="sm" icon={Download} onClick={csv} title={`Download all ${sorted.length} pages in this list (with the filters applied) as a CSV file`}>Export CSV</Button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-13.5 min-w-[1100px]">
