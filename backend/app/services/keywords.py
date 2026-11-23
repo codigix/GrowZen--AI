@@ -145,7 +145,8 @@ def default_seeds(b: Business) -> list[str]:
     from . import business_understanding  # the words customers use, as written in the business understanding (the first SEO step): they lead
     written = [t for t in business_understanding.search_terms(b)[:4]]
     seeds = written + [s for s in seeds if s not in written]
-    shop_labels = [] if rental else [b.primary_category, *(b.secondary_categories or [])]  # a rental business's Google category is the shop's ("Clothes market"): it would find shops, not competitors
+    understood = bool(written)  # the owner's understanding says what the business is: Google's loose extra categories ("Web Designer") must not pull the research towards other trades
+    shop_labels = [] if (rental or understood) else [b.primary_category, *(b.secondary_categories or [])]  # a rental business's Google category is the shop's ("Clothes market"): it would find shops, not competitors
     for s in [*shop_labels, *[(x.get("name") if isinstance(x, dict) else x) for x in (b.services or [])]]:
         s = " ".join(str(s or "").lower().split())
         if s and len(s) <= 40 and s not in seeds:

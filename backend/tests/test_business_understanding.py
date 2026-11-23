@@ -119,5 +119,15 @@ def test_the_competitor_research_searches_by_the_business_understanding_not_by_a
     out = intel.default_keywords(b)
     assert out[0] == "healthcare digital marketing agency pune" and "seo for doctors in Pune" in out
     assert not any("software" in k.lower() for k in out)
-    b.business_brief = None  # before the understanding exists, the old wording is used
-    assert any("software" in k.lower() for k in intel.default_keywords(b))
+    b.business_brief = None  # before the understanding exists, the category is used, and "Infotech" in the name no longer means software
+    assert not any("software" in k.lower() for k in intel.default_keywords(b))
+
+
+def test_a_name_with_infotech_is_not_a_software_company_and_extra_categories_do_not_steer_the_seeds():
+    from app.services import categories
+    assert categories.customer_terms("Marketing agency", "Codigix Infotech Pvt. Ltd.") == ["digital marketing agency"]
+    assert categories.customer_terms(None, "Acme Software Solutions") == ["software company"]  # a name that says software still does
+    b = SimpleNamespace(name="Codigix Infotech Pvt. Ltd.", primary_category="Marketing agency", secondary_categories=["Web Designer", "Marketing consultant"], services=[{"name": "Healthcare Digital Marketing"}],
+                        business_brief={"customer_search_terms": ["healthcare digital marketing agency", "seo for doctors"]})
+    seeds = keywords.default_seeds(b)
+    assert "web designer" not in seeds and "marketing agency" not in seeds and seeds[0] == "healthcare digital marketing agency" and "healthcare digital marketing" in seeds

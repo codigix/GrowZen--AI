@@ -29,7 +29,7 @@ RULES: list[tuple[re.Pattern[str], str]] = [(re.compile(re.sub(r"\)\\b$", r")s?\
     (r"\b(restaurant|dhaba|biryani)\b", "Restaurant"),
     (r"\b(caf[eé]|coffee)\b", "Cafe"),
     (r"\b(digital marketing|seo|marketing agency|advertising agency)\b", "Marketing agency"),
-    (r"\b(software|web (design|development)|it (company|services|solutions)|infotech|technolog(y|ies))\b", "Software company"),
+    (r"\b(software|web (design|development)|it (company|services|solutions))\b", "Software company"),  # "Infotech" or "Technologies" in a name says nothing about what a company sells
 ]]
 
 # What customers type for a category, so competitor searches use the words people use ("PG in Marunji", not "paying guest accommodation in Marunji").
