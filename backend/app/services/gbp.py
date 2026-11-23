@@ -149,7 +149,7 @@ class GbpClient:
             try:
                 msg = r.json().get("error", {}).get("message") or ""
             except ValueError:
-                msg = r.text[:200]
+                msg = "" if r.text.lstrip().lower().startswith(("<!doctype", "<html")) else r.text[:200]  # Google's own error page is a web page: its markup is not shown
             raise GbpError(explain_google_error(r.status_code, msg, url))
         return r.json() if r.content else {}
 
@@ -462,6 +462,23 @@ API_NAMES = {
 ACCESS_FORM = "https://developers.google.com/my-business/content/prereqs#request-access"
 
 
+ONLY_PUBLIC_REVIEW = ("This review is only on the public Google Maps listing so far: your Business Profile does not list it, so a reply cannot be posted from here. "
+                      "Reply to it on Google Maps, or press Fetch new reviews again after a while: once the Business Profile lists it, replying works here.")
+
+
+def business_review_id(client: "GbpClient", account: str, location: str, review: Any) -> str | None:
+    """A review we only know from the public Maps listing has no Business Profile id, and Google needs that id to take a reply. Find the Business Profile's own entry for it
+    (same reviewer and the same words) and give its id, or None when the Business Profile does not list it."""
+    who = (review.author or "").strip().lower()
+    words = (review.body or "").strip().lower()
+    for r in client.reviews(account, location):
+        name = ((r.get("reviewer") or {}).get("displayName") or "").strip().lower()
+        text = (r.get("comment") or "").strip().lower()
+        if who and name == who and (not words or text.startswith(words[:40]) or words.startswith(text[:40])):
+            return r.get("reviewId") or (r.get("name") or "").rsplit("/", 1)[-1] or None
+    return None
+
+
 def explain_google_error(status: int, msg: str, url: str = "") -> str:
     """Google's API errors in plain words, with what to do."""
     api = next((v for k, v in API_NAMES.items() if k in url), "the Business Profile API")
@@ -476,6 +493,10 @@ def explain_google_error(status: int, msg: str, url: str = "") -> str:
                 f"and the project needs approved Business Profile API access ({ACCESS_FORM}).")
     if status == 401:
         return "Google sign-in expired or was revoked. Connect the account again."
+    if status == 404 and "/reviews/" in url:
+        return "Google does not have this review in the Business Profile (it was removed, or it is not listed there yet)."
+    if status == 404:
+        return f"Google could not find it ({api} answered 404: not found)."
     return f"Google API {status}: {msg}"
 
 

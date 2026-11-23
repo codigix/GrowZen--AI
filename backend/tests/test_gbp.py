@@ -432,3 +432,49 @@ def test_performance_gives_each_number_with_its_change_and_a_value_for_every_day
         db.query(Business).filter(Business.gbp_location == "locations/1").delete()
         db.commit()
         db.close()
+
+
+def test_google_404_pages_are_not_shown_as_markup_and_say_what_it_means():
+    msg = gbp.explain_google_error(404, "", "https://mybusiness.googleapis.com/v4/accounts/1/locations/2/reviews/places/x/reply")
+    assert "<" not in msg and "does not have this review" in msg
+    assert "<" not in gbp.explain_google_error(404, "", "https://mybusinessplaceactions.googleapis.com/v1/x")
+
+
+def test_a_review_from_the_public_listing_gets_the_business_profile_id_before_a_reply(client, monkeypatch):
+    from app.models import Review
+    from app.services import agent
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    db = SessionLocal()
+    try:
+        r = Review(business_id=bid, external_id="places/ChIJx/reviews/abc", author="Nitin Kamble", rating=5, body="Good service", reply_status="none")
+        db.add(r)
+        db.commit()
+        sent = []
+        base = gbp.GbpClient._req
+
+        def req(self, method, url, **kw):
+            if url.endswith("/reviews") and method == "GET":  # the Business Profile does not list it yet
+                return {}
+            if method == "PUT":
+                sent.append(url)
+                return {}
+            return base(self, method, url, **kw)
+        monkeypatch.setattr(gbp.GbpClient, "_req", req)
+        b = db.get(Business, bid)
+        task = agent._task(db, b, "review", "review_reply", "Reply", "Medium", review_id=r.id, rating=5, text="Thank you")
+        db.commit()
+        agent.decide(db, task, True, "tester")
+        assert task.status == "failed" and task.result["error"].startswith("This review is only on the public Google Maps listing") and sent == []  # Google is never asked with an id it cannot know
+        # once the Business Profile lists it, the reply goes under its own id
+        monkeypatch.setattr(gbp.GbpClient, "_req", lambda self, method, url, **kw: ({"reviews": [{"reviewId": "BP123", "reviewer": {"displayName": "Nitin Kamble"}, "comment": "Good service"}]} if url.endswith("/reviews") and method == "GET" else (sent.append(url) or {}) if method == "PUT" else base(self, method, url, **kw)))
+        task2 = agent._task(db, b, "review", "review_reply", "Reply", "Medium", review_id=r.id, rating=5, text="Thank you")
+        db.commit()
+        agent.decide(db, task2, True, "tester")
+        assert task2.status != "failed" and sent and sent[0].endswith("/reviews/BP123/reply") and db.get(Review, r.id).external_id == "BP123"
+    finally:
+        db.query(Review).filter(Review.business_id == bid).delete()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
