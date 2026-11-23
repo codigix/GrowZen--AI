@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   LayoutDashboard, Store, BarChart3, Star, Newspaper, Image as ImageIcon, MapPinned, MessageCircleQuestion, Sparkles, Swords, Bot, FileText,
-  ListTodo, History, Settings2, ArrowRight, ArrowUpRight, ArrowDownRight, Minus, Phone, Navigation, MousePointerClick, Search, Eye, CalendarCheck, CheckCircle2, Clock, PlugZap, Globe
+  ListTodo, History, Settings2, ArrowRight, ArrowUpRight, Copy, ArrowDownRight, Minus, Phone, Navigation, MousePointerClick, Search, Eye, CalendarCheck, CheckCircle2, Clock, PlugZap, Globe
 } from 'lucide-react';
 import { ReviewLinkCard } from './ReviewLink';
 import { ProfileStrength, QuickTiles, MissingInfoCard, ShareProfileCard, NewReviewBanner, interactions } from './GbpOverviewExtras';
@@ -368,6 +368,11 @@ function ReviewRow({ b, r, toast, onChanged }) {
         <div className="mt-2 space-y-2">
           <textarea rows={4} className={areaCls} value={text} onChange={e => setText(e.target.value)} placeholder="Write a reply, or let AI draft one and edit it" />
           <ErrorNote>{error}</ErrorNote>
+          {String(error || '').startsWith('This review') && (
+            <div className="flex flex-wrap items-center gap-2 text-12.5">
+              <Button size="sm" icon={Copy} onClick={() => { try { navigator.clipboard.writeText(text); toast('Reply copied: paste it under the review on Google Maps'); } catch { toast('Select the reply text and copy it'); } }}>Copy the reply</Button>
+              {(b.gbp_status?.maps_url || b.gbp_status?.review_url) && <a href={b.gbp_status.maps_url || b.gbp_status.review_url} target="_blank" rel="noreferrer noopener"><Button size="sm" icon={ArrowUpRight}>Open on Google Maps</Button></a>}
+            </div>)}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ai" busy={busy === 'ai'} onClick={draft}>Write with AI</Button>
             <Button size="sm" variant="primary" busy={busy === 'post'} disabled={!text.trim()} onClick={post}>{r.replied ? 'Update reply on Google' : 'Post reply to Google'}</Button>
