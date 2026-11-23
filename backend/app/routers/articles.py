@@ -159,6 +159,39 @@ def list_articles(b: Business = Depends(get_business), db: Session = Depends(get
     return {"articles": [{**row(a, exclude={"body"}), **asch.state_of(a, latest.get(a.id))} for a in found]}
 
 
+_BLOGISH = re.compile(r"/(blogs?|articles?|news|insights|posts?|resources|knowledge)(/|$)", re.I)
+
+
+def _norm_url(u: str) -> str:
+    from urllib.parse import urlsplit
+    q = urlsplit(u or "")
+    return f"{(q.hostname or '').lower().removeprefix('www.')}{q.path.rstrip('/')}?{q.query}"
+
+
+@router.get("/site-blogs")
+def blogs_on_the_website(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The blogs the website's sitemap lists (addresses with /blog/, /articles/, /news/...), minus the ones already in the list: what is posted on the site but not known here."""
+    from urllib.parse import urlsplit
+    from ..services import sitemap
+    if not b.website:
+        raise HTTPException(409, "Add the project's website first.")
+    try:
+        entries = sitemap.discover_site_entries(b.website, 400)
+    except Exception as exc:  # noqa: BLE001 - an unreachable site or a missing sitemap is explained, not a crash
+        raise HTTPException(502, f"The sitemap could not be read: {str(exc)[:160]}") from exc
+    have = {_norm_url(x.wp_url or x.react_url or "") for x in db.scalars(select(Article).where(Article.business_id == b.id)) if x.wp_status != "deleted" and (x.wp_url or x.react_url)}
+    out = []
+    for url, lastmod in entries:
+        path = urlsplit(url).path.rstrip("/")
+        parts = [p for p in path.split("/") if p]
+        if len(parts) < 2 or not _BLOGISH.search(path + "/"):  # the blog's own index page is not a blog
+            continue
+        if _norm_url(url) in have:
+            continue
+        out.append({"url": url, "lastmod": lastmod, "title": parts[-1].replace("-", " ").replace("_", " ").strip().capitalize()})
+    return {"blogs": out[:200], "found": len(out)}
+
+
 @router.get("/calendar")
 def calendar(month: str | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """The Publishing Calendar: every article scheduled in GrowZen (and what became of it) in one month (YYYY-MM)."""
@@ -633,6 +666,47 @@ def _hold_for_later(db: Session, b: Business, a: Article, target: SiteIntegratio
 @router.post("/{article_id}/publish-wordpress")
 def publish_wordpress(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     return publish(article_id, PublishIn(), b, db)
+
+
+class BulkIn(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=40)
+
+
+@router.post("/existing/bulk", status_code=201)
+def add_existing_bulk(body: BulkIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Add several blogs that are already on the website: each one's title is read from its own page. Only addresses on the project's website are taken; nothing is changed on the site."""
+    from urllib.parse import urlsplit
+    from bs4 import BeautifulSoup
+    from ..services.net import site_client
+    site = (urlsplit(b.website or "").hostname or "").lower().removeprefix("www.")
+    have = {_norm_url(x.wp_url or x.react_url or "") for x in db.scalars(select(Article).where(Article.business_id == b.id)) if x.wp_status != "deleted"}
+    added, skipped = [], []
+    client = site_client(10)
+    try:
+        for url in dict.fromkeys(u.strip() for u in body.urls):
+            p = urlsplit(url)
+            if p.scheme not in ("http", "https") or (p.hostname or "").lower().removeprefix("www.") != site or _norm_url(url) in have:
+                skipped.append(url)
+                continue
+            title = ""
+            try:
+                r = client.get(url)
+                if r.status_code < 400:
+                    soup = BeautifulSoup(r.text, "html.parser")
+                    h1 = soup.find("h1")
+                    title = ((h1.get_text(" ", strip=True) if h1 else "") or (soup.title.string if soup.title and soup.title.string else "")).strip()
+            except Exception:  # noqa: BLE001 - the address is still listed, with its words as the title
+                title = ""
+            slug = p.path.rstrip("/").rsplit("/", 1)[-1]
+            title = (title or slug.replace("-", " ").capitalize() or url)[:255]
+            a = Article(business_id=b.id, keyword=title, title=title, status="completed", body="", wp_url=url, wp_status="publish", publish_method="existing", slug=slug or None, generated_at=datetime.now(timezone.utc))
+            db.add(a)
+            have.add(_norm_url(url))
+            added.append(url)
+    finally:
+        client.close()
+    db.commit()
+    return {"added": len(added), "skipped": len(skipped)}
 
 
 class ExistingIn(BaseModel):

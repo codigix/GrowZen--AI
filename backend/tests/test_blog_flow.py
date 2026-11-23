@@ -431,3 +431,30 @@ def test_a_blog_already_on_the_website_can_be_added_listed_and_deleted(client):
     assert client.post(f"{base}/existing", json={"title": "Not a link", "url": "blog/x/yyyy"}).status_code == 422
     assert client.delete(f"{base}/{r.json()['id']}").status_code == 204
     assert client.get(base).json()["articles"] == []
+
+
+def test_the_blogs_on_the_website_are_found_and_added_in_one_go(client, monkeypatch):
+    from app.routers import articles as ar
+    from app.services import sitemap
+    bid = client.post("/api/v1/businesses", json={"name": "Site Co", "website": "https://site.example/"}).json()["id"]
+    base = f"/api/v1/businesses/{bid}/articles"
+    monkeypatch.setattr(sitemap, "discover_site_entries", lambda url, n, **k: [("https://site.example/", None), ("https://site.example/blog/", None), ("https://site.example/blog/first-post", "2026-11-01"), ("https://site.example/blog/second-post/", None), ("https://site.example/about", None)])
+    found = client.get(f"{base}/site-blogs").json()
+    assert [x["title"] for x in found["blogs"]] == ["First post", "Second post"]  # the home page, the blog index and other pages are not blogs
+    client.post(f"{base}/existing", json={"title": "First post", "url": "https://www.site.example/blog/first-post"})
+    assert [x["title"] for x in client.get(f"{base}/site-blogs").json()["blogs"]] == ["Second post"]  # already in the list
+
+    class Page:
+        status_code = 200
+        text = "<html><head><title>Tab title</title></head><body><h1>Second Post Heading</h1></body></html>"
+
+    class Client:
+        def get(self, url):
+            return Page()
+
+        def close(self):
+            pass
+    monkeypatch.setattr("app.services.net.site_client", lambda t=10: Client())
+    r = client.post(f"{base}/existing/bulk", json={"urls": ["https://site.example/blog/second-post/", "https://elsewhere.example/blog/x", "https://site.example/blog/first-post"]}).json()
+    assert r == {"added": 1, "skipped": 2}  # another site's address and one already listed are skipped
+    assert "Second Post Heading" in [a["title"] for a in client.get(base).json()["articles"]]
