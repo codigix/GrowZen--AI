@@ -122,23 +122,15 @@ export default function GbpLive({ b, toast, onConnect }) {
   const totalReviews = Object.values(split).reduce((a, v) => a + v, 0) || 1;
 
   return (
-    <div className="space-y-4">
-      {/* Connection and sync */}
-      <div className="ai-glass-card rounded px-5 py-3.5 flex flex-wrap items-center gap-3">
-        <span className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${connected ? 'bg-emerald-50 text-emerald-500' : 'bg-amber-50 text-amber-500'}`}>{connected ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}</span>
-        <div className="flex-1 min-w-[220px]">
-          <div className="text-14 font-semibold text-slate-900">{connected ? 'Connected to Google' : 'Google access needs attention'} <span className="font-normal text-slate-500">· {d.connection?.email || '—'}</span></div>
-          <div className="text-12 text-slate-500 flex flex-wrap items-center gap-x-3">
-            <span className="inline-flex items-center gap-1"><Clock size={11} /> Last synced {ago(live?.synced_at || d.connection?.last_sync_at)}</span>
-            <span>{p.account || ''}</span>
-            {connected && <span className="text-slate-400">Refreshes itself every {STALE_MIN} min while this page is open</span>}
-          </div>
-          {d.connection?.last_error && <div className="text-12 text-red-600 mt-0.5">{d.connection.last_error}</div>}
+    <div className="space-y-3">
+      {/* The bar above already shows the connection and Sync now: only a problem is said here */}
+      {(!connected || d.connection?.last_error) && (
+        <div className="rounded bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-2.5 flex flex-wrap items-center gap-3 text-13 text-amber-900">
+          <AlertTriangle size={16} className="shrink-0 text-amber-600" />
+          <span className="flex-1 min-w-[200px]"><b>{connected ? 'Google reported a problem' : 'Google access needs attention'}</b>{d.connection?.last_error ? `: ${d.connection.last_error}` : ' · reconnect the account to read this profile again.'}</span>
+          {!connected && <Button size="sm" variant="primary" icon={PlugZap} onClick={() => onConnect?.('google')}>Reconnect</Button>}
         </div>
-        <VerifyPill state={d.verification} />
-        {d.status?.maps_url && <a href={d.status.maps_url} target="_blank" rel="noreferrer" className="text-12 font-semibold text-indigo-600 hover:underline inline-flex items-center gap-1">View on Maps <ExternalLink size={11} /></a>}
-        {connected ? <Button variant="primary" icon={RefreshCw} busy={busy === 'sync'} onClick={() => sync(false)}>Sync now</Button> : <Button variant="primary" icon={PlugZap} onClick={() => onConnect?.('google')}>Reconnect</Button>}
-      </div>
+      )}
       <ErrorNote>{error}</ErrorNote>
       {errors.length > 0 && (
         <div className="rounded bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-12.5 text-amber-900">
@@ -147,26 +139,26 @@ export default function GbpLive({ b, toast, onConnect }) {
         </div>
       )}
 
-      {/* Key numbers */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Tile icon={Star} tone="amber" label="Rating" value={m.rating ? `${m.rating}★` : '—'} sub={`${fmt(m.review_count || 0)} reviews · ${m.unreplied_reviews} unreplied`} />
-        <Tile icon={ImageIcon} tone="violet" label="Photos" value={m.photo_count} sub={`${posts.length} posts`} />
-        <Tile icon={Phone} tone="emerald" label="Calls · 30 days" value={fmt(m.calls_30)} />
-        <Tile icon={Navigation} tone="sky" label="Directions · 30 days" value={fmt(m.directions_30)} />
-        <Tile icon={MousePointerClick} tone="indigo" label="Website clicks" value={fmt(m.website_clicks_30)} sub="30 days" />
-        <Tile icon={Search} tone="violet" label="Search views" value={fmt(m.views_search_30)} sub="30 days" />
-        <Tile icon={MapPin} tone="emerald" label="Maps views" value={fmt(m.views_maps_30)} sub="30 days" />
-        <Tile icon={Eye} tone="amber" label="Bookings" value={fmt(m.bookings_30)} sub="30 days" />
+      {/* Key numbers: one strip, not two rows of tiles */}
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 grid grid-cols-4 lg:grid-cols-8 divide-x divide-y lg:divide-y-0 divide-slate-100 overflow-hidden">
+        {[[Star, 'text-amber-500', 'Rating', m.rating ? `${m.rating}★` : '—', `${fmt(m.review_count || 0)} reviews${m.unreplied_reviews ? ` · ${m.unreplied_reviews} unreplied` : ''}`], [ImageIcon, 'text-violet-500', 'Photos', m.photo_count, `${posts.length} posts`],
+          [Phone, 'text-emerald-500', 'Calls', fmt(m.calls_30), '30 days'], [Navigation, 'text-sky-500', 'Directions', fmt(m.directions_30), '30 days'], [MousePointerClick, 'text-indigo-500', 'Website clicks', fmt(m.website_clicks_30), '30 days'],
+          [Search, 'text-violet-500', 'Search views', fmt(m.views_search_30), '30 days'], [MapPin, 'text-emerald-500', 'Maps views', fmt(m.views_maps_30), '30 days'], [Eye, 'text-amber-500', 'Bookings', fmt(m.bookings_30), '30 days']].map(([Ic, tone, label, value, sub]) => (
+          <div key={label} className="px-3.5 py-2.5 min-w-0" title={`${label}: ${value ?? '—'} (${sub})`}>
+            <div className="flex items-center gap-1.5 text-11.5 font-semibold text-slate-500 truncate"><Ic size={13} className={tone} />{label}</div>
+            <div className="text-18 leading-tight font-bold text-slate-900 tabular-nums">{value ?? '—'}</div>
+            <div className="text-11 text-slate-400 truncate">{sub}</div>
+          </div>))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 items-start">
         {/* Profile as Google holds it */}
         <Card title="Profile on Google" subtitle="As it is on Google right now" className="xl:col-span-2">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-13">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-13">
             <div><Label>Business</Label><div className="font-semibold text-slate-900">{p.name}</div><div className="mt-1 flex flex-wrap gap-1.5">{p.primary_category && <Badge tone="blue">{p.primary_category}</Badge>}{p.secondary_categories.map(c => <Badge key={c} tone="gray">{c}</Badge>)}</div></div>
             <div><Label>Contact</Label><div className="space-y-1 text-slate-700"><div className="flex items-center gap-2"><Phone size={13} className="text-slate-400" />{p.phone || '—'}</div><div className="flex items-center gap-2 truncate"><Globe size={13} className="text-slate-400" />{p.website ? <a href={p.website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline truncate">{p.website}</a> : '—'}</div></div></div>
             <div className="md:col-span-2"><Label>Address</Label><div className="text-slate-700 flex items-start gap-2"><MapPin size={13} className="text-slate-400 mt-0.5" />{p.address || '—'}{p.service_area ? <span className="text-slate-400"> · serves {p.service_area}</span> : null}</div></div>
-            <div className="md:col-span-2"><Label>Description</Label><p className="text-slate-700 leading-relaxed">{p.description || <span className="text-slate-400">No description on Google.</span>}</p></div>
+            <div className="md:col-span-2"><Label>Description</Label><p className="text-slate-700 leading-relaxed line-clamp-4" title={p.description || undefined}>{p.description || <span className="text-slate-400">No description on Google.</span>}</p></div>
             {(live?.attributes?.length > 0 || live?.service_items?.length > 0) && (
               <div className="md:col-span-2">
                 {live.attributes?.length > 0 && <><Label>Attributes</Label><div className="flex flex-wrap gap-1.5 mb-3">{live.attributes.map(a => <span key={a.id} className="px-2 py-0.5 rounded-full text-12 bg-slate-100 text-slate-700 border border-slate-200 inline-flex items-center gap-1"><Tag size={10} />{pretty(a.id)}{a.values?.length && a.values[0] !== true ? `: ${a.values.join(', ')}` : ''}</span>)}</div></>}
@@ -179,12 +171,12 @@ export default function GbpLive({ b, toast, onConnect }) {
       </div>
 
       {/* Photos and posts */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 items-start">
         <Card title={`Photos (${media.length})`} subtitle="Live from the profile, with how often each was viewed" className="xl:col-span-2"
-          action={media.length > 12 && <button type="button" onClick={() => setAllPhotos(v => !v)} className="text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">{allPhotos ? 'Show fewer' : `Show all ${media.length}`}</button>}>
+          action={media.length > 8 && <button type="button" onClick={() => setAllPhotos(v => !v)} className="text-12 font-semibold text-indigo-600 hover:underline cursor-pointer">{allPhotos ? 'Show fewer' : `Show all ${media.length}`}</button>}>
           {media.length ? (
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-              {(allPhotos ? media : media.slice(0, 12)).map(x => (
+            <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+              {(allPhotos ? media : media.slice(0, 8)).map(x => (
                 <a key={x.id} href={x.url} target="_blank" rel="noreferrer" className="group relative block aspect-square rounded overflow-hidden bg-slate-100" title={`${x.category || 'Photo'}${x.views ? ` · ${fmt(x.views)} views` : ''}`}>
                   <img src={x.thumb || x.url} alt={x.category || 'Photo'} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                   <span className="absolute left-1 bottom-1 px-1.5 py-0.5 rounded bg-slate-900/70 text-white text-10 font-semibold">{x.category ? String(x.category).replace(/_/g, ' ').toLowerCase() : 'photo'}{x.views ? ` · ${fmt(x.views)}` : ''}</span>
@@ -195,13 +187,13 @@ export default function GbpLive({ b, toast, onConnect }) {
         </Card>
         <Card title={`Posts (${posts.length})`} subtitle="Updates, offers and events on the profile">
           {posts.length ? (
-            <ul className="space-y-3 max-h-80 overflow-y-auto pr-1">
+            <ul className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
               {posts.slice(0, 10).map(x => (
                 <li key={x.id} className="flex gap-3">
                   <span className="w-9 h-9 rounded-full bg-sky-50 text-sky-500 flex items-center justify-center shrink-0"><Newspaper size={15} /></span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5"><Badge tone={POST_TONE[x.state] || 'gray'}>{(x.state || 'LIVE').toLowerCase()}</Badge><span className="text-11.5 text-slate-400">{x.type?.toLowerCase()} · {fmtDateTime(x.created)}</span></div>
-                    <p className="text-13 text-slate-700 line-clamp-3 mt-0.5">{x.summary || x.title}</p>
+                    <p className="text-13 text-slate-700 line-clamp-2 mt-0.5">{x.summary || x.title}</p>
                     {x.url && <a href={x.url} target="_blank" rel="noreferrer" className="text-12 font-semibold text-indigo-600 hover:underline inline-flex items-center gap-1">Open <ExternalLink size={10} /></a>}
                   </div>
                 </li>
@@ -212,7 +204,7 @@ export default function GbpLive({ b, toast, onConnect }) {
       </div>
 
       {/* Searches and reviews */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 items-start">
         <Card title="Searches that found the profile" subtitle="Last 3 full months, by monthly impressions" pad={false}>
           {keywords.length ? (
             <SearchKeywordsTable keywords={keywords} pad="px-5" />
@@ -224,7 +216,7 @@ export default function GbpLive({ b, toast, onConnect }) {
               <div className="flex items-baseline gap-1.5"><span className="text-26 font-bold text-slate-900">{m.rating ?? '—'}</span><Star size={16} className="fill-amber-400 text-amber-400" /></div>
               <ul className="mt-2 space-y-1.5">{[5, 4, 3, 2, 1].map(n => <li key={n} className="flex items-center gap-2 text-12"><span className="w-3 text-slate-500">{n}</span><span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full rounded-full bg-amber-400" style={{ width: `${(split[String(n)] / totalReviews) * 100}%` }} /></span><span className="w-6 text-right tabular-nums text-slate-500">{split[String(n)]}</span></li>)}</ul>
             </div>
-            <ul className="space-y-3 max-h-72 overflow-y-auto pr-1">
+            <ul className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
               {d.recent_reviews.length ? d.recent_reviews.map(r => (
                 <li key={r.id} className="text-13">
                   <div className="flex items-center gap-2"><span className="font-semibold text-slate-900">{r.author || 'Google user'}</span><span className="text-amber-500 tabular-nums">{'★'.repeat(r.rating)}</span><span className="text-11.5 text-slate-400">{r.date}</span>{!r.replied && <Badge tone="amber">No reply</Badge>}</div>

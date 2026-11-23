@@ -1014,7 +1014,7 @@ function EditExtras({ b }) {
   );
 }
 
-function Manager({ b, tab, setTab, toast, onConnect }) {
+function Manager({ b, tab, setTab, toast, onConnect, onCreate }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1033,7 +1033,7 @@ function Manager({ b, tab, setTab, toast, onConnect }) {
   };
   return (
     <div className="space-y-4">
-      <ClientBar b={b} onConnect={onConnect} onSync={sync} syncing={syncing} version={version} />
+      <ClientBar b={b} onConnect={onConnect} onSync={sync} syncing={syncing} version={version} onCreate={isLinked(b) ? onCreate : undefined} />
       {!(b.gbp_location && b.connection_id) && <ListingStatus b={b} toast={toast} onFind={() => { onConnect('email'); setTimeout(() => document.querySelector('input[aria-label="Business email"]')?.focus(), 400); }} />}
       <div className="grid grid-cols-1 gap-5 items-start">
         <div className="min-w-0" key={version}>
@@ -1117,7 +1117,6 @@ export default function GbpManagerPage({ initialTab = 'overview' }) {
       <SeoShell step={["posts", "photos"].includes(tab) ? "publish" : tab === "reviews" ? "reviews" : "google"} title="Google Business Profile" subtitle="Each project's Google Business Profile, read live: profile, photos, posts, reviews and search data, plus its audit, hours and insights" needsBusiness={false}>
         {(b) => (
           <div className="space-y-5">
-            {b && isLinked(b) && <div className="flex justify-end"><Button size="sm" icon={Plus} onClick={() => setCreateOpen(true)}>Create new profile</Button></div>}
             {!(b && isLinked(b)) && (
               <div className="ai-glass-card rounded px-5 py-3 flex flex-wrap items-center gap-3">
                 <span className="flex-1 min-w-[200px] text-13 text-slate-600">Add a project's Google Business Profile.</span>
@@ -1130,7 +1129,7 @@ export default function GbpManagerPage({ initialTab = 'overview' }) {
               <GbpAccounts business={b} toast={toast} open={addOpen} onToggle={() => setAddOpen(false)}
                 onOpenBusiness={(id) => { setBusiness(id); setTab('overview'); setAddOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
             </div>
-            {b && <Manager key={b.id} b={b} tab={tab} setTab={setTab} toast={toast} onConnect={(mode) => (mode === 'email' ? openAdd() : setGoogleOpen(true))} />}
+            {b && <Manager key={b.id} b={b} tab={tab} setTab={setTab} toast={toast} onCreate={() => setCreateOpen(true)} onConnect={(mode) => (mode === 'email' ? openAdd() : setGoogleOpen(true))} />}
           </div>
         )}
       </SeoShell>

@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   LayoutDashboard, Store, BarChart3, Star, Newspaper, Image as ImageIcon, MapPinned, MessageCircleQuestion, Sparkles, Swords, Bot, FileText,
-  ListTodo, History, Settings2, ArrowRight, ArrowUpRight, Copy, ArrowDownRight, Minus, Phone, Navigation, MousePointerClick, Search, Eye, CalendarCheck, CheckCircle2, Clock, PlugZap, Globe
+  ListTodo, History, Settings2, ArrowRight, ArrowUpRight, Copy, Plus, ArrowDownRight, Minus, Phone, Navigation, MousePointerClick, Search, Eye, CalendarCheck, CheckCircle2, Clock, PlugZap, Globe
 } from 'lucide-react';
 import { ReviewLinkCard } from './ReviewLink';
 import { ProfileStrength, QuickTiles, MissingInfoCard, ShareProfileCard, NewReviewBanner, interactions } from './GbpOverviewExtras';
@@ -125,7 +125,7 @@ const ago = (iso) => {
 const Loading = () => <SkList rows={3} />;
 
 /** Client header: who this workspace is for and the state of its Google connection. */
-export function ClientBar({ b, onConnect, onSync, syncing = false, version = 0 }) {
+export function ClientBar({ b, onConnect, onSync, syncing = false, version = 0, onCreate }) {
   const live = useGbpLive(b);  // the Business Profile data once the project's access steps are done; until then only what the checklist knows
   const d = live.data;
   const reload = live.reload;
@@ -148,6 +148,7 @@ export function ClientBar({ b, onConnect, onSync, syncing = false, version = 0 }
           {d.linked && <VerifyPill state={d.verification} />}
         </>
       )}
+      {d?.linked && onCreate && <Button size="sm" icon={Plus} onClick={onCreate} title="Create a new Google Business Profile from this project's details">New profile</Button>}
       {d?.linked ? <Button size="sm" busy={syncing} disabled={syncing} onClick={onSync}>{syncing ? 'Syncing…' : 'Sync now'}</Button> : <Button size="sm" variant="primary" icon={PlugZap} onClick={() => onConnect?.('google')}>Connect Google account</Button>}
     </div>
   );
