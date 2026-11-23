@@ -61,6 +61,29 @@ def create_post(body: PostIn, b: Business = Depends(get_business), db: Session =
     return row(p) | {"task_id": task.id}
 
 
+@router.get("/posts/clicks")
+def post_clicks_report(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Visits that came from each post's button, counted by Google Analytics from the campaign tag on the link. {available, reason, by_post: {id: {visits, users}}}."""
+    from ..services import ga4, post_clicks
+    try:
+        props = access.ga4_properties(db, user, b)
+    except HTTPException:
+        return {"available": False, "reason": "Connect Google Analytics for this website to count clicks on the post buttons.", "by_post": {}}
+    if not props:
+        return {"available": False, "reason": "No Google Analytics property was found for this website.", "by_post": {}}
+    try:
+        ga = ga4.Ga4(b.connection)
+        merged: dict[int, dict[str, int]] = {}
+        for pr in props:
+            for pid, v in post_clicks.counts(ga, pr["property"]).items():
+                m = merged.setdefault(pid, {"visits": 0, "users": 0})
+                m["visits"] += v["visits"]
+                m["users"] += v["users"]
+    except Exception as exc:  # noqa: BLE001 - Analytics may be slow or refuse: the table still shows
+        return {"available": False, "reason": f"Google Analytics did not answer ({str(exc)[:120]}).", "by_post": {}}
+    return {"available": True, "reason": None, "by_post": {str(k): v for k, v in merged.items()}}
+
+
 def _post_task(db: Session, b: Business, post_id: int, statuses: tuple[str, ...]) -> AgentTask | None:
     return next((t for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.kind == "gbp_post", AgentTask.status.in_(statuses)).order_by(AgentTask.id.desc()))
                  if str((t.detail or {}).get("post_id")) == str(post_id)), None)

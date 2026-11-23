@@ -387,3 +387,18 @@ def test_a_post_marked_scheduled_with_nothing_to_send_it_is_listed_as_a_draft(cl
         assert [x["status"] for x in out] == ["draft"] and out[0]["scheduled_for"] is None
     finally:
         db.close()
+
+
+def test_a_published_post_sends_its_button_link_with_the_campaign_tag_and_keeps_its_own_link(client, project, monkeypatch):
+    db = SessionLocal()
+    try:
+        link(db, project)
+        sent = []
+        monkeypatch.setattr(FakeGoogle, "create_post", lambda self, account, location, post: (sent.append(post), {"name": f"{location}/localPosts/9"})[1])
+        body = {"post_type": "Update", "body": "Our wedding collection is in: come and try it on this weekend.", "image_url": "https://lh3.example/p", "cta_type": "LEARN_MORE", "cta_url": "https://rental.example/collection"}
+        pid = client.post(f"/api/v1/businesses/{project}/posts", json=body).json()["id"]
+        assert client.post(f"/api/v1/businesses/{project}/gbp/posts/{pid}/publish").status_code == 200
+        assert sent[0]["cta_url"].startswith("https://rental.example/collection?") and f"utm_campaign=gbp-post-{pid}" in sent[0]["cta_url"]
+        assert db.get(Post, pid).cta_url == "https://rental.example/collection"  # what the owner typed is what the list shows
+    finally:
+        db.close()

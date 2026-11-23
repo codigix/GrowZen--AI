@@ -267,7 +267,7 @@ const LIVE_CTA = { BOOK: 'Book', ORDER: 'Order online', SHOP: 'Shop', LEARN_MORE
 const todayStr = (offset = 0) => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 /** The form for a post that is already live: its text, button and (for offers and events) its dates. Saved straight to Google. */
-function LivePostEditor({ b, post, onClose, onSaved }) {
+export function LivePostEditor({ b, post, onClose, onSaved }) {
   const dated = post.type === 'OFFER' || post.type === 'EVENT';
   const event = post.type === 'EVENT';
   const [f, setF] = useState(() => ({ summary: post.summary || '', cta_type: LIVE_CTA[post.cta] ? post.cta : '', cta_url: post.cta_url || '', title: post.title || '', starts_on: post.starts_on || '', ends_on: post.ends_on || '', start_time: post.start_time || '', end_time: post.end_time || '' }));

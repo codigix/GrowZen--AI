@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Save, Store, FileText, ListChecks, Tags, Navigation, CalendarCheck, Clock, ChevronDown, Upload } from 'lucide-react';
+import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Pencil, ExternalLink, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Save, Store, FileText, ListChecks, Tags, Navigation, CalendarCheck, Clock, ChevronDown, Upload } from 'lucide-react';
 import { SeoShell, Drawer, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useDoubleConfirm, useSeoBusiness, refreshBusinesses, useUrlTab, SkChart, SkList, SkLines, SkScore, SkCard } from './SeoUi';
 import GbpLive from './GbpLive';
 import { AutopilotPanel, waitingFor } from './AutopilotPanels';
 import { BusinessTraffic } from './TrafficPage';
 import AccessGate from './AccessGate';
-import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePosts, isLinked, readBase64 } from './GbpEditors';
+import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePostEditor, isLinked, readBase64 } from './GbpEditors';
+import DataTable from './DataTable';
+import { Act } from './TableBits';
 import { MarketCard } from './Market';
 import GbpPublicReport from './GbpPublicReport';
 import PublicReviews from './PublicReviews';
@@ -803,8 +805,16 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
   );
 }
 
+/** Clicks are counted from the campaign tag on the button link: a post published before the tag existed has no count. */
+const TAGGED_FROM = '2026-11-23';
+const headingOf = (p) => (p.title || String(p.body || p.summary || '').split(/[\n.!?]/)[0]).trim().slice(0, 80) || 'Post';
+
 function PostsTab({ b, toast }) {
   const posts = useApi(`/businesses/${b.id}/posts`);
+  const linkedProfile = isLinked(b);
+  const live = useApi(linkedProfile ? `/businesses/${b.id}/gbp/live` : null);
+  const clicks = useApi(linkedProfile ? `/businesses/${b.id}/posts/clicks` : null);
+  const [liveEdit, setLiveEdit] = useState(null);
   const [edit, setEdit] = useState(null);
   const [busy, error, run, setError] = useAction();
   const openedFromKeyword = React.useRef(false);
@@ -826,34 +836,71 @@ function PostsTab({ b, toast }) {
     setReschedule(null); posts.reload(true); toast(`Scheduled: it goes live on Google on ${fmtDateTime(out.scheduled_for)}, and not before`);
   });
   const aiDraft = () => run('draft', async () => { await api(`/businesses/${b.id}/posts/draft`, { method: 'POST' }); posts.reload(true); toast('AI drafted this week\'s post (in the approval queue)'); });
+  const tableRows = useMemo(() => {
+    const local = posts.data || [];
+    const byExt = new Map(local.filter(p => p.external_id).map(p => [p.external_id, p]));
+    const seen = new Set();
+    const out = [];
+    for (const lp of live.data?.live?.posts || []) {
+      const mine = byExt.get(lp.id);
+      if (mine) seen.add(mine.id);
+      const c = mine ? clicks.data?.by_post?.[String(mine.id)] : null;
+      const ok = Boolean(clicks.data?.available);
+      const tracked = mine && (c || (ok && String(mine.published_at || lp.created || '').slice(0, 10) >= TAGGED_FROM));
+      out.push({ key: lp.id, live: lp, local: mine, url: lp.url, image: lp.image, heading: headingOf({ title: lp.title || mine?.title, summary: lp.summary }), text: lp.summary || mine?.body, type: String(lp.type || mine?.post_type || 'update').toLowerCase().replace('standard', 'update'),
+        status: 'live', when: lp.created || mine?.published_at, cta: lp.cta || mine?.cta_type, ctaUrl: lp.cta_url || mine?.cta_url, clicks: tracked ? (c?.visits ?? 0) : null, users: c?.users ?? null,
+        clickNote: !mine ? 'Made outside this software: its button link has no tag, so its clicks cannot be counted.' : !ok ? (clicks.data?.reason || 'Clicks are not available.') : 'Published before clicks were counted: its link has no tag.' });
+    }
+    for (const p of local) {
+      if (seen.has(p.id) || (p.status === 'published' && p.external_id && live.data)) continue; // a published post whose live copy is above (or was removed on Google) is not listed twice
+      const status = p.status === 'published' ? 'live' : p.status;
+      const c = clicks.data?.by_post?.[String(p.id)];
+      out.push({ key: `p${p.id}`, local: p, image: p.image_url, heading: headingOf(p), text: p.body, type: String(p.post_type || 'update').toLowerCase(), status, when: p.published_at || p.scheduled_for || p.created_at, cta: p.cta_type, ctaUrl: p.cta_url,
+        clicks: c ? c.visits : null, users: c?.users ?? null, clickNote: status === 'live' ? 'No visits counted for this post yet.' : 'Not posted yet, so there are no clicks.' });
+    }
+    return out;
+  }, [posts.data, live.data, clicks.data]);
+  const delLive = (p) => ask({ what: 'this post', effect: 'It is removed from your Google Business Profile, so customers will no longer see it.', onConfirm: () => run(`d${p.id}`, async () => { await api(`/businesses/${b.id}/gbp/live-post?name=${encodeURIComponent(p.id)}`, { method: 'DELETE' }); toast('Post deleted from Google'); live.reload(true); posts.reload(true); }) });
   const [ask, confirmNode] = useDoubleConfirm();
   const del = (id) => ask({ what: 'this post', effect: 'The draft or scheduled post is deleted and will not be published.', onConfirm: () => run(`d${id}`, async () => { await api(`/businesses/${b.id}/posts/${id}`, { method: 'DELETE' }); posts.reload(true); }) });
   return (
     <>
       {confirmNode}
-      <Card title="Posts" subtitle="One or two Updates or Offers a week keeps the profile active. Every post is approved before it goes live."
+      <Card pad={false} title={`Posts (${tableRows.length})`} subtitle="Every post of this profile: the ones live on Google, scheduled and drafts."
         action={<div className="flex gap-2"><Button variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={aiDraft}>AI draft</Button><Button variant="primary" icon={Plus} onClick={open}>New post</Button></div>}>
         <ErrorNote>{!edit && error}</ErrorNote>
-        {!posts.data ? <SkList rows={4} thumb /> : posts.data.length === 0 ? <div className="py-8 text-center text-13 text-gray-500">No posts yet.</div> : (
-          <div className="divide-y divide-gray-100">
-            {posts.data.map(p => (
-              <div key={p.id} className="flex items-start gap-3 py-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap"><Badge tone={p.post_type === 'Offer' ? 'orange' : p.post_type === 'Event' ? 'violet' : 'blue'}>{p.post_type}</Badge>{p.title && <span className="text-13 font-medium text-gray-900">{p.title}</span>}{p.ai_generated && <Badge tone="violet"><Sparkles size={10} /> AI</Badge>}</div>
-                  <p className="text-12 text-gray-600 mt-1 line-clamp-2">{p.body}</p>
-                  <div className="text-11 text-gray-500 mt-1">{CTA[p.cta_type] || '—'} · {p.published_at ? `published ${fmtDateTime(p.published_at)}` : p.status === 'scheduled' && p.scheduled_for ? `goes live ${fmtDateTime(p.scheduled_for)}, not before` : `created ${fmtDate(p.created_at)}`}</div>
-                </div>
-                <StatusPill level={p.status === 'published' ? 'good' : p.status === 'failed' ? 'critical' : p.status === 'scheduled' ? 'info' : 'warning'}>{p.status === 'published' ? 'Live' : p.status === 'failed' ? 'Failed' : p.status === 'scheduled' ? 'Scheduled' : 'Draft'}</StatusPill>
-                {p.status !== 'published' && isLinked(b) && <Button size="sm" variant="primary" busy={busy === `p${p.id}`} onClick={() => publish(p.id)} title={p.status === 'scheduled' ? 'Post it now instead of at the scheduled time' : 'Post it on Google now'}>Post now</Button>}
-                {p.status !== 'published' && isLinked(b) && <Button size="sm" onClick={() => setReschedule({ id: p.id, date: dayStr(1), time: '09:00' })}>{p.status === 'scheduled' ? 'Change time' : 'Schedule'}</Button>}
-                {p.status === 'scheduled' && <Button size="sm" busy={busy === `u${p.id}`} onClick={() => unschedule(p.id)} title="Take it back to a draft: nothing is sent">Unschedule</Button>}
-                {p.status !== 'published' && <button onClick={() => del(p.id)} className="p-1 text-gray-400 hover:text-red-600 cursor-pointer" aria-label="Delete"><Trash2 size={14} /></button>}
-              </div>
-            ))}
-          </div>
+        {clicks.data && !clicks.data.available && <p className="px-5 pb-2 text-12 text-amber-800">{clicks.data.reason}</p>}
+        {!posts.data ? <div className="px-5 pb-4"><SkList rows={4} thumb /></div> : (
+          <DataTable bare rows={tableRows} rowKey={r => r.key} pageSize={10} sizes={[10, 25, 50]} exportName="google-posts" label="posts" searchPlaceholder="Search posts" minWidth={980} columnsMenu={false}
+            empty="No posts yet. Press New post."
+            filters={[{ id: 'status', label: 'Status', options: [['live', 'Live'], ['scheduled', 'Scheduled'], ['draft', 'Draft'], ['failed', 'Failed']], test: (r, v) => r.status === v }]}
+            columns={[
+              { id: 'heading', header: 'Heading and text', value: r => r.heading, className: 'px-3 py-2.5 min-w-[280px] max-w-[420px]', thClass: 'px-3 py-2.5',
+                cell: r => <div className="flex gap-3">{r.image && <img src={r.image} alt="" referrerPolicy="no-referrer" className="w-12 h-12 rounded object-cover shrink-0 bg-slate-100" />}<div className="min-w-0"><div className="text-13 font-semibold text-slate-900 truncate" title={r.heading}>{r.heading}</div><p className="text-12 text-slate-500 line-clamp-2" title={r.text}>{r.text}</p></div></div> },
+              { id: 'type', header: 'Type', value: r => r.type, className: 'px-3 py-2.5 whitespace-nowrap', cell: r => <Badge tone={r.type === 'offer' ? 'orange' : r.type === 'event' ? 'violet' : 'blue'}>{r.type}</Badge> },
+              { id: 'status', header: 'Status', value: r => r.status, className: 'px-3 py-2.5 whitespace-nowrap',
+                cell: r => <StatusPill level={r.status === 'live' ? 'good' : r.status === 'failed' ? 'critical' : r.status === 'scheduled' ? 'info' : 'warning'}>{r.status === 'live' ? 'Live' : r.status === 'failed' ? 'Failed' : r.status === 'scheduled' ? 'Scheduled' : 'Draft'}</StatusPill> },
+              { id: 'date', header: 'Date', first: 'desc', value: r => (r.when ? Date.parse(r.when) : null), className: 'px-3 py-2.5 whitespace-nowrap text-12.5 text-slate-600',
+                cell: r => (r.when ? <>{fmtDateTime(r.when)}<span className="block text-11 text-slate-400">{r.status === 'scheduled' ? 'goes live' : r.status === 'live' ? 'posted' : 'created'}</span></> : '—') },
+              { id: 'button', header: 'Button', value: r => r.cta || '', className: 'px-3 py-2.5 text-12.5 max-w-[180px]',
+                cell: r => (r.cta ? <><span className="font-medium text-slate-700">{CTA[r.cta] || r.cta}</span>{r.ctaUrl && <a href={r.ctaUrl} target="_blank" rel="noreferrer noopener" title={r.ctaUrl} className="block text-11.5 text-indigo-600 hover:underline truncate">{String(r.ctaUrl).replace(/^https?:\/\/(www\.)?/, '').replace(/\?.*$/, '')}</a>}</> : <span className="text-slate-300">none</span>) },
+              { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: r => r.clicks ?? null, className: 'px-3 py-2.5 text-right tabular-nums',
+                cell: r => (r.clicks != null ? <span title={`${r.clicks} visit${r.clicks === 1 ? '' : 's'} to the button link counted by Google Analytics${r.users != null ? `, ${r.users} people` : ''}`} className={`font-semibold ${r.clicks ? 'text-slate-900' : 'text-slate-400'}`}>{r.clicks}</span> : <span className="text-slate-300" title={r.clickNote}>—</span>) },
+              { id: 'actions', header: 'Actions', right: true, className: 'px-3 py-2.5 text-right whitespace-nowrap', thClass: 'px-3 py-2.5',
+                cell: r => (
+                  <span className="inline-flex flex-wrap justify-end gap-1.5">
+                    {r.url && <a href={r.url} target="_blank" rel="noreferrer noopener"><Act icon={ExternalLink} tone="sky" tip="Open on Google: see the post as customers see it." /></a>}
+                    {r.live && <Act icon={Pencil} tone="indigo" tip="Edit: change this live post on Google." onClick={() => setLiveEdit(r.live)} />}
+                    {r.local && r.status !== 'live' && linkedProfile && <Act tone="green" busy={busy === `p${r.local.id}`} tip={r.status === 'scheduled' ? 'Post now: send it at once instead of at the scheduled time.' : 'Post now: put it on Google at once.'} onClick={() => publish(r.local.id)}>Post now</Act>}
+                    {r.local && r.status !== 'live' && linkedProfile && <Act tone="indigo" tip={r.status === 'scheduled' ? 'Change time: move the time it goes live.' : 'Schedule: choose when it goes live.'} onClick={() => setReschedule({ id: r.local.id, date: dayStr(1), time: '09:00' })}>{r.status === 'scheduled' ? 'Change time' : 'Schedule'}</Act>}
+                    {r.status === 'scheduled' && <Act tone="amber" busy={busy === `u${r.local.id}`} tip="Unschedule: take it back to a draft; nothing is sent." onClick={() => unschedule(r.local.id)}>Unschedule</Act>}
+                    {r.live ? <Act icon={Trash2} tone="rose" busy={busy === `d${r.live.id}`} tip="Delete: remove this post from your Google profile." onClick={() => delLive(r.live)} />
+                      : r.local && <Act icon={Trash2} tone="rose" tip="Delete: remove this post." onClick={() => del(r.local.id)} />}
+                  </span>) }
+            ]} />
         )}
       </Card>
-      <div className="mt-4"><LivePosts b={b} toast={toast} /></div>
+      {liveEdit && <LivePostEditor b={b} post={liveEdit} onClose={() => setLiveEdit(null)} onSaved={() => { setLiveEdit(null); toast('Post updated on Google'); live.reload(true); }} />}
       <Modal open={Boolean(edit)} title="New post" onClose={() => setEdit(null)} width="max-w-5xl" footer={<><Button onClick={() => setEdit(null)}>Cancel</Button><Button variant="primary" icon={Send} busy={busy === 'save'} disabled={!edit?.body.trim() || !edit?.image_url || postText(edit).length > 1500 || Boolean(postProblem(edit)) || Boolean(timingProblem(edit, isLinked(b)))} title={!edit?.image_url ? 'Add a picture first' : timingProblem(edit, isLinked(b)) || ''} onClick={() => save()}>{edit?.timing === 'now' ? 'Post now' : edit?.timing === 'schedule' ? 'Schedule post' : 'Save draft'}</Button></>}>
         {edit && <PostEditor b={b} edit={edit} setEdit={setEdit} toast={toast} error={error} />}
       </Modal>
