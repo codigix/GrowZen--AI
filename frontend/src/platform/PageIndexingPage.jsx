@@ -28,13 +28,13 @@ function IndexTable({ pages, d, gs, busy, goGoogle, total, resetKey }) {
             <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>{[['page', 'Page'], ['tech', 'Can it be indexed?'], ['google', 'In Google'], ['crawl', 'Last crawled by Google'], ['sent', 'Sent to other engines']].map(([k, l]) => <SortTh key={k} id={k} sort={sort} onSort={onSort} className={TH.replace(' text-left', '').replace(' font-medium', '')}>{l}</SortTh>)}<th className={`${TH} text-right`}>Actions</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {pager.rows.map(p => { const [lab, tone] = STATE[p.g_state] || ['Not checked', 'gray']; return (
-                <tr key={p.id} className="align-top hover:bg-slate-50">
-                  <td className="px-3 py-3 max-w-[340px]"><div className="font-medium text-slate-900 truncate" title={p.url}>{p.path}</div><div className="text-12 text-slate-500">First seen {when(p.first_seen)}{p.is_new && <span className="ml-1.5"><Badge tone="blue">New</Badge></span>}{p.changed_at && <span className="ml-1.5"><Badge tone="amber">Changed</Badge></span>}{!p.in_sitemap && <span className="ml-1.5 text-slate-400">no longer in the sitemap</span>}</div></td>
-                  <td className="px-3 py-3 max-w-[300px]">{p.tech ? <><Badge tone={(TECH[p.tech.verdict] || ['', 'gray'])[1]}>{(TECH[p.tech.verdict] || ['Not checked'])[0]}</Badge>{p.tech.reasons.slice(0, 2).map((r, i) => <div key={i} className="text-12 text-slate-600 mt-1">{r.text}</div>)}{p.tech.reasons.length > 2 && <div className="text-11.5 text-slate-400 mt-0.5">+{p.tech.reasons.length - 2} more</div>}</> : <Badge tone="gray">Not checked</Badge>}</td>
-                  <td className="px-3 py-3 max-w-[320px]"><Badge tone={tone}>{lab}</Badge>{!p.g_state && gs && gs.state !== 'ok' && <div className="text-11.5 text-amber-800 mt-1">Google cannot be asked yet: connect Search Console (see the Google box)</div>}{p.g_reason && <div className="text-12 text-slate-600 mt-1">{p.g_reason}</div>}{p.g_advice && <div className="text-12 text-indigo-800 mt-0.5">{p.g_advice}</div>}{p.g_checked_at && <div className="text-11 text-slate-400 mt-0.5">checked {when(p.g_checked_at)}</div>}</td>
-                  <td className="px-3 py-3 whitespace-nowrap text-slate-600">{when(p.g_last_crawl)}</td>
-                  <td className="px-3 py-3 max-w-[240px]">{p.skip_reason ? <span className="text-amber-800 inline-flex gap-1"><AlertTriangle size={13} className="mt-0.5 shrink-0" />{p.skip_reason}</span> : p.submitted_at ? <span className="text-emerald-700 inline-flex gap-1"><CheckCircle2 size={13} className="mt-0.5 shrink-0" />Sent {when(p.submitted_at)}</span> : p.pending ? <span className="text-indigo-700">Waiting to be sent</span> : <span className="text-slate-300">—</span>}</td>
-                  <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                <tr key={p.id} className="align-middle hover:bg-slate-50">
+                  <td className="px-3 py-2 max-w-[260px]"><div className="font-medium text-slate-900 truncate" title={p.url}>{p.path}</div><div className="text-11.5 text-slate-500 flex items-center gap-1.5">{when(p.first_seen)}{p.is_new && <Badge tone="blue">New</Badge>}{p.changed_at && <Badge tone="amber">Changed</Badge>}{!p.in_sitemap && <span className="text-slate-400">not in the sitemap now</span>}</div></td>
+                  <td className="px-3 py-2 max-w-[300px]">{p.tech ? <><Badge tone={(TECH[p.tech.verdict] || ['', 'gray'])[1]}>{(TECH[p.tech.verdict] || ['Not checked'])[0]}</Badge>{p.tech.reasons.length > 0 && <div className="text-11.5 text-slate-600 mt-0.5 truncate cursor-help" title={p.tech.reasons.map(r => r.text).join('\n')}>{p.tech.reasons[0].text}{p.tech.reasons.length > 1 ? ` (+${p.tech.reasons.length - 1} more)` : ''}</div>}</> : <Badge tone="gray">Not checked</Badge>}</td>
+                  <td className="px-3 py-2 max-w-[280px]"><Badge tone={tone}>{lab}</Badge>{!p.g_state && gs && gs.state !== 'ok' && <div className="text-11.5 text-amber-800 mt-0.5">Connect Search Console to ask Google</div>}{p.g_reason && <div className="text-11.5 text-slate-600 mt-0.5 truncate cursor-help" title={[p.g_reason, p.g_advice].filter(Boolean).join('\n\n')}>{p.g_reason}</div>}{p.g_checked_at && <div className="text-11 text-slate-400">checked {when(p.g_checked_at)}</div>}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-slate-600">{when(p.g_last_crawl)}</td>
+                  <td className="px-3 py-2 max-w-[240px]">{p.skip_reason ? <span className="text-amber-800 inline-flex gap-1"><AlertTriangle size={13} className="mt-0.5 shrink-0" />{p.skip_reason}</span> : p.submitted_at ? <span className="text-emerald-700 inline-flex gap-1"><CheckCircle2 size={13} className="mt-0.5 shrink-0" />Sent {when(p.submitted_at)}</span> : p.pending ? <span className="text-indigo-700">Waiting to be sent</span> : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
                     <Act icon={ExternalLink} tone={p.g_state === 'indexed' ? 'sky' : 'indigo'} busy={busy === `go${p.url}`} onClick={() => goGoogle(p)}
                       tip={p.g_state === 'indexed' ? "Check: ask Google about this page and open its report in Search Console." : "Index it: ask Google about this page, send it to the other search engines, and open its report in Search Console, where you press Request indexing."}>{p.g_state === 'indexed' ? 'Check' : 'Index it'}</Act>
                     <OpenAct url={p.url} tip="Open: show the page in a new tab." />
@@ -110,52 +110,52 @@ function Indexing({ b }) {
         const hist = d.history || [];
         const tr = (k) => trendOf(hist, k);
         const total = c.in_sitemap || c.total || 0;
-        const share = (n) => (total ? Math.round((n / total) * 100) : 0);
         const idx = tr('indexed');
+        const Move = ({ k, now, low }) => { const x = tr(k); return x.before == null ? null : <Delta now={now} before={x.before} since={x.since} lowerIsBetter={low} />; };
+        const Dot = ({ color, label, n }) => <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />{label} <b className="tabular-nums text-slate-900">{n}</b></span>;
+        const Mini = ({ label, n, k, low, hint }) => <div className="px-5 py-3 min-w-0" title={hint}><div className="text-12 text-slate-500">{label}</div><div className="flex items-baseline gap-2"><span className="text-20 font-bold tabular-nums text-slate-900">{n}</span><Move k={k} now={n} low={low} /></div></div>;
         return (
-          <div className="space-y-3">
-            <div className="rounded-xl bg-white ring-1 ring-slate-200 p-5 flex flex-wrap items-center gap-x-8 gap-y-4">
-              <Ring value={c.indexed} total={total} label="indexed" />
-              <div className="flex-1 min-w-[260px]">
-                <div className="text-15 font-semibold text-slate-900"><span className="tabular-nums">{c.indexed}</span> of <span className="tabular-nums">{total}</span> sitemap pages are indexed in Google</div>
-                <div className="mt-1 text-12.5 text-slate-500">{c.unchecked ? `${c.unchecked} have not been asked yet: press “Check Google for 25 pages”. ` : 'Every page has been asked. '}{c.not_indexed ? `${c.not_indexed} are not indexed.` : ''}</div>
-                <div className="mt-3"><Segments total={total} parts={[{ label: 'Indexed', value: c.indexed, color: '#10b981' }, { label: 'Not indexed', value: c.not_indexed, color: '#f59e0b' }, { label: 'Not asked yet', value: c.unchecked, color: '#cbd5e1' }]} /></div>
-                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-12 text-slate-600">
-                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />Indexed <b className="tabular-nums text-slate-900">{c.indexed}</b></span>
-                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" />Not indexed <b className="tabular-nums text-slate-900">{c.not_indexed}</b></span>
-                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-300" />Not asked yet <b className="tabular-nums text-slate-900">{c.unchecked}</b></span>
+          <div className="rounded-xl bg-white ring-1 ring-slate-200 overflow-hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-100">
+              <div className="p-5 flex items-center gap-5">
+                <Ring value={c.indexed} total={total} label="indexed" size={84} stroke={8} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-12 font-semibold uppercase tracking-wide text-slate-500">In Google</div>
+                  <div className="text-15 font-semibold text-slate-900"><span className="tabular-nums">{c.indexed}</span> of <span className="tabular-nums">{total}</span> pages indexed</div>
+                  <div className="mt-2"><Segments total={total} parts={[{ label: 'Indexed', value: c.indexed, color: '#10b981' }, { label: 'Not indexed', value: c.not_indexed, color: '#f59e0b' }, { label: 'Not asked yet', value: c.unchecked, color: '#cbd5e1' }]} /></div>
+                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-12 text-slate-600"><Dot color="#10b981" label="Indexed" n={c.indexed} /><Dot color="#f59e0b" label="Not indexed" n={c.not_indexed} /><Dot color="#cbd5e1" label="Not asked" n={c.unchecked} /></div>
                 </div>
+                {idx.series.length > 1 && <div className="hidden xl:block shrink-0 text-right"><Spark values={idx.series} tone="#10b981" width={110} height={40} /><div className="mt-0.5"><Delta now={c.indexed} before={idx.before} since={idx.since} /></div></div>}
               </div>
-              <div className="min-w-[170px]">
-                <div className="text-12 font-semibold text-slate-500 mb-1">Indexed pages, last 30 days</div>
-                {idx.series.length > 1 ? <Spark values={idx.series} tone="#10b981" width={170} height={48} /> : <div className="text-12 text-slate-400">The graph fills in as days pass: this page keeps each day's count from now on.</div>}
-                <div className="mt-1"><Delta now={c.indexed} before={idx.before} since={idx.since} /></div>
+              <div className="p-5">
+                <div className="text-12 font-semibold uppercase tracking-wide text-slate-500">Can Google index them? <span className="normal-case font-normal tracking-normal text-slate-400">(our own check)</span></div>
+                <div className="text-15 font-semibold text-slate-900"><span className="tabular-nums">{c.tech_ok}</span> of <span className="tabular-nums">{total}</span> can be indexed</div>
+                <div className="mt-2"><Segments total={total} parts={[{ label: 'Can be indexed', value: c.tech_ok, color: '#10b981' }, { label: 'Risky', value: c.tech_risky, color: '#f59e0b' }, { label: 'Blocked', value: c.tech_blocked, color: '#ef4444' }, { label: 'Not checked', value: c.tech_unchecked, color: '#cbd5e1' }]} /></div>
+                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-12 text-slate-600"><Dot color="#10b981" label="Can be indexed" n={c.tech_ok} /><Dot color="#f59e0b" label="Risky" n={c.tech_risky} /><Dot color="#ef4444" label="Blocked" n={c.tech_blocked} /><Dot color="#cbd5e1" label="Not checked" n={c.tech_unchecked} /></div>
               </div>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              <StatCard label="Pages in your sitemap" value={c.in_sitemap} tone="#6366f1" {...tr('in_sitemap')} />
-              <StatCard label="Indexed in Google" value={c.indexed} tone="#10b981" valueTone="text-emerald-700" hint="Google shows these in search, or told us so when we checked" share={share(c.indexed)} {...tr('indexed')} />
-              <StatCard label="Not indexed in Google" value={c.not_indexed} tone="#f59e0b" valueTone={c.not_indexed ? 'text-amber-600' : 'text-slate-900'} lowerIsBetter share={share(c.not_indexed)} {...tr('not_indexed')} />
-              <StatCard label="Sent to other engines" value={c.sent} tone="#0ea5e9" hint="Bing, Yandex, Seznam, Naver, Yep (IndexNow)" share={share(c.sent)} {...tr('sent')} />
-              <StatCard label="Waiting to be sent" value={c.pending} tone="#8b5cf6" valueTone={c.pending ? 'text-indigo-700' : 'text-slate-900'} lowerIsBetter share={share(c.pending)} {...tr('pending')} />
-            </div>
-
-            <div>
-              <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2 mt-2">
-                <h3 className="text-15 font-semibold text-slate-900">Can Google index these pages?</h3>
-                <span className="text-12 text-slate-500">Our own check: each page is loaded like a crawler. It needs no Google account. {c.tech_unchecked ? `${c.tech_unchecked} not checked yet.` : ''}</span>
-              </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <StatCard label="Can be indexed" value={c.tech_ok} tone="#10b981" valueTone="text-emerald-700" hint="Loads, no noindex, allowed by robots.txt, its own canonical and readable text" share={share(c.tech_ok)} {...tr('tech_ok')} />
-                <StatCard label="Risky" value={c.tech_risky} tone="#f59e0b" valueTone={c.tech_risky ? 'text-amber-600' : 'text-slate-900'} lowerIsBetter hint="It loads but something may keep Google from indexing it: a canonical to another page, a redirect, almost no readable text" share={share(c.tech_risky)} {...tr('tech_risky')} />
-                <StatCard label="Blocked" value={c.tech_blocked} tone="#ef4444" valueTone={c.tech_blocked ? 'text-red-600' : 'text-slate-900'} lowerIsBetter hint="An error, a noindex tag or header, or robots.txt stops Google" share={share(c.tech_blocked)} {...tr('tech_blocked')} />
-                <StatCard label="Not checked yet" value={c.tech_unchecked} tone="#94a3b8" lowerIsBetter hint="Checked automatically when this page opens and every day" share={share(c.tech_unchecked)} {...tr('tech_unchecked')} />
-              </div>
+            <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100 bg-slate-50/50">
+              <Mini label="Pages in your sitemap" n={c.in_sitemap} k="in_sitemap" />
+              <Mini label="Sent to other engines" n={c.sent} k="sent" hint="Bing, Yandex, Seznam, Naver, Yep (IndexNow)" />
+              <Mini label="Waiting to be sent" n={c.pending} k="pending" low />
             </div>
           </div>
         );
       })()}
 
+      <Card pad={false}>
+        <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
+          <Select value={status} onChange={e => setStatus(e.target.value)} aria-label="Filter" className="h-9 w-56 rounded-lg border border-slate-300 bg-white px-3 text-13">{FILTERS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
+          <div className="relative"><SearchIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Find a page" aria-label="Find a page" className="h-9 w-56 rounded-lg border border-slate-300 pl-8 pr-3 text-13" /></div>
+          <span className="text-12 text-slate-500">{d.shown} of {c.total} pages</span>
+          <span className="flex-1" />
+          <Button size="sm" icon={RefreshCw} busy={busy === 'scan'} onClick={scan}>Read the sitemap now</Button>
+          <Button size="sm" icon={ShieldCheck} busy={busy === 'tech'} onClick={() => techCheck()} title="Load each page like a crawler and check what could stop indexing">Check pages now</Button>
+          <Button size="sm" icon={SearchIcon} busy={busy === 'inspect'} onClick={() => inspect()}>Check Google for 25 pages</Button>
+          <Button size="sm" variant="primary" icon={Send} busy={busy === 'send'} disabled={!c.pending || !d.key.ready} title={d.key.ready ? '' : 'Put the key file on the site first'} onClick={() => send()}>Send {c.pending} waiting page{c.pending === 1 ? '' : 's'}</Button>
+        </div>
+        <IndexTable pages={d.pages} d={d} gs={gs} busy={busy} goGoogle={goGoogle} total={c.total} resetKey={`${status}|${q}`} />
+      </Card>
       <Card title="Automatic indexing" subtitle="Every day the software reads your sitemap, finds new and changed pages, sends them to the other search engines, and asks Google how each page is doing."
         action={<span className="flex gap-2"><Button size="sm" icon={Play} busy={busy === 'run'} onClick={runNow}>Run it now</Button>{d.auto ? <Button size="sm" onClick={() => auto(false)} busy={busy === 'auto'}>Turn off</Button> : <Button size="sm" variant="primary" onClick={() => auto(true)} busy={busy === 'auto'}>Turn on</Button>}</span>}>
         <ErrorNote>{error}</ErrorNote>
@@ -195,19 +195,6 @@ function Indexing({ b }) {
         </Card>
       </div>
 
-      <Card pad={false}>
-        <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
-          <Select value={status} onChange={e => setStatus(e.target.value)} aria-label="Filter" className="h-9 w-56 rounded-lg border border-slate-300 bg-white px-3 text-13">{FILTERS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
-          <div className="relative"><SearchIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Find a page" aria-label="Find a page" className="h-9 w-56 rounded-lg border border-slate-300 pl-8 pr-3 text-13" /></div>
-          <span className="text-12 text-slate-500">{d.shown} of {c.total} pages</span>
-          <span className="flex-1" />
-          <Button size="sm" icon={RefreshCw} busy={busy === 'scan'} onClick={scan}>Read the sitemap now</Button>
-          <Button size="sm" icon={ShieldCheck} busy={busy === 'tech'} onClick={() => techCheck()} title="Load each page like a crawler and check what could stop indexing">Check pages now</Button>
-          <Button size="sm" icon={SearchIcon} busy={busy === 'inspect'} onClick={() => inspect()}>Check Google for 25 pages</Button>
-          <Button size="sm" variant="primary" icon={Send} busy={busy === 'send'} disabled={!c.pending || !d.key.ready} title={d.key.ready ? '' : 'Put the key file on the site first'} onClick={() => send()}>Send {c.pending} waiting page{c.pending === 1 ? '' : 's'}</Button>
-        </div>
-        <IndexTable pages={d.pages} d={d} gs={gs} busy={busy} goGoogle={goGoogle} total={c.total} resetKey={`${status}|${q}`} />
-      </Card>
       {toastNode}
     </div>
   );
