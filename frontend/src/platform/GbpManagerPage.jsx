@@ -870,8 +870,8 @@ function PostsTab({ b, toast }) {
   return (
     <>
       {confirmNode}
-      <div className="mb-3"><AutopilotPanel bid={b.id} feature="posts" hideItems onChanged={() => { auto.reload(true); posts.reload(true); }} /></div>
-      <Card pad={false} title={`Posts (${tableRows.length})`} subtitle="Every post of this profile: the ones live on Google, scheduled and drafts."
+      <div className="mb-2"><AutopilotPanel bid={b.id} feature="posts" hideItems onChanged={() => { auto.reload(true); posts.reload(true); }} /></div>
+      <Card pad={false} title={`Posts (${tableRows.length})`}
         action={<div className="flex gap-2"><Button variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={aiDraft}>AI draft</Button><Button variant="primary" icon={Plus} onClick={open}>New post</Button></div>}>
         <ErrorNote>{!edit && error}</ErrorNote>
         {clicks.data && !clicks.data.available && <p className="px-5 pb-2 text-12 text-amber-800">{clicks.data.reason}</p>}
@@ -1119,7 +1119,7 @@ function Manager({ b, tab, setTab, toast, onConnect, onCreate }) {
           )}
           {section === 'reviews' && !(b.gbp_location && b.connection_id) && <PublicReviews b={b} />}
           {section === 'reviews' && (b.gbp_location && b.connection_id) && <AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="replies" /><ReviewsSection b={b} toast={toast} /></div></AccessGate>}
-          {section === 'posts' && <><SectionHead title="Posts & Content" subtitle="What's New, Offer and Event posts with approval before publishing" sources={['google', 'ai']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><PostsTab b={b} toast={toast} /></div></AccessGate></>}
+          {section === 'posts' && <><AccessGate b={b} kind="gmb"><div className="space-y-5"><PostsTab b={b} toast={toast} /></div></AccessGate></>}
           {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="photos" /><PhotosTab b={b} toast={toast} /></div></AccessGate></>}
           {section === 'competitors' && <CompetitorSection b={b} />}
           {section === 'local-seo' && <LocalSeoSection b={b} />}
