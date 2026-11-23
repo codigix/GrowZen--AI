@@ -1084,7 +1084,7 @@ function Manager({ b, tab, setTab, toast, onConnect, onCreate }) {
   const setSub = (v) => { const n = new URLSearchParams(params); n.delete('tab'); n.set('sub', v); navigate(`${viewPath(location.pathname, 'profile')}?${n.toString()}`, { replace: true }); };
   const trafficView = TRAFFIC_VIEWS.some(v => v.id === params.get('view')) ? params.get('view') : 'overview';
   const go = (id, s) => { if (id === 'profile' && s) setSub(s); else setTab(id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const allProjects = section === 'overview' && !params.get('project'); // the sidebar's Overview is every project on one page; a project opens with ?project=<id>
+  const allProjects = section === 'overview' && tab !== 'project' && !params.get('project'); // the sidebar's Overview is every project on one page; a project opens with ?project=<id>
   const [, pickBusiness] = useSeoBusiness();
   const openProject = (id) => { pickBusiness(id); navigate(`${location.pathname}?project=${id}`); window.scrollTo({ top: 0 }); };
   const [syncing, setSyncing] = useState(false);
@@ -1098,7 +1098,7 @@ function Manager({ b, tab, setTab, toast, onConnect, onCreate }) {
   if (allProjects) return <GbpPortfolio onOpen={openProject} />;
   return (
     <div className="space-y-4">
-      {section === 'overview' && <button type="button" onClick={() => navigate(location.pathname)} className="text-13 font-semibold text-indigo-600 hover:underline cursor-pointer inline-flex items-center gap-1">← All projects</button>}
+      {section === 'overview' && <button type="button" onClick={() => navigate('/gmb-profile/overview')} className="text-13 font-semibold text-indigo-600 hover:underline cursor-pointer inline-flex items-center gap-1">← All projects</button>}
       <ClientBar b={b} onConnect={onConnect} onSync={sync} syncing={syncing} version={version} onCreate={isLinked(b) ? onCreate : undefined} />
       {!(b.gbp_location && b.connection_id) && <ListingStatus b={b} toast={toast} onFind={() => { onConnect('email'); setTimeout(() => document.querySelector('input[aria-label="Business email"]')?.focus(), 400); }} />}
       <div className="grid grid-cols-1 gap-5 items-start">
