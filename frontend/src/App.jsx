@@ -21,6 +21,7 @@ import Layout from './components/Layout';
 import PasswordGate from './components/PasswordGate';
 const LandingPage = lazy(() => import('./public/LandingPage'));
 const LegalPage = lazy(() => import('./public/LegalPage'));
+const ClientReportPage = lazy(() => import('./platform/ClientReportPage'));
 const PublicReviewPage = lazy(() => import('./platform/ReviewLink').then(m => ({ default: m.PublicReviewPage })));
 import LoginPage from './pages/LoginPage';
 const UsersPage = lazy(() => import('./pages/UsersPage'));
@@ -126,6 +127,7 @@ export default function App() {
   const publicPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   if (publicPath === '/') return <Suspense fallback={<PageLoading />}><LandingPage user={user} /></Suspense>;
   if (publicPath === '/privacy') return <Suspense fallback={<PageLoading />}><LegalPage kind="privacy" /></Suspense>;
+  if (/^\/report\/[^/]+$/.test(publicPath)) return <Suspense fallback={<PageLoading />}><ClientReportPage token={decodeURIComponent(publicPath.slice(8))} /></Suspense>; // a client's live report: no sign-in
   if (/^\/r\/[^/]+$/.test(publicPath)) return <Suspense fallback={<PageLoading />}><PublicReviewPage token={decodeURIComponent(publicPath.slice(3))} /></Suspense>; // a customer's review page: no sign-in
   if (publicPath === '/terms') return <Suspense fallback={<PageLoading />}><LegalPage kind="terms" /></Suspense>;
 

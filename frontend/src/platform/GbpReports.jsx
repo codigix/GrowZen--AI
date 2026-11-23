@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { Download, Mail, Sparkles, Printer, Phone, Navigation, MousePointerClick, Eye, Star, TrendingUp, TrendingDown, Minus, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Download, Mail, Sparkles, Printer, Link2, Copy, ExternalLink, RefreshCw, Power, Phone, Navigation, MousePointerClick, Eye, Star, TrendingUp, TrendingDown, Minus, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { Card, Button, Modal, Field, ErrorNote, inputCls, useAction, SkList } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { SectionHead } from './GbpWorkspace';
+import { Growth } from './ClientReportPage';
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 const monthName = (m) => { const [y, mo] = String(m).split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }); };
@@ -38,10 +39,41 @@ function EmailModal({ b, open, onClose, month, recipient, onDone, toast }) {
   );
 }
 
+/** The client's live report link: an address that opens this client's results month by month, with no sign-in. It can be copied, replaced (the old one stops) or switched off. */
+function ShareCard({ b, toast }) {
+  const st = useApi(`/businesses/${b.id}/gbp/reports/share`);
+  const [busy, error, run] = useAction();
+  const base = `/businesses/${b.id}/gbp/reports/share`;
+  const d = st.data;
+  const make = () => run('make', async () => { await api(base, { method: 'POST' }); await st.reload(true); toast(d?.enabled ? 'New link made: the old one no longer works' : 'Live report link made'); });
+  const off = () => run('off', async () => { await api(base, { method: 'DELETE' }); await st.reload(true); toast('Link switched off'); });
+  const copy = async () => { try { await navigator.clipboard.writeText(d.url); toast('Link copied'); } catch { toast('Select the link and copy it'); } };
+  return (
+    <Card title="Live report link for your client" subtitle="One address that always shows this client's latest results, month by month, with graphs. No sign-in needed."
+      action={d?.enabled ? <Button size="sm" icon={Power} busy={busy === 'off'} onClick={off}>Switch off</Button> : null}>
+      {!d ? <SkList rows={1} avatar={false} /> : !d.enabled ? (
+        <div className="flex flex-wrap items-center gap-3"><p className="text-13 text-slate-600 flex-1 min-w-[240px]">Make a link and send it to the client. They see growth, calls, directions, website clicks, reviews and search positions. Nothing private is shown.</p><Button variant="primary" icon={Link2} busy={busy === 'make'} onClick={make}>Make the link</Button></div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input readOnly value={d.url} onFocus={e => e.target.select()} className={`${inputCls} flex-1 min-w-[260px] font-mono text-12.5`} aria-label="Live report link" />
+            <Button icon={Copy} onClick={copy}>Copy</Button>
+            <a href={d.url} target="_blank" rel="noreferrer noopener"><Button icon={ExternalLink}>Open</Button></a>
+            <Button icon={RefreshCw} busy={busy === 'make'} onClick={make} title="Make a new link: the old one stops working at once">New link</Button>
+          </div>
+          {!d.public && <p className="text-12 text-amber-700">This address points to your local computer ({d.url.split('/report/')[0]}), so a client cannot open it. Set the site address (SITE_URL) to your live domain.</p>}
+        </div>
+      )}
+      <ErrorNote>{error}</ErrorNote>
+    </Card>
+  );
+}
+
 /** Reports for the Google profile: the month against the one before, six months of trend, the summary in plain words, and PDF / CSV / email. */
 export default function GbpReportsSection({ b, toast }) {
   const [month, setMonth] = useState(thisMonth());
   const data = useApi(`/businesses/${b.id}/gbp/reports/overview?month=${month}`);
+  const grow = useApi(`/businesses/${b.id}/gbp/reports/growth?month=${month}`);
   const [busy, error, run] = useAction();
   const [mail, setMail] = useState(false);
   const [words, setWords] = useState(null); // the AI-written summary, once asked for
@@ -77,6 +109,8 @@ export default function GbpReportsSection({ b, toast }) {
         <ErrorNote>{error || data.error?.message}</ErrorNote>
       </Card>
 
+      <ShareCard b={b} toast={toast || (() => {})} />
+
       {!s ? <Card><SkList rows={5} /></Card> : (
         <>
           <div className="print:block text-16 font-semibold text-slate-900 hidden">{b.name} · {monthName(month)}</div>
@@ -96,24 +130,8 @@ export default function GbpReportsSection({ b, toast }) {
             </div>
           </Card>
 
-          <Card title="The last six months" subtitle="How customers found and contacted the profile, month by month">
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chart} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip cursor={{ fill: 'rgba(99,102,241,0.06)' }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="views" name="Profile views" fill="#a5b4fc" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="directions" name="Directions" fill="#6366f1" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="calls" name="Calls" fill="#10b981" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="website_clicks" name="Website clicks" fill="#f59e0b" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            {!d.linked && <p className="text-12 text-amber-700 mt-2">Not connected to Google, so there is no profile data yet.</p>}
-          </Card>
+          {grow.data ? <Growth rows={grow.data.months || []} current={month} /> : <Card><SkList rows={4} avatar={false} /></Card>}
+          {!d.linked && <p className="text-12 text-amber-700">Not connected to Google, so there is no profile data yet.</p>}
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
             <Card title="Next steps" subtitle="The biggest fixes from the latest audits">

@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy import inspect
 
-HIDDEN = {"refresh_token_enc", "totp_secret", "totp_last_step"}
+HIDDEN = {"refresh_token_enc", "totp_secret", "totp_last_step", "report_key"}
 
 
 def row(obj: Any, exclude: set[str] | None = None) -> dict[str, Any] | None:
