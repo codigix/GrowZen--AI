@@ -807,6 +807,7 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
 
 /** Clicks are counted from the campaign tag on the button link: a post published before the tag existed has no count. */
 const TAGGED_FROM = '2026-11-23';
+const POST_LOOK = { live: ['#10b981', 'bg-emerald-50/50 hover:bg-emerald-50', 'Live'], scheduled: ['#6366f1', 'bg-indigo-50/50 hover:bg-indigo-50', 'Scheduled'], draft: ['#f59e0b', 'bg-amber-50/40 hover:bg-amber-50', 'Drafts'], failed: ['#ef4444', 'bg-rose-50/60 hover:bg-rose-50', 'Failed'] };
 const headingOf = (p) => (p.title || String(p.body || p.summary || '').split(/[\n.!?]/)[0]).trim().slice(0, 80) || 'Post';
 
 function PostsTab({ b, toast }) {
@@ -815,6 +816,7 @@ function PostsTab({ b, toast }) {
   const live = useApi(linkedProfile ? `/businesses/${b.id}/gbp/live` : null);
   const clicks = useApi(linkedProfile ? `/businesses/${b.id}/posts/clicks` : null);
   const [liveEdit, setLiveEdit] = useState(null);
+  const [only, setOnly] = useState('all'); // the status the table shows: from the strip above it
   const [edit, setEdit] = useState(null);
   const [busy, error, run, setError] = useAction();
   const openedFromKeyword = React.useRef(false);
@@ -870,13 +872,23 @@ function PostsTab({ b, toast }) {
         action={<div className="flex gap-2"><Button variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={aiDraft}>AI draft</Button><Button variant="primary" icon={Plus} onClick={open}>New post</Button></div>}>
         <ErrorNote>{!edit && error}</ErrorNote>
         {clicks.data && !clicks.data.available && <p className="px-5 pb-2 text-12 text-amber-800">{clicks.data.reason}</p>}
+        {posts.data && (
+          <div className="px-5 pb-3 flex flex-wrap items-stretch gap-2" role="tablist" aria-label="Show posts">
+            {[['all', 'All posts', tableRows.length, '#475569'], ...['live', 'scheduled', 'draft', 'failed'].map(k => [k, POST_LOOK[k][2], tableRows.filter(r => r.status === k).length, POST_LOOK[k][0]])].map(([k, label, n, color]) => (
+              <button key={k} type="button" role="tab" aria-selected={only === k} onClick={() => setOnly(k)} disabled={k !== 'all' && !n}
+                className={`rounded-lg px-3.5 py-2 text-left ring-1 ring-inset cursor-pointer disabled:opacity-40 disabled:cursor-default min-w-[110px] ${only === k ? 'bg-white ring-2' : 'bg-slate-50 ring-slate-200 hover:bg-white'}`} style={only === k ? { borderColor: color, boxShadow: `inset 0 -3px 0 ${color}`, '--tw-ring-color': color } : undefined}>
+                <span className="block text-20 leading-tight font-bold tabular-nums" style={{ color }}>{n}</span><span className="block text-11.5 text-slate-500">{label}</span>
+              </button>))}
+            {clicks.data?.available && <div className="rounded-lg px-3.5 py-2 bg-indigo-50 ring-1 ring-inset ring-indigo-100 min-w-[110px] ml-auto" title="Visits to the post button links counted by Google Analytics (posts published from this software)"><span className="block text-20 leading-tight font-bold tabular-nums text-indigo-700">{tableRows.reduce((a, r) => a + (r.clicks || 0), 0)}</span><span className="block text-11.5 text-indigo-700/80">Clicks counted</span></div>}
+          </div>
+        )}
         {!posts.data ? <div className="px-5 pb-4"><SkList rows={4} thumb /></div> : (
-          <DataTable bare rows={tableRows} rowKey={r => r.key} pageSize={10} sizes={[10, 25, 50]} exportName="google-posts" label="posts" searchPlaceholder="Search posts" minWidth={980} columnsMenu={false}
+          <DataTable bare rows={only === 'all' ? tableRows : tableRows.filter(r => r.status === only)} rowKey={r => r.key} pageSize={10} sizes={[10, 25, 50]} exportName="google-posts" label="posts" searchPlaceholder="Search posts" minWidth={980} columnsMenu={false}
+            headClass="bg-slate-100 text-slate-700" rowClass={r => (POST_LOOK[r.status] || POST_LOOK.draft)[1]}
             empty="No posts yet. Press New post."
-            filters={[{ id: 'status', label: 'Status', options: [['live', 'Live'], ['scheduled', 'Scheduled'], ['draft', 'Draft'], ['failed', 'Failed']], test: (r, v) => r.status === v }]}
             columns={[
               { id: 'heading', header: 'Heading and text', value: r => r.heading, className: 'px-3 py-2.5 min-w-[280px] max-w-[420px]', thClass: 'px-3 py-2.5',
-                cell: r => <div className="flex gap-3">{r.image && <img src={r.image} alt="" referrerPolicy="no-referrer" className="w-12 h-12 rounded object-cover shrink-0 bg-slate-100" />}<div className="min-w-0"><div className="text-13 font-semibold text-slate-900 truncate" title={r.heading}>{r.heading}</div><p className="text-12 text-slate-500 line-clamp-2" title={r.text}>{r.text}</p></div></div> },
+                cell: r => <div className="flex gap-3 border-l-4 pl-3 -ml-1" style={{ borderColor: (POST_LOOK[r.status] || POST_LOOK.draft)[0] }}>{r.image && <img src={r.image} alt="" referrerPolicy="no-referrer" className="w-12 h-12 rounded object-cover shrink-0 bg-slate-100" />}<div className="min-w-0"><div className="text-13 font-semibold text-slate-900 truncate" title={r.heading}>{r.heading}</div><p className="text-12 text-slate-500 line-clamp-2" title={r.text}>{r.text}</p></div></div> },
               { id: 'type', header: 'Type', value: r => r.type, className: 'px-3 py-2.5 whitespace-nowrap', cell: r => <Badge tone={r.type === 'offer' ? 'orange' : r.type === 'event' ? 'violet' : 'blue'}>{r.type}</Badge> },
               { id: 'status', header: 'Status', value: r => r.status, className: 'px-3 py-2.5 whitespace-nowrap',
                 cell: r => <StatusPill level={r.status === 'live' ? 'good' : r.status === 'failed' ? 'critical' : r.status === 'scheduled' ? 'info' : 'warning'}>{r.status === 'live' ? 'Live' : r.status === 'failed' ? 'Failed' : r.status === 'scheduled' ? 'Scheduled' : 'Draft'}</StatusPill> },
@@ -885,7 +897,7 @@ function PostsTab({ b, toast }) {
               { id: 'button', header: 'Button', value: r => r.cta || '', className: 'px-3 py-2.5 text-12.5 max-w-[180px]',
                 cell: r => (r.cta ? <><span className="font-medium text-slate-700">{CTA[r.cta] || r.cta}</span>{r.ctaUrl && <a href={r.ctaUrl} target="_blank" rel="noreferrer noopener" title={r.ctaUrl} className="block text-11.5 text-indigo-600 hover:underline truncate">{String(r.ctaUrl).replace(/^https?:\/\/(www\.)?/, '').replace(/\?.*$/, '')}</a>}</> : <span className="text-slate-300">none</span>) },
               { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: r => r.clicks ?? null, className: 'px-3 py-2.5 text-right tabular-nums',
-                cell: r => (r.clicks != null ? <span title={`${r.clicks} visit${r.clicks === 1 ? '' : 's'} to the button link counted by Google Analytics${r.users != null ? `, ${r.users} people` : ''}`} className={`font-semibold ${r.clicks ? 'text-slate-900' : 'text-slate-400'}`}>{r.clicks}</span> : <span className="text-slate-300" title={r.clickNote}>—</span>) },
+                cell: r => (r.clicks != null ? <span title={`${r.clicks} visit${r.clicks === 1 ? '' : 's'} to the button link counted by Google Analytics${r.users != null ? `, ${r.users} people` : ''}`} className={`inline-block min-w-[2rem] text-center rounded-md px-2 py-0.5 font-bold ${r.clicks ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-400'}`}>{r.clicks}</span> : <span className="text-slate-300" title={r.clickNote}>—</span>) },
               { id: 'actions', header: 'Actions', right: true, className: 'px-3 py-2.5 text-right whitespace-nowrap', thClass: 'px-3 py-2.5',
                 cell: r => (
                   <span className="inline-flex flex-wrap justify-end gap-1.5">

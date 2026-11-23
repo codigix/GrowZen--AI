@@ -114,7 +114,7 @@ export function downloadCsv(name, head, body) {
  */
 export default function DataTable({
   columns, rows, rowKey = (r, i) => r.id ?? i, initialSort = null, pageSize = 25, search = true, searchPlaceholder = 'Search this table', filters = [], exportName = '',
-  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, serial = true, onState
+  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, serial = true, headClass = 'bg-slate-50 text-slate-500', onState
 }) {
   const [q, setQ] = useState('');
   const [fv, setFv] = useState({});
@@ -157,7 +157,7 @@ export default function DataTable({
         </div>)}
       <div className="overflow-x-auto">
         <table className="w-full text-13" style={{ minWidth }}>
-          <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
+          <thead className={`${headClass} text-12 uppercase tracking-wide`}>
             <tr>{serial && <th scope="col" className="pl-4 pr-1 py-3 w-10 text-left font-semibold" title="Row number">#</th>}{cols.map(c => (c.value
               ? <SortTh key={c.id} id={c.id} sort={sort} onSort={onSort} right={c.right} first={c.first} tip={c.tip} className={c.thClass || 'px-3 py-3'}>{c.header}</SortTh>
               : <th key={c.id} scope="col" className={`${c.thClass || 'px-3 py-3'} font-semibold ${c.right ? 'text-right' : 'text-left'}`}><Head right={c.right} {...(c.tip || {})}>{c.header}</Head></th>))}</tr>
