@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Sparkles, CheckCircle2, AlertTriangle, Copy, RefreshCw, Plus, Layout, Megaphone, ArrowRight, FileText, Globe, Users, ListChecks, Link2, Send, ShieldCheck } from 'lucide-react';
+import { ExternalLink, Sparkles, CheckCircle2, AlertTriangle, Copy, RefreshCw, Plus, Layout, Megaphone, ArrowRight, FileText, Globe, Users, ListChecks, Link2, Send, ShieldCheck, Download } from 'lucide-react';
 import { Card, Button, Badge, Stat, ErrorNote, useAction, useToast, SkList, inputCls } from './SeoUi';
 import { api, useApi } from './seoApi';
 import Tip from './Tip';
