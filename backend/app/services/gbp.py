@@ -473,7 +473,7 @@ def reply_confirmed(client: "GbpClient", account: str, location: str, review_id:
         for r in client.reviews(account, location):
             if (r.get("reviewId") or (r.get("name") or "").rsplit("/", 1)[-1]) == review_id:
                 return bool((r.get("reviewReply") or {}).get("comment"))
-    except GbpError:
+    except Exception:  # noqa: BLE001 - only a read-back for the message: whatever goes wrong here, the reply that was sent stays sent
         return None
     return False
 

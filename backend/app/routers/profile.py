@@ -1,5 +1,5 @@
 """GBP posts and reviews for a business. Publishing and replying go through approved tasks."""
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -10,7 +10,7 @@ from .. import access
 from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business
-from ..models import Business, Post, Review
+from ..models import AgentTask, Business, Post, Review
 from ..schemas import PostIn, ReplyIn
 from ..serialize import row, rows
 from ..services import agent, ai, gbp
@@ -22,20 +22,99 @@ router = APIRouter(prefix="/businesses/{business_id}", tags=["profile"])
 # Posts
 @router.get("/posts")
 def list_posts(b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    return rows(db.scalars(select(Post).where(Post.business_id == b.id).order_by(Post.created_at.desc())))
+    found = list(db.scalars(select(Post).where(Post.business_id == b.id).order_by(Post.created_at.desc())))
+    waiting = {str((t.detail or {}).get("post_id")) for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.kind == "gbp_post", AgentTask.status == "scheduled"))}
+    stale = [p for p in found if p.status == "scheduled" and str(p.id) not in waiting]
+    for p in stale:  # "scheduled" with nothing waiting to send it (saved before posts were sent at their time): honestly a draft, so it is never shown as going out when it will not
+        p.status, p.scheduled_for = "draft", None
+    if stale:
+        db.commit()
+    return rows(found)
 
 
 @router.post("/posts", status_code=201)
 def create_post(body: PostIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    from ..services import autopilot
     data = body.model_dump()
-    when = data.pop("scheduled_for")
-    p = Post(business_id=b.id, **data, scheduled_for=datetime.fromisoformat(when) if when else None, status="scheduled" if when else "draft")
+    raw_when = data.pop("scheduled_for")
+    try:
+        when = autopilot.parse_when(raw_when)
+    except autopilot.AutopilotError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if when is not None:  # the time is checked before anything is saved: a past time is refused, never published at once
+        if not autopilot.linked(b):
+            raise HTTPException(409, "Link the Google Business Profile first: a post cannot be scheduled without it.")
+        if when <= datetime.now(timezone.utc) + timedelta(minutes=2):
+            raise HTTPException(422, "Choose a time in the future. To post at once, use Post now.")
+    p = Post(business_id=b.id, **data, status="draft")
     db.add(p)
     db.flush()
     task = agent._task(db, b, "gbp", "gbp_post", f"Post: {p.body[:60]}…", "Medium", post_id=p.id, body=p.body)
     log(db, user.name, "post_created", b.id, post_id=p.id)
     db.commit()
+    if when is not None:  # the person who set the time approves it for that time; the scheduler sends it then and not before
+        try:
+            autopilot.approve(db, b, task, user.name, publish_at=when)
+        except autopilot.AutopilotError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        db.refresh(p)
     return row(p) | {"task_id": task.id}
+
+
+def _post_task(db: Session, b: Business, post_id: int, statuses: tuple[str, ...]) -> AgentTask | None:
+    return next((t for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.kind == "gbp_post", AgentTask.status.in_(statuses)).order_by(AgentTask.id.desc()))
+                 if str((t.detail or {}).get("post_id")) == str(post_id)), None)
+
+
+class ScheduleIn(BaseModel):
+    scheduled_for: str
+
+
+@router.post("/posts/{post_id}/schedule")
+def schedule_post(post_id: int, body: ScheduleIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Set (or change) the time a saved post goes live. It is sent at that time and not before."""
+    from ..services import autopilot
+    p = db.get(Post, post_id)
+    if not p or p.business_id != b.id:
+        raise HTTPException(404, "Post not found")
+    if p.status == "published":
+        raise HTTPException(409, "This post is already live.")
+    try:
+        when = autopilot.parse_when(body.scheduled_for)
+    except autopilot.AutopilotError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if when is None or when <= datetime.now(timezone.utc) + timedelta(minutes=2):
+        raise HTTPException(422, "Choose a time in the future. To post at once, use Post now.")
+    task = _post_task(db, b, p.id, ("scheduled",))
+    if task:  # a new time replaces the old one: back to waiting, then approved for the new time
+        d = {k: v for k, v in (task.detail or {}).items() if k not in ("approved_by", "approved_at")}
+        task.detail, task.status, task.decided_by, task.decided_at = d, "pending", None, None
+    else:
+        task = _post_task(db, b, p.id, ("pending",)) or agent._task(db, b, "gbp", "gbp_post", f"Post: {p.body[:60]}…", "Medium", post_id=p.id, body=p.body)
+    db.commit()
+    try:
+        autopilot.approve(db, b, task, user.name, publish_at=when)
+    except autopilot.AutopilotError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    db.refresh(p)
+    return row(p)
+
+
+@router.post("/posts/{post_id}/unschedule")
+def unschedule_post(post_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Take a scheduled post back to a draft: nothing is sent."""
+    p = db.get(Post, post_id)
+    if not p or p.business_id != b.id:
+        raise HTTPException(404, "Post not found")
+    task = _post_task(db, b, p.id, ("scheduled",))
+    if not task:
+        raise HTTPException(409, "This post is not scheduled.")
+    d = {k: v for k, v in (task.detail or {}).items() if k not in ("approved_by", "approved_at", "publish_at")}
+    task.detail, task.status, task.decided_by, task.decided_at = d, "pending", None, None
+    p.status, p.approved_at, p.approved_by, p.scheduled_for = "draft", None, None, None
+    log(db, user.name, "post_unscheduled", b.id, post_id=p.id)
+    db.commit()
+    return row(p)
 
 
 @router.post("/posts/draft")

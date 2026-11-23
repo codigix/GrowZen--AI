@@ -337,10 +337,12 @@ def publish_now(post_id: int, b: Business = Depends(get_business), db: Session =
     """Publish a waiting post to Google now, without waiting in the approval queue."""
     p = _post(db, b, post_id)
     _client(b)
-    task = next((t for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.kind == "gbp_post", AgentTask.status == "pending")) if (t.detail or {}).get("post_id") == p.id), None)
+    task = next((t for t in db.scalars(select(AgentTask).where(AgentTask.business_id == b.id, AgentTask.kind == "gbp_post", AgentTask.status.in_(("pending", "scheduled")))) if (t.detail or {}).get("post_id") == p.id), None)
     if not task:
         task = agent._task(db, b, "gbp", "gbp_post", f"Post: {p.body[:60]}…", "Medium", post_id=p.id, body=p.body)
         db.flush()
+    elif task.status == "scheduled":  # posting now replaces the scheduled time: the same item is sent once, now, and the scheduler has nothing left to send
+        task.detail = {k: v for k, v in (task.detail or {}).items() if k != "publish_at"}
     agent.decide(db, task, True, user.name)
     db.refresh(p)
     if p.status != "published":

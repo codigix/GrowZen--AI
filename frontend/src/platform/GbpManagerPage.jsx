@@ -18,7 +18,7 @@ import CompetitorSection from './GbpCompetitors';
 import LocalSeoSection from './GbpLocalSeo';
 import GbpReportsSection from './GbpReports';
 import { viewPath } from './tabPages';
-import { api, useApi, fmtDate } from './seoApi';
+import { api, useApi, fmtDate, fmtDateTime } from './seoApi';
 import { useCountries } from './countries';
 import { BusinessAvatar, SECTION_IDS, TAB_ALIAS, TRAFFIC_VIEWS, SectionHead, ClientBar, OverviewSection, PerformanceMetrics, ReviewsSection, ToolSection, TasksSection, SyncSection, SettingsSection } from './GbpWorkspace';
 import Select from '../components/Select';
@@ -580,6 +580,19 @@ const cleanTag = (t) => { const s = String(t).replace(/[^\p{L}\p{N}_]/gu, ''); r
 const dayStr = (offset = 0) => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const shortDay = (iso) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 /** What is wrong with an Offer or Event, checked before it is sent: the same rules the server and Google apply. */
+/** When a new post goes live: one of three fixed choices. Only "schedule" has a time, and the post goes live at that time and not before. */
+const TIMING = [['draft', 'Save as draft', 'Kept here, nothing is sent. Share it or schedule it later.'], ['now', 'Post now', 'Goes live on Google at once.'], ['schedule', 'Schedule', 'Goes live at the date and time you choose, and not before.']];
+const tomorrow9 = () => ({ date: dayStr(1), time: '09:00' });
+const whenOf = (e) => (e.sched_date && e.sched_time ? new Date(`${e.sched_date}T${e.sched_time}`) : null);
+const timingProblem = (e, linked) => {
+  if (e.timing === 'draft') return '';
+  if (!linked) return 'Link the Google Business Profile first: a post cannot be shared or scheduled without it.';
+  if (e.timing === 'now') return '';
+  const w = whenOf(e);
+  if (!w || Number.isNaN(w.getTime())) return 'Choose the date and time it should go live.';
+  if (w.getTime() < Date.now() + 5 * 60000) return 'Choose a time at least 5 minutes from now, or use Post now.';
+  return '';
+};
 const postProblem = (e) => {
   if (e.post_type === 'Update') return '';
   const kind = e.post_type === 'Event' ? 'event' : 'offer';
@@ -596,7 +609,7 @@ const cleanPost = (e) => {
   const offer = e.post_type === 'Offer', event = e.post_type === 'Event';
   return {
     post_type: e.post_type, title: e.title.trim() || null, body: postText(e), cta_type: e.cta_type, cta_url: e.cta_type === 'CALL' ? null : e.cta_url || null, image_url: e.image_url || null,
-    scheduled_for: e.scheduled_for ? `${e.scheduled_for}T09:00:00` : null,
+    scheduled_for: e.timing === 'schedule' && whenOf(e) ? whenOf(e).toISOString() : null, // the exact moment, with its time zone: the server sends it then
     starts_on: (offer || event) && e.starts_on ? e.starts_on : null, ends_on: (offer || event) && e.ends_on ? e.ends_on : null,
     start_time: event && e.start_time ? e.start_time : null, end_time: event && e.end_time ? e.end_time : null,
     coupon_code: offer && e.coupon_code.trim() ? e.coupon_code.trim() : null, redeem_url: offer && e.redeem_url.trim() ? e.redeem_url.trim() : null, terms: offer && e.terms.trim() ? e.terms.trim() : null
@@ -719,7 +732,26 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
           <div className="text-13 font-semibold text-slate-800">4 · Button and timing</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Button"><Select className={inputCls} value={edit.cta_type} onChange={e => set({ cta_type: e.target.value })}>{Object.entries(CTA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
-            <Field label="Date (optional)"><input type="date" className={inputCls} value={edit.scheduled_for} onChange={e => set({ scheduled_for: e.target.value })} /></Field>
+          </div>
+          <div>
+            <div className="text-12.5 font-semibold text-slate-700 mb-1.5">When should it go live?</div>
+            <div role="radiogroup" aria-label="When it goes live" className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {TIMING.map(([id, label, hint]) => {
+                const off = id !== 'draft' && !linked;
+                return (
+                  <button key={id} type="button" role="radio" aria-checked={edit.timing === id} disabled={off} onClick={() => set({ timing: id })} title={off ? 'Link the Google Business Profile first' : undefined}
+                    className={`text-left rounded-lg px-3 py-2.5 ring-1 ring-inset cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${edit.timing === id ? 'bg-indigo-50 ring-indigo-400' : 'bg-white ring-slate-200 hover:bg-slate-50'}`}>
+                    <span className={`block text-13 font-semibold ${edit.timing === id ? 'text-indigo-900' : 'text-slate-900'}`}>{label}</span>
+                    <span className="block text-11.5 text-slate-500 mt-0.5 leading-snug">{hint}</span>
+                  </button>);
+              })}
+            </div>
+            {edit.timing === 'schedule' && (
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
+                <Field label="Date"><input type="date" className={inputCls} min={dayStr()} max={dayStr(180)} value={edit.sched_date} onChange={e => set({ sched_date: e.target.value })} /></Field>
+                <Field label="Time"><input type="time" className={inputCls} value={edit.sched_time} onChange={e => set({ sched_time: e.target.value })} /></Field>
+                <p className="sm:col-span-2 text-11.5 text-slate-500">In your device's time ({Intl.DateTimeFormat().resolvedOptions().timeZone}). It is sent by the scheduler within a minute of this time, and never earlier.{timingProblem(edit, linked) && <span className="block text-red-600 mt-1">{timingProblem(edit, linked)}</span>}</p>
+              </div>)}
           </div>
           {edit.cta_type !== 'CALL' && <Field label="Button link"><input className={inputCls} value={edit.cta_url} onChange={e => set({ cta_url: e.target.value })} placeholder="https://" /></Field>}
         </section>
@@ -776,15 +808,23 @@ function PostsTab({ b, toast }) {
   const [edit, setEdit] = useState(null);
   const [busy, error, run, setError] = useAction();
   const openedFromKeyword = React.useRef(false);
-  const open = () => { setError(''); setEdit({ post_type: 'Update', title: '', body: '', tags: [], image_url: '', cta_type: 'LEARN_MORE', cta_url: b.booking_url || b.website || '', scheduled_for: '', starts_on: '', ends_on: '', start_time: '', end_time: '', coupon_code: '', redeem_url: '', terms: '' }); };
+  const open = () => { setError(''); setEdit({ post_type: 'Update', title: '', body: '', tags: [], image_url: '', cta_type: 'LEARN_MORE', cta_url: b.booking_url || b.website || '', timing: 'draft', sched_date: tomorrow9().date, sched_time: tomorrow9().time, starts_on: '', ends_on: '', start_time: '', end_time: '', coupon_code: '', redeem_url: '', terms: '' }); };
   useEffect(() => { if (!openedFromKeyword.current && new URLSearchParams(window.location.search).get('topic')) { openedFromKeyword.current = true; open(); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const save = (now = false) => run(now ? 'now' : 'save', async () => {
-    const made = await api(`/businesses/${b.id}/posts`, { method: 'POST', body: cleanPost(edit) });
-    if (now) await api(`/businesses/${b.id}/gbp/posts/${made.id}/publish`, { method: 'POST' });
+  const save = () => run('save', async () => {
+    const mode = edit.timing;
+    const made = await api(`/businesses/${b.id}/posts`, { method: 'POST', body: cleanPost(edit) }); // a scheduled one is accepted for its time here, the server sends it then
+    if (mode === 'now') await api(`/businesses/${b.id}/gbp/posts/${made.id}/publish`, { method: 'POST' });
     setEdit(null); posts.reload(true);
-    toast(now ? 'Shared on your Google Business Profile' : 'Post saved and sent to the approval queue: it goes live on Google once approved');
+    toast(mode === 'now' ? 'Shared on your Google Business Profile' : mode === 'schedule' ? `Scheduled: it goes live on Google on ${fmtDateTime(made.scheduled_for)}, and not before` : 'Draft saved: share it or schedule it from the list');
   });
   const publish = (id) => run(`p${id}`, async () => { await api(`/businesses/${b.id}/gbp/posts/${id}/publish`, { method: 'POST' }); posts.reload(true); toast('Published on your Google Business Profile'); });
+  const [reschedule, setReschedule] = useState(null); // an existing post being given a time: { id, date, time }
+  const unschedule = (id) => run(`u${id}`, async () => { await api(`/businesses/${b.id}/posts/${id}/unschedule`, { method: 'POST' }); posts.reload(true); toast('Taken back: it is a draft again and nothing will be sent'); });
+  const setTime = () => run('sched', async () => {
+    const w = new Date(`${reschedule.date}T${reschedule.time}`);
+    const out = await api(`/businesses/${b.id}/posts/${reschedule.id}/schedule`, { method: 'POST', body: { scheduled_for: w.toISOString() } });
+    setReschedule(null); posts.reload(true); toast(`Scheduled: it goes live on Google on ${fmtDateTime(out.scheduled_for)}, and not before`);
+  });
   const aiDraft = () => run('draft', async () => { await api(`/businesses/${b.id}/posts/draft`, { method: 'POST' }); posts.reload(true); toast('AI drafted this week\'s post (in the approval queue)'); });
   const [ask, confirmNode] = useDoubleConfirm();
   const del = (id) => ask({ what: 'this post', effect: 'The draft or scheduled post is deleted and will not be published.', onConfirm: () => run(`d${id}`, async () => { await api(`/businesses/${b.id}/posts/${id}`, { method: 'DELETE' }); posts.reload(true); }) });
@@ -801,10 +841,12 @@ function PostsTab({ b, toast }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap"><Badge tone={p.post_type === 'Offer' ? 'orange' : p.post_type === 'Event' ? 'violet' : 'blue'}>{p.post_type}</Badge>{p.title && <span className="text-13 font-medium text-gray-900">{p.title}</span>}{p.ai_generated && <Badge tone="violet"><Sparkles size={10} /> AI</Badge>}</div>
                   <p className="text-12 text-gray-600 mt-1 line-clamp-2">{p.body}</p>
-                  <div className="text-11 text-gray-500 mt-1">{CTA[p.cta_type] || '—'} · {p.published_at ? `published ${fmtDate(p.published_at)}` : p.scheduled_for ? `for ${fmtDate(p.scheduled_for)}` : `created ${fmtDate(p.created_at)}`}</div>
+                  <div className="text-11 text-gray-500 mt-1">{CTA[p.cta_type] || '—'} · {p.published_at ? `published ${fmtDateTime(p.published_at)}` : p.status === 'scheduled' && p.scheduled_for ? `goes live ${fmtDateTime(p.scheduled_for)}, not before` : `created ${fmtDate(p.created_at)}`}</div>
                 </div>
-                <StatusPill level={p.status === 'published' ? 'good' : p.status === 'failed' ? 'critical' : 'warning'}>{p.status === 'published' ? 'Live' : p.status === 'failed' ? 'Failed' : 'Waiting for approval'}</StatusPill>
-                {p.status !== 'published' && isLinked(b) && <Button size="sm" variant="primary" busy={busy === `p${p.id}`} onClick={() => publish(p.id)}>Share on Google</Button>}
+                <StatusPill level={p.status === 'published' ? 'good' : p.status === 'failed' ? 'critical' : p.status === 'scheduled' ? 'info' : 'warning'}>{p.status === 'published' ? 'Live' : p.status === 'failed' ? 'Failed' : p.status === 'scheduled' ? 'Scheduled' : 'Draft'}</StatusPill>
+                {p.status !== 'published' && isLinked(b) && <Button size="sm" variant="primary" busy={busy === `p${p.id}`} onClick={() => publish(p.id)} title={p.status === 'scheduled' ? 'Post it now instead of at the scheduled time' : 'Post it on Google now'}>Post now</Button>}
+                {p.status !== 'published' && isLinked(b) && <Button size="sm" onClick={() => setReschedule({ id: p.id, date: dayStr(1), time: '09:00' })}>{p.status === 'scheduled' ? 'Change time' : 'Schedule'}</Button>}
+                {p.status === 'scheduled' && <Button size="sm" busy={busy === `u${p.id}`} onClick={() => unschedule(p.id)} title="Take it back to a draft: nothing is sent">Unschedule</Button>}
                 {p.status !== 'published' && <button onClick={() => del(p.id)} className="p-1 text-gray-400 hover:text-red-600 cursor-pointer" aria-label="Delete"><Trash2 size={14} /></button>}
               </div>
             ))}
@@ -812,8 +854,19 @@ function PostsTab({ b, toast }) {
         )}
       </Card>
       <div className="mt-4"><LivePosts b={b} toast={toast} /></div>
-      <Modal open={Boolean(edit)} title="New post" onClose={() => setEdit(null)} width="max-w-5xl" footer={<><Button onClick={() => setEdit(null)}>Cancel</Button><Button icon={Send} busy={busy === 'save'} disabled={!edit?.body.trim() || !edit?.image_url || postText(edit).length > 1500 || Boolean(postProblem(edit))} title={!edit?.image_url ? 'Add a picture first' : ''} onClick={() => save(false)}>Save for approval</Button>{isLinked(b) && <Button variant="primary" icon={Send} busy={busy === 'now'} disabled={!edit?.body.trim() || !edit?.image_url || postText(edit).length > 1500 || Boolean(postProblem(edit))} title={!edit?.image_url ? 'Add a picture first' : ''} onClick={() => save(true)}>Share on Google</Button>}</>}>
+      <Modal open={Boolean(edit)} title="New post" onClose={() => setEdit(null)} width="max-w-5xl" footer={<><Button onClick={() => setEdit(null)}>Cancel</Button><Button variant="primary" icon={Send} busy={busy === 'save'} disabled={!edit?.body.trim() || !edit?.image_url || postText(edit).length > 1500 || Boolean(postProblem(edit)) || Boolean(timingProblem(edit, isLinked(b)))} title={!edit?.image_url ? 'Add a picture first' : timingProblem(edit, isLinked(b)) || ''} onClick={() => save()}>{edit?.timing === 'now' ? 'Post now' : edit?.timing === 'schedule' ? 'Schedule post' : 'Save draft'}</Button></>}>
         {edit && <PostEditor b={b} edit={edit} setEdit={setEdit} toast={toast} error={error} />}
+      </Modal>
+      <Modal open={Boolean(reschedule)} title="When should it go live?" onClose={() => setReschedule(null)} width="max-w-sm"
+        footer={<><Button onClick={() => setReschedule(null)}>Cancel</Button><Button variant="primary" busy={busy === 'sched'} disabled={!reschedule || new Date(`${reschedule.date}T${reschedule.time}`).getTime() < Date.now() + 5 * 60000} onClick={setTime}>Schedule post</Button></>}>
+        {reschedule && <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Date"><input type="date" className={inputCls} min={dayStr()} max={dayStr(180)} value={reschedule.date} onChange={e => setReschedule(r => ({ ...r, date: e.target.value }))} /></Field>
+            <Field label="Time"><input type="time" className={inputCls} value={reschedule.time} onChange={e => setReschedule(r => ({ ...r, time: e.target.value }))} /></Field>
+          </div>
+          <p className="text-12 text-slate-500">In your device's time. It goes live on Google at this time, and not before. Choose a time at least 5 minutes from now.</p>
+          <ErrorNote>{error}</ErrorNote>
+        </div>}
       </Modal>
     </>
   );

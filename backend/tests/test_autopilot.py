@@ -329,3 +329,61 @@ def test_keyword_suggestions_wait_for_approval_and_approving_tracks_the_keyword(
         assert ap.plan_keywords(db, b)["made"] == 0 or rej.detail["keyword"] not in [x.detail["keyword"] for x in db.query(AgentTask).filter_by(business_id=project, kind="keyword_add", status="pending")]  # a rejected suggestion is not offered again
     finally:
         db.close()
+
+
+def test_a_post_the_owner_schedules_is_sent_at_its_time_and_not_before(client, project):
+    db = SessionLocal()
+    try:
+        link(db, project)
+        body = {"post_type": "Update", "body": "Our wedding collection is in: come and try it on this weekend.", "image_url": "https://lh3.example/p", "cta_type": "LEARN_MORE", "cta_url": "https://rental.example/collection"}
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        r = client.post(f"/api/v1/businesses/{project}/posts", json=body | {"scheduled_for": past})
+        assert r.status_code == 422 and "future" in r.json()["detail"] and db.query(Post).filter_by(business_id=project).count() == 0  # a past time is refused: nothing saved, nothing sent
+        when = datetime.now(timezone.utc) + timedelta(hours=3)
+        r = client.post(f"/api/v1/businesses/{project}/posts", json=body | {"scheduled_for": when.isoformat()})
+        assert r.status_code == 201, r.text
+        pid = r.json()["id"]
+        db.expire_all()
+        p, t = db.get(Post, pid), db.query(AgentTask).filter_by(business_id=project, kind="gbp_post").one()
+        assert p.status == "scheduled" and p.approved_by and t.status == "scheduled" and abs((p.scheduled_for.replace(tzinfo=timezone.utc) - when).total_seconds()) < 2
+        assert ap.publish_due(db) == 0 and FakeGoogle.calls == []  # its time has not come: not sent
+        # moving it to another time keeps it one scheduled item
+        later = datetime.now(timezone.utc) + timedelta(hours=5)
+        assert client.post(f"/api/v1/businesses/{project}/posts/{pid}/schedule", json={"scheduled_for": later.isoformat()}).status_code == 200
+        db.expire_all()
+        assert db.query(AgentTask).filter_by(business_id=project, kind="gbp_post", status="scheduled").count() == 1 and abs((db.get(Post, pid).scheduled_for.replace(tzinfo=timezone.utc) - later).total_seconds()) < 2
+        # taking it back sends nothing and leaves a draft
+        assert client.post(f"/api/v1/businesses/{project}/posts/{pid}/unschedule").status_code == 200
+        db.expire_all()
+        assert db.get(Post, pid).status == "draft" and db.get(Post, pid).scheduled_for is None and ap.publish_due(db) == 0 and FakeGoogle.calls == []
+        assert client.post(f"/api/v1/businesses/{project}/posts/{pid}/unschedule").status_code == 409  # it is no longer scheduled
+    finally:
+        db.close()
+
+
+def test_posting_now_replaces_the_schedule_so_it_is_sent_once(client, project):
+    db = SessionLocal()
+    try:
+        link(db, project)
+        body = {"post_type": "Update", "body": "Our wedding collection is in: come and try it on this weekend.", "image_url": "https://lh3.example/p", "cta_type": "LEARN_MORE", "cta_url": "https://rental.example/collection",
+                "scheduled_for": (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat()}
+        pid = client.post(f"/api/v1/businesses/{project}/posts", json=body).json()["id"]
+        r = client.post(f"/api/v1/businesses/{project}/gbp/posts/{pid}/publish")
+        assert r.status_code == 200, r.text
+        assert [c[0] for c in FakeGoogle.calls] == ["post"] and db.query(AgentTask).filter_by(business_id=project, kind="gbp_post", status="scheduled").count() == 0
+        assert ap.publish_due(db) == 0 and [c[0] for c in FakeGoogle.calls] == ["post"]  # nothing left to send at the old time
+    finally:
+        db.close()
+
+
+def test_a_post_marked_scheduled_with_nothing_to_send_it_is_listed_as_a_draft(client, project):
+    db = SessionLocal()
+    try:
+        link(db, project)
+        old = Post(business_id=project, body="x" * 60, status="scheduled", scheduled_for=datetime.now(timezone.utc) + timedelta(days=1))
+        db.add(old)
+        db.commit()
+        out = client.get(f"/api/v1/businesses/{project}/posts").json()
+        assert [x["status"] for x in out] == ["draft"] and out[0]["scheduled_for"] is None
+    finally:
+        db.close()
