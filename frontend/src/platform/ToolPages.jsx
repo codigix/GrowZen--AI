@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useParams, Navigate } from 'react-router-dom';
-import { Copy, Check, Plus, Sparkles, ArrowRight, PlugZap } from 'lucide-react';
+import { Copy, Check, Plus, Sparkles, ArrowRight, PlugZap, Download } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, Field, inputCls, areaCls, useAction, useToast, Empty } from './SeoUi';
 import { api } from './seoApi';
 import { FEATURES } from '../components/featureCatalog';
 import Select from '../components/Select';
+import { downloadFile } from './DataTable';
 
 const sel = 'h-10 px-3 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
 
@@ -24,6 +25,32 @@ function Brief({ b }) {
   const go = (e) => { e.preventDefault(); run('brief', async () => setRes(await api(`/businesses/${b.id}/tools/seo-brief`, { method: 'POST', body: { keyword } }))); };
   const x = res?.brief;
   const asText = x ? [`SEO brief: ${res.keyword}`, `Title: ${x.title_tag}`, `Meta: ${x.meta_description}`, `Intent: ${x.search_intent}`, `Target words: ${x.target_words}`, '', ...(x.outline || []).flatMap(o => [`## ${o.h2}`, ...(o.points || []).map(p => `- ${p}`), ...(o.h3 || []).map(h => `### ${h}`)]), '', 'Questions to answer:', ...(x.questions_to_answer || []).map(q => `- ${q}`)].join('\n') : '';
+  // The whole brief as a file: Markdown for editors and writers, a web page (HTML) for sending or printing.
+  const item = (v) => (typeof v === 'string' ? v : JSON.stringify(v));
+  const briefParts = () => ({
+    facts: [['Title tag', x.title_tag], ['Meta description', x.meta_description], ['Search intent', x.search_intent], ['Target length', x.target_words ? `${x.target_words} words` : '']].filter(([, v]) => v),
+    outline: x.outline || [],
+    lists: [['How to beat the pages that rank', (x.how_to_beat_the_top_results || []).map(item)], ['Questions to answer', (x.questions_to_answer || []).map(item)], ['Terms to include', x.terms_to_include || []], ['Internal link ideas', (x.internal_link_ideas || []).map(item)]],
+    ranking: res.ranking_now || []
+  });
+  const briefName = (ext) => `seo-brief-${String(res.keyword || 'keyword').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50)}-${String(b?.website || b?.name || 'site').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '')}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+  const saveBriefMd = () => {
+    const p = briefParts();
+    downloadFile(briefName('md'), [`# SEO brief: ${res.keyword}`, '', ...p.facts.map(([k, v]) => `- ${k}: ${v}`), '', '## Outline', '',
+      ...p.outline.flatMap(o => [`### ${o.h2}`, '', ...(o.points || []).map(t => `- ${t}`), ...(o.h3?.length ? ['', `Sub-headings (H3): ${o.h3.join(' · ')}`] : []), '']),
+      ...p.lists.flatMap(([t, l]) => [`## ${t}`, '', ...(l.length ? (t === 'Terms to include' ? [l.join(', ')] : l.map(v => `- ${v}`)) : ['None.']), '']),
+      '## Ranking now', '', ...(p.ranking.length ? p.ranking.map(r => `${r.position}. [${r.title}](${r.url})`) : ['Not available.']), ''].join('\n'), 'text/markdown');
+  };
+  const saveBriefHtml = () => {
+    const p = briefParts();
+    const e = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const ul = (l) => (l.length ? `<ul>${l.map(v => `<li>${e(v)}</li>`).join('')}</ul>` : '<p>None.</p>');
+    const body = [`<h1>SEO brief: ${e(res.keyword)}</h1>`, `<table>${p.facts.map(([k, v]) => `<tr><th>${e(k)}</th><td>${e(v)}</td></tr>`).join('')}</table>`, '<h2>Outline</h2>',
+      ...p.outline.map(o => `<h3>${e(o.h2)}</h3>${ul(o.points || [])}${o.h3?.length ? `<p><em>Sub-headings (H3): ${e(o.h3.join(' · '))}</em></p>` : ''}`),
+      ...p.lists.map(([t, l]) => `<h2>${e(t)}</h2>${t === 'Terms to include' ? `<p>${e(l.join(', ') || 'None.')}</p>` : ul(l)}`),
+      '<h2>Ranking now</h2>', p.ranking.length ? `<ol>${p.ranking.map(r => `<li><a href="${e(r.url)}">${e(r.title)}</a></li>`).join('')}</ol>` : '<p>Not available.</p>'].join('\n');
+    downloadFile(briefName('html'), `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SEO brief: ${e(res.keyword)}</title><style>body{font-family:system-ui,sans-serif;max-width:48rem;margin:2rem auto;padding:0 1rem;line-height:1.55;color:#1e293b}h1,h2,h3{line-height:1.25}th{text-align:left;padding-right:1rem;vertical-align:top}td{padding:.15rem 0}</style></head>\n<body>\n${body}\n</body></html>\n`, 'text/html');
+  };
   return (
     <div className="space-y-4">
       <Card title="Write a brief for a keyword" subtitle="Reads what ranks on Google now, the questions people ask, and builds an outline to beat it">
@@ -35,7 +62,9 @@ function Brief({ b }) {
       </Card>
       {x && (
         <>
-          <div className="flex justify-end"><CopyBtn text={asText} label="Copy brief" /></div>
+          <div className="flex flex-wrap justify-end gap-2"><CopyBtn text={asText} label="Copy brief" />
+            <Button size="sm" icon={Download} onClick={saveBriefMd} title="Download the whole brief as a Markdown (.md) file">Download .md</Button>
+            <Button size="sm" icon={Download} onClick={saveBriefHtml} title="Download the whole brief as a document (.html) you can open, send or print">Download document</Button></div>
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
             <div className="xl:col-span-2 space-y-4">
               <Card title="Title and description" subtitle={res.live_results ? 'Based on live Google results' : 'Written by the AI model from your business details and the questions Google Keyword Planner shows'}>

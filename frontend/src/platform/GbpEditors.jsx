@@ -30,6 +30,23 @@ export function CategoryEditor({ b, toast }) {
   const [target, setTarget] = useState('primary');
   const [busy, error, run] = useAction();
   const timer = useRef(null);
+  // A list to choose from: Google's categories that match what this business is and sells, so nothing has to be guessed and typed
+  const [ideas, setIdeas] = useState(null);
+  useEffect(() => {
+    let live = true;
+    const words = [b.primary_category, ...(b.services || []).slice(0, 4).map(x => (typeof x === 'string' ? x : x?.name)), b.category].map(x => String(x || '').trim()).filter(Boolean);
+    const terms = [...new Set([...words, ...(words.some(w => /rent|hire/i.test(w)) ? ['rental'] : []), ...(words.some(w => /dress|cloth|wear|lehenga|gown|saree/i.test(w)) ? ['clothing', 'bridal'] : [])].map(x => x.toLowerCase()))].slice(0, 6);
+    if (!terms.length || !isLinked(b)) { setIdeas([]); return undefined; }
+    Promise.all(terms.map(term => api(`/businesses/${b.id}/gbp/categories?q=${encodeURIComponent(term)}`).catch(() => [])))
+      .then(lists => {
+        if (!live) return;
+        const seen = new Set();
+        const out = [];
+        for (let i = 0; i < 20; i += 1) for (const l of lists) { const c = l[i]; if (c && !seen.has(c.name)) { seen.add(c.name); out.push(c); } }
+        setIdeas(out.slice(0, 16));
+      });
+    return () => { live = false; };
+  }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     clearTimeout(timer.current);
     if (q.trim().length < 2) { setHits([]); return undefined; }
@@ -64,7 +81,25 @@ export function CategoryEditor({ b, toast }) {
               {hits.length > 0 && <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded shadow-lg max-h-56 overflow-auto">{hits.map(h => <li key={h.name}><button type="button" onClick={() => pick(h)} className="w-full text-left px-3 py-2 text-13 hover:bg-indigo-50 cursor-pointer">{h.displayName}</button></li>)}</ul>}
             </div>
           </div>
-          {unresolved && <p className="text-12 text-amber-700">Search and pick the primary category once to link it to Google's list, then save.</p>}
+          <div>
+            <div className="text-12 font-semibold text-slate-700 mb-1.5">Suggested for your business <span className="font-normal text-slate-400">(Google's own categories: pick one)</span></div>
+            {ideas === null ? <p className="text-12 text-slate-500"><Loader2 size={12} className="inline animate-spin mr-1" />Looking up categories that fit your business…</p>
+              : !ideas.length ? <p className="text-12 text-slate-500">No suggestions yet: use the search box above.</p> : (
+                <ul className="grid grid-cols-1 md:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto pr-1">
+                  {ideas.map(c => {
+                    const isPrimary = primary.displayName === c.displayName;
+                    const isExtra = extra.some(e => e.displayName === c.displayName);
+                    return (
+                      <li key={c.name} className={`flex items-center gap-2 rounded-lg px-3 py-1.5 ring-1 ring-inset ${isPrimary ? 'bg-indigo-50 ring-indigo-300' : isExtra ? 'bg-emerald-50 ring-emerald-200' : 'bg-white ring-slate-200'}`}>
+                        <span className="flex-1 min-w-0 truncate text-13 text-slate-800" title={c.displayName}>{c.displayName}</span>
+                        {isPrimary ? <Badge tone="blue">Primary</Badge> : <button type="button" onClick={() => setPrimary(c)} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Make primary</button>}
+                        {isExtra ? <button type="button" onClick={() => setExtra(extra.filter(e => e.displayName !== c.displayName))} className="text-12 font-semibold text-emerald-700 hover:underline cursor-pointer">Added ✓</button>
+                          : !isPrimary && <button type="button" disabled={extra.length >= 9} onClick={() => setExtra([...extra, c])} className="text-12 font-semibold text-slate-600 hover:underline cursor-pointer disabled:opacity-40">+ Add</button>}
+                      </li>);
+                  })}
+                </ul>)}
+          </div>
+          {unresolved && <p className="text-12 text-amber-700">Pick the primary category from the list (or search for one) to link it to Google's list, then save.</p>}
           <ErrorNote>{error}</ErrorNote>
           <Button variant="primary" icon={Save} busy={busy === 'save'} disabled={!primary.name} onClick={save}>Save categories to Google</Button>
         </div>

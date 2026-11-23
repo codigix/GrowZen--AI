@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   RefreshCw, Star, Image as ImageIcon, MessageSquare, Phone, Navigation, MousePointerClick, Search, Eye, MapPin, Globe, Clock, ExternalLink,
   CheckCircle2, AlertTriangle, PlugZap, Newspaper, ListChecks, Tag, CalendarX
@@ -6,6 +6,7 @@ import {
 import { Card, Badge, Button, ErrorNote, useAction, SkPage } from './SeoUi';
 import { api, useApi, fmtDateTime, fmt } from './seoApi';
 import { VerifyPill } from './GbpAccounts';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 /**
  * "Live from Google": everything read from the project's Google Business Profile after its Google account is
@@ -24,6 +25,25 @@ const ago = (iso) => {
 };
 const pretty = (id) => String(id || '').replace(/^has_|^is_|^pay_|^wi_fi$/g, m => (m === 'wi_fi' ? 'Wi-Fi' : '')).replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
 const POST_TONE = { LIVE: 'green', PROCESSING: 'amber', REJECTED: 'red' };
+
+const kwImpr = (k, key) => (key === 'keyword' ? k.keyword : k.impressions ?? (k.below != null ? k.below - 0.5 : null));
+
+/** The searches that showed the profile: sortable, searchable and paged (Google rounds low values to "< n"). */
+function SearchKeywordsTable({ keywords, pad }) {
+  const [q, setQ] = useState('');
+  const kept = useMemo(() => { const n = q.trim().toLowerCase(); return n ? keywords.filter(k => String(k.keyword).toLowerCase().includes(n)) : keywords; }, [keywords, q]);
+  const { sorted, sort, onSort } = useSorted(kept, kwImpr);
+  const pager = usePager(sorted, { size: 10, resetKey: q });
+  return (
+    <>
+      {keywords.length > 10 && <div className={`${pad} py-2 border-b border-slate-100`}><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search these keywords" aria-label="Search these keywords" className="h-8 w-full max-w-xs px-3 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
+      <div className="max-h-80 overflow-auto"><table className="w-full text-13"><thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className={`${pad} py-2`}>Search</SortTh><SortTh id="impressions" sort={sort} onSort={onSort} right first="desc" className={`${pad} py-2`}>Impressions</SortTh></tr></thead>
+        <tbody className="divide-y divide-slate-100">{pager.rows.map(k => <tr key={k.keyword}><td className={`${pad} py-2 text-slate-800`}>{k.keyword}</td><td className={`${pad} py-2 text-right tabular-nums`}>{k.impressions != null ? fmt(k.impressions) : <span className="text-slate-400">&lt; {k.below}</span>}</td></tr>)}
+          {!pager.rows.length && <tr><td colSpan={2} className="px-5 py-6 text-center text-slate-500">No keyword matches.</td></tr>}</tbody></table></div>
+      <Pager p={pager} label="keywords" />
+    </>
+  );
+}
 
 function Tile({ icon: Icon, label, value, sub, tone = 'indigo' }) {
   const tones = { indigo: 'bg-indigo-50 text-indigo-500', emerald: 'bg-emerald-50 text-emerald-500', amber: 'bg-amber-50 text-amber-500', sky: 'bg-sky-50 text-sky-500', violet: 'bg-violet-50 text-violet-500' };
@@ -195,10 +215,7 @@ export default function GbpLive({ b, toast, onConnect }) {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <Card title="Searches that found the profile" subtitle="Last 3 full months, by monthly impressions" pad={false}>
           {keywords.length ? (
-            <div className="max-h-80 overflow-auto">
-              <table className="w-full text-13"><thead className="sticky top-0 bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><th className="px-5 py-2 text-left font-semibold">Search</th><th className="px-5 py-2 text-right font-semibold">Impressions</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{keywords.slice(0, 40).map(k => <tr key={k.keyword}><td className="px-5 py-2 text-slate-800">{k.keyword}</td><td className="px-5 py-2 text-right tabular-nums">{k.impressions != null ? fmt(k.impressions) : <span className="text-slate-400">&lt; {k.below}</span>}</td></tr>)}</tbody></table>
-            </div>
+            <SearchKeywordsTable keywords={keywords} pad="px-5" />
           ) : <p className="text-13 text-slate-500 px-5 py-8 text-center">{live?.errors?.search_keywords ? 'Google did not return the search keywords (see above).' : 'No search data yet.'}</p>}
         </Card>
         <Card title="Reviews" subtitle={`${fmt(m.review_count || 0)} on Google`} className="xl:col-span-2">

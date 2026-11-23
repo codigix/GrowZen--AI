@@ -19,7 +19,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 import jwt
@@ -149,7 +149,7 @@ class GbpClient:
             try:
                 msg = r.json().get("error", {}).get("message") or ""
             except ValueError:
-                msg = r.text[:200]
+                msg = "" if r.text.lstrip().lower().startswith(("<!doctype", "<html")) else r.text[:200]  # Google's own error page is a web page: its markup is not shown
             raise GbpError(explain_google_error(r.status_code, msg, url))
         return r.json() if r.content else {}
 
@@ -269,6 +269,14 @@ class GbpClient:
             if not token:
                 return out
 
+    def place_action_types(self, location: str) -> dict[str, str]:
+        """The button types Google offers THIS listing (it depends on the category): {type: display name}. Empty when Google could not say."""
+        try:
+            d = self._req("GET", f"{PLACE_ACTIONS}/placeActionTypeMetadata", params={"filter": f"location={location}", "pageSize": 100})
+        except GbpError:
+            return {}
+        return {m["placeActionType"]: m.get("displayName") or m["placeActionType"] for m in d.get("placeActionTypeMetadata", []) if m.get("placeActionType")}
+
     def create_place_action_link(self, location: str, kind: str, url: str) -> dict[str, Any]:
         return self._req("POST", f"{PLACE_ACTIONS}/{location}/placeActionLinks", json={"placeActionType": kind, "uri": url})
 
@@ -287,7 +295,8 @@ class GbpClient:
     def available_attributes(self, location: str, region: str = "IN", language: str = "en") -> list[dict[str, Any]]:
         out, token = [], None
         while True:
-            d = self._req("GET", f"{INFO}/attributes", params={"parent": location, "languageCode": language, "pageSize": 200, **({"pageToken": token} if token else {})})
+            # With `parent` Google wants nothing else that picks the list (regionCode, languageCode, categoryName, showAll must not be sent): it answers 400 "invalid argument" if they are
+            d = self._req("GET", f"{INFO}/attributes", params={"parent": location, "pageSize": 200, **({"pageToken": token} if token else {})})
             out += d.get("attributeMetadata", [])
             token = d.get("nextPageToken")
             if not token:
@@ -453,6 +462,23 @@ API_NAMES = {
 ACCESS_FORM = "https://developers.google.com/my-business/content/prereqs#request-access"
 
 
+ONLY_PUBLIC_REVIEW = ("This review is only on the public Google Maps listing so far: your Business Profile does not list it, so a reply cannot be posted from here. "
+                      "Reply to it on Google Maps, or press Fetch new reviews again after a while: once the Business Profile lists it, replying works here.")
+
+
+def business_review_id(client: "GbpClient", account: str, location: str, review: Any) -> str | None:
+    """A review we only know from the public Maps listing has no Business Profile id, and Google needs that id to take a reply. Find the Business Profile's own entry for it
+    (same reviewer and the same words) and give its id, or None when the Business Profile does not list it."""
+    who = (review.author or "").strip().lower()
+    words = (review.body or "").strip().lower()
+    for r in client.reviews(account, location):
+        name = ((r.get("reviewer") or {}).get("displayName") or "").strip().lower()
+        text = (r.get("comment") or "").strip().lower()
+        if who and name == who and (not words or text.startswith(words[:40]) or words.startswith(text[:40])):
+            return r.get("reviewId") or (r.get("name") or "").rsplit("/", 1)[-1] or None
+    return None
+
+
 def explain_google_error(status: int, msg: str, url: str = "") -> str:
     """Google's API errors in plain words, with what to do."""
     api = next((v for k, v in API_NAMES.items() if k in url), "the Business Profile API")
@@ -467,6 +493,10 @@ def explain_google_error(status: int, msg: str, url: str = "") -> str:
                 f"and the project needs approved Business Profile API access ({ACCESS_FORM}).")
     if status == 401:
         return "Google sign-in expired or was revoked. Connect the account again."
+    if status == 404 and "/reviews/" in url:
+        return "Google does not have this review in the Business Profile (it was removed, or it is not listed there yet)."
+    if status == 404:
+        return f"Google could not find it ({api} answered 404: not found)."
     return f"Google API {status}: {msg}"
 
 
@@ -587,8 +617,27 @@ def desired_action_links(links: list[dict[str, Any]] | None, booking_url: str | 
     return out
 
 
+BUTTON_NAME = {"APPOINTMENT": "Book", "ONLINE_APPOINTMENT": "Online appointment", "DINING_RESERVATION": "Reserve a table", "FOOD_ORDERING": "Order food", "FOOD_DELIVERY": "Order delivery", "FOOD_TAKEOUT": "Order takeout", "SHOP_ONLINE": "Shop online"}
+
+
+def check_action_link(kind: str, url: str, offered: dict[str, str]) -> None:
+    """Say plainly, before Google answers with 'invalid argument', why a button cannot be added: the category has no such button, or the link is not a page of its own."""
+    name = BUTTON_NAME.get(kind, kind)
+    if offered and kind not in offered:
+        have = ", ".join(sorted(offered.values())) or "none"
+        raise GbpError(f"Google offers no '{name}' button for this business's category. Buttons Google offers it: {have}. Choose a category that has one, or take the link out")
+    parts = urlsplit(url or "")
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise GbpError(f"'{url}' is not a web address (it must start with https://)")
+    if parts.path.strip("/") == "" and not parts.query:
+        raise GbpError(f"'{url}' is the home page. The '{name}' link must open the page where people actually book or order")
+
+
 def sync_action_links(client: "GbpClient", location: str, wanted: list[dict[str, Any]]) -> None:
     """Make Google's Book / Order buttons match `wanted` (one link per type): create the new, change the different, remove the dropped."""
+    offered = client.place_action_types(location) if wanted else {}
+    for w in wanted:
+        check_action_link(w["type"], w["url"], offered)  # before anything is changed: a refused link must not leave the others half done
     have: dict[str, dict[str, Any]] = {}
     for link in client.place_action_links(location):
         have.setdefault(link.get("placeActionType"), link)
@@ -923,7 +972,7 @@ def fill_pin_from_maps(b: Business) -> bool:
     return False
 
 
-def sync_business(db: Session, b: Business, days: int = 30) -> dict[str, Any]:
+def sync_business(db: Session, b: Business, days: int = 60) -> dict[str, Any]:
     """Refresh the listing's status, then pull reviews, photo count and daily insights for one connected business."""
     if not (b.connection and b.gbp_account and b.gbp_location):
         raise GbpError("This business is not linked to a connected Google account.")

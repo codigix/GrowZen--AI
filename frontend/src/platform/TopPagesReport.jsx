@@ -7,6 +7,7 @@ import SearchPerfNav from './SearchPerfNav';
 import { SeoShell, Card, Badge, Button, ErrorNote, useModulePath, SkPage } from './SeoUi';
 import { useApi, fmt } from './seoApi';
 import { IntelBar } from './DomainIntel';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import Select from '../components/Select';
 
 /**
@@ -16,7 +17,8 @@ import Select from '../components/Select';
  */
 
 const AXIS = { fontSize: 11, fill: '#64748b' };
-const PAGE = 25;
+const PAGE_VALUE = { page: r => r.url, kw: r => r.top_keyword || null, kd: r => r.kd, cpc: r => r.cpc, vol: r => r.volume, pos: r => r.avg_position, traffic: r => r.traffic, share: r => r.traffic_share, keywords: r => r.keywords, intent: r => r.intent || null, issues: r => r.issues, ai: r => r.llm_prompts, ref: r => r.ref_domains, words: r => r.words, inbound: r => r.inbound, schema: r => (r.words != null ? (r.schema || []).join(', ') || null : null), source: r => (r.sources || []).join('+') };
+const pageValue = (r, k) => PAGE_VALUE[k](r);
 const INTENT = { informational: ['I', '#6658dd'], navigational: ['N', '#a855f7'], commercial: ['C', '#f59e0b'], transactional: ['T', '#1abc9c'] };
 const Th = ({ children, c = 'text-left', hint }) => <th title={hint} className={`px-3 py-2.5 font-semibold whitespace-nowrap ${c}`}>{children}</th>;
 const dash = <span className="text-slate-300">—</span>;
@@ -92,31 +94,24 @@ function Summary({ d }) {
   );
 }
 
-const csv = (name, rows) => {
-  const head = ['url', 'sources', 'traffic', 'traffic %', 'keywords', 'ai prompts', 'ref domains', 'avg position', 'top keyword', 'intent', 'words', 'issues', 'status'];
-  const text = [head, ...rows.map(r => [r.url, r.sources.join('+'), r.traffic, r.traffic_share, r.keywords, r.llm_prompts, r.ref_domains, r.avg_position, r.top_keyword, r.intent, r.words, r.issues, r.status])]
-    .map(l => l.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-  const href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
-  Object.assign(document.createElement('a'), { href, download: name }).click();
-  setTimeout(() => URL.revokeObjectURL(href), 1000);
-};
+const csv = (name, rows) => downloadCsv(name, ['Page address', 'Page title', 'Status', 'Top keyword', 'Keyword difficulty (%)', 'Cost per click (USD)', 'Searches per month', 'Average position', 'Change in position', 'Traffic', 'Share of traffic (%)', 'Keywords', 'Intent', 'Issues', 'AI prompts', 'Referring domains', 'Words', 'Inbound links', 'Structured data', 'Sources'],
+  rows.map(r => [r.url, r.title || '', r.status && r.status !== 'all' ? r.status : '', r.top_keyword || '', r.kd ?? '', r.cpc ?? '', r.volume ?? '', r.avg_position ?? '', r.position_change ?? '', r.traffic ?? '', r.traffic_share ?? '', r.keywords ?? '', r.intent || '', r.issues ?? '', r.llm_prompts ?? '', r.ref_domains ?? '', r.words ?? '', r.inbound ?? '', (r.schema || []).join('; '), (r.sources || []).join('; ')]));
 
 export function AllPages({ d }) {
   const [q, setQ] = useState('');
   const [view, setView] = useState('all');
   const [source, setSource] = useState('');
   const [issuesOnly, setIssuesOnly] = useState(false);
-  const [page, setPage] = useState(1);
   const rows = useMemo(() => d.rows.filter(r => (!q || r.url.toLowerCase().includes(q.toLowerCase())) && (view === 'all' || r.status === view)
     && (!source || (source === 'crawl' ? r.sources.length === 1 && r.sources[0] === 'crawl' : r.sources.includes(source))) && (!issuesOnly || r.issues)), [d.rows, q, view, source, issuesOnly]);
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
-  const cur = Math.min(page, pages);
-  const shown = rows.slice((cur - 1) * PAGE, cur * PAGE);
-  const reset = (fn) => (e) => { fn(e); setPage(1); };
-  const chip = (id, l, n) => <button key={id} type="button" onClick={() => { setView(id); setPage(1); }} className={`h-8 px-3 text-12.5 font-semibold rounded border cursor-pointer ${view === id ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}>{l}{n != null && <span className="ml-1 opacity-60">{n}</span>}</button>;
+  const { sorted, sort, onSort } = useSorted(rows, pageValue);
+  const pager = usePager(sorted, { size: 25, resetKey: `${q}|${view}|${source}|${issuesOnly}|${sort?.key}|${sort?.dir}` });
+  const shown = pager.rows;
+  const reset = (fn) => (e) => { fn(e); };
+  const chip = (id, l, n) => <button key={id} type="button" onClick={() => { setView(id); }} className={`h-8 px-3 text-12.5 font-semibold rounded border cursor-pointer ${view === id ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}>{l}{n != null && <span className="ml-1 opacity-60">{n}</span>}</button>;
   const has = d.has;
   return (
-    <Card title={<span>All pages <span className="text-slate-400 font-normal">{d.total}</span></span>} pad={false} action={<Button size="sm" icon={Download} onClick={() => csv(`${d.domain}-top-pages.csv`, rows)}>Export</Button>}>
+    <Card title={<span>All pages <span className="text-slate-400 font-normal">{d.total}</span></span>} pad={false} action={<Button size="sm" icon={Download} onClick={() => csv(`top-pages-${d.domain}`, sorted)} title="Download every page (all pages, with the filters applied) as a CSV file">Export CSV</Button>}>
       <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
         <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={reset(e => setQ(e.target.value))} placeholder="Filter by URL" className="h-8 pl-8 pr-3 w-52 text-13 rounded border border-slate-200 bg-white outline-none focus:border-indigo-400" /></label>
         <div className="flex gap-1">{chip('all', 'All URLs')}{chip('new', 'New', d.comparable ? d.new : null)}{chip('lost', 'Lost', d.comparable ? d.lost : null)}</div>
@@ -127,7 +122,7 @@ export function AllPages({ d }) {
       <div className="overflow-x-auto">
         <table className="w-full text-13 min-w-[1700px]">
           <thead className="bg-slate-50 text-11.5 text-slate-500">
-            <tr><Th>Page</Th><Th>Top keyword</Th><Th c="text-right" hint="Keyword difficulty of the top keyword">KD %</Th><Th c="text-right" hint="Cost per click of the top keyword (USD)">CPC</Th><Th c="text-right" hint="Monthly searches of the top keyword">Vol.</Th><Th c="text-right" hint="Average Google position of your tracked keywords on this page">Avg. pos.</Th><Th c="text-right" hint="Estimated monthly visits (data provider)">Traffic</Th><Th c="text-right">Traffic %</Th><Th c="text-right" hint="Keywords the page ranks for">Keywords</Th><Th>Intent</Th><Th c="text-right">Issues</Th><Th c="text-right" hint="Saved AI answers that cite the page">AI prompts</Th><Th c="text-right" hint="Referring domains (data provider)">Ref. domains</Th><Th c="text-right">Words</Th><Th c="text-right" hint="Pages of the site that link to this one">Inbound links</Th><Th hint="Structured data found on the page">Schema</Th><Th>Source</Th></tr>
+            <tr><SortTh id="page" sort={sort} onSort={onSort} className="px-3 py-2.5">Page</SortTh><SortTh id="kw" sort={sort} onSort={onSort} className="px-3 py-2.5">Top keyword</SortTh><SortTh id="kd" sort={sort} onSort={onSort} right first="desc" title="Keyword difficulty of the top keyword" className="px-3 py-2.5">KD %</SortTh><SortTh id="cpc" sort={sort} onSort={onSort} right first="desc" title="Cost per click of the top keyword (USD)" className="px-3 py-2.5">CPC</SortTh><SortTh id="vol" sort={sort} onSort={onSort} right first="desc" title="Monthly searches of the top keyword" className="px-3 py-2.5">Vol.</SortTh><SortTh id="pos" sort={sort} onSort={onSort} right first="desc" title="Average Google position of your tracked keywords on this page" className="px-3 py-2.5">Avg. pos.</SortTh><SortTh id="traffic" sort={sort} onSort={onSort} right first="desc" title="Estimated monthly visits (data provider)" className="px-3 py-2.5">Traffic</SortTh><SortTh id="share" sort={sort} onSort={onSort} right first="desc" className="px-3 py-2.5">Traffic %</SortTh><SortTh id="keywords" sort={sort} onSort={onSort} right first="desc" title="Keywords the page ranks for" className="px-3 py-2.5">Keywords</SortTh><SortTh id="intent" sort={sort} onSort={onSort} className="px-3 py-2.5">Intent</SortTh><SortTh id="issues" sort={sort} onSort={onSort} right first="desc" className="px-3 py-2.5">Issues</SortTh><SortTh id="ai" sort={sort} onSort={onSort} right first="desc" title="Saved AI answers that cite the page" className="px-3 py-2.5">AI prompts</SortTh><SortTh id="ref" sort={sort} onSort={onSort} right first="desc" title="Referring domains (data provider)" className="px-3 py-2.5">Ref. domains</SortTh><SortTh id="words" sort={sort} onSort={onSort} right first="desc" className="px-3 py-2.5">Words</SortTh><SortTh id="inbound" sort={sort} onSort={onSort} right first="desc" title="Pages of the site that link to this one" className="px-3 py-2.5">Inbound links</SortTh><SortTh id="schema" sort={sort} onSort={onSort} title="Structured data found on the page" className="px-3 py-2.5">Schema</SortTh><SortTh id="source" sort={sort} onSort={onSort} className="px-3 py-2.5">Source</SortTh><th scope="col" className="px-3 py-2.5" /></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {shown.map(r => (
@@ -161,10 +156,7 @@ export function AllPages({ d }) {
           </tbody>
         </table>
       </div>
-      <div className="px-5 py-3 border-t border-slate-100 flex items-center gap-2 text-12.5 text-slate-500">
-        <span>{rows.length ? `${(cur - 1) * PAGE + 1}–${Math.min(cur * PAGE, rows.length)} of ${rows.length}` : '0 pages'}</span>
-        <span className="ml-auto flex items-center gap-1"><Button size="sm" icon={ChevronLeft} disabled={cur <= 1} onClick={() => setPage(cur - 1)}>Prev</Button><span className="px-2">Page {cur} of {pages}</span><Button size="sm" disabled={cur >= pages} onClick={() => setPage(cur + 1)}>Next<ChevronRight size={13} /></Button></span>
-      </div>
+      <Pager p={pager} label="pages" />
     </Card>
   );
 }

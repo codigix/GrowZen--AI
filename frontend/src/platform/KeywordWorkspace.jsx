@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { usePager, Pager, downloadCsv } from './DataTable';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, Download, EyeOff, Loader2, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
@@ -32,10 +33,10 @@ function SortTh({ id, sort, setSort, children, right, what, why, from }) {
 
 /** One chip: a way to look at the list, with how many keywords it holds. */
 function View({ on, onClick, children, count, tone = 'slate' }) {
-  const c = { slate: 'text-slate-500', red: 'text-rose-600', green: 'text-emerald-600', indigo: 'text-indigo-600', amber: 'text-amber-600' }[tone];
+  const pill = { slate: 'bg-slate-100 text-slate-600', red: 'bg-rose-50 text-rose-700', green: 'bg-emerald-50 text-emerald-700', indigo: 'bg-indigo-50 text-indigo-700', amber: 'bg-amber-50 text-amber-700' }[tone];
   return (
-    <button type="button" role="tab" aria-selected={on} onClick={onClick} className={`h-9 px-3.5 rounded-lg text-13 font-semibold cursor-pointer inline-flex items-center gap-1.5 transition-colors ${on ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'}`}>
-      {children}<span className={`tabular-nums ${on ? 'text-slate-300' : c}`}>{count}</span>
+    <button type="button" role="tab" aria-selected={on} onClick={onClick} className={`-mb-px h-11 px-4 text-13.5 font-semibold cursor-pointer inline-flex items-center gap-2 whitespace-nowrap border-b-2 transition-colors ${on ? 'border-indigo-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}>
+      {children}<span className={`min-w-[1.5rem] px-1.5 py-0.5 rounded-full text-11.5 text-center tabular-nums ${on ? 'bg-slate-900 text-white' : pill}`}>{count}</span>
     </button>
   );
 }
@@ -121,6 +122,7 @@ export default function KeywordWorkspace({ b, onUse }) {
     });
     return list;
   }, [d, sort, view, band]);
+  const pager = usePager(rows, { size: PAGE, resetKey: `${view}|${band}|${q}|${source}|${sort.key}|${sort.dir}` });
   const topVolume = useMemo(() => Math.max(1, ...rows.map(i => i.volume || 0)), [rows]);
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
@@ -128,7 +130,7 @@ export default function KeywordWorkspace({ b, onUse }) {
   const base = `/businesses/${b.id}/keyword-workspace`;
   const count = (t) => d.tags.find(x => x.tag === t)?.count || 0;
   const suggestedAll = rows.filter(i => i.suggested && !i.picked);
-  const shown = rows.slice(0, limit);
+  const shown = pager.rows;
   const allOn = shown.length > 0 && shown.every(i => sel.has(i.id));
   const toggle = (id) => setSel(s => { const x = new Set(s); x.has(id) ? x.delete(id) : x.add(id); return x; });
   const ids = [...sel];
@@ -142,14 +144,29 @@ export default function KeywordWorkspace({ b, onUse }) {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4 pb-20">
       <ErrorNote>{error}</ErrorNote>
 
-      {/* The one thing to do first, and the way out of the page */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" icon={RefreshCw} onClick={() => setCollecting(true)}>{empty ? 'Collect keywords' : 'Collect again'}</Button>
-        {!empty && <span className="text-13 text-slate-600">{d.totals.all} keywords from {sourcesWith.length} place{sourcesWith.length === 1 ? '' : 's'}</span>}
-        <span className="ml-auto flex items-center gap-2">
-          {!empty && <Button size="sm" icon={Download} onClick={() => exportCsv(rows)} disabled={!rows.length}>Export</Button>}
-          <Link to="/keyword-management/ai"><Button size="sm">Find more ideas</Button></Link>
-        </span>
+      {/* What is in the list, the one thing to do first, and the way out of the page; the views of the list are the tabs under it */}
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 shadow-sm">
+        <div className="px-5 py-4 flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div className="min-w-0">
+            <div className="text-18 font-semibold text-slate-900 leading-tight">{empty ? 'No keywords yet' : <><span className="tabular-nums">{d.totals.all}</span> keywords</>}</div>
+            <div className="mt-0.5 text-13 text-slate-500">{empty ? 'Collect them from your website, Google and your competitors.' : `Collected from ${sourcesWith.length} place${sourcesWith.length === 1 ? '' : 's'}. ${d.totals.picked} picked, ${d.totals.open} still to look at.`}</div>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Link to="/keyword-management/ai"><Button>Find more ideas</Button></Link>
+            {!empty && <Button icon={Download} onClick={() => exportCsv(rows, b.name)} disabled={!rows.length} title="Download every keyword in this list (all pages, with the search and view applied) as a CSV file">Export CSV</Button>}
+            <Button variant="primary" icon={RefreshCw} onClick={() => setCollecting(true)}>{empty ? 'Collect keywords' : 'Collect again'}</Button>
+          </div>
+        </div>
+        {!empty && (
+      <div role="tablist" aria-label="Which keywords" className="flex overflow-x-auto px-2 border-t border-slate-200">
+        <View on={view === 'open'} onClick={() => go('open')} count={d.totals.open}>To look at</View>
+        <View on={view === 'suggested'} onClick={() => go('suggested')} count={d.totals.suggested || 0} tone="indigo"><Sparkles size={13} className="text-amber-500" />Suggested</View>
+        <View on={view === 'gap'} onClick={() => go('gap')} count={count('gap')} tone="red">Gaps</View>
+        <View on={view === 'almost'} onClick={() => go('almost')} count={count('almost')} tone="amber">Almost there</View>
+        <View on={view === 'picked'} onClick={() => go('picked')} count={d.totals.picked} tone="green">Picked</View>
+        {d.totals.dismissed > 0 && <View on={view === 'dismissed'} onClick={() => go('dismissed')} count={d.totals.dismissed}>Set aside</View>}
+      </div>
+        )}
       </div>
 
       {empty ? (
@@ -160,30 +177,11 @@ export default function KeywordWorkspace({ b, onUse }) {
         </div></Card>
       ) : (
         <>
-          <div role="tablist" aria-label="Which keywords" className="flex flex-wrap gap-2">
-            <View on={view === 'open'} onClick={() => go('open')} count={d.totals.open}>To look at</View>
-            <View on={view === 'suggested'} onClick={() => go('suggested')} count={d.totals.suggested || 0} tone="indigo"><Sparkles size={13} className="text-amber-500" />Suggested</View>
-            <View on={view === 'gap'} onClick={() => go('gap')} count={count('gap')} tone="red">Gaps</View>
-            <View on={view === 'almost'} onClick={() => go('almost')} count={count('almost')} tone="amber">Almost there</View>
-            <View on={view === 'picked'} onClick={() => go('picked')} count={d.totals.picked} tone="green">Picked</View>
-            {d.totals.dismissed > 0 && <View on={view === 'dismissed'} onClick={() => go('dismissed')} count={d.totals.dismissed}>Set aside</View>}
-          </div>
 
           <Card pad={false}>
             <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
               <label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(PAGE); }} placeholder="Search keywords" aria-label="Search keywords" className="h-9 pl-8 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-60" /></label>
-              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Where it came from">
-                <button type="button" onClick={() => setSource('')} className={`h-8 px-2.5 rounded-full text-12 font-semibold cursor-pointer ${!source ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:bg-slate-100'}`}>All places</button>
-                {sourcesWith.map(s => <button key={s.kind} type="button" onClick={() => setSource(source === s.kind ? '' : s.kind)} className={`h-8 px-2.5 rounded-full text-12 font-semibold cursor-pointer ${source === s.kind ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:bg-slate-100'}`}>{SRC_SHORT[s.kind]} <span className="tabular-nums text-slate-400">{s.count}</span></button>)}
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Your rank on Google">
-                <span className="text-12 text-slate-400">Rank</span>
-                {[['', 'All'], ...BANDS.map(b => [b[0], b[1]]), ['none', 'Not ranking']].map(([id, label]) => {
-                  const n = id === '' ? null : (d.items || []).filter(i => (id === 'none' ? i.rank == null : i.rank != null && bandOf(i.rank)?.[0] === id)).length;
-                  return <button key={id} type="button" onClick={() => { setBand(band === id ? '' : id); setLimit(PAGE); }} aria-pressed={band === id} className={`h-8 px-2.5 rounded-full text-12 font-semibold cursor-pointer ${band === id ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:bg-slate-100'}`}>{label}{n != null && <span className="ml-1 tabular-nums text-slate-400">{n}</span>}</button>;
-                })}
-              </div>
-              {(source || q || band) && <button type="button" onClick={() => { setSource(''); setQ(''); setBand(''); }} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear</button>}
+              {q && <button type="button" onClick={() => setQ('')} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear</button>}
               {view === 'open' || view === 'suggested' ? (
                 suggestedAll.length > 0 && <Button size="sm" className="ml-auto" icon={Star} busy={busy === 'pick'} onClick={() => pick(suggestedAll.map(i => i.id))} title="The best-looking keywords: searches, ease, gaps and how many places agree">Pick {suggestedAll.length} suggested</Button>
               ) : null}
@@ -244,7 +242,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                 </table>
               </div>
             )}
-            {rows.length > shown.length && <div className="p-3 text-center border-t border-slate-100"><Button onClick={() => setLimit(l => l + PAGE)}>Show {Math.min(PAGE, rows.length - shown.length)} more ({rows.length - shown.length} left)</Button></div>}
+            <Pager p={pager} label="keywords" />
           </Card>
 
           {/* What to do next */}
@@ -274,10 +272,7 @@ export default function KeywordWorkspace({ b, onUse }) {
   );
 }
 
-function exportCsv(items) {
-  const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['Keyword', 'Searches per month', 'Difficulty', 'Your rank', 'Kind', 'Score', 'Sources', 'Competitors'], ...items.map(i => [i.keyword, i.volume, i.difficulty, i.rank, i.tag, i.score, i.sources.map(s => s.label).join('; '), i.competitors.join('; ')])];
-  const blob = new Blob([rows.map(r => r.map(cell).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'keywords.csv'; a.click(); URL.revokeObjectURL(a.href);
+function exportCsv(items, name) {
+  downloadCsv(`keywords-${name || 'site'}`, ['Keyword', 'Searches per month', 'Difficulty', 'Your rank', 'Kind', 'Score', 'Sources', 'Competitors'],
+    items.map(i => [i.keyword, i.volume ?? '', i.difficulty ?? '', i.rank ?? '', i.tag || '', i.score ?? '', i.sources.map(s => s.label).join('; '), i.competitors.join('; ')]));
 }

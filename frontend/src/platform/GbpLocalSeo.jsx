@@ -4,6 +4,7 @@ import { Play, Plus, ArrowRight, AlertTriangle, CheckCircle2, Info, MapPinned, S
 import { Card, Button, ErrorNote, useAction, SkList } from './SeoUi';
 import { api, useApi, fmtDateTime } from './seoApi';
 import { SectionHead } from './GbpWorkspace';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 const LEVEL = {
   good: { ring: '#10b981', chip: 'bg-emerald-50 text-emerald-700', label: 'Strong' },
@@ -29,6 +30,34 @@ function Ring({ score, level, size = 132 }) {
 const Change = ({ v }) => (v == null || v === 0 ? <Minus size={13} className="text-slate-300" /> : v > 0 ? <span className="inline-flex items-center text-emerald-600 text-12 font-medium"><TrendingUp size={13} className="mr-0.5" />{v}</span> : <span className="inline-flex items-center text-red-600 text-12 font-medium"><TrendingDown size={13} className="mr-0.5" />{Math.abs(v)}</span>);
 
 /** Local SEO for the Google profile: one score, what is holding it back, and where the tracked local searches stand in Maps and Google. */
+const localValue = (r, k) => (k === 'keyword' ? r.keyword : !r.checked ? null : k === 'maps' ? (r.maps?.found ? r.maps.position : null) : k === 'search' ? (r.organic?.found ? r.organic.position ?? null : null) : k === 'change' ? r.organic?.change_vs_previous ?? null : k === 'first' ? r.who_is_first?.maps || null : null);
+
+function LocalRankTable({ rows: all }) {
+  const { sorted, sort, onSort } = useSorted(all, localValue);
+  const pager = usePager(sorted, { size: 10 });
+  return (
+    <>
+      <div className="overflow-x-auto">
+        <table className="w-full text-13">
+          <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className="p-2">Search</SortTh><SortTh id="maps" sort={sort} onSort={onSort} className="p-2">Google Maps</SortTh><SortTh id="search" sort={sort} onSort={onSort} className="p-2">Google Search</SortTh><SortTh id="change" sort={sort} onSort={onSort} first="desc" className="p-2">Change</SortTh><SortTh id="first" sort={sort} onSort={onSort} className="p-2">First in Maps</SortTh></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+                    {pager.rows.map(r => (
+                      <tr key={r.keyword}>
+                        <td className="p-2.5 font-medium text-slate-900">{r.keyword}</td>
+                        <td className="p-2.5">{!r.checked || !r.maps.checked ? <span className="text-slate-400">Not checked</span> : r.maps.found ? <span className={`inline-flex items-center gap-1 font-semibold ${r.maps.in_pack ? 'text-emerald-600' : 'text-slate-800'}`}>{r.maps.in_pack && <Trophy size={13} />}#{r.maps.position}</span> : <span className="text-red-600">Not found</span>}</td>
+                        <td className="p-2.5">{!r.checked ? <span className="text-slate-400">Not checked</span> : r.organic.found ? <span className="text-slate-800">{r.organic.label}</span> : <span className="text-red-600">{r.organic.label}</span>}</td>
+                        <td className="p-2.5"><Change v={r.organic.change_vs_previous} /></td>
+                        <td className="p-2.5 text-12 text-slate-500 max-w-[200px] truncate" title={r.who_is_first?.maps || ''}>{r.who_is_first?.maps || '—'}</td>
+                      </tr>
+                    ))}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pager} label="searches" />
+    </>
+  );
+}
+
 export default function LocalSeoSection({ b }) {
   const [how, setHow] = useState(false);
   const data = useApi(`/businesses/${b.id}/gbp/local-seo`);
@@ -102,22 +131,7 @@ export default function LocalSeoSection({ b }) {
               </div>
             )}
             {!pos?.rows?.length ? <p className="text-13 text-slate-500 py-4 text-center">No searches are tracked yet. Use “Start tracking” above, or add one below.</p> : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-13">
-                  <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-medium">Search</th><th className="p-2 text-left font-medium">Google Maps</th><th className="p-2 text-left font-medium">Google Search</th><th className="p-2 text-left font-medium">Change</th><th className="p-2 text-left font-medium">First in Maps</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {pos.rows.map(r => (
-                      <tr key={r.keyword}>
-                        <td className="p-2.5 font-medium text-slate-900">{r.keyword}</td>
-                        <td className="p-2.5">{!r.checked || !r.maps.checked ? <span className="text-slate-400">Not checked</span> : r.maps.found ? <span className={`inline-flex items-center gap-1 font-semibold ${r.maps.in_pack ? 'text-emerald-600' : 'text-slate-800'}`}>{r.maps.in_pack && <Trophy size={13} />}#{r.maps.position}</span> : <span className="text-red-600">Not found</span>}</td>
-                        <td className="p-2.5">{!r.checked ? <span className="text-slate-400">Not checked</span> : r.organic.found ? <span className="text-slate-800">{r.organic.label}</span> : <span className="text-red-600">{r.organic.label}</span>}</td>
-                        <td className="p-2.5"><Change v={r.organic.change_vs_previous} /></td>
-                        <td className="p-2.5 text-12 text-slate-500 max-w-[200px] truncate" title={r.who_is_first?.maps || ''}>{r.who_is_first?.maps || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <LocalRankTable rows={pos.rows} />
             )}
             {pos?.last_checked_at && <p className="text-11.5 text-slate-400 mt-2">Last checked {fmtDateTime(pos.last_checked_at)}. Results are live from Google.</p>}
             {d.suggestions.length > 0 && (

@@ -46,6 +46,8 @@ def fake_google(monkeypatch, vom_enabled=True):
                                     "createTime": "2026-10-01T00:00:00Z", "locationAssociation": {"category": "EXTERIOR"}, "insights": {"viewCount": str(i * 10)}} for i in range(7)], "totalMediaItemCount": 7}
         if "fetchMultiDailyMetricsTimeSeries" in url:
             return {}
+        if "placeActionTypeMetadata" in url:
+            return {"placeActionTypeMetadata": [{"placeActionType": k, "displayName": k.title()} for k in ("APPOINTMENT", "FOOD_ORDERING", "SHOP_ONLINE")]}
         if "placeActionLinks" in url and method == "GET":
             return {"placeActionLinks": ACTION_LINKS}
         raise AssertionError(f"unexpected Google call {url}")
@@ -357,6 +359,122 @@ def test_phones_and_booking_links_are_written_to_google_and_read_back(client, mo
         assert sent == []
     finally:
         db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
+
+
+def test_a_booking_link_google_refuses_is_still_saved_here_with_the_reason(client, monkeypatch):
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    try:
+        assert client.post(f"/api/v1/businesses/{bid}/sync").status_code == 200
+        base = gbp.GbpClient._req
+
+        def req(self, method, url, **kw):
+            if "placeActionLinks" in url and method in ("POST", "PATCH", "DELETE"):
+                raise gbp.GbpError("Google API 400: Request contains an invalid argument.")
+            if method in ("PATCH", "POST", "PUT", "DELETE") and "/revoke" not in url:
+                return {}
+            return base(self, method, url, **kw)
+        monkeypatch.setattr(gbp.GbpClient, "_req", req)
+        out = client.patch(f"/api/v1/businesses/{bid}", json={"booking_url": "https://saidental.in/book-here"}).json()
+        assert out["booking_url"] == "https://saidental.in/book-here"  # kept: it is the owner's link
+        assert "Google did not accept it" in out["action_links_error"]
+        got = client.get(f"/api/v1/businesses/{bid}").json()
+        assert got["booking_url"] == "https://saidental.in/book-here" and "not_on_google" in "".join(got["gbp_status"]) or "booking_not_on_google" in got["gbp_status"]
+    finally:
+        db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
+
+
+def test_the_buttons_google_offers_this_listing_are_listed(client, monkeypatch):
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    try:
+        r = client.get(f"/api/v1/businesses/{bid}/gbp/action-types")
+        assert r.status_code == 200 and r.json()["known"] is True
+        assert {x["type"] for x in r.json()["offered"]} == {"APPOINTMENT", "FOOD_ORDERING", "SHOP_ONLINE"}
+    finally:
+        db = SessionLocal()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
+
+
+def test_performance_gives_each_number_with_its_change_and_a_value_for_every_day(client, monkeypatch):
+    from datetime import date, timedelta
+    from app.models import InsightDay
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    db = SessionLocal()
+    try:
+        end = date.today() - timedelta(days=2)
+        for i in range(60):  # the last 28 days: 10 search views and 1 call a day; the 28 before: 5 and 1 a day
+            day = end - timedelta(days=i)
+            recent = i < 28
+            db.merge(InsightDay(business_id=bid, day=day, views_search=10 if recent else 5, views_maps=2, website_clicks=1, calls=1 if i % 2 == 0 else 0, directions=0, bookings=0))
+        db.commit()
+        out = client.get(f"/api/v1/businesses/{bid}/gbp/performance?days=28").json()
+        assert out["has_data"] and out["has_previous"] and out["end"] == end.isoformat() and len(out["days_dates"]) == 28
+        by = {m["key"]: m for m in out["metrics"]}
+        assert by["views_search"]["total"] == 280 and by["views_search"]["previous"] == 140 and by["views_search"]["change_pct"] == 100.0
+        assert len(by["views_search"]["series"]) == 28 and by["views_search"]["best_day"]["value"] == 10
+        assert by["views_maps"]["change_pct"] == 0.0 and by["views"]["total"] == 280 + 56 and by["interactions"]["total"] == 28 + 14
+        assert by["bookings"]["total"] == 0 and by["bookings"]["change_pct"] is None and by["bookings"]["best_day"] is None  # nothing in either period: no change to state
+    finally:
+        db.query(InsightDay).filter(InsightDay.business_id == bid).delete()
+        db.query(Business).filter(Business.gbp_location == "locations/1").delete()
+        db.commit()
+        db.close()
+
+
+def test_google_404_pages_are_not_shown_as_markup_and_say_what_it_means():
+    msg = gbp.explain_google_error(404, "", "https://mybusiness.googleapis.com/v4/accounts/1/locations/2/reviews/places/x/reply")
+    assert "<" not in msg and "does not have this review" in msg
+    assert "<" not in gbp.explain_google_error(404, "", "https://mybusinessplaceactions.googleapis.com/v1/x")
+
+
+def test_a_review_from_the_public_listing_gets_the_business_profile_id_before_a_reply(client, monkeypatch):
+    from app.models import Review
+    from app.services import agent
+    fake_google(monkeypatch)
+    cid = connection()
+    bid = client.post(f"/api/v1/connections/{cid}/import", json={"locations": ["locations/1"]}).json()[0]["id"]
+    db = SessionLocal()
+    try:
+        r = Review(business_id=bid, external_id="places/ChIJx/reviews/abc", author="Nitin Kamble", rating=5, body="Good service", reply_status="none")
+        db.add(r)
+        db.commit()
+        sent = []
+        base = gbp.GbpClient._req
+
+        def req(self, method, url, **kw):
+            if url.endswith("/reviews") and method == "GET":  # the Business Profile does not list it yet
+                return {}
+            if method == "PUT":
+                sent.append(url)
+                return {}
+            return base(self, method, url, **kw)
+        monkeypatch.setattr(gbp.GbpClient, "_req", req)
+        b = db.get(Business, bid)
+        task = agent._task(db, b, "review", "review_reply", "Reply", "Medium", review_id=r.id, rating=5, text="Thank you")
+        db.commit()
+        agent.decide(db, task, True, "tester")
+        assert task.status == "failed" and task.result["error"].startswith("This review is only on the public Google Maps listing") and sent == []  # Google is never asked with an id it cannot know
+        # once the Business Profile lists it, the reply goes under its own id
+        monkeypatch.setattr(gbp.GbpClient, "_req", lambda self, method, url, **kw: ({"reviews": [{"reviewId": "BP123", "reviewer": {"displayName": "Nitin Kamble"}, "comment": "Good service"}]} if url.endswith("/reviews") and method == "GET" else (sent.append(url) or {}) if method == "PUT" else base(self, method, url, **kw)))
+        task2 = agent._task(db, b, "review", "review_reply", "Reply", "Medium", review_id=r.id, rating=5, text="Thank you")
+        db.commit()
+        agent.decide(db, task2, True, "tester")
+        assert task2.status != "failed" and sent and sent[0].endswith("/reviews/BP123/reply") and db.get(Review, r.id).external_id == "BP123"
+    finally:
+        db.query(Review).filter(Review.business_id == bid).delete()
         db.query(Business).filter(Business.gbp_location == "locations/1").delete()
         db.commit()
         db.close()

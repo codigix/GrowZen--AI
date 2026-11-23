@@ -2,8 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { RefreshCw, Search, MapPin, ExternalLink, AlertTriangle, ArrowUp, ArrowDown, Globe } from 'lucide-react';
 import { Card, Badge, Button, ErrorNote, useAction, useToast, SkTable } from './SeoUi';
 import { api, useApi, fmtDateTime } from './seoApi';
-import { Th, path } from './PositionUi';
+import { path } from './PositionUi';
 import Select from '../components/Select';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
+import { CsvButton } from './PositionExtras';
 
 /**
  * "Where you rank on Google right now" (GET /businesses/{id}/seo/current-positions, POST /seo/check-ranks): for every tracked keyword,
@@ -11,6 +13,19 @@ import Select from '../components/Select';
  * (the local pack is the top 3), the move since the last check and who is first. Everything comes from the saved live checks;
  * a keyword that was never checked, or a site that is not in the results, says so instead of showing a number.
  */
+
+const currentValue = (r, k) => {
+  if (!r.checked) return null;
+  const o = r.organic || {};
+  if (k === 'page') return o.page ?? null;
+  if (k === 'position') return o.found ? o.position : null;
+  if (k === 'maps') return r.maps?.found ? r.maps.position : null;
+  if (k === 'change') return o.change_vs_previous ?? null;
+  if (k === 'url') return o.url || null;
+  if (k === 'leader') return r.who_is_first?.maps || null;
+  return null;
+};
+const colValue = (r, k) => (k === 'keyword' ? r.keyword : currentValue(r, k));
 
 const SORTS = [['position', 'Best position first'], ['keyword', 'Keyword A-Z'], ['change', 'Biggest move first']];
 
@@ -65,6 +80,8 @@ export default function CurrentPositions({ b, onChecked }) {
     return [...list].sort(by[sort]);
   }, [d, q, sort, bucket]);
 
+  const { sorted, sort: colSort, onSort } = useSorted(rows, colValue);
+  const pager = usePager(sorted, { size: 25, resetKey: `${q}|${sort}|${bucket}` });
   const noKey = d && !d.rank_ready;
   const check_btn = <Button variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={noKey || !d?.summary.keywords} onClick={check}
     title={noKey ? 'Link the Google account that owns this site (Search Console) first' : !d?.summary.keywords ? 'Add tracked keywords first' : 'Reads each keyword\'s average position from Google Search Console (last 28 days) and its place in Google Maps'}>Check positions now</Button>;
@@ -117,15 +134,17 @@ export default function CurrentPositions({ b, onChecked }) {
                 </label>
                 <Select className={sel} value={sort} onChange={e => setSort(e.target.value)} aria-label="Sort">{SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
                 {bucket !== 'all' && <button type="button" onClick={() => setBucket('all')} className="text-12 text-indigo-600 hover:underline cursor-pointer">Show all</button>}
+                <CsvButton className="ml-auto" disabled={!sorted.length} onClick={() => downloadCsv(`current-positions-${d.domain || b.name}`, ['Keyword', 'Checked', 'Google page', 'Position', 'Impressions', 'Clicks', 'Position in Google Maps', 'In the Maps top 3', 'Change in position', 'Ranking page', 'First in Maps'],
+                  sorted.map(r => { const o = r.organic || {}; return [r.keyword, r.checked ? 'Yes' : 'No', r.checked ? (o.page ?? '') : '', r.checked && o.found ? (o.average_position ?? o.position ?? '') : '', r.checked ? (o.impressions ?? '') : '', r.checked ? (o.clicks ?? '') : '', r.maps?.found ? r.maps.position : '', r.maps?.in_pack ? 'Yes' : 'No', r.checked ? (o.change_vs_previous ?? '') : '', o.url || '', r.who_is_first?.maps || '']; }))} />
               </div>
 
               <div className="overflow-auto max-h-[680px] rounded ring-1 ring-inset ring-slate-100">
                 <table className="w-full text-13">
                   <thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500">
-                    <tr><Th>Keyword</Th><Th>Google page</Th><Th c="text-right">Position</Th><Th>Maps / local pack</Th><Th c="text-right">Change</Th><Th>Ranking page</Th><Th>Maps leader</Th></tr>
+                    <tr><SortTh id="keyword" sort={colSort} onSort={onSort} className="px-4 py-2.5 whitespace-nowrap">Keyword</SortTh><SortTh id="page" sort={colSort} onSort={onSort} className="px-4 py-2.5 whitespace-nowrap">Google page</SortTh><SortTh id="position" sort={colSort} onSort={onSort} right className="px-4 py-2.5 whitespace-nowrap">Position</SortTh><SortTh id="maps" sort={colSort} onSort={onSort} className="px-4 py-2.5 whitespace-nowrap">Maps / local pack</SortTh><SortTh id="change" sort={colSort} onSort={onSort} right first="desc" className="px-4 py-2.5 whitespace-nowrap">Change</SortTh><SortTh id="url" sort={colSort} onSort={onSort} className="px-4 py-2.5 whitespace-nowrap">Ranking page</SortTh><SortTh id="leader" sort={colSort} onSort={onSort} className="px-4 py-2.5 whitespace-nowrap">Maps leader</SortTh></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {rows.map(r => {
+                    {pager.rows.map(r => {
                       const o = r.organic;
                       return (
                         <tr key={r.keyword} className="hover:bg-slate-50 align-top">
@@ -155,10 +174,11 @@ export default function CurrentPositions({ b, onChecked }) {
                         </tr>
                       );
                     })}
-                    {!rows.length && <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-500">No keyword matches.</td></tr>}
+                    {!pager.rows.length && <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-500">No keyword matches.</td></tr>}
                   </tbody>
                 </table>
               </div>
+              <div className="-mx-6"><Pager p={pager} label="keywords" /></div>
               <p className="text-11.5 text-slate-400">Position is Google Search Console's average position for the keyword over the last 28 days (the same figure Google shows you), with the impressions and clicks behind it. “No impressions yet” means the site was not shown on Google for it in that time. Maps position is the place among Google Maps results for the same search, around the business's pin; the top 3 is the local pack. Google gives no data on other websites' rankings.</p>
             </>
           )}

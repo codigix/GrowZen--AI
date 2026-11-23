@@ -1,7 +1,7 @@
 """Everything editable on a client's Google Business Profile, written to Google from here: categories, address,
 attributes, photos, live posts and review replies. Profile text, hours and services go through PATCH /businesses/{id}."""
 import base64
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,7 +13,7 @@ from .. import access
 from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business
-from ..models import AgentTask, Business, Post, Review
+from ..models import AgentTask, Business, InsightDay, Post, Review
 from ..schemas import POST_CTA_TYPES, check_post_dates, clean_url
 from ..serialize import row
 from ..services import agent, gbp, google_changes
@@ -195,6 +195,55 @@ def set_address(body: AddressIn, b: Business = Depends(get_business), db: Sessio
     google_changes.record(b, ["storefrontAddress"])
     db.commit()
     return {"address": b.address, "city": b.city}
+
+
+# Performance: the daily numbers Google reports, this period against the one before it
+PERF_METRICS = [("views_search", "Google Search impressions", "How many times your profile showed in Google Search"), ("views_maps", "Google Maps impressions", "How many times your profile showed in Google Maps"),
+                ("website_clicks", "Website clicks", "People who tapped your website link"), ("calls", "Phone call clicks", "People who tapped Call"),
+                ("directions", "Direction requests", "People who asked for directions"), ("bookings", "Booking interactions", "People who used a Book button (only where the category has one)")]
+
+
+@router.get("/performance")
+def performance(days: int = 28, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Every Business Profile number for the last `days` days with the change against the `days` before, and a value for each day (for the small graphs).
+    Counts are Google's own daily figures kept by the sync; the last two days are not available yet (Google reports them late)."""
+    access.require(db, user, b, "gmb")
+    days = days if days in (7, 14, 28, 30) else 28
+    rows = list(db.scalars(select(InsightDay).where(InsightDay.business_id == b.id).order_by(InsightDay.day)))
+    if not rows:
+        return {"has_data": False, "days": days, "metrics": []}
+    end = rows[-1].day  # the newest day Google has reported
+    cur_start, prev_start = end - timedelta(days=days - 1), end - timedelta(days=2 * days - 1)
+    by_day = {r.day: r for r in rows}
+    oldest = rows[0].day
+    has_prev = oldest <= prev_start + timedelta(days=max(0, days // 4))  # the earlier period is (nearly) all there
+
+    def series(key: str, start: date, n: int) -> list[int]:
+        return [int(getattr(by_day[d], key, 0) or 0) if d in by_day else 0 for d in (start + timedelta(days=i) for i in range(n))]
+
+    def build(key: str, label: str, hint: str, parts: list[str] | None = None) -> dict[str, Any]:
+        keys = parts or [key]
+        cur = [sum(x) for x in zip(*(series(k, cur_start, days) for k in keys))]
+        prev = [sum(x) for x in zip(*(series(k, prev_start, days) for k in keys))]
+        total, before = sum(cur), sum(prev)
+        change = None if not has_prev else (None if before == 0 and total == 0 else (100.0 if before == 0 else round((total - before) / before * 100, 1)))
+        return {"key": key, "label": label, "hint": hint, "total": total, "previous": before if has_prev else None, "change_pct": change, "series": cur,
+                "best_day": {"day": (cur_start + timedelta(days=cur.index(max(cur)))).isoformat(), "value": max(cur)} if total else None}
+
+    metrics = [build(k, label, hint) for k, label, hint in PERF_METRICS]
+    metrics.insert(0, build("views", "Total profile views", "Search and Maps together", ["views_search", "views_maps"]))
+    metrics.insert(1, build("interactions", "Customer actions", "Website clicks, calls, directions and bookings together", ["website_clicks", "calls", "directions", "bookings"]))
+    return {"has_data": True, "days": days, "start": cur_start.isoformat(), "end": end.isoformat(), "previous_start": prev_start.isoformat(), "has_previous": has_prev,
+            "days_dates": [(cur_start + timedelta(days=i)).isoformat() for i in range(days)], "metrics": metrics}
+
+
+# Booking and order buttons: which ones Google offers this listing (it depends on the category)
+@router.get("/action-types")
+def action_types(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    access.require(db, user, b, "gmb")
+    offered = _client(b).place_action_types(b.gbp_location)
+    return {"known": bool(offered), "category": b.primary_category,
+            "offered": [{"type": k, "name": gbp.BUTTON_NAME.get(k, v)} for k, v in sorted(offered.items(), key=lambda x: gbp.BUTTON_NAME.get(x[0], x[1]))]}
 
 
 # Attributes

@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { ChevronRight, ExternalLink, Download, Check, LayoutGrid, BarChart3, Folder, FileText, Search } from 'lucide-react';
 import { Card, Badge, Button } from './SeoUi';
-import { AXIS, PALETTE, Th, Empty, Segmented, usePager } from './PositionUi';
+import { AXIS, PALETTE, Th, Empty, Segmented } from './PositionUi';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import Select from '../components/Select';
 
 const SEV = { error: ['Errors', '#ef4444'], warning: ['Warnings', '#f59e0b'], notice: ['Notices', '#818cf8'] };
@@ -11,14 +12,11 @@ const dash = <span className="text-slate-300">—</span>;
 const short = (u) => { try { const x = new URL(u); return x.hostname.replace(/^www\./, '') + (x.pathname === '/' ? '/' : x.pathname) + x.search; } catch (e) { return u; } };
 const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
+const PAGE_VAL = (p, k) => (k === 'inbound' ? p.inbound : k === 'url' ? p.url : k === 'title' ? p.title : k === 'status' ? p.status : k === 'issues' ? p.issues.length : k === 'depth' ? p.depth : k === 'words' ? p.words : k === 'text' ? p.text_ratio : undefined);
 const Url = ({ u }) => <a href={u} target="_blank" rel="noreferrer" title={u} className="text-indigo-700 hover:underline inline-flex items-center gap-1 break-all">{short(u)}<ExternalLink size={10} className="shrink-0" /></a>;
 
 function csv(name, head, rows) {
-  const text = [head, ...rows].map(l => l.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
-  a.download = name;
-  a.click();
+  downloadCsv(name.replace(/\.csv$/, ''), head, rows);
 }
 
 const Chip = ({ on, onClick, children, n }) => (
@@ -45,7 +43,7 @@ export function IssuesTab({ r, initial }) {
         <div className="flex rounded border border-slate-200 overflow-hidden"><Chip on={!cat} onClick={() => setCat('')} n={types(() => true)}>All</Chip>{cats.map(c => <Chip key={c} on={cat === c} onClick={() => setCat(c)} n={types(x => x.category === c)}>{c}</Chip>)}</div>
         <div className="flex rounded border border-slate-200 overflow-hidden"><Chip on={!sev} onClick={() => setSev('')} n={types(() => true)}>All</Chip>{SEV_ORDER.map(s => <Chip key={s} on={sev === s} onClick={() => setSev(s)} n={types(x => x.severity === s)}>{SEV[s][0]}</Chip>)}</div>
         <label className={`h-9 px-3 inline-flex items-center gap-2 rounded border text-13 cursor-pointer ${only ? 'border-indigo-300 bg-indigo-50 text-indigo-700 font-semibold' : 'border-slate-200 bg-white text-slate-700'}`}><input type="checkbox" checked={only} onChange={e => setOnly(e.target.checked)} />With issues</label>
-        <Button size="sm" icon={Download} className="ml-auto" onClick={() => csv(`${r.project}-issues.csv`, ['Severity', 'Issue', 'Count', 'Affected pages', 'How to fix'], rows.filter(x => x.count).map(x => [x.severity, x.label, x.count, x.urls.join(' '), x.fix]))}>Export</Button>
+        <Button size="sm" icon={Download} className="ml-auto" onClick={() => csv(`${r.project}-issues.csv`, ['Severity', 'Issue', 'Count', 'Affected pages', 'How to fix'], rows.filter(x => x.count).map(x => [x.severity, x.label, x.count, x.urls.join(' '), x.fix]))}>Export CSV</Button>
       </div>
       {SEV_ORDER.map(s => {
         const list = rows.filter(x => x.severity === s && visible(x));
@@ -121,7 +119,9 @@ export function CrawledPagesTab({ r }) {
   const [sev, setSev] = useState('');
   const [open, setOpen] = useState(() => new Set());
   const rows = useMemo(() => r.pages.filter(p => (!q || (scope === 'title' ? (p.title || '') : p.url).toLowerCase().includes(q.toLowerCase())) && (!sev || (sev === 'healthy' ? !p.issues.length : p.issues.some(i => i.severity === sev)))), [r.pages, q, scope, sev]);
-  const [slice, footer] = usePager(rows, 25);
+  const { sorted, sort, onSort } = useSorted(rows, PAGE_VAL);
+  const pager = usePager(sorted, { size: 25, resetKey: `${q}|${scope}|${sev}|${sort?.key}|${sort?.dir}` });
+  const slice = pager.rows;
   const toggle = (k) => setOpen(o => { const n = new Set(o); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const code = (s) => <span className={`inline-block px-2.5 py-0.5 rounded-full text-12 font-semibold ${!s ? 'bg-slate-100 text-slate-500' : s < 300 ? 'bg-emerald-100 text-emerald-700' : s < 400 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{s || '—'}</span>;
   const tree = useMemo(() => structure(r.pages), [r.pages]);
@@ -137,10 +137,10 @@ export function CrawledPagesTab({ r }) {
             <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search" aria-label="Search pages" className="h-9 pl-8 pr-3 w-56 text-13 rounded border border-slate-200 bg-white" /></label>
             <Select className={sel} value={sev} onChange={e => setSev(e.target.value)} aria-label="Issues"><option value="">All pages</option><option value="error">With errors</option><option value="warning">With warnings</option><option value="notice">With notices</option><option value="healthy">Healthy</option></Select>
           </div>
-          <Card title={`Crawled Pages (${rows.length})`} pad={false} action={<Button size="sm" icon={Download} onClick={() => csv(`${r.project}-pages.csv`, ['URL', 'Title', 'Status', 'Issues', 'Crawl depth', 'Inbound links', 'Words'], rows.map(p => [p.url, p.title, p.status, p.issues.length, p.depth, p.inbound, p.words]))}>Export</Button>}>
+          <Card title={`Crawled Pages (${rows.length})`} pad={false} action={<Button size="sm" icon={Download} onClick={() => csv(`${r.project}-pages.csv`, ['Page URL', 'Title', 'Status code', 'Issues', 'Crawl depth (clicks)', 'Inbound links', 'Words', 'Text to HTML ratio (%)'], sorted.map(p => [p.url, p.title, p.status, p.issues.length, p.depth, p.inbound, p.words, p.text_ratio]))}>Export CSV</Button>}>
             <div className="overflow-x-auto">
               <table className="w-full text-13 min-w-[1000px]">
-                <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><Th c="text-right">Inbound links</Th><Th>Page URL</Th><Th>Title</Th><Th>Status Code</Th><Th c="text-right">Issues</Th><Th c="text-right">Crawl Depth</Th><Th c="text-right">Words</Th><Th c="text-right">Text / HTML</Th></tr></thead>
+                <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th> </Th><SortTh id="inbound" sort={sort} onSort={onSort} right first="desc" className="px-4 py-2.5 whitespace-nowrap">Inbound links</SortTh><SortTh id="url" sort={sort} onSort={onSort} className="px-4 py-2.5 whitespace-nowrap">Page URL</SortTh><SortTh id="title" sort={sort} onSort={onSort} className="px-4 py-2.5 whitespace-nowrap">Title</SortTh><SortTh id="status" sort={sort} onSort={onSort} className="px-4 py-2.5 whitespace-nowrap">Status Code</SortTh><SortTh id="issues" sort={sort} onSort={onSort} right first="desc" className="px-4 py-2.5 whitespace-nowrap">Issues</SortTh><SortTh id="depth" sort={sort} onSort={onSort} right className="px-4 py-2.5 whitespace-nowrap">Crawl Depth</SortTh><SortTh id="words" sort={sort} onSort={onSort} right first="desc" className="px-4 py-2.5 whitespace-nowrap">Words</SortTh><SortTh id="text" sort={sort} onSort={onSort} right first="desc" className="px-4 py-2.5 whitespace-nowrap">Text / HTML</SortTh></tr></thead>
                 <tbody className="divide-y divide-slate-100">{slice.map(p => (
                   <React.Fragment key={p.url}>
                     <tr className="hover:bg-slate-50 align-top">
@@ -159,7 +159,7 @@ export function CrawledPagesTab({ r }) {
                 {!slice.length && <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-500">No page matches.</td></tr>}</tbody>
               </table>
             </div>
-            {footer}
+            <Pager p={pager} label="pages" />
           </Card>
         </>
       )}
@@ -220,9 +220,12 @@ export function CompareTab({ r }) {
   const B = h.find(x => x.id === b) || h[0];
   const opts = h.map(x => <option key={x.id} value={x.id}>{when(x.date)}</option>);
   const gen = [['Pages crawled', x => x.pages], ['Site Health', x => x.health], ['Total issues', x => x.totals.issues], ['Total errors', x => x.totals.errors], ['Total warnings', x => x.totals.warnings], ['Total notices', x => x.totals.notices]];
+  const exportCompare = () => downloadCsv(`audit-comparison-${r.project}`, ['Group', 'Check', `Newer crawl (${when(A.date)})`, `Older crawl (${when(B.date)})`, 'Fixed', 'New'],
+    [...gen.map(([l, f]) => ['General', l, f(A), f(B), l.startsWith('Total') && f(B) > f(A) ? f(B) - f(A) : 0, l.startsWith('Total') && f(A) > f(B) ? f(A) - f(B) : 0]),
+      ...r.checks.map(c => { const x = A.counts[c.code] ?? 0; const y = B.counts[c.code] ?? 0; return [SEV[c.severity][0], c.label, x, y, y > x ? y - x : 0, x > y ? x - y : 0]; })]);
   const cell = (n, o) => (n > o ? <span className="text-indigo-600 font-semibold">{n - o}</span> : dash);
   return (
-    <Card pad={false}>
+    <Card pad={false} action={<Button size="sm" icon={Download} onClick={exportCompare}>Export CSV</Button>}>
       <table className="w-full text-13">
         <thead className="bg-slate-50 text-12.5"><tr><th className="px-5 py-3 text-left font-semibold text-slate-700">General</th>
           <th className="px-5 py-3"><Select className={sel} value={a} onChange={e => setA(Number(e.target.value))} aria-label="Newer crawl">{opts}</Select></th>
@@ -304,7 +307,7 @@ export function JsTab({ r }) {
         {j.js_only ? <p className="text-13 text-slate-700">{j.js_only} of {j.pages} pages are empty until JavaScript builds them. Google can render JavaScript later, but many AI crawlers and social previews never do, so the text, links and contact details on these pages may not be seen. Fix: serve the content in the HTML (server-side rendering or pre-rendering).</p>
           : <p className="text-13 text-slate-700">Every crawled page has its content in the HTML, so it does not depend on JavaScript to be read.</p>}
       </Card>
-      {j.urls.length > 0 && <Card title={`Pages that depend on JavaScript (${j.urls.length})`} pad={false}><ul className="divide-y divide-slate-100">{j.urls.map(u => <li key={u} className="px-5 py-2.5 text-13"><Url u={u} /></li>)}</ul></Card>}
+      {j.urls.length > 0 && <Card title={`Pages that depend on JavaScript (${j.urls.length})`} pad={false} action={<Button size="sm" icon={Download} onClick={() => downloadCsv(`js-dependent-pages-${r.project}`, ['Page URL'], j.urls.map(u => [u]))}>Export CSV</Button>}><ul className="divide-y divide-slate-100">{j.urls.map(u => <li key={u} className="px-5 py-2.5 text-13"><Url u={u} /></li>)}</ul></Card>}
     </div>
   );
 }

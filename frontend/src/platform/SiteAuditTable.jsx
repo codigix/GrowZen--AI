@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Sparkles, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { Search, Sparkles, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Plus, Download } from 'lucide-react';
 import { Card, ErrorNote, useModulePath, useSeoBusiness, SkTable } from './SeoUi';
 import { useApi } from './seoApi';
 import SiteAuditOverview from './SiteAuditOverview';
-import Select from '../components/Select';
+import { usePager, Pager, downloadCsv } from './DataTable';
 
 /**
  * Site Audit overview: one row per project with its site health broken into the parameters an SEO tool
@@ -63,8 +63,6 @@ export default function SiteAuditTable({ onNew, onOverview, projectId }) { // pr
   const path = useModulePath();
   const [q, setQ] = useState('');
   const [sort, setSort] = useState({ key: 'last_update', dir: -1 });
-  const [size, setSize] = useState(10);
-  const [page, setPage] = useState(1);
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -72,14 +70,16 @@ export default function SiteAuditTable({ onNew, onOverview, projectId }) { // pr
     const val = (r) => (sort.key === 'last_update' ? r.last_update || '' : sort.key === 'pages_crawled' ? r.pages_crawled : sort.key === 'name' ? r.name.toLowerCase() : r.metrics[sort.key]?.value ?? -1);
     return [...list].sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sort.dir);
   }, [data.data, q, sort, projectId]);
-  const pages = Math.max(1, Math.ceil(rows.length / size));
-  const shown = rows.slice((page - 1) * size, page * size);
+  const pager = usePager(rows, { size: 10, resetKey: `${q}|${sort.key}|${sort.dir}|${projectId ?? ''}` });
+  const shown = pager.rows;
+  const exportCsv = () => downloadCsv('site-audit-projects', ['Project', 'Domain', 'Last update', 'Pages crawled', ...COLUMNS.flatMap(c => [`${c.label}${c.count ? '' : ' (%)'}`, `${c.label}: change`])],
+    rows.map(r => [r.name, r.domain || '', r.last_update || '', r.pages_crawled ?? '', ...COLUMNS.flatMap(c => [r.metrics[c.key]?.value ?? '', r.metrics[c.key]?.delta ?? ''])]));
   const open = (id) => { choose(id).then(ok => ok && navigate(`${path('website-audit')}?tab=report`)); };
   const [overviewOf, setOverviewOf] = useState(null); // {id, initial}: that project's audit Overview replaces the table until closed
   const go = (id, key) => { const initial = GO[key]; choose(id).then(ok => { if (!ok) return; if (onOverview) onOverview(id, initial); else setOverviewOf({ id, initial }); }); };
   const th = (key, label, extra = {}) => (
     <th key={key} className={`px-4 py-3 font-semibold whitespace-nowrap ${extra.right ? 'text-right' : 'text-left'}`} title={extra.tip}>
-      <button type="button" onClick={() => { setSort(s => ({ key, dir: s.key === key ? -s.dir : -1 })); setPage(1); }} className="inline-flex items-center gap-1 cursor-pointer hover:text-slate-900">
+      <button type="button" onClick={() => { setSort(s => ({ key, dir: s.key === key ? -s.dir : -1 })); }} className="inline-flex items-center gap-1 cursor-pointer hover:text-slate-900">
         {extra.icon && <extra.icon size={13} className="text-violet-500" />}{label}{sort.key === key && (sort.dir < 0 ? <ArrowDown size={11} /> : <ArrowUp size={11} />)}
       </button>
     </th>
@@ -91,9 +91,12 @@ export default function SiteAuditTable({ onNew, onOverview, projectId }) { // pr
       <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3">
         <label className="relative w-full max-w-sm">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Project name or domain" aria-label="Search projects" className="w-full h-9 pl-9 pr-3 text-13 rounded bg-white border border-slate-200 focus:border-indigo-400 outline-none" />
+          <input value={q} onChange={e => { setQ(e.target.value); }} placeholder="Project name or domain" aria-label="Search projects" className="w-full h-9 pl-9 pr-3 text-13 rounded bg-white border border-slate-200 focus:border-indigo-400 outline-none" />
         </label>
+        <div className="flex items-center gap-2 ml-auto">
+        {projectId == null && <button type="button" onClick={exportCsv} disabled={!rows.length} className="h-9 px-3.5 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-white ring-1 ring-inset ring-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer disabled:opacity-50" title="Download every project row as a CSV file"><Download size={14} /> Export CSV</button>}
         {onNew && <button type="button" onClick={onNew} className="h-9 px-3.5 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800 cursor-pointer"><Plus size={14} /> Create project</button>}
+        </div>
       </div>
       <ErrorNote>{data.error?.message}</ErrorNote>
       {!data.data && !data.error ? <SkTable cols={['w-1/3', 'w-20', 'w-16', 'w-16', 'w-16', 'w-16']} headers={['Project', 'Last update', 'Pages crawled', ...COLUMNS.slice(0, 3).map(c => c.label)]} rows={6} /> : (
@@ -128,13 +131,8 @@ export default function SiteAuditTable({ onNew, onOverview, projectId }) { // pr
           </table>
         </div>
       )}
-      <div className="px-5 py-3 border-t border-slate-100 flex flex-wrap items-center gap-3 text-13 text-slate-600">
-        <span>Page <b className="text-slate-900">{page}</b> of {pages}</span>
-        <button type="button" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="p-1.5 rounded border border-slate-200 disabled:opacity-40 cursor-pointer" aria-label="Previous page"><ChevronLeft size={14} /></button>
-        <button type="button" disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="p-1.5 rounded border border-slate-200 disabled:opacity-40 cursor-pointer" aria-label="Next page"><ChevronRight size={14} /></button>
-        <Select value={size} onChange={e => { setSize(Number(e.target.value)); setPage(1); }} className="h-8 px-2 rounded border border-slate-200 bg-white text-13" aria-label="Rows per page">{[10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}</Select>
-        <span className="ml-auto text-11.5 text-slate-400">— = not measured yet; it fills in after the next audit</span>
-      </div>
+      <Pager p={pager} label="projects" />
+      <div className="px-5 py-2.5 border-t border-slate-100 text-11.5 text-slate-400">— = not measured yet; it fills in after the next audit</div>
     </Card>
   );
 }

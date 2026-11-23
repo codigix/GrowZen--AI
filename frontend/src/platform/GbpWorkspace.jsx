@@ -1,15 +1,16 @@
 import ProcessTasks from './ProcessTasks';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   LayoutDashboard, Store, BarChart3, Star, Newspaper, Image as ImageIcon, MapPinned, MessageCircleQuestion, Sparkles, Swords, Bot, FileText,
-  ListTodo, History, Settings2, ArrowRight, Phone, Navigation, MousePointerClick, Search, Eye, CalendarCheck, CheckCircle2, Clock, PlugZap, Globe
+  ListTodo, History, Settings2, ArrowRight, ArrowUpRight, Copy, ArrowDownRight, Minus, Phone, Navigation, MousePointerClick, Search, Eye, CalendarCheck, CheckCircle2, Clock, PlugZap, Globe
 } from 'lucide-react';
 import { ReviewLinkCard } from './ReviewLink';
 import { ProfileStrength, QuickTiles, MissingInfoCard, ShareProfileCard, NewReviewBanner, interactions } from './GbpOverviewExtras';
 import { VerificationCard, ManagersCard, AdvertiseCard, DangerCard } from './GbpAdmin';
 import { refreshBusinesses, Card, Badge, Button, ErrorNote, ScoreRing, scoreWord, StatusPill, areaCls, useAction, useDoubleConfirm, Sk, SkStats, SkTable, SkList, SkScore, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 import { useGbpLive } from './AccessGate';
 import { VerifyPill } from './GbpAccounts';
 
@@ -213,31 +214,123 @@ export function OverviewSection({ b, go, onOpen }) {
   );
 }
 
+const kwImpr = (k, key) => (key === 'keyword' ? k.keyword : k.impressions ?? (k.below != null ? k.below - 0.5 : null));
+
+/** The searches that showed the profile: sortable, searchable and paged (Google rounds low values to "< n"). */
+function SearchKeywordsTable({ keywords, pad }) {
+  const [q, setQ] = useState('');
+  const kept = useMemo(() => { const n = q.trim().toLowerCase(); return n ? keywords.filter(k => String(k.keyword).toLowerCase().includes(n)) : keywords; }, [keywords, q]);
+  const { sorted, sort, onSort } = useSorted(kept, kwImpr);
+  const pager = usePager(sorted, { size: 10, resetKey: q });
+  return (
+    <>
+      {keywords.length > 10 && <div className={`${pad} py-2 border-b border-slate-100`}><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search these keywords" aria-label="Search these keywords" className="h-8 w-full max-w-xs px-3 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
+      <div className="max-h-96 overflow-auto"><table className="w-full text-13"><thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className={`${pad} py-2`}>Keyword</SortTh><SortTh id="impressions" sort={sort} onSort={onSort} right first="desc" className={`${pad} py-2`}>Impressions</SortTh></tr></thead>
+        <tbody className="divide-y divide-slate-100">{pager.rows.map(k => <tr key={k.keyword}><td className={`${pad} py-2 text-slate-800`}>{k.keyword}</td><td className={`${pad} py-2 text-right tabular-nums`}>{k.impressions != null ? fmt(k.impressions) : <span className="text-slate-400">&lt; {k.below}</span>}</td></tr>)}
+          {!pager.rows.length && <tr><td colSpan={2} className="px-5 py-6 text-center text-slate-500">No keyword matches.</td></tr>}</tbody></table></div>
+      <Pager p={pager} label="keywords" />
+    </>
+  );
+}
+
 /** Every Google performance metric Google returns for the profile. Anything it does not return is said so, never faked. */
+/** A small graph of one number over the period: the line, a soft fill under it, and a dot on the last day. */
+function Spark({ values, tone = '#4f46e5', width = 132, height = 40 }) {
+  const id = React.useId();
+  const max = Math.max(...values, 1);
+  const n = values.length;
+  if (!n) return null;
+  const x = (i) => (n === 1 ? width / 2 : 2 + (i / (n - 1)) * (width - 4));
+  const y = (v) => height - 3 - (v / max) * (height - 8);
+  const flat = max === 1 && values.every(v => v === 0);
+  const line = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const area = `${line} L${x(n - 1).toFixed(1)},${height} L${x(0).toFixed(1)},${height} Z`;
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Daily values over ${n} days, highest ${max}`} className="shrink-0 overflow-visible">
+      <defs><linearGradient id={id} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={tone} stopOpacity="0.22" /><stop offset="100%" stopColor={tone} stopOpacity="0" /></linearGradient></defs>
+      {!flat && <path d={area} fill={`url(#${id})`} />}
+      <path d={line} fill="none" stroke={flat ? '#cbd5e1' : tone} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+      {!flat && <circle cx={x(n - 1)} cy={y(values[n - 1])} r="2.6" fill={tone} />}
+    </svg>
+  );
+}
+
+/** "+12.4%" with an arrow: green up, red down, grey when it did not move or there is nothing before to compare with. */
+function Change({ pct, has }) {
+  if (!has) return <span className="inline-flex items-center gap-1 text-11.5 text-slate-400" title="Google data from the earlier period has not been read yet">no earlier data</span>;
+  if (pct == null || pct === 0) return <span className="inline-flex items-center gap-0.5 text-12 font-semibold text-slate-500"><Minus size={13} />{pct === 0 ? '0%' : '–'}</span>;
+  const up = pct > 0;
+  const big = Math.abs(pct) >= 1000 ? `${Math.round(Math.abs(pct) / 100) / 10}k` : Math.abs(pct).toLocaleString('en-IN', { maximumFractionDigits: 1 });
+  return <span className={`inline-flex items-center gap-0.5 text-12 font-semibold tabular-nums ${up ? 'text-emerald-600' : 'text-rose-600'}`}>{up ? <ArrowUpRight size={14} strokeWidth={2.5} /> : <ArrowDownRight size={14} strokeWidth={2.5} />}{up ? '+' : '-'}{big}%</span>;
+}
+
+const PERF_LOOK = {
+  views: [Eye, '#4f46e5', 'bg-indigo-50 text-indigo-600'], interactions: [MousePointerClick, '#0ea5e9', 'bg-sky-50 text-sky-600'],
+  views_search: [Search, '#6366f1', 'bg-indigo-50 text-indigo-600'], views_maps: [MapPinned, '#10b981', 'bg-emerald-50 text-emerald-600'],
+  website_clicks: [Globe, '#0ea5e9', 'bg-sky-50 text-sky-600'], calls: [Phone, '#f59e0b', 'bg-amber-50 text-amber-600'],
+  directions: [Navigation, '#8b5cf6', 'bg-violet-50 text-violet-600'], bookings: [CalendarCheck, '#ec4899', 'bg-pink-50 text-pink-600']
+};
+const shortDay = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+/** One number the way Google's own reports show it: the count, how it moved against the period before, and its daily graph. */
+function StatCard({ m, days, hasPrev, big = false }) {
+  const [Icon, tone, chip] = PERF_LOOK[m.key] || PERF_LOOK.views;
+  return (
+    <div className={`rounded-xl bg-white ring-1 ring-slate-200 p-4 min-w-0 ${big ? 'bg-gradient-to-br from-indigo-50/60 to-white' : ''}`} title={m.hint}>
+      <div className="flex items-center gap-2 text-12.5 font-semibold text-slate-500"><span className={`w-7 h-7 rounded-lg inline-flex items-center justify-center ${chip}`}><Icon size={14} /></span><span className="truncate">{m.label}</span></div>
+      <div className="mt-2 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <div className={`${big ? 'text-[32px]' : 'text-[28px]'} leading-none font-bold text-slate-900 tabular-nums`}>{Number(m.total).toLocaleString('en-IN')}</div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5"><Change pct={m.change_pct} has={hasPrev} />{hasPrev && m.previous != null && <span className="text-11.5 text-slate-400 tabular-nums">vs {Number(m.previous).toLocaleString('en-IN')}</span>}</div>
+        </div>
+        <Spark values={m.series} tone={tone} width={big ? 150 : 124} />
+      </div>
+      <div className="mt-2 text-11.5 text-slate-400">{m.best_day ? <>Best day {shortDay(m.best_day.day)}: <b className="text-slate-600 tabular-nums">{m.best_day.value}</b></> : 'Nothing in this period'}</div>
+    </div>
+  );
+}
+
 export function PerformanceMetrics({ b }) {
+  const [days, setDays] = useState(28);
+  const perf = useApi(`/businesses/${b.id}/gbp/performance?days=${days}`);
   const live = useApi(`/businesses/${b.id}/gbp/live`);
   const d = live.data;
-  const m = d?.metrics;
   const kws = d?.live?.search_keywords || [];
-  if (!d) return <div className="space-y-4"><SkStats cols="grid-cols-2 lg:grid-cols-4" labels={["Google Search impressions", "Google Maps impressions", "Website clicks", "Phone call clicks", "Direction requests", "Booking interactions", "Total profile views"]} /><SkCard title="Monthly search keywords" subtitle="Searches that showed the profile, by monthly impressions" pad={false}><SkTable headers={["Keyword", "Impressions"]} rows={6} bare /></SkCard></div>;
+  const p = perf.data;
+  const header = (
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" role="tablist" aria-label="Period">
+        {[[7, 'Last 7 days'], [28, 'Last 28 days']].map(([n, label]) => (
+          <button key={n} type="button" role="tab" aria-selected={days === n} onClick={() => setDays(n)} className={`h-8 px-3 text-12.5 font-semibold rounded-md cursor-pointer ${days === n ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>))}
+      </div>
+      {p?.has_data && <span className="text-12.5 text-slate-500">{shortDay(p.start)} to {shortDay(p.end)}{p.has_previous ? <span className="text-slate-400"> · compared with {shortDay(p.previous_start)} to {shortDay(new Date(new Date(`${p.start}T00:00:00`).getTime() - 86400000).toISOString().slice(0, 10))}</span> : null}</span>}
+      <span className="ml-auto"><SourceBadge type="google" /></span>
+    </div>
+  );
+  if (!p) return <div className="space-y-4">{header}<SkStats cols="grid-cols-2 lg:grid-cols-4" labels={["Total profile views", "Customer actions", "Google Search impressions", "Google Maps impressions"]} /></div>;
+  const by = Object.fromEntries(p.metrics.map(m => [m.key, m]));
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi icon={Search} label="Google Search impressions" value={fmt(m.views_search_30)} sub="30 days" />
-        <Kpi icon={MapPinned} label="Google Maps impressions" value={fmt(m.views_maps_30)} sub="30 days" />
-        <Kpi icon={MousePointerClick} label="Website clicks" value={fmt(m.website_clicks_30)} sub="30 days" />
-        <Kpi icon={Phone} label="Phone call clicks" value={fmt(m.calls_30)} sub="30 days" />
-        <Kpi icon={Navigation} label="Direction requests" value={fmt(m.directions_30)} sub="30 days" />
-        <Kpi icon={CalendarCheck} label="Booking interactions" value={fmt(m.bookings_30)} sub="Only where the category is eligible" />
-        <Kpi icon={Eye} label="Total profile views" value={fmt((m.views_search_30 || 0) + (m.views_maps_30 || 0))} sub="Search + Maps" />
-      </div>
-      <Card title="Monthly search keywords" subtitle="Searches that showed the profile, by monthly impressions (Google rounds low values to “< n”)" pad={false} action={<SourceBadge type="google" />}>
+      {header}
+      {!p.has_data ? (
+        <Card><p className="py-8 text-center text-13 text-slate-500">No daily numbers from Google have been read for this profile yet. Press <b>Sync</b> on the Google profile to read them (Google reports each day two days late).</p></Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <StatCard big m={by.views} days={days} hasPrev={p.has_previous} />
+            <StatCard big m={by.interactions} days={days} hasPrev={p.has_previous} />
+          </div>
+          <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+            {['views_search', 'views_maps', 'website_clicks', 'calls', 'directions', 'bookings'].map(k => by[k] && <StatCard key={k} m={by[k]} days={days} hasPrev={p.has_previous} />)}
+          </div>
+          <p className="text-12 text-slate-500">Each number is the total for the period, the arrow is the change against the same number of days just before, and the small graph is one value per day. Google reports the newest days late, so the period ends on {shortDay(p.end)}. Booking interactions show only where the category has a Book button.</p>
+        </>
+      )}
+      <Card title="Monthly search keywords" subtitle="Searches that showed the profile, by monthly impressions (Google rounds low values to “< n”)" pad={false}>
         {kws.length ? (
-          <div className="max-h-96 overflow-auto"><table className="w-full text-13"><thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-5 py-2 text-left font-semibold">Keyword</th><th className="px-5 py-2 text-right font-semibold">Impressions</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{kws.slice(0, 100).map(k => <tr key={k.keyword}><td className="px-5 py-2 text-slate-800">{k.keyword}</td><td className="px-5 py-2 text-right tabular-nums">{k.impressions != null ? fmt(k.impressions) : <span className="text-slate-400">&lt; {k.below}</span>}</td></tr>)}</tbody></table></div>
+          <SearchKeywordsTable keywords={kws} pad="px-5" />
         ) : <p className="text-13 text-slate-500 px-5 py-8 text-center">No keyword data from Google yet.</p>}
       </Card>
-      <p className="text-12 text-slate-500">Desktop vs. mobile split, food-menu clicks and messaging clicks are shown only when Google returns them for this profile category; none were returned here, so none are shown.</p>
     </div>
   );
 }
@@ -275,6 +368,11 @@ function ReviewRow({ b, r, toast, onChanged }) {
         <div className="mt-2 space-y-2">
           <textarea rows={4} className={areaCls} value={text} onChange={e => setText(e.target.value)} placeholder="Write a reply, or let AI draft one and edit it" />
           <ErrorNote>{error}</ErrorNote>
+          {String(error || '').startsWith('This review') && (
+            <div className="flex flex-wrap items-center gap-2 text-12.5">
+              <Button size="sm" icon={Copy} onClick={() => { try { navigator.clipboard.writeText(text); toast('Reply copied: paste it under the review on Google Maps'); } catch { toast('Select the reply text and copy it'); } }}>Copy the reply</Button>
+              {(b.gbp_status?.maps_url || b.gbp_status?.review_url) && <a href={b.gbp_status.maps_url || b.gbp_status.review_url} target="_blank" rel="noreferrer noopener"><Button size="sm" icon={ArrowUpRight}>Open on Google Maps</Button></a>}
+            </div>)}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ai" busy={busy === 'ai'} onClick={draft}>Write with AI</Button>
             <Button size="sm" variant="primary" busy={busy === 'post'} disabled={!text.trim()} onClick={post}>{r.replied ? 'Update reply on Google' : 'Post reply to Google'}</Button>

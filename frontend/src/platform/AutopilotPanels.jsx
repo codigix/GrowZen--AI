@@ -4,6 +4,7 @@ import { AlertTriangle, Calendar, Check, CheckCircle2, Clock, Image as ImageIcon
 import { SeoShell, Button } from './SeoUi';
 import Select from '../components/Select';
 import { api, useApi, SEO_API } from './seoApi';
+import DataTable from './DataTable';
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const when = (iso) => { if (!iso) return 'no time set'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }); };
@@ -129,6 +130,34 @@ function ItemCard({ it, bid, onChanged }) {
   );
 }
 
+const KW_STATUS = { pending: ['Waiting for you', 'bg-amber-50 text-amber-700'], scheduled: ['Approved', 'bg-emerald-50 text-emerald-700'], applied: ['Done', 'bg-emerald-50 text-emerald-700'], rejected: ['Rejected', 'bg-slate-100 text-slate-600'], failed: ['Failed', 'bg-red-50 text-red-700'] };
+
+/** The keyword suggestions as one data table: what is suggested and why, where it stands, and the buttons for the ones that wait. */
+function KeywordItemsTable({ items, bid, onChanged }) {
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const act = async (it, what) => {
+    setBusy(`${it.id}-${what}`); setErr('');
+    try { await api(`/businesses/${bid}/autopilot/items/${it.id}/${what}`, { method: 'POST', body: {} }); await onChanged(); } catch (e) { setErr(e.message || 'That did not work.'); } finally { setBusy(''); }
+  };
+  const label = (it) => (KW_STATUS[it.status] || [it.status, 'bg-slate-100 text-slate-600'])[0];
+  return (
+    <Card>
+      {err && <p className="px-4 pt-3 text-13 text-red-700" role="alert">{err}</p>}
+      <DataTable bare rows={items} rowKey={it => it.id} pageSize={10} exportName="keyword-suggestions" label="suggestions" searchPlaceholder="Search suggestions" minWidth={620} columnsMenu={false}
+        initialSort={{ key: 'status', dir: 'asc' }}
+        empty="Nothing waits for you here."
+        filters={[{ id: 'status', label: 'Status', options: [...new Set(items.map(label))].map(x => [x, x]), test: (it, v) => label(it) === v }]}
+        columns={[
+          { id: 'keyword', header: 'Keyword and why', value: it => it.keyword || '', className: 'px-4 py-3 min-w-[240px]', thClass: 'px-4 py-3', cell: it => <><div className="text-14 font-semibold text-slate-900">{it.keyword}</div>{it.reason && <div className="text-12.5 text-slate-600 mt-0.5">{it.reason}</div>}</> },
+          { id: 'status', header: 'Status', value: it => ({ pending: 0, scheduled: 1, failed: 2, applied: 3, rejected: 4 })[it.status] ?? 5, className: 'px-3 py-3 whitespace-nowrap', cell: it => <Chip cls={(KW_STATUS[it.status] || [0, 'bg-slate-100 text-slate-600'])[1]}>{label(it)}</Chip> },
+          { id: 'act', header: 'Actions', right: true, className: 'px-4 py-3 text-right whitespace-nowrap', thClass: 'px-4 py-3',
+            cell: it => (it.status === 'pending' ? <span className="inline-flex gap-2"><Button size="sm" variant="primary" icon={busy === `${it.id}-approve` ? Loader2 : Check} disabled={Boolean(busy)} onClick={() => act(it, 'approve')}>Track it</Button><Button size="sm" icon={busy === `${it.id}-reject` ? Loader2 : XCircle} disabled={Boolean(busy)} onClick={() => act(it, 'reject')}>Reject</Button></span> : <span className="text-slate-300">—</span>) }
+        ]} />
+    </Card>
+  );
+}
+
 const FEATURES = {
   posts: { title: 'Scheduled Google posts', kinds: ['gbp_post'], what: 'posts', hint: 'Drafts are written for the days and time you choose. You edit, approve and schedule each one; it goes out only at its time.' },
   replies: { title: 'Review replies', kinds: ['review_reply'], what: 'replies', hint: 'A reply is drafted for every review that waits. A reply is posted only after you approve it.' },
@@ -213,7 +242,7 @@ export function waitingFor(d, feature) {
   return cfg ? (d?.inbox || []).filter(i => cfg.kinds.includes(i.kind) && (feature !== 'profile' || i.source === 'autopilot')).length : 0;
 }
 
-export function AutopilotPanel({ bid, feature }) {
+export function AutopilotPanel({ bid, feature, hideItems = false, onChanged }) {
   const cfg = FEATURES[feature];
   const [d, setD] = useState(null);
   const [error, setError] = useState('');
@@ -229,10 +258,10 @@ export function AutopilotPanel({ bid, feature }) {
   const inbox = d.inbox.filter(mine), scheduled = d.scheduled.filter(mine), recent = d.recent.filter(mine).slice(0, 8);
   const posts = inbox.filter(i => i.kind === 'gbp_post');
   const on = d.settings.enabled;
-  const flip = async () => { try { await api(`/businesses/${bid}/autopilot/settings`, { method: 'PUT', body: { enabled: !on }, repeat: true }); await load(); } catch (e) { setNote(e.message); } };
+  const flip = async () => { try { await api(`/businesses/${bid}/autopilot/settings`, { method: 'PUT', body: { enabled: !on }, repeat: true }); await load(); onChanged?.(); } catch (e) { setNote(e.message); } };
   const generate = async () => {
     setGenerating(true); setNote('');
-    try { const r = await api(`/businesses/${bid}/autopilot/generate`, { method: 'POST', body: { what: cfg.what }, timeout: 170000 }); setNote(Object.values(r).map(v => (v.made ? `${v.made} new draft${v.made === 1 ? '' : 's'} ready below.` : v.note || 'Nothing new right now.')).join(' ')); await load(); }
+    try { const r = await api(`/businesses/${bid}/autopilot/generate`, { method: 'POST', body: { what: cfg.what }, timeout: 170000 }); onChanged?.(); setNote(Object.values(r).map(v => (v.made ? `${v.made} new draft${v.made === 1 ? '' : 's'} ready below.` : v.note || 'Nothing new right now.')).join(' ')); await load(); }
     catch (e) { setNote(e.message || 'Could not prepare drafts.'); } finally { setGenerating(false); }
   };
   const approveAll = async () => {
@@ -242,26 +271,28 @@ export function AutopilotPanel({ bid, feature }) {
   };
   return (
     <section className="space-y-3" aria-label={cfg.title}>
-      <Card className="p-4 sm:p-5">
+      <Card className={hideItems ? 'px-4 py-2.5' : 'p-4 sm:p-5'}>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 inline-flex items-center justify-center shrink-0"><ShieldCheck size={18} /></span>
+          <span className={`${hideItems ? 'w-8 h-8' : 'w-10 h-10'} rounded-full bg-indigo-50 text-indigo-600 inline-flex items-center justify-center shrink-0`} title={hideItems ? d.rule : undefined}><ShieldCheck size={hideItems ? 15 : 18} /></span>
           <div className="flex-1 min-w-[240px]"><div className="text-15 font-semibold text-slate-900 flex flex-wrap items-center gap-2">{cfg.title}<Chip cls={on ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}>Autopilot {on ? 'on' : 'off'}</Chip></div>
-            <p className="text-12.5 text-slate-600">{cfg.hint}</p></div>
+            {hideItems ? (note ? <p className="text-12.5 text-slate-700" role="status">{note}</p> : <p className="text-12 text-slate-500 truncate" title={cfg.hint}>{cfg.hint}</p>) : <p className="text-12.5 text-slate-600">{cfg.hint}</p>}</div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={flip}>{on ? 'Turn off' : 'Turn on'}</Button>
             {cfg.what && <Button size="sm" variant="primary" icon={generating ? Loader2 : Sparkles} disabled={generating || !d.ai_ready} onClick={generate}>{generating ? 'Preparing…' : 'Prepare drafts now'}</Button>}
             <Button size="sm" icon={SettingsIcon} onClick={() => setShowSet(s => !s)} aria-expanded={showSet}>Settings</Button>
           </div>
         </div>
-        <p className="mt-2 text-12 text-slate-500 flex items-center gap-1.5"><ShieldCheck size={12} className="text-emerald-600" />{d.rule}</p>
-        {on && d.next_run && <p className="mt-1 text-12 text-slate-500">Next automatic run: {when(d.next_run)}.</p>}
+        {!hideItems && <p className="mt-2 text-12 text-slate-500 flex items-center gap-1.5"><ShieldCheck size={12} className="text-emerald-600" />{d.rule}</p>}
+        {on && !hideItems && d.next_run && <p className="mt-1 text-12 text-slate-500">Next automatic run: {when(d.next_run)}.</p>}
         {!d.ai_ready && cfg.what && <p className="mt-2 text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">AI is not set up on this server, so drafts cannot be written.</p>}
         {!d.linked && feature !== 'keywords' && <p className="mt-2 text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex gap-2"><AlertTriangle size={15} className="mt-0.5 shrink-0" />The Google Business Profile is not linked, so nothing can be published yet. Drafts are still prepared.</p>}
-        {note && <p className="mt-2 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{note}</p>}
+        {note && !hideItems && <p className="mt-2 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{note}</p>}
         {showSet && <PanelSettings feature={feature} d={d} bid={bid} onChanged={load} />}
       </Card>
+      {hideItems ? null : <>
       {feature === 'photos' && <PhotoUploader bid={bid} onChanged={load} queued={inbox.length} />}
       {posts.length > 1 && d.linked && <div><Button size="sm" icon={bulk ? Loader2 : Check} disabled={bulk} onClick={approveAll}>Approve all {posts.length} posts at their times</Button></div>}
+      {feature === 'keywords' ? ((inbox.length + scheduled.length + recent.length) > 0 && <KeywordItemsTable items={[...inbox, ...scheduled, ...d.recent.filter(mine)]} bid={bid} onChanged={load} />) : <>
       {inbox.length > 0 && <div className="space-y-3"><div className="text-13 font-semibold text-slate-900">{inbox.length} waiting for your approval</div>{inbox.map(it => <ItemCard key={`${it.id}-${it.status}`} it={it} bid={bid} onChanged={load} />)}</div>}
       {scheduled.length > 0 && <div className="space-y-3"><div className="text-13 font-semibold text-slate-900">Approved and scheduled</div>{scheduled.map(it => <ItemCard key={`${it.id}-${it.status}`} it={it} bid={bid} onChanged={load} />)}</div>}
       {recent.length > 0 && (
@@ -270,6 +301,9 @@ export function AutopilotPanel({ bid, feature }) {
             {it.status === 'applied' && <span className="text-emerald-700 flex items-center gap-1"><CheckCircle2 size={13} />Done</span>}{it.status === 'rejected' && <span className="text-slate-500">Rejected</span>}{it.status === 'failed' && <span className="text-red-700">Failed: {it.result?.error || ''}</span>}</li>)}</ul></details>
       )}
       {inbox.length === 0 && scheduled.length === 0 && <p className="text-13 text-slate-500">Nothing waits for you here. {on ? 'The next drafts appear after the next automatic run, or press “Prepare drafts now”.' : 'Turn Autopilot on to have drafts prepared for you every day.'}</p>}
+      </>}
+      {feature === 'keywords' && inbox.length === 0 && scheduled.length === 0 && recent.length === 0 && <p className="text-13 text-slate-500">Nothing waits for you here. {on ? 'The next suggestions appear after the next automatic run, or press “Prepare” above.' : 'Turn it on, or press “Prepare” above.'}</p>}
+      </>}
     </section>
   );
 }

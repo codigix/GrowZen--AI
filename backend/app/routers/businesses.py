@@ -254,11 +254,13 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
         try:
             gbp.sync_action_links(gbp.GbpClient(b.connection), b.gbp_location, changes["action_links"])
             pushed = sorted({*pushed, "placeActionLinks"})
-        except gbp.GbpError as exc:  # the rest of the profile is already on Google: keep it, leave the links as they were and say why
-            links_error = (f"Google did not accept the booking or order link ({exc}). Google allows a button only for some categories, and the link must open a real "
-                           "booking or order page of your own site (not just the home page). The other changes were saved.")
-            for k in ("action_links", "booking_url"):
-                changes.pop(k, None)
+            if (b.gbp_status or {}).get("booking_not_on_google"):
+                b.gbp_status = {k: v for k, v in b.gbp_status.items() if k != "booking_not_on_google"}
+        except gbp.GbpError as exc:  # the rest of the profile is on Google, and the link is still the owner's: it is SAVED here, and the page says plainly that Google does not have it, and why
+            specific = str(exc).startswith(("Google offers no", "'"))  # we found the reason ourselves, before asking Google
+            links_error = (str(exc) if specific else
+                           f"Google did not accept it ({exc}). Google allows a button only for some categories, and the link must open a real booking or order page of your own site (not just the home page).")
+            b.gbp_status = {**(b.gbp_status or {}), "booking_not_on_google": links_error}
     for k, v in changes.items():
         setattr(b, k, v)
     if pushed:

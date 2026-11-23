@@ -4,6 +4,7 @@ import { SeoShell, Card, Tabs, Badge, Button, Meter, Modal, Drawer, Field, input
 import { Act } from './TableBits';
 import { api, useApi, usePoll, fmtDate } from './seoApi';
 import Select from '../components/Select';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const AREA = { gmb: 'Google Business', seo: 'On-page & content SEO', technical: 'Technical', metadata: 'Metadata', content: 'Content', backlinks: 'Backlinks, listings & off-site', rankings: 'Rankings', reviews: 'Reviews', other: 'Other' };
 const AREA_ORDER = Object.keys(AREA);
@@ -161,6 +162,7 @@ export function ThisWeek({ b, areas }) {
             <Button size="sm" icon={ChevronLeft} aria-label="Previous week" onClick={() => setWeek(shift(week, -7))} />
             <Button size="sm" icon={ChevronRight} aria-label="Next week" onClick={() => setWeek(shift(week, 7))} />
             <Button size="sm" icon={RefreshCw} busy={busy === 'plan'} onClick={generate}>Plan week</Button>
+            <Button size="sm" icon={Download} disabled={!scoped.length} title="Every item of this week's plan, with its area, what to do and where it stands" onClick={() => downloadCsv(`work-plan-${(b.name || 'project').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-week-${d.week_start}`, ['Area', 'Task', 'How', 'Status'], scoped.map(i => [i.area, i.title, i.how || '', i.status]))}>Export CSV</Button>
             <Button size="sm" variant="primary" icon={Plus} onClick={() => setAdding(true)}>Add task</Button>
           </div>
         )}>
@@ -280,6 +282,27 @@ export function Reports({ b }) {
 const COVER_LABEL = { title: 'Titles (25-60 chars, unique)', description: 'Meta descriptions (70-160, unique)', canonical: 'Canonical tags', open_graph: 'Open Graph (title, text, image)', twitter_card: 'Twitter/X card', schema: 'Structured data', language: 'Page language', single_h1: 'Exactly one H1' };
 const tone = (v) => (v >= 80 ? '#1abc9c' : v >= 50 ? '#f7b84b' : '#f1556c');
 
+const META_VALUE = (p, k) => (k === 'page' ? new URL(p.url).pathname : k === 'title' ? p.title_length : k === 'desc' ? p.meta_description_length : p.flags.length);
+
+/** Page by page metadata: sortable headings, a search box and real pages. */
+function MetaPages({ pages }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const kept = needle ? pages.filter(p => `${new URL(p.url).pathname} ${p.flags.join(' ').replace(/_/g, ' ')}`.toLowerCase().includes(needle)) : pages;
+  const { sorted, sort, onSort } = useSorted(kept, META_VALUE);
+  const pager = usePager(sorted, { size: 10, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
+  return (
+    <div className="mt-5">
+      {pages.length > 10 && <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search pages" aria-label="Search pages" className="mb-2 h-8 w-56 px-2.5 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" />}
+      <div className="overflow-x-auto"><table className="w-full text-12 text-left"><thead className="text-slate-400"><tr><SortTh id="page" sort={sort} onSort={onSort} className="py-1.5 pr-3">Page</SortTh><SortTh id="title" sort={sort} onSort={onSort} className="pr-3">Title</SortTh><SortTh id="desc" sort={sort} onSort={onSort} className="pr-3">Description</SortTh><SortTh id="flags" sort={sort} onSort={onSort} first="desc" className="pr-3">Problems</SortTh></tr></thead>
+        <tbody>{pager.rows.map(p => <tr key={p.url} className="border-t border-slate-100 align-top"><td className="py-2 pr-3 max-w-[220px] truncate" title={p.url}>{new URL(p.url).pathname}</td><td className="pr-3">{p.title_length}</td><td className="pr-3">{p.meta_description_length}</td>
+          <td className="flex flex-wrap gap-1 py-2">{p.flags.length ? p.flags.map(f => <Badge key={f} tone="amber">{f.replace(/_/g, ' ')}</Badge>) : <Badge tone="green">ok</Badge>}</td></tr>)}
+          {!pager.rows.length && <tr><td colSpan={4} className="py-4 text-center text-slate-500">No page matches the search.</td></tr>}</tbody></table></div>
+      <Pager p={pager} label="pages" />
+    </div>
+  );
+}
+
 export function Research({ b }) {
   const r = useApi(`/businesses/${b.id}/research`);
   const [busy, error, run] = useAction();
@@ -318,9 +341,7 @@ export function Research({ b }) {
           {Object.entries(meta.coverage || {}).map(([k, v]) => <div key={k}><div className="flex justify-between text-12 text-slate-600 mb-1"><span>{COVER_LABEL[k] || k}</span><b>{pct(v)}</b></div><Meter value={v || 0} color={tone(v || 0)} /></div>)}
         </div>
         {meta.pages?.length > 0 && (
-          <div className="overflow-x-auto mt-5"><table className="w-full text-12 text-left"><thead className="text-slate-400"><tr><th className="py-1.5 pr-3">Page</th><th className="pr-3">Title</th><th className="pr-3">Description</th><th className="pr-3">Problems</th></tr></thead>
-            <tbody>{meta.pages.map(p => <tr key={p.url} className="border-t border-slate-100 align-top"><td className="py-2 pr-3 max-w-[220px] truncate" title={p.url}>{new URL(p.url).pathname}</td><td className="pr-3">{p.title_length}</td><td className="pr-3">{p.meta_description_length}</td>
-              <td className="flex flex-wrap gap-1 py-2">{p.flags.length ? p.flags.map(f => <Badge key={f} tone="amber">{f.replace(/_/g, ' ')}</Badge>) : <Badge tone="green">ok</Badge>}</td></tr>)}</tbody></table></div>
+          <MetaPages pages={meta.pages} />
         )}
       </Card>
       {d.suggested_metadata?.length > 0 && (

@@ -37,7 +37,7 @@ class FakeSC:
         a = self.answers[url]
         if isinstance(a, Exception):
             raise a
-        return {"inspectionResult": {"indexStatusResult": a}}
+        return {"inspectionResult": {"inspectionResultLink": f"https://search.google.com/search-console/inspect?resource_id=x&id={url.rsplit('/', 1)[1]}", "indexStatusResult": a}}
 
     def sitemaps(self, site):
         return [{"path": "https://index.example/sitemap.xml", "lastSubmitted": "2026-11-10T10:00:00Z", "isPending": False, "errors": "0", "warnings": "1", "contents": [{"type": "web", "submitted": "40"}]}]
@@ -144,6 +144,8 @@ def test_google_verdicts_come_with_a_reason_and_a_fix(client, bid, monkeypatch):
     })
     r = client.post(api(client, bid, "/inspect"), json={}).json()
     assert r["checked"] == 3 and r["indexed"] == 1 and r["not_indexed"] == 1 and r["blocked"] == 1 and r["error"] == "quota"
+    assert r["pages"]["https://index.example/ok"] == {"state": "indexed", "link": "https://search.google.com/search-console/inspect?resource_id=x&id=ok"} and "https://index.example/err" not in r["pages"]
+    assert r["pages"]["https://index.example/meh"]["state"] == "not_indexed" and r["pages"]["https://index.example/meh"]["link"].endswith("&id=meh")
     o = client.get(api(client, bid)).json()
     by = {p["url"].rsplit("/", 1)[1]: p for p in o["pages"]}
     assert by["ok"]["g_state"] == "indexed" and by["ok"]["g_last_crawl"] and by["ok"]["g_canonical"].endswith("/ok")
@@ -232,3 +234,40 @@ def test_the_key_is_also_given_as_json_for_the_download_button(client, bid):
     k = client.get(api(client, bid, "/key")).json()
     assert k["name"] == k["content"] + ".txt" and k["url"] == f"https://index.example/{k['content']}.txt"
     assert client.get(api(client, bid, "/key")).json()["content"] == k["content"]  # the same key every time
+
+
+def test_the_page_indexing_report_link_and_a_pages_own_link_comes_from_google():
+    from app.services import indexing
+    for site in ("sc-domain:shop.example", "https://shop.example/"):
+        l = indexing.console_links(site)
+        assert list(l) == ["index_url"] and l["index_url"].startswith("https://search.google.com/search-console/index?resource_id=")
+        assert ":" not in l["index_url"].split("resource_id=")[1] and "/" not in l["index_url"].split("resource_id=")[1]
+    # a page's own link is the one Google returns with the inspection, never one we build
+    got = indexing.parse_inspection({"inspectionResult": {"inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Ashop.example&id=AbC123", "indexStatusResult": {"verdict": "PASS", "coverageState": "Submitted and indexed"}}})
+    assert got["state"] == "indexed" and got["link"].endswith("&id=AbC123")
+    assert indexing.parse_inspection({"inspectionResult": {"indexStatusResult": {"verdict": "FAIL"}}})["link"] is None
+
+
+def test_the_daily_counts_are_kept_and_give_back_the_last_days_oldest_first(client):
+    from datetime import timedelta
+    from app.db import SessionLocal
+    from app.models import Business, IndexStatDay
+    from app.services import indexing
+    db = SessionLocal()
+    try:
+        b = Business(name="Stats Shop", website="https://stats.example")
+        db.add(b)
+        db.commit()
+        today = indexing._now().date()
+        for i, n in ((3, 5), (1, 8)):
+            db.add(IndexStatDay(business_id=b.id, day=today - timedelta(days=i), stats={"indexed": n}))
+        db.commit()
+        h = indexing.record_stats(db, b, {"indexed": 11, "total": 20})
+        assert [x["indexed"] for x in h] == [5, 8, 11] and h[-1]["total"] == 20 and h[-1]["day"] == today.isoformat()
+        h = indexing.record_stats(db, b, {"indexed": 12, "total": 20})  # looking again the same day replaces that day's numbers
+        assert [x["indexed"] for x in h] == [5, 8, 12] and len(h) == 3
+    finally:
+        db.query(IndexStatDay).filter(IndexStatDay.business_id == b.id).delete()
+        db.query(Business).filter(Business.id == b.id).delete()
+        db.commit()
+        db.close()

@@ -99,19 +99,21 @@ const page = (to, extra = {}) => ({ ...(BY_TO[to] || { to, label: to }), ...extr
  * follows); only sections with pages that exist here are listed.
  */
 const link = (to, label) => ({ to, label });
+/** A pointer to a page another section owns (the Blogs section owns the writing pages, Traffic & Market the traffic ones): it is listed here so the path is not lost,
+ *  but pressing it opens that section, and the page is never shown as belonging to this one. */
+const go = (to, label, section) => ({ to, label, elsewhere: section });
 
 export const SIDEBAR_SECTIONS = [
   { id: 'home', label: 'Home', title: 'Home', icon: House, groups: [{ items: [page('/dashboard'), page('/growth'), page('/projects'), page('/tracking-overview'), page('/onboarding')] }] },
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
-      { items: [page('/dashboard'), page('/projects')] },
       { title: '1 · Website audit ', items: [page('/website-audit', { label: 'Website audit' }), link('/page-indexing', 'Page Indexing')] },
-      { title: '2 · Competitor Research', items: [page('/competitor-finder'), page('/competitor-watch')] },
+      { title: '2 · Competitor Research', items: [page('/competitor-finder'), go('/competitor-watch', 'Competitor Watch', 'traffic')] },
       { title: '3 · Find Keywords', items: [link('/keyword-management/workspace', 'Keyword Workspace'), page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' })] },
       { title: '4 · Choose Keywords', items: [page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics'] })] },
       { title: '5 · Decide Where to Use', items: [{ to: '/keyword-management/mapping', label: 'Keyword Mapping', also: ['/keyword-management/use'] }] },
-      { title: '6 · Write & Update', items: [page('/ai-content-generation/trends', { label: 'Topic Research' }), link('/seo-brief', 'SEO Brief Generator'), page('/ai-content-generation/blog', { label: 'Write Content' }), link('/fix-plan', 'Fix Plan')] },
-      { title: '7 · Track Results', items: [page('/rank-tracking/landscape', { label: 'Position Tracking', also: ['/rank-tracking'] }), link('/keyword-management/status', 'Keyword Status'), page('/traffic'), link('/search-insights', 'Search & Visitor Insights'), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] })] },
+      { title: '6 · Write & Update', items: [go('/ai-content-generation/blog', 'Write content (Blogs)', 'Blogs'), link('/fix-plan', 'Fix Plan')] },
+      { title: '7 · Track Results', items: [page('/rank-tracking/landscape', { label: 'Position Tracking', also: ['/rank-tracking'] }), link('/keyword-management/status', 'Keyword Status'), link('/search-insights', 'Search & Visitor Insights'), go('/traffic', 'Traffic & search performance', 'traffic')] },
       { title: '8 · Backlinks', items: [{ to: '/backlinks/links', label: 'Backlinks', also: ['/backlinks/sites'] }, link('/backlinks/domains', 'Referring Domains'), link('/backlinks/audit', 'Backlink Audit'), link('/backlinks/opportunities', 'Link Opportunities'), link('/backlinks/gap', 'Competitor Gap'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks'), page('/backlink-checker')] },
     ]
   },
@@ -142,13 +144,13 @@ export const SIDEBAR_SECTIONS = [
     id: 'ai', label: 'AI', title: 'AI Visibility', icon: Sparkles, groups: [
       { title: 'AI Analysis', items: [link('/geo-optimization', 'Visibility Overview'), link('/gmb-profile/aeo', 'AEO'), link('/gmb-profile/geo', 'GEO'), soon('ai-competitors'), link('/ai-questions', 'Prompt Research')] },
       { title: 'Brand Performance', items: [soon('ai-brand'), soon('ai-perception'), soon('ai-narrative'), link('/geo-optimization/sources', 'Cited Sources')] },
-      { title: 'Boost & Monitor', items: [page('/website-audit', { label: 'Site Audit' }), link('/geo-optimization/prompts', 'Prompt Tracking'), link('/geo-optimization/files', 'llms.txt'), page('/ai-content-generation/blog', { label: 'Content Creation' })] },
+      { title: 'Boost & Monitor', items: [page('/website-audit', { label: 'Site Audit' }), link('/geo-optimization/prompts', 'Prompt Tracking'), link('/geo-optimization/files', 'llms.txt'), go('/ai-content-generation/blog', 'Content Creation (Blogs)', 'Blogs')] },
       { title: 'Automation', items: [page('/automation'), page('/automation-pipeline')] }
     ]
   },
   {
     id: 'traffic', label: 'Traffic & Market', title: 'Traffic & Market', icon: BarChart3, groups: [
-      { items: [page('/traffic', { label: 'Traffic Analytics' }), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] }), page('/competitor-watch', { label: 'Competitor Monitoring' })] },
+      { items: [page('/traffic', { label: 'Traffic Analytics' }), page('/domain-overview', { label: 'My Search Performance', also: ['/organic-rankings', '/top-pages'] }), page('/competitor-watch', { label: 'Competitor Watch' })] },
       { title: 'Traffic Distribution', items: ['tm-ai-traffic', 'tm-referral', 'tm-organic-search', 'tm-paid-search', 'tm-organic-social', 'tm-paid-social', 'tm-email', 'tm-display', 'tm-sources'].map(soon) },
       { title: 'Pages and Categories', items: [link('/organic-rankings/subdomains', 'Subfolders & Subdomains'), soon('tm-page-groups')] },
       { title: 'Regional Trends', items: ['tm-usa', 'tm-business-regions', 'tm-geo-regions'].map(soon) },

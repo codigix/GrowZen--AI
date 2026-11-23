@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import KeywordFlowBar from './KeywordFlowBar';
 import {
   Search, Star, ArrowUp, ArrowDown, Plus, RefreshCw, KeyRound, ScanSearch, Swords, Sparkles, Link2, MapPin, Gauge, Layers, FileText, ExternalLink,
-  AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot
+  AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot, Download
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, ScoreRing, scoreLevel, useAction, useToast, useModulePath, Sk, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 /**
  * The SEO toolkit pages, each on data the platform really has (its own crawl, tracked keywords, Google results
@@ -38,11 +38,21 @@ function Tile({ icon: Icon, label, value, sub, tone = 'indigo', right }) {
   );
 }
 
-export const Th = ({ children, c = 'text-left', cls = '' }) => <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${c} ${cls}`}>{children}</th>;
-const Table = ({ head, children, max = 'max-h-[calc(100vh-360px)]' }) => (
-  <div className={`overflow-auto ${max} min-h-[160px]`}>
-    <table className="w-full text-13"><thead className="sticky top-0 z-10 bg-slate-50 text-11.5  tracking-wide text-slate-500 shadow-[0_1px_0_0_theme(colors.slate.200)]"><tr>{head}</tr></thead><tbody className="divide-y divide-slate-100">{children}</tbody></table>
-  </div>
+/** A heading cell. With an `id` (and the sort state from useSorted) it sorts when pressed. */
+export const Th = ({ children, c = 'text-left', cls = '', id, sort, onSort, first }) => (id
+  ? <SortTh id={id} sort={sort} onSort={onSort} first={first} right={c === 'text-right'} className={`px-4 py-2.5 whitespace-nowrap ${c === 'text-center' ? 'text-center' : ''} ${cls}`}>{children}</SortTh>
+  : <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${c} ${cls}`}>{children}</th>);
+/** The search row above a table. */
+const ExportBtn = ({ onClick, disabled, className = '' }) => <button type="button" onClick={onClick} disabled={disabled} className={`h-8 px-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-40 ${className}`} title="Download every row of this table (all pages, with the search applied) as a CSV file"><Download size={13} />Export CSV</button>;
+const SearchBar = ({ q, setQ, placeholder, search = true, onExport }) => <div className="px-4 py-2 border-b border-slate-100 flex flex-wrap items-center gap-2">{search && <input value={q} onChange={e => setQ(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-8 w-60 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" />}{onExport && <ExportBtn onClick={onExport} className="ml-auto" />}</div>;
+const Table = ({ head, children, max = 'max-h-[calc(100vh-360px)]', pager = null, bar = null }) => (
+  <>
+    {bar}
+    <div className={`overflow-auto ${max} min-h-[160px]`}>
+      <table className="w-full text-13"><thead className="sticky top-0 z-10 bg-slate-50 text-11.5  tracking-wide text-slate-500 shadow-[0_1px_0_0_theme(colors.slate.200)]"><tr>{head}</tr></thead><tbody className="divide-y divide-slate-100">{children}</tbody></table>
+    </div>
+    {pager && <Pager p={pager} label="rows" />}
+  </>
 );
 
 const Delta = ({ now, before }) => {
@@ -73,6 +83,8 @@ const NeedResearch = ({ path, what }) => (
 
 /* ── Organic Rankings ──────────────────────────────────────────────────── */
 
+const TRACK_VAL = (k, key) => (key === 'kw' ? k.keyword : key === 'rank' ? k.rank : key === 'vol' ? k.volume : key === 'intent' ? k.intent : key === 'page' ? k.target_url : key === 'checked' ? k.rank_checked_at : undefined);
+
 export function TrackedPositions({ b }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
   const [busy, error, run] = useAction();
@@ -83,6 +95,8 @@ export function TrackedPositions({ b }) {
   const rows = (kw.data?.keywords || []).filter(k => k.tracked);
   const shown = rows.filter(k => (filter === 'all' || (filter === 'top3' ? k.rank && k.rank <= 3 : filter === 'top10' ? k.rank && k.rank <= 10 : filter === 'ranking' ? k.rank : !k.rank)) && (!q || k.keyword.includes(q.toLowerCase())))
     .sort((a, c) => (a.rank || 999) - (c.rank || 999));
+  const { sorted, sort, onSort } = useSorted(shown, TRACK_VAL);
+  const pager = usePager(sorted, { size: 25, resetKey: `${filter}|${q}|${sort?.key}|${sort?.dir}` });
   const ranked = rows.filter(k => k.rank);
   const improved = ranked.filter(k => k.prev_rank && k.rank < k.prev_rank).length;
   const dropped = ranked.filter(k => k.prev_rank && k.rank > k.prev_rank).length;
@@ -106,12 +120,13 @@ export function TrackedPositions({ b }) {
         <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
           {chip('all', 'All', rows.length)}{chip('top3', 'Top 3', ranked.filter(k => k.rank <= 3).length)}{chip('top10', 'Top 10', ranked.filter(k => k.rank <= 10).length)}{chip('ranking', 'Ranking', ranked.length)}{chip('none', 'Not ranking', rows.length - ranked.length)}
           <label className="relative ml-auto"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search keywords" className="h-8 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></label>
+          <ExportBtn disabled={!sorted.length} onClick={() => downloadCsv(`tracked-keyword-positions-${b.name}`, ['Keyword', 'Position', 'Previous position', 'Searches per month', 'Intent', 'Ranking page', 'Checked'], sorted.map(k => [k.keyword, k.rank ?? '', k.prev_rank ?? '', k.volume ?? '', k.intent || '', urls[k.keyword] || k.target_url || '', k.rank_checked_at || '']))} />
           <Button size="sm" variant="primary" icon={RefreshCw} busy={busy === 'check'} disabled={!rows.length} onClick={check}>Check positions now</Button>
         </div>
         {error && <div className="px-5 pt-3"><ErrorNote>{error}</ErrorNote></div>}
         {!rows.length ? <p className="px-6 py-12 text-center text-13 text-slate-500">No tracked keywords yet. Add some in <Link to="/keyword-management" className="text-indigo-600 font-semibold hover:underline">Keyword Magic Tool</Link>.</p> : (
-          <Table head={<><Th>Keyword</Th><Th c="text-right">Position</Th><Th c="text-right">Volume</Th><Th>Intent</Th><Th>Ranking page</Th><Th>Checked</Th></>}>
-            {shown.map(k => (
+          <Table pager={pager} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="rank" sort={sort} onSort={onSort} c="text-right">Position</Th><Th id="vol" sort={sort} onSort={onSort} first="desc" c="text-right">Volume</Th><Th id="intent" sort={sort} onSort={onSort}>Intent</Th><Th id="page" sort={sort} onSort={onSort}>Ranking page</Th><Th id="checked" sort={sort} onSort={onSort} first="desc">Checked</Th></>}>
+            {pager.rows.map(k => (
               <tr key={k.id} className="hover:bg-slate-50">
                 <td className="px-4 py-2.5 font-semibold text-slate-900">{k.keyword}</td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap"><Pos value={k.rank} /> <Delta now={k.rank} before={k.prev_rank} /></td>
@@ -132,6 +147,46 @@ export function TrackedPositions({ b }) {
 }
 
 /* ── Keyword Gap ───────────────────────────────────────────────────────── */
+
+const UNT_VAL = (k) => k;
+
+function UntappedTable({ list, busy, track, name }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const kept = useMemo(() => (needle ? list.filter(k => k.toLowerCase().includes(needle)) : list), [list, needle]);
+  const { sorted, sort, onSort } = useSorted(kept, UNT_VAL);
+  const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
+  return (
+    <Table pager={pager} bar={list.length > 0 ? <SearchBar q={q} setQ={setQ} placeholder="Search keywords" search={list.length > 10} onExport={() => downloadCsv(name, ['Keyword competitors’ pages target'], sorted.map(k => [k]))} /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword competitors’ pages target</Th><Th c="text-right"> </Th></>}>
+      {pager.rows.map(kwd => <tr key={kwd} className="hover:bg-slate-50"><td className="px-4 py-2.5 font-semibold text-slate-900">{kwd}</td><td className="px-4 py-2.5 text-right"><Button size="sm" icon={Plus} busy={busy === `t${kwd}`} onClick={() => track(kwd)}>Track</Button></td></tr>)}
+      {!pager.rows.length && <tr><td colSpan={2} className="px-5 py-10 text-center text-slate-500">{list.length ? 'No keyword matches.' : 'Nothing untapped.'}</td></tr>}
+    </Table>
+  );
+}
+
+const GAP_VAL = (x, k) => (k === 'kw' ? x.keyword : k === 'you' ? x.you : k === 'best' ? x.best : k.startsWith('c:') ? x.them[Number(k.slice(2))] : undefined);
+
+function GapTable({ list, comps, busy, track, name }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const kept = useMemo(() => (needle ? list.filter(x => x.keyword.toLowerCase().includes(needle)) : list), [list, needle]);
+  const { sorted, sort, onSort } = useSorted(kept, GAP_VAL);
+  const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
+  return (
+    <Table pager={pager} bar={list.length > 0 ? <SearchBar q={q} setQ={setQ} placeholder="Search keywords" search={list.length > 10} onExport={() => downloadCsv(name, ['Keyword', 'Your position', ...comps.map(c => `${c.domain} position`), 'Best competitor position'], sorted.map(x => [x.keyword, x.you ?? '', ...x.them.map(p => p ?? ''), x.best ?? '']))} /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="you" sort={sort} onSort={onSort} c="text-center">You</Th>{comps.map((c, i) => <Th key={c.domain} id={`c:${i}`} sort={sort} onSort={onSort} c="text-center" cls="normal-case max-w-[130px] truncate">{c.domain}</Th>)}<Th id="best" sort={sort} onSort={onSort} c="text-right">Best competitor</Th><Th c="text-right"> </Th></>}>
+      {pager.rows.map(x => (
+        <tr key={x.keyword} className="hover:bg-slate-50">
+          <td className="px-4 py-2.5 font-semibold text-slate-900">{x.keyword}</td>
+          <td className="px-4 py-2.5 text-center"><Pos value={x.you} /></td>
+          {x.them.map((p, i) => <td key={i} className="px-4 py-2.5 text-center"><Pos value={p} /></td>)}
+          <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{x.best ? `#${x.best}` : '—'}</td>
+          <td className="px-4 py-2.5 text-right"><Button size="sm" icon={Plus} busy={busy === `t${x.keyword}`} onClick={() => track(x.keyword)}>Track</Button></td>
+        </tr>
+      ))}
+      {!pager.rows.length && <tr><td colSpan={comps.length + 4} className="px-5 py-10 text-center text-slate-500">{list.length ? 'No keyword matches.' : 'Nothing in this group.'}</td></tr>}
+    </Table>
+  );
+}
 
 export function KeywordGap({ b, result = null }) {
   const path = useModulePath();
@@ -166,23 +221,9 @@ export function KeywordGap({ b, result = null }) {
       {error && <ErrorNote>{error}</ErrorNote>}
       <Card pad={false}>
         {tab === 'untapped' ? (
-          <Table head={<><Th>Keyword competitors’ pages target</Th><Th c="text-right"> </Th></>}>
-            {model.untapped.map(kwd => <tr key={kwd} className="hover:bg-slate-50"><td className="px-4 py-2.5 font-semibold text-slate-900">{kwd}</td><td className="px-4 py-2.5 text-right"><Button size="sm" icon={Plus} busy={busy === `t${kwd}`} onClick={() => track(kwd)}>Track</Button></td></tr>)}
-            {!model.untapped.length && <tr><td colSpan={2} className="px-5 py-10 text-center text-slate-500">Nothing untapped.</td></tr>}
-          </Table>
+          <UntappedTable list={model.untapped} busy={busy} track={track} name={`keyword-gap-untapped-${b.name}`} />
         ) : (
-          <Table head={<><Th>Keyword</Th><Th c="text-center">You</Th>{model.comps.map(c => <Th key={c.domain} c="text-center" cls="normal-case max-w-[130px] truncate">{c.domain}</Th>)}<Th c="text-right">Best competitor</Th><Th c="text-right"> </Th></>}>
-            {list.map(x => (
-              <tr key={x.keyword} className="hover:bg-slate-50">
-                <td className="px-4 py-2.5 font-semibold text-slate-900">{x.keyword}</td>
-                <td className="px-4 py-2.5 text-center"><Pos value={x.you} /></td>
-                {x.them.map((p, i) => <td key={i} className="px-4 py-2.5 text-center"><Pos value={p} /></td>)}
-                <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{x.best ? `#${x.best}` : '—'}</td>
-                <td className="px-4 py-2.5 text-right"><Button size="sm" icon={Plus} busy={busy === `t${x.keyword}`} onClick={() => track(x.keyword)}>Track</Button></td>
-              </tr>
-            ))}
-            {!list.length && <tr><td colSpan={model.comps.length + 4} className="px-5 py-10 text-center text-slate-500">Nothing in this group.</td></tr>}
-          </Table>
+          <GapTable key={tab} list={list} comps={model.comps} busy={busy} track={track} name={`keyword-gap-${tab}-${b.name}`} />
         )}
       </Card>
       <p className="text-11.5 text-slate-400">Positions are the places in Google Maps for each researched search (Google Places API). Google gives no data on other websites' organic rankings. Search volume is in Find Keywords.</p>
@@ -215,7 +256,7 @@ export function CompareDomains({ b, result = null }) {
       <Card title="Google visibility" subtitle="Expected share of clicks from your researched keywords" action={<span className="text-12 text-slate-400">Researched {fmtDateTime(x.analysed_at)}</span>}>
         <ul className="space-y-2">{cols.map(c => <li key={c.domain} className="grid grid-cols-[minmax(0,180px)_1fr_48px] items-center gap-3"><span className={`text-13 truncate ${c.mine ? 'font-bold text-emerald-700' : 'text-slate-700'}`}>{c.domain}{c.mine ? ' (you)' : ''}</span><span className="h-2.5 rounded-full bg-slate-100 overflow-hidden"><span className={`block h-full rounded-full ${c.mine ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${Math.max(c.visibility > 0 ? 2 : 0, (c.visibility / top) * 100)}%` }} /></span><span className="text-right text-12.5 font-semibold tabular-nums">{c.visibility}%</span></li>)}</ul>
       </Card>
-      <Card pad={false} title="Side by side" subtitle="The best figure in each row is highlighted">
+      <Card pad={false} title="Side by side" subtitle="The best figure in each row is highlighted" action={<ExportBtn onClick={() => downloadCsv(`compare-domains-${b.name}`, ['Metric', ...cols.map(c => `${c.domain}${c.mine ? ' (you)' : ''}`)], rows.map(([label, get]) => [label, ...cols.map(c => { const v = get(c); return v == null ? '' : label === 'Has a blog' ? (v ? 'Yes' : 'No') : v; })]))} />}>
         <div className="overflow-x-auto"><table className="w-full text-13 min-w-[640px]">
           <thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><Th>Metric</Th>{cols.map(c => <Th key={c.domain} c="text-right" cls={`normal-case ${c.mine ? 'text-emerald-700' : ''}`}>{c.domain}{c.mine ? ' (you)' : ''}</Th>)}</tr></thead>
           <tbody className="divide-y divide-slate-100">{rows.map(([label, get, fmtv, better]) => {
@@ -236,6 +277,29 @@ const COMP_TONE = { LOW: 'text-emerald-700 bg-emerald-50', MEDIUM: 'text-amber-7
 const money = (v) => (v == null ? '—' : Number(v).toFixed(2));
 const pct = (v) => (v == null ? null : `${v > 0 ? '+' : ''}${Number(v).toFixed(0)}%`);
 
+const IDEA_VAL = (i, k) => (k === 'kw' ? i.keyword : k === 'vol' ? i.volume : k === 'comp' ? ({ LOW: 1, MEDIUM: 2, HIGH: 3 })[i.competition] : k === 'cpc' ? i.cpc : undefined);
+
+function IdeasTable({ ideas, go, busy, track, isTracked, name }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const kept = useMemo(() => (needle ? ideas.filter(i => i.keyword.toLowerCase().includes(needle)) : ideas), [ideas, needle]);
+  const { sorted, sort, onSort } = useSorted(kept, IDEA_VAL);
+  const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
+  return (
+    <Table pager={pager} bar={ideas.length > 0 ? <SearchBar q={q} setQ={setQ} placeholder="Search ideas" search={ideas.length > 10} onExport={() => downloadCsv(name, ['Keyword', 'Searches per month', 'Competition', 'Top-of-page bid', 'Tracked'], sorted.map(i => [i.keyword, i.volume ?? '', i.competition && i.competition !== 'UNSPECIFIED' ? i.competition.toLowerCase() : '', i.cpc ?? '', isTracked(i.keyword) ? 'Yes' : 'No']))} /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="vol" sort={sort} onSort={onSort} first="desc" c="text-right">Searches / month</Th><Th id="comp" sort={sort} onSort={onSort}>Competition</Th><Th id="cpc" sort={sort} onSort={onSort} first="desc" c="text-right">Top-of-page bid</Th><Th c="text-right"> </Th></>}>
+      {pager.rows.map(i => (
+        <tr key={i.keyword} className="hover:bg-slate-50">
+          <td className="px-4 py-2.5"><button type="button" onClick={() => go(i.keyword)} className="font-semibold text-slate-900 hover:text-indigo-600 text-left cursor-pointer" title="Analyze this keyword">{i.keyword}</button></td>
+          <td className="px-4 py-2.5 text-right tabular-nums">{i.volume != null ? fmt(i.volume) : '—'}</td>
+          <td className="px-4 py-2.5">{i.competition && i.competition !== 'UNSPECIFIED' ? <span className={`rounded-full px-2 py-0.5 text-12 font-semibold ${COMP_TONE[i.competition] || 'bg-slate-100 text-slate-600'}`}>{i.competition.toLowerCase()}</span> : <span className="text-slate-400">—</span>}</td>
+          <td className="px-4 py-2.5 text-right tabular-nums">{money(i.cpc)}</td>
+          <td className="px-4 py-2.5 text-right">{isTracked(i.keyword) ? <Badge tone="green">Tracked</Badge> : <Button size="sm" icon={Plus} busy={busy === `t${i.keyword}`} onClick={() => track(i.keyword)}>Track</Button>}</td>
+        </tr>
+      ))}
+    </Table>
+  );
+}
+
 function KeywordOverview({ b }) {
   const [q, setQ] = useState('');
   const [data, setData] = useState(null);
@@ -255,7 +319,6 @@ function KeywordOverview({ b }) {
   const isTracked = (k) => added[k] || (data?.keyword === k && data?.you?.tracked);
   return (
     <div className="space-y-4">
-      <KeywordFlowBar b={b} at="check" />
       <Card>
         <div className="flex flex-wrap gap-2">
           <label className="relative flex-1 min-w-[260px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && q.trim().length > 1 && go()} placeholder="Enter a keyword, e.g. dentist near me" aria-label="Keyword" className="w-full h-10 pl-9 pr-3 text-13 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
@@ -284,17 +347,7 @@ function KeywordOverview({ b }) {
           <Card pad={false} title="Related keyword ideas" subtitle="What Google's Keyword Planner suggests around it, with real numbers"
             action={data.ideas.length > 0 && <Button size="sm" busy={busy === 'ws'} onClick={() => toWorkspace(data.ideas)}>Add all to the Keyword Workspace</Button>}>
             {data.ideas.length === 0 ? <p className="px-5 py-8 text-center text-13 text-slate-500">No related ideas.</p> : (
-              <Table head={<><Th>Keyword</Th><Th c="text-right">Searches / month</Th><Th>Competition</Th><Th c="text-right">Top-of-page bid</Th><Th c="text-right"> </Th></>}>
-                {data.ideas.map(i => (
-                  <tr key={i.keyword} className="hover:bg-slate-50">
-                    <td className="px-4 py-2.5"><button type="button" onClick={() => go(i.keyword)} className="font-semibold text-slate-900 hover:text-indigo-600 text-left cursor-pointer" title="Analyze this keyword">{i.keyword}</button></td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{i.volume != null ? fmt(i.volume) : '—'}</td>
-                    <td className="px-4 py-2.5">{i.competition && i.competition !== 'UNSPECIFIED' ? <span className={`rounded-full px-2 py-0.5 text-12 font-semibold ${COMP_TONE[i.competition] || 'bg-slate-100 text-slate-600'}`}>{i.competition.toLowerCase()}</span> : <span className="text-slate-400">—</span>}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{money(i.cpc)}</td>
-                    <td className="px-4 py-2.5 text-right">{isTracked(i.keyword) ? <Badge tone="green">Tracked</Badge> : <Button size="sm" icon={Plus} busy={busy === `t${i.keyword}`} onClick={() => track(i.keyword)}>Track</Button>}</td>
-                  </tr>
-                ))}
-              </Table>
+              <IdeasTable ideas={data.ideas} go={go} busy={busy} track={track} isTracked={isTracked} name={`related-keyword-ideas-${data.keyword}-${b.name}`} />
             )}
           </Card>
         </>

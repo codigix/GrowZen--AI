@@ -4,6 +4,7 @@ import { Mail, CheckCircle2, Loader2, Circle, AlertTriangle, Inbox, Plus, Trash2
 import { SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ErrorNote, useToast, useAction, useBusinesses, useSeoBusiness, refreshBusinesses, useModulePath, Sk, SkTable, SkList, SkLines, SkCard } from './SeoUi';
 import { api, useApi, usePoll, fmtDateTime } from './seoApi';
 import Select from '../components/Select';
+import DataTable from './DataTable';
 
 const STEP_LABEL = {
   extract: 'AI reads the email and extracts the business', profile: 'Client profile created', gbp_match: 'Google Business Profile matched',
@@ -184,25 +185,17 @@ function ProfilesTab({ toast }) {
   return (
     <Card title={`Client profiles (${rows.data?.length ?? '…'})`} subtitle="Each profile runs on its own schedule">
       {!rows.data ? <SkTable cols={5} rows={5} /> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-13">
-            <thead className="text-12 text-gray-500 border-b border-gray-200"><tr><th className="p-2 text-left font-medium">Business</th><th className="p-2 text-left font-medium">Plan</th><th className="p-2 text-left font-medium">Source</th><th className="p-2 text-right font-medium">Score</th><th className="p-2 text-left font-medium">Status</th><th className="p-2 text-right font-medium">Waiting tasks</th><th className="p-2 text-left font-medium">Next job</th><th className="p-2" /></tr></thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.data.map(b => (
-                <tr key={b.id}>
-                  <td className="p-2"><div className="text-gray-900">{b.name}</div><div className="text-12 text-gray-500">{[b.primary_category, b.area || b.city].filter(Boolean).join(' · ')}</div></td>
-                  <td className="p-2">{b.plan ? <Badge tone="blue">{b.plan}</Badge> : '—'}</td>
-                  <td className="p-2 text-gray-600">{b.source}</td>
-                  <td className="p-2 text-right tabular-nums font-medium">{b.last_audit_score ?? '—'}</td>
-                  <td className="p-2">{b.status === 'active' ? <StatusPill level="good">On autopilot</StatusPill> : b.status === 'paused' ? <Badge>Paused</Badge> : <StatusPill level="warning">Needs approval</StatusPill>}</td>
-                  <td className="p-2 text-right tabular-nums">{b.pending_tasks}</td>
-                  <td className="p-2 text-gray-600">{b.next_run_at ? fmtDateTime(b.next_run_at) : '—'}</td>
-                  <td className="p-2 text-right"><Button size="sm" icon={CalendarClock} onClick={() => setOpen(list?.find(x => x.id === b.id) || b)}>Schedule</Button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable bare minWidth={0} rows={rows.data} rowKey={b => b.id} exportName="client-profiles" label="profiles" searchPlaceholder="Search profiles" columnsMenu={false} rowClass={() => ''}
+          columns={[
+            { id: 'name', header: 'Business', thClass: 'p-2', className: 'p-2', value: b => `${b.name} ${[b.primary_category, b.area || b.city].filter(Boolean).join(' ')}`, cell: b => <><div className="text-gray-900">{b.name}</div><div className="text-12 text-gray-500">{[b.primary_category, b.area || b.city].filter(Boolean).join(' · ')}</div></> },
+            { id: 'plan', header: 'Plan', thClass: 'p-2', className: 'p-2', value: b => b.plan || null, cell: b => (b.plan ? <Badge tone="blue">{b.plan}</Badge> : '—') },
+            { id: 'source', header: 'Source', thClass: 'p-2', className: 'p-2 text-gray-600', value: b => b.source || null },
+            { id: 'score', header: 'Score', right: true, first: 'desc', thClass: 'p-2', className: 'p-2 text-right tabular-nums font-medium', value: b => b.last_audit_score ?? null, cell: b => b.last_audit_score ?? '—' },
+            { id: 'status', header: 'Status', thClass: 'p-2', className: 'p-2', value: b => (b.status === 'active' ? 'On autopilot' : b.status === 'paused' ? 'Paused' : 'Needs approval'), cell: b => (b.status === 'active' ? <StatusPill level="good">On autopilot</StatusPill> : b.status === 'paused' ? <Badge>Paused</Badge> : <StatusPill level="warning">Needs approval</StatusPill>) },
+            { id: 'pending', header: 'Waiting tasks', right: true, first: 'desc', thClass: 'p-2', className: 'p-2 text-right tabular-nums', value: b => b.pending_tasks ?? null },
+            { id: 'next', header: 'Next job', thClass: 'p-2', className: 'p-2 text-gray-600', value: b => (b.next_run_at ? Date.parse(b.next_run_at) : null), cell: b => (b.next_run_at ? fmtDateTime(b.next_run_at) : '—'), csv: false },
+            { id: 'actions', header: '', thClass: 'p-2', className: 'p-2 text-right', cell: b => <Button size="sm" icon={CalendarClock} onClick={() => setOpen(list?.find(x => x.id === b.id) || b)}>Schedule</Button> },
+          ]} />
       )}
       <ScheduleModal business={open} onClose={() => { setOpen(null); rows.reload(true); }} toast={toast} />
     </Card>

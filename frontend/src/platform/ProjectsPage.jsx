@@ -4,6 +4,7 @@ import { Briefcase, Search, Plus, X, Trash2, ArrowRight, Globe, MapPin, RotateCc
 import { SeoShell, Card, Badge, Button, ErrorNote, SkTable, useDoubleConfirm, useSeoBusiness, useAction, useToast, refreshBusinesses } from './SeoUi';
 import { encodeProjectId } from './projectUrl';
 import { api, useApi, fmtDate, clearApiCache } from './seoApi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 /**
  * Projects: every project the signed-in user can open, the services (SEO, GEO, AEO, GMB) each is onboarded for, a way to remove one service
@@ -44,17 +45,23 @@ function Chip({ mod, on, canManage, busy, onRemove, onAdd }) {
   );
 }
 
-function ProjectsTable({ rows, busy, onOpen, onRemove, onAdd, onDelete }) {
+const projectValue = (p, k) => (k === 'name' ? p.name : k === 'plan' ? p.plan : k === 'services' ? (p.modules || []).length : k === 'health' ? (p.health == null ? null : Number(p.health)) : k === 'added' ? (p.created_at ? new Date(p.created_at).getTime() : null) : null);
+
+function ProjectsTable({ rows: allRows, busy, onOpen, onRemove, onAdd, onDelete }) {
+  const { sorted, sort, onSort } = useSorted(allRows, projectValue);
+  const pager = usePager(sorted, { size: 10, resetKey: allRows.length });
+  const rows = pager.rows;
   return (
+    <>
     <div className="overflow-x-auto">
       <table className="w-full text-13 min-w-[860px]">
         <thead>
           <tr className="text-left text-11 uppercase tracking-wide text-slate-500 border-b border-slate-200">
-            <th className="py-2.5 px-3 font-semibold">Project</th>
-            <th className="py-2.5 px-3 font-semibold">Plan</th>
-            <th className="py-2.5 px-3 font-semibold">Services</th>
-            <th className="py-2.5 px-3 font-semibold text-right">Health</th>
-            <th className="py-2.5 px-3 font-semibold">Added</th>
+            <SortTh id="name" sort={sort} onSort={onSort} className="py-2.5 px-3">Project</SortTh>
+            <SortTh id="plan" sort={sort} onSort={onSort} className="py-2.5 px-3">Plan</SortTh>
+            <SortTh id="services" sort={sort} onSort={onSort} first="desc" className="py-2.5 px-3">Services</SortTh>
+            <SortTh id="health" sort={sort} onSort={onSort} right first="desc" className="py-2.5 px-3">Health</SortTh>
+            <SortTh id="added" sort={sort} onSort={onSort} first="desc" className="py-2.5 px-3">Added</SortTh>
             <th className="py-2.5 px-3 font-semibold text-right">Actions</th>
           </tr>
         </thead>
@@ -94,6 +101,8 @@ function ProjectsTable({ rows, busy, onOpen, onRemove, onAdd, onDelete }) {
         </tbody>
       </table>
     </div>
+    <Pager p={pager} label="projects" />
+    </>
   );
 }
 

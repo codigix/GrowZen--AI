@@ -3,16 +3,15 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { Download, History, Loader2, Minus, ScanSearch, Trash2, TrendingDown, TrendingUp, Cpu, AlertTriangle } from 'lucide-react';
 import { Button, Card, useDoubleConfirm } from './SeoUi';
 import { api } from './seoApi';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const tone = (s) => (s == null ? 'text-slate-400' : s >= 75 ? 'text-emerald-600' : s >= 45 ? 'text-amber-500' : 'text-red-500');
 const when = (iso) => { if (!iso) return '—'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); };
 const short = (iso) => { const t = new Date(iso); return Number.isNaN(t.getTime()) ? '' : t.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }); };
 const pathOf = (u) => { try { const x = new URL(u); return `${x.pathname}${x.search}` || '/'; } catch { return u; } };
-/** CSV cell: quoted, quotes doubled, a leading = + - @ neutralised so a spreadsheet never runs it as a formula. */
-const csvCell = (v) => { let s = v == null ? '' : String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return `"${s.replace(/"/g, '""')}"`; };
-const toCsv = (rows) => rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-const saveFile = (name, text) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' })); a.download = name; a.click(); URL.revokeObjectURL(a.href); };
+const NO_ROWS = [];
+const HIST_VALUE = (r, k) => (k === 'when' ? (r.created_at ? Date.parse(r.created_at) : null) : k === 'words' ? r.word_count : r[k]);
 
 const Delta = ({ v }) => (v == null ? <span className="text-slate-300" title="No earlier run of this page">—</span>
   : v === 0 ? <span className="text-slate-400 inline-flex items-center"><Minus size={11} /></span>
@@ -45,6 +44,8 @@ export function HistoryPanel({ b, url, tick, onOpen, onError }) {
   };
   const remove = (r) => ask({ what: `the X-Ray from ${when(r.created_at)}`, effect: 'This saved run is removed from the history. The page itself is not touched.', onConfirm: async () => { try { await api(`/businesses/${b.id}/page-xray/history/${r.id}`, { method: 'DELETE' }); load(); } catch (e) { setError(e.message || 'Could not delete it.'); } } });
   const chart = trend.map(t => ({ ...t, name: short(t.at) }));
+  const { sorted, sort, onSort } = useSorted(rows || NO_ROWS, HIST_VALUE);
+  const pager = usePager(sorted, { size: 10, resetKey: `${sort?.key}|${sort?.dir}` });
   return (
     <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 min-w-0">
       {confirmNode}
@@ -69,11 +70,12 @@ export function HistoryPanel({ b, url, tick, onOpen, onError }) {
               </ResponsiveContainer>
             </div>
           ) : <p className="text-12 text-slate-400 mb-2">The chart appears after two runs.</p>}
+          <div className="flex justify-end mb-2"><Button size="sm" icon={Download} onClick={() => downloadCsv(`page-xray-history-${pathOf(url).replace(/[^a-z0-9]+/gi, '-')}`, ['Checked', 'Page URL', 'SEO score', 'AEO score', 'GEO score', 'SEO change', 'AEO change', 'GEO change', 'Words', 'Read with Chrome'], sorted.map(r => [r.created_at || '', url, r.seo, r.aeo, r.geo, r.change ? r.change.seo : '', r.change ? r.change.aeo : '', r.change ? r.change.geo : '', r.word_count, r.render ? 'yes' : 'no']))}>Export CSV</Button></div>
           <div className="overflow-x-auto">
             <table className="w-full text-13">
-              <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-medium">Checked</th><th className="p-2 text-left font-medium">SEO</th><th className="p-2 text-left font-medium">AEO</th><th className="p-2 text-left font-medium">GEO</th><th className="p-2 text-left font-medium">Words</th><th className="p-2" /></tr></thead>
+              <thead className="text-12 text-slate-500 border-b border-slate-200"><tr>{[['when', 'Checked'], ['seo', 'SEO'], ['aeo', 'AEO'], ['geo', 'GEO'], ['words', 'Words']].map(([k, l]) => <SortTh key={k} id={k} sort={sort} onSort={onSort} first={k === 'when' ? 'desc' : 'asc'} className="p-2 font-medium">{l}</SortTh>)}<th className="p-2" /></tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map(r => (
+                {pager.rows.map(r => (
                   <tr key={r.id}>
                     <td className="p-2 whitespace-nowrap text-slate-700">{when(r.created_at)}{r.render && <span className="ml-1.5 text-10 font-semibold bg-sky-50 text-sky-700 rounded px-1.5 py-0.5">Chrome</span>}{r.source === 'site' && <span className="ml-1.5 text-10 font-semibold bg-slate-100 text-slate-600 rounded px-1.5 py-0.5">site scan</span>}</td>
                     {[['seo', r.seo], ['aeo', r.aeo], ['geo', r.geo]].map(([k, v]) => <td key={k} className="p-2 whitespace-nowrap"><span className={`font-semibold tabular-nums ${tone(v)}`}>{v ?? '—'}</span> <Delta v={r.change ? r.change[k] : null} /></td>)}
@@ -87,6 +89,7 @@ export function HistoryPanel({ b, url, tick, onOpen, onError }) {
               </tbody>
             </table>
           </div>
+          <Pager p={pager} label="runs" />
         </>
       )}
     </section>
@@ -157,6 +160,7 @@ export function SiteScan({ b, onOpen, onDone }) {
     const list = [...arr(job?.pages)].sort(SORTS[sort.key] || SORTS.avg);
     return sort.dir === 1 ? list : list.reverse();
   }, [job, sort]);
+  const pager = usePager(rows, { size: 25, resetKey: `${sort.key}|${sort.dir}` });
   const th = (key, label) => <th className="p-2 text-left font-medium"><button type="button" onClick={() => setSort(s => ({ key, dir: s.key === key ? -s.dir : 1 }))} className="hover:text-slate-900 cursor-pointer" aria-label={`Sort by ${label}`}>{label}{sort.key === key ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}</button></th>;
   const open = async (p) => {
     if (!p.run_id) return;
@@ -164,7 +168,7 @@ export function SiteScan({ b, onOpen, onDone }) {
     try { const full = await api(`/businesses/${b.id}/page-xray/history/${p.run_id}`); if (!full.report) setError('Only the scores of this page were kept (its full report was too large to store).'); else onOpen(full.report, full.created_at); }
     catch (e) { setError(e.message || 'The saved report could not be opened.'); } finally { setBusy(''); }
   };
-  const csv = () => saveFile(`${(b.name || 'site').replace(/\W+/g, '-')}-page-xray.csv`, toCsv([['url', 'seo', 'aeo', 'geo', 'top_fix', 'error'], ...rows.map(p => [p.url, p.seo, p.aeo, p.geo, p.top_fix, p.error])]));
+  const csv = () => downloadCsv(`page-xray-site-scan-${(b.name || 'site').replace(/\W+/g, '-')}`, ['Page URL', 'SEO score', 'AEO score', 'GEO score', 'Top fix', 'Error'], rows.map(p => [p.url, p.seo, p.aeo, p.geo, p.top_fix, p.error]));
   const pct = job?.total ? Math.round((job.done / job.total) * 100) : 0;
   const scored = arr(job?.pages).filter(p => p.seo != null);
   const mean = (k) => (scored.length ? Math.round(scored.reduce((s, p) => s + (p[k] || 0), 0) / scored.length) : null);
@@ -203,7 +207,7 @@ export function SiteScan({ b, onOpen, onDone }) {
           <table className="w-full text-13">
             <thead className="text-12 text-slate-500 border-b border-slate-200"><tr>{th('page', 'Page')}{th('seo', 'SEO')}{th('aeo', 'AEO')}{th('geo', 'GEO')}{th('avg', 'Top fix (worst first)')}</tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map(p => (
+              {pager.rows.map(p => (
                 <tr key={p.url} className={p.run_id ? 'hover:bg-slate-50 cursor-pointer' : ''} onClick={() => open(p)} tabIndex={p.run_id ? 0 : -1} onKeyDown={e => { if (e.key === 'Enter') open(p); }} aria-label={p.run_id ? `Open the report of ${p.url}` : undefined}>
                   <td className="p-2 max-w-[280px]"><div className="truncate text-slate-900 font-medium" title={p.url}>{busy === p.url && <Loader2 size={12} className="inline animate-spin mr-1" />}{pathOf(p.url)}</div></td>
                   {['seo', 'aeo', 'geo'].map(k => <td key={k} className={`p-2 font-semibold tabular-nums ${tone(p[k])}`}>{p[k] ?? '—'}</td>)}
@@ -212,6 +216,7 @@ export function SiteScan({ b, onOpen, onDone }) {
               ))}
             </tbody>
           </table>
+          <Pager p={pager} label="pages" />
         </div>
       )}
       {job === null && <p className="text-13 text-slate-500 py-2">Not scanned yet.</p>}

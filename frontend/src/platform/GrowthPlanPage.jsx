@@ -8,6 +8,7 @@ import {
 import { SeoShell, Button, Drawer, useSeoBusiness } from './SeoUi';
 import { api } from './seoApi';
 import Tip from './Tip';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 import { ContentPlanView, IssuesView, ReportsView, StartCard } from './GrowthIssuesReports';
 
 // ---------------------------------------------------------------------------------------------------------------- helpers
@@ -308,13 +309,18 @@ function TaskRow({ a, bid, onChanged }) {
 }
 
 /** The period's tasks as one table, with filters by status and area, sorted so what needs you comes first. */
+const TASK_VAL = (a, k) => (k === 'title' ? a.title : k === 'area' ? areaOf(a.area || 'other').label : k === 'who' ? (MODES[a.mode] || MODES.manual)[0] : k === 'due' ? a.due_on : k === 'status' ? (TASK_STATUS[a.status] || TASK_STATUS.todo)[0] : undefined);
+
 function TasksTable({ list, bid, onChanged }) {
   const [filter, setFilter] = useState('all');
   const [area, setArea] = useState('all');
   const order = { todo: 0, failed: 1, unverified: 2, done: 3, blocked: 4, verified: 5, skipped: 6 };
   const pred = TASK_FILTERS.find(f => f[0] === filter)[2];
   const areas = [...new Set(list.map(a => a.area || 'other'))];
-  const rows = list.filter(a => pred(a) && (area === 'all' || (a.area || 'other') === area)).sort((x, y) => (order[x.status] ?? 9) - (order[y.status] ?? 9) || String(x.due_on || '').localeCompare(String(y.due_on || '')));
+  const base = list.filter(a => pred(a) && (area === 'all' || (a.area || 'other') === area)).sort((x, y) => (order[x.status] ?? 9) - (order[y.status] ?? 9) || String(x.due_on || '').localeCompare(String(y.due_on || '')));
+  const { sorted, sort, onSort } = useSorted(base, TASK_VAL);
+  const pager = usePager(sorted, { size: 25, resetKey: `${filter}|${area}|${sort?.key}|${sort?.dir}` });
+  const rows = pager.rows;
   const pill = (on) => `h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -326,13 +332,14 @@ function TasksTable({ list, bid, onChanged }) {
       <div className="overflow-x-auto">
         <table className="w-full text-13 min-w-[940px]">
           <thead className="bg-slate-50 border-b border-slate-200"><tr>
-            <th className={TH}>Task</th><th className={TH}>Area</th><th className={TH}><Tip text="A person, the AI with your approval, or the software by itself.">Who does it</Tip></th><th className={TH}>Due · time</th><th className={TH}>Status</th><th className={TH}><Tip text="What the live data says about this task. A task counts only when it confirms the fix.">Live check</Tip></th><th className={`${TH} text-right`}>Actions</th></tr></thead>
+            <SortTh id="title" sort={sort} onSort={onSort} className={TH}>Task</SortTh><SortTh id="area" sort={sort} onSort={onSort} className={TH}>Area</SortTh><SortTh id="who" sort={sort} onSort={onSort} className={TH}><Tip text="A person, the AI with your approval, or the software by itself.">Who does it</Tip></SortTh><SortTh id="due" sort={sort} onSort={onSort} className={TH}>Due · time</SortTh><SortTh id="status" sort={sort} onSort={onSort} className={TH}>Status</SortTh><th className={TH}><Tip text="What the live data says about this task. A task counts only when it confirms the fix.">Live check</Tip></th><th className={`${TH} text-right`}>Actions</th></tr></thead>
           <tbody>
             {rows.map(a => <TaskRow key={a.id} a={a} bid={bid} onChanged={onChanged} />)}
             {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-13 text-slate-500">Nothing matches this filter.</td></tr>}
           </tbody>
         </table>
       </div>
+      <Pager p={pager} label="tasks" />
     </div>
   );
 }
@@ -429,6 +436,32 @@ function FoldList({ items, limit = 6, render }) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------- history
+const HIST_VAL = (h, k) => (k === 'period' ? h.period : k === 'start' ? h.start : k === 'met' ? h.met : k === 'total' ? h.total : k === 'rate' ? (h.total ? (h.met / h.total) : null) : undefined);
+
+function HistoryTable({ rows }) {
+  const ordered = useMemo(() => [...rows].reverse(), [rows]);
+  const { sorted, sort, onSort } = useSorted(ordered, HIST_VAL);
+  const pager = usePager(sorted, { size: 10, resetKey: `${rows.length}|${sort?.key}|${sort?.dir}` });
+  return (
+    <Card className="overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-14">
+          <thead><tr className="text-12 text-slate-500 border-b border-slate-200 bg-slate-50">
+            <SortTh id="period" sort={sort} onSort={onSort} className="px-5 py-3 font-medium">Period</SortTh>
+            <SortTh id="start" sort={sort} onSort={onSort} first="desc" className="px-5 py-3 font-medium">Starts</SortTh>
+            <SortTh id="met" sort={sort} onSort={onSort} right first="desc" className="px-5 py-3 font-medium">Met</SortTh>
+            <SortTh id="total" sort={sort} onSort={onSort} right first="desc" className="px-5 py-3 font-medium">Set</SortTh>
+            <SortTh id="rate" sort={sort} onSort={onSort} right first="desc" className="px-5 py-3 font-medium">Rate</SortTh></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pager.rows.map((h, i) => <tr key={pager.from + i} className="h-12"><td className="px-5 capitalize text-slate-800">{h.period}</td><td className="px-5 text-slate-600">{fmtDay(h.start)}</td><td className="px-5 text-right tabular-nums">{dash(h.met)}</td><td className="px-5 text-right tabular-nums">{dash(h.total)}</td><td className={`px-5 text-right tabular-nums font-semibold ${h.total ? tone(Math.round((h.met / h.total) * 100)) : 'text-slate-400'}`}>{h.total ? `${Math.round((h.met / h.total) * 100)}%` : '—'}</td></tr>)}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pager} label="periods" />
+    </Card>
+  );
+}
+
 function HistoryView({ g }) {
   const rows = arr(g.history).filter(h => isNum(h.total));
   const weeks = rows.filter(h => h.period === 'week').slice(-8).map(h => ({ name: fmtDay(h.start), met: h.met || 0, missed: Math.max(0, (h.total || 0) - (h.met || 0)), total: h.total, start: h.start }));
@@ -458,21 +491,50 @@ function HistoryView({ g }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">{chart(weeks, 'Last 8 weeks')}{chart(months, 'Last 3 months')}</div>
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-14">
-            <thead><tr className="text-12 text-slate-500 border-b border-slate-200 bg-slate-50"><th className="px-5 py-3 text-left font-medium">Period</th><th className="px-5 py-3 text-left font-medium">Starts</th><th className="px-5 py-3 text-right font-medium">Met</th><th className="px-5 py-3 text-right font-medium">Set</th><th className="px-5 py-3 text-right font-medium">Rate</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              {[...rows].reverse().map((h, i) => <tr key={i} className="h-12"><td className="px-5 capitalize text-slate-800">{h.period}</td><td className="px-5 text-slate-600">{fmtDay(h.start)}</td><td className="px-5 text-right tabular-nums">{dash(h.met)}</td><td className="px-5 text-right tabular-nums">{dash(h.total)}</td><td className={`px-5 text-right tabular-nums font-semibold ${h.total ? tone(Math.round((h.met / h.total) * 100)) : 'text-slate-400'}`}>{h.total ? `${Math.round((h.met / h.total) * 100)}%` : '—'}</td></tr>)}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      <HistoryTable rows={rows} />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------------------------------------------- all projects
+const PROJ_VAL = (r, k) => (k === 'name' ? r.name : k === 'presence' ? r.presence : k === 'delta' ? r.delta_30d : k === 'open' ? r.actions_today_open : k === 'risk' ? r.targets_at_risk : undefined);
+
+function ProjectsTable({ rows, onPick }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const kept = useMemo(() => (needle ? rows.filter(r => String(r.name || '').toLowerCase().includes(needle)) : rows), [rows, needle]);
+  const { sorted, sort, onSort } = useSorted(kept, PROJ_VAL);
+  const pager = usePager(sorted, { size: 10, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
+  return (
+    <div className="rounded-xl border border-slate-200 overflow-hidden">
+      {rows.length > 10 && <div className="px-4 py-2.5 border-b border-slate-100"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search projects" aria-label="Search projects" className="h-8 w-56 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
+      <div className="overflow-x-auto">
+        <table className="w-full text-14">
+          <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200">
+            <SortTh id="name" sort={sort} onSort={onSort} className="px-4 py-3 font-medium">Project</SortTh>
+            <SortTh id="presence" sort={sort} onSort={onSort} right first="desc" className="px-4 py-3 font-medium">Presence</SortTh>
+            <SortTh id="delta" sort={sort} onSort={onSort} right first="desc" className="px-4 py-3 font-medium">30 days</SortTh>
+            <SortTh id="open" sort={sort} onSort={onSort} right first="desc" className="px-4 py-3 font-medium">Open today</SortTh>
+            <SortTh id="risk" sort={sort} onSort={onSort} right first="desc" className="px-4 py-3 font-medium">At risk</SortTh></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pager.rows.map(r => (
+              <tr key={r.business_id} tabIndex={0} onClick={() => onPick(r.business_id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(r.business_id); } }} className="h-14 cursor-pointer hover:bg-indigo-50/50 focus:outline-none focus-visible:bg-indigo-50">
+                <td className="px-4"><div className="font-medium text-slate-900">{r.name}</div><div className="text-11 text-slate-400">Updated {fmtWhen(r.updated_at)}</div></td>
+                <td className={`px-4 text-right tabular-nums font-semibold ${tone(r.presence)}`}>{isNum(r.presence) ? Math.round(r.presence) : '—'}</td>
+                <td className={`px-4 text-right tabular-nums ${!isNum(r.delta_30d) ? 'text-slate-400' : r.delta_30d > 0 ? 'text-emerald-600' : r.delta_30d < 0 ? 'text-red-600' : 'text-slate-600'}`}>{isNum(r.delta_30d) ? `${r.delta_30d > 0 ? '+' : ''}${r.delta_30d}` : '—'}</td>
+                <td className="px-4 text-right tabular-nums text-slate-800">{dash(r.actions_today_open)}</td>
+                <td className={`px-4 text-right tabular-nums ${r.targets_at_risk > 0 ? 'text-amber-600 font-semibold' : 'text-slate-600'}`}>{dash(r.targets_at_risk)}</td>
+              </tr>
+            ))}
+            {!pager.rows.length && <tr><td colSpan={5} className="px-4 py-8 text-center text-13 text-slate-500">No project matches.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pager} label="projects" />
+    </div>
+  );
+}
+
 function AllProjects({ open, onClose, onPick }) {
   const [state, setState] = useState({ loading: true, rows: [], error: '' });
   useEffect(() => {
@@ -487,22 +549,7 @@ function AllProjects({ open, onClose, onPick }) {
       {state.loading ? <div className="space-y-3"><Skeleton h="h-14" /><Skeleton h="h-14" /><Skeleton h="h-14" /></div>
         : state.error ? <p className="text-13 text-red-700 bg-red-50 rounded-lg px-3 py-2">{state.error}</p>
           : state.rows.length === 0 ? <p className="text-13 text-slate-500">No projects have a growth plan yet.</p> : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-14">
-                <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200"><th className="px-4 py-3 text-left font-medium">Project</th><th className="px-4 py-3 text-right font-medium">Presence</th><th className="px-4 py-3 text-right font-medium">30 days</th><th className="px-4 py-3 text-right font-medium">Open today</th><th className="px-4 py-3 text-right font-medium">At risk</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">
-                  {state.rows.map(r => (
-                    <tr key={r.business_id} tabIndex={0} onClick={() => onPick(r.business_id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(r.business_id); } }} className="h-14 cursor-pointer hover:bg-indigo-50/50 focus:outline-none focus-visible:bg-indigo-50">
-                      <td className="px-4"><div className="font-medium text-slate-900">{r.name}</div><div className="text-11 text-slate-400">Updated {fmtWhen(r.updated_at)}</div></td>
-                      <td className={`px-4 text-right tabular-nums font-semibold ${tone(r.presence)}`}>{isNum(r.presence) ? Math.round(r.presence) : '—'}</td>
-                      <td className={`px-4 text-right tabular-nums ${!isNum(r.delta_30d) ? 'text-slate-400' : r.delta_30d > 0 ? 'text-emerald-600' : r.delta_30d < 0 ? 'text-red-600' : 'text-slate-600'}`}>{isNum(r.delta_30d) ? `${r.delta_30d > 0 ? '+' : ''}${r.delta_30d}` : '—'}</td>
-                      <td className="px-4 text-right tabular-nums text-slate-800">{dash(r.actions_today_open)}</td>
-                      <td className={`px-4 text-right tabular-nums ${r.targets_at_risk > 0 ? 'text-amber-600 font-semibold' : 'text-slate-600'}`}>{dash(r.targets_at_risk)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ProjectsTable rows={state.rows} onPick={onPick} />
           )}
     </Drawer>
   );

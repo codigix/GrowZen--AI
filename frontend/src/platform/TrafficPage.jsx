@@ -5,6 +5,7 @@ import { SeoShell, useBusinesses, Card, Stat, Badge, Button, ErrorNote, Empty, T
 import AccessGate from './AccessGate';
 import { api, useApi, fmt } from './seoApi';
 import Select from '../components/Select';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 /**
  * Website traffic from Google Analytics 4 for a connected Google account / website.
@@ -19,24 +20,54 @@ const dayLabel = (d) => String(d || '').slice(5);
 const shown = (rows) => (rows || []).filter(r => !Object.values(r).includes('(not set)'));
 const share = (v, total) => (total ? `${((v / total) * 100).toFixed(1)}%` : '—');
 
+/**
+ * A GA4 card table. A column sorts by `value(row)` when it has one; otherwise by what it draws (a number for a right-aligned column such as "1,234 (12.3%)", text for the rest).
+ * A row with `__total` stays on top, outside the sort and the pages. A long list is paged, with a search box.
+ */
 function Table({ cols, rows, empty = 'No data for this period.' }) {
+  const [q, setQ] = useState('');
+  const list = rows || [];
+  const totals = list.filter(r => r.__total);
+  const body = list.filter(r => !r.__total);
+  const cell = (c, r) => (c.value ? c.value(r) : c.render(r));
+  const plain = (c, r) => { const v = cell(c, r); return typeof v === 'string' || typeof v === 'number' ? v : null; };
+  const sortable = (c) => body.length > 0 && plain(c, body[0]) != null;
+  const needle = q.trim().toLowerCase();
+  const kept = needle ? body.filter(r => cols.some(c => String(plain(c, r) ?? '').toLowerCase().includes(needle))) : body;
+  const { sorted, sort, onSort } = useSorted(kept, (r, k) => {
+    const c = cols[k];
+    const v = plain(c, r);
+    if (v == null || c.value || !c.right) return v;
+    const n = parseFloat(String(v).replace(/,/g, ''));
+    return Number.isNaN(n) ? null : n;
+  });
+  const pager = usePager(sorted, { size: 10, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   if (!rows?.length) return <Empty>{empty}</Empty>;
+  const row = (r, i, key) => (
+    <tr key={key} className={r.__total ? 'font-semibold bg-slate-50' : 'hover:bg-slate-50/60'}>
+      {cols.map((c, j) => <td key={c.label} className={`py-2 pr-4 text-slate-700 ${c.right ? 'text-right tabular-nums' : 'truncate max-w-[320px]'}`}>{c.render(r)}</td>)}
+    </tr>
+  );
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-13">
-        <thead>
-          <tr className="text-11 font-semibold text-slate-400 border-b border-slate-100">
-            {cols.map(c => <th key={c.label} className={`py-2 pr-4 font-semibold ${c.right ? 'text-right' : 'text-left'}`}>{c.label}</th>)}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {rows.map((r, i) => (
-            <tr key={i} className={r.__total ? 'font-semibold bg-slate-50' : 'hover:bg-slate-50/60'}>
-              {cols.map(c => <td key={c.label} className={`py-2 pr-4 text-slate-700 ${c.right ? 'text-right tabular-nums' : 'truncate max-w-[320px]'}`}>{c.render(r)}</td>)}
+    <div>
+      {body.length > 12 && <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search this table" aria-label="Search this table" className="mb-2 h-8 w-56 px-2.5 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" />}
+      <div className="overflow-x-auto">
+        <table className="w-full text-13">
+          <thead>
+            <tr className="text-11 font-semibold text-slate-400 border-b border-slate-100">
+              {cols.map((c, i) => (sortable(c)
+                ? <SortTh key={c.label} id={i} sort={sort} onSort={onSort} right={c.right} first={c.right ? 'desc' : 'asc'} className="py-2 pr-4">{c.label}</SortTh>
+                : <th key={c.label} className={`py-2 pr-4 font-semibold ${c.right ? 'text-right' : 'text-left'}`}>{c.label}</th>))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {totals.map((r, i) => row(r, i, `t${i}`))}
+            {pager.rows.map((r, i) => row(r, i, pager.from + i))}
+            {!pager.rows.length && <tr><td colSpan={cols.length} className="py-4 text-center text-slate-500">Nothing matches the search.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pager} label="rows" />
     </div>
   );
 }
@@ -135,7 +166,7 @@ function Report({ r }) {
             { label: 'Sessions', right: true, render: c => `${fmt(c.sessions)} (${share(c.sessions, totalSessions)})` },
             { label: 'Engaged sessions', right: true, render: c => fmt(c.engagedSessions) },
             { label: 'Engagement rate', right: true, render: c => pct(c.engagementRate) },
-            { label: 'Avg engagement time', right: true, render: c => dur(c.averageSessionDuration) },
+            { label: 'Avg engagement time', right: true, value: c => c.averageSessionDuration ?? null, render: c => dur(c.averageSessionDuration) },
             { label: 'Events per session', right: true, render: c => Number(c.eventsPerSession || 0).toFixed(2) },
             { label: 'Event count', right: true, render: c => fmt(c.eventCount) }
           ]}
@@ -194,7 +225,7 @@ function Report({ r }) {
             { label: 'Views', right: true, render: p => fmt(p.views) },
             { label: 'Active users', right: true, render: p => fmt(p.active_users) },
             { label: 'Views per active user', right: true, render: p => Number(p.views_per_user || 0).toFixed(2) },
-            { label: 'Avg engagement time per active user', right: true, render: p => dur(p.engagement_per_user) },
+            { label: 'Avg engagement time per active user', right: true, value: p => p.engagement_per_user ?? null, render: p => dur(p.engagement_per_user) },
             { label: 'Event count', right: true, render: p => fmt(p.event_count) },
             { label: 'Key events', right: true, render: p => fmt(p.key_events) }
           ]}
@@ -238,15 +269,15 @@ function Snapshot({ r }) {
       </Card>
 
       <Card title="Top pages/screens" subtitle="Page title and screen class">
-        <Table cols={[{ label: 'Page title and screen class', render: p => p.title }, { label: 'Views', right: true, render: p => fmt(p.views) }, { label: 'Active users', right: true, render: p => fmt(p.active_users) }, { label: 'Event count', right: true, render: p => fmt(p.event_count) }, { label: 'Bounce rate', right: true, render: p => pct(p.bounce_rate) }]} rows={shown(r.pages).slice(0, 7)} />
+        <Table cols={[{ label: 'Page title and screen class', render: p => p.title }, { label: 'Views', right: true, render: p => fmt(p.views) }, { label: 'Active users', right: true, render: p => fmt(p.active_users) }, { label: 'Event count', right: true, render: p => fmt(p.event_count) }, { label: 'Bounce rate', right: true, render: p => pct(p.bounce_rate) }]} rows={shown(r.pages)} />
       </Card>
 
       <div className="grid lg:grid-cols-3 gap-4">
         <Card title="Active users by first user source / medium">
-          <Table cols={[{ label: 'First user source / medium', render: x => x.source_medium }, { label: 'Active users', right: true, render: x => fmt(x.active_users) }]} rows={shown(r.first_sources).slice(0, 7)} />
+          <Table cols={[{ label: 'First user source / medium', render: x => x.source_medium }, { label: 'Active users', right: true, render: x => fmt(x.active_users) }]} rows={shown(r.first_sources)} />
         </Card>
         <Card title="Sessions by session source / medium">
-          <Table cols={[{ label: 'Session source / medium', render: x => x.source_medium }, { label: 'Sessions', right: true, render: x => fmt(x.sessions) }]} rows={shown(r.sources).slice(0, 7)} />
+          <Table cols={[{ label: 'Session source / medium', render: x => x.source_medium }, { label: 'Sessions', right: true, render: x => fmt(x.sessions) }]} rows={shown(r.sources)} />
         </Card>
         <Card title="New vs returning users">
           {nvr.length ? (
@@ -272,7 +303,7 @@ function Snapshot({ r }) {
           <Table cols={[{ label: 'Platform', render: k => k.platform }, { label: 'Key events', right: true, render: k => fmt(k.key_events) }]} rows={r.key_events_platform} empty="No data available" />
         </Card>
         <Card title="Active users by city">
-          <Table cols={[{ label: 'City', render: c => c.city }, { label: 'Active users', right: true, render: c => fmt(c.active_users) }]} rows={shown(r.cities).slice(0, 7)} />
+          <Table cols={[{ label: 'City', render: c => c.city }, { label: 'Active users', right: true, render: c => fmt(c.active_users) }]} rows={shown(r.cities)} />
         </Card>
         <Card title="Active users by audience name">
           <Table cols={[{ label: 'Audience name', render: a => a.audience }, { label: 'Active users', right: true, render: a => fmt(a.active_users) }]} rows={r.audiences} empty="No data available" />

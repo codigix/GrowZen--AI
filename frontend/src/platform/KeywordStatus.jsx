@@ -1,14 +1,19 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowUp, ArrowDown, Search, MapPin, CheckCircle2, ExternalLink } from 'lucide-react';
+import { ArrowUp, ArrowDown, Download, Search, MapPin, CheckCircle2, ExternalLink } from 'lucide-react';
 import { Card, Badge, Stat, ErrorNote, SkList } from './SeoUi';
 import { useApi } from './seoApi';
 import Tip from './Tip';
 import { Head } from './TableBits';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const TONE = { working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' };
 const FILTERS = [['all', 'All'], ['working', 'Working'], ['climbing', 'Can climb'], ['weak', 'Weak'], ['invisible', 'Not showing'], ['unchecked', 'Not checked']];
 const AREA_SHORT = { website: 'Website', blog: 'Blog', gmb_post: 'Posts', aeo: 'AEO', geo: 'GEO', chatgpt: 'ChatGPT' };
+const STATUS_ORDER = { working: 0, climbing: 1, weak: 2, invisible: 3, unchecked: 4 };
+const statusValue = (x, k) => (k === 'keyword' ? x.keyword : k === 'status' ? (STATUS_ORDER[x.status] ?? null) : k === 'rank' ? x.rank ?? null : k === 'impressions' ? x.impressions ?? null : k === 'clicks' ? x.clicks ?? null
+  : k === 'volume' ? x.volume ?? null : k === 'potential' ? x.potential ?? null : k === 'used' ? (x.used_in || []).length : k === 'page' ? (x.ranking_url || x.target_url || null) : k === 'next' ? x.next?.text ?? null : null);
+const P = 'px-3 py-2.5 whitespace-nowrap';
 const TH = 'px-3 py-2.5 font-semibold whitespace-nowrap text-left';
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 const path = (u) => { try { return new URL(u).pathname || '/'; } catch { return u; } };
@@ -20,6 +25,8 @@ export default function KeywordStatus({ b }) {
   const [q, setQ] = useState('');
   const d = r.data;
   const rows = useMemo(() => (d ? d.items.filter(x => (f === 'all' || x.status === f) && (!q.trim() || x.keyword.includes(q.trim().toLowerCase()))) : []), [d, f, q]);
+  const { sorted, sort, onSort } = useSorted(rows, statusValue);
+  const pager = usePager(sorted, { size: 25, resetKey: `${f}|${q}` });
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
   if (!d.total) return <Card><p className="py-8 text-center text-13 text-slate-500">No keywords are tracked yet. Pick some in the <Link to="/keyword-management/workspace" className="font-semibold text-indigo-600 hover:underline">Keyword Workspace</Link> or save some in <Link to="/keyword-management/ai" className="font-semibold text-indigo-600 hover:underline">Find Keywords</Link>, and their status appears here.</p></Card>;
@@ -41,22 +48,24 @@ export default function KeywordStatus({ b }) {
         <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-slate-100">
           {FILTERS.map(([id, label]) => <button key={id} type="button" aria-pressed={f === id} onClick={() => setF(id)} className={pill(f === id)}>{label} <span className="opacity-70">{id === 'all' ? d.total : c[id]}</span></button>)}
           <label className="relative ml-auto"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-52 pl-8 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+          <button type="button" disabled={!sorted.length} onClick={() => downloadCsv(`keyword-status-${b.name}`, ['Keyword', 'Status', 'Position', 'Change in position', 'Impressions', 'Clicks', 'Searches per month', 'Potential extra clicks', 'Used in', 'Page that ranks', 'Page chosen', 'Suggested action'],
+            sorted.map(x => [x.keyword, x.label || x.status, x.rank ?? '', x.change ?? '', x.impressions ?? '', x.clicks ?? '', x.volume ?? '', x.potential ?? '', (x.used_in || []).map(a => AREA_SHORT[a] || a).join('; '), x.ranking_url || '', x.target_url || '', x.next?.text || '']))} className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg ring-1 ring-inset ring-slate-300 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-40" title="Download every keyword listed (all pages, with the filter and search applied) as a CSV file"><Download size={13} />Export CSV</button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px] text-13">
             <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-              <th className={TH}><Head what="A keyword you track." why="Click it to check its searches and cost." from="your saved keywords.">Keyword</Head></th>
-              <th className={TH}><Head what="Our plain reading: Working (page 1 with clicks), Can climb, Weak, Not showing." why="Tells you where to put effort." from="the Search Console position and clicks of the last 28 days.">Status</Head></th>
-              <th className={`${TH} text-right`}><Head right what="Average Google position, last 28 days." from="Google Search Console.">Position</Head></th>
-              <th className={`${TH} text-right`}><Head right what="How many times your site was shown for it on Google." from="Google Search Console.">Impressions</Head></th>
-              <th className={`${TH} text-right`}><Head right what="How many people clicked your site for it." from="Google Search Console.">Clicks</Head></th>
-              <th className={`${TH} text-right`}><Tip text="Searches per month for this keyword (Google Keyword Planner)." align="right">Searches</Tip></th>
-              <th className={`${TH} text-right`}><Tip text="Modelled, not measured: monthly searches times the usual click-through of the top spot, minus the clicks you already get. It shows how much the keyword could still give." align="right">Potential / mo</Tip></th>
-              <th className={TH}><Head what="Where the keyword already appears: your website, blog, Google posts, AI questions." why="Shows where it is not used yet." from="a scan of your pages, articles, posts and AI-search questions.">Used where</Head></th>
-              <th className={TH}><Head what="The page that ranks for it, or the page you chose." from="Search Console, or your choice on My Keywords.">Page</Head></th>
-              <th className={TH}><Head what="The one action we suggest for this keyword. Click it to do it." from="our reading of its status, page and use.">Actions</Head></th></tr></thead>
+              <SortTh id="keyword" sort={sort} onSort={onSort} className={P} tip={{ what: 'A keyword you track.', why: 'Click it to check its searches and cost.', from: 'your saved keywords.' }}>Keyword</SortTh>
+              <SortTh id="status" sort={sort} onSort={onSort} className={P} tip={{ what: 'Our plain reading: Working (page 1 with clicks), Can climb, Weak, Not showing.', why: 'Tells you where to put effort.', from: 'the Search Console position and clicks of the last 28 days.' }}>Status</SortTh>
+              <SortTh id="rank" sort={sort} onSort={onSort} right className={P} tip={{ what: 'Average Google position, last 28 days.', from: 'Google Search Console.' }}>Position</SortTh>
+              <SortTh id="impressions" sort={sort} onSort={onSort} right first="desc" className={P} tip={{ what: 'How many times your site was shown for it on Google.', from: 'Google Search Console.' }}>Impressions</SortTh>
+              <SortTh id="clicks" sort={sort} onSort={onSort} right first="desc" className={P} tip={{ what: 'How many people clicked your site for it.', from: 'Google Search Console.' }}>Clicks</SortTh>
+              <SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className={P}><Tip text="Searches per month for this keyword (Google Keyword Planner)." align="right">Searches</Tip></SortTh>
+              <SortTh id="potential" sort={sort} onSort={onSort} right first="desc" className={P}><Tip text="Modelled, not measured: monthly searches times the usual click-through of the top spot, minus the clicks you already get. It shows how much the keyword could still give." align="right">Potential / mo</Tip></SortTh>
+              <SortTh id="used" sort={sort} onSort={onSort} first="desc" className={P} tip={{ what: 'Where the keyword already appears: your website, blog, Google posts, AI questions.', why: 'Shows where it is not used yet.', from: 'a scan of your pages, articles, posts and AI-search questions.' }}>Used where</SortTh>
+              <SortTh id="page" sort={sort} onSort={onSort} className={P} tip={{ what: 'The page that ranks for it, or the page you chose.', from: 'Search Console, or your choice on My Keywords.' }}>Page</SortTh>
+              <SortTh id="next" sort={sort} onSort={onSort} className={P} tip={{ what: 'The one action we suggest for this keyword. Click it to do it.', from: 'our reading of its status, page and use.' }}>Actions</SortTh></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map(x => (
+              {pager.rows.map(x => (
                 <tr key={x.keyword} className="hover:bg-slate-50 align-middle">
                   <td className="px-3 py-3 max-w-[220px]"><Link to={`/keyword-overview?q=${encodeURIComponent(x.keyword)}`} className="block font-semibold text-slate-900 truncate hover:text-indigo-700 hover:underline" title={`Check ${x.keyword}`}>{x.keyword}</Link><span className="text-11.5 text-slate-400">{[x.intent, x.cluster].filter(Boolean).join(' · ') || ' '}{x.articles ? ` · ${x.articles} blog${x.articles > 1 ? 's' : ''}` : ''}</span></td>
                   <td className="px-3 py-3"><Tip text={x.why} wide><Badge tone={TONE[x.status]}>{x.label}</Badge></Tip></td>
@@ -71,10 +80,11 @@ export default function KeywordStatus({ b }) {
                   <td className="px-3 py-3"><Link to={x.next.to} className="text-12.5 font-semibold text-indigo-600 hover:underline">{x.next.text}</Link></td>
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan={10} className="px-5 py-10 text-center text-slate-500">No keyword matches.</td></tr>}
+              {!pager.rows.length && <tr><td colSpan={10} className="px-5 py-10 text-center text-slate-500">No keyword matches.</td></tr>}
             </tbody>
           </table>
         </div>
+        <Pager p={pager} label="keywords" />
         <p className="px-5 py-3 border-t border-slate-100 text-11.5 text-slate-400">Status is our plain-rule reading of the real position and clicks: Working = page 1 with clicks; Can climb = page 1 without clicks, or page 2; Weak = page 3 or later; Not showing = no impressions in 28 days. “Where it is used” is read from your website crawl, blogs, Google posts, AI questions and ChatGPT profile.</p>
       </Card>
     </div>

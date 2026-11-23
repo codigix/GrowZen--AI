@@ -5,13 +5,31 @@ import { ExternalLink, X, Plus, Download, Settings2, Sparkles, ChevronRight } fr
 import { Link } from 'react-router-dom';
 import { Card, Button, useModulePath, useAction } from './SeoUi';
 import { api, fmt } from './seoApi';
-import { AXIS, PALETTE, Th, Chg, Empty, Filter, usePager, path } from './PositionUi';
+import { AXIS, PALETTE, Th, Chg, Empty, Filter, path } from './PositionUi';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import Select from '../components/Select';
 
 const METRICS = [['visibility', 'Visibility', '%', false], ['traffic', 'Est. Traffic', '', false], ['avg_position', 'Avg. Position', '', true]];
 const INTENT = { informational: ['I', 'bg-indigo-100 text-indigo-700'], navigational: ['N', 'bg-violet-100 text-violet-700'], commercial: ['C', 'bg-amber-100 text-amber-700'], transactional: ['T', 'bg-emerald-100 text-emerald-700'], local: ['L', 'bg-sky-100 text-sky-700'] };
 const TABS = [['positions', 'Positions'], ['traffic', 'Est. Traffic'], ['visibility', 'Visibility'], ['all', 'All']];
 const sel = 'h-9 px-2.5 text-13 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer';
+const overviewValue = (r, k) => {
+  if (k === 'keyword') return r.keyword;
+  if (k === 'intent') return r.intent || null;
+  if (k === 'sf') return r.sf ?? null;
+  if (k === 'kd') return r.kd ?? null;
+  if (k === 'was') return r.was ?? null;
+  if (k === 'rank') return r.rank ?? null;
+  if (k === 'change') return r.change ?? null;
+  if (k === 'visibility') return r.visibility ?? null;
+  if (k === 'vdiff') return r.visibility_was != null && r.visibility != null ? r.visibility - r.visibility_was : null;
+  if (k === 'traffic') return r.traffic ?? null;
+  if (k === 'tdiff') return r.traffic != null && r.traffic_was != null ? r.traffic - r.traffic_was : null;
+  if (k === 'volume') return r.volume ?? null;
+  if (k === 'cpc') return r.cpc ?? null;
+  if (k === 'url') return r.url || null;
+  return null;
+};
 const dash = <span className="text-slate-300">—</span>;
 const kdColor = (v) => (v == null ? '#cbd5e1' : v < 30 ? '#10b981' : v < 60 ? '#f59e0b' : '#ef4444');
 const short = (d) => String(d).slice(5);
@@ -81,13 +99,9 @@ function PositionChart({ r, domains, colorOf, me }) {
 }
 
 function download(name, rows) {
-  const head = ['Keyword', 'Intent', 'KD %', 'Position first', 'Position last', 'Diff', 'Visibility %', 'Est. traffic', 'Volume', 'CPC', 'URL'];
-  const body = rows.map(r => [r.keyword, r.intent || '', r.kd ?? '', r.was ?? '', r.rank ?? '', r.change ?? '', r.visibility, r.traffic ?? '', r.volume ?? '', r.cpc ?? '', r.url || '']);
-  const csv = [head, ...body].map(l => l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = name;
-  a.click();
+  const head = ['Keyword', 'Intent', 'Keyword difficulty (%)', 'Position at the start', 'Position now', 'Change in position', 'Visibility (%)', 'Estimated traffic', 'Searches per month', 'Cost per click', 'Ranking page'];
+  const body = rows.map(r => [r.keyword, r.intent || '', r.kd ?? '', r.was ?? '', r.rank ?? '', r.change ?? '', r.visibility ?? '', r.traffic ?? '', r.volume ?? '', r.cpc ?? '', r.url || '']);
+  downloadCsv(name, head, body);
 }
 
 /** Overview: one figure over time for your domain and up to four others from the results, and the Rankings Overview table. */
@@ -104,7 +118,6 @@ export default function PositionOverview({ d, b, onChanged }) {
   const [tab, setTab] = useState('all');
   const [cols, setCols] = useState(() => new Set(['intent', 'kd', 'vol', 'cpc', 'url']));
   const [showCols, setShowCols] = useState(false);
-  const [sort, setSort] = useState({ key: 'rank', dir: 1 });
   const [open, setOpen] = useState(() => new Set());
   const toggleRow = (k) => setOpen(o => { const n = new Set(o); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
@@ -126,13 +139,13 @@ export default function PositionOverview({ d, b, onChanged }) {
   const rows = useMemo(() => {
     const f = d.all_keywords.filter(r => (!q || r.keyword.toLowerCase().includes(q.toLowerCase())) && (!filters.intent || r.intent === filters.intent) && (!filters.tag || r.tag === filters.tag)
       && (!filters.band || (filters.band === 'top3' ? r.rank && r.rank <= 3 : filters.band === 'top10' ? r.rank && r.rank <= 10 : filters.band === 'out' ? !r.rank : r.rank > 10)));
-    const val = (r) => (sort.key === 'rank' ? (r.rank ?? 999) : sort.key === 'keyword' ? r.keyword : sort.key === 'visibility' ? -(r.visibility || 0) : sort.key === 'traffic' ? -(r.traffic || 0) : sort.key === 'volume' ? -(r.volume || 0) : r[sort.key] ?? 0);
-    return [...f].sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sort.dir);
-  }, [d.all_keywords, q, filters, sort]);
-  const [slice, footer] = usePager(rows, 100);
+    return f;
+  }, [d.all_keywords, q, filters]);
+  const { sorted, sort, onSort } = useSorted(rows, overviewValue, { key: 'rank', dir: 'asc' });
+  const pager = usePager(sorted, { size: 25, resetKey: `${q}|${JSON.stringify(filters)}|${tab}` });
   const active = Object.values(filters).filter(Boolean).length;
-  const sortBy = (key) => setSort(s => ({ key, dir: s.key === key ? -s.dir : 1 }));
-  const th = (key, label, right = true) => <th className={`px-3 py-2.5 font-semibold whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}><button type="button" onClick={() => sortBy(key)} className="cursor-pointer hover:text-slate-900">{label}{sort.key === key ? (sort.dir > 0 ? ' ↑' : ' ↓') : ''}</button></th>;
+  const th = (key, label, right = true, first = right ? 'desc' : 'asc', pad = 'px-3 py-2.5 whitespace-nowrap') => <SortTh id={key} sort={sort} onSort={onSort} right={right} first={first} className={pad}>{label}</SortTh>;
+  const th4 = (key, label, right = false) => th(key, label, right, right ? 'desc' : 'asc', 'px-4 py-2.5 whitespace-nowrap');
   const first = d.period.start.slice(5), last = d.period.end.slice(5);
   const show = (group) => tab === 'all' || tab === group;
   const toggleCol = (c) => setCols(s => { const n = new Set(s); n.has(c) ? n.delete(c) : n.add(c); return n; });
@@ -195,7 +208,7 @@ export default function PositionOverview({ d, b, onChanged }) {
         </div>
       </Card>
 
-      <Card title={<span>Rankings Overview <span className="text-slate-500 font-normal">1-{Math.min(rows.length, 100)} ({rows.length})</span></span>} pad={false}
+      <Card title={<span>Rankings Overview <span className="text-slate-500 font-normal">{rows.length ? `${pager.from + 1}-${pager.to}` : '0'} ({rows.length})</span></span>} pad={false}
         action={<div className="relative">
           <Button size="sm" icon={Settings2} onClick={() => setShowCols(o => !o)}>Table settings</Button>
           {showCols && (
@@ -205,7 +218,7 @@ export default function PositionOverview({ d, b, onChanged }) {
         </div>}>
         <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
           <Link to={path_('keyword-management')} className="h-9 px-3 rounded inline-flex items-center text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">Add keywords</Link>
-          <Button size="sm" icon={Download} onClick={() => download(`${me}-rankings.csv`, rows)}>Export</Button>
+          <Button size="sm" icon={Download} onClick={() => download(`keyword-rankings-${me}`, sorted)} title="Download every keyword (all pages, with the search and filters applied) as a CSV file">Export CSV</Button>
           <div className="inline-flex rounded border border-slate-200 overflow-hidden ml-1">
             {TABS.map(([id, l]) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-9 px-3 text-13 border-r last:border-r-0 border-slate-200 cursor-pointer ${tab === id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{id === 'all' ? `All for ${me}` : l}</button>)}
           </div>
@@ -215,15 +228,15 @@ export default function PositionOverview({ d, b, onChanged }) {
             <thead className="bg-slate-50 text-11.5 text-slate-500">
               <tr>
                 <Th> </Th>{th('keyword', 'Keyword', false)}
-                {cols.has('intent') && <Th>Intent</Th>}{cols.has('sf') && <Th c="text-right">SF</Th>}{cols.has('kd') && <Th c="text-right">KD %</Th>}
-                {show('positions') && <><Th c="text-right">Pos. {first}</Th>{th('rank', `Pos. ${last}`)}<Th c="text-right">Diff</Th></>}
-                {show('visibility') && <>{th('visibility', 'Visibility')}<Th c="text-right">Diff</Th></>}
-                {show('traffic') && <>{th('traffic', 'Est. Traffic')}<Th c="text-right">Diff</Th></>}
-                {cols.has('vol') && th('volume', 'Vol.')}{cols.has('cpc') && <Th c="text-right">CPC</Th>}{cols.has('url') && <Th>URL</Th>}<Th c="text-right">Actions</Th>
+                {cols.has('intent') && th4('intent', 'Intent')}{cols.has('sf') && th4('sf', 'SF', true)}{cols.has('kd') && th4('kd', 'KD %', true)}
+                {show('positions') && <>{th4('was', `Pos. ${first}`, true)}{th('rank', `Pos. ${last}`, true, 'asc')}{th4('change', 'Diff', true)}</>}
+                {show('visibility') && <>{th('visibility', 'Visibility')}{th4('vdiff', 'Diff', true)}</>}
+                {show('traffic') && <>{th('traffic', 'Est. Traffic')}{th4('tdiff', 'Diff', true)}</>}
+                {cols.has('vol') && th('volume', 'Vol.')}{cols.has('cpc') && th4('cpc', 'CPC', true)}{cols.has('url') && th4('url', 'URL')}<Th c="text-right">Actions</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {slice.map(r => {
+              {pager.rows.map(r => {
                 const vd = r.visibility_was != null ? Math.round((r.visibility - r.visibility_was) * 1000) / 1000 : null;
                 const td = r.traffic != null && r.traffic_was != null ? Math.round((r.traffic - r.traffic_was) * 100) / 100 : null;
                 return (
@@ -252,11 +265,11 @@ export default function PositionOverview({ d, b, onChanged }) {
                   {open.has(r.keyword) && <tr><td colSpan={17} className="p-0 border-y-2 border-indigo-200 bg-white"><PositionChart r={r} domains={chosen} colorOf={colorOf} me={me} /></td></tr>}
                   </React.Fragment>);
               })}
-              {!slice.length && <tr><td colSpan={17} className="px-5 py-10 text-center text-slate-500">No keyword matches these filters.</td></tr>}
+              {!pager.rows.length && <tr><td colSpan={17} className="px-5 py-10 text-center text-slate-500">No keyword matches these filters.</td></tr>}
             </tbody>
           </table>
         </div>
-        {footer || <div className="px-5 py-3 border-t border-slate-100 text-12.5 text-slate-500">Page: 1 of 1</div>}
+        <Pager p={pager} label="keywords" />
       </Card>
       <p className="text-11.5 text-slate-400">Positions are Google Search Console's average positions from your saved checks. Visibility and traffic are modelled with a standard click-through curve and the keyword volumes you track.</p>
     </div>

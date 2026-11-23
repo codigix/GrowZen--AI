@@ -1,5 +1,5 @@
 import KeywordWorkspace from './KeywordWorkspace';
-import KeywordFlowBar from './KeywordFlowBar';
+import DataTable, { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import KeywordMappingTab from './KeywordMappingTab';
 import { UseKeywordsModal } from './KeywordPlacement';
 import KeywordRowActions, { indexProblem } from './KeywordRowActions';
@@ -10,7 +10,7 @@ import { AutopilotPanel } from './AutopilotPanels';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Sparkles, FileText, Trash2, Loader2, MapPin, Globe, Users, X, Star, CheckCircle2, CircleDashed, AlertTriangle, Copy, Check, BarChart2,
-  Pencil, PenLine, TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft, ArrowRight
+  Pencil, PenLine, Eye, TrendingUp, TrendingDown, Download, Flame, HelpCircle, Navigation, Tag, Wrench, ExternalLink, ArrowLeft, ArrowRight
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { SeoShell, Card, Tabs, Badge, Button, inputCls, Meter, ErrorNote, useToast, useAction, useUrlTab, useDoubleConfirm, SkTable, SkCard } from './SeoUi';
@@ -33,6 +33,7 @@ const GROUPS = {
   question: { label: 'Questions', icon: HelpCircle, tone: 'bg-violet-50 text-violet-700 ring-violet-200', hint: 'Questions to answer in FAQs and blog posts' },
   fresh: { label: 'Fresh & seasonal', icon: Flame, tone: 'bg-orange-50 text-orange-700 ring-orange-200', hint: 'What people are searching this year: offers, latest, new' },
   competitor: { label: 'From competitors', icon: Users, tone: 'bg-rose-50 text-rose-700 ring-rose-200', hint: 'Keywords competitors rank or build pages for (from competitor research)' },
+  suggested: { label: 'Suggested', icon: Sparkles, tone: 'bg-violet-50 text-violet-700 ring-violet-200', hint: 'Weekly Autopilot suggestions waiting for you: track one or reject it' },
   brand: { label: 'Your brand', icon: Tag, tone: 'bg-emerald-50 text-emerald-700 ring-emerald-200', hint: 'People searching for you by name' }
 };
 const ORDER = ['competitor', 'local', 'near_me', 'service', 'question', 'fresh', 'brand'];
@@ -40,9 +41,11 @@ const kd = (d) => (d == null ? ['—', 'gray'] : d < 30 ? ['Easy', 'green'] : d 
 
 function Chip({ on, children, onClick, onRemove, title }) {
   return (
-    <span className={`inline-flex items-center rounded-lg ring-1 ring-inset text-12 font-medium transition-colors ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`} title={title}>
-      <button type="button" onClick={onClick} className="px-2.5 py-1 cursor-pointer">{children}</button>
-      {onRemove && <button type="button" onClick={onRemove} className={`pr-2 cursor-pointer ${on ? 'text-indigo-200 hover:text-white' : 'text-slate-400 hover:text-slate-700'}`} aria-label="Remove"><X size={12} /></button>}
+    <span className={`inline-flex items-center rounded-lg ring-1 ring-inset text-12.5 font-medium transition-colors ${on ? 'bg-indigo-50 text-indigo-900 ring-indigo-300' : 'bg-white text-slate-500 ring-slate-200 hover:ring-slate-300'}`} title={title}>
+      <button type="button" onClick={onClick} aria-pressed={Boolean(on)} className="pl-2 pr-2.5 py-1 cursor-pointer inline-flex items-center gap-1.5">
+        <span className={`w-3.5 h-3.5 rounded-full inline-flex items-center justify-center shrink-0 ${on ? 'bg-indigo-600 text-white' : 'ring-1 ring-inset ring-slate-300'}`}>{on && <Check size={9} strokeWidth={3} />}</span>{children}
+      </button>
+      {onRemove && <button type="button" onClick={onRemove} className="pr-2 text-slate-400 hover:text-slate-700 cursor-pointer" aria-label="Remove"><X size={11} /></button>}
     </span>
   );
 }
@@ -66,11 +69,11 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const [seeds, setSeeds] = useState(null); // [{text, on}]
   const [areas, setAreas] = useState(null);
   const [custom, setCustom] = useState('');
+  const [adding, setAdding] = useState(false); // the "Add a service" box is open
   const [result, setResult] = useState(null);
-  const [group, setGroup] = useState('all');
-  const [q, setQ] = useState('');
-  const [onlyGaps, setOnlyGaps] = useState(false);
+  const ap = useApi(`/businesses/${b.id}/autopilot`); // keywords the weekly Autopilot suggests: rows of the table below, waiting for you
   const [selected, setSelected] = useState([]);
+  const discRows = React.useRef({}); // the rows each table shows now (after its search and filters), by table
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
 
@@ -86,7 +89,7 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const find = (extra) => run('find', async () => {
     const list = extra && !activeSeeds.includes(extra) ? [extra, ...activeSeeds] : activeSeeds;
     const r = await api(`/businesses/${b.id}/keywords/discover`, { method: 'POST', body: { seeds: list, areas: activeAreas } });
-    setResult(r); setSelected([]); setGroup('all');
+    setResult(r); setSelected([]);
   });
   // Run once the starting point is ready, so the page opens with results. A keyword typed in the shared search box becomes one of the starting words.
   useEffect(() => {
@@ -113,196 +116,133 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
 
   const trackedSet = new Set(tracked.map(k => k.keyword));
   const all = result?.keywords || [];
-  const shown = all.filter(k => (group === 'all' || k.group === group) && (!onlyGaps || k.coverage?.status === 'gap') && (!q || k.keyword.includes(q.toLowerCase())));
   const live = result?.data_source?.includes('keyword_planner');
-  const gaps = all.filter(k => k.coverage?.status === 'gap' && ['service', 'local'].includes(k.group)).slice(0, 8);
-  const questions = all.filter(k => k.group === 'question').slice(0, 8);
-
-  const track = (rows) => run('track', async () => {
+  const track = (all_rows) => run('track', async () => {
+    const fromAp = all_rows.filter(k => k.apId);
+    const rows = all_rows.filter(k => !k.apId);
+    for (const k of fromAp) await api(`/businesses/${b.id}/autopilot/items/${k.apId}/approve`, { method: 'POST', body: {} });
+    if (fromAp.length) { ap.reload(true); onTracked(fromAp.map(k => k.keyword), fromAp.length); }
+    if (!rows.length) { setSelected([]); return; }
     const body = rows.map(k => ({ keyword: k.keyword, volume: k.volume ?? null, difficulty: k.difficulty ?? null, cpc: k.cpc ?? null, intent: k.intent, target_url: k.coverage?.page ? pathOf(k.coverage.page) : null, priority: k.group === 'near_me' || k.group === 'local' ? 'High' : 'Medium' }));
     const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body });
     setSelected([]); onTracked(rows.map(k => k.keyword), r.added);
     setResult(res => res && { ...res, keywords: res.keywords.map(k => (rows.some(x => x.keyword === k.keyword) ? { ...k, tracked: true } : k)) });
   });
-  const exportCsv = () => {
-    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [['Keyword', 'Group', 'Intent', 'Suggest strength (1-5)', 'Volume', 'Trend %', 'Website', 'Page'], ...shown.map(k => [k.keyword, GROUPS[k.group]?.label, k.intent, k.stars, k.volume, k.trend, k.coverage?.status || 'not audited', k.coverage?.page || ''])].map(l => l.map(esc).join(','));
-    const href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
-    Object.assign(document.createElement('a'), { href, download: `keywords-${b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.csv` }).click();
-    setTimeout(() => URL.revokeObjectURL(href), 1000);
-  };
-
+  const reject = (k) => run('reject', async () => { await api(`/businesses/${b.id}/autopilot/items/${k.apId}/reject`, { method: 'POST', body: {} }); setSelected(s => s.filter(x => x !== k.keyword)); ap.reload(true); });
   if (ctx.error) return <ErrorNote>{ctx.error.message}</ErrorNote>;
   if (!c || !seeds) return <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Reading {b.name}'s profile and audits…</div></Card>;
 
-  const selectable = shown.filter(k => !k.tracked && !trackedSet.has(k.keyword));
-  return (
-    <div className="space-y-5">
-      {/* Step 1 is competitor research: the keywords below start from it. */}
-      {c.competitor_research ? (
-        <div className="rounded bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-4 py-3 flex flex-wrap items-center gap-3 text-13 text-emerald-900">
-          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-          <span className="flex-1 min-w-[220px]"><b>Built on your competitor research</b> ({fmtDateTime(c.competitor_research.analysed_at)}): {c.competitor_research.ideas} keyword ideas from {c.competitor_research.competitors} competitors are mixed in, marked "From competitors".</span>
-          <Link to="/competitor-finder" className="text-12.5 font-semibold text-emerald-800 hover:underline">Open research</Link>
-        </div>
-      ) : (
-        <div className="rounded bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 flex flex-wrap items-center gap-3 text-13 text-amber-900">
-          <AlertTriangle size={16} className="text-amber-600 shrink-0" />
-          <span className="flex-1 min-w-[220px]"><b>Do competitor research first.</b> It shows which searches your rivals win on Google, so keyword discovery can start from what already works. You can still search without it.</span>
-          <Link to="/competitor-finder" className="h-9 px-3.5 rounded inline-flex items-center gap-1.5 text-13 font-semibold bg-amber-500 text-white hover:bg-amber-600"><ArrowLeft size={14} /> Step 1: competitor research</Link>
-        </div>
-      )}
+  const waiting = (ap.data?.inbox || []).filter(i => i.kind === 'keyword_add');
+  const waitBy = Object.fromEntries(waiting.map(i => [i.keyword, i]));
+  const have = new Set(all.map(k => k.keyword));
+  const suggestedRows = waiting.filter(i => !have.has(i.keyword)).map(i => ({ keyword: i.keyword, group: 'suggested', intent: null, stars: null, volume: null, difficulty: null, coverage: null, reason: i.reason, apId: i.id }));
+  const marked = all.map(k => (waitBy[k.keyword] ? { ...k, reason: waitBy[k.keyword].reason, apId: waitBy[k.keyword].id } : k));
+  const searches = [...suggestedRows, ...marked.filter(k => k.group !== 'question')];
+  const questions = marked.filter(k => k.group === 'question');
+  const isTracked = (k) => k.tracked || trackedSet.has(k.keyword);
+  const pickCol = (id, list) => ({ id: 'pick', label: 'Select', csv: false, className: 'pl-4 pr-1 py-2 w-8', thClass: 'pl-4 pr-1 py-2.5 w-8',
+    header: (() => { const sel = list.filter(k => !isTracked(k)); const shownNow = (discRows.current[id] || sel).filter(k => !isTracked(k)); return <input type="checkbox" className="accent-indigo-600" aria-label="Select all shown" checked={shownNow.length > 0 && shownNow.every(k => selected.includes(k.keyword))} onChange={e => setSelected(s => (e.target.checked ? [...new Set([...s, ...shownNow.map(k => k.keyword)])] : s.filter(x => !shownNow.some(k => k.keyword === x))))} />; })(),
+    cell: k => <input type="checkbox" className="accent-indigo-600" disabled={isTracked(k)} checked={selected.includes(k.keyword)} onChange={() => setSelected(s => (s.includes(k.keyword) ? s.filter(x => x !== k.keyword) : [...s, k.keyword]))} aria-label={`Select ${k.keyword}`} /> });
+  const keywordCol = (tag) => ({ id: 'keyword', header: tag ? 'Question' : 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
+    cell: k => { const G = GROUPS[k.group]; return <>
+      <div className="text-slate-900" title={k.from_competitors || undefined}>{k.keyword}</div>{k.from_competitors && <div className="text-11 text-rose-700">{k.from_competitors}</div>}
+      {k.reason && <div className="text-11.5 text-slate-500 mt-0.5">{k.reason}</div>}
+      {!tag && <div className="mt-0.5 flex items-center gap-1.5"><span className={`text-10.5 font-semibold px-1.5 py-px rounded ring-1 ring-inset inline-flex items-center gap-1 ${G.tone}`}><G.icon size={10} /> {G.label}</span><span className="text-10.5 text-slate-400">{k.intent}</span></div>}</>; } });
+  const demandCol = { id: 'demand', header: live ? 'Searches / mo' : 'Demand', first: 'desc', value: k => (live && k.volume != null ? k.volume : k.stars ?? null), className: 'px-2 py-2 whitespace-nowrap',
+    cell: k => (live && k.volume != null ? <span className="tabular-nums text-slate-900">{fmt(k.volume)}{k.trend != null && k.trend !== 0 && <span className={`ml-1.5 text-11 font-semibold inline-flex items-center ${k.trend > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{k.trend > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(k.trend)}%</span>}</span> : <Stars n={k.stars} />) };
+  const difficultyCol = { id: 'difficulty', header: 'Difficulty', value: k => k.difficulty ?? null, className: 'px-2 py-2 whitespace-nowrap', cell: k => { const [dl, dt] = kd(k.difficulty); return k.difficulty != null ? <Badge tone={dt}>{dl} · {k.difficulty}</Badge> : '—'; } };
+  const websiteCol = { id: 'website', header: 'Your website', value: k => k.coverage?.status || null, className: 'px-2 py-2', cell: k => <Coverage c={k.coverage} /> };
+  const statusCol = { id: 'status', header: 'Status', right: true, value: k => (isTracked(k) ? (k.rank ? `Rank ${k.rank}` : 'Tracked') : 'Not tracked'), className: 'px-2 pr-4 py-2 text-right whitespace-nowrap',
+    cell: k => (isTracked(k) ? <span className="text-11.5 text-emerald-700 font-medium">{k.rank ? `Rank ${k.rank}` : 'Tracked'}</span> : <span className="inline-flex items-center gap-3"><button type="button" onClick={() => track([k])} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>{k.apId && <button type="button" onClick={() => reject(k)} title="Not for me: do not suggest it again" className="text-11.5 font-semibold text-slate-500 hover:text-red-600 hover:underline cursor-pointer">Reject</button>}</span>) };
+  const statusFilter = { id: 'status', label: 'Status', options: [['new', 'Not tracked yet'], ['tracked', 'Tracked']], test: (k, v) => (isTracked(k) ? v === 'tracked' : v === 'new') };
+  const siteFilter = result?.website_checked ? [{ id: 'site', label: 'Website', options: [['gap', 'Content gaps'], ['covered', 'Covered']], test: (k, v) => (v === 'gap' ? k.coverage?.status === 'gap' : Boolean(k.coverage?.status) && k.coverage.status !== 'gap') }] : [];
 
-      {/* Starting point */}
-      <Card title="What we search from" subtitle={`Built from ${b.name}'s profile and website audit. Switch items on or off, then find keywords.`}
-        action={<Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={() => find()}>Find keywords</Button>}>
-        <div className="space-y-4">
-          <div>
-            <div className="text-11 font-semibold   text-slate-500 mb-1.5">Services & category <span className="normal-case font-normal tracking-normal">({activeSeeds.length}/6 on)</span></div>
+  return (
+    <div className="space-y-3">
+      {/* The weekly suggestions' switch: one slim bar at the top; the suggestions themselves are rows of the table below */}
+      <AutopilotPanel key={b.id} bid={b.id} feature="keywords" hideItems onChanged={() => ap.reload(true)} />
+      {/* What we search from, the one button, and where the keywords come from: one card, three lines */}
+      <Card pad={false}>
+        <div className="px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div className="flex-1 min-w-[300px] grid grid-cols-[4.75rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2.5">
+            <div className="pt-1 text-11.5 font-semibold uppercase tracking-wide text-slate-500" title="Built from the profile and the website audit. Tick the ones to search from (up to 6)">Services
+              <span className={`block font-normal normal-case tracking-normal ${activeSeeds.length ? 'text-slate-400' : 'text-amber-700 font-medium'}`}>{activeSeeds.length} of 6 chosen</span>
+              <span className="block font-normal normal-case tracking-normal mt-0.5"><button type="button" onClick={() => setSeeds(l => l.map((x, i) => ({ ...x, on: i < 6 })))} className="text-indigo-700 hover:underline cursor-pointer">First 6</button>{activeSeeds.length > 0 && <> · <button type="button" onClick={() => setSeeds(l => l.map(x => ({ ...x, on: false })))} className="text-slate-500 hover:underline cursor-pointer">Clear</button></>}</span></div>
             <div className="flex flex-wrap items-center gap-1.5">
               {seeds.map(s => <Chip key={s.text} on={s.on} onClick={() => (s.on || activeSeeds.length < 6) && toggle(setSeeds, s.text)} onRemove={c.seeds.includes(s.text) ? null : () => setSeeds(list => list.filter(x => x.text !== s.text))}>{s.text}</Chip>)}
-              <span className="inline-flex items-center gap-1">
-                <input className="h-7 w-44 px-2.5 text-12 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" placeholder="Add a service…" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => e.key === 'Enter' && addSeed()} />
-                <button type="button" onClick={addSeed} className="h-7 w-7 rounded-lg ring-1 ring-inset ring-slate-200 text-slate-500 hover:text-slate-900 flex items-center justify-center cursor-pointer" aria-label="Add service"><Plus size={13} /></button>
-              </span>
+              {adding
+                ? <form onSubmit={e => { e.preventDefault(); addSeed(); setAdding(false); }} className="inline-flex items-center gap-1">
+                  <input autoFocus className="h-8 w-44 px-2.5 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-indigo-300 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="A service you offer" aria-label="Add a service" value={custom} onChange={e => setCustom(e.target.value)} onBlur={() => { if (!custom.trim()) setAdding(false); }} onKeyDown={e => e.key === 'Escape' && (setCustom(''), setAdding(false))} />
+                  <Button size="sm" type="submit" disabled={!custom.trim()}>Add</Button>
+                </form>
+                : <button type="button" onClick={() => setAdding(true)} className="h-8 px-2.5 rounded-lg ring-1 ring-inset ring-dashed ring-slate-300 text-12 font-medium text-slate-500 hover:text-slate-900 hover:ring-slate-400 inline-flex items-center gap-1 cursor-pointer"><Plus size={12} />Add a service</button>}
             </div>
-            {!c.seeds.length && <div className="mt-1.5 text-12 text-amber-700">No category or services on the profile yet. Add one above, or fill them in GBP Manager.</div>}
-          </div>
-          <div>
-            <div className="text-11 font-semibold   text-slate-500 mb-1.5">Area & nearby localities</div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="pt-1 text-11.5 font-semibold uppercase tracking-wide text-slate-500" title="Where people search from: tick the places to include">Areas<span className="block font-normal normal-case tracking-normal text-slate-400">{activeAreas.length} chosen</span></div>
+            <div className="flex flex-wrap items-center gap-1.5">
               {areas.map((a, i) => <Chip key={a.text} on={a.on} onClick={() => toggle(setAreas, a.text)} title={i < c.areas.length ? 'From the business profile' : 'Nearby, from OpenStreetMap'}>{i < c.areas.length && <MapPin size={11} className="inline -mt-0.5 mr-1" />}{a.text}</Chip>)}
+              {!c.business.has_location && <span className="text-12 text-slate-500">Set the map pin in Business Onboarding to add nearby localities.</span>}
             </div>
-            {!c.business.has_location && <div className="mt-1.5 text-12 text-slate-500">Set the map pin in Business Onboarding to add nearby localities automatically.</div>}
+            {!c.seeds.length && <div className="col-span-2 text-12 text-amber-700">No category or services on the profile yet. Add one above, or fill them in GBP Manager.</div>}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="rounded bg-slate-50 ring-1 ring-inset ring-slate-200 px-3.5 py-3">
-              <div className="text-12 font-semibold text-slate-800 flex items-center gap-1.5"><Globe size={13} /> Website audit</div>
-              {c.website ? (
-                <>
-                  <div className="text-12 text-slate-600 mt-0.5">Score {c.website.score}/100 · {c.website.pages} pages · {fmtDateTime(c.website.finished_at)}. Each keyword is checked against these pages.</div>
-                  {c.website.topics.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{c.website.topics.map(t => <span key={t} className="text-11 px-1.5 py-0.5 rounded bg-white ring-1 ring-inset ring-slate-200 text-slate-600">{t}</span>)}</div>}
-                </>
-              ) : <div className="text-12 text-slate-600 mt-0.5">Not audited yet, so content gaps can't be checked. <Link to="/website-audit" className="font-medium text-indigo-700 hover:underline">Audit the website</Link></div>}
-            </div>
-            <div className="rounded bg-slate-50 ring-1 ring-inset ring-slate-200 px-3.5 py-3">
-              <div className="text-12 font-semibold text-slate-800 flex items-center gap-1.5"><Users size={13} /> Competitors</div>
-              {c.competitors.length ? <div className="mt-1.5 flex flex-wrap gap-1">{c.competitors.map(n => <span key={n} className="text-11 px-1.5 py-0.5 rounded bg-white ring-1 ring-inset ring-slate-200 text-slate-600">{n}</span>)}</div>
-                : <div className="text-12 text-slate-600 mt-0.5">None yet. <Link to="/competitor-finder" className="font-medium text-indigo-700 hover:underline">Run competitor research</Link> to find who outranks you.</div>}
-            </div>
+          <div className="flex flex-col items-stretch gap-1.5 sm:ml-auto">
+            <Button variant="primary" icon={Search} busy={busy === 'find'} disabled={!activeSeeds.length} onClick={() => find()}>{result ? 'Find again' : 'Find keywords'}</Button>
+            <span className={`text-11.5 text-center ${activeSeeds.length ? 'text-slate-500' : 'text-amber-700 font-medium'}`}>{activeSeeds.length ? `${activeSeeds.length} service${activeSeeds.length === 1 ? '' : 's'} · ${activeAreas.length} area${activeAreas.length === 1 ? '' : 's'}` : 'Choose a service first'}</span>
           </div>
         </div>
-        <ErrorNote>{error}</ErrorNote>
+        <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/60 rounded-b-xl flex flex-wrap items-center gap-x-6 gap-y-1 text-12 text-slate-600">
+          {c.competitor_research
+            ? <span className="inline-flex items-center gap-1.5 text-emerald-800"><CheckCircle2 size={13} className="text-emerald-600" />Built on competitor research ({c.competitor_research.ideas} ideas from {c.competitor_research.competitors} competitors, marked "From competitors") <Link to="/competitor-finder" className="font-semibold hover:underline">Open</Link></span>
+            : <span className="inline-flex items-center gap-1.5 text-amber-800"><AlertTriangle size={13} className="text-amber-600" />No competitor research yet: it shows what your rivals win. <Link to="/competitor-finder" className="font-semibold hover:underline">Do it first</Link></span>}
+          <span className="inline-flex items-center gap-1.5"><Globe size={13} className="text-slate-400" />{c.website ? <>Website audit {c.website.score}/100, {c.website.pages} pages</> : <>Website not audited, so gaps can't be checked. <Link to="/website-audit" className="font-semibold text-indigo-700 hover:underline">Audit it</Link></>}</span>
+          {c.competitors.length > 0 && <span className="inline-flex items-center gap-1.5"><Users size={13} className="text-slate-400" />{c.competitors.slice(0, 3).join(', ')}{c.competitors.length > 3 ? ` +${c.competitors.length - 3}` : ''}</span>}
+        </div>
       </Card>
+      <ErrorNote>{error}</ErrorNote>
 
       {busy === 'find' && !result && <Card><div className="py-12 flex items-center justify-center gap-2 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" /> Asking Google what people search for…</div></Card>}
 
       {result && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[[Search, 'Keywords found', all.length, `from ${result.queries} Google lookups`],
-            [MapPin, 'Local & near me', (result.counts.local || 0) + (result.counts.near_me || 0), 'ready-to-visit searches'],
-            [HelpCircle, 'Questions', result.counts.question || 0, 'for FAQs and blog posts'],
-            [AlertTriangle, 'Content gaps', result.website_checked ? result.gaps : '—', result.website_checked ? 'no page targets them yet' : 'audit the website to check']
-            ].map(([I, l, v, h]) => (
-              <div key={l} className="ai-glass-card rounded px-4 py-3.5">
-                <div className="text-12 font-semibold text-slate-500 flex items-center gap-1.5"><I size={13} /> {l}</div>
-                <div className="text-24 font-bold text-slate-900 tabular-nums mt-0.5">{v}</div>
-                <div className="text-11.5 text-slate-500">{h}</div>
-              </div>
-            ))}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-1 text-13 text-slate-500">
+            <span><b className="text-slate-900 tabular-nums">{all.length}</b> keywords <span className="text-slate-400">from {result.queries} Google lookups</span></span>
+            <span><b className="text-slate-900 tabular-nums">{(result.counts.local || 0) + (result.counts.near_me || 0)}</b> local and near me</span>
+            <span><b className="text-slate-900 tabular-nums">{result.counts.question || 0}</b> questions</span>
+            <span><b className={`tabular-nums ${result.website_checked && result.gaps ? 'text-red-600' : 'text-slate-900'}`}>{result.website_checked ? result.gaps : '—'}</b> content gaps</span>
+            {result.trending_today.length > 0 && <span className="inline-flex flex-wrap items-center gap-1.5" title="Today's trending searches in India that mention your topics"><Flame size={13} className="text-orange-500" />Trending: {result.trending_today.slice(0, 5).map(x => <span key={x.keyword} className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-800 text-12">{x.keyword}</span>)}</span>}
           </div>
-
-          {result.trending_today.length > 0 && (
-            <Card title="In Google Trends today" subtitle="Today's trending searches in India that mention your topics">
-              <div className="flex flex-wrap gap-2">{result.trending_today.map(t => <span key={t.keyword} className="inline-flex items-center gap-1.5 text-12.5 px-2.5 py-1 rounded-lg bg-orange-50 ring-1 ring-inset ring-orange-200 text-orange-800"><Flame size={12} /> {t.keyword}{t.traffic && <span className="text-orange-600/70">{t.traffic}</span>}</span>)}</div>
-            </Card>
-          )}
-
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-            <div className="xl:col-span-2 min-w-0">
-              <Card pad={false} title={`Keywords (${shown.length})`}
-                subtitle={live ? 'Real searches from Google Autocomplete, with monthly volume and 12-month trend from the Google Ads Keyword Planner.' : 'Real searches from Google Autocomplete. Stars show how strongly Google suggests each one. Monthly volumes need the Google Ads Keyword Planner API.'}
-                action={<div className="flex gap-2"><Button size="sm" icon={Download} onClick={exportCsv} disabled={!shown.length}>CSV</Button><Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(all.filter(k => selected.includes(k.keyword)))}>Track {selected.length || ''}</Button></div>}>
-                <div className="px-6 py-3 border-b border-slate-100 space-y-2.5">
-                  <div className="flex flex-wrap gap-1.5">
-                    <button type="button" onClick={() => setGroup('all')} className={`h-8 px-3 rounded-lg text-12 font-semibold ring-1 ring-inset cursor-pointer ${group === 'all' ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>All {all.length}</button>
-                    {ORDER.filter(g => result.counts[g]).map(g => {
-                      const G = GROUPS[g]; return (
-                        <button key={g} type="button" onClick={() => setGroup(g)} title={G.hint} className={`h-8 px-3 rounded-lg text-12 font-semibold ring-1 ring-inset cursor-pointer inline-flex items-center gap-1.5 ${group === g ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}><G.icon size={12} /> {G.label} <span className="opacity-60">{result.counts[g]}</span></button>
-                      );
-                    })}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <label className="relative flex-1 min-w-[180px] max-w-xs"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input className="w-full h-8 pl-8 pr-3 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" placeholder="Filter keywords" value={q} onChange={e => setQ(e.target.value)} /></label>
-                    {result.website_checked && <label className="text-12 text-slate-700 flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="accent-indigo-600" checked={onlyGaps} onChange={e => setOnlyGaps(e.target.checked)} /> Only content gaps</label>}
-                    {group !== 'all' && <span className="text-11.5 text-slate-500">{GROUPS[group].hint}</span>}
-                  </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-13 min-w-[640px]">
-                    <thead className="bg-slate-50 text-11   text-slate-500">
-                      <tr>
-                        <th className="pl-6 pr-2 py-2.5 w-8"><input type="checkbox" className="accent-indigo-600" aria-label="Select all" checked={selectable.length > 0 && selectable.every(k => selected.includes(k.keyword))} onChange={e => setSelected(e.target.checked ? selectable.map(k => k.keyword) : [])} /></th>
-                        <th className="px-2 py-2.5 text-left font-semibold">Keyword</th>
-                        <th className="px-2 py-2.5 text-left font-semibold">{live ? 'Searches / mo' : 'Demand'}</th>
-                        {live && <th className="px-2 py-2.5 text-left font-semibold">Difficulty</th>}
-                        <th className="px-2 py-2.5 text-left font-semibold">Your website</th>
-                        <th className="px-2 pr-6 py-2.5 text-right font-semibold">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {shown.slice(0, 300).map(k => {
-                        const G = GROUPS[k.group];
-                        const isTracked = k.tracked || trackedSet.has(k.keyword);
-                        const [dl, dt] = kd(k.difficulty);
-                        return (
-                          <tr key={k.keyword} className={selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}>
-                            <td className="pl-6 pr-2 py-2"><input type="checkbox" className="accent-indigo-600" disabled={isTracked} checked={selected.includes(k.keyword)} onChange={() => setSelected(s => (s.includes(k.keyword) ? s.filter(x => x !== k.keyword) : [...s, k.keyword]))} aria-label={`Select ${k.keyword}`} /></td>
-                            <td className="px-2 py-2">
-                              <div className="text-slate-900" title={k.from_competitors || undefined}>{k.keyword}</div>{k.from_competitors && <div className="text-11 text-rose-700">{k.from_competitors}</div>}
-                              <div className="mt-0.5 flex items-center gap-1.5"><span className={`text-10.5 font-semibold px-1.5 py-px rounded ring-1 ring-inset inline-flex items-center gap-1 ${G.tone}`}><G.icon size={10} /> {G.label}</span><span className="text-10.5 text-slate-400">{k.intent}</span></div>
-                            </td>
-                            <td className="px-2 py-2">
-                              {live && k.volume != null ? (
-                                <span className="tabular-nums text-slate-900">{fmt(k.volume)}{k.trend != null && k.trend !== 0 && <span className={`ml-1.5 text-11 font-semibold inline-flex items-center ${k.trend > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{k.trend > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(k.trend)}%</span>}</span>
-                              ) : <Stars n={k.stars} />}
-                            </td>
-                            {live && <td className="px-2 py-2">{k.difficulty != null ? <Badge tone={dt}>{dl} · {k.difficulty}</Badge> : '—'}</td>}
-                            <td className="px-2 py-2"><Coverage c={k.coverage} /></td>
-                            <td className="px-2 pr-6 py-2 text-right whitespace-nowrap">
-                              {isTracked ? <span className="text-11.5 text-emerald-700 font-medium">{k.rank ? `Rank ${k.rank}` : 'Tracked'}</span>
-                                : <button type="button" onClick={() => track([k])} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {!shown.length && <div className="py-10 text-center text-13 text-slate-500">{all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}</div>}
-                </div>
-              </Card>
-            </div>
-
-            <div className="space-y-5 min-w-0">
-              {result.website_checked && (
-                <Card title="Pages to create" subtitle="Searches with no page on the site yet">
-                  {gaps.length ? (
-                    <ul className="space-y-2">
-                      {gaps.map(k => <li key={k.keyword} className="flex items-start gap-2 text-12.5"><AlertTriangle size={13} className="text-red-500 mt-0.5 shrink-0" /><span className="flex-1 text-slate-800">{k.keyword}</span><Stars n={k.stars} /></li>)}
-                    </ul>
-                  ) : <div className="text-12.5 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> The site covers the main service and local searches.</div>}
-                  {gaps.length > 0 && <Link to="/ai-content-generation/blog" className="mt-3 inline-flex items-center gap-1 text-12 font-semibold text-indigo-700 hover:underline">Write an article for these searches <ExternalLink size={11} /></Link>}
-                </Card>
-              )}
-              {questions.length > 0 && (
-                <Card title="Questions customers ask" subtitle="Answer them in FAQs, Google Q&A and blog posts">
-                  <ul className="space-y-2">{questions.map(k => <li key={k.keyword} className="flex items-start gap-2 text-12.5"><HelpCircle size={13} className="text-violet-500 mt-0.5 shrink-0" /><span className="flex-1 text-slate-800">{k.keyword}?</span></li>)}</ul>
-                  <Link to="/ai-content-generation" className="mt-3 inline-flex items-center gap-1 text-12 font-semibold text-indigo-700 hover:underline">Write answers in AI Content Studio <ExternalLink size={11} /></Link>
-                </Card>
-              )}
-            </div>
-          </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+        <Card pad={false} title={`Search keywords (${searches.length})`}
+          action={<Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(all.filter(k => selected.includes(k.keyword) && !isTracked(k)))}>Track {selected.length || ''}</Button>}>
+          <DataTable bare rows={searches} rowKey={k => k.keyword} pageSize={15} exportName="keyword-ideas" label="keywords" searchPlaceholder="Search keywords" minWidth={520} sizes={[10, 15, 25, 50]}
+            onState={st => { discRows.current.main = st.rows; }}
+            rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
+            empty={all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}
+            filters={[
+              { id: 'group', label: 'Type', options: [...(suggestedRows.length ? [['suggested', `Suggested (${suggestedRows.length})`]] : []), ...ORDER.filter(g => g !== 'question' && result.counts[g]).map(g => [g, `${GROUPS[g].label} (${result.counts[g]})`])], test: (k, v) => k.group === v },
+              ...siteFilter,
+              { id: 'intent', label: 'Intent', options: [...new Set(searches.map(k => k.intent).filter(Boolean))].sort().map(x => [x, x]), test: (k, v) => k.intent === v },
+              ...(live ? [{ id: 'kd', label: 'Difficulty', options: [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']], test: (k, v) => k.difficulty != null && kd(k.difficulty)[0].toLowerCase() === v }] : []),
+              statusFilter
+            ]}
+            columns={[pickCol('main', searches), keywordCol(false), demandCol, ...(live ? [difficultyCol] : []), { ...websiteCol, hide: true }, statusCol]} />
+        </Card>
+        <Card pad={false} title={`Questions to answer (${questions.length})`}
+          action={<span className="text-12 text-slate-500 hidden sm:inline">People ask these before they buy: answer them on your site</span>}>
+          <DataTable bare rows={questions} rowKey={k => k.keyword} pageSize={15} exportName="keyword-questions" label="questions" searchPlaceholder="Search questions" minWidth={520} sizes={[10, 15, 25, 50]}
+            onState={st => { discRows.current.q = st.rows; }}
+            rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
+            empty="Google had no questions for these services."
+            filters={[...siteFilter, statusFilter]}
+            columns={[
+              pickCol('q', questions),
+              { ...keywordCol(true), cell: k => <><div className="text-slate-900 font-medium">{k.keyword}?</div><div className="text-10.5 text-slate-400">{k.intent}</div></> },
+              { ...websiteCol, header: 'Answered on your site?', cell: k => (k.coverage?.status === 'gap' ? <span className="text-12 font-semibold text-red-600">Not answered yet</span> : k.coverage?.status ? <Coverage c={k.coverage} /> : <span className="text-12 text-slate-400">Not checked</span>) },
+              { id: 'answer', header: 'Answer it in', className: 'px-2 py-2',
+                cell: k => <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-12"><span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800">FAQ</span><span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-800">Google Q&amp;A</span><Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`} className="font-semibold text-indigo-700 hover:underline">Write a post</Link></span> },
+              statusCol
+            ]} />
+        </Card>
+      </div>
         </>
       )}
       {toastNode}
@@ -347,6 +287,7 @@ function Sparkline({ points }) {
   return <svg width={w} height={h} className="block" aria-hidden="true"><path d={d} fill="none" stroke={up ? '#10b981' : '#f43f5e'} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" /></svg>;
 }
 
+const plannerValue = (r, key) => (key === 'keyword' ? r.keyword : r[key] ?? null);
 const PLANNER_COLS = [
   { id: 'keyword', label: 'Keyword', align: 'left' },
   { id: 'avg_monthly_searches', label: 'Searches / mo', align: 'right' },
@@ -367,7 +308,6 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
   const [focus, setFocus] = useState(null);
   const [q, setQ] = useState('');
   const [comp, setComp] = useState('all');
-  const [sort, setSort] = useState({ key: 'avg_monthly_searches', dir: 'desc' });
   const [selected, setSelected] = useState([]);
   const [busy, error, run, setError] = useAction();
   const [toast, toastNode] = useToast();
@@ -394,26 +334,21 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
     searchedN.current = seedSearch.n;
     search(seedSearch.text);
   }, [seedSearch?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { // one click on the source shows its numbers: it opens with the business's own first service
+    if (!seedSearch?.n) search((b.services || []).map(x => String(x?.name || x || '').trim()).filter(Boolean)[0] || b.category || b.name || '');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const trackedSet = new Set(tracked.map(k => k.keyword));
   const rows = data?.keywords || [];
   const seed = data?.seed_keyword?.toLowerCase();
   const seedRow = rows.find(r => r.keyword.toLowerCase() === seed);
   const focusRow = rows.find(r => r.keyword === focus) || seedRow || rows[0];
 
-  const shown = useMemo(() => {
+  const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const list = rows.filter(r => (comp === 'all' || (COMPETITION[r.competition] ? r.competition : 'UNSPECIFIED') === comp) && (!needle || r.keyword.toLowerCase().includes(needle)));
-    const { key, dir } = sort;
-    const m = dir === 'asc' ? 1 : -1;
-    return [...list].sort((a, c) => {
-      const x = a[key], y = c[key];
-      if (key === 'keyword') return m * String(x).localeCompare(String(y));
-      if (x == null && y == null) return 0;
-      if (x == null) return 1;
-      if (y == null) return -1;
-      return m * (x - y);
-    });
-  }, [rows, q, comp, sort]);
+    return rows.filter(r => (comp === 'all' || (COMPETITION[r.competition] ? r.competition : 'UNSPECIFIED') === comp) && (!needle || r.keyword.toLowerCase().includes(needle)));
+  }, [rows, q, comp]);
+  const { sorted: shown, sort, onSort } = useSorted(filtered, plannerValue, { key: 'avg_monthly_searches', dir: 'desc' });
+  const pager = usePager(shown, { size: 25, resetKey: `${q}|${comp}|${rows.length}` });
 
   const totalVolume = rows.reduce((s, r) => s + (r.avg_monthly_searches || 0), 0);
   const bidRows = rows.filter(r => r.high_top_of_page_bid > 0);
@@ -427,7 +362,6 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
   const peak = chartData.reduce((p, m) => (!p || m.searches > p.searches ? m : p), null);
   const low = chartData.reduce((p, m) => (!p || m.searches < p.searches ? m : p), null);
 
-  const toggleSort = (key) => setSort(s => (s.key === key ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: key === 'keyword' ? 'asc' : 'desc' }));
   const selectable = shown.filter(r => !trackedSet.has(r.keyword));
 
   const track = (list) => run('track', async () => {
@@ -436,14 +370,9 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
     setSelected([]); onTracked(list.map(r => r.keyword), res?.added ?? list.length);
   });
 
-  const exportCsv = () => {
-    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [['Keyword', 'Avg monthly searches', 'Competition', 'Competition index', 'Top-of-page bid (low)', 'Top-of-page bid (high)', '3-month change %', 'YoY change %'],
-      ...shown.map(r => [r.keyword, r.avg_monthly_searches, compOf(r.competition).label, r.competition_index, r.low_top_of_page_bid, r.high_top_of_page_bid, r.three_month_change, r.yoy_change])].map(l => l.map(esc).join(','));
-    const href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
-    Object.assign(document.createElement('a'), { href, download: `keyword-planner-${(data?.seed_keyword || 'ideas').replace(/[^a-z0-9]+/gi, '-')}.csv` }).click();
-    setTimeout(() => URL.revokeObjectURL(href), 1000);
-  };
+  const exportCsv = () => downloadCsv(`keyword-planner-${(data?.seed_keyword || 'ideas').replace(/[^a-z0-9]+/gi, '-')}`,
+    ['Keyword', 'Avg monthly searches', 'Competition', 'Competition index', 'Top-of-page bid (low)', 'Top-of-page bid (high)', '3-month change %', 'YoY change %'],
+    shown.map(r => [r.keyword, r.avg_monthly_searches, compOf(r.competition).label, r.competition_index, r.low_top_of_page_bid, r.high_top_of_page_bid, r.three_month_change, r.yoy_change]));
 
   return (
     <div className="space-y-5">
@@ -578,7 +507,7 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
           </div>
 
           <Card pad={false} title={`Keyword ideas (${shown.length})`} subtitle="Click a keyword to chart it. Click a column header to sort."
-            action={<div className="flex gap-2"><Button size="sm" icon={Download} onClick={exportCsv} disabled={!shown.length}>CSV</Button><Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(rows.filter(r => selected.includes(r.keyword)))}>Track {selected.length || ''}</Button></div>}>
+            action={<div className="flex gap-2"><Button size="sm" icon={Download} onClick={exportCsv} disabled={!shown.length} title="Download all the keyword ideas shown (with the search and filters applied) as a CSV file">Export CSV</Button><Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(rows.filter(r => selected.includes(r.keyword)))}>Track {selected.length || ''}</Button></div>}>
             <div className="px-6 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
               <label className="relative flex-1 min-w-[180px] max-w-xs"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input className="w-full h-8 pl-8 pr-3 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400" placeholder="Filter keywords" value={q} onChange={e => setQ(e.target.value)} /></label>
               <div className="flex flex-wrap gap-1.5">
@@ -594,20 +523,14 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
                 <thead className="bg-slate-50 text-11 text-slate-500">
                   <tr>
                     <th className="pl-6 pr-2 py-2.5 w-8"><input type="checkbox" className="accent-indigo-600" aria-label="Select all" checked={selectable.length > 0 && selectable.every(r => selected.includes(r.keyword))} onChange={e => setSelected(e.target.checked ? selectable.map(r => r.keyword) : [])} /></th>
-                    {PLANNER_COLS.filter(col => col.id !== 'trend' || data.include_monthly).map(col => (
-                      <th key={col.id} className={`px-2 py-2.5 font-semibold whitespace-nowrap text-${col.align}`}>
-                        {col.sortable === false ? col.label : (
-                          <button type="button" onClick={() => toggleSort(col.id)} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-900 ${sort.key === col.id ? 'text-slate-900' : ''}`}>
-                            {col.label}{sort.key === col.id && <span aria-hidden="true">{sort.dir === 'desc' ? '↓' : '↑'}</span>}
-                          </button>
-                        )}
-                      </th>
-                    ))}
+                    {PLANNER_COLS.filter(col => col.id !== 'trend' || data.include_monthly).map(col => (col.sortable === false
+                      ? <th key={col.id} className={`px-2 py-2.5 font-semibold whitespace-nowrap text-${col.align}`}>{col.label}</th>
+                      : <SortTh key={col.id} id={col.id} sort={sort} onSort={onSort} right={col.align === 'right'} first={col.id === 'keyword' ? 'asc' : 'desc'} className="px-2 py-2.5 whitespace-nowrap">{col.label}</SortTh>))}
                     <th className="px-2 pr-6 py-2.5 text-right font-semibold">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {shown.map(r => {
+                  {pager.rows.map(r => {
                     const isTracked = trackedSet.has(r.keyword);
                     const c = compOf(r.competition);
                     const isFocus = focusRow?.keyword === r.keyword;
@@ -641,6 +564,7 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
               </table>
               {!shown.length && <div className="py-10 text-center text-13 text-slate-500">No keywords match these filters.</div>}
             </div>
+            <Pager p={pager} label="keywords" />
           </Card>
         </>
       )}
@@ -756,7 +680,11 @@ function Tracked({ b, kw }) {
   const location = useLocation();
   const fresh = useMemo(() => new Set((location.state?.added || []).map(x => String(x).toLowerCase())), [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const [useIds, setUseIds] = useState(null); // the keywords the "Where to use" window is open for
-  const [view, setView] = useState('all');
+  const NO_FILTER = { role: '', page: '', google: '', kd: '', intent: '', status: '', topic: '' };
+  const [hidden, setHidden] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('kw-hidden-cols') || '[]')); } catch { return new Set(); } });
+  const show = (c) => !hidden.has(c);
+  const toggleCol = (c) => setHidden(h => { const x = new Set(h); x.has(c) ? x.delete(c) : x.add(c); try { localStorage.setItem('kw-hidden-cols', JSON.stringify([...x])); } catch { /* not remembered */ } return x; });
+  const [f, setF] = useState(NO_FILTER); // the filters of the table: one box for each column worth filtering
   const [q, setQ] = useState('');
   const [sort, setSort] = useState({ key: 'volume', dir: 'desc' });
   const [limit, setLimit] = useState(30);
@@ -796,29 +724,81 @@ function Tracked({ b, kw }) {
   const mapped = tracked.filter(k => k.target_url).length;
   const onGoogle = tracked.filter(k => k.rank).length;
   const same = (a, c) => { const p = (u) => ((u || '').replace(/^https?:\/\/[^/]+/, '').replace(/\/+$/, '')) || '/'; return p(a) === p(c); };
-  const counts = { all: tracked.length, nopage: tracked.length - mapped, google: onGoogle, nogoogle: tracked.length - onGoogle, primary: tracked.filter(k => k.role === 'primary').length, secondary: tracked.filter(k => k.role === 'secondary').length, norole: tracked.filter(k => !k.role).length };
-  const go = (v) => { setView(v); setLimit(30); setSel(new Set()); };
+  const setFilter = (key, v) => { setF(x => ({ ...x, [key]: v })); setLimit(30); setSel(new Set()); };
+  const clearAll = () => { setF(NO_FILTER); setQ(''); setLimit(30); setSel(new Set()); };
+  const active = Object.values(f).filter(Boolean).length + (q.trim() ? 1 : 0);
+  const kdBand = (d) => (d == null ? 'none' : d <= 30 ? 'easy' : d <= 60 ? 'medium' : 'hard');
+  const topics = [...new Set(tracked.map(k => k.cluster).filter(Boolean))].sort();
+  const intents = [...new Set(tracked.map(k => k.intent).filter(Boolean))].sort();
+  const cnt = (fn) => tracked.filter(fn).length;
+  const FILTERS = [
+    ['role', 'Role', [['', 'Any role'], ['primary', `Primary (${cnt(k => k.role === 'primary')})`], ['secondary', `Secondary (${cnt(k => k.role === 'secondary')})`], ['none', `No role yet (${cnt(k => !k.role)})`]]],
+    ['page', 'Page', [['', 'Any page status'], ['mapped', `Has a page (${mapped})`], ['none', `No page yet (${tracked.length - mapped})`]]],
+    ['google', 'Google', [['', 'On Google or not'], ['yes', `Ranks on Google (${onGoogle})`], ['top10', `Top 10 (${cnt(k => k.rank && k.rank <= 10)})`], ['no', `Not on Google yet (${tracked.length - onGoogle})`]]],
+    ['kd', 'Difficulty', [['', 'Any difficulty'], ['easy', `Easy, up to 30 (${cnt(k => kdBand(k.difficulty) === 'easy')})`], ['medium', `Medium, 31 to 60 (${cnt(k => kdBand(k.difficulty) === 'medium')})`], ['hard', `Hard, over 60 (${cnt(k => kdBand(k.difficulty) === 'hard')})`], ['none', `No figure (${cnt(k => kdBand(k.difficulty) === 'none')})`]]],
+    ['status', 'Status', [['', 'Any status'], ['working', 'Working'], ['climbing', 'Climbing'], ['weak', 'Weak'], ['invisible', 'Not seen'], ['unchecked', 'Not checked']]],
+    ...(intents.length ? [['intent', 'Intent', [['', 'Any intent'], ...intents.map(i => [i, i])]]] : []),
+    ...(topics.length ? [['topic', 'Topic', [['', 'Any topic'], ['__none', 'No topic yet'], ...topics.map(i => [i, i])]]] : [])
+  ];
+  const COLS = [['rank', 'Rank / AI'], ['volume', 'Searches'], ['difficulty', 'KD'], ['impressions', 'Impr / clicks / CTR'], ['page', 'Mapped page'], ['status', 'Status']];
+  const exportCsv = () => {
+    const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const head = ['Keyword', 'Role', 'Topic', 'Intent', 'Rank', 'Searches per month', 'Difficulty', 'Impressions', 'Clicks', 'CTR %', 'Page', 'Status'];
+    const body = rows.map(k => { const t = T[k.id]; return [k.keyword, k.role || '', k.cluster || '', k.intent || '', k.rank || '', k.volume ?? '', k.difficulty ?? '', t?.impressions ?? '', t?.clicks ?? '', t?.ctr ?? '', k.target_url || '', t?.label || ''].map(cell).join(','); });
+    const url = URL.createObjectURL(new Blob([`\ufeff${[head.map(cell).join(','), ...body].join('\r\n')}`], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `my-keywords-${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+  // Click a value in a row (its role, intent, topic, rank, difficulty, page or status) to show only the rows that have it; click it again to stop.
+  const rowFilter = (e) => {
+    const el = e.target.closest?.('[data-f]');
+    if (!el) return;
+    const [key, ...rest] = el.dataset.f.split(':');
+    const v = rest.join(':');
+    setFilter(key, f[key] === v ? '' : v);
+  };
+  // what is filtered now, as chips that can each be removed
+  const chips = Object.entries(f).filter(([, v]) => v).map(([key, v]) => { const row = FILTERS.find(x => x[0] === key); return { key, label: row ? ((row[2].find(o => o[0] === v) || [])[1] || v) : v }; });
+  const STATUS_ORDER = { working: 0, climbing: 1, weak: 2, invisible: 3, unchecked: 4 };
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const list = tracked.filter(k => (!needle || k.keyword.includes(needle) || (k.cluster || '').toLowerCase().includes(needle)) && (view === 'all' || (view === 'nopage' && !k.target_url) || (view === 'google' && k.rank) || (view === 'nogoogle' && !k.rank) || (view === 'primary' && k.role === 'primary') || (view === 'secondary' && k.role === 'secondary') || (view === 'norole' && !k.role)));
-    const v = (k) => (sort.key === 'keyword' ? k.keyword : sort.key === 'rank' ? (k.rank ?? 999) : (k[sort.key] ?? -1));
-    return list.sort((a, c) => { const x = v(a); const y = v(c); const o = typeof x === 'string' ? x.localeCompare(y) : x - y; return sort.dir === 'asc' ? o : -o; });
-  }, [tracked, view, q, sort]);
-  const shown = rows.slice(0, limit);
+    const list = tracked.filter(k => {
+      const t = T[k.id];
+      return (!needle || k.keyword.includes(needle) || (k.cluster || '').toLowerCase().includes(needle))
+        && (!f.role || (f.role === 'none' ? !k.role : k.role === f.role))
+        && (!f.page || (f.page === 'mapped' ? k.target_url : !k.target_url))
+        && (!f.google || (f.google === 'yes' ? k.rank : f.google === 'top10' ? k.rank && k.rank <= 10 : !k.rank))
+        && (!f.kd || kdBand(k.difficulty) === f.kd)
+        && (!f.intent || k.intent === f.intent)
+        && (!f.topic || (f.topic === '__none' ? !k.cluster : k.cluster === f.topic))
+        && (!f.status || (t?.status || 'unchecked') === f.status);
+    });
+    const v = (k) => {
+      const t = T[k.id];
+      switch (sort.key) {
+        case 'keyword': return k.keyword;
+        case 'rank': return k.rank ?? 999;
+        case 'impressions': return t?.impressions ?? -1;
+        case 'clicks': return t?.clicks ?? -1;
+        case 'page': return (k.target_url || '~').toLowerCase();
+        case 'status': return STATUS_ORDER[t?.status || 'unchecked'] ?? 5;
+        default: return k[sort.key] ?? -1;
+      }
+    };
+    return list.sort((a, c) => { const x = v(a); const y = v(c); const o = typeof x === 'string' ? x.localeCompare(y) : x - y; return (sort.dir === 'asc' ? o : -o) || a.keyword.localeCompare(c.keyword); });
+  }, [tracked, f, q, sort, T]);
+  const googleNote = !tbl.data?.fetched_at ? '' : `Google figures: Search Console${tbl.data.window ? `, ${tbl.data.window.days} days (${tbl.data.window.start} to ${tbl.data.window.end}), searches from ${tbl.data.window.country || 'your country'}` : ''}${tbl.data.google_total ? `. ${fmt(tbl.data.google_total.impressions)} impressions and ${fmt(tbl.data.google_total.clicks)} clicks from ${tbl.data.google_total.searches} of your ${(tbl.data.rows || []).length} keywords` : ''}. Read ${new Date(tbl.data.fetched_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}, refreshed every ${tbl.data.every_minutes} min. Click a heading to sort.`;
+  const pager = usePager(rows, { size: 25, resetKey: `${JSON.stringify(f)}|${q}|${sort.key}|${sort.dir}` });
+  const shown = pager.rows;
   const allOn = shown.length > 0 && shown.every(k => sel.has(k.id));
   const Th = ({ id, children, right, ...tip }) => (
-    <th className={`px-4 py-3 font-semibold ${right ? 'text-right' : 'text-left'}`}>
-      <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id && s.dir === 'desc' ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${sort.key === id ? 'text-slate-900' : ''}`}><Head right={right} {...tip}>{children}</Head>{sort.key === id && (sort.dir === 'asc' ? '▲' : '▼')}</button>
+    <th className={`px-4 py-3 font-semibold whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}>
+      <button type="button" onClick={() => setSort(s => ({ key: id, dir: s.key === id ? (s.dir === 'desc' ? 'asc' : 'desc') : ['keyword', 'rank', 'page', 'status'].includes(id) ? 'asc' : 'desc' }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-800 ${sort.key === id ? 'text-slate-900' : ''}`}><Head right={right} {...tip}>{children}</Head>{sort.key === id && (sort.dir === 'asc' ? '▲' : '▼')}</button>
     </th>
   );
-  const chip = (id, label, n) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => go(id)} className={`h-10 px-4 rounded-lg text-14 font-semibold cursor-pointer inline-flex items-center gap-2 ${view === id ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'}`}>{label}<span className={`tabular-nums ${view === id ? 'text-slate-300' : 'text-slate-400'}`}>{n}</span></button>;
 
-  // The one thing worth doing next, said plainly
-  const nopage = counts.nopage;
-  const hint = !tracked.length ? null : nopage > 0
-    ? { text: `${nopage} keyword${nopage === 1 ? ' has' : 's have'} no page yet. Each needs one page on your website to rank.`, action: <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages}>Match them to my pages</Button>, more: <Link to="/keyword-management/mapping" className="text-13 font-semibold text-indigo-700 hover:underline">See the matching</Link> }
-    : onGoogle === 0 ? { text: 'Every keyword has a page. Next: check where they show on Google.', action: <Link to="/keyword-management/status"><Button variant="primary" icon={ArrowRight}>Check rankings</Button></Link> }
-      : { text: 'Every keyword has a page. Next: group them into topics.', action: <Link to="/keyword-management/topics"><Button variant="primary" icon={ArrowRight}>Group into topics</Button></Link> };
+  const nopage = tracked.length - mapped;
 
   return (
     <div className="space-y-5">
@@ -837,53 +817,49 @@ function Tracked({ b, kw }) {
         </div></Card>
       ) : (
         <>
-          {/* Where you stand and the one thing to do next: one slim row, so the list starts high on the page */}
-          <div className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2">
-            <span className="text-14 text-slate-600"><b className="text-slate-900 tabular-nums">{tracked.length}</b> saved · <b className="text-slate-900 tabular-nums">{mapped}</b> have a page · <b className="text-slate-900 tabular-nums">{onGoogle}</b> show on Google</span>
-            {hint && <>
-              <span className="text-13 text-slate-700 flex-1 min-w-[220px]">{hint.text}</span>
-              {hint.more}{hint.action}
-            </>}
-          </div>
-
           <div className="flex flex-wrap items-center gap-2">
-            <div role="tablist" aria-label="How to see the keywords" className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg mr-1">
-              <span role="tab" aria-selected="true" className="h-9 px-3.5 inline-flex items-center rounded-md text-14 font-semibold bg-white text-slate-900 shadow-sm ring-1 ring-slate-200">My keywords</span>
-              <Link to="/keyword-management/topics" role="tab" aria-selected="false" title="Group the keywords into topics, one page per topic" className="h-9 px-3.5 inline-flex items-center rounded-md text-14 font-semibold text-slate-500 hover:text-slate-800">Grouped by topic</Link>
-            </div>
-            <div role="tablist" aria-label="Which keywords" className="flex flex-wrap gap-2">
-              {chip('all', 'All', counts.all)}{chip('primary', 'Primary', counts.primary)}{chip('secondary', 'Secondary', counts.secondary)}{chip('norole', 'No role yet', counts.norole)}{chip('nopage', 'No page yet', counts.nopage)}{chip('google', 'On Google', counts.google)}{chip('nogoogle', 'Not on Google yet', counts.nogoogle)}
-            </div>
-            <label className="relative ml-auto"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(30); }} placeholder="Search my keywords" aria-label="Search my keywords" className="h-10 pl-9 pr-3 text-14 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-60 bg-white" /></label>
-            <form onSubmit={(e) => { e.preventDefault(); add(); }} className="flex gap-2">
-              <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Add a keyword" aria-label="Add a keyword" className="h-10 w-48 px-3 text-14 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
-              <Button type="submit" icon={Plus} busy={busy === 'add'} disabled={typed.trim().length < 2}>Add</Button>
+            <label className="relative flex-1 min-w-[220px] max-w-md"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(30); }} placeholder="Search my keywords or topics" aria-label="Search my keywords" className="h-8 w-full pl-9 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" /></label>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+            {nopage > 0 && <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages} title={`${nopage} keyword${nopage === 1 ? ' has' : 's have'} no page yet: give each the page where it already appears (a page you chose yourself is never changed)`}>Match {nopage} to my pages</Button>}
+            <form onSubmit={(e) => { e.preventDefault(); add(); }} className="flex gap-1.5">
+              <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Add a keyword" aria-label="Add a keyword" className="h-8 w-40 px-2.5 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
+              <Button size="sm" type="submit" icon={Plus} busy={busy === 'add'} disabled={typed.trim().length < 2}>Add</Button>
             </form>
+            </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-12 text-slate-500 -mb-2">
+          <div className="flex flex-wrap items-center gap-2 text-11.5 text-slate-500 px-1 -mt-1 -mb-1">
             {tbl.data?.refreshing && <span className="inline-flex items-center gap-1.5 text-indigo-700"><Loader2 size={12} className="animate-spin" />Reading positions and Search Console figures… they appear here by themselves.</span>}
-            {!tbl.data?.refreshing && tbl.data?.fetched_at && <span>Google figures: Search Console{tbl.data.window ? `, ${tbl.data.window.days} days (${new Date(`${tbl.data.window.start}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} to ${new Date(`${tbl.data.window.end}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}), searches from ${tbl.data.window.country || 'your country'}` : ''}{tbl.data.google_total ? ` · ${fmt(tbl.data.google_total.impressions)} impressions and ${fmt(tbl.data.google_total.clicks)} clicks from ${tbl.data.google_total.searches} of your ${(tbl.data.rows || []).length} keywords` : ''} · read {new Date(tbl.data.fetched_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}, refreshed every {tbl.data.every_minutes} min</span>}
             {!tbl.data?.refreshing && tbl.data?.google === 'saved' && <span className="text-amber-700" title={tbl.data.google_error || ''}>Search Console could not be read just now: showing the last saved position check{tbl.data.google_error ? ` (${tbl.data.google_error})` : ''}</span>}
             {tbl.data?.error && !tbl.data?.refreshing && <span className="text-amber-700" title={tbl.data.error}>last refresh failed</span>}
           </div>
           <Card pad={false}>
+            <div role="group" aria-label="Filter the table" className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
+              {chips.map(c => <button key={c.key} type="button" onClick={() => setFilter(c.key, '')} title="Remove this filter" className="h-7 px-2.5 rounded-full bg-indigo-50 ring-1 ring-inset ring-indigo-200 text-12 font-semibold text-indigo-800 inline-flex items-center gap-1 cursor-pointer hover:bg-indigo-100">{c.label}<X size={11} /></button>)}
+              <details className="relative ml-auto">
+                <summary className="h-8 px-3 inline-flex items-center rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer list-none hover:bg-slate-50" title="Choose which columns to show">Columns{hidden.size ? ` (${COLS.length - hidden.size} of ${COLS.length})` : ''}</summary>
+                <div className="absolute right-0 z-20 mt-1 w-60 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 p-2">
+                  {COLS.map(([c, label]) => <label key={c} className="flex items-center gap-2 px-2 py-1.5 text-13 text-slate-700 rounded hover:bg-slate-50 cursor-pointer"><input type="checkbox" checked={show(c)} onChange={() => toggleCol(c)} />{label}</label>)}
+                </div>
+              </details>
+              <Button size="sm" icon={Download} onClick={exportCsv} title="Download the keywords shown in the table (with the filters applied) as a CSV file">Export CSV</Button>
+              <span className="text-12.5 text-slate-500" role="status" title={googleNote}>{active ? <>Showing <b className="text-slate-800">{rows.length}</b> of {tracked.length} · <button type="button" onClick={clearAll} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></> : <><b className="text-slate-800">{tracked.length}</b> keywords · click a value in a row to filter</>}{tbl.data?.fetched_at && !active ? <span className="text-slate-400"> · Google data from {tbl.data.window ? `${new Date(`${tbl.data.window.end}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Search Console'}</span> : null}</span>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-14 min-w-[1010px]">
                 <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="w-12 pl-4 py-3"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(k => k.id)))} /></th>
                     <Th id="keyword" what="A keyword you saved and are tracking, and where it was found." why="Click the name to check its searches, cost and related ideas. Click the heading to sort." from="the ones you picked in the Keyword Workspace, Find Keywords or typed in.">Keyword &amp; source</Th>
-                    <Th id="rank" right what="Where your website shows on Google for it (average, last 28 days; #1 is the top), whether it moved, and whether AI assistants mention your business for it." why="Shows what is working and what can climb." from="Google Search Console for the position; the AI answers you track for AI search.">Rank / AI</Th>
-                    <Th id="volume" right what="How many times a month people search it in your country." why="Shows which keywords can bring the most visitors." from="Google Ads Keyword Planner. Blank when Google gave no figure.">Searches</Th>
-                    <Th id="difficulty" right what="Keyword difficulty, 0 to 100: how hard it is to rank on Google for this keyword. Green is easier (up to 30), amber is a fair fight (up to 60), red is hard." why="Start with the easier keywords that still have searches: they rank sooner." from="Google Ads Keyword Planner (its competition level). Blank when Google gave no figure.">KD</Th>
-                    <th className="px-3 py-3 text-right font-semibold"><Head right what="Impressions: how many times your site appeared in Google for exactly this search. Clicks: how many of those people clicked. CTR (click rate) = clicks divided by impressions. Last 28 days, searches from your target country." why="Many impressions and few clicks means the title and description need work. No impressions means Google is not showing your site for it." from="Google Search Console, the same numbers as Search Console > Performance > Queries (read for this table about every 30 minutes; Google's data is two days behind).">Google: impr / clicks / CTR</Head></th>
-                    <th className="px-3 py-3 text-left font-semibold"><Head what="The page of your website this keyword is mapped to, and the pages where the keyword is already used." why="Mapped means a page was chosen for the keyword (by you, or from the site scan's suggestion). It is a plan, not proof: a solid green dot means the page also says the keyword; a hollow amber dot means it does not yet, so add it there." from="your choice (or the suggestion from the site scan) and the last website scan: the keyword in a page address, title, heading or description.">Mapped page</Head></th>
-                    <th className="px-3 py-3 text-left font-semibold"><Head what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Head></th>
+                    {show('rank') && <Th id="rank" right what="Where your website shows on Google for it (average, last 28 days; #1 is the top), whether it moved, and whether AI assistants mention your business for it." why="Shows what is working and what can climb." from="Google Search Console for the position; the AI answers you track for AI search.">Rank / AI</Th>}
+                    {show('volume') && <Th id="volume" right what="How many times a month people search it in your country." why="Shows which keywords can bring the most visitors." from="Google Ads Keyword Planner. Blank when Google gave no figure.">Searches</Th>}
+                    {show('difficulty') && <Th id="difficulty" right what="Keyword difficulty, 0 to 100: how hard it is to rank on Google for this keyword. Green is easier (up to 30), amber is a fair fight (up to 60), red is hard." why="Start with the easier keywords that still have searches: they rank sooner." from="Google Ads Keyword Planner (its competition level). Blank when Google gave no figure.">KD</Th>}
+                    {show('impressions') && <Th id="impressions" right what="Impressions: how many times your site appeared in Google for exactly this search. Clicks: how many of those people clicked. CTR (click rate) = clicks divided by impressions. Last 28 days, searches from your target country." why="Many impressions and few clicks means the title and description need work. No impressions means Google is not showing your site for it." from="Google Search Console, the same numbers as Search Console > Performance > Queries (read for this table about every 30 minutes; Google's data is two days behind).">Impr / clicks / CTR</Th>}
+                    {show('page') && <Th id="page" what="The page of your website this keyword is mapped to, and the pages where the keyword is already used." why="Mapped means a page was chosen for the keyword (by you, or from the site scan's suggestion). It is a plan, not proof: a solid green dot means the page also says the keyword; a hollow amber dot means it does not yet, so add it there." from="your choice (or the suggestion from the site scan) and the last website scan: the keyword in a page address, title, heading or description.">Mapped page</Th>}
+                    {show('status') && <Th id="status" what="How this keyword is doing, in plain words." why="It tells you the next thing to do." from="its position and clicks in Google Search Console.">Status</Th>}
                     <th className="px-3 py-3 text-right font-semibold"><Head right what="Map the keyword to a page (or see the page it is mapped to), check it, write for it, or remove it." why="Every keyword needs one page to rank on.">Actions</Head></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 [&_[data-f]]:cursor-pointer [&_[data-f]:hover]:opacity-75" onClick={rowFilter}>
                   {shown.map(k => {
                     const used = pagesInfo?.pages?.[k.keyword] || [];
                     const guess = !k.target_url && used[0];
@@ -893,41 +869,41 @@ function Tracked({ b, kw }) {
                     const t = T[k.id];
                     return (
                       <tr key={k.id} data-just-added={isNew ? '1' : undefined} className={sel.has(k.id) ? 'bg-indigo-50/60' : isNew ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}>
-                        <td className="pl-4 py-4"><input type="checkbox" aria-label={`Select ${k.keyword}`} checked={sel.has(k.id)} onChange={() => toggleSel(k.id)} /></td>
-                        <td className="px-4 py-3 min-w-[230px]">
+                        <td className="pl-4 py-2"><input type="checkbox" aria-label={`Select ${k.keyword}`} checked={sel.has(k.id)} onChange={() => toggleSel(k.id)} /></td>
+                        <td className="px-4 py-2 min-w-[230px]">
                           <Link to={`/keyword-overview?q=${encodeURIComponent(k.keyword)}`} title="Check its searches, cost and related ideas" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline">{k.keyword}</Link>
                           {isNew && <span className="ml-2 rounded-full bg-emerald-600 text-white text-11 font-semibold px-2 py-0.5">Just added</span>}
-                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-12 text-slate-400">
-                            {k.role === 'primary' ? <span title="The main keyword of its page: the one the page is built to rank for" className="inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white text-11 font-semibold px-2 py-px"><Star size={10} />Primary</span>
-                              : k.role === 'secondary' ? <span title="A supporting keyword: the page also covers it, but it is not the page's main one" className="inline-flex items-center rounded-full bg-slate-200 text-slate-700 text-11 font-semibold px-2 py-px">Secondary</span>
-                                : t?.role_suggested ? <span title="The mapping suggests this role. Map the keyword and save the mapping to keep it." className="inline-flex items-center rounded-full ring-1 ring-dashed ring-slate-300 text-slate-500 text-11 font-semibold px-2 py-px">{t.role_suggested === 'primary' ? 'Primary' : 'Secondary'}?</span>
-                                  : <span title="Not decided yet: map the keyword to a page first" className="inline-flex items-center rounded-full ring-1 ring-slate-200 text-slate-400 text-11 px-2 py-px">No role yet</span>}
-                            {k.intent && <span title={{ local: 'Someone looking for a business near them', commercial: 'Someone comparing or ready to buy or hire', informational: 'Someone looking for an answer or a guide', transactional: 'Someone ready to buy now', navigational: 'Someone looking for a particular site' }[k.intent] || 'What the searcher wants'} className={`inline-flex items-center rounded-full text-11 font-semibold px-2 py-px ${{ local: 'bg-teal-50 text-teal-700', commercial: 'bg-emerald-50 text-emerald-700', informational: 'bg-sky-50 text-sky-700', transactional: 'bg-amber-50 text-amber-700', navigational: 'bg-violet-50 text-violet-700' }[k.intent] || 'bg-slate-100 text-slate-600'}`}>{k.intent}</span>}
+                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-12 text-slate-400">
+                            {k.role === 'primary' ? <span data-f="role:primary" title="The main keyword of its page: the one the page is built to rank for" className="inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white text-11 font-semibold px-2 py-px"><Star size={10} />Primary</span>
+                              : k.role === 'secondary' ? <span data-f="role:secondary" title="A supporting keyword: the page also covers it, but it is not the page's main one" className="inline-flex items-center rounded-full bg-slate-200 text-slate-700 text-11 font-semibold px-2 py-px">Secondary</span>
+                                : t?.role_suggested ? <span data-f="role:none" title="The mapping suggests this role. Map the keyword and save the mapping to keep it." className="inline-flex items-center rounded-full ring-1 ring-dashed ring-slate-300 text-slate-500 text-11 font-semibold px-2 py-px">{t.role_suggested === 'primary' ? 'Primary' : 'Secondary'}?</span>
+                                  : <span data-f="role:none" title="Not decided yet: map the keyword to a page first" className="inline-flex items-center rounded-full ring-1 ring-slate-200 text-slate-400 text-11 px-2 py-px">No role yet</span>}
+                            {k.intent && <span data-f={`intent:${k.intent}`} title={{ local: 'Someone looking for a business near them', commercial: 'Someone comparing or ready to buy or hire', informational: 'Someone looking for an answer or a guide', transactional: 'Someone ready to buy now', navigational: 'Someone looking for a particular site' }[k.intent] || 'What the searcher wants'} className={`inline-flex items-center rounded-full text-11 font-semibold px-2 py-px ${{ local: 'bg-teal-50 text-teal-700', commercial: 'bg-emerald-50 text-emerald-700', informational: 'bg-sky-50 text-sky-700', transactional: 'bg-amber-50 text-amber-700', navigational: 'bg-violet-50 text-violet-700' }[k.intent] || 'bg-slate-100 text-slate-600'}`}>{k.intent}</span>}
                             {t?.branded && <span title="It contains your brand name: people who already know you" className="inline-flex items-center rounded-full bg-fuchsia-50 text-fuchsia-700 text-11 font-semibold px-2 py-px">Brand</span>}
                           </span>
-                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-11.5 text-slate-400">
+                          <span className="flex flex-wrap items-center gap-x-2 text-11 text-slate-400 leading-tight">
                             {t?.source?.label && <span title="Where this keyword was found" className="truncate max-w-[170px]">From {t.source.label}</span>}
-                            {k.cluster && <span title="Its topic group">{k.cluster}</span>}
+                            {k.cluster && <span data-f={`topic:${k.cluster}`} title="Its topic group">{k.cluster}</span>}
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-right whitespace-nowrap">
-                          {(t?.rank ?? k.rank) ? <span className="inline-flex items-center justify-end gap-1.5" title="Average position on Google, last 28 days (Search Console)">
+                        {show('rank') && (<td className="px-3 py-2 text-right whitespace-nowrap">
+                          {(t?.rank ?? k.rank) ? <span data-f="google:yes" className="inline-flex items-center justify-end gap-1.5" title="Average position on Google, last 28 days (Search Console). Click to show only keywords that rank">
                             <span className={`font-semibold tabular-nums ${(t?.rank ?? k.rank) <= 10 ? 'text-emerald-700' : 'text-slate-800'}`}>#{t?.rank ?? k.rank}</span>
                             {t?.change ? <span className={`inline-flex items-center text-12 ${t.change > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{t.change > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{Math.abs(t.change)}</span> : null}
-                          </span> : <span className="text-slate-400 text-13" title="Google has not shown your site for this keyword yet, or positions have not been checked">Not seen yet</span>}
+                          </span> : <span data-f="google:no" className="text-slate-400 text-13" title="Google has not shown your site for this keyword yet, or positions have not been checked. Click to show only these">Not seen yet</span>}
                           <span className="block mt-0.5">{!t ? null : t.ai?.mentioned ? <span title="AI assistants mention your business for this question" className="text-11.5 font-semibold text-emerald-700">AI ✓ mentioned</span>
                             : t.ai?.tracked ? <span title="You track the question this keyword makes; no assistant names your business yet" className="text-11.5 text-slate-500">AI asked, not named</span> : <span title="Not tracked as an AI search question yet" className="text-11.5 text-slate-300">AI not tracked</span>}</span>
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>
-                        <td className="px-3 py-3 text-right whitespace-nowrap" title={k.difficulty != null ? `Keyword difficulty ${k.difficulty} of 100: ${k.difficulty <= 30 ? 'easier to rank for' : k.difficulty <= 60 ? 'a fair fight' : 'hard to rank for'}` : 'Google gave no difficulty figure for this keyword'}>
-                          {k.difficulty != null ? <span className={`inline-flex items-center justify-center min-w-[36px] rounded-md px-2 py-0.5 text-13 font-semibold tabular-nums ${k.difficulty <= 30 ? 'bg-emerald-50 text-emerald-700' : k.difficulty <= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{k.difficulty}</span> : <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap text-13" title="Google Search Console, last 28 days">
+                        </td>)}
+                        {show('volume') && (<td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>)}
+                        {show('difficulty') && (<td className="px-3 py-2 text-right whitespace-nowrap" title={k.difficulty != null ? `Keyword difficulty ${k.difficulty} of 100: ${k.difficulty <= 30 ? 'easier to rank for' : k.difficulty <= 60 ? 'a fair fight' : 'hard to rank for'}` : 'Google gave no difficulty figure for this keyword'}>
+                          {k.difficulty != null ? <span data-f={`kd:${kdBand(k.difficulty)}`} className={`inline-flex items-center justify-center min-w-[36px] rounded-md px-2 py-0.5 text-13 font-semibold tabular-nums ${k.difficulty <= 30 ? 'bg-emerald-50 text-emerald-700' : k.difficulty <= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{k.difficulty}</span> : <span className="text-slate-300">—</span>}
+                        </td>)}
+                        {show('impressions') && (<td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-13" title="Google Search Console, last 28 days">
                           {t && t.impressions > 0 ? <><span className="text-slate-700">{fmt(t.impressions)}</span> <span className="text-slate-300">/</span> <span className="font-semibold text-slate-900">{fmt(t.clicks || 0)}</span> <span className="text-slate-300">/</span> <span className="text-slate-700">{t.ctr != null ? `${t.ctr}%` : '—'}</span></>
                             : t && t.impressions === 0 ? <span className="text-slate-400" title="Google showed your site 0 times for this exact search in the last 28 days">0 shown</span>
                               : <span className="text-slate-300" title={!t ? '' : tbl.data?.google_error ? `Search Console could not be read: ${tbl.data.google_error}` : 'Not read yet'}>{!t ? '…' : '—'}</span>}
-                        </td>
-                        <td className="px-3 py-3 min-w-[190px]">
+                        </td>)}
+                        {show('page') && (<td className="px-3 py-2 min-w-[190px]">
                           {editing === k.id ? (
                             <PagePicker b={b} pages={sitePages} value={k.target_url || ''} listId={`pages-${b.id}`} onCancel={() => setEditing(null)}
                               onPick={v => { setEditing(null); if (v !== (k.target_url || '')) update(k, { target_url: v || null }); }} />
@@ -939,7 +915,7 @@ function Tracked({ b, kw }) {
                                 return (
                                   <>
                                     <div className="flex items-center gap-1.5">
-                                      <span className={`w-2 h-2 rounded-full shrink-0 ${onIt ? 'bg-emerald-500' : 'border-2 border-amber-500'}`} title={onIt ? 'Mapped, and the page says the keyword' : 'A page was chosen for this keyword, but the page does not say it yet'} aria-hidden="true" />
+                                      <span data-f="page:mapped" className={`w-2 h-2 rounded-full shrink-0 ${onIt ? 'bg-emerald-500' : 'border-2 border-amber-500'}`} title={onIt ? 'Mapped, and the page says the keyword' : 'A page was chosen for this keyword, but the page does not say it yet'} aria-hidden="true" />
                                       <a href={k.target_url.startsWith('http') ? k.target_url : `${(b.website || '').replace(/\/$/, '')}${k.target_url}`} target="_blank" rel="noreferrer" title={onIt ? 'Open the mapped page' : 'Open the page chosen for this keyword'} className="font-semibold text-slate-800 hover:text-indigo-700 truncate max-w-[170px]">{k.target_url.replace(/^https?:\/\/[^/]+/, '') || '/'}</a>
                                       {bad && <span className={`cursor-help ${bad.level === 'blocked' ? 'text-red-600' : 'text-amber-600'}`} title={`${t.index.page}: ${bad.text}${t.index.reason ? ` (${t.index.reason})` : ''}`}>⚠</span>}
                                     </div>
@@ -947,35 +923,27 @@ function Tracked({ b, kw }) {
                                   </>);
                               })() : (
                                 <>
-                                  <div className="flex items-center gap-1.5 font-semibold text-amber-700"><span className="w-2 h-2 rounded-full border-2 border-amber-500 shrink-0" aria-hidden="true" />Not mapped yet</div>
+                                  <div data-f="page:none" className="flex items-center gap-1.5 font-semibold text-amber-700" title="Click to show only keywords without a page"><span className="w-2 h-2 rounded-full border-2 border-amber-500 shrink-0" aria-hidden="true" />Not mapped yet</div>
                                   <div className="mt-0.5 text-12 pl-3.5 text-slate-500 truncate max-w-[200px]" title={used.length ? `The keyword is used on: ${used.map(u => u.path).join(', ')}` : 'The scan did not find the keyword on any page'}>{used.length ? `Used on ${used[0].path}${used.length > 1 ? ` +${used.length - 1}` : ''}` : 'Not used on the site yet'}</div>
                                 </>)}
                             </div>
                           )}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {t?.label ? <span title={t.why || ''}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' }[t.status] || 'gray'}>{t.label}</Badge></span> : <span className="text-slate-300">{!t ? '…' : '—'}</span>}
-                        </td>
-                        <td className="px-3 py-3 text-right whitespace-nowrap">
+                        </td>)}
+                        {show('status') && (<td className="px-3 py-2 whitespace-nowrap">
+                          {t?.label ? <span data-f={`status:${t.status}`} title={t.why || ''}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' }[t.status] || 'gray'}>{t.label}</Badge></span> : <span className="text-slate-300">{!t ? '…' : '—'}</span>}
+                        </td>)}
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
                           <KeywordRowActions b={b} k={k} t={t} usedOn={used} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} onRole={(role) => update(k, { role })} onUse={() => setUseIds([k.id])} />
                         </td>
                       </tr>);
                   })}
-                  {!rows.length && <tr><td colSpan={9} className="px-5 py-12 text-center text-14 text-slate-500">No keyword matches. <button type="button" onClick={() => { go('all'); setQ(''); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button></td></tr>}
+                  {!rows.length && <tr><td colSpan={9} className="px-5 py-12 text-center text-14 text-slate-500">No keyword matches. <button type="button" onClick={clearAll} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></td></tr>}
                 </tbody>
               </table>
               <datalist id={`pages-${b.id}`}>{pages.map(p => <option key={p} value={p} />)}</datalist>
             </div>
-            {rows.length > shown.length && <div className="p-4 text-center border-t border-slate-100"><Button onClick={() => setLimit(l => l + 30)}>Show {Math.min(30, rows.length - shown.length)} more ({rows.length - shown.length} left)</Button></div>}
+            <Pager p={pager} label="keywords" />
           </Card>
-
-          <div className="flex flex-wrap items-center gap-3 text-13 text-slate-600">
-            <span>More:</span>
-            <Link to="/keyword-management/mapping"><Button size="sm">Keyword Mapping</Button></Link>
-            <Link to="/keyword-management/topics"><Button size="sm">Topics</Button></Link>
-            <Link to="/keyword-management/use"><Button size="sm">Keyword Usage</Button></Link>
-            <Link to="/keyword-management/status"><Button size="sm">Rankings</Button></Link>
-          </div>
         </>
       )}
       <UseKeywordsModal b={b} ids={useIds} onClose={() => setUseIds(null)} />
@@ -995,32 +963,133 @@ function Tracked({ b, kw }) {
   );
 }
 
+const NOT_GROUPED = 'Not grouped';
+
+/** Topics: the saved keywords grouped by what they are about, one page per topic. Each card shows the topic's lead keyword, its searches, where it ranks and the page it is on, with the next step for it. */
 function Topics({ b, kw }) {
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
+  const [q, setQ] = useState('');
+  const [view, setView] = useState('all');
+  const [useIds, setUseIds] = useState(null);
+  const [renaming, setRenaming] = useState(null);
+  const [name, setName] = useState('');
   const tracked = kw.data?.keywords || [];
   const cluster = () => run('cluster', async () => { const r = await api(`/businesses/${b.id}/keywords/cluster`, { method: 'POST' }); kw.reload(true); toast(`${r.updated} keywords grouped into topics`); });
+  const topics = useMemo(() => {
+    const m = new Map();
+    for (const k of tracked) {
+      const key = k.cluster || NOT_GROUPED;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key).push(k);
+    }
+    return [...m.entries()].map(([topic, list]) => {
+      const sorted = [...list].sort((x, y) => (y.volume || 0) - (x.volume || 0) || x.keyword.localeCompare(y.keyword));
+      const ranks = list.map(k => k.rank).filter(Boolean);
+      const pages = [...new Set(list.map(k => k.target_url).filter(Boolean))];
+      return {
+        topic, list: sorted, lead: sorted.find(k => k.role === 'primary') || sorted[0], volume: list.reduce((n, k) => n + (k.volume || 0), 0),
+        best: ranks.length ? Math.min(...ranks) : null, ranking: ranks.length, pages, mapped: list.filter(k => k.target_url).length
+      };
+    }).sort((x, y) => (x.topic === NOT_GROUPED) - (y.topic === NOT_GROUPED) || y.volume - x.volume);
+  }, [tracked]);
+  const names = topics.map(x => x.topic).filter(x => x !== NOT_GROUPED);
+  const needle = q.trim().toLowerCase();
+  const shown = topics.filter(x => (!needle || x.topic.toLowerCase().includes(needle) || x.list.some(k => k.keyword.includes(needle)))
+    && (view === 'all' || (view === 'nopage' && x.mapped < x.list.length) || (view === 'split' && x.pages.length > 1) || (view === 'ungrouped' && x.topic === NOT_GROUPED) || (view === 'ranking' && x.ranking)));
+  const stats = {
+    topics: names.length, keywords: tracked.length, loose: topics.find(x => x.topic === NOT_GROUPED)?.list.length || 0,
+    nopage: topics.filter(x => x.topic !== NOT_GROUPED && x.mapped < x.list.length).length, volume: tracked.reduce((n, k) => n + (k.volume || 0), 0)
+  };
+  const move = (k, to) => run(`m${k.id}`, async () => {
+    const out = await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, cluster: to === NOT_GROUPED ? '' : to } });
+    kw.setData(d => ({ ...d, keywords: d.keywords.map(x => (x.id === k.id ? out : x)) }));
+    kw.reload(true);
+    toast(`"${k.keyword}" moved to ${to}`);
+  });
+  const rename = (x) => {
+    const to = name.trim();
+    setRenaming(null);
+    if (!to || to === x.topic) return undefined;
+    return run(`r${x.topic}`, async () => { for (const k of x.list) await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, cluster: to } }); kw.reload(true); toast(`Topic renamed to ${to}`); });
+  };
+  const pageOf = (u) => pathOf(u) || u;
+  const Stat = ({ label, value, tone = 'text-slate-900', hint }) => <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3" title={hint}><div className="text-11.5 font-semibold uppercase tracking-wide text-slate-500">{label}</div><div className={`text-22 font-semibold tabular-nums ${tone}`}>{value}</div></div>;
+  const VIEWS = [['all', 'All topics'], ['nopage', 'Missing a page'], ['split', 'On more than one page'], ['ranking', 'Ranking on Google'], ['ungrouped', 'Not grouped']];
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-13 text-slate-600">Group tracked keywords into topics; each topic should get one page.</div>
-        <Button variant="ai" icon={Sparkles} busy={busy === 'cluster'} disabled={!tracked.length} onClick={cluster}>Group into topics with AI</Button>
+      {kw.data && tracked.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Stat label="Topics" value={stats.topics} hint="Groups of keywords about the same thing: each should get one page" />
+          <Stat label="Keywords" value={stats.keywords} hint="Saved keywords" />
+          <Stat label="Searches / month" value={fmt(stats.volume)} hint="All the saved keywords together, from Google Ads" />
+          <Stat label="Topics missing a page" value={stats.nopage} tone={stats.nopage ? 'text-amber-700' : 'text-emerald-700'} hint="A topic with a keyword that has no page chosen yet" />
+        </div>)}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Find a topic or keyword" className={`${inputCls} pl-8 w-64`} aria-label="Find a topic or keyword" /></div>
+        <div role="tablist" className="inline-flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">{VIEWS.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-8 px-3 rounded-md text-12.5 font-semibold cursor-pointer ${view === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>{label}{id === 'ungrouped' && stats.loose ? ` ${stats.loose}` : ''}</button>)}</div>
+        <div className="ml-auto flex items-center gap-2">
+          <Button icon={Download} disabled={!shown.length} onClick={() => downloadCsv(`keyword-topics-${b.name}`, ['Topic', 'Keyword', 'Searches per month', 'Google rank', 'Page'],
+            shown.flatMap(x => x.list.map(k => [x.topic === NOT_GROUPED ? 'Not grouped' : x.topic, k.keyword, k.volume ?? '', k.rank ?? '', k.target_url || ''])))} title="Download every keyword of the topics shown, with its topic, searches, rank and page, as a CSV file">Export CSV</Button>
+          <Link to="/keyword-management/mapping"><Button icon={FileText}>Choose pages</Button></Link>
+          <Button variant="ai" icon={Sparkles} busy={busy === 'cluster'} disabled={!tracked.length} onClick={cluster} title="Let AI put all the saved keywords into topics again. Topics you renamed or moved by hand are replaced.">{stats.topics ? 'Group again with AI' : 'Group into topics with AI'}</Button>
+        </div>
       </div>
       <ErrorNote>{error}</ErrorNote>
-      {!kw.data ? <SkCard title="Topic clusters" subtitle="Keywords grouped into topics, one page per topic"><SkTable headers={["Keyword", "Volume", "Difficulty", "Rank"]} rows={5} bare /></SkCard> : !kw.data.clusters.length ? <Card><div className="py-10 text-center text-13 text-slate-500">Track some keywords first.</div></Card> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {kw.data.clusters.map(cl => {
-            const list = tracked.filter(k => (k.cluster || 'Not grouped') === cl.name);
-            const page = list.find(k => k.target_url)?.target_url;
-            return (
-              <Card key={cl.name} title={cl.name} subtitle={`${cl.keywords} keywords${cl.volume ? ` · ${fmt(cl.volume)} searches / month` : ''}`}>
-                <div className="space-y-1.5">{list.slice(0, 8).map(k => <div key={k.id} className="flex items-center gap-2 text-12"><span className="flex-1 truncate text-slate-800">{k.keyword}</span>{k.rank && <span className="tabular-nums text-slate-500">#{k.rank}</span>}</div>)}</div>
-                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 text-12"><FileText size={13} className="text-slate-400" />{page ? <span className=" text-slate-700 truncate">{page}</span> : <span className="text-amber-700">No page yet</span>}</div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+      {!kw.data ? <SkCard title="Topics" subtitle="Keywords grouped into topics, one page per topic"><SkTable headers={["Keyword", "Volume", "Difficulty", "Rank"]} rows={5} bare /></SkCard>
+        : !tracked.length ? <Card><div className="py-10 text-center text-13 text-slate-500">Save some keywords first: they are grouped into topics here.<div className="mt-3"><Link to="/keyword-management/workspace"><Button variant="primary" icon={Search}>Find keywords</Button></Link></div></div></Card>
+        : !shown.length ? <Card><div className="py-8 text-center text-13 text-slate-500">No topic matches this.</div></Card> : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {shown.map(x => {
+              const loose = x.topic === NOT_GROUPED;
+              const full = x.mapped === x.list.length;
+              return (
+                <section key={x.topic} className={`rounded-xl bg-white ring-1 ${loose ? 'ring-amber-200' : 'ring-slate-200'} overflow-hidden flex flex-col`}>
+                  <header className="px-4 pt-3.5 pb-3">
+                    <div className="flex items-start gap-2">
+                      {renaming === x.topic
+                        ? <input autoFocus value={name} onChange={e => setName(e.target.value)} onBlur={() => rename(x)} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setRenaming(null); } }} className={`${inputCls} h-8 flex-1`} aria-label="Topic name" />
+                        : <h3 className="flex-1 text-15 font-semibold text-slate-900 capitalize">{x.topic}</h3>}
+                      {!loose && renaming !== x.topic && <button type="button" onClick={() => { setName(x.topic); setRenaming(x.topic); }} title="Rename this topic" className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"><Pencil size={14} /></button>}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-12.5 text-slate-600">
+                      <span><b className="text-slate-900">{x.list.length}</b> keywords</span>
+                      <span><b className="text-slate-900 tabular-nums">{x.volume ? fmt(x.volume) : '—'}</b> searches/mo</span>
+                      <span>{x.best ? <>Best rank <b className="text-slate-900">#{x.best}</b> · {x.ranking} of {x.list.length} on Google</> : 'Not on Google yet'}</span>
+                    </div>
+                    {loose && <p className="mt-2 text-12.5 text-amber-800 bg-amber-50 rounded px-2.5 py-1.5">These have no topic yet. Use "Group again with AI", or move each one with the list beside it.</p>}
+                    {!loose && x.lead && <p className="mt-2 text-12.5 text-slate-600">Lead keyword: <b className="text-slate-900">{x.lead.keyword}</b>{x.lead.role === 'primary' ? ' (main keyword of its page)' : ''}</p>}
+                  </header>
+                  <ul className="px-4 divide-y divide-slate-100 border-t border-slate-100">
+                    {x.list.slice(0, 8).map(k => (
+                      <li key={k.id} className="py-1.5 flex items-center gap-2 text-12.5">
+                        <span className="flex-1 min-w-0 truncate text-slate-800" title={k.keyword}>{k.keyword}</span>
+                        {k.volume ? <span className="tabular-nums text-slate-500 w-14 text-right" title="Searches a month">{fmt(k.volume)}</span> : null}
+                        <span className={`tabular-nums w-10 text-right ${k.rank ? 'text-slate-800 font-semibold' : 'text-slate-300'}`} title="Where it ranks on Google">{k.rank ? `#${k.rank}` : '—'}</span>
+                        <select value={loose ? '' : x.topic} disabled={busy === `m${k.id}`} onChange={e => e.target.value && move(k, e.target.value)} aria-label={`Move ${k.keyword} to another topic`} title="Move to another topic" className="h-7 max-w-[8.5rem] rounded border border-slate-200 bg-white text-12 text-slate-600 cursor-pointer">
+                          <option value="">{loose ? 'Choose a topic' : 'Move to…'}</option>
+                          {names.filter(n => n !== x.topic).map(n => <option key={n} value={n}>{n}</option>)}
+                          {!loose && <option value={NOT_GROUPED}>Not grouped</option>}
+                        </select>
+                      </li>))}
+                  </ul>
+                  {x.list.length > 8 && <p className="px-4 pb-1 text-12 text-slate-500">and {x.list.length - 8} more</p>}
+                  <footer className="mt-auto px-4 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                    <div className="flex-1 min-w-[10rem] text-12.5">
+                      {!x.pages.length ? <span className="inline-flex items-center gap-1.5 text-amber-800"><AlertTriangle size={13} />No page chosen yet</span>
+                        : <span className="inline-flex items-center gap-1.5 text-slate-700 min-w-0"><FileText size={13} className="text-slate-400 shrink-0" /><span className="truncate" title={x.pages.join('\n')}>{x.pages.length === 1 ? pageOf(x.pages[0]) : `${x.pages.length} different pages`}</span></span>}
+                      {x.pages.length > 0 && !full && <span className="block text-11.5 text-amber-700">{x.list.length - x.mapped} of {x.list.length} keywords have no page</span>}
+                      {x.pages.length > 1 && <span className="block text-11.5 text-amber-700">One topic should be one page: pick a single page for it.</span>}
+                    </div>
+                    {!loose && <Act icon={Eye} tone="indigo" tip="Where each keyword of this topic can be used: pages, FAQ, blog, Google posts" onClick={() => setUseIds(x.list.map(k => k.id))}>Where to use</Act>}
+                    {!loose && x.lead && <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(x.lead.keyword)}`}><Act icon={PenLine} tone="primary" tip={`Write a blog post for "${x.lead.keyword}"`}>Write</Act></Link>}
+                    <Link to={`/keyword-management/mapping${x.lead ? `?keyword=${encodeURIComponent(x.lead.keyword)}` : ''}`}><Act icon={FileText} tone="slate" tip="Choose the page for this topic">{x.pages.length ? 'Change page' : 'Choose page'}</Act></Link>
+                  </footer>
+                </section>
+              );
+            })}
+          </div>)}
+      <UseKeywordsModal b={b} ids={useIds} onClose={() => setUseIds(null)} />
       {toastNode}
     </div>
   );
@@ -1036,6 +1105,9 @@ const EXPLORER_PLATFORMS = [
   { id: 'ebay', label: 'eBay' },
   { id: 'app_stores', label: 'App Stores' }
 ];
+
+const COMP_ORDER = { LOW: 0, MEDIUM: 1, HIGH: 2 };
+const explorerValue = (k, key) => (key === 'keyword' ? k.keyword : key === 'volume' ? k.search_volume ?? null : key === 'intent' ? k.intent || null : key === 'competition' ? (COMP_ORDER[k.competition] ?? null) : key === 'cpc' ? k.cpc ?? null : key === 'difficulty' ? k.difficulty ?? null : null);
 
 function SparkTrend({ values = [] }) {
   if (!values || !values.length) return <span className="text-slate-300 font-mono text-[11px]">—</span>;
@@ -1109,6 +1181,9 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
     searchedN.current = seedSearch.n;
     search(seedSearch.text);
   }, [seedSearch?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { // one click on the source shows its results: it opens with the business's own first service
+    if (!seedSearch?.n) search((b.services || []).map(x => String(x?.name || x || '').trim()).filter(Boolean)[0] || b.category || b.name || '');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const trackSingle = (kw) => run(`t-${kw}`, async () => {
     await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: kw }] });
@@ -1141,6 +1216,9 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
     });
   }, [results, filterText, filterIntent, filterComp]);
 
+  const { sorted: sortedResults, sort: exSort, onSort: onExSort } = useSorted(filteredResults, explorerValue);
+  const exPager = usePager(sortedResults, { size: 25, resetKey: `${filterText}|${filterIntent}|${filterComp}|${results.length}` });
+
   const toggleSelectAll = () => {
     if (selectedKws.length === filteredResults.length) {
       setSelectedKws([]);
@@ -1151,23 +1229,8 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
 
   const exportCsv = () => {
     if (!filteredResults.length) return;
-    const header = ['Keyword', 'Search Volume', 'Intent', 'Competition', 'CPC', 'Difficulty'];
-    const rows = filteredResults.map(k => [
-      `"${(k.keyword || '').replace(/"/g, '""')}"`,
-      k.search_volume || 0,
-      k.intent || '',
-      k.competition || '',
-      k.cpc || 0,
-      k.difficulty || 0
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [header.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encoded = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encoded);
-    link.setAttribute('download', `keywords_${keyword.trim().replace(/\s+/g, '_')}_${country}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsv(`keywords-${keyword.trim().replace(/\s+/g, '-')}-${country}`, ['Keyword', 'Search volume', 'Intent', 'Competition', 'CPC', 'Difficulty'],
+      sortedResults.map(k => [k.keyword || '', k.search_volume ?? '', k.intent || '', k.competition || '', k.cpc ?? '', k.difficulty ?? '']));
   };
 
   const avgVol = results.length ? Math.round(results.reduce((s, x) => s + (x.search_volume || 0), 0) / results.length) : 0;
@@ -1175,101 +1238,31 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
   const avgDiff = results.length ? Math.round(results.reduce((s, x) => s + (x.difficulty || 0), 0) / results.length) : 0;
 
   return (
-    <div className="space-y-5">
-      <Card
-        title="Keyword Explorer"
-        subtitle="Multi-platform search suggestion engine across Google, YouTube, Bing, Amazon, DuckDuckGo, eBay, and App Stores with volume, competition, CPC, and intent."
-      >
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex-1 min-w-[240px]">
-              <div className="text-11 font-semibold text-slate-500 mb-1">Seed Keyword</div>
-              <input
-                className={inputCls}
-                placeholder="e.g. digital marketing, dental clinic, travel agency..."
-                value={keyword}
-                onChange={e => setKeyword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && search()}
-              />
-            </label>
-            <label>
-              <div className="text-11 font-semibold text-slate-500 mb-1">Country</div>
-              <input
-                className={`${inputCls} w-20 uppercase font-mono`}
-                maxLength={2}
-                value={country}
-                onChange={e => setCountry(e.target.value.toUpperCase())}
-              />
-            </label>
-            <label>
-              <div className="text-11 font-semibold text-slate-500 mb-1">Limit</div>
-              <Select
-                className="h-9 px-2.5 text-12.5 rounded-lg bg-white ring-1 ring-inset ring-slate-200 outline-none focus:ring-indigo-400"
-                value={limit}
-                onChange={e => setLimit(Number(e.target.value))}
-              >
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-                <option value={200}>200</option>
-              </Select>
-            </label>
-            <Button
-              variant="primary"
-              icon={Search}
-              busy={busy === 'search'}
-              disabled={!keyword.trim()}
-              onClick={search}
-            >
-              Explore Keywords
-            </Button>
-          </div>
-
-          <div>
-            <div className="text-11 font-semibold text-slate-500 mb-1.5">Platforms to Query:</div>
-            <div className="flex flex-wrap gap-1.5">
-              {EXPLORER_PLATFORMS.map(p => {
-                const active = platforms.includes(p.id);
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => togglePlatform(p.id)}
-                    className={`px-2.5 py-1 rounded-lg text-11.5 font-semibold transition-all cursor-pointer ring-1 ring-inset ${
-                      active
-                        ? 'bg-indigo-600 text-white ring-indigo-600 shadow-xs'
-                        : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+    <div className="space-y-3">
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2" title="Suggestions from Google, YouTube, Bing, Amazon, DuckDuckGo, eBay and App Stores, with volume, competition, CPC and intent">
+        <span className="text-13 text-slate-600">Seed <b className="text-slate-900">{keyword || 'none yet'}</b></span>
+        <div role="group" aria-label="Platforms to query" className="flex flex-wrap items-center gap-1.5">
+          {EXPLORER_PLATFORMS.map(p => {
+            const active = platforms.includes(p.id);
+            return <button key={p.id} type="button" onClick={() => togglePlatform(p.id)} aria-pressed={active} className={`h-7 px-2.5 rounded-md text-12 font-semibold cursor-pointer ring-1 ring-inset ${active ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'}`}>{p.label}</button>;
+          })}
         </div>
-        <ErrorNote>{error}</ErrorNote>
-      </Card>
+        <label className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">Country<input aria-label="Country" className="h-8 w-14 px-2 text-13 rounded-md border border-slate-200 uppercase font-mono text-slate-800" maxLength={2} value={country} onChange={e => setCountry(e.target.value.toUpperCase())} /></label>
+        <label className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">Limit
+          <select aria-label="Limit" className="h-8 px-2 text-13 rounded-md border border-slate-200 bg-white text-slate-800 cursor-pointer" value={limit} onChange={e => setLimit(Number(e.target.value))}><option value={50}>50</option><option value={100}>100</option><option value={200}>200</option></select>
+        </label>
+        <Button size="sm" variant="primary" icon={Search} busy={busy === 'search'} disabled={!keyword.trim()} onClick={() => search()} className="ml-auto">Explore again</Button>
+      </div>
+      <ErrorNote>{error}</ErrorNote>
 
       {results.length > 0 && (
         <div className="space-y-4">
-          {/* Summary KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Discovered</div>
-              <div className="text-18 font-bold text-slate-900 mt-0.5">{results.length} keywords</div>
-            </div>
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Avg Search Volume</div>
-              <div className="text-18 font-bold text-indigo-600 mt-0.5">{fmt(avgVol)} /mo</div>
-            </div>
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Avg CPC</div>
-              <div className="text-18 font-bold text-emerald-600 mt-0.5">${avgCpc}</div>
-            </div>
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-              <div className="text-11 text-slate-500 font-semibold uppercase tracking-wider">Avg Difficulty</div>
-              <div className="text-18 font-bold text-amber-600 mt-0.5">{avgDiff} / 100</div>
-            </div>
+          {/* Summary: one slim line */}
+          <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-x-8 gap-y-1 text-13 text-slate-500">
+            <span><b className="text-slate-900 tabular-nums">{results.length}</b> keywords</span>
+            <span>Avg searches <b className="text-indigo-600 tabular-nums">{fmt(avgVol)}</b>/mo</span>
+            <span>Avg CPC <b className="text-emerald-600 tabular-nums">${avgCpc}</b></span>
+            <span>Avg difficulty <b className="text-amber-600 tabular-nums">{avgDiff}</b>/100</span>
           </div>
 
           {/* Results Table Card */}
@@ -1347,23 +1340,23 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
                         onChange={toggleSelectAll}
                       />
                     </th>
-                    <th className="p-3 text-left">Keyword</th>
+                    <SortTh id="keyword" sort={exSort} onSort={onExSort} className="p-3">Keyword</SortTh>
                     <th className="p-3 text-left">12m Trend</th>
-                    <th className="p-3 text-right">Volume</th>
-                    <th className="p-3 text-center">Intent</th>
-                    <th className="p-3 text-center">Competition</th>
-                    <th className="p-3 text-right">CPC</th>
-                    <th className="p-3 text-center">Difficulty</th>
+                    <SortTh id="volume" sort={exSort} onSort={onExSort} right first="desc" className="p-3">Volume</SortTh>
+                    <SortTh id="intent" sort={exSort} onSort={onExSort} className="p-3" style={{ textAlign: 'center' }}>Intent</SortTh>
+                    <SortTh id="competition" sort={exSort} onSort={onExSort} className="p-3" style={{ textAlign: 'center' }}>Competition</SortTh>
+                    <SortTh id="cpc" sort={exSort} onSort={onExSort} right first="desc" className="p-3">CPC</SortTh>
+                    <SortTh id="difficulty" sort={exSort} onSort={onExSort} className="p-3" style={{ textAlign: 'center' }}>Difficulty</SortTh>
                     <th className="p-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredResults.map((item, idx) => {
+                  {exPager.rows.map((item, idx) => {
                     const isTracked = trackedSet.has((item.keyword || '').toLowerCase());
                     const isSelected = selectedKws.includes(item.keyword);
                     const intentKey = (item.intent || '').toLowerCase();
                     return (
-                      <tr key={idx} className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-indigo-50/40' : ''}`}>
+                      <tr key={`${exPager.from + idx}-${item.keyword}`} className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-indigo-50/40' : ''}`}>
                         <td className="p-3 text-center">
                           <input
                             type="checkbox"
@@ -1444,6 +1437,7 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
                 </tbody>
               </table>
             </div>
+            <Pager p={exPager} label="keywords" />
           </Card>
         </div>
       )}
@@ -1464,22 +1458,22 @@ function AiSuggestions({ b, tracked, onTracked, seedSearch }) {
   const cacheKey = `kwai:${b.id}`;
   const [data, setData] = useState(() => { try { return JSON.parse(sessionStorage.getItem(cacheKey) || 'null'); } catch { return null; } });
   const [picked, setPicked] = useState([]);
-  const [area, setArea] = useState('all');
   const [busy, error, run] = useAction();
   const have = useMemo(() => new Set((tracked || []).map(k => k.keyword)), [tracked]);
   const items = (data?.items || []).filter(i => !have.has(i.keyword));
-  const shown = items.filter(i => area === 'all' || (i.uses || []).includes(area));
   const suggest = (topic = '') => run('suggest', async () => {
     const r = await api(`/businesses/${b.id}/keywords/ai-suggestions`, { method: 'POST', body: topic ? { topic } : {}, timeout: 120000 });
     setData(r); setPicked([]);
     try { sessionStorage.setItem(cacheKey, JSON.stringify(r)); } catch { /* optional */ }
   });
+  const aiRows = React.useRef([]); // the rows the table shows now (after its search and filters), for "Pick all shown"
   const ranFor = React.useRef(0);
   useEffect(() => { // a topic typed in the search box above: the AI writes its suggestions around it
     if (!seedSearch?.n || ranFor.current === seedSearch.n) return;
     ranFor.current = seedSearch.n;
     suggest(seedSearch.text);
   }, [seedSearch?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!data && !seedSearch?.n) suggest(''); }, []); // eslint-disable-line react-hooks/exhaustive-deps -- one click on the source shows its suggestions: nothing else to press
   const toggle = (k) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k]));
   const save = () => run('save', async () => {
     const chosen = items.filter(i => picked.includes(i.keyword));
@@ -1502,35 +1496,35 @@ function AiSuggestions({ b, tracked, onTracked, seedSearch }) {
         {data && busy !== 'suggest' && (
           <>
             {facts.length > 0 && <p className="text-12.5 text-slate-500">Built from {facts.map(([n, l]) => `${n} ${l}`).join(' · ')}{ev.researched ? ' · competitor research' : ''}.</p>}
-            <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Filter by where it is for">
-              {[['all', 'All'], ...Object.entries(USE_LABEL)].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={area === id} onClick={() => setArea(id)} className={`h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${area === id ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{label}</button>)}
-            </div>
           </>
         )}
       </Card>
-      {data && busy !== 'suggest' && HORIZONS.map(([hz, title, hint]) => {
-        const list = shown.filter(i => i.horizon === hz);
-        if (!list.length) return null;
-        return (
-          <Card key={hz} pad={false} title={title} subtitle={hint}>
-            <ul className="divide-y divide-slate-100">
-              {list.map(i => (
-                <li key={i.keyword}>
-                  <label className="flex items-start gap-3 px-5 py-3.5 cursor-pointer hover:bg-slate-50">
-                    <input type="checkbox" className="mt-1.5" checked={picked.includes(i.keyword)} onChange={() => toggle(i.keyword)} aria-label={`Pick ${i.keyword}`} />
-                    <span className="flex-1 min-w-0">
-                      <span className="flex flex-wrap items-center gap-2"><span className="text-14 font-semibold text-slate-900">{i.keyword}</span>{i.topic && <Badge tone="gray">{i.topic}</Badge>}{i.intent && <Badge tone={INTENT_TONE[i.intent] || 'gray'}>{i.intent}</Badge>}{i.priority === 'High' && <Badge tone="orange">high priority</Badge>}</span>
-                      {i.why && <span className="block text-12.5 text-slate-600 mt-0.5">{i.why}</span>}
-                      <span className="mt-1.5 flex flex-wrap items-center gap-1.5 text-11.5 text-slate-500">Use it for: {(i.uses || []).map(u => <UseChip key={u} u={u} />)}</span>
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        );
-      })}
-      {data && busy !== 'suggest' && shown.length === 0 && <Card><p className="py-8 text-center text-13 text-slate-500">{items.length ? 'Nothing in this filter. Choose All.' : 'Every suggestion is already saved. Press Suggest again for new ones.'}</p></Card>}
+      {data && busy !== 'suggest' && items.length > 0 && (
+        <Card pad={false}>
+          <DataTable bare rows={items} rowKey={i => i.keyword} pageSize={25} exportName="ai-keyword-suggestions" label="suggestions" searchPlaceholder="Search suggestions" minWidth={900}
+            onState={s => { aiRows.current = s.rows; }}
+            rowClass={i => (picked.includes(i.keyword) ? 'bg-indigo-50/60' : 'hover:bg-slate-50')}
+            filters={[
+              { id: 'when', label: 'When', options: HORIZONS.map(([id, label]) => [id, label]), test: (i, v) => i.horizon === v },
+              { id: 'intent', label: 'Intent', options: [...new Set(items.map(i => i.intent).filter(Boolean))].sort().map(x => [x, x]), test: (i, v) => i.intent === v },
+              { id: 'priority', label: 'Priority', options: ['High', 'Medium', 'Low'].map(x => [x, x]), test: (i, v) => i.priority === v },
+              { id: 'use', label: 'Use it for', options: Object.entries(USE_LABEL), test: (i, v) => (i.uses || []).includes(v) },
+              { id: 'topic', label: 'Topic', options: [...new Set(items.map(i => i.topic).filter(Boolean))].sort().map(x => [x, x]), test: (i, v) => i.topic === v }
+            ].filter(f => f.options.length > 1)}
+            columns={[
+              { id: 'pick', label: 'Pick', csv: false, className: 'pl-4 pr-1 py-3 w-10', thClass: 'pl-4 pr-1 py-3 w-10',
+                header: <input type="checkbox" aria-label="Pick all shown" checked={aiRows.current.length > 0 && aiRows.current.every(i => picked.includes(i.keyword))} onChange={() => { const every = aiRows.current.every(i => picked.includes(i.keyword)); setPicked(p => (every ? p.filter(k => !aiRows.current.some(i => i.keyword === k)) : [...new Set([...p, ...aiRows.current.map(i => i.keyword)])])); }} />,
+                cell: i => <input type="checkbox" checked={picked.includes(i.keyword)} onChange={() => toggle(i.keyword)} aria-label={`Pick ${i.keyword}`} /> },
+              { id: 'keyword', header: 'Keyword and why', value: i => i.keyword, className: 'px-3 py-3 min-w-[260px]', cell: i => <><div className="text-14 font-semibold text-slate-900">{i.keyword}</div>{i.why && <div className="text-12.5 text-slate-600 mt-0.5">{i.why}</div>}</> },
+              { id: 'topic', header: 'Topic', value: i => i.topic || null, cell: i => (i.topic ? <Badge tone="gray">{i.topic}</Badge> : <span className="text-slate-300">—</span>) },
+              { id: 'intent', header: 'Intent', value: i => i.intent || null, cell: i => (i.intent ? <Badge tone={INTENT_TONE[i.intent] || 'gray'}>{i.intent}</Badge> : <span className="text-slate-300">—</span>) },
+              { id: 'priority', header: 'Priority', csv: false, value: i => ({ High: 0, Medium: 1, Low: 2 })[i.priority] ?? 1, cell: i => <Badge tone={{ High: 'red', Medium: 'amber', Low: 'gray' }[i.priority] || 'gray'}>{i.priority || 'Medium'}</Badge> },
+              { id: 'priority_name', header: 'Priority name', hide: true, value: i => i.priority || 'Medium' },
+              { id: 'horizon', header: 'When', value: i => (i.horizon === 'next' ? 'Grow next' : 'Builds on what you do'), cell: i => <span className="text-12.5 text-slate-600 whitespace-nowrap">{i.horizon === 'next' ? 'Grow next' : 'Builds on what you do'}</span> },
+              { id: 'uses', header: 'Use it for', value: i => (i.uses || []).map(u => USE_LABEL[u] || u).join(', '), className: 'px-3 py-3', cell: i => <span className="flex flex-wrap gap-1">{(i.uses || []).map(u => <UseChip key={u} u={u} />)}</span> }
+            ]} />
+        </Card>)}
+      {data && busy !== 'suggest' && items.length === 0 && <Card><p className="py-8 text-center text-13 text-slate-500">{items.length ? 'Nothing in this filter. Choose All.' : 'Every suggestion is already saved. Press Suggest again for new ones.'}</p></Card>}
       {picked.length > 0 && (
         <div className="sticky bottom-3 z-10 rounded-xl bg-white border border-indigo-200 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
           <div className="flex-1 min-w-[200px] text-13 text-slate-800"><b>{picked.length}</b> picked. They are saved with the topic and the areas shown, then you group and use them on the next page.</div>
@@ -1552,17 +1546,31 @@ const AREA_HELP = {
   chatgpt: 'Your ChatGPT business profile, policies or feed mention it.'
 };
 
+const useItValue = (i, key) => {
+  if (key === 'keyword') return i.keyword;
+  if (key === 'plan') return i.planned.length;
+  const a = key.slice(2);
+  return i.used[a] === true ? 2 : i.planned.includes(a) ? 1 : i.used[a] === null ? null : 0;
+};
+
 function UseIt({ b, kw }) {
   const usage = useApi(`/businesses/${b.id}/keywords/usage`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const [onlyOpen, setOnlyOpen] = useState(false);
+  const [useQ, setUseQ] = useState('');
   const d = usage.data;
+  const useRows = useMemo(() => {
+    const needle = useQ.trim().toLowerCase();
+    return (d?.items || []).filter(i => (!onlyOpen || AREA_ORDER.some(a => i.planned.includes(a) && i.used[a] === false)) && (!needle || String(i.keyword).toLowerCase().includes(needle) || String(i.cluster || '').toLowerCase().includes(needle)));
+  }, [d, onlyOpen, useQ]);
+  const { sorted: useSortedRows, sort: useSort, onSort: onUseSort } = useSorted(useRows, useItValue);
+  const usePage = usePager(useSortedRows, { size: 25, resetKey: `${onlyOpen}|${useQ}` });
   const addQuestion = (k) => run(`g${k.id}`, async () => { const r = await api(`/businesses/${b.id}/keywords/${k.id}/geo-prompt`, { method: 'POST', body: {} }); usage.reload(true); kw.reload(true); toast(r.added ? `Added to AI search: “${r.prompt}”` : 'That question is already tracked in AI search.'); });
   const setUses = (k, uses) => run(`u${k.id}`, async () => { await api(`/businesses/${b.id}/keywords/${k.id}`, { method: 'PATCH', body: { keyword: k.keyword, uses } }); usage.reload(true); kw.reload(true); });
   if (!d) return usage.error ? <ErrorNote>{usage.error.message}</ErrorNote> : <SkCard title="Keyword Usage" pad={false}><SkTable headers={['Keyword', 'Website', 'Blog', 'Google posts', 'AEO', 'AI search', 'ChatGPT']} rows={6} bare /></SkCard>;
   if (!d.total) return <Card><p className="py-10 text-center text-13 text-slate-500">Save some keywords first: find them in <Link to="/keyword-management/ai" className="font-semibold text-indigo-600 hover:underline">Find Keywords</Link>, then come back to put them to work.</p></Card>;
-  const rows = d.items.filter(i => !onlyOpen || AREA_ORDER.some(a => i.planned.includes(a) && i.used[a] === false));
+  const rows = usePage.rows;
   const link = (a, i) => ({
     blog: `/ai-content-generation/blog?topic=${encodeURIComponent(i.keyword)}`, gmb_post: `/google-posts?topic=${encodeURIComponent(i.keyword)}`,
     aeo: '/website-audit?tab=schema', chatgpt: '/chatgpt-business/profile', website: '/website-audit?tab=report'
@@ -1594,10 +1602,14 @@ function UseIt({ b, kw }) {
       </div>
       <ErrorNote>{error}</ErrorNote>
       <Card pad={false} title="Put your keywords to work" subtitle="For every saved keyword: where it already appears, and where it is meant to be used. Each button opens the right place with the keyword ready."
-        action={<label className="inline-flex items-center gap-2 text-12.5 text-slate-600 cursor-pointer"><input type="checkbox" checked={onlyOpen} onChange={e => setOnlyOpen(e.target.checked)} />Only what is planned but not done</label>}>
+        action={<span className="inline-flex flex-wrap items-center gap-3"><label className="inline-flex items-center gap-2 text-12.5 text-slate-600 cursor-pointer"><input type="checkbox" checked={onlyOpen} onChange={e => setOnlyOpen(e.target.checked)} />Only what is planned but not done</label>
+          <Button size="sm" icon={Download} disabled={!useSortedRows.length} title="Download all the keywords listed, with where each is used or planned, as a CSV file"
+            onClick={() => downloadCsv(`keyword-usage-${b.name}`, ['Keyword', 'Topic', 'Google rank', ...AREA_ORDER.map(a => USE_LABEL[a]), 'Planned areas'],
+              useSortedRows.map(i => [i.keyword, i.cluster || '', i.rank ?? '', ...AREA_ORDER.map(a => (i.used[a] === true ? 'Used' : i.planned.includes(a) ? 'Planned' : i.used[a] === null ? 'Not checked' : 'Not yet')), i.planned.map(a => USE_LABEL[a] || a).join(', ')]))}>Export CSV</Button></span>}>
+        {d.items.length > 10 && <div className="px-4 py-3 border-b border-slate-100"><input value={useQ} onChange={e => setUseQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-full max-w-xs px-3 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
         <div className="overflow-x-auto">
           <table className="w-full text-13 min-w-[860px]">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="p-3 text-left font-semibold">Keyword</th>{AREA_ORDER.map(a => <th key={a} className="p-3 text-left font-semibold" title={AREA_HELP[a]}>{USE_LABEL[a]}</th>)}<th className="p-3 text-left font-semibold">Plan</th></tr></thead>
+            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={useSort} onSort={onUseSort} className="p-3">Keyword</SortTh>{AREA_ORDER.map(a => <SortTh key={a} id={`a:${a}`} sort={useSort} onSort={onUseSort} first="desc" className="p-3" title={AREA_HELP[a]}>{USE_LABEL[a]}</SortTh>)}<SortTh id="plan" sort={useSort} onSort={onUseSort} first="desc" className="p-3">Plan</SortTh></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map(i => (
                 <tr key={i.id} className="align-top hover:bg-slate-50">
@@ -1615,6 +1627,7 @@ function UseIt({ b, kw }) {
             </tbody>
           </table>
         </div>
+        <Pager p={usePage} label="keywords" />
       </Card>
       <p className="text-11.5 text-slate-400">“Used” is read from your real content: the website crawl and profile, published posts, blog articles, question headings (AEO), tracked AI questions (GEO) and the ChatGPT profile and feed. A keyword counts as used only when all its words appear together.</p>
     </div>
@@ -1624,17 +1637,24 @@ function UseIt({ b, kw }) {
 const FIND_TABS = ['ai', 'discover', 'planner', 'explorer'];
 const SAVE_TABS = ['tracked', 'topics', 'use', 'status'];
 const SOURCES = [['ai', 'AI suggestions', 'Keywords and questions written from what your business has really done and could grow into'], ['discover', 'Ideas for my business', 'Built from your services, area, website and competitors'], ['planner', 'Google numbers', 'Search volume, competition and bids from the Google Keyword Planner'], ['explorer', 'Other platforms', 'Suggestions from YouTube, Bing, Amazon and more']];
-const SAVED_VIEWS = [['tracked', 'My keywords', 'Every saved keyword with its rank and the page it should rank with'], ['topics', 'Topics', 'Group the keywords into topics, one page per topic'], ['use', 'Keyword Usage', 'Blog, Google posts, AEO, GEO, ChatGPT and the website'], ['status', 'Rankings', 'Where each keyword ranks now, what it earns and whether it is worth pushing']];
-const pill = (on) => `h-9 px-4 rounded-full text-13 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`;
 
 function Keywords({ b, tab, kw, onSaved, seedSearch }) {
   const tracked = kw.data?.keywords || [];
+  // a source that was opened stays in the page (hidden) while another is on screen: its results are still there when you come back
+  const [opened, setOpened] = useState(() => new Set([tab]));
+  useEffect(() => { setOpened(o => (o.has(tab) ? o : new Set([...o, tab]))); }, [tab]);
+  const live = (id) => opened.has(id) || tab === id;
+  // a source that is hidden keeps the search it last ran: it answers a new one when it is opened, so one search does not ask all four sources at once
+  const last = React.useRef({});
+  if (FIND_TABS.includes(tab)) last.current[tab] = seedSearch;
+  const seedOf = (id) => last.current[id] || seedSearch;
+  const keep = (id, node) => live(id) && <div key={id} hidden={tab !== id}>{node}</div>;
   return (
     <>
-      {tab === 'ai' && <AiSuggestions b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
-      {tab === 'discover' && <Discover b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
-      {tab === 'planner' && <GooglePlanner b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
-      {tab === 'explorer' && <KeywordExplorer b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedSearch} />}
+      {keep('ai', <AiSuggestions b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedOf('ai')} />)}
+      {keep('discover', <Discover b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedOf('discover')} />)}
+      {keep('planner', <GooglePlanner b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedOf('planner')} />)}
+      {keep('explorer', <KeywordExplorer b={b} tracked={tracked} onTracked={onSaved} seedSearch={seedOf('explorer')} />)}
       {tab === 'tracked' && <Tracked b={b} kw={kw} />}
       {tab === 'topics' && <Topics b={b} kw={kw} />}
       {tab === 'use' && <UseIt b={b} kw={kw} />}
@@ -1643,60 +1663,9 @@ function Keywords({ b, tab, kw, onSaved, seedSearch }) {
   );
 }
 
-/** The four steps (find, save, group, track), where the project stands on each. */
-function PathBar({ progress, tab, setTab }) {
-  const at = FIND_TABS.includes(tab) ? 'find' : tab === 'tracked' ? 'save' : tab === 'topics' ? 'group' : tab === 'status' ? 'track' : 'use';
-  const go = { find: 'ai', save: 'tracked', group: 'topics', use: 'use' };
-  const steps = progress?.steps || [];
-  if (!steps.length) return <div className="h-16 rounded-xl bg-slate-100 animate-pulse mb-5" role="status" aria-busy="true" />;
-  return (
-    <nav aria-label="Keyword steps" className="bg-white rounded-xl border border-slate-200 shadow-sm p-1.5 flex flex-wrap items-stretch gap-1 mb-5">
-      {steps.map((st, i) => {
-        const current = st.key === at;
-        const inner = (
-          <>
-            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-12 font-bold shrink-0 ${current ? 'bg-white/20 text-white' : st.done ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>{st.done && !current ? <Check size={14} /> : i + 1}</span>
-            <span className="min-w-0 text-left"><span className={`block text-13 font-semibold ${current ? 'text-white' : 'text-slate-800'}`}>{st.title}</span><span className={`block text-11.5 truncate ${current ? 'text-indigo-100' : 'text-slate-500'}`} title={st.detail}>{st.detail}</span></span>
-          </>
-        );
-        const cls = `flex-1 min-w-[150px] rounded-lg px-3 py-2 flex items-center gap-2.5 cursor-pointer ${current ? 'bg-indigo-600' : 'hover:bg-slate-50'}`;
-        return st.key === 'track'
-          ? <Link key={st.key} to={st.to} className={cls}>{inner}</Link>
-          : <button key={st.key} type="button" onClick={() => setTab(go[st.key])} aria-current={current ? 'step' : undefined} className={cls}>{inner}</button>;
-      })}
-    </nav>
-  );
-}
-
-function NextStep({ progress, tab, bid, reload }) {
-  const navigate = useNavigate();
-  const [busy, error, run] = useAction();
-  if (!progress) return null;
-  if (progress.complete) return <div className="mt-6 rounded-xl bg-emerald-50 text-emerald-900 px-4 py-3 text-13 flex items-center gap-2"><CheckCircle2 size={16} /> All four steps are done: {progress.saved} keywords saved, grouped, and checked on Google. Check the positions again in <Link to="/rank-tracking/positions" className="font-semibold underline">Position Tracking</Link>.</div>;
-  const n = progress.next;
-  // On the page of the very step that is open, a link to itself does nothing: offer the action that finishes it
-  let action = <Link to={n.to} className="h-9 px-4 rounded-lg inline-flex items-center gap-1.5 text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700">{n.key === 'track' ? 'Open Position Tracking' : `Go to ${n.title}`}<ArrowRight size={14} /></Link>;
-  let detail = n.detail;
-  if (n.key === 'group' && tab === 'topics') {
-    if (progress.ungrouped?.length) {
-      detail = `${n.detail} Not in a topic yet: ${progress.ungrouped.join(', ')}.`;
-      action = <Button variant="ai" icon={Sparkles} busy={busy === 'group'} onClick={() => run('group', async () => { await api(`/businesses/${bid}/keywords/cluster`, { method: 'POST' }); reload(); })}>Group them into topics</Button>;
-    } else if (progress.unmapped?.length) {
-      detail = `${n.detail} Still without a page: ${progress.unmapped.join(', ')}.`;
-      action = <Button variant="primary" icon={ArrowRight} onClick={() => navigate('/keyword-management/tracked')}>Give {progress.unmapped.length === 1 ? 'it' : 'them'} a page</Button>;
-    }
-  }
-  return (
-    <div className="mt-6 mb-16 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 flex flex-wrap items-center gap-3 sm:pr-24">
-      <div className="flex-1 min-w-[220px] text-13 text-indigo-950"><b>Next step: {n.title}.</b> {detail}</div>
-      {action}
-      {error && <p className="basis-full text-12 text-red-600">{error}</p>}
-    </div>
-  );
-}
-
 const FLOW_AT = { workspace: 'workspace', ai: 'find', discover: 'find', planner: 'find', explorer: 'find', tracked: 'mine', topics: 'topics', use: 'use', mapping: 'mapping', status: 'status' };
 
+const FIND_ICON = { ai: Sparkles, discover: MapPin, planner: BarChart2, explorer: Globe };
 const FIND_CARDS = [
   ['ai', 'AI suggestions', 'Written from your business: what it does, what competitors win, what is missing'],
   ['discover', 'Ideas for my business', 'Real Google searches around your services and your areas'],
@@ -1710,32 +1679,35 @@ const FIND_HINT = {
   explorer: 'Type a keyword to see what people search for on other platforms.',
 };
 
-/** The top of Find Keywords: one search box, and the four places to look as cards. */
+/** The top of Find Keywords: the four places to look (one click shows that source's results) and one search box that asks the one you are on. */
 function FindHeader({ tab, setTab, typed, setTyped, onSearch, seedText }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-5">
-      <form onSubmit={(e) => { e.preventDefault(); onSearch(); }} role="search" className="flex flex-wrap gap-2">
-        <label className="relative flex-1 min-w-[240px]"><Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-          <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search a keyword or topic" aria-label="Search keywords" className="w-full h-11 pl-10 pr-3 text-14 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
-        <Button type="submit" variant="primary" icon={Search} className="h-11 px-6" disabled={typed.trim().length < 2}>Search</Button>
-      </form>
-      <p className="mt-1.5 text-12 text-slate-500">{FIND_HINT[tab]}{seedText ? <> Showing results for <b className="text-slate-700">{seedText}</b>.</> : null}</p>
-      <div className="mt-4 text-12 font-semibold uppercase tracking-wide text-slate-500">Where to look</div>
-      <div role="tablist" aria-label="Where the ideas come from" className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        {FIND_CARDS.map(([id, label, text]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-            className={`text-left rounded-lg px-3.5 py-3 cursor-pointer ring-1 ring-inset transition-colors ${tab === id ? 'bg-indigo-50 ring-indigo-400' : 'bg-white ring-slate-200 hover:bg-slate-50'}`}>
-            <span className={`block text-13.5 font-semibold ${tab === id ? 'text-indigo-800' : 'text-slate-900'}`}>{label}</span>
-            <span className="block text-12 text-slate-500 mt-0.5 leading-snug">{text}</span>
-          </button>))}
+    <div className="bg-white rounded-xl ring-1 ring-slate-200 shadow-sm mb-3 overflow-hidden">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-3 pt-2 pb-2">
+        <div role="tablist" aria-label="Where the ideas come from" className="flex flex-wrap gap-1">
+          {FIND_CARDS.map(([id, label, text]) => {
+            const Icon = FIND_ICON[id];
+            const on = tab === id;
+            return (
+              <button key={id} type="button" role="tab" aria-selected={on} onClick={() => setTab(id)} title={text}
+                className={`h-9 px-3 rounded-lg text-13.5 font-semibold cursor-pointer inline-flex items-center gap-2 transition-colors ${on ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                <Icon size={15} />{label}
+              </button>);
+          })}
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); onSearch(); }} role="search" className="flex flex-1 min-w-[260px] gap-2 lg:ml-auto lg:max-w-xl">
+          <label className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+            <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search a keyword or topic" aria-label="Search keywords" className="w-full h-9 pl-9 pr-3 text-13.5 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+          <Button type="submit" variant="primary" icon={Search} disabled={typed.trim().length < 2}>Search</Button>
+        </form>
       </div>
+      <p className="px-4 py-1.5 border-t border-slate-100 bg-slate-50/60 text-12 text-slate-500">{FIND_HINT[tab]}{seedText ? <> Showing results for <b className="text-slate-700">{seedText}</b>.</> : null}</p>
     </div>
   );
 }
 
 function KeywordPath({ b, tab, setTab }) {
   const kw = useApi(`/businesses/${b.id}/keywords`);
-  const progress = useApi(`/businesses/${b.id}/keywords/progress`);
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const fromUrl = (params.get('q') || '').trim();
@@ -1748,16 +1720,15 @@ function KeywordPath({ b, tab, setTab }) {
     setSeedSearch(x => ({ n: x.n + 1, text: t }));
     navigate(`/keyword-management/${tab}?q=${encodeURIComponent(t)}`, { replace: true });
   };
-  const refresh = { ...kw, reload: (q) => { kw.reload(q); progress.reload(true); } };
+  const refresh = { ...kw, reload: (q) => { kw.reload(q); } };
   // Saving a keyword from any source ends on My Keywords, with what was just saved marked.
   const saved = (names, added) => {
-    kw.reload(true); progress.reload(true);
+    kw.reload(true);
     navigate('/keyword-management/tracked', { state: { added: names || [], newCount: added ?? (names || []).length } });
   };
   if (tab === 'mapping') {
     return (
       <>
-        <KeywordFlowBar b={b} at="mapping" />
         <KeywordMappingTab b={b} />
       </>
     );
@@ -1765,24 +1736,15 @@ function KeywordPath({ b, tab, setTab }) {
   if (tab === 'workspace') {
     return (
       <>
-        <KeywordFlowBar b={b} at={FLOW_AT[tab] || 'find'} />
         <KeywordWorkspace b={b} onUse={setTab} />
       </>
     );
   }
   return (
     <>
-      <KeywordFlowBar b={b} at={FLOW_AT[tab] || 'find'} />
 
       {FIND_TABS.includes(tab) && <FindHeader tab={tab} setTab={setTab} typed={typed} setTyped={setTyped} onSearch={startSearch} seedText={seedSearch.text} />}
-      {SAVE_TABS.includes(tab) && tab !== 'tracked' && (
-        <div role="tablist" aria-label="My keywords" className="flex flex-wrap gap-2 mb-5">
-          {SAVED_VIEWS.map(([id, label, hint]) => <button key={id} type="button" role="tab" aria-selected={tab === id} title={hint} onClick={() => setTab(id)} className={pill(tab === id)}>{label}</button>)}
-        </div>
-      )}
-      {tab === 'discover' && <div className="mb-5"><AutopilotPanel key={b.id} bid={b.id} feature="keywords" /></div>}
       <Keywords b={b} tab={tab} kw={refresh} onSaved={saved} seedSearch={seedSearch} />
-      {!FIND_TABS.includes(tab) && tab !== 'tracked' && <NextStep progress={progress.data} tab={tab} bid={b.id} reload={() => { kw.reload(true); progress.reload(true); }} />}
     </>
   );
 }

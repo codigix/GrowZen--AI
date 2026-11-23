@@ -13,13 +13,13 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Business, IndexPage, IndexSetting
+from ..models import Business, IndexPage, IndexSetting, IndexStatDay
 from . import backlink_checker as bc
 from . import sitemap
 from .activity import log
@@ -387,7 +387,7 @@ def parse_inspection(js: dict[str, Any]) -> dict[str, Any]:
         crawled = datetime.fromisoformat(crawl.replace("Z", "+00:00")) if crawl else None
     except ValueError:
         crawled = None
-    return {"state": state, "reason": cov[:250] or None, "last_crawl": crawled, "canonical": (r.get("googleCanonical") or None)}
+    return {"state": state, "reason": cov[:250] or None, "last_crawl": crawled, "canonical": (r.get("googleCanonical") or None), "link": ((js.get("inspectionResult") or {}).get("inspectionResultLink") or None)}
 
 
 def inspect(db: Session, b: Business, urls: list[str] | None = None, limit: int = INSPECT_BATCH) -> dict[str, Any]:
@@ -417,9 +417,33 @@ def inspect(db: Session, b: Business, urls: list[str] | None = None, limit: int 
                 error = error or err
                 continue
             row.g_state, row.g_reason, row.g_last_crawl, row.g_canonical, row.g_checked_at = res["state"], res["reason"], res["last_crawl"], res["canonical"], _now()
+            row.g_link = res["link"] or row.g_link
             done[res["state"]] += 1
     db.commit()
-    return {"checked": sum(done.values()), **done, "error": error}
+    return {"checked": sum(done.values()), **done, "error": error, "pages": {r.url: {"state": r.g_state, "link": r.g_link} for r in rows if r.g_checked_at}}
+
+
+STAT_KEYS = ("total", "in_sitemap", "indexed", "not_indexed", "unchecked", "tech_ok", "tech_risky", "tech_blocked", "tech_unchecked", "sent", "pending")
+
+
+def record_stats(db: Session, b: Business, counts: dict[str, int]) -> list[dict[str, Any]]:
+    """Keep today's counts (the last look of the day wins) and give back the last 30 days, oldest first, for the graphs. A day nobody looked has no row: the graph skips it."""
+    today = _now().date()
+    row = db.get(IndexStatDay, (b.id, today))
+    stats = {k: int(counts.get(k) or 0) for k in STAT_KEYS}
+    if row is None:
+        db.add(IndexStatDay(business_id=b.id, day=today, stats=stats))
+    elif row.stats != stats:
+        row.stats = stats
+    db.flush()
+    rows = list(db.scalars(select(IndexStatDay).where(IndexStatDay.business_id == b.id, IndexStatDay.day > today - timedelta(days=30)).order_by(IndexStatDay.day)))
+    return [{"day": r.day.isoformat(), **(r.stats or {})} for r in rows]
+
+
+def console_links(site: str) -> dict[str, str]:
+    """Where to look in Search Console itself: the site's Page indexing report. A page's own inspection link is NOT built here: its `id` is one Google makes up, so the
+    link comes from the URL Inspection API (inspectionResultLink) when the page is checked."""
+    return {"index_url": f"https://search.google.com/search-console/index?resource_id={quote(site, safe='')}"}
 
 
 def google_status(db: Session, b: Business) -> dict[str, Any]:
@@ -440,8 +464,8 @@ def google_status(db: Session, b: Business) -> dict[str, Any]:
             maps.append({"path": m.get("path"), "last_submitted": m.get("lastSubmitted"), "last_downloaded": m.get("lastDownloaded"), "pending": m.get("isPending"),
                          "errors": int(m.get("errors") or 0), "warnings": int(m.get("warnings") or 0), "submitted": sum(int(c.get("submitted") or 0) for c in (m.get("contents") or []))})
     except Exception as exc:  # noqa: BLE001
-        return {"state": "ok", "account": msg, "property": site, "sitemaps": [], "sitemaps_note": str(exc)[:200]}
-    return {"state": "ok", "account": msg, "property": site, "sitemaps": maps, "console_url": f"https://search.google.com/search-console/sitemaps?resource_id={site}"}
+        return {"state": "ok", "account": msg, "property": site, "sitemaps": [], "sitemaps_note": str(exc)[:200], **console_links(site)}
+    return {"state": "ok", "account": msg, "property": site, "sitemaps": maps, "console_url": f"https://search.google.com/search-console/sitemaps?resource_id={site}", **console_links(site)}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ on its own

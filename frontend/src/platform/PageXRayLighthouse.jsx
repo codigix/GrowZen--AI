@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Gauge, Loader2, Play, CheckCircle2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Gauge, Loader2, Play, CheckCircle2, AlertTriangle, ExternalLink, Download } from 'lucide-react';
 import { Button } from './SeoUi';
 import { api } from './seoApi';
 import Select from '../components/Select';
+import { downloadCsv, downloadFile } from './DataTable';
 
 const fmtSize = (kb) => (kb == null ? '—' : kb >= 1024 ? `${(kb / 1024).toFixed(2)} MB` : `${Math.round(kb)} KB`);
 const TYPE_TINT = { HTML: 'bg-sky-400', JavaScript: 'bg-amber-400', CSS: 'bg-violet-400', Images: 'bg-emerald-400', Fonts: 'bg-pink-400', Media: 'bg-cyan-400', Other: 'bg-slate-400' };
@@ -38,6 +39,12 @@ export default function FullPageCard({ b, url }) {
   };
   const d = state.data;
   const w = d?.weight, c = d?.contrast;
+  const stamp = () => `${(d.final_url || d.url || '').replace(/^https?:\/\//, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}-${d.strategy || 'mobile'}`;
+  const exportFiles = () => downloadCsv(`page-weight-${stamp()}`, ['Section', 'Name or file', 'Size (KB)', 'Requests'], [
+    ...(w.by_type || []).map(t => ['File type', t.type, t.kb, t.requests]),
+    ...(w.heaviest || []).map(h => ['Heaviest file', h.url, h.kb, '']),
+    ...(w.savings || []).map(x => ['Possible saving', x.title, x.kb, ''])]);
+  const exportContrast = () => downloadCsv(`colour-contrast-${stamp()}`, ['Contrast ratio', 'Needed ratio', 'Text colour', 'Background colour', 'Element', 'HTML snippet'], (c.failing || []).map(f => [f.ratio, f.expected ?? 4.5, f.fg, f.bg, f.selector || f.label || '', f.snippet || '']));
   const maxKb = Math.max(1, ...(w?.by_type || []).map(t => t.kb));
 
   return (
@@ -82,7 +89,12 @@ export default function FullPageCard({ b, url }) {
             {d.metrics?.lcp && <span>LCP <b className="text-slate-800">{d.metrics.lcp}</b></span>}
             {d.metrics?.tbt && <span>TBT <b className="text-slate-800">{d.metrics.tbt}</b></span>}
             {d.metrics?.cls && <span>CLS <b className="text-slate-800">{d.metrics.cls}</b></span>}
-            <button type="button" onClick={measure} className="ml-auto text-indigo-600 font-semibold hover:underline cursor-pointer">Measure again</button>
+            <span className="ml-auto inline-flex flex-wrap items-center gap-2">
+              <Button size="sm" icon={Download} onClick={() => downloadFile(`page-weight-report-${stamp()}-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(d, null, 2), 'application/json')}>Download JSON</Button>
+              <Button size="sm" icon={Download} onClick={exportFiles}>Weight CSV</Button>
+              {c?.failing?.length > 0 && <Button size="sm" icon={Download} onClick={exportContrast}>Contrast CSV</Button>}
+            </span>
+            <button type="button" onClick={measure} className="text-indigo-600 font-semibold hover:underline cursor-pointer">Measure again</button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

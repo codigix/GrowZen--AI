@@ -43,7 +43,7 @@ def _page(p: IndexPage, pend: set[int]) -> dict[str, Any]:
     return {"id": p.id, "url": p.url, "path": path + (f"?{urlsplit(p.url).query}" if urlsplit(p.url).query else ""), "first_seen": _iso(p.first_seen_at), "lastmod": p.lastmod, "changed_at": _iso(p.changed_at),
             "in_sitemap": p.in_sitemap, "source": p.source, "is_new": new, "pending": p.id in pend, "skip_reason": p.skip_reason, "submitted_at": _iso(p.submitted_at), "submitted_to": p.submitted_to or [],
             "tech": ({"verdict": (p.tech or {}).get("verdict"), "reasons": (p.tech or {}).get("reasons") or [], "status": (p.tech or {}).get("status"), "words": (p.tech or {}).get("words"), "at": _iso(p.tech_at)} if p.tech else None),
-            "g_state": p.g_state, "g_reason": p.g_reason, "g_advice": indexing.advice(p.g_reason), "g_last_crawl": _iso(p.g_last_crawl), "g_canonical": p.g_canonical, "g_checked_at": _iso(p.g_checked_at)}
+            "g_state": p.g_state, "g_reason": p.g_reason, "g_advice": indexing.advice(p.g_reason), "g_last_crawl": _iso(p.g_last_crawl), "g_canonical": p.g_canonical, "g_checked_at": _iso(p.g_checked_at), "g_link": p.g_link}
 
 
 @router.get("")
@@ -56,6 +56,8 @@ def overview(status: str = "all", q: str = "", limit: int = 300, b: Business = D
               "not_indexed": sum(1 for p in rows if p.g_state in ("not_indexed", "blocked")), "unchecked": sum(1 for p in rows if not p.g_state), "tech_unchecked": sum(1 for p in rows if not p.tech), "tech_ok": sum(1 for p in rows if (p.tech or {}).get("verdict") == "indexable"),
               "tech_risky": sum(1 for p in rows if (p.tech or {}).get("verdict") == "risky"), "tech_blocked": sum(1 for p in rows if (p.tech or {}).get("verdict") == "blocked"), "sent": sum(1 for p in rows if p.submitted_at),
               "pending": len(pend), "skipped": sum(1 for p in rows if p.skip_reason), "new": sum(1 for p in rows if p.first_seen_at and indexing._aware(p.first_seen_at) > indexing._now() - timedelta(days=7))}
+    history = indexing.record_stats(db, b, counts)
+    db.commit()
     needle = q.strip().lower()
 
     def keep(p: IndexPage) -> bool:
@@ -66,7 +68,7 @@ def overview(status: str = "all", q: str = "", limit: int = 300, b: Business = D
 
     shown = [_page(p, pend) for p in rows if keep(p)][: max(1, min(limit, 1000))]
     key = st.indexnow_key
-    return {"auto": st.auto, "host": indexing.host_of(b), "counts": counts, "pages": shown, "shown": len(shown),
+    return {"auto": st.auto, "host": indexing.host_of(b), "counts": counts, "history": history, "pages": shown, "shown": len(shown),
             "key": {"name": f"{key}.txt" if key else None, "url": indexing.key_location(b, key) if key and b.website else None, "verified_at": _iso(st.key_verified_at), "ready": bool(st.key_verified_at)},
             "engines": indexing.ENGINES, "last_scan": {"at": _iso(st.last_scan_at), **(st.last_scan or {})}}
 

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Download, Search, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { Card, Button, Badge, useToast } from './SeoUi';
 import { pathOf, LEVEL_ORDER, SEVERITY_TONE } from './siteUtils';
+import { usePager, Pager, downloadCsv } from './DataTable';
 
 /** Every crawled page with its checks: sortable, searchable, expandable rows, CSV export. */
 
@@ -49,7 +50,7 @@ export function PagesCard({ pages, siteIssues }) {
     return { ...p, path, issues, schema: (p.schema_types || []).length };
   }), [pages, siteIssues]);
 
-  const shown = rows
+  const matched = rows
     .filter(r => (!onlyIssues || r.issues.length) && (!query || `${r.path} ${r.title}`.toLowerCase().includes(query.toLowerCase())))
     .sort((a, b) => {
       const va = sort.key === 'issues' ? a.issues.length * 10 + (3 - LEVEL_ORDER[worst(a.issues)]) : a[sort.key];
@@ -57,13 +58,12 @@ export function PagesCard({ pages, siteIssues }) {
       return (typeof va === 'string' ? va.localeCompare(vb) : (va ?? 0) - (vb ?? 0)) * sort.dir;
     });
 
+  const pager = usePager(matched, { size: 25, resetKey: `${query}|${onlyIssues}|${sort.key}|${sort.dir}` });
+  const shown = pager.rows;
+
   const exportCsv = () => {
     const head = ['URL', 'HTTP status', 'Title', 'Title length', 'Meta description length', 'H1 count', 'Words', 'Images', 'Images without alt', 'Canonical', 'Noindex', 'Schema types', 'Issues'];
-    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [head, ...rows.map(r => [r.url, r.status, r.title, r.title_length, r.meta_description_length, r.h1_count, r.word_count, r.images, r.images_missing_alt, r.canonical, r.noindex ? 'yes' : 'no', (r.schema_types || []).join(' '), r.issues.map(i => i.title).join('; ')])].map(l => l.map(esc).join(','));
-    const href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
-    Object.assign(document.createElement('a'), { href, download: 'site-pages.csv' }).click();
-    setTimeout(() => URL.revokeObjectURL(href), 1000);
+    downloadCsv('site-pages', head, rows.map(r => [r.url, r.status, r.title, r.title_length, r.meta_description_length, r.h1_count, r.word_count, r.images, r.images_missing_alt, r.canonical, r.noindex ? 'yes' : 'no', (r.schema_types || []).join(' '), r.issues.map(i => i.title).join('; ')]));
     toast('Page report downloaded');
   };
 
@@ -81,7 +81,7 @@ export function PagesCard({ pages, siteIssues }) {
         <label className="flex items-center gap-2 text-12 font-medium text-slate-700 cursor-pointer select-none">
           <input type="checkbox" checked={onlyIssues} onChange={e => setOnlyIssues(e.target.checked)} className="accent-indigo-600" /> Only pages with issues
         </label>
-        <span className="ml-auto text-12 text-slate-500">{shown.length} shown</span>
+        <span className="ml-auto text-12 text-slate-500">{matched.length} of {rows.length}</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-13">
@@ -161,6 +161,7 @@ export function PagesCard({ pages, siteIssues }) {
         </table>
         {!shown.length && <div className="py-10 text-center text-13 text-slate-500">{rows.length ? 'No pages match.' : 'No pages were crawled.'}</div>}
       </div>
+      <Pager p={pager} label="pages" />
       {toastNode}
     </Card>
   );

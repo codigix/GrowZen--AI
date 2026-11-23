@@ -136,7 +136,14 @@ def apply(db: Session, task: AgentTask, actor: str = "agent") -> AgentTask:
         if task.kind == "review_reply":
             r = db.get(Review, task.detail.get("review_id"))
             if b.connection and b.gbp_account and r and r.external_id:
-                gbp.GbpClient(b.connection).reply_review(b.gbp_account, b.gbp_location, r.external_id, task.detail.get("text") or r.reply_text)
+                client = gbp.GbpClient(b.connection)
+                rid = r.external_id
+                if rid.startswith("places/"):  # saved from the public Maps listing: Google takes a reply only under the Business Profile's own id for the review
+                    rid = gbp.business_review_id(client, b.gbp_account, b.gbp_location, r)
+                    if not rid:
+                        raise gbp.GbpError(gbp.ONLY_PUBLIC_REVIEW)
+                    r.external_id = rid
+                client.reply_review(b.gbp_account, b.gbp_location, rid, task.detail.get("text") or r.reply_text)
                 r.reply_status, r.replied_at = "posted", datetime.now(timezone.utc)
                 task.result = {"posted": True}
             else:

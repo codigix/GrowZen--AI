@@ -5,7 +5,8 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tool
 import { ChevronRight, ExternalLink, Download, Settings2, ArrowUp, ArrowDown, Sparkles, X, CalendarDays, Gauge } from 'lucide-react';
 import { Card, Button, Badge } from './SeoUi';
 import { fmt } from './seoApi';
-import { AXIS, Th, Chg, Empty, usePager, path } from './PositionUi';
+import { AXIS, Th, Chg, Empty, path } from './PositionUi';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import { RankedUrls } from './OrganicPositions';
 
 const dash = <span className="text-slate-300">—</span>;
@@ -13,17 +14,29 @@ const KINDS = [['all', 'All Changes', 'View all position changes', null], ['impr
 const COLS = [['intent', 'Intent'], ['prev', 'Previous'], ['traffic', 'Traffic'], ['share', 'Traffic %'], ['serp', 'Changes on SERP'], ['vol', 'Volume'], ['kd', 'KD %'], ['cpc', 'CPC'], ['url', 'URL'], ['updated', 'Updated']];
 const INTENT = { informational: 'I', navigational: 'N', commercial: 'C', transactional: 'T' };
 const INTENT_STYLE = { informational: 'bg-indigo-100 text-indigo-700', navigational: 'bg-violet-100 text-violet-700', commercial: 'bg-amber-100 text-amber-700', transactional: 'bg-emerald-100 text-emerald-700' };
+const changeValue = (x, k) => {
+  if (k === 'keyword') return x.keyword;
+  if (k === 'intent') return x.intent || null;
+  if (k === 'was') return x.was ?? null;
+  if (k === 'rank') return x.rank ?? null;
+  if (k === 'change') return x.change ?? null;
+  if (k === 'traffic') return x.traffic_diff ?? null;
+  if (k === 'share') return x.share ?? null;
+  if (k === 'serp') return x.serp?.length || 0;
+  if (k === 'volume') return x.volume ?? null;
+  if (k === 'kd') return x.kd ?? null;
+  if (k === 'cpc') return x.cpc ?? null;
+  if (k === 'url') return x.url || null;
+  if (k === 'updated') return x.checked || null;
+  return null;
+};
 const monthOf = (iso) => iso.slice(0, 7);
 const when = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const ago = (iso) => { if (!iso) return null; const d = Math.round((Date.now() - new Date(`${iso}T00:00:00`).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day' : `${d} days`; };
 
 function download(name, rows) {
-  const head = ['Keyword', 'Previous', 'Current', 'Diff', 'Traffic change', 'Volume', 'KD %', 'CPC', 'URL'];
-  const csv = [head, ...rows.map(r => [r.keyword, r.was ?? '', r.rank ?? '', r.change ?? '', r.traffic_diff ?? '', r.volume ?? '', r.kd ?? '', r.cpc ?? '', r.url || ''])].map(l => l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = name;
-  a.click();
+  const head = ['Keyword', 'Previous position', 'Current position', 'Change in position', 'Change in traffic', 'Searches per month', 'Keyword difficulty (%)', 'Cost per click', 'Ranking page'];
+  downloadCsv(name, head, rows.map(r => [r.keyword, r.was ?? '', r.rank ?? '', r.change ?? '', r.traffic_diff ?? '', r.volume ?? '', r.kd ?? '', r.cpc ?? '', r.url || '']));
 }
 
 /** Position Changes: how many keywords moved up or down on each check, the pages that moved, and every keyword that changed with the cause. */
@@ -62,7 +75,8 @@ export default function PositionChanges({ research }) {
   const declined = changed.filter(x => x.type === 'declined' || x.type === 'lost');
   const withSerp = Object.keys(serpFor).map(k => by[k] && { ...by[k], ...changed.find(c => c.keyword === k), serp: serpFor[k], keyword: k, type: 'serp' }).filter(Boolean);
   const rows = kind === 'improved' ? improved : kind === 'declined' ? declined : kind === 'serp' ? withSerp : changed;
-  const [slice, footer] = usePager(rows, 25);
+  const { sorted, sort, onSort } = useSorted(rows, changeValue);
+  const pager = usePager(sorted, { size: 25, resetKey: kind });
 
   // the trend: on each check, how many keywords moved up or down against the check before, and the modelled traffic
   const trend = useMemo(() => {
@@ -100,6 +114,7 @@ export default function PositionChanges({ research }) {
   if (!r) return <Card><Empty>{research?.state === 'no_keywords' ? 'No keyword is tracked yet. Add keywords, then check positions.' : 'No position has been checked in this period yet. Press "Check positions now" in Position Tracking.'}</Empty></Card>;
   const counts = { all: changed.length, improved: improved.length, declined: declined.length, serp: withSerp.length };
   const toggleCol = (c) => setCols(s => { const n = new Set(s); n.has(c) ? n.delete(c) : n.add(c); return n; });
+  const th = (key, label, right = true, first = right ? 'desc' : 'asc') => <SortTh id={key} sort={sort} onSort={onSort} right={right} first={first} className="px-4 py-2.5 whitespace-nowrap">{label}</SortTh>;
   const legend = (id, label, color) => <label key={id} className="inline-flex items-center gap-1.5 text-13 text-slate-800 cursor-pointer"><input type="checkbox" checked={show[id]} style={{ accentColor: color }} onChange={() => setShow(s => ({ ...s, [id]: !s[id] }))} /><span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />{label}</label>;
 
   return (
@@ -168,7 +183,7 @@ export default function PositionChanges({ research }) {
       <Card pad={false} title={<span>All Position Changes: <b>{rows.length}</b></span>}
         action={<div className="relative flex items-center gap-2">
           <Button size="sm" icon={Settings2} onClick={() => setShowCols(o => !o)}>Manage columns <span className="ml-1 text-slate-500">{cols.size + 3}/{COLS.length + 3}</span></Button>
-          <Button size="sm" icon={Download} onClick={() => download(`${r.domain}-position-changes.csv`, rows)}>Export</Button>
+          <Button size="sm" icon={Download} onClick={() => download(`position-changes-${r.domain}`, sorted)} title="Download every keyword that changed (all pages, with the filter applied) as a CSV file">Export CSV</Button>
           {showCols && (
             <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded bg-white shadow-lg ring-1 ring-slate-200 p-2 text-13">
               {COLS.map(([c, l]) => <label key={c} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-slate-50 rounded"><input type="checkbox" checked={cols.has(c)} onChange={() => toggleCol(c)} />{l}</label>)}
@@ -177,12 +192,12 @@ export default function PositionChanges({ research }) {
         <div className="overflow-x-auto border-t border-slate-100">
           <table className="w-full text-14 min-w-[1180px]">
             <thead className="bg-slate-50 text-12 text-slate-600">
-              <tr><Th> </Th><Th>Keyword</Th>{cols.has('intent') && <Th>Intent</Th>}{cols.has('prev') && <Th c="text-right">Previous</Th>}<Th c="text-right">Current</Th><Th c="text-right">Diff.</Th>
-                {cols.has('traffic') && <Th c="text-right">Traffic</Th>}{cols.has('share') && <Th c="text-right">Traffic %</Th>}{cols.has('serp') && <Th>Changes on SERP</Th>}{cols.has('vol') && <Th c="text-right">Volume</Th>}
-                {cols.has('kd') && <Th c="text-right">KD %</Th>}{cols.has('cpc') && <Th c="text-right">CPC</Th>}{cols.has('url') && <Th>URL</Th>}{cols.has('updated') && <Th c="text-right">Updated</Th>}<Th c="text-right">Actions</Th></tr>
+              <tr><Th> </Th>{th('keyword', 'Keyword', false)}{cols.has('intent') && th('intent', 'Intent', false)}{cols.has('prev') && th('was', 'Previous')}{th('rank', 'Current', true, 'asc')}{th('change', 'Diff.')}
+                {cols.has('traffic') && th('traffic', 'Traffic')}{cols.has('share') && th('share', 'Traffic %')}{cols.has('serp') && th('serp', 'Changes on SERP', false, 'desc')}{cols.has('vol') && th('volume', 'Volume')}
+                {cols.has('kd') && th('kd', 'KD %')}{cols.has('cpc') && th('cpc', 'CPC')}{cols.has('url') && th('url', 'URL', false)}{cols.has('updated') && th('updated', 'Updated', true, 'desc')}<Th c="text-right">Actions</Th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {slice.map(x => (
+              {pager.rows.map(x => (
                 <React.Fragment key={`${x.type}-${x.keyword}`}>
                   <tr className="hover:bg-slate-50 align-top">
                     <td className="pl-3 pt-3 w-8"><button type="button" aria-label="Show the position chart" onClick={() => toggleRow(x.keyword)} className="p-1 text-slate-500 hover:text-slate-900 cursor-pointer"><ChevronRight size={15} className={`transition-transform ${open.has(x.keyword) ? 'rotate-90' : ''}`} /></button></td>
@@ -203,11 +218,11 @@ export default function PositionChanges({ research }) {
                   </tr>
                   {open.has(x.keyword) && by[x.keyword] && <tr className="bg-slate-50/60"><td /><td colSpan={13} className="px-4 py-3"><RankedUrls r={by[x.keyword]} /></td></tr>}
                 </React.Fragment>))}
-              {!slice.length && <tr><td colSpan={14} className="px-5 py-10 text-center text-slate-500">{r.comparable ? 'No keyword changed position in this view.' : 'Only one check so far: position changes appear after the next check.'}</td></tr>}
+              {!pager.rows.length && <tr><td colSpan={14} className="px-5 py-10 text-center text-slate-500">{r.comparable ? 'No keyword changed position in this view.' : 'Only one check so far: position changes appear after the next check.'}</td></tr>}
             </tbody>
           </table>
         </div>
-        {footer}
+        <Pager p={pager} label="keywords" />
       </Card>
     </div>
   );

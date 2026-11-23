@@ -5,12 +5,25 @@ import { Act, OpenAct } from './TableBits';
 import Select from '../components/Select';
 import { api } from './seoApi';
 import LinkDetail from './BacklinkLinkDetail';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const when = (iso) => { if (!iso) return '—'; const t = new Date(iso); return Number.isNaN(t.getTime()) ? '—' : t.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }); };
 const Card = ({ children, className = '' }) => <section className={`bg-white rounded-xl border border-slate-200 shadow-sm min-w-0 ${className}`}>{children}</section>;
 const Chip = ({ children, cls = 'bg-slate-100 text-slate-700', title }) => <span title={title} className={`inline-flex items-center gap-1 text-12 rounded-full px-2.5 py-1 leading-none font-medium whitespace-nowrap ${cls}`}>{children}</span>;
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+
+const numOf = (v) => (v == null || v === '' ? null : Number(v));
+const SPAM_RANK = { clean: 0, check: 1, risky: 2 };
+const checkValue = (r, k) => ({
+  page: host(r.source_url), status: r.lost ? 'Link lost' : r.state, follow: r.follow, anchor: r.link?.anchor, category: r.category?.label,
+  indexable: r.page_noindex == null ? null : r.page_noindex ? 0 : 1, google: r.google == null ? null : r.google.indexed ? 1 : 0, rank: numOf(r.domain_rank),
+  sitelinks: numOf(r.site?.links), linkedby: numOf(r.site?.linked_by), spamreport: r.spam_report ? (SPAM_RANK[r.spam_report.level] ?? null) : null,
+  da: numOf(r.moz?.da ?? r.scores?.da), pa: numOf(r.moz?.pa ?? r.scores?.pa), spam: numOf(r.moz?.spam ?? r.scores?.spam), refdomains: numOf(r.moz?.ref_domains),
+  checked: r.checked_at ? Date.parse(r.checked_at) : null
+})[k];
+const HEAD_KEY = { 'Linking page': 'page', Status: 'status', 'Link type': 'follow', 'Anchor text': 'anchor', 'Kind of site': 'category', Indexable: 'indexable', 'In Google': 'google', 'Domain rank': 'rank', 'Links from site': 'sitelinks', 'Linked by': 'linkedby', 'Spam report': 'spamreport', DA: 'da', PA: 'pa', Spam: 'spam', 'Ref. domains': 'refdomains', Checked: 'checked' };
+const DESC_FIRST = new Set(['rank', 'sitelinks', 'linkedby', 'da', 'pa', 'refdomains', 'checked']);
 
 function State({ r }) {
   if (r.lost) return <Chip cls="bg-red-50 text-red-700" title="It worked at the check before and is gone now"><XCircle size={12} />Link lost</Chip>;
@@ -32,6 +45,7 @@ function BacklinkChecker({ b }) {
   const [note, setNote] = useState('');
   const [status, setStatus] = useState('all');
   const [follow, setFollow] = useState('all');
+  const [q, setQ] = useState('');
   const [openId, setOpenId] = useState(null);
   const load = useCallback(async () => {
     try { const r = await api(`/businesses/${b.id}/backlink-check`); setD(r); setTarget(t => t || r.default_target || ''); setError(''); } catch (e) { setError(e.message || 'Could not load the saved checks.'); }
@@ -58,12 +72,15 @@ function BacklinkChecker({ b }) {
   };
   const remove = async (id) => { try { await api(`/businesses/${b.id}/backlink-check/${id}`, { method: 'DELETE' }); await load(); } catch (e) { setNote(e.message); } };
 
-  const rows = useMemo(() => arr(d?.rows).filter(r => (status === 'all' || (status === 'lost' ? r.lost : r.state === status)) && (follow === 'all' || (follow === 'nofollow' ? ['nofollow', 'sponsored', 'ugc'].includes(r.follow) : r.follow === follow))), [d, status, follow]);
+  const rows = useMemo(() => arr(d?.rows).filter(r => (status === 'all' || (status === 'lost' ? r.lost : r.state === status)) && (follow === 'all' || (follow === 'nofollow' ? ['nofollow', 'sponsored', 'ugc'].includes(r.follow) : r.follow === follow)) && (!q.trim() || `${r.source_url} ${r.title || ''} ${r.link?.anchor || ''} ${r.category?.label || ''}`.toLowerCase().includes(q.trim().toLowerCase()))), [d, status, follow, q]);
+  const { sorted, sort, onSort } = useSorted(rows, checkValue);
+  const pg = usePager(sorted, { size: 25, resetKey: `${status}|${follow}|${q}` });
   const csv = () => {
-    const head = ['Source page', 'Status', 'HTTP', 'Follow', 'Anchor', 'Category', 'Placement', 'Page indexable', 'DA', 'PA', 'Spam score', 'Referring domains', 'Target', 'Checked'];
-    const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [head.join(',')].concat(rows.map(r => [r.source_url, r.lost ? 'lost' : r.state, r.http_status, r.follow, r.link?.anchor, r.category?.label, r.link?.placement, r.page_noindex == null ? '' : r.page_noindex ? 'noindex' : 'yes', r.moz?.da ?? r.scores?.da, r.moz?.pa ?? r.scores?.pa, r.moz?.spam ?? r.scores?.spam, r.moz?.ref_domains, r.target, r.checked_at].map(q).join(',')));
-    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = 'backlink-check.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const withMoz = d.moz || d.dfs;
+    const head = ['Source page', 'Page title', 'Status', 'HTTP status', 'Link type', 'Anchor text', 'Kind of site', 'Placement', 'Page indexable', 'Domain rank (0-10)', 'Links from this site', 'Linked by (sites)', ...(withMoz ? ['DA', 'PA', 'Spam score'] : []), ...(d.moz ? ['Referring domains'] : []), 'Target', 'Last checked', 'Times checked'];
+    const body = sorted.map(r => [r.source_url, r.title || '', r.lost ? 'Link lost' : { working: 'Working', link_missing: 'Link missing', unconfirmed: 'Cannot confirm', page_error: 'Page error' }[r.state] || r.state, numOf(r.http_status), r.follow ? (FOLLOW[r.follow] || FOLLOW.nofollow)[0] : '', r.link?.anchor || '', r.category?.label || '', r.link?.placement || '', r.page_noindex == null ? '' : r.page_noindex ? 'No (noindex)' : 'Yes',
+      numOf(r.domain_rank), numOf(r.site?.links), numOf(r.site?.linked_by), ...(withMoz ? [numOf(r.moz?.da ?? r.scores?.da), numOf(r.moz?.pa ?? r.scores?.pa), numOf(r.moz?.spam ?? r.scores?.spam)] : []), ...(d.moz ? [numOf(r.moz?.ref_domains)] : []), r.target || '', r.checked_at || '', numOf(r.checks)]);
+    downloadCsv(`backlink-check-${String(d.default_target || b.website || b.name || 'site').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].replace(/[^a-z0-9.-]+/gi, '-')}`, head, body);
   };
 
   if (error && !d) return <Card className="p-6 text-13 text-red-700">{error} <button type="button" className="font-semibold underline cursor-pointer" onClick={load}>Try again</button></Card>;
@@ -100,13 +117,13 @@ function BacklinkChecker({ b }) {
                 <option value="all">Every status</option><option value="working">Working</option><option value="link_missing">Link missing</option><option value="lost">Lost since last check</option><option value="unconfirmed">Cannot confirm</option><option value="page_error">Page error</option></Select>
               <Select className="h-9 w-40 rounded-lg border border-slate-300 bg-white px-3 text-13" aria-label="Follow" value={follow} onChange={e => setFollow(e.target.value)}>
                 <option value="all">Follow and nofollow</option><option value="dofollow">Follow only</option><option value="nofollow">Nofollow only</option></Select>
-              <span className="flex-1" />{d.dfs && d.missing_scores > 0 && <Button size="sm" variant="primary" busy={busy} onClick={fillScores}>Get DA, PA and Spam for {d.missing_scores} pages</Button>}<Button size="sm" icon={Download} onClick={csv}>Download CSV</Button>
+              <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search pages" aria-label="Search pages" className="h-9 w-44 pl-8 pr-3 text-13 rounded-lg border border-slate-300 bg-white" /></label><span className="flex-1" />{d.dfs && d.missing_scores > 0 && <Button size="sm" variant="primary" busy={busy} onClick={fillScores}>Get DA, PA and Spam for {d.missing_scores} pages</Button>}<Button size="sm" icon={Download} onClick={csv} title={`Download all ${sorted.length} pages in this list (with the filters applied) as a CSV file`}>Export CSV</Button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-13.5 min-w-[1100px]">
                 <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200">
-                  {['Linking page', 'Status', 'Link type', 'Anchor text', 'Kind of site', 'Indexable', 'In Google', 'Domain rank', 'Links from site', 'Linked by', 'Spam report', 'DA', 'PA', 'Spam', 'Ref. domains', 'Checked', 'Actions'].filter(h => ((d.moz || d.dfs) && ['DA', 'PA', 'Spam'].includes(h) || d.moz && h === 'Ref. domains' || !['DA', 'PA', 'Spam', 'Ref. domains'].includes(h)) && (d.opr || h !== 'Domain rank') && (d.google || h !== 'In Google')).map((h, i) => <th key={h} className={`px-3 py-2.5 font-medium whitespace-nowrap ${['DA', 'PA', 'Spam', 'Ref. domains', 'Links from site', 'Linked by', 'Domain rank'].includes(h) ? 'text-right' : 'text-left'}`}>{h}</th>)}</tr></thead>
-                <tbody>{rows.map(r => (
+                  {['Linking page', 'Status', 'Link type', 'Anchor text', 'Kind of site', 'Indexable', 'In Google', 'Domain rank', 'Links from site', 'Linked by', 'Spam report', 'DA', 'PA', 'Spam', 'Ref. domains', 'Checked', 'Actions'].filter(h => ((d.moz || d.dfs) && ['DA', 'PA', 'Spam'].includes(h) || d.moz && h === 'Ref. domains' || !['DA', 'PA', 'Spam', 'Ref. domains'].includes(h)) && (d.opr || h !== 'Domain rank') && (d.google || h !== 'In Google')).map((h) => { const right = ['DA', 'PA', 'Spam', 'Ref. domains', 'Links from site', 'Linked by', 'Domain rank'].includes(h); return HEAD_KEY[h] ? <SortTh key={h} id={HEAD_KEY[h]} sort={sort} onSort={onSort} right={right} first={DESC_FIRST.has(HEAD_KEY[h]) ? 'desc' : 'asc'} className="px-3 py-2.5 whitespace-nowrap">{h}</SortTh> : <th key={h} className={`px-3 py-2.5 font-medium whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}>{h}</th>; })}</tr></thead>
+                <tbody>{pg.rows.map(r => (
                   <React.Fragment key={r.id}>
                     <tr className="border-b border-slate-100 align-top hover:bg-slate-50 cursor-pointer" onClick={() => setOpenId(openId === r.id ? null : r.id)}>
                       <td className="px-3 py-3 max-w-[300px]"><div className="font-medium text-slate-900 truncate">{host(r.source_url)}</div><div className="text-12 text-slate-500 truncate" title={r.source_url}>{r.title || r.source_url}</div></td>
@@ -137,6 +154,7 @@ function BacklinkChecker({ b }) {
                 </tbody>
               </table>
             </div>
+            <Pager p={pg} label="pages" />
           </Card>
         </>
       )}

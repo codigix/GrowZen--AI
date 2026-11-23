@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DataTable, { downloadCsv } from './DataTable';
 import { Link } from 'react-router-dom';
 import {
   Sparkles, Check, ChevronRight, Globe, ShieldCheck, AlertTriangle, RefreshCw,
   FileText, MapPin, Instagram, Facebook, Linkedin, Copy, Plus, CalendarDays,
   Flame, TrendingUp, TrendingDown, Search, Clock, ArrowUpRight, CheckCircle2, Lock, Sliders,
-  Send, ExternalLink, Link2, Share2, Layers, Award, Tag, BarChart3, Code, Eye
+  Send, ExternalLink, Link2, Share2, Layers, Award, Tag, BarChart3, Code, Eye, Download
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
@@ -19,7 +20,7 @@ import ReactSitePanel from './ReactSitePanel';
 import HtmlSitePanel from './HtmlSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
-import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, FlowSteps, ResumeCard } from './BlogFlow';
+import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, ResumeCard, ArticleDownloads } from './BlogFlow';
 import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage, brandOf } from './keywordHighlight';
 
 
@@ -98,7 +99,6 @@ const intentOf = (kw, b) => {
  *    (same API as Keyword Intelligence → Google Planner)
  */
 function TrendingTopicsTab({ b, onSelectTopic }) {
-  const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState({});  // keyword -> { keyword, rising }
   const pickedCount = Object.keys(selected).length;
   const toggle = (t) => setSelected(m => {
@@ -137,183 +137,105 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
     openWriter(topics.find(t => t.title === first) || { title: first }, rest);
   };
 
-  const passes = (t) => filter === 'all' ||
-    (filter === 'local' && t.intent === 'Local') ||
-    (filter === 'high' && (t.velocity === 'Breakout' || ratio(t.velocity) >= 30)) ||
-    (filter === 'transactional' && t.intent === 'Transactional');
 
+  const MON = { JANUARY: 'Jan', FEBRUARY: 'Feb', MARCH: 'Mar', APRIL: 'Apr', MAY: 'May', JUNE: 'Jun', JULY: 'Jul', AUGUST: 'Aug', SEPTEMBER: 'Sep', OCTOBER: 'Oct', NOVEMBER: 'Nov', DECEMBER: 'Dec' };
+  const hist = seedIdea?.monthly_search_volumes || [];
+  const pts = hist.map(m => ({ date: `${MON[m.month] || String(m.month).slice(0, 3)} '${String(m.year).slice(2)}`, value: m.monthly_searches || 0 }));
+  const ch = seedIdea?.three_month_change;
+  const classification = ch == null ? null : ch >= 10 ? 'rising' : ch <= -10 ? 'declining' : 'stable';
+  const pctOf = (t) => (t.velocity === 'Breakout' ? 9999 : /^[+-]\d+%$/.test(t.velocity || '') ? parseInt(t.velocity, 10) : null);
+  const COMP = { LOW: ['Low', 'green'], MEDIUM: ['Medium', 'amber'], HIGH: ['High', 'red'] };
+  const tableFor = (rows, id) => (
+    <DataTable bare rows={rows} rowKey={x => x.id} pageSize={10} sizes={[10, 20, 50]} exportName={`${id}-queries-${siteStem(b)}`} label="queries" searchPlaceholder="Search queries" minWidth={520} columnsMenu={false}
+      rowClass={x => (selected[x.title] ? 'bg-indigo-50/60' : 'hover:bg-slate-50')}
+      empty="Nothing found."
+      filters={[
+        { id: 'intent', label: 'Intent', options: [...new Set(rows.map(x => x.intent).filter(Boolean))].sort().map(x => [x, x]), test: (x, v) => x.intent === v },
+        { id: 'change', label: 'Change', options: [['up', 'Growing'], ['30', 'Over +30%']], test: (x, v) => { const c = pctOf(x); return v === 'up' ? c != null && c > 0 : c != null && c >= 30; } },
+        { id: 'comp', label: 'Competition', options: [['LOW', 'Low'], ['MEDIUM', 'Medium'], ['HIGH', 'High']], test: (x, v) => x.competition === v }
+      ].filter(f => f.options.length > 1)}
+      columns={[
+        { id: 'pick', label: 'Select', csv: false, className: 'pl-4 pr-1 py-2 w-8', thClass: 'pl-4 pr-1 py-2.5 w-8', header: <span className="sr-only">Select</span>,
+          cell: x => <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[x.title])} onChange={() => toggle(x)} aria-label={`Select ${x.title}`} title="Select to write an article (up to 10)" /> },
+        { id: 'query', header: 'Query', value: x => x.title, className: 'px-2 py-2 text-slate-800' },
+        { id: 'searches', header: 'Searches / mo', right: true, first: 'desc', value: x => x.score ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-600', cell: x => (x.score != null ? fmt(x.score) : <span className="text-slate-300">—</span>) },
+        { id: 'change', header: 'Change', csv: false, right: true, first: 'desc', value: x => pctOf(x), className: 'px-2 py-2 text-right whitespace-nowrap',
+          cell: x => { const c = pctOf(x); return x.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge> : c != null ? <span className={`inline-flex items-center gap-0.5 text-12 font-semibold tabular-nums ${c >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{c >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(c)}%</span> : <span className="text-slate-300">—</span>; } },
+        { id: 'comp', header: 'Competition', csv: false, value: x => ({ LOW: 0, MEDIUM: 1, HIGH: 2 })[x.competition] ?? null, className: 'px-2 py-2', cell: x => (COMP[x.competition] ? <Badge tone={COMP[x.competition][1]}>{COMP[x.competition][0]}</Badge> : <span className="text-slate-300">—</span>) },
+        { id: 'x_intent', header: 'Intent', hide: true, value: x => x.intent || '' }, // not shown, but part of the CSV so the file has the same facts as the filters
+        { id: 'x_change', header: 'Change over 3 months (%)', hide: true, value: x => (x.velocity === 'Breakout' ? 'Breakout' : pctOf(x) ?? '') },
+        { id: 'x_comp', header: 'Competition', hide: true, value: x => (COMP[x.competition] ? COMP[x.competition][0] : '') },
+        { id: 'draft', header: 'Action', right: true, className: 'px-3 py-2 text-right whitespace-nowrap', thClass: 'px-3 py-2.5', cell: x => <button type="button" onClick={() => openWriter(x)} title="Create the brief and a draft for this query" className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Write it</button> }
+      ]} />
+  );
   return (
-    <div className="space-y-4">
-      {/* Search & Filter Header */}
-      <div className="ai-glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1 min-w-[280px]">
-          <div className="relative flex-1 max-w-md">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Enter a keyword to find trending topics (e.g. seo services)"
-              value={typed}
-              onChange={e => setTyped(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && doSearch()}
-              className="w-full h-9 pl-9 pr-3 text-[12px] bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl text-slate-900 placeholder-slate-400 outline-none"
-            />
-          </div>
-          <Button variant="primary" icon={Search} disabled={!typed.trim()} onClick={doSearch}>Search</Button>
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            {[
-              { id: 'all', label: 'All Trends' },
-              { id: 'local', label: 'Local Intent' },
-              { id: 'high', label: 'High Velocity (🔥 +30%)' },
-              { id: 'transactional', label: 'Transactional / Booking' }
-            ].map(f => (
-              <button
-                key={f.id}
-                onClick={() => setFilter(f.id)}
-                className={`h-8 px-3 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap cursor-pointer ${filter === f.id
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-white text-slate-700 hover:text-slate-900 border border-slate-200'
-                  }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-500 font-mono">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Google Keyword Planner · India · Last 12 months</span>
-        </div>
+    <div className="space-y-3">
+      {/* One toolbar: search, the seed keywords, and where the numbers come from */}
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <form onSubmit={e => { e.preventDefault(); doSearch(); }} role="search" className="flex gap-2 flex-1 min-w-[260px] max-w-xl">
+          <label className="relative flex-1"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input type="text" placeholder="A keyword to find topics for (e.g. wedding dress rental)" aria-label="Keyword to find topics for" value={typed} onChange={e => setTyped(e.target.value)} className="w-full h-9 pl-9 pr-3 text-13 bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 rounded-lg outline-none" /></label>
+          <Button type="submit" variant="primary" icon={Search} disabled={!typed.trim()}>Search</Button>
+        </form>
+        {seeds.length > 0 && <div className="flex flex-wrap items-center gap-1.5 text-12"><span className="text-slate-500">Topics for</span>{seeds.map(x => <button key={x} type="button" onClick={() => setPicked(x)} aria-pressed={x === seed} className={`h-7 px-2.5 rounded-full font-semibold cursor-pointer ring-1 ring-inset ${x === seed ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>{x}</button>)}</div>}
+        <span className="ml-auto inline-flex items-center gap-1.5 text-11.5 text-slate-500"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Google Keyword Planner · India · last 12 months</span>
       </div>
 
       {pickedCount > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-[12px]">
-          <span className="text-indigo-900 font-semibold">{pickedCount} topic{pickedCount > 1 ? 's' : ''} selected{pickedCount >= 10 ? ' (maximum)' : ''}. Start topic: {Object.keys(selected)[0]}{pickedCount > 1 ? ` · Also include: ${Object.keys(selected).slice(1).join(', ')}` : ''}. The writer then generates the primary and secondary keywords for you to edit.</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-indigo-50 ring-1 ring-indigo-200 text-12.5">
+          <span className="text-indigo-900 font-semibold">{pickedCount} selected{pickedCount >= 10 ? ' (the most)' : ''} · starts with “{Object.keys(selected)[0]}”{pickedCount > 1 ? `, also: ${Object.keys(selected).slice(1).join(', ')}` : ''}</span>
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={() => setSelected({})}>Clear</Button>
-            <Button size="sm" variant="ai" icon={Sparkles} onClick={createFromSelection}>Create Article</Button>
+            <Button size="sm" variant="ai" icon={Sparkles} onClick={createFromSelection}>Write an article</Button>
           </div>
         </div>
       )}
 
-      {seeds.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-          <span className="text-slate-500 font-mono uppercase">Seed keyword:</span>
-          {seeds.map(s => (
-            <button
-              key={s}
-              onClick={() => setPicked(s)}
-              className={`h-7 px-2.5 rounded-lg font-semibold cursor-pointer border ${s === seed ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200 hover:text-slate-900'}`}
-            >
-              {s}
-            </button>
-          ))}
+      {trend.error && !noData && !trend.loading && <ErrorNote>Google Keyword Planner is not answering right now ({trend.error.message}). Try again in a minute.</ErrorNote>}
+
+      {trend.data && !noData && !trend.loading && (
+        <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4 grid grid-cols-1 md:grid-cols-[minmax(220px,300px)_minmax(0,1fr)] gap-x-6 gap-y-3 items-center">
+          <div>
+            <div className="flex items-center gap-2 text-14 font-semibold text-slate-900">“{trend.data.seed_keyword}”{classification && <span className={`text-11.5 font-semibold capitalize px-2 py-0.5 rounded-full ${classification === 'rising' ? 'bg-emerald-50 text-emerald-700' : classification === 'declining' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{classification}</span>}</div>
+            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-12">
+              {[['Latest month', pts.length ? fmt(pts[pts.length - 1].value) : null], ['Average a month', seedIdea ? fmt(seedIdea.avg_monthly_searches) : null], ['3-month change', pctLabel(ch)], ['Topics found', relatedAll.length]].map(([l, v]) => (
+                <div key={l}><dt className="text-slate-500">{l}</dt><dd className="text-16 font-semibold tabular-nums text-slate-900">{v ?? '—'}</dd></div>))}
+            </dl>
+          </div>
+          {pts.length > 1 ? (
+            <div className="h-36 min-w-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={pts} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} minTickGap={24} />
+                  <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} width={48} tickFormatter={v => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : v)} />
+                  <Tooltip formatter={(v) => [fmt(v), 'Searches']} />
+                  <Line type="monotone" dataKey="value" name="Searches" stroke="#4f46e5" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <p className="text-12.5 text-slate-500">No month-by-month figures for this keyword.</p>}
         </div>
       )}
 
-      {trend.error && !noData && !trend.loading && (
-        <ErrorNote>Google Keyword Planner is not answering right now ({trend.error.message}). Try again in a minute.</ErrorNote>
-      )}
-      {trend.data && !noData && !trend.loading && (() => {
-        const MON = { JANUARY: 'Jan', FEBRUARY: 'Feb', MARCH: 'Mar', APRIL: 'Apr', MAY: 'May', JUNE: 'Jun', JULY: 'Jul', AUGUST: 'Aug', SEPTEMBER: 'Sep', OCTOBER: 'Oct', NOVEMBER: 'Nov', DECEMBER: 'Dec' };
-        const hist = seedIdea?.monthly_search_volumes || [];
-        const pts = hist.map(m => ({ date: `${MON[m.month] || String(m.month).slice(0, 3)} '${String(m.year).slice(2)}`, value: m.monthly_searches || 0 }));
-        const ch = seedIdea?.three_month_change;
-        const classification = ch == null ? null : ch >= 10 ? 'rising' : ch <= -10 ? 'declining' : 'stable';
-        return (
-          <div className="ai-glass-card rounded-2xl p-4 border border-slate-200">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <div className="text-[13px] font-bold text-slate-900">Trend analysis: “{trend.data.seed_keyword}”</div>
-              {classification && <span className="text-[11px] font-mono font-bold capitalize text-indigo-700">{classification}</span>}
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
-              {[['Latest month searches', pts.length ? fmt(pts[pts.length - 1].value) : null], ['Avg monthly searches', seedIdea ? fmt(seedIdea.avg_monthly_searches) : null], ['3-month change', pctLabel(ch)], ['Topics found', relatedAll.length]].map(([l, v]) => (
-                <div key={l} className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 block text-[10px] uppercase font-mono">{l}</span>
-                  <strong className="text-slate-800 font-mono">{v ?? '—'}</strong>
-                </div>
-              ))}
-            </div>
-            {pts.length > 1 && (
-              <div className="h-40 mt-3">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={pts} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} minTickGap={24} />
-                    <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} width={48} tickFormatter={v => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : v)} />
-                    <Tooltip formatter={(v) => [fmt(v), 'Searches']} />
-                    <Line type="monotone" dataKey="value" name="Searches" stroke="#4f46e5" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-      {/* Trending Topics Cards */}
       {trend.error && !noData ? (
-        <div className="py-10 text-center text-[13px] text-red-600">{trend.error.message}</div>
+        <div className="py-10 text-center text-13 text-red-600">{trend.error.message}</div>
       ) : !seed ? (
-        <div className="py-10 text-center text-[13px] text-slate-500">Add a primary category, a service or a tracked keyword to this business to load trending topics.</div>
+        <div className="py-10 text-center text-13 text-slate-500">Add a primary category, a service or a tracked keyword to this business to load topics.</div>
       ) : trend.loading ? (
-        <div className="py-10 text-center text-[13px] text-slate-500">Fetching Google Keyword Planner ideas for “{seed}”…</div>
+        <div className="py-10 text-center text-13 text-slate-500">Fetching Google Keyword Planner ideas for “{seed}”…</div>
       ) : !topics.length ? (
-        <div className="py-10 text-center text-[13px] text-slate-500">No trending topics found for “{seed}”.</div>
+        <div className="py-10 text-center text-13 text-slate-500">No topics found for “{seed}”.</div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {[
-            ['Top queries', 'Most-searched related keywords, by average monthly searches', topQueries],
-            ['Rising queries', 'Keywords whose searches grew most over the last 3 months', risingQueries]
-          ].map(([title, subtitle, rows]) => {
-            const shown = rows.filter(passes);
-            return (
-              <Card key={title} title={title} subtitle={subtitle}>
-                {shown.length ? (
-                  <>
-                    <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-100 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
-                      <span className="w-4" />
-                      <span className="flex-1">Query</span>
-                      <span className="w-16 text-right" title="Average monthly searches (Google Keyword Planner)">Searches</span>
-                      <span className="w-16 text-right">Change</span>
-                      <span className="w-14 text-right"> </span>
-                    </div>
-                    <ul className="space-y-2">
-                      {shown.map(t => {
-                        const pct = /^[+-]\d+%$/.test(t.velocity || '') ? parseInt(t.velocity, 10) : null;
-                        return (
-                          <li key={t.id} className="flex items-center gap-2 text-[12.5px]">
-                            <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[t.title])} onChange={() => toggle(t)} title="Select to generate an article" />
-                            <span className="flex-1 text-slate-800">{t.title}</span>
-                            <span className="tabular-nums text-slate-500 w-16 text-right">{t.score != null ? fmt(t.score) : <span className="text-slate-300">—</span>}</span>
-                            <span className="w-16 text-right">
-                              {t.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge>
-                                : pct != null ? (
-                                  <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums ${pct >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                                    {pct >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(pct)}%
-                                  </span>
-                                ) : t.velocity ? (
-                                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums text-emerald-700">
-                                    <TrendingUp size={11} />{t.velocity}
-                                  </span>
-                                ) : <span className="text-slate-300">—</span>}
-                            </span>
-                            <span className="w-14 text-right">
-                              <button type="button" onClick={() => openWriter(t)} title="Create Brief & Draft" className="text-[11.5px] font-semibold text-indigo-700 hover:underline cursor-pointer">Draft</button>
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </>
-                ) : <div className="py-6 text-center text-[13px] text-slate-500">No {title.toLowerCase()} found.</div>}
-              </Card>
-            );
-          })}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+          <Card pad={false} title={`Top queries (${topQueries.length})`} subtitle="Most searched, by average searches a month">{tableFor(topQueries, 'top')}</Card>
+          <Card pad={false} title={`Rising queries (${risingQueries.length})`} subtitle="Searches grew most in the last 3 months">{tableFor(risingQueries, 'rising')}</Card>
         </div>
       )}
     </div>
   );
 }
 
+const siteStem = (b) => String(b?.website || b?.name || 'site').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '') || 'site';
 const ARTICLE_LENGTHS = [
   { id: 'short', label: 'Short', words: '~850 words', time: '~4 min' },
   { id: 'standard', label: 'Standard', words: '~2,000 words', time: '~12–13 min' },
@@ -413,6 +335,10 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input className={`${inputCls} pl-8`} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search title or keyword" />
         </label>
+        <Button size="sm" icon={Download} disabled={!shown.length} title={`Download the ${shown.length} article${shown.length === 1 ? '' : 's'} in this list (with the filter and search applied) as a CSV file`}
+          onClick={() => downloadCsv(`generated-articles-${siteStem(b)}`, ['Title', 'Primary keyword', 'Other keywords', 'Status', 'Web address slug', 'Words', 'Length', 'Written in (minutes)', 'Created', 'Scheduled for', 'Published address'],
+            shown.map(x => { const ps = x.status === 'completed' ? x.publishing_status : null; const views = [x.react_url && x.react_status !== 'deleted' && x.react_url, x.wp_url && x.wp_status !== 'deleted' && x.wp_url].filter(Boolean);
+              return [x.title || '', x.keyword || '', (x.secondary_keywords || []).join(', '), (ps ? (PUB_STATUS[ps] || PUB_STATUS.draft)[0] : x.status === 'failed' ? 'Writing failed' : (ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending)[0]), x.slug || '', x.stats?.words ?? '', x.stats ? (ARTICLE_LENGTHS.find(l => l.id === x.stats.length)?.label || 'Standard') : '', x.stats?.total_seconds != null ? Math.round(x.stats.total_seconds / 6) / 10 : '', x.created_at || '', x.schedule?.planned_for || '', views.join('; ')]; }))}>Export CSV</Button>
       </div>
 
       <div className="space-y-3">
@@ -500,6 +426,7 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }
                 {x.status === 'completed' && (isOpen
                   ? <span className="h-[30px] px-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700"><CheckCircle2 size={13} /> Open in the writer</span>
                   : <Button size="sm" icon={Eye} onClick={() => handleOpen(x.id)}>Review &amp; edit</Button>)}
+                {x.status === 'completed' && <ArticleDownloads b={b} article={x} />}
                 {ps === 'draft' && <Button size="sm" icon={CalendarDays} onClick={() => setScheduling({ article: x, mode: 'schedule' })}>Schedule</Button>}
                 {ps === 'draft' && <Button size="sm" variant="primary" icon={Send} onClick={() => setScheduling({ article: x, mode: 'publish' })}>Publish now</Button>}
                 {ps === 'failed' && <Button size="sm" variant="primary" icon={RefreshCw} busy={busy === `t-${x.id}`} onClick={() => retrySched(x)}>Retry now</Button>}
@@ -597,11 +524,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
 
   const done = article && article.status === 'completed';
   const showStart = !openId && !pendingId && !activeTopic;
-  // a picked topic stays on "Keywords & topic" (its Topic & Intent form); "Write" starts once the blog is being written
-  const flowStep = pendingId ? 1 : done ? (article.publishing_status === 'published' ? 4 : article.publishing_status === 'scheduled' || article.publishing_status === 'publishing' ? 3 : 2) : openId ? 1 : 0;
   return (
-    <div className="space-y-6">
-      <FlowSteps step={flowStep} />
+    <div className="space-y-4">
       {pendingId && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
           <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
@@ -670,24 +594,23 @@ function DuplicateNotice({ b, article, title, image }) {
 /** The keywords this project saved (My Keywords), on the Topic & Intent step: tick some and add them to this blog's keywords. */
 function SavedKeywordPicker({ b, inUse, onAdd }) {
   const kws = useApi(`/businesses/${b.id}/blog-flow/keywords`);
-  const [q, setQ] = useState('');
   const [picked, setPicked] = useState([]);
+  const shownRows = useRef([]); // the keywords the table shows now, for "select all shown"
   const list = kws.data?.keywords || [];
   const used = new Set(inUse.map(k => String(k || '').trim().toLowerCase()).filter(Boolean));
-  const shown = q.trim() ? list.filter(k => k.keyword.toLowerCase().includes(q.trim().toLowerCase())) : list;
   const toggle = (k) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k]));
   const add = () => { onAdd(list.filter(k => picked.includes(k.keyword))); setPicked([]); };
   return (
     <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-[12px] font-bold text-slate-800">My saved keywords</div>
-          <div className="text-[11.5px] text-slate-500">Tick the keywords this blog is for, then add them. The first one becomes the primary keyword if there is none yet.</div>
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2"><span className="text-[13px] font-bold text-slate-900">My saved keywords</span>{list.length > 0 && <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 tabular-nums">{list.length}</span>}</div>
+          <div className="text-[11.5px] text-slate-500 mt-0.5">Tick the keywords this blog is for, then add them. The first becomes the primary keyword.</div>
         </div>
         {list.length > 0 && (
-          <div className="flex items-center gap-2">
-            {picked.length > 0 && <button type="button" onClick={() => setPicked([])} className="text-[12px] font-semibold text-slate-500 hover:underline cursor-pointer">Clear</button>}
-            <Button size="sm" variant="primary" icon={Plus} disabled={!picked.length} onClick={add}>Add {picked.length || ''} to this blog</Button>
+          <div className="flex items-center gap-2 shrink-0">
+            {picked.length > 0 && <><span className="text-[12px] font-semibold text-indigo-700 tabular-nums">{picked.length} ticked</span><button type="button" onClick={() => setPicked([])} className="text-[12px] font-semibold text-slate-500 hover:underline cursor-pointer">Clear</button></>}
+            <Button size="sm" variant="primary" icon={Plus} disabled={!picked.length} onClick={add}>Add to this blog</Button>
           </div>
         )}
       </div>
@@ -696,33 +619,22 @@ function SavedKeywordPicker({ b, inUse, onAdd }) {
       {kws.data && !list.length && <p className="text-[12px] text-slate-500">No keywords are saved yet. Save some on <Link to="/keyword-management/ai" className="text-indigo-600 hover:underline">Find Keywords</Link>, or type the topic above and click Generate Keywords.</p>}
       {list.length > 0 && (
         <div className="rounded-lg ring-1 ring-inset ring-slate-200 overflow-hidden">
-          <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${list.length} keywords`} aria-label="Search saved keywords" className={`${inputCls} !w-64`} />
-            <span className="text-[11.5px] text-slate-500">{picked.length ? `${picked.length} selected` : shown.length === list.length ? `${list.length} keywords` : `${shown.length} of ${list.length}`}</span>
-          </div>
-          <div className="max-h-[280px] overflow-y-auto divide-y divide-slate-100" role="listbox" aria-multiselectable="true" aria-label="Saved keywords">
-            <div className="grid grid-cols-[28px_minmax(0,1fr)_90px_70px_70px] gap-3 px-3 py-1.5 text-[11px] uppercase tracking-wide text-slate-400 sticky top-0 bg-white">
-              <span /><span>Keyword</span><span className="text-right">Searches/mo</span><span className="text-right">Difficulty</span><span className="text-right">Rank</span>
-            </div>
-            {shown.map(k => {
-              const on = picked.includes(k.keyword);
-              const added = used.has(k.keyword.toLowerCase());
-              return (
-                <button key={k.keyword} type="button" role="option" aria-selected={on} disabled={added} onClick={() => toggle(k.keyword)}
-                  className={`w-full grid grid-cols-[28px_minmax(0,1fr)_90px_70px_70px] items-center gap-3 px-3 py-2 text-left text-[12.5px] ${added ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${on ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
-                  <span className={`h-[18px] w-[18px] rounded border inline-flex items-center justify-center text-white text-[11px] ${on || added ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'}`}>{on || added ? '✓' : ''}</span>
-                  <span className="min-w-0"><span className="font-semibold text-slate-900 break-words">{k.keyword}</span>
-                    {added && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-indigo-50 text-indigo-700">added</span>}
-                    {k.for_blog && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-emerald-50 text-emerald-700">meant for blogs</span>}
-                    {k.used > 0 && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700">used in {k.used} article{k.used > 1 ? 's' : ''}</span>}</span>
-                  <span className="text-right tabular-nums text-slate-700">{k.volume != null ? fmt(k.volume) : <span className="text-slate-300">—</span>}</span>
-                  <span className="text-right tabular-nums text-slate-700">{k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>}</span>
-                  <span className="text-right tabular-nums text-slate-700">{k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>}</span>
-                </button>
-              );
-            })}
-            {!shown.length && <p className="px-3 py-6 text-center text-[12.5px] text-slate-500">No keyword matches “{q}”.</p>}
-          </div>
+          <DataTable bare rows={list} rowKey={k => k.keyword} pageSize={10} sizes={[10, 25, 50]} label="keywords" search={false} exportName={`saved-keywords-${siteStem(b)}`} minWidth={520} columnsMenu={false}
+            onState={st => { shownRows.current = st.rows; }}
+            rowClass={k => (picked.includes(k.keyword) ? 'bg-indigo-50' : used.has(k.keyword.toLowerCase()) ? 'opacity-50' : 'hover:bg-slate-50')}
+            columns={[
+              { id: 'pick', label: 'Select', csv: false, className: 'pl-3 pr-1 py-2 w-8', thClass: 'pl-3 pr-1 py-2.5 w-8',
+                header: <input type="checkbox" aria-label="Select all shown" checked={shownRows.current.length > 0 && shownRows.current.filter(k => !used.has(k.keyword.toLowerCase())).every(k => picked.includes(k.keyword))} onChange={() => { const free = shownRows.current.filter(k => !used.has(k.keyword.toLowerCase())).map(k => k.keyword); const every = free.every(k => picked.includes(k)); setPicked(pk => (every ? pk.filter(k => !free.includes(k)) : [...new Set([...pk, ...free])])); }} />,
+                cell: k => <input type="checkbox" disabled={used.has(k.keyword.toLowerCase())} checked={picked.includes(k.keyword) || used.has(k.keyword.toLowerCase())} onChange={() => toggle(k.keyword)} aria-label={`Pick ${k.keyword}`} /> },
+              { id: 'keyword', header: 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
+                cell: k => <span className="min-w-0"><span className="font-semibold text-slate-900 break-words">{k.keyword}</span>
+                  {used.has(k.keyword.toLowerCase()) && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-indigo-50 text-indigo-700">added</span>}
+                  {k.for_blog && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-emerald-50 text-emerald-700">meant for blogs</span>}
+                  {k.used > 0 && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700">used in {k.used} article{k.used > 1 ? 's' : ''}</span>}</span> },
+              { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: k => k.volume ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-700', cell: k => (k.volume != null ? fmt(k.volume) : <span className="text-slate-300">—</span>) },
+              { id: 'difficulty', header: 'Difficulty', right: true, value: k => k.difficulty ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-700', cell: k => (k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>) },
+              { id: 'rank', header: 'Rank', right: true, value: k => k.rank ?? null, className: 'px-3 py-2 text-right tabular-nums text-slate-700', cell: k => (k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>) }
+            ]} />
         </div>
       )}
     </div>
@@ -1072,20 +984,23 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         action={step === PUBLISH_STEP ? null : (
           <div className="flex items-center gap-2">
             {step === 0 && <Button onClick={() => setShowSaved(s => !s)}>{showSaved ? 'Hide My Keywords' : 'My Keywords'}</Button>}
-            <Button variant="secondary" busy={genBusy} onClick={next}>
-              {step === 0 ? 'Generate Blog' : 'Next Step'}
+            {step !== 0 && <Button variant="secondary" busy={genBusy} onClick={next}>
+              Next Step
               <ChevronRight size={13} />
-            </Button>
+            </Button>}
           </div>
         )}
       >
         {/* Step 0: Keyword & Intent */}
         {step === 0 && (
-          <div className="space-y-4">
-            <Field label="Topic" hint="Picked from Trending Topics Radar, or type your own topic">
-              <input className={inputCls} placeholder="e.g. social media marketing" value={topicText} onChange={e => setTopicText(e.target.value)} />
-            </Field>
-            {onGenerate && showSaved && <SavedKeywordPicker b={b} inUse={[kw, ...secondaryList]} onAdd={addSaved} />}
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_390px] gap-4 items-start">
+            <div className="space-y-4 min-w-0">
+              <Field label="Topic" hint="Picked from Trending Topics Radar, or type your own topic">
+                <input className={inputCls} placeholder="e.g. social media marketing" value={topicText} onChange={e => setTopicText(e.target.value)} />
+              </Field>
+              {onGenerate && showSaved && <SavedKeywordPicker b={b} inUse={[kw, ...secondaryList]} onAdd={addSaved} />}
+            </div>
+            <aside className="space-y-3 xl:sticky xl:top-4" aria-label="This article">
             {onGenerate && (
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1110,7 +1025,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     </Field>
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Secondary keywords <span className="normal-case tracking-normal font-normal text-slate-400">({secondaryList.filter(k => k.trim()).length}, 5 to 10 works best; edit, add or remove)</span></div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2">
                         {secondaryList.map((k, i) => (
                           <div key={i} className="flex items-center gap-1.5">
                             <input className={inputCls} value={k} onChange={e => setSecondaryList(l => l.map((x, j) => (j === i ? e.target.value : x)))} />
@@ -1128,25 +1043,27 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             {onGenerate && (
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Article length</div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 gap-1.5">
                   {ARTICLE_LENGTHS.map(l => (
-                    <button key={l.id} type="button" onClick={() => pickLength(l.id)}
-                      className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${articleLength === l.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'}`}>
-                      <div className="text-[12px] font-bold">{l.label}</div>
-                      <div className={`text-[10.5px] ${articleLength === l.id ? 'text-indigo-100' : 'text-slate-500'}`}>{l.words} · {l.time}</div>
+                    <button key={l.id} type="button" onClick={() => pickLength(l.id)} aria-pressed={articleLength === l.id}
+                      className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-3 text-left cursor-pointer transition-all ${articleLength === l.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'}`}>
+                      <span className="text-[12.5px] font-bold">{l.label}</span>
+                      <span className={`text-[11px] ${articleLength === l.id ? 'text-indigo-100' : 'text-slate-500'}`}>{l.words} · {l.time}</span>
                     </button>
                   ))}
                 </div>
               </div>
             )}
             {onGenerate && (
-              <div className="flex flex-wrap items-center gap-3">
-                <Button variant="ai" icon={Sparkles} busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={generateBlog}>Generate Blog</Button>
-                {generating && <span className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</span>}
-                <span className="text-[11.5px] text-slate-500">Writes a complete blog (SEO title, meta description, introduction, H2/H3 sections, FAQs, conclusion) using every keyword above, then opens it for review.</span>
+              <div className="space-y-1.5">
+                <Button variant="ai" icon={Sparkles} className="w-full justify-center" busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={generateBlog}>Generate Blog</Button>
+                {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
+                {!kwReady && !kwBusy && <div className="text-[11.5px] text-amber-700">Generate the keywords first.</div>}
+                <div className="text-[11.5px] text-slate-500">Writes a complete blog (SEO title, meta description, introduction, H2/H3 sections, FAQs, conclusion) using the keywords above, then opens it for review.</div>
               </div>
             )}
             {genError && <div className="text-[12px] text-red-600">{genError}</div>}
+            </aside>
           </div>
         )}
 
@@ -1274,6 +1191,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                       <div className="text-[11px] text-slate-500">Edit raw HTML or switch to Preview to inspect the formatted blog layout</div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      {selectedArticle && <ArticleDownloads b={b} article={{ ...selectedArticle, body: draft, title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, slug: meta.slug.trim() || slugify(meta.keyword), secondary_keywords: secondaryNow }} />}
                       {selectedArticle && <RegenerateContent ref={regenRef} b={b} article={selectedArticle} body={draft} onAccept={setDraft} toast={toast} onFieldBusy={setFieldBusy}
                         fields={{ title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean) }}
                         onField={(field, value) => setMeta(m => ({ ...m, [field]: value }))} />}

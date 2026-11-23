@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Workflow, Store, Star, Search, ScanSearch, Sparkles, FileBarChart, Bot, Globe, Plug, Users,
   LogOut, Menu, X, KeyRound, MapPin, Building2, CalendarDays, Target, Swords, Award, Radar, PanelLeftClose, PanelLeftOpen,
-  TrendingUp, Check, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send, Activity
+  TrendingUp, Check, FileText, Columns3, Wand2, Layers, Bookmark, Lightbulb, Link2, Send, Activity, ArrowUpRight
 } from 'lucide-react';
 import { SIDEBAR_GROUPS, SIDEBAR_SECTIONS } from './sidebarGroups';
 import { useNavigate } from 'react-router-dom';
@@ -91,7 +91,7 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
   // A project that does not use GEO or AEO is not shown the ChatGPT or AI sections (they open again when the page is reached by address). The GMB section is always shown: it holds the Connect Google and Find on Google screens, and it works from the public Maps listing before any account is linked.
   const on = biz?.services_on;
   const needs = { chatgpt: ['geo', 'aeo'], ai: ['geo', 'aeo'] };
-  const holds = (sec) => sec.groups.some(grp => grp.items.some(i => itemActive(location.pathname, location.search, i)));
+  const holds = (sec) => sec.groups.some(grp => grp.items.some(i => !i.elsewhere && itemActive(location.pathname, location.search, i)));  // a pointer to another section's page does not make this section the page's own
   const shown = (sec) => !on || !needs[sec.id] || [].concat(needs[sec.id]).some(m => on.includes(m)) || holds(sec);
   const sections = SIDEBAR_SECTIONS.filter(shown);
   const section = (picked && sections.find(s => s.id === picked && holds(s))) || sections.find(holds) || sections.find(s => s.id === picked) || sections[0];
@@ -160,11 +160,12 @@ export default function Layout({ user, onLogout, onChangePassword, checking = fa
                     </div>)}
                   <div className="space-y-0.5">
                     {items.map(item => {
-                      const active = itemActive(location.pathname, location.search, item);
+                      const active = !item.elsewhere && itemActive(location.pathname, location.search, item);
                       return (
-                        <Link key={item.to} to={item.to} onClick={() => setOpen(false)} aria-current={active ? 'page' : undefined}
+                        <Link key={item.to} to={item.to} onClick={() => { setOpen(false); if (item.elsewhere) setPicked(item.elsewhere); }} title={item.elsewhere ? `Opens the ${SIDEBAR_SECTIONS.find(s => s.id === item.elsewhere)?.title || 'other'} section` : undefined} aria-current={active ? 'page' : undefined}
                           className={`flex items-center gap-2 min-h-8 px-3 py-1 rounded text-14 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 transition-colors ${active ? 'bg-slate-200/80 text-slate-900 font-semibold' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}>
                           <span className="flex-1 leading-snug">{item.label}</span>
+                          {item.elsewhere && <ArrowUpRight size={13} className="shrink-0 text-slate-400" aria-hidden="true" />}
                           {item.badge && <span className={`shrink-0 text-10 font-semibold leading-none px-1.5 py-1 rounded-md ring-1 ring-inset ${BADGE_TONES[item.badge] || 'bg-slate-500/15 text-slate-700 ring-slate-400/25'}`}>{item.badge}</span>}
                         </Link>);
                     })}

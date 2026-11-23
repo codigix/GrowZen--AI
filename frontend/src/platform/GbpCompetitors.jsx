@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Plus, Trash2, ExternalLink, Swords, Trophy, Star, ArrowRight, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import { Card, Button, ErrorNote, Field, Modal, inputCls, useAction, useDoubleConfirm, SkList } from './SeoUi';
 import { api, useApi } from './seoApi';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 import { SectionHead } from './GbpWorkspace';
 
 const TONE = {
@@ -102,6 +103,44 @@ function AddCompetitor({ b, open, onClose, onDone }) {
 }
 
 /** Competitor Analysis for the Google Business Profile: the businesses ranking around this one, how the profile compares, and what to do about each gap. */
+const COMP_VALUE = (r, k) => (k === 'name' ? r.name : k === 'website' ? (r.website || null) : k === 'reviews' ? (r.reviews || 0) : (r.rating ?? null));
+
+/** The competitor table: the rank number is the place by reviews, so it stays put when the table is sorted another way. */
+function CompetitorTable({ rows, max, remove }) {
+  const rankOf = useMemo(() => new Map(rows.map((r, i) => [r, i + 1])), [rows]);
+  const { sorted, sort, onSort } = useSorted(rows, COMP_VALUE);
+  const pager = usePager(sorted, { size: 10, resetKey: `${sort?.key}|${sort?.dir}` });
+  return (
+    <>
+    <div className="overflow-x-auto">
+      <table className="w-full text-13">
+        <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><SortTh id="name" sort={sort} onSort={onSort} className="p-2 font-medium">Business</SortTh><SortTh id="rating" sort={sort} onSort={onSort} first="desc" className="p-2 font-medium">Rating</SortTh><SortTh id="reviews" sort={sort} onSort={onSort} first="desc" className="p-2 font-medium w-[34%]">Reviews</SortTh><SortTh id="website" sort={sort} onSort={onSort} className="p-2 font-medium">Website</SortTh><th className="p-2" /></tr></thead>
+        <tbody className="divide-y divide-slate-100">
+          {pager.rows.map(r => (
+            <tr key={r.id || 'you'} className={r.you ? 'bg-indigo-50/60' : ''}>
+              <td className="p-2.5 align-top">
+                <div className="flex items-start gap-2.5">
+                  <span className={`w-7 h-7 rounded-full text-11 font-bold flex items-center justify-center shrink-0 ${r.you ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{rankOf.get(r)}</span>
+                  <div className="min-w-0">
+                    <div className="font-medium text-slate-900 flex items-center gap-1.5 flex-wrap">{r.maps_link ? <a href={r.maps_link} target="_blank" rel="noreferrer" className="hover:text-indigo-600 hover:underline">{r.name}</a> : r.name}{r.you && <span className="text-10 font-bold uppercase tracking-wide bg-indigo-600 text-white rounded px-1.5 py-0.5">You</span>}{r.source === 'manual' && <span className="text-10 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">added by you</span>}</div>
+                    {r.address && <div className="text-11.5 text-slate-500 truncate max-w-[300px]" title={r.address}>{r.address}</div>}
+                  </div>
+                </div>
+              </td>
+              <td className="p-2.5 align-top"><Stars value={r.rating} /></td>
+              <td className="p-2.5 align-top"><div className="flex items-center gap-2"><div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${r.you ? 'bg-indigo-500' : 'bg-slate-400'}`} style={{ width: `${Math.max(2, ((r.reviews || 0) / max) * 100)}%` }} /></div><span className="w-12 text-right tabular-nums text-slate-700">{fmt(r.reviews || 0)}</span></div></td>
+              <td className="p-2.5 align-top text-12">{r.website ? <a href={r.website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1"><ExternalLink size={11} />{r.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').slice(0, 28)}</a> : <span className="text-slate-500" title="No website on its Google profile: the profile is all customers see">No website</span>}</td>
+              <td className="p-2.5 align-top text-right">{!r.you && <button type="button" onClick={() => remove(r)} aria-label={`Remove ${r.name}`} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 size={14} /></button>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+      <Pager p={pager} label="businesses" />
+    </>
+  );
+}
+
 export default function CompetitorSection({ b }) {
   const data = useApi(`/businesses/${b.id}/gbp/competitors`);
   const [busy, error, run] = useAction();
@@ -166,30 +205,7 @@ export default function CompetitorSection({ b }) {
           <ProfileComparison b={b} count={d.competitors.length} />
 
           <Card title="You and your competitors" subtitle="Sorted by number of reviews, the strongest signal Google has for local ranking">
-            <div className="overflow-x-auto">
-              <table className="w-full text-13">
-                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-medium">Business</th><th className="p-2 text-left font-medium">Rating</th><th className="p-2 text-left font-medium w-[34%]">Reviews</th><th className="p-2 text-left font-medium">Website</th><th className="p-2" /></tr></thead>
-                <tbody className="divide-y divide-slate-100">
-                  {rows.map((r, i) => (
-                    <tr key={r.id || 'you'} className={r.you ? 'bg-indigo-50/60' : ''}>
-                      <td className="p-2.5 align-top">
-                        <div className="flex items-start gap-2.5">
-                          <span className={`w-7 h-7 rounded-full text-11 font-bold flex items-center justify-center shrink-0 ${r.you ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</span>
-                          <div className="min-w-0">
-                            <div className="font-medium text-slate-900 flex items-center gap-1.5 flex-wrap">{r.maps_link ? <a href={r.maps_link} target="_blank" rel="noreferrer" className="hover:text-indigo-600 hover:underline">{r.name}</a> : r.name}{r.you && <span className="text-10 font-bold uppercase tracking-wide bg-indigo-600 text-white rounded px-1.5 py-0.5">You</span>}{r.source === 'manual' && <span className="text-10 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">added by you</span>}</div>
-                            {r.address && <div className="text-11.5 text-slate-500 truncate max-w-[300px]" title={r.address}>{r.address}</div>}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-2.5 align-top"><Stars value={r.rating} /></td>
-                      <td className="p-2.5 align-top"><div className="flex items-center gap-2"><div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${r.you ? 'bg-indigo-500' : 'bg-slate-400'}`} style={{ width: `${Math.max(2, ((r.reviews || 0) / max) * 100)}%` }} /></div><span className="w-12 text-right tabular-nums text-slate-700">{fmt(r.reviews || 0)}</span></div></td>
-                      <td className="p-2.5 align-top text-12">{r.website ? <a href={r.website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1"><ExternalLink size={11} />{r.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').slice(0, 28)}</a> : <span className="text-slate-500" title="No website on its Google profile: the profile is all customers see">No website</span>}</td>
-                      <td className="p-2.5 align-top text-right">{!r.you && <button type="button" onClick={() => remove(r)} aria-label={`Remove ${r.name}`} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 size={14} /></button>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <CompetitorTable rows={rows} max={max} remove={remove} />
           </Card>
         </>
       )}

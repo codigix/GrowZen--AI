@@ -6,6 +6,7 @@ import { SeoShell, Card, Button, Badge, Field, Modal, ErrorNote, inputCls, areaC
 import { api, useApi } from './seoApi';
 import { useCrumb } from './crumbs';
 import Select from '../components/Select';
+import { usePager, Pager, useSorted, SortTh } from './DataTable';
 
 const HUB_URL = 'https://chatgpt.com/business-hub';
 const STATUSES = [['Unclaimed', 'Unclaimed'], ['Claim_Pending', 'Claim pending'], ['Claim_Approved', 'Claim approved'], ['Disputed', 'Disputed']];
@@ -153,6 +154,47 @@ export function csvToItems(text) {
 
 // ---------- 1. Claim & verification
 
+const OV_VAL = (o, k) => (k === 'name' ? o.name : k === 'status' ? label(o.claim_status) : k === 'method' ? (METHOD_LABEL[o.verification_method] || null) : k === 'badge' ? Number(!!o.persona_verified) : k === 'items' ? o.items : k === 'score' ? o.readiness_score : undefined);
+
+function OverviewTable({ rows, currentId, onPick }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const kept = useMemo(() => (needle ? rows.filter(o => String(o.name || '').toLowerCase().includes(needle)) : rows), [rows, needle]);
+  const { sorted, sort, onSort } = useSorted(kept, OV_VAL);
+  const pager = usePager(sorted, { size: 10, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
+  const th = 'p-2 font-medium';
+  return (
+    <div>
+      {rows.length > 10 && (<div className="pb-2"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search businesses" aria-label="Search businesses" className="h-8 w-60 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>)}
+      <div className="overflow-x-auto">
+        <table className="w-full text-13">
+          <thead className="text-12 text-slate-500 border-b border-slate-200"><tr>
+            <SortTh id="name" sort={sort} onSort={onSort} className={th}>Business</SortTh>
+            <SortTh id="status" sort={sort} onSort={onSort} className={th}>Status</SortTh>
+            <SortTh id="method" sort={sort} onSort={onSort} className={th}>Method</SortTh>
+            <SortTh id="badge" sort={sort} onSort={onSort} first="desc" className={th}>Verified badge</SortTh>
+            <SortTh id="items" sort={sort} onSort={onSort} right first="desc" className={th}>Feed items</SortTh>
+            <SortTh id="score" sort={sort} onSort={onSort} right first="desc" className={th}>Readiness</SortTh></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pager.rows.map(o => (
+              <tr key={o.business_id} tabIndex={0} onClick={() => onPick(o.business_id)} onKeyDown={e => { if (e.key === 'Enter') onPick(o.business_id); }} className={`cursor-pointer hover:bg-slate-50 ${o.business_id === currentId ? 'bg-indigo-50/60' : ''}`}>
+                <td className="p-2.5 font-medium text-slate-900">{o.name}{o.business_id === currentId && <span className="ml-2 text-10 font-bold uppercase text-indigo-600">Open</span>}</td>
+                <td className="p-2.5"><Badge tone={STATUS_TONE[o.claim_status] || 'gray'}>{label(o.claim_status)}</Badge></td>
+                <td className="p-2.5 text-slate-600">{METHOD_LABEL[o.verification_method] || '—'}</td>
+                <td className="p-2.5">{o.persona_verified ? <span className="inline-flex items-center gap-1 text-emerald-600"><ShieldCheck size={14} />Yes</span> : <span className="text-slate-400">No</span>}</td>
+                <td className="p-2.5 text-right tabular-nums">{fmt(o.items)}</td>
+                <td className="p-2.5 text-right tabular-nums font-semibold">{o.readiness_score}%</td>
+              </tr>
+            ))}
+            {!pager.rows.length && <tr><td colSpan={6} className="p-6 text-center text-slate-500">No business matches.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pager} label="businesses" />
+    </div>
+  );
+}
+
 function ClaimView({ b, d, setData, toast, f, setF }) {
   const c = d.claim;
   const [busy, error, run] = useAction();
@@ -221,23 +263,7 @@ function ClaimView({ b, d, setData, toast, f, setF }) {
 
       <Card title="All your businesses" subtitle="Claim and verification status across every project. Click a row to switch to it.">
         {!overview.data ? (overview.error ? <ErrorNote>{overview.error.message}</ErrorNote> : <SkList rows={4} />) : overview.data.length === 0 ? <p className="text-13 text-slate-500 py-3">No businesses yet.</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-13">
-              <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-medium">Business</th><th className="p-2 text-left font-medium">Status</th><th className="p-2 text-left font-medium">Method</th><th className="p-2 text-left font-medium">Verified badge</th><th className="p-2 text-right font-medium">Feed items</th><th className="p-2 text-right font-medium">Readiness</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {overview.data.map(o => (
-                  <tr key={o.business_id} tabIndex={0} onClick={() => chooseBusiness(o.business_id)} onKeyDown={e => { if (e.key === 'Enter') chooseBusiness(o.business_id); }} className={`cursor-pointer hover:bg-slate-50 ${o.business_id === b.id ? 'bg-indigo-50/60' : ''}`}>
-                    <td className="p-2.5 font-medium text-slate-900">{o.name}{o.business_id === b.id && <span className="ml-2 text-10 font-bold uppercase text-indigo-600">Open</span>}</td>
-                    <td className="p-2.5"><Badge tone={STATUS_TONE[o.claim_status] || 'gray'}>{label(o.claim_status)}</Badge></td>
-                    <td className="p-2.5 text-slate-600">{METHOD_LABEL[o.verification_method] || '—'}</td>
-                    <td className="p-2.5">{o.persona_verified ? <span className="inline-flex items-center gap-1 text-emerald-600"><ShieldCheck size={14} />Yes</span> : <span className="text-slate-400">No</span>}</td>
-                    <td className="p-2.5 text-right tabular-nums">{fmt(o.items)}</td>
-                    <td className="p-2.5 text-right tabular-nums font-semibold">{o.readiness_score}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <OverviewTable rows={overview.data} currentId={b.id} onPick={chooseBusiness} />
         )}
       </Card>
     </div>
@@ -381,6 +407,47 @@ function CsvModal({ b, open, onClose, onDone, toast }) {
   );
 }
 
+const FEED_VAL = (it, k) => (k === 'sku' ? it.sku : k === 'title' ? it.title : k === 'price' ? (it.price == null || it.price === '' ? null : Number(it.price)) : k === 'avail' ? ((AVAILABILITY.find(([v]) => v === it.availability) || [0, it.availability])[1]) : k === 'link' ? it.product_url : undefined);
+
+function FeedTable({ items, del }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const kept = useMemo(() => (needle ? items.filter(it => `${it.sku} ${it.title || ''} ${it.description || ''}`.toLowerCase().includes(needle)) : items), [items, needle]);
+  const { sorted, sort, onSort } = useSorted(kept, FEED_VAL);
+  const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
+  const th = 'p-2 font-medium';
+  return (
+    <div>
+      {items.length > 10 && (<div className="pb-2"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search the feed" aria-label="Search the feed" className="h-8 w-60 px-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>)}
+      <div className="overflow-x-auto">
+        <table className="w-full text-13">
+          <thead className="text-12 text-slate-500 border-b border-slate-200"><tr>
+            <SortTh id="sku" sort={sort} onSort={onSort} className={th}>SKU</SortTh>
+            <SortTh id="title" sort={sort} onSort={onSort} className={th}>Title</SortTh>
+            <SortTh id="price" sort={sort} onSort={onSort} right className={th}>Price</SortTh>
+            <SortTh id="avail" sort={sort} onSort={onSort} className={th}>Availability</SortTh>
+            <SortTh id="link" sort={sort} onSort={onSort} className={th}>Link</SortTh>
+            <th className="p-2" /></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pager.rows.map(it => (
+              <tr key={it.sku}>
+                <td className="p-2.5 font-mono text-12 text-slate-600">{it.sku}</td>
+                <td className="p-2.5 text-slate-900 max-w-[280px]"><div className="truncate" title={it.title}>{it.title}</div>{it.description && <div className="text-11.5 text-slate-500 truncate" title={it.description}>{it.description}</div>}</td>
+                <td className="p-2.5 text-right tabular-nums whitespace-nowrap">{fmt(it.price)} <span className="text-slate-400 text-12">{it.currency}</span></td>
+                <td className="p-2.5"><Badge tone={it.availability === 'in_stock' ? 'green' : it.availability === 'out_of_stock' ? 'red' : 'amber'}>{(AVAILABILITY.find(([v]) => v === it.availability) || [0, it.availability])[1]}</Badge></td>
+                <td className="p-2.5 text-12 max-w-[200px]">{it.product_url ? <a href={it.product_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline truncate block">{it.product_url.replace(/^https?:\/\/(www\.)?/, '')}</a> : '—'}</td>
+                <td className="p-2.5 text-right"><button type="button" onClick={() => del(it)} aria-label={`Delete ${it.title || it.sku}`} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 size={14} /></button></td>
+              </tr>
+            ))}
+            {!pager.rows.length && <tr><td colSpan={6} className="p-6 text-center text-slate-500">No item matches.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pager} label="items" />
+    </div>
+  );
+}
+
 function FeedView({ b, d, reloadAll, toast }) {
   const cat = useApi(`/businesses/${b.id}/chatgpt/catalog`);
   const [done, copy] = useCopy();
@@ -417,23 +484,7 @@ function FeedView({ b, d, reloadAll, toast }) {
             <p className="text-13 text-slate-500 mt-1 max-w-md mx-auto">A feed is the list of what you sell or offer, with prices and links, that ChatGPT can read and keep up to date. Add items one by one, paste a CSV, or start from the services on your profile.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-13">
-              <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-medium">SKU</th><th className="p-2 text-left font-medium">Title</th><th className="p-2 text-right font-medium">Price</th><th className="p-2 text-left font-medium">Availability</th><th className="p-2 text-left font-medium">Link</th><th className="p-2" /></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {items.map(it => (
-                  <tr key={it.sku}>
-                    <td className="p-2.5 font-mono text-12 text-slate-600">{it.sku}</td>
-                    <td className="p-2.5 text-slate-900 max-w-[280px]"><div className="truncate" title={it.title}>{it.title}</div>{it.description && <div className="text-11.5 text-slate-500 truncate" title={it.description}>{it.description}</div>}</td>
-                    <td className="p-2.5 text-right tabular-nums whitespace-nowrap">{fmt(it.price)} <span className="text-slate-400 text-12">{it.currency}</span></td>
-                    <td className="p-2.5"><Badge tone={it.availability === 'in_stock' ? 'green' : it.availability === 'out_of_stock' ? 'red' : 'amber'}>{(AVAILABILITY.find(([v]) => v === it.availability) || [0, it.availability])[1]}</Badge></td>
-                    <td className="p-2.5 text-12 max-w-[200px]">{it.product_url ? <a href={it.product_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline truncate block">{it.product_url.replace(/^https?:\/\/(www\.)?/, '')}</a> : '—'}</td>
-                    <td className="p-2.5 text-right"><button type="button" onClick={() => del(it)} aria-label={`Delete ${it.title || it.sku}`} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 size={14} /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <FeedTable items={items} del={del} />
         )}
       </Card>
       <ItemModal b={b} open={adding} onClose={() => setAdding(false)} onDone={refresh} toast={toast} />
@@ -443,6 +494,36 @@ function FeedView({ b, d, reloadAll, toast }) {
 }
 
 // ---------- 4. Business agent & insights
+
+const INS_VAL = (m, k) => (k === 'month' ? m.month : k === 'mentions' ? m.mentions : k === 'clicks' ? m.website_clicks : k === 'topics' ? (m.topics || []).join(', ') : undefined);
+
+function InsightsTable({ insights, delMonth }) {
+  const { sorted, sort, onSort } = useSorted(insights, INS_VAL);
+  const pager = usePager(sorted, { size: 10, resetKey: `${insights.length}|${sort?.key}|${sort?.dir}` });
+  const th = 'p-2 font-medium';
+  return (
+    <div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-13">
+          <thead className="text-12 text-slate-500 border-b border-slate-200"><tr>
+            <SortTh id="month" sort={sort} onSort={onSort} first="desc" className={th}>Month</SortTh>
+            <SortTh id="mentions" sort={sort} onSort={onSort} right first="desc" className={th}>Mentions</SortTh>
+            <SortTh id="clicks" sort={sort} onSort={onSort} right first="desc" className={th}>Website clicks</SortTh>
+            <SortTh id="topics" sort={sort} onSort={onSort} className={th}>Discovery topics</SortTh>
+            <th className="p-2" /></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pager.rows.map(m => (
+              <tr key={m.month}><td className="p-2.5 font-medium text-slate-900">{monthName(m.month)}</td><td className="p-2.5 text-right tabular-nums">{fmt(m.mentions)}</td><td className="p-2.5 text-right tabular-nums">{fmt(m.website_clicks)}</td>
+                <td className="p-2.5"><div className="flex flex-wrap gap-1">{(m.topics || []).map(t => <span key={t} className="text-11.5 bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">{t}</span>)}</div></td>
+                <td className="p-2.5 text-right"><button type="button" onClick={() => delMonth(m)} aria-label={`Delete ${monthName(m.month)}`} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 size={14} /></button></td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pager} label="months" />
+    </div>
+  );
+}
 
 function AgentView({ b, d, setData, toast }) {
   const a0 = d.agent || {};
@@ -525,18 +606,7 @@ function AgentView({ b, d, setData, toast }) {
                 </ResponsiveContainer>
               </div>
             )}
-            <div className="overflow-x-auto">
-              <table className="w-full text-13">
-                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className="p-2 text-left font-medium">Month</th><th className="p-2 text-right font-medium">Mentions</th><th className="p-2 text-right font-medium">Website clicks</th><th className="p-2 text-left font-medium">Discovery topics</th><th className="p-2" /></tr></thead>
-                <tbody className="divide-y divide-slate-100">
-                  {insights.map(m => (
-                    <tr key={m.month}><td className="p-2.5 font-medium text-slate-900">{monthName(m.month)}</td><td className="p-2.5 text-right tabular-nums">{fmt(m.mentions)}</td><td className="p-2.5 text-right tabular-nums">{fmt(m.website_clicks)}</td>
-                      <td className="p-2.5"><div className="flex flex-wrap gap-1">{(m.topics || []).map(t => <span key={t} className="text-11.5 bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">{t}</span>)}</div></td>
-                      <td className="p-2.5 text-right"><button type="button" onClick={() => delMonth(m)} aria-label={`Delete ${monthName(m.month)}`} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 size={14} /></button></td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <InsightsTable insights={insights} delMonth={delMonth} />
           </>
         )}
       </Card>

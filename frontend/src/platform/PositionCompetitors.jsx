@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { ResponsiveContainer, ScatterChart, Scatter, BarChart, Bar, Cell, ReferenceLine, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip } from 'recharts';
-import { ExternalLink, Plus, Check, Settings2, ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { ExternalLink, Plus, Check, Settings2, Info } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card, Badge, Button, useAction, useModulePath } from './SeoUi';
 import { api } from './seoApi';
 import { AXIS, PALETTE, Chg, Empty, Filter } from './PositionUi';
 import Select from '../components/Select';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
+import { CsvButton } from './PositionExtras';
 
 const DEPTHS = [[20, 'Top 20'], [10, 'Top 10'], [5, 'Top 5'], [3, 'Top 3']]; // Google results are read to the top 20
 const host = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '');
@@ -56,8 +58,6 @@ export default function PositionCompetitors({ d, b, onChanged }) {
   const [off, setOff] = useState(() => new Set());
   const [ignored, setIgnored] = useState(() => readIgnored(b.id));
   const [showIgnored, setShowIgnored] = useState(false);
-  const [page, setPage] = useState(1);
-  const [per, setPer] = useState(10);
   const [busy, error, run] = useAction();
   const tracked = new Set((d.tracked_competitors || []).map(host));
 
@@ -74,9 +74,10 @@ export default function PositionCompetitors({ d, b, onChanged }) {
   const mine = rows.find(c => c.you);
   const others = rows.filter(c => !c.you);
   const rankOf = (c) => rows.indexOf(c) + 1;
-  const pages = Math.max(1, Math.ceil(others.length / per));
-  const cur = Math.min(page, pages);
-  const slice = others.slice((cur - 1) * per, cur * per);
+  const compValue = useMemo(() => (c, k) => (k === 'domain' ? c.domain : k === 'visibility' ? c.visibility ?? null : k === 'change' ? c.change ?? null : k === 'traffic' ? (d.has_volume ? c.traffic ?? null : null) : k === 'traffic_change' ? (d.has_volume ? c.traffic_change ?? null : null) : k === 'keywords' ? c.keywords ?? null : k === 'avg_position' ? c.avg_position ?? null : null), [d.has_volume]);
+  const { sorted: sortedOthers, sort, onSort } = useSorted(others, compValue);
+  const pager = usePager(sortedOthers, { size: 10, resetKey: `${depth}|${q}|${tag}|${plat}` });
+  const slice = pager.rows;
 
   const ignore = (dom) => { const n = [...new Set([...ignored, dom])]; setIgnored(n); try { localStorage.setItem(`${IGNORE_KEY}.${b.id}`, JSON.stringify(n)); } catch (e) { /* private window */ } };
   const unignore = (dom) => { const n = ignored.filter(x => x !== dom); setIgnored(n); try { localStorage.setItem(`${IGNORE_KEY}.${b.id}`, JSON.stringify(n)); } catch (e) { /* private window */ } };
@@ -95,11 +96,11 @@ export default function PositionCompetitors({ d, b, onChanged }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-13 text-slate-600 inline-flex items-center gap-1">Depth <Info size={12} className="text-slate-300" title="Google results are read to the top 20, so Top 50 and Top 100 are not offered" /></span>
-        <div className="inline-flex rounded border border-slate-200 overflow-hidden">{DEPTHS.map(([n, l]) => <button key={n} type="button" onClick={() => { setDepth(n); setPage(1); }} className={`h-9 px-3 text-13 border-r last:border-r-0 border-slate-200 cursor-pointer ${depth === n ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{l}</button>)}</div>
+        <div className="inline-flex rounded border border-slate-200 overflow-hidden">{DEPTHS.map(([n, l]) => <button key={n} type="button" onClick={() => { setDepth(n); }} className={`h-9 px-3 text-13 border-r last:border-r-0 border-slate-200 cursor-pointer ${depth === n ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{l}</button>)}</div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Filter value={q} onChange={v => { setQ(v); setPage(1); }} placeholder="Filter by keyword or domain" />
-        {tags.length > 0 && <Select className={sel} value={tag} onChange={e => { setTag(e.target.value); setPage(1); }} aria-label="Tags"><option value="">Tags</option>{tags.map(t => <option key={t}>{t}</option>)}</Select>}
+        <Filter value={q} onChange={v => { setQ(v); }} placeholder="Filter by keyword or domain" />
+        {tags.length > 0 && <Select className={sel} value={tag} onChange={e => { setTag(e.target.value); }} aria-label="Tags"><option value="">Tags</option>{tags.map(t => <option key={t}>{t}</option>)}</Select>}
         <label className="h-9 px-3 inline-flex items-center gap-2 rounded border border-slate-200 bg-white text-13 text-slate-700 cursor-pointer"><input type="checkbox" checked={plat} onChange={e => setPlat(e.target.checked)} />Directories &amp; social{d.platform_total ? ` (${d.platform_total})` : ''}</label>
         <button type="button" onClick={() => setShowIgnored(o => !o)} className={`${sel} inline-flex items-center`}>Ignored domains{ignored.length ? ` (${ignored.length})` : ''}</button>
       </div>
@@ -162,13 +163,14 @@ export default function PositionCompetitors({ d, b, onChanged }) {
         </div>
       </Card>
 
-      <Card title={<span>Competitors <span className="text-slate-500 font-normal">{others.length ? `${(cur - 1) * per + 1}-${Math.min(cur * per, others.length)}` : '0'} ({others.length})</span></span>} pad={false}
-        action={(d.tracked_competitors || []).length === 0 ? <Link to={path_('competitor-finder')} className="h-8 px-3 rounded inline-flex items-center text-12.5 font-semibold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">Find more competitors</Link> : null}>
+      <Card title={<span>Competitors <span className="text-slate-500 font-normal">{others.length ? `${pager.from + 1}-${pager.to}` : '0'} ({others.length})</span></span>} pad={false}
+        action={<span className="inline-flex items-center gap-2">{(d.tracked_competitors || []).length === 0 ? <Link to={path_('competitor-finder')} className="h-8 px-3 rounded inline-flex items-center text-12.5 font-semibold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">Find more competitors</Link> : null}
+          <CsvButton disabled={!rows.length} title="Download every competitor in the table (all pages, with the depth and filters applied) as a CSV file" onClick={() => downloadCsv(`competitors-${d.domain}`, ['Rank', 'Domain', 'Your domain', 'Directory or social site', 'Tracked as competitor', 'Visibility (%)', 'Change in visibility', 'Estimated traffic', 'Change in traffic', 'Keywords', 'Average position'], [...(mine ? [mine] : []), ...sortedOthers].map(c => [c.you && c.not_ranking ? '' : rankOf(c), c.domain, c.you ? 'Yes' : 'No', c.platform ? 'Yes' : 'No', tracked.has(c.domain) ? 'Yes' : 'No', c.visibility ?? '', c.change ?? '', d.has_volume ? (c.traffic ?? '') : '', d.has_volume ? (c.traffic_change ?? '') : '', c.keywords ?? '', c.avg_position ?? '']))} /></span>}>
         <div className="overflow-x-auto">
           <table className="w-full text-14 min-w-[900px]">
             <thead className="bg-slate-50 text-12 text-slate-600">
-              <tr><th className="px-4 py-3 w-14" /><th className="px-4 py-3 text-left font-semibold">Domain</th><th className="px-4 py-3 text-right font-semibold" colSpan={2}>Visibility</th><th className="px-3 py-3 text-right font-semibold">Diff</th>
-                <th className="px-3 py-3 text-right font-semibold">Est. Traffic</th><th className="px-3 py-3 text-right font-semibold">Diff</th><th className="px-3 py-3 text-right font-semibold">Keywords</th><th className="px-3 py-3 text-right font-semibold">Avg. Pos.</th><th className="w-10" /></tr>
+              <tr><th className="px-4 py-3 w-14" /><SortTh id="domain" sort={sort} onSort={onSort} className="px-4 py-3">Domain</SortTh><SortTh id="visibility" sort={sort} onSort={onSort} right first="desc" colSpan={2} className="px-4 py-3">Visibility</SortTh><SortTh id="change" sort={sort} onSort={onSort} right first="desc" className="px-3 py-3">Diff</SortTh>
+                <SortTh id="traffic" sort={sort} onSort={onSort} right first="desc" className="px-3 py-3">Est. Traffic</SortTh><SortTh id="traffic_change" sort={sort} onSort={onSort} right first="desc" className="px-3 py-3">Diff</SortTh><SortTh id="keywords" sort={sort} onSort={onSort} right first="desc" className="px-3 py-3">Keywords</SortTh><SortTh id="avg_position" sort={sort} onSort={onSort} right className="px-3 py-3">Avg. Pos.</SortTh><th className="w-10" /></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {[...(mine ? [mine] : []), ...slice].map(c => (
@@ -191,13 +193,7 @@ export default function PositionCompetitors({ d, b, onChanged }) {
             </tbody>
           </table>
         </div>
-        <div className="px-5 py-3 border-t border-slate-100 flex flex-wrap items-center gap-3 text-13 text-slate-700">
-          <button type="button" disabled={cur <= 1} onClick={() => setPage(1)} aria-label="First page" className="h-8 w-8 rounded border border-slate-200 disabled:opacity-40 inline-flex items-center justify-center cursor-pointer"><ChevronLeft size={14} /></button>
-          <button type="button" disabled={cur <= 1} onClick={() => setPage(cur - 1)} className="h-8 px-3 rounded border border-slate-200 disabled:opacity-40 cursor-pointer">Prev</button>
-          <button type="button" disabled={cur >= pages} onClick={() => setPage(cur + 1)} className="h-8 px-3 rounded bg-indigo-600 text-white disabled:opacity-40 cursor-pointer inline-flex items-center gap-1">Next<ChevronRight size={13} /></button>
-          <span>Page: <b>{cur}</b> of <span className="text-indigo-600">{pages}</span></span>
-          <Select value={per} onChange={e => { setPer(Number(e.target.value)); setPage(1); }} className="h-8 px-2 rounded border border-slate-200 bg-white" aria-label="Rows per page">{[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</Select>
-        </div>
+        <Pager p={pager} label="competitors" />
         {error && <p className="px-5 pb-3 text-12 text-rose-600">{error}</p>}
       </Card>
       <p className="text-11.5 text-slate-400">Positions are read to Google's top 20, so depths of 50 and 100 are not offered. Ignored domains are remembered in this browser.</p>

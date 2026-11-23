@@ -5,6 +5,7 @@ import { Check, X, Plus, Search, Globe, Copy, Download, RefreshCw, ChevronDown, 
 import { SeoShell, Card, Button, Badge, Modal } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { HistoryPanel, RenderingCard, SiteScan } from './PageXRayHistory';
+import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 import FullPageCard from './PageXRayLighthouse';
 
 const MAX_URLS = 3;
@@ -31,18 +32,15 @@ const aiAllowed = (d) => arr(d?.robots?.ai_crawlers).filter(x => x.allowed).leng
 const aiTotal = (d) => arr(d?.robots?.ai_crawlers).length;
 const analyticsCount = (d) => arr(d?.tech?.analytics).length + arr(d?.tech?.tag_managers).length;
 
-/** CSV cell: quoted, quotes doubled, and a leading = + - @ neutralised so a spreadsheet never runs it as a formula. */
-const csvCell = (v) => { let s = v == null ? '' : String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return `"${s.replace(/"/g, '""')}"`; };
-const toCsv = (rows) => rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-const download = (name, text, mime) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: mime })); a.download = name; a.click(); URL.revokeObjectURL(a.href); };
 const copyText = async (text) => { try { await navigator.clipboard.writeText(text); } catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); } catch { /* ignore */ } t.remove(); } };
 const slug = (u) => hostOf(u).replace(/[^a-z0-9]+/gi, '-');
 
-function checksCsv(d) {
-  const rows = [['area', 'key', 'label', 'passed', 'weight', 'detail', 'fix']];
-  for (const [k] of SCORE_AREAS) for (const c of arr(d.scores?.[k]?.checks)) rows.push([k.toUpperCase(), c.key, c.label, c.passed ? 'yes' : 'no', c.weight, c.detail, c.passed ? '' : c.fix]);
-  return toCsv(rows);
+function exportChecks(d) {
+  const rows = [];
+  for (const [k, label] of SCORE_AREAS) for (const c of arr(d.scores?.[k]?.checks)) rows.push([label, c.label, c.passed ? 'Passed' : 'Failed', Number(c.weight) || 0, c.detail || '', c.passed ? '' : (c.fix || '')]);
+  downloadCsv(`page-xray-checks-${slug(d.final_url || d.url)}`, ['Area', 'Check', 'Result', 'Points', 'What was found', 'How to fix it'], rows);
 }
+const today = () => new Date().toISOString().slice(0, 10);
 
 function reportText(d) {
   const lines = [`Page X-Ray: ${d.final_url || d.url}`, `Checked ${d.fetched_at || ''} · status ${dash(d.status)} · ${dash(d.response_ms)} ms`, ''];
@@ -245,6 +243,8 @@ function CheckModal({ r, onClose }) {
 }
 
 /** Every check of SEO, AEO and GEO in one compact table. Long text is shortened and shows in full on hover; a click on a row opens the whole check in a window. Failed checks first. */
+const CHECK_VALUE = (r, k) => (k === 'result' ? (r.passed ? 1 : 0) : k === 'area' ? r.area : k === 'group' ? r.group : k === 'check' ? r.label : k === 'points' ? r.impact : k === 'found' ? (r.detail || null) : k === 'fix' ? (r.passed ? null : r.fix || null) : (r.task ? r.task.status : null));
+
 function ChecksTable({ d, filter }) {
   const { tasks } = useContext(FixCtx);
   const [q, setQ] = useState('');
@@ -261,6 +261,8 @@ function ChecksTable({ d, filter }) {
   rows = rows.filter(r => (filter === 'failed' ? !r.passed : filter === 'passed' ? r.passed : true) && (area === 'all' || r.area === area) && (grp === 'all' || r.group === grp)
     && (!q.trim() || `${r.label} ${r.detail || ''} ${r.fix || ''} ${r.group}`.toLowerCase().includes(q.trim().toLowerCase())));
   rows.sort((a, b) => (a.passed === b.passed ? (b.weight || 0) - (a.weight || 0) : a.passed ? 1 : -1));
+  const { sorted, sort, onSort } = useSorted(rows, CHECK_VALUE);
+  const pager = usePager(sorted, { size: 25, resetKey: `${q}|${area}|${grp}|${filter}|${sort?.key}|${sort?.dir}` });
   const pill = (on) => `h-8 px-3 rounded-full text-12 font-semibold cursor-pointer ring-1 ring-inset ${on ? 'bg-indigo-600 text-white ring-indigo-600' : 'text-slate-600 ring-slate-300 hover:bg-slate-50'}`;
   const th = 'px-3 py-2.5 font-semibold whitespace-nowrap';
   return (
@@ -278,17 +280,17 @@ function ChecksTable({ d, filter }) {
           <colgroup><col style={{ width: 96 }} /><col style={{ width: 64 }} /><col style={{ width: 116 }} /><col style={{ width: '24%' }} /><col style={{ width: 70 }} /><col style={{ width: '18%' }} /><col style={{ width: '22%' }} /><col style={{ width: 124 }} /><col style={{ width: 84 }} /></colgroup>
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
             <tr>
-              <th className={`${th} w-24`}>Result</th><th className={`${th} w-16`}>Area</th>
-              <th className={`${th} w-28`}><Tip text="The part of the page this check is about: titles, headings, images, links, security, speed and so on." align="left">Part of page</Tip></th>
-              <th className={`${th} w-[22%]`}>Check</th>
-              <th className={`${th} w-20 text-right`}><Tip text="How many points of the area's score this check is worth. Fixing a failed check adds this many points." align="right">Points</Tip></th>
-              <th className={`${th} w-[20%]`}>What was found</th><th className={`${th} w-[24%]`}>How to fix it</th>
-              <th className={`${th} w-28`}>Fix status</th><th className={`${th} w-24 text-right`}>Details</th>
+              <SortTh id="result" sort={sort} onSort={onSort} className={`${th} w-24`}>Result</SortTh><SortTh id="area" sort={sort} onSort={onSort} className={`${th} w-16`}>Area</SortTh>
+              <SortTh id="group" sort={sort} onSort={onSort} className={`${th} w-28`}><Tip text="The part of the page this check is about: titles, headings, images, links, security, speed and so on." align="left">Part of page</Tip></SortTh>
+              <SortTh id="check" sort={sort} onSort={onSort} className={`${th} w-[22%]`}>Check</SortTh>
+              <SortTh id="points" sort={sort} onSort={onSort} right first="desc" className={`${th} w-20`}><Tip text="How many points of the area's score this check is worth. Fixing a failed check adds this many points." align="right">Points</Tip></SortTh>
+              <SortTh id="found" sort={sort} onSort={onSort} className={`${th} w-[20%]`}>What was found</SortTh><SortTh id="fix" sort={sort} onSort={onSort} className={`${th} w-[24%]`}>How to fix it</SortTh>
+              <SortTh id="status" sort={sort} onSort={onSort} className={`${th} w-28`}>Fix status</SortTh><th scope="col" className={`${th} w-24 text-right`}>Details</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500">No checks match.</td></tr>}
-            {rows.map(r => {
+            {pager.rows.map(r => {
               const t = r.task, fixed = t?.status === 'verified', st = t ? (FIX_STATUS[t.status] || FIX_STATUS.todo) : null;
               return (
                 <tr key={`${r.area}.${r.key}`} onClick={() => setOpen(r)} className={`align-middle cursor-pointer hover:bg-indigo-50/40 ${r.passed ? '' : 'bg-red-50/30'}`}>
@@ -310,6 +312,7 @@ function ChecksTable({ d, filter }) {
           </tbody>
         </table>
       </div>
+      <Pager p={pager} label="checks" />
       <CheckModal r={open} onClose={() => setOpen(null)} />
     </section>
   );
@@ -412,8 +415,9 @@ function Report({ d, onRerun, busy, extra, deep, history, siteScan }) {
         <div className="grid grid-cols-2 gap-1.5 w-full sm:w-auto">
           <Button size="sm" icon={copied ? Check : Copy} onClick={doCopy}>{copied ? 'Copied' : 'Copy report'}</Button>
           <Button size="sm" variant="primary" icon={RefreshCw} busy={busy} onClick={onRerun}>Re-run</Button>
-          <Button size="sm" icon={Download} onClick={() => download(`page-xray-${slug(d.final_url || d.url)}.json`, JSON.stringify(d, null, 2), 'application/json')}>JSON</Button>
-          <Button size="sm" icon={Download} onClick={() => download(`page-xray-${slug(d.final_url || d.url)}.csv`, checksCsv(d), 'text/csv;charset=utf-8')}>CSV</Button>
+          <Button size="sm" icon={Download} onClick={() => downloadFile(`page-xray-report-${slug(d.final_url || d.url)}-${today()}.json`, JSON.stringify(d, null, 2), 'application/json')}>Download JSON</Button>
+          <Button size="sm" icon={Download} onClick={() => downloadFile(`page-xray-report-${slug(d.final_url || d.url)}-${today()}.md`, reportText(d), 'text/markdown')}>Download report</Button>
+          <Button size="sm" icon={Download} onClick={() => exportChecks(d)}>Checks CSV</Button>
         </div>
       </div>
     </div>
@@ -643,7 +647,7 @@ function Compare({ items, onOpen, active }) {
     const best = dir === 'high' ? Math.max(...nums) : Math.min(...nums), worst = dir === 'high' ? Math.min(...nums) : Math.max(...nums);
     return { best, worst };
   };
-  const exportCsv = () => download('page-xray-comparison.csv', toCsv([['Metric', ...cols.map(c => c.data.final_url || c.url)], ...COMPARE.map(def => [def[0], ...cols.map(c => cell(c.data, def))])]), 'text/csv;charset=utf-8');
+  const exportCsv = () => downloadCsv('page-xray-comparison', ['Metric', ...cols.map(c => c.data.final_url || c.url)], COMPARE.map(def => [def[0], ...cols.map(c => cell(c.data, def))]));
   return (
     <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 min-w-0">
       <header className="flex flex-wrap items-center gap-3 mb-4">

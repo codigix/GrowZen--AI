@@ -1,14 +1,19 @@
 import React, { useMemo, useState } from 'react';
-import { RefreshCw, Sparkles, ExternalLink, ArrowUp, ArrowDown, ChevronDown, ChevronRight, MapPin, Search } from 'lucide-react';
+import { RefreshCw, Sparkles, Download, ExternalLink, ArrowUp, ArrowDown, ChevronDown, ChevronRight, MapPin, Search } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Stat, useAction, useToast, SkList } from './SeoUi';
 import { api, useApi, fmtDate } from './seoApi';
 import Tip from './Tip';
+import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const LEVEL = { fix: ['Fix', 'red'], improve: ['Improve', 'amber'], keep: ['Keep', 'green'] };
 const tone = (r) => (r == null ? 'gray' : r <= 3 ? 'green' : r <= 10 ? 'blue' : 'amber');
 const path = (u) => { try { return new URL(u).pathname || '/'; } catch { return u; } };
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 const FILTERS = [['all', 'All', () => true], ['shown', 'Shown on Google', r => r.rank != null], ['none', 'No impressions yet', r => r.rank == null && r.checked], ['unchecked', 'Not checked', r => !r.checked], ['fix', 'Needs a fix', r => r.advice.some(a => a.level === 'fix')]];
+const LEVEL_ORDER = { fix: 0, improve: 1, keep: 2 };
+const pageValue = (r, k) => (k === 'keyword' ? r.keyword : k === 'position' ? (r.rank == null ? null : (r.average_position ?? r.rank)) : k === 'change' ? r.change ?? null : k === 'impressions' ? r.impressions ?? null : k === 'clicks' ? r.clicks ?? null
+  : k === 'maps' ? r.maps_rank ?? null : k === 'url' ? (r.url || r.target_url || null) : k === 'volume' ? r.volume ?? null : k === 'advice' ? (r.advice[0] ? (LEVEL_ORDER[r.advice[0].level] ?? 1) : null) : null);
+const P = 'px-3 py-2.5 whitespace-nowrap';
 const TH = 'px-3 py-2.5 font-semibold whitespace-nowrap text-left';
 
 const PosBadge = ({ r }) => {
@@ -38,6 +43,8 @@ export default function PagePositions({ b }) {
     const needle = q.trim().toLowerCase();
     return d.rows.filter(r => f(r) && (!needle || r.keyword.includes(needle)));
   }, [d, filter, q]);
+  const { sorted, sort, onSort } = useSorted(rows, pageValue);
+  const pager = usePager(sorted, { size: 25, resetKey: `${filter}|${q}` });
   if (rep.error) return <Card><ErrorNote>{rep.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={5} />;
   const s = d.summary;
@@ -71,25 +78,27 @@ export default function PagePositions({ b }) {
           <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-slate-100">
             {FILTERS.map(([id, label, f]) => <button key={id} type="button" onClick={() => setFilter(id)} aria-pressed={filter === id} className={pill(filter === id)}>{label} <span className="opacity-70">{d.rows.filter(f).length}</span></button>)}
             <label className="relative ml-auto"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search keywords" aria-label="Search keywords" className="h-8 w-52 pl-8 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+            <button type="button" disabled={!sorted.length} onClick={() => downloadCsv(`page-positions-${b.name}`, ['Keyword', 'Checked on', 'Position', 'Change in position', 'Impressions', 'Clicks', 'Position in Google Maps', 'Page that ranks', 'Page chosen for the keyword', 'Searches per month', 'Ahead of you', 'What to do'],
+              sorted.map(r => [r.keyword, r.checked || '', r.rank == null ? '' : (r.average_position ?? r.rank), r.change ?? '', r.impressions ?? '', r.clicks ?? '', r.maps_rank ?? '', r.url || '', r.target_url || '', r.volume ?? '', (r.ahead || []).join('; '), (r.advice || []).map(a => `${(LEVEL[a.level] || LEVEL.improve)[0]}: ${a.text}`).join(' | ')]))} title="Download every keyword (all pages, with the filter and search applied) as a CSV file" className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg ring-1 ring-inset ring-slate-300 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-40"><Download size={13} />Export CSV</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1000px] text-13">
               <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className={`${TH} w-8`} />
-                  <th className={TH}>Keyword</th>
-                  <th className={TH}><Tip text="Search Console's average position over the last 28 days. Lower is better.">Position</Tip></th>
-                  <th className={`${TH} text-right`}>Change</th>
-                  <th className={`${TH} text-right`}><Tip text="How many times the site was shown on Google for this keyword." align="right">Impressions</Tip></th>
-                  <th className={`${TH} text-right`}>Clicks</th>
-                  <th className={TH}><Tip text="The business's place in the Google Maps results for this search (Google Places API).">Maps</Tip></th>
-                  <th className={TH}>Page that ranks</th>
-                  <th className={`${TH} text-right`}>Volume</th>
-                  <th className={TH}>What to do</th>
+                  <SortTh id="keyword" sort={sort} onSort={onSort} className={P}>Keyword</SortTh>
+                  <SortTh id="position" sort={sort} onSort={onSort} className={P}><Tip text="Search Console's average position over the last 28 days. Lower is better.">Position</Tip></SortTh>
+                  <SortTh id="change" sort={sort} onSort={onSort} right first="desc" className={P}>Change</SortTh>
+                  <SortTh id="impressions" sort={sort} onSort={onSort} right first="desc" className={P}><Tip text="How many times the site was shown on Google for this keyword." align="right">Impressions</Tip></SortTh>
+                  <SortTh id="clicks" sort={sort} onSort={onSort} right first="desc" className={P}>Clicks</SortTh>
+                  <SortTh id="maps" sort={sort} onSort={onSort} className={P}><Tip text="The business's place in the Google Maps results for this search (Google Places API).">Maps</Tip></SortTh>
+                  <SortTh id="url" sort={sort} onSort={onSort} className={P}>Page that ranks</SortTh>
+                  <SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className={P}>Volume</SortTh>
+                  <SortTh id="advice" sort={sort} onSort={onSort} className={P}>What to do</SortTh>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map(r => {
+                {pager.rows.map(r => {
                   const on = open === r.keyword;
                   const top = r.advice[0];
                   const [label, t] = LEVEL[top?.level] || LEVEL.improve;
@@ -119,10 +128,11 @@ export default function PagePositions({ b }) {
                     </React.Fragment>
                   );
                 })}
-                {!rows.length && <tr><td colSpan={10} className="px-5 py-10 text-center text-slate-500">No keyword matches.</td></tr>}
+                {!pager.rows.length && <tr><td colSpan={10} className="px-5 py-10 text-center text-slate-500">No keyword matches.</td></tr>}
               </tbody>
             </table>
           </div>
+          <Pager p={pager} label="keywords" />
           <p className="px-5 py-3 border-t border-slate-100 text-11.5 text-slate-400">Position is Google Search Console's average position over the last 28 days, with the impressions and clicks behind it. “None yet” means the site was not shown on Google for the keyword in that time. Click a row for everything to do for it.</p>
         </Card>
       )}
