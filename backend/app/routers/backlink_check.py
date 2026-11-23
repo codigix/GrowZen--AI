@@ -5,6 +5,7 @@ GET    /businesses/{id}/backlink-check/candidates   pages our own crawler found 
 POST   /businesses/{id}/backlink-check              {target?, sources:[page urls]}  check up to 25 pages now (live) and save the result
 DELETE /businesses/{id}/backlink-check/{check_id}
 """
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
@@ -17,6 +18,7 @@ from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business
 from ..models import BacklinkCheck, Business
+from ..services import apify_metrics as am
 from ..services import backlink_checker as bc
 from ..services import growth_plan as plan
 from ..services.activity import log
@@ -160,12 +162,12 @@ def _out(r: BacklinkCheck) -> dict[str, Any]:
 def list_checks(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     rows = _with_site(db, [_out(r) for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc()).limit(500))])
     missing = sum(1 for r in rows if _needs_figures(r))
-    return {"rows": rows, "missing_scores": missing if (bc.dfs_configured() or bc.moz_configured()) else 0, "summary": bc.summarise(rows), "moz": bc.moz_configured(), "opr": bc.opr_configured(), "dfs": bc.dfs_configured(), "google": bc.google_configured(), "default_target": _own_target(b), "limit": bc.MAX_SOURCES}
+    return {"rows": rows, "missing_scores": missing if (bc.dfs_configured() or bc.moz_configured() or am.configured()) else 0, "apify": am.configured(), "summary": bc.summarise(rows), "moz": bc.moz_configured(), "opr": bc.opr_configured(), "dfs": bc.dfs_configured(), "google": bc.google_configured(), "default_target": _own_target(b), "limit": bc.MAX_SOURCES}
 
 
 def _needs_figures(d: dict[str, Any]) -> bool:
     """Whether a saved check still needs its figures: Moz's own when Moz can answer (so DataForSEO's stand-ins are replaced), any figures otherwise."""
-    return (d.get("moz") or {}).get("da") is None if bc.moz_available() else _no_figures(d)
+    return (d.get("moz") or {}).get("da") is None if bc.moz_available() and not am.configured() else _no_figures(d)
 
 
 def _moz_pick(got: dict[str, dict[str, Any]], home: str) -> dict[str, Any] | None:
@@ -173,10 +175,78 @@ def _moz_pick(got: dict[str, dict[str, Any]], home: str) -> dict[str, Any] | Non
     return got.get(home) or got.get(bare) or got.get(bare + "/") or next((v for k, v in got.items() if k.lower().removeprefix("https://").removeprefix("www.").rstrip("/") == bare), None)
 
 
+APIFY_SITES_PER_PRESS = 20  # Apify bills per run: a press looks up at most this many linking sites, each once
+_JOBS: dict[int, dict[str, Any]] = {}  # per project: the figures lookup running in the background (or the last one that ran)
+
+
+def _job_view(j: dict[str, Any] | None) -> dict[str, Any]:
+    j = j or {}
+    return {"running": bool(j.get("running")), "sites": j.get("sites", 0), "done": j.get("done", 0), "filled": j.get("filled", 0), "left": j.get("left", 0), "failed": list(j.get("failed", [])), "error": j.get("error")}
+
+
+def _fill_from_apify(b: Business, db: Session, user: User) -> dict[str, Any]:
+    """DA, home-page PA and spam from Apify, one lookup per linking SITE (every page of a site shares the figures). Returns at once; each site's figures are saved the
+    moment its run ends, and the page polls GET /scores/status and reloads."""
+    cur = _JOBS.get(b.id)
+    if cur and cur.get("running"):
+        return {"started": False, **_job_view(cur)}
+    if not _limit.hit(user.id):
+        raise HTTPException(429, "Too many requests: try again in a while.")
+    found = [r for r in db.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == b.id).order_by(BacklinkCheck.updated_at.desc(), BacklinkCheck.id.desc())) if _no_figures(r.data or {})]
+    sites = list(dict.fromkeys(s for s in (_site_of(r.source_url) for r in found) if s))
+    todo = sites[:APIFY_SITES_PER_PRESS]
+    job = {"running": bool(todo), "sites": len(todo), "done": 0, "filled": 0, "left": sum(1 for r in found if _site_of(r.source_url) not in todo), "failed": [], "error": None}
+    _JOBS[b.id] = job
+    if not todo:
+        return {"started": False, **_job_view(job)}
+    biz_id = b.id
+
+    def save(r: dict[str, Any]) -> None:
+        from ..db import SessionLocal
+        job["done"] += 1
+        sc = r.get("scores")
+        if not sc:
+            job["failed"].append(f"{r.get('domain')}: {r.get('error') or 'no figures'}")
+            return
+        s2 = SessionLocal()
+        try:
+            for row in s2.scalars(select(BacklinkCheck).where(BacklinkCheck.business_id == biz_id)):
+                if _site_of(row.source_url) == r["domain"] and _no_figures(row.data or {}):
+                    row.data = {**(row.data or {}), "scores": sc}
+                    job["filled"] += 1
+            from ..backlinks.models import BiDomainMetric  # the Referring domains page reads the same figures: one paid lookup serves both
+            m = s2.scalar(select(BiDomainMetric).where(BiDomainMetric.domain == r["domain"])) or BiDomainMetric(domain=r["domain"])
+            m.da, m.pa, m.spam_score, m.fetched_at, m.source = sc["da"], sc.get("pa"), sc.get("spam"), datetime.now(timezone.utc), "apify"
+            s2.add(m)
+            s2.commit()
+        except Exception:  # noqa: BLE001
+            s2.rollback()
+            job["failed"].append(f"{r.get('domain')}: could not be saved")
+        finally:
+            s2.close()
+
+    def run() -> None:
+        try:
+            am.check(todo, on_result=save)
+        except Exception as exc:  # noqa: BLE001 - shown on the page
+            job["error"] = str(exc)[:300]
+        finally:
+            job["running"] = False
+    threading.Thread(target=run, daemon=True, name=f"apify-scores-{biz_id}").start()
+    return {"started": True, **_job_view(job)}
+
+
+@router.get("/scores/status")
+def scores_status(b: Business = Depends(get_business)):
+    return _job_view(_JOBS.get(b.id))
+
+
 @router.post("/scores")
 def fill_scores(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Get DA, PA and spam for saved checks that lack them (up to 100 at a time, newest first). Moz first, one lookup per linking SITE (all its pages share the site's DA and spam),
     which also replaces figures DataForSEO supplied while Moz had no quota. DataForSEO fills in only what Moz cannot answer. Nothing is spent unless this is pressed."""
+    if am.configured():
+        return _fill_from_apify(b, db, user)
     if not bc.dfs_configured() and not bc.moz_configured():
         raise HTTPException(422, "No data service is set up: add MOZ_ACCESS_ID and MOZ_SECRET_KEY, or DATAFORSEO_AUTH, to the backend settings.")
     if not _limit.hit(user.id):

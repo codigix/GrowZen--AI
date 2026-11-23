@@ -194,6 +194,9 @@ app.include_router(analytics_by_email.router, prefix=settings.api_prefix)
 from .routers import ga4_by_email  # noqa: E402
 app.include_router(ga4_by_email.router, prefix=settings.api_prefix)
 
+from .routers.site_authority import router as site_authority_router  # noqa: E402
+app.include_router(site_authority_router, prefix=settings.api_prefix)
+
 # Keyword Explorer endpoints (/api/keywords)
 # Signed-in users only: it calls external suggestion engines on our server's behalf, so it must not be open to the internet.
 app.include_router(keyword_explorer_router, dependencies=[Depends(current_user)])

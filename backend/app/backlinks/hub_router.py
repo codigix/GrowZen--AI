@@ -47,7 +47,8 @@ def refresh_metrics(b: Business = Depends(get_business), db: Session = Depends(g
     me = hub.own_domain(db, b.id)
     names: list[str] = []
     if me:
-        names = [d for d in dict.fromkeys(x["source_domain"] for x in hub.links(db, b, status="live", limit=200, sort="recent").get("links", []))]
+        # every referring domain (not just the sites behind the 200 newest links: a few sitewide sites can fill those 200 and hide the rest)
+        names = [x["domain"] for x in hub.domains(db, b, sort="links", limit=2000).get("domains", [])]
         names += [x["domain"] for x in hub.opportunities(db, b, limit=30).get("opportunities", [])]
     return hub.refresh_metrics(db, list(dict.fromkeys(names)))
 

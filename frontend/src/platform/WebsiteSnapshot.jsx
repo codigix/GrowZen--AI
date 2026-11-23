@@ -1,5 +1,5 @@
-import React from 'react';
-import { useApi } from './seoApi';
+import React, { useState } from 'react';
+import { api, useApi } from './seoApi';
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const tone = (s) => (s == null ? 'text-slate-400' : s >= 75 ? 'text-emerald-600' : s >= 45 ? 'text-amber-600' : 'text-red-600');
@@ -16,6 +16,13 @@ const Tile = ({ label, value, sub, plain }) => (
 export default function WebsiteSnapshot({ b, sa, tick = 0 }) {
   const xr = useApi(b.website ? `/businesses/${b.id}/page-xray/history?limit=1&t=${tick}` : null);
   const last = arr(xr.data)[0];
+  const au = useApi(b.website ? `/businesses/${b.id}/site-authority` : null);  // DA, PA and spam of this project's own website only
+  const [asking, setAsking] = useState(false), [auErr, setAuErr] = useState('');
+  const getAuthority = async () => {
+    setAsking(true); setAuErr('');
+    try { const r = await api(`/businesses/${b.id}/site-authority`, { method: 'POST', timeout: 90000 }); if (r.note) setAuErr(r.note); await au.reload(true); } catch (e) { setAuErr(e.message || 'Could not get the figures.'); } finally { setAsking(false); }
+  };
+  const auth = au.data, sc = auth?.scores;
   const rep = sa?.report;
   const issues = arr(rep?.issues);
   const crit = issues.filter(i => i.level === 'critical').length, ser = issues.filter(i => i.level === 'serious').length;
@@ -38,6 +45,21 @@ export default function WebsiteSnapshot({ b, sa, tick = 0 }) {
         <Tile label="GEO" value={last?.geo} sub="AI search" />
         <Tile label="Pages read" value={rep?.result?.crawl?.crawled} plain sub="by the audit" />
       </div>
+      {auth?.configured && auth.domain && (
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+            <h3 className="text-13 font-semibold text-slate-800">Authority of {auth.domain}</h3>
+            {!sc && <span className="text-12 text-slate-500">Not fetched yet.</span>}
+            <button type="button" onClick={getAuthority} disabled={asking || (sc && auth.fresh)} title={sc && auth.fresh ? 'Fetched less than a day ago: figures do not change that fast, so it is not asked again until tomorrow.' : undefined}
+              className="ml-auto h-8 px-3 rounded-lg border border-slate-300 bg-white text-12.5 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">{asking ? 'Getting…' : sc ? (auth.fresh ? 'Up to date' : 'Refresh') : 'Get DA, PA and Spam'}</button>
+          </div>
+          <div className="grid grid-cols-3 gap-2.5 max-w-xl">
+            <Tile label="Domain Authority (DA)" value={sc?.da} sub="whole website" />
+            <Tile label="Page Authority (PA)" value={sc?.pa} sub="home page" />
+            <Tile label="Spam Score" value={sc?.spam} plain sub="lower is better" />
+          </div>
+          {auErr && <p className="mt-2 text-12 text-red-600">{auErr}</p>}
+        </div>)}
     </section>
   );
 }

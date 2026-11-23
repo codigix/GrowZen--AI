@@ -94,20 +94,46 @@ def metrics_for(db: Session, domains: list[str]) -> dict[str, dict[str, Any]]:
     return out
 
 
+APIFY_PER_PRESS = 20  # Apify bills per run: a press looks up at most this many sites, each once
+
+
+def _refresh_apify(db: Session, wanted: list[str], have: dict[str, BiDomainMetric], limit: int, now, force: bool = False) -> dict[str, Any]:
+    """DA, home-page PA and spam from Apify for the sites that have none (or stale ones). A site Apify has no figures for is left alone, so it is asked again next time."""
+    from ..services import apify_metrics as am
+    batch = wanted[:limit]
+    if not batch:
+        return {"configured": True, "refreshed": 0, "message": "Every site already has its figures."}
+    n, failed = 0, []
+    for r in am.check(batch, force=force):  # check() saves every real answer itself (and answers from the saved figures when they are under 24 h old)
+        if r.get("scores"):
+            n += 1
+        else:
+            failed.append(r)
+    left = len(wanted) - len(batch)
+    msg = f"Updated {n} site{'s' if n != 1 else ''} (from Apify)." if n else "Apify had no figures for these sites."
+    if failed:
+        msg += f" Could not read {len(failed)}: {failed[0].get('error')}."
+    return {"configured": True, "refreshed": n, "message": msg + (f" {left} more are waiting: press again." if left else "")}
+
+
 def refresh_metrics(db: Session, domains: list[str], limit: int = 50, force: bool = False) -> dict[str, Any]:
     """DA, PA and spam for the linking sites. Moz first (its figures are the ones people know); DataForSEO while Moz has no quota; Moz again as soon as it has quota, and
     sites that DataForSEO filled in meanwhile are then refreshed from Moz. Nothing is asked of a service that is not set up."""
     from ..services import backlink_checker as bc
-    if not bc.moz_configured() and not bc.dfs_configured():
-        return {"configured": False, "refreshed": 0, "message": "DA, PA and spam score need a data service: add MOZ_ACCESS_ID and MOZ_SECRET_KEY, or DATAFORSEO_AUTH, to the backend settings."}
+    from ..services import apify_metrics as am
+    if not bc.moz_configured() and not bc.dfs_configured() and not am.configured():
+        return {"configured": False, "refreshed": 0, "message": "DA, PA and spam score need a data service: add APIFY_KEY_1 (Apify), or MOZ_ACCESS_ID and MOZ_SECRET_KEY, or DATAFORSEO_AUTH, to the backend settings."}
     now = utcnow()
     names = list(dict.fromkeys(domains))
     have = {m.domain: m for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(names or [""])))}
 
     def stale(d: str) -> bool:
-        return force or d not in have or not have[d].fetched_at or now - _aware(have[d].fetched_at) > METRIC_TTL
+        age = METRIC_TTL if d not in have or have[d].source != "apify" else am.ttl()  # Apify figures are valid for 24 h (APIFY_CACHE_HOURS), the others for 14 days
+        return force or d not in have or not have[d].fetched_at or now - _aware(have[d].fetched_at) > age
 
     wanted = [d for d in names if stale(d)]
+    if am.configured():
+        return _refresh_apify(db, wanted, have, min(limit, APIFY_PER_PRESS), now, force)
     moz_note, used = "", {"moz": 0, "dfs": 0}
     done: set[str] = set()
     if bc.moz_available():
@@ -205,12 +231,13 @@ def _link_out(bl: Backlink, page: BiPage, dom: str, score: dict | None, metric: 
 def _scores_info(live: list[dict[str, Any]]) -> dict[str, Any]:
     """Whether DA, PA and spam can be fetched for this list (a data service is set up) and for how many of the sites they are still missing."""
     from ..services import backlink_checker as bc
-    configured = bc.moz_configured() or bc.dfs_configured()
+    from ..services import apify_metrics as am
+    configured = bc.moz_configured() or bc.dfs_configured() or am.configured()
     sites = {x["source_domain"] for x in live}
     asked = {x["source_domain"] for x in live if (x["metrics"] or {}).get("fetched_at")}
     got = {x["source_domain"] for x in live if (x["metrics"] or {}).get("da") is not None or (x["metrics"] or {}).get("spam") is not None}
     both = bc.moz_configured() and bc.dfs_configured()
-    source = ("Moz, or DataForSEO while Moz has no quota" if both else "Moz" if bc.moz_configured() else "DataForSEO") if configured else None
+    source = ("Apify" if am.configured() else "Moz, or DataForSEO while Moz has no quota" if both else "Moz" if bc.moz_configured() else "DataForSEO") if configured else None
     return {"configured": configured, "source": source, "moz_paused": bc.moz_paused(), "sites": len(sites), "missing": len(sites - asked) if configured else 0,
             "no_data": len(asked - got) if configured else 0}
 
@@ -283,7 +310,8 @@ def domains(db: Session, b: Business, *, sort: str = "links", q: str = "", verdi
     out = [x for x in out if (not needle or needle in x["domain"]) and (not verdict or x["useful"] == verdict)]
     key = {"links": lambda x: -x["live"], "da": lambda x: -((x["metrics"] or {}).get("da") or -1), "domain": lambda x: x["domain"], "risk": lambda x: -((x["quality"] or {}).get("risk") or 0), "recent": lambda x: x["last_seen"] or ""}.get(sort, lambda x: -x["live"])
     out.sort(key=key, reverse=sort == "recent")
-    return {"state": "ok", "domain": domain, "domains": out[offset:offset + limit], "total": len(out), "offset": offset, "limit": limit}
+    return {"state": "ok", "domain": domain, "domains": out[offset:offset + limit], "total": len(out), "offset": offset, "limit": limit,
+            "scores": _scores_info([{"source_domain": x["domain"], "metrics": x["metrics"]} for x in out])}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ where competitors have links and we do not
@@ -426,7 +454,8 @@ def summary(db: Session, b: Business) -> dict[str, Any]:
     cfg = db.scalar(select(BiBotConfig).where(BiBotConfig.business_id == b.id))
     crawler = {"configured": s.crawler_enabled, "last_sync_at": _aware(cfg.last_run_at).isoformat() if cfg and cfg.last_run_at else None, "last_error": ((cfg.last_stats or {}).get("error") if cfg else None),
                "domains": (cfg.last_stats or {}).get("domains") if cfg else None, "links_read": (cfg.last_stats or {}).get("links_read") if cfg else None, "running": bool(cfg and cfg.running)}
-    moz = {"configured": bc.moz_configured() or bc.dfs_configured()}  # a data service that can give DA, PA and spam (Moz or DataForSEO)
+    from ..services import apify_metrics as _am
+    moz = {"configured": bc.moz_configured() or bc.dfs_configured() or _am.configured()}  # a data service that can give DA, PA and spam (Moz or DataForSEO)
     if not domain:
         return {"state": "no_target", "domain": None, "crawler": crawler, "moz": moz}
     data = links(db, b, status="all", limit=MAX_LINKS)

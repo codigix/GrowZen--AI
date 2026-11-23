@@ -15,6 +15,7 @@ os.environ.update({
     "CRM_JWT_SECRET": "test-secret-0123456789-abcdefghijklmnop",
     "CRM_API_URL": "",
     "SCHEDULER_ENABLED": "false", "BACKLINK_AUTOSTART": "false",
+    **{k: "" for k in ["APIFY_KEY"] + [f"APIFY_KEY_{n}" for n in range(1, 11)]},  # the real Apify tokens in .env must never make a test spend credit
     "DEEPSEEK_API_KEY": "", "OPENAI_API_KEY": "", "GEMINI_API_KEY": "", "PERPLEXITY_API_KEY": "", "ANTHROPIC_API_KEY": "",
     "ALLOW_SAMPLE_DATA": "true",  # the suite exercises the sample providers; test_real_data_only.py turns it off to prove nothing invented is shown by default
     "RANK_LANDSCAPE_MOCK": "false", "INTAKE_ALLOWED_SENDERS": "codigixinfotech.com", "INTAKE_WEBHOOK_TOKEN": "hook-token",
