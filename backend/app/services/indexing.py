@@ -420,7 +420,7 @@ def inspect(db: Session, b: Business, urls: list[str] | None = None, limit: int 
             row.g_link = res["link"] or row.g_link
             done[res["state"]] += 1
     db.commit()
-    return {"checked": sum(done.values()), **done, "error": error}
+    return {"checked": sum(done.values()), **done, "error": error, "pages": {r.url: {"state": r.g_state, "link": r.g_link} for r in rows if r.g_checked_at}}
 
 
 STAT_KEYS = ("total", "in_sitemap", "indexed", "not_indexed", "unchecked", "tech_ok", "tech_risky", "tech_blocked", "tech_unchecked", "sent", "pending")

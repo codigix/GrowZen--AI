@@ -37,7 +37,7 @@ class FakeSC:
         a = self.answers[url]
         if isinstance(a, Exception):
             raise a
-        return {"inspectionResult": {"indexStatusResult": a}}
+        return {"inspectionResult": {"inspectionResultLink": f"https://search.google.com/search-console/inspect?resource_id=x&id={url.rsplit('/', 1)[1]}", "indexStatusResult": a}}
 
     def sitemaps(self, site):
         return [{"path": "https://index.example/sitemap.xml", "lastSubmitted": "2026-11-10T10:00:00Z", "isPending": False, "errors": "0", "warnings": "1", "contents": [{"type": "web", "submitted": "40"}]}]
@@ -144,6 +144,8 @@ def test_google_verdicts_come_with_a_reason_and_a_fix(client, bid, monkeypatch):
     })
     r = client.post(api(client, bid, "/inspect"), json={}).json()
     assert r["checked"] == 3 and r["indexed"] == 1 and r["not_indexed"] == 1 and r["blocked"] == 1 and r["error"] == "quota"
+    assert r["pages"]["https://index.example/ok"] == {"state": "indexed", "link": "https://search.google.com/search-console/inspect?resource_id=x&id=ok"} and "https://index.example/err" not in r["pages"]
+    assert r["pages"]["https://index.example/meh"]["state"] == "not_indexed" and r["pages"]["https://index.example/meh"]["link"].endswith("&id=meh")
     o = client.get(api(client, bid)).json()
     by = {p["url"].rsplit("/", 1)[1]: p for p in o["pages"]}
     assert by["ok"]["g_state"] == "indexed" and by["ok"]["g_last_crawl"] and by["ok"]["g_canonical"].endswith("/ok")

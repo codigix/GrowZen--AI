@@ -16,7 +16,7 @@ const FILTERS = [['all', 'Every page'], ['tech_problem', 'Blocked or risky: may 
 const PAGE_VALUE = (p, k) => (k === 'page' ? p.path : k === 'tech' ? p.tech?.verdict ?? null : k === 'google' ? p.g_state ?? null : k === 'crawl' ? (p.g_last_crawl ? Date.parse(p.g_last_crawl) : null) : (p.submitted_at ? Date.parse(p.submitted_at) : null));
 
 /** The pages table: sortable headings and real pages over the rows the server sent for the filter and search above it. */
-function IndexTable({ pages, d, gs, busy, inspect, send, total, resetKey }) {
+function IndexTable({ pages, d, gs, busy, goGoogle, total, resetKey }) {
   const { sorted, sort, onSort } = useSorted(pages, PAGE_VALUE);
   const pager = usePager(sorted, { size: 25, resetKey: `${resetKey}|${sort?.key}|${sort?.dir}` });
   return (
@@ -35,9 +35,8 @@ function IndexTable({ pages, d, gs, busy, inspect, send, total, resetKey }) {
                   <td className="px-3 py-3 whitespace-nowrap text-slate-600">{when(p.g_last_crawl)}</td>
                   <td className="px-3 py-3 max-w-[240px]">{p.skip_reason ? <span className="text-amber-800 inline-flex gap-1"><AlertTriangle size={13} className="mt-0.5 shrink-0" />{p.skip_reason}</span> : p.submitted_at ? <span className="text-emerald-700 inline-flex gap-1"><CheckCircle2 size={13} className="mt-0.5 shrink-0" />Sent {when(p.submitted_at)}</span> : p.pending ? <span className="text-indigo-700">Waiting to be sent</span> : <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
-                    <Act tip="Check: ask Google about this page now." busy={busy === `check${p.url}`} onClick={() => inspect([p.url])}>Check</Act>
-                    {p.g_link && <a href={p.g_link} target="_blank" rel="noreferrer noopener"><Act icon={ExternalLink} tone="sky" tip="Search Console: open Google's own report on this page (the link Google gave when it was checked). It shows why it is or is not indexed and has the Request indexing button.">Search Console</Act></a>}
-                    {d.key.ready && <Act tone="violet" tip="Send: tell Bing, Yandex and the others about this page now." busy={busy === `send${p.url}`} onClick={() => send([p.url])}>Send</Act>}
+                    <Act icon={ExternalLink} tone={p.g_state === 'indexed' ? 'sky' : 'indigo'} busy={busy === `go${p.url}`} onClick={() => goGoogle(p)}
+                      tip={p.g_state === 'indexed' ? "Check: ask Google about this page and open its report in Search Console." : "Index it: ask Google about this page, send it to the other search engines, and open its report in Search Console, where you press Request indexing."}>{p.g_state === 'indexed' ? 'Check' : 'Index it'}</Act>
                     <OpenAct url={p.url} tip="Open: show the page in a new tab." />
                   </span></td>
                 </tr>); })}
@@ -75,6 +74,26 @@ function Indexing({ b }) {
   const send = (urls) => act(urls ? `send${urls[0]}` : 'send', '/submit', urls ? { urls } : {}, r => toast(r.sent ? `${r.sent} page${r.sent === 1 ? '' : 's'} sent to ${d.engines.join(', ')}${r.skipped.length ? `; ${r.skipped.length} skipped (a problem on the page)` : ''}` : r.message));
   const techCheck = (urls) => act(urls ? `tech${urls[0]}` : 'tech', '/check', urls ? { urls } : null, r => toast(r.checked ? `${r.checked} page${r.checked === 1 ? '' : 's'} checked: ${r.indexable} can be indexed, ${r.risky} risky, ${r.blocked} blocked` : 'Every page was checked in the last 3 days.'));
   const inspect = (urls) => act(urls ? `check${urls[0]}` : 'inspect', '/inspect', urls ? { urls } : { limit: 25 }, r => toast(r.checked ? `Google answered for ${r.checked} pages: ${r.indexed} indexed, ${r.not_indexed + r.blocked} not` : (r.error || 'Nothing to check')));
+  // One action for a page: ask Google about it, send it to the other engines when it is not indexed, and open its own report in Search Console (Google's link, with the Request indexing button).
+  const goGoogle = (p) => {
+    const tab = window.open('', '_blank'); // opened by the click, filled when Google has answered (a tab opened later would be blocked)
+    return run(`go${p.url}`, async () => {
+      let link = p.g_link || null;
+      let state = p.g_state;
+      try {
+        const r = await api(`/businesses/${b.id}/indexing/inspect`, { method: 'POST', body: { urls: [p.url] }, timeout: 170000 });
+        const got = r.pages?.[p.url];
+        if (got) { link = got.link || link; state = got.state; }
+        if (!got && r.error) throw new Error(r.error);
+      } catch (e) {
+        if (!link) { tab?.close(); throw e; }
+      }
+      if (state !== 'indexed' && d.key.ready) { try { await api(`/businesses/${b.id}/indexing/submit`, { method: 'POST', body: { urls: [p.url] } }); } catch { /* the Search Console tab still opens */ } }
+      await o.reload(true);
+      if (link && tab) { tab.location.href = link; toast(state === 'indexed' ? 'Google shows this page. Its report is open in Search Console.' : 'This page is not indexed yet. In the Search Console tab press Request indexing.'); }
+      else { tab?.close(); toast(state === 'indexed' ? 'Google shows this page.' : 'Google has not given a Search Console link for this page.'); }
+    });
+  };
   const verify = () => run('verify', async () => { const r = await api(`/businesses/${b.id}/indexing/verify-key`, { method: 'POST' }); setKeyMsg(r); await o.reload(true); });
   const auto = (on) => run('auto', async () => { await api(`/businesses/${b.id}/indexing/settings`, { method: 'PUT', body: { auto: on } }); await o.reload(true); toast(on ? 'Automatic indexing is on: it runs every day' : 'Automatic indexing is off'); });
   const runNow = () => act('run', '/run', null, r => toast(r.note || `Done: ${r.new ?? 0} new pages, ${r.submitted ?? 0} sent, ${r.inspected ?? 0} checked in Google`));
@@ -185,10 +204,9 @@ function Indexing({ b }) {
           <Button size="sm" icon={RefreshCw} busy={busy === 'scan'} onClick={scan}>Read the sitemap now</Button>
           <Button size="sm" icon={ShieldCheck} busy={busy === 'tech'} onClick={() => techCheck()} title="Load each page like a crawler and check what could stop indexing">Check pages now</Button>
           <Button size="sm" icon={SearchIcon} busy={busy === 'inspect'} onClick={() => inspect()}>Check Google for 25 pages</Button>
-          {gs?.index_url && <a href={gs.index_url} target="_blank" rel="noreferrer noopener"><Button size="sm" icon={ExternalLink} title="Open the Page indexing report in Search Console: every page Google knows, and why some are not indexed">Page indexing in Search Console</Button></a>}
           <Button size="sm" variant="primary" icon={Send} busy={busy === 'send'} disabled={!c.pending || !d.key.ready} title={d.key.ready ? '' : 'Put the key file on the site first'} onClick={() => send()}>Send {c.pending} waiting page{c.pending === 1 ? '' : 's'}</Button>
         </div>
-        <IndexTable pages={d.pages} d={d} gs={gs} busy={busy} inspect={inspect} send={send} total={c.total} resetKey={`${status}|${q}`} />
+        <IndexTable pages={d.pages} d={d} gs={gs} busy={busy} goGoogle={goGoogle} total={c.total} resetKey={`${status}|${q}`} />
       </Card>
       {toastNode}
     </div>
