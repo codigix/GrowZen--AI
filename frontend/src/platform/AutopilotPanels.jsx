@@ -183,17 +183,18 @@ function PhotoUploader({ bid, onChanged, queued }) {
     } catch (er) { setMsg(er.message || 'The upload did not work.'); } finally { setBusy(false); if (input.current) input.current.value = ''; }
   };
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <div><label className="text-12 font-semibold text-slate-700 block mb-1">Photo type</label>
-          <Select className="h-10 w-56 rounded-lg border border-slate-300 bg-white px-3 text-14" aria-label="Photo type" value={cat} onChange={e => setCat(e.target.value)}>
-            {['ADDITIONAL', 'EXTERIOR', 'INTERIOR', 'PRODUCT', 'AT_WORK', 'TEAMS', 'FOOD_AND_DRINK', 'COVER', 'PROFILE'].map(c => <option key={c} value={c}>{c.replaceAll('_', ' ').toLowerCase().replace(/^./, s => s.toUpperCase())}</option>)}
-          </Select></div>
+    <div className="mt-3 pt-3 border-t border-slate-100">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <label className="text-12.5 font-semibold text-slate-700" htmlFor="phototype">Photo type</label>
+        <Select id="phototype" className="h-9 w-44 rounded-lg border border-slate-300 bg-white px-3 text-13" aria-label="Photo type" value={cat} onChange={e => setCat(e.target.value)}>
+          {['ADDITIONAL', 'EXTERIOR', 'INTERIOR', 'PRODUCT', 'AT_WORK', 'TEAMS', 'FOOD_AND_DRINK', 'COVER', 'PROFILE'].map(c => <option key={c} value={c}>{c.replaceAll('_', ' ').toLowerCase().replace(/^./, s => s.toUpperCase())}</option>)}
+        </Select>
         <input ref={input} type="file" accept="image/*" multiple className="sr-only" onChange={pick} />
-        <Button variant="primary" icon={busy ? Loader2 : Upload} disabled={busy || queued >= 12} onClick={() => input.current?.click()}>{busy ? 'Uploading…' : 'Choose photos (up to 6)'}</Button>
+        <Button size="sm" variant="primary" icon={busy ? Loader2 : Upload} disabled={busy || queued >= 12} onClick={() => input.current?.click()}>{busy ? 'Uploading…' : 'Choose photos (up to 6)'}</Button>
+        <span className="text-12 text-slate-500 underline decoration-dotted cursor-help" title={SHOTS.map((s, i) => `${i + 1}. ${s}`).join(' | ')}>What to photograph</span>
+        {queued > 0 && <span className="text-12 text-slate-500 ml-auto">{queued} waiting for approval</span>}
       </div>
-      {msg && <p className="mt-3 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{msg}</p>}
-      <details className="mt-3"><summary className="text-13 font-semibold text-indigo-600 cursor-pointer">What to photograph</summary><ol className="mt-2 list-decimal pl-5 space-y-1 text-13 text-slate-700">{SHOTS.map((s, i) => <li key={i}>{s}</li>)}</ol></details>
+      {msg && <p className="mt-2 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{msg}</p>}
     </div>
   );
 }
@@ -258,6 +259,7 @@ export function AutopilotPanel({ bid, feature, hideItems = false, onChanged }) {
   const inbox = d.inbox.filter(mine), scheduled = d.scheduled.filter(mine), recent = d.recent.filter(mine).slice(0, 8);
   const posts = inbox.filter(i => i.kind === 'gbp_post');
   const on = d.settings.enabled;
+  const slim = hideItems || feature === 'photos'; // the photo scheduler keeps its header on one line and holds the upload row inside the same card
   const flip = async () => { try { await api(`/businesses/${bid}/autopilot/settings`, { method: 'PUT', body: { enabled: !on }, repeat: true }); await load(); onChanged?.(); } catch (e) { setNote(e.message); } };
   const generate = async () => {
     setGenerating(true); setNote('');
@@ -271,10 +273,10 @@ export function AutopilotPanel({ bid, feature, hideItems = false, onChanged }) {
   };
   return (
     <section className="space-y-3" aria-label={cfg.title}>
-      <Card className={hideItems ? 'px-4 py-2.5' : 'p-4 sm:p-5'}>
+      <Card className={slim ? 'px-4 py-2.5' : 'p-4 sm:p-5'}>
         <div className="flex flex-wrap items-center gap-3">
-          <span className={`${hideItems ? 'w-8 h-8' : 'w-10 h-10'} rounded-full bg-indigo-50 text-indigo-600 inline-flex items-center justify-center shrink-0`} title={hideItems ? d.rule : undefined}><ShieldCheck size={hideItems ? 15 : 18} /></span>
-          <div className="flex-1 min-w-[240px]"><div className="text-15 font-semibold text-slate-900 flex flex-wrap items-center gap-2" title={hideItems ? cfg.hint : undefined}>{cfg.title}<Chip cls={on ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}>Autopilot {on ? 'on' : 'off'}</Chip></div>
+          <span className={`${slim ? 'w-8 h-8' : 'w-10 h-10'} rounded-full bg-indigo-50 text-indigo-600 inline-flex items-center justify-center shrink-0`} title={slim ? d.rule : undefined}><ShieldCheck size={slim ? 15 : 18} /></span>
+          <div className="flex-1 min-w-[240px]"><div className="text-15 font-semibold text-slate-900 flex flex-wrap items-center gap-2" title={slim && feature !== 'photos' ? cfg.hint : undefined}>{cfg.title}<Chip cls={on ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}>Autopilot {on ? 'on' : 'off'}</Chip></div>
             {hideItems ? (note ? <p className="text-12.5 text-slate-700" role="status">{note}</p> : null) : <p className="text-12.5 text-slate-600">{cfg.hint}</p>}</div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={flip}>{on ? 'Turn off' : 'Turn on'}</Button>
@@ -282,15 +284,15 @@ export function AutopilotPanel({ bid, feature, hideItems = false, onChanged }) {
             <Button size="sm" icon={SettingsIcon} onClick={() => setShowSet(s => !s)} aria-expanded={showSet}>Settings</Button>
           </div>
         </div>
-        {!hideItems && <p className="mt-2 text-12 text-slate-500 flex items-center gap-1.5"><ShieldCheck size={12} className="text-emerald-600" />{d.rule}</p>}
+        {!slim && <p className="mt-2 text-12 text-slate-500 flex items-center gap-1.5"><ShieldCheck size={12} className="text-emerald-600" />{d.rule}</p>}
         {on && !hideItems && d.next_run && <p className="mt-1 text-12 text-slate-500">Next automatic run: {when(d.next_run)}.</p>}
         {!d.ai_ready && cfg.what && <p className="mt-2 text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">AI is not set up on this server, so drafts cannot be written.</p>}
         {!d.linked && feature !== 'keywords' && <p className="mt-2 text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex gap-2"><AlertTriangle size={15} className="mt-0.5 shrink-0" />The Google Business Profile is not linked, so nothing can be published yet. Drafts are still prepared.</p>}
         {note && !hideItems && <p className="mt-2 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{note}</p>}
         {showSet && <PanelSettings feature={feature} d={d} bid={bid} onChanged={load} />}
+        {feature === 'photos' && !hideItems && <PhotoUploader bid={bid} onChanged={load} queued={inbox.length} />}
       </Card>
       {hideItems ? null : <>
-      {feature === 'photos' && <PhotoUploader bid={bid} onChanged={load} queued={inbox.length} />}
       {posts.length > 1 && d.linked && <div><Button size="sm" icon={bulk ? Loader2 : Check} disabled={bulk} onClick={approveAll}>Approve all {posts.length} posts at their times</Button></div>}
       {feature === 'keywords' ? ((inbox.length + scheduled.length + recent.length) > 0 && <KeywordItemsTable items={[...inbox, ...scheduled, ...d.recent.filter(mine)]} bid={bid} onChanged={load} />) : <>
       {inbox.length > 0 && <div className="space-y-3"><div className="text-13 font-semibold text-slate-900">{inbox.length} waiting for your approval</div>{inbox.map(it => <ItemCard key={`${it.id}-${it.status}`} it={it} bid={bid} onChanged={load} />)}</div>}
@@ -300,7 +302,7 @@ export function AutopilotPanel({ bid, feature, hideItems = false, onChanged }) {
           <ul className="mt-2 divide-y divide-slate-100">{recent.map(it => <li key={it.id} className="py-2 flex flex-wrap items-center gap-2 text-13"><span className="min-w-0 flex-1 text-slate-700 truncate">{it.title}</span>
             {it.status === 'applied' && <span className="text-emerald-700 flex items-center gap-1"><CheckCircle2 size={13} />Done</span>}{it.status === 'rejected' && <span className="text-slate-500">Rejected</span>}{it.status === 'failed' && <span className="text-red-700">Failed: {it.result?.error || ''}</span>}</li>)}</ul></details>
       )}
-      {inbox.length === 0 && scheduled.length === 0 && <p className="text-13 text-slate-500">Nothing waits for you here. {on ? 'The next drafts appear after the next automatic run, or press “Prepare drafts now”.' : 'Turn Autopilot on to have drafts prepared for you every day.'}</p>}
+      {inbox.length === 0 && scheduled.length === 0 && (feature !== 'photos' || on) && <p className="text-13 text-slate-500">Nothing waits for you here. {on ? 'The next drafts appear after the next automatic run, or press “Prepare drafts now”.' : 'Turn Autopilot on to have drafts prepared for you every day.'}</p>}
       </>}
       {feature === 'keywords' && inbox.length === 0 && scheduled.length === 0 && recent.length === 0 && <p className="text-13 text-slate-500">Nothing waits for you here. {on ? 'The next suggestions appear after the next automatic run, or press “Prepare” above.' : 'Turn it on, or press “Prepare” above.'}</p>}
       </>}
