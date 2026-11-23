@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..db import get_db
-from ..deps import get_business, in_background, my_business_ids
+from ..deps import get_business, my_business_ids
+from ..services.durable import durable
 from ..models import Business, SiteProfile, WeeklyReport, WorkItem
 from ..serialize import row
 from ..services import site_research, workplan
@@ -73,7 +74,7 @@ def run_research(background: BackgroundTasks, b: Business = Depends(get_business
         prof.status = "queued"
     log(db, user.name, "site_research_started", b.id)
     db.commit()
-    background.add_task(in_background(_research_job, b.id))
+    background.add_task(durable(_research_job, b.id))
     return {"status": "queued"}
 
 

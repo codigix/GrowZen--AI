@@ -28,6 +28,7 @@ from . import lighthouse, lighthouse_report, pagespeed
 from .url_safety import SSRFValidationError, ValidatedURL, resolve_and_validate, validate_url_shape
 
 log = logging.getLogger("seo.lighthouse")
+RESTART_WINDOW = timedelta(minutes=30)  # an audit this recent that a restart cut off is run again
 
 DUPLICATE_WINDOW = timedelta(seconds=120)
 ENGINE_ERRORS = (pagespeed.PageSpeedError, lighthouse.LighthouseError)
@@ -63,12 +64,23 @@ def stop() -> None:
 
 
 def recover_interrupted(db: Session) -> int:
+    """A restart cuts off queued and running audits. Recent ones are queued again so the page just keeps waiting for them;
+    older ones (the person has long since left) are marked failed."""
     stuck = list(db.scalars(select(LighthouseAudit).where(LighthouseAudit.status.in_(["queued", "running"]))))
+    again: list[tuple[int, str]] = []
+    recent = _now() - RESTART_WINDOW
     for a in stuck:
-        a.status, a.error_message, a.completed_at = "failed", "Interrupted by a server restart before completion.", _now()
+        created = a.created_at if a.created_at is None or a.created_at.tzinfo else a.created_at.replace(tzinfo=timezone.utc)
+        if created and created >= recent:
+            a.status = "queued"
+            again.append((a.id, a.engine))
+        else:
+            a.status, a.error_message, a.completed_at = "failed", "Interrupted by a server restart before completion.", _now()
     db.commit()
+    for audit_id, engine in again:
+        submit(audit_id, engine)
     if stuck:
-        log.warning("Marked %d interrupted Lighthouse audit(s) as failed", len(stuck))
+        log.warning("Interrupted Lighthouse audits after a restart: %d queued again, %d marked failed", len(again), len(stuck) - len(again))
     return len(stuck)
 
 

@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from ..auth import User, current_user
 from ..config import get_settings
 from ..db import get_db
-from ..deps import can_access, get_business, in_background
+from ..deps import can_access, get_business
+from ..services.durable import durable, resuming
 from ..models import Audit, Business
 from ..serialize import row
 from . import intel
@@ -37,7 +38,7 @@ STALE = timedelta(minutes=4)  # a run reports progress every few seconds; silenc
 def _expire_stale(db: Session, a: Audit | None) -> Audit | None:
     """A run still "running" after its worker died (the server restarted or reloaded mid-run) would spin on the
     page forever and block new runs: mark it failed so the page shows the reason and a new run can start."""
-    if a and a.status in ("queued", "running"):
+    if a and a.status in ("queued", "running") and not resuming(f"audit:{getattr(a, 'id', None)}"):  # a run being started again after a restart is not dead
         seen = a.updated_at or a.created_at
         if seen and datetime.now(timezone.utc) - (seen if seen.tzinfo else seen.replace(tzinfo=timezone.utc)) > STALE:
             a.status, a.error, a.finished_at = "failed", "The research was interrupted (the server restarted while it ran). Run it again.", datetime.now(timezone.utc)
@@ -140,7 +141,7 @@ def start(body: ResearchIn, tasks: BackgroundTasks, b: Business = Depends(get_bu
     a = Audit(kind="intel", target=_target(b.id), status="queued", result={"keywords": keywords})
     db.add(a)
     db.commit()
-    tasks.add_task(in_background(_run, a.id, b.id, keywords, (body.location or "").strip() or None))
+    tasks.add_task(durable(_run, a.id, b.id, keywords, (body.location or "").strip() or None, refs=[f"audit:{a.id}"]))
     return row(a)
 
 

@@ -26,7 +26,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from ..config import get_settings
 from ..db import utcnow
 from ..models import Article, Business
-from . import ai
+from . import ai, durable
 
 log = logging.getLogger("seo.articles")
 
@@ -1903,8 +1903,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
 
 def run_article(db: Session, article_id: int) -> None:
     a = db.get(Article, article_id)
-    if not a or a.status in ("completed", "generating"):
-        return
+    if not a or a.status == "completed" or (a.status == "generating" and not durable.resuming(f"article:{article_id}")):
+        return  # (a "generating" article of a job being started again after a restart is written again)
     a.status, a.error, a.progress = "generating", None, "Waiting for Claude AI"
     db.commit()
 
@@ -1947,7 +1947,7 @@ def run_batch(db: Session, article_ids: list[int]) -> None:
 
 
 def recover_interrupted(db: Session) -> int:
-    stuck = list(db.scalars(select(Article).where(Article.status.in_(["pending", "generating"]))))
+    stuck = [a for a in db.scalars(select(Article).where(Article.status.in_(["pending", "generating"]))) if not durable.resuming(f"article:{a.id}")]
     for a in stuck:
         a.status, a.error = "failed", "Interrupted by a server restart before it finished. Retry it."
     db.commit()

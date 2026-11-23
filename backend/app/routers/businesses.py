@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from ..auth import User, current_user, require_admin
 from ..db import get_db
 from .. import access
-from ..deps import get_business, in_background, my_business_ids, only_mine, owned_business
+from ..deps import get_business, my_business_ids, only_mine, owned_business
+from ..services.durable import durable
 from ..models import AgentTask, Audit, Business, BusinessManager, InsightDay, Lead, Review, Schedule
 from ..schemas import AuditRunIn, BusinessIn, BusinessPatch, ScheduleIn
 from ..serialize import row, rows
@@ -180,7 +181,7 @@ def create_business(body: BusinessIn, background: BackgroundTasks, db: Session =
     db.commit()
     if site_onboarding.autodetect_enabled():
         # Onboarding without making the user wait: full audit, website research (tech stack, metadata, improvements), schedules and the first week's plan.
-        background.add_task(in_background(workplan.start_in_background, b.id))
+        background.add_task(durable(workplan.start_in_background, b.id))
     return row(b)
 
 
@@ -271,7 +272,7 @@ def update(body: BusinessPatch, background: BackgroundTasks, b: Business = Depen
     log(db, user.name, "business_updated", b.id, fields=list(changes), pushed_to_google=pushed)
     db.commit()
     if b.website and b.website != old_site and site_onboarding.autodetect_enabled():
-        background.add_task(in_background(workplan.refresh_research_in_background, b.id))  # a new address means a possibly different technology, metadata and plan
+        background.add_task(durable(workplan.refresh_research_in_background, b.id))  # a new address means a possibly different technology, metadata and plan
     return row(b) | {"pushed_to_google": pushed, "not_confirmed_on_google": not_on_google, "google_reviewing": under_review, "action_links_error": links_error}
 
 
@@ -481,7 +482,7 @@ def _run_audits(db: Session, business_id: int, kinds: list[str] | None, plan: bo
 def run_audits(body: AuditRunIn, tasks: BackgroundTasks, b: Business = Depends(get_business), user: User = Depends(current_user), db: Session = Depends(get_db)):
     log(db, user.name, "audit_started", b.id, kinds=body.kinds or audits.KINDS)
     db.commit()
-    tasks.add_task(in_background(_run_audits, b.id, body.kinds, True))
+    tasks.add_task(durable(_run_audits, b.id, body.kinds, True))
     return {"queued": body.kinds or audits.KINDS}
 
 

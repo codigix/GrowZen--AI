@@ -9,7 +9,7 @@ from ..auth import User, current_user
 from ..db import get_db
 from ..deps import get_business
 from ..models import Business
-from ..deps import in_background
+from ..services.durable import durable
 from ..services import assistant, assistant_actions
 
 router = APIRouter(prefix="/businesses/{business_id}/assistant", tags=["assistant"])
@@ -47,7 +47,7 @@ def run_action(body: ActionIn, background: BackgroundTasks, b: Business = Depend
     from ..backlinks import bot as bl_bot
 
     def start(business_id: int) -> None:
-        background.add_task(in_background(lambda s, bid: bl_bot.run_cycle(s, bid), business_id))
+        background.add_task(durable(bl_bot.run_cycle, business_id))
     try:
         return assistant_actions.execute(db, b, body.action, body.params, start)
     except ValueError as exc:

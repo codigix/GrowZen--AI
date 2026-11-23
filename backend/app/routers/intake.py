@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from ..auth import User, current_user, require_admin
 from ..config import get_settings
 from ..db import get_db
-from ..deps import in_background, my_business_ids
+from ..deps import my_business_ids
+from ..services.durable import durable
 from ..models import IntakeEmail
 from ..schemas import IntakeEmailIn
 from ..serialize import row, rows
@@ -54,7 +55,7 @@ def add_email(body: IntakeEmailIn, tasks: BackgroundTasks, db: Session = Depends
     if not em:
         raise HTTPException(409, "This email was already received")
     if em.status == "waiting":
-        tasks.add_task(in_background(_onboard, em.id, user.id))
+        tasks.add_task(durable(_onboard, em.id, user.id))
     return row(em)
 
 
@@ -66,7 +67,7 @@ def webhook(body: IntakeEmailIn, tasks: BackgroundTasks, x_intake_token: str = H
         raise HTTPException(401, "Bad intake token")
     em = intake.store(db, body.from_addr, body.subject, body.body, body.message_id or f"hook-{secrets.token_hex(8)}")
     if em and em.status == "waiting":
-        tasks.add_task(in_background(_onboard, em.id))
+        tasks.add_task(durable(_onboard, em.id))
     return {"accepted": bool(em)}
 
 
@@ -82,7 +83,7 @@ def process(email_id: int, tasks: BackgroundTasks, db: Session = Depends(get_db)
         raise HTTPException(409, "Already processing")
     em.status = "waiting"
     db.commit()
-    tasks.add_task(in_background(_onboard, em.id, user.id))
+    tasks.add_task(durable(_onboard, em.id, user.id))
     return {"queued": em.id}
 
 
@@ -94,5 +95,5 @@ def poll(tasks: BackgroundTasks, db: Session = Depends(get_db), _: User = Depend
     new = intake.poll_imap(db)
     for em in new:
         if em.status == "waiting":
-            tasks.add_task(in_background(_onboard, em.id))
+            tasks.add_task(durable(_onboard, em.id))
     return {"new": len(new)}

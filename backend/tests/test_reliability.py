@@ -64,31 +64,47 @@ def test_runs_that_died_with_their_process_are_failed_so_pages_stop_spinning():
     assert status_of(fresh)[0] == "failed"
 
 
-def test_a_site_audit_cut_off_by_a_restart_starts_again_by_itself(monkeypatch):
-    from app.routers import website
-    started = []
-    monkeypatch.setattr(website, "_run", lambda db, *a: started.append(a))
+def test_a_job_cut_off_by_a_restart_starts_again_by_itself():
+    """A background job is written down when queued; a restart leaves it behind and start-up runs it again (at most 3 runs in all)."""
+    import time
+    from app.models import DurableJob
+    from app.services import durable
+    ran = []
     aid = make_audit(age_minutes=1)
     db = SessionLocal()
-    a = db.get(Audit, aid)
-    a.kind = "website"
-    a.result = {"progress": {"resume": {"url": "https://x.in/", "strategy": "mobile", "pages": 10, "business_id": 3, "options": None, "attempt": 1}}}
+    db.add(DurableJob(fn=f"{__name__}:_sample_job", args=[aid], refs=[f"audit:{aid}"], status="running", attempts=1))
     db.commit()
-    jobs.recover_stale(db, startup=True)
+    assert durable.resume_all(db) == 1
+    jobs.recover_stale(db, startup=True)  # the audit its job is re-running is left alone
     db.close()
-    import time
+    assert status_of(aid)[0] == "running"
+    _GO.set()  # now the job may finish
     for _ in range(50):
-        if started:
+        if _SAMPLE_RAN:
             break
         time.sleep(0.1)
-    assert status_of(aid) == ("queued", None) and started[0][0] == aid and started[0][-1] == 2  # same audit, second attempt
+    assert _SAMPLE_RAN == [aid]
+    time.sleep(0.5)
     db = SessionLocal()
-    a = db.get(Audit, aid)
-    a.status, a.result = "running", {"progress": {"resume": {"url": "https://x.in/", "attempt": jobs.MAX_RESTARTS}}}
+    assert db.query(DurableJob).count() == 0  # finished: the row is gone
+    db.add(DurableJob(fn=f"{__name__}:_sample_job", args=[aid], refs=[], status="running", attempts=durable.MAX_ATTEMPTS))
     db.commit()
-    jobs.recover_stale(db, startup=True)
+    assert durable.resume_all(db) == 0  # a crash loop does not repeat it forever
+    assert db.query(DurableJob).one().status == "failed"
+    db.query(DurableJob).delete()
+    db.commit()
     db.close()
-    assert status_of(aid)[0] == "failed"  # a crash loop does not repeat it forever
+
+
+import threading as _threading
+
+_SAMPLE_RAN: list[int] = []
+_GO = _threading.Event()
+
+
+def _sample_job(db, audit_id):
+    _GO.wait(5)
+    _SAMPLE_RAN.append(audit_id)
 
 
 def project(client, name="Triage Dental"):

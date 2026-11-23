@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..db import get_db
-from ..deps import get_business, in_background
+from ..deps import get_business
+from ..services.durable import durable
 from ..models import Business, PageXRayJob
 from ..services import page_xray_history as hist, ratelimit
 from . import page_xray as xray_router
@@ -93,7 +94,7 @@ def start_scan(body: SiteScanIn, background: BackgroundTasks, b: Business = Depe
         job = hist.start_site_scan(db, b, body.max_pages, user.name)
     except hist.HistoryError as exc:
         raise _fail(exc) from exc
-    background.add_task(in_background(hist.run_site_scan, job.id))
+    background.add_task(durable(hist.run_site_scan, job.id, refs=[f"xray:{job.id}"]))
     return hist.job_view(db, job)
 
 

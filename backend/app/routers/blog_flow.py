@@ -99,7 +99,7 @@ def promo_add_from_competitor(article_id: int, body: FromCompetitorIn, b: Busine
 def promo_research_competitors(article_id: int, background: BackgroundTasks, force: bool = Query(False), b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     """Open each competitor's website to find its blog, its articles and the outside platforms it publishes on. Runs in the background; GET /promo/{id} shows the progress."""
     from ..backlinks import hub
-    from ..deps import in_background
+    from ..services.durable import durable
     from ..services import competitor_blogs as cb
     _article(db, b, article_id)
     comps = hub.hygiene_competitors(db, b)
@@ -107,7 +107,7 @@ def promo_research_competitors(article_id: int, background: BackgroundTasks, for
         raise HTTPException(409, "Add your competitors first (Competitors page).")
     if not cb.start(b.id):
         return {"started": False, "running": True}
-    background.add_task(in_background(cb.run, b.id, comps, force))
+    background.add_task(durable(cb.run, b.id, comps, force))
     return {"started": True, "running": True}
 
 
@@ -121,7 +121,7 @@ def discovery(article_id: int, b: Business = Depends(get_business), db: Session 
 @router.post("/discovery/{article_id}/run", status_code=202)
 def discovery_run(article_id: int, background: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     """Search the web and verify the sites found. Runs in the background; GET /discovery/{id} shows the result."""
-    from ..deps import in_background
+    from ..services.durable import durable
     from ..services import publish_discovery as pd
     a = _article(db, b, article_id)
     v = pd.view(db, b, a)
@@ -129,7 +129,7 @@ def discovery_run(article_id: int, background: BackgroundTasks, b: Business = De
         raise HTTPException(409, v["message"])
     if not pd.start(b, a):
         return {"started": False, "running": True}
-    background.add_task(in_background(pd.run, b.id, a.id))
+    background.add_task(durable(pd.run, b.id, a.id))
     return {"started": True, "running": True}
 
 

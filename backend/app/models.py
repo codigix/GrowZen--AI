@@ -146,6 +146,19 @@ class IntakeEmail(TimestampMixin, Base):
     business_id: Mapped[int | None] = mapped_column(ForeignKey("businesses.id", ondelete="SET NULL"))
 
 
+class DurableJob(TimestampMixin, Base):
+    """A background job that is still to finish. It is written when the job is queued and removed when it ends, so
+    whatever is left here at start-up was cut off by a restart and is started again (services/durable.py)."""
+    __tablename__ = "durable_jobs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fn: Mapped[str] = mapped_column(String(300))  # "module:function"
+    args: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    refs: Mapped[list[str]] = mapped_column(JSON, default=list)  # the rows this job works on, e.g. "audit:12", so start-up cleanup leaves them alone
+    status: Mapped[str] = mapped_column(String(12), default="running", index=True)  # running | failed
+    attempts: Mapped[int] = mapped_column(Integer, default=1)
+    error: Mapped[str | None] = mapped_column(Text)
+
+
 class Audit(TimestampMixin, Base):
     __tablename__ = "audits"
     id: Mapped[int] = mapped_column(primary_key=True)

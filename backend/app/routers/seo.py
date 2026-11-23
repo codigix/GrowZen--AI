@@ -16,7 +16,8 @@ from ..auth import User, current_user
 from ..competitors import intel
 from ..config import get_settings
 from ..db import get_db
-from ..deps import get_business, in_background
+from ..deps import get_business
+from ..services.durable import durable
 from ..models import Audit, Business, GeoPrompt, GeoResult, GoogleConnection, Keyword, KeywordRankLog, Competitor
 from ..backlinks.summary import own_site_links
 from ..services import countries, domain_checks, geo, landscape as landscape_svc, rank_report as rank_report_svc, top_pages as top_pages_svc, gsc, google_intel, keyword_metrics, market, organic, audits
@@ -351,7 +352,7 @@ def crawl_pages(background: BackgroundTasks, pages: int = 150, b: Business = Dep
         return {"status": "running"}
     log(db, user.name, "site_crawl_started", b.id)
     db.commit()
-    background.add_task(in_background(_crawl_job, b.id, max(10, min(pages, 300))))
+    background.add_task(durable(_crawl_job, b.id, max(10, min(pages, 300))))
     return {"status": "queued"}
 
 

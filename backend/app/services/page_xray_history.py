@@ -19,7 +19,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..models import Business, PageXRayJob, PageXRayRun
-from . import crawler, page_xray
+from . import crawler, durable, page_xray
 
 MAX_RUNS = 200  # saved X-Rays kept per project (the oldest are dropped)
 MAX_REPORT_BYTES = 300_000
@@ -226,7 +226,7 @@ def latest_job(db: Session, b: Business) -> PageXRayJob | None:
 
 
 def job_view(db: Session, job: PageXRayJob) -> dict[str, Any]:
-    if job.status == "running" and job.id not in _ACTIVE:  # the process that ran it is gone
+    if job.status == "running" and job.id not in _ACTIVE and not durable.resuming(f"xray:{job.id}"):  # the process that ran it is gone
         job.status, job.error = "failed", job.error or "Interrupted: the server restarted before the scan finished. Run it again."
         job.finished_at = datetime.now(timezone.utc)
         db.commit()

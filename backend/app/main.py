@@ -74,6 +74,8 @@ async def lifespan(_: FastAPI):
     step("project owners", owners_step)
     from .services import autopilot as _autopilot
     step("approval rules", _autopilot.enforce)
+    from .services import durable as _durable
+    step("restart interrupted background jobs", _durable.resume_all)  # first: the cleanups below leave the rows of these jobs alone
     step("interrupted Lighthouse audits", lighthouse_runner.recover_interrupted)
     step("interrupted jobs", lambda db: jobs.recover_stale(db, startup=True))
     scheduler.start()

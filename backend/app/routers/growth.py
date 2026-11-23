@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..db import get_db
-from ..deps import get_business, in_background
+from ..deps import get_business
+from ..services.durable import durable
 from ..models import Business, GeoPrompt, GeoResult, Keyword, RankScan
 from ..schemas import GeoPromptIn, KeywordDiscoverIn, KeywordIdeasIn, KeywordIn, RankScanIn
 from ..serialize import row, rows
@@ -213,7 +214,7 @@ def _scan(db: Session, business_id: int, keyword: str, size: int, radius: float)
 @router.post("/rank-scans", status_code=202)
 def rank_scan(body: RankScanIn, tasks: BackgroundTasks, b: Business = Depends(get_business)):
     providers.rank_provider()  # no live Google results key: 503 data_unavailable now, not a scan that fails in the background
-    tasks.add_task(in_background(_scan, b.id, body.keyword, body.grid_size, body.radius_km))
+    tasks.add_task(durable(_scan, b.id, body.keyword, body.grid_size, body.radius_km))
     return {"queued": True, "points": body.grid_size ** 2}
 
 
@@ -251,10 +252,14 @@ def delete_prompt(prompt_id: int, b: Business = Depends(get_business), db: Sessi
         db.commit()
 
 
+def _geo_job(db: Session, business_id: int) -> None:
+    geo.run_prompts(db, db.get(Business, business_id))
+
+
 @router.post("/geo/run", status_code=202)
 def geo_run(tasks: BackgroundTasks, b: Business = Depends(get_business)):
     geo.require_engines()  # no AI engine key: 503 data_unavailable now, not a run that stores nothing
-    tasks.add_task(in_background(lambda db, bid: geo.run_prompts(db, db.get(Business, bid)), b.id))
+    tasks.add_task(durable(_geo_job, b.id))
     return {"queued": True}
 
 
