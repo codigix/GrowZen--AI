@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend as ChartLegend } from 'recharts';
-import { Activity, Users, UserPlus, MousePointerClick, Zap, Eye, Clock, Gauge, RefreshCw, Radio, ExternalLink, ShieldCheck } from 'lucide-react';
+import { Activity, Users, UserPlus, MousePointerClick, Zap, Eye, Clock, Gauge, RefreshCw, Radio, ExternalLink, ShieldCheck, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
 import { SeoShell, useBusinesses, Card, Stat, Badge, Button, ErrorNote, Empty, Tabs, SERIES, INK, SkPage, refreshBusinesses } from './SeoUi';
 import AccessGate from './AccessGate';
 import { api, useApi, fmt } from './seoApi';
@@ -72,6 +72,15 @@ function Table({ cols, rows, empty = 'No data for this period.' }) {
   );
 }
 
+/** "▲ 12%": how a number moved against the period before. */
+function PctMove({ v }) {
+  if (v == null) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n === 0) return <span className="inline-flex items-center text-11.5 font-semibold text-slate-400"><Minus size={12} />0%</span>;
+  const up = n > 0;
+  return <span className={`inline-flex items-center text-11.5 font-semibold tabular-nums ${up ? 'text-emerald-600' : 'text-rose-600'}`}>{up ? <ArrowUpRight size={13} strokeWidth={2.5} /> : <ArrowDownRight size={13} strokeWidth={2.5} />}{Math.abs(Math.round(n * 10) / 10)}%</span>;
+}
+
 function Report({ r }) {
   const t = r.totals || {};
   const ch = r.change_percent || {};
@@ -94,8 +103,9 @@ function Report({ r }) {
   const sum = (key) => (r.timeline || []).reduce((a, p) => a + (p[key] || 0), 0);
   const period = r.period || {};
 
+  const [view, setView] = useState('overview');
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-12 text-slate-500">
         <Badge tone="blue">{r.property_name || r.property}</Badge>
         {r.account && <span>{r.account}</span>}
@@ -105,19 +115,21 @@ function Report({ r }) {
 
       {Object.keys(r.errors || {}).length > 0 && <ErrorNote>{Object.entries(r.errors).map(([k, v]) => `${k}: ${v}`).join(' · ')}</ErrorNote>}
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label="Active users" value={fmt(t.activeUsers)} delta={ch.activeUsers} icon={Users} hint="vs previous period" />
-        <Stat label="New users" value={fmt(t.newUsers)} delta={ch.newUsers} icon={UserPlus} />
-        <Stat label="Sessions" value={fmt(t.sessions)} delta={ch.sessions} icon={Activity} />
-        <Stat label="Engaged sessions" value={fmt(t.engagedSessions)} delta={ch.engagedSessions} icon={MousePointerClick} />
-        <Stat label="Engagement rate" value={pct(t.engagementRate)} delta={ch.engagementRate} icon={Gauge} />
-        <Stat label="Avg engagement time" value={dur(t.engagementTimePerUser)} delta={ch.engagementTimePerUser} icon={Clock} hint={`per active user · ${dur(t.averageSessionDuration)} per session`} />
-        <Stat label="Event count" value={fmt(t.eventCount)} delta={ch.eventCount} icon={Zap} />
-        <Stat label="Page views" value={fmt(t.screenPageViews)} delta={ch.screenPageViews} icon={Eye} hint={`${fmt(t.keyEvents)} key events`} />
+      <Tabs value={view} onChange={setView} tabs={[{ id: 'overview', label: 'Overview' }, { id: 'acquisition', label: 'Acquisition' }, { id: 'pages', label: 'Pages' }, { id: 'audience', label: 'Audience' }]} />
+
+      {view === 'overview' && (
+        <div className="space-y-3">
+      {/* KPIs: one strip, each number with its change against the period before */}
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 grid grid-cols-2 lg:grid-cols-4 divide-x divide-y divide-slate-100 overflow-hidden [&>*:nth-child(-n+4)]:border-t-0">
+        {[[Users, 'Active users', fmt(t.activeUsers), ch.activeUsers, 'vs previous period'], [UserPlus, 'New users', fmt(t.newUsers), ch.newUsers], [Activity, 'Sessions', fmt(t.sessions), ch.sessions], [MousePointerClick, 'Engaged sessions', fmt(t.engagedSessions), ch.engagedSessions],
+          [Gauge, 'Engagement rate', pct(t.engagementRate), ch.engagementRate], [Clock, 'Avg engagement time', dur(t.engagementTimePerUser), ch.engagementTimePerUser, `per active user · ${dur(t.averageSessionDuration)} per session`], [Zap, 'Event count', fmt(t.eventCount), ch.eventCount], [Eye, 'Page views', fmt(t.screenPageViews), ch.screenPageViews, `${fmt(t.keyEvents)} key events`]].map(([Ic, label, value, delta, hint]) => (
+          <div key={label} className="px-4 py-3 min-w-0" title={hint}>
+            <div className="flex items-center gap-1.5 text-12 font-semibold text-slate-500 truncate"><Ic size={13} className="text-indigo-500" />{label}</div>
+            <div className="mt-0.5 flex items-baseline gap-2"><span className="text-[22px] leading-tight font-bold text-slate-900 tabular-nums">{value}</span><PctMove v={delta} /></div>
+          </div>))}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-4">
+      <div className="grid lg:grid-cols-3 gap-3">
         {/* Realtime */}
         <Card title="Active users in last 30 minutes" subtitle="Live from Google Analytics" action={<Radio size={16} className="text-emerald-500" />}>
           <div className="text-3xl font-extrabold text-slate-900 tabular-nums">{fmt(rt.active_users_30_min)}</div>
@@ -144,6 +156,10 @@ function Report({ r }) {
         </Card>
       </div>
 
+        </div>
+      )}
+      {view === 'acquisition' && (
+        <div className="space-y-3">
       {/* Traffic acquisition */}
       <Card title="Traffic acquisition" subtitle="Sessions by primary channel group">
         {channelSeries.length > 0 && (
@@ -174,24 +190,50 @@ function Report({ r }) {
         />
       </Card>
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        <Card title="Active users by country">
-          <Table cols={[{ label: 'Country', render: c => c.country }, { label: 'Active users', right: true, render: c => `${fmt(c.active_users)} (${share(c.active_users, totalUsers)})` }, { label: 'Sessions', right: true, render: c => fmt(c.sessions) }]} rows={r.countries} />
-        </Card>
-        <Card title="Top pages/screens" subtitle="Page title and screen class">
-          <Table cols={[{ label: 'Page title', render: p => p.title }, { label: 'Views', right: true, render: p => fmt(p.views) }, { label: 'Active users', right: true, render: p => fmt(p.active_users) }, { label: 'Event count', right: true, render: p => fmt(p.event_count) }, { label: 'Bounce rate', right: true, render: p => pct(p.bounce_rate) }]} rows={shown(r.pages)} />
-        </Card>
-        <Card title="Devices">
-          <Table cols={[{ label: 'Device', render: d => d.device }, { label: 'Active users', right: true, render: d => fmt(d.active_users) }, { label: 'Sessions', right: true, render: d => fmt(d.sessions) }]} rows={r.devices} />
-        </Card>
+      <div className="grid lg:grid-cols-2 gap-3">
         <Card title="Source / medium">
           <Table cols={[{ label: 'Source / medium', render: s => s.source_medium }, { label: 'Sessions', right: true, render: s => fmt(s.sessions) }, { label: 'Active users', right: true, render: s => fmt(s.active_users) }]} rows={shown(r.sources)} />
         </Card>
         <Card title="Active users by first user source / medium">
           <Table cols={[{ label: 'First user source / medium', render: s => s.source_medium }, { label: 'Active users', right: true, render: s => fmt(s.active_users) }]} rows={shown(r.first_sources)} />
         </Card>
+      </div>
+        </div>
+      )}
+      {view === 'pages' && (
+        <div className="space-y-3">
+      <Card title="Top pages/screens" subtitle="Page title and screen class">
+          <Table cols={[{ label: 'Page title', render: p => p.title }, { label: 'Views', right: true, render: p => fmt(p.views) }, { label: 'Active users', right: true, render: p => fmt(p.active_users) }, { label: 'Event count', right: true, render: p => fmt(p.event_count) }, { label: 'Bounce rate', right: true, render: p => pct(p.bounce_rate) }]} rows={shown(r.pages)} />
+        </Card>
+      <Card title="Pages and screens" subtitle="Page path and screen class">
+        <Table
+          cols={[
+            { label: 'Page path and screen class', render: p => p.path },
+            { label: 'Views', right: true, render: p => fmt(p.views) },
+            { label: 'Active users', right: true, render: p => fmt(p.active_users) },
+            { label: 'Views per active user', right: true, render: p => Number(p.views_per_user || 0).toFixed(2) },
+            { label: 'Avg engagement time per active user', right: true, value: p => p.engagement_per_user ?? null, render: p => dur(p.engagement_per_user) },
+            { label: 'Event count', right: true, render: p => fmt(p.event_count) },
+            { label: 'Key events', right: true, render: p => fmt(p.key_events) }
+          ]}
+          rows={pathRows}
+        />
+      </Card>
+        </div>
+      )}
+      {view === 'audience' && (
+        <div className="space-y-3">
+      <div className="grid lg:grid-cols-2 gap-3">
+        <Card title="Active users by country">
+          <Table cols={[{ label: 'Country', render: c => c.country }, { label: 'Active users', right: true, render: c => `${fmt(c.active_users)} (${share(c.active_users, totalUsers)})` }, { label: 'Sessions', right: true, render: c => fmt(c.sessions) }]} rows={r.countries} />
+        </Card>
         <Card title="Active users by city">
           <Table cols={[{ label: 'City', render: c => c.city }, { label: 'Active users', right: true, render: c => fmt(c.active_users) }]} rows={shown(r.cities)} />
+        </Card>
+      </div>
+      <div className="grid lg:grid-cols-2 gap-3">
+        <Card title="Devices">
+          <Table cols={[{ label: 'Device', render: d => d.device }, { label: 'Active users', right: true, render: d => fmt(d.active_users) }, { label: 'Sessions', right: true, render: d => fmt(d.sessions) }]} rows={r.devices} />
         </Card>
         <Card title="New vs returning users" subtitle="Active users per day">
           {nvr.length ? (
@@ -210,6 +252,8 @@ function Report({ r }) {
             </div>
           ) : <Empty>No data available.</Empty>}
         </Card>
+      </div>
+      <div className="grid lg:grid-cols-2 gap-3">
         <Card title="Key events by platform">
           <Table cols={[{ label: 'Platform', render: k => k.platform }, { label: 'Key events', right: true, render: k => fmt(k.key_events) }]} rows={r.key_events_platform} empty="No data available." />
         </Card>
@@ -217,21 +261,8 @@ function Report({ r }) {
           <Table cols={[{ label: 'Audience name', render: a => a.audience }, { label: 'Active users', right: true, render: a => fmt(a.active_users) }]} rows={r.audiences} empty="No data available." />
         </Card>
       </div>
-
-      <Card title="Pages and screens" subtitle="Page path and screen class">
-        <Table
-          cols={[
-            { label: 'Page path and screen class', render: p => p.path },
-            { label: 'Views', right: true, render: p => fmt(p.views) },
-            { label: 'Active users', right: true, render: p => fmt(p.active_users) },
-            { label: 'Views per active user', right: true, render: p => Number(p.views_per_user || 0).toFixed(2) },
-            { label: 'Avg engagement time per active user', right: true, value: p => p.engagement_per_user ?? null, render: p => dur(p.engagement_per_user) },
-            { label: 'Event count', right: true, render: p => fmt(p.event_count) },
-            { label: 'Key events', right: true, render: p => fmt(p.key_events) }
-          ]}
-          rows={pathRows}
-        />
-      </Card>
+        </div>
+      )}
     </div>
   );
 }
@@ -650,17 +681,17 @@ function TrafficDashboard({ b, access, view: viewProp, initialView = 'overview' 
 
   const account = access.data?.connection;
   const accounts = (conns.data || []).filter(c => c.status === 'active' || c.id === account?.id);
-  const sel = 'h-10 px-3 rounded text-13 bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900';
+  const sel = 'h-9 px-3 rounded text-13 bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900';
 
   return (
-    <div className="space-y-4 min-w-0">
-      <div className="ai-glass-card rounded p-4 sm:p-5 flex flex-wrap items-center gap-x-5 gap-y-4">
+    <div className="space-y-3 min-w-0">
+      <div className="ai-glass-card rounded px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-3">
         <div className="flex items-center gap-3 min-w-0 flex-1 basis-64">
-          <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`} alt="" width="40" height="40" className="w-10 h-10 rounded bg-slate-50 ring-1 ring-slate-200 p-1.5 shrink-0" />
+          <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`} alt="" width="40" height="40" className="w-9 h-9 rounded bg-slate-50 ring-1 ring-slate-200 p-1.5 shrink-0" />
           <div className="min-w-0">
             <div className="text-15 font-semibold text-slate-900 truncate">{b.name}</div>
             <a href={b.website?.startsWith('http') ? b.website : `https://${host}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-12.5 text-indigo-600 hover:underline max-w-full"><span className="truncate">{host}</span><ExternalLink size={12} className="shrink-0" /></a>
-            <div className="mt-1 flex flex-wrap gap-1.5"><Badge tone="green"><ShieldCheck size={11} className="inline -mt-0.5 mr-0.5" />Access complete</Badge><Badge tone="blue">Google Analytics 4</Badge></div>
+            <div className="mt-0.5 flex flex-wrap gap-1.5"><Badge tone="green"><ShieldCheck size={11} className="inline -mt-0.5 mr-0.5" />Access complete</Badge><Badge tone="blue">Google Analytics 4</Badge></div>
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-3">
@@ -681,8 +712,8 @@ function TrafficDashboard({ b, access, view: viewProp, initialView = 'overview' 
       {error && <ErrorNote>{error.message}</ErrorNote>}
 
       {data?.matched && (
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-4 items-start">
-          <div className="space-y-4 min-w-0">
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-3 items-start">
+          <div className="space-y-3 min-w-0">
             {!viewProp && <Tabs tabs={[{ id: 'overview', label: 'Overview' }, { id: 'snap', label: 'Reports snapshot' }, { id: 'rt', label: 'Realtime overview' }, { id: 'rtp', label: 'Realtime pages' }]} value={view} onChange={setView} />}
             {!data.reports?.length && <Empty>Google Analytics returned no report for this property and period.</Empty>}
             {shownView === 'snap' && data.reports.map(r => <Snapshot key={r.property} r={r} />)}
