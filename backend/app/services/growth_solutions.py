@@ -307,7 +307,7 @@ def reviews_solution(db: Session, b: Business, a: GrowthAction) -> dict[str, Any
     from ..config import get_settings
     from ..models import Review
     from ..routers import review_link as rl
-    share = f"{get_settings().frontend_url.rstrip('/')}/r/{rl.token_for(b.id)}"
+    share = f"{get_settings().site_url}/r/{rl.token_for(b.id)}"
     waiting = db.query(Review).filter(Review.business_id == b.id, Review.reply_status != "posted").count()
     name = b.name
     msgs = [f"Hi! Thank you for choosing {name}. We would love your honest feedback: a short Google review helps us improve and helps other customers decide. It takes a minute: {share}",

@@ -71,3 +71,16 @@ def test_profile_share_link_prefers_googles_own_and_falls_back_to_a_maps_search(
         b.gbp_status = {"maps_url": "https://maps.google.com/maps?cid=123"}
         db.commit()
     assert client.get(f"/api/v1/businesses/{bid}/review-link").json()["profile_url"] == "https://maps.google.com/maps?cid=123"
+
+
+def test_the_share_link_uses_the_live_site_address_when_one_is_set(client, monkeypatch):
+    from app.config import get_settings
+    bid = _project(client)
+    s = get_settings()
+    monkeypatch.setattr(s, "frontend_url", "http://192.168.1.22:3100")
+    monkeypatch.setattr(s, "public_site_url", "")
+    own = client.get(f"/api/v1/businesses/{bid}/review-link").json()
+    assert own["share_url"].startswith("http://192.168.1.22:3100/r/") and own["public_site"] is False  # no live address set: the app's own, and it says it is private
+    monkeypatch.setattr(s, "public_site_url", "https://live.example/")
+    live = client.get(f"/api/v1/businesses/{bid}/review-link").json()
+    assert live["share_url"] == f"https://live.example/r/{live['token']}" and live["public_site"] is True

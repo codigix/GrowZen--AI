@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3100,http://127.0.0.1:3100"  # comma separated (the SEO frontend)
     public_base_url: str = "http://localhost:8000"  # where this API is reachable (OAuth callback)
     frontend_url: str = "http://localhost:3100"
+    public_site_url: str = ""  # the live address customers see in links that leave the app (the review link and its QR code); empty = FRONTEND_URL (PUBLIC_SITE_URL)
     frontend_dist: str = "../frontend/dist"  # built frontend served by this API when present
 
     # Own login: session cookie signed with SECRET_KEY; first admin created on start.
@@ -187,6 +188,11 @@ class Settings(BaseSettings):
     db_statement_timeout_seconds: int = 60
     schema_auto_sync: bool = True  # create missing tables and add missing nullable columns at start-up
     audit_retention_days: int = 180
+
+    @property
+    def site_url(self) -> str:
+        """The address customers are given in links that leave the app: the live site when PUBLIC_SITE_URL is set, else the frontend's own address."""
+        return (self.public_site_url or self.frontend_url).strip().rstrip("/")
 
     @property
     def secure_cookies(self) -> bool:

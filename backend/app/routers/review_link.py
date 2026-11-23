@@ -86,11 +86,11 @@ def review_link(b: Business = Depends(get_business)):
     token = token_for(b.id)
     return {
         "token": token,
-        "share_url": f"{s.frontend_url.rstrip('/')}/r/{token}",
+        "share_url": f"{s.site_url}/r/{token}",
         "google_url": google_review_url(b),
         "profile_url": profile_url(b),
         "services": _service_names(b),
-        "public_site": not any(h in s.frontend_url for h in ("localhost", "127.0.0.1", "192.168.", "10.", "172.16.")),
+        "public_site": not any(h in s.site_url for h in ("localhost", "127.0.0.1", "192.168.", "10.", "172.16.")),
     }
 
 
