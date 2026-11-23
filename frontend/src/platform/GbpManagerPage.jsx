@@ -856,7 +856,7 @@ function PostsTab({ b, toast }) {
         clickNote: !mine ? 'Made outside this software: its button link has no tag, so its clicks cannot be counted.' : !ok ? (clicks.data?.reason || 'Clicks are not available.') : 'Published before clicks were counted: its link has no tag.' });
     }
     for (const p of local) {
-      if (seen.has(p.id) || (p.status === 'published' && p.external_id && live.data)) continue; // a published post whose live copy is above (or was removed on Google) is not listed twice
+      if (seen.has(p.id) || (p.status === 'published' && p.external_id && live.data && Date.now() - Date.parse(p.published_at || 0) > 6 * 3600 * 1000)) continue; // just published: Google's list can take a while to show it, so it stays as a Live row meanwhile // a published post whose live copy is above (or was removed on Google) is not listed twice
       const status = p.status === 'published' ? 'live' : p.status;
       const c = clicks.data?.by_post?.[String(p.id)];
       out.push({ key: `p${p.id}`, local: p, task: taskOf[String(p.id)]?.source === 'autopilot' ? taskOf[String(p.id)] : null, image: p.image_url, heading: headingOf(p), text: p.body, type: String(p.post_type || 'update').toLowerCase(), status, when: p.status === 'published' ? p.published_at : p.status === 'scheduled' ? p.scheduled_for : p.created_at, cta: p.cta_type, ctaUrl: p.cta_url,
