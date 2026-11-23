@@ -142,6 +142,19 @@ GENERIC_CATEGORIES = {"doctor", "store", "shop", "company", "business", "service
 def default_keywords(b: Any) -> list[str]:
     """The searches a customer would type to find this business, with the place in them (Google
     localises 'near me' by the searcher's own location, which a server does not have)."""
+    # The owner's own business understanding decides first: a company called "... Infotech" that sells digital marketing is not searched as a software company. Its phrases
+    # for finding providers like it already carry the place; the customer search words follow, with the place added.
+    brief = getattr(b, "business_brief", None) or {}
+    queries = [str(x).strip() for x in (brief.get("competitor_queries") or []) if str(x).strip()]
+    terms = [str(x).strip() for x in (brief.get("customer_search_terms") or []) if str(x).strip()]
+    if queries or terms:
+        place = ((b.city or "").strip() if market.scope(b) == "local" else "")
+        extra = [f"{x} in {place}" if place and place.lower() not in x.lower() else x for x in terms]
+        out_b: list[str] = []
+        for k in [*queries, *extra]:
+            if k.lower() not in [x.lower() for x in out_b]:
+                out_b.append(k)
+        return out_b[:6]
     # A generic Google category ("Doctor", "Store") finds everyone; specific ones (services, other categories) first.
     seeds = default_seeds(b)
     seeds = ([s for s in seeds if s not in GENERIC_CATEGORIES] + [s for s in seeds if s in GENERIC_CATEGORIES])[:3]

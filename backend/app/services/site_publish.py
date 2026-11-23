@@ -319,6 +319,55 @@ def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: dateti
         raise PublishError(f"Could not reach WordPress: {str(exc)[:160]}") from exc
 
 
+def wordpress_posts(row: SiteIntegration) -> list[dict]:
+    """Every live or scheduled post of the connected WordPress site, with its WordPress id: address, title, date and status of each. (WordPress does not say which tool made a post, and many sites
+    have one login for everything, so these are all the site's posts, including the ones bevisibe published.)"""
+    import html
+    if row.method != "wordpress" or not row.base_url:
+        raise PublishError("The connected website is not WordPress.")
+    base = row.base_url.rstrip("/")
+    out: list[dict] = []
+    try:
+        with site_client(30) as c:
+            for page in range(1, 6):
+                r = c.get(f"{base}/wp-json/wp/v2/posts", params={"status": "publish,future", "per_page": 100, "page": page, "_fields": "id,link,title,date,status"}, auth=_wp_auth(row))
+                if r.status_code in (401, 403):
+                    raise PublishError("WordPress refused the login. Reconnect the website.")
+                rows = r.json() if r.status_code == 200 else []
+                if not isinstance(rows, list) or not rows:
+                    break
+                out += [{"id": str(x["id"]), "url": x.get("link") or "", "title": html.unescape(((x.get("title") or {}).get("rendered") or "")).strip(), "date": str(x.get("date") or "")[:10], "status": x.get("status")} for x in rows if x.get("id") and x.get("link")]
+                if len(rows) < 100:
+                    break
+    except (httpx.HTTPError, SSRFValidationError, ValueError) as exc:
+        raise PublishError(f"Could not reach WordPress: {str(exc)[:160]}") from exc
+    return out
+
+
+def find_wordpress_post_id(row: SiteIntegration, url: str) -> str | None:
+    """The WordPress id of the post at an address (for a blog that was posted outside bevisibe, so its id was never saved): looked up by its slug with the site's own login."""
+    from urllib.parse import urlsplit
+    if row.method != "wordpress" or not row.base_url or not url:
+        return None
+    slug = urlsplit(url).path.strip("/").rsplit("/", 1)[-1]
+    if not slug:
+        return None
+
+    def norm(u: str) -> str:
+        q = urlsplit(u or "")
+        return f"{(q.hostname or '').lower().removeprefix('www.')}{q.path.rstrip('/')}"
+    try:
+        with site_client(20) as c:
+            r = c.get(f"{row.base_url.rstrip('/')}/wp-json/wp/v2/posts", params={"slug": slug, "status": "any", "_fields": "id,link"}, auth=_wp_auth(row))
+        rows = r.json() if r.status_code == 200 else []
+    except (httpx.HTTPError, SSRFValidationError, ValueError):
+        return None
+    for x in rows if isinstance(rows, list) else []:
+        if norm(x.get("link", "")) == norm(url) and str(x.get("id", "")).isdigit():
+            return str(x["id"])
+    return None
+
+
 def delete_wordpress(row: SiteIntegration, post_id: str) -> dict:
     """Permanently delete ONE WordPress post by its id: DELETE /wp-json/wp/v2/posts/{id}?force=true (skips the Trash).
     Success only when WordPress answers {"deleted": true, "previous": {"id": <the same id>}}. A post that no longer

@@ -328,4 +328,4 @@ def page_detail(db: Session, b: Business, url: str, focus: str | None = None) ->
     return {"url": full, "path": path, "scope": scope, "title": read["title"], "description": read["description"], "h1": read["h1"], "headings": read["headings"][:12], "intro": read["intro"][:300],
             "words": read["words"], "images": read["images"], "images_without_alt": sum(1 for a in read["alts"] if not a), "keywords": rows, "notes": notes,
             "content": {"title": read["title"], "description": read["description"], "h1": read["h1"], "headings": read["headings"][:20], "paragraphs": [x[:420] for x in read["paragraphs"]]},
-            "main_keyword": mine["primary"] if mine else None}
+            "main_keyword": mine["primary"] if mine else None, "tracked_total": len(kws)}

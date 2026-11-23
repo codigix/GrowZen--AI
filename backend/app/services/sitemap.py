@@ -5,6 +5,7 @@ Every fetch goes through the SSRF-safe transport (DNS validated and pinned on ea
 server makes the requests itself.
 """
 import logging
+import re
 from urllib.parse import urljoin, urlsplit
 from xml.etree import ElementTree
 
@@ -29,7 +30,7 @@ def discover_site_urls(base_url: str, max_pages: int, *, client: httpx.Client | 
     return [u for u, _ in discover_site_entries(base_url, max_pages, client=client)]
 
 
-def discover_site_entries(base_url: str, max_pages: int, *, client: httpx.Client | None = None) -> list[tuple[str, str | None]]:
+def discover_site_entries(base_url: str, max_pages: int, *, client: httpx.Client | None = None, child_filter: "re.Pattern[str] | None" = None) -> list[tuple[str, str | None]]:
     """Up to max_pages (url, lastmod) pairs from the site's sitemaps; lastmod is the sitemap's own date for the page, or None."""
     validated = resolve_and_validate(base_url)
     origin = f"{validated.scheme}://{validated.hostname}" + (f":{validated.port}" if validated.port not in (80, 443) else "")
@@ -65,7 +66,7 @@ def discover_site_entries(base_url: str, max_pages: int, *, client: httpx.Client
             tag = root.tag.lower()
             if tag.endswith("sitemapindex"):
                 for loc in root.findall("sm:sitemap/sm:loc", _NS) or root.findall(".//{*}sitemap/{*}loc"):
-                    if loc.text:
+                    if loc.text and (child_filter is None or child_filter.search(loc.text)):  # e.g. only the posts' sitemap of a site that keeps its blog posts apart from its pages
                         queue.append(loc.text.strip())
             elif tag.endswith("urlset"):
                 for el in root.findall("sm:url", _NS) or root.findall(".//{*}url"):

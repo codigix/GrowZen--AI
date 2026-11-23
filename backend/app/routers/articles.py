@@ -159,6 +159,78 @@ def list_articles(b: Business = Depends(get_business), db: Session = Depends(get
     return {"articles": [{**row(a, exclude={"body"}), **asch.state_of(a, latest.get(a.id))} for a in found]}
 
 
+_BLOGISH = re.compile(r"/(blogs?|articles?|news|insights|posts?|resources|knowledge)(/|$)", re.I)
+
+
+def _norm_url(u: str) -> str:
+    from urllib.parse import urlsplit
+    q = urlsplit(u or "")
+    return f"{(q.hostname or '').lower().removeprefix('www.')}{q.path.rstrip('/')}?{q.query}"
+
+
+@router.get("/site-blogs")
+def blogs_on_the_website(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The blogs the website's sitemap lists (addresses with /blog/, /articles/, /news/...), minus the ones already in the list: what is posted on the site but not known here."""
+    from urllib.parse import urlsplit
+    from ..services import sitemap
+    if not b.website:
+        raise HTTPException(409, "Add the project's website first.")
+    have = {_norm_url(x.wp_url or x.react_url or "") for x in db.scalars(select(Article).where(Article.business_id == b.id)) if x.wp_status != "deleted" and (x.wp_url or x.react_url)}
+    # 1. a WordPress site says exactly which pages are posts, with their titles and dates; 2. else the sitemap of posts (post-sitemap.xml, blog-sitemap.xml...); 3. else addresses that look like a blog
+    found = _wordpress_posts(b.website)
+    source = "wordpress"
+    if not found:
+        try:
+            everything = sitemap.discover_site_entries(b.website, 400)
+        except Exception as exc:  # noqa: BLE001 - an unreachable site or a missing sitemap is explained, not a crash
+            raise HTTPException(502, f"The sitemap could not be read: {str(exc)[:160]}") from exc
+        try:  # a site that keeps its posts in their own sitemap (post-sitemap.xml, blog-sitemap.xml): everything in it is a post
+            posts_only = sitemap.discover_site_entries(b.website, 400, child_filter=re.compile(r"(post|blog|article|news)", re.I))
+        except Exception:  # noqa: BLE001
+            posts_only = []
+        if posts_only and len(posts_only) < len(everything):
+            source = "sitemap"
+            found = [{"url": u, "lastmod": m, "title": (urlsplit(u).path.strip("/").rsplit("/", 1)[-1]).replace("-", " ").replace("_", " ").capitalize()} for u, m in posts_only]
+        else:  # one flat sitemap: only addresses that look like a blog count
+            source = "addresses"
+            for url, lastmod in everything:
+                path = urlsplit(url).path.rstrip("/")
+                parts = [p for p in path.split("/") if p]
+                if len(parts) >= 2 and _BLOGISH.search(path + "/"):  # the blog's own index page is not a blog
+                    found.append({"url": url, "lastmod": lastmod, "title": parts[-1].replace("-", " ").replace("_", " ").strip().capitalize()})
+    out = [x for x in found if urlsplit(x["url"]).path.strip("/") and _norm_url(x["url"]) not in have]
+    return {"blogs": out[:200], "found": len(out), "source": source}
+
+
+def _wordpress_posts(website: str | None) -> list[dict]:
+    """The posts of a WordPress site from its public REST address (/wp-json/wp/v2/posts): address, title and date of each. Empty when the site is not WordPress or hides it."""
+    import html
+    from urllib.parse import urlsplit
+    from ..services.net import site_client
+    p = urlsplit(website if (website or "").startswith("http") else f"https://{website or ''}")
+    if not p.hostname:
+        return []
+    origin = f"{p.scheme}://{p.netloc}"
+    out: list[dict] = []
+    client = site_client(12)
+    try:
+        for page in (1, 2, 3):
+            r = client.get(f"{origin}/wp-json/wp/v2/posts", params={"per_page": 100, "page": page, "_fields": "link,title,date,status"})
+            if r.status_code != 200 or "json" not in (r.headers.get("content-type") or ""):
+                break
+            rows = r.json()
+            if not isinstance(rows, list) or not rows:
+                break
+            out += [{"url": x["link"], "lastmod": str(x.get("date") or "")[:10] or None, "title": html.unescape(((x.get("title") or {}).get("rendered") or "")).strip()} for x in rows if x.get("link") and x.get("status", "publish") == "publish"]
+            if len(rows) < 100:
+                break
+    except Exception:  # noqa: BLE001 - not WordPress, blocked or slow: the sitemap is used instead
+        return []
+    finally:
+        client.close()
+    return out
+
+
 @router.get("/calendar")
 def calendar(month: str | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """The Publishing Calendar: every article scheduled in GrowZen (and what became of it) in one month (YYYY-MM)."""
@@ -633,6 +705,147 @@ def _hold_for_later(db: Session, b: Business, a: Article, target: SiteIntegratio
 @router.post("/{article_id}/publish-wordpress")
 def publish_wordpress(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     return publish(article_id, PublishIn(), b, db)
+
+
+@router.post("/sync-from-website")
+def sync_from_website(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Bring in the connected WordPress site's posts. New ones are added (with their WordPress id, so deleting works), and a blog added by hand that is the same post is linked to it. WordPress does not say which tool made a post, so every post of the site comes in."""
+    from ..services import article_publishing as ap
+    target = ap.site_target(db, b)
+    if target is None:
+        raise HTTPException(409, "Your website is not connected yet (Publishing Setup), so its posts cannot be fetched.")
+    if target.method != "wordpress":
+        raise HTTPException(409, f"Your website is connected as {target.method}. Fetching posted blogs works for WordPress only.")
+    try:
+        posts = sp.wordpress_posts(target)
+    except sp.PublishError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    mine = {_norm_url(x.wp_url or ""): x for x in db.scalars(select(Article).where(Article.business_id == b.id)) if x.wp_url and x.wp_status != "deleted"}
+    added = linked = 0
+    for p in posts:
+        have = mine.get(_norm_url(p["url"]))
+        status = "publish" if p["status"] == "publish" else "future"
+        if have is not None:
+            if not have.wp_post_id or have.publish_method == "existing":
+                have.wp_post_id, have.publish_method, have.wp_status = p["id"], "wordpress", status
+                linked += 1
+            continue
+        db.add(Article(business_id=b.id, keyword=(p["title"] or "Blog")[:255], title=(p["title"] or None), status="completed", body="", wp_post_id=p["id"], wp_url=p["url"], wp_status=status,
+                       publish_method="wordpress", slug=(p["url"].rstrip("/").rsplit("/", 1)[-1] or None), generated_at=datetime.now(timezone.utc)))
+        added += 1
+    db.commit()
+    return {"found": len(posts), "added": added, "linked": linked}
+
+
+class BulkIn(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=40)
+
+
+@router.post("/existing/bulk", status_code=201)
+def add_existing_bulk(body: BulkIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Add several blogs that are already on the website: each one's title is read from its own page. Only addresses on the project's website are taken; nothing is changed on the site."""
+    from urllib.parse import urlsplit
+    from bs4 import BeautifulSoup
+    from ..services.net import site_client
+    site = (urlsplit(b.website or "").hostname or "").lower().removeprefix("www.")
+    have = {_norm_url(x.wp_url or x.react_url or "") for x in db.scalars(select(Article).where(Article.business_id == b.id)) if x.wp_status != "deleted"}
+    added, skipped = [], []
+    client = site_client(10)
+    try:
+        for url in dict.fromkeys(u.strip() for u in body.urls):
+            p = urlsplit(url)
+            if p.scheme not in ("http", "https") or (p.hostname or "").lower().removeprefix("www.") != site or _norm_url(url) in have:
+                skipped.append(url)
+                continue
+            title = ""
+            try:
+                r = client.get(url)
+                if r.status_code < 400:
+                    soup = BeautifulSoup(r.text, "html.parser")
+                    h1 = soup.find("h1")
+                    title = ((h1.get_text(" ", strip=True) if h1 else "") or (soup.title.string if soup.title and soup.title.string else "")).strip()
+            except Exception:  # noqa: BLE001 - the address is still listed, with its words as the title
+                title = ""
+            slug = p.path.rstrip("/").rsplit("/", 1)[-1]
+            title = (title or slug.replace("-", " ").capitalize() or url)[:255]
+            a = Article(business_id=b.id, keyword=title, title=title, status="completed", body="", wp_url=url, wp_status="publish", publish_method="existing", slug=slug or None, generated_at=datetime.now(timezone.utc))
+            db.add(a)
+            have.add(_norm_url(url))
+            added.append(url)
+    finally:
+        client.close()
+    db.commit()
+    return {"added": len(added), "skipped": len(skipped)}
+
+
+class ExistingIn(BaseModel):
+    title: str = Field(min_length=3, max_length=255)
+    url: str = Field(min_length=8, max_length=500)
+    keyword: str | None = Field(default=None, max_length=255)
+
+
+@router.post("/existing", status_code=201)
+def add_existing(body: ExistingIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Add a blog that is already live on the business's website (written elsewhere), so it is in the list of posted blogs. Nothing is published or changed on the website."""
+    from urllib.parse import urlsplit
+    url = body.url.strip()
+    p = urlsplit(url)
+    if p.scheme not in ("http", "https") or not p.hostname:
+        raise HTTPException(422, "Enter the full address of the blog, starting with https://")
+    site = (urlsplit(b.website or "").hostname or "").lower().removeprefix("www.")
+    if site and (p.hostname or "").lower().removeprefix("www.") != site:
+        raise HTTPException(422, f"That address is not on this project's website ({site}).")
+    def same(u: str) -> str:  # www, scheme and a trailing slash do not make a different blog
+        q = urlsplit(u or "")
+        return f"{(q.hostname or '').lower().removeprefix('www.')}{q.path.rstrip('/')}?{q.query}"
+    if any(same(x.wp_url or x.react_url or "") == same(url) and x.wp_status != "deleted" for x in db.scalars(select(Article).where(Article.business_id == b.id))):
+        raise HTTPException(409, "This blog is already in the list.")
+    a = Article(business_id=b.id, keyword=(body.keyword or body.title).strip()[:255], title=body.title.strip(), status="completed", body="", wp_url=url, wp_status="publish", publish_method="existing",
+                slug=(p.path.rstrip("/").rsplit("/", 1)[-1] or None), generated_at=datetime.now(timezone.utc))
+    db.add(a)
+    db.commit()
+    return row(a, exclude={"body"})
+
+
+@router.delete("/{article_id}/with-website")
+def delete_article_and_website_post(article_id: int, list_only: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Delete the blog from the connected website AND from the list. The list entry is kept when the website refuses, so nothing is lost and it can be tried again.
+    `list_only=true` removes it from the list without touching the website (for a site bevisibe cannot delete from)."""
+    from ..models import ScheduledPost
+    a = _get(db, b, article_id)
+    gone_from_site = False
+    if not list_only:
+        on_wp = a.wp_status not in (None, "deleted") and bool(a.wp_url or a.wp_post_id)
+        on_react = bool(a.react_post_id) and a.react_status not in (None, "deleted")
+        if on_wp:
+            from ..services import article_publishing as ap
+            target = ap.site_target(db, b)
+            if target is None:
+                raise HTTPException(409, "Your website is not connected in the setup, so the blog cannot be deleted from it. Connect it, or delete the blog on the website yourself and use \"Remove from the list only\".")
+            if target.method != "wordpress":
+                raise HTTPException(409, f"Your website is connected as {target.method}, and bevisibe can delete posts from WordPress and the React website only. Delete the blog on the website yourself, then use \"Remove from the list only\".")
+            pid = a.wp_post_id or sp.find_wordpress_post_id(target, a.wp_url or "")
+            if not pid:
+                raise HTTPException(409, "The blog could not be found on WordPress by its address, so it was not deleted. Check the address, or delete it on the website and use \"Remove from the list only\".")
+            try:
+                sp.delete_wordpress(target, pid)
+            except sp.PublishError as exc:
+                raise HTTPException(502, f"WordPress did not delete it, so it is still in the list: {exc}") from exc
+            gone_from_site = True
+        if on_react:
+            from ..services import react_site as rs
+            conn = _react_conn(db, b)
+            try:
+                rs.delete(conn, a.react_post_id)
+            except rs.ReactSiteError as exc:
+                _react_failed(db, conn, exc)
+                raise HTTPException(502, f"The React website did not delete it, so it is still in the list: {exc}") from exc
+            gone_from_site = True
+    for p in db.scalars(select(ScheduledPost).where(ScheduledPost.article_id == a.id, ScheduledPost.status == "pending")):
+        p.status = "cancelled"  # nothing held for later should bring it back
+    db.delete(a)
+    db.commit()
+    return {"deleted": True, "from_website": gone_from_site}
 
 
 @router.delete("/{article_id}", status_code=204)

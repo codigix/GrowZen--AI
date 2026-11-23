@@ -226,7 +226,7 @@ const stageOf = (x) => {
 
 /** Where you stopped: the articles that are not finished (drafts, scheduled, just published and not yet promoted), each with its next step. */
 export function ResumeCard({ articles, onOpen }) {
-  const rows = [...articles].filter(x => x.status !== 'completed' || x.publishing_status !== 'published' || (x.wp_url || x.react_url))
+  const rows = [...articles].filter(x => !(x.publishing_status === 'published' || x.wp_status === 'publish' || x.react_status === 'publish')) // a blog that is already live is listed once, in Posted Blogs
     .sort((a, c) => String(c.updated_at || c.created_at).localeCompare(String(a.updated_at || a.created_at))).slice(0, 5);
   if (!rows.length) return null;
   const open = rows.filter(x => !(x.status === 'completed' && x.publishing_status === 'published'));
