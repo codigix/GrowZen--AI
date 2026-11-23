@@ -270,7 +270,7 @@ def unschedule(task_id: int, b: Business = Depends(get_business), db: Session = 
     t.detail, t.status, t.decided_by, t.decided_at = d, "pending", None, None
     p = db.get(Post, d.get("post_id")) if t.kind == "gbp_post" else None
     if p:
-        p.status, p.approved_at, p.approved_by = "draft", None, None
+        p.status, p.approved_at, p.approved_by, p.scheduled_for = "draft", None, None, None
     log(db, user.name, "autopilot_unscheduled", b.id, task_id=t.id)
     db.commit()
     return _item(db, b, t)

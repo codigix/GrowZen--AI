@@ -859,7 +859,7 @@ function PostsTab({ b, toast }) {
       if (seen.has(p.id) || (p.status === 'published' && p.external_id && live.data)) continue; // a published post whose live copy is above (or was removed on Google) is not listed twice
       const status = p.status === 'published' ? 'live' : p.status;
       const c = clicks.data?.by_post?.[String(p.id)];
-      out.push({ key: `p${p.id}`, local: p, task: taskOf[String(p.id)]?.source === 'autopilot' ? taskOf[String(p.id)] : null, image: p.image_url, heading: headingOf(p), text: p.body, type: String(p.post_type || 'update').toLowerCase(), status, when: p.published_at || p.scheduled_for || p.created_at, cta: p.cta_type, ctaUrl: p.cta_url,
+      out.push({ key: `p${p.id}`, local: p, task: taskOf[String(p.id)]?.source === 'autopilot' ? taskOf[String(p.id)] : null, image: p.image_url, heading: headingOf(p), text: p.body, type: String(p.post_type || 'update').toLowerCase(), status, when: p.status === 'published' ? p.published_at : p.status === 'scheduled' ? p.scheduled_for : p.created_at, cta: p.cta_type, ctaUrl: p.cta_url,
         clicks: c ? c.visits : null, users: c?.users ?? null, clickNote: status === 'live' ? 'No visits counted for this post yet.' : 'Not posted yet, so there are no clicks.' });
     }
     return out;
