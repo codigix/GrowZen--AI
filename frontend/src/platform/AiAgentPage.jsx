@@ -10,7 +10,7 @@ import {
   Send, AlertCircle, Bookmark, Code, ThumbsUp, ThumbsDown
 } from 'lucide-react';
 import {
-  SeoShell, Card, Tabs, Stat, StatusPill, Badge, Button, ErrorNote, Modal,
+  SeoShell, useSeoBusiness, Card, Tabs, Stat, StatusPill, Badge, Button, ErrorNote, Modal,
   Field, inputCls, areaCls, useToast, useAction, useBusinesses, LoadMore
 } from './SeoUi';
 import { api, useApi, usePaged, fmtDateTime } from './seoApi';
@@ -327,10 +327,12 @@ export default function AiAgentPage() {
   const [activityFilter, setActivityFilter] = useState('all');
 
   const { list } = useBusinesses();
-  const tasks = usePaged('/tasks?status=pending', 40); // slabs of 40; the totals come from /tasks/counts
-  const done = usePaged('/tasks?status=applied', 40);
-  const counts = useApi('/tasks/counts');
-  const activity = useApi(tab === 'log' ? '/activity?limit=200' : null);
+  const [business] = useSeoBusiness(); // the project chosen in the switcher: this page shows that project's tasks only
+  const bq = business ? `business_id=${business.id}` : null;
+  const tasks = usePaged(bq ? `/tasks?status=pending&${bq}` : null, 40); // slabs of 40; the totals come from /tasks/counts
+  const done = usePaged(bq ? `/tasks?status=applied&${bq}` : null, 40);
+  const counts = useApi(bq ? `/tasks/counts?${bq}` : null);
+  const activity = useApi(tab === 'log' && bq ? `/activity?limit=200&${bq}` : null);
   const playbook = useApi('/playbook');
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
@@ -384,7 +386,7 @@ export default function AiAgentPage() {
   // Approve every draft the copilot rated low risk (text and markup only).
   const lowRiskCount = (tasks.data || []).filter(t => t.detail?.risk === 'low').length;
   const handleApproveLowRisk = () => run('low_risk', async () => {
-    const r = await api('/tasks/approve-low-risk', { method: 'POST' });
+    const r = await api(`/tasks/approve-low-risk?${bq}`, { method: 'POST' });
     tasks.reload(true); counts.reload(true);
     done.reload(true);
     toast(`${r.approved} low-risk change${r.approved === 1 ? '' : 's'} approved`);
@@ -423,8 +425,6 @@ export default function AiAgentPage() {
     <SeoShell
       title="AI Assistant: approvals and automation"
       subtitle="What the assistant proposes, what you approved, which actions may run on their own, and everything that was done"
-      hideSwitcher
-      needsBusiness={false}
       actions={
         <div className="flex items-center gap-2">
           <Button size="sm" variant="secondary" icon={RefreshCw} busy={refreshing} onClick={refresh} className="text-xs">Refresh</Button>
