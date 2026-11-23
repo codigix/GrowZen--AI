@@ -146,15 +146,16 @@ function GoogleStrip({ r }) {
   );
 }
 
-function Overview({ d, r, setFilter, filters, intel, businessId }) {
+function Overview({ d, r, setFilter, filters, intel, businessId, view = 'overview' }) {
   const h = headline(intel);
   const t = r?.totals;
   const p = r?.previous;
   const ai = d.ai;
   return (
     <div className="space-y-3">
-      {r && <GoogleStrip r={r} />}
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
+      {view === 'overview' && r && <GoogleStrip r={r} />}
+      {view === 'overview' && r && <TrafficPanel d={d} r={r} filters={filters} setFilter={setFilter} />}
+      {view === 'overview' && <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
         {/* AI Search: every AI platform, 0 where nothing was found */}
         <Card className="xl:col-span-2" title={<span className="inline-flex items-center gap-2"><Sparkles size={15} className="text-violet-500" />AI Search</span>}
           action={<Link to="/geo-optimization" className="text-12.5 font-semibold text-indigo-600 hover:underline">Open →</Link>}>
@@ -198,12 +199,11 @@ function Overview({ d, r, setFilter, filters, intel, businessId }) {
             </div>
           )}
         </Card>
-      </div>
+      </div>}
 
-      {r && <TrafficPanel d={d} r={r} filters={filters} setFilter={setFilter} />}
-      {r && <KeywordsPanel r={r} />}
-      <IntelSections intel={intel.data} />
-      <BacklinksSection businessId={businessId} />
+      {view === 'keywords' && r && <KeywordsPanel r={r} />}
+      {view === 'market' && <IntelSections intel={intel.data} />}
+      {view === 'links' && <BacklinksSection businessId={businessId} />}
     </div>
   );
 }
@@ -222,7 +222,7 @@ function TrafficPanel({ d, r, filters, setFilter }) {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 items-start">
       <Card className="xl:col-span-2" title="Distribution by country" subtitle="Google Search clicks by the searcher's country. Pick a country to filter the whole page." pad={false}>
-        <DataTable bare rows={r.countries} rowKey={c => c.code} pageSize={10} sizes={[10, 25, 50]} exportName={`countries-${d.domain || 'site'}`} label="countries" searchPlaceholder="Search countries" minWidth={0} columnsMenu={false} headClass="bg-slate-100 text-slate-700"
+        <DataTable bare rows={r.countries} rowKey={c => c.code} pageSize={6} sizes={[6, 25, 50]} exportName={`countries-${d.domain || 'site'}`} label="countries" searchPlaceholder="Search countries" minWidth={0} columnsMenu={false} headClass="bg-slate-100 text-slate-700"
           rowClass={c => (filters.country === c.code ? 'bg-indigo-50/60' : '')} empty="No country data for this period."
           toolbar={filters.country ? <button type="button" onClick={() => setFilter({ country: '' })} className="h-8 px-3 rounded-lg text-12.5 font-semibold bg-indigo-500 text-white cursor-pointer">Worldwide: clear filter</button> : null}
           columns={[
@@ -244,7 +244,7 @@ function TrafficPanel({ d, r, filters, setFilter }) {
             <label key={k} className="inline-flex items-center gap-1.5 cursor-pointer text-slate-700"><input type="checkbox" checked={show[k]} onChange={e => setShow(s => ({ ...s, [k]: e.target.checked }))} className="accent-indigo-600" style={{ accentColor: c }} />{l}</label>
           ))}
         </div>
-        <div className="h-72">
+        <div className="h-60">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
               <defs>{[['clicks', '#6658dd'], ['impressions', '#1abc9c']].map(([k, c]) => <linearGradient key={k} id={`do-${k}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={c} stopOpacity={0.25} /><stop offset="100%" stopColor={c} stopOpacity={0.02} /></linearGradient>)}</defs>
@@ -409,9 +409,9 @@ function Page({ b }) {
       <ErrorNote>{error}</ErrorNote>
       <Checks checks={(d.checks || []).filter(c => !(c.id === 'google' && c.level !== 'error' && d.traffic.state !== 'ok' && d.traffic.state !== 'no_website'))} internal={d.internal} />
       {d.traffic.state !== 'ok' && d.traffic.state !== 'no_website' && <Connect t={d.traffic} busy={busy === 'connect'} onConnect={connect} internal={d.internal} domain={d.domain} businessId={b.id} onLinked={() => { data.reload(true); intel.reload(true); }} />}
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'overview', label: 'Overview' }, ...(r ? [{ id: 'growth', label: 'Growth report' }] : [])]} />
-      {tab === 'overview' && d.traffic.state === 'ok' && <IntelBar intel={intel.data} loading={intel.loading} market={market} setMarket={setMarket} onRefresh={refreshIntel} refreshing={refreshing} />}
-      {tab === 'overview' && <Overview d={d} r={r} setFilter={set} filters={filters} intel={intel} businessId={b.id} />}
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'overview', label: 'Overview' }, ...(r ? [{ id: 'keywords', label: 'Keywords & pages' }] : []), { id: 'links', label: 'Backlinks' }, ...(d.traffic.state === 'ok' ? [{ id: 'market', label: 'Market intelligence' }] : []), ...(r ? [{ id: 'growth', label: 'Growth report' }] : [])]} />
+      {tab === 'market' && d.traffic.state === 'ok' && <IntelBar intel={intel.data} loading={intel.loading} market={market} setMarket={setMarket} onRefresh={refreshIntel} refreshing={refreshing} />}
+      {tab !== 'growth' && <Overview view={tab} d={d} r={r} setFilter={set} filters={filters} intel={intel} businessId={b.id} />}
       {tab === 'growth' && r && <Growth r={r} />}
       <p className="text-11.5 text-slate-400 flex items-start gap-1.5"><Info size={12} className="mt-0.5 shrink-0" />{r ? `Clicks and impressions are from Google Search Console (${r.property}), ${r.period.days} days. ` : ''}Clicks, impressions, keywords and pages come from Search Console. Authority, backlinks and paid figures are not available from Google. Anything a source does not provide shows as “—” or an empty card with the reason.</p>
       {toastNode}
