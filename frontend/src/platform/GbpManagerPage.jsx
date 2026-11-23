@@ -4,7 +4,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Pencil, ExternalLink, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Save, Store, FileText, ListChecks, Tags, Navigation, CalendarCheck, Clock, ChevronDown, Upload } from 'lucide-react';
 import { SeoShell, Drawer, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useDoubleConfirm, useSeoBusiness, refreshBusinesses, useUrlTab, SkChart, SkList, SkLines, SkScore, SkCard } from './SeoUi';
 import GbpLive from './GbpLive';
-import { AutopilotPanel, waitingFor } from './AutopilotPanels';
+import { AutopilotPanel, ItemCard, waitingFor } from './AutopilotPanels';
 import { BusinessTraffic } from './TrafficPage';
 import AccessGate from './AccessGate';
 import { CategoryEditor, AddressEditor, AttributesEditor, MediaManager, LivePostEditor, isLinked, readBase64 } from './GbpEditors';
@@ -816,6 +816,9 @@ function PostsTab({ b, toast }) {
   const live = useApi(linkedProfile ? `/businesses/${b.id}/gbp/live` : null);
   const clicks = useApi(linkedProfile ? `/businesses/${b.id}/posts/clicks` : null);
   const [liveEdit, setLiveEdit] = useState(null);
+  const auto = useApi(`/businesses/${b.id}/autopilot`); // the drafts the software prepared (and the ones approved for a time): each is a row of the table, edited in a window
+  const [review, setReview] = useState(null);
+  const taskOf = useMemo(() => Object.fromEntries([...(auto.data?.inbox || []), ...(auto.data?.scheduled || [])].filter(i => i.kind === 'gbp_post' && i.post_id != null).map(i => [String(i.post_id), i])), [auto.data]);
   const [only, setOnly] = useState('all'); // the status the table shows: from the strip above it
   const [edit, setEdit] = useState(null);
   const [busy, error, run, setError] = useAction();
@@ -857,17 +860,18 @@ function PostsTab({ b, toast }) {
       if (seen.has(p.id) || (p.status === 'published' && p.external_id && live.data)) continue; // a published post whose live copy is above (or was removed on Google) is not listed twice
       const status = p.status === 'published' ? 'live' : p.status;
       const c = clicks.data?.by_post?.[String(p.id)];
-      out.push({ key: `p${p.id}`, local: p, image: p.image_url, heading: headingOf(p), text: p.body, type: String(p.post_type || 'update').toLowerCase(), status, when: p.published_at || p.scheduled_for || p.created_at, cta: p.cta_type, ctaUrl: p.cta_url,
+      out.push({ key: `p${p.id}`, local: p, task: taskOf[String(p.id)]?.source === 'autopilot' ? taskOf[String(p.id)] : null, image: p.image_url, heading: headingOf(p), text: p.body, type: String(p.post_type || 'update').toLowerCase(), status, when: p.published_at || p.scheduled_for || p.created_at, cta: p.cta_type, ctaUrl: p.cta_url,
         clicks: c ? c.visits : null, users: c?.users ?? null, clickNote: status === 'live' ? 'No visits counted for this post yet.' : 'Not posted yet, so there are no clicks.' });
     }
     return out;
-  }, [posts.data, live.data, clicks.data]);
+  }, [posts.data, live.data, clicks.data, taskOf]);
   const delLive = (p) => ask({ what: 'this post', effect: 'It is removed from your Google Business Profile, so customers will no longer see it.', onConfirm: () => run(`d${p.id}`, async () => { await api(`/businesses/${b.id}/gbp/live-post?name=${encodeURIComponent(p.id)}`, { method: 'DELETE' }); toast('Post deleted from Google'); live.reload(true); posts.reload(true); }) });
   const [ask, confirmNode] = useDoubleConfirm();
   const del = (id) => ask({ what: 'this post', effect: 'The draft or scheduled post is deleted and will not be published.', onConfirm: () => run(`d${id}`, async () => { await api(`/businesses/${b.id}/posts/${id}`, { method: 'DELETE' }); posts.reload(true); }) });
   return (
     <>
       {confirmNode}
+      <div className="mb-3"><AutopilotPanel bid={b.id} feature="posts" hideItems onChanged={() => { auto.reload(true); posts.reload(true); }} /></div>
       <Card pad={false} title={`Posts (${tableRows.length})`} subtitle="Every post of this profile: the ones live on Google, scheduled and drafts."
         action={<div className="flex gap-2"><Button variant="ai" icon={Sparkles} busy={busy === 'draft'} onClick={aiDraft}>AI draft</Button><Button variant="primary" icon={Plus} onClick={open}>New post</Button></div>}>
         <ErrorNote>{!edit && error}</ErrorNote>
@@ -903,6 +907,7 @@ function PostsTab({ b, toast }) {
                   <span className="inline-flex flex-wrap justify-end gap-1.5">
                     {r.url && <a href={r.url} target="_blank" rel="noreferrer noopener"><Act icon={ExternalLink} tone="sky" tip="Open on Google: see the post as customers see it." /></a>}
                     {r.live && <Act icon={Pencil} tone="indigo" tip="Edit: change this live post on Google." onClick={() => setLiveEdit(r.live)} />}
+                    {r.task && <Act icon={Pencil} tone="violet" tip={r.status === 'scheduled' ? 'Open: see or change the text, picture and time of this scheduled post.' : 'Edit and approve: change the text, picture or time, then approve it for its time or publish it.'} onClick={() => setReview(r.task)}>{r.status === 'scheduled' ? 'Open' : 'Edit & approve'}</Act>}
                     {r.local && r.status !== 'live' && linkedProfile && <Act tone="green" busy={busy === `p${r.local.id}`} tip={r.status === 'scheduled' ? 'Post now: send it at once instead of at the scheduled time.' : 'Post now: put it on Google at once.'} onClick={() => publish(r.local.id)}>Post now</Act>}
                     {r.local && r.status !== 'live' && linkedProfile && <Act tone="indigo" tip={r.status === 'scheduled' ? 'Change time: move the time it goes live.' : 'Schedule: choose when it goes live.'} onClick={() => setReschedule({ id: r.local.id, date: dayStr(1), time: '09:00' })}>{r.status === 'scheduled' ? 'Change time' : 'Schedule'}</Act>}
                     {r.status === 'scheduled' && <Act tone="amber" busy={busy === `u${r.local.id}`} tip="Unschedule: take it back to a draft; nothing is sent." onClick={() => unschedule(r.local.id)}>Unschedule</Act>}
@@ -912,6 +917,9 @@ function PostsTab({ b, toast }) {
             ]} />
         )}
       </Card>
+      <Modal open={Boolean(review)} title="Review post" onClose={() => setReview(null)} width="max-w-3xl">
+        {review && <ItemCard key={review.id} it={review} bid={b.id} onChanged={async () => { setReview(null); await Promise.all([auto.reload(true), posts.reload(true), live.reload(true)]); }} />}
+      </Modal>
       {liveEdit && <LivePostEditor b={b} post={liveEdit} onClose={() => setLiveEdit(null)} onSaved={() => { setLiveEdit(null); toast('Post updated on Google'); live.reload(true); }} />}
       <Modal open={Boolean(edit)} title="New post" onClose={() => setEdit(null)} width="max-w-5xl" footer={<><Button onClick={() => setEdit(null)}>Cancel</Button><Button variant="primary" icon={Send} busy={busy === 'save'} disabled={!edit?.body.trim() || !edit?.image_url || postText(edit).length > 1500 || Boolean(postProblem(edit)) || Boolean(timingProblem(edit, isLinked(b)))} title={!edit?.image_url ? 'Add a picture first' : timingProblem(edit, isLinked(b)) || ''} onClick={() => save()}>{edit?.timing === 'now' ? 'Post now' : edit?.timing === 'schedule' ? 'Schedule post' : 'Save draft'}</Button></>}>
         {edit && <PostEditor b={b} edit={edit} setEdit={setEdit} toast={toast} error={error} />}
@@ -1121,7 +1129,7 @@ function Manager({ b, tab, setTab, toast, onConnect, onCreate }) {
           )}
           {section === 'reviews' && !(b.gbp_location && b.connection_id) && <PublicReviews b={b} />}
           {section === 'reviews' && (b.gbp_location && b.connection_id) && <AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="replies" /><ReviewsSection b={b} toast={toast} /></div></AccessGate>}
-          {section === 'posts' && <><SectionHead title="Posts & Content" subtitle="What's New, Offer and Event posts with approval before publishing" sources={['google', 'ai']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="posts" /><PostsTab b={b} toast={toast} /></div></AccessGate></>}
+          {section === 'posts' && <><SectionHead title="Posts & Content" subtitle="What's New, Offer and Event posts with approval before publishing" sources={['google', 'ai']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><PostsTab b={b} toast={toast} /></div></AccessGate></>}
           {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="photos" /><PhotosTab b={b} toast={toast} /></div></AccessGate></>}
           {section === 'competitors' && <CompetitorSection b={b} />}
           {section === 'local-seo' && <LocalSeoSection b={b} />}

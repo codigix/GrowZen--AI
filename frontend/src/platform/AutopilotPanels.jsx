@@ -16,7 +16,7 @@ const DAYS = [['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['
 const KIND = { keyword_add: ['Keyword', 'bg-sky-50 text-sky-700', Search], gbp_post: ['Google post', 'bg-indigo-50 text-indigo-700', Calendar], review_reply: ['Review reply', 'bg-amber-50 text-amber-700', MessageSquare], profile_edit: ['Profile rewrite', 'bg-violet-50 text-violet-700', User], gbp_photo: ['Photo', 'bg-emerald-50 text-emerald-700', ImageIcon] };
 const SHOTS = ['Storefront from the street, in daylight, with the whole sign visible', 'The inside: a wide shot from the entrance', 'Your best 5 products or pieces of work, each well lit', 'The team at work (with their permission)', 'Before and after, if it applies', 'The opening-hours sign and the street number'];
 
-function ItemCard({ it, bid, onChanged }) {
+export function ItemCard({ it, bid, onChanged }) {
   const [text, setText] = useState(it.text || it.changes?.description || '');
   const [at, setAt] = useState(toInput(it.publish_at));
   const [busy, setBusy] = useState('');
