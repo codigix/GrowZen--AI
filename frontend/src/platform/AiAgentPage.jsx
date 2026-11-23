@@ -234,7 +234,7 @@ function TaskCard({ t, businessName, onDone }) {
             </button>
           </div>
           <p className="text-12.5 text-slate-700">{draft.summary}</p>
-          {draft.changes.map((c, i) => <DraftChange key={i} c={c} />)}
+          {(draft.changes || []).map((c, i) => <DraftChange key={i} c={c} />)}
           {draft.ai_error && <p className="text-11 text-amber-700">AI draft unavailable ({draft.ai_error}); showing the rule-based draft.</p>}
         </div>
       )}
