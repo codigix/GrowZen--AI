@@ -344,6 +344,35 @@ def build_business_brief(b: Business = Depends(get_business), db: Session = Depe
     return {"brief": brief}
 
 
+class BriefEdit(BaseModel):
+    business_type: str | None = Field(default=None, max_length=200)
+    business_model: str | None = Field(default=None, max_length=80)
+    industry_focus: str | None = Field(default=None, max_length=200)
+    market: str | None = Field(default=None, max_length=400)
+    competitors_are: str | None = Field(default=None, max_length=900)
+    competitors_are_not: str | None = Field(default=None, max_length=900)
+    offerings: list[str] | None = Field(default=None, max_length=20)
+    audience: list[str] | None = Field(default=None, max_length=20)
+    customer_search_terms: list[str] | None = Field(default=None, max_length=20)
+    competitor_queries: list[str] | None = Field(default=None, max_length=20)
+    reset: list[str] | None = Field(default=None, max_length=20)
+
+
+@router.patch("/{business_id}/business-brief")
+def edit_business_brief(body: BriefEdit, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Correct the business understanding by hand. What is written here is kept when the understanding is refreshed, and the competitor and keyword research start from it."""
+    from ..services import business_understanding
+    data = body.model_dump(exclude_unset=True)
+    reset = data.pop("reset", None)
+    try:
+        brief = business_understanding.save_edits(db, b, {k: v for k, v in data.items() if v is not None}, reset, user.name)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    log(db, user.name, "business_understanding_edited", b.id, fields=sorted(data) + [f"reset:{k}" for k in reset or []])
+    db.commit()
+    return {"brief": brief}
+
+
 @router.get("/{business_id}/dashboard")
 def project_dashboard(range: str = "all", start: date | None = None, end: date | None = None, group: str | None = None, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Counts, movement over time and the actions taken, for the project dashboard. Everything so far by default; `range` (30d, 90d, 180d, 365d, this_month, custom with start and end) narrows it."""

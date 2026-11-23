@@ -88,3 +88,25 @@ def test_without_google_ads_the_planner_source_says_why(monkeypatch):
     monkeypatch.setattr(keyword_metrics, "enabled", lambda: False)
     found, note = kw.from_planner(None, SimpleNamespace())
     assert found == [] and "Google Ads is not set up" in note
+
+
+def test_what_the_owner_corrects_is_kept_when_the_understanding_is_refreshed(client, monkeypatch):
+    bid = _biz(client, "Edit Co")
+    monkeypatch.setattr(bu, "read_site", lambda url, max_pages=8: PAGES)
+    monkeypatch.setattr(bu, "_ai", lambda b, pages, fct: {"overview": "An agency.", "business_model": "agency", "business_type": "agency", "customer_search_terms": ["marketing"], "competitors_are": "Agencies."})
+    url = f"/api/v1/businesses/{bid}/business-brief"
+    assert client.patch(url, json={"business_type": "x"}).status_code == 409  # nothing to correct before it was built
+    client.post(url)
+    r = client.patch(url, json={"business_type": "Digital marketing agency for clinics", "customer_search_terms": ["SEO for Doctors", "seo for doctors", "clinic marketing"], "competitors_are": "Agencies that serve clinics in Pune."}).json()["brief"]
+    assert r["business_type"] == "Digital marketing agency for clinics" and r["customer_search_terms"] == ["seo for doctors", "clinic marketing"] and sorted(r["edits"]) == ["business_type", "competitors_are", "customer_search_terms"]
+    again = client.post(url).json()["brief"]  # a refresh: the AI answers again, the owner's words stay
+    assert again["business_type"] == "Digital marketing agency for clinics" and again["competitors_are"] == "Agencies that serve clinics in Pune." and again["overview"] == "An agency."
+    reset = client.patch(url, json={"reset": ["business_type"]}).json()["brief"]
+    assert "business_type" not in reset["edits"]
+    assert client.post(url).json()["brief"]["business_type"] == "agency"  # handed back to the AI's reading
+
+
+def test_the_prompt_names_the_specific_kind_of_business_and_the_phrases_that_find_competitors():
+    b = SimpleNamespace(business_brief={"business_type": "healthcare digital marketing agency", "business_model": "agency", "industry_focus": "clinics", "competitor_queries": ["clinic seo pune"], "competitors_are": "Agencies for clinics"})
+    text = bu.prompt_block(b)
+    assert "healthcare digital marketing agency" in text and "clinics" in text and "clinic seo pune" in text and bu.basis(b)["model"] == "healthcare digital marketing agency"
