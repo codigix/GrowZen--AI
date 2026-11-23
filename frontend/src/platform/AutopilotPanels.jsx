@@ -166,39 +166,6 @@ const FEATURES = {
   keywords: { title: 'Keyword suggestions', kinds: ['keyword_add'], what: 'keywords', hint: 'Searches your website is about, and ones competitors win, are suggested every week. A keyword is tracked only after you approve it.' }
 };
 
-function PhotoUploader({ bid, onChanged, queued }) {
-  const [cat, setCat] = useState('ADDITIONAL');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-  const input = useRef(null);
-  const read = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res({ name: f.name, data: r.result, category: cat }); r.onerror = rej; r.readAsDataURL(f); });
-  const pick = async (e) => {
-    const files = [...(e.target.files || [])].slice(0, 6);
-    if (!files.length) return;
-    setBusy(true); setMsg('');
-    try {
-      const out = await api(`/businesses/${bid}/autopilot/photos`, { method: 'POST', body: { files: await Promise.all(files.map(read)) }, timeout: 180000 });
-      setMsg(`${out.added.length} photo${out.added.length === 1 ? '' : 's'} queued. ${arr(out.errors).join(' ')}`);
-      await onChanged();
-    } catch (er) { setMsg(er.message || 'The upload did not work.'); } finally { setBusy(false); if (input.current) input.current.value = ''; }
-  };
-  return (
-    <div className="mt-3 pt-3 border-t border-slate-100">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <label className="text-12.5 font-semibold text-slate-700" htmlFor="phototype">Photo type</label>
-        <Select id="phototype" className="h-9 w-44 rounded-lg border border-slate-300 bg-white px-3 text-13" aria-label="Photo type" value={cat} onChange={e => setCat(e.target.value)}>
-          {['ADDITIONAL', 'EXTERIOR', 'INTERIOR', 'PRODUCT', 'AT_WORK', 'TEAMS', 'FOOD_AND_DRINK', 'COVER', 'PROFILE'].map(c => <option key={c} value={c}>{c.replaceAll('_', ' ').toLowerCase().replace(/^./, s => s.toUpperCase())}</option>)}
-        </Select>
-        <input ref={input} type="file" accept="image/*" multiple className="sr-only" onChange={pick} />
-        <Button size="sm" variant="primary" icon={busy ? Loader2 : Upload} disabled={busy || queued >= 12} onClick={() => input.current?.click()}>{busy ? 'Uploading…' : 'Choose photos (up to 6)'}</Button>
-        <span className="text-12 text-slate-500 underline decoration-dotted cursor-help" title={SHOTS.map((s, i) => `${i + 1}. ${s}`).join(' | ')}>What to photograph</span>
-        {queued > 0 && <span className="text-12 text-slate-500 ml-auto">{queued} waiting for approval</span>}
-      </div>
-      {msg && <p className="mt-2 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{msg}</p>}
-    </div>
-  );
-}
-
 function PanelSettings({ feature, d, bid, onChanged }) {
   const [f, setF] = useState(d.settings);
   const [busy, setBusy] = useState(false);
@@ -290,7 +257,6 @@ export function AutopilotPanel({ bid, feature, hideItems = false, onChanged }) {
         {!d.linked && feature !== 'keywords' && <p className="mt-2 text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex gap-2"><AlertTriangle size={15} className="mt-0.5 shrink-0" />The Google Business Profile is not linked, so nothing can be published yet. Drafts are still prepared.</p>}
         {note && !hideItems && <p className="mt-2 text-13 text-slate-700 bg-slate-50 rounded-lg px-3 py-2" role="status">{note}</p>}
         {showSet && <PanelSettings feature={feature} d={d} bid={bid} onChanged={load} />}
-        {feature === 'photos' && !hideItems && <PhotoUploader bid={bid} onChanged={load} queued={inbox.length} />}
       </Card>
       {hideItems ? null : <>
       {posts.length > 1 && d.linked && <div><Button size="sm" icon={bulk ? Loader2 : Check} disabled={bulk} onClick={approveAll}>Approve all {posts.length} posts at their times</Button></div>}

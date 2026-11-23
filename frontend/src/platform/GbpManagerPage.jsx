@@ -929,14 +929,14 @@ function PostsTab({ b, toast }) {
   );
 }
 
-function PhotosTab({ b, toast }) {
+function PhotosTab({ b, toast, onQueued }) {
   const [cover, setCover] = useState(b.cover_photo || '');
   const [logo, setLogo] = useState(b.logo || '');
   const [busy, error, run] = useAction();
   const save = () => run('save', async () => { await api(`/businesses/${b.id}`, { method: 'PATCH', body: { cover_photo: cover || null, logo: logo || null } }); await refreshBusinesses(); toast('Saved'); });
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-3 items-start">
-      <MediaManager b={b} toast={toast} />
+      <MediaManager b={b} toast={toast} onQueued={onQueued} />
       <div className="space-y-3">
       <Card title="Photo checklist" subtitle="What Google likes to see">
         <div className="flex items-baseline gap-2"><span className="text-3xl font-semibold text-slate-900 tabular-nums">{b.photo_count ?? '—'}</span><span className="text-12 text-slate-500">{b.photo_count == null ? 'Connect Google to count photos.' : 'photos on Google'}</span></div>
@@ -1123,7 +1123,7 @@ function Manager({ b, tab, setTab, toast, onConnect, onCreate }) {
           {section === 'reviews' && !(b.gbp_location && b.connection_id) && <PublicReviews b={b} />}
           {section === 'reviews' && (b.gbp_location && b.connection_id) && <AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="replies" /><ReviewsSection b={b} toast={toast} /></div></AccessGate>}
           {section === 'posts' && <><AccessGate b={b} kind="gmb"><div className="space-y-5"><PostsTab b={b} toast={toast} /></div></AccessGate></>}
-          {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="photos" /><PhotosTab b={b} toast={toast} /></div></AccessGate></>}
+          {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel key={`ph${version}`} bid={b.id} feature="photos" /><PhotosTab b={b} toast={toast} onQueued={() => setVersion(v => v + 1)} /></div></AccessGate></>}
           {section === 'competitors' && <CompetitorSection b={b} />}
           {section === 'local-seo' && <LocalSeoSection b={b} />}
           {section === 'reports' && <GbpReportsSection b={b} toast={toast} />}

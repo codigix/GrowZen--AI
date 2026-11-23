@@ -205,7 +205,8 @@ function VideoTile({ m }) {
 }
 
 /** Photos on the profile: upload a file, or a public image link, in a Google category; delete any photo. */
-export function MediaManager({ b, toast }) {
+export function MediaManager({ b, toast, onQueued }) {
+  const [when, setWhen] = useState('now'); // now: straight to Google | queue: waits as a draft for approval, sent on the next free photo day
   const live = useApi(isLinked(b) ? `/businesses/${b.id}/gbp/live` : null);
   const [category, setCategory] = useState('EXTERIOR');
   const [url, setUrl] = useState('');
@@ -222,6 +223,13 @@ export function MediaManager({ b, toast }) {
     if (!video && !/^image\/(jpeg|png)$/.test(file.type)) throw new Error('Use a JPG or PNG photo, or an MP4 video.');
     if (video && file.type !== 'video/mp4') throw new Error('Videos must be MP4 files.');
     if (file.size > 25 * 1024 * 1024) throw new Error(`${video ? 'Videos' : 'Photos'} must be under 25 MB here. Google itself accepts videos up to 75 MB: compress it, or upload it in Google Maps.`);
+    if (when === 'queue') {
+      if (video) throw new Error('Videos cannot be scheduled here: choose Upload now for a video.');
+      const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Could not read the file')); r.readAsDataURL(file); });
+      const out = await api(`/businesses/${b.id}/autopilot/photos`, { method: 'POST', body: { files: [{ name: file.name, data, category }] }, timeout: 180000 });
+      if (!out.added?.length) throw new Error((out.errors || []).join(' ') || 'The photo was not queued.');
+      toast('Photo queued: it waits for your approval below, then goes to Google on its photo day'); onQueued?.(); return;
+    }
     await api(`/businesses/${b.id}/gbp/media`, { method: 'POST', body: { category, data_base64: await readBase64(file), content_type: file.type || 'image/jpeg' } });
     toast(video ? 'Video sent to your Google Business Profile. Google checks videos before showing them.' : 'Photo uploaded to your Google Business Profile'); await refresh();
   });
@@ -239,7 +247,9 @@ export function MediaManager({ b, toast }) {
         <div className="px-5 pb-3 flex flex-wrap gap-2 items-center">
           <Select className={`${inputCls} w-40`} value={category} onChange={e => setCategory(e.target.value)} aria-label="Photo category">{MEDIA.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,video/mp4" className="hidden" onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
-          <Button variant="primary" icon={Upload} busy={busy === 'up'} onClick={() => fileRef.current?.click()}>Upload photo or video</Button>
+          <Select className={`${inputCls} w-52`} value={when} onChange={e => setWhen(e.target.value)} aria-label="When to send">
+            <option value="now">Upload now</option><option value="queue">Schedule: I approve first</option></Select>
+          <Button variant="primary" icon={Upload} busy={busy === 'up'} onClick={() => fileRef.current?.click()}>{when === 'queue' ? 'Choose photo to schedule' : 'Upload photo or video'}</Button>
           <span className="text-12 text-slate-400 hidden md:inline">or</span>
           <input className={`${inputCls} flex-1 min-w-[200px]`} placeholder="Paste a public image link (https://…)" value={url} onChange={e => setUrl(e.target.value)} />
           <Button busy={busy === 'url'} disabled={!/^https?:\/\//.test(url.trim())} onClick={addUrl}>Add link</Button>
