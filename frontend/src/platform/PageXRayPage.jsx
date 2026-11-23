@@ -7,6 +7,7 @@ import { api, useApi } from './seoApi';
 import { HistoryPanel, RenderingCard, SiteScan } from './PageXRayHistory';
 import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 import FullPageCard from './PageXRayLighthouse';
+import { PageOverview } from './KeywordPlacement';
 
 const MAX_URLS = 3;
 // The fix tasks of the page on screen (own website only): { 'seo.title': {id, status, severity, how, ...} }, and the project id.
@@ -318,6 +319,57 @@ function ChecksTable({ d, filter }) {
   );
 }
 
+const KW_PLACES = [['title', 'Title'], ['heading', 'Heading'], ['description', 'Description'], ['intro', 'First paragraph'], ['subheading', 'Sections']];
+
+/** The keywords from the project's own keyword list that belong on this page, where each one is already used (title, heading, description, first paragraph, sections), and what is still missing. */
+function PageKeywords({ d }) {
+  const { bid } = useContext(FixCtx);
+  const url = d.final_url || d.url;
+  const [res, setRes] = useState(null);
+  const [err, setErr] = useState('');
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!bid || !url) return undefined;
+    let live = true;
+    setRes(null); setErr('');
+    api(`/businesses/${bid}/keyword-placement/page`, { method: 'POST', body: { url }, timeout: 90000 }).then(r => { if (live) setRes(r); }).catch(e => { if (live) setErr(e.message || 'Could not match the keywords to this page.'); });
+    return () => { live = false; };
+  }, [bid, url]);
+  const rows = res?.keywords || [];
+  const inPlace = rows.filter(k => KW_PLACES.some(([key]) => k.used?.[key])).length;
+  return (
+    <Card2 icon={Search} title="Keywords on this page" hint="The keywords from your Keywords section that belong on this page, and where each one is used"
+      aside={res ? <Pill tint="bg-indigo-50 text-indigo-700">{inPlace} of {rows.length} used</Pill> : null}>
+      {!bid ? <p className="text-14 text-slate-500">Open a page of your own website to see which of your keywords it uses.</p>
+        : err ? <p className="text-14 text-slate-500">{err}</p>
+          : !res ? <p className="text-14 text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Matching your keywords to this page…</p>
+            : rows.length === 0 ? (res.tracked_total === 0
+              ? <p className="text-14 text-slate-600">No keywords are added in your Keywords section yet. Add some in <Link to="/keyword-management/workspace" className="text-indigo-600 hover:underline">Keyword Workspace</Link> and they show here, page by page.</p>
+              : <p className="text-14 text-slate-600">None of your {res.tracked_total} keywords belong on this page{res.scope?.takes ? `. ${res.scope.takes}` : '.'} Map keywords to pages in <Link to="/keyword-management/mapping" className="text-indigo-600 hover:underline">Keyword Mapping</Link>.</p>) : (
+              <div className="space-y-3">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-13 min-w-[640px]">
+                    <thead className="text-12 uppercase tracking-wide text-slate-500 bg-slate-50"><tr><th className="text-left px-3 py-2 font-semibold">Keyword</th><th className="text-left px-3 py-2 font-semibold">Role</th><th className="text-right px-3 py-2 font-semibold">Searches / mo</th><th className="text-right px-3 py-2 font-semibold">Rank</th><th className="text-left px-3 py-2 font-semibold">Used in</th><th className="text-right px-3 py-2 font-semibold">To add</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {rows.map(k => (
+                        <tr key={k.id}>
+                          <td className="px-3 py-2 font-medium text-slate-900">{k.keyword}</td>
+                          <td className="px-3 py-2"><Pill tint={k.role === 'main' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}>{k.role === 'main' ? 'Main' : 'Supporting'}</Pill></td>
+                          <td className="px-3 py-2 text-right tabular-nums">{k.volume ?? '—'}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{k.rank ?? '—'}</td>
+                          <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{KW_PLACES.map(([key, label]) => <Pill key={key} tint={k.used?.[key] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'} title={k.used?.[key] ? `Used in the ${label.toLowerCase()}` : `Not in the ${label.toLowerCase()}`}>{label}</Pill>)}</div></td>
+                          <td className="px-3 py-2 text-right tabular-nums">{k.to_add?.length ? <span className="font-semibold text-amber-700">{k.to_add.length}</span> : <span className="text-emerald-600">done</span>}</td>
+                        </tr>))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex flex-wrap items-center gap-3"><Button size="sm" onClick={() => setOpen(true)}>Where to add the missing ones</Button><span className="text-12 text-slate-500">Read live from the page; the keywords are the ones tracked in your Keywords section.</span></div>
+                {open && <PageOverview b={{ id: bid }} target={{ url }} onClose={() => setOpen(false)} />}
+              </div>)}
+    </Card2>
+  );
+}
+
 function Previews2({ d }) {
   const og = d.social?.og || {}, tw = d.social?.twitter || {};
   const title = og.title || tw.title || d.meta?.title, desc = og.description || tw.description || d.meta?.description, img = og.image || tw.image;
@@ -494,6 +546,7 @@ function Report({ d, onRerun, busy, extra, deep, history, siteScan }) {
           </Card2>
           <Previews2 d={d} />
         </div>
+        <PageKeywords d={d} />
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
           <Card2 icon={FileText} title="Content">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
