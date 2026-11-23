@@ -34,8 +34,9 @@ def _mine(db: Session, user: User, a: Audit | None) -> Audit:
     return a
 
 
-def _run(db: Session, audit_id: int, url: str, strategy: str, pages: int, business_id: int | None = None, options: dict | None = None) -> None:
-    web = audits.website_audit(db, url, strategy, pages, audit=db.get(Audit, audit_id), options=options)
+def _run(db: Session, audit_id: int, url: str, strategy: str, pages: int, business_id: int | None = None, options: dict | None = None, attempt: int = 1) -> None:
+    resume = {"url": url, "strategy": strategy, "pages": pages, "business_id": business_id, "options": options, "attempt": attempt}
+    web = audits.website_audit(db, url, strategy, pages, audit=db.get(Audit, audit_id), options=options, resume=resume)
     b = db.get(Business, business_id) if business_id else None
     if b and web.status == "done":
         # The business's own site: the same scan becomes its technical + on-page audits and plans the fixes.

@@ -220,7 +220,7 @@ def record_for_business(db: Session, b: Business, web: Audit) -> list[Audit]:
 DEVICES = ("mobile", "desktop")  # every website audit scans both; `strategy` only picks which one scores the audit and is shown by default
 
 
-def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: int = 10, audit: Audit | None = None, options: dict[str, Any] | None = None) -> Audit:
+def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: int = 10, audit: Audit | None = None, options: dict[str, Any] | None = None, resume: dict[str, Any] | None = None) -> Audit:
     """One-off audit of any URL (no business needed): PageSpeed (both mobile and desktop) + a short crawl. Always starts from the site's homepage.
     `strategy` chooses which device's Lighthouse run is the audit's primary one (used for `audit.score` and wherever a single `pagespeed`
     result is expected); both devices' results are kept under `result["pagespeed_devices"]` so the report can switch between them without
@@ -238,6 +238,8 @@ def website_audit(db: Session, url: str, strategy: str = "mobile", crawl_pages: 
     pool = ThreadPoolExecutor(max_workers=len(DEVICES))
     lh_futures = {d: pool.submit(run_lighthouse, url, d) for d in DEVICES}
     progress: dict[str, Any] = {"lighthouse": "running", "current": url, "pages": [], "queued": 0, "max_pages": crawl_pages}
+    if resume:  # how this run was started, kept on the row so a restart can start it again by itself (see jobs.recover_stale)
+        progress["resume"] = resume
 
     def save(event: dict[str, Any] | None = None) -> None:
         step = (event or {}).get("step")

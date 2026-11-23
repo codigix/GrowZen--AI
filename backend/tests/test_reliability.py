@@ -64,6 +64,33 @@ def test_runs_that_died_with_their_process_are_failed_so_pages_stop_spinning():
     assert status_of(fresh)[0] == "failed"
 
 
+def test_a_site_audit_cut_off_by_a_restart_starts_again_by_itself(monkeypatch):
+    from app.routers import website
+    started = []
+    monkeypatch.setattr(website, "_run", lambda db, *a: started.append(a))
+    aid = make_audit(age_minutes=1)
+    db = SessionLocal()
+    a = db.get(Audit, aid)
+    a.kind = "website"
+    a.result = {"progress": {"resume": {"url": "https://x.in/", "strategy": "mobile", "pages": 10, "business_id": 3, "options": None, "attempt": 1}}}
+    db.commit()
+    jobs.recover_stale(db, startup=True)
+    db.close()
+    import time
+    for _ in range(50):
+        if started:
+            break
+        time.sleep(0.1)
+    assert status_of(aid) == ("queued", None) and started[0][0] == aid and started[0][-1] == 2  # same audit, second attempt
+    db = SessionLocal()
+    a = db.get(Audit, aid)
+    a.status, a.result = "running", {"progress": {"resume": {"url": "https://x.in/", "attempt": jobs.MAX_RESTARTS}}}
+    db.commit()
+    jobs.recover_stale(db, startup=True)
+    db.close()
+    assert status_of(aid)[0] == "failed"  # a crash loop does not repeat it forever
+
+
 def project(client, name="Triage Dental"):
     return client.post("/api/v1/businesses", json={"name": name, "primary_category": "Dentist", "city": "Pune", "website": "https://tri.in"}).json()["id"]
 
