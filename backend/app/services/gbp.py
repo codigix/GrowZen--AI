@@ -466,6 +466,18 @@ ONLY_PUBLIC_REVIEW = ("This review is only on the public Google Maps listing so 
                       "Reply to it on Google Maps, or press Fetch new reviews again after a while: once the Business Profile lists it, replying works here.")
 
 
+def reply_confirmed(client: "GbpClient", account: str, location: str, review_id: str) -> bool | None:
+    """Read the review back from the Business Profile after a reply was sent: True when Google holds the reply on it, False when it does not, None when Google could not be read just now.
+    (Google's public pages, Maps and Search, show an owner's reply a while later: minutes, sometimes hours. The Business Profile holding it is the proof it was accepted.)"""
+    try:
+        for r in client.reviews(account, location):
+            if (r.get("reviewId") or (r.get("name") or "").rsplit("/", 1)[-1]) == review_id:
+                return bool((r.get("reviewReply") or {}).get("comment"))
+    except GbpError:
+        return None
+    return False
+
+
 def business_review_id(client: "GbpClient", account: str, location: str, review: Any) -> str | None:
     """A review we only know from the public Maps listing has no Business Profile id, and Google needs that id to take a reply. Find the Business Profile's own entry for it
     (same reviewer and the same words) and give its id, or None when the Business Profile does not list it."""

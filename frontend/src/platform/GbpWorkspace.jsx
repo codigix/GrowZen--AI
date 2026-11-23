@@ -353,7 +353,8 @@ function ReviewRow({ b, r, toast, onChanged }) {
   const draft = () => run('ai', async () => { const x = await api(`/businesses/${b.id}/reviews/${r.id}/draft`, { method: 'POST', body: { language: 'English' } }); setText(x.reply_text || ''); });
   const post = () => run('post', async () => {
     const out = await api(`/businesses/${b.id}/reviews/${r.id}/approve`, { method: 'POST', body: { text } });
-    toast(out.task?.result?.posted ? 'Reply posted on your Google Business Profile' : "Reply saved, but this client isn't linked to Google, so post it from Google");
+    const res = out.task?.result;
+    toast(res?.posted ? (res.confirmed === true ? 'Reply posted: Google has it on your Business Profile. Google Maps and Search can take from a few minutes to a few hours to show it.' : res.confirmed === false ? 'Reply sent to Google, but the review does not show it yet. Press Sync from Google in a minute to check.' : 'Reply sent to Google. Maps and Search can take a while to show it.') : "Reply saved, but this client isn't linked to Google, so post it from Google");
     setOpen(false); onChanged();
   });
   const [ask, confirmNode] = useDoubleConfirm();

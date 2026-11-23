@@ -507,3 +507,19 @@ def test_a_saved_public_review_takes_the_business_profile_id_and_one_google_no_l
         db.query(Business).filter(Business.gbp_location == "locations/1").delete()
         db.commit()
         db.close()
+
+
+def test_a_reply_is_read_back_from_the_business_profile_after_it_is_sent():
+    class C:
+        def __init__(self, reviews):
+            self.r = reviews
+
+        def reviews(self, account, location):
+            if self.r is None:
+                raise gbp.GbpError("down")
+            return self.r
+    with_reply = [{"reviewId": "R1", "reviewReply": {"comment": "Thank you"}}]
+    assert gbp.reply_confirmed(C(with_reply), "a", "l", "R1") is True
+    assert gbp.reply_confirmed(C([{"reviewId": "R1"}]), "a", "l", "R1") is False  # sent, but Google does not show it on the review
+    assert gbp.reply_confirmed(C(with_reply), "a", "l", "R2") is False
+    assert gbp.reply_confirmed(C(None), "a", "l", "R1") is None  # could not read Google just now: not a failure of the reply

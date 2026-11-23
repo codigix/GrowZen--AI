@@ -14,6 +14,8 @@ const Stars = ({ n, size = 13 }) => (
   <span className="inline-flex" aria-label={`${n} stars`}>{[1, 2, 3, 4, 5].map(i => <Star key={i} size={size} className={i <= n ? 'text-amber-500 fill-amber-500' : 'text-gray-300'} />)}</span>
 );
 
+const replySaid = (res) => (!res?.posted ? null : res.confirmed === true ? 'Reply posted: Google has it on your Business Profile. Google Maps and Search can take from a few minutes to a few hours to show it.' : res.confirmed === false ? 'Reply sent to Google, but the review does not show it yet. Press Sync from Google in a minute to check.' : 'Reply sent to Google. Maps and Search can take a while to show it.');
+
 function ReviewCard({ r, b, onSaved, toast }) {
   const [language, setLanguage] = useState(r.reply_language || 'English');
   const [text, setText] = useState(r.reply_text || '');
@@ -26,7 +28,7 @@ function ReviewCard({ r, b, onSaved, toast }) {
     const out = await api(`/businesses/${b.id}/reviews/${r.id}/approve`, { method: 'POST', body: { text, language } });
     onSaved(out);
     setEditing(false);
-    toast(out.task?.result?.posted ? 'Reply posted on Google' : 'Reply approved and saved (not linked to Google: post it from the Google app)');
+    toast(replySaid(out.task?.result) || 'Reply approved and saved (not linked to Google: post it from the Google app)');
   });
   return (
     <div className={`p-4 border rounded ${gone ? 'border-slate-200 bg-slate-50 opacity-90' : r.rating <= 2 && !posted ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'}`}>
@@ -42,7 +44,7 @@ function ReviewCard({ r, b, onSaved, toast }) {
         {gone ? (
           <p className="text-12.5 text-slate-600">Google's Business Profile does not list this review (it was removed or filtered, or it is only on a public copy of the listing). It is kept here for the record but not counted, and a reply cannot be posted to it. If it shows on Google Maps, reply there; when the Business Profile lists it, it comes back here by itself.</p>
         ) : posted ? (
-          <><div className="text-11 text-gray-500 mb-1">Your reply</div><p className="text-13 text-gray-800 whitespace-pre-line">{r.reply_text}</p></>
+          <><div className="text-11 text-gray-500 mb-1">Your reply · on your Business Profile; Google Maps and Search can take a few hours to show it</div><p className="text-13 text-gray-800 whitespace-pre-line">{r.reply_text}</p></>
         ) : (
           <>
             {text && !editing && <><div className="text-11 text-gray-500 mb-1 flex items-center gap-1"><Sparkles size={11} className="text-violet-600" /> Draft ({r.reply_language || language}) · waiting for approval</div><p className="text-13 text-gray-800 whitespace-pre-line">{text}</p></>}

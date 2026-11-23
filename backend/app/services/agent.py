@@ -145,7 +145,7 @@ def apply(db: Session, task: AgentTask, actor: str = "agent") -> AgentTask:
                     r.external_id = rid
                 client.reply_review(b.gbp_account, b.gbp_location, rid, task.detail.get("text") or r.reply_text)
                 r.reply_status, r.replied_at = "posted", datetime.now(timezone.utc)
-                task.result = {"posted": True}
+                task.result = {"posted": True, "confirmed": gbp.reply_confirmed(client, b.gbp_account, b.gbp_location, rid)}
             else:
                 task.result = {"posted": False, "note": "Not linked to Google: reply saved, post it manually."}
         elif task.kind == "gbp_post":
