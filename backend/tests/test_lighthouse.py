@@ -546,15 +546,25 @@ def test_site_audit_errors(lh, monkeypatch):
     assert any(i["base_url"] == "https://example.com/nositemap" and i["status"] == "failed" for i in failed)
 
 
-def test_restart_marks_unfinished_audits_failed(lh):
+def test_restart_marks_old_unfinished_audits_failed_and_runs_recent_ones_again(lh, monkeypatch):
+    from datetime import timedelta
+    from sqlalchemy import text
     from app.db import SessionLocal
     from app.models import LighthouseAudit
     from app.services import lighthouse_runner
+    queued = []
+    monkeypatch.setattr(lighthouse_runner, "submit", lambda audit_id, engine: queued.append(audit_id))
     db = SessionLocal()
-    a = LighthouseAudit(submitted_url="https://example.com/stuck", strategy="mobile", engine="lighthouse", status="running")
-    db.add(a)
+    old = LighthouseAudit(submitted_url="https://example.com/stuck", strategy="mobile", engine="lighthouse", status="running")
+    recent = LighthouseAudit(submitted_url="https://example.com/recent", strategy="mobile", engine="lighthouse", status="running")
+    db.add_all([old, recent])
     db.commit()
-    assert lighthouse_runner.recover_interrupted(db) >= 1
-    db.refresh(a)
-    assert a.status == "failed" and "restart" in a.error_message
+    db.execute(text("update lighthouse_audits set created_at = :t where id = :i"), {"t": lighthouse_runner._now() - timedelta(hours=2), "i": old.id})
+    db.commit()
+    db.refresh(old)
+    assert lighthouse_runner.recover_interrupted(db) >= 2
+    db.refresh(old)
+    db.refresh(recent)
+    assert old.status == "failed" and "restart" in old.error_message  # nobody is waiting for it any more
+    assert recent.status == "queued" and recent.id in queued  # the page is still waiting: it runs again
     db.close()

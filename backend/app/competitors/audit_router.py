@@ -15,11 +15,12 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..db import get_db
-from ..deps import can_access, in_background, my_business_ids, owned_business
+from ..deps import can_access, my_business_ids, owned_business
 from ..models import Audit, Business, Competitor, LighthouseAudit
 from ..schemas import CompetitorAuditIn, CompetitorCompareIn
 from ..serialize import row, rows
 from ..services import audits, competitor_compare
+from ..services.durable import durable
 from ..services.url_safety import SSRFValidationError, validate_url_shape
 from .report import render_competitor_report
 
@@ -80,7 +81,7 @@ def start(body: CompetitorAuditIn, tasks: BackgroundTasks, db: Session = Depends
         a = Audit(kind="competitor", target=str(url), status="queued", business_id=body.business_id, competitor_id=body.competitor_id)
         db.add(a)
         db.commit()
-        tasks.add_task(in_background(_run, a.id, a.target, body.strategy, body.crawl_pages))
+        tasks.add_task(durable(_run, a.id, a.target, body.strategy, body.crawl_pages, refs=[f"audit:{a.id}"]))
         out.append({"id": a.id, "url": a.target, "status": "queued", "reused": False})
     return out
 

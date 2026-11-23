@@ -38,14 +38,8 @@ def first_run_in_background(business_id: int) -> None:
     if not get_settings().backlink_autostart:
         return
 
-    def job() -> None:
-        from ..db import SessionLocal
-        db = SessionLocal()
-        try:
-            first_run(db, business_id)
-        finally:
-            db.close()
-    threading.Thread(target=job, daemon=True, name=f"backlink-first-run-{business_id}").start()
+    from ..services.durable import start_now
+    start_now(first_run, business_id, name=f"backlink-first-run-{business_id}")  # a restart starts it again
 
 
 def first_run(db: Session, business_id: int) -> None:

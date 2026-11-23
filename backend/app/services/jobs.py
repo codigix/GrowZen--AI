@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import Audit
+from . import durable
 
 STALE = timedelta(minutes=20)  # a run that has not touched its row for this long is dead
-MAX_RESTARTS = 3  # a site audit is restarted after a server restart at most this many runs in all (so a crash loop cannot repeat it forever)
 _last_prune: list[datetime | None] = [None]
 
 
@@ -25,31 +25,18 @@ def recover_stale(db: Session, startup: bool = False) -> int:
     process did not start can be running (one instance only), so every unfinished run is dead."""
     q = select(Audit).where(Audit.status.in_(("queued", "running")))
     n = 0
-    restart: list[tuple] = []
     for a in db.scalars(q):
         seen = a.updated_at or a.created_at
         if not startup and seen and (_now() - (seen if seen.tzinfo else seen.replace(tzinfo=timezone.utc))) < STALE:
             continue
-        r = ((a.result or {}).get("progress") or {}).get("resume") if startup and a.kind == "website" else None
-        if r and int(r.get("attempt") or 1) < MAX_RESTARTS and r.get("url"):
-            # The server restarted under a running site audit: start it again by itself instead of showing an error.
-            # The page keeps polling the same audit, so the person just sees it begin again.
-            a.status, a.error = "queued", None
-            restart.append((a.id, r["url"], r.get("strategy") or "mobile", int(r.get("pages") or 10), r.get("business_id"), r.get("options"), int(r.get("attempt") or 1) + 1))
-            continue
+        if startup and durable.resuming(f"audit:{a.id}"):
+            continue  # its job is being started again after the restart: the page keeps waiting for it
         a.status = "failed"
         a.error = a.error or "Interrupted: the server restarted (or the run stalled) before it finished. Run it again."
         a.finished_at = _now()
         n += 1
-    if n or restart:
+    if n:
         db.commit()
-    if restart:
-        import threading
-
-        from ..deps import in_background
-        from ..routers.website import _run
-        for args in restart:
-            threading.Thread(target=in_background(_run, *args), daemon=True, name=f"audit-resume-{args[0]}").start()
     return n
 
 

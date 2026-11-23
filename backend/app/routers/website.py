@@ -5,12 +5,13 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..db import get_db
-from ..deps import in_background, my_business_ids, owned_business
+from ..deps import my_business_ids, owned_business
 from ..models import Audit, Business
 from ..schemas import WebsiteAuditIn
 from ..serialize import row, rows
 from ..services import agent, audits, crawler
 from ..services.activity import log
+from ..services.durable import durable
 from ..services.url_safety import SSRFValidationError, validate_url_shape
 
 router = APIRouter(prefix="/website-audits", tags=["website"])
@@ -34,9 +35,8 @@ def _mine(db: Session, user: User, a: Audit | None) -> Audit:
     return a
 
 
-def _run(db: Session, audit_id: int, url: str, strategy: str, pages: int, business_id: int | None = None, options: dict | None = None, attempt: int = 1) -> None:
-    resume = {"url": url, "strategy": strategy, "pages": pages, "business_id": business_id, "options": options, "attempt": attempt}
-    web = audits.website_audit(db, url, strategy, pages, audit=db.get(Audit, audit_id), options=options, resume=resume)
+def _run(db: Session, audit_id: int, url: str, strategy: str, pages: int, business_id: int | None = None, options: dict | None = None) -> None:
+    web = audits.website_audit(db, url, strategy, pages, audit=db.get(Audit, audit_id), options=options)
     b = db.get(Business, business_id) if business_id else None
     if b and web.status == "done":
         # The business's own site: the same scan becomes its technical + on-page audits and plans the fixes.
@@ -60,7 +60,7 @@ def start(body: WebsiteAuditIn, tasks: BackgroundTasks, db: Session = Depends(ge
     if body.business_id is not None:
         log(db, user.name, "audit_started", body.business_id, kinds=["technical", "onpage"])
     db.commit()
-    tasks.add_task(in_background(_run, queued.id, url, body.strategy, body.crawl_pages, body.business_id, body.options))
+    tasks.add_task(durable(_run, queued.id, url, body.strategy, body.crawl_pages, body.business_id, body.options, refs=[f"audit:{queued.id}"]))
     return {"id": queued.id, "status": "queued", "url": url}  # poll GET /website-audits/{id}
 
 

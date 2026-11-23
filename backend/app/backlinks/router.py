@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session, aliased
 from ..auth import User, current_user
 from ..config import get_settings
 from ..db import get_db, utcnow
-from ..deps import get_business, in_background, my_business_ids
+from ..deps import get_business, my_business_ids
+from ..services.durable import durable
 from ..models import Business
 from . import analytics, bot, engine, frontier, insights, lookup, outcomes, outreach, quality, sync, watch
 from .lifecycle import ALL_STATES, LIVE_STATES
@@ -534,7 +535,7 @@ def bot_run(background: BackgroundTasks, b: Business = Depends(get_business), db
         raise HTTPException(409, "Add a tracked domain first: the sync starts from the domains you track")
     if bot.is_running(bot.get_config(db, b.id)):
         raise HTTPException(409, "The bot is already running")
-    background.add_task(in_background(_bot_job, b.id))
+    background.add_task(durable(_bot_job, b.id))
     return {"started": True}
 
 
@@ -581,5 +582,5 @@ def watch_run(background: BackgroundTasks, b: Business = Depends(get_business), 
         raise HTTPException(409, "Track at least one competitor first (Backlink Intelligence > Targets, or Competitor Research)")
     if watch.is_running(bot.get_config(db, b.id)):
         raise HTTPException(409, "The competitor watch is already running")
-    background.add_task(in_background(_watch_job, b.id))
+    background.add_task(durable(_watch_job, b.id))
     return {"started": True}

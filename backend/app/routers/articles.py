@@ -18,14 +18,16 @@ from sqlalchemy.orm import Session
 try:
     from ..config import get_settings
     from ..db import get_db
-    from ..deps import get_business, in_background
+    from ..deps import get_business
+    from ..services.durable import durable
     from ..models import Article, Business, SiteIntegration
     from ..serialize import row, rows
     from ..services import articles as svc, crypto, featured_images as fi, site_publish as sp
 except (ImportError, ValueError):
     from app.config import get_settings
     from app.db import get_db
-    from app.deps import get_business, in_background
+    from app.deps import get_business
+    from app.services.durable import durable
     from app.models import Article, Business, SiteIntegration
     from app.serialize import row, rows
     from app.services import articles as svc, crypto, featured_images as fi, site_publish as sp
@@ -317,7 +319,7 @@ def generate(body: GenerateIn, tasks: BackgroundTasks, b: Business = Depends(get
     a = Article(business_id=b.id, topic=(body.topic or "").strip() or None, length=body.length, keyword=keywords[0], secondary_keywords=keywords[1:], rising_keywords=[k for k, r in picked.items() if r], status="pending")
     db.add(a)
     db.commit()
-    tasks.add_task(in_background(svc.run_batch, [a.id]))
+    tasks.add_task(durable(svc.run_batch, [a.id], refs=[f"article:{a.id}"]))
     return {"articles": [row(a, exclude={"body"})]}
 
 
@@ -328,7 +330,7 @@ def retry(article_id: int, tasks: BackgroundTasks, b: Business = Depends(get_bus
         raise HTTPException(409, "Only a failed article can be retried")
     a.status, a.error = "pending", None
     db.commit()
-    tasks.add_task(in_background(svc.run_batch, [a.id]))
+    tasks.add_task(durable(svc.run_batch, [a.id], refs=[f"article:{a.id}"]))
     return row(a, exclude={"body"})
 
 
