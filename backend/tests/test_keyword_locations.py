@@ -67,3 +67,25 @@ def test_where_a_keyword_is_used_is_read_from_the_pages_blogs_faqs_posts_and_pro
     assert r["counts"] == {"pages": 1, "blogs": 1, "faqs": 1, "posts": 1, "profile": 1}
     none = client.get(f"/api/v1/businesses/{bid}/keyword-workspace/usage", params={"keyword": "gown rental"}).json()
     assert none["counts"] == {"pages": 0, "blogs": 0, "faqs": 0, "posts": 0, "profile": 0}
+
+
+def test_the_table_asks_google_once_for_all_its_keywords_in_a_place(client, monkeypatch):
+    from app.services import keyword_locations as kl
+    kl._geo.clear()
+    kl._metrics.clear()
+    monkeypatch.setattr(ads, "geo_constants", lambda names, code="IN": {n: {"resource": "geoTargetConstants/1007740", "canonical": f"{n},Maharashtra,India", "type": "City"} for n in names})
+    asked = []
+
+    def metrics(keywords, geo_target="", language=""):
+        asked.append((tuple(keywords), geo_target))
+        return {k: {"volume": 100 * (i + 1), "competition": "LOW", "competition_index": 20 + i, "cpc": 50.0, "monthly": [{"year": 2026, "month": "NOVEMBER", "searches": 100 * (i + 1)}]} for i, k in enumerate(keywords) if k != "unknown words"}
+    monkeypatch.setattr(ads, "historical_metrics", metrics)
+    bid = _biz(client)
+    base = f"/api/v1/businesses/{bid}/keyword-workspace"
+    places = client.get(f"{base}/places", params={"extra": "Mumbai"}).json()["places"]
+    assert [p["name"] for p in places][:2] == ["India", "Pune"] and places[0]["kind"] == "Country" and places[-1] == {"name": "Mumbai", "kind": "Added"}
+    r = client.post(f"{base}/metrics", json={"place": "Pune", "keywords": ["seo agency", "Digital Marketing", "unknown words"]}).json()
+    assert r["found_as"] == "Pune,Maharashtra,India" and r["metrics"]["seo agency"]["volume"] == 100 and r["metrics"]["digital marketing"]["index"] == 21 and "unknown words" not in r["metrics"]
+    assert len(asked) == 1 and len(asked[0][0]) == 3  # one request for all of them
+    client.post(f"{base}/metrics", json={"place": "Pune", "keywords": ["seo agency", "digital marketing", "new one"]})
+    assert len(asked) == 2 and asked[1][0] == ("new one",)  # only what was not asked before in the last day

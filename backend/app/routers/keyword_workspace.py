@@ -26,6 +26,25 @@ def workspace(source: str = "", tag: str = "", q: str = Query("", max_length=80)
     return kw.overview(db, b, source=source, tag=tag, q=q, show=show)
 
 
+class MetricsIn(BaseModel):
+    place: str = Field(min_length=2, max_length=120)
+    keywords: list[str] = Field(min_length=1, max_length=500)
+
+
+@router.get("/places")
+def table_places(extra: str = Query("", max_length=200), b: Business = Depends(get_business)):
+    """The places the keyword table can be filtered by (the country, the city, the project's areas, and any added in `extra`)."""
+    from ..services import keyword_locations
+    return {"places": keyword_locations.places(b, [x.strip() for x in extra.split(",") if x.strip()][:3])}
+
+
+@router.post("/metrics")
+def table_metrics(body: MetricsIn, b: Business = Depends(get_business)):
+    """The figures of the table's keywords in one place: searches per month (with the last 12 months), competition index and cost per click."""
+    from ..services import keyword_locations
+    return keyword_locations.bulk(b, body.place.strip(), body.keywords)
+
+
 @router.get("/locations")
 def keyword_by_location(keyword: str = Query(min_length=2, max_length=120), extra: str = Query("", max_length=200), b: Business = Depends(get_business)):
     """One keyword place by place (country, city, the project's areas, and places added in `extra`, comma separated): searches per month, competition index, cost and the last 12 months."""

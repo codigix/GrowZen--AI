@@ -1,11 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { usePager, Pager, downloadCsv } from './DataTable';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, Download, EyeOff, Loader2, MapPin, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, Download, EyeOff, Loader2, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
-import KeywordLocations from './KeywordLocations';
 
 const TAG_TONE = { gap: 'red', win: 'green', almost: 'amber', shared: 'blue', yours: 'gray', idea: 'violet' };
 const TAG_SHORT = { gap: 'Gap', win: 'Win', almost: 'Almost', shared: 'Shared', yours: 'Yours', idea: 'Idea' };
@@ -100,7 +99,11 @@ export default function KeywordWorkspace({ b, onUse }) {
   const [limit, setLimit] = useState(PAGE);
   const [sel, setSel] = useState(() => new Set());
   const [collecting, setCollecting] = useState(false);
-  const [locating, setLocating] = useState(null); // the keyword whose places are open
+  const [place, setPlace] = useState(''); // location filter: '' = the country (Google's own figures), or one of the project's places
+  const [period, setPeriod] = useState('12'); // time filter: the average of the last 12, 6 or 3 months, or one month
+  const [fig, setFig] = useState(null); // the table's keywords in the chosen place: { place, metrics }
+  const [figBusy, setFigBusy] = useState(false);
+  const [figError, setFigError] = useState('');
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const show = view === 'picked' ? 'picked' : view === 'dismissed' ? 'dismissed' : 'open';
@@ -108,8 +111,37 @@ export default function KeywordWorkspace({ b, onUse }) {
   const qs = new URLSearchParams({ show, ...(source && { source }), ...(tag && { tag }), ...(q.trim() && { q: q.trim() }) }).toString();
   const r = useApi(`/businesses/${b.id}/keyword-workspace?${qs}`);
   const d = r.data;
+  const placesApi = useApi(`/businesses/${b.id}/keyword-workspace/places`);
+  const places = placesApi.data?.places || [];
+  const wantsFigures = place !== '' || period !== '12'; // the country over 12 months is what the list already holds; anything else is asked of Google Ads
+  const wordsKey = (d?.items || []).map(i => i.keyword).join('|');
+  useEffect(() => {
+    if (!wantsFigures || !d?.items?.length) { setFig(null); setFigError(''); return undefined; }
+    let live = true;
+    const name = place || places[0]?.name || '';
+    if (!name) return undefined;
+    setFigBusy(true); setFigError('');
+    api(`/businesses/${b.id}/keyword-workspace/metrics`, { method: 'POST', body: { place: name, keywords: d.items.map(i => i.keyword).slice(0, 500) }, timeout: 120000 })
+      .then(res => { if (live) { setFig(res); setFigError(res.reason || res.note || ''); } }).catch(e => { if (live) setFigError(e.message || 'Google Ads did not answer.'); }).finally(() => { if (live) setFigBusy(false); });
+    return () => { live = false; };
+  }, [place, wantsFigures, wordsKey, places.length]); // eslint-disable-line react-hooks/exhaustive-deps -- when the place or the list changes
+  // searches per month for the chosen time: the 12-month figure is Google's own average; 6 and 3 are the average of those last months; or one month
+  const searchesIn = (m) => {
+    if (period === '12') return m.volume;
+    const ms = m.monthly || [];
+    if (!ms.length) return null;
+    if (period === '6' || period === '3') { const last = ms.slice(-Number(period)); return Math.round(last.reduce((a, x) => a + x.searches, 0) / last.length); }
+    const one = ms.find(x => `${x.year}-${x.month}` === period);
+    return one ? one.searches : null;
+  };
+  const monthChoices = (() => { // the last 12 full months, the ones Google Ads reports (its month names are upper case)
+    const NAMES = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+    const now = new Date();
+    return Array.from({ length: 12 }, (_, n) => { const dt = new Date(now.getFullYear(), now.getMonth() - 12 + n, 1); return { key: `${dt.getFullYear()}-${NAMES[dt.getMonth()]}`, label: `${NAMES[dt.getMonth()].slice(0, 1)}${NAMES[dt.getMonth()].slice(1, 3).toLowerCase()} ${String(dt.getFullYear()).slice(2)}` }; });
+  })();
   const rows = useMemo(() => {
     let list = [...(d?.items || [])];
+    if (wantsFigures) list = list.map(i => { const m = fig?.metrics?.[i.keyword.toLowerCase().trim()]; return m ? { ...i, volume: searchesIn(m), difficulty: m.index, comp: m.competition, cpc: m.cpc } : { ...i, volume: null, difficulty: null, comp: null, cpc: null }; });
     if (view === 'suggested') list = list.filter(i => i.suggested);
     if (band) list = list.filter(i => (band === 'none' ? i.rank == null : i.rank != null && bandOf(i.rank)?.[0] === band));
     const v = (i) => (sort.key === 'keyword' ? i.keyword : i[sort.key]);
@@ -123,7 +155,7 @@ export default function KeywordWorkspace({ b, onUse }) {
       return sort.dir === 'asc' ? o : -o;
     });
     return list;
-  }, [d, sort, view, band]);
+  }, [d, sort, view, band, fig, period]); // eslint-disable-line react-hooks/exhaustive-deps
   const pager = usePager(rows, { size: PAGE, resetKey: `${view}|${band}|${q}|${source}|${sort.key}|${sort.dir}` });
   const topVolume = useMemo(() => Math.max(1, ...rows.map(i => i.volume || 0)), [rows]);
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
@@ -184,6 +216,14 @@ export default function KeywordWorkspace({ b, onUse }) {
             <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
               <label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(PAGE); }} placeholder="Search keywords" aria-label="Search keywords" className="h-9 pl-8 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-60" /></label>
               {q && <button type="button" onClick={() => setQ('')} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear</button>}
+              <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Location
+                <select value={place} onChange={e => setPlace(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Location">
+                  {places.map((x, n) => <option key={x.name} value={n === 0 ? '' : x.name}>{x.name}{x.kind === 'Country' ? '' : ` (${x.kind.toLowerCase()})`}</option>)}</select></label>
+              <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Time
+                <select value={period} onChange={e => setPeriod(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Time">
+                  <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>{[...monthChoices].reverse().map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</select></label>
+              {figBusy && <span className="text-12 text-slate-500 inline-flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" />Asking Google Ads…</span>}
+              {!figBusy && figError && <span className="text-12 text-amber-700" title={figError}>{String(figError).slice(0, 80)}</span>}
               {view === 'open' || view === 'suggested' ? (
                 suggestedAll.length > 0 && <Button size="sm" className="ml-auto" icon={Star} busy={busy === 'pick'} onClick={() => pick(suggestedAll.map(i => i.id))} title="The best-looking keywords: searches, ease, gaps and how many places agree">Pick {suggestedAll.length} suggested</Button>
               ) : null}
@@ -198,8 +238,9 @@ export default function KeywordWorkspace({ b, onUse }) {
                     <tr>
                       <th className="w-10 px-3 py-2"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(i => i.id)))} /></th>
                       <SortTh id="keyword" sort={sort} setSort={setSort} what="A search people type into Google." why="Click the name to check its searches, cost and related ideas. Click the heading to sort A to Z." from="your website, Search Console, your profile, competitor sites, Google suggestions and AI.">Keyword</SortTh>
-                      <SortTh id="volume" sort={sort} setSort={setSort} right what="How many times a month people search it in your country." why="Shows which keywords are worth the effort." from="Google Ads Keyword Planner (needs Google Ads connected). Blank when Google gave no figure.">Searches / mo</SortTh>
-                      <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100. Higher is harder." why="Pick easier ones first." from="the advertiser competition Google Ads reports for the keyword.">Difficulty</SortTh>
+                      <SortTh id="volume" sort={sort} setSort={setSort} right what="How many times a month people search it in the chosen location and time." why="Shows which keywords are worth the effort." from="Google Ads Keyword Planner (needs Google Ads connected). Blank when Google gave no figure for that place.">Searches / mo</SortTh>
+                      <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100 (the competition index in the chosen location). Higher is harder." why="Pick easier ones first." from="the advertiser competition Google Ads reports for the keyword.">Difficulty</SortTh>
+                      <SortTh id="cpc" sort={sort} setSort={setSort} right what="What advertisers bid at the top of the page for it, per click, in the chosen location." why="Shows what the keyword is worth." from="Google Ads Keyword Planner. Shown once a location or time is chosen.">Cost / click</SortTh>
                       <th className="px-3 py-2 text-left"><Head what="Where this keyword is already used: website pages, blogs, FAQs and Google posts." why="A keyword used nowhere has not been put to work yet; open By location to see exactly where." from="your last site crawl, the articles written here, the profile FAQs and your Google posts.">Used in</Head></th>
                       <th className="px-3 py-2 text-left"><Head what="What kind of opportunity it is: Gap (competitors use it, you do not), Win (you are in the top 3), Almost (page 2), Shared, Yours, Idea." why="Start with Gaps and Almost." from="comparing your own places with the competitor sites and Google results collected.">Kind</Head></th>
                       <th className="px-3 py-2 text-left"><Head what="The places this keyword was found." why="A keyword found in several places is more trustworthy." from="the collect step: hover a badge for the detail.">Found in</Head></th>
@@ -221,12 +262,13 @@ export default function KeywordWorkspace({ b, onUse }) {
                           {i.competitors.length > 0 && <span className="block text-11.5 text-slate-500">used by {i.competitors.slice(0, 2).join(', ')}{i.competitors.length > 2 ? ` +${i.competitors.length - 2}` : ''}</span>}
                         </td>
                         <td className="px-3 py-2.5 text-right" title="Searches per month in your country (Google Ads Keyword Planner)"><div className="tabular-nums">{n0(i.volume)}</div>{i.volume > 0 && <div className="mt-1 h-1 rounded-full bg-slate-100 ml-auto w-16"><div className="h-1 rounded-full bg-slate-400" style={{ width: `${Math.max(5, (i.volume / topVolume) * 100)}%` }} /></div>}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums" title="0 to 100, higher is harder (from Google Ads competition)">{i.difficulty ?? '—'}</td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap" title="0 to 100, higher is harder (the competition index from Google Ads)">{i.difficulty == null ? '—' : <span className="inline-flex items-center gap-1.5"><span className="tabular-nums font-semibold">{i.difficulty}</span><Badge tone={i.difficulty <= 30 ? 'green' : i.difficulty <= 60 ? 'amber' : 'red'}>{i.difficulty <= 30 ? 'Easy' : i.difficulty <= 60 ? 'Medium' : 'Hard'}</Badge></span>}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums" title="What advertisers bid at the top of the page, per click">{i.cpc != null ? `₹${i.cpc}` : '—'}</td>
                         <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                           {i.used_in ? (
-                            <button type="button" onClick={() => setLocating(i.keyword)} title="Open where it is used" className="inline-flex flex-wrap gap-1 cursor-pointer">
+                            <span title={`Used on ${i.used_in.pages} website page${i.used_in.pages === 1 ? '' : 's'}, in ${i.used_in.blogs} blog${i.used_in.blogs === 1 ? '' : 's'}, ${i.used_in.faqs} FAQ${i.used_in.faqs === 1 ? '' : 's'} and ${i.used_in.posts} Google post${i.used_in.posts === 1 ? '' : 's'}`} className="inline-flex flex-wrap gap-1">
                               {[['pages', 'Pages'], ['blogs', 'Blogs'], ['faqs', 'FAQs'], ['posts', 'Posts']].map(([k, l]) => <span key={k} className={`px-1.5 py-0.5 rounded text-11.5 font-semibold tabular-nums ${i.used_in[k] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>{l} {i.used_in[k]}</span>)}
-                            </button>) : <span className="text-slate-300">—</span>}
+                            </span>) : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="px-3 py-2.5"><span title={TAG_HELP[i.tag]}><Badge tone={TAG_TONE[i.tag]}>{TAG_SHORT[i.tag]}</Badge></span></td>
                         <td className="px-3 py-2.5">
@@ -243,7 +285,6 @@ export default function KeywordWorkspace({ b, onUse }) {
                             {!i.picked && show !== 'dismissed' && <Act icon={Check} tone="green" tip="Pick: save this keyword to your list (My Keywords) so you can give it a page and track it." onClick={() => pick([i.id])} />}
                             {show === 'dismissed' ? <Act icon={Undo2} tone="slate" tip="Put back: return it to the list to look at." onClick={() => act('restore', [i.id], 'Put back in the list')} />
                               : !i.picked && <Act icon={EyeOff} tone="amber" tip="Set aside: hide it from this list. It stays under Set aside if you change your mind." onClick={() => act('dismiss', [i.id], 'Set aside')} />}
-                            <Act icon={MapPin} tone="indigo" tip="By location: searches per month, competition index and difficulty in each of your areas, and the last 12 months." onClick={() => setLocating(i.keyword)} />
                             <Link to={`/keyword-overview?q=${encodeURIComponent(i.keyword)}`}><Act icon={Search} tone="sky" tip="Check: open its searches per month, cost and related ideas." /></Link>
                           </span>
                         </td>
@@ -277,7 +318,6 @@ export default function KeywordWorkspace({ b, onUse }) {
         </div>
       )}
       <CollectModal d={{ ...d, bid: b.id }} open={collecting} onClose={() => setCollecting(false)} onDone={(final, added) => { r.reload(true); if (final) toast(`${added} new keyword${added === 1 ? '' : 's'} collected`); }} />
-      <KeywordLocations b={b} keyword={locating} onClose={() => setLocating(null)} />
       {toastNode}
     </div>
   );

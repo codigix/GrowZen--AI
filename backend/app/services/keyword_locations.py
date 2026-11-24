@@ -39,6 +39,46 @@ def _constant(name: str, code: str) -> dict | None:
     return found
 
 
+def _target(b: Business, name: str, kind: str) -> dict | None:
+    code = countries.of(b) or "IN"
+    return {"resource": ads.geo_target_for(code), "canonical": name, "type": "Country"} if kind == "Country" else _constant(name, code)
+
+
+def places(b: Business, extra: list[str] | None = None) -> list[dict[str, str]]:
+    """The places a table of keywords can be looked at: the country, the city, the project's areas and what was added. No call to Google."""
+    return [{"name": n, "kind": k} for n, k in places_of(b, extra)]
+
+
+def bulk(b: Business, place: str, keywords: list[str]) -> dict[str, Any]:
+    """The figures of many keywords in ONE place: {place, found_as, metrics: {keyword: {volume, index, competition, cpc, monthly}}, note, reason}.
+    One Google Ads request answers up to a few hundred keywords; what was asked before (in the last day) is not asked again."""
+    kind = next((k for n, k in places_of(b, [place]) if n.lower() == place.lower()), "Added")
+    out: dict[str, Any] = {"place": place, "found_as": None, "metrics": {}, "note": None, "reason": None}
+    try:
+        target = _target(b, place, kind)
+        if target is None:
+            out["note"] = f"Google has no location called \"{place}\"."
+            return out
+        out["found_as"] = target["canonical"]
+        wanted = list(dict.fromkeys(" ".join(k.lower().split()) for k in keywords if k and k.strip()))
+        now = time.time()
+        todo = [k for k in wanted if not ((h := _metrics.get((k, target["resource"]))) and now - h[0] < TTL)]
+        for i in range(0, len(todo), 500):
+            chunk = todo[i:i + 500]
+            got = ads.historical_metrics(chunk, geo_target=target["resource"])
+            for k in chunk:
+                _metrics[(k, target["resource"])] = (now, got.get(k) or {})
+        for k in wanted:
+            m = _metrics.get((k, target["resource"]), (0, {}))[1]
+            if m:
+                out["metrics"][k] = {"volume": m.get("volume"), "index": m.get("competition_index"), "competition": m.get("competition"), "cpc": m.get("cpc"), "monthly": m.get("monthly") or []}
+    except ads.GoogleAdsNotConfigured as exc:
+        out["reason"] = str(exc)
+    except ads.GoogleAdsError as exc:
+        out["reason"] = f"Google Ads did not answer ({'; '.join(getattr(exc, 'details', []) or [str(exc)])[:200]})."
+    return out
+
+
 def for_keyword(b: Business, keyword: str, extra: list[str] | None = None) -> dict[str, Any]:
     """{keyword, difficulty (the country's competition index, 0 to 100), locations: [{name, kind, found_as, volume, index, competition, cpc, monthly}], reason}."""
     code = countries.of(b) or "IN"
