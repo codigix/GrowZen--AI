@@ -15,6 +15,9 @@ export default function KeywordLocations({ b, keyword, onClose }) {
   const [extra, setExtra] = useState([]);
   const [typed, setTyped] = useState('');
   const [chart, setChart] = useState(null); // the place whose months are drawn
+  const [where, setWhere] = useState('all'); // location filter: every place, or one
+  const [period, setPeriod] = useState('12'); // time filter: the average of the last 12, 6 or 3 months, or one month
+  const [mode, setMode] = useState('summary'); // summary: one row per place for the chosen time | months: every month side by side
   const q = keyword ? `/businesses/${b.id}/keyword-workspace/locations?keyword=${encodeURIComponent(keyword)}${extra.length ? `&extra=${encodeURIComponent(extra.join(','))}` : ''}` : null;
   const r = useApi(q);
   const use = useApi(keyword ? `/businesses/${b.id}/keyword-workspace/usage?keyword=${encodeURIComponent(keyword)}` : null);
@@ -24,9 +27,19 @@ export default function KeywordLocations({ b, keyword, onClose }) {
   const city = rows.find(x => x.kind === 'City' && x.monthly?.length) || rows.find(x => x.monthly?.length);
   const place = rows.find(x => x.name === chart && x.monthly?.length) || city;
   const months = (place?.monthly || []).map(m => ({ name: `${MONTH(m.month)} ${String(m.year).slice(2)}`, Searches: m.searches }));
-  const country = rows.find(x => x.kind === 'Country');
-  const top = Math.max(1, ...rows.map(x => x.volume || 0));
-  const [lab, tn] = kd(d?.difficulty);
+  const monthList = (rows.find(x => x.monthly?.length)?.monthly || []).map(m => ({ key: `${m.year}-${m.month}`, label: `${MONTH(m.month)} ${String(m.year).slice(2)}` }));
+  // searches per month for the chosen time: the average of the last n months, or one month; the 12-month figure is Google's own average
+  const searchesOf = (x) => {
+    if (period === '12') return x.volume;
+    const ms = x.monthly || [];
+    if (!ms.length) return null;
+    if (period === '6' || period === '3') { const last = ms.slice(-Number(period)); return Math.round(last.reduce((a, m) => a + m.searches, 0) / last.length); }
+    const one = ms.find(m => `${m.year}-${m.month}` === period);
+    return one ? one.searches : null;
+  };
+  const shownRows = rows.filter(x => where === 'all' || x.name === where);
+  const top = Math.max(1, ...shownRows.map(x => searchesOf(x) || 0));
+  const periodLabel = period === '12' ? 'average of the last 12 months' : period === '6' ? 'average of the last 6 months' : period === '3' ? 'average of the last 3 months' : monthList.find(m => m.key === period)?.label;
   const add = () => { const v = typed.trim(); if (v && extra.length < 3 && !extra.includes(v)) setExtra([...extra, v]); setTyped(''); };
 
   return (
@@ -53,29 +66,35 @@ export default function KeywordLocations({ b, keyword, onClose }) {
         {!d ? (r.error ? <ErrorNote>{r.error.message}</ErrorNote> : <p className="py-6 text-center text-13 text-slate-500 flex items-center justify-center gap-2"><Loader2 size={15} className="animate-spin" />Asking Google for each location…</p>) : (
         <div className="space-y-4">
           {d.reason && <ErrorNote>{d.reason}</ErrorNote>}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="rounded-xl bg-white ring-1 ring-slate-200 p-3"><div className="text-12 font-semibold text-slate-500">Difficulty</div><div className="mt-1 flex items-baseline gap-2"><span className="text-24 font-bold tabular-nums text-slate-900">{d.difficulty ?? '—'}</span><Badge tone={tn}>{lab}</Badge></div><div className="text-11.5 text-slate-500">0 to 100, higher is harder</div></div>
-            <div className="rounded-xl bg-white ring-1 ring-slate-200 p-3"><div className="text-12 font-semibold text-slate-500">Searches / month</div><div className="mt-1 text-24 font-bold tabular-nums text-slate-900">{n0(country?.volume)}</div><div className="text-11.5 text-slate-500">{country?.name || 'country'}</div></div>
-            <div className="rounded-xl bg-white ring-1 ring-slate-200 p-3"><div className="text-12 font-semibold text-slate-500">Competition index</div><div className="mt-1 text-24 font-bold tabular-nums text-slate-900">{country?.index ?? '—'}</div><div className="text-11.5 text-slate-500">{country?.competition ? country.competition.toLowerCase() : 'advertiser competition'}</div></div>
-            <div className="rounded-xl bg-white ring-1 ring-slate-200 p-3"><div className="text-12 font-semibold text-slate-500">Cost per click (top of page)</div><div className="mt-1 text-24 font-bold tabular-nums text-slate-900">{country?.cpc != null ? `₹${country.cpc}` : '—'}</div><div className="text-11.5 text-slate-500">what advertisers bid</div></div>
-          </div>
-
           <div className="rounded-xl bg-white ring-1 ring-slate-200 overflow-hidden">
-            <div className="px-4 py-2.5 flex flex-wrap items-center gap-2 border-b border-slate-100">
-              <div className="text-14 font-semibold text-slate-900 mr-auto flex items-center gap-1.5"><MapPin size={14} className="text-indigo-500" />By location</div>
-              <input value={typed} onChange={e => setTyped(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} placeholder="Add a place, e.g. Mumbai" aria-label="Add a place" className={`${inputCls} !h-8 w-52 text-12.5`} />
+            <div className="px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-100">
+              <div className="text-14 font-semibold text-slate-900 mr-auto flex items-center gap-1.5"><MapPin size={14} className="text-indigo-500" />Searches, competition and cost by location</div>
+              <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Location
+                <select value={where} onChange={e => setWhere(e.target.value)} className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-12.5 text-slate-800" aria-label="Location"><option value="all">All locations</option>{rows.map(x => <option key={x.name} value={x.name}>{x.name}</option>)}</select></label>
+              <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Time
+                <select value={period} onChange={e => { setPeriod(e.target.value); setMode('summary'); }} className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-12.5 text-slate-800" aria-label="Time"><option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>{[...monthList].reverse().map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</select></label>
+              <div className="flex gap-1" role="tablist" aria-label="Table view">{[['summary', 'Summary'], ['months', 'Month by month']].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={mode === k} onClick={() => setMode(k)} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ${mode === k ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>)}</div>
+              <input value={typed} onChange={e => setTyped(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} placeholder="Add a place, e.g. Mumbai" aria-label="Add a place" className={`${inputCls} !h-8 w-44 text-12.5`} />
               <Button size="sm" icon={Plus} onClick={add} disabled={!typed.trim() || extra.length >= 3}>Add</Button>
             </div>
-            <DataTable bare rows={rows} rowKey={x => x.name} pageSize={10} sizes={[10]} search={false} columnsMenu={false} exportName={`keyword-locations-${keyword}`} label="locations" headClass="bg-slate-100 text-slate-700" minWidth={640}
-              rowClass={x => (place && x.name === place.name ? 'bg-indigo-50/60' : '')}
-              columns={[
-                { id: 'name', header: 'Location', value: x => x.name, className: 'px-3 py-2', cell: x => <button type="button" onClick={() => x.monthly?.length && setChart(x.name)} className="text-left cursor-pointer" title={x.found_as || x.note}><span className="font-semibold text-slate-900">{x.name}</span><span className="block text-11.5 text-slate-500">{x.kind}{x.found_as ? ` · ${x.found_as}` : ''}</span></button> },
-                { id: 'volume', header: 'Searches / month', right: true, first: 'desc', value: x => x.volume, className: 'px-3 py-2 text-right', cell: x => (x.volume == null ? <span className="text-slate-300" title={x.note || 'Google has no figure for this place'}>—</span> : <div><div className="tabular-nums font-semibold text-slate-900">{n0(x.volume)}</div><div className="mt-1 h-1 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-400" style={{ width: `${Math.max(3, (x.volume / top) * 100)}%` }} /></div></div>) },
-                { id: 'index', header: 'Competition index', right: true, first: 'desc', value: x => x.index, className: 'px-3 py-2 text-right tabular-nums', cell: x => (x.index == null ? '—' : `${x.index}${x.competition ? ` · ${x.competition.toLowerCase()}` : ''}`) },
-                { id: 'difficulty', header: 'Difficulty', right: true, value: x => x.index, className: 'px-3 py-2 text-right', cell: x => (x.index == null ? '—' : <Badge tone={kd(x.index)[1]}>{kd(x.index)[0]}</Badge>) },
-                { id: 'cpc', header: 'Cost / click', right: true, value: x => x.cpc, className: 'px-3 py-2 text-right tabular-nums', cell: x => (x.cpc != null ? `₹${x.cpc}` : '—') },
-              ]} />
-            <p className="px-4 py-2 text-11.5 text-slate-500 border-t border-slate-100">Click a location to see its last 12 months. A dash means Google has no figure for that place (small areas often have none): nothing is estimated.</p>
+            {mode === 'summary' ? (
+              <DataTable bare rows={shownRows} rowKey={x => x.name} pageSize={10} sizes={[10]} search={false} columnsMenu={false} exportName={`keyword-locations-${keyword}`} label="locations" headClass="bg-slate-100 text-slate-700" minWidth={720}
+                rowClass={x => (place && x.name === place.name ? 'bg-indigo-50/60' : '')}
+                columns={[
+                  { id: 'name', header: 'Location', value: x => x.name, className: 'px-3 py-2', cell: x => <button type="button" onClick={() => x.monthly?.length && setChart(x.name)} className="text-left cursor-pointer" title={x.found_as || x.note}><span className="font-semibold text-slate-900">{x.name}</span><span className="block text-11.5 text-slate-500">{x.kind}{x.found_as ? ` · ${x.found_as}` : ''}</span></button> },
+                  { id: 'volume', header: 'Searches / month', right: true, first: 'desc', value: x => searchesOf(x), className: 'px-3 py-2 text-right', cell: x => { const v = searchesOf(x); return v == null ? <span className="text-slate-300" title={x.note || 'Google has no figure for this place or time'}>—</span> : <div><div className="tabular-nums font-semibold text-slate-900">{n0(v)}</div><div className="mt-1 h-1 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-400" style={{ width: `${Math.max(3, (v / top) * 100)}%` }} /></div></div>; } },
+                  { id: 'difficulty', header: 'Difficulty', right: true, value: x => x.index, className: 'px-3 py-2 text-right', cell: x => (x.index == null ? '—' : <span className="inline-flex items-center gap-1.5"><span className="tabular-nums font-semibold text-slate-900">{x.index}</span><Badge tone={kd(x.index)[1]}>{kd(x.index)[0]}</Badge></span>) },
+                  { id: 'index', header: 'Competition index', right: true, first: 'desc', value: x => x.index, className: 'px-3 py-2 text-right tabular-nums', cell: x => (x.index == null ? '—' : `${x.index}${x.competition ? ` · ${x.competition.toLowerCase()}` : ''}`) },
+                  { id: 'cpc', header: 'Cost / click (top of page)', right: true, value: x => x.cpc, className: 'px-3 py-2 text-right tabular-nums', cell: x => (x.cpc != null ? `₹${x.cpc}` : '—') },
+                ]} />
+            ) : (
+              <DataTable bare rows={shownRows} rowKey={x => x.name} pageSize={10} sizes={[10]} search={false} columnsMenu={false} exportName={`keyword-months-${keyword}`} label="locations" headClass="bg-slate-100 text-slate-700" minWidth={Math.max(720, 200 + monthList.length * 70)}
+                columns={[
+                  { id: 'name', header: 'Location', value: x => x.name, className: 'px-3 py-2 font-semibold text-slate-900 whitespace-nowrap', cell: x => x.name },
+                  ...monthList.map(m => ({ id: m.key, header: m.label, right: true, value: x => (x.monthly || []).find(v => `${v.year}-${v.month}` === m.key)?.searches ?? null, className: 'px-2 py-2 text-right tabular-nums text-12.5', cell: x => n0((x.monthly || []).find(v => `${v.year}-${v.month}` === m.key)?.searches) })),
+                ]} />
+            )}
+            <p className="px-4 py-2 text-11.5 text-slate-500 border-t border-slate-100">{mode === 'summary' ? `Searches per month: ${periodLabel}. ` : ''}Click a location to draw its last 12 months. A dash means Google has no figure for that place (small areas often have none): nothing is estimated.</p>
           </div>
 
           {months.length > 0 && (
