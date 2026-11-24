@@ -5,7 +5,7 @@ import {
   Sparkles, Check, ChevronRight, Globe, ShieldCheck, AlertTriangle, RefreshCw,
   FileText, MapPin, Instagram, Facebook, Linkedin, Copy, Plus, CalendarDays,
   Flame, TrendingUp, TrendingDown, Search, Clock, ArrowUpRight, CheckCircle2, Lock, Sliders,
-  Send, ExternalLink, Link2, Share2, Layers, Award, Tag, BarChart3, Code, Eye, Download
+  Send, ExternalLink, Link2, Share2, Layers, Award, Tag, BarChart3, Code, Eye, Download, Megaphone
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
@@ -23,7 +23,8 @@ import HtmlSitePanel from './HtmlSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 import PostedBlogs from './PostedBlogs';
-import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, ResumeCard, ArticleDownloads } from './BlogFlow';
+import { KeywordTopicPlanner, LayoutCheckCard, ResumeCard, ArticleDownloads } from './BlogFlow';
+import PromoteBlogs from './PromoteBlogs';
 import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage, brandOf } from './keywordHighlight';
 
 
@@ -603,7 +604,15 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
           onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
 
       {done && <LayoutCheckCard b={b} article={article} />}
-      {done && <PromoteCard b={b} article={article} />}
+      {/* promotion now has its own page (Blogs → Promote & Track Links); a shortcut to it for this article */}
+      {done && (
+        <Link to={`/ai-content-generation/promote?article=${article.id}`} className="flex flex-wrap items-center gap-3 p-4 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-violet-50 hover:border-indigo-300 transition-colors">
+          <span className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center"><Megaphone size={17} /></span>
+          <span className="flex-1 min-w-[200px]"><span className="block text-[13.5px] font-semibold text-slate-900">Promote this blog and track the links</span>
+            <span className="block text-[12px] text-slate-500">Where competitors post, the best blogging platforms and your promotion plan are on their own page now.</span></span>
+          <span className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-indigo-700">Open Promote &amp; Track Links<ChevronRight size={14} /></span>
+        </Link>
+      )}
 
       {/* the full list lives on the Generated Articles tab; here only a summary with a shortcut */}
       {articles.length > 0 && (() => {
@@ -1692,7 +1701,7 @@ const TOPIC_HANDOFF = 'growzen.writerTopic';
  * Main AI Content Studio Component
  */
 export default function ContentStudioPage() {
-  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'articles', 'posted', 'calendar', 'publishing']);
+  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'articles', 'posted', 'promote', 'calendar', 'publishing']);
   const openInWriter = (id) => { if (!id) { setOpenArticleId(null); return; } setActiveTopic(null); setOpenArticleId(id); setTab('blog'); };
   // Moving from /trends to /blog remounts this page (the layout resets on every address), so a topic picked in
   // Topic Finder is handed over through sessionStorage and taken once here.
@@ -1727,6 +1736,7 @@ export default function ContentStudioPage() {
               { id: 'blog', label: 'AI Blog & Article Writer' },
               { id: 'articles', label: 'Written, not posted' },
               { id: 'posted', label: 'Posted Blogs' },
+              { id: 'promote', label: 'Promote & Track Links' },
               { id: 'calendar', label: 'Publishing Calendar & CMS Queue' }
             ]}
           />
@@ -1736,6 +1746,7 @@ export default function ContentStudioPage() {
           {tab === 'articles' && <GeneratedArticlesTab b={b} openId={openArticleId} onOpen={openInWriter} toast={window.__seoToast || console.log}
             onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} onShowPosted={() => setTab('posted')} />}
           {tab === 'posted' && <PostedBlogs b={b} toast={window.__seoToast || console.log} onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
+          {tab === 'promote' && <PromoteBlogs b={b} onShowPosted={() => setTab('posted')} />}
           {tab === 'calendar' && <PublishingCalendar b={b} toast={window.__seoToast || console.log} onOpenArticle={openInWriter} />}
           {tab === 'publishing' && <PublishingSetup b={b} />}
         </div>
