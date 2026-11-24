@@ -295,7 +295,8 @@ def organic_research(days: int = 30, b: Business = Depends(get_business), db: Se
 
 class OverviewIn(BaseModel):
     keyword: str = Field(min_length=2, max_length=120)
-    place: str | None = Field(default=None, max_length=120)  # a place inside the country; empty = the whole country
+    place: str | None = Field(default=None, max_length=120)  # one place inside the country (older callers)
+    places: list[str] = Field(default_factory=list, max_length=5)  # target areas inside the country, any number up to five; empty = the whole country
     country: str | None = Field(default=None, min_length=2, max_length=2)  # a country code; empty = the project's own
 
 
@@ -431,7 +432,8 @@ def _by_country(kw: str, home: str | None) -> list[dict]:
 class DifficultyIn(BaseModel):
     keyword: str = Field(min_length=2, max_length=120)
     country: str | None = Field(default=None, min_length=2, max_length=2)
-    place: str | None = Field(default=None, max_length=120)  # a place inside the country: the results are read as Google shows them there
+    place: str | None = Field(default=None, max_length=120)
+    places: list[str] = Field(default_factory=list, max_length=5)  # target areas: the results are read as Google shows them in the first one; the searches are added over all of them
     volume: int | None = None
 
 
@@ -479,22 +481,34 @@ def organic_authorities(body: DomainsIn, b: Business = Depends(get_business)):
     return {"authorities": orx.authorities(body.domains)}
 
 
-def _place_geo(b: Business, country: str, place: str | None) -> tuple[str | None, str | None]:
-    """(the place as Google's results are read for it, Google Ads' location) for a place inside the country; (None, None) for the whole country or an unknown place."""
-    if not (place and place.strip()):
+def _place_geo(b: Business, country: str, places: list[str] | str | None) -> tuple[str | None, str | list[str] | None]:
+    """(the first place as Google's results are read for it, Google Ads' locations) for target areas inside the country; (None, None) for the whole country. Several areas are all sent to
+    Google Ads, which adds their searches together; the results page can be read for one place only, the first."""
+    names = [p.strip() for p in ([places] if isinstance(places, str) else (places or [])) if p and p.strip()]
+    if not names:
         return None, None
     from ..services import keyword_locations  # noqa: PLC0415
-    try:
-        geo, canonical = keyword_locations.resource(b, place.strip(), country)
-    except Exception:  # noqa: BLE001 -- without the place the country's results are read
-        return None, None
-    return (canonical.replace(",", ", ") if canonical else None), geo
+    geos, first = [], None
+    for n in names:
+        try:
+            geo, canonical = keyword_locations.resource(b, n, country)
+        except Exception:  # noqa: BLE001 -- an area Google does not know is left out
+            continue
+        if geo:
+            geos.append(geo)
+            first = first or (canonical.replace(",", ", ") if canonical else None)
+    return first, (geos if len(geos) > 1 else geos[0] if geos else None)
+
+
+def _wanted(body) -> list[str]:
+    return [*(body.places or []), *([body.place] if getattr(body, "place", None) else [])][:5]
 
 
 class BatchIn(BaseModel):
     keywords: list[str] = Field(min_length=1, max_length=6)
     country: str | None = Field(default=None, min_length=2, max_length=2)
     place: str | None = Field(default=None, max_length=120)
+    places: list[str] = Field(default_factory=list, max_length=5)
 
 
 @router.post("/keyword-difficulty/batch")
@@ -504,7 +518,7 @@ def keyword_difficulty_batch(body: BatchIn, b: Business = Depends(get_business))
 
     from ..services import keyword_difficulty as kd  # noqa: PLC0415
     country = (body.country or "").upper() or market.serp_country(b)
-    location, geo = _place_geo(b, country, body.place)
+    location, geo = _place_geo(b, country, _wanted(body))
 
     def one(k: str) -> dict:
         word = " ".join(k.lower().split())
@@ -523,7 +537,7 @@ def keyword_difficulty(body: DifficultyIn, b: Business = Depends(get_business)):
     related searches and ads of that results page."""
     from ..services import keyword_difficulty as kd  # noqa: PLC0415
     country = (body.country or "").upper() or market.serp_country(b)
-    location, geo = _place_geo(b, country, body.place)
+    location, geo = _place_geo(b, country, _wanted(body))
     try:
         return kd.score(" ".join(body.keyword.lower().split()), country, body.volume, location=location, geo=geo, domain=(urlparse(b.website or "").hostname or "") if b.website else None)
     except kd.DifficultyError as exc:
@@ -540,15 +554,20 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
     kw = " ".join(body.keyword.lower().split())
     country = (body.country or "").upper() or market.serp_country(b)
     geo, found_as = ads.geo_target_for(country), None
-    if body.place and body.place.strip():
+    wanted = _wanted(body)
+    if wanted:
         from ..services import keyword_locations  # noqa: PLC0415
-        try:
-            res, found_as = keyword_locations.resource(b, body.place.strip(), country)
-        except ads.GoogleAdsError as exc:
-            raise HTTPException(502, "Google Ads did not answer: " + ("; ".join(getattr(exc, "details", []) or []) or str(exc))[:200]) from exc
-        if not res:
-            raise HTTPException(404, f"Google has no location called \"{body.place.strip()}\".")
-        geo = res
+        geos, names = [], []
+        for n in wanted:
+            try:
+                res, canonical = keyword_locations.resource(b, n, country)
+            except ads.GoogleAdsError as exc:
+                raise HTTPException(502, "Google Ads did not answer: " + ("; ".join(getattr(exc, "details", []) or []) or str(exc))[:200]) from exc
+            if not res:
+                raise HTTPException(404, f"Google has no location called \"{n}\".")
+            geos.append(res)
+            names.append(canonical or n)
+        geo, found_as = (geos if len(geos) > 1 else geos[0]), ", ".join(names)
     try:
         ideas = ads.keyword_ideas([kw], limit=1500, include_monthly=True, geo_target=geo)
     except ads.GoogleAdsNotConfigured as exc:

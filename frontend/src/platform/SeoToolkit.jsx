@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Star, ArrowUp, ArrowDown, Plus, RefreshCw, KeyRound, ScanSearch, Swords, Sparkles, Link2, MapPin, Gauge, Layers, FileText, ExternalLink,
-  AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot, Download, Loader2
+  AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot, Download, Loader2, X
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, Modal, ErrorNote, ScoreRing, scoreLevel, useAction, useToast, useModulePath, Sk, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
@@ -405,7 +405,7 @@ function KeywordOverview({ b }) {
   const [added, setAdded] = useState({});
   const [place, setPlace] = useState(''); // location filter: '' = the whole country
   const [country, setCountry] = useState(''); // '' = the project's own country
-  const [extra, setExtra] = useState([]); // places added from the map search
+  const [chosen, setChosen] = useState([]); // target areas picked from the map search: [{ name }], up to five; none means the whole country
   const [typed, setTyped] = useState('');
   const [found, setFound] = useState([]);
   const [findErr, setFindErr] = useState('');
@@ -417,12 +417,13 @@ function KeywordOverview({ b }) {
     if (v.trim().length < 2) { setFound([]); return; }
     api(`/businesses/${b.id}/keyword-workspace/area-search?q=${encodeURIComponent(v.trim())}&country=${activeCountry}`).then(r => setFound(r.results || [])).catch(e => setFindErr(e.message || 'The map service did not answer.'));
   };
-  const pickArea = (x) => { setExtra(l => (l.some(e => e.name === x.name && e.country === activeCountry) ? l : [...l, { name: x.name, country: activeCountry }])); setTyped(''); setFound([]); setPlace(x.name); if (data || q.trim().length > 1) go(data?.keyword ?? q, x.name, activeCountry); };
-  const changeCountry = (c) => { setCountry(c); setPlace(''); if (data || q.trim().length > 1) go(data?.keyword ?? q, '', c || home); };
+  const namesOf = (l) => l.map(x => x.label || x.name); // the full Google Maps line ("Baner, Pune, Maharashtra, India") is what Google Ads is asked for, so a name used in several places is the right one
+  const rerun = (names, c) => { if (data || q.trim().length > 1) go(data?.keyword ?? q, names, c); };
+  const pickArea = (x) => { const next = chosen.some(e => e.name === x.name) ? chosen : [...chosen, { name: x.name, label: x.label }].slice(0, 5); setChosen(next); setTyped(''); setFound([]); rerun(namesOf(next), activeCountry); };
+  const dropArea = (name) => { const next = chosen.filter(e => e.name !== name); setChosen(next); rerun(namesOf(next), activeCountry); };
+  const changeCountry = (c) => { setCountry(c); setChosen([]); rerun([], c || home); };
   const [period, setPeriod] = useState('12'); // time filter: the last 12, 6 or 3 months, or one month
-  const placesApi = useApi(`/businesses/${b.id}/keyword-workspace/places`);
-  const places = placesApi.data?.places || [];
-  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(null); startKd(kw, (c ?? activeCountry) || '', (pl ?? place) || '', k === undefined); setKdMap({}); kdBatch.current += 1; setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
+  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(null); const pls = pl ?? namesOf(chosen); startKd(kw, (c ?? activeCountry) || '', pls, k === undefined); setKdMap({}); kdBatch.current += 1; setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, places: pls, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const started = useRef(false);
@@ -449,12 +450,12 @@ function KeywordOverview({ b }) {
   const kdFor = useRef('');
   // read together with the overview (not after it); the results are read as Google shows them in the chosen place, so a new place reads them again, a new period does not
   const startKd = (kw, c, pl, force) => {
-    const key = `${kw}|${c}|${pl}`;
+    const key = `${kw}|${c}|${pl.join('|')}`;
     if (!force && kdFor.current === key) return;
     kdFor.current = key;
     const mine = ++kdRun.current;
     setKd({ state: 'loading' });
-    api(`/businesses/${b.id}/seo/keyword-difficulty`, { method: 'POST', body: { keyword: kw, country: c || null, place: pl || null }, timeout: 330000 })
+    api(`/businesses/${b.id}/seo/keyword-difficulty`, { method: 'POST', body: { keyword: kw, country: c || null, places: pl }, timeout: 330000 })
       .then(r => { if (kdRun.current === mine) setKd({ state: 'ready', ...r }); }).catch(e => { if (kdRun.current === mine) setKd({ state: 'error', message: e.message || 'Google results could not be read.' }); });
   };
   const exportPdf = async () => {
@@ -487,7 +488,7 @@ function KeywordOverview({ b }) {
       for (let n = 0; n < todo.length; n += 3) {
         const chunk = todo.slice(n, n + 3);
         let res = [];
-        try { res = (await api(`/businesses/${b.id}/seo/keyword-difficulty/batch`, { method: 'POST', body: { keywords: chunk, country: data.country || null, place: place || null }, timeout: 240000 })).results; } catch { res = chunk.map(k => ({ keyword: k, score: null })); }
+        try { res = (await api(`/businesses/${b.id}/seo/keyword-difficulty/batch`, { method: 'POST', body: { keywords: chunk, country: data.country || null, places: namesOf(chosen) }, timeout: 240000 })).results; } catch { res = chunk.map(k => ({ keyword: k, score: null })); }
         if (kdBatch.current !== mine) return;
         setKdMap(m => ({ ...m, ...Object.fromEntries(chunk.map(k => [k, res.find(x => x.keyword === k)?.score ?? null])) }));
       }
@@ -515,14 +516,9 @@ function KeywordOverview({ b }) {
           <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Country
             <select value={activeCountry} onChange={e => changeCountry(e.target.value === home ? '' : e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Country">
               {(countriesApi.data || [{ code: home, name: home }]).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select></label>
-          <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Location
-            <select value={place} onChange={e => { setPlace(e.target.value); if (data || q.trim().length > 1) go(data?.keyword ?? q, e.target.value, activeCountry); }} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Location">
-              <option value="">Whole country</option>
-              {(activeCountry === home ? places.slice(1) : []).map(x => <option key={x.name} value={x.name}>{x.name} ({x.kind.toLowerCase()})</option>)}
-              {extra.filter(e => e.country === activeCountry && !(activeCountry === home && places.some(x => x.name === e.name))).map(e => <option key={e.name} value={e.name}>{e.name} (added)</option>)}</select></label>
           <div className="relative">
             <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input value={typed} onChange={e => search(e.target.value)} placeholder="Search Google Maps for an area…" aria-label="Search an area on Google Maps" className="h-9 w-60 pl-9 pr-3 text-13 rounded-lg border border-slate-300 bg-white" />
+            <input value={typed} onChange={e => search(e.target.value)} placeholder={chosen.length ? "Add another target area…" : "Add a target area: search Google Maps…"} aria-label="Search a target area on Google Maps" className="h-9 w-60 pl-9 pr-3 text-13 rounded-lg border border-slate-300 bg-white" />
             {found.length > 0 && (
               <ul className="absolute z-20 mt-1 w-80 max-h-60 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg divide-y divide-slate-100">
                 {found.map(x => <li key={x.label}><button type="button" onClick={() => pickArea(x)} className="w-full text-left px-3 py-2 text-13 hover:bg-indigo-50 cursor-pointer"><MapPin size={12} className="inline mr-1.5 text-indigo-500" />{x.label}</button></li>)}
@@ -536,8 +532,15 @@ function KeywordOverview({ b }) {
               {[...monthList].reverse().map(x => <option key={`${x.year}-${x.month}`} value={`${x.year}-${x.month}`}>{x.month.slice(0, 1)}{x.month.slice(1, 3).toLowerCase()} {String(x.year).slice(2)}</option>)}</select></label>
           <Button variant="primary" icon={Search} busy={busy === 'go'} disabled={q.trim().length < 2} onClick={() => go()}>Analyze</Button>
         </div>
+        {chosen.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Target areas">
+            <span className="text-12 font-medium text-slate-500 mr-1">Target areas</span>
+            {chosen.map(x => <span key={x.name} className="inline-flex items-center gap-1 rounded-full bg-indigo-50 ring-1 ring-inset ring-indigo-200 pl-2.5 pr-1 py-0.5 text-12.5 font-medium text-indigo-800"><MapPin size={11} />{x.name}<button type="button" onClick={() => dropArea(x.name)} aria-label={`Remove ${x.name}`} className="rounded-full p-0.5 hover:bg-indigo-100 cursor-pointer"><X size={12} /></button></span>)}
+            {chosen.length > 1 && <span className="text-11.5 text-slate-500">figures are added over the {chosen.length} areas</span>}
+          </div>
+        )}
         <ErrorNote>{error}</ErrorNote>
-        <p className="text-11.5 text-slate-400 mt-2">Numbers come from the Google Ads Keyword Planner, for the country and location chosen above. Costs are in the currency of the Google Ads account. It shows how often a keyword is searched and what it costs; who ranks for it is on Position Tracking and Competitors.</p>
+        <p className="text-11.5 text-slate-400 mt-2">Numbers come from the Google Ads Keyword Planner, for the country and the target areas chosen above (none chosen: the whole country). Costs are in the currency of the Google Ads account. It shows how often a keyword is searched and what it costs; who ranks for it is on Position Tracking and Competitors.</p>
       </Card>
       {data && (
         <>

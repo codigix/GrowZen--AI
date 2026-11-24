@@ -109,7 +109,7 @@ def keyword_ideas(
     limit: int = 50,
     include_monthly: bool = False,
     language: str = DEFAULT_LANGUAGE,
-    geo_target: str = DEFAULT_GEO_TARGET,
+    geo_target: str | list[str] = DEFAULT_GEO_TARGET,
     page_url: str | None = None,
 ) -> list[dict]:
     """Keyword ideas + metrics for one or more seed keywords, via the Keyword Planner (GenerateKeywordIdeas). With `page_url`, Google reads that page and suggests the searches it is about."""
@@ -121,7 +121,7 @@ def keyword_ideas(
     request = client.get_type("GenerateKeywordIdeasRequest")
     request.customer_id = customer_id
     request.language = language
-    request.geo_target_constants.append(geo_target)
+    request.geo_target_constants.extend([geo_target] if isinstance(geo_target, str) else list(geo_target))  # one location, or several: Google adds them together
     request.keyword_plan_network = client.enums.KeywordPlanNetworkEnum.GOOGLE_SEARCH_AND_PARTNERS
     request.historical_metrics_options.include_average_cpc = True
     if page_url and seed_keywords:
@@ -185,7 +185,7 @@ def geo_constants(names: list[str], country_code: str = "IN") -> dict[str, dict]
     return out
 
 
-def historical_metrics(keywords: list[str], *, geo_target: str | None = DEFAULT_GEO_TARGET, language: str = DEFAULT_LANGUAGE) -> dict[str, dict]:
+def historical_metrics(keywords: list[str], *, geo_target: str | list[str] | None = DEFAULT_GEO_TARGET, language: str = DEFAULT_LANGUAGE) -> dict[str, dict]:
     """Exact monthly search volume, competition, average cost per click and top-of-page bid for each given keyword (not related ideas). `geo_target=None` asks for every location at once (the world)."""
     GoogleAdsException = _ads_exception()
 
@@ -195,7 +195,7 @@ def historical_metrics(keywords: list[str], *, geo_target: str | None = DEFAULT_
     request.customer_id = customer_id
     request.language = language
     if geo_target:
-        request.geo_target_constants.append(geo_target)
+        request.geo_target_constants.extend([geo_target] if isinstance(geo_target, str) else list(geo_target))
     request.keyword_plan_network = client.enums.KeywordPlanNetworkEnum.GOOGLE_SEARCH
     request.historical_metrics_options.include_average_cpc = True
     request.keywords.extend(keywords)
