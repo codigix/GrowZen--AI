@@ -64,6 +64,8 @@ def test_keyword_overview_uses_the_google_ads_keyword_planner(client, monkeypatc
     seen = {}
     monkeypatch.setattr(ads, "keyword_ideas", lambda seeds, **kw: seen.update(seeds=seeds) or [idea("dentist in pune", 1900), idea("best dentist in pune", 720), idea("dental clinic pune", 390)])
     client.post(f"/api/v1/businesses/{bid}/keywords", json=[{"keyword": "dentist in Pune"}])
+    from app.routers import seo as seo_router
+    monkeypatch.setattr(seo_router, "_questions", lambda *a, **k: [])  # no call to Google's suggestions in a test
     monkeypatch.setattr(ads, "historical_metrics", lambda kws, **kw: {kws[0]: {"volume": 1900, "competition": "MEDIUM", "competition_index": 48, "cpc": 3.4, "cpc_low": 1.2, "monthly": [{"year": 2026, "month": "JANUARY", "searches": 1900}]}} if kw["geo_target"].endswith("/2356") else {})
     o = client.post(f"/api/v1/businesses/{bid}/seo/keyword-overview", json={"keyword": "Dentist in Pune"}).json()
     assert seen["seeds"] == ["dentist in pune"] and o["keyword"] == "dentist in pune" and o["intent"] == "local" and o["source"] == "Google Ads Keyword Planner"
