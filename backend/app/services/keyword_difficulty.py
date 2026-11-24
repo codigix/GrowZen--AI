@@ -217,19 +217,25 @@ def score(keyword: str, country: str, volume: int | None = None) -> dict[str, An
     feature_comp = 100 * sum(features.values()) / len(features)
     top10 = 100 * sum(1 for r in known if r["da"] >= STRONG_DA) / len(known) if known else None
     sc = round(0.5 * authority + 0.25 * feature_comp + 0.25 * top10) if authority is not None and top10 is not None else None
-    strength = [v for v in (quality, freshness) if v is not None]
-    kd = round(0.7 * sc + 0.3 * (sum(strength) / len(strength))) if sc is not None and strength else sc  # long, fresh pages make a keyword harder to beat
-    if kd is not None and bq is not None and len(bq_each) >= 3:  # with the saved link data of three or more sites, their link quality counts too
-        kd = round(0.85 * kd + 0.15 * bq)
+    ki = intent_scores(page["organic"], page["ads"])
+    sv = _log_scale(volume, VOLUME_BENCHMARK) if volume else None
+    # KEYWORD_DIFFICULTY = 0.25 RD + 0.10 DA + 0.10 PA + 0.15 BQ + 0.10 CC + 0.05 SV + 0.15 SC + 0.10 KI, each part on 0-100.
+    # A part we hold no data for (BQ needs saved links for three or more of the sites) is left out and the weights of the others are scaled up to 100%: nothing is made up for it.
+    parts = [("RD", "Referring domains", 0.25, rd_score), ("DA", "Domain Authority", 0.10, da), ("PA", "Page Authority", 0.10, pa),
+             ("BQ", "Backlink quality", 0.15, bq if len(bq_each) >= 3 else None), ("CC", "Content competition", 0.10, cc), ("SV", "Search volume", 0.05, sv),
+             ("SC", "SERP competition", 0.15, sc), ("KI", "Keyword intent", 0.10, ki["ki"])]
+    used = [(w, v) for _k, _n, w, v in parts if v is not None]
+    kd = round(sum(w * v for w, v in used) / sum(w for w, _ in used)) if used else None
+    formula = [{"key": k, "name": n, "weight": round(w * 100), "value": round(v) if v is not None else None, "used": v is not None} for k, n, w, v in parts]
     return {
         "score": kd, "sc": sc,
         "content": {"cc": round(cc) if cc is not None else None, "relevance": round(relevance) if relevance is not None else None, "quality": round(quality) if quality is not None else None,
                     "freshness": round(freshness) if freshness is not None else None, "pages_read": len(read), "avg_words": round(sum(r["words"] for r in read) / len(read)) if read else None},
-        "intent": intent_scores(page["organic"], page["ads"]),
+        "intent": ki, "formula": formula, "weight_used": round(100 * sum(w for w, _ in used)),
         "backlinks": {"bq": round(bq) if bq is not None else None, "sites_with_links": len(bq_each), "counted": len(bq_each) >= 3}, "sites_with_figures": len(known), "sites": len(rows),
         "components": {"authority_strength": round(authority) if authority is not None else None, "avg_da": round(da) if da is not None else None, "avg_pa": round(pa) if pa is not None else None,
                        "median_rd": round(sorted(rds)[len(rds) // 2]) if rds else None, "serp_features": round(feature_comp), "features": features, "top10_strength": round(top10) if top10 is not None else None,
-                       "sv": round(_log_scale(volume, VOLUME_BENCHMARK)) if volume else None},
+                       "sv": round(sv) if sv is not None else None},
         "organic": rows, "questions": page["questions"], "related": page["related"], "ads": page["ads"],
-        "note": "Difficulty = 70% SC (authority, SERP features, top-10 strength) + 30% content strength (length and freshness of the top pages). Page Authority is the home page's. Backlink quality counts (15%) only when our saved links cover three or more of the sites.",
+        "note": "Difficulty = 0.25 RD + 0.10 DA + 0.10 PA + 0.15 BQ + 0.10 CC + 0.05 SV + 0.15 SC + 0.10 KI. A part with no data is left out and the rest are scaled to 100%. Page Authority is the home page's.",
     }

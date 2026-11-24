@@ -494,6 +494,12 @@ function KeywordOverview({ b }) {
                     <tr key={`${o.position}${o.url}`} className="border-t border-slate-100"><td className="px-4 py-1.5 tabular-nums text-slate-500">{o.position}</td>
                       <td className="px-2 py-1.5 max-w-[320px]"><a href={o.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline block truncate" title={o.title}>{o.title || o.url}</a><span className="text-11.5 text-slate-500">{o.site}</span></td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{o.da ?? '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{o.pa ?? '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{kfmt(o.rd)}</td><td className="px-4 py-1.5 text-right tabular-nums">{o.dofollow != null ? `${o.dofollow}%` : '—'}</td></tr>))}</tbody></table>
+                <div className="px-4 py-2.5 border-t border-slate-100">
+                  <div className="text-12 font-semibold text-slate-700 mb-1.5">How the difficulty of {kd.score} is made{kd.weight_used < 100 ? ` (parts with no data are left out; the other ${kd.weight_used}% is scaled to 100%)` : ''}</div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{(kd.formula || []).map(f => (
+                    <div key={f.key} className={`rounded-lg ring-1 px-2.5 py-1.5 ${f.used ? 'ring-slate-200 bg-white' : 'ring-slate-100 bg-slate-50 text-slate-400'}`} title={f.used ? `${f.name}: ${f.value} out of 100, weight ${f.weight}%` : `${f.name}: no data, not counted`}>
+                      <div className="text-11.5">{f.name} <span className="text-slate-400">· {f.weight}%</span></div><div className="text-16 font-semibold tabular-nums">{f.value ?? '—'}</div></div>))}</div>
+                </div>
                 <div className="px-4 py-2.5 border-t border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-12 text-slate-600">
                   <span>Authority <b className="text-slate-900">{kd.components.authority_strength ?? '—'}</b></span><span>SERP features <b className="text-slate-900">{kd.components.serp_features}%</b></span>
                   <span>Top 10 with DA 70+ <b className="text-slate-900">{kd.components.top10_strength ?? '—'}%</b></span><span>Content strength <b className="text-slate-900">{kd.content?.cc ?? '—'}</b></span>
