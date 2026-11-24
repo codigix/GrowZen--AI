@@ -24,10 +24,11 @@ def test_the_source_is_the_owners_public_picture_else_this_server_else_the_wordp
     assert ph.source_url(None, b, own) == "https://own.example/pic.jpg"
     p = SimpleNamespace(id=5, image_url="https://lh3.googleusercontent.com/x", title="T", body="B", post_type="Update", coupon_code=None, starts_on=None, ends_on=None, start_time=None)
     s = get_settings()
-    monkeypatch.setattr(s, "public_site_url", "https://live.example")
+    monkeypatch.setattr(s, "public_base_url", "https://api.example")
+    monkeypatch.setattr(ph, "_fetchable", lambda u: True)
     url = ph.source_url(None, b, p)
-    assert url == f"https://live.example{s.api_prefix}/public/gbp-post-image/{ph.token_for(5)}.jpg"  # this server is public: Google fetches it from here
-    monkeypatch.setattr(s, "public_site_url", "")
+    assert url == f"https://api.example{s.api_prefix}/public/gbp-post-image/{ph.token_for(5)}.jpg"  # this server answers from the internet: Google fetches it from here
+    monkeypatch.setattr(ph, "_fetchable", lambda u: u.startswith("https://site.example"))  # a live site that is only SAID to be this server but has no such picture is not used; the website's own copy is
     monkeypatch.setattr(ap, "site_target", lambda db, b: SimpleNamespace(method="wordpress", base_url="https://site.example"))
     monkeypatch.setattr(ph, "picture_bytes", lambda b, p: b"jpegbytes")
     monkeypatch.setattr(sp, "upload_wordpress_media", lambda row, data, name, mime: f"https://site.example/wp-content/uploads/{name}")

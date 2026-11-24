@@ -375,7 +375,7 @@ class GbpClient:
                     raise
                 if "media" in body:
                     if require_photo:  # a post that was made with a picture is not sent without it: the reason is given so it can be fixed
-                        raise GbpError(f"Google refused the post's picture, so the post was not published ({str(exc)[:200]}). The picture must be a JPG or PNG of at least 400 x 300 pixels at a public web address.") from exc
+                        raise GbpError(f"Google refused the post's picture, so the post was not published ({str(exc)[:200]}). The picture must be a JPG or PNG of at least 400 x 300 pixels at a public web address. Address sent to Google: {body['media'][0].get('sourceUrl')}") from exc
                     body.pop("media")
                     dropped.append("the photo")
                 elif "callToAction" in body:

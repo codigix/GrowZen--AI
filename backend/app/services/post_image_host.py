@@ -42,9 +42,25 @@ def post_of(token: str) -> int | None:
     return pid if hmac.compare_digest(token_for(pid), f"{pid}-{mac}") else None
 
 
-def server_is_public() -> bool:
+def _public_bases() -> list[str]:
+    """Addresses this API may be reachable at from the internet: PUBLIC_BASE_URL (where this API says it is) first, then the site address (the same domain when the API is served under it)."""
     s = get_settings()
-    return s.site_url.startswith("https://") and not any(h in s.site_url for h in LOCAL)
+    out: list[str] = []
+    for base in (s.public_base_url, s.site_url):
+        base = (base or "").strip().rstrip("/")
+        if base.startswith("https://") and not any(h in base for h in LOCAL) and base not in out:
+            out.append(base)
+    return out
+
+
+def _fetchable(url: str) -> bool:
+    """Whether an address really answers with a picture, the way Google would fetch it: a server that is only SAID to be public (or a live site that does not have this picture) is not used."""
+    import httpx
+    try:
+        r = httpx.get(url, timeout=15, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (compatible; Googlebot-Image/1.0)"})
+    except httpx.HTTPError:
+        return False
+    return r.status_code == 200 and (r.headers.get("content-type") or "").startswith("image/") and len(r.content) > 2000
 
 
 def is_public_address(url: str | None) -> bool:
@@ -73,15 +89,23 @@ def source_url(db: Any, b: Business, p: Post) -> str:
     if is_public_address(p.image_url):
         return p.image_url  # already on the open internet (the owner's own website, for example)
     s = get_settings()
-    if server_is_public():
-        return f"{s.site_url}{s.api_prefix}/public/gbp-post-image/{token_for(p.id)}.jpg"
+    for base in _public_bases():  # this server, when Google can really reach it (checked, not assumed)
+        url = f"{base}{s.api_prefix}/public/gbp-post-image/{token_for(p.id)}.jpg"
+        if _fetchable(url):
+            return url
     from . import article_publishing as ap
     from . import site_publish as sp
     target = ap.site_target(db, b)
     if target is not None and target.method == "wordpress":
         try:
-            return sp.upload_wordpress_media(target, picture_bytes(b, p), f"gbp-post-{p.id}.jpg", "image/jpeg")
+            url = sp.upload_wordpress_media(target, picture_bytes(b, p), f"gbp-post-{p.id}.jpg", "image/jpeg")
         except sp.PublishError as exc:
             raise HostError(f"The picture could not be put on your website's media library: {exc}") from exc
-    raise HostError("Google fetches a post's picture from a public web address, and this server is not reachable from the internet (PUBLIC_SITE_URL is not a public https address) and no WordPress "
+        import time
+        for _ in range(4):  # a site's CDN can take a moment to serve a new file: Google must not meet an error page
+            if _fetchable(url):
+                return url
+            time.sleep(2)
+        raise HostError(f"The picture was uploaded to your website ({url}) but the address does not serve it to visitors yet or blocks outside access. Open it in a browser; if it shows, publish again.")
+    raise HostError("Google fetches a post's picture from a public web address. This server could not be reached from the internet for the picture (set PUBLIC_BASE_URL to this server's public https address) and no WordPress "
                     "website is connected to hold the picture. Publish from the live site, connect your WordPress website in Publishing Setup, or give the post a picture that is already on your website.")
