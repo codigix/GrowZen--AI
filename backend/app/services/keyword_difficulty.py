@@ -58,7 +58,7 @@ def serp(keyword: str, country: str) -> dict[str, Any]:
     last = ""
     for tok in tokens:
         try:
-            r = httpx.post(SERP_URL, params={"token": tok}, json={"queries": keyword, "countryCode": countries.gl(country).lower(), "languageCode": "en", "maxPagesPerQuery": 1,
+            r = httpx.post(SERP_URL, params={"token": tok}, json={"queries": keyword, "countryCode": countries.gl(country).lower(), "languageCode": "en", "maxPagesPerQuery": 2,
                                                                    "resultsPerPage": 10, "mobileResults": False}, timeout=180)
         except httpx.HTTPError as exc:
             last = f"Apify could not be reached ({type(exc).__name__})."
@@ -67,7 +67,7 @@ def serp(keyword: str, country: str) -> dict[str, Any]:
             item = r.json()[0]
             out = {
                 "organic": [{"position": o.get("position"), "title": o.get("title") or "", "url": o.get("url") or "", "site": site_of(o.get("url") or ""), "description": (o.get("description") or "")[:200]}
-                            for o in (item.get("organicResults") or []) if o.get("url")][:10],
+                            for o in sorted((item.get("organicResults") or []), key=lambda x: x.get("position") or 99) if o.get("url")][:10],
                 "questions": [p.get("question") for p in (item.get("peopleAlsoAsk") or []) if p.get("question")],
                 "related": [(q.get("title") if isinstance(q, dict) else str(q)) for q in (item.get("relatedQueries") or [])],
                 "ads": [{"title": a.get("title") or "", "url": a.get("url") or a.get("displayedUrl") or "", "site": site_of(a.get("url") or a.get("displayedUrl") or ""), "description": (a.get("description") or "")[:240]}
@@ -78,6 +78,69 @@ def serp(keyword: str, country: str) -> dict[str, Any]:
             return out
         last = f"Apify answered {r.status_code}."
     raise DifficultyError(last or "Apify gave no results.")
+
+
+COMMERCIAL = ("best", "top", "review", "compare", "vs", "services", "service", "company", "companies", "agency", "agencies", "provider", "alternative", "pricing", "plans")
+TRANSACTIONAL = ("buy", "price", "prices", "pricing", "cost", "hire", "quote", "order", "book", "near me", "cheap", "free trial", "get started", "contact us", "demo")
+UA = "Mozilla/5.0 (compatible; bevisibe-research/1.0)"
+
+
+def _modified(headers: Any, soup: Any) -> Any:
+    """When the page says it was last updated: a meta tag, the page's structured data, or the Last-Modified header."""
+    import re  # noqa: PLC0415
+    from datetime import datetime, timezone  # noqa: PLC0415
+    from email.utils import parsedate_to_datetime  # noqa: PLC0415
+    cands = []
+    for sel in ({"property": "article:modified_time"}, {"property": "og:updated_time"}, {"itemprop": "dateModified"}, {"property": "article:published_time"}):
+        m = soup.find("meta", attrs=sel)
+        if m and m.get("content"):
+            cands.append(m["content"])
+    j = re.search(r'"dateModified"\s*:\s*"([^"]+)"', str(soup))
+    if j:
+        cands.append(j.group(1))
+    if headers.get("last-modified"):
+        cands.append(headers["last-modified"])
+    for c in cands:
+        try:
+            d = datetime.fromisoformat(c.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                d = parsedate_to_datetime(c)
+            except (TypeError, ValueError):
+                continue
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    return None
+
+
+def page_signals(url: str, keyword: str) -> dict[str, Any]:
+    """What one top-10 page itself shows (read directly): its length, whether its title or main heading carries the keyword, and when it was last updated. {} when the page cannot be read."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+    from bs4 import BeautifulSoup  # noqa: PLC0415
+    try:
+        r = httpx.get(url, headers={"User-Agent": UA}, timeout=8, follow_redirects=True)
+        if r.status_code != 200 or "html" not in r.headers.get("content-type", ""):
+            return {}
+        soup = BeautifulSoup(r.text, "html.parser")
+    except Exception:  # noqa: BLE001 -- a page that cannot be read is simply unknown
+        return {}
+    words = [w for w in keyword.lower().split() if len(w) > 2]
+    head = ((soup.title.string if soup.title and soup.title.string else "") + " " + " ".join(h.get_text(" ") for h in soup.find_all("h1"))).lower()
+    mod = _modified(r.headers, soup)
+    for x in soup(["script", "style", "nav", "footer", "header", "noscript"]):
+        x.decompose()
+    return {"words": len(soup.get_text(" ").split()), "relevant": bool(words) and all(w in head for w in words), "age_days": (datetime.now(timezone.utc) - mod).days if mod else None}
+
+
+def intent_scores(rows: list[dict[str, Any]], ads: list[dict[str, Any]]) -> dict[str, int]:
+    """How commercial, transactional and navigational the results page is, from the titles and descriptions Google shows (and whether ads run). KI = 0.4 C + 0.4 T + 0.2 N."""
+    n = max(1, len(rows))
+    txt = [f"{r['title']} {r['description']}".lower() for r in rows]
+    com = 100 * sum(1 for x in txt if any(w in x for w in COMMERCIAL)) / n
+    tra = 100 * sum(1 for x in txt if any(w in x for w in TRANSACTIONAL)) / n
+    if ads:
+        com, tra = min(100, com + 20), min(100, tra + 20)
+    nav = 100 * sum(1 for r in rows if r["site"].split(".")[0] and r["site"].split(".")[0] in " ".join(r["title"].lower().split()[:4]).replace(" ", "")) / n
+    return {"commercial": round(com), "transactional": round(tra), "navigational": round(nav), "ki": round(0.4 * com + 0.4 * tra + 0.2 * nav)}
 
 
 def _log_scale(v: float, top: float) -> float:
@@ -92,6 +155,18 @@ def score(keyword: str, country: str, volume: int | None = None) -> dict[str, An
     for o in page["organic"]:
         m = metrics.get(o["site"]) or {}
         rows.append({**o, "da": m.get("da"), "pa": m.get("pa"), "rd": m.get("rd"), "spam": m.get("spam")})
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    with ThreadPoolExecutor(max_workers=8) as pool:  # the pages are read together
+        for r, sig in zip(rows, pool.map(lambda r: page_signals(r["url"], keyword), rows)):
+            r.update({"words": sig.get("words"), "relevant": sig.get("relevant"), "age_days": sig.get("age_days")})
+    read = [r for r in rows if r.get("words")]
+    relevance = 100 * sum(1 for r in read if r["relevant"]) / len(read) if read else None
+    quality = sum(min(100, r["words"] / 20) for r in read) / len(read) if read else None  # 2,000 words = 100
+    dated = [r for r in read if r["age_days"] is not None]
+    freshness = 100 * sum(1 for r in dated if r["age_days"] <= 365) / len(dated) if dated else None
+    cc_parts = [(relevance, 0.40), (quality, 0.35), (freshness, 0.25)]
+    live = [(v, w) for v, w in cc_parts if v is not None]
+    cc = sum(v * w for v, w in live) / sum(w for _, w in live) if live else None
     known = [r for r in rows if r["da"] is not None]
     avg = lambda k: (sum(r[k] for r in known if r[k] is not None) / max(1, sum(1 for r in known if r[k] is not None))) if known else None  # noqa: E731
     da, pa = avg("da"), avg("pa")
@@ -103,11 +178,16 @@ def score(keyword: str, country: str, volume: int | None = None) -> dict[str, An
     feature_comp = 100 * sum(features.values()) / len(features)
     top10 = 100 * sum(1 for r in known if r["da"] >= STRONG_DA) / len(known) if known else None
     sc = round(0.5 * authority + 0.25 * feature_comp + 0.25 * top10) if authority is not None and top10 is not None else None
+    strength = [v for v in (quality, freshness) if v is not None]
+    kd = round(0.7 * sc + 0.3 * (sum(strength) / len(strength))) if sc is not None and strength else sc  # long, fresh pages make a keyword harder to beat
     return {
-        "score": sc, "sites_with_figures": len(known), "sites": len(rows),
+        "score": kd, "sc": sc,
+        "content": {"cc": round(cc) if cc is not None else None, "relevance": round(relevance) if relevance is not None else None, "quality": round(quality) if quality is not None else None,
+                    "freshness": round(freshness) if freshness is not None else None, "pages_read": len(read), "avg_words": round(sum(r["words"] for r in read) / len(read)) if read else None},
+        "intent": intent_scores(page["organic"], page["ads"]), "sites_with_figures": len(known), "sites": len(rows),
         "components": {"authority_strength": round(authority) if authority is not None else None, "avg_da": round(da) if da is not None else None, "avg_pa": round(pa) if pa is not None else None,
                        "median_rd": round(sorted(rds)[len(rds) // 2]) if rds else None, "serp_features": round(feature_comp), "features": features, "top10_strength": round(top10) if top10 is not None else None,
                        "sv": round(_log_scale(volume, VOLUME_BENCHMARK)) if volume else None},
         "organic": rows, "questions": page["questions"], "related": page["related"], "ads": page["ads"],
-        "note": "Page Authority is the home page's. Content quality, backlink quality and intent are not part of this score.",
+        "note": "Difficulty = 70% SC (authority, SERP features, top-10 strength) + 30% content strength (length and freshness of the top pages). Page Authority is the home page's. Backlink quality (dofollow) is not available.",
     }

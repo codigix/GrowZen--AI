@@ -494,7 +494,13 @@ function KeywordOverview({ b }) {
                     <tr key={`${o.position}${o.url}`} className="border-t border-slate-100"><td className="px-4 py-1.5 tabular-nums text-slate-500">{o.position}</td>
                       <td className="px-2 py-1.5 max-w-[320px]"><a href={o.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline block truncate" title={o.title}>{o.title || o.url}</a><span className="text-11.5 text-slate-500">{o.site}</span></td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{o.da ?? '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{o.pa ?? '—'}</td><td className="px-4 py-1.5 text-right tabular-nums">{kfmt(o.rd)}</td></tr>))}</tbody></table>
-                <p className="px-4 py-2 text-11.5 text-slate-500 border-t border-slate-100">DA, PA (home page) and linking sites are Moz's figures for each site. A dash means no figure.</p>
+                <div className="px-4 py-2.5 border-t border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-12 text-slate-600">
+                  <span>Authority <b className="text-slate-900">{kd.components.authority_strength ?? '—'}</b></span><span>SERP features <b className="text-slate-900">{kd.components.serp_features}%</b></span>
+                  <span>Top 10 with DA 70+ <b className="text-slate-900">{kd.components.top10_strength ?? '—'}%</b></span><span>Content strength <b className="text-slate-900">{kd.content?.cc ?? '—'}</b></span>
+                  <span>Pages with the keyword in title <b className="text-slate-900">{kd.content?.relevance ?? '—'}%</b></span><span>Average length <b className="text-slate-900">{kd.content?.avg_words ?? '—'} words</b></span>
+                  <span>Updated in a year <b className="text-slate-900">{kd.content?.freshness ?? '—'}%</b></span><span>Intent C/T/N <b className="text-slate-900">{kd.intent?.commercial}/{kd.intent?.transactional}/{kd.intent?.navigational}</b></span>
+                </div>
+                <p className="px-4 pb-2 text-11.5 text-slate-500">{kd.note} DA, PA and linking sites are Moz's figures; a dash means no figure.</p>
               </Card></div>
               <Card title={`People also ask (${kd.questions.length})`}>
                 {kd.questions.length === 0 ? <p className="text-12.5 text-slate-500">Google shows none for this search.</p> : <ul className="space-y-1.5 text-12.5">{kd.questions.map(x => <li key={x}><button type="button" className="text-indigo-700 hover:underline text-left cursor-pointer" onClick={() => go(x)}>{x}</button></li>)}</ul>}
