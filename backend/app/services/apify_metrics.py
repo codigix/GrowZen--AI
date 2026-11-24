@@ -54,7 +54,7 @@ def as_scores(x: dict[str, Any]) -> dict[str, Any] | None:
     da = _num(x.get("domain_authority"))
     if da is None:
         return None
-    return {"da": da, "pa": _num(x.get("home_page_authority")), "spam": _num(x.get("spam_score")), "source": "Apify", "site_level": True}
+    return {"da": da, "pa": _num(x.get("home_page_authority")), "spam": _num(x.get("spam_score")), "rd": _num(x.get("linking_root_domains")), "source": "Apify", "site_level": True}
 
 
 def _run(token: str, domains: list[str]) -> list[dict[str, Any]]:
@@ -122,7 +122,7 @@ def cached(domains: list[str]) -> dict[str, dict[str, Any] | None]:
         out: dict[str, dict[str, Any] | None] = {}
         for m in db.scalars(select(BiDomainMetric).where(BiDomainMetric.domain.in_(domains or [""]), BiDomainMetric.source == "apify")):
             if m.fetched_at and _aware(m.fetched_at) >= limit:
-                out[m.domain] = {"da": m.da, "pa": m.pa, "spam": m.spam_score, "source": "Apify", "site_level": True} if m.da is not None else None
+                out[m.domain] = {"da": m.da, "pa": m.pa, "spam": m.spam_score, "rd": m.linking_domains, "source": "Apify", "site_level": True} if m.da is not None else None
         return out
     except Exception:  # noqa: BLE001 - a cache that cannot be read only means asking Apify
         db.rollback()
@@ -141,6 +141,7 @@ def _remember(domain: str, sc: dict[str, Any] | None) -> None:
     try:
         m = db.scalar(select(BiDomainMetric).where(BiDomainMetric.domain == domain)) or BiDomainMetric(domain=domain)
         m.da, m.pa, m.spam_score, m.fetched_at, m.source = (sc or {}).get("da"), (sc or {}).get("pa"), (sc or {}).get("spam"), datetime.now(timezone.utc), "apify"
+        m.linking_domains = (sc or {}).get("rd")
         db.add(m)
         db.commit()
     except Exception:  # noqa: BLE001

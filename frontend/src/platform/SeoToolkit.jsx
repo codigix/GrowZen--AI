@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Star, ArrowUp, ArrowDown, Plus, RefreshCw, KeyRound, ScanSearch, Swords, Sparkles, Link2, MapPin, Gauge, Layers, FileText, ExternalLink,
-  AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot, Download
+  AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot, Download, Loader2
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, ErrorNote, ScoreRing, scoreLevel, useAction, useToast, useModulePath, Sk, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
@@ -307,7 +307,7 @@ const intentChips = (intent) => INTENTS.map(k => ({ k: k[0].toUpperCase() + k.sl
 const difficultyWord = (v) => (v == null ? 'No data' : v < 15 ? 'Very easy' : v < 30 ? 'Easy' : v < 50 ? 'Medium' : v < 70 ? 'Challenging' : 'Very hard');
 const diffTone = (v) => (v == null ? 'slate' : v < 30 ? 'green' : v < 50 ? 'amber' : 'red');
 
-function Gauge180({ value }) {
+function Gauge180({ value, note }) {
   const v = value == null ? 0 : Math.max(0, Math.min(100, value));
   const r = 60, cx = 80, cy = 74, ang = Math.PI * (1 - v / 100);
   const pt = (a) => `${(cx + r * Math.cos(a)).toFixed(1)} ${(cy - r * Math.sin(a)).toFixed(1)}`;
@@ -319,7 +319,7 @@ function Gauge180({ value }) {
         <text x={cx} y={cy - 6} textAnchor="middle" className="fill-slate-900" style={{ fontSize: 26, fontWeight: 700 }}>{value ?? '—'}</text>
       </svg>
       <Badge tone={diffTone(value)}>{difficultyWord(value)}</Badge>
-      <p className="text-11.5 text-slate-500 mt-2 text-center">From Google Ads: how many advertisers bid on it. It is not the organic (SEO) difficulty of page one, which Google does not publish.</p>
+      <p className="text-11.5 text-slate-500 mt-2 text-center">{note || 'From Google Ads: how many advertisers bid on it. It is not the SEO difficulty of page one.'}</p>
     </div>
   );
 }
@@ -381,6 +381,17 @@ function KeywordOverview({ b }) {
   // Saving a keyword ends on My Keywords, with it marked "Just added" (the same landing as Find Keywords).
   const track = (k) => run(`t${k}`, async () => { const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: k }] }); setAdded(a => ({ ...a, [k]: true })); navigate('/keyword-management/tracked', { state: { added: [k], newCount: r?.added ?? 1 } }); });
   const m = data?.metrics;
+  // the SEO difficulty and the Google results page are read from the real top 10 (slow the first time, so the page does not wait for it)
+  const [kd, setKd] = useState(null); // { state: 'loading' | 'ready' | 'error', ...result }
+  const kdKey = data ? `${data.keyword}|${data.country}` : '';
+  useEffect(() => {
+    if (!data) { setKd(null); return undefined; }
+    let live = true;
+    setKd({ state: 'loading' });
+    api(`/businesses/${b.id}/seo/keyword-difficulty`, { method: 'POST', body: { keyword: data.keyword, country: data.country || null, volume: data.metrics?.volume ?? null }, timeout: 240000 })
+      .then(r => { if (live) setKd({ state: 'ready', ...r }); }).catch(e => { if (live) setKd({ state: 'error', message: e.message || 'Google results could not be read.' }); });
+    return () => { live = false; };
+  }, [kdKey]); // eslint-disable-line react-hooks/exhaustive-deps -- once per keyword and country
   const allMonths = m?.monthly || [];
   const monthsShown = period === '12' ? allMonths : period === '6' || period === '3' ? allMonths.slice(-Number(period)) : allMonths.filter(x => `${x.year}-${x.month}` === period);
   const volumeShown = period === '12' || !monthsShown.length ? m?.volume : Math.round(monthsShown.reduce((a, x) => a + x.searches, 0) / monthsShown.length);
@@ -438,8 +449,18 @@ function KeywordOverview({ b }) {
           </div>
           {!data.found && <p className="text-13 text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Google's Keyword Planner has no figures for this exact keyword (it is too rare or too new). The ideas below are what it does know.</p>}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <Card title="Difficulty" subtitle="Advertiser competition on Google, 0 to 100">
-              <Gauge180 value={m.competition_index} />
+            <Card title="Difficulty" subtitle={kd?.state === 'ready' && kd.score != null ? 'SEO difficulty from the real top 10 of Google' : 'Advertiser competition on Google, 0 to 100'}>
+              {kd?.state === 'ready' && kd.score != null ? (
+                <>
+                  <Gauge180 value={kd.score} note={`Average Domain Authority ${kd.components.avg_da ?? '—'}, Page Authority ${kd.components.avg_pa ?? '—'}, ${kd.components.top10_strength ?? 0}% of the top 10 have DA 70+, SERP features ${kd.components.serp_features}%. From ${kd.sites_with_figures} of ${kd.sites} sites.`} />
+                  <p className="text-11.5 text-slate-500 mt-1 text-center">Advertiser competition (Google Ads): {m.competition_index ?? '—'}</p>
+                </>
+              ) : (
+                <>
+                  <Gauge180 value={m.competition_index} />
+                  <p className="text-11.5 text-center mt-1 flex items-center justify-center gap-1.5 text-slate-500">{kd?.state === 'loading' ? <><Loader2 size={12} className="animate-spin" />Reading the top 10 on Google for the SEO difficulty…</> : kd?.state === 'error' ? kd.message : ''}</p>
+                </>
+              )}
             </Card>
             <Card title="Search volume" subtitle={`Average searches per month, ${periodLabel}`}>
               <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums">{kfmt(volumeShown)}</div>
@@ -465,11 +486,31 @@ function KeywordOverview({ b }) {
             </Card>
             {[['similar', 'Similar keywords'], ['related', 'Related keywords']].map(([k, title]) => <IdeaGroup key={k} title={title} g={groupsShown(k)} go={go} />)}
           </div>
+          {kd?.state === 'ready' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              <div className="lg:col-span-2"><Card pad={false} title="SERP overview" subtitle={`The top ${kd.organic.length} results on Google for "${data.keyword}"`}>
+                <table className="w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500"><th className="px-4 py-1.5 font-medium w-8">#</th><th className="px-2 py-1.5 font-medium">Page</th><th className="px-2 py-1.5 font-medium text-right">DA</th><th className="px-2 py-1.5 font-medium text-right">PA</th><th className="px-4 py-1.5 font-medium text-right">Linking sites</th></tr></thead>
+                  <tbody>{kd.organic.map(o => (
+                    <tr key={`${o.position}${o.url}`} className="border-t border-slate-100"><td className="px-4 py-1.5 tabular-nums text-slate-500">{o.position}</td>
+                      <td className="px-2 py-1.5 max-w-[320px]"><a href={o.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline block truncate" title={o.title}>{o.title || o.url}</a><span className="text-11.5 text-slate-500">{o.site}</span></td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{o.da ?? '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{o.pa ?? '—'}</td><td className="px-4 py-1.5 text-right tabular-nums">{kfmt(o.rd)}</td></tr>))}</tbody></table>
+                <p className="px-4 py-2 text-11.5 text-slate-500 border-t border-slate-100">DA, PA (home page) and linking sites are Moz's figures for each site. A dash means no figure.</p>
+              </Card></div>
+              <Card title={`People also ask (${kd.questions.length})`}>
+                {kd.questions.length === 0 ? <p className="text-12.5 text-slate-500">Google shows none for this search.</p> : <ul className="space-y-1.5 text-12.5">{kd.questions.map(x => <li key={x}><button type="button" className="text-indigo-700 hover:underline text-left cursor-pointer" onClick={() => go(x)}>{x}</button></li>)}</ul>}
+                {kd.related.length > 0 && <><div className="text-12 font-semibold text-slate-600 mt-3 mb-1">Related searches</div><div className="flex flex-wrap gap-1.5">{kd.related.map(x => <button key={x} type="button" onClick={() => go(x)} className="px-2 py-0.5 rounded-full bg-slate-100 text-12 text-slate-700 hover:bg-indigo-50 cursor-pointer">{x}</button>)}</div></>}
+              </Card>
+              <div className="lg:col-span-3"><Card title={`Ads on this search (${kd.ads.length})`} subtitle="What advertisers show on Google's results page for the keyword, right now">
+                {kd.ads.length === 0 ? <p className="text-12.5 text-slate-500">No ads were shown on this search when it was read.</p> : (
+                  <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">{kd.ads.map((a, n) => <div key={n} className="rounded-lg ring-1 ring-slate-200 p-3"><div className="text-11.5 text-slate-500 truncate">Ad · {a.site || a.url}</div><div className="text-13 font-semibold text-indigo-700">{a.title}</div><div className="text-12 text-slate-600 mt-0.5">{a.description}</div></div>)}</div>)}
+              </Card></div>
+            </div>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             <IdeaGroup title="Questions" g={groupsShown('questions')} go={go} />
             <div className="lg:col-span-2"><Card title="Not available from Google">
-              <p className="text-13 text-slate-600">The Keyword Planner is Google's advertising tool: it gives searches, competition, bids and ideas. It does not give the results page, so these sections are not shown, rather than made up:</p>
-              <ul className="mt-2 grid sm:grid-cols-2 gap-x-6 gap-y-1 text-13 text-slate-500 list-disc pl-5"><li>SERP overview (who ranks on page one)</li><li>Ranking dynamics (use Position Tracking for yours)</li><li>Most popular ads</li><li>Ads history for the keyword</li><li>Ad copies of competitors</li></ul>
+              <p className="text-13 text-slate-600">These sections have no source connected, so they are not shown, rather than made up:</p>
+              <ul className="mt-2 grid sm:grid-cols-2 gap-x-6 gap-y-1 text-13 text-slate-500 list-disc pl-5"><li>Ranking dynamics (use Position Tracking for yours)</li><li>Ads history over the months</li><li>Domain traffic and traffic cost</li></ul>
               <div className="mt-3 flex gap-2"><Button size="sm" onClick={() => navigate('/rank-tracking')}>Position Tracking</Button><Button size="sm" busy={busy === 'ws'} onClick={() => toWorkspace(['similar', 'related', 'questions'].flatMap(k => data.groups?.[k]?.rows || []).map(r => ({ keyword: r.keyword, volume: r.volume })))}>Add all ideas to the Keyword Workspace</Button></div>
             </Card></div>
           </div>

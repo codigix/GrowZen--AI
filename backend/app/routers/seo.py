@@ -340,6 +340,23 @@ def _by_country(kw: str, home: str | None) -> list[dict]:
     return sorted(out, key=lambda r: -r["volume"])
 
 
+class DifficultyIn(BaseModel):
+    keyword: str = Field(min_length=2, max_length=120)
+    country: str | None = Field(default=None, min_length=2, max_length=2)
+    volume: int | None = None
+
+
+@router.post("/keyword-difficulty")
+def keyword_difficulty(body: DifficultyIn, b: Business = Depends(get_business)):
+    """The SEO difficulty of one keyword from the real top 10 of Google: Domain Authority, Page Authority and referring domains of those sites, the SERP features, with the top 10, People also ask,
+    related searches and ads of that results page."""
+    from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    try:
+        return kd.score(" ".join(body.keyword.lower().split()), (body.country or "").upper() or market.serp_country(b), body.volume)
+    except kd.DifficultyError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
 @router.post("/keyword-overview")
 def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """One keyword from the Google Ads Keyword Planner: monthly searches and the 12-month trend, competition, the bid range and related ideas, for the business's country.
