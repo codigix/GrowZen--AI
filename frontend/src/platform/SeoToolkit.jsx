@@ -444,6 +444,7 @@ function KeywordOverview({ b }) {
   const kdBatch = useRef(0); // the run in progress (a new analysis starts a new one, and the old one's answers are dropped)
   const [allList, setAllList] = useState(null); // { title, rows }: a whole list of ideas, open in a window
   const [allClusters, setAllClusters] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false); // the AI Overview row of the top-10 table, open or closed
   const kdRun = useRef(0);
   const kdFor = useRef('');
   // read together with the overview (not after it); the results are read as Google shows them in the chosen place, so a new place reads them again, a new period does not
@@ -625,12 +626,37 @@ function KeywordOverview({ b }) {
           {kd?.state === 'ready' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <div className="lg:col-span-2"><Card pad={false} title="SERP overview" subtitle={`The top ${kd.organic.length} results on Google for "${data.keyword}"`}>
-                <table className="w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500"><th className="px-4 py-1.5 font-medium w-8">#</th><th className="px-2 py-1.5 font-medium">Page</th><th className="px-2 py-1.5 font-medium text-right">DA</th><th className="px-2 py-1.5 font-medium text-right">PA</th><th className="px-2 py-1.5 font-medium text-right">Linking sites</th><th className="px-4 py-1.5 font-medium text-right" title="Share of the site's saved backlinks that pass link value (from our own link data; blank when we hold too few links)">Dofollow</th></tr></thead>
-                  <tbody>{kd.organic.map(o => (
-                    <tr key={`${o.position}${o.url}`} className="border-t border-slate-100"><td className="px-4 py-1.5 tabular-nums text-slate-500">{o.position}</td>
-                      <td className="px-2 py-1.5 max-w-[320px]"><span className="flex items-center gap-1.5 min-w-0"><Link to={`/organic-rankings/page?u=${encodeURIComponent(o.url)}&q=${encodeURIComponent(data.keyword)}`} className="text-indigo-700 hover:underline truncate" title={`Open the organic rankings of this page: ${o.title}`}>{o.title || o.url}</Link>
-                        <a href={o.url} target="_blank" rel="noreferrer" aria-label="Open the page in a new tab" title="Open the page itself in a new tab" className="shrink-0 text-slate-400 hover:text-indigo-600"><ExternalLink size={13} /></a></span><span className="text-11.5 text-slate-500">{o.site}</span></td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{o.da ?? '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{o.pa ?? '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{kfmt(o.rd)}</td><td className="px-4 py-1.5 text-right tabular-nums">{o.dofollow != null ? `${o.dofollow}%` : '—'}</td></tr>))}</tbody></table>
+                <table className="w-full text-12.5">
+                  <thead><tr className="text-left text-11.5 text-slate-500 border-b border-slate-200">
+                    <th className="px-4 py-2 font-medium">URL</th>
+                    <th className="px-2 py-2 font-medium text-right" title="Page Authority (Moz): how strong the page is, 0 to 100. Moz gives it for the home page of each site; the Domain Authority of the site is under it.">Page AS</th>
+                    <th className="px-2 py-2 font-medium text-right" title="Sites that link to the website (Moz). The count is for the whole site, not for this page alone.">Ref. Domains</th>
+                    <th className="px-2 py-2 font-medium text-right" title="Backlinks to the site that our own link data holds. Blank when the site is not one we track.">Backlinks</th>
+                    <th className="px-2 py-2 font-medium text-right" title="Estimated visits from Google to this page. It needs a traffic database that is not connected, so it is not shown rather than estimated.">Search Traffic</th>
+                    <th className="px-4 py-2 font-medium text-right" title="How many keywords this page ranks for. Open the page to see the searches it shows for, measured in Google now.">URL Keywords</th></tr></thead>
+                  <tbody>
+                    {(kd.ai_links || []).length > 0 && (
+                      <>
+                        <tr className="border-b border-slate-100 bg-slate-50/60 cursor-pointer hover:bg-slate-50" onClick={() => setAiOpen(o => !o)}>
+                          <td colSpan={6} className="px-4 py-2"><button type="button" aria-expanded={aiOpen} className="inline-flex items-center gap-2 font-semibold text-slate-800 cursor-pointer"><span className={`inline-block transition-transform text-slate-400 ${aiOpen ? 'rotate-90' : ''}`}>›</span><Sparkles size={14} className="text-slate-400" />AI Overview ({kd.ai_links.length} link{kd.ai_links.length === 1 ? '' : 's'})</button></td>
+                        </tr>
+                        {aiOpen && kd.ai_links.map((l, n) => (
+                          <tr key={`${n}${l.url}`} className="border-b border-slate-100 bg-slate-50/40"><td colSpan={6} className="pl-10 pr-4 py-1.5"><span className="flex items-center gap-1.5 min-w-0"><Link to={`/organic-rankings/page?u=${encodeURIComponent(l.url)}&q=${encodeURIComponent(data.keyword)}`} className="text-indigo-700 hover:underline truncate" title={l.title}>{l.title || l.url}</Link>
+                            <a href={l.url} target="_blank" rel="noreferrer" aria-label="Open the page in a new tab" className="shrink-0 text-slate-400 hover:text-indigo-600"><ExternalLink size={13} /></a><span className="text-11.5 text-slate-500 shrink-0">{l.site}</span></span></td></tr>))}
+                      </>
+                    )}
+                    {kd.organic.map(o => (
+                      <tr key={`${o.position}${o.url}`} className="border-b border-slate-100 align-top">
+                        <td className="px-4 py-2 max-w-[380px]"><div className="flex items-start gap-2 min-w-0"><span className="tabular-nums text-slate-400 w-5 shrink-0 text-right">{o.position}</span>
+                          <div className="min-w-0"><span className="flex items-center gap-1.5 min-w-0"><Link to={`/organic-rankings/page?u=${encodeURIComponent(o.url)}&q=${encodeURIComponent(data.keyword)}`} className="text-indigo-700 hover:underline truncate" title={`Open the organic rankings of this page: ${o.title}`}>{o.title || o.url}</Link>
+                            <a href={o.url} target="_blank" rel="noreferrer" aria-label="Open the page in a new tab" title="Open the page itself in a new tab" className="shrink-0 text-slate-400 hover:text-indigo-600"><ExternalLink size={13} /></a></span>
+                            <span className="block text-11.5 text-slate-500 truncate" title={o.url}>{o.url.replace(/^https?:\/\/(www\.)?/, '')}</span></div></div></td>
+                        <td className="px-2 py-2 text-right tabular-nums"><div className="font-semibold text-slate-900">{o.pa ?? '—'}</div>{o.da != null && <div className="text-11 text-slate-400" title="Domain Authority of the whole site">DA {o.da}</div>}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{kfmt(o.rd)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{o.backlinks != null ? fmt(o.backlinks) : <span className="text-slate-300">—</span>}</td>
+                        <td className="px-2 py-2 text-right text-slate-300" title="Needs a traffic database that is not connected">—</td>
+                        <td className="px-4 py-2 text-right"><Link to={`/organic-rankings/page?u=${encodeURIComponent(o.url)}&q=${encodeURIComponent(data.keyword)}`} className="text-12 font-semibold text-indigo-700 hover:underline" title="Open the page: its searches and positions are measured in Google now">See</Link></td></tr>))}
+                  </tbody></table>
                 <div className="px-4 py-2.5 border-t border-slate-100">
                   <div className="text-12 font-semibold text-slate-700 mb-1.5">How the difficulty of {kd.score} is made{kd.weight_used < 100 ? ` (parts with no data are left out; the other ${kd.weight_used}% is scaled to 100%)` : ''}</div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{(kd.formula || []).map(f => (

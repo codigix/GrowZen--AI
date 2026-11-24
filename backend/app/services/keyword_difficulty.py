@@ -154,7 +154,10 @@ def _badger(keyword: str, country: str, location: str | None = None, num: int = 
         organic = [{"position": o.get("position") or i + 1, "title": o.get("title") or "", "url": o.get("link") or "", "site": site_of(o.get("link") or ""), "description": (o.get("snippet") or "")[:200]}
                    for i, o in enumerate(j["organic_results"]) if o.get("link")][:num]
         organic = _open_gotos(organic)
-        ai = bool((j.get("ai_overview") or {}).get("text_blocks"))
+        ai_refs = [{"title": r.get("title") or r.get("source") or "", "url": r.get("link") or r.get("url") or "", "site": site_of(r.get("link") or r.get("url") or "")}
+                   for r in ((j.get("ai_overview") or {}).get("references") or []) if isinstance(r, dict) and (r.get("link") or r.get("url"))][:12]
+        ai_refs = _open_gotos(ai_refs)  # the sources of the AI Overview come as Google redirects: their real addresses are read
+        ai = bool((j.get("ai_overview") or {}).get("text_blocks")) or bool(ai_refs)
         features = {name: bool(j.get(key)) for name, key in FEATURES.items()}
         features["AI overview"] = ai
         if any(o["site"] == "google.com" for o in organic):  # Google's own map or search links are the local pack, not a competitor's page: they are not scored as one
@@ -164,7 +167,7 @@ def _badger(keyword: str, country: str, location: str | None = None, num: int = 
                 "related": [q.get("query") for q in (j.get("related_searches") or []) if q.get("query")],
                 "ads": [{"title": a.get("title") or "", "url": a.get("link") or a.get("displayed_link") or "", "site": site_of(a.get("link") or a.get("displayed_link") or ""),
                          "description": (a.get("description") or a.get("snippet") or "")[:240]} for a in (j.get("ads") or [])],
-                "ai_overview": ai, "features": features, "counts": {"ads": len(j.get("ads") or []), "pla": len(j.get("shopping_results") or [])}}
+                "ai_overview": ai, "ai_links": ai_refs, "features": features, "counts": {"ads": len(j.get("ads") or []), "pla": len(j.get("shopping_results") or [])}}
     return None
 
 
@@ -396,7 +399,7 @@ def score(keyword: str, country: str, volume: int | None = None, use_cache: bool
     profiles = link_profile(sites, keyword)
     for r in rows:
         pr = profiles.get(r["site"]) or {}
-        r.update({"links_saved": pr.get("links"), "dofollow": pr.get("dofollow"), "ibq": pr.get("ibq")})
+        r.update({"links_saved": pr.get("links"), "backlinks": pr.get("links"), "dofollow": pr.get("dofollow"), "ibq": pr.get("ibq")})
     covered = [profiles[r["site"]] for r in rows if r["site"] in profiles and profiles[r["site"]].get("ibq") is not None]
     bq_each = [x["ibq"] for x in covered]
     bq = sum(bq_each) / len(bq_each) if bq_each else None
@@ -423,7 +426,7 @@ def score(keyword: str, country: str, volume: int | None = None, use_cache: bool
     kd = round(sum(w * v for w, v in used) / sum(w for w, _ in used)) if used else None
     formula = [{"key": k, "name": n, "weight": round(w * 100), "value": round(v) if v is not None else None, "used": v is not None} for k, n, w, v in parts]
     return {
-        "score": kd, "sc": sc, "location": location, "location_applied": page.get("location_applied"), "serp_counts": page.get("counts") or {"ads": len(page["ads"]), "pla": None},
+        "score": kd, "sc": sc, "location": location, "ai_links": page.get("ai_links") or [], "location_applied": page.get("location_applied"), "serp_counts": page.get("counts") or {"ads": len(page["ads"]), "pla": None},
         "you": ({"domain": mine, "da": (metrics.get(mine) or {}).get("da"), "pa": (metrics.get(mine) or {}).get("pa"), "rd": (metrics.get(mine) or {}).get("rd"), "top_da": round(da) if da is not None else None,
                  "top_pa": round(pa) if pa is not None else None} if mine and metrics.get(mine) else None),
         "content": {"cc": round(cc) if cc is not None else None, "relevance": round(relevance) if relevance is not None else None, "quality": round(quality) if quality is not None else None,
