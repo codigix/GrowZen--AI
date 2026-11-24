@@ -57,7 +57,7 @@ def _fetchable(url: str) -> bool:
     """Whether an address really answers with a picture, the way Google would fetch it: a server that is only SAID to be public (or a live site that does not have this picture) is not used."""
     import httpx
     try:
-        r = httpx.get(url, timeout=15, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (compatible; Googlebot-Image/1.0)"})
+        r = httpx.get(url, timeout=15, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})  # not pretending to be Google: a site's bot protection blocks that, though the real Googlebot passes
     except httpx.HTTPError:
         return False
     return r.status_code == 200 and (r.headers.get("content-type") or "").startswith("image/") and len(r.content) > 2000
