@@ -99,6 +99,12 @@ const intentOf = (kw, b) => {
  * 1. Trending Topics Discovery Module: Google Ads Keyword Planner ideas, top by volume and rising by 3-month change
  *    (same API as Keyword Intelligence → Google Planner)
  */
+// Countries the Keyword Planner lookup supports (same list as the backend's GEO_TARGETS).
+const KP_COUNTRIES = { IN: 'India', US: 'United States', GB: 'United Kingdom', AU: 'Australia', CA: 'Canada', AE: 'UAE', SG: 'Singapore', DE: 'Germany', FR: 'France', NZ: 'New Zealand', ZA: 'South Africa', SA: 'Saudi Arabia', NG: 'Nigeria', KE: 'Kenya', PK: 'Pakistan', BD: 'Bangladesh', LK: 'Sri Lanka', MY: 'Malaysia', PH: 'Philippines' };
+// Rough spelling closeness (shared letter pairs) for the "Did you mean" hint.
+const bigrams = (s) => { const t = s.toLowerCase().replace(/\s+/g, ' '); const m = new Map(); for (let i = 0; i < t.length - 1; i++) m.set(t.slice(i, i + 2), (m.get(t.slice(i, i + 2)) || 0) + 1); return m; };
+const similarity = (a, c) => { const x = bigrams(a), y = bigrams(c); let hit = 0, tot = 0; x.forEach((n, k) => { hit += Math.min(n, y.get(k) || 0); tot += n; }); y.forEach(n => { tot += n; }); return tot ? (2 * hit) / tot : 0; };
+
 function TrendingTopicsTab({ b, onSelectTopic }) {
   const [selected, setSelected] = useState({});  // keyword -> { keyword, rising }
   const pickedCount = Object.keys(selected).length;
@@ -118,16 +124,30 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
   const seed = picked || seeds[0] || '';
   const doSearch = () => { const q = typed.trim().toLowerCase(); if (q) setPicked(q); };
   // Google Ads Keyword Planner: keyword ideas for the seed with monthly volume, 3-month change and 12-month history.
-  const trend = useApi(seed ? `/keyword-planner/metrics?keyword=${encodeURIComponent(seed)}&limit=50&include_monthly=true` : null);
+  const [country, setCountry] = useState(String(b.country || 'IN').toUpperCase()); // search location (Keyword Planner geo target)
+  const [range, setRange] = useState(12); // months the numbers cover: 12 = Planner's own average and 3-month change; 6 / 3 are worked out from the monthly figures
+  const trend = useApi(seed ? `/keyword-planner/metrics?keyword=${encodeURIComponent(seed)}&limit=50&include_monthly=true&country=${country}` : null);
   const noData = trend.error?.status === 404; // Planner has no ideas for this seed: an empty result, not a failure
   const ideas = (!noData && trend.data?.keywords) || [];
   const seedIdea = ideas.find(r => r.keyword.toLowerCase() === String(trend.data?.seed_keyword || '').toLowerCase());
 
   const pctLabel = (v) => (v == null ? null : `${v >= 0 ? '+' : '-'}${Math.abs(Math.round(v))}%`);
-  const toTopic = (r, category) => ({ id: `${category}-${r.keyword}`, title: r.keyword, category, velocity: pctLabel(r.three_month_change), score: r.avg_monthly_searches, competition: r.competition, intent: intentOf(r.keyword, b), source: 'Google Keyword Planner' });
-  // Top = most-searched ideas; Rising = ideas whose searches grew most over the last 3 months.
-  const topQueries = useMemo(() => [...ideas].sort((a, c) => (c.avg_monthly_searches || 0) - (a.avg_monthly_searches || 0)).slice(0, 20).map(r => toTopic(r, 'top')), [ideas, b]); // eslint-disable-line react-hooks/exhaustive-deps
-  const risingQueries = useMemo(() => ideas.filter(r => (r.three_month_change ?? 0) > 0).sort((a, c) => c.three_month_change - a.three_month_change).slice(0, 20).map(r => toTopic(r, 'rising')), [ideas, b]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Numbers for the chosen period. 12 months keeps Planner's own figures; 6 / 3 months use only the last months of the monthly history.
+  const periodAvg = (r) => {
+    const v = (r.monthly_search_volumes || []).slice(-range);
+    return range === 12 || !v.length ? r.avg_monthly_searches : Math.round(v.reduce((s, m) => s + (m.monthly_searches || 0), 0) / v.length);
+  };
+  const periodChange = (r) => {
+    const v = r.monthly_search_volumes || [];
+    if (range === 12 || v.length < 2) return r.three_month_change;
+    const old = v[Math.max(0, v.length - 1 - range)].monthly_searches;
+    return old ? Math.round(((v[v.length - 1].monthly_searches - old) / old) * 10000) / 100 : null;
+  };
+  const changeMonths = range === 12 ? 3 : range;
+  const toTopic = (r, category) => ({ id: `${category}-${r.keyword}`, title: r.keyword, category, velocity: pctLabel(periodChange(r)), score: periodAvg(r), competition: r.competition, intent: intentOf(r.keyword, b), source: 'Google Keyword Planner' });
+  // Top = most-searched ideas; Rising = ideas whose searches grew most over the period.
+  const topQueries = useMemo(() => [...ideas].sort((a, c) => (periodAvg(c) || 0) - (periodAvg(a) || 0)).slice(0, 20).map(r => toTopic(r, 'top')), [ideas, b, range]); // eslint-disable-line react-hooks/exhaustive-deps
+  const risingQueries = useMemo(() => ideas.filter(r => (periodChange(r) ?? 0) > 0).sort((a, c) => periodChange(c) - periodChange(a)).slice(0, 20).map(r => toTopic(r, 'rising')), [ideas, b, range]); // eslint-disable-line react-hooks/exhaustive-deps
   const topics = [...risingQueries, ...topQueries];
 
   // Opening the writer: the topic becomes the first target keyword; the Keyword Planner ideas feed the keyword generator.
@@ -142,7 +162,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
   const MON = { JANUARY: 'Jan', FEBRUARY: 'Feb', MARCH: 'Mar', APRIL: 'Apr', MAY: 'May', JUNE: 'Jun', JULY: 'Jul', AUGUST: 'Aug', SEPTEMBER: 'Sep', OCTOBER: 'Oct', NOVEMBER: 'Nov', DECEMBER: 'Dec' };
   const hist = seedIdea?.monthly_search_volumes || [];
   const pts = hist.map(m => ({ date: `${MON[m.month] || String(m.month).slice(0, 3)} '${String(m.year).slice(2)}`, value: m.monthly_searches || 0 }));
-  const ch = seedIdea?.three_month_change;
+  const ch = seedIdea ? periodChange(seedIdea) : null;
   const classification = ch == null ? null : ch >= 10 ? 'rising' : ch <= -10 ? 'declining' : 'stable';
   const pctOf = (t) => (t.velocity === 'Breakout' ? 9999 : /^[+-]\d+%$/.test(t.velocity || '') ? parseInt(t.velocity, 10) : null);
   const COMP = { LOW: ['Low', 'green'], MEDIUM: ['Medium', 'amber'], HIGH: ['High', 'red'] };
@@ -179,7 +199,19 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
           <Button type="submit" variant="primary" icon={Search} disabled={!typed.trim()}>Search</Button>
         </form>
         {seeds.length > 0 && <div className="flex flex-wrap items-center gap-1.5 text-12"><span className="text-slate-500">Topics for</span>{seeds.map(x => <button key={x} type="button" onClick={() => setPicked(x)} aria-pressed={x === seed} className={`h-7 px-2.5 rounded-full font-semibold cursor-pointer ring-1 ring-inset ${x === seed ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>{x}</button>)}</div>}
-        <span className="ml-auto inline-flex items-center gap-1.5 text-11.5 text-slate-500"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Google Keyword Planner · India · last 12 months</span>
+        <div className="ml-auto flex flex-wrap items-center gap-2 text-12 text-slate-600">
+          <label className="inline-flex items-center gap-1.5">Location
+            <select value={country} onChange={e => setCountry(e.target.value)} aria-label="Search location" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
+              {Object.entries(KP_COUNTRIES).map(([c, n]) => <option key={c} value={c}>{n}</option>)}
+            </select>
+          </label>
+          <label className="inline-flex items-center gap-1.5">Period
+            <select value={range} onChange={e => setRange(Number(e.target.value))} aria-label="Period" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
+              <option value={3}>Last 3 months</option><option value={6}>Last 6 months</option><option value={12}>Last 12 months</option>
+            </select>
+          </label>
+          <span className="inline-flex items-center gap-1.5 text-11.5 text-slate-500" title="Google Keyword Planner reports monthly figures, not weekly or daily"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Google Keyword Planner · monthly data</span>
+        </div>
       </div>
 
       {pickedCount > 0 && (
@@ -192,6 +224,16 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
         </div>
       )}
 
+      {!trend.loading && seed && ideas.length <= 2 && (() => {
+        const close = seeds.filter(x => x.toLowerCase() !== seed.toLowerCase() && similarity(x, seed) >= 0.6).slice(0, 3);
+        return (
+          <div className="px-3 py-2 rounded-xl bg-amber-50 ring-1 ring-amber-200 text-12.5 text-amber-900">
+            Very few results for “{seed}”. Check the spelling{close.length ? ' — did you mean ' : '.'}
+            {close.map((x, i) => <React.Fragment key={x}>{i > 0 && ', '}<button type="button" onClick={() => { setTyped(x); setPicked(x); }} className="font-semibold underline cursor-pointer">{x}</button></React.Fragment>)}{close.length ? '?' : ''}
+          </div>
+        );
+      })()}
+
       {trend.error && !noData && !trend.loading && <ErrorNote>Google Keyword Planner is not answering right now ({trend.error.message}). Try again in a minute.</ErrorNote>}
 
       {trend.data && !noData && !trend.loading && (
@@ -199,7 +241,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
           <div>
             <div className="flex items-center gap-2 text-14 font-semibold text-slate-900">“{trend.data.seed_keyword}”{classification && <span className={`text-11.5 font-semibold capitalize px-2 py-0.5 rounded-full ${classification === 'rising' ? 'bg-emerald-50 text-emerald-700' : classification === 'declining' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{classification}</span>}</div>
             <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-12">
-              {[['Latest month', pts.length ? fmt(pts[pts.length - 1].value) : null], ['Average a month', seedIdea ? fmt(seedIdea.avg_monthly_searches) : null], ['3-month change', pctLabel(ch)], ['Topics found', relatedAll.length]].map(([l, v]) => (
+              {[['Latest month', pts.length ? fmt(pts[pts.length - 1].value) : null], ['Average a month', seedIdea ? fmt(periodAvg(seedIdea)) : null], [`${changeMonths}-month change`, pctLabel(ch)], ['Topics found', relatedAll.length]].map(([l, v]) => (
                 <div key={l}><dt className="text-slate-500">{l}</dt><dd className="text-16 font-semibold tabular-nums text-slate-900">{v ?? '—'}</dd></div>))}
             </dl>
           </div>
@@ -229,7 +271,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
           <Card pad={false} title={`Top queries (${topQueries.length})`} subtitle="Most searched, by average searches a month">{tableFor(topQueries, 'top')}</Card>
-          <Card pad={false} title={`Rising queries (${risingQueries.length})`} subtitle="Searches grew most in the last 3 months">{tableFor(risingQueries, 'rising')}</Card>
+          <Card pad={false} title={`Rising queries (${risingQueries.length})`} subtitle={`Searches grew most in the last ${changeMonths} months`}>{tableFor(risingQueries, 'rising')}</Card>
         </div>
       )}
     </div>
