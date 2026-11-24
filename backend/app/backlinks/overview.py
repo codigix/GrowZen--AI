@@ -165,17 +165,24 @@ def overview(db: Session, b: Business) -> dict[str, Any]:
     # ------------------------------------------------------------------ the breakdowns
     cats = Counter(d["cats"].most_common(1)[0][0] for d in ref)
     anchors = Counter(x["anchor"] for x in live if x["anchor"])
+    anchor_info: dict[str, dict[str, Any]] = {}
+    for x in live:
+        if x["anchor"]:
+            e = anchor_info.setdefault(x["anchor"], {"domains": set(), "type": x["anchor_type"], "follow": 0})
+            e["domains"].add(x["source_domain"])
+            e["follow"] += 1 if x["follow"] == "dofollow" else 0
     buckets = [(lo, lo + 10) for lo in range(0, 100, 10)]
     by_as = [{"range": f"{lo + 1 if lo else 0} - {hi}", "domains": sum(1 for d in ref if d["da"] is not None and (lo < d["da"] <= hi or (lo == 0 and d["da"] == 0)))} for lo, hi in buckets][::-1]
     tlds = Counter(d["domain"].rsplit(".", 1)[-1] for d in ref)
     countries = Counter(COUNTRY_TLDS[t] for t in (d["domain"].rsplit(".", 1)[-1] for d in ref) if t in COUNTRY_TLDS)
     ipset = {ips.get(d["domain"]) for d in ref if ips.get(d["domain"])}
     subnets = {".".join(i.split(".")[:3]) for i in ipset}
-    pages: dict[str, dict[str, Any]] = defaultdict(lambda: {"domains": set(), "links": 0})
+    pages: dict[str, dict[str, Any]] = defaultdict(lambda: {"domains": set(), "links": 0, "follow": 0})
     for x in live:
         p = pages[x["target_url"]]
         p["domains"].add(x["source_domain"])
         p["links"] += 1
+        p["follow"] += 1 if x["follow"] == "dofollow" else 0
     n = max(1, len(ref))
     return {
         "state": "ok", "domain": domain, "as_of": now.isoformat(),
@@ -187,13 +194,61 @@ def overview(db: Session, b: Business) -> dict[str, Any]:
                       "radar": {"link_power": link_power, "organic_traffic": organic, "natural_profile": natural}, "verdict": weakest[0] if weakest[1] < 40 else "Balanced"},
         "series": series,
         "categories": [{"label": k, "domains": v, "share": round(100 * v / n)} for k, v in cats.most_common(8)],
-        "anchors": [{"text": k, "count": v} for k, v in anchors.most_common(40)], "anchor_types": dict(anchor_types),
+        "anchors": [{"text": k, "count": v, "domains": len(anchor_info[k]["domains"]), "type": anchor_info[k]["type"], "follow": anchor_info[k]["follow"]} for k, v in anchors.most_common(300)], "anchor_types": dict(anchor_types),
         "by_authority": by_as, "authority_known": sum(1 for d in ref if d["da"] is not None), "authority_unknown": sum(1 for d in ref if d["da"] is None),
         "follow": {"follow": follow.get("dofollow", 0), "nofollow": follow.get("nofollow", 0), "sponsored": follow.get("sponsored", 0), "ugc": follow.get("ugc", 0), "total": len(live), "follow_share": follow_share},
         "tlds": [{"tld": k, "domains": v, "share": round(100 * v / n)} for k, v in tlds.most_common(5)] + ([{"tld": "other", "domains": sum(tlds.values()) - sum(v for _k, v in tlds.most_common(5)), "share": round(100 * (sum(tlds.values()) - sum(v for _k, v in tlds.most_common(5))) / n)}] if len(tlds) > 5 else []),
         "countries": [{"country": k, "domains": v, "share": round(100 * v / n)} for k, v in countries.most_common(8)], "country_domains": sum(countries.values()),
         "profile": {"domains": len(ref), "ips": len(ipset), "subnets": len(subnets), "resolved": sum(1 for d in ref if ips.get(d["domain"]))},
         "similar": _similar(db, domain, [d["domain"] for d in ref]),
-        "top_pages": [{"url": u, "domains": len(p["domains"]), "links": p["links"]} for u, p in sorted(pages.items(), key=lambda kv: (-len(kv[1]["domains"]), -kv[1]["links"]))[:10]],
-        "network": [{"domain": d["domain"], "links": d["live"], "risk": scores.get(d["domain"], {}).get("risk"), "verdict": scores.get(d["domain"], {}).get("verdict")} for d in sorted(ref, key=lambda d: -d["live"])[:40]],
+        "pages": [{"url": u, "domains": len(p["domains"]), "links": p["links"], "follow": p["follow"]} for u, p in sorted(pages.items(), key=lambda kv: (-len(kv[1]["domains"]), -kv[1]["links"]))[:200]],
+        "network": [{"domain": d["domain"], "links": d["live"], "risk": scores.get(d["domain"], {}).get("risk"), "verdict": scores.get(d["domain"], {}).get("verdict")} for d in sorted(ref, key=lambda d: -d["live"])[:80]],
     }
+
+
+def outbound(db: Session, b: Business) -> dict[str, Any]:
+    """The websites the project's own site links to, read now from its pages (the pages of the last website scan, up to 30): each site with how many links point to it, from how many pages, and how many
+    of them are nofollow. Nothing is kept."""
+    import re  # noqa: PLC0415
+    from urllib.parse import urljoin, urlsplit  # noqa: PLC0415
+
+    import httpx  # noqa: PLC0415
+    from bs4 import BeautifulSoup  # noqa: PLC0415
+
+    from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    from ..services import keyword_workspace  # noqa: PLC0415
+    domain = hub.own_domain(db, b.id)
+    if not domain:
+        return {"state": "no_target"}
+    crawl = keyword_workspace._latest_crawl(db, b)
+    urls = [p["url"] for p in (crawl.get("pages") or []) if p.get("url") and p.get("status") == 200][:30] or [f"https://{domain}/"]
+
+    def read(u: str) -> list[tuple[str, str, bool]]:
+        try:
+            r = httpx.get(u, headers={"User-Agent": "Mozilla/5.0 (compatible; bevisibe-research/1.0)"}, timeout=10, follow_redirects=True)
+            if r.status_code != 200 or "html" not in r.headers.get("content-type", ""):
+                return []
+            soup = BeautifulSoup(r.text, "html.parser")
+        except Exception:  # noqa: BLE001 -- a page that cannot be read adds nothing
+            return []
+        found = []
+        for a in soup.find_all("a", href=True):
+            href = urljoin(u, a["href"])
+            if not re.match(r"^https?://", href):
+                continue
+            site = kd.site_of(href)
+            if site and not site.rsplit(".", 1)[-1].isdigit() and site != kd.site_of(f"https://{domain}/"):
+                found.append((site, " ".join(a.get_text(" ").split())[:80], "nofollow" in " ".join(a.get("rel") or []).lower() or "sponsored" in " ".join(a.get("rel") or []).lower()))
+        return found
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        per_page = list(pool.map(read, urls))
+    sites: dict[str, dict[str, Any]] = {}
+    for u, items in zip(urls, per_page):
+        for site, text, nofollow in items:
+            e = sites.setdefault(site, {"domain": site, "links": 0, "pages": set(), "nofollow": 0, "anchor": text})
+            e["links"] += 1
+            e["pages"].add(u)
+            e["nofollow"] += 1 if nofollow else 0
+            e["anchor"] = e["anchor"] or text
+    rows = sorted(({"domain": e["domain"], "links": e["links"], "pages": len(e["pages"]), "nofollow": e["nofollow"], "anchor": e["anchor"]} for e in sites.values()), key=lambda r: (-r["pages"], -r["links"]))
+    return {"state": "ok", "domain": domain, "pages_read": sum(1 for x in per_page if x is not None), "pages": len(urls), "domains": rows[:300], "total_links": sum(r["links"] for r in rows)}

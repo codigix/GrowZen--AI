@@ -19,6 +19,13 @@ def overview(b: Business = Depends(get_business), db: Session = Depends(get_db))
     return backlink_overview.overview(db, b)
 
 
+@router.get("/outbound")
+def outbound(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """The websites this project's own site links to, read now from its pages (nothing is kept)."""
+    from . import overview as backlink_overview
+    return backlink_overview.outbound(db, b)
+
+
 @router.get("/summary")
 def summary(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     return hub.summary(db, b)

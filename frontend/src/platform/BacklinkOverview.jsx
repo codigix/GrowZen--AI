@@ -4,6 +4,7 @@ import { AlertTriangle, ExternalLink, Info } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, RadarChart, PolarGrid, PolarAngleAxis, Radar, PieChart, Pie, Cell } from 'recharts';
 import { Card, Badge, ErrorNote, SkList } from './SeoUi';
 import { useApi, fmt } from './seoApi';
+import { downloadCsv, usePager, Pager } from './DataTable';
 
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : Number(n).toLocaleString('en-US'));
 const MONTH = (m) => { const [y, mo] = m.split('-'); return new Date(Number(y), Number(mo) - 1, 1).toLocaleString('en', { month: 'short', year: 'numeric' }); };
@@ -28,12 +29,12 @@ function Toggle({ value, onChange, options }) {
 function Empty({ children }) { return <p className="py-8 text-center text-13 text-slate-500">{children}</p>; }
 
 /** The crawler's linking sites around the website: each dot is a referring domain, bigger the more links it gives, red when it looks risky. */
-function Network({ nodes, domain }) {
+function Network({ nodes, domain, tall }) {
   const R = 118, cx = 150, cy = 140;
   const max = Math.max(1, ...nodes.map(n => n.links));
   const pts = nodes.map((n, i) => { const a = (i / Math.max(1, nodes.length)) * Math.PI * 2 - Math.PI / 2; const r = R * (0.55 + 0.45 * ((i * 7) % 10) / 10); return { ...n, x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), s: 3 + (n.links / max) * 9 }; });
   return (
-    <svg viewBox="0 0 300 280" className="w-full h-64" role="img" aria-label="Sites that link to the website">
+    <svg viewBox="0 0 300 280" className={`w-full ${tall ? 'h-[520px]' : 'h-64'}`} role="img" aria-label="Sites that link to the website">
       {pts.map(p => <line key={`l${p.domain}`} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="#cbd5e1" strokeWidth="0.8" />)}
       {pts.map(p => <circle key={p.domain} cx={p.x} cy={p.y} r={p.s} fill={p.verdict === 'risky' ? '#ef4444' : p.verdict === 'useful' ? '#10b981' : '#818cf8'} fillOpacity="0.85"><title>{`${p.domain}: ${p.links} link${p.links === 1 ? '' : 's'}${p.verdict ? `, ${p.verdict}` : ''}`}</title></circle>)}
       <circle cx={cx} cy={cy} r="16" fill="#4f46e5" /><text x={cx} y={cy + 30} textAnchor="middle" style={{ fontSize: 10, fontWeight: 600, fill: '#3730a3' }}>{domain}</text>
@@ -102,7 +103,7 @@ export default function BacklinkOverview({ b }) {
           <Empty>The trend appears as months pass: we keep no earlier score, and a past score cannot be rebuilt. Today it is <b className="text-slate-800">{a.score ?? '—'}</b>.</Empty>
         </Card>
         <Card title="Network graph" subtitle="The sites that link to you" action={tox != null && <Badge tone={tox >= 60 ? 'red' : tox >= 30 ? 'amber' : 'green'}>{tox >= 60 ? 'Dangerous' : tox >= 30 ? 'Needs attention' : 'Good'}</Badge>}>
-          {d.network.length ? <Network nodes={d.network} domain={d.domain} /> : <Empty>No linking sites yet.</Empty>}
+          {d.network.length ? <><Network nodes={d.network.slice(0, 40)} domain={d.domain} /><Link to="/backlinks/graph" className="inline-flex rounded-lg bg-slate-900 text-white px-3 py-1.5 text-12.5 font-medium hover:bg-slate-700">View full report</Link></> : <Empty>No linking sites yet.</Empty>}
         </Card>
       </div>
 
@@ -124,8 +125,8 @@ export default function BacklinkOverview({ b }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <Card title="Categories of referring domains" subtitle="What kind of site links to you">{d.categories.length ? <Bars rows={d.categories} labelKey="label" valueKey="domains" shareKey="share" /> : <Empty>No linking sites yet.</Empty>}</Card>
-        <Card title="Top anchors" subtitle="The words your links use, bigger the more often"><Cloud items={d.anchors} /></Card>
+        <Card title="Categories of referring domains" subtitle="What kind of site links to you">{d.categories.length ? <><Bars rows={d.categories} labelKey="label" valueKey="domains" shareKey="share" /><Link to="/backlinks/domains" className="mt-4 inline-flex rounded-lg bg-slate-900 text-white px-3 py-1.5 text-12.5 font-medium hover:bg-slate-700">View full report</Link></> : <Empty>No linking sites yet.</Empty>}</Card>
+        <Card title="Top anchors" subtitle="The words your links use, bigger the more often"><Cloud items={d.anchors} /><Link to="/backlinks/anchors" className="inline-flex rounded-lg bg-slate-900 text-white px-3 py-1.5 text-12.5 font-medium hover:bg-slate-700">View full report</Link></Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -170,12 +171,119 @@ export default function BacklinkOverview({ b }) {
       </div>
 
       <Card pad={false} title="Top pages" subtitle="The pages of your website with the most referring domains">
-        {d.top_pages.length === 0 ? <Empty>No links to any page yet.</Empty> : (
-          <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-2 text-left font-medium">URL</th><th className="px-3 py-2 text-right font-medium">Referring domains</th><th className="px-5 py-2 text-right font-medium">Backlinks</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{d.top_pages.map(x => <tr key={x.url}><td className="px-5 py-2.5 max-w-[520px] truncate"><a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={x.url}>{x.url}<ExternalLink size={11} className="text-slate-400" /></a></td><td className="px-3 py-2.5 text-right tabular-nums text-indigo-700">{fmt(x.domains)}</td><td className="px-5 py-2.5 text-right tabular-nums">{fmt(x.links)}</td></tr>)}</tbody></table>)}
+        {d.pages.length === 0 ? <Empty>No links to any page yet.</Empty> : (
+          <>
+            <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-2 text-left font-medium">URL</th><th className="px-3 py-2 text-right font-medium">Referring domains</th><th className="px-5 py-2 text-right font-medium">Backlinks</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">{d.pages.slice(0, 10).map(x => <tr key={x.url}><td className="px-5 py-2.5 max-w-[520px] truncate"><a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={x.url}>{x.url}<ExternalLink size={11} className="text-slate-400" /></a></td><td className="px-3 py-2.5 text-right tabular-nums text-indigo-700">{fmt(x.domains)}</td><td className="px-5 py-2.5 text-right tabular-nums">{fmt(x.links)}</td></tr>)}</tbody></table>
+            <div className="px-5 py-3"><Link to="/backlinks/pages" className="inline-flex rounded-lg bg-slate-900 text-white px-3 py-1.5 text-12.5 font-medium hover:bg-slate-700">View full report</Link></div>
+          </>)}
       </Card>
 
       <div className="flex items-start gap-2 rounded-lg bg-slate-50 ring-1 ring-slate-200 px-3 py-2 text-12.5 text-slate-600"><Info size={15} className="mt-0.5 shrink-0" /><span>Every figure here counts links our own crawler has found for {d.domain}. Tools with their own web-wide index show many more links; these are the ones we have seen and can check. Monthly visits, outbound domains and the earlier history of the Authority Score are not shown because no source is connected for them.</span></div>
     </div>
+  );
+}
+
+/** The one overview data set every tab of the Backlinks page reads (kept in the page's cache, so moving between tabs does not ask again). */
+function useOverview(b) {
+  const r = useApi(`/businesses/${b.id}/backlink-hub/overview`);
+  return { r, d: r.data };
+}
+
+function Gate({ r, d, children }) {
+  if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
+  if (!d) return <SkList rows={5} />;
+  if (d.state === 'no_target') return <Card><p className="py-8 text-center text-13 text-slate-500">Add the project's website first, so there is a site to read the links of.</p></Card>;
+  return children;
+}
+
+function SimpleTable({ columns, rows, name, empty, size = 25 }) {
+  const pager = usePager(rows, { size, resetKey: name });
+  if (!rows.length) return <Empty>{empty}</Empty>;
+  return (
+    <>
+      <div className="overflow-x-auto"><table className="w-full text-13">
+        <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr>{columns.map(c => <th key={c.h} className={`px-4 py-2.5 font-medium ${c.right ? 'text-right' : 'text-left'}`}>{c.h}</th>)}</tr></thead>
+        <tbody className="divide-y divide-slate-100">{pager.rows.map((r, i) => <tr key={i} className="hover:bg-slate-50">{columns.map(c => <td key={c.h} className={`px-4 py-2.5 ${c.right ? 'text-right tabular-nums' : ''} ${c.cls || ''}`}>{c.cell(r)}</td>)}</tr>)}</tbody></table></div>
+      <div className="border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 pr-4"><Pager p={pager} label="rows" />
+        <button type="button" onClick={() => downloadCsv(name, columns.map(c => c.h), rows.map(r => columns.map(c => (c.csv ? c.csv(r) : String(c.cell(r) ?? '')))))} className="text-12.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Export CSV</button></div>
+    </>
+  );
+}
+
+const A_TYPE = { branded: 'Brand', naked: 'Web address', money: 'Keyword', generic: 'Generic', compound: 'Brand + words', organic: 'Natural', empty: 'No text', other: 'Other' };
+
+export function GraphTab({ b }) {
+  const { r, d } = useOverview(b);
+  return (
+    <Gate r={r} d={d}>
+      {d && d.state === 'ok' && (
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3">
+          <Card title="Network graph" subtitle={`The ${d.network.length} linking sites that give you the most links`} action={d.totals.toxicity != null && <Badge tone={d.totals.toxicity >= 60 ? 'red' : d.totals.toxicity >= 30 ? 'amber' : 'green'}>{d.totals.toxicity >= 60 ? 'Dangerous' : d.totals.toxicity >= 30 ? 'Needs attention' : 'Good'}</Badge>}>
+            <Network nodes={d.network} domain={d.domain} tall />
+            <div className="mt-2 flex flex-wrap gap-4 text-12 text-slate-600">{[['#10b981', 'Useful'], ['#818cf8', 'Neutral or not judged'], ['#ef4444', 'Risky']].map(([c, l]) => <span key={l} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c }} />{l}</span>)}<span>Bigger dot: more links</span></div>
+          </Card>
+          <Card pad={false} title="Linking sites" subtitle="Hover a dot to see the same figures">
+            <SimpleTable name="backlink-network" empty="No linking sites yet." size={15} rows={d.network}
+              columns={[{ h: 'Site', cell: x => <a href={`https://${x.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">{x.domain}</a>, csv: x => x.domain },
+                { h: 'Links', right: true, cell: x => fmt(x.links) }, { h: 'Judged', cell: x => (x.verdict ? <Badge tone={x.verdict === 'risky' ? 'red' : x.verdict === 'useful' ? 'green' : 'gray'}>{x.verdict}</Badge> : <span className="text-slate-300">not judged</span>), csv: x => x.verdict || '' }]} />
+          </Card>
+        </div>
+      )}
+    </Gate>
+  );
+}
+
+export function AnchorsTab({ b }) {
+  const { r, d } = useOverview(b);
+  return (
+    <Gate r={r} d={d}>
+      {d && d.state === 'ok' && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3">
+            <Card title="Top anchors" subtitle="The words your links use, bigger the more often"><Cloud items={d.anchors} /></Card>
+            <Card title="Kinds of anchor text" subtitle="A natural profile is mostly brand, web address and plain words">
+              <ul className="space-y-2.5">{Object.entries(d.anchor_types).sort((x, y) => y[1] - x[1]).map(([k, v]) => { const tot = Math.max(1, d.totals.backlinks); return <li key={k} className="grid grid-cols-[110px_1fr_44px_44px] items-center gap-2 text-13"><span>{A_TYPE[k] || k}</span><div className="h-2.5 rounded bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-400" style={{ width: `${(v * 100) / tot}%` }} /></div><span className="text-right tabular-nums text-slate-500">{Math.round((v * 100) / tot)}%</span><span className="text-right tabular-nums text-indigo-700">{fmt(v)}</span></li>; })}</ul>
+            </Card>
+          </div>
+          <Card pad={false} title="All anchors" subtitle={`${fmt(d.anchors.length)} different anchor texts`}>
+            <SimpleTable name="backlink-anchors" empty="No anchor text found." rows={d.anchors}
+              columns={[{ h: 'Anchor text', cell: x => x.text, cls: 'max-w-[420px] truncate' }, { h: 'Kind', cell: x => A_TYPE[x.type] || x.type, csv: x => x.type },
+                { h: 'Backlinks', right: true, cell: x => fmt(x.count) }, { h: 'Referring domains', right: true, cell: x => fmt(x.domains) }, { h: 'Follow', right: true, cell: x => `${Math.round((x.follow * 100) / x.count)}%` }]} />
+          </Card>
+        </div>
+      )}
+    </Gate>
+  );
+}
+
+export function PagesTab({ b }) {
+  const { r, d } = useOverview(b);
+  return (
+    <Gate r={r} d={d}>
+      {d && d.state === 'ok' && (
+        <Card pad={false} title="Indexed pages" subtitle="The pages of your website that have links pointing to them">
+          <SimpleTable name="backlink-pages" empty="No links to any page yet." rows={d.pages}
+            columns={[{ h: 'URL', cell: x => <a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={x.url}>{x.url}<ExternalLink size={11} className="text-slate-400" /></a>, csv: x => x.url, cls: 'max-w-[520px] truncate' },
+              { h: 'Referring domains', right: true, cell: x => fmt(x.domains) }, { h: 'Backlinks', right: true, cell: x => fmt(x.links) }, { h: 'Follow', right: true, cell: x => `${Math.round((x.follow * 100) / Math.max(1, x.links))}%` }]} />
+        </Card>
+      )}
+    </Gate>
+  );
+}
+
+export function OutboundTab({ b }) {
+  const r = useApi(`/businesses/${b.id}/backlink-hub/outbound`);
+  const d = r.data;
+  return (
+    <Gate r={r} d={d}>
+      {d && d.state === 'ok' && (
+        <Card pad={false} title="Outbound domains" subtitle={`The websites your own pages link to, read now from ${d.pages} pages of your site (${fmt(d.total_links)} links to other sites)`}>
+          <SimpleTable name="outbound-domains" empty="Your pages link to no other website." rows={d.domains}
+            columns={[{ h: 'Website', cell: x => <a href={`https://${x.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{x.domain}<ExternalLink size={11} className="text-slate-400" /></a>, csv: x => x.domain },
+              { h: 'Pages linking', right: true, cell: x => fmt(x.pages) }, { h: 'Links', right: true, cell: x => fmt(x.links) }, { h: 'Nofollow', right: true, cell: x => fmt(x.nofollow) }, { h: 'Example anchor', cell: x => x.anchor || '—', cls: 'text-slate-500 max-w-[260px] truncate' }]} />
+        </Card>
+      )}
+    </Gate>
   );
 }

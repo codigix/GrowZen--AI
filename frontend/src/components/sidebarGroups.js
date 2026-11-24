@@ -114,7 +114,7 @@ export const SIDEBAR_SECTIONS = [
       { title: '5 · Decide Where to Use', items: [{ to: '/keyword-management/mapping', label: 'Keyword Mapping', also: ['/keyword-management/use'] }] },
       { title: '6 · Write & Update', items: [go('/ai-content-generation/blog', 'Write content (Blogs)', 'Blogs'), link('/fix-plan', 'Fix Plan')] },
       { title: '7 · Track Results', items: [page('/rank-tracking/landscape', { label: 'Position Tracking', also: ['/rank-tracking'] }), link('/keyword-management/status', 'Keyword Status'), link('/search-insights', 'Search & Visitor Insights'), go('/traffic', 'Traffic & search performance', 'traffic')] },
-      { title: '8 · Backlinks', items: [link('/backlinks/overview', 'Overview'), { to: '/backlinks/links', label: 'Backlinks', also: ['/backlinks/sites'] }, link('/backlinks/domains', 'Referring Domains'), link('/backlinks/audit', 'Backlink Audit'), link('/backlinks/opportunities', 'Link Opportunities'), link('/backlinks/gap', 'Competitor Gap'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks'), page('/backlink-checker')] },
+      { title: '8 · Backlinks', items: [{ to: '/backlinks/overview', label: 'Backlinks', also: ['/backlinks/links', '/backlinks/graph', '/backlinks/anchors', '/backlinks/pages', '/backlinks/outbound', '/backlinks/sites'] }, link('/backlinks/domains', 'Referring Domains'), link('/backlinks/audit', 'Backlink Audit'), link('/backlinks/opportunities', 'Link Opportunities'), link('/backlinks/gap', 'Competitor Gap'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks'), page('/backlink-checker')] },
     ]
   },
   {

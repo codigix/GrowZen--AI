@@ -6,11 +6,15 @@ import Select from '../components/Select';
 import { Act, Head, OpenAct } from './TableBits';
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 import Tip from './Tip';
-import BacklinkOverview from './BacklinkOverview';
+import BacklinkOverview, { GraphTab, AnchorsTab, PagesTab, OutboundTab } from './BacklinkOverview';
 import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const VIEWS = {
-  overview: ['Backlink overview', 'The big picture of the links to your website: authority, referring domains and backlinks over time, new and lost links, anchors, follow types, site endings, hosting and top pages.'],
+  graph: ['Network graph', 'The websites that link to you, drawn around your site: bigger the more links they give, red when they look risky.'],
+  anchors: ['Anchors', 'The words the links to your website use, how natural they look and which sites use them.'],
+  pages: ['Indexed pages', 'The pages of your website that have links pointing to them, with how many sites and links each one has.'],
+  outbound: ['Outbound domains', 'The websites your own pages link to, read now from your pages.'],
+  overview: ['Backlinks', 'The big picture of the links to your website: authority, referring domains and backlinks over time, new and lost links, anchors, follow types, site endings, hosting and top pages.'],
   links: ['Backlinks', 'Every link to your website that the crawler found: follow or nofollow, anchor text, kind of site, authority and whether it is worth having.'],
   domains: ['Referring domains', 'The websites that link to you, with how many links each gives, what kind of site it is and whether it helps or hurts.'],
   opportunities: ['Link opportunities', 'Websites that link to your competitors but not to you: the places worth asking for a link, best first.'],
@@ -1035,15 +1039,36 @@ export default function BacklinkHubPage() {
   );
 }
 
+const OWN_DATA = ['overview', 'graph', 'anchors', 'pages', 'outbound']; // the tabs that read their own data, not the summary of the links list
+const TABS = [['overview', 'Overview'], ['links', 'Backlinks'], ['domains', 'Referring domains'], ['graph', 'Network graph'], ['anchors', 'Anchors'], ['pages', 'Indexed pages'], ['outbound', 'Outbound domains']];
+const MORE = [['audit', 'Backlink audit'], ['opportunities', 'Link opportunities'], ['gap', 'Competitor gap'], ['sites', 'Tracked sites and sync']];
+
+/** The tabs of the one Backlinks page: the overview, the links, the sites, the graph, the anchors, the pages, what you link to, a bulk check, and the rest under More. */
+function BacklinkTabs({ view }) {
+  const inMore = MORE.some(([k]) => k === view);
+  const cls = (on) => `px-3 py-2.5 text-13.5 font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${on ? 'border-indigo-500 text-slate-900 font-semibold' : 'border-transparent text-slate-600 hover:text-slate-900'}`;
+  return (
+    <nav aria-label="Backlinks" className="flex flex-wrap items-center gap-x-1 border-b border-slate-200 bg-white rounded-t-xl px-2">
+      {TABS.map(([k, l]) => <Link key={k} to={`/backlinks/${k}`} aria-current={view === k ? 'page' : undefined} className={cls(view === k)}>{l}</Link>)}
+      <Link to="/backlink-checker" className={cls(false)} title="Check any list of links at once">Bulk analysis</Link>
+      <details className="relative">
+        <summary className={`${cls(inMore)} list-none cursor-pointer select-none`}>{inMore ? MORE.find(([k]) => k === view)[1] : 'More'} ▾</summary>
+        <div className="absolute z-20 mt-1 w-56 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 py-1">{MORE.map(([k, l]) => <Link key={k} to={`/backlinks/${k}`} className={`block px-3 py-2 text-13 hover:bg-slate-50 ${view === k ? 'font-semibold text-indigo-700' : 'text-slate-700'}`}>{l}</Link>)}</div>
+      </details>
+    </nav>
+  );
+}
+
 function Body({ b, view }) {
   const s = useApi(`/businesses/${b.id}/backlink-hub/summary`);
   const key = `${b.id}-${s.data?.totals?.live ?? 'x'}-${s.data?.useful?.useful ?? 'x'}-${s.data?.moz?.configured}-${s.data?.totals?.avg_da ?? 'x'}`;
-  const V = { overview: BacklinkOverview, links: Links, domains: Domains, opportunities: Opportunities, gap: CompetitorGap, audit: Audit, sites: Sites }[view];
+  const V = { overview: BacklinkOverview, graph: GraphTab, anchors: AnchorsTab, pages: PagesTab, outbound: OutboundTab, links: Links, domains: Domains, opportunities: Opportunities, gap: CompetitorGap, audit: Audit, sites: Sites }[view];
   const main = view === 'links';
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      {view !== 'sites' && view !== 'overview' && (s.data ? <><Summary s={s.data} b={b} reload={s.reload} compact main={main} />{main && <Setup s={s.data} />}</> : s.error ? <Card><ErrorNote>{s.error.message}</ErrorNote></Card> : <SkList rows={3} />)}
-      {(view === 'sites' || view === 'overview' || !s.data || s.data.state === 'ok') && <V key={key} b={b} />}
+      <BacklinkTabs view={view} />
+      {view !== 'sites' && !OWN_DATA.includes(view) && (s.data ? <><Summary s={s.data} b={b} reload={s.reload} compact main={main} />{main && <Setup s={s.data} />}</> : s.error ? <Card><ErrorNote>{s.error.message}</ErrorNote></Card> : <SkList rows={3} />)}
+      {(view === 'sites' || OWN_DATA.includes(view) || !s.data || s.data.state === 'ok') && <V key={key} b={b} />}
       {main && s.data && <Used s={s.data} />}
     </div>
   );
