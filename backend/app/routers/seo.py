@@ -312,12 +312,13 @@ def _idea_groups(kw: str, ideas: list[dict]) -> dict[str, list[dict]]:
         k = i["keyword"].lower()
         if k == kw:
             continue
-        row = {"keyword": i["keyword"], "volume": i["avg_monthly_searches"], "index": i["competition_index"], "competition": i["competition"], "cpc": i["high_top_of_page_bid"]}
+        row = {"keyword": i["keyword"], "volume": i["avg_monthly_searches"], "index": i["competition_index"], "competition": i["competition"], "cpc": i["high_top_of_page_bid"],
+               "monthly": [{"year": m["year"], "month": m["month"], "searches": m["monthly_searches"]} for m in (i.get("monthly_search_volumes") or [])][-12:]}
         group = "questions" if _QUESTION.match(k) else "similar" if words and all(w in k for w in words) else "related"
         out[group].append(row)
     for g in out.values():
         g.sort(key=lambda r: -(r["volume"] or 0))
-    return {k: v[:25] for k, v in out.items()}
+    return {k: {"total": len(v), "rows": v[:25]} for k, v in out.items()}
 
 
 def _by_country(kw: str, home: str | None) -> list[dict]:
@@ -329,7 +330,7 @@ def _by_country(kw: str, home: str | None) -> list[dict]:
             got = ads.historical_metrics([kw], geo_target=ads.geo_target_for(code)).get(kw)
         except Exception:  # noqa: BLE001 -- one country failing must not hide the others
             return None
-        return {"code": code, "name": _COUNTRY_NAMES[code], "volume": got["volume"], "cpc": got["cpc"], "index": got["competition_index"]} if got and got.get("volume") else None
+        return {"code": code, "name": _COUNTRY_NAMES[code], "volume": got["volume"], "cpc": got["cpc"], "index": got["competition_index"], "monthly": [{"year": m["year"], "month": m["month"], "searches": m["searches"]} for m in got.get("monthly") or []]} if got and got.get("volume") else None
     from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
     with ThreadPoolExecutor(max_workers=6) as pool:  # the countries are asked together, not one after the other
         out = [r for r in pool.map(ask, codes) if r]
@@ -359,7 +360,7 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
             raise HTTPException(404, f"Google has no location called \"{body.place.strip()}\".")
         geo = res
     try:
-        ideas = ads.keyword_ideas([kw], limit=60, include_monthly=True, geo_target=geo)
+        ideas = ads.keyword_ideas([kw], limit=400, include_monthly=True, geo_target=geo)
     except ads.GoogleAdsNotConfigured as exc:
         raise HTTPException(400, str(exc)) from exc
     except ads.GoogleAdsError as exc:

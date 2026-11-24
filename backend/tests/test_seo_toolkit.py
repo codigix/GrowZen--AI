@@ -69,8 +69,8 @@ def test_keyword_overview_uses_the_google_ads_keyword_planner(client, monkeypatc
     assert seen["seeds"] == ["dentist in pune"] and o["keyword"] == "dentist in pune" and o["intent"] == "local" and o["source"] == "Google Ads Keyword Planner"
     assert o["metrics"]["volume"] == 1900 and o["metrics"]["cpc_high"] == 3.4 and o["metrics"]["difficulty"] == 48 and o["metrics"]["monthly"][0]["searches"] == 1900
     assert [i["keyword"] for i in o["ideas"]] == ["best dentist in pune", "dental clinic pune"] and o["you"]["tracked"] is True
-    assert o["groups"]["similar"][0]["keyword"] == "best dentist in pune" and o["groups"]["related"][0]["keyword"] == "dental clinic pune" and o["groups"]["questions"] == []
-    assert o["countries"] == [{"code": "IN", "name": "India", "volume": 100, "cpc": 2.0, "index": 20, "share": 100.0}]
+    assert o["groups"]["similar"]["rows"][0]["keyword"] == "best dentist in pune" and o["groups"]["related"]["rows"][0]["keyword"] == "dental clinic pune" and o["groups"]["questions"]["total"] == 0
+    assert o["countries"] == [{"code": "IN", "name": "India", "volume": 100, "cpc": 2.0, "index": 20, "monthly": [], "share": 100.0}]
     assert "organic" not in o and "local" not in o  # the Planner has no results page: nothing is invented
 
 
