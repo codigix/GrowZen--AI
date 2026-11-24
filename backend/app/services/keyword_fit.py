@@ -18,8 +18,8 @@ from ..models import Business, Competitor, KeywordCandidate
 log = logging.getLogger("seo.keyword_fit")
 
 BATCH = 40
-MAX_PER_RUN = 120
-OWN_KINDS = {"website", "search_console", "profile"}
+MAX_PER_RUN = 240
+OWN_KINDS = {"search_console", "profile"}  # facts about the business; phrases cut from page text ("website") are judged like any other
 
 
 def _protected(r: KeywordCandidate) -> bool:
@@ -46,7 +46,7 @@ def judge(db: Session, b: Business, rows: list[KeywordCandidate]) -> dict[str, i
     ctx = _context(db, b)
     system = ("You decide which keywords a business should go after. Use ONLY the facts given. A keyword fits when a real customer of THIS business could type it and the business can serve "
               "that customer in its target area. It does not fit when it is another company's brand name, a different product or service, a different place from the target area, a job or "
-              "support query, or too vague to mean anything. Reply with JSON only.")
+              "support query, a piece of a sentence or a marketing line nobody would type, or too vague to mean anything. Reply with JSON only.")
     for start in range(0, len(todo), BATCH):
         batch = todo[start:start + BATCH]
         listing = [{"i": i, "keyword": r.keyword, "volume": r.volume, "found_by": sorted({s.get("kind") for s in r.sources or []}), "used_by_competitors": (r.competitors or [])[:2]} for i, r in enumerate(batch)]

@@ -24,7 +24,7 @@ def test_the_fit_check_hides_what_does_not_fit_and_never_touches_what_the_busine
         return {"results": [{"i": 0, "fit": "yes", "why": "Rents lehengas in Pune.", "for": "brides"}, {"i": 1, "fit": "no", "why": "Another company's brand."}, {"i": 2, "fit": "maybe", "why": "Unclear."}]}
 
     monkeypatch.setattr(ai, "complete_json", fake)
-    rows = [_row("lehenga on rent pune"), _row("rent the runway lehenga"), _row("party wear rental"), _row("my own page phrase", kinds=("website",)), _row("ranked phrase", own_rank=4.0), _row("picked one", picked=True)]
+    rows = [_row("lehenga on rent pune"), _row("rent the runway lehenga"), _row("party wear rental"), _row("my own page phrase", kinds=("search_console",)), _row("ranked phrase", own_rank=4.0), _row("picked one", picked=True)]
     db = SessionLocal()
     try:
         out = keyword_fit.judge(db, db.get(Business, bid), rows)
@@ -33,7 +33,7 @@ def test_the_fit_check_hides_what_does_not_fit_and_never_touches_what_the_busine
     assert out == {"checked": 3, "fit": 2, "hidden": 1}
     assert rows[0].fit["fit"] == "yes" and rows[0].fit["for"] == "brides" and not rows[0].dismissed
     assert rows[1].dismissed is True and rows[1].fit["auto"] is True and not rows[2].dismissed
-    assert all(r.fit is None for r in rows[3:])  # the website's, a ranked and a picked keyword are facts about the business: never judged
+    assert all(r.fit is None for r in rows[3:])  # Search Console's, a ranked and a picked keyword are facts about the business: never judged
     assert "rent the runway lehenga" in seen["user"] and "my own page phrase" not in seen["user"]
 
 

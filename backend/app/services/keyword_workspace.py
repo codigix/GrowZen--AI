@@ -33,6 +33,7 @@ SOURCES = {
     "brief": "Business summary",
     "ai": "AI suggestions",
 }
+FACTS = {"search_console", "profile"}  # what the owner's own Google searches and services say: facts about the business, never judged by wording
 OWN = {"website", "search_console", "profile"}  # places that show what you already say or rank for
 _SMALL = frozenset({"in", "for", "of", "the", "a", "an", "to", "and", "best", "top"})
 MAX_COMPETITORS = 5
@@ -60,8 +61,13 @@ def clean(text: str | None) -> str:
 def _add(db: Session, b: Business, found: list[dict[str, Any]], existing: dict[str, KeywordCandidate]) -> int:
     """Save what a source found: a new row for a new phrase, else the source (and any competitor) added to the row it already has."""
     new = 0
+    from . import keyword_quality  # noqa: PLC0415
+    judged = [clean(f.get("keyword")) for f in found if f.get("kind") not in FACTS]
+    junk = keyword_quality.check_all(b, judged) if judged else {}  # slogans, cut-off sentences, places on their own and off-topic words are not filed
     for f in found:
         kw = clean(f.get("keyword"))
+        if f.get("kind") not in FACTS and kw in junk:
+            continue
         if not (3 <= len(kw) <= 120 and 1 <= len(kw.split()) <= 10):
             continue
         key = merge_key(kw)
@@ -90,6 +96,21 @@ def _add(db: Session, b: Business, found: list[dict[str, Any]], existing: dict[s
 
 
 # ----------------------------------------------------------------------------------------------------------------------------- the places keywords come from
+def tidy(db: Session, b: Business, rows: list[KeywordCandidate]) -> int:
+    """Set aside (they stay under "Set aside" with the reason, and can be put back) the saved keywords that are not keywords: slogans, cut-off sentences, a place on its own, off-topic words.
+    Keywords the owner picked, that rank, or that come from Search Console or the profile are never touched."""
+    from . import keyword_quality  # noqa: PLC0415
+    todo = [r for r in rows if not r.dismissed and not r.picked and r.own_rank is None and not any(s.get("kind") in FACTS for s in r.sources or [])]
+    junk = keyword_quality.check_all(b, [r.keyword for r in todo])
+    n = 0
+    for r in todo:
+        if r.keyword in junk and not (isinstance(r.fit, dict) and r.fit.get("fit") in ("yes", "maybe") and not r.fit.get("auto")):
+            r.dismissed, r.fit = True, keyword_quality.explain(junk[r.keyword])
+            n += 1
+    db.flush()
+    return n
+
+
 def _latest_crawl(db: Session, b: Business) -> dict[str, Any]:
     a = db.scalar(select(Audit).where(Audit.business_id == b.id, Audit.kind == "onpage", Audit.status == "done").order_by(Audit.id.desc()))
     return (a.result or {}) if a else {}
@@ -333,6 +354,9 @@ def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[st
         report[k] = {"label": SOURCES[k], "found": len(found), "new": _add(db, b, found, existing) if found else 0, "note": note}
     if summary_note:
         report["summary"] = {"label": "Business summary", "found": 0, "new": 0, "note": summary_note}
+    tidied = tidy(db, b, list(existing.values()))
+    if tidied:
+        report["tidy"] = {"label": "Wording check", "found": tidied, "new": 0, "note": f"{tidied} phrases set aside because they are not keywords (slogans, cut-off sentences, a place on its own, off-topic words)"}
     fill_metrics(db, b)
     from . import keyword_fit
     try:  # hide what does not fit this business (another brand, another service, another place), with the reason
@@ -343,6 +367,37 @@ def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[st
         log.warning("keyword fit check skipped: %s", exc)
     db.commit()
     return report
+
+
+def measure_difficulty(db: Session, b: Business, ids: list[int]) -> list[dict[str, Any]]:
+    """The keyword difficulty score (the full formula, from the real top 10 on Google) of up to a few keywords at once. Saved on the row, so the list can be sorted by it.
+    A keyword whose results could not be read says why and keeps no score."""
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
+    from . import keyword_difficulty as kd  # noqa: PLC0415
+    rows = [r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.id.in_(ids or [0])))][:6]
+    country = market.serp_country(b)
+
+    def one(r: KeywordCandidate) -> tuple[KeywordCandidate, dict[str, Any] | None, str | None]:
+        try:
+            return r, kd.score(r.keyword, country, r.volume, use_cache=True), None
+        except kd.DifficultyError as exc:
+            return r, None, str(exc)
+        except Exception as exc:  # noqa: BLE001 -- one keyword failing must not lose the others
+            log.warning("difficulty of %s failed: %r", r.keyword, exc)
+            return r, None, "The Google results could not be read just now."
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        done = list(pool.map(one, rows))
+    out = []
+    for r, res, err in done:
+        if res and res.get("score") is not None:
+            r.kd = int(res["score"])
+            r.kd_detail = {"at": _now().isoformat(), "parts": res["formula"], "sites": res["sites_with_figures"], "of": res["sites"], "weight_used": res["weight_used"]}
+            out.append({"id": r.id, "kd": r.kd, "detail": r.kd_detail})
+        else:
+            out.append({"id": r.id, "kd": None, "error": err or "Google gave too few results with figures to score this keyword."})
+    db.flush()
+    return out
 
 
 def fill_metrics(db: Session, b: Business, limit: int = 150) -> str | None:
@@ -398,7 +453,7 @@ def score_of(r: KeywordCandidate, tag: str) -> int:
 
 def item(r: KeywordCandidate, saved: set[str]) -> dict[str, Any]:
     tag = tag_of(r)
-    return {"id": r.id, "keyword": r.keyword, "variants": r.variants or [], "sources": r.sources or [], "competitors": r.competitors or [], "volume": r.volume, "difficulty": r.difficulty, "cpc": r.cpc,
+    return {"id": r.id, "keyword": r.keyword, "variants": r.variants or [], "sources": r.sources or [], "competitors": r.competitors or [], "volume": r.volume, "difficulty": r.kd, "index": r.difficulty, "kd_detail": r.kd_detail, "cpc": r.cpc,
             "intent": r.intent, "rank": r.own_rank, "impressions": r.impressions, "clicks": r.clicks, "fit": r.fit, "tag": tag, "score": score_of(r, tag), "picked": merge_key(r.keyword) in saved,
             "dismissed": r.dismissed}
 

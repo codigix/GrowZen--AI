@@ -306,14 +306,14 @@ def _volume(keyword: str, country: str) -> int | None:
         return None
 
 
-def score(keyword: str, country: str, volume: int | None = None) -> dict[str, Any]:
+def score(keyword: str, country: str, volume: int | None = None, use_cache: bool = False) -> dict[str, Any]:
     from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
     with ThreadPoolExecutor(max_workers=2) as ex:  # the volume is asked while Google's results page is read
         vol = ex.submit(_volume, keyword, country) if volume is None else None
         page = serp(keyword, country)
         volume = vol.result() if vol else volume
     sites = list(dict.fromkeys(o["site"] for o in page["organic"] if o["site"]))
-    metrics = {x["domain"]: x.get("scores") for x in apify_metrics.check(sites, force=True, save=False)}  # asked afresh every time and not kept
+    metrics = {x["domain"]: x.get("scores") for x in apify_metrics.check(sites, force=not use_cache, save=use_cache)}  # afresh and not kept, unless the caller (a list of many keywords) accepts a day-old authority figure
     rows = []
     for o in page["organic"]:
         m = metrics.get(o["site"]) or {}

@@ -461,6 +461,8 @@ class KeywordCandidate(TimestampMixin, Base):
     clicks: Mapped[int | None] = mapped_column(Integer)
     picked: Mapped[bool] = mapped_column(Boolean, default=False)
     dismissed: Mapped[bool] = mapped_column(Boolean, default=False)
+    kd: Mapped[int | None] = mapped_column(Integer)  # the keyword difficulty score, 0-100, from the real top 10 on Google (services/keyword_difficulty.py); `difficulty` above is Google Ads' competition index
+    kd_detail: Mapped[dict | None] = mapped_column(JSON)  # {at, parts: [{key, name, weight, value, used}], sites, note}
     fit: Mapped[dict | None] = mapped_column(JSON)  # the relevance check: {fit: yes|maybe|no, why, for, auto} (services/keyword_fit.py)
 
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { usePager, Pager, downloadCsv } from './DataTable';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, Download, EyeOff, Loader2, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, Download, EyeOff, Gauge, Loader2, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
@@ -13,6 +13,14 @@ const SRC_SHORT = { website: 'Website', search_console: 'Search Console', profil
 const SRC_TONE = { website: 'blue', search_console: 'green', profile: 'amber', competitors: 'red', google_ideas: 'gray', planner: 'blue', area: 'amber', brief: 'green', ai: 'violet' };
 const n0 = (v) => (v == null ? '—' : v.toLocaleString('en-US'));
 const PAGE = 50;
+// the keyword difficulty score in five colours, from very easy (green) to very hard (red)
+const KD_COLOR = (v) => (v < 15 ? '#059669' : v < 30 ? '#65a30d' : v < 50 ? '#d97706' : v < 70 ? '#ea580c' : '#dc2626');
+const KD_WORD = (v) => (v < 15 ? 'Very easy' : v < 30 ? 'Easy' : v < 50 ? 'Medium' : v < 70 ? 'Challenging' : 'Very hard');
+function KdChip({ v, detail }) {
+  const c = KD_COLOR(v);
+  const tip = [`${v} out of 100: ${KD_WORD(v)}`, ...(detail?.parts || []).map(p => `${p.name} (${p.weight}%): ${p.used ? p.value : 'no data'}`), detail?.sites != null ? `Read from ${detail.sites} of ${detail.of} top sites` : ''].filter(Boolean).join('\n');
+  return <span className="inline-flex items-center gap-1.5" title={tip}><span className="tabular-nums font-semibold" style={{ color: c }}>{v}</span><span className="rounded-full px-2 py-0.5 text-11.5 font-semibold" style={{ color: c, backgroundColor: `${c}1f`, boxShadow: `inset 0 0 0 1px ${c}55` }}>{KD_WORD(v)}</span></span>;
+}
 
 /** Where your site stands on Google for a keyword: the average position as a whole place, and which page of Google that is. */
 const BANDS = [['top3', 'Top 3', (n) => n <= 3, 'bg-emerald-100 text-emerald-800'], ['page1', 'Page 1', (n) => n > 3 && n <= 10, 'bg-green-50 text-green-800'], ['page2', 'Page 2', (n) => n > 10 && n <= 20, 'bg-amber-50 text-amber-800'],
@@ -104,6 +112,9 @@ export default function KeywordWorkspace({ b, onUse }) {
   const [fig, setFig] = useState(null); // the table's keywords in the chosen place: { place, metrics }
   const [figBusy, setFigBusy] = useState(false);
   const [figError, setFigError] = useState('');
+  const [kdLocal, setKdLocal] = useState({}); // difficulty scores just worked out: { id: { kd, detail } }
+  const [kdBusy, setKdBusy] = useState(() => new Set()); // keyword ids being read now
+  const [kdNote, setKdNote] = useState('');
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const show = view === 'picked' ? 'picked' : view === 'dismissed' ? 'dismissed' : 'open';
@@ -139,10 +150,27 @@ export default function KeywordWorkspace({ b, onUse }) {
     const now = new Date();
     return Array.from({ length: 12 }, (_, n) => { const dt = new Date(now.getFullYear(), now.getMonth() - 12 + n, 1); return { key: `${dt.getFullYear()}-${NAMES[dt.getMonth()]}`, label: `${NAMES[dt.getMonth()].slice(0, 1)}${NAMES[dt.getMonth()].slice(1, 3).toLowerCase()} ${String(dt.getFullYear()).slice(2)}` }; });
   })();
+  // reads the real top 10 on Google for each keyword and scores it with the full difficulty formula: a few at a time, about 15 seconds each
+  const measure = async (idList) => {
+    const todo = idList.filter(id => !kdBusy.has(id)).slice(0, 30);
+    if (!todo.length) return;
+    setKdNote(''); setKdBusy(new Set(todo));
+    let ok = 0, failed = 0, why = '';
+    for (let n = 0; n < todo.length; n += 3) {
+      const chunk = todo.slice(n, n + 3);
+      try {
+        const res = await api(`/businesses/${b.id}/keyword-workspace/difficulty`, { method: 'POST', body: { ids: chunk }, timeout: 240000 });
+        setKdLocal(m => { const next = { ...m }; for (const x of res.results) if (x.kd != null) next[x.id] = { kd: x.kd, detail: x.detail }; return next; });
+        for (const x of res.results) { if (x.kd != null) ok += 1; else { failed += 1; why = x.error || why; } }
+      } catch (e) { failed += chunk.length; why = e.message || why; }
+      setKdBusy(cur => { const next = new Set(cur); chunk.forEach(id => next.delete(id)); return next; });
+    }
+    setKdNote(failed ? `${ok} scored, ${failed} not: ${why}` : `${ok} scored`);
+  };
   const rows = useMemo(() => {
     let list = [...(d?.items || [])];
-    if (wantsFigures) list = list.map(i => { const m = fig?.metrics?.[i.keyword.toLowerCase().trim()]; return m ? { ...i, volume: searchesIn(m), difficulty: m.index, index: m.index, comp: m.competition, cpc: m.cpc } : { ...i, volume: null, difficulty: null, index: null, comp: null, cpc: null }; });
-    else list = list.map(i => ({ ...i, index: i.difficulty }));
+    if (wantsFigures) list = list.map(i => { const m = fig?.metrics?.[i.keyword.toLowerCase().trim()]; return m ? { ...i, volume: searchesIn(m), index: m.index, comp: m.competition, cpc: m.cpc } : { ...i, volume: null, index: null, comp: null, cpc: null }; });
+    list = list.map(i => (kdLocal[i.id] ? { ...i, difficulty: kdLocal[i.id].kd, kd_detail: kdLocal[i.id].detail } : i)); // the difficulty is the keyword's own score (not the location's)
     if (view === 'suggested') list = list.filter(i => i.suggested);
     if (band) list = list.filter(i => (band === 'none' ? i.rank == null : i.rank != null && bandOf(i.rank)?.[0] === band));
     const v = (i) => (sort.key === 'keyword' ? i.keyword : i[sort.key]);
@@ -156,7 +184,7 @@ export default function KeywordWorkspace({ b, onUse }) {
       return sort.dir === 'asc' ? o : -o;
     });
     return list;
-  }, [d, sort, view, band, fig, period]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [d, sort, view, band, fig, period, kdLocal]); // eslint-disable-line react-hooks/exhaustive-deps
   const pager = usePager(rows, { size: PAGE, resetKey: `${view}|${band}|${q}|${source}|${sort.key}|${sort.dir}` });
   const topVolume = useMemo(() => Math.max(1, ...rows.map(i => i.volume || 0)), [rows]);
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
@@ -240,7 +268,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                       <th className="w-10 px-3 py-2"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(i => i.id)))} /></th>
                       <SortTh id="keyword" sort={sort} setSort={setSort} what="A search people type into Google." why="Click the name to check its searches, cost and related ideas. Click the heading to sort A to Z." from="your website, Search Console, your profile, competitor sites, Google suggestions and AI.">Keyword</SortTh>
                       <SortTh id="volume" sort={sort} setSort={setSort} right what="How many times a month people search it in the chosen location and time." why="Shows which keywords are worth the effort." from="Google Ads Keyword Planner (needs Google Ads connected). Blank when Google gave no figure for that place.">Searches / mo</SortTh>
-                      <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100 (the competition index in the chosen location). Higher is harder." why="Pick easier ones first." from="the advertiser competition Google Ads reports for the keyword.">Difficulty</SortTh>
+                      <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100. It is worked out from the real top 10 on Google for the keyword: their authority, backlinks, content, the features on the page and the intent. Higher is harder." why="Pick easier ones first." from="Google's results page (through Apify), Moz authority, the Google Ads search volume and our saved backlinks. Press Check to work it out; it takes about 15 seconds.">Difficulty</SortTh>
                       <SortTh id="index" sort={sort} setSort={setSort} right what="Google's competition index for this keyword in the chosen location: how many advertisers bid on it, 0 to 100. Higher means more competition." why="A high index means the keyword is crowded and costly." from="Google Ads Keyword Planner.">Index</SortTh>
                       <SortTh id="cpc" sort={sort} setSort={setSort} right what="What advertisers bid at the top of the page for it, per click, in the chosen location." why="Shows what the keyword is worth." from="Google Ads Keyword Planner. Shown once a location or time is chosen.">Cost / click</SortTh>
                       <th className="px-3 py-2 text-left"><Head what="What kind of opportunity it is: Gap (competitors use it, you do not), Win (you are in the top 3), Almost (page 2), Shared, Yours, Idea." why="Start with Gaps and Almost." from="comparing your own places with the competitor sites and Google results collected.">Kind</Head></th>
@@ -263,7 +291,9 @@ export default function KeywordWorkspace({ b, onUse }) {
                           {i.competitors.length > 0 && <span className="block text-11.5 text-slate-500">used by {i.competitors.slice(0, 2).join(', ')}{i.competitors.length > 2 ? ` +${i.competitors.length - 2}` : ''}</span>}
                         </td>
                         <td className="px-3 py-2.5 text-right" title="Searches per month in your country (Google Ads Keyword Planner)"><div className="tabular-nums">{n0(i.volume)}</div>{i.volume > 0 && <div className="mt-1 h-1 rounded-full bg-slate-100 ml-auto w-16"><div className="h-1 rounded-full bg-slate-400" style={{ width: `${Math.max(5, (i.volume / topVolume) * 100)}%` }} /></div>}</td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap" title="0 to 100, higher is harder (the competition index from Google Ads)">{i.difficulty == null ? '—' : <span className="inline-flex items-center gap-1.5"><span className="tabular-nums font-semibold">{i.difficulty}</span><Badge tone={i.difficulty <= 30 ? 'green' : i.difficulty <= 60 ? 'amber' : 'red'}>{i.difficulty <= 30 ? 'Easy' : i.difficulty <= 60 ? 'Medium' : 'Hard'}</Badge></span>}</td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>{i.difficulty != null ? <KdChip v={i.difficulty} detail={i.kd_detail} />
+                          : kdBusy.has(i.id) ? <span className="inline-flex items-center gap-1.5 text-12 text-slate-500"><Loader2 size={13} className="animate-spin" />Reading Google…</span>
+                            : <button type="button" onClick={() => measure([i.id])} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer" title="Read the top 10 on Google for this keyword and work out its difficulty (about 15 seconds)">Check</button>}</td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" title="Google's competition index, 0 to 100"><span className="tabular-nums font-semibold">{i.index ?? '—'}</span>{i.comp && <span className="ml-1 text-11.5 text-slate-500">{String(i.comp).toLowerCase()}</span>}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums" title="What advertisers bid at the top of the page, per click">{i.cpc != null ? `₹${i.cpc}` : '—'}</td>
                         <td className="px-3 py-2.5"><span title={TAG_HELP[i.tag]}><Badge tone={TAG_TONE[i.tag]}>{TAG_SHORT[i.tag]}</Badge></span></td>
@@ -307,6 +337,8 @@ export default function KeywordWorkspace({ b, onUse }) {
           <div role="toolbar" aria-label="Selected keywords" className="bg-slate-900 text-white rounded-xl shadow-xl px-4 py-2.5 flex flex-wrap items-center gap-3">
             <span className="text-13 font-semibold">{ids.length} selected</span>
             {view !== 'picked' && <Button size="sm" variant="primary" icon={CheckCircle2} busy={busy === 'pick'} onClick={() => pick(ids)}>Pick</Button>}
+            <Button size="sm" icon={Gauge} busy={kdBusy.size > 0} onClick={() => measure(ids)}>{kdBusy.size > 0 ? `Checking ${kdBusy.size}…` : 'Check difficulty'}</Button>
+            {kdNote && <span className="text-12 text-slate-300 max-w-[260px] truncate" title={kdNote}>{kdNote}</span>}
             {view === 'dismissed' ? <Button size="sm" icon={Undo2} onClick={() => act('restore', ids, 'Put back in the list')}>Put back</Button>
               : <Button size="sm" icon={EyeOff} busy={busy === 'dismiss'} onClick={() => act('dismiss', ids, `${ids.length} set aside`)}>Set aside</Button>}
             <button type="button" onClick={() => setSel(new Set())} className="text-12.5 text-slate-300 hover:text-white underline cursor-pointer">Clear</button>

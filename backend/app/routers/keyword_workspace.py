@@ -38,6 +38,18 @@ def table_places(extra: str = Query("", max_length=200), b: Business = Depends(g
     return {"places": keyword_locations.places(b, [x.strip() for x in extra.split(",") if x.strip()][:3])}
 
 
+class DifficultyIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=6)
+
+
+@router.post("/difficulty")
+def measure_difficulty(body: DifficultyIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Keyword difficulty (the full score, read from the real top 10 on Google) for a few keywords. The page calls it in small groups and shows the progress."""
+    res = kw.measure_difficulty(db, b, body.ids)
+    db.commit()
+    return {"results": res}
+
+
 @router.get("/area-search")
 def area_search(q: str = Query("", max_length=80), country: str = Query("IN", max_length=2), b: Business = Depends(get_business)):
     """Google Maps suggestions for a place to target, inside a country, while typing."""
