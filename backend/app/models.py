@@ -479,6 +479,29 @@ class RankScan(TimestampMixin, Base):
     data_source: Mapped[str] = mapped_column(String(20), default="sample")
 
 
+class RankArea(TimestampMixin, Base):
+    """An area (a suburb or a region) where the business's Google Maps rank is measured: its name and the pin at its centre."""
+    __tablename__ = "rank_areas"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    lat: Mapped[float] = mapped_column(Float)
+    lng: Mapped[float] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(12), default="manual")  # project (from the project's target areas) | manual
+
+
+class AreaRank(TimestampMixin, Base):
+    """One measurement: the business's position in Google Maps for a keyword as seen from an area's centre (empty = not in the first 20), and the businesses ahead of it."""
+    __tablename__ = "area_ranks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    area_id: Mapped[int] = mapped_column(ForeignKey("rank_areas.id", ondelete="CASCADE"), index=True)
+    area: Mapped[str] = mapped_column(String(120))
+    keyword: Mapped[str] = mapped_column(String(255))
+    rank: Mapped[int | None] = mapped_column(Integer)
+    top: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+
 class GeoPrompt(TimestampMixin, Base):
     __tablename__ = "geo_prompts"
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -1,4 +1,5 @@
 import { useCrumb } from './crumbs';
+import AreaRanks from './AreaRanks';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Link, useParams, useSearchParams } from 'react-router-dom';
 import L from 'leaflet';
@@ -317,10 +318,24 @@ function Tracker({ b }) {
   );
 }
 
+/** Where the business shows on Google Maps: by area and keyword (the default), or as a street-by-street grid around the pin. */
+function MapsRanking({ b }) {
+  const [view, setView] = useState('areas');
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1" role="tablist" aria-label="Maps ranking view">
+        {[['areas', 'By area and keyword'], ['grid', 'Street grid around the pin']].map(([id, l]) => (
+          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-9 px-4 rounded-full text-13 font-semibold cursor-pointer ${view === id ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>))}
+      </div>
+      {view === 'areas' ? <AreaRanks b={b} /> : <Tracker b={b} />}
+    </div>
+  );
+}
+
 function Page({ b }) {
   // One row of views: the page positions, every Landscape view (Overview, Rankings Distribution, Tags, Pages...), the Maps grid and the tasks
   const views = LANDSCAPE_TABS.map(([id, label]) => ({ id, label }));
-  const all = [{ id: 'positions', label: 'Page positions' }, ...views, { id: 'geo', label: 'Geo-grid (Maps pack)' }, { id: 'tasks', label: 'Tasks' }];
+  const all = [{ id: 'positions', label: 'Page positions' }, ...views, { id: 'geo', label: 'Maps ranking' }, { id: 'tasks', label: 'Tasks' }];
   const [tab, setTab] = useUrlTab('positions', all.map(t => t.id));
   useCrumb(all.find(t => t.id === tab)?.label);
   const [stuck, setStuck] = useState(false);
@@ -355,7 +370,7 @@ function Page({ b }) {
       </div>
       <div role="tabpanel" aria-labelledby={`pos-tab-${tab}`} className="min-w-0">
         {tab === 'positions' ? <PagePositions key={b.id} b={b} />
-          : tab === 'geo' ? <Tracker key={b.id} b={b} />
+          : tab === 'geo' ? <MapsRanking key={b.id} b={b} />
             : tab === 'tasks' ? <ProcessTasks b={b} areas={['rankings']} />
               : <PositionLandscape key={b.id} b={b} tab={tab} onTab={setTab} />}
       </div>
