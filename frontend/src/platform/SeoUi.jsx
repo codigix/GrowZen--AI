@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { api, toUi, SEO_API } from './seoApi';
 import NotificationBell from '../components/NotificationBell';
-import { MarketBadge } from './MarketBadge';
 import Breadcrumbs from './Breadcrumbs';
 import { needsSwitchCode, verifyProjectSwitch } from './projectCode';
 
@@ -318,7 +317,7 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
         <div className="pt-3 pb-2.5 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
             <Breadcrumbs title={title} />
-            <h1 className="text-18 font-semibold text-slate-900 tracking-tight flex flex-wrap items-center gap-2">{title}{business && needsBusiness && <MarketBadge business={business} />}</h1>
+            <h1 className="text-18 font-semibold text-slate-900 tracking-tight flex flex-wrap items-center gap-2">{title}</h1>
             {subtitle && <p className="text-12 text-slate-400 mt-0.5 max-w-3xl truncate" title={subtitle}>{subtitle}</p>}
           </div>
           {step && business && !error && <StepBar bid={business.id} step={step} />}
