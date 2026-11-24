@@ -34,9 +34,9 @@ class FakeGoogle:
     def __init__(self, conn):
         pass
 
-    def create_post(self, account, location, post):
+    def create_post(self, account, location, post, require_photo=False):
         FakeGoogle.calls.append(("post", post["body"]))
-        assert post.get("image_url") == "https://lh3.example/p"  # a Google post always carries a picture
+        assert post.get("image_url") == "https://pub.example/post.jpg" and require_photo is True  # a Google post always carries a picture, at a public address, and is not sent without it
         return {"name": f"{location}/localPosts/1"}
 
     def reply_review(self, account, location, rid, text):
@@ -57,6 +57,8 @@ class FakeGoogle:
 def fake_google(monkeypatch):
     FakeGoogle.calls = []
     monkeypatch.setattr(gbp, "GbpClient", FakeGoogle)
+    from app.services import post_image_host
+    monkeypatch.setattr(post_image_host, "source_url", lambda db, b, p: "https://pub.example/post.jpg")  # where Google would fetch the picture
 
 
 def fake_ai(monkeypatch, posts=3):
@@ -132,7 +134,7 @@ def test_a_post_is_sent_only_after_its_approval_and_only_at_its_time(project, mo
         d["publish_at"] = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
         t.detail = d
         db.commit()
-        assert ap.publish_due(db) == 1 and [c[0] for c in FakeGoogle.calls] == ["photo", "post"]  # the picture is made and added first
+        assert ap.publish_due(db) == 1 and [c[0] for c in FakeGoogle.calls] == ["post"]  # the picture is hosted at a public address: it is not added to the profile gallery
         assert db.get(AgentTask, t.id).status == "applied" and db.get(Post, d["post_id"]).status == "published"
         from app.models import Notification
         from sqlalchemy import select
@@ -176,7 +178,7 @@ def test_publish_now_sends_at_once_and_an_unlinked_profile_cannot_schedule(proje
             ap.approve(db, b, t, "owner")
         b = link(db, project)
         ap.approve(db, b, t, "owner", now=True)
-        assert [c[0] for c in FakeGoogle.calls] == ["photo", "post"]  # the picture is made and added first and db.get(AgentTask, t.id).status == "applied"
+        assert [c[0] for c in FakeGoogle.calls] == ["post"]  # the picture is hosted at a public address: it is not added to the profile gallery and db.get(AgentTask, t.id).status == "applied"
         with pytest.raises(ap.AutopilotError, match="already"):
             ap.approve(db, b, t, "owner", now=True)  # one approval, one send
     finally:
@@ -397,7 +399,7 @@ def test_a_published_post_sends_its_button_link_with_the_campaign_tag_and_keeps_
     try:
         link(db, project)
         sent = []
-        monkeypatch.setattr(FakeGoogle, "create_post", lambda self, account, location, post: (sent.append(post), {"name": f"{location}/localPosts/9"})[1])
+        monkeypatch.setattr(FakeGoogle, "create_post", lambda self, account, location, post, require_photo=False: (sent.append(post), {"name": f"{location}/localPosts/9"})[1])
         body = {"post_type": "Update", "body": "Our wedding collection is in: come and try it on this weekend.", "image_url": "https://lh3.example/p", "cta_type": "LEARN_MORE", "cta_url": "https://rental.example/collection"}
         pid = client.post(f"/api/v1/businesses/{project}/posts", json=body).json()["id"]
         assert client.post(f"/api/v1/businesses/{project}/gbp/posts/{pid}/publish").status_code == 200

@@ -349,7 +349,7 @@ class GbpClient:
     def reply_review(self, account: str, location: str, review_id: str, text: str) -> None:
         self._req("PUT", f"{V4}/{account}/{location}/reviews/{review_id}/reply", json={"comment": text})
 
-    def create_post(self, account: str, location: str, post: dict[str, Any]) -> dict[str, Any]:
+    def create_post(self, account: str, location: str, post: dict[str, Any], require_photo: bool = False) -> dict[str, Any]:
         body: dict[str, Any] = {"languageCode": "en", "summary": post["body"], "topicType": {"Offer": "OFFER", "Event": "EVENT"}.get(post.get("post_type"), "STANDARD")}
         cta = post_call_to_action(post)
         if cta:
@@ -374,6 +374,8 @@ class GbpClient:
                 if "permission" not in str(exc).lower() and "invalid argument" not in str(exc).lower():
                     raise
                 if "media" in body:
+                    if require_photo:  # a post that was made with a picture is not sent without it: the reason is given so it can be fixed
+                        raise GbpError(f"Google refused the post's picture, so the post was not published ({str(exc)[:200]}). The picture must be a JPG or PNG of at least 400 x 300 pixels at a public web address.") from exc
                     body.pop("media")
                     dropped.append("the photo")
                 elif "callToAction" in body:

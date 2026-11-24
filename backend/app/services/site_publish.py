@@ -319,6 +319,25 @@ def _publish_wordpress(row: SiteIntegration, a: Article, mode: str, when: dateti
         raise PublishError(f"Could not reach WordPress: {str(exc)[:160]}") from exc
 
 
+def upload_wordpress_media(row: SiteIntegration, data: bytes, filename: str, mime: str = "image/jpeg") -> str:
+    """Put one picture in the WordPress media library and give back its public address."""
+    if row.method != "wordpress" or not row.base_url:
+        raise PublishError("The connected website is not WordPress.")
+    try:
+        with site_client(60) as c:
+            r = c.post(f"{row.base_url.rstrip('/')}/wp-json/wp/v2/media", content=data, auth=_wp_auth(row), headers={"Content-Type": mime, "Content-Disposition": f'attachment; filename="{filename}"'})
+    except (httpx.HTTPError, SSRFValidationError) as exc:
+        raise PublishError(f"Could not reach WordPress: {str(exc)[:160]}") from exc
+    if r.status_code in (401, 403):
+        raise PublishError("WordPress refused the login. Reconnect the website.")
+    if r.status_code >= 400:
+        raise PublishError(f"WordPress refused the picture ({r.status_code}): {r.text[:160]}")
+    url = (r.json() or {}).get("source_url")
+    if not url:
+        raise PublishError("WordPress did not return the picture's address.")
+    return url
+
+
 def wordpress_posts(row: SiteIntegration) -> list[dict]:
     """Every live or scheduled post of the connected WordPress site, with its WordPress id: address, title, date and status of each. (WordPress does not say which tool made a post, and many sites
     have one login for everything, so these are all the site's posts, including the ones bevisibe published.)"""
