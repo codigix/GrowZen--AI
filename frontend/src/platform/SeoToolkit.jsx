@@ -372,7 +372,7 @@ function KeywordOverview({ b }) {
   const [period, setPeriod] = useState('12'); // time filter: the last 12, 6 or 3 months, or one month
   const placesApi = useApi(`/businesses/${b.id}/keyword-workspace/places`);
   const places = placesApi.data?.places || [];
-  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
+  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(null); setKd(null); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const started = useRef(false);

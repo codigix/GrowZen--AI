@@ -150,7 +150,7 @@ def _remember(domain: str, sc: dict[str, Any] | None) -> None:
         db.close()
 
 
-def check(domains: list[str], on_result=None, force: bool = False) -> list[dict[str, Any]]:
+def check(domains: list[str], on_result=None, force: bool = False, save: bool = True) -> list[dict[str, Any]]:
     """Figures for every domain; on_result({"domain", "scores"|"error"}) is called per domain as it is known.
     A domain asked about in the last 24 h is answered from the saved figures and Apify is not called (force=True skips that). Only real answers are saved:
     a refused key or a network failure is never remembered, so the next press tries again."""
@@ -180,10 +180,11 @@ def check(domains: list[str], on_result=None, force: bool = False) -> list[dict[
             err, stop = str(exc), isinstance(exc, NoKeyLeft)
         for d in part:
             if got.get(d):
-                _remember(d, got[d])
+                if save:
+                    _remember(d, got[d])
                 emit({"domain": d, "scores": got[d]})
             else:
-                if err is None:
+                if err is None and save:
                     _remember(d, None)  # Apify answered but had nothing for this site: do not pay to ask again today
                 emit({"domain": d, "error": err or "Apify has no figures for this site"})
         if stop:  # every key was refused: later runs would fail the same way

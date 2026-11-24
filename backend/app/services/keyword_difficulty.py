@@ -1,7 +1,7 @@
 """SEO difficulty of one keyword, from what Google really shows for it.
 
 The top 10 results of a Google search (and the "People also ask", related searches and ads on the page) come from Apify's Google Search scraper; Domain Authority, home-page Page
-Authority, referring domains and spam score of each of those sites come from Moz through Apify (saved for a day, so a site is never paid for twice). Nothing is estimated: a site
+Authority, referring domains and spam score of each of those sites come from Moz through Apify (asked afresh each time; nothing is saved). Nothing is estimated: a site
 Apify has no figures for is left out of the averages and said so.
 
 Score (0-100, higher = harder), the parts of the formula we can measure:
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import math
-import time
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -29,8 +28,6 @@ SERP_URL = f"https://api.apify.com/v2/acts/{SERP_ACTOR}/run-sync-get-dataset-ite
 VOLUME_BENCHMARK = 100_000  # searches a month that count as 100 on the volume scale
 RD_TOP = 1_000_000  # referring domains that count as 100 on the log scale
 STRONG_DA = 70
-TTL = 24 * 3600
-_cache: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
 _TWO_PART = {"co", "com", "org", "net", "gov", "ac", "edu"}
 
 
@@ -47,11 +44,7 @@ def site_of(url: str) -> str:
 
 
 def serp(keyword: str, country: str) -> dict[str, Any]:
-    """What Google shows for the keyword: {organic: [{position, title, url, site, description}], questions, related, ads: [{title, url, description}], ai_overview}. Kept for a day."""
-    key = (keyword, country.upper())
-    hit = _cache.get(key)
-    if hit and time.time() - hit[0] < TTL:
-        return hit[1]
+    """What Google shows for the keyword right now: {organic: [{position, title, url, site, description}], questions, related, ads: [{title, url, description}], ai_overview}. Not kept."""
     tokens = [t for _i, t in apify_metrics.keys()]
     if not tokens:
         raise DifficultyError("Apify is not connected (APIFY_KEY): the Google results cannot be read.")
@@ -74,7 +67,6 @@ def serp(keyword: str, country: str) -> dict[str, Any]:
                         for a in (item.get("paidResults") or [])],
                 "ai_overview": bool(item.get("aiOverview")),
             }
-            _cache[key] = (time.time(), out)
             return out
         last = f"Apify answered {r.status_code}."
     raise DifficultyError(last or "Apify gave no results.")
@@ -150,7 +142,7 @@ def _log_scale(v: float, top: float) -> float:
 def score(keyword: str, country: str, volume: int | None = None) -> dict[str, Any]:
     page = serp(keyword, country)
     sites = list(dict.fromkeys(o["site"] for o in page["organic"] if o["site"]))
-    metrics = {x["domain"]: x.get("scores") for x in apify_metrics.check(sites)}
+    metrics = {x["domain"]: x.get("scores") for x in apify_metrics.check(sites, force=True, save=False)}  # asked afresh every time and not kept
     rows = []
     for o in page["organic"]:
         m = metrics.get(o["site"]) or {}
