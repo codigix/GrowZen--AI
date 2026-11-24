@@ -1,0 +1,181 @@
+import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, ExternalLink, Info } from 'lucide-react';
+import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, RadarChart, PolarGrid, PolarAngleAxis, Radar, PieChart, Pie, Cell } from 'recharts';
+import { Card, Badge, ErrorNote, SkList } from './SeoUi';
+import { useApi, fmt } from './seoApi';
+
+const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : Number(n).toLocaleString('en-US'));
+const MONTH = (m) => { const [y, mo] = m.split('-'); return new Date(Number(y), Number(mo) - 1, 1).toLocaleString('en', { month: 'short', year: 'numeric' }); };
+const AXIS = { fontSize: 11, fill: '#64748b' };
+const INDIGO = '#6366f1';
+const TLD_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#a855f7', '#0ea5e9', '#94a3b8'];
+
+function Kpi({ label, value, change, sub, tone = 'text-indigo-700', hint }) {
+  return (
+    <div className="px-4 py-3 min-w-0" title={hint}>
+      <div className="text-12.5 text-slate-600">{label}</div>
+      <div className="flex items-baseline gap-1.5"><span className={`text-24 font-bold tabular-nums leading-tight ${tone}`}>{value}</span>{change != null && <span className="text-11.5 font-semibold text-emerald-600 tabular-nums">+{change}%</span>}</div>
+      {sub && <div className="text-11.5 text-slate-500 truncate">{sub}</div>}
+    </div>
+  );
+}
+
+function Toggle({ value, onChange, options }) {
+  return <div className="inline-flex gap-3 text-12.5" role="tablist">{options.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={value === k} onClick={() => onChange(k)} className={`pb-0.5 cursor-pointer border-b-2 ${value === k ? 'border-indigo-500 text-slate-900 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{l}</button>)}</div>;
+}
+
+function Empty({ children }) { return <p className="py-8 text-center text-13 text-slate-500">{children}</p>; }
+
+/** The crawler's linking sites around the website: each dot is a referring domain, bigger the more links it gives, red when it looks risky. */
+function Network({ nodes, domain }) {
+  const R = 118, cx = 150, cy = 140;
+  const max = Math.max(1, ...nodes.map(n => n.links));
+  const pts = nodes.map((n, i) => { const a = (i / Math.max(1, nodes.length)) * Math.PI * 2 - Math.PI / 2; const r = R * (0.55 + 0.45 * ((i * 7) % 10) / 10); return { ...n, x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), s: 3 + (n.links / max) * 9 }; });
+  return (
+    <svg viewBox="0 0 300 280" className="w-full h-64" role="img" aria-label="Sites that link to the website">
+      {pts.map(p => <line key={`l${p.domain}`} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="#cbd5e1" strokeWidth="0.8" />)}
+      {pts.map(p => <circle key={p.domain} cx={p.x} cy={p.y} r={p.s} fill={p.verdict === 'risky' ? '#ef4444' : p.verdict === 'useful' ? '#10b981' : '#818cf8'} fillOpacity="0.85"><title>{`${p.domain}: ${p.links} link${p.links === 1 ? '' : 's'}${p.verdict ? `, ${p.verdict}` : ''}`}</title></circle>)}
+      <circle cx={cx} cy={cy} r="16" fill="#4f46e5" /><text x={cx} y={cy + 30} textAnchor="middle" style={{ fontSize: 10, fontWeight: 600, fill: '#3730a3' }}>{domain}</text>
+    </svg>
+  );
+}
+
+function Cloud({ items }) {
+  if (!items.length) return <Empty>No anchor text found.</Empty>;
+  const max = Math.max(...items.map(i => i.count)), min = Math.min(...items.map(i => i.count));
+  const palette = ['#4f46e5', '#7c3aed', '#0ea5e9', '#0f766e', '#b45309', '#64748b'];
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 px-2 py-3 leading-tight">
+      {items.slice(0, 30).map((i, n) => <span key={i.text} title={`${i.count} link${i.count === 1 ? '' : 's'}`} className="font-semibold cursor-default" style={{ fontSize: `${11 + (max === min ? 6 : ((i.count - min) / (max - min)) * 20)}px`, color: palette[n % palette.length], opacity: 0.55 + 0.45 * (max === min ? 1 : (i.count - min) / (max - min)) }}>{i.text.length > 34 ? `${i.text.slice(0, 32)}…` : i.text}</span>)}
+    </div>
+  );
+}
+
+function Bars({ rows, labelKey, valueKey, shareKey, tone = INDIGO }) {
+  const max = Math.max(1, ...rows.map(r => r[valueKey]));
+  return (
+    <ul className="space-y-3">{rows.map(r => (
+      <li key={r[labelKey]}><div className="flex items-baseline justify-between text-13"><span className="text-slate-800">{r[labelKey]}</span><span className="tabular-nums"><span className="text-slate-500 mr-3">{shareKey ? (r[shareKey] < 1 ? '<1%' : `${r[shareKey]}%`) : ''}</span><span className="text-indigo-700 font-medium">{fmt(r[valueKey])}</span></span></div>
+        <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${Math.max(r[valueKey] ? 2 : 0, (r[valueKey] / max) * 100)}%`, backgroundColor: tone }} /></div></li>))}</ul>
+  );
+}
+
+export default function BacklinkOverview({ b }) {
+  const r = useApi(`/businesses/${b.id}/backlink-hub/overview`);
+  const [range, setRange] = useState('all');
+  const [show, setShow] = useState({ new: true, lost: true });
+  const d = r.data;
+  const series = useMemo(() => { const s = d?.series || []; return (range === '1y' ? s.slice(-12) : s).map(x => ({ ...x, label: MONTH(x.month) })); }, [d, range]);
+  const recent = useMemo(() => (d?.series || []).slice(-6).map(x => ({ ...x, label: MONTH(x.month) })), [d]);
+  if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
+  if (!d) return <SkList rows={6} />;
+  if (d.state === 'no_target') return <Card><p className="py-8 text-center text-13 text-slate-500">Add the project's website first, so there is a site to read the links of.</p></Card>;
+  const t = d.totals, a = d.authority, f = d.follow, p = d.profile;
+  const radar = [{ axis: 'Link power', v: a.radar.link_power }, { axis: 'Organic traffic', v: a.radar.organic_traffic }, { axis: 'Natural profile', v: a.radar.natural_profile }];
+  const tox = t.toxicity;
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2 text-13 text-slate-600"><span className="font-semibold text-slate-900">Backlinks: {d.domain}</span><a href={`https://${d.domain}`} target="_blank" rel="noreferrer" aria-label="Open the website" className="text-slate-400 hover:text-indigo-600"><ExternalLink size={14} /></a>
+        <span>· {fmt(t.backlinks)} backlinks from {fmt(t.referring_domains)} sites found by our crawler</span></div>
+
+      <Card pad={false}>
+        <div className="grid grid-cols-2 lg:grid-cols-6 divide-x divide-slate-100">
+          <Kpi label="Referring domains" value={kfmt(t.referring_domains)} change={t.domains_change} sub={`${t.new_domains_30d} new in 30 days`} hint="Sites with at least one live link to your website, among the links our crawler has found" />
+          <Kpi label="Backlinks" value={kfmt(t.backlinks)} change={t.links_change} sub={`${t.lost_backlinks} lost`} hint="Live links to your website that our crawler has found" />
+          <Kpi label="Monthly visits" value="n/a" tone="text-slate-400" sub="needs a traffic database" />
+          <Kpi label="Organic traffic" value={t.organic_clicks_28d != null ? fmt(t.organic_clicks_28d) : 'n/a'} tone={t.organic_clicks_28d != null ? 'text-indigo-700' : 'text-slate-400'} sub={t.organic_clicks_28d != null ? 'clicks from Google, 28 days' : 'connect Search Console'} hint="Clicks from Google Search to the website in the last 28 days (Search Console)" />
+          <Kpi label="Outbound domains" value="n/a" tone="text-slate-400" sub="not read by the crawler" />
+          <div className="px-4 py-3"><div className="text-12.5 text-slate-600">Toxicity score</div>
+            <div className={`text-24 font-bold tabular-nums leading-tight ${tox == null ? 'text-slate-400' : tox >= 60 ? 'text-rose-600' : tox >= 30 ? 'text-amber-600' : 'text-emerald-600'}`}>{tox ?? 'n/a'}</div>
+            <div className="text-11.5 text-slate-500">{tox == null ? 'no site judged yet' : `${t.toxic_domains} risky of ${t.judged_domains} judged`} · <Link to="/backlinks/audit" className="font-semibold text-indigo-700 hover:underline">Backlink audit</Link></div></div>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <Card title="Authority Score" subtitle="How reputable the site is, 0 to 100">
+          <div className="flex items-start gap-3"><div className="text-34 font-bold tabular-nums text-slate-900 leading-none">{a.score ?? '—'}</div>{a.verdict && <Badge tone={a.verdict === 'Balanced' ? 'green' : 'blue'}>{a.verdict}</Badge>}</div>
+          <div className="h-48 mt-1"><ResponsiveContainer width="100%" height="100%"><RadarChart data={radar} outerRadius="70%"><PolarGrid stroke="#e2e8f0" /><PolarAngleAxis dataKey="axis" tick={{ fontSize: 11, fill: '#64748b' }} /><Radar dataKey="v" stroke={INDIGO} fill={INDIGO} fillOpacity={0.3} /><Tooltip formatter={(v) => [v, 'out of 100']} /></RadarChart></ResponsiveContainer></div>
+          <p className="text-11.5 text-slate-500">Our own score from Moz: Domain Authority {a.da ?? '—'}, {fmt(a.rd ?? t.referring_domains)} referring domains, {a.ranking_keywords != null ? `${fmt(a.ranking_keywords)} ranking keywords` : 'its Search Console clicks'}, spam score {a.spam ?? '—'}.</p>
+        </Card>
+        <Card title="Authority Score trend" subtitle="Last 12 months">
+          <Empty>The trend appears as months pass: we keep no earlier score, and a past score cannot be rebuilt. Today it is <b className="text-slate-800">{a.score ?? '—'}</b>.</Empty>
+        </Card>
+        <Card title="Network graph" subtitle="The sites that link to you" action={tox != null && <Badge tone={tox >= 60 ? 'red' : tox >= 30 ? 'amber' : 'green'}>{tox >= 60 ? 'Dangerous' : tox >= 30 ? 'Needs attention' : 'Good'}</Badge>}>
+          {d.network.length ? <Network nodes={d.network} domain={d.domain} /> : <Empty>No linking sites yet.</Empty>}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {[['domains', 'Referring domains'], ['backlinks', 'Backlinks']].map(([k, title]) => (
+          <Card key={k} title={title} subtitle="Counted from the month our crawler first saw each link" action={<Toggle value={range} onChange={setRange} options={[['1y', '1Y'], ['all', 'All time']]} />}>
+            {series.length < 2 ? <Empty>Our crawler first saw these links in {series[0] ? MONTH(series[0].month) : 'one month'}, so there is no earlier history to draw. It fills in as months pass. Now: <b className="text-slate-800">{fmt(series[0]?.[k] ?? 0)}</b>.</Empty> : (
+              <div className="h-56"><ResponsiveContainer width="100%" height="100%"><AreaChart data={series} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}><CartesianGrid stroke="#eef2f7" vertical={false} /><XAxis dataKey="label" tick={AXIS} minTickGap={28} /><YAxis tick={AXIS} width={38} allowDecimals={false} /><Tooltip /><Area type="monotone" dataKey={k} name={title} stroke={INDIGO} fill="#c7d2fe" /></AreaChart></ResponsiveContainer></div>
+            )}
+          </Card>))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {[['domains', 'New and lost referring domains', 'new_domains', 'lost_domains'], ['links', 'New and lost backlinks', 'new_links', 'lost_links']].map(([k, title, nk, lk]) => (
+          <Card key={k} title={title} subtitle="Last 6 months" action={<span className="flex items-center gap-3 text-12.5">{[['new', 'New', '#6366f1'], ['lost', 'Lost', '#ef4444']].map(([s, l, c]) => <label key={s} className="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={show[s]} onChange={() => setShow(x => ({ ...x, [s]: !x[s] }))} style={{ accentColor: c }} />{l}</label>)}</span>}>
+            <div className="h-52"><ResponsiveContainer width="100%" height="100%"><BarChart data={recent} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}><CartesianGrid stroke="#eef2f7" vertical={false} /><XAxis dataKey="label" tick={AXIS} /><YAxis tick={AXIS} width={38} allowDecimals={false} /><Tooltip />{show.new && <Bar dataKey={nk} name="New" fill="#6366f1" />}{show.lost && <Bar dataKey={lk} name="Lost" fill="#ef4444" />}</BarChart></ResponsiveContainer></div>
+            <p className="mt-1 text-11.5 text-slate-500">New: first seen that month. Lost: no longer found by a later check.</p>
+          </Card>))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Card title="Categories of referring domains" subtitle="What kind of site links to you">{d.categories.length ? <Bars rows={d.categories} labelKey="label" valueKey="domains" shareKey="share" /> : <Empty>No linking sites yet.</Empty>}</Card>
+        <Card title="Top anchors" subtitle="The words your links use, bigger the more often"><Cloud items={d.anchors} /></Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Card title="Referring domains by Authority" subtitle={`Domain Authority (Moz) of the sites that link to you${d.authority_unknown ? `; ${d.authority_unknown} have no figure yet` : ''}`}>
+          <ul className="space-y-2">{d.by_authority.map(x => { const tot = Math.max(1, d.authority_known); return (
+            <li key={x.range} className="grid grid-cols-[64px_1fr_44px_36px] items-center gap-2 text-13"><span className="text-slate-800">{x.range}</span><div className="h-2.5 rounded bg-slate-100 overflow-hidden"><div className="h-full" style={{ width: `${(x.domains * 100) / tot}%`, backgroundColor: '#a5b4fc' }} /></div><span className="text-right tabular-nums text-slate-500">{x.domains ? `${Math.round((x.domains * 100) / tot)}%` : '0%'}</span><span className="text-right tabular-nums text-indigo-700">{x.domains}</span></li>); })}</ul>
+        </Card>
+        <Card title="Link attributes" subtitle="How the links are marked">
+          {f.follow_share != null && f.follow_share > 95 && <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-13 text-amber-900"><AlertTriangle size={15} />Do-follow link share is too high: a natural profile has some nofollow links too.</div>}
+          <ul className="space-y-3">{[['Follow', f.follow, '#34d399'], ['Nofollow', f.nofollow, '#a5b4fc'], ['Sponsored', f.sponsored, '#a5b4fc'], ['UGC', f.ugc, '#a5b4fc']].map(([l, v, c]) => (
+            <li key={l} className="grid grid-cols-[84px_1fr_44px_48px] items-center gap-2 text-13"><span className="text-slate-800">{l}</span><div className="h-2.5 rounded bg-slate-100 overflow-hidden"><div className="h-full" style={{ width: `${f.total ? (v * 100) / f.total : 0}%`, backgroundColor: c }} /></div><span className="text-right tabular-nums text-slate-500">{f.total ? (v && (v * 100) / f.total < 1 ? '<1%' : `${Math.round((v * 100) / f.total)}%`) : '0%'}</span><span className="text-right tabular-nums text-indigo-700">{fmt(v)}</span></li>))}</ul>
+          <div className="mt-4 pt-3 border-t border-slate-100"><div className="text-12.5 font-semibold text-slate-700 mb-1.5">Anchor text</div>
+            <div className="flex flex-wrap gap-1.5">{Object.entries(d.anchor_types).sort((x, y) => y[1] - x[1]).map(([k, v]) => <span key={k} className="rounded-full bg-slate-100 px-2.5 py-0.5 text-12 text-slate-700">{({ branded: 'Brand', naked: 'Web address', money: 'Keyword', generic: 'Generic', compound: 'Brand + words', organic: 'Natural', empty: 'No text', other: 'Other' })[k] || k} <b className="tabular-nums">{fmt(v)}</b></span>)}</div></div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Card title="TLD distribution" subtitle="The ending of the linking sites' addresses">
+          {d.tlds.length === 0 ? <Empty>No linking sites yet.</Empty> : (
+            <div className="grid grid-cols-[170px_1fr] items-center gap-4">
+              <div className="h-40"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={d.tlds} dataKey="domains" nameKey="tld" innerRadius={42} outerRadius={70} paddingAngle={1}>{d.tlds.map((x, i) => <Cell key={x.tld} fill={TLD_COLORS[i % TLD_COLORS.length]} />)}</Pie><Tooltip formatter={(v, n) => [`${v} domains`, `.${n}`]} /></PieChart></ResponsiveContainer></div>
+              <table className="w-full text-13"><thead><tr className="text-left text-11.5 text-slate-500"><th className="py-1 font-medium">TLD</th><th className="py-1 font-medium text-right">Referring domains</th></tr></thead>
+                <tbody>{d.tlds.map((x, i) => <tr key={x.tld} className="border-t border-slate-100"><td className="py-1.5"><span className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: TLD_COLORS[i % TLD_COLORS.length] }} />{x.tld === 'other' ? 'other' : `.${x.tld}`}</span></td><td className="py-1.5 text-right tabular-nums"><span className="text-slate-500 mr-3">{x.share}%</span><span className="text-indigo-700">{x.domains}</span></td></tr>)}</tbody></table>
+            </div>)}
+        </Card>
+        <Card title="Top countries" subtitle="From country endings such as .in or .uk: sites with a general ending (.com) have no country here">
+          {d.countries.length === 0 ? <Empty>None of the linking sites has a country ending.</Empty> : <Bars rows={d.countries} labelKey="country" valueKey="domains" shareKey="share" />}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Card title="Link profile distribution" subtitle="Where the linking sites are hosted (read from DNS)">
+          <div className="space-y-3">{[['Ref. domains', p.domains], ['Ref. IPs', p.ips], ['Ref. subnets', p.subnets]].map(([l, v]) => (
+            <div key={l}><div className="flex items-baseline justify-between"><span className="text-12.5 text-slate-600">{l}</span><span className="text-20 font-bold tabular-nums text-indigo-700">{fmt(v)}</span></div><div className="mt-1 h-3 rounded bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-300" style={{ width: `${p.domains ? (v * 100) / p.domains : 0}%` }} /></div></div>))}</div>
+          <p className="mt-2 text-11.5 text-slate-500">{p.resolved} of {p.domains} sites answered the address lookup. Many links from one IP or subnet look like a link network.</p>
+        </Card>
+        <Card title="Similar profiles" subtitle="Sites our crawler knows that are linked from the same websites">
+          {d.similar.length === 0 ? <Empty>No other site in the crawler shares your linking sites yet.</Empty> : (
+            <table className="w-full text-13"><thead><tr className="text-left text-11.5 text-slate-500 border-b border-slate-200"><th className="py-1.5 font-medium">Site</th><th className="py-1.5 font-medium text-right">Shared sites</th><th className="py-1.5 font-medium text-right">Its referring domains</th></tr></thead>
+              <tbody>{d.similar.map(x => <tr key={x.domain} className="border-b border-slate-100"><td className="py-1.5"><a href={`https://${x.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{x.domain}<ExternalLink size={11} className="text-slate-400" /></a></td><td className="py-1.5 text-right tabular-nums">{x.shared} <span className="text-slate-400">({x.share}%)</span></td><td className="py-1.5 text-right tabular-nums">{fmt(x.referring_domains)}</td></tr>)}</tbody></table>)}
+        </Card>
+      </div>
+
+      <Card pad={false} title="Top pages" subtitle="The pages of your website with the most referring domains">
+        {d.top_pages.length === 0 ? <Empty>No links to any page yet.</Empty> : (
+          <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-2 text-left font-medium">URL</th><th className="px-3 py-2 text-right font-medium">Referring domains</th><th className="px-5 py-2 text-right font-medium">Backlinks</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{d.top_pages.map(x => <tr key={x.url}><td className="px-5 py-2.5 max-w-[520px] truncate"><a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={x.url}>{x.url}<ExternalLink size={11} className="text-slate-400" /></a></td><td className="px-3 py-2.5 text-right tabular-nums text-indigo-700">{fmt(x.domains)}</td><td className="px-5 py-2.5 text-right tabular-nums">{fmt(x.links)}</td></tr>)}</tbody></table>)}
+      </Card>
+
+      <div className="flex items-start gap-2 rounded-lg bg-slate-50 ring-1 ring-slate-200 px-3 py-2 text-12.5 text-slate-600"><Info size={15} className="mt-0.5 shrink-0" /><span>Every figure here counts links our own crawler has found for {d.domain}. Tools with their own web-wide index show many more links; these are the ones we have seen and can check. Monthly visits, outbound domains and the earlier history of the Authority Score are not shown because no source is connected for them.</span></div>
+    </div>
+  );
+}

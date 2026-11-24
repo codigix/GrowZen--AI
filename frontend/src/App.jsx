@@ -214,7 +214,7 @@ export default function App() {
         <Route path="projects/:id/journey" element={<Navigate to="/tracking-overview" replace />} />
         <Route path="fix-plan" element={<FixPlanPage />} />
         <Route path="fix-plan/:area" element={<FixPlanArea />} />
-        <Route path="backlinks" element={<Navigate to="/backlinks/links" replace />} />
+        <Route path="backlinks" element={<Navigate to="/backlinks/overview" replace />} />
         <Route path="backlinks/:view" element={<BacklinkHubPage />} />
         <Route path="backlink-intelligence" element={<BacklinkIntelRedirect />} />
         <Route path="backlink-intelligence/:tab" element={<BacklinkIntelRedirect />} />

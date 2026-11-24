@@ -12,6 +12,13 @@ from . import hub, pitch, playbook
 router = APIRouter(prefix="/businesses/{business_id}/backlink-hub", tags=["backlinks"], dependencies=[Depends(current_user)])
 
 
+@router.get("/overview")
+def overview(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """The backlink overview of the project's website: authority, referring domains and backlinks over time, new and lost, anchors, follow types, TLDs, hosting and top pages."""
+    from . import overview as backlink_overview
+    return backlink_overview.overview(db, b)
+
+
 @router.get("/summary")
 def summary(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     return hub.summary(db, b)

@@ -6,9 +6,11 @@ import Select from '../components/Select';
 import { Act, Head, OpenAct } from './TableBits';
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 import Tip from './Tip';
+import BacklinkOverview from './BacklinkOverview';
 import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 const VIEWS = {
+  overview: ['Backlink overview', 'The big picture of the links to your website: authority, referring domains and backlinks over time, new and lost links, anchors, follow types, site endings, hosting and top pages.'],
   links: ['Backlinks', 'Every link to your website that the crawler found: follow or nofollow, anchor text, kind of site, authority and whether it is worth having.'],
   domains: ['Referring domains', 'The websites that link to you, with how many links each gives, what kind of site it is and whether it helps or hurts.'],
   opportunities: ['Link opportunities', 'Websites that link to your competitors but not to you: the places worth asking for a link, best first.'],
@@ -1036,12 +1038,12 @@ export default function BacklinkHubPage() {
 function Body({ b, view }) {
   const s = useApi(`/businesses/${b.id}/backlink-hub/summary`);
   const key = `${b.id}-${s.data?.totals?.live ?? 'x'}-${s.data?.useful?.useful ?? 'x'}-${s.data?.moz?.configured}-${s.data?.totals?.avg_da ?? 'x'}`;
-  const V = { links: Links, domains: Domains, opportunities: Opportunities, gap: CompetitorGap, audit: Audit, sites: Sites }[view];
+  const V = { overview: BacklinkOverview, links: Links, domains: Domains, opportunities: Opportunities, gap: CompetitorGap, audit: Audit, sites: Sites }[view];
   const main = view === 'links';
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      {view !== 'sites' && (s.data ? <><Summary s={s.data} b={b} reload={s.reload} compact main={main} />{main && <Setup s={s.data} />}</> : s.error ? <Card><ErrorNote>{s.error.message}</ErrorNote></Card> : <SkList rows={3} />)}
-      {(view === 'sites' || !s.data || s.data.state === 'ok') && <V key={key} b={b} />}
+      {view !== 'sites' && view !== 'overview' && (s.data ? <><Summary s={s.data} b={b} reload={s.reload} compact main={main} />{main && <Setup s={s.data} />}</> : s.error ? <Card><ErrorNote>{s.error.message}</ErrorNote></Card> : <SkList rows={3} />)}
+      {(view === 'sites' || view === 'overview' || !s.data || s.data.state === 'ok') && <V key={key} b={b} />}
       {main && s.data && <Used s={s.data} />}
     </div>
   );

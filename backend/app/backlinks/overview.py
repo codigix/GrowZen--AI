@@ -1,0 +1,199 @@
+"""The backlink overview of the project's own website, read from what our backlink crawler stored for it.
+
+Every number is counted from real links the crawler found (who links, to which page, with which anchor and follow type, when it was first and last seen), with Domain Authority and spam
+score from Moz (through Apify) where we have it, the site's own search clicks from Google Search Console, and the address of each linking site looked up in DNS. What the crawler has not seen
+(links of sites it does not read) is not in it: the figures are for the links we know, and the page says so.
+"""
+from __future__ import annotations
+
+import logging
+import math
+import socket
+import time
+from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from datetime import date, datetime, timedelta, timezone
+from typing import Any
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, aliased
+
+from ..models import Business
+from . import hub
+from .models import Backlink, BiDomain
+
+log = logging.getLogger("seo.backlink_overview")
+COUNTRY_TLDS = {"in": "India", "uk": "United Kingdom", "us": "United States", "de": "Germany", "fr": "France", "au": "Australia", "ca": "Canada", "ae": "United Arab Emirates", "sg": "Singapore",
+                "it": "Italy", "es": "Spain", "nl": "Netherlands", "br": "Brazil", "ru": "Russia", "jp": "Japan", "cn": "China", "pk": "Pakistan", "bd": "Bangladesh", "id": "Indonesia",
+                "tr": "Turkey", "mx": "Mexico", "za": "South Africa", "ng": "Nigeria", "ke": "Kenya", "my": "Malaysia", "ph": "Philippines", "pl": "Poland", "se": "Sweden", "ch": "Switzerland"}
+_ip_cache: dict[str, tuple[float, str | None]] = {}
+IP_TTL = 6 * 3600
+
+
+def _log(v: float, top: float) -> float:
+    return min(100.0, 100 * math.log(1 + max(v, 0)) / math.log(1 + top))
+
+
+def _month(iso: str | None) -> str | None:
+    return iso[:7] if iso else None
+
+
+def _ip_of(host: str) -> str | None:
+    hit = _ip_cache.get(host)
+    if hit and time.time() - hit[0] < IP_TTL:
+        return hit[1]
+    try:
+        ip = socket.getaddrinfo(host, None, socket.AF_INET)[0][4][0]
+    except OSError:
+        ip = None
+    _ip_cache[host] = (time.time(), ip)
+    return ip
+
+
+def _ips(domains: list[str]) -> dict[str, str | None]:
+    """Where each linking site is hosted (its IPv4 address in DNS), looked up together; a site that does not answer in time is left out."""
+    out: dict[str, str | None] = {}
+    ex = ThreadPoolExecutor(max_workers=24)
+    futures = {d: ex.submit(_ip_of, d) for d in domains[:300]}
+    deadline = time.time() + 14
+    for d, f in futures.items():
+        try:
+            out[d] = f.result(timeout=max(0.1, deadline - time.time()))
+        except FutureTimeout:
+            out[d] = None
+    ex.shutdown(wait=False, cancel_futures=True)
+    return out
+
+
+def _gsc_clicks(db: Session, b: Business) -> int | None:
+    """Clicks from Google to the site in the last 28 days (Search Console): its organic traffic."""
+    try:
+        from ..services import google_rank, gsc, gsc_access  # noqa: PLC0415
+        host = google_rank.host_of(b.website)
+        if not host:
+            return None
+        state, _msg, sc, site = gsc_access.search_console(db, b, host)
+        if state != "ok":
+            return None
+        end = date.today() - timedelta(days=gsc.LAG_DAYS)
+        rows = sc.query(site, gsc._body(end - timedelta(days=27), end, None, 1, None))
+        return int(rows[0].get("clicks") or 0) if rows else 0
+    except Exception as exc:  # noqa: BLE001 -- without Search Console the organic traffic is simply not shown
+        log.info("search console clicks unavailable: %r", exc)
+        return None
+
+
+def _similar(db: Session, domain: str, sources: list[str]) -> list[dict[str, Any]]:
+    """Other sites in the crawler whose links come from the same websites as ours: the sites with a similar backlink profile."""
+    if not sources:
+        return []
+    SD, TD = aliased(BiDomain), aliased(BiDomain)
+    shared = db.execute(select(TD.registrable_domain, func.count(func.distinct(SD.registrable_domain))).select_from(Backlink).join(SD, SD.id == Backlink.source_domain_id)
+                        .join(TD, TD.id == Backlink.target_domain_id).where(SD.registrable_domain.in_(sources), TD.registrable_domain != domain, Backlink.current_status.in_(hub.LIVE_STATES))
+                        .group_by(TD.registrable_domain).order_by(func.count(func.distinct(SD.registrable_domain)).desc()).limit(8)).all()
+    out = []
+    for site, n in shared:
+        total = db.scalar(select(func.count(func.distinct(Backlink.source_domain_id))).select_from(Backlink).join(TD, TD.id == Backlink.target_domain_id).where(TD.registrable_domain == site, Backlink.current_status.in_(hub.LIVE_STATES)))
+        out.append({"domain": site, "shared": int(n), "referring_domains": int(total or 0), "share": round(100 * n / max(1, len(sources)))})
+    return out
+
+
+def overview(db: Session, b: Business) -> dict[str, Any]:
+    domain = hub.own_domain(db, b.id)
+    if not domain:
+        return {"state": "no_target", "domain": None}
+    from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    from ..services import url_overview as uo  # noqa: PLC0415
+    from . import quality  # noqa: PLC0415
+    rows = hub.links(db, b, status="all", limit=hub.MAX_LINKS)["links"]
+    live = [x for x in rows if x["is_live"]]
+    now = datetime.now(timezone.utc)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_auth, f_clicks = pool.submit(uo.authority, domain), pool.submit(_gsc_clicks, db, b)
+        doms: dict[str, dict[str, Any]] = {}
+        for x in rows:
+            d = doms.setdefault(x["source_domain"], {"domain": x["source_domain"], "links": 0, "live": 0, "first": None, "last": None, "cats": Counter(), "da": None, "pa": None, "spam": None})
+            d["links"] += 1
+            d["live"] += 1 if x["is_live"] else 0
+            if x["first_seen"] and (d["first"] is None or x["first_seen"] < d["first"]):
+                d["first"] = x["first_seen"]
+            if x["last_seen"] and (d["last"] is None or x["last_seen"] > d["last"]):
+                d["last"] = x["last_seen"]
+            d["cats"][x["category"]["label"]] += 1
+            m = x.get("metrics") or {}
+            d["da"], d["pa"], d["spam"] = (m.get("da") if m.get("da") is not None else d["da"]), (m.get("pa") if m.get("pa") is not None else d["pa"]), (m.get("spam") if m.get("spam") is not None else d["spam"])
+        ref = [d for d in doms.values() if d["live"]]
+        ips = _ips([d["domain"] for d in ref])
+        authority, clicks = f_auth.result(), f_clicks.result()
+    scores = quality.scores_for(db, b.id)
+
+    # ------------------------------------------------------------------ the strip
+    since = (now - timedelta(days=30)).isoformat()
+    new_doms_30 = sum(1 for d in ref if d["first"] and d["first"] >= since)
+    new_links_30 = sum(1 for x in live if x["first_seen"] and x["first_seen"] >= since)
+    follow = Counter(x["follow"] for x in live)
+    follow_share = round(100 * follow.get("dofollow", 0) / len(live)) if live else None
+    risk = [scores[d["domain"]]["risk"] for d in ref if d["domain"] in scores]
+    toxic = sum(1 for d in ref if scores.get(d["domain"], {}).get("verdict") == "risky")
+    spam = [d["spam"] for d in ref if d["spam"] is not None]
+    # ------------------------------------------------------------------ authority score and its three parts
+    own = authority if authority and not authority.get("error") else None
+    rd_total = (own or {}).get("rd") or len(ref)
+    a_score = kd.authority_score((own or {}).get("da"), (own or {}).get("rd") or len(ref), (own or {}).get("spam"), (own or {}).get("ranking_keywords")) if own else None
+    anchor_types = Counter(x["anchor_type"] for x in live)
+    exact = round(100 * anchor_types.get("money", 0) / len(live)) if live else 0
+    link_power = round(0.5 * ((own or {}).get("da") or 0) + 0.5 * _log(rd_total, 1_000_000))
+    organic = round(_log((own or {}).get("ranking_keywords") or 0, 10_000_000)) if own and own.get("ranking_keywords") else round(_log(clicks or 0, 100_000))
+    natural = max(0, min(100, round(100 - max(0, (follow_share or 0) - 90) * 3 - max(0, exact - 10) * 2 - (sum(spam) / len(spam) * 3 if spam else 0))))
+    weakest = min((("Lacks link power", link_power), ("Lacks organic traffic", organic), ("Unnatural profile", natural)), key=lambda t: t[1])
+    # ------------------------------------------------------------------ over time (by the month a link was first seen)
+    months: list[str] = []
+    first_all = [_month(x["first_seen"]) for x in rows if x["first_seen"]]
+    if first_all:
+        y, m = int(min(first_all)[:4]), int(min(first_all)[5:7])
+        while (y, m) <= (now.year, now.month) and len(months) < 60:
+            months.append(f"{y}-{m:02d}")
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    months = months[-36:]
+    series = []
+    for mo in months:
+        series.append({"month": mo,
+                       "domains": sum(1 for d in ref if d["first"] and _month(d["first"]) <= mo),
+                       "backlinks": sum(1 for x in rows if x["first_seen"] and _month(x["first_seen"]) <= mo and (x["is_live"] or (x["last_seen"] and _month(x["last_seen"]) > mo))),
+                       "new_links": sum(1 for x in rows if _month(x["first_seen"]) == mo), "lost_links": -sum(1 for x in rows if not x["is_live"] and _month(x["last_seen"]) == mo),
+                       "new_domains": sum(1 for d in doms.values() if _month(d["first"]) == mo), "lost_domains": -sum(1 for d in doms.values() if not d["live"] and _month(d["last"]) == mo)})
+    # ------------------------------------------------------------------ the breakdowns
+    cats = Counter(d["cats"].most_common(1)[0][0] for d in ref)
+    anchors = Counter(x["anchor"] for x in live if x["anchor"])
+    buckets = [(lo, lo + 10) for lo in range(0, 100, 10)]
+    by_as = [{"range": f"{lo + 1 if lo else 0} - {hi}", "domains": sum(1 for d in ref if d["da"] is not None and (lo < d["da"] <= hi or (lo == 0 and d["da"] == 0)))} for lo, hi in buckets][::-1]
+    tlds = Counter(d["domain"].rsplit(".", 1)[-1] for d in ref)
+    countries = Counter(COUNTRY_TLDS[t] for t in (d["domain"].rsplit(".", 1)[-1] for d in ref) if t in COUNTRY_TLDS)
+    ipset = {ips.get(d["domain"]) for d in ref if ips.get(d["domain"])}
+    subnets = {".".join(i.split(".")[:3]) for i in ipset}
+    pages: dict[str, dict[str, Any]] = defaultdict(lambda: {"domains": set(), "links": 0})
+    for x in live:
+        p = pages[x["target_url"]]
+        p["domains"].add(x["source_domain"])
+        p["links"] += 1
+    n = max(1, len(ref))
+    return {
+        "state": "ok", "domain": domain, "as_of": now.isoformat(),
+        "totals": {"referring_domains": len(ref), "backlinks": len(live), "lost_backlinks": len(rows) - len(live), "new_domains_30d": new_doms_30, "new_links_30d": new_links_30,
+                   "domains_change": round(100 * new_doms_30 / (len(ref) - new_doms_30)) if ref and len(ref) > new_doms_30 else None,  # no change is shown when every link is new (there is nothing earlier to compare with)
+                   "links_change": round(100 * new_links_30 / (len(live) - new_links_30)) if live and len(live) > new_links_30 else None,
+                   "organic_clicks_28d": clicks, "toxicity": round(sum(risk) / len(risk)) if risk else None, "toxic_domains": toxic, "judged_domains": len(risk)},
+        "authority": {"score": a_score, "da": (own or {}).get("da"), "rd": (own or {}).get("rd"), "ranking_keywords": (own or {}).get("ranking_keywords"), "spam": (own or {}).get("spam"), "error": (authority or {}).get("error") if authority else None,
+                      "radar": {"link_power": link_power, "organic_traffic": organic, "natural_profile": natural}, "verdict": weakest[0] if weakest[1] < 40 else "Balanced"},
+        "series": series,
+        "categories": [{"label": k, "domains": v, "share": round(100 * v / n)} for k, v in cats.most_common(8)],
+        "anchors": [{"text": k, "count": v} for k, v in anchors.most_common(40)], "anchor_types": dict(anchor_types),
+        "by_authority": by_as, "authority_known": sum(1 for d in ref if d["da"] is not None), "authority_unknown": sum(1 for d in ref if d["da"] is None),
+        "follow": {"follow": follow.get("dofollow", 0), "nofollow": follow.get("nofollow", 0), "sponsored": follow.get("sponsored", 0), "ugc": follow.get("ugc", 0), "total": len(live), "follow_share": follow_share},
+        "tlds": [{"tld": k, "domains": v, "share": round(100 * v / n)} for k, v in tlds.most_common(5)] + ([{"tld": "other", "domains": sum(tlds.values()) - sum(v for _k, v in tlds.most_common(5)), "share": round(100 * (sum(tlds.values()) - sum(v for _k, v in tlds.most_common(5))) / n)}] if len(tlds) > 5 else []),
+        "countries": [{"country": k, "domains": v, "share": round(100 * v / n)} for k, v in countries.most_common(8)], "country_domains": sum(countries.values()),
+        "profile": {"domains": len(ref), "ips": len(ipset), "subnets": len(subnets), "resolved": sum(1 for d in ref if ips.get(d["domain"]))},
+        "similar": _similar(db, domain, [d["domain"] for d in ref]),
+        "top_pages": [{"url": u, "domains": len(p["domains"]), "links": p["links"]} for u, p in sorted(pages.items(), key=lambda kv: (-len(kv[1]["domains"]), -kv[1]["links"]))[:10]],
+        "network": [{"domain": d["domain"], "links": d["live"], "risk": scores.get(d["domain"], {}).get("risk"), "verdict": scores.get(d["domain"], {}).get("verdict")} for d in sorted(ref, key=lambda d: -d["live"])[:40]],
+    }
