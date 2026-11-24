@@ -94,19 +94,66 @@ FEATURES = {"Ads": "ads", "People also ask": "related_questions", "Local pack": 
             "Discussions": "discussions_and_forums"}
 
 
-def _badger(keyword: str, country: str, location: str | None = None) -> dict[str, Any] | None:
+def resolve_goto(url: str) -> str | None:
+    """Google hides some result addresses behind a redirect (www.google.com/goto?url=...). The real address is read from the redirect: its Location header, or the link on Google's notice page."""
+    import re  # noqa: PLC0415
+    try:
+        r = httpx.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; bevisibe-research/1.0)"}, follow_redirects=False, timeout=8)
+    except httpx.HTTPError:
+        return None
+    if 300 <= r.status_code < 400 and r.headers.get("location"):
+        return r.headers["location"]
+    for m in re.finditer(r'href="(https?://[^"]+)"', r.text or ""):
+        if "google." not in m.group(1).split("/")[2]:
+            return m.group(1).replace("&amp;", "&")
+    return None
+
+
+def _open_gotos(organic: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Results whose address Google hid behind a redirect get their real address (looked up together), so they count like any other result."""
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    hidden = [o for o in organic if "google.com/goto" in o["url"]]
+    if hidden:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for o, real in zip(hidden, pool.map(lambda o: resolve_goto(o["url"]), hidden)):
+                if real:
+                    o["url"], o["site"] = real, site_of(real)
+    return organic
+
+
+LOFO_URL = "https://api.apify.com/v2/acts/lofomachines~google-serp-scraper/run-sync-get-dataset-items"
+
+
+def _lofo(keyword: str, country: str, n: int = 20) -> list[dict[str, Any]] | None:
+    """The top results of Google with their real addresses, through Apify's `lofomachines/google-serp-scraper` (about 5 seconds, up to 20 results, no place setting). The faster `scrape.badger`
+    reader hides most result addresses behind Google redirects, so this one gives the results themselves. None when it fails."""
+    for _i, tok in apify_metrics.keys():
+        try:
+            r = httpx.post(LOFO_URL, params={"token": tok, "timeout": 60}, json={"query": [keyword], "maxItems": max(20, n), "scrapingMode": "economy", "country": countries.gl(country).lower(), "language": "en"}, timeout=70)
+            items = r.json() if r.status_code in (200, 201) and isinstance(r.json(), list) else None
+        except (httpx.HTTPError, ValueError):
+            continue
+        out = [{"position": int(o.get("position") or o.get("rank") or i + 1), "title": o.get("title") or "", "url": o.get("url") or "", "site": site_of(o.get("url") or ""), "description": (o.get("snippet") or "")[:200]}
+               for i, o in enumerate(items or []) if o.get("url")]
+        if out:
+            return sorted(out, key=lambda o: o["position"])[:n]
+    return None
+
+
+def _badger(keyword: str, country: str, location: str | None = None, num: int = 10) -> dict[str, Any] | None:
     """The same page through Apify's `scrape.badger/google-search-scraper`: about 7 seconds instead of 60+, and it also reports the local pack, knowledge panel, videos, shopping and forums.
     None when it fails (the slower scraper is used then)."""
     for _i, tok in apify_metrics.keys():
         try:
-            r = httpx.post(BADGER_URL, params={"token": tok, "timeout": 60}, json={"q": keyword, "gl": countries.gl(country).lower(), "hl": "en", "num": 10, **({"location": location} if location else {})}, timeout=70)
+            r = httpx.post(BADGER_URL, params={"token": tok, "timeout": 60}, json={"q": keyword, "gl": countries.gl(country).lower(), "hl": "en", "num": num, **({"location": location} if location else {})}, timeout=70)
             j = r.json()[0] if r.status_code in (200, 201) and isinstance(r.json(), list) and r.json() else None
         except (httpx.HTTPError, ValueError):
             continue
         if not j or not j.get("organic_results"):
             continue
         organic = [{"position": o.get("position") or i + 1, "title": o.get("title") or "", "url": o.get("link") or "", "site": site_of(o.get("link") or ""), "description": (o.get("snippet") or "")[:200]}
-                   for i, o in enumerate(j["organic_results"]) if o.get("link")][:10]
+                   for i, o in enumerate(j["organic_results"]) if o.get("link")][:num]
+        organic = _open_gotos(organic)
         ai = bool((j.get("ai_overview") or {}).get("text_blocks"))
         features = {name: bool(j.get(key)) for name, key in FEATURES.items()}
         features["AI overview"] = ai
@@ -125,9 +172,24 @@ def serp(keyword: str, country: str, location: str | None = None) -> dict[str, A
     """What Google shows for the keyword right now: {organic: [{position, title, url, site, description}], questions, related, ads: [{title, url, description}], ai_overview}. Not kept.
     Serper answers in about a second when it has credit. Otherwise Apify's Google scraper is used: most runs take 60 to 90 seconds but some take several minutes, so after HEDGE_AFTER seconds a second run is started and whichever ends first is used."""
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait  # noqa: PLC0415
-    fast = _serper(keyword, country, location) or _badger(keyword, country, location)  # the results as Google shows them in that place (the slow reader below has no place setting)
+    fast = _serper(keyword, country, location)
     if fast:
         return fast
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    with ThreadPoolExecutor(max_workers=2) as ex:  # the results with their real addresses, and the rest of the page (features, questions, ads), read together
+        f_org, f_page = ex.submit(_lofo, keyword, country, 10), ex.submit(_badger, keyword, country, location, 10)
+        organic, page = f_org.result(), f_page.result()
+    usable = [o for o in (page or {}).get("organic", []) if o["site"] and "google." not in o["site"]]
+    applied = None
+    if location and page and len(usable) >= 6:  # a place was asked for: the place-aware reader is used when it gave enough real results
+        organic, applied = usable[:10], True
+    elif location:
+        applied = False  # the results are for the whole country: the reader that gives real addresses has no place setting
+    if organic and len(organic) >= 3:
+        base = page or {"questions": [], "related": [], "ads": [], "ai_overview": False}
+        return {**base, "organic": organic[:10], "location_applied": applied}
+    if page and len(usable) >= 3:
+        return {**page, "organic": usable[:10], "location_applied": applied}
     tokens = [t for _i, t in apify_metrics.keys()]
     if not tokens:
         raise DifficultyError("Apify is not connected (APIFY_KEY): the Google results cannot be read.")
@@ -361,7 +423,7 @@ def score(keyword: str, country: str, volume: int | None = None, use_cache: bool
     kd = round(sum(w * v for w, v in used) / sum(w for w, _ in used)) if used else None
     formula = [{"key": k, "name": n, "weight": round(w * 100), "value": round(v) if v is not None else None, "used": v is not None} for k, n, w, v in parts]
     return {
-        "score": kd, "sc": sc, "location": location, "serp_counts": page.get("counts") or {"ads": len(page["ads"]), "pla": None},
+        "score": kd, "sc": sc, "location": location, "location_applied": page.get("location_applied"), "serp_counts": page.get("counts") or {"ads": len(page["ads"]), "pla": None},
         "you": ({"domain": mine, "da": (metrics.get(mine) or {}).get("da"), "pa": (metrics.get(mine) or {}).get("pa"), "rd": (metrics.get(mine) or {}).get("rd"), "top_da": round(da) if da is not None else None,
                  "top_pa": round(pa) if pa is not None else None} if mine and metrics.get(mine) else None),
         "content": {"cc": round(cc) if cc is not None else None, "relevance": round(relevance) if relevance is not None else None, "quality": round(quality) if quality is not None else None,

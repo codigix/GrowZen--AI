@@ -435,6 +435,44 @@ class DifficultyIn(BaseModel):
     volume: int | None = None
 
 
+class UrlIn(BaseModel):
+    url: str = Field(min_length=4, max_length=600)
+    keyword: str | None = Field(default=None, max_length=120)
+    country: str | None = Field(default=None, min_length=2, max_length=2)
+
+
+@router.post("/url-overview")
+def url_overview(body: UrlIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """One page of the web: what the page says (title, description, headings, length, links, structured data), how strong its site is (Moz through Apify), and, for a page of the project's own
+    site, the searches Search Console says it was shown for."""
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
+    from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    from ..services import url_overview as uo  # noqa: PLC0415
+    country = (body.country or "").upper() or market.serp_country(b)
+    try:
+        site = kd.site_of(uo._public(body.url))
+    except uo.UrlError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        auth = ex.submit(uo.authority, site)
+        page = uo.page_analysis(body.url)
+        authority = auth.result()
+    return {"page": page, "site": site, "authority": authority, "search_console": uo.own_queries(db, b, page.get("final_url") or body.url, country), "country": country}
+
+
+@router.post("/url-overview/rankings")
+def url_overview_rankings(body: UrlIn, b: Business = Depends(get_business)):
+    """The searches the page is about, each measured: searches a month and the page's position in Google's top 20. Slower (it reads Google's results for each)."""
+    from ..services import url_overview as uo  # noqa: PLC0415
+    country = (body.country or "").upper() or market.serp_country(b)
+    try:
+        analysis = uo.page_analysis(body.url)
+    except uo.UrlError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return uo.rankings(body.url, body.keyword, country, analysis)
+
+
 def _place_geo(b: Business, country: str, place: str | None) -> tuple[str | None, str | None]:
     """(the place as Google's results are read for it, Google Ads' location) for a place inside the country; (None, None) for the whole country or an unknown place."""
     if not (place and place.strip()):

@@ -567,6 +567,7 @@ function KeywordOverview({ b }) {
               {kd?.state === 'ready' && kd.score != null && (
                 <div className="mt-3 border-t border-slate-100 pt-3 text-12.5 text-slate-600 space-y-1.5">
                   <p>{difficultyText(kd.score)}</p>
+                  {kd.location && kd.location_applied === false && <p className="text-amber-700 text-12">Google's results were read for the whole country: the reader that gives the real addresses of the results has no place setting, so this score is not specific to {kd.location.split(',')[0]}.</p>}
                   {kd.you && kd.you.da != null && <p className="text-slate-500">Your site <b className="text-slate-800">{kd.you.domain}</b>: Domain Authority <b className="text-slate-800">{kd.you.da}</b>{kd.you.pa != null ? <>, Page Authority <b className="text-slate-800">{kd.you.pa}</b></> : ''} against {kd.you.top_da ?? '—'} on average in the top 10{kd.you.top_da != null && kd.you.da < kd.you.top_da - 10 ? ': you are well below them.' : kd.you.top_da != null && kd.you.da >= kd.you.top_da ? ': you are on their level.' : '.'}</p>}
                 </div>
               )}
@@ -627,7 +628,8 @@ function KeywordOverview({ b }) {
                 <table className="w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500"><th className="px-4 py-1.5 font-medium w-8">#</th><th className="px-2 py-1.5 font-medium">Page</th><th className="px-2 py-1.5 font-medium text-right">DA</th><th className="px-2 py-1.5 font-medium text-right">PA</th><th className="px-2 py-1.5 font-medium text-right">Linking sites</th><th className="px-4 py-1.5 font-medium text-right" title="Share of the site's saved backlinks that pass link value (from our own link data; blank when we hold too few links)">Dofollow</th></tr></thead>
                   <tbody>{kd.organic.map(o => (
                     <tr key={`${o.position}${o.url}`} className="border-t border-slate-100"><td className="px-4 py-1.5 tabular-nums text-slate-500">{o.position}</td>
-                      <td className="px-2 py-1.5 max-w-[320px]"><a href={o.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline block truncate" title={o.title}>{o.title || o.url}</a><span className="text-11.5 text-slate-500">{o.site}</span></td>
+                      <td className="px-2 py-1.5 max-w-[320px]"><span className="flex items-center gap-1.5 min-w-0"><Link to={`/keyword-overview/url?u=${encodeURIComponent(o.url)}&q=${encodeURIComponent(data.keyword)}`} className="text-indigo-700 hover:underline truncate" title={`Open the analysis of this page: ${o.title}`}>{o.title || o.url}</Link>
+                        <a href={o.url} target="_blank" rel="noreferrer" aria-label="Open the page in a new tab" title="Open the page itself in a new tab" className="shrink-0 text-slate-400 hover:text-indigo-600"><ExternalLink size={13} /></a></span><span className="text-11.5 text-slate-500">{o.site}</span></td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{o.da ?? '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{o.pa ?? '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{kfmt(o.rd)}</td><td className="px-4 py-1.5 text-right tabular-nums">{o.dofollow != null ? `${o.dofollow}%` : '—'}</td></tr>))}</tbody></table>
                 <div className="px-4 py-2.5 border-t border-slate-100">
                   <div className="text-12 font-semibold text-slate-700 mb-1.5">How the difficulty of {kd.score} is made{kd.weight_used < 100 ? ` (parts with no data are left out; the other ${kd.weight_used}% is scaled to 100%)` : ''}</div>
@@ -688,6 +690,109 @@ function KeywordOverview({ b }) {
   );
 }
 
+
+const posTone = (n) => (n == null ? '#94a3b8' : n <= 3 ? '#059669' : n <= 10 ? '#65a30d' : '#d97706');
+
+/** One page of the web: how strong its site is, what the page says, and the searches it shows for (measured now). Opened from the top-10 table of the Keyword Overview. */
+function UrlOverview({ b }) {
+  const [params] = useSearchParams();
+  const url = (params.get('u') || '').trim();
+  const kw = (params.get('q') || '').trim();
+  const [info, setInfo] = useState(null); // { state, ...result }
+  const [rk, setRk] = useState(null);
+  useEffect(() => {
+    if (!url) return undefined;
+    let live = true;
+    setInfo({ state: 'loading' }); setRk({ state: 'loading' });
+    const body = { url, keyword: kw || null };
+    api(`/businesses/${b.id}/seo/url-overview`, { method: 'POST', body, timeout: 120000 }).then(r => { if (live) setInfo({ state: 'ready', ...r }); }).catch(e => { if (live) setInfo({ state: 'error', message: e.message }); });
+    api(`/businesses/${b.id}/seo/url-overview/rankings`, { method: 'POST', body, timeout: 300000 }).then(r => { if (live) setRk({ state: 'ready', ...r }); }).catch(e => { if (live) setRk({ state: 'error', message: e.message }); });
+    return () => { live = false; };
+  }, [url, kw]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!url) return <Card><p className="text-13 text-slate-500">Open a page from the top-10 table of the <Link to="/keyword-overview" className="font-semibold text-indigo-700 hover:underline">Keyword Overview</Link>.</p></Card>;
+  const pg = info?.page, au = info?.authority, sc = info?.search_console;
+  const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
+  const lenTone = (n, lo, hi) => (!n ? 'text-rose-600' : n < lo || n > hi ? 'text-amber-600' : 'text-emerald-600');
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link to={`/keyword-overview${kw ? `?q=${encodeURIComponent(kw)}` : ''}`} className="inline-flex items-center gap-1 text-13 font-semibold text-indigo-700 hover:underline"><ArrowUp size={14} className="-rotate-90" />Back to the Keyword Overview{kw ? `: ${kw}` : ''}</Link>
+          <div className="ml-auto flex items-center gap-2">
+            {pg?.status && <Badge tone={pg.status === 200 ? 'green' : 'red'}>{pg.status === 200 ? 'Page loads (200)' : `Answers ${pg.status}`}</Badge>}
+            <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-13 font-semibold text-slate-700 hover:text-indigo-700"><ExternalLink size={14} />Open the page</a>
+          </div>
+        </div>
+        <h2 className="mt-3 text-18 font-semibold text-slate-900 break-all">Organic rankings: {url}</h2>
+        {kw && <p className="mt-1 text-12.5 text-slate-500">Opened from the search <b className="text-slate-700">{kw}</b>. Everything below is read from Google and the page now; nothing is kept.</p>}
+      </Card>
+      {info?.state === 'error' && <ErrorNote>{info.message}</ErrorNote>}
+      {pg && !pg.ok && info.state === 'ready' && <Card><p className="text-13 text-amber-800">{pg.error || 'The page could not be read.'}</p></Card>}
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+        <Tile icon={Gauge} label="Domain Authority" value={au?.da ?? (info?.state === 'loading' ? '…' : '—')} sub={au?.da != null ? `of ${host}` : au?.error || 'Moz, through Apify'} />
+        <Tile icon={FileText} tone="violet" label="Page Authority" value={au?.pa ?? (info?.state === 'loading' ? '…' : '—')} sub="home page of the site" />
+        <Tile icon={Link2} tone="sky" label="Referring domains" value={au?.rd != null ? kfmt(au.rd) : (info?.state === 'loading' ? '…' : '—')} sub="sites linking to the domain" />
+        <Tile icon={Search} tone="emerald" label="Keywords the site ranks for" value={au?.ranking_keywords != null ? kfmt(au.ranking_keywords) : (info?.state === 'loading' ? '…' : '—')} sub="whole domain, Moz" />
+        <Tile icon={AlertTriangle} tone="amber" label="Spam score" value={au?.spam ?? (info?.state === 'loading' ? '…' : '—')} sub="lower is safer" />
+      </div>
+
+      {sc?.own && (
+        <Card pad={false} title="Searches Google showed this page for" subtitle="Google Search Console, last 90 days (your own page)">
+          {sc.rows.length === 0 ? <p className="px-5 py-6 text-13 text-slate-500">{sc.note}</p> : (
+            <DataTable bare rows={sc.rows} rowKey={r => r.keyword} pageSize={10} sizes={[10, 25]} exportName={`page-searches-${host}`} label="searches" headClass="bg-slate-100 text-slate-700" minWidth={520}
+              columns={[
+                { id: 'keyword', header: 'Search', value: r => r.keyword, className: 'px-3 py-2', cell: r => <Link to={`/keyword-overview?q=${encodeURIComponent(r.keyword)}`} className="text-indigo-700 hover:underline">{r.keyword}</Link> },
+                { id: 'position', header: 'Position', right: true, first: 'asc', value: r => r.position, className: 'px-3 py-2 text-right tabular-nums', cell: r => <b style={{ color: posTone(r.position) }}>{r.position}</b> },
+                { id: 'views', header: 'Views', right: true, first: 'desc', value: r => r.views, className: 'px-3 py-2 text-right tabular-nums', cell: r => fmt(r.views) },
+                { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: r => r.clicks, className: 'px-3 py-2 text-right tabular-nums', cell: r => fmt(r.clicks) },
+                { id: 'ctr', header: 'Click rate', right: true, value: r => r.ctr, className: 'px-3 py-2 text-right tabular-nums', cell: r => `${r.ctr}%` },
+              ]} />
+          )}
+        </Card>
+      )}
+
+      <Card pad={false} title="What this page is found for" subtitle="The searches the page is about (its title, heading and sub-headings), each measured now: searches a month and the page's position in Google's top 20">
+        {rk?.state === 'loading' && <p className="px-5 py-6 text-13 text-slate-500 inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Reading Google's results for each search… about half a minute.</p>}
+        {rk?.state === 'error' && <p className="px-5 py-6 text-13 text-rose-600">{rk.message}</p>}
+        {rk?.state === 'ready' && (rk.rows.length === 0 ? <p className="px-5 py-6 text-13 text-slate-500">The page has no clear searches in its title and headings.</p> : (
+          <DataTable bare rows={rk.rows} rowKey={r => r.keyword} pageSize={10} sizes={[10, 25]} exportName={`page-keywords-${host}`} label="searches" headClass="bg-slate-100 text-slate-700" minWidth={560}
+            columns={[
+              { id: 'keyword', header: 'Search', value: r => r.keyword, className: 'px-3 py-2', cell: r => <Link to={`/keyword-overview?q=${encodeURIComponent(r.keyword)}`} className="text-indigo-700 hover:underline">{r.keyword}</Link> },
+              { id: 'position', header: 'Position in Google', right: true, first: 'asc', value: r => (r.in_top20 ? r.position : 999), className: 'px-3 py-2 text-right tabular-nums', cell: r => (r.in_top20 ? <b style={{ color: posTone(r.position) }}>#{r.position}</b> : <span className="text-slate-400" title={r.measured ? 'The page is not in the top 20 for this search' : 'Google\'s results could not be read for this search'}>{r.measured ? 'Not in top 20' : '—'}</span>) },
+              { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: r => r.volume, className: 'px-3 py-2 text-right tabular-nums', cell: r => (r.volume != null ? fmt(r.volume) : '—') },
+              { id: 'intent', header: 'Intent', value: r => r.intent, className: 'px-3 py-2 capitalize text-slate-600', cell: r => r.intent },
+            ]} />
+        ))}
+      </Card>
+
+      {pg?.ok && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <Card title="On the page" subtitle="Read directly from the page">
+            <dl className="text-13 grid grid-cols-[130px_1fr] gap-x-3 gap-y-2">
+              <dt className="text-slate-500">Title</dt><dd><span className="text-slate-900">{pg.title || 'None'}</span> <span className={`text-11.5 ${lenTone(pg.title_len, 30, 62)}`}>({pg.title_len} characters)</span></dd>
+              <dt className="text-slate-500">Description</dt><dd><span className="text-slate-900">{pg.description || 'None'}</span> <span className={`text-11.5 ${lenTone(pg.description_len, 70, 160)}`}>({pg.description_len} characters)</span></dd>
+              <dt className="text-slate-500">Main heading</dt><dd className="text-slate-900">{pg.h1?.length ? pg.h1.join(' / ') : 'None'}</dd>
+              <dt className="text-slate-500">Length</dt><dd className="text-slate-900">{fmt(pg.words)} words</dd>
+              <dt className="text-slate-500">Last updated</dt><dd className="text-slate-900">{pg.modified || 'The page does not say'}</dd>
+              <dt className="text-slate-500">Links</dt><dd className="text-slate-900">{pg.links_internal} inside the site, {pg.links_external} to other sites</dd>
+              <dt className="text-slate-500">Images</dt><dd className="text-slate-900">{pg.images}{pg.images_no_alt ? <span className="text-amber-600"> ({pg.images_no_alt} without a description)</span> : ''}</dd>
+              <dt className="text-slate-500">Structured data</dt><dd className="text-slate-900">{pg.schema?.length ? pg.schema.join(', ') : 'None'}</dd>
+              <dt className="text-slate-500">Canonical</dt><dd className="text-slate-900 break-all">{pg.canonical || 'None'}</dd>
+              <dt className="text-slate-500">Robots</dt><dd className="text-slate-900">{pg.robots || 'No restriction'}</dd>
+            </dl>
+          </Card>
+          <Card title="Headings" subtitle="How the page is laid out">
+            {pg.headings?.length ? <ul className="space-y-1 text-13">{pg.headings.map((h, n) => <li key={n} className={h.tag === 'h3' ? 'pl-5 text-slate-600' : 'font-medium text-slate-900'}><span className="text-11 text-slate-400 mr-1.5 uppercase">{h.tag}</span>{h.text}</li>)}</ul> : <p className="text-13 text-slate-500">The page has no sub-headings.</p>}
+          </Card>
+        </div>
+      )}
+      <Card title="Not shown here">
+        <p className="text-13 text-slate-600">Traffic, traffic cost, position changes over time and the list of every keyword a page ranks for come from a large ranking database (Semrush, Ahrefs). None is connected, so they are not shown rather than estimated. The searches above are measured live, and a page of your own site gets its real searches from Google Search Console.</p>
+      </Card>
+    </div>
+  );
+}
+
 const page = (title, subtitle, Component) => function Page() {
   return <SeoShell title={title} subtitle={subtitle}>{(b) => <Component key={b.id} b={b} />}</SeoShell>;
 };
@@ -696,3 +801,4 @@ export { DomainOverviewPage } from './DomainOverview';
 export const KeywordGapPage = page('Keyword Gap', "Searches where the Google Maps competitors show and you do not, and where you are weaker or stronger", KeywordGap);
 export const CompareDomainsPage = page('Compare Domains', "You and your top competitors side by side", CompareDomains);
 export const KeywordOverviewPage = page('Keyword Overview', "One keyword from the Google Keyword Planner: searches per month, trend, competition, cost per click and related ideas", KeywordOverview);
+export const UrlOverviewPage = page('Organic Rankings', 'One page: how strong its site is, what it says and the searches it shows for', UrlOverview);
