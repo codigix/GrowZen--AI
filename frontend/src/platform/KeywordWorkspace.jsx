@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePager, Pager, downloadCsv } from './DataTable';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, CheckCircle2, ChevronDown, Download, EyeOff, Loader2, MapPin, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
@@ -154,6 +154,7 @@ function CollectModal({ d, open, onClose, onDone }) {
 
 export default function KeywordWorkspace({ b, onUse }) {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
   const [view, setView] = useState(params.get('tag') === 'gap' ? 'gap' : 'open');
   const [source, setSource] = useState(params.get('source') || '');
   const [q, setQ] = useState('');
@@ -455,6 +456,7 @@ export default function KeywordWorkspace({ b, onUse }) {
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-32px)]">
           <div role="toolbar" aria-label="Selected keywords" className="bg-slate-900 text-white rounded-xl shadow-xl px-4 py-2.5 flex flex-wrap items-center gap-3">
             <span className="text-13 font-semibold">{ids.length} selected</span>
+            <Button size="sm" icon={ArrowRight} onClick={() => navigate(`/keyword-management/prepare?k=${shown.filter(i => sel.has(i.id)).slice(0, 12).map(i => encodeURIComponent(i.keyword)).join('|')}`)}>Prepare</Button>
             {view !== 'picked' && <Button size="sm" variant="primary" icon={CheckCircle2} busy={busy === 'pick'} onClick={() => pick(ids)}>Pick</Button>}
 
             {view === 'dismissed' ? <Button size="sm" icon={Undo2} onClick={() => act('restore', ids, 'Put back in the list')}>Put back</Button>

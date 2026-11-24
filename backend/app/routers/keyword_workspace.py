@@ -151,3 +151,51 @@ def dismiss(body: IdsIn, b: Business = Depends(get_business), db: Session = Depe
 @router.post("/restore")
 def restore(body: IdsIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     return {"restored": kw.dismiss(db, b, body.ids, False)} | kw.overview(db, b)
+
+
+class PrepareIn(BaseModel):
+    keywords: list[str] = Field(min_length=1, max_length=12)
+    areas: list[str] | None = Field(default=None, max_length=5)
+
+
+class SecondaryIn(BaseModel):
+    primary: str = Field(min_length=2, max_length=120)
+
+
+class CompetitorKwIn(BaseModel):
+    domains: list[str] | None = Field(default=None, max_length=8)
+
+
+class RankedIn(BaseModel):
+    domain: str = Field(min_length=3, max_length=120)
+    limit: int = Field(default=100, ge=10, le=300)
+
+
+@router.post("/prepare")
+def prepare_keywords(body: PrepareIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Picked keywords with their variants (near me, in each target area) and real Keyword Planner figures. Nothing is saved."""
+    from ..services import keyword_prepare  # noqa: PLC0415
+    return keyword_prepare.prepare(db, b, body.keywords, body.areas)
+
+
+@router.post("/secondary")
+def secondary_keywords(body: SecondaryIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import keyword_prepare  # noqa: PLC0415
+    return keyword_prepare.secondary(db, b, body.primary)
+
+
+@router.post("/competitor-keywords")
+def competitor_keywords(body: CompetitorKwIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """What the competitors' websites are about, from Keyword Planner (free), each keyword with a useful-or-not verdict. The sites are not crawled."""
+    from ..services import competitor_keyword_report as ck  # noqa: PLC0415
+    domains = body.domains or kw._competitor_domains(db, b)
+    if not domains:
+        return {"rows": [], "notes": {}, "competitors": [], "state": "no_competitors"}
+    return {**ck.planner_ideas(db, b, domains), "competitors": domains, "state": "ok"}
+
+
+@router.post("/competitor-rankings")
+def competitor_rankings(body: RankedIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The keywords one competitor really ranks for (paid per keyword at Apify; the cost is returned)."""
+    from ..services import competitor_keyword_report as ck  # noqa: PLC0415
+    return ck.ranked(db, b, body.domain, body.limit)

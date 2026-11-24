@@ -82,6 +82,8 @@ const TopPagesPage = lazy(() => import('./platform/TopPagesReport').then(m => ({
 const toolkit = (name) => lazy(() => import('./platform/SeoToolkit').then(m => ({ default: m[name] })));
 const DomainOverviewPage = toolkit('DomainOverviewPage');
 const KeywordOverviewPage = toolkit('KeywordOverviewPage');
+const PrepareKeywordsPage = lazy(() => import('./platform/PrepareKeywords').then(m => ({ default: m.PrepareKeywordsPage })));
+const CompetitorKeywordsPage = lazy(() => import('./platform/CompetitorKeywords').then(m => ({ default: m.CompetitorKeywordsPage })));
 const KeywordMagicToolPage = lazy(() => import('./platform/KeywordMagicTool').then(m => ({ default: m.KeywordMagicToolPage })));
 const PageRankingsPage = lazy(() => import('./platform/PageRankings').then(m => ({ default: m.PageRankingsPage })));
 
@@ -187,6 +189,8 @@ export default function App() {
         <Route path="feature/:slug" element={<FeaturePage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
         <Route path="keyword-management/magic" element={<KeywordMagicToolPage />} />
+        <Route path="keyword-management/prepare" element={<PrepareKeywordsPage />} />
+        <Route path="competitor-keywords" element={<CompetitorKeywordsPage />} />
         <Route path="keyword-overview/ideas" element={<KeywordMagicToolPage />} />
         <Route path="organic-rankings" element={<OrganicRankingsPage />} />
         <Route path="organic-rankings/page" element={<PageRankingsPage />} />

@@ -208,6 +208,7 @@ function Body({ b }) {
                   {anyFilter && <button type="button" onClick={clearAll} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear filters</button>}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" icon={Wand2} disabled={!sel.size} onClick={() => navigate(`/keyword-management/prepare?k=${[...sel].slice(0, 12).map(encodeURIComponent).join('|')}`)}>Prepare</Button>
                   <Button size="sm" variant="primary" icon={Send} busy={busy === 'ws'} disabled={!rows.length} onClick={() => sendKeywords(sel.size ? rows.filter(r => sel.has(r.keyword)) : rows)}>{sel.size ? `Send ${sel.size} selected` : `Send ${Math.min(rows.length, 500)} keywords`}</Button>
                   <Button size="sm" onClick={askShown} disabled={!pager.rows.some(r => kdMap[r.keyword] === undefined)} title="Read the top 10 on Google for the first 10 keywords shown without a KD and work out their difficulty (about 15 seconds each)">Check KD for 10 shown</Button>
                   <Button size="sm" icon={RefreshCw} onClick={() => setReload(x => x + 1)} title="Ask Google again">Update</Button>

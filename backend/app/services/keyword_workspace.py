@@ -185,29 +185,15 @@ def _listing_rows(db: Session, b: Business) -> list[dict[str, Any]]:
 
 
 def from_competitors(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | None]:
-    from . import crawler
+    from . import competitor_keyword_report as competitor_keywords  # noqa: PLC0415
     domains = _competitor_domains(db, b)
     listed = _listing_rows(db, b)
     if not domains:
         return listed, (None if listed else "No competitors saved yet. Find the competitors first.")
-    brand_me = _brand(b)
-
-    def read(d: str) -> tuple[str, dict[str, Any]]:
-        try:
-            return d, crawler.crawl(f"https://{d}", max_pages=6, timeout=12)
-        except Exception as exc:  # noqa: BLE001 - one unreachable competitor must not stop the rest
-            log.info("competitor %s not read: %s", d, exc)
-            return d, {}
-
-    with ThreadPoolExecutor(max_workers=min(4, len(domains))) as pool:
-        crawls = list(pool.map(read, domains))
-    out, read_ok = [], 0
-    for d, crawl in crawls:
-        if not crawl.get("pages"):
-            continue
-        read_ok += 1
-        rows = ck._drop_inside(ck._site_phrases(crawl, brand_me | ck._brand_words("", hosts=(d,))))
-        out += [{"keyword": k, "kind": "competitors", "label": d, "competitor": d, "detail": f"{len(v['pages'])} page{'s' if len(v['pages']) != 1 else ''} of {d}"} for k, v in rows.items()]
+    got = competitor_keywords.planner_ideas(db, b, domains)  # the searches each competitor's address is about: no website is crawled
+    out = [{"keyword": r["keyword"], "kind": "competitors", "label": ", ".join(r["competitors"][:2]), "competitor": r["competitors"][0], "volume": r.get("volume"),
+            "detail": f"Keyword Planner: what {r['competitors'][0]}'s website is about"} for r in got["rows"] if r["fit"] in ("yes", "maybe")]
+    read_ok = len(domains) - len(got["notes"])
     run = db.scalar(select(Audit).where(Audit.kind == "intel", Audit.target == f"business:{b.id}", Audit.status == "done").order_by(Audit.id.desc()))
     result = (run.result or {}) if run else {}
     for g in (result.get("gaps") or {}).get("keywords", []) or []:
