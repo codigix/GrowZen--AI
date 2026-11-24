@@ -141,7 +141,8 @@ export default function KeywordWorkspace({ b, onUse }) {
   })();
   const rows = useMemo(() => {
     let list = [...(d?.items || [])];
-    if (wantsFigures) list = list.map(i => { const m = fig?.metrics?.[i.keyword.toLowerCase().trim()]; return m ? { ...i, volume: searchesIn(m), difficulty: m.index, comp: m.competition, cpc: m.cpc } : { ...i, volume: null, difficulty: null, comp: null, cpc: null }; });
+    if (wantsFigures) list = list.map(i => { const m = fig?.metrics?.[i.keyword.toLowerCase().trim()]; return m ? { ...i, volume: searchesIn(m), difficulty: m.index, index: m.index, comp: m.competition, cpc: m.cpc } : { ...i, volume: null, difficulty: null, index: null, comp: null, cpc: null }; });
+    else list = list.map(i => ({ ...i, index: i.difficulty }));
     if (view === 'suggested') list = list.filter(i => i.suggested);
     if (band) list = list.filter(i => (band === 'none' ? i.rank == null : i.rank != null && bandOf(i.rank)?.[0] === band));
     const v = (i) => (sort.key === 'keyword' ? i.keyword : i[sort.key]);
@@ -240,8 +241,8 @@ export default function KeywordWorkspace({ b, onUse }) {
                       <SortTh id="keyword" sort={sort} setSort={setSort} what="A search people type into Google." why="Click the name to check its searches, cost and related ideas. Click the heading to sort A to Z." from="your website, Search Console, your profile, competitor sites, Google suggestions and AI.">Keyword</SortTh>
                       <SortTh id="volume" sort={sort} setSort={setSort} right what="How many times a month people search it in the chosen location and time." why="Shows which keywords are worth the effort." from="Google Ads Keyword Planner (needs Google Ads connected). Blank when Google gave no figure for that place.">Searches / mo</SortTh>
                       <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100 (the competition index in the chosen location). Higher is harder." why="Pick easier ones first." from="the advertiser competition Google Ads reports for the keyword.">Difficulty</SortTh>
+                      <SortTh id="index" sort={sort} setSort={setSort} right what="Google's competition index for this keyword in the chosen location: how many advertisers bid on it, 0 to 100. Higher means more competition." why="A high index means the keyword is crowded and costly." from="Google Ads Keyword Planner.">Index</SortTh>
                       <SortTh id="cpc" sort={sort} setSort={setSort} right what="What advertisers bid at the top of the page for it, per click, in the chosen location." why="Shows what the keyword is worth." from="Google Ads Keyword Planner. Shown once a location or time is chosen.">Cost / click</SortTh>
-                      <th className="px-3 py-2 text-left"><Head what="Where this keyword is already used: website pages, blogs, FAQs and Google posts." why="A keyword used nowhere has not been put to work yet; open By location to see exactly where." from="your last site crawl, the articles written here, the profile FAQs and your Google posts.">Used in</Head></th>
                       <th className="px-3 py-2 text-left"><Head what="What kind of opportunity it is: Gap (competitors use it, you do not), Win (you are in the top 3), Almost (page 2), Shared, Yours, Idea." why="Start with Gaps and Almost." from="comparing your own places with the competitor sites and Google results collected.">Kind</Head></th>
                       <th className="px-3 py-2 text-left"><Head what="The places this keyword was found." why="A keyword found in several places is more trustworthy." from="the collect step: hover a badge for the detail.">Found in</Head></th>
                       <SortTh id="rank" sort={sort} setSort={setSort} right what="Your average position on Google for it, last 90 days." why="Shows where you already show up." from="Google Search Console. Blank when Google has not shown your site for it.">Your rank</SortTh>
@@ -263,13 +264,8 @@ export default function KeywordWorkspace({ b, onUse }) {
                         </td>
                         <td className="px-3 py-2.5 text-right" title="Searches per month in your country (Google Ads Keyword Planner)"><div className="tabular-nums">{n0(i.volume)}</div>{i.volume > 0 && <div className="mt-1 h-1 rounded-full bg-slate-100 ml-auto w-16"><div className="h-1 rounded-full bg-slate-400" style={{ width: `${Math.max(5, (i.volume / topVolume) * 100)}%` }} /></div>}</td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" title="0 to 100, higher is harder (the competition index from Google Ads)">{i.difficulty == null ? '—' : <span className="inline-flex items-center gap-1.5"><span className="tabular-nums font-semibold">{i.difficulty}</span><Badge tone={i.difficulty <= 30 ? 'green' : i.difficulty <= 60 ? 'amber' : 'red'}>{i.difficulty <= 30 ? 'Easy' : i.difficulty <= 60 ? 'Medium' : 'Hard'}</Badge></span>}</td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap" title="Google's competition index, 0 to 100"><span className="tabular-nums font-semibold">{i.index ?? '—'}</span>{i.comp && <span className="ml-1 text-11.5 text-slate-500">{String(i.comp).toLowerCase()}</span>}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums" title="What advertisers bid at the top of the page, per click">{i.cpc != null ? `₹${i.cpc}` : '—'}</td>
-                        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
-                          {i.used_in ? (
-                            <span title={`Used on ${i.used_in.pages} website page${i.used_in.pages === 1 ? '' : 's'}, in ${i.used_in.blogs} blog${i.used_in.blogs === 1 ? '' : 's'}, ${i.used_in.faqs} FAQ${i.used_in.faqs === 1 ? '' : 's'} and ${i.used_in.posts} Google post${i.used_in.posts === 1 ? '' : 's'}`} className="inline-flex flex-wrap gap-1">
-                              {[['pages', 'Pages'], ['blogs', 'Blogs'], ['faqs', 'FAQs'], ['posts', 'Posts']].map(([k, l]) => <span key={k} className={`px-1.5 py-0.5 rounded text-11.5 font-semibold tabular-nums ${i.used_in[k] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>{l} {i.used_in[k]}</span>)}
-                            </span>) : <span className="text-slate-300">—</span>}
-                        </td>
                         <td className="px-3 py-2.5"><span title={TAG_HELP[i.tag]}><Badge tone={TAG_TONE[i.tag]}>{TAG_SHORT[i.tag]}</Badge></span></td>
                         <td className="px-3 py-2.5">
                           <span className="inline-flex flex-wrap gap-1" title={i.sources.map(s => `${s.label}${s.detail ? ': ' + s.detail : ''}`).join('\n')}>
