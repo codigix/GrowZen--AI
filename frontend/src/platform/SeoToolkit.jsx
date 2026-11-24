@@ -364,8 +364,8 @@ function KeywordOverview({ b }) {
     if (v.trim().length < 2) { setFound([]); return; }
     api(`/businesses/${b.id}/keyword-workspace/area-search?q=${encodeURIComponent(v.trim())}&country=${activeCountry}`).then(r => setFound(r.results || [])).catch(e => setFindErr(e.message || 'The map service did not answer.'));
   };
-  const pickArea = (x) => { setExtra(l => (l.some(e => e.name === x.name && e.country === activeCountry) ? l : [...l, { name: x.name, country: activeCountry }])); setTyped(''); setFound([]); setPlace(x.name); if (data) go(data.keyword, x.name, activeCountry); };
-  const changeCountry = (c) => { setCountry(c); setPlace(''); if (data) go(data.keyword, '', c || home); };
+  const pickArea = (x) => { setExtra(l => (l.some(e => e.name === x.name && e.country === activeCountry) ? l : [...l, { name: x.name, country: activeCountry }])); setTyped(''); setFound([]); setPlace(x.name); if (data || q.trim().length > 1) go(data?.keyword ?? q, x.name, activeCountry); };
+  const changeCountry = (c) => { setCountry(c); setPlace(''); if (data || q.trim().length > 1) go(data?.keyword ?? q, '', c || home); };
   const [period, setPeriod] = useState('12'); // time filter: the last 12, 6 or 3 months, or one month
   const placesApi = useApi(`/businesses/${b.id}/keyword-workspace/places`);
   const places = placesApi.data?.places || [];
@@ -381,6 +381,7 @@ function KeywordOverview({ b }) {
   const allMonths = m?.monthly || [];
   const monthsShown = period === '12' ? allMonths : period === '6' || period === '3' ? allMonths.slice(-Number(period)) : allMonths.filter(x => `${x.year}-${x.month}` === period);
   const volumeShown = period === '12' || !monthsShown.length ? m?.volume : Math.round(monthsShown.reduce((a, x) => a + x.searches, 0) / monthsShown.length);
+  const monthList = (allMonths.length ? allMonths : Array.from({ length: 12 }, (_, i) => { const d = new Date(); d.setMonth(d.getMonth() - 12 + i); return { year: d.getFullYear(), month: d.toLocaleString('en', { month: 'long' }).toUpperCase() }; }));
   const periodLabel = period === '12' ? 'last 12 months' : period === '6' ? 'last 6 months' : period === '3' ? 'last 3 months' : 'the month';
   const peak = Math.max(1, ...monthsShown.map(x => x.searches || 0));
   const isTracked = (k) => added[k] || (data?.keyword === k && data?.you?.tracked);
@@ -393,7 +394,7 @@ function KeywordOverview({ b }) {
             <select value={activeCountry} onChange={e => changeCountry(e.target.value === home ? '' : e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Country">
               {(countriesApi.data || [{ code: home, name: home }]).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select></label>
           <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Location
-            <select value={place} onChange={e => { setPlace(e.target.value); if (data) go(data.keyword, e.target.value, activeCountry); }} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Location">
+            <select value={place} onChange={e => { setPlace(e.target.value); if (data || q.trim().length > 1) go(data?.keyword ?? q, e.target.value, activeCountry); }} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Location">
               <option value="">Whole country</option>
               {(activeCountry === home ? places.slice(1) : []).map(x => <option key={x.name} value={x.name}>{x.name} ({x.kind.toLowerCase()})</option>)}
               {extra.filter(e => e.country === activeCountry && !(activeCountry === home && places.some(x => x.name === e.name))).map(e => <option key={e.name} value={e.name}>{e.name} (added)</option>)}</select></label>
@@ -410,11 +411,11 @@ function KeywordOverview({ b }) {
           <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Period
             <select value={period} onChange={e => setPeriod(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Period">
               <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>
-              {[...allMonths].reverse().map(x => <option key={`${x.year}-${x.month}`} value={`${x.year}-${x.month}`}>{x.month.slice(0, 1)}{x.month.slice(1, 3).toLowerCase()} {String(x.year).slice(2)}</option>)}</select></label>
+              {[...monthList].reverse().map(x => <option key={`${x.year}-${x.month}`} value={`${x.year}-${x.month}`}>{x.month.slice(0, 1)}{x.month.slice(1, 3).toLowerCase()} {String(x.year).slice(2)}</option>)}</select></label>
           <Button variant="primary" icon={Search} busy={busy === 'go'} disabled={q.trim().length < 2} onClick={() => go()}>Analyze</Button>
         </div>
         <ErrorNote>{error}</ErrorNote>
-        <p className="text-11.5 text-slate-400 mt-2">Numbers come from the Google Ads Keyword Planner, for this business's country. It shows how often a keyword is searched and what it costs; who ranks for it is on Position Tracking and Competitors.</p>
+        <p className="text-11.5 text-slate-400 mt-2">Numbers come from the Google Ads Keyword Planner, for the country and location chosen above. Costs are in the currency of the Google Ads account. It shows how often a keyword is searched and what it costs; who ranks for it is on Position Tracking and Competitors.</p>
       </Card>
       {data && (
         <>

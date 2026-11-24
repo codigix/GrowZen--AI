@@ -324,14 +324,15 @@ def _by_country(kw: str, home: str | None) -> list[dict]:
     """The same keyword's searches per month and top-of-page bid in each country Google Ads is asked about (the home country first). A country Google gives nothing for is left out."""
     from ..services import google_ads_client as ads  # noqa: PLC0415
     codes = list(dict.fromkeys([c for c in [(home or "").upper()] if c in _COUNTRY_NAMES] + list(_COUNTRY_NAMES)))[:12]
-    out = []
-    for code in codes:
+    def ask(code: str) -> dict | None:
         try:
             got = ads.historical_metrics([kw], geo_target=ads.geo_target_for(code)).get(kw)
         except Exception:  # noqa: BLE001 -- one country failing must not hide the others
-            got = None
-        if got and got.get("volume"):
-            out.append({"code": code, "name": _COUNTRY_NAMES[code], "volume": got["volume"], "cpc": got["cpc"], "index": got["competition_index"]})
+            return None
+        return {"code": code, "name": _COUNTRY_NAMES[code], "volume": got["volume"], "cpc": got["cpc"], "index": got["competition_index"]} if got and got.get("volume") else None
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    with ThreadPoolExecutor(max_workers=6) as pool:  # the countries are asked together, not one after the other
+        out = [r for r in pool.map(ask, codes) if r]
     total = sum(r["volume"] for r in out) or 1
     for r in out:
         r["share"] = round(r["volume"] * 100 / total, 1)
