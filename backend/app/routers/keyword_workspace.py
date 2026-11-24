@@ -50,10 +50,10 @@ def measure_difficulty(body: DifficultyIn, b: Business = Depends(get_business), 
     return {"results": res}
 
 
-@router.post("/index")
-def refresh_index(b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """Google Search Console for the keyword list: each keyword's views, clicks and position, and whether the page that targets it is indexed. The page calls it by itself when it opens."""
-    out = kw.refresh_index(db, b)
+@router.post("/search-console")
+def refresh_search_console(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Google Search Console for the keyword list: each keyword's views, clicks and average position (last 90 days). The page calls it by itself when it opens."""
+    out = kw.refresh_performance(db, b)
     db.commit()
     return out
 

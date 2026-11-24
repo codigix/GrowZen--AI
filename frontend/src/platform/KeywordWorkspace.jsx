@@ -14,24 +14,22 @@ const SRC_TONE = { website: 'blue', search_console: 'green', profile: 'amber', c
 const n0 = (v) => (v == null ? '—' : v.toLocaleString('en-US'));
 const PAGE = 50;
 const SHORT = (n) => (n == null ? '' : n >= 10000 ? `${Math.round(n / 1000)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
-const IDX = { indexed: ['Indexed', '#059669'], not_indexed: ['Not indexed', '#dc2626'], blocked: ['Blocked', '#d97706'], unknown: ['Unknown', '#64748b'] };
+const IDX_WORD = (v) => (v < 34 ? 'low' : v < 67 ? 'medium' : 'high');
+const IDX_COLOR = (v) => (v < 34 ? '#059669' : v < 67 ? '#d97706' : '#dc2626');
 
-/** What Google Search Console says: is the page that targets the keyword indexed, and how the keyword performs (views, clicks, average position, last 90 days). */
-function IndexCell({ i, busy }) {
+/** The keyword's index value (Google's competition index, 0 to 100) and, under it, how the keyword performs in Google Search Console (views, clicks, average position, last 90 days). */
+function IndexCell({ i }) {
   const g = i.gsc || {};
   const has = g.views != null;
   const perf = has ? `${SHORT(g.views)} views · ${g.clicks ?? 0} click${g.clicks === 1 ? '' : 's'}${g.position != null ? ` · pos ${Math.round(g.position * 10) / 10}` : ''}` : '';
-  const tip = [i.page ? `Page: ${i.page}` : 'No page of your site carries this keyword yet.', g.state ? `Google: ${(IDX[g.state] || IDX.unknown)[0]}${g.reason ? ` (${g.reason})` : ''}` : '', g.last_crawl ? `Last crawled ${g.last_crawl}` : '',
-    has ? `Search Console, last 90 days: ${g.views} views, ${g.clicks ?? 0} clicks${g.ctr != null ? `, click rate ${g.ctr}%` : ''}${g.position != null ? `, average position ${Math.round(g.position * 10) / 10}` : ''}` : 'No Search Console data for this keyword'].filter(Boolean).join('\n');
-  let chip;
-  if (!i.page) chip = <span className="rounded-full px-2 py-0.5 text-11.5 font-semibold bg-slate-100 text-slate-500">No page yet</span>;
-  else if (!g.state) chip = busy ? <span className="inline-flex items-center gap-1 text-11.5 text-slate-500"><Loader2 size={12} className="animate-spin" />Checking…</span> : <span className="rounded-full px-2 py-0.5 text-11.5 font-semibold bg-slate-100 text-slate-500">Not checked</span>;
-  else {
-    const [word, c] = IDX[g.state] || IDX.unknown;
-    const style = { color: c, backgroundColor: `${c}1f`, boxShadow: `inset 0 0 0 1px ${c}55` };
-    chip = g.link ? <a href={g.link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="rounded-full px-2 py-0.5 text-11.5 font-semibold hover:underline" style={style}>{word}</a> : <span className="rounded-full px-2 py-0.5 text-11.5 font-semibold" style={style}>{word}</span>;
-  }
-  return <div className="inline-flex flex-col items-end gap-0.5" title={tip}>{chip}<span className="text-11 text-slate-500 tabular-nums">{perf || 'no Search Console data'}</span></div>;
+  const tip = [i.index != null ? `Index value ${i.index} out of 100: ${IDX_WORD(i.index)} competition (Google Keyword Planner)` : 'No index value from Google for this keyword',
+    has ? `Search Console, last 90 days: ${g.views} views, ${g.clicks ?? 0} clicks${g.ctr != null ? `, click rate ${g.ctr}%` : ''}${g.position != null ? `, average position ${Math.round(g.position * 10) / 10}` : ''}` : 'No Search Console data: your site has not shown for this keyword'].join('\n');
+  return (
+    <div className="inline-flex flex-col items-end gap-0.5" title={tip}>
+      {i.index == null ? <span className="text-slate-300">—</span> : <span className="inline-flex items-center gap-1.5"><span className="tabular-nums font-semibold" style={{ color: IDX_COLOR(i.index) }}>{i.index}</span><span className="text-11.5 text-slate-500">{IDX_WORD(i.index)}</span></span>}
+      <span className="text-11 text-slate-500 tabular-nums">{perf || 'no Search Console data'}</span>
+    </div>
+  );
 }
 const KD_BAND = { easy: (v) => v < 30, medium: (v) => v >= 30 && v < 50, hard: (v) => v >= 50 && v < 70, very: (v) => v >= 70 };
 const MON = (m) => `${String(m).slice(0, 1)}${String(m).slice(1, 3).toLowerCase()}`;
@@ -163,8 +161,7 @@ export default function KeywordWorkspace({ b, onUse }) {
   const [fKd, setFKd] = useState('');
   const [fTrend, setFTrend] = useState('');
   const [fIntent, setFIntent] = useState('');
-  const [fIndex, setFIndex] = useState(''); // Search Console: indexed, not indexed, no page yet, or has data
-  const [idxBusy, setIdxBusy] = useState(false);
+  const [fIndex, setFIndex] = useState(''); // Search Console: has data / has none
   const indexAsked = useRef('');
   const [plannerQ, setPlannerQ] = useState('');
   const [busy, error, run] = useAction();
@@ -188,12 +185,11 @@ export default function KeywordWorkspace({ b, onUse }) {
       .then(res => { if (live) { setFig(res); setFigError(res.reason || res.note || ''); } }).catch(e => { if (live) setFigError(e.message || 'Google Ads did not answer.'); }).finally(() => { if (live) setFigBusy(false); });
     return () => { live = false; };
   }, [place, wantsFigures, wordsKey, places.length]); // eslint-disable-line react-hooks/exhaustive-deps -- when the place or the list changes
-  // Search Console is asked by itself: each keyword's views, clicks and position, and whether the page that targets it is indexed
+  // Search Console is asked by itself: each keyword's views, clicks and average position
   useEffect(() => {
     if (!d?.items?.length || indexAsked.current === wordsKey) return;
     indexAsked.current = wordsKey;
-    setIdxBusy(true);
-    api(`/businesses/${b.id}/keyword-workspace/index`, { method: 'POST', timeout: 180000 }).then(res => { if (res.performance || res.inspected) r.reload(true); }).catch(() => {}).finally(() => setIdxBusy(false));
+    api(`/businesses/${b.id}/keyword-workspace/search-console`, { method: 'POST', timeout: 120000 }).then(res => { if (res.performance) r.reload(true); }).catch(() => {});
   }, [wordsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // the last 12 months of searches are asked of Google Ads by themselves for the keywords that have none (one request for hundreds)
   useEffect(() => {
@@ -240,7 +236,7 @@ export default function KeywordWorkspace({ b, onUse }) {
     if (fKd) list = list.filter(i => i.difficulty != null && KD_BAND[fKd](i.difficulty));
     if (fTrend) list = list.filter(i => i.change != null && (fTrend === 'up' ? i.change >= 10 : fTrend === 'down' ? i.change <= -10 : Math.abs(i.change) < 10));
     if (fIntent) list = list.filter(i => i.intent === fIntent);
-    if (fIndex) list = list.filter(i => (fIndex === 'none' ? !i.page : fIndex === 'data' ? i.gsc?.views != null : i.page && i.gsc?.state === fIndex));
+    if (fIndex) list = list.filter(i => (fIndex === 'data' ? i.gsc?.views != null : i.gsc?.views == null));
     if (view === 'suggested') list = list.filter(i => i.suggested);
     if (band) list = list.filter(i => (band === 'none' ? i.rank == null : i.rank != null && bandOf(i.rank)?.[0] === band));
     const v = (i) => (sort.key === 'keyword' ? i.keyword : i[sort.key]);
@@ -339,7 +335,7 @@ export default function KeywordWorkspace({ b, onUse }) {
               <select value={fKd} onChange={e => setFKd(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Difficulty"><option value="">Any difficulty</option><option value="easy">Easy (under 30)</option><option value="medium">Medium (30 to 49)</option><option value="hard">Challenging (50 to 69)</option><option value="very">Very hard (70+)</option></select>
               <select value={fTrend} onChange={e => setFTrend(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Last 12 months"><option value="">Any trend</option><option value="up">Rising</option><option value="steady">Steady</option><option value="down">Falling</option></select>
               <select value={fIntent} onChange={e => setFIntent(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Intent"><option value="">Any intent</option><option value="informational">Informational</option><option value="commercial">Commercial</option><option value="transactional">Transactional</option><option value="local">Local</option><option value="navigational">Navigational</option></select>
-              <select value={fIndex} onChange={e => setFIndex(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Google index"><option value="">Any index status</option><option value="indexed">Indexed by Google</option><option value="not_indexed">Not indexed</option><option value="none">No page yet</option><option value="data">Has Search Console data</option></select>
+              <select value={fIndex} onChange={e => setFIndex(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Search Console"><option value="">Any Search Console</option><option value="data">Has Search Console data</option><option value="none">No Search Console data</option></select>
               {(fMin || fKd || fTrend || fIntent || fIndex) && <button type="button" onClick={() => { setFMin(''); setFKd(''); setFTrend(''); setFIntent(''); setFIndex(''); }} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear filters</button>}
               <span className="flex items-center gap-1.5">
                 <input value={plannerQ} onChange={e => setPlannerQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') searchPlanner(); }} placeholder="Find new keywords in the Keyword Planner…" aria-label="Search the Keyword Planner" className="h-9 w-72 px-3 text-13 rounded-lg border border-slate-300 bg-white" />
@@ -364,7 +360,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                       <SortTh id="volume" sort={sort} setSort={setSort} right what="How many times a month people search it in the chosen location and time." why="Shows which keywords are worth the effort." from="Google Ads Keyword Planner (needs Google Ads connected). Blank when Google gave no figure for that place.">Searches / mo</SortTh>
                       <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100. It is worked out from the real top 10 on Google for the keyword: their authority, backlinks, content, the features on the page and the intent. Higher is harder." why="Pick easier ones first." from="Google's results page (through Apify), Moz authority, the Google Ads search volume and our saved backlinks. It is worked out by itself, a page at a time.">Difficulty</SortTh>
                       <SortTh id="change" sort={sort} setSort={setSort} what="How the searches moved in the last 12 months: the line is each month, the arrow and percent compare the last 3 months with the first 3. Green up arrow: rising by 10% or more. Red down arrow: falling by 10% or more." why="Rising keywords are worth starting on; falling ones are fading." from="Google Ads Keyword Planner (12 months of history).">Last 12 months</SortTh>
-                      <SortTh id="impressions" sort={sort} setSort={setSort} right what="Google Search Console: whether Google has indexed the page of your site that targets the keyword, and how the keyword itself performs: views, clicks and average position in the last 90 days." why="A keyword whose page is not indexed cannot rank; one with many views and few clicks needs a better title." from="Google Search Console (URL Inspection and Search Analytics). Asked by itself when the page opens.">Index</SortTh>
+                      <SortTh id="index" sort={sort} setSort={setSort} right what="The keyword's index value: Google's competition index, 0 to 100 (higher means more advertisers compete for it). Under it, how the keyword performs in Google Search Console: views, clicks and average position in the last 90 days." why="A high index means a crowded, costly keyword; many views and few clicks mean the title needs work." from="Google Keyword Planner (index value) and Google Search Console (views, clicks, position).">Index</SortTh>
                       <SortTh id="cpc" sort={sort} setSort={setSort} right what="What advertisers bid at the top of the page for it, per click, in the chosen location." why="Shows what the keyword is worth." from="Google Ads Keyword Planner. Shown once a location or time is chosen.">Cost / click</SortTh>
                       <th className="px-3 py-2 text-left"><Head what="What kind of opportunity it is: Gap (competitors use it, you do not), Win (you are in the top 3), Almost (page 2), Shared, Yours, Idea." why="Start with Gaps and Almost." from="comparing your own places with the competitor sites and Google results collected.">Kind</Head></th>
                       <th className="px-3 py-2 text-left"><Head what="The places this keyword was found." why="A keyword found in several places is more trustworthy." from="the collect step: hover a badge for the detail.">Found in</Head></th>
@@ -390,7 +386,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                           : kdBusy.has(i.id) || !kdTried.current.has(i.id) ? <span className="inline-flex items-center gap-1.5 text-12 text-slate-500" title="Reading the top 10 on Google for this keyword; the score appears by itself"><Loader2 size={13} className="animate-spin" />Scoring…</span>
                             : <button type="button" onClick={() => measure([i.id])} className="text-12 font-semibold text-amber-700 hover:underline cursor-pointer" title="Google's results could not be read for it. Try again.">Retry</button>}</td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap"><Trend months={i.trend} change={i.change} /></td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap"><IndexCell i={i} busy={idxBusy} /></td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap"><IndexCell i={i} /></td>
                         <td className="px-3 py-2.5 text-right tabular-nums" title="What advertisers bid at the top of the page, per click">{i.cpc != null ? `₹${i.cpc}` : '—'}</td>
                         <td className="px-3 py-2.5"><span title={TAG_HELP[i.tag]}><Badge tone={TAG_TONE[i.tag]}>{TAG_SHORT[i.tag]}</Badge></span></td>
                         <td className="px-3 py-2.5">
@@ -447,6 +443,6 @@ export default function KeywordWorkspace({ b, onUse }) {
 }
 
 function exportCsv(items, name) {
-  downloadCsv(`keywords-${name || 'site'}`, ['Keyword', 'Searches per month', 'Difficulty', 'Change in 12 months (%)', 'Page', 'Google index', 'Search Console views', 'Search Console clicks', 'Your rank', 'Kind', 'Score', 'Sources', 'Competitors'],
-    items.map(i => [i.keyword, i.volume ?? '', i.difficulty ?? '', i.change ?? '', i.page ?? '', i.gsc?.state ?? '', i.gsc?.views ?? '', i.gsc?.clicks ?? '', i.rank ?? '', i.tag || '', i.score ?? '', i.sources.map(s => s.label).join('; '), i.competitors.join('; ')]));
+  downloadCsv(`keywords-${name || 'site'}`, ['Keyword', 'Searches per month', 'Difficulty', 'Change in 12 months (%)', 'Index', 'Search Console views', 'Search Console clicks', 'Your rank', 'Kind', 'Score', 'Sources', 'Competitors'],
+    items.map(i => [i.keyword, i.volume ?? '', i.difficulty ?? '', i.change ?? '', i.index ?? '', i.gsc?.views ?? '', i.gsc?.clicks ?? '', i.rank ?? '', i.tag || '', i.score ?? '', i.sources.map(s => s.label).join('; '), i.competitors.join('; ')]));
 }
