@@ -489,16 +489,17 @@ function KeywordOverview({ b }) {
           {kd?.state === 'ready' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <div className="lg:col-span-2"><Card pad={false} title="SERP overview" subtitle={`The top ${kd.organic.length} results on Google for "${data.keyword}"`}>
-                <table className="w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500"><th className="px-4 py-1.5 font-medium w-8">#</th><th className="px-2 py-1.5 font-medium">Page</th><th className="px-2 py-1.5 font-medium text-right">DA</th><th className="px-2 py-1.5 font-medium text-right">PA</th><th className="px-4 py-1.5 font-medium text-right">Linking sites</th></tr></thead>
+                <table className="w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500"><th className="px-4 py-1.5 font-medium w-8">#</th><th className="px-2 py-1.5 font-medium">Page</th><th className="px-2 py-1.5 font-medium text-right">DA</th><th className="px-2 py-1.5 font-medium text-right">PA</th><th className="px-2 py-1.5 font-medium text-right">Linking sites</th><th className="px-4 py-1.5 font-medium text-right" title="Share of the site's saved backlinks that pass link value (from our own link data; blank when we hold too few links)">Dofollow</th></tr></thead>
                   <tbody>{kd.organic.map(o => (
                     <tr key={`${o.position}${o.url}`} className="border-t border-slate-100"><td className="px-4 py-1.5 tabular-nums text-slate-500">{o.position}</td>
                       <td className="px-2 py-1.5 max-w-[320px]"><a href={o.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline block truncate" title={o.title}>{o.title || o.url}</a><span className="text-11.5 text-slate-500">{o.site}</span></td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{o.da ?? '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{o.pa ?? '—'}</td><td className="px-4 py-1.5 text-right tabular-nums">{kfmt(o.rd)}</td></tr>))}</tbody></table>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{o.da ?? '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{o.pa ?? '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{kfmt(o.rd)}</td><td className="px-4 py-1.5 text-right tabular-nums">{o.dofollow != null ? `${o.dofollow}%` : '—'}</td></tr>))}</tbody></table>
                 <div className="px-4 py-2.5 border-t border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-12 text-slate-600">
                   <span>Authority <b className="text-slate-900">{kd.components.authority_strength ?? '—'}</b></span><span>SERP features <b className="text-slate-900">{kd.components.serp_features}%</b></span>
                   <span>Top 10 with DA 70+ <b className="text-slate-900">{kd.components.top10_strength ?? '—'}%</b></span><span>Content strength <b className="text-slate-900">{kd.content?.cc ?? '—'}</b></span>
                   <span>Pages with the keyword in title <b className="text-slate-900">{kd.content?.relevance ?? '—'}%</b></span><span>Average length <b className="text-slate-900">{kd.content?.avg_words ?? '—'} words</b></span>
                   <span>Updated in a year <b className="text-slate-900">{kd.content?.freshness ?? '—'}%</b></span><span>Intent C/T/N <b className="text-slate-900">{kd.intent?.commercial}/{kd.intent?.transactional}/{kd.intent?.navigational}</b></span>
+                  <span title="From our own saved backlinks: only sites we hold links for">Backlink quality <b className="text-slate-900">{kd.backlinks?.bq ?? '—'}</b> <span className="text-slate-400">({kd.backlinks?.sites_with_links ?? 0} sites{kd.backlinks?.counted ? '' : ', not counted'})</span></span>
                 </div>
                 <p className="px-4 pb-2 text-11.5 text-slate-500">{kd.note} DA, PA and linking sites are Moz's figures; a dash means no figure.</p>
               </Card></div>
