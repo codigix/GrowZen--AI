@@ -64,13 +64,13 @@ def test_keyword_overview_uses_the_google_ads_keyword_planner(client, monkeypatc
     seen = {}
     monkeypatch.setattr(ads, "keyword_ideas", lambda seeds, **kw: seen.update(seeds=seeds) or [idea("dentist in pune", 1900), idea("best dentist in pune", 720), idea("dental clinic pune", 390)])
     client.post(f"/api/v1/businesses/{bid}/keywords", json=[{"keyword": "dentist in Pune"}])
-    monkeypatch.setattr(ads, "historical_metrics", lambda kws, **kw: {kws[0]: {"volume": 100, "competition": "LOW", "competition_index": 20, "cpc": 2.0, "monthly": []}} if kw["geo_target"].endswith("/2356") else {})
+    monkeypatch.setattr(ads, "historical_metrics", lambda kws, **kw: {kws[0]: {"volume": 1900, "competition": "MEDIUM", "competition_index": 48, "cpc": 3.4, "cpc_low": 1.2, "monthly": [{"year": 2026, "month": "JANUARY", "searches": 1900}]}} if kw["geo_target"].endswith("/2356") else {})
     o = client.post(f"/api/v1/businesses/{bid}/seo/keyword-overview", json={"keyword": "Dentist in Pune"}).json()
     assert seen["seeds"] == ["dentist in pune"] and o["keyword"] == "dentist in pune" and o["intent"] == "local" and o["source"] == "Google Ads Keyword Planner"
     assert o["metrics"]["volume"] == 1900 and o["metrics"]["cpc_high"] == 3.4 and o["metrics"]["difficulty"] == 48 and o["metrics"]["monthly"][0]["searches"] == 1900
     assert [i["keyword"] for i in o["ideas"]] == ["best dentist in pune", "dental clinic pune"] and o["you"]["tracked"] is True
     assert o["groups"]["similar"]["rows"][0]["keyword"] == "best dentist in pune" and o["groups"]["related"]["rows"][0]["keyword"] == "dental clinic pune" and o["groups"]["questions"]["total"] == 0
-    assert o["countries"] == [{"code": "IN", "name": "India", "volume": 100, "cpc": 2.0, "index": 20, "monthly": [], "share": 100.0}]
+    assert o["countries"] == [{"code": "IN", "name": "India", "volume": 1900, "cpc": 3.4, "index": 48, "monthly": [{"year": 2026, "month": "JANUARY", "searches": 1900}], "share": 100.0}]
     assert "organic" not in o and "local" not in o  # the Planner has no results page: nothing is invented
 
 

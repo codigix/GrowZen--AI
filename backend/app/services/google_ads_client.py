@@ -200,6 +200,7 @@ def historical_metrics(keywords: list[str], *, geo_target: str = DEFAULT_GEO_TAR
                 "competition": m.competition.name,
                 "competition_index": int(m.competition_index or 0),
                 "cpc": round(_micros_to_currency(m.high_top_of_page_bid_micros) or 0, 2) or None,
+                "cpc_low": round(_micros_to_currency(m.low_top_of_page_bid_micros) or 0, 2) or None,
                 "monthly": [{"year": mv.year, "month": mv.month.name, "searches": int(mv.monthly_searches or 0)} for mv in m.monthly_search_volumes],  # the last 12 months, oldest first
             }
     except GoogleAdsException as exc:

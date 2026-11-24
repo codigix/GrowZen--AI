@@ -383,14 +383,18 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
     except ads.GoogleAdsError as exc:
         raise HTTPException(502, "Google Ads did not answer: " + ("; ".join(getattr(exc, "details", []) or []) or str(exc))[:200]) from exc
     exact = next((i for i in ideas if i["keyword"].lower() == kw), None)
-    if exact is None:  # the Planner did not list the exact text among its ideas: ask for its own numbers
-        try:
-            got = ads.historical_metrics([kw], geo_target=geo).get(kw)
-        except ads.GoogleAdsError:
-            got = None
-        if got:
-            exact = {"avg_monthly_searches": got["volume"], "competition": got["competition"], "competition_index": got["competition_index"], "low_top_of_page_bid": None,
-                     "high_top_of_page_bid": got["cpc"], "three_month_change": None, "yoy_change": None}
+    try:
+        got = ads.historical_metrics([kw], geo_target=geo).get(kw)
+    except ads.GoogleAdsError:
+        got = None
+    if got:  # the exact keyword's own figures; the same ones the country list and every other card use
+        exact = {**(exact or {}), "avg_monthly_searches": got["volume"], "competition": got["competition"], "competition_index": got["competition_index"], "low_top_of_page_bid": got.get("cpc_low"),
+                 "high_top_of_page_bid": got["cpc"], "monthly_search_volumes": [{"year": m["year"], "month": m["month"], "monthly_searches": m["searches"]} for m in got.get("monthly") or []]}
+        ms = [m["searches"] for m in got.get("monthly") or []]
+        if len(ms) >= 6 and sum(ms[-6:-3]):
+            exact["three_month_change"] = round((sum(ms[-3:]) - sum(ms[-6:-3])) * 100 / sum(ms[-6:-3]), 1)
+        if len(ms) >= 12 and ms[0]:
+            exact["yoy_change"] = round((ms[-1] - ms[0]) * 100 / ms[0], 1)
     saved = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == kw))
     world = _by_country(kw, country)
     monthly = [{"year": m["year"], "month": m["month"], "searches": m["monthly_searches"]} for m in (exact or {}).get("monthly_search_volumes", [])][-12:]

@@ -449,17 +449,17 @@ function KeywordOverview({ b }) {
           </div>
           {!data.found && <p className="text-13 text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Google's Keyword Planner has no figures for this exact keyword (it is too rare or too new). The ideas below are what it does know.</p>}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <Card title="Difficulty" subtitle={kd?.state === 'ready' && kd.score != null ? 'SEO difficulty from the real top 10 of Google' : 'Advertiser competition on Google, 0 to 100'}>
+            <Card title="Difficulty" subtitle="SEO difficulty, from the real top 10 on Google">
               {kd?.state === 'ready' && kd.score != null ? (
                 <>
                   <Gauge180 value={kd.score} note={`Average Domain Authority ${kd.components.avg_da ?? '—'}, Page Authority ${kd.components.avg_pa ?? '—'}, ${kd.components.top10_strength ?? 0}% of the top 10 have DA 70+, SERP features ${kd.components.serp_features}%. From ${kd.sites_with_figures} of ${kd.sites} sites.`} />
-                  <p className="text-11.5 text-slate-500 mt-1 text-center">Advertiser competition (Google Ads): {m.competition_index ?? '—'}</p>
                 </>
               ) : (
-                <>
-                  <Gauge180 value={m.competition_index} />
-                  <p className="text-11.5 text-center mt-1 flex items-center justify-center gap-1.5 text-slate-500">{kd?.state === 'loading' ? <><Loader2 size={12} className="animate-spin" />Reading the top 10 on Google for the SEO difficulty…</> : kd?.state === 'error' ? kd.message : ''}</p>
-                </>
+                <div className="py-10 text-center text-13 text-slate-500">
+                  {kd?.state === 'error' ? <><AlertTriangle size={18} className="mx-auto mb-2 text-amber-500" />Not available: {kd.message}</>
+                    : kd?.state === 'ready' ? 'Google gave too few results with figures to score this keyword.'
+                      : <><Loader2 size={20} className="mx-auto mb-2 animate-spin text-indigo-500" />Reading the top 10 on Google and their authority… this takes a minute or two.</>}
+                </div>
               )}
             </Card>
             <Card title="Search volume" subtitle={`Average searches per month, ${periodLabel}`}>
