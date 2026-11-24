@@ -82,6 +82,7 @@ const TopPagesPage = lazy(() => import('./platform/TopPagesReport').then(m => ({
 const toolkit = (name) => lazy(() => import('./platform/SeoToolkit').then(m => ({ default: m[name] })));
 const DomainOverviewPage = toolkit('DomainOverviewPage');
 const KeywordOverviewPage = toolkit('KeywordOverviewPage');
+const KeywordIdeasPage = lazy(() => import('./platform/KeywordIdeas').then(m => ({ default: m.KeywordIdeasPage })));
 const PageRankingsPage = lazy(() => import('./platform/PageRankings').then(m => ({ default: m.PageRankingsPage })));
 
 /** Page-shaped placeholder: top bar, title and subtitle, then tiles, a chart card and a table card, inside the usual page margins. */
@@ -185,6 +186,7 @@ export default function App() {
         <Route path="ai-questions" element={<AiQuestionsPage />} />
         <Route path="feature/:slug" element={<FeaturePage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
+        <Route path="keyword-overview/ideas" element={<KeywordIdeasPage />} />
         <Route path="organic-rankings" element={<OrganicRankingsPage />} />
         <Route path="organic-rankings/page" element={<PageRankingsPage />} />
         <Route path="organic-rankings/:tab" element={<OrganicRankingsPage />} />

@@ -360,78 +360,6 @@ function KdDot({ v }) {
 
 const MoreBtn = ({ onClick }) => <button type="button" onClick={onClick} className="shrink-0 inline-flex items-center gap-0.5 text-12.5 font-semibold text-indigo-700 hover:text-indigo-900 hover:underline cursor-pointer">Show more<ChevronRight size={14} /></button>;
 
-const INTENT_LETTER = { informational: ['I', '#4338ca', '#e0e7ff'], commercial: ['C', '#b45309', '#fef3c7'], transactional: ['T', '#047857', '#d1fae5'], navigational: ['N', '#7e22ce', '#f3e8ff'], local: ['L', '#0369a1', '#e0f2fe'] };
-const QUESTION_START = /^(what|how|why|when|where|which|who|can|does|do|is|are|should|will)\b/;
-const NOISE_WORDS = new Set(['a', 'an', 'the', 'and', 'for', 'to', 'of', 'in', 'on', 'at', 'with', 'is', 'are', 'my', 'me', 'you', 'your', 'how', 'what', 'near']);
-
-/** Every idea Google gave, explored like the Keyword Magic Tool: questions or all, broad / phrase / exact / related match, filters, the words the ideas share (by number or by searches), totals, and the difficulty of any keyword on request. */
-function IdeasExplorer({ data, preset, kdMap, askKd, go, toWorkspace, adding }) {
-  const seed = data.keyword;
-  const seedWords = useMemo(() => seed.split(/\s+/).filter(Boolean), [seed]);
-  const everything = useMemo(() => { const m = new Map(); for (const k of ['similar', 'related', 'questions']) for (const r of data.groups?.[k]?.all || []) if (!m.has(r.keyword)) m.set(r.keyword, r); return [...m.values()]; }, [data]);
-  const [type, setType] = useState(preset === 'questions' ? 'questions' : 'all');
-  const [match, setMatch] = useState(preset === 'related' ? 'related' : preset === 'similar' ? 'broad' : 'all');
-  const [minVol, setMinVol] = useState('');
-  const [idx, setIdx] = useState('');
-  const [intent, setIntent] = useState('');
-  const [minCpc, setMinCpc] = useState('');
-  const [inc, setInc] = useState('');
-  const [exc, setExc] = useState('');
-  const [word, setWord] = useState('');
-  const [wordBy, setWordBy] = useState('number');
-  const hasAll = (k) => seedWords.every(w => k.split(/\s+/).includes(w));
-  const matches = (k) => (match === 'all' ? true : match === 'broad' ? hasAll(k) : match === 'phrase' ? k.includes(seed) : match === 'exact' ? k === seed : !hasAll(k));
-  const base = useMemo(() => everything.filter(r => (type === 'all' || QUESTION_START.test(r.keyword)) && matches(r.keyword)), [everything, type, match]); // eslint-disable-line react-hooks/exhaustive-deps
-  const words = useMemo(() => {
-    const m = {};
-    for (const r of base) for (const w of new Set(r.keyword.split(/\s+/))) if (w.length > 2 && !seedWords.includes(w) && !NOISE_WORDS.has(w)) { const x = (m[w] ||= { w, n: 0, v: 0 }); x.n += 1; x.v += r.volume || 0; }
-    return Object.values(m).sort((a, c) => (wordBy === 'number' ? c.n - a.n : c.v - a.v)).slice(0, 40);
-  }, [base, seedWords, wordBy]);
-  const rows = useMemo(() => base.filter(r => (!minVol || (r.volume || 0) >= Number(minVol)) && (!idx || (r.index != null && (idx === 'low' ? r.index < 34 : idx === 'medium' ? r.index >= 34 && r.index < 67 : r.index >= 67)))
-    && (!intent || r.intent === intent) && (!minCpc || (r.cpc || 0) >= Number(minCpc)) && (!word || r.keyword.split(/\s+/).includes(word))
-    && (!inc.trim() || inc.toLowerCase().split(/[,\s]+/).filter(Boolean).every(w => r.keyword.includes(w))) && (!exc.trim() || !exc.toLowerCase().split(/[,\s]+/).filter(Boolean).some(w => r.keyword.includes(w)))), [base, minVol, idx, intent, minCpc, word, inc, exc]);
-  const total = rows.reduce((a, r) => a + (r.volume || 0), 0);
-  const avgIdx = (() => { const l = rows.filter(r => r.index != null); return l.length ? Math.round(l.reduce((a, r) => a + r.index, 0) / l.length) : null; })();
-  const sel = 'h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12.5 text-slate-800';
-  const tab = (on, label, set) => <button type="button" onClick={set} className={`px-3 h-8 text-12.5 font-medium cursor-pointer border ${on ? 'bg-indigo-50 text-indigo-800 border-indigo-300' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>{label}</button>;
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-x-4 gap-y-2">
-        <div className="inline-flex rounded-lg overflow-hidden">{tab(type === 'all', 'All', () => setType('all'))}{tab(type === 'questions', 'Questions', () => setType('questions'))}</div>
-        <div className="inline-flex rounded-lg overflow-hidden">{[['all', 'All keywords'], ['broad', 'Broad match'], ['phrase', 'Phrase match'], ['exact', 'Exact match'], ['related', 'Related']].map(([k, l]) => <React.Fragment key={k}>{tab(match === k, l, () => setMatch(k))}</React.Fragment>)}</div>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <select className={sel} value={minVol} onChange={e => setMinVol(e.target.value)} aria-label="Volume"><option value="">Volume: any</option><option value="100">100+</option><option value="500">500+</option><option value="1000">1,000+</option><option value="5000">5,000+</option><option value="10000">10,000+</option></select>
-        <select className={sel} value={idx} onChange={e => setIdx(e.target.value)} aria-label="Competition index"><option value="">Index: any</option><option value="low">Low (under 34)</option><option value="medium">Medium (34 to 66)</option><option value="high">High (67+)</option></select>
-        <select className={sel} value={intent} onChange={e => setIntent(e.target.value)} aria-label="Intent"><option value="">Intent: any</option>{Object.keys(INTENT_LETTER).map(k => <option key={k} value={k}>{k[0].toUpperCase() + k.slice(1)}</option>)}</select>
-        <select className={sel} value={minCpc} onChange={e => setMinCpc(e.target.value)} aria-label="Cost per click"><option value="">CPC: any</option><option value="10">₹10+</option><option value="50">₹50+</option><option value="100">₹100+</option><option value="300">₹300+</option></select>
-        <input className={`${sel} w-44`} value={inc} onChange={e => setInc(e.target.value)} placeholder="Include keywords" aria-label="Include keywords" />
-        <input className={`${sel} w-44`} value={exc} onChange={e => setExc(e.target.value)} placeholder="Exclude keywords" aria-label="Exclude keywords" />
-        {(minVol || idx || intent || minCpc || inc || exc || word) && <button type="button" onClick={() => { setMinVol(''); setIdx(''); setIntent(''); setMinCpc(''); setInc(''); setExc(''); setWord(''); }} className="text-12.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button>}
-        <Button size="sm" className="ml-auto" busy={adding} onClick={() => toWorkspace(rows.slice(0, 500).map(r => ({ keyword: r.keyword, volume: r.volume })))} disabled={!rows.length}>Add {Math.min(rows.length, 500)} to the Keyword Workspace</Button>
-      </div>
-      <div className="text-13 text-slate-600">All keywords: <b className="text-slate-900 tabular-nums">{fmt(rows.length)}</b> <span className="mx-1.5">Total volume: <b className="text-slate-900 tabular-nums">{fmt(total)}</b></span> <span>Average index: <b className="text-slate-900 tabular-nums">{avgIdx ?? '—'}</b></span></div>
-      <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-4">
-        <div className="rounded-lg ring-1 ring-slate-200 p-3 self-start max-h-[420px] overflow-auto">
-          <div className="flex gap-1 mb-2">{[['number', 'By number'], ['volume', 'By volume']].map(([k, l]) => <button key={k} type="button" onClick={() => setWordBy(k)} className={`px-2.5 h-7 rounded-md text-12 font-medium cursor-pointer ${wordBy === k ? 'bg-indigo-50 text-indigo-800 ring-1 ring-indigo-300' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}</div>
-          <div className="flex justify-between text-11.5 text-slate-500 mb-1"><span>All keywords</span><b className="text-slate-900 tabular-nums">{fmt(base.length)}</b></div>
-          {words.length === 0 ? <p className="text-12 text-slate-400">No shared words.</p> : <ul className="space-y-0.5">{words.map(x => (
-            <li key={x.w}><button type="button" onClick={() => setWord(word === x.w ? '' : x.w)} className={`w-full flex justify-between gap-2 px-1.5 py-1 rounded text-12.5 cursor-pointer ${word === x.w ? 'bg-indigo-50 text-indigo-800 font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}><span className="truncate">{x.w}</span><span className="tabular-nums text-slate-500">{wordBy === 'number' ? fmt(x.n) : kfmt(x.v)}</span></button></li>))}</ul>}
-        </div>
-        <DataTable bare rows={rows} rowKey={r => r.keyword} pageSize={25} sizes={[25, 50, 100]} exportName={`keywords-${seed}`.toLowerCase().replace(/[^a-z0-9]+/g, '-')} label="keywords" headClass="bg-slate-100 text-slate-700" minWidth={560}
-          columns={[
-            { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-3 py-2', cell: r => <button type="button" className="text-indigo-700 hover:underline cursor-pointer text-left" onClick={() => go(r.keyword)} title="Open its overview">{r.keyword}</button> },
-            { id: 'intent', header: 'Intent', value: r => r.intent, className: 'px-3 py-2', cell: r => { const l = INTENT_LETTER[r.intent]; return l ? <span className="inline-flex w-5 h-5 items-center justify-center rounded text-11 font-bold" style={{ color: l[1], backgroundColor: l[2] }} title={r.intent}>{l[0]}</span> : '—'; } },
-            { id: 'volume', header: 'Volume', right: true, first: 'desc', value: r => r.volume, className: 'px-3 py-2 text-right tabular-nums', cell: r => (r.volume != null ? fmt(r.volume) : '—') },
-            { id: 'index', header: 'Index', right: true, value: r => r.index, className: 'px-3 py-2 text-right tabular-nums', cell: r => r.index ?? '—' },
-            { id: 'kd', header: 'KD %', right: true, value: r => (typeof kdMap[r.keyword] === 'number' ? kdMap[r.keyword] : null), className: 'px-3 py-2 text-right', cell: r => (kdMap[r.keyword] === undefined ? <button type="button" onClick={() => askKd(r.keyword)} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer" title="Read the top 10 on Google for this keyword and work out its difficulty">Check</button> : <KdDot v={kdMap[r.keyword]} />) },
-            { id: 'cpc', header: 'CPC', right: true, value: r => r.cpc, className: 'px-3 py-2 text-right tabular-nums', cell: r => INR(r.cpc) },
-          ]} />
-      </div>
-    </div>
-  );
-}
-
 /** One list of ideas: how many Google has, their total searches a month, the top five with searches and difficulty, and a way to open them all. */
 function IdeaPanel({ title, g, kdMap, go, onAll }) {
   const rows = g.rows.slice(0, 5);
@@ -517,8 +445,7 @@ function KeywordOverview({ b }) {
   }, [kd?.state]);
   const [kdMap, setKdMap] = useState({}); // difficulty of the keywords listed in the ideas: { keyword: score | null | 'loading' }
   const kdBatch = useRef(0); // the run in progress (a new analysis starts a new one, and the old one's answers are dropped)
-  const [more, setMore] = useState(null); // the card whose detail is open: difficulty, volume, cpc, global, ideas, serp, paa, ads
-  const [preset, setPreset] = useState('all'); // how the ideas window opens: all, similar, related or questions
+  const [more, setMore] = useState(null); // the card whose detail is open: difficulty, volume, cpc, global, serp, paa, ads
   const [allClusters, setAllClusters] = useState(false);
   const [aiOpen, setAiOpen] = useState(false); // the AI Overview row of the top-10 table, open or closed
   const kdRun = useRef(0);
@@ -582,6 +509,7 @@ function KeywordOverview({ b }) {
   };
   const countriesShown = (() => { const l = (data?.countries || []).map(c => ({ ...c, v: inPeriod(c.monthly, c.volume) })).filter(c => c.v); const tot = l.reduce((a, c) => a + c.v, 0) || 1; return l.map(c => ({ ...c, share: Math.round((c.v * 1000) / tot) / 10 })).sort((x, y) => y.v - x.v); })();
   const groupsShown = (k) => { const g = data?.groups?.[k]; return { total: g?.total || 0, volume: g?.volume || 0, all: g?.all || [], rows: (g?.rows || []).map(r => ({ ...r, v: inPeriod(r.monthly, r.volume) })).sort((x, y) => (y.v || 0) - (x.v || 0)) }; };
+  const openIdeas = (view) => navigate(`/keyword-overview/ideas?q=${encodeURIComponent(data.keyword)}&view=${view}${data.country ? `&c=${data.country}` : ''}${chosen.length ? `&a=${encodeURIComponent(namesOf(chosen).join('|'))}` : ''}`);
   const askKd = async (k) => {
     setKdMap(mm => ({ ...mm, [k]: 'loading' }));
     try { const r = await api(`/businesses/${b.id}/seo/keyword-difficulty/batch`, { method: 'POST', body: { keywords: [k], country: data.country || null, places: namesOf(chosen) }, timeout: 240000 }); setKdMap(mm => ({ ...mm, [k]: r.results?.[0]?.score ?? null })); } catch { setKdMap(mm => ({ ...mm, [k]: null })); }
@@ -637,7 +565,6 @@ function KeywordOverview({ b }) {
         </div>
       );
     }
-    if (more === 'ideas') return <IdeasExplorer key={preset} data={data} preset={preset} kdMap={kdMap} askKd={askKd} go={k => { setMore(null); go(k); }} toWorkspace={toWorkspace} adding={busy === 'ws'} />;
     if (!kd || kd.state === 'loading') return wait;
     if (kd.state === 'error') return <p className="text-13 text-amber-800">{kd.message}</p>;
     if (more === 'serp') {
@@ -665,7 +592,7 @@ function KeywordOverview({ b }) {
     }
     return null;
   };
-  const MORE_TITLE = { difficulty: 'Difficulty in detail', volume: 'Search volume in detail', cpc: 'Cost per click in detail', global: 'Global volume in detail', ideas: 'Keyword ideas', serp: 'SERP overview in detail', paa: 'People also ask and related searches', ads: 'Ads on this search' };
+  const MORE_TITLE = { difficulty: 'Difficulty in detail', volume: 'Search volume in detail', cpc: 'Cost per click in detail', global: 'Global volume in detail', serp: 'SERP overview in detail', paa: 'People also ask and related searches', ads: 'Ads on this search' };
   const isTracked = (k) => added[k] || (data?.keyword === k && data?.you?.tracked);
   return (
     <div className="space-y-4">
@@ -773,14 +700,14 @@ function KeywordOverview({ b }) {
                 );
               })()}
             </Card>
-            <div className="lg:col-span-2"><Card title="Related keywords" action={<MoreBtn onClick={() => { setPreset('related'); setMore('ideas'); }} />} subtitle="Other searches Google connects to it">
-              <IdeaPanel title="Related keywords" g={groupsShown('related')} kdMap={kdMap} go={go} onAll={() => { setPreset('related'); setMore('ideas'); }} />
+            <div className="lg:col-span-2"><Card title="Related keywords" action={<MoreBtn onClick={() => openIdeas('related')} />} subtitle="Other searches Google connects to it">
+              <IdeaPanel title="Related keywords" g={groupsShown('related')} kdMap={kdMap} go={go} onAll={() => openIdeas('related')} />
             </Card></div>
           </div>
-          <Card title="Keyword ideas" action={<MoreBtn onClick={() => { setPreset('all'); setMore('ideas'); }} />} subtitle="From Google Keyword Planner: how many it knows, their total searches, and how hard the biggest ones are">
+          <Card title="Keyword ideas" action={<MoreBtn onClick={() => openIdeas('all')} />} subtitle="From Google Keyword Planner: how many it knows, their total searches, and how hard the biggest ones are">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-10 gap-y-6">
-              <IdeaPanel title="Keyword variations" g={groupsShown('similar')} kdMap={kdMap} go={go} onAll={() => { setPreset('similar'); setMore('ideas'); }} />
-              <IdeaPanel title="Questions" g={groupsShown('questions')} kdMap={kdMap} go={go} onAll={() => { setPreset('questions'); setMore('ideas'); }} />
+              <IdeaPanel title="Keyword variations" g={groupsShown('similar')} kdMap={kdMap} go={go} onAll={() => openIdeas('similar')} />
+              <IdeaPanel title="Questions" g={groupsShown('questions')} kdMap={kdMap} go={go} onAll={() => openIdeas('questions')} />
               <ClusterPanel clusters={data.clusters || []} go={go} onAll={() => setAllClusters(true)} />
             </div>
             <p className="mt-4 text-11.5 text-slate-400">Google Keyword Planner returns up to about 600 ideas for one keyword, so the counts are lower than in tools with their own very large keyword databases. KD % is worked out for the first five of each list by reading the real top 10 on Google; open a keyword to see it in full.</p>

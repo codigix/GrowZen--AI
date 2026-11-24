@@ -297,6 +297,7 @@ class OverviewIn(BaseModel):
     keyword: str = Field(min_length=2, max_length=120)
     place: str | None = Field(default=None, max_length=120)  # one place inside the country (older callers)
     places: list[str] = Field(default_factory=list, max_length=5)  # target areas inside the country, any number up to five; empty = the whole country
+    lite: bool = False  # only the ideas and the keyword's own figures: the country list and the world volume (the slowest parts) are left out
     country: str | None = Field(default=None, min_length=2, max_length=2)  # a country code; empty = the project's own
 
 
@@ -603,7 +604,7 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
     asked = _questions(kw, geo, country)  # Google rarely lists questions as ideas: the ones people type into Google are asked of its suggestions, then measured
     if asked:
         groups["questions"] = _idea_groups(kw, asked)["questions"]
-    world = _by_country(kw, country)
+    world = [] if body.lite else _by_country(kw, country)
     monthly = [{"year": m["year"], "month": m["month"], "searches": m["monthly_searches"]} for m in (exact or {}).get("monthly_search_volumes", [])][-12:]
     ci = (exact or {}).get("competition_index")
     return {
@@ -615,7 +616,7 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
                     "density": round(ci / 100, 2) if ci is not None else None,
                     "three_month_change": (exact or {}).get("three_month_change"), "yoy_change": (exact or {}).get("yoy_change"), "monthly": monthly},
         "ideas": [{"keyword": i["keyword"], "volume": i["avg_monthly_searches"], "competition": i["competition"], "index": i["competition_index"], "cpc": i["high_top_of_page_bid"]} for i in ideas if i["keyword"].lower() != kw][:40],
-        "groups": groups, "clusters": _clusters(kw, listing), "countries": world, "world_volume": _world_volume(kw), "ideas_from": ideas_from,
+        "groups": groups, "clusters": _clusters(kw, listing), "countries": world, "world_volume": None if body.lite else _world_volume(kw), "ideas_from": ideas_from,
         "you": {"tracked": bool(saved and saved.tracked), "rank": saved.rank if saved else None, "prev_rank": saved.prev_rank if saved else None,
                 "checked_at": saved.rank_checked_at if saved else None, "target_url": saved.target_url if saved else None},
     }
