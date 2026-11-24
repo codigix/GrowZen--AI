@@ -542,11 +542,94 @@ def overview(db: Session, b: Business, *, source: str = "", tag: str = "", q: st
     domains = _competitor_domains(db, b)
     last = max((r.updated_at for r in rows if r.updated_at), default=None)
     shown = out[:limit]
+    attach_index(db, b, shown)
     return {"competitors": {"count": len(domains), "domains": domains, "done": bool(domains)},
             "sources": [{"kind": k, "label": v, "count": counts_src[k]} for k, v in SOURCES.items()],
             "tags": [{"tag": t, "label": v, "count": counts_tag[t]} for t, v in TAGS.items()],
             "totals": {"suggested": sum(1 for i in items if i["suggested"] and not i["picked"] and not i["dismissed"]), "all": len(items), "open": sum(1 for i in items if not i["picked"] and not i["dismissed"]), "picked": sum(1 for i in items if i["picked"]), "dismissed": sum(1 for i in items if i["dismissed"])},
             "volumes": keyword_metrics.enabled(), "last_collected": last.isoformat() if last else None, "items": shown, "shown": len(out)}
+
+
+# ----------------------------------------------------------------------------------------------------------------------------- Google Search Console: is the keyword's page indexed, and how it performs
+def _nu(url: str | None) -> str:
+    u = (url or "").lower().split("#")[0].split("?")[0]
+    return re.sub(r"^https?://(www\.)?", "", u).rstrip("/")
+
+
+def target_pages(db: Session, b: Business, keywords: list[str]) -> dict[str, str]:
+    """The page of the website that targets each keyword: the page that carries it in the most places (address, title, heading, description). A keyword no page carries has none."""
+    from . import keyword_usage  # noqa: PLC0415
+    try:
+        docs = keyword_usage.docs(db, b)
+    except Exception as exc:  # noqa: BLE001 -- without the crawl there are simply no pages
+        log.info("target pages unavailable: %r", exc)
+        return {}
+    out: dict[str, str] = {}
+    for kw in keywords:
+        pages = keyword_usage.detail(docs, kw)["pages"]
+        if pages:
+            out[kw] = pages[0]["url"]
+    return out
+
+
+def attach_index(db: Session, b: Business, items: list[dict[str, Any]]) -> None:
+    """For each listed keyword: its target page, what Google Search Console says about that page (indexed or not, and why) and the keyword's own Search Console numbers (views, clicks, click rate,
+    average position). Read from what is saved; `refresh_index` is what asks Google."""
+    from ..models import IndexPage  # noqa: PLC0415
+    pages = target_pages(db, b, [i["keyword"] for i in items])
+    known = {_nu(p.url): p for p in db.scalars(select(IndexPage).where(IndexPage.business_id == b.id))}
+    for i in items:
+        url = pages.get(i["keyword"])
+        row = known.get(_nu(url)) if url else None
+        views, clicks = i.get("impressions"), i.get("clicks")
+        i["page"] = url
+        i["gsc"] = {"state": row.g_state if row and row.g_checked_at else None, "reason": row.g_reason if row else None, "link": row.g_link if row else None,
+                    "last_crawl": row.g_last_crawl.date().isoformat() if row and row.g_last_crawl else None,
+                    "views": views, "clicks": clicks, "position": i.get("rank"), "ctr": round(100 * clicks / views, 1) if views else None}
+
+
+_gsc_refreshed: dict[int, float] = {}
+GSC_EVERY = 3600  # seconds between two reads of the keyword figures from Search Console
+
+
+def refresh_index(db: Session, b: Business) -> dict[str, Any]:
+    """Asks Google Search Console: (1) the keyword figures of the last 90 days (views, clicks, average position), at most once an hour; (2) whether each open keyword's target page is indexed
+    (URL Inspection), for up to 20 pages not checked in the last 3 days. Returns what was done and, when Search Console cannot be reached, why."""
+    import time  # noqa: PLC0415
+
+    from ..models import IndexPage  # noqa: PLC0415
+    from . import indexing  # noqa: PLC0415
+    out: dict[str, Any] = {"performance": 0, "inspected": 0, "error": None}
+    existing = {r.norm: r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))}
+    if time.time() - _gsc_refreshed.get(b.id, 0) > GSC_EVERY:
+        found, note = from_search_console(db, b)
+        if note and not found:
+            out["error"] = note
+        else:
+            _add(db, b, found, existing)
+            _gsc_refreshed[b.id] = time.time()
+            out["performance"] = len(found)
+    rows = sorted((r for r in existing.values() if not r.dismissed and not r.picked), key=lambda r: -(r.volume or 0))[:60]
+    pages = target_pages(db, b, [r.keyword for r in rows])
+    urls = list(dict.fromkeys(pages.values()))
+    if urls and not out["error"]:
+        have = {_nu(p.url): p for p in db.scalars(select(IndexPage).where(IndexPage.business_id == b.id))}
+        for u in urls:
+            if _nu(u) not in have:
+                db.add(IndexPage(business_id=b.id, url=u, source="manual", in_sitemap=False, first_seen_at=_now(), last_seen_at=_now()))
+        db.flush()
+        have = {_nu(p.url): p for p in db.scalars(select(IndexPage).where(IndexPage.business_id == b.id))}
+        stale = _now() - timedelta(days=3)
+        todo = [have[_nu(u)].url for u in urls if _nu(u) in have and (have[_nu(u)].g_checked_at is None or indexing._aware(have[_nu(u)].g_checked_at) < stale)][:20]
+        if todo:
+            try:
+                res = indexing.inspect(db, b, todo, limit=20)
+                out["inspected"] = res.get("checked", 0)
+                out["error"] = res.get("error")
+            except indexing.IndexingError as exc:
+                out["error"] = str(exc)
+    db.flush()
+    return out
 
 
 # ----------------------------------------------------------------------------------------------------------------------------- choosing
