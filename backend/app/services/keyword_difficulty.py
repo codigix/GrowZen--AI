@@ -117,7 +117,7 @@ def _badger(keyword: str, country: str, location: str | None = None) -> dict[str
                 "related": [q.get("query") for q in (j.get("related_searches") or []) if q.get("query")],
                 "ads": [{"title": a.get("title") or "", "url": a.get("link") or a.get("displayed_link") or "", "site": site_of(a.get("link") or a.get("displayed_link") or ""),
                          "description": (a.get("description") or a.get("snippet") or "")[:240]} for a in (j.get("ads") or [])],
-                "ai_overview": ai, "features": features}
+                "ai_overview": ai, "features": features, "counts": {"ads": len(j.get("ads") or []), "pla": len(j.get("shopping_results") or [])}}
     return None
 
 
@@ -306,14 +306,15 @@ def _volume(keyword: str, country: str, geo: str | None = None) -> int | None:
         return None
 
 
-def score(keyword: str, country: str, volume: int | None = None, use_cache: bool = False, location: str | None = None, geo: str | None = None) -> dict[str, Any]:
+def score(keyword: str, country: str, volume: int | None = None, use_cache: bool = False, location: str | None = None, geo: str | None = None, domain: str | None = None) -> dict[str, Any]:
     from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
     with ThreadPoolExecutor(max_workers=2) as ex:  # the volume is asked while Google's results page is read
         vol = ex.submit(_volume, keyword, country, geo) if volume is None else None
         page = serp(keyword, country, location)
         volume = vol.result() if vol else volume
     sites = list(dict.fromkeys(o["site"] for o in page["organic"] if o["site"]))
-    metrics = {x["domain"]: x.get("scores") for x in apify_metrics.check(sites, force=not use_cache, save=use_cache)}  # afresh and not kept, unless the caller (a list of many keywords) accepts a day-old authority figure
+    mine = site_of(f"https://{domain}") if domain else None
+    metrics = {x["domain"]: x.get("scores") for x in apify_metrics.check(sites + ([mine] if mine and mine not in sites else []), force=not use_cache, save=use_cache)}  # afresh and not kept, unless the caller (a list of many keywords) accepts a day-old authority figure
     rows = []
     for o in page["organic"]:
         m = metrics.get(o["site"]) or {}
@@ -360,7 +361,9 @@ def score(keyword: str, country: str, volume: int | None = None, use_cache: bool
     kd = round(sum(w * v for w, v in used) / sum(w for w, _ in used)) if used else None
     formula = [{"key": k, "name": n, "weight": round(w * 100), "value": round(v) if v is not None else None, "used": v is not None} for k, n, w, v in parts]
     return {
-        "score": kd, "sc": sc, "location": location,
+        "score": kd, "sc": sc, "location": location, "serp_counts": page.get("counts") or {"ads": len(page["ads"]), "pla": None},
+        "you": ({"domain": mine, "da": (metrics.get(mine) or {}).get("da"), "pa": (metrics.get(mine) or {}).get("pa"), "rd": (metrics.get(mine) or {}).get("rd"), "top_da": round(da) if da is not None else None,
+                 "top_pa": round(pa) if pa is not None else None} if mine and metrics.get(mine) else None),
         "content": {"cc": round(cc) if cc is not None else None, "relevance": round(relevance) if relevance is not None else None, "quality": round(quality) if quality is not None else None,
                     "freshness": round(freshness) if freshness is not None else None, "pages_read": len(read), "avg_words": round(sum(r["words"] for r in read) / len(read)) if read else None},
         "intent": ki, "formula": formula, "weight_used": round(100 * sum(w for w, _ in used)),

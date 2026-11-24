@@ -304,6 +304,7 @@ const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1).repl
 const INR = (v) => (v == null ? '—' : `₹${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
 const INTENTS = ['informational', 'navigational', 'commercial', 'transactional', 'local'];
 const intentChips = (intent) => INTENTS.map(k => ({ k: k[0].toUpperCase() + k.slice(1), on: k === String(intent || '').toLowerCase() }));
+const difficultyText = (v) => (v == null ? '' : v < 15 ? 'Very easy to rank for. Good on-page SEO and a little content should be enough.' : v < 30 ? 'A fairly easy keyword. Strong content and a few quality links can rank.' : v < 50 ? 'Moderately competitive. Expect solid content and steady link building.' : v < 70 ? 'A competitive keyword. It takes strong content and consistent link building.' : 'The hardest keyword to compete for. It will take a lot of on-page SEO, link building and content promotion.');
 const difficultyWord = (v) => (v == null ? 'No data' : v < 15 ? 'Very easy' : v < 30 ? 'Easy' : v < 50 ? 'Medium' : v < 70 ? 'Challenging' : 'Very hard');
 const diffColor = (v) => (v == null ? '#94a3b8' : v < 15 ? '#059669' : v < 30 ? '#65a30d' : v < 50 ? '#d97706' : v < 70 ? '#ea580c' : '#dc2626'); // very easy, easy, medium, challenging, very hard
 function DiffChip({ v, word }) {
@@ -420,6 +421,24 @@ function KeywordOverview({ b }) {
     api(`/businesses/${b.id}/seo/keyword-difficulty`, { method: 'POST', body: { keyword: kw, country: c || null, place: pl || null }, timeout: 330000 })
       .then(r => { if (kdRun.current === mine) setKd({ state: 'ready', ...r }); }).catch(e => { if (kdRun.current === mine) setKd({ state: 'error', message: e.message || 'Google results could not be read.' }); });
   };
+  const exportPdf = async () => {
+    const { jsPDF } = await import('jspdf'); // the PDF library is fetched only when a report is exported
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const H = doc.internal.pageSize.getHeight();
+    let y = 50;
+    const line = (txt, size = 10, bold = false, gap = 15) => { if (y > H - 50) { doc.addPage(); y = 50; } doc.setFontSize(size); doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setTextColor(30, 41, 59); doc.text(String(txt).slice(0, 110), 40, y); y += gap; };
+    line(`Keyword overview: ${data.keyword}`, 18, true, 24);
+    line(`${data.place || data.country || ''} · Google Ads Keyword Planner${kd?.state === 'ready' ? ' · Google results' : ''} · ${new Date().toLocaleDateString('en-GB')}`, 9, false, 20);
+    line(`Searches a month: ${m.volume != null ? fmt(m.volume) : 'n/a'}   ·   World: ${data.world_volume != null ? fmt(data.world_volume) : 'n/a'}`, 11);
+    line(`Average cost per click: ${INR(m.cpc_avg)}   ·   Top-of-page bid: ${m.cpc_low != null ? INR(m.cpc_low) + ' to ' : ''}${INR(m.cpc_high)}   ·   Competitive density: ${m.density ?? 'n/a'}`, 11);
+    if (kd?.state === 'ready' && kd.score != null) { line(`SEO difficulty: ${kd.score} (${difficultyWord(kd.score)})`, 11, true); line(difficultyText(kd.score), 9, false, 18); }
+    line('Searches by country', 12, true, 18);
+    countriesShown.slice(0, 8).forEach(c => line(`${c.name}: ${fmt(c.v)} a month`));
+    if (kd?.state === 'ready') { y += 8; line('Top results on Google', 12, true, 18); kd.organic.forEach(o => line(`${o.position}. ${o.site} (DA ${o.da ?? '-'}, PA ${o.pa ?? '-'}) ${o.title}`, 9, false, 13)); }
+    y += 8; line('Related keywords', 12, true, 18);
+    ['similar', 'related', 'questions'].flatMap(k => groupsShown(k).rows).slice(0, 25).forEach(r => line(`${r.keyword}: ${r.v != null ? fmt(r.v) : '-'} a month`, 9, false, 13));
+    doc.save(`keyword-overview-${data.keyword.replace(/[^a-z0-9]+/gi, '-')}.pdf`);
+  };
   const allMonths = m?.monthly || [];
   const monthsShown = period === '12' ? allMonths : period === '6' || period === '3' ? allMonths.slice(-Number(period)) : allMonths.filter(x => `${x.year}-${x.month}` === period);
   const volumeShown = period === '12' || !monthsShown.length ? m?.volume : Math.round(monthsShown.reduce((a, x) => a + x.searches, 0) / monthsShown.length);
@@ -472,7 +491,9 @@ function KeywordOverview({ b }) {
             <KeyRound size={16} className="text-indigo-500" />
             <div className="mr-auto min-w-0"><div className="text-16 font-semibold text-slate-900 truncate">{data.keyword}</div>
               <div className="text-12 text-slate-500">{data.place ? `Figures for ${data.place}` : data.country ? `Figures for ${data.country}` : 'Figures for your country'} · Google Ads Keyword Planner · {data.you.rank ? `you rank #${data.you.rank}` : data.you.tracked ? 'tracked, not ranking yet' : 'not tracked yet'}</div></div>
-            <div className="flex flex-wrap gap-1.5" aria-label="Search intent">{intentChips(data.intent).map(c => <Badge key={c.k} tone={c.on ? 'indigo' : 'slate'}>{c.k}</Badge>)}</div>
+            <div className="flex flex-wrap gap-1.5" aria-label="Search intent">{[...new Set([data.intent, ...(kd?.state === 'ready' ? [['commercial', kd.intent?.commercial], ['transactional', kd.intent?.transactional]].filter(([, v]) => v >= 50).map(([k]) => k) : [])])].filter(Boolean).map(k => <span key={k} className="rounded-full bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200 px-3 py-1 text-12.5 font-semibold">{k[0].toUpperCase() + k.slice(1)}</span>)}</div>
+            <Button size="sm" icon={RefreshCw} busy={busy === 'go'} onClick={() => go()} title="Read everything again, fresh from Google">Update metrics</Button>
+            <Button size="sm" icon={Download} onClick={exportPdf}>Export PDF</Button>
             {!isTracked(data.keyword) && <Button size="sm" icon={Plus} busy={busy === `t${data.keyword}`} onClick={() => track(data.keyword)}>Track</Button>}
           </div>
           {data.found && (m.volume ?? 0) === 0 && <p className="text-13 text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Google Keyword Planner reports no searches for this exact keyword in {data.place || data.country || 'your country'}: it is very specific. {data.ideas_from ? <>The ideas below are for its main words, <b>{data.ideas_from}</b>.</> : 'Try a shorter phrase.'}</p>}
@@ -490,6 +511,12 @@ function KeywordOverview({ b }) {
                       : <><Loader2 size={20} className="mx-auto mb-2 animate-spin text-indigo-500" />Reading the top 10 on Google and their authority… {secs}s <span className="block text-11.5 text-slate-400 mt-1">Google's results page is the slow part (about a minute). Everything else on this page is already final.</span></>}
                 </div>
               )}
+              {kd?.state === 'ready' && kd.score != null && (
+                <div className="mt-3 border-t border-slate-100 pt-3 text-12.5 text-slate-600 space-y-1.5">
+                  <p>{difficultyText(kd.score)}</p>
+                  {kd.you && kd.you.da != null && <p className="text-slate-500">Your site <b className="text-slate-800">{kd.you.domain}</b>: Domain Authority <b className="text-slate-800">{kd.you.da}</b>{kd.you.pa != null ? <>, Page Authority <b className="text-slate-800">{kd.you.pa}</b></> : ''} against {kd.you.top_da ?? '—'} on average in the top 10{kd.you.top_da != null && kd.you.da < kd.you.top_da - 10 ? ': you are well below them.' : kd.you.top_da != null && kd.you.da >= kd.you.top_da ? ': you are on their level.' : '.'}</p>}
+                </div>
+              )}
             </Card>
             <Card title="Search volume" subtitle={`Average searches per month, ${periodLabel}`}>
               <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums">{kfmt(volumeShown)}</div>
@@ -503,18 +530,31 @@ function KeywordOverview({ b }) {
                 </div>
               ) : <p className="text-12 text-slate-400 mt-3">No monthly figures from Google.</p>}
             </Card>
-            <Card title="Cost per click" subtitle="What advertisers bid at the top of the page">
-              <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums">{INR(m.cpc_high)}</div>
-                <div className="text-12 text-slate-500">{m.cpc_low != null ? `low ${INR(m.cpc_low)}` : ''}{m.competition && m.competition !== 'UNSPECIFIED' ? ` · competition ${m.competition.toLowerCase()}${m.competition_index != null ? ` (${m.competition_index})` : ''}` : ''}</div></div>
-              <div className="mt-3 space-y-1.5">{(data.countries || []).filter(c => c.cpc != null).slice(0, 5).map(c => <Bar key={c.code} label={c.name} value={c.cpc} max={Math.max(...data.countries.map(x => x.cpc || 0), 0.01)} text={INR(c.cpc)} tip={<div><div className="font-semibold">{c.name}</div><div>Top-of-page bid {INR(c.cpc)} per click</div><div className="text-slate-300">Competition index {c.index ?? '—'} · {fmt(c.volume)} searches a month</div></div>} />)}
-                {!(data.countries || []).some(c => c.cpc != null) && <p className="text-12 text-slate-400">No bid figures by country.</p>}</div>
+            <Card title="Cost per click" subtitle="What advertisers pay on Google">
+              <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums" title="Average cost per click (Google Ads)">{INR(m.cpc_avg ?? m.cpc_high)}</div><div className="text-12 text-slate-500">average{m.cpc_avg == null ? ' (top-of-page bid)' : ''}</div></div>
+              <div className="mt-1 text-12 text-slate-500">Top-of-page bid {m.cpc_low != null ? `${INR(m.cpc_low)} to ` : ''}{INR(m.cpc_high)}</div>
+              <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 text-center">
+                <div title="How many advertisers compete for it, 0 to 1 (Google's competition index divided by 100)"><div className="text-11.5 text-slate-500">Competitive density</div><div className="text-18 font-semibold tabular-nums text-slate-900">{m.density != null ? m.density.toFixed(2) : '—'}</div></div>
+                <div title="Ads shown on Google's results page for the keyword right now"><div className="text-11.5 text-slate-500">Ads</div><div className="text-18 font-semibold tabular-nums text-slate-900">{kd?.state === 'ready' ? (kd.serp_counts?.ads ?? 'n/a') : '…'}</div></div>
+                <div title="Product listing (shopping) ads shown on Google's results page right now"><div className="text-11.5 text-slate-500">PLA</div><div className="text-18 font-semibold tabular-nums text-slate-900">{kd?.state === 'ready' ? (kd.serp_counts?.pla ?? 'n/a') : '…'}</div></div>
+              </div>
+              <div className="mt-3 space-y-1.5">{(data.countries || []).filter(c => c.cpc != null).slice(0, 4).map(c => <Bar key={c.code} label={c.name} value={c.cpc} max={Math.max(...data.countries.map(x => x.cpc || 0), 0.01)} text={INR(c.cpc)} tip={<div><div className="font-semibold">{c.name}</div><div>Top-of-page bid {INR(c.cpc)} per click</div><div className="text-slate-300">Competition index {c.index ?? '—'} · {fmt(c.volume)} searches a month</div></div>} />)}</div>
             </Card>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <Card title="Global volume by country" subtitle="Searches per month in each country Google reports">
-              {countriesShown.length === 0 ? <p className="text-12 text-slate-400">Google has no figures for this keyword in other countries.</p> : (
-                <div className="space-y-1.5">{countriesShown.map(c => <Bar key={c.code} label={c.name} value={c.v} max={countriesShown[0].v} text={`${kfmt(c.v)} · ${c.share}%`} tip={<div><div className="font-semibold">{c.name}</div><div>{fmt(c.v)} searches a month ({periodLabel})</div><div className="text-slate-300">{c.share}% of the countries listed · bid {INR(c.cpc)} · index {c.index ?? '—'}</div></div>} />)}</div>
-              )}
+            <Card title="Global volume" subtitle="Searches per month in every country Google reports">
+              {(() => {
+                const top = countriesShown.slice(0, 6);
+                const world = period === '12' ? data.world_volume : null; // the world figure is Google's 12-month average
+                const other = world != null ? Math.max(0, world - top.reduce((a, x) => a + x.v, 0)) : null;
+                return countriesShown.length === 0 ? <p className="text-12 text-slate-400">Google has no figures for this keyword in other countries.</p> : (
+                  <>
+                    {world != null && <div className="text-28 font-bold text-slate-900 tabular-nums mb-2" title="Searches a month in every location at once (Google Keyword Planner)">{kfmt(world)}</div>}
+                    <div className="space-y-1.5">{top.map(c => <Bar key={c.code} label={c.name} value={c.v} max={top[0].v} text={`${kfmt(c.v)}${world ? ` · ${Math.round((c.v * 100) / world)}%` : ` · ${c.share}%`}`} tip={<div><div className="font-semibold">{c.name}</div><div>{fmt(c.v)} searches a month ({periodLabel})</div><div className="text-slate-300">bid {INR(c.cpc)} · index {c.index ?? '—'}</div></div>} />)}</div>
+                    {other != null && other > 0 && <div className="mt-2 pt-2 border-t border-slate-100"><Bar label="Other" value={other} max={top[0].v} text={`${kfmt(other)} · ${Math.round((other * 100) / world)}%`} tip={<div><div className="font-semibold">All other countries</div><div>{fmt(other)} searches a month</div></div>} /></div>}
+                  </>
+                );
+              })()}
             </Card>
             {[['similar', 'Similar keywords'], ['related', 'Related keywords']].map(([k, title]) => <IdeaGroup key={k} title={title} g={groupsShown(k)} go={go} />)}
           </div>

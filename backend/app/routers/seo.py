@@ -300,7 +300,7 @@ class OverviewIn(BaseModel):
 
 
 _COUNTRY_NAMES = {"IN": "India", "US": "United States", "GB": "United Kingdom", "AU": "Australia", "CA": "Canada", "AE": "United Arab Emirates", "SG": "Singapore", "DE": "Germany", "FR": "France",
-                  "NZ": "New Zealand", "ZA": "South Africa", "SA": "Saudi Arabia", "NG": "Nigeria", "KE": "Kenya", "PK": "Pakistan", "BD": "Bangladesh", "LK": "Sri Lanka", "MY": "Malaysia", "PH": "Philippines"}
+                  "IT": "Italy", "ES": "Spain", "BR": "Brazil", "NL": "Netherlands", "ID": "Indonesia", "TR": "Turkey", "MX": "Mexico", "JP": "Japan", "NZ": "New Zealand", "ZA": "South Africa", "SA": "Saudi Arabia", "NG": "Nigeria", "KE": "Kenya", "PK": "Pakistan", "BD": "Bangladesh", "LK": "Sri Lanka", "MY": "Malaysia", "PH": "Philippines"}
 _QUESTION = re.compile(r"^(what|how|why|when|where|which|who|can|does|do|is|are|should|will)\b")
 
 
@@ -331,10 +331,19 @@ def _idea_groups(kw: str, ideas: list[dict]) -> dict[str, list[dict]]:
     return {k: {"total": len(v), "rows": v[:25]} for k, v in out.items()}
 
 
+def _world_volume(kw: str) -> int | None:
+    """Searches a month for the keyword in every location at once (Google Keyword Planner with no location chosen)."""
+    from ..services import google_ads_client as ads  # noqa: PLC0415
+    try:
+        return (ads.historical_metrics([kw], geo_target=None).get(kw) or {}).get("volume")
+    except Exception:  # noqa: BLE001 -- no world figure only leaves the total out
+        return None
+
+
 def _by_country(kw: str, home: str | None) -> list[dict]:
     """The same keyword's searches per month and top-of-page bid in each country Google Ads is asked about (the home country first). A country Google gives nothing for is left out."""
     from ..services import google_ads_client as ads  # noqa: PLC0415
-    codes = list(dict.fromkeys([c for c in [(home or "").upper()] if c in _COUNTRY_NAMES] + list(_COUNTRY_NAMES)))[:12]
+    codes = list(dict.fromkeys([c for c in [(home or "").upper()] if c in _COUNTRY_NAMES] + list(_COUNTRY_NAMES)))[:20]
     def ask(code: str) -> dict | None:
         try:
             got = ads.historical_metrics([kw], geo_target=ads.geo_target_for(code)).get(kw)
@@ -342,7 +351,7 @@ def _by_country(kw: str, home: str | None) -> list[dict]:
             return None
         return {"code": code, "name": _COUNTRY_NAMES[code], "volume": got["volume"], "cpc": got["cpc"], "index": got["competition_index"], "monthly": [{"year": m["year"], "month": m["month"], "searches": m["searches"]} for m in got.get("monthly") or []]} if got and got.get("volume") else None
     from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
-    with ThreadPoolExecutor(max_workers=6) as pool:  # the countries are asked together, not one after the other
+    with ThreadPoolExecutor(max_workers=8) as pool:  # the countries are asked together, not one after the other
         out = [r for r in pool.map(ask, codes) if r]
     total = sum(r["volume"] for r in out) or 1
     for r in out:
@@ -372,7 +381,7 @@ def keyword_difficulty(body: DifficultyIn, b: Business = Depends(get_business)):
             geo = canonical = None
         location = canonical.replace(",", ", ") if canonical else None
     try:
-        return kd.score(" ".join(body.keyword.lower().split()), country, body.volume, location=location, geo=geo)
+        return kd.score(" ".join(body.keyword.lower().split()), country, body.volume, location=location, geo=geo, domain=(urlparse(b.website or "").hostname or "") if b.website else None)
     except kd.DifficultyError as exc:
         raise HTTPException(502, str(exc)) from exc
 
@@ -419,7 +428,7 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
         got = None
     if got:  # the exact keyword's own figures; the same ones the country list and every other card use
         exact = {**(exact or {}), "avg_monthly_searches": got["volume"], "competition": got["competition"], "competition_index": got["competition_index"], "low_top_of_page_bid": got.get("cpc_low"),
-                 "high_top_of_page_bid": got["cpc"], "monthly_search_volumes": [{"year": m["year"], "month": m["month"], "monthly_searches": m["searches"]} for m in got.get("monthly") or []]}
+                 "high_top_of_page_bid": got["cpc"], "cpc_avg": got.get("cpc_avg"), "monthly_search_volumes": [{"year": m["year"], "month": m["month"], "monthly_searches": m["searches"]} for m in got.get("monthly") or []]}
         ms = [m["searches"] for m in got.get("monthly") or []]
         if len(ms) >= 6 and sum(ms[-6:-3]):
             exact["three_month_change"] = round((sum(ms[-3:]) - sum(ms[-6:-3])) * 100 / sum(ms[-6:-3]), 1)
@@ -434,10 +443,11 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
         "found": exact is not None,
         "metrics": {"volume": (exact or {}).get("avg_monthly_searches"), "competition": (exact or {}).get("competition"), "competition_index": ci,
                     "difficulty": ci if (exact or {}).get("competition") not in (None, "UNSPECIFIED") else None,
-                    "cpc_low": (exact or {}).get("low_top_of_page_bid"), "cpc_high": (exact or {}).get("high_top_of_page_bid"),
+                    "cpc_low": (exact or {}).get("low_top_of_page_bid"), "cpc_high": (exact or {}).get("high_top_of_page_bid"), "cpc_avg": (exact or {}).get("cpc_avg"),
+                    "density": round(ci / 100, 2) if ci is not None else None,
                     "three_month_change": (exact or {}).get("three_month_change"), "yoy_change": (exact or {}).get("yoy_change"), "monthly": monthly},
         "ideas": [{"keyword": i["keyword"], "volume": i["avg_monthly_searches"], "competition": i["competition"], "index": i["competition_index"], "cpc": i["high_top_of_page_bid"]} for i in ideas if i["keyword"].lower() != kw][:40],
-        "groups": _idea_groups(kw, ideas), "countries": world, "ideas_from": ideas_from,
+        "groups": _idea_groups(kw, ideas), "countries": world, "world_volume": _world_volume(kw), "ideas_from": ideas_from,
         "you": {"tracked": bool(saved and saved.tracked), "rank": saved.rank if saved else None, "prev_rank": saved.prev_rank if saved else None,
                 "checked_at": saved.rank_checked_at if saved else None, "target_url": saved.target_url if saved else None},
     }

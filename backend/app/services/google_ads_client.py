@@ -144,7 +144,7 @@ def keyword_ideas(
 
 # Country code -> Google Ads geo target constant (the markets this platform serves; others fall back to the default).
 GEO_TARGETS = {"IN": 2356, "US": 2840, "GB": 2826, "UK": 2826, "AU": 2036, "CA": 2124, "AE": 2784, "SG": 2702, "DE": 2276, "FR": 2250,
-               "NZ": 2554, "ZA": 2710, "SA": 2682, "NG": 2566, "KE": 2404, "PK": 2586, "BD": 2050, "LK": 2144, "MY": 2458, "PH": 2608}
+               "IT": 2380, "ES": 2724, "BR": 2076, "NL": 2528, "ID": 2360, "TR": 2792, "MX": 2484, "JP": 2392, "NZ": 2554, "ZA": 2710, "SA": 2682, "NG": 2566, "KE": 2404, "PK": 2586, "BD": 2050, "LK": 2144, "MY": 2458, "PH": 2608}
 
 
 def geo_target_for(country: str | None) -> str:
@@ -178,8 +178,8 @@ def geo_constants(names: list[str], country_code: str = "IN") -> dict[str, dict]
     return out
 
 
-def historical_metrics(keywords: list[str], *, geo_target: str = DEFAULT_GEO_TARGET, language: str = DEFAULT_LANGUAGE) -> dict[str, dict]:
-    """Exact monthly search volume, competition and top-of-page bid for each given keyword (not related ideas)."""
+def historical_metrics(keywords: list[str], *, geo_target: str | None = DEFAULT_GEO_TARGET, language: str = DEFAULT_LANGUAGE) -> dict[str, dict]:
+    """Exact monthly search volume, competition, average cost per click and top-of-page bid for each given keyword (not related ideas). `geo_target=None` asks for every location at once (the world)."""
     GoogleAdsException = _ads_exception()
 
     client, customer_id = _client()
@@ -187,8 +187,10 @@ def historical_metrics(keywords: list[str], *, geo_target: str = DEFAULT_GEO_TAR
     request = client.get_type("GenerateKeywordHistoricalMetricsRequest")
     request.customer_id = customer_id
     request.language = language
-    request.geo_target_constants.append(geo_target)
+    if geo_target:
+        request.geo_target_constants.append(geo_target)
     request.keyword_plan_network = client.enums.KeywordPlanNetworkEnum.GOOGLE_SEARCH
+    request.historical_metrics_options.include_average_cpc = True
     request.keywords.extend(keywords)
     out: dict[str, dict] = {}
     try:
@@ -201,6 +203,7 @@ def historical_metrics(keywords: list[str], *, geo_target: str = DEFAULT_GEO_TAR
                 "competition_index": int(m.competition_index or 0),
                 "cpc": round(_micros_to_currency(m.high_top_of_page_bid_micros) or 0, 2) or None,
                 "cpc_low": round(_micros_to_currency(m.low_top_of_page_bid_micros) or 0, 2) or None,
+                "cpc_avg": round(_micros_to_currency(m.average_cpc_micros) or 0, 2) or None,
                 "monthly": [{"year": mv.year, "month": mv.month.name, "searches": int(mv.monthly_searches or 0)} for mv in m.monthly_search_volumes],  # the last 12 months, oldest first
             }
     except GoogleAdsException as exc:
