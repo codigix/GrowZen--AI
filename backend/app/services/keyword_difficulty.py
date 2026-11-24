@@ -359,6 +359,21 @@ def link_profile(sites: list[str], keyword: str) -> dict[str, dict[str, Any]]:
         db.close()
 
 
+def authority_score(da: int | None, rd: int | None, spam: int | None, rk: int | None) -> int | None:
+    """Our Authority Score, 0 to 100: how reputable a site is, from the number of sites linking to it (30%), their quality as Domain Authority (35%), how many keywords it ranks for on Google,
+    a measure of its organic presence (25%), and how authentic its profile is, from its spam score (10%). A part with no figure is left out and the rest are scaled to 100%."""
+    if da is None:
+        return None
+    parts = [(0.35, float(da))]
+    if rd is not None:
+        parts.append((0.30, _log_scale(rd, 1_000_000)))
+    if rk is not None:
+        parts.append((0.25, _log_scale(rk, 10_000_000)))
+    if spam is not None:
+        parts.append((0.10, max(0.0, 100 - spam * 6)))
+    return round(sum(w * v for w, v in parts) / sum(w for w, _ in parts))
+
+
 def _log_scale(v: float, top: float) -> float:
     return min(100.0, 100 * math.log(1 + max(v, 0)) / math.log(1 + top))
 
@@ -383,7 +398,7 @@ def score(keyword: str, country: str, volume: int | None = None, use_cache: bool
     rows = []
     for o in page["organic"]:
         m = metrics.get(o["site"]) or {}
-        rows.append({**o, "da": m.get("da"), "pa": m.get("pa"), "rd": m.get("rd"), "spam": m.get("spam")})
+        rows.append({**o, "da": m.get("da"), "pa": m.get("pa"), "rd": m.get("rd"), "spam": m.get("spam"), "rk": m.get("rk"), "as": authority_score(m.get("da"), m.get("rd"), m.get("spam"), m.get("rk"))})
     from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
     with ThreadPoolExecutor(max_workers=8) as pool:  # the pages are read together
         for r, sig in zip(rows, pool.map(lambda r: page_signals(r["url"], keyword), rows)):

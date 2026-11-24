@@ -629,11 +629,11 @@ function KeywordOverview({ b }) {
                 <table className="w-full text-12.5">
                   <thead><tr className="text-left text-11.5 text-slate-500 border-b border-slate-200">
                     <th className="px-4 py-2 font-medium">URL</th>
-                    <th className="px-2 py-2 font-medium text-right" title="Page Authority (Moz): how strong the page is, 0 to 100. Moz gives it for the home page of each site; the Domain Authority of the site is under it.">Page AS</th>
-                    <th className="px-2 py-2 font-medium text-right" title="Sites that link to the website (Moz). The count is for the whole site, not for this page alone.">Ref. Domains</th>
-                    <th className="px-2 py-2 font-medium text-right" title="Backlinks to the site that our own link data holds. Blank when the site is not one we track.">Backlinks</th>
-                    <th className="px-2 py-2 font-medium text-right" title="Estimated visits from Google to this page. It needs a traffic database that is not connected, so it is not shown rather than estimated.">Search Traffic</th>
-                    <th className="px-4 py-2 font-medium text-right" title="How many keywords this page ranks for. Open the page to see the searches it shows for, measured in Google now.">URL Keywords</th></tr></thead>
+                    <th className="px-2 py-2 font-medium text-right" title="Authority Score, 0 to 100: how reputable the site is. It accounts for the number and quality of its backlinks (sites linking to it and their Domain Authority), its organic presence (how many keywords it ranks for) and how authentic its profile is (spam score). Worked out by us from Moz data; the site's Domain Authority is under it.">Page AS</th>
+                    <th className="px-2 py-2 font-medium text-right" title="The number of referring domains that have at least one link pointing to the URL. Moz gives this count for the whole website, not for the exact URL, so that is what is shown.">Ref. Domains</th>
+                    <th className="px-2 py-2 font-medium text-right" title="The total number of backlinks leading to the URL. Shown only for sites whose links our own crawler holds; a dash means no URL-level backlink data.">Backlinks</th>
+                    <th className="px-2 py-2 font-medium text-right" title="The overall amount of organic traffic driven to the URL in a month. It needs a traffic database that is not connected, so it is not shown rather than estimated.">Search Traffic</th>
+                    <th className="px-4 py-2 font-medium text-right" title="The number of keywords for which the URL ranks in search results. Open the page to see the searches it shows for, measured in Google now.">URL Keywords</th></tr></thead>
                   <tbody>
                     {(kd.ai_links || []).length > 0 && (
                       <>
@@ -651,7 +651,7 @@ function KeywordOverview({ b }) {
                           <div className="min-w-0"><span className="flex items-center gap-1.5 min-w-0"><Link to={`/organic-rankings/page?u=${encodeURIComponent(o.url)}&q=${encodeURIComponent(data.keyword)}`} className="text-indigo-700 hover:underline truncate" title={`Open the organic rankings of this page: ${o.title}`}>{o.title || o.url}</Link>
                             <a href={o.url} target="_blank" rel="noreferrer" aria-label="Open the page in a new tab" title="Open the page itself in a new tab" className="shrink-0 text-slate-400 hover:text-indigo-600"><ExternalLink size={13} /></a></span>
                             <span className="block text-11.5 text-slate-500 truncate" title={o.url}>{o.url.replace(/^https?:\/\/(www\.)?/, '')}</span></div></div></td>
-                        <td className="px-2 py-2 text-right tabular-nums"><div className="font-semibold text-slate-900">{o.pa ?? '—'}</div>{o.da != null && <div className="text-11 text-slate-400" title="Domain Authority of the whole site">DA {o.da}</div>}</td>
+                        <td className="px-2 py-2 text-right tabular-nums"><div className="font-semibold text-slate-900" title={o.as != null ? `Authority Score ${o.as}: from ${o.rd != null ? `${fmt(o.rd)} referring domains, ` : ''}Domain Authority ${o.da}${o.rk != null ? `, ${fmt(o.rk)} ranking keywords` : ''}${o.spam != null ? `, spam score ${o.spam}` : ''}` : 'No Moz figures for this site'}>{o.as ?? '—'}</div>{o.da != null && <div className="text-11 text-slate-400" title="Domain Authority of the whole site (Moz)">DA {o.da}</div>}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{kfmt(o.rd)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{o.backlinks != null ? fmt(o.backlinks) : <span className="text-slate-300">—</span>}</td>
                         <td className="px-2 py-2 text-right text-slate-300" title="Needs a traffic database that is not connected">—</td>

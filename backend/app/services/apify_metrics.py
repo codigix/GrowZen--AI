@@ -54,7 +54,7 @@ def as_scores(x: dict[str, Any]) -> dict[str, Any] | None:
     da = _num(x.get("domain_authority"))
     if da is None:
         return None
-    return {"da": da, "pa": _num(x.get("home_page_authority")), "spam": _num(x.get("spam_score")), "rd": _num(x.get("linking_root_domains")), "source": "Apify", "site_level": True}
+    return {"da": da, "pa": _num(x.get("home_page_authority")), "spam": _num(x.get("spam_score")), "rd": _num(x.get("linking_root_domains")), "rk": _num(x.get("ranking_keywords")), "source": "Apify", "site_level": True}
 
 
 def _run(token: str, domains: list[str]) -> list[dict[str, Any]]:

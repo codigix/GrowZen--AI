@@ -57,7 +57,7 @@ def test_each_site_is_looked_up_once_and_its_figures_reach_every_page(client, mo
     st = _wait(client, base)
     assert sorted(d for c in calls for d in c) == ["example.com", "example.org"] and st["filled"] == 3 and st["failed"] == []
     got = client.get(base).json()
-    assert all(r["scores"] == {"da": 10, "pa": 28, "spam": 4, "rd": None, "source": "Apify", "site_level": True} for r in got["rows"]) and got["missing_scores"] == 0
+    assert all(r["scores"] == {"da": 10, "pa": 28, "spam": 4, "rd": None, "rk": None, "source": "Apify", "site_level": True} for r in got["rows"]) and got["missing_scores"] == 0
 
 
 def test_a_site_apify_has_no_figures_for_is_reported_not_invented(client, monkeypatch):
@@ -80,7 +80,7 @@ def test_a_refused_token_stops_the_rest_with_the_reason(client, monkeypatch):
 
 
 def test_as_scores_reads_the_actor_fields():
-    assert am.as_scores({"domain": "a.com", "domain_authority": "67", "home_page_authority": 54.0, "spam_score": 3}) == {"da": 67, "pa": 54, "spam": 3, "rd": None, "source": "Apify", "site_level": True}
+    assert am.as_scores({"domain": "a.com", "domain_authority": "67", "home_page_authority": 54.0, "spam_score": 3}) == {"da": 67, "pa": 54, "spam": 3, "rd": None, "rk": None, "source": "Apify", "site_level": True}
     assert am.as_scores({"domain": "a.com"}) is None
 
 
