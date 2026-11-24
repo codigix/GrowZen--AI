@@ -129,28 +129,6 @@ def authority(site: str) -> dict[str, Any] | None:
             "report": x.get("report_link")}
 
 
-def own_queries(db, b, url: str, country: str | None) -> dict[str, Any]:
-    """For a page of the project's own site: the searches Google Search Console says it was shown for (last 90 days), with views, clicks and average position."""
-    from . import google_rank, gsc, gsc_access  # noqa: PLC0415
-    host = google_rank.host_of(b.website)
-    if not host or google_rank.host_of(url) != host:
-        return {"own": False, "rows": []}
-    state, message, sc, site = gsc_access.search_console(db, b, host)
-    if state != "ok":
-        return {"own": True, "rows": [], "note": message}
-    end = date.today() - timedelta(days=gsc.LAG_DAYS)
-    body = gsc._body(end - timedelta(days=89), end, ["query"], 100, None)
-    body["dimensionFilterGroups"] = [{"groupType": "and", "filters": [{"dimension": "page", "operator": "equals", "expression": url}]}]
-    try:
-        rows = sc.query(site, body)
-    except Exception as exc:  # noqa: BLE001 -- Google's own message is the reason
-        return {"own": True, "rows": [], "note": str(exc)[:200]}
-    out = [{"keyword": (r.get("keys") or [""])[0], "views": int(r.get("impressions") or 0), "clicks": int(r.get("clicks") or 0), "position": round(float(r.get("position") or 0), 1),
-            "ctr": round(100 * float(r.get("ctr") or 0), 1)} for r in rows]
-    out.sort(key=lambda r: (-r["clicks"], -r["views"]))
-    return {"own": True, "rows": out[:30], "note": None if out else "Search Console has no searches for this page in the last 90 days."}
-
-
 def phrases(analysis: dict[str, Any], keyword: str | None) -> list[str]:
     """The searches this page is about: the keyword that led here, its title and main heading cut at the brand, and its sub-headings, as short phrases."""
     seen: dict[str, str] = {}
@@ -173,34 +151,3 @@ def phrases(analysis: dict[str, Any], keyword: str | None) -> list[str]:
         if h["tag"] == "h2":
             add(h["text"])
     return list(seen)[:12]
-
-
-def rankings(url: str, keyword: str | None, country: str, analysis: dict[str, Any]) -> dict[str, Any]:
-    """Each phrase the page is about, measured: searches a month (Google Keyword Planner) and the page's position in Google's top 20 for it ({position: None} when it is not there)."""
-    from . import google_ads_client as ads  # noqa: PLC0415
-    from . import keyword_difficulty as kd  # noqa: PLC0415
-    from .providers.base import intent_of  # noqa: PLC0415
-    cands = phrases(analysis, keyword)
-    vols: dict[str, Any] = {}
-    try:
-        vols = ads.historical_metrics(cands, geo_target=ads.geo_target_for(country)) if cands else {}
-    except Exception as exc:  # noqa: BLE001 -- without volumes the positions are still shown
-        log.info("volumes unavailable: %r", exc)
-    want = norm(url)
-    final = norm(analysis.get("final_url") or url)
-
-    def place(k: str) -> int | None:
-        results = kd._lofo(k, country, 20)  # Google's top 20 with their real addresses
-        if not results:
-            return -1  # not measured
-        for o in results:
-            if norm(o["url"]) in (want, final):
-                return int(o["position"])
-        return None
-    # the searches with the most traffic first; the others are measured while there is time (three at a time)
-    order = sorted(cands, key=lambda k: -((vols.get(k) or {}).get("volume") or 0))[:10]
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        pos = dict(zip(order, pool.map(place, order)))
-    rows = [{"keyword": k, "volume": (vols.get(k) or {}).get("volume"), "index": (vols.get(k) or {}).get("competition_index"), "cpc": (vols.get(k) or {}).get("cpc"), "intent": intent_of(k),
-             "position": (None if pos.get(k) in (None, -1) else pos[k]), "measured": pos.get(k, -1) != -1, "in_top20": pos.get(k) not in (None, -1)} for k in order]
-    return {"rows": rows, "country": country}

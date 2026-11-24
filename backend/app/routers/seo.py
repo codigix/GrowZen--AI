@@ -441,36 +441,42 @@ class UrlIn(BaseModel):
     country: str | None = Field(default=None, min_length=2, max_length=2)
 
 
-@router.post("/url-overview")
-def url_overview(body: UrlIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
-    """One page of the web: what the page says (title, description, headings, length, links, structured data), how strong its site is (Moz through Apify), and, for a page of the project's own
-    site, the searches Search Console says it was shown for."""
-    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
-
-    from ..services import keyword_difficulty as kd  # noqa: PLC0415
+@router.post("/organic-rankings")
+def organic_rankings(body: UrlIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Organic rankings of one page: the page itself, its site's strength, the searches Google says it is about, and (for the project's own pages) Search Console. The positions come next, a few at a time."""
+    from ..services import organic_rankings as orx  # noqa: PLC0415
     from ..services import url_overview as uo  # noqa: PLC0415
     country = (body.country or "").upper() or market.serp_country(b)
     try:
-        site = kd.site_of(uo._public(body.url))
+        return orx.summary(db, b, body.url, body.keyword, country)
     except uo.UrlError as exc:
         raise HTTPException(400, str(exc)) from exc
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        auth = ex.submit(uo.authority, site)
-        page = uo.page_analysis(body.url)
-        authority = auth.result()
-    return {"page": page, "site": site, "authority": authority, "search_console": uo.own_queries(db, b, page.get("final_url") or body.url, country), "country": country}
 
 
-@router.post("/url-overview/rankings")
-def url_overview_rankings(body: UrlIn, b: Business = Depends(get_business)):
-    """The searches the page is about, each measured: searches a month and the page's position in Google's top 20. Slower (it reads Google's results for each)."""
-    from ..services import url_overview as uo  # noqa: PLC0415
+class PositionsIn(BaseModel):
+    url: str = Field(min_length=4, max_length=600)
+    keywords: list[str] = Field(min_length=1, max_length=8)
+    country: str | None = Field(default=None, min_length=2, max_length=2)
+    also: str | None = Field(default=None, max_length=600)  # the address the page ended at after redirects
+
+
+@router.post("/organic-rankings/positions")
+def organic_positions(body: PositionsIn, b: Business = Depends(get_business)):
+    """For each search: where the page is in Google's top 20, and the pages that are there. Read from Google now."""
+    from ..services import organic_rankings as orx  # noqa: PLC0415
     country = (body.country or "").upper() or market.serp_country(b)
-    try:
-        analysis = uo.page_analysis(body.url)
-    except uo.UrlError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return uo.rankings(body.url, body.keyword, country, analysis)
+    return {"rows": orx.positions(body.url, country, [" ".join(k.lower().split()) for k in body.keywords], body.also)}
+
+
+class DomainsIn(BaseModel):
+    domains: list[str] = Field(min_length=1, max_length=8)
+
+
+@router.post("/organic-rankings/authorities")
+def organic_authorities(body: DomainsIn, b: Business = Depends(get_business)):
+    """Domain Authority, referring domains and ranking keywords of a few sites (Moz through Apify)."""
+    from ..services import organic_rankings as orx  # noqa: PLC0415
+    return {"authorities": orx.authorities(body.domains)}
 
 
 def _place_geo(b: Business, country: str, place: str | None) -> tuple[str | None, str | None]:

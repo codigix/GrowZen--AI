@@ -110,8 +110,9 @@ def keyword_ideas(
     include_monthly: bool = False,
     language: str = DEFAULT_LANGUAGE,
     geo_target: str = DEFAULT_GEO_TARGET,
+    page_url: str | None = None,
 ) -> list[dict]:
-    """Keyword ideas + metrics for one or more seed keywords, via the Keyword Planner (GenerateKeywordIdeas)."""
+    """Keyword ideas + metrics for one or more seed keywords, via the Keyword Planner (GenerateKeywordIdeas). With `page_url`, Google reads that page and suggests the searches it is about."""
     GoogleAdsException = _ads_exception()
 
     client, customer_id = _client()
@@ -123,7 +124,13 @@ def keyword_ideas(
     request.geo_target_constants.append(geo_target)
     request.keyword_plan_network = client.enums.KeywordPlanNetworkEnum.GOOGLE_SEARCH_AND_PARTNERS
     request.historical_metrics_options.include_average_cpc = True
-    request.keyword_seed.keywords.extend(seed_keywords)
+    if page_url and seed_keywords:
+        request.keyword_and_url_seed.url = page_url
+        request.keyword_and_url_seed.keywords.extend(seed_keywords)
+    elif page_url:
+        request.url_seed.url = page_url
+    else:
+        request.keyword_seed.keywords.extend(seed_keywords)
 
     results = []
     try:

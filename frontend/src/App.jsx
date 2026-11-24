@@ -82,7 +82,7 @@ const TopPagesPage = lazy(() => import('./platform/TopPagesReport').then(m => ({
 const toolkit = (name) => lazy(() => import('./platform/SeoToolkit').then(m => ({ default: m[name] })));
 const DomainOverviewPage = toolkit('DomainOverviewPage');
 const KeywordOverviewPage = toolkit('KeywordOverviewPage');
-const UrlOverviewPage = toolkit('UrlOverviewPage');
+const PageRankingsPage = lazy(() => import('./platform/PageRankings').then(m => ({ default: m.PageRankingsPage })));
 
 /** Page-shaped placeholder: top bar, title and subtitle, then tiles, a chart card and a table card, inside the usual page margins. */
 function PageLoading() {
@@ -186,12 +186,13 @@ export default function App() {
         <Route path="feature/:slug" element={<FeaturePage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
         <Route path="organic-rankings" element={<OrganicRankingsPage />} />
+        <Route path="organic-rankings/page" element={<PageRankingsPage />} />
         <Route path="organic-rankings/:tab" element={<OrganicRankingsPage />} />
         <Route path="top-pages" element={<TopPagesPage />} />
         <Route path="keyword-gap" element={<Navigate to="/competitor-finder?tab=gap" replace />} />
         <Route path="compare-domains" element={<Navigate to="/competitor-finder?tab=compare" replace />} />
         <Route path="keyword-overview" element={<KeywordOverviewPage />} />
-        <Route path="keyword-overview/url" element={<UrlOverviewPage />} />
+        
         <Route path="ai-content-generation" element={<ContentStudioPage />} />
         <Route path="ai-content-generation/:tab" element={<ContentStudioPage />} />
         <Route path="content-calendar" element={<Navigate to="/ai-content-generation/calendar" replace />} />
