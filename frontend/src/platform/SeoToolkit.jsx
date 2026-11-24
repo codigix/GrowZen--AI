@@ -384,6 +384,12 @@ function KeywordOverview({ b }) {
   // the SEO difficulty and the Google results page are read from the real top 10 (slow the first time, so the page does not wait for it)
   const [kd, setKd] = useState(null); // { state: 'loading' | 'ready' | 'error', ...result }
   const kdKey = data ? `${data.keyword}|${data.country}` : '';
+  const [secs, setSecs] = useState(0); // how long the difficulty has been read for
+  useEffect(() => {
+    if (kd?.state !== 'loading') { setSecs(0); return undefined; }
+    const t = setInterval(() => setSecs(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [kd?.state]);
   useEffect(() => {
     if (!data) { setKd(null); return undefined; }
     let live = true;
@@ -458,7 +464,7 @@ function KeywordOverview({ b }) {
                 <div className="py-10 text-center text-13 text-slate-500">
                   {kd?.state === 'error' ? <><AlertTriangle size={18} className="mx-auto mb-2 text-amber-500" />Not available: {kd.message}</>
                     : kd?.state === 'ready' ? 'Google gave too few results with figures to score this keyword.'
-                      : <><Loader2 size={20} className="mx-auto mb-2 animate-spin text-indigo-500" />Reading the top 10 on Google and their authority… this takes a minute or two.</>}
+                      : <><Loader2 size={20} className="mx-auto mb-2 animate-spin text-indigo-500" />Reading the top 10 on Google and their authority… {secs}s <span className="block text-11.5 text-slate-400 mt-1">Google's results page is the slow part (about a minute). Everything else on this page is already final.</span></>}
                 </div>
               )}
             </Card>

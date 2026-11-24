@@ -43,15 +43,41 @@ def site_of(url: str) -> str:
     return ".".join(parts[-2:]) if len(parts) >= 2 else host
 
 
+def _serper(keyword: str, country: str) -> dict[str, Any] | None:
+    """The same page read through Serper.dev, which answers in about a second. None when it has no key or no credit left (Apify is used then)."""
+    from ..config import get_settings  # noqa: PLC0415
+    key = get_settings().serper_api_key.strip()
+    if not key:
+        return None
+    try:
+        r = httpx.post("https://google.serper.dev/search", headers={"X-API-KEY": key, "Content-Type": "application/json"}, json={"q": keyword, "gl": countries.gl(country).lower(), "hl": "en", "num": 10}, timeout=15)
+        if r.status_code != 200:
+            return None
+        j = r.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+    organic = [{"position": o.get("position") or i + 1, "title": o.get("title") or "", "url": o.get("link") or "", "site": site_of(o.get("link") or ""), "description": (o.get("snippet") or "")[:200]}
+               for i, o in enumerate(j.get("organic") or []) if o.get("link")][:10]
+    if not organic:
+        return None
+    return {"organic": organic, "questions": [p.get("question") for p in (j.get("peopleAlsoAsk") or []) if p.get("question")],
+            "related": [q.get("query") for q in (j.get("relatedSearches") or []) if q.get("query")],
+            "ads": [{"title": a.get("title") or "", "url": a.get("link") or "", "site": site_of(a.get("link") or ""), "description": (a.get("snippet") or "")[:240]} for a in (j.get("ads") or [])],
+            "ai_overview": bool(j.get("aiOverview") or j.get("answerBox"))}
+
+
 def serp(keyword: str, country: str) -> dict[str, Any]:
     """What Google shows for the keyword right now: {organic: [{position, title, url, site, description}], questions, related, ads: [{title, url, description}], ai_overview}. Not kept."""
+    fast = _serper(keyword, country)
+    if fast:
+        return fast
     tokens = [t for _i, t in apify_metrics.keys()]
     if not tokens:
         raise DifficultyError("Apify is not connected (APIFY_KEY): the Google results cannot be read.")
     last = ""
     for tok in tokens:
         try:
-            r = httpx.post(SERP_URL, params={"token": tok}, json={"queries": keyword, "countryCode": countries.gl(country).lower(), "languageCode": "en", "maxPagesPerQuery": 2,
+            r = httpx.post(SERP_URL, params={"token": tok, "memory": 4096}, json={"queries": keyword, "countryCode": countries.gl(country).lower(), "languageCode": "en", "maxPagesPerQuery": 1, "saveHtml": False, "saveHtmlToKeyValueStore": False,
                                                                    "resultsPerPage": 10, "mobileResults": False}, timeout=180)
         except httpx.HTTPError as exc:
             last = f"Apify could not be reached ({type(exc).__name__})."
