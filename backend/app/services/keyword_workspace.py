@@ -358,6 +358,7 @@ def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[st
     if tidied:
         report["tidy"] = {"label": "Wording check", "found": tidied, "new": 0, "note": f"{tidied} phrases set aside because they are not keywords (slogans, cut-off sentences, a place on its own, off-topic words)"}
     fill_metrics(db, b)
+    fill_trends(db, b)
     from . import keyword_fit
     try:  # hide what does not fit this business (another brand, another service, another place), with the reason
         checked = keyword_fit.judge(db, b, list(existing.values()))
@@ -367,6 +368,72 @@ def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[st
         log.warning("keyword fit check skipped: %s", exc)
     db.commit()
     return report
+
+
+def trend_change(months: list[dict[str, Any]] | None) -> int | None:
+    """How the searches moved over the last 12 months, in percent: the average of the last 3 months against the average of the first 3. None when Google gave fewer than 6 months."""
+    v = [int(m.get("searches") or 0) for m in months or []]
+    if len(v) < 6:
+        return None
+    first, last = sum(v[:3]) / 3, sum(v[-3:]) / 3
+    if not first:
+        return None if not last else 100
+    return round((last - first) * 100 / first)
+
+
+def fill_trends(db: Session, b: Business, limit: int = 500) -> dict[str, Any]:
+    """The last 12 months of searches for each keyword that has no history yet, from Google Ads Keyword Planner (one request answers up to 500 keywords)."""
+    from . import google_ads_client as ads  # noqa: PLC0415
+    out: dict[str, Any] = {"filled": 0, "reason": None}
+    if not keyword_metrics.enabled():
+        out["reason"] = "Google Ads is not set up, so there is no search history."
+        return out
+    todo = [r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.trend.is_(None), KeywordCandidate.dismissed.is_(False)).limit(limit))]
+    if not todo:
+        return out
+    try:
+        got = ads.historical_metrics(list(dict.fromkeys(r.keyword.lower() for r in todo)), geo_target=ads.geo_target_for(market.serp_country(b)))
+    except ads.GoogleAdsError as exc:
+        out["reason"] = f"Google Ads did not answer ({'; '.join(getattr(exc, 'details', []) or [str(exc)])[:160]})."
+        return out
+    for r in todo:
+        m = got.get(r.keyword.lower())
+        if m and m.get("monthly"):
+            r.trend = [{"year": x["year"], "month": x["month"], "searches": x["searches"]} for x in m["monthly"]][-12:]
+            if r.volume is None:
+                r.volume = m.get("volume")
+            out["filled"] += 1
+    db.flush()
+    return out
+
+
+def search_planner(db: Session, b: Business, query: str) -> dict[str, Any]:
+    """Keyword Planner ideas for something the owner typed: filed in the list (with the same wording and topic check as every source), each with its searches and 12-month history.
+    Returns how many Google gave, how many were new, and how many were left out as not about this business."""
+    from . import google_ads_client as ads  # noqa: PLC0415
+    from . import keyword_quality  # noqa: PLC0415
+    seed = clean(query)
+    if len(seed) < 2:
+        return {"found": 0, "added": 0, "left_out": 0, "reason": "Type a word or a phrase first."}
+    if not keyword_metrics.enabled():
+        return {"found": 0, "added": 0, "left_out": 0, "reason": "Google Ads is not set up, so the Keyword Planner cannot be asked."}
+    try:
+        ideas = ads.keyword_ideas([seed], limit=300, include_monthly=True, geo_target=ads.geo_target_for(market.serp_country(b)))
+    except ads.GoogleAdsError as exc:
+        return {"found": 0, "added": 0, "left_out": 0, "reason": f"Google Ads did not answer ({'; '.join(getattr(exc, 'details', []) or [str(exc)])[:160]})."}
+    ideas = [i for i in ideas if (i.get("avg_monthly_searches") or 0) >= PLANNER_MIN_SEARCHES]
+    junk = keyword_quality.check_all(b, [clean(i["keyword"]) for i in ideas])
+    keep = [i for i in ideas if clean(i["keyword"]) not in junk]
+    found = [{"keyword": i["keyword"], "kind": "planner", "detail": f"Google Keyword Planner idea for \"{seed}\"", "volume": i["avg_monthly_searches"],
+              "difficulty": i.get("competition_index") if i.get("competition") not in (None, "UNSPECIFIED") else None, "cpc": i.get("high_top_of_page_bid") or None} for i in keep]
+    existing = {r.norm: r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))}
+    added = _add(db, b, found, existing)
+    for i in keep:
+        row = existing.get(merge_key(clean(i["keyword"])))
+        if row is not None and row.trend is None and i.get("monthly_search_volumes"):
+            row.trend = [{"year": m["year"], "month": m["month"], "searches": m["monthly_searches"]} for m in i["monthly_search_volumes"]][-12:]
+    db.flush()
+    return {"found": len(ideas), "added": added, "left_out": len(junk), "reason": None}
 
 
 def measure_difficulty(db: Session, b: Business, ids: list[int]) -> list[dict[str, Any]]:
@@ -453,7 +520,7 @@ def score_of(r: KeywordCandidate, tag: str) -> int:
 
 def item(r: KeywordCandidate, saved: set[str]) -> dict[str, Any]:
     tag = tag_of(r)
-    return {"id": r.id, "keyword": r.keyword, "variants": r.variants or [], "sources": r.sources or [], "competitors": r.competitors or [], "volume": r.volume, "difficulty": r.kd, "index": r.difficulty, "kd_detail": r.kd_detail, "cpc": r.cpc,
+    return {"id": r.id, "keyword": r.keyword, "variants": r.variants or [], "sources": r.sources or [], "competitors": r.competitors or [], "volume": r.volume, "difficulty": r.kd, "index": r.difficulty, "kd_detail": r.kd_detail, "trend": r.trend, "change": trend_change(r.trend), "cpc": r.cpc,
             "intent": r.intent, "rank": r.own_rank, "impressions": r.impressions, "clicks": r.clicks, "fit": r.fit, "tag": tag, "score": score_of(r, tag), "picked": merge_key(r.keyword) in saved,
             "dismissed": r.dismissed}
 

@@ -50,6 +50,26 @@ def measure_difficulty(body: DifficultyIn, b: Business = Depends(get_business), 
     return {"results": res}
 
 
+@router.post("/trends")
+def fill_trends(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Fills the last 12 months of searches for the keywords that have none yet. The page calls it by itself when it opens."""
+    out = kw.fill_trends(db, b)
+    db.commit()
+    return out
+
+
+class PlannerIn(BaseModel):
+    q: str = Field(min_length=2, max_length=80)
+
+
+@router.post("/planner-search")
+def planner_search(body: PlannerIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Search the Google Keyword Planner for a word or phrase: the relevant ideas are added to the list with their searches and 12-month history."""
+    out = kw.search_planner(db, b, body.q)
+    db.commit()
+    return out
+
+
 @router.get("/area-search")
 def area_search(q: str = Query("", max_length=80), country: str = Query("IN", max_length=2), b: Business = Depends(get_business)):
     """Google Maps suggestions for a place to target, inside a country, while typing."""

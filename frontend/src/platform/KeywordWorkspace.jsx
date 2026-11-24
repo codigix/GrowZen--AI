@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePager, Pager, downloadCsv } from './DataTable';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, Download, EyeOff, Gauge, Loader2, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, Download, EyeOff, Loader2, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
@@ -13,6 +13,26 @@ const SRC_SHORT = { website: 'Website', search_console: 'Search Console', profil
 const SRC_TONE = { website: 'blue', search_console: 'green', profile: 'amber', competitors: 'red', google_ideas: 'gray', planner: 'blue', area: 'amber', brief: 'green', ai: 'violet' };
 const n0 = (v) => (v == null ? '—' : v.toLocaleString('en-US'));
 const PAGE = 50;
+const KD_BAND = { easy: (v) => v < 30, medium: (v) => v >= 30 && v < 50, hard: (v) => v >= 50 && v < 70, very: (v) => v >= 70 };
+const MON = (m) => `${String(m).slice(0, 1)}${String(m).slice(1, 3).toLowerCase()}`;
+
+/** The last 12 months of searches as a small line, with an arrow and the change in percent (the last 3 months against the first 3). */
+function Trend({ months, change }) {
+  if (!months?.length) return <span className="text-slate-300" title="Google has no search history for it">—</span>;
+  const v = months.map(m => m.searches || 0);
+  const hi = Math.max(1, ...v), lo = Math.min(...v);
+  const pts = v.map((x, n) => `${(n / Math.max(1, v.length - 1)) * 58 + 1},${18 - ((x - lo) / Math.max(1, hi - lo)) * 16}`).join(' ');
+  const up = change != null && change >= 10, down = change != null && change <= -10;
+  const colour = up ? '#059669' : down ? '#dc2626' : '#64748b';
+  const tip = ['Searches a month, last 12 months:', ...months.map(m => `${MON(m.month)} ${String(m.year).slice(2)}: ${(m.searches || 0).toLocaleString('en-US')}`), change != null ? `Change: ${change > 0 ? '+' : ''}${change}% (last 3 months against the first 3)` : ''].filter(Boolean).join('\n');
+  return (
+    <span className="inline-flex items-center gap-1.5" title={tip}>
+      <svg width="60" height="20" viewBox="0 0 60 20" aria-hidden="true"><polyline points={pts} fill="none" stroke={colour} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" /></svg>
+      <span className="inline-flex items-center gap-0.5 text-12 font-semibold tabular-nums" style={{ color: colour }}>
+        {up ? <ArrowUp size={13} /> : down ? <ArrowDown size={13} /> : <ArrowRight size={13} />}{change == null ? '' : `${Math.abs(change)}%`}</span>
+    </span>
+  );
+}
 // the keyword difficulty score in five colours, from very easy (green) to very hard (red)
 const KD_COLOR = (v) => (v < 15 ? '#059669' : v < 30 ? '#65a30d' : v < 50 ? '#d97706' : v < 70 ? '#ea580c' : '#dc2626');
 const KD_WORD = (v) => (v < 15 ? 'Very easy' : v < 30 ? 'Easy' : v < 50 ? 'Medium' : v < 70 ? 'Challenging' : 'Very hard');
@@ -115,6 +135,15 @@ export default function KeywordWorkspace({ b, onUse }) {
   const [kdLocal, setKdLocal] = useState({}); // difficulty scores just worked out: { id: { kd, detail } }
   const [kdBusy, setKdBusy] = useState(() => new Set()); // keyword ids being read now
   const [kdNote, setKdNote] = useState('');
+  const [kdTick, setKdTick] = useState(0); // goes up when a round of scoring ends, so the next unscored keywords are taken
+  const kdTried = useRef(new Set()); // ids already asked for: a failure is not asked again by itself
+  const kdRunning = useRef(false);
+  const trendsAsked = useRef('');
+  const [fMin, setFMin] = useState(''); // filters: searches a month at least, difficulty band, 12-month trend, intent
+  const [fKd, setFKd] = useState('');
+  const [fTrend, setFTrend] = useState('');
+  const [fIntent, setFIntent] = useState('');
+  const [plannerQ, setPlannerQ] = useState('');
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const show = view === 'picked' ? 'picked' : view === 'dismissed' ? 'dismissed' : 'open';
@@ -136,6 +165,12 @@ export default function KeywordWorkspace({ b, onUse }) {
       .then(res => { if (live) { setFig(res); setFigError(res.reason || res.note || ''); } }).catch(e => { if (live) setFigError(e.message || 'Google Ads did not answer.'); }).finally(() => { if (live) setFigBusy(false); });
     return () => { live = false; };
   }, [place, wantsFigures, wordsKey, places.length]); // eslint-disable-line react-hooks/exhaustive-deps -- when the place or the list changes
+  // the last 12 months of searches are asked of Google Ads by themselves for the keywords that have none (one request for hundreds)
+  useEffect(() => {
+    if (!d?.items?.length || !d.items.some(i => i.trend == null) || trendsAsked.current === wordsKey) return;
+    trendsAsked.current = wordsKey;
+    api(`/businesses/${b.id}/keyword-workspace/trends`, { method: 'POST', timeout: 120000 }).then(res => { if (res.filled) r.reload(true); }).catch(() => {});
+  }, [wordsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // searches per month for the chosen time: the 12-month figure is Google's own average; 6 and 3 are the average of those last months; or one month
   const searchesIn = (m) => {
     if (period === '12') return m.volume;
@@ -152,7 +187,7 @@ export default function KeywordWorkspace({ b, onUse }) {
   })();
   // reads the real top 10 on Google for each keyword and scores it with the full difficulty formula: a few at a time, about 15 seconds each
   const measure = async (idList) => {
-    const todo = idList.filter(id => !kdBusy.has(id)).slice(0, 30);
+    const todo = idList.slice(0, PAGE);
     if (!todo.length) return;
     setKdNote(''); setKdBusy(new Set(todo));
     let ok = 0, failed = 0, why = '';
@@ -171,6 +206,10 @@ export default function KeywordWorkspace({ b, onUse }) {
     let list = [...(d?.items || [])];
     if (wantsFigures) list = list.map(i => { const m = fig?.metrics?.[i.keyword.toLowerCase().trim()]; return m ? { ...i, volume: searchesIn(m), index: m.index, comp: m.competition, cpc: m.cpc } : { ...i, volume: null, index: null, comp: null, cpc: null }; });
     list = list.map(i => (kdLocal[i.id] ? { ...i, difficulty: kdLocal[i.id].kd, kd_detail: kdLocal[i.id].detail } : i)); // the difficulty is the keyword's own score (not the location's)
+    if (fMin) list = list.filter(i => (i.volume || 0) >= Number(fMin));
+    if (fKd) list = list.filter(i => i.difficulty != null && KD_BAND[fKd](i.difficulty));
+    if (fTrend) list = list.filter(i => i.change != null && (fTrend === 'up' ? i.change >= 10 : fTrend === 'down' ? i.change <= -10 : Math.abs(i.change) < 10));
+    if (fIntent) list = list.filter(i => i.intent === fIntent);
     if (view === 'suggested') list = list.filter(i => i.suggested);
     if (band) list = list.filter(i => (band === 'none' ? i.rank == null : i.rank != null && bandOf(i.rank)?.[0] === band));
     const v = (i) => (sort.key === 'keyword' ? i.keyword : i[sort.key]);
@@ -184,8 +223,16 @@ export default function KeywordWorkspace({ b, onUse }) {
       return sort.dir === 'asc' ? o : -o;
     });
     return list;
-  }, [d, sort, view, band, fig, period, kdLocal]); // eslint-disable-line react-hooks/exhaustive-deps
-  const pager = usePager(rows, { size: PAGE, resetKey: `${view}|${band}|${q}|${source}|${sort.key}|${sort.dir}` });
+  }, [d, sort, view, band, fig, period, kdLocal, fMin, fKd, fTrend, fIntent]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pager = usePager(rows, { size: PAGE, resetKey: `${view}|${band}|${q}|${source}|${sort.key}|${sort.dir}|${fMin}|${fKd}|${fTrend}|${fIntent}` });
+  useEffect(() => {
+    if (kdRunning.current || view === 'dismissed') return;
+    const todo = pager.rows.filter(i => i.difficulty == null && !kdTried.current.has(i.id)).map(i => i.id);
+    if (!todo.length) return;
+    kdRunning.current = true;
+    todo.forEach(id => kdTried.current.add(id));
+    measure(todo).finally(() => { kdRunning.current = false; setKdTick(x => x + 1); });
+  }, [pager.rows, kdTick, view]); // eslint-disable-line react-hooks/exhaustive-deps -- the keywords on the page that have no score yet are scored by themselves
   const topVolume = useMemo(() => Math.max(1, ...rows.map(i => i.volume || 0)), [rows]);
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
@@ -198,6 +245,12 @@ export default function KeywordWorkspace({ b, onUse }) {
   const toggle = (id) => setSel(s => { const x = new Set(s); x.has(id) ? x.delete(id) : x.add(id); return x; });
   const ids = [...sel];
   const act = (kind, list, msg) => run(kind, async () => { await api(`${base}/${kind}`, { method: 'POST', body: { ids: list } }); setSel(new Set()); r.reload(true); toast(msg); });
+  const searchPlanner = () => run('planner', async () => {
+    const res = await api(`${base}/planner-search`, { method: 'POST', body: { q: plannerQ.trim() }, timeout: 120000 });
+    if (res.reason) { toast(res.reason); return; }
+    setQ(plannerQ.trim()); setLimit(PAGE); r.reload(true);
+    toast(`Google gave ${res.found} ideas: ${res.added} new added${res.left_out ? `, ${res.left_out} left out as not about your business` : ''}`);
+  });
   const pick = (list) => act('pick', list, `${list.length} keyword${list.length === 1 ? '' : 's'} saved to your list`);
   const go = (v) => { setView(v); setLimit(PAGE); setSel(new Set()); };
   const empty = d.totals.all === 0;
@@ -251,6 +304,15 @@ export default function KeywordWorkspace({ b, onUse }) {
               <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Time
                 <select value={period} onChange={e => setPeriod(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Time">
                   <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>{[...monthChoices].reverse().map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</select></label>
+              <select value={fMin} onChange={e => setFMin(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Searches a month"><option value="">Any searches</option><option value="100">100+ a month</option><option value="500">500+ a month</option><option value="1000">1,000+ a month</option><option value="5000">5,000+ a month</option></select>
+              <select value={fKd} onChange={e => setFKd(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Difficulty"><option value="">Any difficulty</option><option value="easy">Easy (under 30)</option><option value="medium">Medium (30 to 49)</option><option value="hard">Challenging (50 to 69)</option><option value="very">Very hard (70+)</option></select>
+              <select value={fTrend} onChange={e => setFTrend(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Last 12 months"><option value="">Any trend</option><option value="up">Rising</option><option value="steady">Steady</option><option value="down">Falling</option></select>
+              <select value={fIntent} onChange={e => setFIntent(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Intent"><option value="">Any intent</option><option value="informational">Informational</option><option value="commercial">Commercial</option><option value="transactional">Transactional</option><option value="local">Local</option><option value="navigational">Navigational</option></select>
+              {(fMin || fKd || fTrend || fIntent) && <button type="button" onClick={() => { setFMin(''); setFKd(''); setFTrend(''); setFIntent(''); }} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear filters</button>}
+              <span className="flex items-center gap-1.5">
+                <input value={plannerQ} onChange={e => setPlannerQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') searchPlanner(); }} placeholder="Find new keywords in the Keyword Planner…" aria-label="Search the Keyword Planner" className="h-9 w-72 px-3 text-13 rounded-lg border border-slate-300 bg-white" />
+                <Button size="sm" icon={Search} busy={busy === 'planner'} disabled={plannerQ.trim().length < 2} onClick={searchPlanner}>Search</Button>
+              </span>
               {figBusy && <span className="text-12 text-slate-500 inline-flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" />Asking Google Ads…</span>}
               {!figBusy && figError && <span className="text-12 text-amber-700" title={figError}>{String(figError).slice(0, 80)}</span>}
               {view === 'open' || view === 'suggested' ? (
@@ -268,7 +330,8 @@ export default function KeywordWorkspace({ b, onUse }) {
                       <th className="w-10 px-3 py-2"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(i => i.id)))} /></th>
                       <SortTh id="keyword" sort={sort} setSort={setSort} what="A search people type into Google." why="Click the name to check its searches, cost and related ideas. Click the heading to sort A to Z." from="your website, Search Console, your profile, competitor sites, Google suggestions and AI.">Keyword</SortTh>
                       <SortTh id="volume" sort={sort} setSort={setSort} right what="How many times a month people search it in the chosen location and time." why="Shows which keywords are worth the effort." from="Google Ads Keyword Planner (needs Google Ads connected). Blank when Google gave no figure for that place.">Searches / mo</SortTh>
-                      <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100. It is worked out from the real top 10 on Google for the keyword: their authority, backlinks, content, the features on the page and the intent. Higher is harder." why="Pick easier ones first." from="Google's results page (through Apify), Moz authority, the Google Ads search volume and our saved backlinks. Press Check to work it out; it takes about 15 seconds.">Difficulty</SortTh>
+                      <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100. It is worked out from the real top 10 on Google for the keyword: their authority, backlinks, content, the features on the page and the intent. Higher is harder." why="Pick easier ones first." from="Google's results page (through Apify), Moz authority, the Google Ads search volume and our saved backlinks. It is worked out by itself, a page at a time.">Difficulty</SortTh>
+                      <SortTh id="change" sort={sort} setSort={setSort} what="How the searches moved in the last 12 months: the line is each month, the arrow and percent compare the last 3 months with the first 3. Green up arrow: rising by 10% or more. Red down arrow: falling by 10% or more." why="Rising keywords are worth starting on; falling ones are fading." from="Google Ads Keyword Planner (12 months of history).">Last 12 months</SortTh>
                       <SortTh id="index" sort={sort} setSort={setSort} right what="Google's competition index for this keyword in the chosen location: how many advertisers bid on it, 0 to 100. Higher means more competition." why="A high index means the keyword is crowded and costly." from="Google Ads Keyword Planner.">Index</SortTh>
                       <SortTh id="cpc" sort={sort} setSort={setSort} right what="What advertisers bid at the top of the page for it, per click, in the chosen location." why="Shows what the keyword is worth." from="Google Ads Keyword Planner. Shown once a location or time is chosen.">Cost / click</SortTh>
                       <th className="px-3 py-2 text-left"><Head what="What kind of opportunity it is: Gap (competitors use it, you do not), Win (you are in the top 3), Almost (page 2), Shared, Yours, Idea." why="Start with Gaps and Almost." from="comparing your own places with the competitor sites and Google results collected.">Kind</Head></th>
@@ -292,8 +355,9 @@ export default function KeywordWorkspace({ b, onUse }) {
                         </td>
                         <td className="px-3 py-2.5 text-right" title="Searches per month in your country (Google Ads Keyword Planner)"><div className="tabular-nums">{n0(i.volume)}</div>{i.volume > 0 && <div className="mt-1 h-1 rounded-full bg-slate-100 ml-auto w-16"><div className="h-1 rounded-full bg-slate-400" style={{ width: `${Math.max(5, (i.volume / topVolume) * 100)}%` }} /></div>}</td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>{i.difficulty != null ? <KdChip v={i.difficulty} detail={i.kd_detail} />
-                          : kdBusy.has(i.id) ? <span className="inline-flex items-center gap-1.5 text-12 text-slate-500"><Loader2 size={13} className="animate-spin" />Reading Google…</span>
-                            : <button type="button" onClick={() => measure([i.id])} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer" title="Read the top 10 on Google for this keyword and work out its difficulty (about 15 seconds)">Check</button>}</td>
+                          : kdBusy.has(i.id) || !kdTried.current.has(i.id) ? <span className="inline-flex items-center gap-1.5 text-12 text-slate-500" title="Reading the top 10 on Google for this keyword; the score appears by itself"><Loader2 size={13} className="animate-spin" />Scoring…</span>
+                            : <button type="button" onClick={() => measure([i.id])} className="text-12 font-semibold text-amber-700 hover:underline cursor-pointer" title="Google's results could not be read for it. Try again.">Retry</button>}</td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap"><Trend months={i.trend} change={i.change} /></td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" title="Google's competition index, 0 to 100"><span className="tabular-nums font-semibold">{i.index ?? '—'}</span>{i.comp && <span className="ml-1 text-11.5 text-slate-500">{String(i.comp).toLowerCase()}</span>}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums" title="What advertisers bid at the top of the page, per click">{i.cpc != null ? `₹${i.cpc}` : '—'}</td>
                         <td className="px-3 py-2.5"><span title={TAG_HELP[i.tag]}><Badge tone={TAG_TONE[i.tag]}>{TAG_SHORT[i.tag]}</Badge></span></td>
@@ -337,8 +401,7 @@ export default function KeywordWorkspace({ b, onUse }) {
           <div role="toolbar" aria-label="Selected keywords" className="bg-slate-900 text-white rounded-xl shadow-xl px-4 py-2.5 flex flex-wrap items-center gap-3">
             <span className="text-13 font-semibold">{ids.length} selected</span>
             {view !== 'picked' && <Button size="sm" variant="primary" icon={CheckCircle2} busy={busy === 'pick'} onClick={() => pick(ids)}>Pick</Button>}
-            <Button size="sm" icon={Gauge} busy={kdBusy.size > 0} onClick={() => measure(ids)}>{kdBusy.size > 0 ? `Checking ${kdBusy.size}…` : 'Check difficulty'}</Button>
-            {kdNote && <span className="text-12 text-slate-300 max-w-[260px] truncate" title={kdNote}>{kdNote}</span>}
+
             {view === 'dismissed' ? <Button size="sm" icon={Undo2} onClick={() => act('restore', ids, 'Put back in the list')}>Put back</Button>
               : <Button size="sm" icon={EyeOff} busy={busy === 'dismiss'} onClick={() => act('dismiss', ids, `${ids.length} set aside`)}>Set aside</Button>}
             <button type="button" onClick={() => setSel(new Set())} className="text-12.5 text-slate-300 hover:text-white underline cursor-pointer">Clear</button>
@@ -352,6 +415,6 @@ export default function KeywordWorkspace({ b, onUse }) {
 }
 
 function exportCsv(items, name) {
-  downloadCsv(`keywords-${name || 'site'}`, ['Keyword', 'Searches per month', 'Difficulty', 'Your rank', 'Kind', 'Score', 'Sources', 'Competitors'],
-    items.map(i => [i.keyword, i.volume ?? '', i.difficulty ?? '', i.rank ?? '', i.tag || '', i.score ?? '', i.sources.map(s => s.label).join('; '), i.competitors.join('; ')]));
+  downloadCsv(`keywords-${name || 'site'}`, ['Keyword', 'Searches per month', 'Difficulty', 'Change in 12 months (%)', 'Your rank', 'Kind', 'Score', 'Sources', 'Competitors'],
+    items.map(i => [i.keyword, i.volume ?? '', i.difficulty ?? '', i.change ?? '', i.rank ?? '', i.tag || '', i.score ?? '', i.sources.map(s => s.label).join('; '), i.competitors.join('; ')]));
 }
