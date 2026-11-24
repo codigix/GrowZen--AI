@@ -509,7 +509,7 @@ function KeywordOverview({ b }) {
   };
   const countriesShown = (() => { const l = (data?.countries || []).map(c => ({ ...c, v: inPeriod(c.monthly, c.volume) })).filter(c => c.v); const tot = l.reduce((a, c) => a + c.v, 0) || 1; return l.map(c => ({ ...c, share: Math.round((c.v * 1000) / tot) / 10 })).sort((x, y) => y.v - x.v); })();
   const groupsShown = (k) => { const g = data?.groups?.[k]; return { total: g?.total || 0, volume: g?.volume || 0, all: g?.all || [], rows: (g?.rows || []).map(r => ({ ...r, v: inPeriod(r.monthly, r.volume) })).sort((x, y) => (y.v || 0) - (x.v || 0)) }; };
-  const openIdeas = (view) => navigate(`/keyword-overview/ideas?q=${encodeURIComponent(data.keyword)}&view=${view}${data.country ? `&c=${data.country}` : ''}${chosen.length ? `&a=${encodeURIComponent(namesOf(chosen).join('|'))}` : ''}`);
+  const openIdeas = (view) => navigate(`/keyword-management/magic?q=${encodeURIComponent(data.keyword)}&view=${view}${data.country ? `&c=${data.country}` : ''}${chosen.length ? `&a=${encodeURIComponent(namesOf(chosen).join('|'))}` : ''}`);
   const askKd = async (k) => {
     setKdMap(mm => ({ ...mm, [k]: 'loading' }));
     try { const r = await api(`/businesses/${b.id}/seo/keyword-difficulty/batch`, { method: 'POST', body: { keywords: [k], country: data.country || null, places: namesOf(chosen) }, timeout: 240000 }); setKdMap(mm => ({ ...mm, [k]: r.results?.[0]?.score ?? null })); } catch { setKdMap(mm => ({ ...mm, [k]: null })); }

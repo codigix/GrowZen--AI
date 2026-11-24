@@ -36,7 +36,7 @@ export const SIDEBAR_GROUPS = [
     title: 'Keyword Research',
     items: [
       { to: '/keyword-overview', label: 'Keyword Overview', icon: Search },
-      { to: '/keyword-management/discover', label: 'Keyword Magic Tool', icon: Wand2 },
+      { to: '/keyword-management/magic', label: 'Keyword Magic Tool', icon: Wand2 },
       { to: '/keyword-management/topics', label: 'Keyword Strategy Builder', icon: Layers },
       { to: '/keyword-management/tracked', label: 'Saved Keywords', icon: Bookmark }
     ]
@@ -109,7 +109,7 @@ export const SIDEBAR_SECTIONS = [
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { title: '1 · Website audit ', items: [page('/website-audit', { label: 'Website audit' }), link('/page-indexing', 'Page Indexing')] },
       { title: '2 · Competitor Research', items: [page('/competitor-finder'), go('/competitor-watch', 'Competitor Watch', 'traffic'), link('/organic-rankings/page', 'Organic Rankings')] },
-      { title: '3 · Find Keywords', items: [link('/keyword-management/workspace', 'Keyword Workspace'), page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' })] },
+      { title: '3 · Find Keywords', items: [link('/keyword-management/workspace', 'Keyword Workspace'), link('/keyword-management/magic', 'Keyword Magic Tool'), page('/keyword-management/ai', { label: 'Find Keywords', also: ['/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }), page('/keyword-overview', { label: 'Check One Keyword' })] },
       { title: '4 · Choose Keywords', items: [page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics'] })] },
       { title: '5 · Decide Where to Use', items: [{ to: '/keyword-management/mapping', label: 'Keyword Mapping', also: ['/keyword-management/use'] }] },
       { title: '6 · Write & Update', items: [go('/ai-content-generation/blog', 'Write content (Blogs)', 'Blogs'), link('/fix-plan', 'Fix Plan')] },
