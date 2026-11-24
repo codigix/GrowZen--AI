@@ -5,7 +5,7 @@ import {
   Sparkles, Check, ChevronRight, Globe, ShieldCheck, AlertTriangle, RefreshCw,
   FileText, MapPin, Instagram, Facebook, Linkedin, Copy, Plus, CalendarDays,
   Flame, TrendingUp, TrendingDown, Search, Clock, ArrowUpRight, CheckCircle2, Lock, Sliders,
-  Send, ExternalLink, Link2, Share2, Layers, Award, Tag, BarChart3, Code, Eye, Download
+  Send, ExternalLink, Link2, Share2, Layers, Award, Tag, BarChart3, Code, Eye, Download, Megaphone
 } from 'lucide-react';
 import {
   SeoShell, Card, Tabs, Badge, StatusPill, Button, Field, inputCls, areaCls,
@@ -16,12 +16,15 @@ import { api, fmt, useApi, usePoll } from './seoApi';
 import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } from './SitePublishPanel';
 import FeaturedImageField, { featuredOf } from './FeaturedImageField';
 import BlogImageAnalysis from './BlogImageAnalysis';
+import SeoChecklist from './SeoChecklist';
+import { ResearchBriefStep, WorkflowPanel } from './SeoWorkflow';
 import ReactSitePanel from './ReactSitePanel';
 import HtmlSitePanel from './HtmlSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 import PostedBlogs from './PostedBlogs';
-import { KeywordTopicPlanner, LayoutCheckCard, PromoteCard, ResumeCard, ArticleDownloads } from './BlogFlow';
+import { KeywordTopicPlanner, LayoutCheckCard, ResumeCard, ArticleDownloads } from './BlogFlow';
+import PromoteBlogs from './PromoteBlogs';
 import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage, brandOf } from './keywordHighlight';
 
 
@@ -99,6 +102,12 @@ const intentOf = (kw, b) => {
  * 1. Trending Topics Discovery Module: Google Ads Keyword Planner ideas, top by volume and rising by 3-month change
  *    (same API as Keyword Intelligence → Google Planner)
  */
+// Countries the Keyword Planner lookup supports (same list as the backend's GEO_TARGETS).
+const KP_COUNTRIES = { IN: 'India', US: 'United States', GB: 'United Kingdom', AU: 'Australia', CA: 'Canada', AE: 'UAE', SG: 'Singapore', DE: 'Germany', FR: 'France', NZ: 'New Zealand', ZA: 'South Africa', SA: 'Saudi Arabia', NG: 'Nigeria', KE: 'Kenya', PK: 'Pakistan', BD: 'Bangladesh', LK: 'Sri Lanka', MY: 'Malaysia', PH: 'Philippines' };
+// Rough spelling closeness (shared letter pairs) for the "Did you mean" hint.
+const bigrams = (s) => { const t = s.toLowerCase().replace(/\s+/g, ' '); const m = new Map(); for (let i = 0; i < t.length - 1; i++) m.set(t.slice(i, i + 2), (m.get(t.slice(i, i + 2)) || 0) + 1); return m; };
+const similarity = (a, c) => { const x = bigrams(a), y = bigrams(c); let hit = 0, tot = 0; x.forEach((n, k) => { hit += Math.min(n, y.get(k) || 0); tot += n; }); y.forEach(n => { tot += n; }); return tot ? (2 * hit) / tot : 0; };
+
 function TrendingTopicsTab({ b, onSelectTopic }) {
   const [selected, setSelected] = useState({});  // keyword -> { keyword, rising }
   const pickedCount = Object.keys(selected).length;
@@ -118,16 +127,30 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
   const seed = picked || seeds[0] || '';
   const doSearch = () => { const q = typed.trim().toLowerCase(); if (q) setPicked(q); };
   // Google Ads Keyword Planner: keyword ideas for the seed with monthly volume, 3-month change and 12-month history.
-  const trend = useApi(seed ? `/keyword-planner/metrics?keyword=${encodeURIComponent(seed)}&limit=50&include_monthly=true` : null);
+  const [country, setCountry] = useState(String(b.country || 'IN').toUpperCase()); // search location (Keyword Planner geo target)
+  const [range, setRange] = useState(12); // months the numbers cover: 12 = Planner's own average and 3-month change; 6 / 3 are worked out from the monthly figures
+  const trend = useApi(seed ? `/keyword-planner/metrics?keyword=${encodeURIComponent(seed)}&limit=50&include_monthly=true&country=${country}` : null);
   const noData = trend.error?.status === 404; // Planner has no ideas for this seed: an empty result, not a failure
   const ideas = (!noData && trend.data?.keywords) || [];
   const seedIdea = ideas.find(r => r.keyword.toLowerCase() === String(trend.data?.seed_keyword || '').toLowerCase());
 
   const pctLabel = (v) => (v == null ? null : `${v >= 0 ? '+' : '-'}${Math.abs(Math.round(v))}%`);
-  const toTopic = (r, category) => ({ id: `${category}-${r.keyword}`, title: r.keyword, category, velocity: pctLabel(r.three_month_change), score: r.avg_monthly_searches, competition: r.competition, intent: intentOf(r.keyword, b), source: 'Google Keyword Planner' });
-  // Top = most-searched ideas; Rising = ideas whose searches grew most over the last 3 months.
-  const topQueries = useMemo(() => [...ideas].sort((a, c) => (c.avg_monthly_searches || 0) - (a.avg_monthly_searches || 0)).slice(0, 20).map(r => toTopic(r, 'top')), [ideas, b]); // eslint-disable-line react-hooks/exhaustive-deps
-  const risingQueries = useMemo(() => ideas.filter(r => (r.three_month_change ?? 0) > 0).sort((a, c) => c.three_month_change - a.three_month_change).slice(0, 20).map(r => toTopic(r, 'rising')), [ideas, b]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Numbers for the chosen period. 12 months keeps Planner's own figures; 6 / 3 months use only the last months of the monthly history.
+  const periodAvg = (r) => {
+    const v = (r.monthly_search_volumes || []).slice(-range);
+    return range === 12 || !v.length ? r.avg_monthly_searches : Math.round(v.reduce((s, m) => s + (m.monthly_searches || 0), 0) / v.length);
+  };
+  const periodChange = (r) => {
+    const v = r.monthly_search_volumes || [];
+    if (range === 12 || v.length < 2) return r.three_month_change;
+    const old = v[Math.max(0, v.length - 1 - range)].monthly_searches;
+    return old ? Math.round(((v[v.length - 1].monthly_searches - old) / old) * 10000) / 100 : null;
+  };
+  const changeMonths = range === 12 ? 3 : range;
+  const toTopic = (r, category) => ({ id: `${category}-${r.keyword}`, title: r.keyword, category, velocity: pctLabel(periodChange(r)), score: periodAvg(r), competition: r.competition, intent: intentOf(r.keyword, b), source: 'Google Keyword Planner' });
+  // Top = most-searched ideas; Rising = ideas whose searches grew most over the period.
+  const topQueries = useMemo(() => [...ideas].sort((a, c) => (periodAvg(c) || 0) - (periodAvg(a) || 0)).slice(0, 20).map(r => toTopic(r, 'top')), [ideas, b, range]); // eslint-disable-line react-hooks/exhaustive-deps
+  const risingQueries = useMemo(() => ideas.filter(r => (periodChange(r) ?? 0) > 0).sort((a, c) => periodChange(c) - periodChange(a)).slice(0, 20).map(r => toTopic(r, 'rising')), [ideas, b, range]); // eslint-disable-line react-hooks/exhaustive-deps
   const topics = [...risingQueries, ...topQueries];
 
   // Opening the writer: the topic becomes the first target keyword; the Keyword Planner ideas feed the keyword generator.
@@ -142,7 +165,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
   const MON = { JANUARY: 'Jan', FEBRUARY: 'Feb', MARCH: 'Mar', APRIL: 'Apr', MAY: 'May', JUNE: 'Jun', JULY: 'Jul', AUGUST: 'Aug', SEPTEMBER: 'Sep', OCTOBER: 'Oct', NOVEMBER: 'Nov', DECEMBER: 'Dec' };
   const hist = seedIdea?.monthly_search_volumes || [];
   const pts = hist.map(m => ({ date: `${MON[m.month] || String(m.month).slice(0, 3)} '${String(m.year).slice(2)}`, value: m.monthly_searches || 0 }));
-  const ch = seedIdea?.three_month_change;
+  const ch = seedIdea ? periodChange(seedIdea) : null;
   const classification = ch == null ? null : ch >= 10 ? 'rising' : ch <= -10 ? 'declining' : 'stable';
   const pctOf = (t) => (t.velocity === 'Breakout' ? 9999 : /^[+-]\d+%$/.test(t.velocity || '') ? parseInt(t.velocity, 10) : null);
   const COMP = { LOW: ['Low', 'green'], MEDIUM: ['Medium', 'amber'], HIGH: ['High', 'red'] };
@@ -179,7 +202,19 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
           <Button type="submit" variant="primary" icon={Search} disabled={!typed.trim()}>Search</Button>
         </form>
         {seeds.length > 0 && <div className="flex flex-wrap items-center gap-1.5 text-12"><span className="text-slate-500">Topics for</span>{seeds.map(x => <button key={x} type="button" onClick={() => setPicked(x)} aria-pressed={x === seed} className={`h-7 px-2.5 rounded-full font-semibold cursor-pointer ring-1 ring-inset ${x === seed ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>{x}</button>)}</div>}
-        <span className="ml-auto inline-flex items-center gap-1.5 text-11.5 text-slate-500"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Google Keyword Planner · India · last 12 months</span>
+        <div className="ml-auto flex flex-wrap items-center gap-2 text-12 text-slate-600">
+          <label className="inline-flex items-center gap-1.5">Location
+            <select value={country} onChange={e => setCountry(e.target.value)} aria-label="Search location" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
+              {Object.entries(KP_COUNTRIES).map(([c, n]) => <option key={c} value={c}>{n}</option>)}
+            </select>
+          </label>
+          <label className="inline-flex items-center gap-1.5">Period
+            <select value={range} onChange={e => setRange(Number(e.target.value))} aria-label="Period" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
+              <option value={3}>Last 3 months</option><option value={6}>Last 6 months</option><option value={12}>Last 12 months</option>
+            </select>
+          </label>
+          <span className="inline-flex items-center gap-1.5 text-11.5 text-slate-500" title="Google Keyword Planner reports monthly figures, not weekly or daily"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Google Keyword Planner · monthly data</span>
+        </div>
       </div>
 
       {pickedCount > 0 && (
@@ -192,6 +227,16 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
         </div>
       )}
 
+      {!trend.loading && seed && ideas.length <= 2 && (() => {
+        const close = seeds.filter(x => x.toLowerCase() !== seed.toLowerCase() && similarity(x, seed) >= 0.6).slice(0, 3);
+        return (
+          <div className="px-3 py-2 rounded-xl bg-amber-50 ring-1 ring-amber-200 text-12.5 text-amber-900">
+            Very few results for “{seed}”. Check the spelling{close.length ? ' — did you mean ' : '.'}
+            {close.map((x, i) => <React.Fragment key={x}>{i > 0 && ', '}<button type="button" onClick={() => { setTyped(x); setPicked(x); }} className="font-semibold underline cursor-pointer">{x}</button></React.Fragment>)}{close.length ? '?' : ''}
+          </div>
+        );
+      })()}
+
       {trend.error && !noData && !trend.loading && <ErrorNote>Google Keyword Planner is not answering right now ({trend.error.message}). Try again in a minute.</ErrorNote>}
 
       {trend.data && !noData && !trend.loading && (
@@ -199,7 +244,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
           <div>
             <div className="flex items-center gap-2 text-14 font-semibold text-slate-900">“{trend.data.seed_keyword}”{classification && <span className={`text-11.5 font-semibold capitalize px-2 py-0.5 rounded-full ${classification === 'rising' ? 'bg-emerald-50 text-emerald-700' : classification === 'declining' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{classification}</span>}</div>
             <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-12">
-              {[['Latest month', pts.length ? fmt(pts[pts.length - 1].value) : null], ['Average a month', seedIdea ? fmt(seedIdea.avg_monthly_searches) : null], ['3-month change', pctLabel(ch)], ['Topics found', relatedAll.length]].map(([l, v]) => (
+              {[['Latest month', pts.length ? fmt(pts[pts.length - 1].value) : null], ['Average a month', seedIdea ? fmt(periodAvg(seedIdea)) : null], [`${changeMonths}-month change`, pctLabel(ch)], ['Topics found', relatedAll.length]].map(([l, v]) => (
                 <div key={l}><dt className="text-slate-500">{l}</dt><dd className="text-16 font-semibold tabular-nums text-slate-900">{v ?? '—'}</dd></div>))}
             </dl>
           </div>
@@ -229,7 +274,7 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
           <Card pad={false} title={`Top queries (${topQueries.length})`} subtitle="Most searched, by average searches a month">{tableFor(topQueries, 'top')}</Card>
-          <Card pad={false} title={`Rising queries (${risingQueries.length})`} subtitle="Searches grew most in the last 3 months">{tableFor(risingQueries, 'rising')}</Card>
+          <Card pad={false} title={`Rising queries (${risingQueries.length})`} subtitle={`Searches grew most in the last ${changeMonths} months`}>{tableFor(risingQueries, 'rising')}</Card>
         </div>
       )}
     </div>
@@ -526,8 +571,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
   const elapsed = pending?.created_at ? Math.max(0, (now - new Date(pending.created_at).getTime()) / 1000) : 0;
   const preview = pendingFull.data?.id === pendingId ? pendingFull.data.body : '';
 
-  const generate = async ({ topic, keywords, length }) => {
-    const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, keywords: keywords.map(k => ({ keyword: k })) } });
+  const generate = async ({ topic, keywords, length, title, workflow }) => {
+    const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, title: title || undefined, workflow: workflow || undefined, keywords: keywords.map(k => ({ keyword: k })) } });
     setPendingId(r.articles[0].id);
     setOpenId(null);
     list.reload(true);
@@ -559,7 +604,15 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
           onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
 
       {done && <LayoutCheckCard b={b} article={article} />}
-      {done && <PromoteCard b={b} article={article} />}
+      {/* promotion now has its own page (Blogs → Promote & Track Links); a shortcut to it for this article */}
+      {done && (
+        <Link to={`/ai-content-generation/promote?article=${article.id}`} className="flex flex-wrap items-center gap-3 p-4 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-violet-50 hover:border-indigo-300 transition-colors">
+          <span className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center"><Megaphone size={17} /></span>
+          <span className="flex-1 min-w-[200px]"><span className="block text-[13.5px] font-semibold text-slate-900">Promote this blog and track the links</span>
+            <span className="block text-[12px] text-slate-500">Where competitors post, the best blogging platforms and your promotion plan are on their own page now.</span></span>
+          <span className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-indigo-700">Open Promote &amp; Track Links<ChevronRight size={14} /></span>
+        </Link>
+      )}
 
       {/* the full list lives on the Generated Articles tab; here only a summary with a shortcut */}
       {articles.length > 0 && (() => {
@@ -751,13 +804,14 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     const mine = ++kwSeq.current;
     setKwBusy(true); setKwError(''); setKwNote('');
     const keep = regen ? [] : selectedTopic?.selected || [];
+    const lockedPrimary = kw.trim(); // an existing primary keyword (picked topic or typed) is never regenerated, only the secondary keywords
     try {
       const r = await api(`/businesses/${b.id}/articles/keywords`, {
         method: 'POST',
-        body: { topic: topicText.trim(), related: [...(selectedTopic?.selected || []), ...related], avoid: regen ? [kw, ...secondaryList].filter(Boolean) : [] }
+        body: { topic: topicText.trim(), related: [...(selectedTopic?.selected || []), ...related], avoid: regen ? secondaryList.filter(Boolean) : [], primary: lockedPrimary }
       });
       if (mine !== kwSeq.current) return;
-      setKw(r.primary);
+      if (!lockedPrimary) setKw(r.primary);
       setSecondaryList([...new Set([...keep, ...r.secondary])].slice(0, 10));
       setIntent(r.intent || '');
       const vols = Object.fromEntries(Object.entries(r.volumes || {}).map(([k, v]) => [k.toLowerCase(), v]));
@@ -800,11 +854,35 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     toast(`${words.length} keyword${words.length > 1 ? 's' : ''} added to this blog`);
   };
 
-  const generateBlog = () => {
+  // Title step (still part of step 0): five SEO title options from the topic and keywords; the user picks one or types their own, then the blog is written for it.
+  const [titleStage, setTitleStage] = useState(false);
+  const [titleOptions, setTitleOptions] = useState([]);
+  const [pickedTitle, setPickedTitle] = useState('');
+  const [titleBusy, setTitleBusy] = useState(false);
+  const [titleError, setTitleError] = useState('');
+  const suggestTitles = async () => {
+    setTitleBusy(true); setTitleError('');
+    try {
+      const r = await api(`/businesses/${b.id}/articles/titles`, { method: 'POST', body: { topic: topicText.trim() || kw.trim(), primary: kw.trim(), secondary: secondaryList.map(k => k.trim()).filter(Boolean), avoid: titleOptions } });
+      setTitleOptions(r.titles || []);
+      if (!pickedTitle.trim() && r.titles?.length) setPickedTitle(r.titles[0]);
+    } catch (e) { setTitleError(`${e.message || e} You can type your own title below.`); }
+    finally { setTitleBusy(false); }
+  };
+  const openTitleStep = () => { setTitleStage(true); setGenError(''); if (!titleOptions.length) suggestTitles(); };
+
+  // Research & brief (the SEO workflow): after the title, the research stages run and the user confirms the brief; the article is written from it.
+  const [briefStage, setBriefStage] = useState(false);
+  const workflowInput = () => ({
+    title: pickedTitle.trim(), primary: kw.trim(), secondary: secondaryList.map(k => k.trim()).filter(Boolean),
+    topic: topicText.trim() || kw.trim(), intent: intent || '', length: articleLength, audience: '', instructions: ''
+  });
+
+  const generateBlog = (workflow) => {
     const keywords = [kw, ...secondaryList].map(k => k.trim().toLowerCase()).filter(Boolean);
     setGenBusy(true); setGenError('');
     // once writing starts, go on to the Write step (AI Draft) and show it from the top
-    return onGenerate({ topic: topicText.trim() || kw.trim(), keywords, length: articleLength })
+    return onGenerate({ topic: topicText.trim() || kw.trim(), keywords, length: articleLength, title: pickedTitle.trim(), workflow: workflow && workflow.brief ? workflow : undefined })
       .then(() => { setStep(1); setTimeout(() => document.getElementById('eeat-pipeline-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); })
       .catch(e => setGenError(e.message || String(e))).finally(() => setGenBusy(false));
   };
@@ -934,7 +1012,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
           <div className="rounded-xl border border-slate-200 bg-slate-100 p-3 flex justify-center overflow-x-auto relative">
             {site.busy && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center"><RefreshCw size={20} className="animate-spin text-indigo-500" /></div>}
             <iframe title="Preview in your website's design" sandbox="" referrerPolicy="no-referrer" srcDoc={site.html}
-              style={{ width: device === 'mobile' ? 390 : '100%', height: 700, background: '#fff' }} className="rounded-lg border border-slate-300 shadow-sm" />
+              style={{ width: device === 'mobile' ? 390 : '100%', height: 'max(900px, 85vh)', background: '#fff' }} className="rounded-lg border border-slate-300 shadow-sm" />
           </div>
         </>
       )}
@@ -951,6 +1029,48 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const saveWithBody = (body) => api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: { ...articleFields(), body } })
     .then(() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } if (onSaved) onSaved(); });
   const [scheduledDate] = useState(() => { const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); });  // tomorrow 10:00, local
+
+  // Real Details step: "Include" adds one factual sentence (only what the business profile says) to the draft, then the check turns green.
+  // Name, place and services go after the introduction's first paragraph; phone and website go at the end, before the schema block.
+  const [includeBusy, setIncludeBusy] = useState('');
+  const [includeMsg, setIncludeMsg] = useState(null); // { id, ok, text }: shown under the row, so a failure is never missed (a toast is easy to overlook)
+  const includeDetail = (id) => {
+    setIncludeMsg(null);
+    try { includeDetailRun(id); } catch (err) { console.error('Include failed', err); setIncludeBusy(''); setIncludeMsg({ id, ok: false, text: `Could not add it: ${err?.message || err}` }); }
+  };
+  const includeDetailRun = (id) => {
+    const e =(t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const bn = brandOf(b.name) || b.name;
+    const place = [b.area, b.city].filter(Boolean).join(', ');
+    const svc = (b.services || []).map(x => x?.name).filter(Boolean).slice(0, 4).join(', ');
+    const line = {
+      name: `<p>This guide is brought to you by ${e(bn)}.</p>`,
+      place: `<p>${e(bn)} is based in ${e(place)}.</p>`,
+      service: `<p>${e(bn)} offers ${e(svc)}.</p>`,
+      phone: `<p>To talk to ${e(bn)}, call ${e(b.phone || '')}.</p>`,
+      site: `<p>Learn more about ${e(bn)} at ${e(String(b.website || '').replace(/^https?:\/\//, '').replace(/\/$/, ''))}.</p>`
+    }[id];
+    if (!line) return;
+    const base = liveBody || '';
+    let next;
+    if (id === 'phone' || id === 'site') {
+      const at = base.search(/<script\b[^>]*application\/ld\+json/i);
+      next = at >= 0 ? `${base.slice(0, at)}${line}\n${base.slice(at)}` : `${base}\n${line}`;
+    } else {
+      const h1End = base.search(/<\/h1>/i);
+      const p = base.indexOf('</p>', h1End >= 0 ? h1End : 0);
+      next = p >= 0 ? `${base.slice(0, p + 4)}\n${line}${base.slice(p + 4)}` : `${line}\n${base}`;
+    }
+    setDraft(next);
+    // saved at once: the article list reloads the saved article now and then, which would otherwise bring the old text back
+    if (selectedArticle) {
+      setIncludeBusy(id);
+      saveWithBody(next)
+        .then(() => setIncludeMsg({ id, ok: true, text: 'Added to the article and saved.' }))
+        .catch(err => { console.error('Include save failed', err); setIncludeMsg({ id, ok: false, text: `Added to the draft, but saving failed: ${err?.message || err}` }); })
+        .finally(() => setIncludeBusy(''));
+    } else setIncludeMsg({ id, ok: true, text: 'Added to the draft.' });
+  };
 
   const next = () => {
     if (step === 0) {
@@ -1008,8 +1128,55 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
           </div>
         )}
       >
+        {/* Step 0, part 2: SEO title (pick one of five or type your own), then the blog is written for it */}
+        {/* Step 0, part 3: research stages and the content brief (the SEO workflow) */}
+        {step === 0 && titleStage && briefStage && (
+          <ResearchBriefStep b={b} input={workflowInput()} onBack={() => setBriefStage(false)}
+            onGenerate={(wf) => generateBlog(wf)} genBusy={genBusy} generating={generating} genError={genError} />
+        )}
+
+        {step === 0 && titleStage && !briefStage && (
+          <div className="max-w-3xl space-y-4">
+            <div className="text-[12px] text-slate-500">Step 2 of 3 · Choose the SEO title. Next, the research stages build a content brief you can edit (or generate straight away without research).</div>
+            <Field label="Topic" hint="You can still change the topic. Click Regenerate Titles after changing it.">
+              <input className={inputCls} value={topicText} onChange={e => setTopicText(e.target.value)} />
+            </Field>
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Title suggestions for “{kw}”</div>
+                <Button size="sm" icon={RefreshCw} busy={titleBusy} onClick={suggestTitles}>Regenerate Titles</Button>
+              </div>
+              {titleBusy && !titleOptions.length && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />Writing SEO titles with Claude AI…</div>}
+              <div className="grid grid-cols-1 gap-2" role="radiogroup" aria-label="SEO title options">
+                {titleOptions.map(t => (
+                  <button key={t} type="button" role="radio" aria-checked={pickedTitle === t} onClick={() => setPickedTitle(t)}
+                    className={`px-3 py-2.5 rounded-xl border flex items-center justify-between gap-3 text-left cursor-pointer transition-all ${pickedTitle === t ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500' : 'bg-white border-slate-200 hover:border-indigo-300'}`}>
+                    <span className="text-[13px] font-semibold text-slate-800">{t}</span>
+                    <span className="text-[11px] text-slate-500 shrink-0">{t.length} characters</span>
+                  </button>
+                ))}
+              </div>
+              {titleError && <div className="mt-1.5 text-[11.5px] text-amber-800">{titleError}</div>}
+            </div>
+            <Field label="Your SEO title" hint="Edit the picked title or type your own. 30 to 60 characters, with the primary keyword, works best.">
+              <div className="flex items-center gap-2">
+                <input className={inputCls} value={pickedTitle} onChange={e => setPickedTitle(e.target.value)} placeholder="Pick a suggestion above or type a title" />
+                <span className={`text-[11.5px] font-semibold shrink-0 tabular-nums ${pickedTitle.trim().length >= 30 && pickedTitle.trim().length <= 60 ? 'text-emerald-700' : 'text-amber-700'}`}>{pickedTitle.trim().length} / 30-60</span>
+              </div>
+              {pickedTitle.trim() && kw.trim() && !pickedTitle.toLowerCase().includes(kw.trim().toLowerCase()) && <div className="mt-1 text-[11.5px] text-amber-800">This title does not contain the primary keyword “{kw}”.</div>}
+            </Field>
+            {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
+            {genError && <div className="text-[12px] text-red-600">{genError}</div>}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => { setTitleStage(false); setTitleOptions([]); setPickedTitle(''); }}>Back to keywords</Button>
+              <Button variant="ai" icon={Sparkles} disabled={!pickedTitle.trim() || titleBusy || generating} onClick={() => { setGenError(''); setBriefStage(true); }}>Next: Research &amp; Brief</Button>
+              <Button busy={genBusy} disabled={!pickedTitle.trim() || titleBusy || generating} onClick={() => generateBlog()} title="Write the article straight away, without the research stages">Generate without research</Button>
+            </div>
+          </div>
+        )}
+
         {/* Step 0: Keyword & Intent */}
-        {step === 0 && (
+        {step === 0 && !titleStage && (
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_390px] gap-4 items-start">
             <div className="space-y-4 min-w-0">
               <Field label="Topic" hint="Picked from Trending Topics Radar, or type your own topic">
@@ -1023,7 +1190,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-[12px] font-bold text-slate-800">Keywords for this article</div>
                   <Button size="sm" icon={RefreshCw} busy={kwBusy} disabled={topicText.trim().length < 2} onClick={() => suggestKeywords(kwReady)}>
-                    {kwReady ? 'Regenerate Keywords' : 'Generate Keywords'}
+                    {kwReady ? 'Regenerate Secondary Keywords' : 'Generate Keywords'}
                   </Button>
                 </div>
                 {kwBusy && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />Writing keywords for “{topicText}” with Claude AI…</div>}
@@ -1073,10 +1240,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             )}
             {onGenerate && (
               <div className="space-y-1.5">
-                <Button variant="ai" icon={Sparkles} className="w-full justify-center" busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={generateBlog}>Generate Blog</Button>
+                <Button variant="ai" icon={Sparkles} className="w-full justify-center" busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={openTitleStep}>Next: Choose SEO Title</Button>
                 {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
                 {!kwReady && !kwBusy && <div className="text-[11.5px] text-amber-700">Generate the keywords first.</div>}
-                <div className="text-[11.5px] text-slate-500">Writes a complete blog (SEO title, meta description, introduction, H2/H3 sections, FAQs, conclusion) using the keywords above, then opens it for review.</div>
+                <div className="text-[11.5px] text-slate-500">Next you choose the SEO title; then a complete blog (meta description, introduction, H2/H3 sections, FAQs, conclusion) is written with the keywords above and opened for review.</div>
               </div>
             )}
             {genError && <div className="text-[12px] text-red-600">{genError}</div>}
@@ -1259,7 +1426,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                       {renderViewSwitch()}
                       {previewView !== 'standard' ? renderSitePreview() : (<>
                         {renderPreviewHeader()}
-                        <div className="rounded-xl border border-slate-200 bg-white p-6 min-h-[380px] max-h-[640px] overflow-y-auto shadow-xs">
+                        <div className="rounded-xl border border-slate-200 bg-white p-6 min-h-[380px] shadow-xs">{/* the whole article, no inner scroll box (a long article looked cut off half way) */}
                           {draft && draft.trim() ? (
                             <article
                               className="blog-preview-article text-[13.5px] text-slate-800 leading-relaxed space-y-4
@@ -1380,7 +1547,11 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 <div key={r.id} className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-[12px]">
                   {r.ok ? <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" /> : <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />}
                   <div className="min-w-0"><div className="font-semibold text-slate-800">{r.label}</div><div className="text-slate-500 break-words">{r.value}</div></div>
-                  <span className={`ml-auto shrink-0 font-semibold ${r.ok ? 'text-emerald-700' : 'text-amber-700'}`}>{r.ok ? 'Included' : 'Not in the draft'}</span>
+                  <span className={`ml-auto shrink-0 flex items-center gap-2 font-semibold ${r.ok ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {r.ok ? 'Included' : 'Not in the draft'}
+                    {!r.ok && !isGenerating && liveBody.trim() && <button type="button" disabled={Boolean(includeBusy)} onClick={() => includeDetail(r.id)} className="h-9 px-5 rounded-lg bg-indigo-600 text-white text-[13px] font-semibold cursor-pointer hover:bg-indigo-700 disabled:opacity-60">{includeBusy === r.id ? 'Adding…' : 'Include'}</button>}
+                  </span>
+                  {includeMsg?.id === r.id && <div className={`basis-full text-[11.5px] font-semibold ${includeMsg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{includeMsg.text}</div>}
                 </div>
               ))}
               {(b.services || []).some(x => x?.price) && <div className="text-[11.5px] text-slate-500">Prices in your services list: {(b.services || []).filter(x => x?.price).map(x => `${x.name} ${x.price}`).join(' · ')}. Only quote prices you have listed.</div>}
@@ -1404,6 +1575,13 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 ))}
               </ul>
               {false && <div className="text-[11.5px] text-slate-500">Tip: on the Topic & Intent step, “Check top results” gives the real target length from Google.</div>}
+              {selectedArticle && !isGenerating && (
+                <WorkflowPanel b={b} articleId={selectedArticle.id} savedAt={`${selectedArticle.updated_at || ''}|${(selectedArticle.body || '').length}`} onChanged={onSaved} />
+              )}
+              {selectedArticle && !isGenerating && (
+                <SeoChecklist b={b} articleId={selectedArticle.id} savedAt={`${selectedArticle.updated_at || ''}|${(selectedArticle.body || '').length}`}
+                  unsaved={draft !== (selectedArticle.body || '') || meta.title !== (selectedArticle.title || '') || meta.meta_description !== (selectedArticle.meta_description || '')} />
+              )}
             </div>
           );
         })()}
@@ -1523,7 +1701,7 @@ const TOPIC_HANDOFF = 'growzen.writerTopic';
  * Main AI Content Studio Component
  */
 export default function ContentStudioPage() {
-  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'articles', 'posted', 'calendar', 'publishing']);
+  const [tab, setTab] = useUrlTab('trends', ['trends', 'blog', 'articles', 'posted', 'promote', 'calendar', 'publishing']);
   const openInWriter = (id) => { if (!id) { setOpenArticleId(null); return; } setActiveTopic(null); setOpenArticleId(id); setTab('blog'); };
   // Moving from /trends to /blog remounts this page (the layout resets on every address), so a topic picked in
   // Topic Finder is handed over through sessionStorage and taken once here.
@@ -1558,6 +1736,7 @@ export default function ContentStudioPage() {
               { id: 'blog', label: 'AI Blog & Article Writer' },
               { id: 'articles', label: 'Written, not posted' },
               { id: 'posted', label: 'Posted Blogs' },
+              { id: 'promote', label: 'Promote & Track Links' },
               { id: 'calendar', label: 'Publishing Calendar & CMS Queue' }
             ]}
           />
@@ -1567,6 +1746,7 @@ export default function ContentStudioPage() {
           {tab === 'articles' && <GeneratedArticlesTab b={b} openId={openArticleId} onOpen={openInWriter} toast={window.__seoToast || console.log}
             onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} onShowPosted={() => setTab('posted')} />}
           {tab === 'posted' && <PostedBlogs b={b} toast={window.__seoToast || console.log} onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
+          {tab === 'promote' && <PromoteBlogs b={b} onShowPosted={() => setTab('posted')} />}
           {tab === 'calendar' && <PublishingCalendar b={b} toast={window.__seoToast || console.log} onOpenArticle={openInWriter} />}
           {tab === 'publishing' && <PublishingSetup b={b} />}
         </div>

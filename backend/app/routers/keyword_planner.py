@@ -12,9 +12,10 @@ def keyword_metrics(
     keyword: str = Query(..., description="Seed keyword to look up"),
     limit: int = Query(50, ge=1, le=1000, description="Max number of keyword ideas to return"),
     include_monthly: bool = Query(False, description="Include per-month search volume history (larger payload)"),
+    country: str | None = Query(None, max_length=2, description="ISO country code for the search location (default: India)"),
 ):
     try:
-        ideas = ads.keyword_ideas([keyword], limit=limit, include_monthly=include_monthly)
+        ideas = ads.keyword_ideas([keyword], limit=limit, include_monthly=include_monthly, geo_target=ads.geo_target_for(country))
     except ads.GoogleAdsNotConfigured as exc:
         raise HTTPException(503, str(exc)) from exc
     except ads.GoogleAdsRequestError as exc:
