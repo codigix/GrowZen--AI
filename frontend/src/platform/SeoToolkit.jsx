@@ -4,9 +4,9 @@ import {
   Search, Star, ArrowUp, ArrowDown, Plus, RefreshCw, KeyRound, ScanSearch, Swords, Sparkles, Link2, MapPin, Gauge, Layers, FileText, ExternalLink,
   AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot, Download, Loader2
 } from 'lucide-react';
-import { SeoShell, Card, Badge, Button, ErrorNote, ScoreRing, scoreLevel, useAction, useToast, useModulePath, Sk, SkStats, SkTable, SkCard } from './SeoUi';
+import { SeoShell, Card, Badge, Button, Modal, ErrorNote, ScoreRing, scoreLevel, useAction, useToast, useModulePath, Sk, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
-import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
+import DataTable, { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
 /**
  * The SEO toolkit pages, each on data the platform really has (its own crawl, tracked keywords, Google results
@@ -351,18 +351,49 @@ function Bar({ label, value, max, text, tip }) {
   );
 }
 
-function IdeaGroup({ title, g, go }) {
-  const rows = g.rows;
+/** The colour of a keyword difficulty (KD %): green when it is easy, red when it is very hard. */
+function KdDot({ v }) {
+  if (v === undefined || v === 'loading') return <span className="inline-flex items-center gap-1 text-slate-400" title="Reading the top 10 on Google for this keyword"><Loader2 size={12} className="animate-spin" /></span>;
+  if (v == null) return <span className="text-slate-300" title="Google's results could not be read for it">—</span>;
+  return <span className="inline-flex items-center justify-end gap-1.5 tabular-nums" title={`${v} out of 100: ${difficultyWord(v)}`}>{v}<span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: diffColor(v) }} /></span>;
+}
+
+/** One list of ideas: how many Google has, their total searches a month, the top five with searches and difficulty, and a way to open them all. */
+function IdeaPanel({ title, g, kdMap, go, onAll }) {
+  const rows = g.rows.slice(0, 5);
   return (
-    <Card pad={false} title={`${title} (${kfmt(g.total)})`}>
-      {rows.length === 0 ? <p className="px-4 py-6 text-center text-12.5 text-slate-500">None from Google.</p> : (
-        <table className="w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500"><th className="px-4 py-1.5 font-medium">Keyword</th><th className="px-2 py-1.5 font-medium text-right">Volume</th><th className="px-4 py-1.5 font-medium text-right">Difficulty</th></tr></thead>
-          <tbody>{rows.slice(0, 8).map(r => (
-            <tr key={r.keyword} className="border-t border-slate-100"><td className="px-4 py-1.5 truncate max-w-[180px]"><button type="button" className="text-indigo-700 hover:underline cursor-pointer text-left" onClick={() => go(r.keyword)} title="Open its overview">{r.keyword}</button></td>
-              <td className="px-2 py-1.5 text-right tabular-nums">{kfmt(r.v)}</td>
-              <td className="px-4 py-1.5 text-right">{r.index == null ? '—' : <DiffChip v={r.index} />}</td></tr>))}</tbody></table>
+    <div className="min-w-0">
+      <div className="text-13 text-slate-600">{title}</div>
+      <div className="flex flex-wrap items-baseline gap-x-2"><span className="text-24 font-semibold text-indigo-600 tabular-nums">{kfmt(g.total)}</span><span className="text-12.5 text-slate-600">Total volume: <b className="text-slate-900">{kfmt(g.volume)}</b></span></div>
+      {rows.length === 0 ? <p className="mt-3 text-12.5 text-slate-500">None from Google.</p> : (
+        <table className="mt-2 w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500 border-b border-slate-200"><th className="py-1.5 font-medium">Keywords</th><th className="py-1.5 font-medium text-right">Volume</th><th className="py-1.5 pl-2 font-medium text-right" title="Keyword difficulty, 0 to 100, from the real top 10 on Google">KD %</th></tr></thead>
+          <tbody>{rows.map(r => (
+            <tr key={r.keyword} className="border-b border-slate-100"><td className="py-2 pr-2"><button type="button" className="text-indigo-700 hover:underline cursor-pointer text-left" onClick={() => go(r.keyword)} title="Open its overview">{r.keyword}</button></td>
+              <td className="py-2 text-right tabular-nums">{kfmt(r.v)}</td><td className="py-2 pl-2 text-right"><KdDot v={kdMap[r.keyword]} /></td></tr>))}</tbody></table>
       )}
-    </Card>
+      {g.total > rows.length && <button type="button" onClick={onAll} className="mt-3 rounded-lg ring-1 ring-inset ring-slate-300 px-3 py-1.5 text-12.5 font-medium text-slate-700 hover:bg-slate-50 cursor-pointer">View all {fmt(g.total)} keywords</button>}
+    </div>
+  );
+}
+
+/** Topics found in Google's ideas: the biggest idea of each topic, a bar for its searches, how many keywords it holds. */
+function ClusterPanel({ clusters, onAll, go }) {
+  const top = clusters.slice(0, 6);
+  const max = Math.max(1, ...top.map(c => c.volume));
+  return (
+    <div className="min-w-0">
+      <div className="text-13 text-slate-600">Keyword strategy</div>
+      <div className="text-12.5 text-slate-600 mt-1">Topics people search around it, found in Google's own ideas</div>
+      {top.length === 0 ? <p className="mt-3 text-12.5 text-slate-500">Not enough ideas to find topics.</p> : (
+        <ul className="mt-3 space-y-2.5">{top.map(c => (
+          <li key={c.topic} className="flex items-center gap-2 text-12.5" title={`${c.count} keywords · ${fmt(c.volume)} searches a month in total`}>
+            <button type="button" onClick={() => go(c.label)} className="w-40 truncate text-left text-slate-800 hover:text-indigo-700 hover:underline cursor-pointer">{c.label}</button>
+            <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-400" style={{ width: `${Math.max(4, (c.volume / max) * 100)}%` }} /></div>
+            <span className="w-14 text-right tabular-nums text-slate-600">{kfmt(c.volume)}</span>
+          </li>))}</ul>
+      )}
+      {clusters.length > top.length && <button type="button" onClick={onAll} className="mt-3 rounded-lg ring-1 ring-inset ring-slate-300 px-3 py-1.5 text-12.5 font-medium text-slate-700 hover:bg-slate-50 cursor-pointer">View all clusters</button>}
+    </div>
   );
 }
 
@@ -391,7 +422,7 @@ function KeywordOverview({ b }) {
   const [period, setPeriod] = useState('12'); // time filter: the last 12, 6 or 3 months, or one month
   const placesApi = useApi(`/businesses/${b.id}/keyword-workspace/places`);
   const places = placesApi.data?.places || [];
-  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(null); startKd(kw, (c ?? activeCountry) || '', (pl ?? place) || '', k === undefined); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
+  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(null); startKd(kw, (c ?? activeCountry) || '', (pl ?? place) || '', k === undefined); setKdMap({}); kdBatch.current += 1; setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const started = useRef(false);
@@ -409,6 +440,10 @@ function KeywordOverview({ b }) {
     const t = setInterval(() => setSecs(s => s + 1), 1000);
     return () => clearInterval(t);
   }, [kd?.state]);
+  const [kdMap, setKdMap] = useState({}); // difficulty of the keywords listed in the ideas: { keyword: score | null | 'loading' }
+  const kdBatch = useRef(0); // the run in progress (a new analysis starts a new one, and the old one's answers are dropped)
+  const [allList, setAllList] = useState(null); // { title, rows }: a whole list of ideas, open in a window
+  const [allClusters, setAllClusters] = useState(false);
   const kdRun = useRef(0);
   const kdFor = useRef('');
   // read together with the overview (not after it); the results are read as Google shows them in the chosen place, so a new place reads them again, a new period does not
@@ -439,6 +474,24 @@ function KeywordOverview({ b }) {
     ['similar', 'related', 'questions'].flatMap(k => groupsShown(k).rows).slice(0, 25).forEach(r => line(`${r.keyword}: ${r.v != null ? fmt(r.v) : '-'} a month`, 9, false, 13));
     doc.save(`keyword-overview-${data.keyword.replace(/[^a-z0-9]+/gi, '-')}.pdf`);
   };
+  // the first five ideas of each list get their difficulty by themselves, after the keyword's own difficulty is in (three at a time)
+  useEffect(() => {
+    if (!data || !kd || kd.state === 'loading') return;
+    const wanted = ['similar', 'questions', 'related'].flatMap(k => (data.groups?.[k]?.rows || []).slice().sort((x, y) => (y.volume || 0) - (x.volume || 0)).slice(0, 5).map(r => r.keyword));
+    const todo = wanted.filter((w, n) => wanted.indexOf(w) === n && kdMap[w] === undefined);
+    if (!todo.length) return;
+    const mine = kdBatch.current;
+    setKdMap(m => ({ ...m, ...Object.fromEntries(todo.map(w => [w, 'loading'])) }));
+    (async () => {
+      for (let n = 0; n < todo.length; n += 3) {
+        const chunk = todo.slice(n, n + 3);
+        let res = [];
+        try { res = (await api(`/businesses/${b.id}/seo/keyword-difficulty/batch`, { method: 'POST', body: { keywords: chunk, country: data.country || null, place: place || null }, timeout: 240000 })).results; } catch { res = chunk.map(k => ({ keyword: k, score: null })); }
+        if (kdBatch.current !== mine) return;
+        setKdMap(m => ({ ...m, ...Object.fromEntries(chunk.map(k => [k, res.find(x => x.keyword === k)?.score ?? null])) }));
+      }
+    })();
+  }, [data, kd?.state]); // eslint-disable-line react-hooks/exhaustive-deps -- once the keyword's own difficulty is in
   const allMonths = m?.monthly || [];
   const monthsShown = period === '12' ? allMonths : period === '6' || period === '3' ? allMonths.slice(-Number(period)) : allMonths.filter(x => `${x.year}-${x.month}` === period);
   const volumeShown = period === '12' || !monthsShown.length ? m?.volume : Math.round(monthsShown.reduce((a, x) => a + x.searches, 0) / monthsShown.length);
@@ -451,7 +504,7 @@ function KeywordOverview({ b }) {
     return last.length ? Math.round(last.reduce((a, x) => a + x.searches, 0) / last.length) : null;
   };
   const countriesShown = (() => { const l = (data?.countries || []).map(c => ({ ...c, v: inPeriod(c.monthly, c.volume) })).filter(c => c.v); const tot = l.reduce((a, c) => a + c.v, 0) || 1; return l.map(c => ({ ...c, share: Math.round((c.v * 1000) / tot) / 10 })).sort((x, y) => y.v - x.v); })();
-  const groupsShown = (k) => { const g = data?.groups?.[k]; return { total: g?.total || 0, rows: (g?.rows || []).map(r => ({ ...r, v: inPeriod(r.monthly, r.volume) })).sort((x, y) => (y.v || 0) - (x.v || 0)) }; };
+  const groupsShown = (k) => { const g = data?.groups?.[k]; return { total: g?.total || 0, volume: g?.volume || 0, all: g?.all || [], rows: (g?.rows || []).map(r => ({ ...r, v: inPeriod(r.monthly, r.volume) })).sort((x, y) => (y.v || 0) - (x.v || 0)) }; };
   const isTracked = (k) => added[k] || (data?.keyword === k && data?.you?.tracked);
   return (
     <div className="space-y-4">
@@ -556,8 +609,18 @@ function KeywordOverview({ b }) {
                 );
               })()}
             </Card>
-            {[['similar', 'Similar keywords'], ['related', 'Related keywords']].map(([k, title]) => <IdeaGroup key={k} title={title} g={groupsShown(k)} go={go} />)}
+            <div className="lg:col-span-2"><Card title="Related keywords" subtitle="Other searches Google connects to it">
+              <IdeaPanel title="Related keywords" g={groupsShown('related')} kdMap={kdMap} go={go} onAll={() => setAllList({ title: 'Related keywords', rows: groupsShown('related').all })} />
+            </Card></div>
           </div>
+          <Card title="Keyword ideas" subtitle="From Google Keyword Planner: how many it knows, their total searches, and how hard the biggest ones are">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-10 gap-y-6">
+              <IdeaPanel title="Keyword variations" g={groupsShown('similar')} kdMap={kdMap} go={go} onAll={() => setAllList({ title: 'Keyword variations', rows: groupsShown('similar').all })} />
+              <IdeaPanel title="Questions" g={groupsShown('questions')} kdMap={kdMap} go={go} onAll={() => setAllList({ title: 'Questions', rows: groupsShown('questions').all })} />
+              <ClusterPanel clusters={data.clusters || []} go={go} onAll={() => setAllClusters(true)} />
+            </div>
+            <p className="mt-4 text-11.5 text-slate-400">Google Keyword Planner returns up to about 600 ideas for one keyword, so the counts are lower than in tools with their own very large keyword databases. KD % is worked out for the first five of each list by reading the real top 10 on Google; open a keyword to see it in full.</p>
+          </Card>
           {kd?.state === 'ready' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <div className="lg:col-span-2"><Card pad={false} title="SERP overview" subtitle={`The top ${kd.organic.length} results on Google for "${data.keyword}"`}>
@@ -593,8 +656,7 @@ function KeywordOverview({ b }) {
             </div>
           )}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <IdeaGroup title="Questions" g={groupsShown('questions')} go={go} />
-            <div className="lg:col-span-2"><Card title="Not available from Google">
+            <div className="lg:col-span-3"><Card title="Not available from Google">
               <p className="text-13 text-slate-600">These sections have no source connected, so they are not shown, rather than made up:</p>
               <ul className="mt-2 grid sm:grid-cols-2 gap-x-6 gap-y-1 text-13 text-slate-500 list-disc pl-5"><li>Ranking dynamics (use Position Tracking for yours)</li><li>Ads history over the months</li><li>Domain traffic and traffic cost</li></ul>
               <div className="mt-3 flex gap-2"><Button size="sm" onClick={() => navigate('/rank-tracking')}>Position Tracking</Button><Button size="sm" busy={busy === 'ws'} onClick={() => toWorkspace(['similar', 'related', 'questions'].flatMap(k => data.groups?.[k]?.rows || []).map(r => ({ keyword: r.keyword, volume: r.volume })))}>Add all ideas to the Keyword Workspace</Button></div>
@@ -602,6 +664,25 @@ function KeywordOverview({ b }) {
           </div>
         </>
       )}
+      <Modal open={!!allList} title={allList ? `${allList.title} (${fmt(allList.rows.length)})` : ''} onClose={() => setAllList(null)} width="max-w-3xl"
+        footer={allList && <><Button size="sm" busy={busy === 'ws'} onClick={() => toWorkspace(allList.rows.map(r => ({ keyword: r.keyword, volume: r.volume })).slice(0, 500))}>Add to the Keyword Workspace</Button><Button size="sm" onClick={() => setAllList(null)}>Close</Button></>}>
+        {allList && (
+          <DataTable bare rows={allList.rows} rowKey={r => r.keyword} pageSize={10} sizes={[10, 25, 50]} exportName={`${allList.title}-${data?.keyword || ''}`.toLowerCase().replace(/[^a-z0-9]+/g, '-')} label="keywords" headClass="bg-slate-100 text-slate-700" minWidth={520}
+            columns={[
+              { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-3 py-2', cell: r => <button type="button" className="text-indigo-700 hover:underline cursor-pointer text-left" onClick={() => { setAllList(null); go(r.keyword); }}>{r.keyword}</button> },
+              { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: r => r.volume, className: 'px-3 py-2 text-right tabular-nums', cell: r => (r.volume != null ? fmt(r.volume) : '—') },
+              { id: 'index', header: 'Competition index', right: true, value: r => r.index, className: 'px-3 py-2 text-right tabular-nums', cell: r => (r.index != null ? r.index : '—') },
+              { id: 'cpc', header: 'Top-of-page bid', right: true, value: r => r.cpc, className: 'px-3 py-2 text-right tabular-nums', cell: r => INR(r.cpc) },
+            ]} />
+        )}
+      </Modal>
+      <Modal open={allClusters} title={`Keyword strategy: ${data?.clusters?.length || 0} topics`} onClose={() => setAllClusters(false)} width="max-w-3xl" footer={<Button size="sm" onClick={() => setAllClusters(false)}>Close</Button>}>
+        <div className="space-y-4">{(data?.clusters || []).map(c => (
+          <div key={c.topic}>
+            <div className="flex items-baseline justify-between gap-3"><button type="button" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline cursor-pointer text-left" onClick={() => { setAllClusters(false); go(c.label); }}>{c.label}</button><span className="text-12 text-slate-500 tabular-nums">{c.count} keywords · {fmt(c.volume)} a month</span></div>
+            <div className="mt-1 flex flex-wrap gap-1.5">{c.keywords.map(k => <button key={k.keyword} type="button" onClick={() => { setAllClusters(false); go(k.keyword); }} className="rounded-full bg-slate-100 hover:bg-indigo-50 px-2.5 py-0.5 text-12 text-slate-700 cursor-pointer" title={`${fmt(k.volume)} searches a month`}>{k.keyword}</button>)}</div>
+          </div>))}</div>
+      </Modal>
       {toastNode}
     </div>
   );
