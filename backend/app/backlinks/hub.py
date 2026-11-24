@@ -214,6 +214,14 @@ def _rows(db: Session, domain: str, states: set[str] | frozenset[str] | None = N
     return db.execute(q.order_by(Backlink.last_seen_at.desc().nullslast(), Backlink.id.desc()).limit(limit)).all()
 
 
+def _authority_of(metric: dict | None) -> int | None:
+    """Our Authority Score of the linking site, from the figures we hold (Domain Authority and spam score): None without them."""
+    if not metric or metric.get("da") is None:
+        return None
+    from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    return kd.authority_score(metric.get("da"), metric.get("linking_domains"), metric.get("spam"), None)
+
+
 def _link_out(bl: Backlink, page: BiPage, dom: str, score: dict | None, metric: dict | None, brand: set[str]) -> dict[str, Any]:
     from ..services import backlink_checker as bc
     follow = follow_of(bl.rel_attributes)
@@ -225,7 +233,8 @@ def _link_out(bl: Backlink, page: BiPage, dom: str, score: dict | None, metric: 
             "verified": bl.verification_status == "CRAWLER_VERIFIED", "first_seen": _aware(bl.first_seen_at).isoformat() if bl.first_seen_at else None,
             "last_seen": _aware(bl.last_seen_at).isoformat() if bl.last_seen_at else None, "last_verified": _aware(bl.last_verified_at).isoformat() if bl.last_verified_at else None,
             "category": {"key": cat["key"], "label": cat["label"]}, "quality": ({"relevance": score["relevance"], "risk": score["risk"], "verdict": score["verdict"], "reason": score["reason"], "method": score["method"]} if score else None),
-            "metrics": metric, "useful": j["label"], "useful_why": j["why"]}
+            "metrics": metric, "useful": j["label"], "useful_why": j["why"],
+            "authority": _authority_of(metric)}
 
 
 def _scores_info(live: list[dict[str, Any]]) -> dict[str, Any]:
@@ -242,7 +251,24 @@ def _scores_info(live: list[dict[str, Any]]) -> dict[str, Any]:
             "no_data": len(asked - got) if configured else 0}
 
 
-def links(db: Session, b: Business, *, status: str = "live", follow: str = "", category: str = "", useful: str = "", q: str = "", sort: str = "recent", limit: int = 50, offset: int = 0) -> dict[str, Any]:
+def _is_best(x: dict[str, Any]) -> bool:
+    """A live link that passes value (follow) from a site that is useful or has real authority."""
+    return x["is_live"] and x["follow"] == "dofollow" and (x["useful"] == "useful" or ((x["metrics"] or {}).get("da") or 0) >= 30)
+
+
+def _is_new(x: dict[str, Any], days: int = 30) -> bool:
+    return bool(x["is_live"] and x["first_seen"] and x["first_seen"] >= (utcnow() - timedelta(days=days)).isoformat())
+
+
+def _is_lost_vital(x: dict[str, Any]) -> bool:
+    """A link that was lost from a site worth having: restore these first."""
+    return (not x["is_live"]) and (x["useful"] == "useful" or ((x["metrics"] or {}).get("da") or 0) >= 30)
+
+
+PRESETS = {"best": _is_best, "new": _is_new, "lost_vital": _is_lost_vital}
+
+
+def links(db: Session, b: Business, *, status: str = "live", follow: str = "", category: str = "", useful: str = "", q: str = "", sort: str = "recent", limit: int = 50, offset: int = 0, preset: str = "") -> dict[str, Any]:
     domain = own_domain(db, b.id)
     if not domain:
         return {"state": "no_target", "domain": None}
@@ -256,6 +282,8 @@ def links(db: Session, b: Business, *, status: str = "live", follow: str = "", c
     live = [x for x in out if x["is_live"]]
 
     def keep(x: dict[str, Any]) -> bool:
+        if preset in PRESETS and not PRESETS[preset](x):
+            return False
         if status == "live" and not x["is_live"] or status == "lost" and x["is_live"]:
             return False
         if follow and x["follow"] != follow or category and x["category"]["key"] != category or useful and x["useful"] != useful:
@@ -267,7 +295,8 @@ def links(db: Session, b: Business, *, status: str = "live", follow: str = "", c
     key = {"recent": lambda x: x["last_seen"] or "", "domain": lambda x: x["source_domain"], "da": lambda x: (x["metrics"] or {}).get("da") or -1}.get(sort, lambda x: x["last_seen"] or "")
     shown.sort(key=key, reverse=sort != "domain")
     return {"state": "ok", "domain": domain, "links": shown[offset:offset + limit], "total": len(shown), "live_total": len(live), "offset": offset, "limit": limit,
-            "facets": {k: dict(v) for k, v in facets.items()}, "metrics_ready": bool(metrics), "scores": _scores_info(live)}
+            "facets": {k: dict(v) for k, v in facets.items()}, "metrics_ready": bool(metrics), "scores": _scores_info(live),
+            "tiles": {"all": len(out), "best": sum(1 for x in out if _is_best(x)), "new": sum(1 for x in out if _is_new(x)), "lost_vital": sum(1 for x in out if _is_lost_vital(x)), "lost": len(out) - len(live)}}
 
 
 # ------------------------------------------------------------------------------------------------------------------------ referring domains

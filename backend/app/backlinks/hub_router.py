@@ -19,6 +19,13 @@ def overview(b: Business = Depends(get_business), db: Session = Depends(get_db))
     return backlink_overview.overview(db, b)
 
 
+@router.get("/pages")
+def pages(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """The pages of the project's website with their backlinks, referring domains, links in and out, and whether they load (read now)."""
+    from . import overview as backlink_overview
+    return backlink_overview.pages_report(db, b)
+
+
 @router.get("/outbound")
 def outbound(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     """The websites this project's own site links to, read now from its pages (nothing is kept)."""
@@ -34,8 +41,9 @@ def summary(b: Business = Depends(get_business), db: Session = Depends(get_db)) 
 @router.get("/links")
 def links(b: Business = Depends(get_business), db: Session = Depends(get_db), status: str = Query("live", pattern="^(live|lost|all)$"), follow: str = Query("", pattern="^(|dofollow|nofollow|sponsored|ugc)$"),
           category: str = Query("", max_length=30), useful: str = Query("", pattern="^(|useful|neutral|risky|unscored)$"), q: str = Query("", max_length=200),
-          sort: str = Query("recent", pattern="^(recent|domain|da)$"), limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> dict:
-    return hub.links(db, b, status=status, follow=follow, category=category, useful=useful, q=q, sort=sort, limit=limit, offset=offset)
+          sort: str = Query("recent", pattern="^(recent|domain|da)$"), limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
+          preset: str = Query("", pattern="^(|best|new|lost_vital)$")) -> dict:
+    return hub.links(db, b, status=status, follow=follow, category=category, useful=useful, q=q, sort=sort, limit=limit, offset=offset, preset=preset)
 
 
 @router.get("/domains")

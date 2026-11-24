@@ -98,6 +98,30 @@ def _similar(db: Session, domain: str, sources: list[str]) -> list[dict[str, Any
     return out
 
 
+CHEAP_TLDS = {"shop", "site", "online", "xyz", "top", "click", "icu", "buzz", "cyou", "work", "space", "website", "store", "tech", "live"}
+
+
+def _graph_verdict(ref: list[dict[str, Any]], scores: dict[str, Any], ips: dict[str, str | None], tlds: Counter, live_links: int, toxic: int) -> dict[str, Any]:
+    """Is the group of linking sites natural? Reasons, each good or bad, from real counts: risky sites, many sites on one server block, a crowd of cheap endings, and links piled on a few sites."""
+    n = max(1, len(ref))
+    risky = round(100 * toxic / n)
+    by_subnet = Counter(".".join(ips[d["domain"]].split(".")[:3]) for d in ref if ips.get(d["domain"]))
+    crowded = max(by_subnet.values()) if by_subnet else 0
+    cheap = round(100 * sum(v for k, v in tlds.items() if k in CHEAP_TLDS) / n)
+    heavy = max((d["live"] for d in ref), default=0)
+    heavy_share = round(100 * heavy / max(1, live_links))
+    reasons = [
+        {"ok": risky < 15, "text": f"{risky}% of the linking sites look risky"},
+        {"ok": crowded < 4, "text": f"{crowded} linking site{'s' if crowded != 1 else ''} share one server block" + (": possible link network" if crowded >= 4 else "")},
+        {"ok": cheap < 30, "text": f"{cheap}% of the linking sites end in a cheap, much-abused ending (.shop, .site, .online)"},
+        {"ok": heavy_share < 50, "text": f"One site gives {heavy_share}% of all the links" + (": sitewide links" if heavy_share >= 50 else "")},
+    ]
+    bad = sum(1 for r in reasons if not r["ok"])
+    verdict = "Dangerous" if risky >= 30 or bad >= 3 else "Suspicious" if bad else "Good"
+    cats = Counter(d["cats"].most_common(1)[0][0] for d in ref)
+    return {"verdict": verdict, "reasons": reasons, "categories": [{"label": k, "domains": v, "share": round(100 * v / n)} for k, v in cats.most_common(6)]}
+
+
 def overview(db: Session, b: Business) -> dict[str, Any]:
     domain = hub.own_domain(db, b.id)
     if not domain:
@@ -168,9 +192,13 @@ def overview(db: Session, b: Business) -> dict[str, Any]:
     anchor_info: dict[str, dict[str, Any]] = {}
     for x in live:
         if x["anchor"]:
-            e = anchor_info.setdefault(x["anchor"], {"domains": set(), "type": x["anchor_type"], "follow": 0})
+            e = anchor_info.setdefault(x["anchor"], {"domains": set(), "type": x["anchor_type"], "follow": 0, "first": None, "last": None})
             e["domains"].add(x["source_domain"])
             e["follow"] += 1 if x["follow"] == "dofollow" else 0
+            if x["first_seen"] and (e["first"] is None or x["first_seen"] < e["first"]):
+                e["first"] = x["first_seen"]
+            if x["last_seen"] and (e["last"] is None or x["last_seen"] > e["last"]):
+                e["last"] = x["last_seen"]
     buckets = [(lo, lo + 10) for lo in range(0, 100, 10)]
     by_as = [{"range": f"{lo + 1 if lo else 0} - {hi}", "domains": sum(1 for d in ref if d["da"] is not None and (lo < d["da"] <= hi or (lo == 0 and d["da"] == 0)))} for lo, hi in buckets][::-1]
     tlds = Counter(d["domain"].rsplit(".", 1)[-1] for d in ref)
@@ -194,7 +222,7 @@ def overview(db: Session, b: Business) -> dict[str, Any]:
                       "radar": {"link_power": link_power, "organic_traffic": organic, "natural_profile": natural}, "verdict": weakest[0] if weakest[1] < 40 else "Balanced"},
         "series": series,
         "categories": [{"label": k, "domains": v, "share": round(100 * v / n)} for k, v in cats.most_common(8)],
-        "anchors": [{"text": k, "count": v, "domains": len(anchor_info[k]["domains"]), "type": anchor_info[k]["type"], "follow": anchor_info[k]["follow"]} for k, v in anchors.most_common(300)], "anchor_types": dict(anchor_types),
+        "anchors": [{"text": k, "count": v, "domains": len(anchor_info[k]["domains"]), "type": anchor_info[k]["type"], "follow": anchor_info[k]["follow"], "first_seen": anchor_info[k]["first"], "last_seen": anchor_info[k]["last"]} for k, v in anchors.most_common(300)], "anchor_types": dict(anchor_types),
         "by_authority": by_as, "authority_known": sum(1 for d in ref if d["da"] is not None), "authority_unknown": sum(1 for d in ref if d["da"] is None),
         "follow": {"follow": follow.get("dofollow", 0), "nofollow": follow.get("nofollow", 0), "sponsored": follow.get("sponsored", 0), "ugc": follow.get("ugc", 0), "total": len(live), "follow_share": follow_share},
         "tlds": [{"tld": k, "domains": v, "share": round(100 * v / n)} for k, v in tlds.most_common(5)] + ([{"tld": "other", "domains": sum(tlds.values()) - sum(v for _k, v in tlds.most_common(5)), "share": round(100 * (sum(tlds.values()) - sum(v for _k, v in tlds.most_common(5))) / n)}] if len(tlds) > 5 else []),
@@ -202,7 +230,8 @@ def overview(db: Session, b: Business) -> dict[str, Any]:
         "profile": {"domains": len(ref), "ips": len(ipset), "subnets": len(subnets), "resolved": sum(1 for d in ref if ips.get(d["domain"]))},
         "similar": _similar(db, domain, [d["domain"] for d in ref]),
         "pages": [{"url": u, "domains": len(p["domains"]), "links": p["links"], "follow": p["follow"]} for u, p in sorted(pages.items(), key=lambda kv: (-len(kv[1]["domains"]), -kv[1]["links"]))[:200]],
-        "network": [{"domain": d["domain"], "links": d["live"], "risk": scores.get(d["domain"], {}).get("risk"), "verdict": scores.get(d["domain"], {}).get("verdict")} for d in sorted(ref, key=lambda d: -d["live"])[:80]],
+        "network": [{"domain": d["domain"], "links": d["live"], "risk": scores.get(d["domain"], {}).get("risk"), "verdict": scores.get(d["domain"], {}).get("verdict"), "category": d["cats"].most_common(1)[0][0], "da": d["da"]} for d in sorted(ref, key=lambda d: -d["live"])[:80]],
+        "graph": _graph_verdict(ref, scores, ips, tlds, len(live), toxic),
     }
 
 
@@ -252,3 +281,59 @@ def outbound(db: Session, b: Business) -> dict[str, Any]:
             e["anchor"] = e["anchor"] or text
     rows = sorted(({"domain": e["domain"], "links": e["links"], "pages": len(e["pages"]), "nofollow": e["nofollow"], "anchor": e["anchor"]} for e in sites.values()), key=lambda r: (-r["pages"], -r["links"]))
     return {"state": "ok", "domain": domain, "pages_read": sum(1 for x in per_page if x is not None), "pages": len(urls), "domains": rows[:300], "total_links": sum(r["links"] for r in rows)}
+
+
+def pages_report(db: Session, b: Business) -> dict[str, Any]:
+    """Every page of the project's website the crawler or a link knows, with its backlinks and referring domains (from the links we hold) and, read now from the page itself, whether it loads,
+    its title, and how many links it has inside the site and out to other sites. Nothing is kept."""
+    import re  # noqa: PLC0415
+    from urllib.parse import urljoin  # noqa: PLC0415
+
+    import httpx  # noqa: PLC0415
+    from bs4 import BeautifulSoup  # noqa: PLC0415
+
+    from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    from ..services import keyword_workspace  # noqa: PLC0415
+    from ..services import url_overview as uo  # noqa: PLC0415
+    domain = hub.own_domain(db, b.id)
+    if not domain:
+        return {"state": "no_target"}
+    rows = hub.links(db, b, status="all", limit=hub.MAX_LINKS)["links"]
+    by: dict[str, dict[str, Any]] = {}
+    for x in rows:
+        if not x["is_live"]:
+            continue
+        e = by.setdefault(uo.norm(x["target_url"]), {"url": x["target_url"], "domains": set(), "links": 0, "last": None})
+        e["domains"].add(x["source_domain"])
+        e["links"] += 1
+        if x["last_seen"] and (e["last"] is None or x["last_seen"] > e["last"]):
+            e["last"] = x["last_seen"]
+    crawl = keyword_workspace._latest_crawl(db, b)
+    for p in crawl.get("pages") or []:
+        if p.get("url"):
+            by.setdefault(uo.norm(p["url"]), {"url": p["url"], "domains": set(), "links": 0, "last": None})
+    items = sorted(by.values(), key=lambda e: (-len(e["domains"]), -e["links"], e["url"]))[:80]
+    host = kd.site_of(f"https://{domain}/")
+
+    def read(url: str) -> dict[str, Any]:
+        try:
+            r = httpx.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; bevisibe-research/1.0)"}, timeout=10, follow_redirects=True)
+        except Exception:  # noqa: BLE001 -- a page that cannot be reached is a broken page
+            return {"status": None, "title": None, "internal": 0, "external": 0}
+        title, internal, external = None, 0, 0
+        if r.status_code == 200 and "html" in r.headers.get("content-type", ""):
+            soup = BeautifulSoup(r.text, "html.parser")
+            title = (soup.title.string or "").strip() if soup.title and soup.title.string else None
+            for a in soup.find_all("a", href=True):
+                href = urljoin(url, a["href"])
+                if not re.match(r"^https?://", href):
+                    continue
+                if kd.site_of(href) == host:
+                    internal += 1
+                else:
+                    external += 1
+        return {"status": r.status_code, "title": title, "internal": internal, "external": external}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        live = list(pool.map(lambda e: read(e["url"]), items))
+    out = [{"url": e["url"], "domains": len(e["domains"]), "backlinks": e["links"], "last_seen": e["last"], **info, "broken": info["status"] is None or info["status"] >= 400} for e, info in zip(items, live)]
+    return {"state": "ok", "domain": domain, "pages": out, "broken": sum(1 for r in out if r["broken"])}

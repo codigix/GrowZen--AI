@@ -147,7 +147,10 @@ function SiteCell({ m }) {
     <span className="tabular-nums">{c.links} link{c.links === 1 ? '' : 's'}{c.sitewide && <span className="ml-1 text-11.5 text-amber-600">sitewide</span>}</span></Tip>;
 }
 
+const ago = (iso) => { if (!iso) return '—'; const d = Math.floor((Date.now() - Date.parse(iso)) / 86400000); if (d < 1) return 'today'; if (d < 31) return `${d}d ago`; return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); };
+const isNew = (x) => x.is_live && x.first_seen && Date.now() - Date.parse(x.first_seen) < 30 * 86400000;
 const linkValue = (x, k) => ({
+  authority: num(x.authority), last: stamp(x.last_seen),
   page: x.source_domain, anchor: x.anchor, target: path(x.target_url), follow: x.follow, category: x.category?.label,
   da: num(x.metrics?.da), pa: num(x.metrics?.pa), spam: num(x.metrics?.spam), site: num(x.metrics?.crawler?.links), useful: x.useful, seen: stamp(x.first_seen)
 })[k];
@@ -162,24 +165,26 @@ function LinksTable({ d, showScores, resetKey, site }) {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-13">
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-            <SortTh id="page" sort={sort} onSort={onSort} className={TC}>Linking page</SortTh><SortTh id="anchor" sort={sort} onSort={onSort} className={TC}>Anchor text</SortTh><SortTh id="target" sort={sort} onSort={onSort} className={TC}>Goes to</SortTh><SortTh id="follow" sort={sort} onSort={onSort} className={TC}>Follow</SortTh><SortTh id="category" sort={sort} onSort={onSort} className={TC}>Category</SortTh>
+            <SortTh id="authority" sort={sort} onSort={onSort} right first="desc" className={TC} tip={{ what: "Our Authority Score of the linking site, 0 to 100: its Domain Authority and spam score together.", from: 'Moz (through Apify).' }}>Page AS</SortTh><SortTh id="page" sort={sort} onSort={onSort} className={TC}>Linking page</SortTh><SortTh id="anchor" sort={sort} onSort={onSort} className={TC}>Anchor text</SortTh><SortTh id="target" sort={sort} onSort={onSort} className={TC}>Goes to</SortTh><SortTh id="follow" sort={sort} onSort={onSort} className={TC}>Follow</SortTh><SortTh id="category" sort={sort} onSort={onSort} className={TC}>Category</SortTh>
             {showScores && <><SortTh id="da" sort={sort} onSort={onSort} right first="desc" className={TC} tip={{ what: "Authority of the linking site, 0-100 (the site's rank at the data service)." }}>DA</SortTh><SortTh id="pa" sort={sort} onSort={onSort} right first="desc" className={TC} tip={{ what: "Strength of the site's home page, 0-100." }}>PA</SortTh><SortTh id="spam" sort={sort} onSort={onSort} right first="desc" className={TC} tip={{ what: 'Spam score of the linking site. Lower is better.' }}>Spam</SortTh></>}
             <SortTh id="site" sort={sort} onSort={onSort} first="desc" className={TC} tip={showScores ? { what: 'How many live links this site gives you, and how many of its pages carry them.', why: 'A link repeated on many pages of one site counts as about one link.', from: 'our backlink crawler.' } : { what: 'How many live links this site gives you, and how many of its pages carry them.', why: 'A link repeated on many pages of one site counts as about one link, so more is not always better.', from: 'our backlink crawler.' }}>Site gives you</SortTh>
-            <SortTh id="useful" sort={sort} onSort={onSort} className={TC} tip={{ what: 'Our judgement from relevance to your business, spam risk and the follow type. Hover a badge for the reason.' }}>Useful?</SortTh><SortTh id="seen" sort={sort} onSort={onSort} first="desc" className={TC}>First seen</SortTh>
+            <SortTh id="useful" sort={sort} onSort={onSort} className={TC} tip={{ what: 'Our judgement from relevance to your business, spam risk and the follow type. Hover a badge for the reason.' }}>Useful?</SortTh><SortTh id="seen" sort={sort} onSort={onSort} first="desc" className={TC}>First seen</SortTh><SortTh id="last" sort={sort} onSort={onSort} first="desc" className={TC}>Last seen</SortTh>
             <th className={`${TH} text-right`}><Head right what="Open the linking page, or your own page it points to." why="See the link in its real setting.">Actions</Head></th>
           </tr></thead>
           <tbody className="divide-y divide-slate-100">
             {d.state === 'no_target' && <Empty>Add the project's website first.</Empty>}
             {pg.rows.map(x => (
               <tr key={x.id} className="hover:bg-slate-50 align-middle">
+                <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-800">{x.authority ?? <span className="text-slate-300 font-normal">—</span>}</td>
                 <td className="px-3 py-3 max-w-[260px]"><a href={x.source_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate font-semibold">{x.source_domain}</span><ExternalLink size={11} className="shrink-0" /></a><span className="block truncate text-11.5 text-slate-400" title={x.source_url}>{path(x.source_url)}</span>{!x.is_live && <Badge tone="red">{x.status_label}</Badge>}</td>
-                <td className="px-3 py-3 max-w-[200px]"><span className="block truncate" title={x.anchor || ''}>{x.anchor || <span className="text-slate-300">no text</span>}</span><span className="text-11.5 text-slate-400">{ANCHOR[x.anchor_type] || x.anchor_type}</span></td>
+                <td className="px-3 py-3 max-w-[200px]"><span className="block truncate" title={x.anchor || ''}>{x.anchor || <span className="text-slate-300">no text</span>}</span><span className="inline-flex items-center gap-1.5 text-11.5 text-slate-400">{ANCHOR[x.anchor_type] || x.anchor_type}{isNew(x) && <span className="rounded bg-emerald-50 px-1.5 text-emerald-700 font-medium">New</span>}</span></td>
                 <td className="px-3 py-3 max-w-[160px]"><span className="block truncate text-slate-600" title={x.target_url}>{path(x.target_url)}</span></td>
                 <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
                 <td className="px-3 py-3 capitalize text-slate-600">{x.category.label}</td>
                 {showScores ? <><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'apify' ? 'Figure from Apify (Moz checker)' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right" title={x.metrics?.source === 'moz' ? 'Figure from Moz' : x.metrics?.source === 'dataforseo' ? 'Figure from DataForSEO' : undefined}><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td><td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
                 <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                 <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(x.first_seen)}</td>
+                <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{ago(x.last_seen)}</td>
                 <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
                   <OpenAct url={x.source_url} tip="Open the linking page: see the link where it sits on the other website." />
                   <OpenAct url={x.target_url} tip="Open your page: the page of your site this link points to." />
@@ -199,10 +204,11 @@ function Links({ b }) {
   const [params] = useSearchParams();
   const [busyScores, errScores, runScores] = useAction();
   const [toastS, toastSNode] = useToast();
+  const [preset, setPreset] = useState(''); // best | new | lost_vital: the tiles of the page
   const [f, setF] = useState({ status: params.get('status') || 'live', follow: params.get('follow') || '', category: '', useful: params.get('useful') || '', sort: 'recent' });
   const [q, setQ] = useState(params.get('q') || ''); // opened from a site's row: only that site's links
   const dq = useDebounced(q);
-  const r = useList(b, 'links', { ...f, q: dq, limit: 100 });
+  const r = useList(b, 'links', { ...f, preset, q: dq, limit: 200 });
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;
@@ -218,14 +224,21 @@ function Links({ b }) {
           <span className="text-slate-500">{sc.missing ? `${sc.sites - sc.missing - sc.no_data} of ${sc.sites} linking sites have figures.` : `${sc.sites - sc.no_data} of ${sc.sites} linking sites have figures.`}{sc.no_data ? ` ${sc.no_data} are too new or too small for ${sc.source} to know.` : ''} From {sc.source}: DA is the site's rank, PA its home page's rank (0-100), Spam is the spam score (lower is better). Not Moz's own numbers.</span>
           <ErrorNote>{errScores}</ErrorNote>
         </div>)}
+      {d.tiles && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 border-b border-slate-100 divide-x divide-slate-100">
+          {[['', 'all', 'All', d.tiles.all, 'Every link our crawler has found to your website', 'all'], ['best', 'best', 'Best', d.tiles.best, 'Backlinks with the follow attribute, from useful or strong sites', 'live'], ['new', 'new', 'Top new', d.tiles.new, 'Recently acquired backlinks (the last 30 days)', 'live'], ['lost_vital', 'lost_vital', 'Lost and vital', d.tiles.lost_vital, 'Restore these backlinks first: lost from useful or strong sites', 'all']].map(([k, id, label, n, sub, st]) => (
+            <button key={id} type="button" onClick={() => { setPreset(k); setF({ ...f, status: st, follow: '' }); }} className={`text-left px-5 py-3 cursor-pointer transition-colors ${preset === k ? 'bg-indigo-50' : 'hover:bg-slate-50'}`} aria-pressed={preset === k}>
+              <div className="flex items-baseline gap-2"><span className="text-14 font-semibold text-slate-900">{label}</span><span className={`text-14 tabular-nums ${preset === k ? 'text-indigo-700 font-semibold' : 'text-slate-500'}`}>{n.toLocaleString('en-US')}</span></div>
+              <div className="text-12 text-slate-500">{sub}</div></button>))}
+        </div>)}
       <Filters q={q} setQ={setQ}>
-        <Select value={f.status} onChange={set('status')} className={sel} aria-label="Status"><option value="live">Live links</option><option value="lost">Lost links</option><option value="all">All</option></Select>
-        <Select value={f.follow} onChange={set('follow')} className={sel} aria-label="Follow type"><option value="">Any follow type</option><option value="dofollow">Follow</option><option value="nofollow">Nofollow</option><option value="sponsored">Sponsored</option><option value="ugc">UGC</option></Select>
+        <span className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden" role="group" aria-label="Status">{[['all', 'All'], ['live', 'Active'], ['lost', 'Lost']].map(([k, l], n) => <button key={k} type="button" aria-pressed={f.status === k && !preset} onClick={() => { setPreset(''); setF({ ...f, status: k }); }} className={`px-3 h-8 text-12.5 font-medium cursor-pointer ${n ? 'border-l border-slate-200' : ''} ${f.status === k && !preset ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{l}</button>)}<button type="button" aria-pressed={preset === 'new'} onClick={() => { setPreset(preset === 'new' ? '' : 'new'); setF({ ...f, status: 'live' }); }} className={`px-3 h-8 text-12.5 font-medium cursor-pointer border-l border-slate-200 ${preset === 'new' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>New</button></span>
+        <span className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden" role="group" aria-label="Follow type">{[['', 'All'], ['dofollow', 'Follow'], ['nofollow', 'Nofollow'], ['sponsored', 'Sponsored'], ['ugc', 'UGC']].map(([k, l], n) => <button key={k || 'any'} type="button" aria-pressed={f.follow === k} onClick={() => setF({ ...f, follow: k })} className={`px-3 h-8 text-12.5 font-medium cursor-pointer ${n ? 'border-l border-slate-200' : ''} ${f.follow === k ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{l}</button>)}</span>
         <Select value={f.useful} onChange={set('useful')} className={sel} aria-label="Useful"><option value="">Useful or not</option>{Object.entries(USEFUL).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</Select>
         <Select value={f.category} onChange={set('category')} className={sel} aria-label="Category"><option value="">Any category</option>{Object.keys(d.facets?.category || {}).map(k => <option key={k} value={k}>{k}</option>)}</Select>
         <Select value={f.sort} onChange={set('sort')} className={sel} aria-label="Sort"><option value="recent">Newest first</option><option value="da">Highest DA</option><option value="domain">By site</option></Select>
       </Filters>
-      <LinksTable d={d} showScores={showScores} resetKey={`${JSON.stringify(f)}|${dq}`} site={siteName(b)} />
+      <LinksTable d={d} showScores={showScores} resetKey={`${JSON.stringify(f)}|${preset}|${dq}`} site={siteName(b)} />
       <p className="px-5 py-3 border-t border-slate-100 text-11.5 text-slate-400">{d.total} link{d.total !== 1 ? 's' : ''}. Follow type and anchor are read from the page by your crawler. “Useful?” is our own judgement, not a Google or Moz metric.</p>
       {toastSNode}
     </Card>

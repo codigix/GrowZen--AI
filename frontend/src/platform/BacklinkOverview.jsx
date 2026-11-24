@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ExternalLink, Info } from 'lucide-react';
+import { AlertTriangle, ExternalLink, Info, Loader2, Maximize2, Minus, Plus, Search } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, RadarChart, PolarGrid, PolarAngleAxis, Radar, PieChart, Pie, Cell } from 'recharts';
 import { Card, Badge, ErrorNote, SkList } from './SeoUi';
 import { useApi, fmt } from './seoApi';
@@ -29,15 +29,20 @@ function Toggle({ value, onChange, options }) {
 function Empty({ children }) { return <p className="py-8 text-center text-13 text-slate-500">{children}</p>; }
 
 /** The crawler's linking sites around the website: each dot is a referring domain, bigger the more links it gives, red when it looks risky. */
-function Network({ nodes, domain, tall }) {
+const CAT_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#a855f7', '#0ea5e9', '#ec4899', '#14b8a6', '#94a3b8'];
+/** The crawler's linking sites around the website: each dot is a referring domain, bigger the more links it gives. Colour by kind of site, by risk or by authority; zoom; click a dot for its detail. */
+function Network({ nodes, domain, tall, colorBy = 'risk', zoom = 1, onPick, picked, cats = [] }) {
   const R = 118, cx = 150, cy = 140;
   const max = Math.max(1, ...nodes.map(n => n.links));
   const pts = nodes.map((n, i) => { const a = (i / Math.max(1, nodes.length)) * Math.PI * 2 - Math.PI / 2; const r = R * (0.55 + 0.45 * ((i * 7) % 10) / 10); return { ...n, x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), s: 3 + (n.links / max) * 9 }; });
+  const fill = (p) => (colorBy === 'category' ? CAT_COLORS[Math.max(0, cats.indexOf(p.category)) % CAT_COLORS.length] : colorBy === 'authority' ? (p.da == null ? '#cbd5e1' : p.da >= 50 ? '#059669' : p.da >= 25 ? '#d97706' : '#ef4444') : p.verdict === 'risky' ? '#ef4444' : p.verdict === 'useful' ? '#10b981' : '#818cf8');
   return (
     <svg viewBox="0 0 300 280" className={`w-full ${tall ? 'h-[520px]' : 'h-64'}`} role="img" aria-label="Sites that link to the website">
-      {pts.map(p => <line key={`l${p.domain}`} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="#cbd5e1" strokeWidth="0.8" />)}
-      {pts.map(p => <circle key={p.domain} cx={p.x} cy={p.y} r={p.s} fill={p.verdict === 'risky' ? '#ef4444' : p.verdict === 'useful' ? '#10b981' : '#818cf8'} fillOpacity="0.85"><title>{`${p.domain}: ${p.links} link${p.links === 1 ? '' : 's'}${p.verdict ? `, ${p.verdict}` : ''}`}</title></circle>)}
-      <circle cx={cx} cy={cy} r="16" fill="#4f46e5" /><text x={cx} y={cy + 30} textAnchor="middle" style={{ fontSize: 10, fontWeight: 600, fill: '#3730a3' }}>{domain}</text>
+      <g style={{ transform: `scale(${zoom})`, transformOrigin: '150px 140px', transition: 'transform .2s' }}>
+        {pts.map(p => <line key={`l${p.domain}`} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke={picked === p.domain ? '#4f46e5' : '#cbd5e1'} strokeWidth={picked === p.domain ? 1.4 : 0.8} />)}
+        {pts.map(p => <circle key={p.domain} cx={p.x} cy={p.y} r={p.s} fill={fill(p)} fillOpacity={picked && picked !== p.domain ? 0.45 : 0.9} stroke={picked === p.domain ? '#312e81' : 'none'} strokeWidth="1.5" style={{ cursor: onPick ? 'pointer' : 'default' }} onClick={() => onPick && onPick(p.domain === picked ? null : p.domain)}><title>{`${p.domain}: ${p.links} link${p.links === 1 ? '' : 's'}${p.verdict ? `, ${p.verdict}` : ''}`}</title></circle>)}
+        <circle cx={cx} cy={cy} r="16" fill="#4f46e5" /><text x={cx} y={cy + 30} textAnchor="middle" style={{ fontSize: 10, fontWeight: 600, fill: '#3730a3' }}>{domain}</text>
+      </g>
     </svg>
   );
 }
@@ -197,39 +202,73 @@ function Gate({ r, d, children }) {
   return children;
 }
 
-function SimpleTable({ columns, rows, name, empty, size = 25 }) {
-  const pager = usePager(rows, { size, resetKey: name });
-  if (!rows.length) return <Empty>{empty}</Empty>;
+function SimpleTable({ columns, rows, name, empty, size = 25, searchOf, bar }) {
+  const [q, setQ] = useState('');
+  const shown = useMemo(() => (q.trim() && searchOf ? rows.filter(r => searchOf(r).toLowerCase().includes(q.trim().toLowerCase())) : rows), [rows, q, searchOf]);
+  const pager = usePager(shown, { size, resetKey: `${name}|${q}` });
   return (
     <>
-      <div className="overflow-x-auto"><table className="w-full text-13">
-        <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr>{columns.map(c => <th key={c.h} className={`px-4 py-2.5 font-medium ${c.right ? 'text-right' : 'text-left'}`}>{c.h}</th>)}</tr></thead>
-        <tbody className="divide-y divide-slate-100">{pager.rows.map((r, i) => <tr key={i} className="hover:bg-slate-50">{columns.map(c => <td key={c.h} className={`px-4 py-2.5 ${c.right ? 'text-right tabular-nums' : ''} ${c.cls || ''}`}>{c.cell(r)}</td>)}</tr>)}</tbody></table></div>
-      <div className="border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 pr-4"><Pager p={pager} label="rows" />
-        <button type="button" onClick={() => downloadCsv(name, columns.map(c => c.h), rows.map(r => columns.map(c => (c.csv ? c.csv(r) : String(c.cell(r) ?? '')))))} className="text-12.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Export CSV</button></div>
+      {(searchOf || bar) && <div className="px-4 py-3 flex flex-wrap items-center gap-3 border-b border-slate-100">
+        {searchOf && <label className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter" aria-label="Filter" className="h-9 w-64 pl-9 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 outline-none focus:ring-2 focus:ring-indigo-400" /></label>}
+        {bar}
+        <span className="ml-auto text-12.5 text-slate-500 tabular-nums">{fmt(shown.length)} of {fmt(rows.length)}</span></div>}
+      {!shown.length ? <Empty>{rows.length ? 'Nothing matches the filter.' : empty}</Empty> : (
+        <>
+          <div className="overflow-x-auto"><table className="w-full text-13">
+            <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr>{columns.map(c => <th key={c.h} className={`px-4 py-2.5 font-medium ${c.right ? 'text-right' : 'text-left'}`}>{c.h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-slate-100">{pager.rows.map((r, i) => <tr key={i} className="hover:bg-slate-50 align-top">{columns.map(c => <td key={c.h} className={`px-4 py-2.5 ${c.right ? 'text-right tabular-nums' : ''} ${c.cls || ''}`}>{c.cell(r)}</td>)}</tr>)}</tbody></table></div>
+          <div className="border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 pr-4"><Pager p={pager} label="rows" />
+            <button type="button" onClick={() => downloadCsv(name, columns.map(c => c.h), shown.map(r => columns.map(c => (c.csv ? c.csv(r) : String(c.cell(r) ?? '')))))} className="text-12.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Export CSV</button></div>
+        </>)}
     </>
   );
 }
+
+const ago = (iso) => { if (!iso) return '—'; const d = Math.floor((Date.now() - Date.parse(iso)) / 86400000); if (d < 1) return 'today'; if (d < 31) return `${d}d ago`; return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); };
 
 const A_TYPE = { branded: 'Brand', naked: 'Web address', money: 'Keyword', generic: 'Generic', compound: 'Brand + words', organic: 'Natural', empty: 'No text', other: 'Other' };
 
 export function GraphTab({ b }) {
   const { r, d } = useOverview(b);
+  const [colorBy, setColorBy] = useState('category');
+  const [zoom, setZoom] = useState(1);
+  const [picked, setPicked] = useState(null);
   return (
     <Gate r={r} d={d}>
-      {d && d.state === 'ok' && (
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3">
-          <Card title="Network graph" subtitle={`The ${d.network.length} linking sites that give you the most links`} action={d.totals.toxicity != null && <Badge tone={d.totals.toxicity >= 60 ? 'red' : d.totals.toxicity >= 30 ? 'amber' : 'green'}>{d.totals.toxicity >= 60 ? 'Dangerous' : d.totals.toxicity >= 30 ? 'Needs attention' : 'Good'}</Badge>}>
-            <Network nodes={d.network} domain={d.domain} tall />
-            <div className="mt-2 flex flex-wrap gap-4 text-12 text-slate-600">{[['#10b981', 'Useful'], ['#818cf8', 'Neutral or not judged'], ['#ef4444', 'Risky']].map(([c, l]) => <span key={l} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c }} />{l}</span>)}<span>Bigger dot: more links</span></div>
-          </Card>
-          <Card pad={false} title="Linking sites" subtitle="Hover a dot to see the same figures">
-            <SimpleTable name="backlink-network" empty="No linking sites yet." size={15} rows={d.network}
-              columns={[{ h: 'Site', cell: x => <a href={`https://${x.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">{x.domain}</a>, csv: x => x.domain },
-                { h: 'Links', right: true, cell: x => fmt(x.links) }, { h: 'Judged', cell: x => (x.verdict ? <Badge tone={x.verdict === 'risky' ? 'red' : x.verdict === 'useful' ? 'green' : 'gray'}>{x.verdict}</Badge> : <span className="text-slate-300">not judged</span>), csv: x => x.verdict || '' }]} />
-          </Card>
-        </div>
-      )}
+      {d && d.state === 'ok' && (() => {
+        const g = d.graph, cats = (g.categories || []).map(x => x.label), node = d.network.find(n => n.domain === picked);
+        const tone = g.verdict === 'Good' ? ['bg-emerald-50', 'border-emerald-300', 'text-emerald-800'] : g.verdict === 'Dangerous' ? ['bg-rose-50', 'border-rose-300', 'text-rose-800'] : ['bg-amber-50', 'border-amber-300', 'text-amber-800'];
+        return (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-3">
+              <div className={`rounded-xl border ${tone[1]} bg-white overflow-hidden`}>
+                <div className={`px-5 py-3 border-b ${tone[1]} ${tone[0]}`}><div className={`text-16 font-semibold ${tone[2]}`}>{g.verdict}</div><div className={`text-13 ${tone[2]}`}>{g.verdict === 'Good' ? 'The sites that link to you look natural.' : 'Look at these signs in the sites that link to you before you ask for more links.'}</div></div>
+                <ul className="px-5 py-3 space-y-2">{g.reasons.map(x => <li key={x.text} className="flex items-start gap-2 text-13.5 text-slate-800"><span className={`mt-1.5 inline-block w-2 h-2 rounded-full shrink-0 ${x.ok ? 'bg-emerald-500' : 'bg-rose-500'}`} />{x.text}</li>)}</ul>
+              </div>
+              <Card pad={false} title="Top categories" subtitle="What kind of site links to you"><div className="px-5 py-3"><Bars rows={g.categories} labelKey="label" valueKey="domains" shareKey="share" /></div></Card>
+            </div>
+            <Card pad={false} title="Network graph" subtitle={`The ${d.network.length} linking sites that give you the most links. Click a dot for its detail.`}>
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="relative border-b lg:border-b-0 lg:border-r border-slate-100 p-3">
+                  <div className="flex items-center gap-2 mb-1"><label className="text-12.5 text-slate-500 flex items-center gap-1.5">Colour by
+                    <select value={colorBy} onChange={e => setColorBy(e.target.value)} className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12.5 text-slate-800" aria-label="Colour by"><option value="category">Kind of site</option><option value="risk">Risk</option><option value="authority">Authority</option></select></label></div>
+                  <div className="absolute right-4 top-12 z-10 flex flex-col gap-1.5">{[[Plus, 'Zoom in', () => setZoom(z => Math.min(2.2, z + 0.25))], [Minus, 'Zoom out', () => setZoom(z => Math.max(0.6, z - 0.25))], [Maximize2, 'Reset the zoom', () => setZoom(1)]].map(([I, l, fn]) => <button key={l} type="button" onClick={fn} aria-label={l} title={l} className="w-8 h-8 rounded-lg bg-white ring-1 ring-slate-300 hover:bg-slate-50 flex items-center justify-center cursor-pointer"><I size={15} /></button>)}</div>
+                  <Network nodes={d.network} domain={d.domain} tall colorBy={colorBy} zoom={zoom} onPick={setPicked} picked={picked} cats={cats} />
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-12 text-slate-600">{colorBy === 'category' ? cats.map((c, i) => <span key={c} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CAT_COLORS[i % CAT_COLORS.length] }} />{c}</span>)
+                    : (colorBy === 'risk' ? [['#10b981', 'Useful'], ['#818cf8', 'Not judged'], ['#ef4444', 'Risky']] : [['#059669', 'Authority 50+'], ['#d97706', '25 to 49'], ['#ef4444', 'Under 25'], ['#cbd5e1', 'No figure']]).map(([c, l]) => <span key={l} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c }} />{l}</span>)}<span>Bigger dot: more links</span></div>
+                </div>
+                <div className="p-5 text-13">
+                  {node ? (
+                    <div className="space-y-2.5"><div className="text-16 font-semibold text-slate-900 break-all">{node.domain}</div>
+                      <dl className="grid grid-cols-[110px_1fr] gap-y-1.5"><dt className="text-slate-500">Links to you</dt><dd className="font-medium">{fmt(node.links)}</dd><dt className="text-slate-500">Kind of site</dt><dd>{node.category}</dd><dt className="text-slate-500">Authority</dt><dd>{node.da ?? '—'}</dd><dt className="text-slate-500">Judged</dt><dd>{node.verdict ? <Badge tone={node.verdict === 'risky' ? 'red' : node.verdict === 'useful' ? 'green' : 'gray'}>{node.verdict}</Badge> : 'not yet'}</dd><dt className="text-slate-500">Risk</dt><dd>{node.risk ?? '—'}</dd></dl>
+                      <div className="flex gap-3 pt-1"><a href={`https://${node.domain}`} target="_blank" rel="noreferrer" className="font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1">Open the site<ExternalLink size={12} /></a><Link to={`/backlinks/links?q=${encodeURIComponent(node.domain)}`} className="font-semibold text-indigo-700 hover:underline">See its links</Link></div></div>
+                  ) : <p className="text-slate-500">Click a dot to see the site: how many links it gives you, what kind of site it is, its authority and whether it looks risky.</p>}
+                </div>
+              </div>
+            </Card>
+          </div>
+        );
+      })()}
     </Gate>
   );
 }
@@ -246,10 +285,11 @@ export function AnchorsTab({ b }) {
               <ul className="space-y-2.5">{Object.entries(d.anchor_types).sort((x, y) => y[1] - x[1]).map(([k, v]) => { const tot = Math.max(1, d.totals.backlinks); return <li key={k} className="grid grid-cols-[110px_1fr_44px_44px] items-center gap-2 text-13"><span>{A_TYPE[k] || k}</span><div className="h-2.5 rounded bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-400" style={{ width: `${(v * 100) / tot}%` }} /></div><span className="text-right tabular-nums text-slate-500">{Math.round((v * 100) / tot)}%</span><span className="text-right tabular-nums text-indigo-700">{fmt(v)}</span></li>; })}</ul>
             </Card>
           </div>
-          <Card pad={false} title="All anchors" subtitle={`${fmt(d.anchors.length)} different anchor texts`}>
-            <SimpleTable name="backlink-anchors" empty="No anchor text found." rows={d.anchors}
-              columns={[{ h: 'Anchor text', cell: x => x.text, cls: 'max-w-[420px] truncate' }, { h: 'Kind', cell: x => A_TYPE[x.type] || x.type, csv: x => x.type },
-                { h: 'Backlinks', right: true, cell: x => fmt(x.count) }, { h: 'Referring domains', right: true, cell: x => fmt(x.domains) }, { h: 'Follow', right: true, cell: x => `${Math.round((x.follow * 100) / x.count)}%` }]} />
+          <Card pad={false} title="Anchors" subtitle={`${fmt(d.anchors.length)} different anchor texts`}>
+            <SimpleTable name="backlink-anchors" empty="No anchor text found." rows={d.anchors} searchOf={x => x.text}
+              columns={[{ h: 'Anchor text', cell: x => x.text, cls: 'max-w-[460px]' }, { h: 'Kind', cell: x => A_TYPE[x.type] || x.type, csv: x => x.type, cls: 'text-slate-500' },
+                { h: 'Backlinks', right: true, cell: x => <span className="text-indigo-700">{fmt(x.count)}</span>, csv: x => x.count }, { h: 'Domains', right: true, cell: x => fmt(x.domains) },
+                { h: 'First seen', cell: x => (x.first_seen ? new Date(x.first_seen).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'), csv: x => x.first_seen || '' }, { h: 'Last seen', cell: x => ago(x.last_seen), csv: x => x.last_seen || '' }]} />
           </Card>
         </div>
       )}
@@ -258,14 +298,22 @@ export function AnchorsTab({ b }) {
 }
 
 export function PagesTab({ b }) {
-  const { r, d } = useOverview(b);
+  const r = useApi(`/businesses/${b.id}/backlink-hub/pages`);
+  const [broken, setBroken] = useState(false);
+  const d = r.data;
+  const rows = useMemo(() => (d?.pages || []).filter(p => !broken || p.broken), [d, broken]);
+  if (!d && !r.error) return <Card><p className="py-10 text-center text-13 text-slate-500 inline-flex items-center justify-center gap-2 w-full"><Loader2 size={16} className="animate-spin" />Reading your pages, one by one… about 20 seconds.</p></Card>;
   return (
     <Gate r={r} d={d}>
       {d && d.state === 'ok' && (
-        <Card pad={false} title="Indexed pages" subtitle="The pages of your website that have links pointing to them">
-          <SimpleTable name="backlink-pages" empty="No links to any page yet." rows={d.pages}
-            columns={[{ h: 'URL', cell: x => <a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={x.url}>{x.url}<ExternalLink size={11} className="text-slate-400" /></a>, csv: x => x.url, cls: 'max-w-[520px] truncate' },
-              { h: 'Referring domains', right: true, cell: x => fmt(x.domains) }, { h: 'Backlinks', right: true, cell: x => fmt(x.links) }, { h: 'Follow', right: true, cell: x => `${Math.round((x.follow * 100) / Math.max(1, x.links))}%` }]} />
+        <Card pad={false} title="Indexed pages" subtitle={`${fmt(d.pages.length)} pages of your website: the ones with links and the ones your last scan found. Read now from each page.`}>
+          <SimpleTable name="backlink-pages" empty="No pages found yet. Run the Website Audit, or wait for the crawler to find links." rows={rows} searchOf={x => `${x.url} ${x.title || ''}`}
+            bar={<label className="inline-flex items-center gap-2 text-13 text-slate-700 cursor-pointer"><input type="checkbox" checked={broken} onChange={e => setBroken(e.target.checked)} />Broken pages <span className={`tabular-nums ${d.broken ? 'text-rose-600 font-semibold' : 'text-slate-400'}`}>({d.broken})</span></label>}
+            columns={[{ h: 'Title and URL', cell: x => <div className="max-w-[460px]">{x.title && <div className="text-slate-900 truncate" title={x.title}>{x.title}</div>}<a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1 max-w-full" title={x.url}><span className="truncate">{x.url}</span><ExternalLink size={11} className="shrink-0 text-slate-400" /></a></div>, csv: x => x.url },
+              { h: 'Status', cell: x => (x.broken ? <Badge tone="red">{x.status ? `Broken (${x.status})` : 'Not reachable'}</Badge> : <Badge tone="green">Loads</Badge>), csv: x => x.status ?? '' },
+              { h: 'Backlinks', right: true, cell: x => <span className={x.backlinks ? 'text-indigo-700' : 'text-slate-400'}>{fmt(x.backlinks)}</span>, csv: x => x.backlinks }, { h: 'Domains', right: true, cell: x => fmt(x.domains) },
+              { h: 'External links', right: true, cell: x => fmt(x.external) }, { h: 'Internal links', right: true, cell: x => fmt(x.internal) }, { h: 'Last seen', cell: x => ago(x.last_seen), csv: x => x.last_seen || '' }]} />
+          {d.broken > 0 && <p className="px-5 py-3 border-t border-slate-100 text-12.5 text-amber-800 bg-amber-50/60">{d.broken} page{d.broken === 1 ? '' : 's'} that {d.broken === 1 ? 'does' : 'do'} not load {rows.some(x => x.broken && x.backlinks) ? 'still have backlinks: the value of those links is lost. Redirect each one to a working page.' : 'were found by your last scan.'}</p>}
         </Card>
       )}
     </Gate>
@@ -279,7 +327,7 @@ export function OutboundTab({ b }) {
     <Gate r={r} d={d}>
       {d && d.state === 'ok' && (
         <Card pad={false} title="Outbound domains" subtitle={`The websites your own pages link to, read now from ${d.pages} pages of your site (${fmt(d.total_links)} links to other sites)`}>
-          <SimpleTable name="outbound-domains" empty="Your pages link to no other website." rows={d.domains}
+          <SimpleTable name="outbound-domains" empty="Your pages link to no other website." rows={d.domains} searchOf={x => `${x.domain} ${x.anchor || ''}`}
             columns={[{ h: 'Website', cell: x => <a href={`https://${x.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{x.domain}<ExternalLink size={11} className="text-slate-400" /></a>, csv: x => x.domain },
               { h: 'Pages linking', right: true, cell: x => fmt(x.pages) }, { h: 'Links', right: true, cell: x => fmt(x.links) }, { h: 'Nofollow', right: true, cell: x => fmt(x.nofollow) }, { h: 'Example anchor', cell: x => x.anchor || '—', cls: 'text-slate-500 max-w-[260px] truncate' }]} />
         </Card>
