@@ -337,3 +337,83 @@ def pages_report(db: Session, b: Business) -> dict[str, Any]:
         live = list(pool.map(lambda e: read(e["url"]), items))
     out = [{"url": e["url"], "domains": len(e["domains"]), "backlinks": e["links"], "last_seen": e["last"], **info, "broken": info["status"] is None or info["status"] >= 400} for e, info in zip(items, live)]
     return {"state": "ok", "domain": domain, "pages": out, "broken": sum(1 for r in out if r["broken"])}
+
+
+TOXIC_FROM, POTENTIAL_FROM = 60, 30  # toxicity score (0-100) from which a site is toxic, and potentially toxic
+
+
+def _toxicity(risk: int | None, spam: int | None, verdict: str | None) -> int | None:
+    """How harmful a linking site looks, 0 to 100, from what we hold about it: our own risk judgement of the site (relevance and spam signals) and Moz's spam score (a percentage, scaled to 100).
+    None when the site has been judged by neither."""
+    parts = [x for x in (risk, min(100, spam * 6) if spam is not None else None) if x is not None]
+    if not parts:
+        return None
+    score = round(0.6 * max(parts) + 0.4 * (sum(parts) / len(parts)))
+    return max(score, TOXIC_FROM) if verdict == "risky" else score
+
+
+def _band(score: int | None) -> str:
+    return "unknown" if score is None else "toxic" if score >= TOXIC_FROM else "potential" if score >= POTENTIAL_FROM else "clean"
+
+
+def toxicity_report(db: Session, b: Business) -> dict[str, Any]:
+    """The Backlink Audit's numbers, counted from the links our crawler found and what we know of each linking site.
+
+    Toxicity of a site: our risk judgement of it and Moz's spam score together (see `_toxicity`). Toxic from 60, potentially toxic from 30, clean below. A link takes its site's band.
+    Overall toxicity score: the share of live links that come from toxic sites. Follow and link kinds are read from the links as the crawler saw them."""
+    from . import quality  # noqa: PLC0415
+    domain = hub.own_domain(db, b.id)
+    if not domain:
+        return {"state": "no_target"}
+    rows = hub.links(db, b, status="all", limit=hub.MAX_LINKS)["links"]
+    live = [x for x in rows if x["is_live"]]
+    scores = quality.scores_for(db, b.id)
+    doms: dict[str, dict[str, Any]] = {}
+    for x in live:
+        d = doms.setdefault(x["source_domain"], {"domain": x["source_domain"], "links": 0, "spam": None, "da": None, "authority": None, "verdict": None, "first": None})
+        d["links"] += 1
+        m = x.get("metrics") or {}
+        d["spam"] = m.get("spam") if m.get("spam") is not None else d["spam"]
+        d["da"] = m.get("da") if m.get("da") is not None else d["da"]
+        d["authority"] = x.get("authority") if x.get("authority") is not None else d["authority"]
+        if x["first_seen"] and (d["first"] is None or x["first_seen"] < d["first"]):
+            d["first"] = x["first_seen"]
+    for d in doms.values():
+        sc = scores.get(d["domain"]) or {}
+        d["verdict"] = sc.get("verdict")
+        d["toxicity"] = _toxicity(sc.get("risk"), d["spam"], sc.get("verdict"))
+        d["band"] = _band(d["toxicity"])
+        d["reason"] = sc.get("reason")
+    n_links, n_doms = len(live), len(doms)
+    band_links = Counter()
+    for d in doms.values():
+        band_links[d["band"]] += d["links"]
+    follow = Counter("follow" if x["follow"] == "dofollow" else "nofollow" for x in live)
+    kinds = Counter("No text (image or icon)" if x["anchor_type"] == "empty" else "Web address" if x["anchor_type"] == "naked" else "Text" for x in live)
+    toxic_links = band_links["toxic"]
+    overall = round(100 * toxic_links / n_links) if n_links else None
+    # the same figures month by month (by the month a link was first seen), for the small charts
+    months = sorted({x["first_seen"][:7] for x in rows if x["first_seen"]})[-12:]
+    toxic_domains = {d for d, v in doms.items() if v["band"] == "toxic"}
+    series = [{"month": mo, "domains": sum(1 for d in doms.values() if d["first"] and d["first"][:7] <= mo), "backlinks": sum(1 for x in live if x["first_seen"] and x["first_seen"][:7] <= mo),
+               "toxic": sum(1 for x in live if x["first_seen"] and x["first_seen"][:7] <= mo and x["source_domain"] in toxic_domains)} for mo in months]
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    new30 = sum(1 for x in live if x["first_seen"] and x["first_seen"] >= since)
+    judged = sum(1 for d in doms.values() if d["toxicity"] is not None)
+    ordered = sorted(doms.values(), key=lambda d: (-(d["toxicity"] if d["toxicity"] is not None else -1), -d["links"]))
+    return {
+        "state": "ok", "domain": domain,
+        "totals": {"referring_domains": n_doms, "backlinks": n_links, "toxic_links": toxic_links, "potential_links": band_links["potential"], "clean_links": band_links["clean"], "unknown_links": band_links["unknown"],
+                   "toxic_domains": sum(1 for d in doms.values() if d["band"] == "toxic"), "potential_domains": sum(1 for d in doms.values() if d["band"] == "potential"), "judged_domains": judged,
+                   "overall": overall, "risk": None if overall is None else "High" if overall >= 60 else "Medium" if overall >= 30 else "Low", "new_30d": new30,
+                   "domains_change": round(100 * sum(1 for d in doms.values() if d["first"] and d["first"] >= since) / max(1, n_doms - sum(1 for d in doms.values() if d["first"] and d["first"] >= since))) if n_doms > sum(1 for d in doms.values() if d["first"] and d["first"] >= since) else None,
+                   "links_change": round(100 * new30 / (n_links - new30)) if n_links > new30 else None},
+        "follow": dict(follow), "kinds": dict(kinds), "series": series,
+        "categories": [{"key": k, "label": l, "links": band_links[k], "domains": sum(1 for d in doms.values() if d["band"] == k), "share": round(100 * band_links[k] / n_links) if n_links else 0}
+                       for k, l in (("toxic", "Toxic"), ("potential", "Potentially toxic"), ("clean", "Non-toxic"), ("unknown", "Not judged yet"))],
+        "domains": [{"domain": d["domain"], "authority": d["authority"], "da": d["da"], "spam": d["spam"], "toxicity": d["toxicity"], "band": d["band"], "links": d["links"], "reason": d["reason"]} for d in ordered[:300]],
+        "backlinks": [{"source_url": x["source_url"], "source_domain": x["source_domain"], "anchor": x["anchor"], "follow": x["follow"], "band": doms[x["source_domain"]]["band"], "toxicity": doms[x["source_domain"]]["toxicity"], "first_seen": x["first_seen"]}
+                      for x in sorted(live, key=lambda x: -(doms[x["source_domain"]]["toxicity"] if doms[x["source_domain"]]["toxicity"] is not None else -1))[:300]],
+        "anchors": [{"text": k, "count": v, "domains": len({x["source_domain"] for x in live if x["anchor"] == k})} for k, v in Counter(x["anchor"] for x in live if x["anchor"]).most_common(100)],
+        "disavow": {"toxic": sorted(d["domain"] for d in doms.values() if d["band"] == "toxic"), "potential": sorted(d["domain"] for d in doms.values() if d["band"] == "potential")},
+    }

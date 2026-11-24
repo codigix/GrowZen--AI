@@ -6,6 +6,7 @@ import Select from '../components/Select';
 import { Act, Head, OpenAct } from './TableBits';
 import { api, useApi, usePoll, fmtDate, fmtDateTime } from './seoApi';
 import Tip from './Tip';
+import AuditReport from './BacklinkAuditReport';
 import BacklinkOverview, { GraphTab, AnchorsTab, PagesTab, OutboundTab } from './BacklinkOverview';
 import { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 
@@ -908,6 +909,7 @@ const AUDIT_VIEW = {
 };
 function Audit({ b }) {
   const r = useApi(`/businesses/${b.id}/backlink-hub/audit`);
+  const sm = useApi(`/businesses/${b.id}/backlink-hub/summary`);
   const [showPassed, setShowPassed] = useState(false);
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
@@ -919,17 +921,8 @@ function Audit({ b }) {
   const items = [...d.items].sort((x, y) => order[x.severity] - order[y.severity]);
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center gap-x-8 gap-y-2">
-        <div className="flex items-baseline gap-2" title="100 minus points for each problem: 25 serious, 10 fix soon, 3 good to know.">
-          <span className={`text-3xl font-bold tabular-nums ${tone}`}>{d.score ?? '—'}</span><span className="text-12 text-slate-500">link health / 100</span>
-        </div>
-        <p className={`flex items-center gap-2 text-14 font-semibold ${d.healthy ? 'text-emerald-700' : 'text-amber-700'}`}>{d.healthy ? <CheckCircle2 size={17} /> : <ShieldAlert size={17} />}{empty ? 'No backlinks to audit yet.' : d.healthy ? 'No serious problems in your backlink profile.' : 'Some links need your attention.'}</p>
-        <div className="flex gap-4 text-13 text-slate-600 ml-auto">
-          <span><b className="tabular-nums text-slate-900">{d.live}</b> live links</span><span><b className="tabular-nums text-slate-900">{d.sites}</b> sites</span><span><b className="tabular-nums text-slate-900">{d.lost}</b> lost</span>
-          <span><b className="tabular-nums text-red-600">{d.counts.serious}</b> serious</span><span><b className="tabular-nums text-amber-600">{d.counts.warning}</b> fix soon</span><span><b className="tabular-nums text-blue-600">{d.counts.info}</b> to know</span>
-        </div>
-      </div>
-      <Card title={`Problems found (${items.length})`} pad={false} action={items.length > 0 && <CsvButton name={`backlink-audit-${siteName(b)}`} head={['Priority', 'Problem', 'Why it matters', 'Affects', 'What to do', 'Examples']} rows={() => items.map(i => [SEV[i.severity][0], i.title, i.why || '', num(i.count), i.fix || '', (i.examples || []).map(e => `${e.url} (${e.note})`).join('; ')])} tip="Exports every problem found, with what to do about it" />}>
+      <AuditReport d={d} b={b} syncedAt={sm.data?.crawler?.last_sync_at} onChanged={() => { r.reload(true); sm.reload(true); }} />
+      <Card title={`Problems in detail (${items.length})`} pad={false} action={items.length > 0 && <CsvButton name={`backlink-audit-${siteName(b)}`} head={['Priority', 'Problem', 'Why it matters', 'Affects', 'What to do', 'Examples']} rows={() => items.map(i => [SEV[i.severity][0], i.title, i.why || '', num(i.count), i.fix || '', (i.examples || []).map(e => `${e.url} (${e.note})`).join('; ')])} tip="Exports every problem found, with what to do about it" />}>
         {items.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-13">

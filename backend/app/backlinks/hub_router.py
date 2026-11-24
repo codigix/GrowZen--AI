@@ -60,7 +60,8 @@ def opportunities(b: Business = Depends(get_business), db: Session = Depends(get
 
 @router.get("/audit")
 def audit(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
-    return hub.audit(db, b)
+    from . import overview as backlink_overview
+    return {**hub.audit(db, b), "report": backlink_overview.toxicity_report(db, b)}
 
 
 @router.post("/metrics/refresh")
