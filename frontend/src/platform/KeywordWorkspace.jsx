@@ -33,7 +33,7 @@ const IDX_COLOR = (v) => (v < 34 ? '#059669' : v < 67 ? '#d97706' : '#dc2626');
 function IndexCell({ i }) {
   const g = i.gsc || {};
   const has = g.views != null;
-  const perf = has ? `${SHORT(g.views)} views · ${g.clicks ?? 0} click${g.clicks === 1 ? '' : 's'}${g.position != null ? ` · pos ${Math.round(g.position * 10) / 10}` : ''}` : '';
+  const perf = has ? `${SHORT(g.views)} views · ${g.clicks ?? 0} click${g.clicks === 1 ? '' : 's'}` : '';
   const tip = [i.index != null ? `Index value ${i.index} out of 100: ${IDX_WORD(i.index)} competition (Google Keyword Planner)` : 'No index value from Google for this keyword',
     has ? `Search Console, last 90 days: ${g.views} views, ${g.clicks ?? 0} clicks${g.ctr != null ? `, click rate ${g.ctr}%` : ''}${g.position != null ? `, average position ${Math.round(g.position * 10) / 10}` : ''}` : 'No Search Console data: your site has not shown for this keyword'].join('\n');
   return (
@@ -333,6 +333,8 @@ export default function KeywordWorkspace({ b, onUse }) {
               <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Time
                 <select value={period} onChange={e => setPeriod(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Time">
                   <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>{[...monthChoices].reverse().map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</select></label>
+              <div className="basis-full h-0" aria-hidden="true" />
+              <span className="text-12 font-medium text-slate-500">Filter</span>
               <select value={fMin} onChange={e => setFMin(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Searches a month"><option value="">Any searches</option><option value="100">100+ a month</option><option value="500">500+ a month</option><option value="1000">1,000+ a month</option><option value="5000">5,000+ a month</option></select>
               <select value={fKd} onChange={e => setFKd(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Difficulty"><option value="">Any difficulty</option><option value="easy">Easy (under 30)</option><option value="medium">Medium (30 to 49)</option><option value="hard">Challenging (50 to 69)</option><option value="very">Very hard (70+)</option></select>
               <select value={fTrend} onChange={e => setFTrend(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Last 12 months"><option value="">Any trend</option><option value="up">Rising</option><option value="steady">Steady</option><option value="down">Falling</option></select>
@@ -353,16 +355,15 @@ export default function KeywordWorkspace({ b, onUse }) {
             {rows.length === 0 ? (
               <div className="py-12 text-center text-13 text-slate-500">Nothing here. <button type="button" onClick={() => { setSource(''); setQ(''); go('open'); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show everything to look at</button></div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[74vh]">
                 <table className="w-full text-13 min-w-[760px]">
-                  <thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500">
+                  <thead className="text-11.5 uppercase tracking-wide text-slate-500 [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-slate-50 [&_th]:shadow-[inset_0_-1px_0_rgb(226_232_240)]">
                     <tr>
                       <th className="w-10 px-3 py-2"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(i => i.id)))} /></th>
                       <SortTh id="keyword" sort={sort} setSort={setSort} what="A search people type into Google." why="Click the name to check its searches, cost and related ideas. Click the heading to sort A to Z." from="your website, Search Console, your profile, competitor sites, Google suggestions and AI.">Keyword</SortTh>
-                      <SortTh id="volume" sort={sort} setSort={setSort} right what="How many times a month people search it in the chosen location and time." why="Shows which keywords are worth the effort." from="Google Ads Keyword Planner (needs Google Ads connected). Blank when Google gave no figure for that place.">Searches / mo</SortTh>
+                      <SortTh id="volume" sort={sort} setSort={setSort} right what="How many times a month people search it in the chosen location and time, and under it what advertisers bid at the top of the page per click." why="Shows which keywords are worth the effort, and what they are worth." from="Google Ads Keyword Planner (needs Google Ads connected). Blank when Google gave no figure for that place.">Searches / mo</SortTh>
                       <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100, worked out from the real top 10 on Google for the keyword: their authority, backlinks, content, the features on the page and the intent. Higher is harder. The arrow beside it shows how the searches moved in the last 12 months: green up when rising by 10% or more, red down when falling by 10% or more." why="Pick easier ones first." from="Google's results page (through Apify), Moz authority, the Google Ads search volume and our saved backlinks. It is worked out by itself, a page at a time.">Difficulty</SortTh>
                       <SortTh id="index" sort={sort} setSort={setSort} right what="The keyword's index value: Google's competition index, 0 to 100 (higher means more advertisers compete for it). Under it, how the keyword performs in Google Search Console: views, clicks and average position in the last 90 days." why="A high index means a crowded, costly keyword; many views and few clicks mean the title needs work." from="Google Keyword Planner (index value) and Google Search Console (views, clicks, position).">Index</SortTh>
-                      <SortTh id="cpc" sort={sort} setSort={setSort} right what="What advertisers bid at the top of the page for it, per click, in the chosen location." why="Shows what the keyword is worth." from="Google Ads Keyword Planner. Shown once a location or time is chosen.">Cost / click</SortTh>
                       <th className="px-3 py-2 text-left"><Head what="Where it stands: Competitors only (a gap: they use it, you do not), You and competitors, Only you, a New idea from Google or AI, a Top 3 win, or Almost (page 2). Under it, the places it was found." why="Start with the competitors-only gaps and the page-2 keywords." from="comparing your own places (website, profile, Search Console) with the competitor sites, Google and AI. Hover for the detail.">Where it stands</Head></th>
                       <SortTh id="rank" sort={sort} setSort={setSort} right what="Your average position on Google for it, last 90 days." why="Shows where you already show up." from="Google Search Console. Blank when Google has not shown your site for it.">Your rank</SortTh>
                       <th className="px-3 py-2 text-right"><Head right what="Things you can do with this keyword right here." why="Pick saves it to your list; Set aside hides it; Check opens its numbers.">Actions</Head></th>
@@ -370,7 +371,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {shown.map(i => (
-                      <tr key={i.id} onClick={() => toggle(i.id)} className={`cursor-pointer ${sel.has(i.id) ? 'bg-indigo-50/60' : 'hover:bg-slate-50'}`}>
+                      <tr key={i.id} onClick={() => toggle(i.id)} className={`cursor-pointer transition-colors ${sel.has(i.id) ? 'bg-indigo-50/70 shadow-[inset_3px_0_0_#6366f1]' : i.picked ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}`}>
                         <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" aria-label={`Select ${i.keyword}`} checked={sel.has(i.id)} onChange={() => toggle(i.id)} /></td>
                         <td className="px-3 py-2.5 min-w-[220px]">
                           <span className="inline-flex items-center gap-1.5">
@@ -379,9 +380,8 @@ export default function KeywordWorkspace({ b, onUse }) {
                             {i.picked && <Badge tone="green">Picked</Badge>}
                           </span>
                           {i.fit?.why && <span className={`block text-11.5 ${i.fit.fit === 'no' ? 'text-amber-700' : 'text-slate-500'}`}>{i.fit.fit === 'no' ? 'Hidden: ' : i.fit.fit === 'maybe' ? 'Check: ' : i.fit.for ? `Fits ${i.fit.for}: ` : 'Fits: '}{i.fit.why}</span>}
-                          {i.competitors.length > 0 && <span className="block text-11.5 text-slate-500">used by {i.competitors.slice(0, 2).join(', ')}{i.competitors.length > 2 ? ` +${i.competitors.length - 2}` : ''}</span>}
                         </td>
-                        <td className="px-3 py-2.5 text-right" title="Searches per month in your country (Google Ads Keyword Planner)"><div className="tabular-nums">{n0(i.volume)}</div>{i.volume > 0 && <div className="mt-1 h-1 rounded-full bg-slate-100 ml-auto w-16"><div className="h-1 rounded-full bg-slate-400" style={{ width: `${Math.max(5, (i.volume / topVolume) * 100)}%` }} /></div>}</td>
+                        <td className="px-3 py-2.5 text-right" title="Searches per month in your country (Google Ads Keyword Planner)"><div className="tabular-nums font-medium text-slate-900">{n0(i.volume)}</div>{i.volume > 0 && <div className="mt-1 h-1 rounded-full bg-slate-100 ml-auto w-16"><div className="h-1 rounded-full bg-indigo-300" style={{ width: `${Math.max(5, (i.volume / topVolume) * 100)}%` }} /></div>}{i.cpc != null && <div className="mt-0.5 text-11 text-slate-500 tabular-nums">₹{i.cpc} / click</div>}</td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                           <span className="inline-flex items-center justify-end gap-1.5">
                             {i.difficulty != null ? <KdChip v={i.difficulty} detail={i.kd_detail} />
@@ -390,7 +390,6 @@ export default function KeywordWorkspace({ b, onUse }) {
                             <Arrow change={i.change} months={i.trend} />
                           </span></td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap"><IndexCell i={i} /></td>
-                        <td className="px-3 py-2.5 text-right tabular-nums" title="What advertisers bid at the top of the page, per click">{i.cpc != null ? `₹${i.cpc}` : '—'}</td>
                         <td className="px-3 py-2.5"><Origin i={i} /></td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" title={i.rank != null ? `Average position ${i.rank.toFixed(1)} on Google over the last 90 days${i.impressions ? `: ${i.impressions.toLocaleString('en-IN')} impressions, ${(i.clicks || 0).toLocaleString('en-IN')} clicks` : ''} (Search Console)` : 'Google has not shown your site for this keyword in the last 90 days'}>
                           {i.rank != null ? (() => { const n = Math.max(1, Math.round(i.rank)); const bd = bandOf(i.rank); return <span className="inline-flex items-center justify-end gap-1.5"><span className={`font-semibold tabular-nums ${n <= 10 ? 'text-emerald-700' : 'text-slate-800'}`}>#{n}</span>{bd && <span className={`rounded-full px-1.5 py-px text-11 font-semibold ${bd[3]}`}>{bd[1]}</span>}</span>; })() : <span className="text-slate-300">—</span>}
