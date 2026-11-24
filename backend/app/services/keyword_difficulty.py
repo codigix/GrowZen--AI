@@ -136,31 +136,73 @@ def intent_scores(rows: list[dict[str, Any]], ads: list[dict[str, Any]]) -> dict
 
 
 MIN_LINKS = 5  # fewer saved links than this say nothing about a site's profile
+IBQ_WEIGHTS = {"DQ": 0.30, "TR": 0.25, "LF": 0.20, "LP": 0.15, "LH": 0.10}
+FOLLOW_SCORE = {"dofollow": 100, "ugc": 40, "nofollow": 30, "sponsored": 20}
+PLACEMENT_SCORE = {"body": 100, "content": 100, "contextual": 100, "author": 70, "bio": 70, "sidebar": 40, "footer": 20}
+HEALTH_SCORE = {"LIVE": 100, "REDIRECTED": 60, "BROKEN": 0, "LOST": 0, "REMOVED": 0}
+
+
+def _mean(xs: list[float]) -> float | None:
+    return sum(xs) / len(xs) if xs else None
+
+
+def _follow(link_type: str | None, rel: list[str]) -> int:
+    rel = {str(r).lower() for r in rel}
+    if "sponsored" in rel:
+        return FOLLOW_SCORE["sponsored"]
+    if "ugc" in rel:
+        return FOLLOW_SCORE["ugc"]
+    if "nofollow" in rel or link_type == "nofollow":
+        return FOLLOW_SCORE["nofollow"]
+    return FOLLOW_SCORE["dofollow"]
+
+
+def _place(placement: str | None) -> int | None:
+    p = (placement or "").lower()
+    return next((v for k, v in PLACEMENT_SCORE.items() if k in p), None) if p else None
 
 
 def link_profile(sites: list[str], keyword: str) -> dict[str, dict[str, Any]]:
-    """What our own backlink crawler holds for the sites that rank: {site: {links, dofollow (0-100), relevance (0-100)}}. Only sites with at least MIN_LINKS saved links are returned:
-    most sites on a results page are not in it, and a site is never given figures it does not have."""
+    """The Importance-weighted Backlink Quality of the sites that rank, from the links our own crawler saved for them (a site with fewer than MIN_LINKS saved links gets nothing):
+    IBQ = 0.30 DQ + 0.25 TR + 0.20 LF + 0.15 LP + 0.10 LH, where
+      DQ  domain quality of the linking sites: their Domain Authority and (100 - 6 x spam score), from Moz
+      TR  topic relevance: how often the link's anchor text carries the keyword
+      LF  link follow: dofollow 100, UGC 40, nofollow 30, sponsored 20
+      LP  link placement: body 100, author bio 70, sidebar 40, footer 20 (placement is not saved yet, so this is usually missing)
+      LH  link health: live 100, redirected 60, broken or lost 0
+    A factor with no data is left out and the others are scaled to 100%. Returns {site: {links, dq, tr, lf, lp, lh, ibq, dofollow}}."""
     from sqlalchemy import select  # noqa: PLC0415
+    from sqlalchemy.orm import aliased  # noqa: PLC0415
 
-    from ..backlinks.models import Backlink, BiDomain  # noqa: PLC0415
+    from ..backlinks.models import Backlink, BiDomain, BiDomainMetric  # noqa: PLC0415
     from ..db import SessionLocal  # noqa: PLC0415
     words = [w for w in keyword.lower().split() if len(w) > 2]
     db = SessionLocal()
     try:
-        out: dict[str, dict[str, Any]] = {}
-        rows = db.execute(select(BiDomain.registrable_domain, Backlink.link_type, Backlink.rel_attributes, Backlink.anchor_text)
-                          .join(Backlink, Backlink.target_domain_id == BiDomain.id).where(BiDomain.registrable_domain.in_(sites or [""]), Backlink.current_status == "LIVE")).all()
+        src = aliased(BiDomain)
+        rows = db.execute(select(BiDomain.registrable_domain, Backlink.link_type, Backlink.rel_attributes, Backlink.anchor_text, Backlink.placement, Backlink.current_status,
+                                 BiDomainMetric.da, BiDomainMetric.spam_score)
+                          .join(Backlink, Backlink.target_domain_id == BiDomain.id).join(src, src.id == Backlink.source_domain_id)
+                          .outerjoin(BiDomainMetric, BiDomainMetric.domain == src.registrable_domain)
+                          .where(BiDomain.registrable_domain.in_(sites or [""]))).all()
         by: dict[str, list[Any]] = {}
-        for site, ltype, rel, anchor in rows:
-            by.setdefault(site, []).append((ltype, rel or [], (anchor or "").lower()))
+        for r in rows:
+            by.setdefault(r[0], []).append(r[1:])
+        out: dict[str, dict[str, Any]] = {}
         for site, links in by.items():
             if len(links) < MIN_LINKS:
                 continue
-            follow = sum(1 for lt, rel, _a in links if lt != "nofollow" and not {"nofollow", "sponsored", "ugc"} & set(rel))
-            anchored = [a for _lt, _r, a in links if a]
-            rel_hits = sum(1 for a in anchored if words and any(w in a for w in words))
-            out[site] = {"links": len(links), "dofollow": round(100 * follow / len(links)), "relevance": round(100 * rel_hits / len(anchored)) if anchored else None}
+            dq = _mean([(da + (100 - min(100, (spam or 0) * 6))) / 2 for _lt, _rel, _a, _pl, _st, da, spam in links if da is not None])
+            anchored = [a.lower() for _lt, _rel, a, _pl, _st, _da, _sp in links if a]
+            tr = 100 * sum(1 for a in anchored if words and any(w in a for w in words)) / len(anchored) if anchored else None
+            lf = _mean([_follow(lt, rel or []) for lt, rel, *_r in links])
+            lp = _mean([v for v in (_place(pl) for _lt, _rel, _a, pl, *_r in links) if v is not None])
+            lh = _mean([HEALTH_SCORE[st] for *_h, st, _da, _sp in links if st in HEALTH_SCORE])
+            f = {"DQ": dq, "TR": tr, "LF": lf, "LP": lp, "LH": lh}
+            live = [(IBQ_WEIGHTS[k], v) for k, v in f.items() if v is not None]
+            ibq = sum(w * v for w, v in live) / sum(w for w, _ in live) if live else None
+            out[site] = {"links": len(links), **{k.lower(): round(v) if v is not None else None for k, v in f.items()}, "ibq": round(ibq) if ibq is not None else None,
+                         "dofollow": round(100 * sum(1 for lt, rel, *_r in links if _follow(lt, rel or []) == 100) / len(links))}
         return out
     except Exception as exc:  # noqa: BLE001 -- the saved links being unreachable only means no figures
         log.warning("link profile unavailable: %r", exc)
@@ -197,15 +239,11 @@ def score(keyword: str, country: str, volume: int | None = None) -> dict[str, An
     profiles = link_profile(sites, keyword)
     for r in rows:
         pr = profiles.get(r["site"]) or {}
-        r.update({"links_saved": pr.get("links"), "dofollow": pr.get("dofollow"), "link_relevance": pr.get("relevance")})
-    with_links = [r for r in rows if r["links_saved"] and r["da"] is not None]
-    # BQ = 0.50 Domain_Quality + 0.30 Dofollow_Score + 0.20 Relevance_Score, for the sites our crawler has links for (domain quality = 100 minus six times Moz's spam score)
-    bq_each = []
-    for r in with_links:
-        parts = [(100 - min(100, (r["spam"] or 0) * 6), 0.5), (r["dofollow"], 0.3), (r["link_relevance"], 0.2)]
-        live = [(v, w) for v, w in parts if v is not None]
-        bq_each.append(sum(v * w for v, w in live) / sum(w for _, w in live))
+        r.update({"links_saved": pr.get("links"), "dofollow": pr.get("dofollow"), "ibq": pr.get("ibq")})
+    covered = [profiles[r["site"]] for r in rows if r["site"] in profiles and profiles[r["site"]].get("ibq") is not None]
+    bq_each = [x["ibq"] for x in covered]
     bq = sum(bq_each) / len(bq_each) if bq_each else None
+    bq_parts = {k: (round(m) if (m := _mean([x[k.lower()] for x in covered if x.get(k.lower()) is not None])) is not None else None) for k in IBQ_WEIGHTS}
     known = [r for r in rows if r["da"] is not None]
     avg = lambda k: (sum(r[k] for r in known if r[k] is not None) / max(1, sum(1 for r in known if r[k] is not None))) if known else None  # noqa: E731
     da, pa = avg("da"), avg("pa")
@@ -232,7 +270,7 @@ def score(keyword: str, country: str, volume: int | None = None) -> dict[str, An
         "content": {"cc": round(cc) if cc is not None else None, "relevance": round(relevance) if relevance is not None else None, "quality": round(quality) if quality is not None else None,
                     "freshness": round(freshness) if freshness is not None else None, "pages_read": len(read), "avg_words": round(sum(r["words"] for r in read) / len(read)) if read else None},
         "intent": ki, "formula": formula, "weight_used": round(100 * sum(w for w, _ in used)),
-        "backlinks": {"bq": round(bq) if bq is not None else None, "sites_with_links": len(bq_each), "counted": len(bq_each) >= 3}, "sites_with_figures": len(known), "sites": len(rows),
+        "backlinks": {"bq": round(bq) if bq is not None else None, "sites_with_links": len(bq_each), "counted": len(bq_each) >= 3, "parts": bq_parts}, "sites_with_figures": len(known), "sites": len(rows),
         "components": {"authority_strength": round(authority) if authority is not None else None, "avg_da": round(da) if da is not None else None, "avg_pa": round(pa) if pa is not None else None,
                        "median_rd": round(sorted(rds)[len(rds) // 2]) if rds else None, "serp_features": round(feature_comp), "features": features, "top10_strength": round(top10) if top10 is not None else None,
                        "sv": round(sv) if sv is not None else None},

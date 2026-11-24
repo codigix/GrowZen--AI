@@ -505,7 +505,8 @@ function KeywordOverview({ b }) {
                   <span>Top 10 with DA 70+ <b className="text-slate-900">{kd.components.top10_strength ?? '—'}%</b></span><span>Content strength <b className="text-slate-900">{kd.content?.cc ?? '—'}</b></span>
                   <span>Pages with the keyword in title <b className="text-slate-900">{kd.content?.relevance ?? '—'}%</b></span><span>Average length <b className="text-slate-900">{kd.content?.avg_words ?? '—'} words</b></span>
                   <span>Updated in a year <b className="text-slate-900">{kd.content?.freshness ?? '—'}%</b></span><span>Intent C/T/N <b className="text-slate-900">{kd.intent?.commercial}/{kd.intent?.transactional}/{kd.intent?.navigational}</b></span>
-                  <span title="From our own saved backlinks: only sites we hold links for">Backlink quality <b className="text-slate-900">{kd.backlinks?.bq ?? '—'}</b> <span className="text-slate-400">({kd.backlinks?.sites_with_links ?? 0} sites{kd.backlinks?.counted ? '' : ', not counted'})</span></span>
+                  <span title="From our own saved backlinks: only sites we hold links for">Backlink quality <b className="text-slate-900">{kd.backlinks?.bq ?? '—'}</b> <span className="text-slate-400">({kd.backlinks?.sites_with_links ?? 0} sites{kd.backlinks?.counted ? '' : ', not counted'})</span>
+                    <span className="block text-11 text-slate-400">{Object.entries(kd.backlinks?.parts || {}).map(([k, v]) => `${k} ${v ?? '—'}`).join(' · ')}</span></span>
                 </div>
                 <p className="px-4 pb-2 text-11.5 text-slate-500">{kd.note} DA, PA and linking sites are Moz's figures; a dash means no figure.</p>
               </Card></div>
