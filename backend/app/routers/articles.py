@@ -1,4 +1,5 @@
 """Blog articles generated from Google Keyword Planner keywords: one article per generation (primary + secondary keywords), saved separately."""
+import logging
 import re
 import sys
 from pathlib import Path
@@ -22,7 +23,7 @@ try:
     from ..services.durable import durable
     from ..models import Article, Business, SiteIntegration
     from ..serialize import row, rows
-    from ..services import articles as svc, crypto, featured_images as fi, site_publish as sp
+    from ..services import articles as svc, crypto, featured_images as fi, site_publish as sp, seo_report as seo
 except (ImportError, ValueError):
     from app.config import get_settings
     from app.db import get_db
@@ -30,9 +31,10 @@ except (ImportError, ValueError):
     from app.services.durable import durable
     from app.models import Article, Business, SiteIntegration
     from app.serialize import row, rows
-    from app.services import articles as svc, crypto, featured_images as fi, site_publish as sp
+    from app.services import articles as svc, crypto, featured_images as fi, site_publish as sp, seo_report as seo
 
 router = APIRouter(prefix="/businesses/{business_id}/articles", tags=["articles"])
+log = logging.getLogger("seo.articles")
 
 MAX_PER_BATCH = 10
 
@@ -46,6 +48,20 @@ class GenerateIn(BaseModel):
     keywords: list[KeywordPick] = Field(min_length=1, max_length=MAX_PER_BATCH + 10)  # primary first, then the secondary keywords
     topic: str | None = Field(default=None, max_length=255)
     length: Literal["short", "standard", "long"] = "standard"
+    title: str | None = Field(default=None, max_length=255)  # the SEO title picked on the Title step; empty = the model writes one
+    workflow: dict | None = None  # the SEO workflow: research stage results + the content brief the user confirmed (optional; older pages send none)
+
+
+class WorkflowStageIn(BaseModel):
+    stage: str = Field(min_length=2, max_length=40)
+    ctx: dict = Field(default_factory=dict)  # input, data, stages, brief (see services/seo_workflow/stages.py)
+
+
+class TitleSuggestIn(BaseModel):
+    topic: str = Field(default="", max_length=255)
+    primary: str = Field(min_length=2, max_length=255)
+    secondary: list[str] = Field(default_factory=list, max_length=15)
+    avoid: list[str] = Field(default_factory=list, max_length=20)
 
 
 class KeywordSuggestIn(BaseModel):
@@ -379,6 +395,60 @@ def suggest_keywords(body: KeywordSuggestIn, b: Business = Depends(get_business)
     return {**out, "trends": status, "source": "google_keyword_planner", "volumes": {k: volumes.get(k) for k in final}}
 
 
+@router.post("/titles")
+def suggest_titles(body: TitleSuggestIn, b: Business = Depends(get_business)):
+    """Five SEO title options for the Title step (shown before the article is written)."""
+    try:
+        titles = svc.suggest_titles(body.topic, body.primary, body.secondary, b, body.avoid)
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc))
+    if not titles:
+        raise HTTPException(502, "No usable titles came back. Try again, or type your own title.")
+    return {"titles": titles}
+
+
+def _clean_workflow(w: dict | None) -> dict | None:
+    """What is kept with the article from the page: the workflow's input, research data, stage results and the confirmed brief (size-capped)."""
+    import json
+    if not isinstance(w, dict):
+        return None
+    out = {k: w[k] for k in ("input", "data", "stages", "brief") if isinstance(w.get(k), dict)}
+    if len(json.dumps(out, default=str)) > 400_000:
+        raise HTTPException(413, "The research data is too large to keep with the article.")
+    return out
+
+
+@router.post("/workflow-stage")
+def workflow_stage(body: WorkflowStageIn, b: Business = Depends(get_business)):
+    """Run ONE research stage of the SEO workflow (/brainstorm-content-ideas ... /write-content-brief) on the context the page sends; returns the
+    updated context. The page runs the stages in order, shows each result, retries a failed one on its own, and lets the user edit the brief."""
+    from ..services.seo_workflow import runner
+    try:
+        return runner.run_research_stage(body.stage, body.ctx, b)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.get("/{article_id}/workflow")
+def get_workflow(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The SEO workflow kept with the article: research data, every stage's result and the confirmed brief."""
+    return (_get(db, b, article_id).stats or {}).get("workflow") or {}
+
+
+@router.post("/{article_id}/workflow/{stage}/retry")
+def retry_workflow_stage(article_id: int, stage: str, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Run one article stage again (meta title, meta description, expert, human, SEO review) without rewriting the article."""
+    from ..services.seo_workflow import runner
+    a = _get(db, b, article_id)
+    if a.status != "completed" or not a.body:
+        raise HTTPException(409, "The article must be finished before a stage can be run again.")
+    try:
+        runner.retry_article_stage(db, a, b, stage)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"workflow": (a.stats or {}).get("workflow") or {}, "article": row(a)}
+
+
 @router.post("/generate", status_code=202)
 def generate(body: GenerateIn, tasks: BackgroundTasks, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Queue ONE article that covers all the selected keywords (the first one is the primary keyword)."""
@@ -389,7 +459,8 @@ def generate(body: GenerateIn, tasks: BackgroundTasks, b: Business = Depends(get
     running = db.scalar(select(Article).where(Article.business_id == b.id, Article.keyword == keywords[0], Article.status.in_(["pending", "generating"])))
     if running:
         raise HTTPException(409, f"An article for '{keywords[0]}' is already being written. Wait for it to finish or delete it first.")
-    a = Article(business_id=b.id, topic=(body.topic or "").strip() or None, length=body.length, keyword=keywords[0], secondary_keywords=keywords[1:], rising_keywords=[k for k, r in picked.items() if r], status="pending")
+    a = Article(business_id=b.id, topic=(body.topic or "").strip() or None, length=body.length, keyword=keywords[0], title=(body.title or "").strip() or None, secondary_keywords=keywords[1:],
+                stats={"workflow": _clean_workflow(body.workflow)} if body.workflow else None, rising_keywords=[k for k, r in picked.items() if r], status="pending")
     db.add(a)
     db.commit()
     tasks.add_task(durable(svc.run_batch, [a.id], refs=[f"article:{a.id}"]))
@@ -428,8 +499,36 @@ def edit(article_id: int, body: ArticleEdit, b: Business = Depends(get_business)
     _refresh_schema(a, b)  # only the JSON-LD block is replaced (BlogPosting + FAQPage from the saved content)
     a.headings = svc.headings_of(a.body or "")
     a.warnings = svc.validate(a.title or "", a.meta_description or "", a.body or "", a.keyword, a.secondary_keywords, svc.brand_of(b))  # re-checked on every save
+    try:  # the measurable SEO checks follow every save; the last AI review is kept (marked out of date when the text changed)
+        seo.save(db, a, seo.build(db, a, b, with_ai=False, previous=(a.stats or {}).get("seo_report")))
+    except Exception:  # noqa: BLE001 - a checklist problem must never block saving the article
+        log.warning("SEO checklist failed on save for article %s", a.id, exc_info=True)
     db.commit()
     return row(a)
+
+
+@router.get("/{article_id}/seo-report")
+def get_seo_report(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The SEO Quality Checklist as last saved; worked out now (measurable checks only) when the article has none yet."""
+    a = _get(db, b, article_id)
+    rep = (a.stats or {}).get("seo_report")
+    if not rep and a.body:
+        rep = seo.build(db, a, b, with_ai=False)
+        seo.save(db, a, rep)
+        db.commit()
+    return rep or {"checks": [], "summary": {}, "ai": None}
+
+
+@router.post("/{article_id}/seo-report")
+def run_seo_report(article_id: int, ai: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Check the saved article again: ?ai=true also runs the AI review (search intent, writing, facts, E-E-A-T, related queries, links)."""
+    a = _get(db, b, article_id)
+    if not a.body:
+        raise HTTPException(400, "The article has no text yet.")
+    rep = seo.build(db, a, b, with_ai=ai, previous=(a.stats or {}).get("seo_report"))
+    seo.save(db, a, rep)
+    db.commit()
+    return rep
 
 
 class KeywordParagraphsIn(BaseModel):

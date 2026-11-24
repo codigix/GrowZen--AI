@@ -16,6 +16,8 @@ import { api, fmt, useApi, usePoll } from './seoApi';
 import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } from './SitePublishPanel';
 import FeaturedImageField, { featuredOf } from './FeaturedImageField';
 import BlogImageAnalysis from './BlogImageAnalysis';
+import SeoChecklist from './SeoChecklist';
+import { ResearchBriefStep, WorkflowPanel } from './SeoWorkflow';
 import ReactSitePanel from './ReactSitePanel';
 import HtmlSitePanel from './HtmlSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
@@ -568,8 +570,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
   const elapsed = pending?.created_at ? Math.max(0, (now - new Date(pending.created_at).getTime()) / 1000) : 0;
   const preview = pendingFull.data?.id === pendingId ? pendingFull.data.body : '';
 
-  const generate = async ({ topic, keywords, length }) => {
-    const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, keywords: keywords.map(k => ({ keyword: k })) } });
+  const generate = async ({ topic, keywords, length, title, workflow }) => {
+    const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, title: title || undefined, workflow: workflow || undefined, keywords: keywords.map(k => ({ keyword: k })) } });
     setPendingId(r.articles[0].id);
     setOpenId(null);
     list.reload(true);
@@ -843,11 +845,35 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     toast(`${words.length} keyword${words.length > 1 ? 's' : ''} added to this blog`);
   };
 
-  const generateBlog = () => {
+  // Title step (still part of step 0): five SEO title options from the topic and keywords; the user picks one or types their own, then the blog is written for it.
+  const [titleStage, setTitleStage] = useState(false);
+  const [titleOptions, setTitleOptions] = useState([]);
+  const [pickedTitle, setPickedTitle] = useState('');
+  const [titleBusy, setTitleBusy] = useState(false);
+  const [titleError, setTitleError] = useState('');
+  const suggestTitles = async () => {
+    setTitleBusy(true); setTitleError('');
+    try {
+      const r = await api(`/businesses/${b.id}/articles/titles`, { method: 'POST', body: { topic: topicText.trim() || kw.trim(), primary: kw.trim(), secondary: secondaryList.map(k => k.trim()).filter(Boolean), avoid: titleOptions } });
+      setTitleOptions(r.titles || []);
+      if (!pickedTitle.trim() && r.titles?.length) setPickedTitle(r.titles[0]);
+    } catch (e) { setTitleError(`${e.message || e} You can type your own title below.`); }
+    finally { setTitleBusy(false); }
+  };
+  const openTitleStep = () => { setTitleStage(true); setGenError(''); if (!titleOptions.length) suggestTitles(); };
+
+  // Research & brief (the SEO workflow): after the title, the research stages run and the user confirms the brief; the article is written from it.
+  const [briefStage, setBriefStage] = useState(false);
+  const workflowInput = () => ({
+    title: pickedTitle.trim(), primary: kw.trim(), secondary: secondaryList.map(k => k.trim()).filter(Boolean),
+    topic: topicText.trim() || kw.trim(), intent: intent || '', length: articleLength, audience: '', instructions: ''
+  });
+
+  const generateBlog = (workflow) => {
     const keywords = [kw, ...secondaryList].map(k => k.trim().toLowerCase()).filter(Boolean);
     setGenBusy(true); setGenError('');
     // once writing starts, go on to the Write step (AI Draft) and show it from the top
-    return onGenerate({ topic: topicText.trim() || kw.trim(), keywords, length: articleLength })
+    return onGenerate({ topic: topicText.trim() || kw.trim(), keywords, length: articleLength, title: pickedTitle.trim(), workflow: workflow && workflow.brief ? workflow : undefined })
       .then(() => { setStep(1); setTimeout(() => document.getElementById('eeat-pipeline-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); })
       .catch(e => setGenError(e.message || String(e))).finally(() => setGenBusy(false));
   };
@@ -977,7 +1003,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
           <div className="rounded-xl border border-slate-200 bg-slate-100 p-3 flex justify-center overflow-x-auto relative">
             {site.busy && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center"><RefreshCw size={20} className="animate-spin text-indigo-500" /></div>}
             <iframe title="Preview in your website's design" sandbox="" referrerPolicy="no-referrer" srcDoc={site.html}
-              style={{ width: device === 'mobile' ? 390 : '100%', height: 700, background: '#fff' }} className="rounded-lg border border-slate-300 shadow-sm" />
+              style={{ width: device === 'mobile' ? 390 : '100%', height: 'max(900px, 85vh)', background: '#fff' }} className="rounded-lg border border-slate-300 shadow-sm" />
           </div>
         </>
       )}
@@ -994,6 +1020,48 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const saveWithBody = (body) => api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: { ...articleFields(), body } })
     .then(() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } if (onSaved) onSaved(); });
   const [scheduledDate] = useState(() => { const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); });  // tomorrow 10:00, local
+
+  // Real Details step: "Include" adds one factual sentence (only what the business profile says) to the draft, then the check turns green.
+  // Name, place and services go after the introduction's first paragraph; phone and website go at the end, before the schema block.
+  const [includeBusy, setIncludeBusy] = useState('');
+  const [includeMsg, setIncludeMsg] = useState(null); // { id, ok, text }: shown under the row, so a failure is never missed (a toast is easy to overlook)
+  const includeDetail = (id) => {
+    setIncludeMsg(null);
+    try { includeDetailRun(id); } catch (err) { console.error('Include failed', err); setIncludeBusy(''); setIncludeMsg({ id, ok: false, text: `Could not add it: ${err?.message || err}` }); }
+  };
+  const includeDetailRun = (id) => {
+    const e =(t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const bn = brandOf(b.name) || b.name;
+    const place = [b.area, b.city].filter(Boolean).join(', ');
+    const svc = (b.services || []).map(x => x?.name).filter(Boolean).slice(0, 4).join(', ');
+    const line = {
+      name: `<p>This guide is brought to you by ${e(bn)}.</p>`,
+      place: `<p>${e(bn)} is based in ${e(place)}.</p>`,
+      service: `<p>${e(bn)} offers ${e(svc)}.</p>`,
+      phone: `<p>To talk to ${e(bn)}, call ${e(b.phone || '')}.</p>`,
+      site: `<p>Learn more about ${e(bn)} at ${e(String(b.website || '').replace(/^https?:\/\//, '').replace(/\/$/, ''))}.</p>`
+    }[id];
+    if (!line) return;
+    const base = liveBody || '';
+    let next;
+    if (id === 'phone' || id === 'site') {
+      const at = base.search(/<script\b[^>]*application\/ld\+json/i);
+      next = at >= 0 ? `${base.slice(0, at)}${line}\n${base.slice(at)}` : `${base}\n${line}`;
+    } else {
+      const h1End = base.search(/<\/h1>/i);
+      const p = base.indexOf('</p>', h1End >= 0 ? h1End : 0);
+      next = p >= 0 ? `${base.slice(0, p + 4)}\n${line}${base.slice(p + 4)}` : `${line}\n${base}`;
+    }
+    setDraft(next);
+    // saved at once: the article list reloads the saved article now and then, which would otherwise bring the old text back
+    if (selectedArticle) {
+      setIncludeBusy(id);
+      saveWithBody(next)
+        .then(() => setIncludeMsg({ id, ok: true, text: 'Added to the article and saved.' }))
+        .catch(err => { console.error('Include save failed', err); setIncludeMsg({ id, ok: false, text: `Added to the draft, but saving failed: ${err?.message || err}` }); })
+        .finally(() => setIncludeBusy(''));
+    } else setIncludeMsg({ id, ok: true, text: 'Added to the draft.' });
+  };
 
   const next = () => {
     if (step === 0) {
@@ -1051,8 +1119,55 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
           </div>
         )}
       >
+        {/* Step 0, part 2: SEO title (pick one of five or type your own), then the blog is written for it */}
+        {/* Step 0, part 3: research stages and the content brief (the SEO workflow) */}
+        {step === 0 && titleStage && briefStage && (
+          <ResearchBriefStep b={b} input={workflowInput()} onBack={() => setBriefStage(false)}
+            onGenerate={(wf) => generateBlog(wf)} genBusy={genBusy} generating={generating} genError={genError} />
+        )}
+
+        {step === 0 && titleStage && !briefStage && (
+          <div className="max-w-3xl space-y-4">
+            <div className="text-[12px] text-slate-500">Step 2 of 3 · Choose the SEO title. Next, the research stages build a content brief you can edit (or generate straight away without research).</div>
+            <Field label="Topic" hint="You can still change the topic. Click Regenerate Titles after changing it.">
+              <input className={inputCls} value={topicText} onChange={e => setTopicText(e.target.value)} />
+            </Field>
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Title suggestions for “{kw}”</div>
+                <Button size="sm" icon={RefreshCw} busy={titleBusy} onClick={suggestTitles}>Regenerate Titles</Button>
+              </div>
+              {titleBusy && !titleOptions.length && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />Writing SEO titles with Claude AI…</div>}
+              <div className="grid grid-cols-1 gap-2" role="radiogroup" aria-label="SEO title options">
+                {titleOptions.map(t => (
+                  <button key={t} type="button" role="radio" aria-checked={pickedTitle === t} onClick={() => setPickedTitle(t)}
+                    className={`px-3 py-2.5 rounded-xl border flex items-center justify-between gap-3 text-left cursor-pointer transition-all ${pickedTitle === t ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500' : 'bg-white border-slate-200 hover:border-indigo-300'}`}>
+                    <span className="text-[13px] font-semibold text-slate-800">{t}</span>
+                    <span className="text-[11px] text-slate-500 shrink-0">{t.length} characters</span>
+                  </button>
+                ))}
+              </div>
+              {titleError && <div className="mt-1.5 text-[11.5px] text-amber-800">{titleError}</div>}
+            </div>
+            <Field label="Your SEO title" hint="Edit the picked title or type your own. 30 to 60 characters, with the primary keyword, works best.">
+              <div className="flex items-center gap-2">
+                <input className={inputCls} value={pickedTitle} onChange={e => setPickedTitle(e.target.value)} placeholder="Pick a suggestion above or type a title" />
+                <span className={`text-[11.5px] font-semibold shrink-0 tabular-nums ${pickedTitle.trim().length >= 30 && pickedTitle.trim().length <= 60 ? 'text-emerald-700' : 'text-amber-700'}`}>{pickedTitle.trim().length} / 30-60</span>
+              </div>
+              {pickedTitle.trim() && kw.trim() && !pickedTitle.toLowerCase().includes(kw.trim().toLowerCase()) && <div className="mt-1 text-[11.5px] text-amber-800">This title does not contain the primary keyword “{kw}”.</div>}
+            </Field>
+            {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
+            {genError && <div className="text-[12px] text-red-600">{genError}</div>}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => { setTitleStage(false); setTitleOptions([]); setPickedTitle(''); }}>Back to keywords</Button>
+              <Button variant="ai" icon={Sparkles} disabled={!pickedTitle.trim() || titleBusy || generating} onClick={() => { setGenError(''); setBriefStage(true); }}>Next: Research &amp; Brief</Button>
+              <Button busy={genBusy} disabled={!pickedTitle.trim() || titleBusy || generating} onClick={() => generateBlog()} title="Write the article straight away, without the research stages">Generate without research</Button>
+            </div>
+          </div>
+        )}
+
         {/* Step 0: Keyword & Intent */}
-        {step === 0 && (
+        {step === 0 && !titleStage && (
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_390px] gap-4 items-start">
             <div className="space-y-4 min-w-0">
               <Field label="Topic" hint="Picked from Trending Topics Radar, or type your own topic">
@@ -1116,10 +1231,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             )}
             {onGenerate && (
               <div className="space-y-1.5">
-                <Button variant="ai" icon={Sparkles} className="w-full justify-center" busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={generateBlog}>Generate Blog</Button>
+                <Button variant="ai" icon={Sparkles} className="w-full justify-center" busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={openTitleStep}>Next: Choose SEO Title</Button>
                 {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
                 {!kwReady && !kwBusy && <div className="text-[11.5px] text-amber-700">Generate the keywords first.</div>}
-                <div className="text-[11.5px] text-slate-500">Writes a complete blog (SEO title, meta description, introduction, H2/H3 sections, FAQs, conclusion) using the keywords above, then opens it for review.</div>
+                <div className="text-[11.5px] text-slate-500">Next you choose the SEO title; then a complete blog (meta description, introduction, H2/H3 sections, FAQs, conclusion) is written with the keywords above and opened for review.</div>
               </div>
             )}
             {genError && <div className="text-[12px] text-red-600">{genError}</div>}
@@ -1302,7 +1417,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                       {renderViewSwitch()}
                       {previewView !== 'standard' ? renderSitePreview() : (<>
                         {renderPreviewHeader()}
-                        <div className="rounded-xl border border-slate-200 bg-white p-6 min-h-[380px] max-h-[640px] overflow-y-auto shadow-xs">
+                        <div className="rounded-xl border border-slate-200 bg-white p-6 min-h-[380px] shadow-xs">{/* the whole article, no inner scroll box (a long article looked cut off half way) */}
                           {draft && draft.trim() ? (
                             <article
                               className="blog-preview-article text-[13.5px] text-slate-800 leading-relaxed space-y-4
@@ -1423,7 +1538,11 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 <div key={r.id} className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-[12px]">
                   {r.ok ? <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" /> : <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />}
                   <div className="min-w-0"><div className="font-semibold text-slate-800">{r.label}</div><div className="text-slate-500 break-words">{r.value}</div></div>
-                  <span className={`ml-auto shrink-0 font-semibold ${r.ok ? 'text-emerald-700' : 'text-amber-700'}`}>{r.ok ? 'Included' : 'Not in the draft'}</span>
+                  <span className={`ml-auto shrink-0 flex items-center gap-2 font-semibold ${r.ok ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {r.ok ? 'Included' : 'Not in the draft'}
+                    {!r.ok && !isGenerating && liveBody.trim() && <button type="button" disabled={Boolean(includeBusy)} onClick={() => includeDetail(r.id)} className="h-9 px-5 rounded-lg bg-indigo-600 text-white text-[13px] font-semibold cursor-pointer hover:bg-indigo-700 disabled:opacity-60">{includeBusy === r.id ? 'Adding…' : 'Include'}</button>}
+                  </span>
+                  {includeMsg?.id === r.id && <div className={`basis-full text-[11.5px] font-semibold ${includeMsg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{includeMsg.text}</div>}
                 </div>
               ))}
               {(b.services || []).some(x => x?.price) && <div className="text-[11.5px] text-slate-500">Prices in your services list: {(b.services || []).filter(x => x?.price).map(x => `${x.name} ${x.price}`).join(' · ')}. Only quote prices you have listed.</div>}
@@ -1447,6 +1566,13 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 ))}
               </ul>
               {false && <div className="text-[11.5px] text-slate-500">Tip: on the Topic & Intent step, “Check top results” gives the real target length from Google.</div>}
+              {selectedArticle && !isGenerating && (
+                <WorkflowPanel b={b} articleId={selectedArticle.id} savedAt={`${selectedArticle.updated_at || ''}|${(selectedArticle.body || '').length}`} onChanged={onSaved} />
+              )}
+              {selectedArticle && !isGenerating && (
+                <SeoChecklist b={b} articleId={selectedArticle.id} savedAt={`${selectedArticle.updated_at || ''}|${(selectedArticle.body || '').length}`}
+                  unsaved={draft !== (selectedArticle.body || '') || meta.title !== (selectedArticle.title || '') || meta.meta_description !== (selectedArticle.meta_description || '')} />
+              )}
             </div>
           );
         })()}
