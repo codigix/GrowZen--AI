@@ -66,8 +66,33 @@ def _serper(keyword: str, country: str) -> dict[str, Any] | None:
             "ai_overview": bool(j.get("aiOverview") or j.get("answerBox"))}
 
 
+HEDGE_AFTER = 70  # seconds: a Google results run that is still going then is probably one of the slow ones (up to 8 minutes), so a second identical run is started and the first answer wins
+
+
+def _apify_once(tok: str, keyword: str, country: str) -> tuple[dict[str, Any] | None, str]:
+    try:
+        r = httpx.post(SERP_URL, params={"token": tok, "memory": 4096}, json={"queries": keyword, "countryCode": countries.gl(country).lower(), "languageCode": "en", "maxPagesPerQuery": 1,
+                                                                              "saveHtml": False, "saveHtmlToKeyValueStore": False, "resultsPerPage": 10, "mobileResults": False}, timeout=170)
+    except httpx.HTTPError as exc:
+        return None, f"Apify could not be reached ({type(exc).__name__})."
+    if r.status_code in (200, 201) and isinstance(r.json(), list) and r.json():
+        item = r.json()[0]
+        return {
+            "organic": [{"position": o.get("position"), "title": o.get("title") or "", "url": o.get("url") or "", "site": site_of(o.get("url") or ""), "description": (o.get("description") or "")[:200]}
+                        for o in sorted((item.get("organicResults") or []), key=lambda x: x.get("position") or 99) if o.get("url")][:10],
+            "questions": [p.get("question") for p in (item.get("peopleAlsoAsk") or []) if p.get("question")],
+            "related": [(q.get("title") if isinstance(q, dict) else str(q)) for q in (item.get("relatedQueries") or [])],
+            "ads": [{"title": a.get("title") or "", "url": a.get("url") or a.get("displayedUrl") or "", "site": site_of(a.get("url") or a.get("displayedUrl") or ""),
+                     "description": (a.get("description") or "")[:240]} for a in (item.get("paidResults") or [])],
+            "ai_overview": bool(item.get("aiOverview")),
+        }, ""
+    return None, f"Apify answered {r.status_code}."
+
+
 def serp(keyword: str, country: str) -> dict[str, Any]:
-    """What Google shows for the keyword right now: {organic: [{position, title, url, site, description}], questions, related, ads: [{title, url, description}], ai_overview}. Not kept."""
+    """What Google shows for the keyword right now: {organic: [{position, title, url, site, description}], questions, related, ads: [{title, url, description}], ai_overview}. Not kept.
+    Serper answers in about a second when it has credit. Otherwise Apify's Google scraper is used: most runs take 60 to 90 seconds but some take several minutes, so after HEDGE_AFTER seconds a second run is started and whichever ends first is used."""
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait  # noqa: PLC0415
     fast = _serper(keyword, country)
     if fast:
         return fast
@@ -76,25 +101,24 @@ def serp(keyword: str, country: str) -> dict[str, Any]:
         raise DifficultyError("Apify is not connected (APIFY_KEY): the Google results cannot be read.")
     last = ""
     for tok in tokens:
+        ex = ThreadPoolExecutor(max_workers=2)
         try:
-            r = httpx.post(SERP_URL, params={"token": tok, "memory": 4096}, json={"queries": keyword, "countryCode": countries.gl(country).lower(), "languageCode": "en", "maxPagesPerQuery": 1, "saveHtml": False, "saveHtmlToKeyValueStore": False,
-                                                                   "resultsPerPage": 10, "mobileResults": False}, timeout=180)
-        except httpx.HTTPError as exc:
-            last = f"Apify could not be reached ({type(exc).__name__})."
-            continue
-        if r.status_code in (200, 201) and isinstance(r.json(), list) and r.json():
-            item = r.json()[0]
-            out = {
-                "organic": [{"position": o.get("position"), "title": o.get("title") or "", "url": o.get("url") or "", "site": site_of(o.get("url") or ""), "description": (o.get("description") or "")[:200]}
-                            for o in sorted((item.get("organicResults") or []), key=lambda x: x.get("position") or 99) if o.get("url")][:10],
-                "questions": [p.get("question") for p in (item.get("peopleAlsoAsk") or []) if p.get("question")],
-                "related": [(q.get("title") if isinstance(q, dict) else str(q)) for q in (item.get("relatedQueries") or [])],
-                "ads": [{"title": a.get("title") or "", "url": a.get("url") or a.get("displayedUrl") or "", "site": site_of(a.get("url") or a.get("displayedUrl") or ""), "description": (a.get("description") or "")[:240]}
-                        for a in (item.get("paidResults") or [])],
-                "ai_overview": bool(item.get("aiOverview")),
-            }
-            return out
-        last = f"Apify answered {r.status_code}."
+            pending = {ex.submit(_apify_once, tok, keyword, country)}
+            done, pending = wait(pending, timeout=HEDGE_AFTER, return_when=FIRST_COMPLETED)
+            if not done:
+                pending.add(ex.submit(_apify_once, tok, keyword, country))
+            while True:
+                if done:
+                    for f in done:
+                        res, err = f.result()
+                        if res:
+                            return res
+                        last = err
+                if not pending:
+                    break
+                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)  # the slower run is left to end by itself
     raise DifficultyError(last or "Apify gave no results.")
 
 
@@ -242,8 +266,20 @@ def _log_scale(v: float, top: float) -> float:
     return min(100.0, 100 * math.log(1 + max(v, 0)) / math.log(1 + top))
 
 
+def _volume(keyword: str, country: str) -> int | None:
+    from . import google_ads_client as ads  # noqa: PLC0415
+    try:
+        return (ads.historical_metrics([keyword], geo_target=ads.geo_target_for(country)).get(keyword) or {}).get("volume")
+    except Exception:  # noqa: BLE001 -- no volume only leaves SV out
+        return None
+
+
 def score(keyword: str, country: str, volume: int | None = None) -> dict[str, Any]:
-    page = serp(keyword, country)
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    with ThreadPoolExecutor(max_workers=2) as ex:  # the volume is asked while Google's results page is read
+        vol = ex.submit(_volume, keyword, country) if volume is None else None
+        page = serp(keyword, country)
+        volume = vol.result() if vol else volume
     sites = list(dict.fromkeys(o["site"] for o in page["organic"] if o["site"]))
     metrics = {x["domain"]: x.get("scores") for x in apify_metrics.check(sites, force=True, save=False)}  # asked afresh every time and not kept
     rows = []

@@ -390,7 +390,7 @@ function KeywordOverview({ b }) {
   const [period, setPeriod] = useState('12'); // time filter: the last 12, 6 or 3 months, or one month
   const placesApi = useApi(`/businesses/${b.id}/keyword-workspace/places`);
   const places = placesApi.data?.places || [];
-  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(null); setKd(null); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
+  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(null); startKd(kw, (c ?? activeCountry) || '', k === undefined); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const started = useRef(false);
@@ -408,14 +408,18 @@ function KeywordOverview({ b }) {
     const t = setInterval(() => setSecs(s => s + 1), 1000);
     return () => clearInterval(t);
   }, [kd?.state]);
-  useEffect(() => {
-    if (!data) { setKd(null); return undefined; }
-    let live = true;
+  const kdRun = useRef(0);
+  const kdFor = useRef('');
+  // read together with the overview (not after it); changing only the location or period does not read it again
+  const startKd = (kw, c, force) => {
+    const key = `${kw}|${c}`;
+    if (!force && kdFor.current === key) return;
+    kdFor.current = key;
+    const mine = ++kdRun.current;
     setKd({ state: 'loading' });
-    api(`/businesses/${b.id}/seo/keyword-difficulty`, { method: 'POST', body: { keyword: data.keyword, country: data.country || null, volume: data.metrics?.volume ?? null }, timeout: 240000 })
-      .then(r => { if (live) setKd({ state: 'ready', ...r }); }).catch(e => { if (live) setKd({ state: 'error', message: e.message || 'Google results could not be read.' }); });
-    return () => { live = false; };
-  }, [kdKey]); // eslint-disable-line react-hooks/exhaustive-deps -- once per keyword and country
+    api(`/businesses/${b.id}/seo/keyword-difficulty`, { method: 'POST', body: { keyword: kw, country: c || null }, timeout: 330000 })
+      .then(r => { if (kdRun.current === mine) setKd({ state: 'ready', ...r }); }).catch(e => { if (kdRun.current === mine) setKd({ state: 'error', message: e.message || 'Google results could not be read.' }); });
+  };
   const allMonths = m?.monthly || [];
   const monthsShown = period === '12' ? allMonths : period === '6' || period === '3' ? allMonths.slice(-Number(period)) : allMonths.filter(x => `${x.year}-${x.month}` === period);
   const volumeShown = period === '12' || !monthsShown.length ? m?.volume : Math.round(monthsShown.reduce((a, x) => a + x.searches, 0) / monthsShown.length);
