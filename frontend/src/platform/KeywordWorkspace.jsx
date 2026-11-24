@@ -34,30 +34,20 @@ function IndexCell({ i }) {
 const KD_BAND = { easy: (v) => v < 30, medium: (v) => v >= 30 && v < 50, hard: (v) => v >= 50 && v < 70, very: (v) => v >= 70 };
 const MON = (m) => `${String(m).slice(0, 1)}${String(m).slice(1, 3).toLowerCase()}`;
 
-/** The last 12 months of searches as a small line, with an arrow and the change in percent (the last 3 months against the first 3). */
-function Trend({ months, change }) {
-  if (!months?.length) return <span className="text-slate-300" title="Google has no search history for it">—</span>;
-  const v = months.map(m => m.searches || 0);
-  const hi = Math.max(1, ...v), lo = Math.min(...v);
-  const pts = v.map((x, n) => `${(n / Math.max(1, v.length - 1)) * 58 + 1},${18 - ((x - lo) / Math.max(1, hi - lo)) * 16}`).join(' ');
-  const up = change != null && change >= 10, down = change != null && change <= -10;
-  const colour = up ? '#059669' : down ? '#dc2626' : '#64748b';
-  const tip = ['Searches a month, last 12 months:', ...months.map(m => `${MON(m.month)} ${String(m.year).slice(2)}: ${(m.searches || 0).toLocaleString('en-US')}`), change != null ? `Change: ${change > 0 ? '+' : ''}${change}% (last 3 months against the first 3)` : ''].filter(Boolean).join('\n');
-  return (
-    <span className="inline-flex items-center gap-1.5" title={tip}>
-      <svg width="60" height="20" viewBox="0 0 60 20" aria-hidden="true"><polyline points={pts} fill="none" stroke={colour} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" /></svg>
-      <span className="inline-flex items-center gap-0.5 text-12 font-semibold tabular-nums" style={{ color: colour }}>
-        {up ? <ArrowUp size={13} /> : down ? <ArrowDown size={13} /> : <ArrowRight size={13} />}{change == null ? '' : `${Math.abs(change)}%`}</span>
-    </span>
-  );
+/** An arrow for how the searches moved in the last 12 months (the last 3 months against the first 3): up when rising by 10% or more, down when falling by 10% or more, nothing when steady. */
+function Arrow({ change, months }) {
+  if (change == null || Math.abs(change) < 10) return null;
+  const up = change > 0;
+  const tip = ['Searches a month, last 12 months:', ...(months || []).map(m => `${MON(m.month)} ${String(m.year).slice(2)}: ${(m.searches || 0).toLocaleString('en-US')}`), `${up ? 'Rising' : 'Falling'}: ${change > 0 ? '+' : ''}${change}% (last 3 months against the first 3)`].join('\n');
+  return <span title={tip} className="inline-flex" style={{ color: up ? '#059669' : '#dc2626' }}>{up ? <ArrowUp size={15} strokeWidth={2.5} /> : <ArrowDown size={15} strokeWidth={2.5} />}</span>;
 }
+
 // the keyword difficulty score in five colours, from very easy (green) to very hard (red)
 const KD_COLOR = (v) => (v < 15 ? '#059669' : v < 30 ? '#65a30d' : v < 50 ? '#d97706' : v < 70 ? '#ea580c' : '#dc2626');
 const KD_WORD = (v) => (v < 15 ? 'Very easy' : v < 30 ? 'Easy' : v < 50 ? 'Medium' : v < 70 ? 'Challenging' : 'Very hard');
 function KdChip({ v, detail }) {
-  const c = KD_COLOR(v);
   const tip = [`${v} out of 100: ${KD_WORD(v)}`, ...(detail?.parts || []).map(p => `${p.name} (${p.weight}%): ${p.used ? p.value : 'no data'}`), detail?.sites != null ? `Read from ${detail.sites} of ${detail.of} top sites` : ''].filter(Boolean).join('\n');
-  return <span className="inline-flex items-center gap-1.5" title={tip}><span className="tabular-nums font-semibold" style={{ color: c }}>{v}</span><span className="rounded-full px-2 py-0.5 text-11.5 font-semibold" style={{ color: c, backgroundColor: `${c}1f`, boxShadow: `inset 0 0 0 1px ${c}55` }}>{KD_WORD(v)}</span></span>;
+  return <span className="tabular-nums font-semibold" style={{ color: KD_COLOR(v) }} title={tip}>{v}</span>;
 }
 
 /** Where your site stands on Google for a keyword: the average position as a whole place, and which page of Google that is. */
@@ -358,8 +348,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                       <th className="w-10 px-3 py-2"><input type="checkbox" aria-label="Select all shown" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(i => i.id)))} /></th>
                       <SortTh id="keyword" sort={sort} setSort={setSort} what="A search people type into Google." why="Click the name to check its searches, cost and related ideas. Click the heading to sort A to Z." from="your website, Search Console, your profile, competitor sites, Google suggestions and AI.">Keyword</SortTh>
                       <SortTh id="volume" sort={sort} setSort={setSort} right what="How many times a month people search it in the chosen location and time." why="Shows which keywords are worth the effort." from="Google Ads Keyword Planner (needs Google Ads connected). Blank when Google gave no figure for that place.">Searches / mo</SortTh>
-                      <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100. It is worked out from the real top 10 on Google for the keyword: their authority, backlinks, content, the features on the page and the intent. Higher is harder." why="Pick easier ones first." from="Google's results page (through Apify), Moz authority, the Google Ads search volume and our saved backlinks. It is worked out by itself, a page at a time.">Difficulty</SortTh>
-                      <SortTh id="change" sort={sort} setSort={setSort} what="How the searches moved in the last 12 months: the line is each month, the arrow and percent compare the last 3 months with the first 3. Green up arrow: rising by 10% or more. Red down arrow: falling by 10% or more." why="Rising keywords are worth starting on; falling ones are fading." from="Google Ads Keyword Planner (12 months of history).">Last 12 months</SortTh>
+                      <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100, worked out from the real top 10 on Google for the keyword: their authority, backlinks, content, the features on the page and the intent. Higher is harder. The arrow beside it shows how the searches moved in the last 12 months: green up when rising by 10% or more, red down when falling by 10% or more." why="Pick easier ones first." from="Google's results page (through Apify), Moz authority, the Google Ads search volume and our saved backlinks. It is worked out by itself, a page at a time.">Difficulty</SortTh>
                       <SortTh id="index" sort={sort} setSort={setSort} right what="The keyword's index value: Google's competition index, 0 to 100 (higher means more advertisers compete for it). Under it, how the keyword performs in Google Search Console: views, clicks and average position in the last 90 days." why="A high index means a crowded, costly keyword; many views and few clicks mean the title needs work." from="Google Keyword Planner (index value) and Google Search Console (views, clicks, position).">Index</SortTh>
                       <SortTh id="cpc" sort={sort} setSort={setSort} right what="What advertisers bid at the top of the page for it, per click, in the chosen location." why="Shows what the keyword is worth." from="Google Ads Keyword Planner. Shown once a location or time is chosen.">Cost / click</SortTh>
                       <th className="px-3 py-2 text-left"><Head what="What kind of opportunity it is: Gap (competitors use it, you do not), Win (you are in the top 3), Almost (page 2), Shared, Yours, Idea." why="Start with Gaps and Almost." from="comparing your own places with the competitor sites and Google results collected.">Kind</Head></th>
@@ -382,10 +371,13 @@ export default function KeywordWorkspace({ b, onUse }) {
                           {i.competitors.length > 0 && <span className="block text-11.5 text-slate-500">used by {i.competitors.slice(0, 2).join(', ')}{i.competitors.length > 2 ? ` +${i.competitors.length - 2}` : ''}</span>}
                         </td>
                         <td className="px-3 py-2.5 text-right" title="Searches per month in your country (Google Ads Keyword Planner)"><div className="tabular-nums">{n0(i.volume)}</div>{i.volume > 0 && <div className="mt-1 h-1 rounded-full bg-slate-100 ml-auto w-16"><div className="h-1 rounded-full bg-slate-400" style={{ width: `${Math.max(5, (i.volume / topVolume) * 100)}%` }} /></div>}</td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>{i.difficulty != null ? <KdChip v={i.difficulty} detail={i.kd_detail} />
-                          : kdBusy.has(i.id) || !kdTried.current.has(i.id) ? <span className="inline-flex items-center gap-1.5 text-12 text-slate-500" title="Reading the top 10 on Google for this keyword; the score appears by itself"><Loader2 size={13} className="animate-spin" />Scoring…</span>
-                            : <button type="button" onClick={() => measure([i.id])} className="text-12 font-semibold text-amber-700 hover:underline cursor-pointer" title="Google's results could not be read for it. Try again.">Retry</button>}</td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap"><Trend months={i.trend} change={i.change} /></td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                          <span className="inline-flex items-center justify-end gap-1.5">
+                            {i.difficulty != null ? <KdChip v={i.difficulty} detail={i.kd_detail} />
+                              : kdBusy.has(i.id) || !kdTried.current.has(i.id) ? <span className="inline-flex items-center gap-1.5 text-12 text-slate-500" title="Reading the top 10 on Google for this keyword; the score appears by itself"><Loader2 size={13} className="animate-spin" />Scoring…</span>
+                                : <button type="button" onClick={() => measure([i.id])} className="text-12 font-semibold text-amber-700 hover:underline cursor-pointer" title="Google's results could not be read for it. Try again.">Retry</button>}
+                            <Arrow change={i.change} months={i.trend} />
+                          </span></td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap"><IndexCell i={i} /></td>
                         <td className="px-3 py-2.5 text-right tabular-nums" title="What advertisers bid at the top of the page, per click">{i.cpc != null ? `₹${i.cpc}` : '—'}</td>
                         <td className="px-3 py-2.5"><span title={TAG_HELP[i.tag]}><Badge tone={TAG_TONE[i.tag]}>{TAG_SHORT[i.tag]}</Badge></span></td>
