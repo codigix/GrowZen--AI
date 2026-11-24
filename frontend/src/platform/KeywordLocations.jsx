@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { MapPin, Plus, Loader2 } from 'lucide-react';
+import { MapPin, Plus, Loader2, Globe, FileText, HelpCircle, Megaphone, ExternalLink, PenLine } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Drawer, Button, Badge, ErrorNote, inputCls } from './SeoUi';
 import { useApi } from './seoApi';
@@ -16,6 +17,8 @@ export default function KeywordLocations({ b, keyword, onClose }) {
   const [chart, setChart] = useState(null); // the place whose months are drawn
   const q = keyword ? `/businesses/${b.id}/keyword-workspace/locations?keyword=${encodeURIComponent(keyword)}${extra.length ? `&extra=${encodeURIComponent(extra.join(','))}` : ''}` : null;
   const r = useApi(q);
+  const use = useApi(keyword ? `/businesses/${b.id}/keyword-workspace/usage?keyword=${encodeURIComponent(keyword)}` : null);
+  const u = use.data;
   const d = r.data;
   const rows = d?.locations || [];
   const city = rows.find(x => x.kind === 'City' && x.monthly?.length) || rows.find(x => x.monthly?.length);
@@ -28,7 +31,26 @@ export default function KeywordLocations({ b, keyword, onClose }) {
 
   return (
     <Drawer open={Boolean(keyword)} onClose={onClose} width="max-w-4xl" title={keyword || ''} subtitle="Searches per month, competition index and difficulty, place by place (Google Ads Keyword Planner)">
-      {!d ? (r.error ? <ErrorNote>{r.error.message}</ErrorNote> : <p className="py-10 text-center text-13 text-slate-500 flex items-center justify-center gap-2"><Loader2 size={15} className="animate-spin" />Asking Google for each location…</p>) : (
+      <div className="space-y-4">
+        <div className="rounded-xl bg-white ring-1 ring-slate-200 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 text-14 font-semibold text-slate-900">Where this keyword is used</div>
+          {!u ? <p className="px-4 py-4 text-13 text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Reading your pages, blogs, FAQs and posts…</p> : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+              {[
+                ['Website pages', Globe, u.pages.length, u.pages.map(p => <li key={p.url} className="truncate"><a href={p.url} target="_blank" rel="noreferrer noopener" className="text-indigo-600 hover:underline" title={p.url}>{p.path}</a> <span className="text-slate-500">in the {p.places.join(', ')}</span></li>), <Link to="/keyword-management/mapping" className="text-indigo-600 hover:underline">Map it to a page</Link>],
+                ['Blogs', FileText, u.blogs.length, u.blogs.map(x => <li key={x.id} className="truncate">{x.url ? <a href={x.url} target="_blank" rel="noreferrer noopener" className="text-indigo-600 hover:underline">{x.title}</a> : x.title} <span className="text-slate-500">· {x.state}{x.in_title ? ', in the title' : ''}</span></li>), <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(keyword)}`} className="text-indigo-600 hover:underline inline-flex items-center gap-1"><PenLine size={11} />Write a blog on it</Link>],
+                ['FAQs', HelpCircle, u.faqs.length, u.faqs.map((f, i) => <li key={i} className="truncate" title={f.q}>{f.q}</li>), <Link to="/gmb-profile/profile?sub=faq" className="text-indigo-600 hover:underline">Add it to an FAQ</Link>],
+                ['Google posts', Megaphone, u.posts.length, u.posts.map(p => <li key={p.id} className="truncate" title={p.text}>{p.text} <span className="text-slate-500">· {p.state}</span></li>), <Link to="/google-posts" className="text-indigo-600 hover:underline">Post about it</Link>],
+              ].map(([label, Icon, n, items, action]) => (
+                <div key={label} className="p-3 min-w-0">
+                  <div className="flex items-center gap-1.5 text-12 font-semibold text-slate-500"><Icon size={13} className={n ? 'text-emerald-600' : 'text-slate-400'} />{label}</div>
+                  <div className={`text-24 font-bold tabular-nums ${n ? 'text-slate-900' : 'text-slate-300'}`}>{n}</div>
+                  {n > 0 ? <ul className="mt-1 space-y-0.5 text-12 text-slate-700 max-h-28 overflow-auto">{items.slice(0, 6)}</ul> : <p className="mt-1 text-12 text-slate-500">Not used here yet. {action}</p>}
+                </div>))}
+            </div>)}
+          {u && (u.profile.description || u.profile.services) && <p className="px-4 py-2 text-12 text-slate-600 border-t border-slate-100">Also in your Google profile: {[u.profile.description && 'the description', u.profile.services && 'the services'].filter(Boolean).join(' and ')}.</p>}
+        </div>
+        {!d ? (r.error ? <ErrorNote>{r.error.message}</ErrorNote> : <p className="py-6 text-center text-13 text-slate-500 flex items-center justify-center gap-2"><Loader2 size={15} className="animate-spin" />Asking Google for each location…</p>) : (
         <div className="space-y-4">
           {d.reason && <ErrorNote>{d.reason}</ErrorNote>}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -72,6 +94,7 @@ export default function KeywordLocations({ b, keyword, onClose }) {
               </div>
             </div>)}
         </div>)}
+      </div>
     </Drawer>
   );
 }

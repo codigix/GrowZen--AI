@@ -419,11 +419,19 @@ def overview(db: Session, b: Business, *, source: str = "", tag: str = "", q: st
     out.sort(key=lambda i: (-i["score"], i["keyword"]))
     domains = _competitor_domains(db, b)
     last = max((r.updated_at for r in rows if r.updated_at), default=None)
+    shown = out[:limit]
+    try:  # where each keyword is already used on the website, in blogs, FAQs and Google posts (read once for all the rows)
+        from . import keyword_usage
+        d = keyword_usage.docs(db, b)
+        for i in shown:
+            i["used_in"] = keyword_usage.counts(d, i["keyword"])
+    except Exception:  # noqa: BLE001 - the list still opens without the usage column
+        pass
     return {"competitors": {"count": len(domains), "domains": domains, "done": bool(domains)},
             "sources": [{"kind": k, "label": v, "count": counts_src[k]} for k, v in SOURCES.items()],
             "tags": [{"tag": t, "label": v, "count": counts_tag[t]} for t, v in TAGS.items()],
             "totals": {"suggested": sum(1 for i in items if i["suggested"] and not i["picked"] and not i["dismissed"]), "all": len(items), "open": sum(1 for i in items if not i["picked"] and not i["dismissed"]), "picked": sum(1 for i in items if i["picked"]), "dismissed": sum(1 for i in items if i["dismissed"])},
-            "volumes": keyword_metrics.enabled(), "last_collected": last.isoformat() if last else None, "items": out[:limit], "shown": len(out)}
+            "volumes": keyword_metrics.enabled(), "last_collected": last.isoformat() if last else None, "items": shown, "shown": len(out)}
 
 
 # ----------------------------------------------------------------------------------------------------------------------------- choosing

@@ -42,3 +42,28 @@ def test_without_google_ads_the_reason_is_given(client, monkeypatch):
     bid = _biz(client)
     r = client.get(f"/api/v1/businesses/{bid}/keyword-workspace/locations", params={"keyword": "seo services"}).json()
     assert "not configured" in r["reason"] and r["difficulty"] is None
+
+
+def test_where_a_keyword_is_used_is_read_from_the_pages_blogs_faqs_posts_and_profile(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import Article, Post
+    from app.services import keyword_placement as kp
+    bid = client.post("/api/v1/businesses", json={"name": "Use Co", "website": "https://use.example/", "city": "Pune", "description": "We are a healthcare digital marketing agency in Pune."}).json()["id"]
+    client.patch(f"/api/v1/businesses/{bid}", json={"faqs": [{"q": "What does a healthcare digital marketing agency do?", "a": "It helps clinics get patients."}, {"q": "How long does SEO take?", "a": "Months."}]})
+    monkeypatch.setattr(kp, "_pages", lambda db, b: [{"url": "https://use.example/healthcare-digital-marketing-agency/", "title": "Healthcare Digital Marketing Agency", "h1": "x", "meta_description": "", "_generic": False},
+                                                     {"url": "https://use.example/contact/", "title": "Contact", "h1": "Contact", "meta_description": "", "_generic": False}])
+    db = SessionLocal()
+    try:
+        db.add(Article(business_id=bid, keyword="healthcare digital marketing agency", title="How to choose a healthcare digital marketing agency", status="completed", body="<p>text</p>", wp_status="publish", wp_url="https://use.example/choose/"))
+        db.add(Article(business_id=bid, keyword="seo", title="SEO basics", status="completed", body="<p>seo</p>"))
+        db.add(Post(business_id=bid, post_type="Update", body="Our healthcare digital marketing agency helps clinics.", status="published"))
+        db.commit()
+    finally:
+        db.close()
+    r = client.get(f"/api/v1/businesses/{bid}/keyword-workspace/usage", params={"keyword": "Healthcare Digital Marketing Agency"}).json()
+    assert [p["path"] for p in r["pages"]] == ["/healthcare-digital-marketing-agency"] and "title" in r["pages"][0]["places"] and "address" in r["pages"][0]["places"]
+    assert [x["title"] for x in r["blogs"]] == ["How to choose a healthcare digital marketing agency"] and r["blogs"][0]["state"] == "Live" and r["blogs"][0]["in_title"] is True
+    assert [x["q"] for x in r["faqs"]] == ["What does a healthcare digital marketing agency do?"] and r["posts"][0]["state"] == "Live" and r["profile"]["description"] is True
+    assert r["counts"] == {"pages": 1, "blogs": 1, "faqs": 1, "posts": 1, "profile": 1}
+    none = client.get(f"/api/v1/businesses/{bid}/keyword-workspace/usage", params={"keyword": "gown rental"}).json()
+    assert none["counts"] == {"pages": 0, "blogs": 0, "faqs": 0, "posts": 0, "profile": 0}

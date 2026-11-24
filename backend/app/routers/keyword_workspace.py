@@ -33,6 +33,13 @@ def keyword_by_location(keyword: str = Query(min_length=2, max_length=120), extr
     return keyword_locations.for_keyword(b, keyword, [x.strip() for x in extra.split(",") if x.strip()][:3])
 
 
+@router.get("/usage")
+def keyword_usage_detail(keyword: str = Query(min_length=2, max_length=120), b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Where one keyword is already used: the website pages (and in which place), the blogs, the FAQs, the Google posts and the Google profile."""
+    from ..services import keyword_usage
+    return keyword_usage.detail(keyword_usage.docs(db, b), " ".join(keyword.lower().split()))
+
+
 @router.get("/summary")
 def summary(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     return kw.summary(db, b)

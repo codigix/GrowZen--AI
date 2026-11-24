@@ -200,6 +200,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                       <SortTh id="keyword" sort={sort} setSort={setSort} what="A search people type into Google." why="Click the name to check its searches, cost and related ideas. Click the heading to sort A to Z." from="your website, Search Console, your profile, competitor sites, Google suggestions and AI.">Keyword</SortTh>
                       <SortTh id="volume" sort={sort} setSort={setSort} right what="How many times a month people search it in your country." why="Shows which keywords are worth the effort." from="Google Ads Keyword Planner (needs Google Ads connected). Blank when Google gave no figure.">Searches / mo</SortTh>
                       <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100. Higher is harder." why="Pick easier ones first." from="the advertiser competition Google Ads reports for the keyword.">Difficulty</SortTh>
+                      <th className="px-3 py-2 text-left"><Head what="Where this keyword is already used: website pages, blogs, FAQs and Google posts." why="A keyword used nowhere has not been put to work yet; open By location to see exactly where." from="your last site crawl, the articles written here, the profile FAQs and your Google posts.">Used in</Head></th>
                       <th className="px-3 py-2 text-left"><Head what="What kind of opportunity it is: Gap (competitors use it, you do not), Win (you are in the top 3), Almost (page 2), Shared, Yours, Idea." why="Start with Gaps and Almost." from="comparing your own places with the competitor sites and Google results collected.">Kind</Head></th>
                       <th className="px-3 py-2 text-left"><Head what="The places this keyword was found." why="A keyword found in several places is more trustworthy." from="the collect step: hover a badge for the detail.">Found in</Head></th>
                       <SortTh id="rank" sort={sort} setSort={setSort} right what="Your average position on Google for it, last 90 days." why="Shows where you already show up." from="Google Search Console. Blank when Google has not shown your site for it.">Your rank</SortTh>
@@ -221,6 +222,12 @@ export default function KeywordWorkspace({ b, onUse }) {
                         </td>
                         <td className="px-3 py-2.5 text-right" title="Searches per month in your country (Google Ads Keyword Planner)"><div className="tabular-nums">{n0(i.volume)}</div>{i.volume > 0 && <div className="mt-1 h-1 rounded-full bg-slate-100 ml-auto w-16"><div className="h-1 rounded-full bg-slate-400" style={{ width: `${Math.max(5, (i.volume / topVolume) * 100)}%` }} /></div>}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums" title="0 to 100, higher is harder (from Google Ads competition)">{i.difficulty ?? '—'}</td>
+                        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                          {i.used_in ? (
+                            <button type="button" onClick={() => setLocating(i.keyword)} title="Open where it is used" className="inline-flex flex-wrap gap-1 cursor-pointer">
+                              {[['pages', 'Pages'], ['blogs', 'Blogs'], ['faqs', 'FAQs'], ['posts', 'Posts']].map(([k, l]) => <span key={k} className={`px-1.5 py-0.5 rounded text-11.5 font-semibold tabular-nums ${i.used_in[k] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>{l} {i.used_in[k]}</span>)}
+                            </button>) : <span className="text-slate-300">—</span>}
+                        </td>
                         <td className="px-3 py-2.5"><span title={TAG_HELP[i.tag]}><Badge tone={TAG_TONE[i.tag]}>{TAG_SHORT[i.tag]}</Badge></span></td>
                         <td className="px-3 py-2.5">
                           <span className="inline-flex flex-wrap gap-1" title={i.sources.map(s => `${s.label}${s.detail ? ': ' + s.detail : ''}`).join('\n')}>
