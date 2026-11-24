@@ -120,7 +120,7 @@ export const SIDEBAR_SECTIONS = [
   {
     id: 'GMB', label: 'GMB', title: 'GMB', icon: MapPin, groups: [
       {
-        items: [link('/gmb-profile/overview', 'Dashboard'), link('/gmb-profile/project', 'Project Overview'), link('/gmb-profile/profile', 'GBP Optimization'), link('/gmb-profile/performance', 'Performance'), link('/gmb-profile/traffic', 'Website Traffic'),
+        items: [link('/gmb-profile/overview', 'Dashboard'), link('/gmb-profile/project', 'Project Overview'), link('/gmb-profile/gmb-audit', 'GMB Audit'), link('/gmb-profile/profile', 'GBP Optimization'), link('/gmb-profile/performance', 'Performance'), link('/gmb-profile/traffic', 'Website Traffic'),
         page('/reviews', { label: 'Reviews & Reputation' }), page('/google-posts', { label: 'Posts' }), page('/media-management', { label: 'Photos' })]
       },
       { title: 'Listings & Rankings', items: [page('/off-page-seo/citations', { label: 'Listing Management' }), link('/rank-tracking/geo', 'Map Rank Tracker'), link('/gmb-profile/competitors', 'Maps Competitors')] },

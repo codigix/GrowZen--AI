@@ -4,6 +4,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { CheckCircle2, Circle, PlugZap, Search, Sparkles, Plus, Trash2, Pencil, ExternalLink, Image as ImageIcon, Send, Copy, Phone, Globe, MapPin, Save, Store, FileText, ListChecks, Tags, Navigation, CalendarCheck, Clock, ChevronDown, Upload } from 'lucide-react';
 import { SeoShell, Drawer, Card, Tabs, ScoreRing, Meter, StatusPill, Badge, Button, Modal, Field, inputCls, areaCls, ChartTooltip, Legend, ErrorNote, SERIES, INK, scoreWord, useToast, useAction, useDoubleConfirm, useSeoBusiness, refreshBusinesses, useUrlTab, SkChart, SkList, SkLines, SkScore, SkCard } from './SeoUi';
 import GbpLive from './GbpLive';
+import GbpAudit from './GbpAudit';
 import { AutopilotPanel, ItemCard, waitingFor } from './AutopilotPanels';
 import { BusinessTraffic } from './TrafficPage';
 import AccessGate from './AccessGate';
@@ -1131,6 +1132,7 @@ function Manager({ b, tab, setTab, toast, onConnect, onCreate }) {
           {section === 'posts' && <><AccessGate b={b} kind="gmb"><div className="space-y-5"><PostsTab b={b} toast={toast} /></div></AccessGate></>}
           {section === 'photos' && <><SectionHead title="Photos & Media" subtitle="Logo, cover, photos and missing-media checks" sources={['google', 'calc']} /><AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel key={`ph${version}`} bid={b.id} feature="photos" /><PhotosTab b={b} toast={toast} onQueued={() => setVersion(v => v + 1)} /></div></AccessGate></>}
           {section === 'competitors' && <CompetitorSection b={b} />}
+          {section === 'gmb-audit' && <><SectionHead title="GMB Audit" subtitle="Nine checks of the Google Business Profile with the exact fix for each" sources={['google', 'calc']} /><AccessGate b={b} kind="gmb"><GbpAudit b={b} /></AccessGate></>}
           {section === 'local-seo' && <LocalSeoSection b={b} />}
           {section === 'reports' && <GbpReportsSection b={b} toast={toast} />}
           {['aeo', 'geo'].includes(section) && <ToolSection id={section} go={go} />}
