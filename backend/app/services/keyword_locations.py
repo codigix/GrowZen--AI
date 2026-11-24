@@ -39,15 +39,41 @@ def _constant(name: str, code: str) -> dict | None:
     return found
 
 
-def _target(b: Business, name: str, kind: str) -> dict | None:
-    code = countries.of(b) or "IN"
+def _target(b: Business, name: str, kind: str, country: str | None = None) -> dict | None:
+    code = (country or countries.of(b) or "IN").upper()
     return {"resource": ads.geo_target_for(code), "canonical": name, "type": "Country"} if kind == "Country" else _constant(name, code)
 
 
-def resource(b: Business, place: str) -> tuple[str | None, str | None]:
+def area_search(text: str, country: str) -> list[dict[str, str]]:
+    """Places to target while typing, from Google Maps (Places Autocomplete: towns, suburbs, districts, regions) inside the country; OpenStreetMap when no Google Maps key is set.
+    Each is {name, label}: `name` is what Google Ads is asked for, `label` the full line Google Maps shows."""
+    from . import discovery, suggest  # noqa: PLC0415
+    text = " ".join((text or "").split())
+    code = countries.code(country)
+    if len(text) < 2:
+        return []
+    if not discovery.places_enabled():
+        return [{"name": x["area"], "label": x["label"], "source": "OpenStreetMap"} for x in suggest.areas(text, code)]
+    r = suggest._google_client.post(f"{discovery.PLACES}/places:autocomplete", headers={"X-Goog-Api-Key": discovery.places_key()},
+                                    json={"input": text, "includedRegionCodes": [countries.gl(code)], "includedPrimaryTypes": ["(regions)"]})
+    if r.status_code != 200:
+        raise discovery.DiscoveryError(((r.json().get("error") or {}).get("message") if r.content else None) or f"Google Maps: HTTP {r.status_code}")
+    out = []
+    for item in r.json().get("suggestions", []):
+        p = item.get("placePrediction")
+        if p:
+            f = p.get("structuredFormat") or {}
+            name = (f.get("mainText") or {}).get("text") or (p.get("text") or {}).get("text")
+            out.append({"name": name, "label": (p.get("text") or {}).get("text") or name, "source": "Google Maps"})
+    return out[:8]
+
+
+def resource(b: Business, place: str, country: str | None = None) -> tuple[str | None, str | None]:
     """(Google Ads location, the name Google knows it by) of one of the project's places; (None, None) when Google has no such place."""
     kind = next((k for n, k in places_of(b, [place]) if n.lower() == place.lower()), "Added")
-    t = _target(b, place, kind)
+    if country and country.upper() != (countries.of(b) or "IN").upper():
+        kind = "Added"
+    t = _target(b, place, kind, country)
     return (t["resource"], t["canonical"]) if t else (None, None)
 
 

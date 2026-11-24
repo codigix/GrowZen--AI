@@ -295,7 +295,8 @@ def organic_research(days: int = 30, b: Business = Depends(get_business), db: Se
 
 class OverviewIn(BaseModel):
     keyword: str = Field(min_length=2, max_length=120)
-    place: str | None = Field(default=None, max_length=120)  # one of the project's places; empty = the whole country
+    place: str | None = Field(default=None, max_length=120)  # a place inside the country; empty = the whole country
+    country: str | None = Field(default=None, min_length=2, max_length=2)  # a country code; empty = the project's own
 
 
 _COUNTRY_NAMES = {"IN": "India", "US": "United States", "GB": "United Kingdom", "AU": "Australia", "CA": "Canada", "AE": "United Arab Emirates", "SG": "Singapore", "DE": "Germany", "FR": "France",
@@ -345,12 +346,12 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
     if not keyword_metrics.enabled():
         raise HTTPException(400, "Keyword Overview uses the Google Ads Keyword Planner: set the GOOGLE_ADS_* values on the SEO backend.")
     kw = " ".join(body.keyword.lower().split())
-    country = market.serp_country(b)
+    country = (body.country or "").upper() or market.serp_country(b)
     geo, found_as = ads.geo_target_for(country), None
     if body.place and body.place.strip():
         from ..services import keyword_locations  # noqa: PLC0415
         try:
-            res, found_as = keyword_locations.resource(b, body.place.strip())
+            res, found_as = keyword_locations.resource(b, body.place.strip(), country)
         except ads.GoogleAdsError as exc:
             raise HTTPException(502, "Google Ads did not answer: " + ("; ".join(getattr(exc, "details", []) or []) or str(exc))[:200]) from exc
         if not res:

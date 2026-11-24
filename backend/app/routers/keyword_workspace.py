@@ -38,6 +38,18 @@ def table_places(extra: str = Query("", max_length=200), b: Business = Depends(g
     return {"places": keyword_locations.places(b, [x.strip() for x in extra.split(",") if x.strip()][:3])}
 
 
+@router.get("/area-search")
+def area_search(q: str = Query("", max_length=80), country: str = Query("IN", max_length=2), b: Business = Depends(get_business)):
+    """Google Maps suggestions for a place to target, inside a country, while typing."""
+    from ..services import discovery, keyword_locations
+    try:
+        return {"results": keyword_locations.area_search(q, country)}
+    except discovery.DiscoveryError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 -- the map service being down must not break the page
+        raise HTTPException(502, f"The map service did not answer: {exc}") from exc
+
+
 @router.post("/metrics")
 def table_metrics(body: MetricsIn, b: Business = Depends(get_business)):
     """The figures of the table's keywords in one place: searches per month (with the last 12 months), competition index and cost per click."""

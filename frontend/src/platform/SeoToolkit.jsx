@@ -351,10 +351,25 @@ function KeywordOverview({ b }) {
   const [toast, toastNode] = useToast();
   const [added, setAdded] = useState({});
   const [place, setPlace] = useState(''); // location filter: '' = the whole country
+  const [country, setCountry] = useState(''); // '' = the project's own country
+  const [extra, setExtra] = useState([]); // places added from the map search
+  const [typed, setTyped] = useState('');
+  const [found, setFound] = useState([]);
+  const [findErr, setFindErr] = useState('');
+  const countriesApi = useApi('/discover/countries');
+  const home = b.country || 'IN';
+  const activeCountry = country || home;
+  const search = (v) => {
+    setTyped(v); setFindErr('');
+    if (v.trim().length < 2) { setFound([]); return; }
+    api(`/businesses/${b.id}/keyword-workspace/area-search?q=${encodeURIComponent(v.trim())}&country=${activeCountry}`).then(r => setFound(r.results || [])).catch(e => setFindErr(e.message || 'The map service did not answer.'));
+  };
+  const pickArea = (x) => { setExtra(l => (l.some(e => e.name === x.name && e.country === activeCountry) ? l : [...l, { name: x.name, country: activeCountry }])); setTyped(''); setFound([]); setPlace(x.name); if (data) go(data.keyword, x.name, activeCountry); };
+  const changeCountry = (c) => { setCountry(c); setPlace(''); if (data) go(data.keyword, '', c || home); };
   const [period, setPeriod] = useState('12'); // time filter: the last 12, 6 or 3 months, or one month
   const placesApi = useApi(`/businesses/${b.id}/keyword-workspace/places`);
   const places = placesApi.data?.places || [];
-  const go = (k, pl) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null }, timeout: 120000 })); });
+  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const started = useRef(false);
@@ -374,9 +389,24 @@ function KeywordOverview({ b }) {
       <Card>
         <div className="flex flex-wrap gap-2">
           <label className="relative flex-1 min-w-[260px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && q.trim().length > 1 && go()} placeholder="Enter a keyword, e.g. dentist near me" aria-label="Keyword" className="w-full h-10 pl-9 pr-3 text-13 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+          <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Country
+            <select value={activeCountry} onChange={e => changeCountry(e.target.value === home ? '' : e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Country">
+              {(countriesApi.data || [{ code: home, name: home }]).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select></label>
           <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Location
-            <select value={place} onChange={e => { setPlace(e.target.value); if (data) go(data.keyword, e.target.value); }} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Location">
-              {places.map((x, n) => <option key={x.name} value={n === 0 ? '' : x.name}>{x.name}{x.kind === 'Country' ? '' : ` (${x.kind.toLowerCase()})`}</option>)}</select></label>
+            <select value={place} onChange={e => { setPlace(e.target.value); if (data) go(data.keyword, e.target.value, activeCountry); }} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Location">
+              <option value="">Whole country</option>
+              {(activeCountry === home ? places.slice(1) : []).map(x => <option key={x.name} value={x.name}>{x.name} ({x.kind.toLowerCase()})</option>)}
+              {extra.filter(e => e.country === activeCountry && !(activeCountry === home && places.some(x => x.name === e.name))).map(e => <option key={e.name} value={e.name}>{e.name} (added)</option>)}</select></label>
+          <div className="relative">
+            <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input value={typed} onChange={e => search(e.target.value)} placeholder="Search Google Maps for an area…" aria-label="Search an area on Google Maps" className="h-9 w-60 pl-9 pr-3 text-13 rounded-lg border border-slate-300 bg-white" />
+            {found.length > 0 && (
+              <ul className="absolute z-20 mt-1 w-80 max-h-60 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg divide-y divide-slate-100">
+                {found.map(x => <li key={x.label}><button type="button" onClick={() => pickArea(x)} className="w-full text-left px-3 py-2 text-13 hover:bg-indigo-50 cursor-pointer"><MapPin size={12} className="inline mr-1.5 text-indigo-500" />{x.label}</button></li>)}
+                <li className="px-3 py-1 text-11 text-slate-400">{found[0].source}</li>
+              </ul>)}
+            {findErr && <p className="absolute text-11.5 text-rose-600 mt-1 whitespace-nowrap">{findErr}</p>}
+          </div>
           <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Period
             <select value={period} onChange={e => setPeriod(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Period">
               <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>
