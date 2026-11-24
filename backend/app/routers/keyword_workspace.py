@@ -26,6 +26,13 @@ def workspace(source: str = "", tag: str = "", q: str = Query("", max_length=80)
     return kw.overview(db, b, source=source, tag=tag, q=q, show=show)
 
 
+@router.get("/locations")
+def keyword_by_location(keyword: str = Query(min_length=2, max_length=120), extra: str = Query("", max_length=200), b: Business = Depends(get_business)):
+    """One keyword place by place (country, city, the project's areas, and places added in `extra`, comma separated): searches per month, competition index, cost and the last 12 months."""
+    from ..services import keyword_locations
+    return keyword_locations.for_keyword(b, keyword, [x.strip() for x in extra.split(",") if x.strip()][:3])
+
+
 @router.get("/summary")
 def summary(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     return kw.summary(db, b)

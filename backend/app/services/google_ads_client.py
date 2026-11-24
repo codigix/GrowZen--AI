@@ -152,6 +152,32 @@ def geo_target_for(country: str | None) -> str:
     return f"geoTargetConstants/{code}" if code else DEFAULT_GEO_TARGET
 
 
+def geo_constants(names: list[str], country_code: str = "IN") -> dict[str, dict]:
+    """The Google Ads location behind each place name (a city, a suburb, a region): {name: {resource, canonical, type}}. A name Google does not know is left out."""
+    GoogleAdsException = _ads_exception()
+    client, _customer = _client()
+    service = client.get_service("GeoTargetConstantService")
+    out: dict[str, dict] = {}
+    for name in names:
+        request = client.get_type("SuggestGeoTargetConstantsRequest")
+        request.locale = "en"
+        request.country_code = (country_code or "IN").upper()
+        request.location_names.names.append(name)
+        try:
+            response = service.suggest_geo_target_constants(request=request)
+        except GoogleAdsException as exc:
+            log.warning("Google Ads location lookup failed for %s: %s", name, [e.message for e in exc.failure.errors])
+            continue
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Google Ads location lookup failed for %s: %r", name, exc)
+            continue
+        for s in response.geo_target_constant_suggestions:
+            g = s.geo_target_constant
+            out[name] = {"resource": g.resource_name, "canonical": g.canonical_name, "type": g.target_type}
+            break  # the best match is first
+    return out
+
+
 def historical_metrics(keywords: list[str], *, geo_target: str = DEFAULT_GEO_TARGET, language: str = DEFAULT_LANGUAGE) -> dict[str, dict]:
     """Exact monthly search volume, competition and top-of-page bid for each given keyword (not related ideas)."""
     GoogleAdsException = _ads_exception()
@@ -174,6 +200,7 @@ def historical_metrics(keywords: list[str], *, geo_target: str = DEFAULT_GEO_TAR
                 "competition": m.competition.name,
                 "competition_index": int(m.competition_index or 0),
                 "cpc": round(_micros_to_currency(m.high_top_of_page_bid_micros) or 0, 2) or None,
+                "monthly": [{"year": mv.year, "month": mv.month.name, "searches": int(mv.monthly_searches or 0)} for mv in m.monthly_search_volumes],  # the last 12 months, oldest first
             }
     except GoogleAdsException as exc:
         messages = [error.message for error in exc.failure.errors]

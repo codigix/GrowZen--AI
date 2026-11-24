@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { usePager, Pager, downloadCsv } from './DataTable';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, Download, EyeOff, Loader2, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, Download, EyeOff, Loader2, MapPin, RefreshCw, Search, Sparkles, Star, Undo2, X } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
+import KeywordLocations from './KeywordLocations';
 
 const TAG_TONE = { gap: 'red', win: 'green', almost: 'amber', shared: 'blue', yours: 'gray', idea: 'violet' };
 const TAG_SHORT = { gap: 'Gap', win: 'Win', almost: 'Almost', shared: 'Shared', yours: 'Yours', idea: 'Idea' };
@@ -99,6 +100,7 @@ export default function KeywordWorkspace({ b, onUse }) {
   const [limit, setLimit] = useState(PAGE);
   const [sel, setSel] = useState(() => new Set());
   const [collecting, setCollecting] = useState(false);
+  const [locating, setLocating] = useState(null); // the keyword whose places are open
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const show = view === 'picked' ? 'picked' : view === 'dismissed' ? 'dismissed' : 'open';
@@ -234,6 +236,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                             {!i.picked && show !== 'dismissed' && <Act icon={Check} tone="green" tip="Pick: save this keyword to your list (My Keywords) so you can give it a page and track it." onClick={() => pick([i.id])} />}
                             {show === 'dismissed' ? <Act icon={Undo2} tone="slate" tip="Put back: return it to the list to look at." onClick={() => act('restore', [i.id], 'Put back in the list')} />
                               : !i.picked && <Act icon={EyeOff} tone="amber" tip="Set aside: hide it from this list. It stays under Set aside if you change your mind." onClick={() => act('dismiss', [i.id], 'Set aside')} />}
+                            <Act icon={MapPin} tone="indigo" tip="By location: searches per month, competition index and difficulty in each of your areas, and the last 12 months." onClick={() => setLocating(i.keyword)} />
                             <Link to={`/keyword-overview?q=${encodeURIComponent(i.keyword)}`}><Act icon={Search} tone="sky" tip="Check: open its searches per month, cost and related ideas." /></Link>
                           </span>
                         </td>
@@ -267,6 +270,7 @@ export default function KeywordWorkspace({ b, onUse }) {
         </div>
       )}
       <CollectModal d={{ ...d, bid: b.id }} open={collecting} onClose={() => setCollecting(false)} onDone={(final, added) => { r.reload(true); if (final) toast(`${added} new keyword${added === 1 ? '' : 's'} collected`); }} />
+      <KeywordLocations b={b} keyword={locating} onClose={() => setLocating(null)} />
       {toastNode}
     </div>
   );
