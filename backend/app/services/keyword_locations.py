@@ -44,6 +44,13 @@ def _target(b: Business, name: str, kind: str) -> dict | None:
     return {"resource": ads.geo_target_for(code), "canonical": name, "type": "Country"} if kind == "Country" else _constant(name, code)
 
 
+def resource(b: Business, place: str) -> tuple[str | None, str | None]:
+    """(Google Ads location, the name Google knows it by) of one of the project's places; (None, None) when Google has no such place."""
+    kind = next((k for n, k in places_of(b, [place]) if n.lower() == place.lower()), "Added")
+    t = _target(b, place, kind)
+    return (t["resource"], t["canonical"]) if t else (None, None)
+
+
 def places(b: Business, extra: list[str] | None = None) -> list[dict[str, str]]:
     """The places a table of keywords can be looked at: the country, the city, the project's areas and what was added. No call to Google."""
     return [{"name": n, "kind": k} for n, k in places_of(b, extra)]

@@ -350,7 +350,11 @@ function KeywordOverview({ b }) {
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const [added, setAdded] = useState({});
-  const go = (k) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw } })); });
+  const [place, setPlace] = useState(''); // location filter: '' = the whole country
+  const [period, setPeriod] = useState('12'); // time filter: the last 12, 6 or 3 months, or one month
+  const placesApi = useApi(`/businesses/${b.id}/keyword-workspace/places`);
+  const places = placesApi.data?.places || [];
+  const go = (k, pl) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null }, timeout: 120000 })); });
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const started = useRef(false);
@@ -359,13 +363,24 @@ function KeywordOverview({ b }) {
   // Saving a keyword ends on My Keywords, with it marked "Just added" (the same landing as Find Keywords).
   const track = (k) => run(`t${k}`, async () => { const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword: k }] }); setAdded(a => ({ ...a, [k]: true })); navigate('/keyword-management/tracked', { state: { added: [k], newCount: r?.added ?? 1 } }); });
   const m = data?.metrics;
-  const peak = Math.max(1, ...(m?.monthly || []).map(x => x.searches || 0));
+  const allMonths = m?.monthly || [];
+  const monthsShown = period === '12' ? allMonths : period === '6' || period === '3' ? allMonths.slice(-Number(period)) : allMonths.filter(x => `${x.year}-${x.month}` === period);
+  const volumeShown = period === '12' || !monthsShown.length ? m?.volume : Math.round(monthsShown.reduce((a, x) => a + x.searches, 0) / monthsShown.length);
+  const periodLabel = period === '12' ? 'last 12 months' : period === '6' ? 'last 6 months' : period === '3' ? 'last 3 months' : 'the month';
+  const peak = Math.max(1, ...monthsShown.map(x => x.searches || 0));
   const isTracked = (k) => added[k] || (data?.keyword === k && data?.you?.tracked);
   return (
     <div className="space-y-4">
       <Card>
         <div className="flex flex-wrap gap-2">
           <label className="relative flex-1 min-w-[260px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && q.trim().length > 1 && go()} placeholder="Enter a keyword, e.g. dentist near me" aria-label="Keyword" className="w-full h-10 pl-9 pr-3 text-13 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
+          <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Location
+            <select value={place} onChange={e => { setPlace(e.target.value); if (data) go(data.keyword, e.target.value); }} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Location">
+              {places.map((x, n) => <option key={x.name} value={n === 0 ? '' : x.name}>{x.name}{x.kind === 'Country' ? '' : ` (${x.kind.toLowerCase()})`}</option>)}</select></label>
+          <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Period
+            <select value={period} onChange={e => setPeriod(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Period">
+              <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>
+              {[...allMonths].reverse().map(x => <option key={`${x.year}-${x.month}`} value={`${x.year}-${x.month}`}>{x.month.slice(0, 1)}{x.month.slice(1, 3).toLowerCase()} {String(x.year).slice(2)}</option>)}</select></label>
           <Button variant="primary" icon={Search} busy={busy === 'go'} disabled={q.trim().length < 2} onClick={() => go()}>Analyze</Button>
         </div>
         <ErrorNote>{error}</ErrorNote>
@@ -376,7 +391,7 @@ function KeywordOverview({ b }) {
           <div className="flex flex-wrap items-center gap-3 rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3">
             <KeyRound size={16} className="text-indigo-500" />
             <div className="mr-auto min-w-0"><div className="text-16 font-semibold text-slate-900 truncate">{data.keyword}</div>
-              <div className="text-12 text-slate-500">{data.country ? `Figures for ${data.country}` : 'Figures for your country'} · Google Ads Keyword Planner · {data.you.rank ? `you rank #${data.you.rank}` : data.you.tracked ? 'tracked, not ranking yet' : 'not tracked yet'}</div></div>
+              <div className="text-12 text-slate-500">{data.place ? `Figures for ${data.place}` : data.country ? `Figures for ${data.country}` : 'Figures for your country'} · Google Ads Keyword Planner · {data.you.rank ? `you rank #${data.you.rank}` : data.you.tracked ? 'tracked, not ranking yet' : 'not tracked yet'}</div></div>
             <div className="flex flex-wrap gap-1.5" aria-label="Search intent">{intentChips(data.intent).map(c => <Badge key={c.k} tone={c.on ? 'indigo' : 'slate'}>{c.k}</Badge>)}</div>
             {!isTracked(data.keyword) && <Button size="sm" icon={Plus} busy={busy === `t${data.keyword}`} onClick={() => track(data.keyword)}>Track</Button>}
           </div>
@@ -385,12 +400,12 @@ function KeywordOverview({ b }) {
             <Card title="Difficulty" subtitle="Google's competition index, 0 to 100">
               <Gauge180 value={m.competition_index} />
             </Card>
-            <Card title="Search volume" subtitle="Average searches per month, last 12 months">
-              <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums">{m.volume != null ? fmt(m.volume) : '—'}</div>
+            <Card title="Search volume" subtitle={`Average searches per month, ${periodLabel}`}>
+              <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums">{volumeShown != null ? fmt(volumeShown) : '—'}</div>
                 <div className="text-12 text-slate-500">{[pct(m.three_month_change) && `${pct(m.three_month_change)} in 3 months`, pct(m.yoy_change) && `${pct(m.yoy_change)} vs last year`].filter(Boolean).join(' · ')}</div></div>
-              {m.monthly.length > 0 ? (
+              {monthsShown.length > 0 ? (
                 <div className="flex items-end gap-1 h-24 mt-3" role="img" aria-label="Monthly searches for the last 12 months">
-                  {m.monthly.map(x => <div key={`${x.year}-${x.month}`} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full" title={`${x.month.slice(0, 3)} ${x.year}: ${fmt(x.searches)}`}><div className="w-full rounded-t bg-indigo-500" style={{ height: `${Math.max(4, Math.round((x.searches / peak) * 100))}%` }} /><span className="text-[9px] text-slate-400 mt-0.5">{x.month.slice(0, 1)}</span></div>)}
+                  {monthsShown.map(x => <div key={`${x.year}-${x.month}`} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full" title={`${x.month.slice(0, 3)} ${x.year}: ${fmt(x.searches)}`}><div className="w-full rounded-t bg-indigo-500" style={{ height: `${Math.max(4, Math.round((x.searches / peak) * 100))}%` }} /><span className="text-[9px] text-slate-400 mt-0.5">{x.month.slice(0, 1)}</span></div>)}
                 </div>
               ) : <p className="text-12 text-slate-400 mt-3">No monthly figures from Google.</p>}
             </Card>

@@ -295,6 +295,7 @@ def organic_research(days: int = 30, b: Business = Depends(get_business), db: Se
 
 class OverviewIn(BaseModel):
     keyword: str = Field(min_length=2, max_length=120)
+    place: str | None = Field(default=None, max_length=120)  # one of the project's places; empty = the whole country
 
 
 _COUNTRY_NAMES = {"IN": "India", "US": "United States", "GB": "United Kingdom", "AU": "Australia", "CA": "Canada", "AE": "United Arab Emirates", "SG": "Singapore", "DE": "Germany", "FR": "France",
@@ -345,8 +346,18 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
         raise HTTPException(400, "Keyword Overview uses the Google Ads Keyword Planner: set the GOOGLE_ADS_* values on the SEO backend.")
     kw = " ".join(body.keyword.lower().split())
     country = market.serp_country(b)
+    geo, found_as = ads.geo_target_for(country), None
+    if body.place and body.place.strip():
+        from ..services import keyword_locations  # noqa: PLC0415
+        try:
+            res, found_as = keyword_locations.resource(b, body.place.strip())
+        except ads.GoogleAdsError as exc:
+            raise HTTPException(502, "Google Ads did not answer: " + ("; ".join(getattr(exc, "details", []) or []) or str(exc))[:200]) from exc
+        if not res:
+            raise HTTPException(404, f"Google has no location called \"{body.place.strip()}\".")
+        geo = res
     try:
-        ideas = ads.keyword_ideas([kw], limit=60, include_monthly=True, geo_target=ads.geo_target_for(country))
+        ideas = ads.keyword_ideas([kw], limit=60, include_monthly=True, geo_target=geo)
     except ads.GoogleAdsNotConfigured as exc:
         raise HTTPException(400, str(exc)) from exc
     except ads.GoogleAdsError as exc:
@@ -354,7 +365,7 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
     exact = next((i for i in ideas if i["keyword"].lower() == kw), None)
     if exact is None:  # the Planner did not list the exact text among its ideas: ask for its own numbers
         try:
-            got = ads.historical_metrics([kw], geo_target=ads.geo_target_for(country)).get(kw)
+            got = ads.historical_metrics([kw], geo_target=geo).get(kw)
         except ads.GoogleAdsError:
             got = None
         if got:
@@ -365,7 +376,7 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
     monthly = [{"year": m["year"], "month": m["month"], "searches": m["monthly_searches"]} for m in (exact or {}).get("monthly_search_volumes", [])][-12:]
     ci = (exact or {}).get("competition_index")
     return {
-        "keyword": kw, "location": intel.default_location(b), "country": country, "intent": intent_of(kw), "source": "Google Ads Keyword Planner",
+        "keyword": kw, "location": intel.default_location(b), "country": country, "place": found_as, "intent": intent_of(kw), "source": "Google Ads Keyword Planner",
         "found": exact is not None,
         "metrics": {"volume": (exact or {}).get("avg_monthly_searches"), "competition": (exact or {}).get("competition"), "competition_index": ci,
                     "difficulty": ci if (exact or {}).get("competition") not in (None, "UNSPECIFIED") else None,
