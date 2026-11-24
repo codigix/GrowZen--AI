@@ -6,11 +6,23 @@ import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } fr
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
 
-const TAG_TONE = { gap: 'red', win: 'green', almost: 'amber', shared: 'blue', yours: 'gray', idea: 'violet' };
-const TAG_SHORT = { gap: 'Gap', win: 'Win', almost: 'Almost', shared: 'Shared', yours: 'Yours', idea: 'Idea' };
 const TAG_HELP = { gap: 'Competitors use it, you do not', win: 'You already rank in the top 3', almost: 'You are on page 2 of Google', shared: 'You and a competitor both use it', yours: 'Only your own places mention it', idea: 'Suggested by Google or AI' };
+// one plain line for what kind of opportunity it is, and under it where it was found
+const KIND_LINE = { gap: ['Competitors only', '#dc2626'], shared: ['You and competitors', '#2563eb'], yours: ['Only you', '#64748b'], idea: ['New idea', '#7c3aed'], win: ['Top 3 win', '#059669'], almost: ['Almost: page 2', '#d97706'] };
+function Origin({ i }) {
+  const [word, c] = KIND_LINE[i.tag] || KIND_LINE.idea;
+  const own = [...new Set(i.sources.filter(s => s.kind !== 'competitors').map(s => SRC_SHORT[s.kind] || s.kind))];
+  const them = i.competitors || [];
+  const parts = [own.length ? `${own.slice(0, 2).join(', ')}${own.length > 2 ? ` +${own.length - 2}` : ''}` : '', them.length ? `${them[0]}${them.length > 1 ? ` +${them.length - 1}` : ''}` : (i.sources.some(s => s.kind === 'competitors') && !own.length ? 'Competitor sites' : '')].filter(Boolean);
+  const tip = [TAG_HELP[i.tag], ...i.sources.map(s => `${s.label}${s.detail ? ': ' + s.detail : ''}`)].filter(Boolean).join('\n');
+  return (
+    <div className="min-w-0 max-w-[210px]" title={tip}>
+      <div className="flex items-center gap-1.5 text-12.5 font-semibold" style={{ color: c }}><span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c }} />{word}</div>
+      <div className="mt-0.5 text-11.5 text-slate-500 truncate">{parts.join(' · ') || 'No source saved'}</div>
+    </div>
+  );
+}
 const SRC_SHORT = { website: 'Website', search_console: 'Search Console', profile: 'Profile', competitors: 'Competitor', google_ideas: 'Google', planner: 'Planner', area: 'Area', brief: 'Summary', ai: 'AI' };
-const SRC_TONE = { website: 'blue', search_console: 'green', profile: 'amber', competitors: 'red', google_ideas: 'gray', planner: 'blue', area: 'amber', brief: 'green', ai: 'violet' };
 const n0 = (v) => (v == null ? '—' : v.toLocaleString('en-US'));
 const PAGE = 50;
 const SHORT = (n) => (n == null ? '' : n >= 10000 ? `${Math.round(n / 1000)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
@@ -351,8 +363,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                       <SortTh id="difficulty" sort={sort} setSort={setSort} right what="How hard it is to rank for it, 0 to 100, worked out from the real top 10 on Google for the keyword: their authority, backlinks, content, the features on the page and the intent. Higher is harder. The arrow beside it shows how the searches moved in the last 12 months: green up when rising by 10% or more, red down when falling by 10% or more." why="Pick easier ones first." from="Google's results page (through Apify), Moz authority, the Google Ads search volume and our saved backlinks. It is worked out by itself, a page at a time.">Difficulty</SortTh>
                       <SortTh id="index" sort={sort} setSort={setSort} right what="The keyword's index value: Google's competition index, 0 to 100 (higher means more advertisers compete for it). Under it, how the keyword performs in Google Search Console: views, clicks and average position in the last 90 days." why="A high index means a crowded, costly keyword; many views and few clicks mean the title needs work." from="Google Keyword Planner (index value) and Google Search Console (views, clicks, position).">Index</SortTh>
                       <SortTh id="cpc" sort={sort} setSort={setSort} right what="What advertisers bid at the top of the page for it, per click, in the chosen location." why="Shows what the keyword is worth." from="Google Ads Keyword Planner. Shown once a location or time is chosen.">Cost / click</SortTh>
-                      <th className="px-3 py-2 text-left"><Head what="What kind of opportunity it is: Gap (competitors use it, you do not), Win (you are in the top 3), Almost (page 2), Shared, Yours, Idea." why="Start with Gaps and Almost." from="comparing your own places with the competitor sites and Google results collected.">Kind</Head></th>
-                      <th className="px-3 py-2 text-left"><Head what="The places this keyword was found." why="A keyword found in several places is more trustworthy." from="the collect step: hover a badge for the detail.">Found in</Head></th>
+                      <th className="px-3 py-2 text-left"><Head what="Where it stands: Competitors only (a gap: they use it, you do not), You and competitors, Only you, a New idea from Google or AI, a Top 3 win, or Almost (page 2). Under it, the places it was found." why="Start with the competitors-only gaps and the page-2 keywords." from="comparing your own places (website, profile, Search Console) with the competitor sites, Google and AI. Hover for the detail.">Where it stands</Head></th>
                       <SortTh id="rank" sort={sort} setSort={setSort} right what="Your average position on Google for it, last 90 days." why="Shows where you already show up." from="Google Search Console. Blank when Google has not shown your site for it.">Your rank</SortTh>
                       <th className="px-3 py-2 text-right"><Head right what="Things you can do with this keyword right here." why="Pick saves it to your list; Set aside hides it; Check opens its numbers.">Actions</Head></th>
                     </tr>
@@ -380,13 +391,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                           </span></td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap"><IndexCell i={i} /></td>
                         <td className="px-3 py-2.5 text-right tabular-nums" title="What advertisers bid at the top of the page, per click">{i.cpc != null ? `₹${i.cpc}` : '—'}</td>
-                        <td className="px-3 py-2.5"><span title={TAG_HELP[i.tag]}><Badge tone={TAG_TONE[i.tag]}>{TAG_SHORT[i.tag]}</Badge></span></td>
-                        <td className="px-3 py-2.5">
-                          <span className="inline-flex flex-wrap gap-1" title={i.sources.map(s => `${s.label}${s.detail ? ': ' + s.detail : ''}`).join('\n')}>
-                            {i.sources.slice(0, 2).map((s, n) => <Badge key={n} tone={SRC_TONE[s.kind] || 'gray'}>{SRC_SHORT[s.kind] || s.kind}</Badge>)}
-                            {i.sources.length > 2 && <span className="text-12 text-slate-500 self-center">+{i.sources.length - 2}</span>}
-                          </span>
-                        </td>
+                        <td className="px-3 py-2.5"><Origin i={i} /></td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" title={i.rank != null ? `Average position ${i.rank.toFixed(1)} on Google over the last 90 days${i.impressions ? `: ${i.impressions.toLocaleString('en-IN')} impressions, ${(i.clicks || 0).toLocaleString('en-IN')} clicks` : ''} (Search Console)` : 'Google has not shown your site for this keyword in the last 90 days'}>
                           {i.rank != null ? (() => { const n = Math.max(1, Math.round(i.rank)); const bd = bandOf(i.rank); return <span className="inline-flex items-center justify-end gap-1.5"><span className={`font-semibold tabular-nums ${n <= 10 ? 'text-emerald-700' : 'text-slate-800'}`}>#{n}</span>{bd && <span className={`rounded-full px-1.5 py-px text-11 font-semibold ${bd[3]}`}>{bd[1]}</span>}</span>; })() : <span className="text-slate-300">—</span>}
                         </td>
