@@ -305,30 +305,48 @@ const INR = (v) => (v == null ? '—' : `₹${Number(v).toLocaleString('en-US', 
 const INTENTS = ['informational', 'navigational', 'commercial', 'transactional', 'local'];
 const intentChips = (intent) => INTENTS.map(k => ({ k: k[0].toUpperCase() + k.slice(1), on: k === String(intent || '').toLowerCase() }));
 const difficultyWord = (v) => (v == null ? 'No data' : v < 15 ? 'Very easy' : v < 30 ? 'Easy' : v < 50 ? 'Medium' : v < 70 ? 'Challenging' : 'Very hard');
-const diffTone = (v) => (v == null ? 'slate' : v < 30 ? 'green' : v < 50 ? 'amber' : 'red');
+const diffColor = (v) => (v == null ? '#94a3b8' : v < 15 ? '#059669' : v < 30 ? '#65a30d' : v < 50 ? '#d97706' : v < 70 ? '#ea580c' : '#dc2626'); // very easy, easy, medium, challenging, very hard
+function DiffChip({ v, word }) {
+  const c = diffColor(v);
+  return <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-12 font-semibold tabular-nums" style={{ color: c, backgroundColor: `${c}1f`, boxShadow: `inset 0 0 0 1px ${c}55` }} title={v == null ? 'No figure' : `${v} out of 100: ${difficultyWord(v)}`}>{word ? difficultyWord(v) : (v ?? '—')}</span>;
+}
 
-function Gauge180({ value, note }) {
+/** A tooltip that opens on hover or keyboard focus around anything. */
+function Tip({ tip, children, className = '', below = false }) {
+  return (
+    <div className={`group relative ${className}`} tabIndex={tip ? 0 : undefined}>
+      {children}
+      {tip && <div role="tooltip" className={`pointer-events-none absolute z-30 left-1/2 -translate-x-1/2 ${below ? 'top-full mt-1.5' : 'bottom-full mb-1.5'} hidden group-hover:block group-focus:block rounded-md bg-slate-900 px-2.5 py-1.5 text-11.5 leading-snug text-white shadow-lg whitespace-nowrap`}>{tip}</div>}
+    </div>
+  );
+}
+
+function Gauge180({ value, note, tip }) {
   const v = value == null ? 0 : Math.max(0, Math.min(100, value));
   const r = 60, cx = 80, cy = 74, ang = Math.PI * (1 - v / 100);
   const pt = (a) => `${(cx + r * Math.cos(a)).toFixed(1)} ${(cy - r * Math.sin(a)).toFixed(1)}`;
   return (
     <div className="flex flex-col items-center" role="img" aria-label={`Difficulty ${value ?? 'not available'} of 100, ${difficultyWord(value)}`}>
+      <Tip tip={tip} below>
       <svg viewBox="0 0 160 84" className="w-48">
         <path d={`M ${pt(Math.PI)} A ${r} ${r} 0 0 1 ${pt(0)}`} fill="none" stroke="#e2e8f0" strokeWidth="12" strokeLinecap="round" />
-        {value != null && v > 0 && <path d={`M ${pt(Math.PI)} A ${r} ${r} 0 0 1 ${pt(ang)}`} fill="none" stroke={value < 30 ? '#10b981' : value < 50 ? '#f59e0b' : '#ef4444'} strokeWidth="12" strokeLinecap="round" />}
-        <text x={cx} y={cy - 6} textAnchor="middle" className="fill-slate-900" style={{ fontSize: 26, fontWeight: 700 }}>{value ?? '—'}</text>
+        {value != null && v > 0 && <path d={`M ${pt(Math.PI)} A ${r} ${r} 0 0 1 ${pt(ang)}`} fill="none" stroke={diffColor(value)} strokeWidth="12" strokeLinecap="round" />}
+        <text x={cx} y={cy - 6} textAnchor="middle" style={{ fontSize: 26, fontWeight: 700, fill: diffColor(value) }}>{value ?? '—'}</text>
       </svg>
-      <Badge tone={diffTone(value)}>{difficultyWord(value)}</Badge>
+      </Tip>
+      <DiffChip v={value} word />
       <p className="text-11.5 text-slate-500 mt-2 text-center">{note || 'From Google Ads: how many advertisers bid on it. It is not the SEO difficulty of page one.'}</p>
     </div>
   );
 }
 
-function Bar({ label, value, max, text }) {
+function Bar({ label, value, max, text, tip }) {
   return (
-    <div className="flex items-center gap-2 text-12.5"><span className="w-28 truncate text-slate-700" title={label}>{label}</span>
-      <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-400" style={{ width: `${Math.max(3, ((value || 0) / (max || 1)) * 100)}%` }} /></div>
-      <span className="w-24 text-right tabular-nums text-slate-700">{text}</span></div>
+    <Tip tip={tip} className="rounded hover:bg-slate-50">
+      <div className="flex items-center gap-2 text-12.5"><span className="w-28 truncate text-slate-700">{label}</span>
+        <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-400 group-hover:bg-indigo-600 transition-colors" style={{ width: `${Math.max(3, ((value || 0) / (max || 1)) * 100)}%` }} /></div>
+        <span className="w-24 text-right tabular-nums text-slate-700">{text}</span></div>
+    </Tip>
   );
 }
 
@@ -341,7 +359,7 @@ function IdeaGroup({ title, g, go }) {
           <tbody>{rows.slice(0, 8).map(r => (
             <tr key={r.keyword} className="border-t border-slate-100"><td className="px-4 py-1.5 truncate max-w-[180px]"><button type="button" className="text-indigo-700 hover:underline cursor-pointer text-left" onClick={() => go(r.keyword)} title="Open its overview">{r.keyword}</button></td>
               <td className="px-2 py-1.5 text-right tabular-nums">{kfmt(r.v)}</td>
-              <td className="px-4 py-1.5 text-right">{r.index == null ? '—' : <Badge tone={diffTone(r.index)}>{r.index}</Badge>}</td></tr>))}</tbody></table>
+              <td className="px-4 py-1.5 text-right">{r.index == null ? '—' : <DiffChip v={r.index} />}</td></tr>))}</tbody></table>
       )}
     </Card>
   );
@@ -458,7 +476,7 @@ function KeywordOverview({ b }) {
             <Card title="Difficulty" subtitle="SEO difficulty, from the real top 10 on Google">
               {kd?.state === 'ready' && kd.score != null ? (
                 <>
-                  <Gauge180 value={kd.score} note={`Average Domain Authority ${kd.components.avg_da ?? '—'}, Page Authority ${kd.components.avg_pa ?? '—'}, ${kd.components.top10_strength ?? 0}% of the top 10 have DA 70+, SERP features ${kd.components.serp_features}%. From ${kd.sites_with_figures} of ${kd.sites} sites.`} />
+                  <Gauge180 value={kd.score} tip={<div className="space-y-0.5"><div className="font-semibold">Difficulty {kd.score} · {difficultyWord(kd.score)}</div>{(kd.formula || []).map(f => <div key={f.key} className={f.used ? '' : 'text-slate-400'}>{f.name} ({f.weight}%): {f.used ? f.value : 'no data'}</div>)}</div>} note={`Average Domain Authority ${kd.components.avg_da ?? '—'}, Page Authority ${kd.components.avg_pa ?? '—'}, ${kd.components.top10_strength ?? 0}% of the top 10 have DA 70+, SERP features ${kd.components.serp_features}%. From ${kd.sites_with_figures} of ${kd.sites} sites.`} />
                 </>
               ) : (
                 <div className="py-10 text-center text-13 text-slate-500">
@@ -473,21 +491,24 @@ function KeywordOverview({ b }) {
                 <div className="text-12 text-slate-500">{[pct(m.three_month_change) && `${pct(m.three_month_change)} in 3 months`, pct(m.yoy_change) && `${pct(m.yoy_change)} vs last year`].filter(Boolean).join(' · ')}</div></div>
               {allMonths.length > 0 ? (
                 <div className="flex items-end gap-1 h-24 mt-3" role="img" aria-label="Monthly searches for the last 12 months">
-                  {allMonths.map(x => <div key={`${x.year}-${x.month}`} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full" title={`${x.month.slice(0, 3)} ${x.year}: ${fmt(x.searches)}`}><div className={`w-full rounded-t ${monthsShown.includes(x) ? 'bg-indigo-500' : 'bg-indigo-200'}`} style={{ height: `${Math.max(4, Math.round((x.searches / peak) * 100))}%` }} /><span className="text-[9px] text-slate-400 mt-0.5">{x.month.slice(0, 1)}</span></div>)}
+                  {allMonths.map((x, i) => { const prev = allMonths[i - 1]?.searches; const ch = prev ? Math.round(((x.searches - prev) * 100) / prev) : null; return (
+                    <Tip key={`${x.year}-${x.month}`} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full cursor-default" tip={<div><div className="font-semibold">{x.month.slice(0, 1)}{x.month.slice(1, 3).toLowerCase()} {x.year}</div><div>{fmt(x.searches)} searches</div>{ch != null && <div className={ch >= 0 ? 'text-emerald-300' : 'text-rose-300'}>{ch >= 0 ? '+' : ''}{ch}% vs the month before</div>}<div className="text-slate-300">{Math.round((x.searches * 100) / (m.volume || x.searches || 1))}% of the average</div></div>}>
+                      <div className={`w-full rounded-t transition-colors ${monthsShown.includes(x) ? 'bg-indigo-500 group-hover:bg-indigo-700' : 'bg-indigo-200 group-hover:bg-indigo-400'}`} style={{ height: `${Math.max(4, Math.round((x.searches / peak) * 100))}%` }} /><span className="text-[9px] text-slate-400 mt-0.5">{x.month.slice(0, 1)}</span>
+                    </Tip>); })}
                 </div>
               ) : <p className="text-12 text-slate-400 mt-3">No monthly figures from Google.</p>}
             </Card>
             <Card title="Cost per click" subtitle="What advertisers bid at the top of the page">
               <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums">{INR(m.cpc_high)}</div>
                 <div className="text-12 text-slate-500">{m.cpc_low != null ? `low ${INR(m.cpc_low)}` : ''}{m.competition && m.competition !== 'UNSPECIFIED' ? ` · competition ${m.competition.toLowerCase()}${m.competition_index != null ? ` (${m.competition_index})` : ''}` : ''}</div></div>
-              <div className="mt-3 space-y-1.5">{(data.countries || []).filter(c => c.cpc != null).slice(0, 5).map(c => <Bar key={c.code} label={c.name} value={c.cpc} max={Math.max(...data.countries.map(x => x.cpc || 0), 0.01)} text={INR(c.cpc)} />)}
+              <div className="mt-3 space-y-1.5">{(data.countries || []).filter(c => c.cpc != null).slice(0, 5).map(c => <Bar key={c.code} label={c.name} value={c.cpc} max={Math.max(...data.countries.map(x => x.cpc || 0), 0.01)} text={INR(c.cpc)} tip={<div><div className="font-semibold">{c.name}</div><div>Top-of-page bid {INR(c.cpc)} per click</div><div className="text-slate-300">Competition index {c.index ?? '—'} · {fmt(c.volume)} searches a month</div></div>} />)}
                 {!(data.countries || []).some(c => c.cpc != null) && <p className="text-12 text-slate-400">No bid figures by country.</p>}</div>
             </Card>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             <Card title="Global volume by country" subtitle="Searches per month in each country Google reports">
               {countriesShown.length === 0 ? <p className="text-12 text-slate-400">Google has no figures for this keyword in other countries.</p> : (
-                <div className="space-y-1.5">{countriesShown.map(c => <Bar key={c.code} label={c.name} value={c.v} max={countriesShown[0].v} text={`${kfmt(c.v)} · ${c.share}%`} />)}</div>
+                <div className="space-y-1.5">{countriesShown.map(c => <Bar key={c.code} label={c.name} value={c.v} max={countriesShown[0].v} text={`${kfmt(c.v)} · ${c.share}%`} tip={<div><div className="font-semibold">{c.name}</div><div>{fmt(c.v)} searches a month ({periodLabel})</div><div className="text-slate-300">{c.share}% of the countries listed · bid {INR(c.cpc)} · index {c.index ?? '—'}</div></div>} />)}</div>
               )}
             </Card>
             {[['similar', 'Similar keywords'], ['related', 'Related keywords']].map(([k, title]) => <IdeaGroup key={k} title={title} g={groupsShown(k)} go={go} />)}
