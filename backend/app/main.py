@@ -142,6 +142,7 @@ from .routers import review_link  # noqa: E402
 from .routers import client_report  # noqa: E402
 from .routers import gbp_portfolio  # noqa: E402
 from .routers import maps_public  # noqa: E402
+from .routers import gbp_audit as gbp_audit_router  # noqa: E402
 from .routers import indexing as indexing_router  # noqa: E402
 from .routers import search_insights as search_insights_router  # noqa: E402
 from .routers import growth_plan as growth_plan_router  # noqa: E402
@@ -176,6 +177,7 @@ from .routers import gbp_location  # noqa: E402
 app.include_router(gbp_location.router, prefix=settings.api_prefix)
 app.include_router(review_link.router, prefix=settings.api_prefix)
 app.include_router(maps_public.router, prefix=settings.api_prefix)
+app.include_router(gbp_audit_router.router, prefix=settings.api_prefix)
 app.include_router(indexing_router.router, prefix=settings.api_prefix)
 app.include_router(search_insights_router.router, prefix=settings.api_prefix)
 app.include_router(review_link.public_router, prefix=settings.api_prefix)

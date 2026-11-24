@@ -58,7 +58,7 @@ export const SECTIONS = [
   ] },
 ];
 // These pages live under their own sidebars now (GMB, AI Visibility, Reports, Settings). They are still opened as /gmb-profile?tab=<id>.
-export const SIDEBAR_SECTION_IDS = ['local-seo', 'aeo', 'geo', 'competitors', 'ai', 'reports', 'tasks', 'sync', 'settings'];
+export const SIDEBAR_SECTION_IDS = ['gmb-audit', 'local-seo', 'aeo', 'geo', 'competitors', 'ai', 'reports', 'tasks', 'sync', 'settings'];
 export const SECTION_IDS = [...SECTIONS.flatMap(g => g.items.map(i => i.id)), ...SIDEBAR_SECTION_IDS];
 // Older ?tab= links still land in the right place.
 export const TAB_ALIAS = { project: 'overview', live: 'profile', hours: 'profile', faq: 'profile', audit: 'ai', insights: 'performance' };
