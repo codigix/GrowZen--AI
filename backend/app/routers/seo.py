@@ -330,7 +330,7 @@ def _idea_groups(kw: str, ideas: list[dict]) -> dict[str, list[dict]]:
     for g in out.values():
         g.sort(key=lambda r: -(r["volume"] or 0))
     return {k: {"total": len(v), "volume": sum(r["volume"] or 0 for r in v), "rows": v[:25],
-                "all": [{"keyword": r["keyword"], "volume": r["volume"], "index": r["index"], "cpc": r["cpc"]} for r in v]} for k, v in out.items()}
+                "all": [{"keyword": r["keyword"], "volume": r["volume"], "index": r["index"], "cpc": r["cpc"], "intent": intent_of(r["keyword"])} for r in v]} for k, v in out.items()}
 
 
 def _clusters(kw: str, ideas: list[dict]) -> list[dict]:

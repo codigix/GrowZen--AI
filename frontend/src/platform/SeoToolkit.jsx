@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Star, ArrowUp, ArrowDown, Plus, RefreshCw, KeyRound, ScanSearch, Swords, Sparkles, Link2, MapPin, Gauge, Layers, FileText, ExternalLink,
-  AlertTriangle, CheckCircle2, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot, Download, Loader2, X
+  AlertTriangle, CheckCircle2, ChevronRight, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot, Download, Loader2, X
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, Modal, ErrorNote, ScoreRing, scoreLevel, useAction, useToast, useModulePath, Sk, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
@@ -358,6 +358,80 @@ function KdDot({ v }) {
   return <span className="inline-flex items-center justify-end gap-1.5 tabular-nums" title={`${v} out of 100: ${difficultyWord(v)}`}>{v}<span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: diffColor(v) }} /></span>;
 }
 
+const MoreBtn = ({ onClick }) => <button type="button" onClick={onClick} className="shrink-0 inline-flex items-center gap-0.5 text-12.5 font-semibold text-indigo-700 hover:text-indigo-900 hover:underline cursor-pointer">Show more<ChevronRight size={14} /></button>;
+
+const INTENT_LETTER = { informational: ['I', '#4338ca', '#e0e7ff'], commercial: ['C', '#b45309', '#fef3c7'], transactional: ['T', '#047857', '#d1fae5'], navigational: ['N', '#7e22ce', '#f3e8ff'], local: ['L', '#0369a1', '#e0f2fe'] };
+const QUESTION_START = /^(what|how|why|when|where|which|who|can|does|do|is|are|should|will)\b/;
+const NOISE_WORDS = new Set(['a', 'an', 'the', 'and', 'for', 'to', 'of', 'in', 'on', 'at', 'with', 'is', 'are', 'my', 'me', 'you', 'your', 'how', 'what', 'near']);
+
+/** Every idea Google gave, explored like the Keyword Magic Tool: questions or all, broad / phrase / exact / related match, filters, the words the ideas share (by number or by searches), totals, and the difficulty of any keyword on request. */
+function IdeasExplorer({ data, preset, kdMap, askKd, go, toWorkspace, adding }) {
+  const seed = data.keyword;
+  const seedWords = useMemo(() => seed.split(/\s+/).filter(Boolean), [seed]);
+  const everything = useMemo(() => { const m = new Map(); for (const k of ['similar', 'related', 'questions']) for (const r of data.groups?.[k]?.all || []) if (!m.has(r.keyword)) m.set(r.keyword, r); return [...m.values()]; }, [data]);
+  const [type, setType] = useState(preset === 'questions' ? 'questions' : 'all');
+  const [match, setMatch] = useState(preset === 'related' ? 'related' : preset === 'similar' ? 'broad' : 'all');
+  const [minVol, setMinVol] = useState('');
+  const [idx, setIdx] = useState('');
+  const [intent, setIntent] = useState('');
+  const [minCpc, setMinCpc] = useState('');
+  const [inc, setInc] = useState('');
+  const [exc, setExc] = useState('');
+  const [word, setWord] = useState('');
+  const [wordBy, setWordBy] = useState('number');
+  const hasAll = (k) => seedWords.every(w => k.split(/\s+/).includes(w));
+  const matches = (k) => (match === 'all' ? true : match === 'broad' ? hasAll(k) : match === 'phrase' ? k.includes(seed) : match === 'exact' ? k === seed : !hasAll(k));
+  const base = useMemo(() => everything.filter(r => (type === 'all' || QUESTION_START.test(r.keyword)) && matches(r.keyword)), [everything, type, match]); // eslint-disable-line react-hooks/exhaustive-deps
+  const words = useMemo(() => {
+    const m = {};
+    for (const r of base) for (const w of new Set(r.keyword.split(/\s+/))) if (w.length > 2 && !seedWords.includes(w) && !NOISE_WORDS.has(w)) { const x = (m[w] ||= { w, n: 0, v: 0 }); x.n += 1; x.v += r.volume || 0; }
+    return Object.values(m).sort((a, c) => (wordBy === 'number' ? c.n - a.n : c.v - a.v)).slice(0, 40);
+  }, [base, seedWords, wordBy]);
+  const rows = useMemo(() => base.filter(r => (!minVol || (r.volume || 0) >= Number(minVol)) && (!idx || (r.index != null && (idx === 'low' ? r.index < 34 : idx === 'medium' ? r.index >= 34 && r.index < 67 : r.index >= 67)))
+    && (!intent || r.intent === intent) && (!minCpc || (r.cpc || 0) >= Number(minCpc)) && (!word || r.keyword.split(/\s+/).includes(word))
+    && (!inc.trim() || inc.toLowerCase().split(/[,\s]+/).filter(Boolean).every(w => r.keyword.includes(w))) && (!exc.trim() || !exc.toLowerCase().split(/[,\s]+/).filter(Boolean).some(w => r.keyword.includes(w)))), [base, minVol, idx, intent, minCpc, word, inc, exc]);
+  const total = rows.reduce((a, r) => a + (r.volume || 0), 0);
+  const avgIdx = (() => { const l = rows.filter(r => r.index != null); return l.length ? Math.round(l.reduce((a, r) => a + r.index, 0) / l.length) : null; })();
+  const sel = 'h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12.5 text-slate-800';
+  const tab = (on, label, set) => <button type="button" onClick={set} className={`px-3 h-8 text-12.5 font-medium cursor-pointer border ${on ? 'bg-indigo-50 text-indigo-800 border-indigo-300' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>{label}</button>;
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
+        <div className="inline-flex rounded-lg overflow-hidden">{tab(type === 'all', 'All', () => setType('all'))}{tab(type === 'questions', 'Questions', () => setType('questions'))}</div>
+        <div className="inline-flex rounded-lg overflow-hidden">{[['all', 'All keywords'], ['broad', 'Broad match'], ['phrase', 'Phrase match'], ['exact', 'Exact match'], ['related', 'Related']].map(([k, l]) => <React.Fragment key={k}>{tab(match === k, l, () => setMatch(k))}</React.Fragment>)}</div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select className={sel} value={minVol} onChange={e => setMinVol(e.target.value)} aria-label="Volume"><option value="">Volume: any</option><option value="100">100+</option><option value="500">500+</option><option value="1000">1,000+</option><option value="5000">5,000+</option><option value="10000">10,000+</option></select>
+        <select className={sel} value={idx} onChange={e => setIdx(e.target.value)} aria-label="Competition index"><option value="">Index: any</option><option value="low">Low (under 34)</option><option value="medium">Medium (34 to 66)</option><option value="high">High (67+)</option></select>
+        <select className={sel} value={intent} onChange={e => setIntent(e.target.value)} aria-label="Intent"><option value="">Intent: any</option>{Object.keys(INTENT_LETTER).map(k => <option key={k} value={k}>{k[0].toUpperCase() + k.slice(1)}</option>)}</select>
+        <select className={sel} value={minCpc} onChange={e => setMinCpc(e.target.value)} aria-label="Cost per click"><option value="">CPC: any</option><option value="10">₹10+</option><option value="50">₹50+</option><option value="100">₹100+</option><option value="300">₹300+</option></select>
+        <input className={`${sel} w-44`} value={inc} onChange={e => setInc(e.target.value)} placeholder="Include keywords" aria-label="Include keywords" />
+        <input className={`${sel} w-44`} value={exc} onChange={e => setExc(e.target.value)} placeholder="Exclude keywords" aria-label="Exclude keywords" />
+        {(minVol || idx || intent || minCpc || inc || exc || word) && <button type="button" onClick={() => { setMinVol(''); setIdx(''); setIntent(''); setMinCpc(''); setInc(''); setExc(''); setWord(''); }} className="text-12.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button>}
+        <Button size="sm" className="ml-auto" busy={adding} onClick={() => toWorkspace(rows.slice(0, 500).map(r => ({ keyword: r.keyword, volume: r.volume })))} disabled={!rows.length}>Add {Math.min(rows.length, 500)} to the Keyword Workspace</Button>
+      </div>
+      <div className="text-13 text-slate-600">All keywords: <b className="text-slate-900 tabular-nums">{fmt(rows.length)}</b> <span className="mx-1.5">Total volume: <b className="text-slate-900 tabular-nums">{fmt(total)}</b></span> <span>Average index: <b className="text-slate-900 tabular-nums">{avgIdx ?? '—'}</b></span></div>
+      <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-4">
+        <div className="rounded-lg ring-1 ring-slate-200 p-3 self-start max-h-[420px] overflow-auto">
+          <div className="flex gap-1 mb-2">{[['number', 'By number'], ['volume', 'By volume']].map(([k, l]) => <button key={k} type="button" onClick={() => setWordBy(k)} className={`px-2.5 h-7 rounded-md text-12 font-medium cursor-pointer ${wordBy === k ? 'bg-indigo-50 text-indigo-800 ring-1 ring-indigo-300' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}</div>
+          <div className="flex justify-between text-11.5 text-slate-500 mb-1"><span>All keywords</span><b className="text-slate-900 tabular-nums">{fmt(base.length)}</b></div>
+          {words.length === 0 ? <p className="text-12 text-slate-400">No shared words.</p> : <ul className="space-y-0.5">{words.map(x => (
+            <li key={x.w}><button type="button" onClick={() => setWord(word === x.w ? '' : x.w)} className={`w-full flex justify-between gap-2 px-1.5 py-1 rounded text-12.5 cursor-pointer ${word === x.w ? 'bg-indigo-50 text-indigo-800 font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}><span className="truncate">{x.w}</span><span className="tabular-nums text-slate-500">{wordBy === 'number' ? fmt(x.n) : kfmt(x.v)}</span></button></li>))}</ul>}
+        </div>
+        <DataTable bare rows={rows} rowKey={r => r.keyword} pageSize={25} sizes={[25, 50, 100]} exportName={`keywords-${seed}`.toLowerCase().replace(/[^a-z0-9]+/g, '-')} label="keywords" headClass="bg-slate-100 text-slate-700" minWidth={560}
+          columns={[
+            { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-3 py-2', cell: r => <button type="button" className="text-indigo-700 hover:underline cursor-pointer text-left" onClick={() => go(r.keyword)} title="Open its overview">{r.keyword}</button> },
+            { id: 'intent', header: 'Intent', value: r => r.intent, className: 'px-3 py-2', cell: r => { const l = INTENT_LETTER[r.intent]; return l ? <span className="inline-flex w-5 h-5 items-center justify-center rounded text-11 font-bold" style={{ color: l[1], backgroundColor: l[2] }} title={r.intent}>{l[0]}</span> : '—'; } },
+            { id: 'volume', header: 'Volume', right: true, first: 'desc', value: r => r.volume, className: 'px-3 py-2 text-right tabular-nums', cell: r => (r.volume != null ? fmt(r.volume) : '—') },
+            { id: 'index', header: 'Index', right: true, value: r => r.index, className: 'px-3 py-2 text-right tabular-nums', cell: r => r.index ?? '—' },
+            { id: 'kd', header: 'KD %', right: true, value: r => (typeof kdMap[r.keyword] === 'number' ? kdMap[r.keyword] : null), className: 'px-3 py-2 text-right', cell: r => (kdMap[r.keyword] === undefined ? <button type="button" onClick={() => askKd(r.keyword)} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer" title="Read the top 10 on Google for this keyword and work out its difficulty">Check</button> : <KdDot v={kdMap[r.keyword]} />) },
+            { id: 'cpc', header: 'CPC', right: true, value: r => r.cpc, className: 'px-3 py-2 text-right tabular-nums', cell: r => INR(r.cpc) },
+          ]} />
+      </div>
+    </div>
+  );
+}
+
 /** One list of ideas: how many Google has, their total searches a month, the top five with searches and difficulty, and a way to open them all. */
 function IdeaPanel({ title, g, kdMap, go, onAll }) {
   const rows = g.rows.slice(0, 5);
@@ -443,7 +517,8 @@ function KeywordOverview({ b }) {
   }, [kd?.state]);
   const [kdMap, setKdMap] = useState({}); // difficulty of the keywords listed in the ideas: { keyword: score | null | 'loading' }
   const kdBatch = useRef(0); // the run in progress (a new analysis starts a new one, and the old one's answers are dropped)
-  const [allList, setAllList] = useState(null); // { title, rows }: a whole list of ideas, open in a window
+  const [more, setMore] = useState(null); // the card whose detail is open: difficulty, volume, cpc, global, ideas, serp, paa, ads
+  const [preset, setPreset] = useState('all'); // how the ideas window opens: all, similar, related or questions
   const [allClusters, setAllClusters] = useState(false);
   const [aiOpen, setAiOpen] = useState(false); // the AI Overview row of the top-10 table, open or closed
   const kdRun = useRef(0);
@@ -507,6 +582,90 @@ function KeywordOverview({ b }) {
   };
   const countriesShown = (() => { const l = (data?.countries || []).map(c => ({ ...c, v: inPeriod(c.monthly, c.volume) })).filter(c => c.v); const tot = l.reduce((a, c) => a + c.v, 0) || 1; return l.map(c => ({ ...c, share: Math.round((c.v * 1000) / tot) / 10 })).sort((x, y) => y.v - x.v); })();
   const groupsShown = (k) => { const g = data?.groups?.[k]; return { total: g?.total || 0, volume: g?.volume || 0, all: g?.all || [], rows: (g?.rows || []).map(r => ({ ...r, v: inPeriod(r.monthly, r.volume) })).sort((x, y) => (y.v || 0) - (x.v || 0)) }; };
+  const askKd = async (k) => {
+    setKdMap(mm => ({ ...mm, [k]: 'loading' }));
+    try { const r = await api(`/businesses/${b.id}/seo/keyword-difficulty/batch`, { method: 'POST', body: { keywords: [k], country: data.country || null, places: namesOf(chosen) }, timeout: 240000 }); setKdMap(mm => ({ ...mm, [k]: r.results?.[0]?.score ?? null })); } catch { setKdMap(mm => ({ ...mm, [k]: null })); }
+  };
+  const ago = (n) => (n == null ? '—' : n < 31 ? `${n} day${n === 1 ? '' : 's'} ago` : n < 365 ? `${Math.round(n / 30)} months ago` : `${(n / 365).toFixed(1)} years ago`);
+  const PART_HELP = { RD: 'Referring domains of the top 10 sites, on a log scale', DA: 'Average Domain Authority of the top 10 sites (Moz)', PA: "Average Page Authority (the sites' home pages, Moz)", BQ: 'Backlink quality from our saved links: domain quality, topic, follow type, placement and health', CC: 'Content competition: the keyword in the title, length and freshness of the top pages', SV: 'Search volume against a benchmark of 100,000 a month', SC: 'SERP competition: authority strength, SERP features and top-10 strength', KI: 'Keyword intent: how commercial and transactional the results page is' };
+  const Th = ({ children, right }) => <th className={`px-3 py-2 font-medium ${right ? 'text-right' : 'text-left'}`}>{children}</th>;
+  const detail = () => {
+    if (!more || !data) return null;
+    const wait = <p className="text-13 text-slate-500 inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Reading the top 10 on Google… the detail appears when it is in.</p>;
+    if (more === 'difficulty') {
+      if (!kd || kd.state === 'loading') return wait;
+      if (kd.state === 'error' || kd.score == null) return <p className="text-13 text-amber-800">{kd.message || 'Google gave too few results with figures to score this keyword.'}</p>;
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center gap-8"><Gauge180 value={kd.score} /><div className="max-w-xl text-13 text-slate-600 space-y-2"><p>{difficultyText(kd.score)}</p><p>Read from {kd.sites_with_figures} of {kd.sites} sites{kd.location ? ` in ${kd.location.split(',')[0]}` : ''}. {kd.note}</p>{kd.intent && <p>Intent of the results page: commercial {kd.intent.commercial}, transactional {kd.intent.transactional}, navigational {kd.intent.navigational}.</p>}</div></div>
+          <div><h4 className="text-14 font-semibold text-slate-900 mb-2">How the score is made</h4>
+            <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>Part</Th><Th>What it measures</Th><Th right>Weight</Th><Th right>Value</Th></tr></thead>
+              <tbody>{(kd.formula || []).map(f => <tr key={f.key} className={`border-t border-slate-100 ${f.used ? '' : 'text-slate-400'}`}><td className="px-3 py-2 font-semibold">{f.name}</td><td className="px-3 py-2">{PART_HELP[f.key]}</td><td className="px-3 py-2 text-right tabular-nums">{f.weight}%</td><td className="px-3 py-2 text-right tabular-nums font-semibold">{f.used ? f.value : 'no data'}</td></tr>)}</tbody></table></div>
+          <div><h4 className="text-14 font-semibold text-slate-900 mb-2">The top {kd.organic.length} on Google</h4>
+            <div className="overflow-x-auto"><table className="w-full text-12.5 min-w-[760px]"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>#</Th><Th>Site</Th><Th right>Authority Score</Th><Th right>DA</Th><Th right>PA</Th><Th right>Ref. domains</Th><Th right>Spam</Th><Th right>Words</Th><Th>Updated</Th><Th>Keyword in title</Th></tr></thead>
+              <tbody>{kd.organic.map(o => <tr key={o.url} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-500">{o.position}</td><td className="px-3 py-2 max-w-[220px] truncate"><a href={o.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline" title={o.title}>{o.site}</a></td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{o.as ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{o.da ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{o.pa ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{kfmt(o.rd)}</td><td className="px-3 py-2 text-right tabular-nums">{o.spam ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{o.words != null ? fmt(o.words) : '—'}</td><td className="px-3 py-2">{ago(o.age_days)}</td><td className="px-3 py-2">{o.relevant == null ? '—' : o.relevant ? 'Yes' : 'No'}</td></tr>)}</tbody></table></div></div>
+        </div>
+      );
+    }
+    if (more === 'volume') {
+      const avg = allMonths.length ? Math.round(allMonths.reduce((a, x) => a + x.searches, 0) / allMonths.length) : 0;
+      const top = Math.max(1, ...allMonths.map(x => x.searches));
+      return (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-8 text-13"><div><div className="text-slate-500">Average a month (12 months)</div><div className="text-24 font-bold tabular-nums text-slate-900">{m.volume != null ? fmt(m.volume) : '—'}</div></div>
+            <div><div className="text-slate-500">3 months</div><div className="text-20 font-semibold tabular-nums">{pct(m.three_month_change) || '—'}</div></div><div><div className="text-slate-500">Against last year</div><div className="text-20 font-semibold tabular-nums">{pct(m.yoy_change) || '—'}</div></div>
+            <div><div className="text-slate-500">Peak month</div><div className="text-20 font-semibold tabular-nums">{fmt(top)}</div></div></div>
+          <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>Month</Th><Th right>Searches</Th><Th right>Change on the month before</Th><Th right>Against the average</Th><Th>&nbsp;</Th></tr></thead>
+            <tbody>{allMonths.map((x, i) => { const prev = allMonths[i - 1]?.searches; const ch = prev ? Math.round(((x.searches - prev) * 100) / prev) : null; return <tr key={`${x.year}${x.month}`} className="border-t border-slate-100"><td className="px-3 py-2 font-medium">{x.month.slice(0, 1)}{x.month.slice(1).toLowerCase()} {x.year}</td><td className="px-3 py-2 text-right tabular-nums">{fmt(x.searches)}</td>
+              <td className="px-3 py-2 text-right tabular-nums" style={{ color: ch == null ? '#94a3b8' : ch >= 0 ? '#059669' : '#dc2626' }}>{ch == null ? '—' : `${ch >= 0 ? '+' : ''}${ch}%`}</td><td className="px-3 py-2 text-right tabular-nums">{avg ? `${Math.round((x.searches * 100) / avg)}%` : '—'}</td>
+              <td className="px-3 py-2 w-48"><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-500" style={{ width: `${Math.max(3, (x.searches / top) * 100)}%` }} /></div></td></tr>; })}</tbody></table>
+        </div>
+      );
+    }
+    if (more === 'cpc' || more === 'global') {
+      const list = [...(data.countries || [])];
+      const totalW = data.world_volume || list.reduce((a, x) => a + x.volume, 0) || 1;
+      return (
+        <div className="space-y-4">
+          {more === 'cpc' ? <div className="flex flex-wrap gap-8 text-13"><div><div className="text-slate-500">Average cost per click</div><div className="text-24 font-bold tabular-nums">{INR(m.cpc_avg ?? m.cpc_high)}</div></div><div><div className="text-slate-500">Top-of-page bid</div><div className="text-20 font-semibold tabular-nums">{m.cpc_low != null ? `${INR(m.cpc_low)} to ` : ''}{INR(m.cpc_high)}</div></div>
+            <div><div className="text-slate-500">Competitive density</div><div className="text-20 font-semibold tabular-nums">{m.density != null ? m.density.toFixed(2) : '—'}</div></div><div><div className="text-slate-500">Ads / PLA on the results page</div><div className="text-20 font-semibold tabular-nums">{kd?.state === 'ready' ? `${kd.serp_counts?.ads ?? 'n/a'} / ${kd.serp_counts?.pla ?? 'n/a'}` : '…'}</div></div></div>
+            : <div className="text-13"><div className="text-slate-500">Searches a month in every location (Google Keyword Planner)</div><div className="text-24 font-bold tabular-nums">{data.world_volume != null ? fmt(data.world_volume) : '—'}</div></div>}
+          <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>Country</Th><Th right>Searches / mo</Th><Th right>Share</Th><Th right>Top-of-page bid</Th><Th right>Competition index</Th><Th>&nbsp;</Th></tr></thead>
+            <tbody>{list.sort((a, c) => (more === 'cpc' ? (c.cpc || 0) - (a.cpc || 0) : c.volume - a.volume)).map(x => <tr key={x.code} className="border-t border-slate-100"><td className="px-3 py-2 font-medium">{x.name}</td><td className="px-3 py-2 text-right tabular-nums">{fmt(x.volume)}</td><td className="px-3 py-2 text-right tabular-nums">{Math.round((x.volume * 100) / totalW)}%</td><td className="px-3 py-2 text-right tabular-nums">{INR(x.cpc)}</td><td className="px-3 py-2 text-right tabular-nums">{x.index ?? '—'}</td>
+              <td className="px-3 py-2 w-40"><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-400" style={{ width: `${Math.max(3, (x.volume / Math.max(1, ...list.map(y => y.volume))) * 100)}%` }} /></div></td></tr>)}</tbody></table>
+        </div>
+      );
+    }
+    if (more === 'ideas') return <IdeasExplorer key={preset} data={data} preset={preset} kdMap={kdMap} askKd={askKd} go={k => { setMore(null); go(k); }} toWorkspace={toWorkspace} adding={busy === 'ws'} />;
+    if (!kd || kd.state === 'loading') return wait;
+    if (kd.state === 'error') return <p className="text-13 text-amber-800">{kd.message}</p>;
+    if (more === 'serp') {
+      return (
+        <div className="space-y-5">
+          <div className="flex flex-wrap gap-1.5">{Object.entries(kd.components?.features || {}).map(([k, on]) => <span key={k} className={`rounded-full px-2.5 py-0.5 text-12 font-medium ring-1 ring-inset ${on ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : 'bg-slate-50 text-slate-400 ring-slate-200'}`}>{k}{on ? '' : ': none'}</span>)}</div>
+          <div className="overflow-x-auto"><table className="w-full text-12.5 min-w-[820px]"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>#</Th><Th>Page</Th><Th right>Authority Score</Th><Th right>DA</Th><Th right>PA</Th><Th right>Ref. domains</Th><Th right>Ranking keywords</Th><Th right>Words</Th><Th>Updated</Th></tr></thead>
+            <tbody>{kd.organic.map(o => <tr key={o.url} className="border-t border-slate-100 align-top"><td className="px-3 py-2 text-slate-500">{o.position}</td><td className="px-3 py-2 max-w-[340px]"><a href={o.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">{o.title || o.url}</a><div className="text-11.5 text-slate-500 truncate">{o.url.replace(/^https?:\/\/(www\.)?/, '')}</div>{o.description && <div className="text-11.5 text-slate-500 mt-0.5 line-clamp-2">{o.description}</div>}</td>
+              <td className="px-3 py-2 text-right tabular-nums font-semibold">{o.as ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{o.da ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{o.pa ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{kfmt(o.rd)}</td><td className="px-3 py-2 text-right tabular-nums">{kfmt(o.rk)}</td><td className="px-3 py-2 text-right tabular-nums">{o.words != null ? fmt(o.words) : '—'}</td><td className="px-3 py-2">{ago(o.age_days)}</td></tr>)}</tbody></table></div>
+        </div>
+      );
+    }
+    if (more === 'paa') {
+      return (
+        <div className="grid md:grid-cols-2 gap-6">
+          <div><h4 className="text-14 font-semibold text-slate-900 mb-2">People also ask ({kd.questions.length})</h4>{kd.questions.length ? <ul className="space-y-2 text-13">{kd.questions.map(x => <li key={x}><button type="button" className="text-indigo-700 hover:underline text-left cursor-pointer" onClick={() => { setMore(null); go(x); }}>{x}</button></li>)}</ul> : <p className="text-13 text-slate-500">Google shows none for this search.</p>}</div>
+          <div><h4 className="text-14 font-semibold text-slate-900 mb-2">Related searches ({kd.related.length})</h4>{kd.related.length ? <div className="flex flex-wrap gap-1.5">{kd.related.map(x => <button key={x} type="button" onClick={() => { setMore(null); go(x); }} className="px-2.5 py-1 rounded-full bg-slate-100 text-12.5 text-slate-700 hover:bg-indigo-50 cursor-pointer">{x}</button>)}</div> : <p className="text-13 text-slate-500">None.</p>}</div>
+        </div>
+      );
+    }
+    if (more === 'ads') {
+      return kd.ads.length === 0 ? <p className="text-13 text-slate-500">No ads were shown on this search when it was read.</p> : (
+        <div className="grid md:grid-cols-2 gap-3">{kd.ads.map((a, n) => <div key={n} className="rounded-lg ring-1 ring-slate-200 p-3"><div className="text-11.5 text-slate-500 truncate">Ad · {a.url}</div><a href={a.url} target="_blank" rel="noreferrer" className="text-14 font-semibold text-indigo-700 hover:underline">{a.title}</a><div className="text-12.5 text-slate-600 mt-1">{a.description}</div></div>)}</div>
+      );
+    }
+    return null;
+  };
+  const MORE_TITLE = { difficulty: 'Difficulty in detail', volume: 'Search volume in detail', cpc: 'Cost per click in detail', global: 'Global volume in detail', ideas: 'Keyword ideas', serp: 'SERP overview in detail', paa: 'People also ask and related searches', ads: 'Ads on this search' };
   const isTracked = (k) => added[k] || (data?.keyword === k && data?.you?.tracked);
   return (
     <div className="space-y-4">
@@ -556,7 +715,7 @@ function KeywordOverview({ b }) {
           {data.found && (m.volume ?? 0) === 0 && <p className="text-13 text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Google Keyword Planner reports no searches for this exact keyword in {data.place || data.country || 'your country'}: it is very specific. {data.ideas_from ? <>The ideas below are for its main words, <b>{data.ideas_from}</b>.</> : 'Try a shorter phrase.'}</p>}
           {!data.found && <p className="text-13 text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Google's Keyword Planner has no figures for this exact keyword (it is too rare or too new). The ideas below are what it does know.</p>}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <Card title="Difficulty" subtitle={`SEO difficulty, from the real top 10 on Google${kd?.state === 'ready' && kd.location ? ` in ${kd.location.split(',')[0]}` : ''}`}>
+            <Card title="Difficulty" action={<MoreBtn onClick={() => setMore('difficulty')} />} subtitle={`SEO difficulty, from the real top 10 on Google${kd?.state === 'ready' && kd.location ? ` in ${kd.location.split(',')[0]}` : ''}`}>
               {kd?.state === 'ready' && kd.score != null ? (
                 <>
                   <Gauge180 value={kd.score} tip={<div className="space-y-0.5"><div className="font-semibold">Difficulty {kd.score} · {difficultyWord(kd.score)}</div>{(kd.formula || []).map(f => <div key={f.key} className={f.used ? '' : 'text-slate-400'}>{f.name} ({f.weight}%): {f.used ? f.value : 'no data'}</div>)}</div>} note={`Average Domain Authority ${kd.components.avg_da ?? '—'}, Page Authority ${kd.components.avg_pa ?? '—'}, ${kd.components.top10_strength ?? 0}% of the top 10 have DA 70+, SERP features ${kd.components.serp_features}%. From ${kd.sites_with_figures} of ${kd.sites} sites.${kd.sites_with_figures < 5 ? ' Google showed few results, so treat this score as a rough guide.' : ''}`} />
@@ -576,7 +735,7 @@ function KeywordOverview({ b }) {
                 </div>
               )}
             </Card>
-            <Card title="Search volume" subtitle={`Average searches per month, ${periodLabel}`}>
+            <Card title="Search volume" action={<MoreBtn onClick={() => setMore('volume')} />} subtitle={`Average searches per month, ${periodLabel}`}>
               <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums">{kfmt(volumeShown)}</div>
                 <div className="text-12 text-slate-500">{[pct(m.three_month_change) && `${pct(m.three_month_change)} in 3 months`, pct(m.yoy_change) && `${pct(m.yoy_change)} vs last year`].filter(Boolean).join(' · ')}</div></div>
               {allMonths.length > 0 ? (
@@ -588,7 +747,7 @@ function KeywordOverview({ b }) {
                 </div>
               ) : <p className="text-12 text-slate-400 mt-3">No monthly figures from Google.</p>}
             </Card>
-            <Card title="Cost per click" subtitle="What advertisers pay on Google">
+            <Card title="Cost per click" action={<MoreBtn onClick={() => setMore('cpc')} />} subtitle="What advertisers pay on Google">
               <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums" title="Average cost per click (Google Ads)">{INR(m.cpc_avg ?? m.cpc_high)}</div><div className="text-12 text-slate-500">average{m.cpc_avg == null ? ' (top-of-page bid)' : ''}</div></div>
               <div className="mt-1 text-12 text-slate-500">Top-of-page bid {m.cpc_low != null ? `${INR(m.cpc_low)} to ` : ''}{INR(m.cpc_high)}</div>
               <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 text-center">
@@ -600,7 +759,7 @@ function KeywordOverview({ b }) {
             </Card>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <Card title="Global volume" subtitle="Searches per month in every country Google reports">
+            <Card title="Global volume" action={<MoreBtn onClick={() => setMore('global')} />} subtitle="Searches per month in every country Google reports">
               {(() => {
                 const top = countriesShown.slice(0, 6);
                 const world = period === '12' ? data.world_volume : null; // the world figure is Google's 12-month average
@@ -614,21 +773,21 @@ function KeywordOverview({ b }) {
                 );
               })()}
             </Card>
-            <div className="lg:col-span-2"><Card title="Related keywords" subtitle="Other searches Google connects to it">
-              <IdeaPanel title="Related keywords" g={groupsShown('related')} kdMap={kdMap} go={go} onAll={() => setAllList({ title: 'Related keywords', rows: groupsShown('related').all })} />
+            <div className="lg:col-span-2"><Card title="Related keywords" action={<MoreBtn onClick={() => { setPreset('related'); setMore('ideas'); }} />} subtitle="Other searches Google connects to it">
+              <IdeaPanel title="Related keywords" g={groupsShown('related')} kdMap={kdMap} go={go} onAll={() => { setPreset('related'); setMore('ideas'); }} />
             </Card></div>
           </div>
-          <Card title="Keyword ideas" subtitle="From Google Keyword Planner: how many it knows, their total searches, and how hard the biggest ones are">
+          <Card title="Keyword ideas" action={<MoreBtn onClick={() => { setPreset('all'); setMore('ideas'); }} />} subtitle="From Google Keyword Planner: how many it knows, their total searches, and how hard the biggest ones are">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-10 gap-y-6">
-              <IdeaPanel title="Keyword variations" g={groupsShown('similar')} kdMap={kdMap} go={go} onAll={() => setAllList({ title: 'Keyword variations', rows: groupsShown('similar').all })} />
-              <IdeaPanel title="Questions" g={groupsShown('questions')} kdMap={kdMap} go={go} onAll={() => setAllList({ title: 'Questions', rows: groupsShown('questions').all })} />
+              <IdeaPanel title="Keyword variations" g={groupsShown('similar')} kdMap={kdMap} go={go} onAll={() => { setPreset('similar'); setMore('ideas'); }} />
+              <IdeaPanel title="Questions" g={groupsShown('questions')} kdMap={kdMap} go={go} onAll={() => { setPreset('questions'); setMore('ideas'); }} />
               <ClusterPanel clusters={data.clusters || []} go={go} onAll={() => setAllClusters(true)} />
             </div>
             <p className="mt-4 text-11.5 text-slate-400">Google Keyword Planner returns up to about 600 ideas for one keyword, so the counts are lower than in tools with their own very large keyword databases. KD % is worked out for the first five of each list by reading the real top 10 on Google; open a keyword to see it in full.</p>
           </Card>
           {kd?.state === 'ready' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-              <div className="lg:col-span-2"><Card pad={false} title="SERP overview" subtitle={`The top ${kd.organic.length} results on Google for "${data.keyword}"`}>
+              <div className="lg:col-span-2"><Card pad={false} title="SERP overview" action={<MoreBtn onClick={() => setMore('serp')} />} subtitle={`The top ${kd.organic.length} results on Google for "${data.keyword}"`}>
                 <table className="w-full text-12.5">
                   <thead><tr className="text-left text-11.5 text-slate-500 border-b border-slate-200">
                     <th className="px-4 py-2 font-medium">URL</th>
@@ -676,11 +835,11 @@ function KeywordOverview({ b }) {
                 </div>
                 <p className="px-4 pb-2 text-11.5 text-slate-500">{kd.note} DA, PA and linking sites are Moz's figures; a dash means no figure.</p>
               </Card></div>
-              <Card title={`People also ask (${kd.questions.length})`}>
+              <Card title={`People also ask (${kd.questions.length})`} action={<MoreBtn onClick={() => setMore('paa')} />}>
                 {kd.questions.length === 0 ? <p className="text-12.5 text-slate-500">Google shows none for this search.</p> : <ul className="space-y-1.5 text-12.5">{kd.questions.map(x => <li key={x}><button type="button" className="text-indigo-700 hover:underline text-left cursor-pointer" onClick={() => go(x)}>{x}</button></li>)}</ul>}
                 {kd.related.length > 0 && <><div className="text-12 font-semibold text-slate-600 mt-3 mb-1">Related searches</div><div className="flex flex-wrap gap-1.5">{kd.related.map(x => <button key={x} type="button" onClick={() => go(x)} className="px-2 py-0.5 rounded-full bg-slate-100 text-12 text-slate-700 hover:bg-indigo-50 cursor-pointer">{x}</button>)}</div></>}
               </Card>
-              <div className="lg:col-span-3"><Card title={`Ads on this search (${kd.ads.length})`} subtitle="What advertisers show on Google's results page for the keyword, right now">
+              <div className="lg:col-span-3"><Card title={`Ads on this search (${kd.ads.length})`} action={<MoreBtn onClick={() => setMore('ads')} />} subtitle="What advertisers show on Google's results page for the keyword, right now">
                 {kd.ads.length === 0 ? <p className="text-12.5 text-slate-500">No ads were shown on this search when it was read.</p> : (
                   <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">{kd.ads.map((a, n) => <div key={n} className="rounded-lg ring-1 ring-slate-200 p-3"><div className="text-11.5 text-slate-500 truncate">Ad · {a.site || a.url}</div><div className="text-13 font-semibold text-indigo-700">{a.title}</div><div className="text-12 text-slate-600 mt-0.5">{a.description}</div></div>)}</div>)}
               </Card></div>
@@ -695,17 +854,8 @@ function KeywordOverview({ b }) {
           </div>
         </>
       )}
-      <Modal open={!!allList} title={allList ? `${allList.title} (${fmt(allList.rows.length)})` : ''} onClose={() => setAllList(null)} width="max-w-3xl"
-        footer={allList && <><Button size="sm" busy={busy === 'ws'} onClick={() => toWorkspace(allList.rows.map(r => ({ keyword: r.keyword, volume: r.volume })).slice(0, 500))}>Add to the Keyword Workspace</Button><Button size="sm" onClick={() => setAllList(null)}>Close</Button></>}>
-        {allList && (
-          <DataTable bare rows={allList.rows} rowKey={r => r.keyword} pageSize={10} sizes={[10, 25, 50]} exportName={`${allList.title}-${data?.keyword || ''}`.toLowerCase().replace(/[^a-z0-9]+/g, '-')} label="keywords" headClass="bg-slate-100 text-slate-700" minWidth={520}
-            columns={[
-              { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-3 py-2', cell: r => <button type="button" className="text-indigo-700 hover:underline cursor-pointer text-left" onClick={() => { setAllList(null); go(r.keyword); }}>{r.keyword}</button> },
-              { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: r => r.volume, className: 'px-3 py-2 text-right tabular-nums', cell: r => (r.volume != null ? fmt(r.volume) : '—') },
-              { id: 'index', header: 'Competition index', right: true, value: r => r.index, className: 'px-3 py-2 text-right tabular-nums', cell: r => (r.index != null ? r.index : '—') },
-              { id: 'cpc', header: 'Top-of-page bid', right: true, value: r => r.cpc, className: 'px-3 py-2 text-right tabular-nums', cell: r => INR(r.cpc) },
-            ]} />
-        )}
+      <Modal open={!!more} title={more ? `${MORE_TITLE[more]}: ${data?.keyword || ''}` : ''} onClose={() => setMore(null)} width="max-w-6xl" footer={<Button size="sm" onClick={() => setMore(null)}>Close</Button>}>
+        {detail()}
       </Modal>
       <Modal open={allClusters} title={`Keyword strategy: ${data?.clusters?.length || 0} topics`} onClose={() => setAllClusters(false)} width="max-w-3xl" footer={<Button size="sm" onClick={() => setAllClusters(false)}>Close</Button>}>
         <div className="space-y-4">{(data?.clusters || []).map(c => (
