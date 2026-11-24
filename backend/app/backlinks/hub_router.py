@@ -19,6 +19,21 @@ def overview(b: Business = Depends(get_business), db: Session = Depends(get_db))
     return backlink_overview.overview(db, b)
 
 
+class CompareIn(BaseModel):
+    domains: list[str] = Field(min_length=1, max_length=4)
+
+
+@router.post("/compare")
+def compare(body: CompareIn, b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
+    """The project's website beside up to four competitors: authority, referring domains, backlinks, hosting, link kinds, categories, authority ranges and link opportunities."""
+    from ..services import url_overview as uo
+    from . import overview as backlink_overview
+    try:
+        return backlink_overview.compare(db, b, body.domains)
+    except uo.UrlError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.get("/pages")
 def pages(b: Business = Depends(get_business), db: Session = Depends(get_db)) -> dict:
     """The pages of the project's website with their backlinks, referring domains, links in and out, and whether they load (read now)."""

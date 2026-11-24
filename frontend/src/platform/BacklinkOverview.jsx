@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { AlertTriangle, ExternalLink, Info, Loader2, Maximize2, Minus, Plus, Search } from 'lucide-react';
-import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, RadarChart, PolarGrid, PolarAngleAxis, Radar, PieChart, Pie, Cell } from 'recharts';
-import { Card, Badge, ErrorNote, SkList } from './SeoUi';
-import { useApi, fmt } from './seoApi';
+import { Link, useSearchParams } from 'react-router-dom';
+import { AlertTriangle, ExternalLink, Info, Loader2, Maximize2, Minus, Plus, Search, X } from 'lucide-react';
+import { ResponsiveContainer, LineChart, Line, Legend, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, RadarChart, PolarGrid, PolarAngleAxis, Radar, PieChart, Pie, Cell } from 'recharts';
+import { Card, Badge, Button, ErrorNote, SkList } from './SeoUi';
+import { api, useApi, fmt } from './seoApi';
 import { downloadCsv, usePager, Pager } from './DataTable';
 
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : Number(n).toLocaleString('en-US'));
@@ -67,7 +67,118 @@ function Bars({ rows, labelKey, valueKey, shareKey, tone = INDIGO }) {
   );
 }
 
+const PALETTE = ['#6366f1', '#2dd4bf', '#f59e0b', '#ec4899', '#0ea5e9'];
+
+/** The row above the overview: your website, and up to four competitors to put beside it. */
+function CompareBar({ you, chosen, onCompare, onCancel }) {
+  const tracked = useApi('/backlink-intel/targets');
+  const [open, setOpen] = useState(chosen.length > 0);
+  const [vals, setVals] = useState(() => [...chosen, '', '', '', ''].slice(0, 4));
+  const list = (tracked.data || []).filter(x => x.is_competitor).map(x => x.domain);
+  if (!open) return <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 text-13 font-semibold text-indigo-700 hover:underline cursor-pointer"><Plus size={14} />Add up to 4 competitors to compare</button>;
+  const go = () => { const c = vals.map(v => v.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '')).filter(Boolean); if (c.length) onCompare([...new Set(c)].slice(0, 4)); };
+  return (
+    <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-2 h-9 rounded-lg ring-1 ring-inset ring-slate-300 bg-slate-50 pl-2 pr-3 text-13"><span className="rounded bg-indigo-100 text-indigo-700 px-1.5 text-11 font-semibold">You</span>{you}</span>
+        {vals.map((v, i) => (
+          <label key={i} className="relative"><span className="absolute left-2.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: v.trim() ? PALETTE[i + 1] : '#cbd5e1' }} />
+            <input value={v} onChange={e => setVals(a => a.map((x, k) => (k === i ? e.target.value : x)))} onKeyDown={e => e.key === 'Enter' && go()} list="bl-competitors" placeholder="Add competitor" aria-label={`Competitor ${i + 1}`} className="h-9 w-48 pl-7 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 outline-none focus:ring-2 focus:ring-indigo-400" /></label>))}
+        <datalist id="bl-competitors">{list.map(d => <option key={d} value={d} />)}</datalist>
+        <Button size="sm" variant="primary" onClick={go} disabled={!vals.some(v => v.trim())}>Compare</Button>
+        <Button size="sm" onClick={() => { setOpen(false); setVals(['', '', '', '']); onCancel(); }}>Cancel</Button>
+      </div>
+      <p className="mt-1.5 text-11.5 text-slate-500">Authority and referring domains come from Moz, visits from Similarweb. The links themselves (backlinks, hosting, kinds, categories) are shown for the websites our crawler tracks; the others say "not read yet".</p>
+    </div>
+  );
+}
+
+/** Your website beside the competitors chosen: one row of figures each, then the same breakdowns side by side. */
+function CompareView({ b, domains }) {
+  const [res, setRes] = useState({ state: 'loading' });
+  const key = domains.join(',');
+  React.useEffect(() => {
+    let live = true;
+    setRes({ state: 'loading' });
+    api(`/businesses/${b.id}/backlink-hub/compare`, { method: 'POST', body: { domains }, timeout: 180000 }).then(x => { if (live) setRes({ state: 'ready', ...x }); }).catch(e => { if (live) setRes({ state: 'error', message: e.message }); });
+    return () => { live = false; };
+  }, [key, b.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [hidden, setHidden] = useState({});
+  if (res.state === 'loading') return <Card><p className="py-12 text-center text-13 text-slate-500 inline-flex items-center justify-center gap-2 w-full"><Loader2 size={16} className="animate-spin" />Reading Moz, Similarweb and your crawler's links for {1 + domains.length} websites… about 30 seconds.</p></Card>;
+  if (res.state === 'error') return <Card><ErrorNote>{res.message}</ErrorNote></Card>;
+  const ps = res.profiles;
+  const colour = (i) => PALETTE[i % PALETTE.length];
+  const cell = (p, v, fmtFn = kfmt) => (v == null ? <span className="text-slate-300">n/a</span> : fmtFn(v));
+  const months = [...new Set(ps.flatMap(p => (p.crawler?.series || []).map(x => x.month)))].sort();
+  const lineData = months.map(m => ({ month: m, label: MONTH(m), ...Object.fromEntries(ps.map(p => { const pts = p.crawler?.series || []; const last = pts.filter(x => x.month <= m).slice(-1)[0]; return [p.domain, last ? last.domains : null]; })) }));
+  const cats = [...new Set(ps.flatMap(p => Object.keys(p.crawler?.categories || {})))];
+  const catRows = cats.map(c => ({ c, v: ps.map(p => p.crawler?.categories?.[c] ?? 0) })).sort((x, y) => y.v.reduce((a, n) => a + n, 0) - x.v.reduce((a, n) => a + n, 0)).slice(0, 8);
+  const ranges = ['81 - 100', '61 - 80', '41 - 60', '21 - 40', '0 - 20'];
+  const Stack = ({ p, parts }) => {
+    const tot = parts.reduce((a, [, v]) => a + (v || 0), 0);
+    if (!p.crawler) return <div className="h-7 rounded bg-slate-100 text-11.5 text-slate-400 flex items-center px-3">not read yet</div>;
+    return <div className="flex h-7 rounded overflow-hidden bg-slate-100" title={parts.map(([l, v]) => `${l}: ${fmt(v || 0)}`).join(' · ')}>{parts.map(([l, v, c]) => (v ? <div key={l} style={{ width: `${(v * 100) / Math.max(1, tot)}%`, backgroundColor: c }} /> : null))}</div>;
+  };
+  return (
+    <div className="space-y-4">
+      <Card pad={false}>
+        <div className="overflow-x-auto"><table className="w-full text-13 min-w-[760px]">
+          <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className="px-5 py-2.5 text-left font-medium">Domain/URL</th>{['Authority Score', 'Referring Domains', 'Backlinks', 'Referring IPs', 'Monthly Visits', 'Organic Traffic'].map(h => <th key={h} className="px-4 py-2.5 text-right font-medium">{h}</th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-100">{ps.map((p, i) => (
+            <tr key={p.domain} className="hover:bg-slate-50"><td className="px-5 py-2.5"><span className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colour(i) }} />{p.you ? <span className="font-semibold">{p.domain}</span> : <a href={`https://${p.domain}`} target="_blank" rel="noreferrer" className="hover:underline">{p.domain}</a>}{p.you && <span className="rounded bg-indigo-100 text-indigo-700 px-1.5 text-11 font-semibold">You</span>}</span></td>
+              <td className="px-4 py-2.5 text-right tabular-nums font-semibold" title="Our Authority Score from Moz figures">{cell(p, p.authority.score, String)}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700" title={`Moz: sites linking to the whole website${p.crawler ? `. Our crawler holds ${p.crawler.domains} of them.` : ''}`}>{cell(p, p.authority.rd)}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700" title="Live links our crawler holds">{p.crawler ? kfmt(p.crawler.links) : <span className="text-slate-300" title="This website's links are not read by our crawler yet">not read</span>}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700" title="Addresses the linking sites are hosted on (our crawler's links)">{p.crawler ? kfmt(p.crawler.ips) : <span className="text-slate-300">not read</span>}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700" title={p.visits?.month ? `Estimated, ${p.visits.month} (Similarweb)` : 'No estimate'}>{cell(p, p.visits?.visits)}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums" title={p.you ? 'Clicks from Google, last 28 days (Search Console)' : 'Needs a traffic database'}>{p.you && p.organic_clicks != null ? <span className="text-indigo-700">{fmt(p.organic_clicks)}</span> : <span className="text-slate-300">n/a</span>}</td></tr>))}</tbody></table></div>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Card title="Authority Score" subtitle="Today. Earlier scores are not kept, so there is no trend to draw.">
+          <ul className="space-y-3">{ps.map((p, i) => <li key={p.domain} className="grid grid-cols-[150px_1fr_36px] items-center gap-3 text-13"><span className="truncate" title={p.domain}>{p.domain}</span><div className="h-3 rounded bg-slate-100 overflow-hidden"><div className="h-full rounded" style={{ width: `${p.authority.score ?? 0}%`, backgroundColor: colour(i) }} /></div><span className="text-right tabular-nums font-semibold">{p.authority.score ?? '—'}</span></li>)}</ul>
+        </Card>
+        <Card title="Referring domains" subtitle="Counted from the month our crawler first saw each linking site (websites the crawler tracks)">
+          {lineData.length < 2 ? <Empty>Our crawler first saw these links in {months[0] ? MONTH(months[0]) : 'one month'}, so there is no history to draw yet.</Empty> : (
+            <div className="h-56"><ResponsiveContainer width="100%" height="100%"><LineChart data={lineData} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}><CartesianGrid stroke="#eef2f7" vertical={false} /><XAxis dataKey="label" tick={AXIS} /><YAxis tick={AXIS} width={38} allowDecimals={false} /><Tooltip />{ps.map((p, i) => !hidden[p.domain] && p.crawler && <Line key={p.domain} type="monotone" dataKey={p.domain} stroke={colour(i)} strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />)}</LineChart></ResponsiveContainer></div>)}
+          <div className="mt-2 flex flex-wrap gap-4 text-12.5">{ps.map((p, i) => <label key={p.domain} className="inline-flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!hidden[p.domain]} onChange={() => setHidden(h => ({ ...h, [p.domain]: !h[p.domain] }))} style={{ accentColor: colour(i) }} />{p.domain}</label>)}</div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Card title="Backlink types" subtitle="What the links are made of, read from the anchor">
+          <div className="flex flex-wrap gap-4 text-12 text-slate-600 mb-3">{[['Text', '#4f46e5'], ['Web address', '#818cf8'], ['No text (image or icon)', '#c7d2fe']].map(([l, c]) => <span key={l} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c }} />{l}</span>)}</div>
+          <ul className="space-y-3">{ps.map(p => <li key={p.domain} className="grid grid-cols-[130px_1fr] items-center gap-3 text-13"><span className="truncate" title={p.domain}>{p.domain}</span><Stack p={p} parts={[['Text', p.crawler?.kinds?.Text, '#4f46e5'], ['Web address', p.crawler?.kinds?.['Web address'], '#818cf8'], ['No text (image or icon)', p.crawler?.kinds?.['No text (image or icon)'], '#c7d2fe']]} /></li>)}</ul>
+        </Card>
+        <Card title="Link attributes" subtitle="Follow links pass value; nofollow, sponsored and UGC do not">
+          <div className="flex flex-wrap gap-4 text-12 text-slate-600 mb-3">{[['Follow', '#a5b4fc'], ['Nofollow + sponsored + UGC', '#d8b4fe']].map(([l, c]) => <span key={l} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c }} />{l}</span>)}</div>
+          <ul className="space-y-3">{ps.map(p => <li key={p.domain} className="grid grid-cols-[130px_1fr] items-center gap-3 text-13"><span className="truncate" title={p.domain}>{p.domain}</span><Stack p={p} parts={[['Follow', p.crawler?.follow?.follow, '#a5b4fc'], ['Nofollow', p.crawler?.follow?.nofollow, '#d8b4fe']]} /></li>)}</ul>
+        </Card>
+      </div>
+
+      <Card pad={false} title="Top categories of referring domains" subtitle="How many linking sites of each kind (websites the crawler tracks)">
+        <div className="overflow-x-auto"><table className="w-full text-13"><thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className="px-5 py-2 text-left font-medium">Categories</th>{ps.map((p, i) => <th key={p.domain} className="px-4 py-2 text-right font-medium"><span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colour(i) }} />{p.domain}</span></th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-100">{catRows.length ? catRows.map(r => <tr key={r.c} className="hover:bg-slate-50"><td className="px-5 py-2.5">{r.c}</td>{r.v.map((n, i) => <td key={i} className={`px-4 py-2.5 text-right tabular-nums ${n ? 'text-indigo-700' : 'text-slate-400'}`} style={n ? { backgroundColor: `${colour(i)}1a` } : undefined}>{ps[i].crawler ? n : '—'}</td>)}</tr>) : <tr><td colSpan={ps.length + 1}><Empty>No linking sites read yet.</Empty></td></tr>}</tbody></table></div>
+      </Card>
+
+      <Card pad={false} title="Referring domains by Authority" subtitle="Domain Authority (Moz) of the linking sites we have a figure for">
+        <div className="overflow-x-auto"><table className="w-full text-13"><thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className="px-5 py-2 text-left font-medium">Range</th>{ps.map((p, i) => <th key={p.domain} className="px-4 py-2 text-right font-medium"><span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colour(i) }} />{p.domain}</span></th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-100">{ranges.map(rg => <tr key={rg} className="hover:bg-slate-50"><td className="px-5 py-2.5">{rg}</td>{ps.map((p, i) => { const n = p.crawler?.by_authority?.find(x => x.range === rg)?.domains; return <td key={p.domain} className={`px-4 py-2.5 text-right tabular-nums ${n ? 'text-indigo-700' : 'text-slate-400'}`} style={n ? { backgroundColor: `${colour(i)}1a` } : undefined}>{p.crawler ? n ?? 0 : '—'}</td>; })}</tr>)}</tbody></table></div>
+      </Card>
+
+      <Card pad={false} title="Top link building opportunities" subtitle="Websites that link to a competitor and not to you">
+        {res.opportunities.length === 0 ? <Empty>No website links to a tracked competitor without linking to you. Competitors the crawler does not track yet have no links to compare: add them under Tracked sites.</Empty> : (
+          <div className="overflow-x-auto"><table className="w-full text-13"><thead className="text-12 text-slate-500 border-b border-slate-200"><tr><th className="px-5 py-2 text-left font-medium">Referring domain</th><th className="px-3 py-2 text-right font-medium">AS</th>{ps.map((p, i) => <th key={p.domain} className="px-4 py-2 text-right font-medium"><span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colour(i) }} />{p.domain}</span></th>)}</tr></thead>
+            <tbody className="divide-y divide-slate-100">{res.opportunities.map(o => <tr key={o.domain} className="hover:bg-slate-50"><td className="px-5 py-2.5"><a href={`https://${o.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{o.domain}<ExternalLink size={11} className="text-slate-400" /></a></td><td className="px-3 py-2.5 text-right tabular-nums">{o.authority ?? '—'}</td>{ps.map((p, i) => <td key={p.domain} className={`px-4 py-2.5 text-right tabular-nums ${o.counts[p.domain] ? 'text-indigo-700' : 'text-slate-400'}`} style={o.counts[p.domain] ? { backgroundColor: `${colour(i)}1a` } : undefined}>{o.counts[p.domain] || 0}</td>)}</tr>)}</tbody></table></div>)}
+        <div className="px-5 py-3 border-t border-slate-100"><Link to="/backlinks/gap" className="inline-flex rounded-lg bg-slate-900 text-white px-3 py-1.5 text-12.5 font-medium hover:bg-slate-700">Go to Backlink Gap</Link></div>
+      </Card>
+    </div>
+  );
+}
+
 export default function BacklinkOverview({ b }) {
+  const [params, setParams] = useSearchParams();
+  const compare = (params.get('compare') || '').split(',').map(x => x.trim()).filter(Boolean);
   const r = useApi(`/businesses/${b.id}/backlink-hub/overview`);
   const [range, setRange] = useState('all');
   const [show, setShow] = useState({ new: true, lost: true });
@@ -80,8 +191,11 @@ export default function BacklinkOverview({ b }) {
   const t = d.totals, a = d.authority, f = d.follow, p = d.profile;
   const radar = [{ axis: 'Link power', v: a.radar.link_power }, { axis: 'Organic traffic', v: a.radar.organic_traffic }, { axis: 'Natural profile', v: a.radar.natural_profile }];
   const tox = t.toxicity;
+  const bar = <CompareBar key={compare.join(',')} you={d.domain} chosen={compare} onCompare={c => setParams({ compare: c.join(',') })} onCancel={() => setParams({})} />;
+  if (compare.length) return <div className="space-y-4">{bar}<CompareView b={b} domains={compare} /></div>;
   return (
     <div className="space-y-4">
+      {bar}
       <div className="flex flex-wrap items-center gap-2 text-13 text-slate-600"><span className="font-semibold text-slate-900">Backlinks: {d.domain}</span><a href={`https://${d.domain}`} target="_blank" rel="noreferrer" aria-label="Open the website" className="text-slate-400 hover:text-indigo-600"><ExternalLink size={14} /></a>
         <span>· {fmt(t.backlinks)} backlinks from {fmt(t.referring_domains)} sites found by our crawler</span></div>
 

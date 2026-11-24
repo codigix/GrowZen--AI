@@ -417,3 +417,114 @@ def toxicity_report(db: Session, b: Business) -> dict[str, Any]:
         "anchors": [{"text": k, "count": v, "domains": len({x["source_domain"] for x in live if x["anchor"] == k})} for k, v in Counter(x["anchor"] for x in live if x["anchor"]).most_common(100)],
         "disavow": {"toxic": sorted(d["domain"] for d in doms.values() if d["band"] == "toxic"), "potential": sorted(d["domain"] for d in doms.values() if d["band"] == "potential")},
     }
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------- compare with competitors
+def _visits(domain: str) -> dict[str, Any] | None:
+    """Estimated visits a month of a website (Similarweb data through Apify), asked afresh and not kept. None when it has none."""
+    import httpx  # noqa: PLC0415
+
+    from ..services import apify_metrics  # noqa: PLC0415
+    for _i, tok in apify_metrics.keys():
+        try:
+            r = httpx.post("https://api.apify.com/v2/acts/trakk~similarweb-scraper/run-sync-get-dataset-items", params={"token": tok, "timeout": 22}, json={"domains": [domain]}, timeout=28)  # a small site has no figures and the actor then keeps trying: it is not waited for
+            items = r.json() if r.status_code in (200, 201) and isinstance(r.json(), list) else None
+        except (httpx.HTTPError, ValueError):
+            return None
+        if r.status_code in (401, 402, 403):
+            continue  # this key has no credit: the next one
+        if items:
+            x = items[0]
+            est = x.get("estimatedMonthlyVisits") or {}
+            last = max(est) if est else None
+            visits = est.get(last) if last else (x.get("engagement") or {}).get("visits")
+            return {"visits": visits, "month": last, "change": x.get("trafficChangeMoM"), "rank": x.get("globalRank")}
+        return None
+    return None
+
+
+def _crawler_profile(db: Session, b: Business, domain: str) -> dict[str, Any] | None:
+    """What our crawler holds for one tracked website (yours or a competitor's), counted the same way as the overview. None when it holds no link to the site."""
+    from . import quality  # noqa: PLC0415
+    rows = hub._rows(db, domain)
+    if not rows:
+        return None
+    scores = quality.scores_for(db, b.id)
+    metrics = hub.metrics_for(db, sorted({d for _, _, d in rows}))
+    brand = hub.brand_terms(b, domain)
+    out = [hub._link_out(bl, page, dom, scores.get(dom), metrics.get(dom), brand) for bl, page, dom in rows]
+    live = [x for x in out if x["is_live"]]
+    per: dict[str, dict[str, Any]] = {}
+    for x in live:
+        d = per.setdefault(x["source_domain"], {"links": 0, "first": None, "cats": Counter(), "da": None})
+        d["links"] += 1
+        d["cats"][x["category"]["label"]] += 1
+        m = x.get("metrics") or {}
+        d["da"] = m.get("da") if m.get("da") is not None else d["da"]
+        if x["first_seen"] and (d["first"] is None or x["first_seen"] < d["first"]):
+            d["first"] = x["first_seen"]
+    ips = _ips(sorted(per)[:120])
+    months = sorted({d["first"][:7] for d in per.values() if d["first"]})
+    series = [{"month": mo, "domains": sum(1 for d in per.values() if d["first"] and d["first"][:7] <= mo)} for mo in months][-12:]
+    ranges = [("81 - 100", 80, 100), ("61 - 80", 60, 80), ("41 - 60", 40, 60), ("21 - 40", 20, 40), ("0 - 20", -1, 20)]
+    return {
+        "links": len(live), "domains": len(per), "ips": len({i for i in ips.values() if i}), "series": series, "per_domain": {k: v["links"] for k, v in per.items()},
+        "follow": dict(Counter("follow" if x["follow"] == "dofollow" else "nofollow" for x in live)),
+        "kinds": dict(Counter("Web address" if x["anchor_type"] == "naked" else "No text (image or icon)" if x["anchor_type"] == "empty" else "Text" for x in live)),
+        "categories": dict(Counter(d["cats"].most_common(1)[0][0] for d in per.values())),
+        "by_authority": [{"range": lbl, "domains": sum(1 for d in per.values() if d["da"] is not None and lo < d["da"] <= hi), } for lbl, lo, hi in ranges], "authority_known": sum(1 for d in per.values() if d["da"] is not None),
+        "authority_of": {k: v["da"] for k, v in per.items()},
+    }
+
+
+def compare(db: Session, b: Business, competitors: list[str]) -> dict[str, Any]:
+    """Your website beside up to four competitors: Authority Score, referring domains and Moz figures from Moz (through Apify), estimated monthly visits (Similarweb through Apify), and, for every
+    website our crawler tracks, the links it holds (backlinks, hosting, link kinds and attributes, kinds of linking site, authority of the linking sites), then the websites that link to a competitor
+    and not to you. A website the crawler does not track shows what Moz and Similarweb say and 'not read yet' for the links."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    from ..services import url_overview as uo  # noqa: PLC0415
+    from .models import BiTrackedTarget  # noqa: PLC0415
+    me = hub.own_domain(db, b.id)
+    if not me:
+        return {"state": "no_target"}
+    names = [me]
+    for x in competitors:
+        host = kd.site_of(uo._public(x)) if x else ""
+        if host and host not in names:
+            names.append(host)
+    names = names[:5]
+    tracked = {t for t in db.scalars(select(BiTrackedTarget.domain).where(BiTrackedTarget.business_id == b.id))}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        f_auth = {n: pool.submit(uo.authority, n) for n in names}
+        f_vis = {n: pool.submit(_visits, n) for n in names}
+        f_clicks = pool.submit(_gsc_clicks, db, b)
+        profiles = []
+        for n in names:
+            crawl = _crawler_profile(db, b, n) if n in tracked or n == me else None
+            au = f_auth[n].result()
+            au = au if au and not au.get("error") else None
+            vis = f_vis[n].result()
+            profiles.append({"domain": n, "you": n == me, "tracked": n in tracked or n == me, "read": crawl is not None,
+                             "authority": {"score": kd.authority_score(au.get("da"), au.get("rd"), au.get("spam"), au.get("ranking_keywords")) if au else None, "da": au.get("da") if au else None,
+                                           "rd": au.get("rd") if au else None, "ranking_keywords": au.get("ranking_keywords") if au else None, "spam": au.get("spam") if au else None},
+                             "visits": vis, "organic_clicks": None, "crawler": crawl})
+        clicks = f_clicks.result()
+    profiles[0]["organic_clicks"] = clicks
+    # websites that link to a competitor and not to you
+    mine = set((profiles[0]["crawler"] or {}).get("per_domain", {}))
+    opp: dict[str, dict[str, Any]] = {}
+    for p in profiles[1:]:
+        for dom, n in ((p["crawler"] or {}).get("per_domain", {})).items():
+            if dom in mine:
+                continue
+            e = opp.setdefault(dom, {"domain": dom, "counts": {}, "authority": None})
+            e["counts"][p["domain"]] = n
+            e["authority"] = (p["crawler"] or {}).get("authority_of", {}).get(dom) if e["authority"] is None else e["authority"]
+    opps = sorted(opp.values(), key=lambda e: (-len(e["counts"]), -(e["authority"] or 0), -sum(e["counts"].values())))[:15]
+    for p in profiles:
+        if p["crawler"]:
+            p["crawler"].pop("per_domain", None)
+            p["crawler"].pop("authority_of", None)
+    return {"state": "ok", "you": me, "profiles": profiles, "opportunities": opps, "tracked": sorted(tracked - {me})}
