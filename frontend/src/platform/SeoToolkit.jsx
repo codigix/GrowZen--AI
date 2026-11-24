@@ -300,6 +300,50 @@ function IdeasTable({ ideas, go, busy, track, isTracked, name }) {
   );
 }
 
+const INTENTS = ['informational', 'navigational', 'commercial', 'transactional', 'local'];
+const intentChips = (intent) => INTENTS.map(k => ({ k: k[0].toUpperCase() + k.slice(1), on: k === String(intent || '').toLowerCase() }));
+const difficultyWord = (v) => (v == null ? 'No data' : v < 15 ? 'Very easy' : v < 30 ? 'Easy' : v < 50 ? 'Medium' : v < 70 ? 'Challenging' : 'Very hard');
+const diffTone = (v) => (v == null ? 'slate' : v < 30 ? 'green' : v < 50 ? 'amber' : 'red');
+
+function Gauge180({ value }) {
+  const v = value == null ? 0 : Math.max(0, Math.min(100, value));
+  const r = 60, cx = 80, cy = 74, ang = Math.PI * (1 - v / 100);
+  const pt = (a) => `${(cx + r * Math.cos(a)).toFixed(1)} ${(cy - r * Math.sin(a)).toFixed(1)}`;
+  return (
+    <div className="flex flex-col items-center" role="img" aria-label={`Difficulty ${value ?? 'not available'} of 100, ${difficultyWord(value)}`}>
+      <svg viewBox="0 0 160 84" className="w-48">
+        <path d={`M ${pt(Math.PI)} A ${r} ${r} 0 0 1 ${pt(0)}`} fill="none" stroke="#e2e8f0" strokeWidth="12" strokeLinecap="round" />
+        {value != null && v > 0 && <path d={`M ${pt(Math.PI)} A ${r} ${r} 0 0 1 ${pt(ang)}`} fill="none" stroke={value < 30 ? '#10b981' : value < 50 ? '#f59e0b' : '#ef4444'} strokeWidth="12" strokeLinecap="round" />}
+        <text x={cx} y={cy - 6} textAnchor="middle" className="fill-slate-900" style={{ fontSize: 26, fontWeight: 700 }}>{value ?? '—'}</text>
+      </svg>
+      <Badge tone={diffTone(value)}>{difficultyWord(value)}</Badge>
+      <p className="text-11.5 text-slate-500 mt-2 text-center">How many advertisers compete for it. Higher is harder.</p>
+    </div>
+  );
+}
+
+function Bar({ label, value, max, text }) {
+  return (
+    <div className="flex items-center gap-2 text-12.5"><span className="w-28 truncate text-slate-700" title={label}>{label}</span>
+      <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-400" style={{ width: `${Math.max(3, ((value || 0) / (max || 1)) * 100)}%` }} /></div>
+      <span className="w-24 text-right tabular-nums text-slate-700">{text}</span></div>
+  );
+}
+
+function IdeaGroup({ title, rows, go }) {
+  return (
+    <Card pad={false} title={`${title} (${rows.length})`}>
+      {rows.length === 0 ? <p className="px-4 py-6 text-center text-12.5 text-slate-500">None from Google.</p> : (
+        <table className="w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500"><th className="px-4 py-1.5 font-medium">Keyword</th><th className="px-2 py-1.5 font-medium text-right">Volume</th><th className="px-4 py-1.5 font-medium text-right">Difficulty</th></tr></thead>
+          <tbody>{rows.slice(0, 8).map(r => (
+            <tr key={r.keyword} className="border-t border-slate-100"><td className="px-4 py-1.5 truncate max-w-[180px]"><button type="button" className="text-indigo-700 hover:underline cursor-pointer text-left" onClick={() => go(r.keyword)} title="Open its overview">{r.keyword}</button></td>
+              <td className="px-2 py-1.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td>
+              <td className="px-4 py-1.5 text-right">{r.index == null ? '—' : <Badge tone={diffTone(r.index)}>{r.index}</Badge>}</td></tr>))}</tbody></table>
+      )}
+    </Card>
+  );
+}
+
 function KeywordOverview({ b }) {
   const [q, setQ] = useState('');
   const [data, setData] = useState(null);
@@ -329,27 +373,50 @@ function KeywordOverview({ b }) {
       </Card>
       {data && (
         <>
-          <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
-            <Tile icon={KeyRound} label="Keyword" value={data.keyword.length > 18 ? `${data.keyword.slice(0, 17)}…` : data.keyword} sub={`${data.intent} intent`} right={!isTracked(data.keyword) && <Button size="sm" icon={Plus} busy={busy === `t${data.keyword}`} onClick={() => track(data.keyword)}>Track</Button>} />
-            <Tile icon={TrendingUp} tone="violet" label="Searches per month" value={m.volume != null ? fmt(m.volume) : '—'} sub={data.found ? [pct(m.three_month_change) && `${pct(m.three_month_change)} in 3 months`, pct(m.yoy_change) && `${pct(m.yoy_change)} vs last year`].filter(Boolean).join(' · ') || 'Google Keyword Planner' : 'not in the Planner'} />
-            <Tile icon={Gauge} tone="amber" label="Competition" value={m.competition_index ?? '—'} sub={m.competition && m.competition !== 'UNSPECIFIED' ? `${m.competition.toLowerCase()} · advertisers bidding` : 'not available'} />
-            <Tile icon={Star} tone="sky" label="Top-of-page bid" value={m.cpc_high != null ? money(m.cpc_high) : '—'} sub={m.cpc_low != null ? `range ${money(m.cpc_low)} to ${money(m.cpc_high)}` : 'what advertisers pay per click'} />
-            <Tile icon={Trophy} tone="emerald" label="Your position" value={data.you.rank ? `#${data.you.rank}` : data.you.tracked ? 'Not ranking' : 'Not tracked'} sub={data.you.tracked ? (data.you.checked_at ? `last check ${data.you.checked_at}` : 'check it in Position Tracking') : 'press Track to follow it'} />
+          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3">
+            <KeyRound size={16} className="text-indigo-500" />
+            <div className="mr-auto min-w-0"><div className="text-16 font-semibold text-slate-900 truncate">{data.keyword}</div>
+              <div className="text-12 text-slate-500">{data.country ? `Figures for ${data.country}` : 'Figures for your country'} · Google Ads Keyword Planner · {data.you.rank ? `you rank #${data.you.rank}` : data.you.tracked ? 'tracked, not ranking yet' : 'not tracked yet'}</div></div>
+            <div className="flex flex-wrap gap-1.5" aria-label="Search intent">{intentChips(data.intent).map(c => <Badge key={c.k} tone={c.on ? 'indigo' : 'slate'}>{c.k}</Badge>)}</div>
+            {!isTracked(data.keyword) && <Button size="sm" icon={Plus} busy={busy === `t${data.keyword}`} onClick={() => track(data.keyword)}>Track</Button>}
           </div>
-          {!data.found && <p className="text-13 text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Google's Keyword Planner has no figures for this exact keyword (it is too rare or too new). The related ideas below are what it does know.</p>}
-          {m.monthly.length > 0 && (
-            <Card title="Searches by month" subtitle="The last 12 months, from Google">
-              <div className="flex items-end gap-1.5 h-28" role="img" aria-label="Monthly searches for the last 12 months">
-                {m.monthly.map(x => <div key={`${x.year}-${x.month}`} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full" title={`${x.month.slice(0, 3)} ${x.year}: ${fmt(x.searches)}`}><div className="w-full rounded-t bg-indigo-500" style={{ height: `${Math.max(4, Math.round((x.searches / peak) * 100))}%` }} /><span className="text-10 text-slate-400 mt-1">{x.month.slice(0, 1)}</span></div>)}
-              </div>
+          {!data.found && <p className="text-13 text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Google's Keyword Planner has no figures for this exact keyword (it is too rare or too new). The ideas below are what it does know.</p>}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <Card title="Difficulty" subtitle="Google's competition index, 0 to 100">
+              <Gauge180 value={m.competition_index} />
             </Card>
-          )}
-          <Card pad={false} title="Related keyword ideas" subtitle="What Google's Keyword Planner suggests around it, with real numbers"
-            action={data.ideas.length > 0 && <Button size="sm" busy={busy === 'ws'} onClick={() => toWorkspace(data.ideas)}>Add all to the Keyword Workspace</Button>}>
-            {data.ideas.length === 0 ? <p className="px-5 py-8 text-center text-13 text-slate-500">No related ideas.</p> : (
-              <IdeasTable ideas={data.ideas} go={go} busy={busy} track={track} isTracked={isTracked} name={`related-keyword-ideas-${data.keyword}-${b.name}`} />
-            )}
-          </Card>
+            <Card title="Search volume" subtitle="Average searches per month, last 12 months">
+              <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums">{m.volume != null ? fmt(m.volume) : '—'}</div>
+                <div className="text-12 text-slate-500">{[pct(m.three_month_change) && `${pct(m.three_month_change)} in 3 months`, pct(m.yoy_change) && `${pct(m.yoy_change)} vs last year`].filter(Boolean).join(' · ')}</div></div>
+              {m.monthly.length > 0 ? (
+                <div className="flex items-end gap-1 h-24 mt-3" role="img" aria-label="Monthly searches for the last 12 months">
+                  {m.monthly.map(x => <div key={`${x.year}-${x.month}`} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full" title={`${x.month.slice(0, 3)} ${x.year}: ${fmt(x.searches)}`}><div className="w-full rounded-t bg-indigo-500" style={{ height: `${Math.max(4, Math.round((x.searches / peak) * 100))}%` }} /><span className="text-[9px] text-slate-400 mt-0.5">{x.month.slice(0, 1)}</span></div>)}
+                </div>
+              ) : <p className="text-12 text-slate-400 mt-3">No monthly figures from Google.</p>}
+            </Card>
+            <Card title="Cost per click" subtitle="What advertisers bid at the top of the page">
+              <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums">{m.cpc_high != null ? money(m.cpc_high) : '—'}</div>
+                <div className="text-12 text-slate-500">{m.cpc_low != null ? `low ${money(m.cpc_low)}` : ''}{m.competition && m.competition !== 'UNSPECIFIED' ? ` · competition ${m.competition.toLowerCase()}${m.competition_index != null ? ` (${m.competition_index})` : ''}` : ''}</div></div>
+              <div className="mt-3 space-y-1.5">{(data.countries || []).filter(c => c.cpc != null).slice(0, 5).map(c => <Bar key={c.code} label={c.name} value={c.cpc} max={Math.max(...data.countries.map(x => x.cpc || 0), 0.01)} text={money(c.cpc)} />)}
+                {!(data.countries || []).some(c => c.cpc != null) && <p className="text-12 text-slate-400">No bid figures by country.</p>}</div>
+            </Card>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <Card title="Global volume by country" subtitle="Searches per month in each country Google reports">
+              {(data.countries || []).length === 0 ? <p className="text-12 text-slate-400">Google has no figures for this keyword in other countries.</p> : (
+                <div className="space-y-1.5">{data.countries.map(c => <Bar key={c.code} label={c.name} value={c.volume} max={data.countries[0].volume} text={`${fmt(c.volume)} · ${c.share}%`} />)}</div>
+              )}
+            </Card>
+            {[['similar', 'Similar keywords'], ['related', 'Related keywords']].map(([k, title]) => <IdeaGroup key={k} title={title} rows={data.groups?.[k] || []} go={go} />)}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <IdeaGroup title="Questions" rows={data.groups?.questions || []} go={go} />
+            <div className="lg:col-span-2"><Card title="Not available from Google">
+              <p className="text-13 text-slate-600">The Keyword Planner is Google's advertising tool: it gives searches, competition, bids and ideas. It does not give the results page, so these sections are not shown, rather than made up:</p>
+              <ul className="mt-2 grid sm:grid-cols-2 gap-x-6 gap-y-1 text-13 text-slate-500 list-disc pl-5"><li>SERP overview (who ranks on page one)</li><li>Ranking dynamics (use Position Tracking for yours)</li><li>Most popular ads</li><li>Ads history for the keyword</li><li>Ad copies of competitors</li></ul>
+              <div className="mt-3 flex gap-2"><Button size="sm" onClick={() => navigate('/rank-tracking')}>Position Tracking</Button><Button size="sm" busy={busy === 'ws'} onClick={() => toWorkspace([...(data.groups?.similar || []), ...(data.groups?.related || []), ...(data.groups?.questions || [])])}>Add all ideas to the Keyword Workspace</Button></div>
+            </Card></div>
+          </div>
         </>
       )}
       {toastNode}

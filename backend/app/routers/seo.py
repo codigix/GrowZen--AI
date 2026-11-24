@@ -297,6 +297,45 @@ class OverviewIn(BaseModel):
     keyword: str = Field(min_length=2, max_length=120)
 
 
+_COUNTRY_NAMES = {"IN": "India", "US": "United States", "GB": "United Kingdom", "AU": "Australia", "CA": "Canada", "AE": "United Arab Emirates", "SG": "Singapore", "DE": "Germany", "FR": "France",
+                  "NZ": "New Zealand", "ZA": "South Africa", "SA": "Saudi Arabia", "NG": "Nigeria", "KE": "Kenya", "PK": "Pakistan", "BD": "Bangladesh", "LK": "Sri Lanka", "MY": "Malaysia", "PH": "Philippines"}
+_QUESTION = re.compile(r"^(what|how|why|when|where|which|who|can|does|do|is|are|should|will)\b")
+
+
+def _idea_groups(kw: str, ideas: list[dict]) -> dict[str, list[dict]]:
+    """Google's ideas split three ways: similar (carry every word of the keyword), related (the rest), questions (start with what, how, why...)."""
+    words = [w for w in kw.split() if len(w) > 2]
+    out: dict[str, list[dict]] = {"similar": [], "related": [], "questions": []}
+    for i in ideas:
+        k = i["keyword"].lower()
+        if k == kw:
+            continue
+        row = {"keyword": i["keyword"], "volume": i["avg_monthly_searches"], "index": i["competition_index"], "competition": i["competition"], "cpc": i["high_top_of_page_bid"]}
+        group = "questions" if _QUESTION.match(k) else "similar" if words and all(w in k for w in words) else "related"
+        out[group].append(row)
+    for g in out.values():
+        g.sort(key=lambda r: -(r["volume"] or 0))
+    return {k: v[:25] for k, v in out.items()}
+
+
+def _by_country(kw: str, home: str | None) -> list[dict]:
+    """The same keyword's searches per month and top-of-page bid in each country Google Ads is asked about (the home country first). A country Google gives nothing for is left out."""
+    from ..services import google_ads_client as ads  # noqa: PLC0415
+    codes = list(dict.fromkeys([c for c in [(home or "").upper()] if c in _COUNTRY_NAMES] + list(_COUNTRY_NAMES)))[:12]
+    out = []
+    for code in codes:
+        try:
+            got = ads.historical_metrics([kw], geo_target=ads.geo_target_for(code)).get(kw)
+        except Exception:  # noqa: BLE001 -- one country failing must not hide the others
+            got = None
+        if got and got.get("volume"):
+            out.append({"code": code, "name": _COUNTRY_NAMES[code], "volume": got["volume"], "cpc": got["cpc"], "index": got["competition_index"]})
+    total = sum(r["volume"] for r in out) or 1
+    for r in out:
+        r["share"] = round(r["volume"] * 100 / total, 1)
+    return sorted(out, key=lambda r: -r["volume"])
+
+
 @router.post("/keyword-overview")
 def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """One keyword from the Google Ads Keyword Planner: monthly searches and the 12-month trend, competition, the bid range and related ideas, for the business's country.
@@ -322,6 +361,7 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
             exact = {"avg_monthly_searches": got["volume"], "competition": got["competition"], "competition_index": got["competition_index"], "low_top_of_page_bid": None,
                      "high_top_of_page_bid": got["cpc"], "three_month_change": None, "yoy_change": None}
     saved = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == kw))
+    world = _by_country(kw, country)
     monthly = [{"year": m["year"], "month": m["month"], "searches": m["monthly_searches"]} for m in (exact or {}).get("monthly_search_volumes", [])][-12:]
     ci = (exact or {}).get("competition_index")
     return {
@@ -331,7 +371,8 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
                     "difficulty": ci if (exact or {}).get("competition") not in (None, "UNSPECIFIED") else None,
                     "cpc_low": (exact or {}).get("low_top_of_page_bid"), "cpc_high": (exact or {}).get("high_top_of_page_bid"),
                     "three_month_change": (exact or {}).get("three_month_change"), "yoy_change": (exact or {}).get("yoy_change"), "monthly": monthly},
-        "ideas": [{"keyword": i["keyword"], "volume": i["avg_monthly_searches"], "competition": i["competition"], "cpc": i["high_top_of_page_bid"]} for i in ideas if i["keyword"].lower() != kw][:40],
+        "ideas": [{"keyword": i["keyword"], "volume": i["avg_monthly_searches"], "competition": i["competition"], "index": i["competition_index"], "cpc": i["high_top_of_page_bid"]} for i in ideas if i["keyword"].lower() != kw][:40],
+        "groups": _idea_groups(kw, ideas), "countries": world,
         "you": {"tracked": bool(saved and saved.tracked), "rank": saved.rank if saved else None, "prev_rank": saved.prev_rank if saved else None,
                 "checked_at": saved.rank_checked_at if saved else None, "target_url": saved.target_url if saved else None},
     }
