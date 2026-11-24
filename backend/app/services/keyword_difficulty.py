@@ -89,11 +89,43 @@ def _apify_once(tok: str, keyword: str, country: str) -> tuple[dict[str, Any] | 
     return None, f"Apify answered {r.status_code}."
 
 
+BADGER_URL = "https://api.apify.com/v2/acts/scrape.badger~google-search-scraper/run-sync-get-dataset-items"
+FEATURES = {"Ads": "ads", "People also ask": "related_questions", "Local pack": "local_results", "Knowledge panel": "knowledge_graph", "Videos": "inline_videos", "Shopping": "shopping_results",
+            "Discussions": "discussions_and_forums"}
+
+
+def _badger(keyword: str, country: str) -> dict[str, Any] | None:
+    """The same page through Apify's `scrape.badger/google-search-scraper`: about 7 seconds instead of 60+, and it also reports the local pack, knowledge panel, videos, shopping and forums.
+    None when it fails (the slower scraper is used then)."""
+    for _i, tok in apify_metrics.keys():
+        try:
+            r = httpx.post(BADGER_URL, params={"token": tok, "timeout": 60}, json={"q": keyword, "gl": countries.gl(country).lower(), "hl": "en", "num": 10}, timeout=70)
+            j = r.json()[0] if r.status_code in (200, 201) and isinstance(r.json(), list) and r.json() else None
+        except (httpx.HTTPError, ValueError):
+            continue
+        if not j or not j.get("organic_results"):
+            continue
+        organic = [{"position": o.get("position") or i + 1, "title": o.get("title") or "", "url": o.get("link") or "", "site": site_of(o.get("link") or ""), "description": (o.get("snippet") or "")[:200]}
+                   for i, o in enumerate(j["organic_results"]) if o.get("link")][:10]
+        ai = bool((j.get("ai_overview") or {}).get("text_blocks"))
+        features = {name: bool(j.get(key)) for name, key in FEATURES.items()}
+        features["AI overview"] = ai
+        if any(o["site"] == "google.com" for o in organic):  # Google's own map or search links are the local pack, not a competitor's page: they are not scored as one
+            features["Local pack"] = True
+            organic = [o for o in organic if o["site"] != "google.com"]
+        return {"organic": organic, "questions": [q.get("question") for q in (j.get("related_questions") or []) if q.get("question")],
+                "related": [q.get("query") for q in (j.get("related_searches") or []) if q.get("query")],
+                "ads": [{"title": a.get("title") or "", "url": a.get("link") or a.get("displayed_link") or "", "site": site_of(a.get("link") or a.get("displayed_link") or ""),
+                         "description": (a.get("description") or a.get("snippet") or "")[:240]} for a in (j.get("ads") or [])],
+                "ai_overview": ai, "features": features}
+    return None
+
+
 def serp(keyword: str, country: str) -> dict[str, Any]:
     """What Google shows for the keyword right now: {organic: [{position, title, url, site, description}], questions, related, ads: [{title, url, description}], ai_overview}. Not kept.
     Serper answers in about a second when it has credit. Otherwise Apify's Google scraper is used: most runs take 60 to 90 seconds but some take several minutes, so after HEDGE_AFTER seconds a second run is started and whichever ends first is used."""
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait  # noqa: PLC0415
-    fast = _serper(keyword, country)
+    fast = _serper(keyword, country) or _badger(keyword, country)
     if fast:
         return fast
     tokens = [t for _i, t in apify_metrics.keys()]
@@ -313,7 +345,7 @@ def score(keyword: str, country: str, volume: int | None = None) -> dict[str, An
     rd_score = sum(_log_scale(x, RD_TOP) for x in rds) / len(rds) if rds else None
     parts = [x for x in (da, pa, rd_score) if x is not None]
     authority = sum(parts) / len(parts) if parts else None
-    features = {"Ads": bool(page["ads"]), "People also ask": bool(page["questions"]), "AI overview": page["ai_overview"]}
+    features = page.get("features") or {"Ads": bool(page["ads"]), "People also ask": bool(page["questions"]), "AI overview": page["ai_overview"]}  # the fast reader sees seven or eight features, the others three
     feature_comp = 100 * sum(features.values()) / len(features)
     top10 = 100 * sum(1 for r in known if r["da"] >= STRONG_DA) / len(known) if known else None
     sc = round(0.5 * authority + 0.25 * feature_comp + 0.25 * top10) if authority is not None and top10 is not None else None
