@@ -751,13 +751,14 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     const mine = ++kwSeq.current;
     setKwBusy(true); setKwError(''); setKwNote('');
     const keep = regen ? [] : selectedTopic?.selected || [];
+    const lockedPrimary = kw.trim(); // an existing primary keyword (picked topic or typed) is never regenerated, only the secondary keywords
     try {
       const r = await api(`/businesses/${b.id}/articles/keywords`, {
         method: 'POST',
-        body: { topic: topicText.trim(), related: [...(selectedTopic?.selected || []), ...related], avoid: regen ? [kw, ...secondaryList].filter(Boolean) : [] }
+        body: { topic: topicText.trim(), related: [...(selectedTopic?.selected || []), ...related], avoid: regen ? secondaryList.filter(Boolean) : [], primary: lockedPrimary }
       });
       if (mine !== kwSeq.current) return;
-      setKw(r.primary);
+      if (!lockedPrimary) setKw(r.primary);
       setSecondaryList([...new Set([...keep, ...r.secondary])].slice(0, 10));
       setIntent(r.intent || '');
       const vols = Object.fromEntries(Object.entries(r.volumes || {}).map(([k, v]) => [k.toLowerCase(), v]));
@@ -1023,7 +1024,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-[12px] font-bold text-slate-800">Keywords for this article</div>
                   <Button size="sm" icon={RefreshCw} busy={kwBusy} disabled={topicText.trim().length < 2} onClick={() => suggestKeywords(kwReady)}>
-                    {kwReady ? 'Regenerate Keywords' : 'Generate Keywords'}
+                    {kwReady ? 'Regenerate Secondary Keywords' : 'Generate Keywords'}
                   </Button>
                 </div>
                 {kwBusy && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />Writing keywords for “{topicText}” with Claude AI…</div>}

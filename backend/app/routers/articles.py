@@ -52,6 +52,7 @@ class KeywordSuggestIn(BaseModel):
     topic: str = Field(min_length=2, max_length=255)
     related: list[str] = Field(default_factory=list, max_length=40)  # Keyword Planner ideas picked on the Trending Topics Radar
     avoid: list[str] = Field(default_factory=list, max_length=30)  # the set being replaced when regenerating
+    primary: str = Field(default="", max_length=255)  # when set, the primary keyword is fixed: only secondary keywords are generated
 
 
 class ArticleEdit(BaseModel):
@@ -368,7 +369,7 @@ def suggest_keywords(body: KeywordSuggestIn, b: Business = Depends(get_business)
     if body.related and status not in ("ok", "cached"):
         status = "provided"
     try:
-        out = svc.suggest_keywords(body.topic, related, b, body.avoid, volumes=volumes)
+        out = svc.suggest_keywords(body.topic, related, b, body.avoid, volumes=volumes, fixed_primary=body.primary)
     except RuntimeError as exc:
         raise HTTPException(502, str(exc))
     final = [out["primary"], *out["secondary"]]

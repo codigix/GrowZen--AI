@@ -311,8 +311,9 @@ def _sig(text: str) -> set[str]:
     return {w for w in re.findall(r"\w+", text.lower()) if len(w) > 2 and w not in _STOP}
 
 
-def suggest_keywords(topic: str, related: list[str], b: Business, avoid: list[str] | None = None, volumes: dict[str, int] | None = None) -> dict:
-    """Primary + 5-10 secondary SEO keywords for a topic, from Claude and the topic's Google Keyword Planner ideas
+def suggest_keywords(topic: str, related: list[str], b: Business, avoid: list[str] | None = None, volumes: dict[str, int] | None = None, fixed_primary: str = "") -> dict:
+    """(`fixed_primary`: when given, that primary keyword is kept as is and only the secondary keywords are generated.)
+    Primary + 5-10 secondary SEO keywords for a topic, from Claude and the topic's Google Keyword Planner ideas
     (`volumes` = average monthly searches per idea, shown to the model so it prefers keywords people actually search)."""
     topic = " ".join(topic.split())
     related = list(dict.fromkeys(" ".join(r.lower().split()) for r in related if r and r.strip()))[:25]
@@ -329,6 +330,8 @@ def suggest_keywords(topic: str, related: list[str], b: Business, avoid: list[st
                   *[f"- {r}" + (f" ({volumes[r]:,} searches/month)" if volumes.get(r) is not None else "") for r in related]]
     if avoid:
         lines += ["", "A previous set was rejected. Do NOT reuse these keywords, give a clearly different set: " + ", ".join(avoid)]
+    if fixed_primary.strip():
+        lines += ["", f'The primary keyword is already chosen and FIXED: "{" ".join(fixed_primary.split())}". Keep "primary" exactly that; all secondary keywords must support it.']
     lines += [
         "",
         "Rules:",
@@ -343,11 +346,12 @@ def suggest_keywords(topic: str, related: list[str], b: Business, avoid: list[st
     avoid_set = {clean(x) for x in avoid}
     d: dict = {}
     fresh: list[str] = []
-    primary = clean(topic)
+    fixed = clean(fixed_primary)
+    primary = fixed or clean(topic)
     anchor = _sig(topic)
 
     def collect(data: dict) -> tuple[str, list[str]]:
-        prim = clean(data.get("primary") or "") or clean(topic)
+        prim = fixed or clean(data.get("primary") or "") or clean(topic)
         keep: list[str] = []
         for k in [clean(x) for x in (data.get("secondary") or []) if isinstance(x, (str, int, float))] + [clean(r) for r in related]:
             if (k and k != prim and k not in keep and len(k.split()) <= 7 and _sig(k) & (anchor | _sig(prim))
