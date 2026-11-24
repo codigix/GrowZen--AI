@@ -304,6 +304,16 @@ _COUNTRY_NAMES = {"IN": "India", "US": "United States", "GB": "United Kingdom", 
 _QUESTION = re.compile(r"^(what|how|why|when|where|which|who|can|does|do|is|are|should|will)\b")
 
 
+_NOISE = frozenset({"a", "an", "the", "get", "more", "from", "can", "how", "to", "for", "in", "of", "and", "what", "is", "are", "do", "does", "i", "my", "you", "your", "with", "on", "at", "best", "top",
+                    "near", "me", "should", "will", "why", "when", "where", "which", "who", "make", "use", "using"})
+
+
+def _core_seeds(kw: str) -> list[str]:
+    """The main words of a long question, longest first ("how can a clinic get more patients from google" -> "clinic patients google", then "clinic patients"), for when Google has nothing on the exact text."""
+    words = [w for w in re.findall(r"[a-z0-9]+", kw.lower()) if w not in _NOISE]
+    return [s for s in dict.fromkeys(" ".join(words[:n]) for n in (4, 3, 2)) if len(s.split()) >= 2 and s != kw]
+
+
 def _idea_groups(kw: str, ideas: list[dict]) -> dict[str, list[dict]]:
     """Google's ideas split three ways: similar (carry every word of the keyword), related (the rest), questions (start with what, how, why...)."""
     words = [w for w in kw.split() if len(w) > 2]
@@ -343,6 +353,7 @@ def _by_country(kw: str, home: str | None) -> list[dict]:
 class DifficultyIn(BaseModel):
     keyword: str = Field(min_length=2, max_length=120)
     country: str | None = Field(default=None, min_length=2, max_length=2)
+    place: str | None = Field(default=None, max_length=120)  # a place inside the country: the results are read as Google shows them there
     volume: int | None = None
 
 
@@ -351,8 +362,17 @@ def keyword_difficulty(body: DifficultyIn, b: Business = Depends(get_business)):
     """The SEO difficulty of one keyword from the real top 10 of Google: Domain Authority, Page Authority and referring domains of those sites, the SERP features, with the top 10, People also ask,
     related searches and ads of that results page."""
     from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    country = (body.country or "").upper() or market.serp_country(b)
+    location = geo = None
+    if body.place and body.place.strip():
+        from ..services import keyword_locations  # noqa: PLC0415
+        try:
+            geo, canonical = keyword_locations.resource(b, body.place.strip(), country)
+        except Exception:  # noqa: BLE001 -- without the place the country's results are read
+            geo = canonical = None
+        location = canonical.replace(",", ", ") if canonical else None
     try:
-        return kd.score(" ".join(body.keyword.lower().split()), (body.country or "").upper() or market.serp_country(b), body.volume)
+        return kd.score(" ".join(body.keyword.lower().split()), country, body.volume, location=location, geo=geo)
     except kd.DifficultyError as exc:
         raise HTTPException(502, str(exc)) from exc
 
@@ -382,6 +402,16 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
         raise HTTPException(400, str(exc)) from exc
     except ads.GoogleAdsError as exc:
         raise HTTPException(502, "Google Ads did not answer: " + ("; ".join(getattr(exc, "details", []) or []) or str(exc))[:200]) from exc
+    ideas_from = None
+    if len(ideas) <= 1:  # a very specific keyword has no ideas of its own: the ideas of its main words are offered instead (and said so)
+        for seed in _core_seeds(kw):
+            try:
+                more = [i for i in ads.keyword_ideas([seed], limit=400, include_monthly=True, geo_target=geo) if i["keyword"].lower() != kw]
+            except ads.GoogleAdsError:
+                more = []
+            if len(more) > 1:
+                ideas, ideas_from = ideas + more, seed
+                break
     exact = next((i for i in ideas if i["keyword"].lower() == kw), None)
     try:
         got = ads.historical_metrics([kw], geo_target=geo).get(kw)
@@ -407,7 +437,7 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
                     "cpc_low": (exact or {}).get("low_top_of_page_bid"), "cpc_high": (exact or {}).get("high_top_of_page_bid"),
                     "three_month_change": (exact or {}).get("three_month_change"), "yoy_change": (exact or {}).get("yoy_change"), "monthly": monthly},
         "ideas": [{"keyword": i["keyword"], "volume": i["avg_monthly_searches"], "competition": i["competition"], "index": i["competition_index"], "cpc": i["high_top_of_page_bid"]} for i in ideas if i["keyword"].lower() != kw][:40],
-        "groups": _idea_groups(kw, ideas), "countries": world,
+        "groups": _idea_groups(kw, ideas), "countries": world, "ideas_from": ideas_from,
         "you": {"tracked": bool(saved and saved.tracked), "rank": saved.rank if saved else None, "prev_rank": saved.prev_rank if saved else None,
                 "checked_at": saved.rank_checked_at if saved else None, "target_url": saved.target_url if saved else None},
     }

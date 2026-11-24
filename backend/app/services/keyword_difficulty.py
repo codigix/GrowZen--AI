@@ -43,14 +43,14 @@ def site_of(url: str) -> str:
     return ".".join(parts[-2:]) if len(parts) >= 2 else host
 
 
-def _serper(keyword: str, country: str) -> dict[str, Any] | None:
+def _serper(keyword: str, country: str, location: str | None = None) -> dict[str, Any] | None:
     """The same page read through Serper.dev, which answers in about a second. None when it has no key or no credit left (Apify is used then)."""
     from ..config import get_settings  # noqa: PLC0415
     key = get_settings().serper_api_key.strip()
     if not key:
         return None
     try:
-        r = httpx.post("https://google.serper.dev/search", headers={"X-API-KEY": key, "Content-Type": "application/json"}, json={"q": keyword, "gl": countries.gl(country).lower(), "hl": "en", "num": 10}, timeout=15)
+        r = httpx.post("https://google.serper.dev/search", headers={"X-API-KEY": key, "Content-Type": "application/json"}, json={"q": keyword, "gl": countries.gl(country).lower(), "hl": "en", "num": 10, **({"location": location} if location else {})}, timeout=15)
         if r.status_code != 200:
             return None
         j = r.json()
@@ -94,12 +94,12 @@ FEATURES = {"Ads": "ads", "People also ask": "related_questions", "Local pack": 
             "Discussions": "discussions_and_forums"}
 
 
-def _badger(keyword: str, country: str) -> dict[str, Any] | None:
+def _badger(keyword: str, country: str, location: str | None = None) -> dict[str, Any] | None:
     """The same page through Apify's `scrape.badger/google-search-scraper`: about 7 seconds instead of 60+, and it also reports the local pack, knowledge panel, videos, shopping and forums.
     None when it fails (the slower scraper is used then)."""
     for _i, tok in apify_metrics.keys():
         try:
-            r = httpx.post(BADGER_URL, params={"token": tok, "timeout": 60}, json={"q": keyword, "gl": countries.gl(country).lower(), "hl": "en", "num": 10}, timeout=70)
+            r = httpx.post(BADGER_URL, params={"token": tok, "timeout": 60}, json={"q": keyword, "gl": countries.gl(country).lower(), "hl": "en", "num": 10, **({"location": location} if location else {})}, timeout=70)
             j = r.json()[0] if r.status_code in (200, 201) and isinstance(r.json(), list) and r.json() else None
         except (httpx.HTTPError, ValueError):
             continue
@@ -121,11 +121,11 @@ def _badger(keyword: str, country: str) -> dict[str, Any] | None:
     return None
 
 
-def serp(keyword: str, country: str) -> dict[str, Any]:
+def serp(keyword: str, country: str, location: str | None = None) -> dict[str, Any]:
     """What Google shows for the keyword right now: {organic: [{position, title, url, site, description}], questions, related, ads: [{title, url, description}], ai_overview}. Not kept.
     Serper answers in about a second when it has credit. Otherwise Apify's Google scraper is used: most runs take 60 to 90 seconds but some take several minutes, so after HEDGE_AFTER seconds a second run is started and whichever ends first is used."""
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait  # noqa: PLC0415
-    fast = _serper(keyword, country) or _badger(keyword, country)
+    fast = _serper(keyword, country, location) or _badger(keyword, country, location)  # the results as Google shows them in that place (the slow reader below has no place setting)
     if fast:
         return fast
     tokens = [t for _i, t in apify_metrics.keys()]
@@ -298,19 +298,19 @@ def _log_scale(v: float, top: float) -> float:
     return min(100.0, 100 * math.log(1 + max(v, 0)) / math.log(1 + top))
 
 
-def _volume(keyword: str, country: str) -> int | None:
+def _volume(keyword: str, country: str, geo: str | None = None) -> int | None:
     from . import google_ads_client as ads  # noqa: PLC0415
     try:
-        return (ads.historical_metrics([keyword], geo_target=ads.geo_target_for(country)).get(keyword) or {}).get("volume")
+        return (ads.historical_metrics([keyword], geo_target=geo or ads.geo_target_for(country)).get(keyword) or {}).get("volume")
     except Exception:  # noqa: BLE001 -- no volume only leaves SV out
         return None
 
 
-def score(keyword: str, country: str, volume: int | None = None, use_cache: bool = False) -> dict[str, Any]:
+def score(keyword: str, country: str, volume: int | None = None, use_cache: bool = False, location: str | None = None, geo: str | None = None) -> dict[str, Any]:
     from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
     with ThreadPoolExecutor(max_workers=2) as ex:  # the volume is asked while Google's results page is read
-        vol = ex.submit(_volume, keyword, country) if volume is None else None
-        page = serp(keyword, country)
+        vol = ex.submit(_volume, keyword, country, geo) if volume is None else None
+        page = serp(keyword, country, location)
         volume = vol.result() if vol else volume
     sites = list(dict.fromkeys(o["site"] for o in page["organic"] if o["site"]))
     metrics = {x["domain"]: x.get("scores") for x in apify_metrics.check(sites, force=not use_cache, save=use_cache)}  # afresh and not kept, unless the caller (a list of many keywords) accepts a day-old authority figure
@@ -360,7 +360,7 @@ def score(keyword: str, country: str, volume: int | None = None, use_cache: bool
     kd = round(sum(w * v for w, v in used) / sum(w for w, _ in used)) if used else None
     formula = [{"key": k, "name": n, "weight": round(w * 100), "value": round(v) if v is not None else None, "used": v is not None} for k, n, w, v in parts]
     return {
-        "score": kd, "sc": sc,
+        "score": kd, "sc": sc, "location": location,
         "content": {"cc": round(cc) if cc is not None else None, "relevance": round(relevance) if relevance is not None else None, "quality": round(quality) if quality is not None else None,
                     "freshness": round(freshness) if freshness is not None else None, "pages_read": len(read), "avg_words": round(sum(r["words"] for r in read) / len(read)) if read else None},
         "intent": ki, "formula": formula, "weight_used": round(100 * sum(w for w, _ in used)),

@@ -390,7 +390,7 @@ function KeywordOverview({ b }) {
   const [period, setPeriod] = useState('12'); // time filter: the last 12, 6 or 3 months, or one month
   const placesApi = useApi(`/businesses/${b.id}/keyword-workspace/places`);
   const places = placesApi.data?.places || [];
-  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(null); startKd(kw, (c ?? activeCountry) || '', k === undefined); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
+  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(null); startKd(kw, (c ?? activeCountry) || '', (pl ?? place) || '', k === undefined); setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, place: (pl ?? place) || null, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const started = useRef(false);
@@ -410,14 +410,14 @@ function KeywordOverview({ b }) {
   }, [kd?.state]);
   const kdRun = useRef(0);
   const kdFor = useRef('');
-  // read together with the overview (not after it); changing only the location or period does not read it again
-  const startKd = (kw, c, force) => {
-    const key = `${kw}|${c}`;
+  // read together with the overview (not after it); the results are read as Google shows them in the chosen place, so a new place reads them again, a new period does not
+  const startKd = (kw, c, pl, force) => {
+    const key = `${kw}|${c}|${pl}`;
     if (!force && kdFor.current === key) return;
     kdFor.current = key;
     const mine = ++kdRun.current;
     setKd({ state: 'loading' });
-    api(`/businesses/${b.id}/seo/keyword-difficulty`, { method: 'POST', body: { keyword: kw, country: c || null }, timeout: 330000 })
+    api(`/businesses/${b.id}/seo/keyword-difficulty`, { method: 'POST', body: { keyword: kw, country: c || null, place: pl || null }, timeout: 330000 })
       .then(r => { if (kdRun.current === mine) setKd({ state: 'ready', ...r }); }).catch(e => { if (kdRun.current === mine) setKd({ state: 'error', message: e.message || 'Google results could not be read.' }); });
   };
   const allMonths = m?.monthly || [];
@@ -475,12 +475,13 @@ function KeywordOverview({ b }) {
             <div className="flex flex-wrap gap-1.5" aria-label="Search intent">{intentChips(data.intent).map(c => <Badge key={c.k} tone={c.on ? 'indigo' : 'slate'}>{c.k}</Badge>)}</div>
             {!isTracked(data.keyword) && <Button size="sm" icon={Plus} busy={busy === `t${data.keyword}`} onClick={() => track(data.keyword)}>Track</Button>}
           </div>
+          {data.found && (m.volume ?? 0) === 0 && <p className="text-13 text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Google Keyword Planner reports no searches for this exact keyword in {data.place || data.country || 'your country'}: it is very specific. {data.ideas_from ? <>The ideas below are for its main words, <b>{data.ideas_from}</b>.</> : 'Try a shorter phrase.'}</p>}
           {!data.found && <p className="text-13 text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Google's Keyword Planner has no figures for this exact keyword (it is too rare or too new). The ideas below are what it does know.</p>}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <Card title="Difficulty" subtitle="SEO difficulty, from the real top 10 on Google">
+            <Card title="Difficulty" subtitle={`SEO difficulty, from the real top 10 on Google${kd?.state === 'ready' && kd.location ? ` in ${kd.location.split(',')[0]}` : ''}`}>
               {kd?.state === 'ready' && kd.score != null ? (
                 <>
-                  <Gauge180 value={kd.score} tip={<div className="space-y-0.5"><div className="font-semibold">Difficulty {kd.score} · {difficultyWord(kd.score)}</div>{(kd.formula || []).map(f => <div key={f.key} className={f.used ? '' : 'text-slate-400'}>{f.name} ({f.weight}%): {f.used ? f.value : 'no data'}</div>)}</div>} note={`Average Domain Authority ${kd.components.avg_da ?? '—'}, Page Authority ${kd.components.avg_pa ?? '—'}, ${kd.components.top10_strength ?? 0}% of the top 10 have DA 70+, SERP features ${kd.components.serp_features}%. From ${kd.sites_with_figures} of ${kd.sites} sites.`} />
+                  <Gauge180 value={kd.score} tip={<div className="space-y-0.5"><div className="font-semibold">Difficulty {kd.score} · {difficultyWord(kd.score)}</div>{(kd.formula || []).map(f => <div key={f.key} className={f.used ? '' : 'text-slate-400'}>{f.name} ({f.weight}%): {f.used ? f.value : 'no data'}</div>)}</div>} note={`Average Domain Authority ${kd.components.avg_da ?? '—'}, Page Authority ${kd.components.avg_pa ?? '—'}, ${kd.components.top10_strength ?? 0}% of the top 10 have DA 70+, SERP features ${kd.components.serp_features}%. From ${kd.sites_with_figures} of ${kd.sites} sites.${kd.sites_with_figures < 5 ? ' Google showed few results, so treat this score as a rough guide.' : ''}`} />
                 </>
               ) : (
                 <div className="py-10 text-center text-13 text-slate-500">
