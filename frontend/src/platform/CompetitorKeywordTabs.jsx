@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { ExternalLink, Eye, Loader2, Plus, Search } from 'lucide-react';
 import { Button, Badge, ErrorNote, Modal, useAction, useToast } from './SeoUi';
 import DataTable from './DataTable';
+import MultiSelect from '../components/MultiSelect';
 import { api, useApi } from './seoApi';
 import { BANDS, band } from './CompetitorTables';
 
@@ -56,7 +57,6 @@ export function CompetitorKeywordsTab({ b, focus = '', band: focusBand = '' }) {
   const base = rows.filter(r => (only ? sameSite(r.domain, only) : !chosen.size || chosen.has(r.domain))
     && inRange(r.position, n(rng.pmin), n(rng.pmax)) && inRange(r.volume, n(rng.vmin), n(rng.vmax)) && inRange(r.kd, n(rng.kmin), n(rng.kmax)) && (!urlNeedle || (r.url || '').toLowerCase().includes(urlNeedle)));
   const analyzed = g.competitors.filter(c => c.keywords);
-  const toggleDomain = (d) => setChosen(c => { const x = new Set(c); x.has(d) ? x.delete(d) : x.add(d); return x; });
   const rangeActive = Object.values(rng).some(v => v !== '');
   const picked = base.filter(r => sel.has(r.id));
   const addToMy = async (list) => {
@@ -108,11 +108,12 @@ export function CompetitorKeywordsTab({ b, focus = '', band: focusBand = '' }) {
       <FocusBar name={only} what={focusBand ? `its ${focusBand === 'top3' ? 'top 3' : focusBand === 'top10' ? 'top 10' : focusBand} keywords` : 'its ranking keywords'} onAll={() => setFh('')} />
       <div>
         <h3 className="text-15 font-semibold text-slate-900 mb-1.5">Where they rank</h3>
-        {!only && <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label="Competitors to show">
+        {!only && <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="text-12.5 text-slate-500">Competitors:</span>
-          {g.competitors.map(c => <button key={c.domain} type="button" aria-pressed={chosen.has(c.domain)} onClick={() => toggleDomain(c.domain)} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${chosen.has(c.domain) ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`} title={c.keywords ? `${num(c.keywords)} keywords kept` : 'Not read yet'}>{c.domain}{!c.keywords && <span className="ml-1 opacity-60">·</span>}</button>)}
-          <button type="button" onClick={() => setChosen(new Set(analyzed.map(c => c.domain)))} disabled={!analyzed.length} className="text-12.5 text-indigo-700 hover:underline disabled:opacity-40 cursor-pointer">All analyzed ({analyzed.length})</button>
-          {chosen.size > 0 && <button type="button" onClick={() => setChosen(new Set())} className="text-12.5 text-slate-500 hover:underline cursor-pointer">Show all</button>}
+          <MultiSelect aria-label="Competitors to show" noun="competitors" allLabel={`All competitors (${g.competitors.length})`} searchPlaceholder="Search competitors" value={[...chosen]} onChange={v => setChosen(new Set(v))}
+            options={g.competitors.map(c => ({ value: c.domain, label: c.domain, hint: c.keywords ? `${num(c.keywords)} keywords` : 'not read' }))}
+            actions={[{ label: `All analyzed (${analyzed.length})`, disabled: !analyzed.length, onClick: () => setChosen(new Set(analyzed.map(c => c.domain))) }]} />
+          <span className="text-12 text-slate-400">{chosen.size ? `${chosen.size} of ${g.competitors.length} shown` : 'every competitor read is shown'}</span>
         </div>}
         <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-12.5 text-slate-600">
           {[['Position', 'pmin', 'pmax', 1, 100], ['Searches / mo', 'vmin', 'vmax', 0, null], ['Difficulty', 'kmin', 'kmax', 0, 100]].map(([l, lo, hi, min, max]) => (
