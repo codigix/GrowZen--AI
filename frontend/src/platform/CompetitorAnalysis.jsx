@@ -27,6 +27,22 @@ export function useAnalysis(b, domains) {
   return { ...data, loading, loaded, reload: load };
 }
 
+/** Distance from the chosen place and the match score of every saved competitor, worked out from the saved list (no research run needed). Read again when the place or the list changes. */
+export function useRatings(b, location, ids) {
+  const [data, setData] = useState({ by_id: {} });
+  const [loading, setLoading] = useState(false);
+  const key = `${location || ''}|${ids.slice().sort().join(',')}`;
+  useEffect(() => {
+    if (!ids.length) return undefined;
+    let on = true;
+    setLoading(true);
+    api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/ratings`, { method: 'POST', body: { location: location || null }, timeout: 180000 })
+      .then(r => on && setData(r)).catch(() => {}).finally(() => on && setLoading(false));
+    return () => { on = false; };
+  }, [b.id, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { ...data, loading };
+}
+
 const AUTO_KEY = 'bevisibe.auto-analyze';
 const readAuto = () => { try { return localStorage.getItem(AUTO_KEY) !== 'off'; } catch { return true; } };
 
@@ -121,7 +137,7 @@ export function AnalysisStats({ rows, status, isChosen, metrics }) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------- the table
-export function CompetitorsPanel({ b, auto, rows, scope, setScope, nearCount, allCount, radius, placeName, isChosen, metrics, reload, onChoose, onRemove, onAdd, onDetail, onKeywords, addBusy, addError, onFindMaps, findBusy }) {
+export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearCount, allCount, radius, placeName, isChosen, metrics, reload, onChoose, onRemove, onAdd, onDetail, onKeywords, addBusy, addError, onFindMaps, findBusy }) {
   const [toast, toastNode] = useToast();
   const [q, setQ] = useState('');
   const [statusF, setStatusF] = useState('');
@@ -233,7 +249,7 @@ export function CompetitorsPanel({ b, auto, rows, scope, setScope, nearCount, al
                     <td className="px-3 py-3 text-right tabular-nums">{num(x.keywords)}</td>
                     <td className="px-3 py-3 text-right tabular-nums">{kfmt(x.traffic)}</td>
                     <td className="px-3 py-3 text-right tabular-nums">{kfmt(x.rd)}</td>
-                    <td className="px-3 py-3">{c.maps?.relevance ? <span className="inline-flex items-center gap-1.5" title={c.maps.relevance.label_text}><span className="font-semibold tabular-nums">{c.maps.relevance.score}</span><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span> : <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-3">{!c.maps?.relevance && rating?.loading ? <span className="inline-flex items-center gap-1 text-12 text-slate-400"><Loader2 size={12} className="animate-spin" />rating…</span> : c.maps?.relevance ? <span className="inline-flex items-center gap-1.5" title={c.maps.relevance.label_text}><span className="font-semibold tabular-nums">{c.maps.relevance.score}</span><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span> : <span className="text-slate-300">—</span>}</td>
                     <td className="px-3 py-3 whitespace-nowrap" title={failedBy[c.host] || undefined}><Badge tone={failedBy[c.host] && s !== 'analyzed' ? 'amber' : tone}>{s === 'running' && <Loader2 size={11} className="animate-spin" />}{sl}</Badge></td>
                     <td className="px-3 py-3 pr-4 text-right whitespace-nowrap relative" data-menu>
                       <button type="button" aria-label={`View ${c.name}`} title="View its profile" onClick={() => onDetail(c)} className="p-1.5 text-slate-500 hover:text-indigo-700 cursor-pointer"><Eye size={16} /></button>

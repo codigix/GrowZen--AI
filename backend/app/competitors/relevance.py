@@ -186,9 +186,11 @@ def rate(b: Any, candidates: list[dict[str, Any]], keywords: list[str], authorit
             fit = {**fit, **ai_out[i]}
         same_place = bool(place_words & _words(c.get("address")))
         factors = {
-            "services": fit["services"], "area": area_score(c.get("distance_m"), same_place), "keywords": keyword_score(c.get("appearances") or 0, n_kw),
-            "serp": serp_score(c.get("best"), c.get("avg_position")), "intent": fit["intent"],
+            "services": fit["services"], "area": area_score(c.get("distance_m"), same_place), "intent": fit["intent"],
         }
+        if c.get("appearances") is not None:  # it was part of a research: how many of the searches it showed up for, and how high
+            factors["keywords"] = keyword_score(c.get("appearances") or 0, n_kw)
+            factors["serp"] = serp_score(c.get("best"), c.get("avg_position"))
         dom = (c.get("domain") or "").lower().removeprefix("www.")
         cat, page = category_score(own_cats, c.get("category")), page_score(own_words, c)
         if cat is not None:

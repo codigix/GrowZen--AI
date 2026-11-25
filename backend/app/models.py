@@ -196,6 +196,8 @@ class Competitor(TimestampMixin, Base):
     listing: Mapped[dict | None] = mapped_column(JSON)  # what was read from that listing: score, checks, the services and keywords the AI found (competitors/listing_audit.py)
     listing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     selected: Mapped[bool | None] = mapped_column(Boolean)  # chosen for Competitor Watch and the later steps. NULL = saved before choosing existed (counts as chosen); False = found but not chosen
+    lat: Mapped[float | None] = mapped_column(Float)  # where it is on the map (from its address), so its distance to any place can be worked out
+    lng: Mapped[float | None] = mapped_column(Float)
 
 
 class LighthouseSiteAudit(TimestampMixin, Base):

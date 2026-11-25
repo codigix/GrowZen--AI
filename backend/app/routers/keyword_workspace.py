@@ -314,3 +314,14 @@ def competitor_auto_progress(b: Business = Depends(get_business)):
 def competitor_auto_stop(b: Business = Depends(get_business)):
     from ..services import competitor_analysis as ca  # noqa: PLC0415
     return ca.stop_auto(b.id)
+
+
+class RatingsIn(BaseModel):
+    location: str | None = Field(default=None, max_length=160)
+
+
+@router.post("/competitor-analysis/ratings")
+def competitor_ratings(body: RatingsIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Distance from the chosen place and the match score (nine factors) of every saved competitor, without needing a research run."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.ratings(db, b, (body.location or "").strip() or None)

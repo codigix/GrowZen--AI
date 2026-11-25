@@ -10,7 +10,7 @@ import { api, useApi, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
-import { AnalysisStats, AutoBar, BacklinkTab, CompetitorsPanel, TopPagesTab, TrafficTab, useAnalysis, useAutoAnalysis } from './CompetitorAnalysis';
+import { AnalysisStats, AutoBar, BacklinkTab, CompetitorsPanel, TopPagesTab, TrafficTab, useAnalysis, useAutoAnalysis, useRatings } from './CompetitorAnalysis';
 import PlacePicker from './PlacePicker';
 import Select from '../components/Select';
 import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
@@ -1134,9 +1134,14 @@ function Research({ b }) {
     return [...byHost.values()].sort((x, y) => rank(y) - rank(x));
   }, [result, registered]);
 
-  const tableRows = useMemo(() => rows.map(c => ({ ...c, key: c.host, host: /^maps:/.test(c.host) ? '' : c.host })), [rows]);
+  const rating = useRatings(b, place || state?.defaults?.location || '', registered.map(c => c.id));
+  const tableRows = useMemo(() => rows.map(c => {
+    const r = c.reg ? rating.by_id?.[String(c.reg.id)] : null;
+    const maps = (c.maps || c.reg || r) ? { ...(c.maps || {}), address: r?.address || c.maps?.address || c.reg?.address, distance_m: r?.distance_m ?? c.maps?.distance_m, relevance: r?.relevance || c.maps?.relevance } : undefined;
+    return { ...c, maps, key: c.host, host: /^maps:/.test(c.host) ? '' : c.host };
+  }), [rows, rating.by_id]);
   const isChosenRow = (c) => Boolean(c.reg) && c.reg.selected !== false;
-  const radius = result?.radius_m || Number(radiusKm) * 1000 || 5000;
+  const radius = Number(radiusKm) * 1000 || 5000; // the distance chosen next to the place
   const isNearRow = (c) => isChosenRow(c) || (c.maps ? (c.maps.distance_m == null || c.maps.distance_m <= radius) : false);
   const nearRows = useMemo(() => tableRows.filter(isNearRow), [tableRows, radius]); // eslint-disable-line react-hooks/exhaustive-deps
   const poolRows = scope === 'near' ? nearRows : tableRows;
@@ -1218,7 +1223,7 @@ function Research({ b }) {
               ...(result ? [{ id: 'maps', label: 'Google Maps', count: result.local_competitors.length }, { id: 'research', label: 'Research' }] : [])
             ]} />
             {tab === 'competitors' && <>
-              <CompetitorsPanel b={b} auto={auto} rows={poolRows} scope={scope} setScope={setScope} nearCount={nearRows.length} allCount={tableRows.length} radius={radius} placeName={(result?.location || place || state?.defaults?.location || '').split(',')[0]}
+              <CompetitorsPanel b={b} auto={auto} rating={rating} rows={poolRows} scope={scope} setScope={setScope} nearCount={nearRows.length} allCount={tableRows.length} radius={radius} placeName={(result?.location || place || state?.defaults?.location || '').split(',')[0]}
                 isChosen={isChosenRow} metrics={analysis.metrics} reload={analysis.reload} onChoose={chooseCompetitor} onRemove={removeCompetitor} onAdd={addManual} onDetail={setDetail} onKeywords={() => setTab('keywords')}
                 addBusy={addBusy === 'add'} addError={addError} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'} />
               <ErrorNote>{mapsError}</ErrorNote>

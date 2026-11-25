@@ -169,3 +169,70 @@ def _work(business_id: int, todo: list[str], limit: int) -> None:
             p = _progress.get(business_id)
             if p:
                 p.update({"running": False, "current": None, "queue": [], "finished_at": time.time()})
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------- location and match for every saved competitor
+_rated: dict[tuple, tuple[float, dict[str, Any]]] = {}
+
+
+def _km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    import math  # noqa: PLC0415
+    p1, p2 = math.radians(a[0]), math.radians(b[0])
+    d = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(b[1] - a[1]) / 2) ** 2
+    return 6371.0 * 2 * math.asin(math.sqrt(d))
+
+
+def ratings(db: Session, b: Business, location: str | None) -> dict[str, Any]:
+    """For every saved competitor: its address, how far it is from the place searched, and how well it matches the business (the nine factors). Works from the saved list, so it does not
+    need a research run. A competitor's map point is found once from its address and kept. Cached for six hours."""
+    from ..competitors import intel, intel_router, relevance  # noqa: PLC0415
+    from ..models import Audit, Competitor  # noqa: PLC0415
+    from ..services import keyword_locations, market  # noqa: PLC0415
+    comps = list(db.scalars(select(Competitor).where(Competitor.business_id == b.id).order_by(Competitor.id)))
+    key = (b.id, (location or "").lower(), tuple(c.id for c in comps))
+    hit = _rated.get(key)
+    if hit and time.time() - hit[0] < 6 * 3600:
+        return hit[1]
+    centre = intel_router._centre(b, location) or ((b.lat, b.lng) if getattr(b, "lat", None) is not None and getattr(b, "lng", None) is not None else None)
+    country = market.serp_country(b)
+    geocoded = 0
+    for c in comps:  # find each competitor's point once and keep it
+        if c.lat is None and c.address and geocoded < 30:
+            geocoded += 1
+            try:
+                pin = keyword_locations.place_pin(f"{c.name}, {c.address}"[:160], country) or keyword_locations.place_pin(c.address[:160], country)
+            except Exception:  # noqa: BLE001 -- without a point the distance is simply not shown
+                pin = None
+            if pin:
+                c.lat, c.lng = pin["lat"], pin["lng"]
+    db.commit()
+    run = db.scalar(select(Audit).where(Audit.kind == "intel", Audit.target == f"business:{b.id}", Audit.status == "done").order_by(Audit.id.desc()))
+    result = (run.result or {}) if run else {}
+    keywords = list(result.get("keywords") or [])[:8] or [k for k in intel.default_keywords(b)[:5]]
+    seen = {_host((e.get("domain") or e.get("website") or "")): e for e in (result.get("local_competitors") or [])}
+    cands = []
+    for c in comps:
+        dom = _host(c.website or "")
+        dom = dom.split("/")[0] if dom else ""
+        e = seen.get(dom) or {}
+        cands.append({"_id": c.id, "name": c.name, "category": e.get("category"), "address": c.address, "website": c.website, "domain": dom, "cid": c.place_id,
+                      "distance_m": round(_km(centre, (c.lat, c.lng)) * 1000) if centre and c.lat is not None else None,
+                      "appearances": e.get("appearances"), "best": e.get("best"), "avg_position": e.get("avg_position"), "mine": False})
+    authority: dict[str, int] = {}
+    try:
+        from ..backlinks.models import BiDomainMetric  # noqa: PLC0415
+        authority = {m.domain.lower().removeprefix("www."): m.da for m in db.scalars(select(BiDomainMetric)) if m.da is not None}
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        extra = intel_router._context(db, b, {})
+    except Exception:  # noqa: BLE001
+        extra = {}
+    from ..services import categories as _categories  # noqa: PLC0415
+    own_rental = bool(_categories.rental_seeds(getattr(b, "name", None), getattr(b, "primary_category", None), [s.get("name") for s in (getattr(b, "services", None) or [])], getattr(b, "description", None)))
+    relevance.rate(b, cands, keywords, authority, lambda u: intel.scan_site(u, max_pages=0, timeout=6), own_rental, extra)
+    out: dict[str, Any] = {"centre": {"lat": centre[0], "lng": centre[1]} if centre else None, "keywords": keywords, "by_id": {}}
+    for x in cands:
+        out["by_id"][str(x["_id"])] = {"address": x.get("address"), "distance_m": x.get("distance_m"), "relevance": x.get("relevance")}
+    _rated[key] = (time.time(), out)
+    return out
