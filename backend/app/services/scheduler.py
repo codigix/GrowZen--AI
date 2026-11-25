@@ -48,6 +48,12 @@ def tick() -> dict[str, int]:
             db.rollback()
             log.warning("Google changes check failed: %s", exc)
         try:
+            from . import competitor_analysis
+            competitor_analysis.run_scheduled(db)  # retries and refreshes of competitors, by each project's settings
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            log.warning("Competitor refresh failed: %s", exc)
+        try:
             from . import autopilot
             out["posts"] += autopilot.publish_due(db)  # Google posts and photos a person approved for a time
         except Exception as exc:  # noqa: BLE001

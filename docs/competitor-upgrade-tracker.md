@@ -25,9 +25,9 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 | B | 2/3 | Click Match score opens factor drawer | PARTIAL | profile page has it; add a quick drawer |
 | C | 3 | Discovery inputs (services, seed keywords, radius, country, language) and refresh discovery | PARTIAL | none |
 | D | 3 | Organic search discovery (competitor domains from SERP) | TODO | provider decision |
-| E | 4 | Auto-analyze settings (keywords, backlinks, retry, periodic refresh) | TODO | none |
-| F | 4/16 | Quota handling, caching, retry logic, background queue for bulk | PARTIAL | none |
-| G | 16 | API usage view in the UI | TODO | none |
+| E | 4 | Auto-analyze settings: new competitors, Domain Authority, keywords, retry failed (tries in a row), refresh period, cache hours, daily limit | DONE | per project, saved at once; scheduler runs retries and refresh |
+| F | 4/16 | Caching (no repeat reads within cache hours), daily limit, provider pause after quota/429, one in-run retry on temporary errors, 30-minute wait between retries, scheduler hook | DONE | queue is still one competitor at a time per project, in memory (lost on restart; the scheduler picks up what is due) |
+| G | 16 | Usage view: calls, failures and cost per provider, today's reads vs limit, pauses, latest calls | DONE | in Settings and usage on the Competitors tab. Built, not clicked through in a browser |
 | H | 5 | Competitor keywords: pick several competitors, position/volume/KD ranges, ranking-page filter, ticked + all-filtered Add to My Keywords, detail drawer, Last updated, CPC | DONE | built, not clicked through in a browser yet. SERP features column shows Not available (no source). Drawer has no SERP overview (not kept) |
 | I | 5/13 | Save to My Keywords without duplicates: existing keywords are named in the answer and get the new source | DONE | bulk send and filtered-send already existed; per-row Add button still TODO |
 | J | 12/13 | One keyword keeps every source (Competitor Keywords / Competitor Gap / Keyword Research / Manual Entry) | DONE | stored as a list inside keyword.source, not a separate table |
@@ -42,3 +42,5 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 | S | - | Schema on dev DB (already there, app creates it at start-up; alembic_version is stale, so upgrade was not run); committed | DONE | |
 
 Pre-existing failing tests (not caused by this work): test_gbp_competitors::test_competitors_are_private, test_gbp_reports::test_reports_are_private, two in test_keyword_paragraphs.
+
+Also failing before this work (environment, not code): two tests in test_chatgpt_business (a Cloudflare URL in the environment).

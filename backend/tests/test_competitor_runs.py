@@ -54,3 +54,114 @@ def test_discovery_sources_are_merged_and_kind_is_set(client):
     assert k.status_code == 200 and k.json()["kind"] == "direct"
     assert client.patch(f"/api/v1/competitors/{cid}/kind", json={"kind": "bogus"}).status_code == 400
     assert len(client.get("/api/v1/competitors", params={"business_id": bid}).json()) == 1
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _clean_pause():
+    ca._cooldown.clear()
+    yield
+    ca._cooldown.clear()
+
+
+def _ok(monkeypatch, calls):
+    def moz(doms, force=False):
+        calls.append("moz")
+        return [{"domain": doms[0], "da": 40}]
+    def ranked(db, b, d, limit=100, min_volume=10):
+        calls.append("ranked")
+        return {"rows": [{"keyword": "x"}], "cost": 0.05, "note": None}
+    monkeypatch.setattr(apify_metrics, "check", moz)
+    monkeypatch.setattr(ck, "ranked", ranked)
+
+
+def test_settings_are_saved_clamped_and_unknown_names_ignored(client):
+    base = KW.format(bid=_project(client))
+    assert client.get(f"{base}/config").json()["auto_analyze"] is True
+    r = client.put(f"{base}/config", json={"refresh_days": 9999, "daily_limit": 0, "keywords": False, "bogus": 1, "max_retries": "x"})
+    assert r.status_code == 200
+    got = r.json()
+    assert got["refresh_days"] == 365 and got["daily_limit"] == 1 and got["keywords"] is False and "bogus" not in got and got["max_retries"] == 3
+    assert client.get(f"{base}/config").json()["keywords"] is False  # kept
+
+
+def test_a_recent_full_read_is_not_requested_again_unless_forced(client, monkeypatch):
+    base = KW.format(bid=_project(client))
+    calls = []
+    _ok(monkeypatch, calls)
+    first = client.post(f"{base}/analyze", json={"domain": "rival.example"}).json()
+    assert first["cached"] is False and first["run"]["status"] == "analyzed" and calls == ["moz", "ranked"]
+    again = client.post(f"{base}/analyze", json={"domain": "rival.example"}).json()
+    assert again["cached"] is True and calls == ["moz", "ranked"]  # no new request
+    forced = client.post(f"{base}/analyze", json={"domain": "rival.example", "force": True}).json()
+    assert forced["cached"] is False and calls == ["moz", "ranked", "moz", "ranked"]
+    assert len(client.get(f"{base}/history", params={"domain": "rival.example"}).json()["runs"]) == 2
+
+
+def test_a_quota_answer_pauses_the_provider_instead_of_hammering_it(client, monkeypatch):
+    base = KW.format(bid=_project(client))
+    calls = []
+    def moz(doms, force=False):
+        calls.append("moz")
+        return [{"domain": doms[0], "error": "Apify answered 429"}]
+    monkeypatch.setattr(apify_metrics, "check", moz)
+    monkeypatch.setattr(ck, "ranked", lambda db, b, d, limit=100, min_volume=10: {"rows": [{"keyword": "x"}], "cost": 0.05, "note": None})
+    client.post(f"{base}/analyze", json={"domain": "a.example"})
+    client.post(f"{base}/analyze", json={"domain": "b.example"})
+    assert calls == ["moz"]  # the second competitor did not reach the provider
+    u = client.get(f"{base}/usage").json()
+    assert "apify_moz" in u["paused"]
+    runs = client.get(f"{base}/history", params={"domain": "b.example"}).json()["runs"]
+    assert "paused until" in runs[0]["parts"]["authority"]["error"] and runs[0]["status"] == "partial"  # keywords were still read
+
+
+def test_automatic_reads_follow_the_settings_and_can_skip_a_part(client, monkeypatch):
+    bid = _project(client)
+    base = KW.format(bid=bid)
+    calls = []
+    _ok(monkeypatch, calls)
+    client.put(f"{base}/config", json={"keywords": False})
+    from app.db import SessionLocal
+    from app.models import Business
+    db = SessionLocal()
+    try:
+        r = ca.analyze_one(db, db.get(Business, bid), "rival.example", trigger="auto")
+        assert calls == ["moz"] and r["run"]["status"] == "partial" and r["run"]["missing"] == ["keywords"]
+    finally:
+        db.close()
+
+
+def test_due_reasons_new_retry_refresh_and_daily_limit(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app.db import SessionLocal
+    from app.models import Business, CompetitorAnalysisRun
+    bid = _project(client)
+    db = SessionLocal()
+    try:
+        b = db.get(Business, bid)
+        cfg = ca.get_config(b) | {"refresh_days": 7}
+        now = datetime.now(timezone.utc)
+        assert ca.due_reason(db, b, "new.example", cfg) == "new"
+        def run(domain, status, ago_h):
+            db.add(CompetitorAnalysisRun(business_id=bid, domain=domain, status=status, trigger="auto", started_at=now - timedelta(hours=ago_h), finished_at=now - timedelta(hours=ago_h)))
+            db.commit()
+        run("fresh.example", "analyzed", 1)
+        run("old.example", "analyzed", 24 * 8)
+        run("failed-recent.example", "retry", 0.1)
+        run("failed-old.example", "retry", 2)
+        for _ in range(3):
+            run("giveup.example", "failed", 5)
+        assert ca.due_reason(db, b, "fresh.example", cfg) is None
+        assert ca.due_reason(db, b, "old.example", cfg) == "refresh"
+        assert ca.due_reason(db, b, "failed-recent.example", cfg) is None  # too soon to try again
+        assert ca.due_reason(db, b, "failed-old.example", cfg) == "retry"
+        assert ca.due_reason(db, b, "giveup.example", cfg) is None  # tried max_retries times in a row
+        assert ca.due_reason(db, b, "new.example", cfg | {"auto_analyze": False}) is None
+        # daily limit: nothing starts when the day's automatic reads are used up
+        ca.set_config(db, b, {"daily_limit": 3})
+        out = ca.start_auto(db, b, ["new.example", "failed-old.example"])
+        assert out["running"] is False and out.get("limit_reached") is True
+    finally:
+        db.close()

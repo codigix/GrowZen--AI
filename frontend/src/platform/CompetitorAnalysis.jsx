@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BarChart3, Check, Clock, CheckCircle2, ExternalLink, Eye, Layers, Loader2, MapPin, MoreHorizontal, Plus, Search, Trash2, Users, X } from 'lucide-react';
+import { BarChart3, Check, Clock, Settings, CheckCircle2, ExternalLink, Eye, Layers, Loader2, MapPin, MoreHorizontal, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import { Button, Badge, ErrorNote, Modal, useToast } from './SeoUi';
 import DataTable from './DataTable';
 import { BANDS, DISTANCE, band } from './CompetitorTables';
@@ -61,7 +61,8 @@ export function useAutoAnalysis(b, analysis, pending) {
   const done = useRef(0);
   const key = pending.join('|');
   const base = `/businesses/${b.id}/keyword-workspace/competitor-analysis`;
-  const toggle = (v) => { setOn(v); try { localStorage.setItem(AUTO_KEY, v ? 'on' : 'off'); } catch { /* not remembered */ } };
+  const toggle = (v) => { setOn(v); try { localStorage.setItem(AUTO_KEY, v ? 'on' : 'off'); } catch { /* not remembered */ } api(`${base}/config`, { method: 'PUT', body: { auto_analyze: v } }).catch(() => {}); };
+  useEffect(() => { api(`${base}/config`).then(c => setOn(c.auto_analyze !== false)).catch(() => {}); }, [base]);
 
   // pick up a run that is already going (another visit, another tab)
   useEffect(() => { api(`${base}/progress`).then(setProg).catch(() => {}); }, [base]);
@@ -85,12 +86,13 @@ export function useAutoAnalysis(b, analysis, pending) {
     return () => clearInterval(t);
   }, [prog.running, base]); // eslint-disable-line react-hooks/exhaustive-deps
   const stop = () => api(`${base}/stop`, { method: 'POST' }).then(setProg).catch(() => {});
-  return { on, toggle, prog, stop };
+  return { on, toggle, prog, stop, b, base, setOn };
 }
 
 /** The line above the table: what the automatic analysis is doing. */
 export function AutoBar({ auto }) {
   const { on, toggle, prog, stop } = auto;
+  const [open, setOpen] = useState(false);
   const failed = Object.entries(prog.failed || {});
   return (
     <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -102,14 +104,67 @@ export function AutoBar({ auto }) {
           <Button size="sm" onClick={stop}>Stop</Button>
         </div>
       ) : (
-        <div className="flex-1 min-w-[260px] text-12.5 text-slate-600">{on ? 'Competitors that were not analyzed are analyzed automatically: their Domain Authority and the keywords they rank for. Nothing about their websites is audited.' : 'Automatic analysis is off. Use “Analyze selected” on the rows you want.'}
+        <div className="flex-1 min-w-[260px] text-12.5 text-slate-600">{prog.limit_reached && <span className="block text-amber-700 mb-0.5">Today's automatic limit is used up. The rest waits until tomorrow, or raise the limit in Settings and usage.</span>}{on ? 'Competitors that were not analyzed are analyzed automatically: their Domain Authority and the keywords they rank for. Nothing about their websites is audited.' : 'Automatic analysis is off. Use “Analyze selected” on the rows you want.'}
           {failed.length > 0 && <span className="block text-amber-700 mt-0.5" title={failed.map(([d, m]) => `${d}: ${m}`).join('\n')}>{failed.length} could not be fully read: {failed[0][0]}: {failed[0][1]}{failed.length > 1 ? ` (+${failed.length - 1})` : ''}</span>}</div>
       )}
+      <Button size="sm" icon={Settings} onClick={() => setOpen(true)} title="What is read by itself, retries, refresh, the daily limit, and the calls made so far">Settings and usage</Button>
+      {open && <AutoSettings auto={auto} onClose={() => setOpen(false)} />}
       <label className="inline-flex items-center gap-2 text-12.5 text-slate-700 cursor-pointer select-none" title="Each competitor read costs about $0.04 at Apify">
         <button type="button" role="switch" aria-checked={on} onClick={() => toggle(!on)} className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${on ? 'bg-indigo-600' : 'bg-slate-300'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} /></button>
         Auto-analyze
       </label>
     </div>
+  );
+}
+
+const REFRESH = [[0, 'Never by itself'], [7, 'Every 7 days'], [14, 'Every 14 days'], [30, 'Every 30 days']];
+const PROVIDER = { apify_moz: 'Domain Authority (Moz via Apify)', apify_ranked: 'Ranked keywords (Apify)', google_places: 'Google Places' };
+
+/** What is read by itself and how often, plus the calls made so far for this project. Every change is saved at once. */
+function AutoSettings({ auto, onClose }) {
+  const [cfg, setCfg] = useState(null);
+  const [use, setUse] = useState(null);
+  const [err, setErr] = useState('');
+  const cfgUrl = `${auto.base}/config`;
+  const loadUse = () => api(`${auto.base}/usage`).then(setUse).catch(e => setErr(e.message));
+  useEffect(() => { api(cfgUrl).then(setCfg).catch(e => setErr(e.message)); loadUse(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const save = async (patch) => {
+    setCfg(c => ({ ...c, ...patch }));
+    try { const r = await api(cfgUrl, { method: 'PUT', body: patch }); setCfg(r); if ('auto_analyze' in patch) auto.setOn(r.auto_analyze); loadUse(); } catch (e) { setErr(e.message); }
+  };
+  const Check1 = ({ k, label, hint }) => <label className="flex items-start gap-2.5 py-1.5 cursor-pointer"><input type="checkbox" checked={!!cfg[k]} onChange={e => save({ [k]: e.target.checked })} className="mt-1 accent-indigo-600" /><span><span className="block text-13 text-slate-900">{label}</span>{hint && <span className="block text-12 text-slate-500">{hint}</span>}</span></label>;
+  const Num = ({ k, label, min, max, hint }) => <label className="flex items-center gap-3 py-1.5 text-13 text-slate-900"><span className="flex-1">{label}{hint && <span className="block text-12 text-slate-500">{hint}</span>}</span><input type="number" min={min} max={max} defaultValue={cfg[k]} onBlur={e => e.target.value !== '' && Number(e.target.value) !== cfg[k] && save({ [k]: Number(e.target.value) })} aria-label={label} className="h-8 w-20 rounded-lg ring-1 ring-inset ring-slate-300 px-2 text-13 text-right" /></label>;
+  return (
+    <Modal open onClose={onClose} title="Automatic analysis: settings and usage" width="max-w-2xl" footer={<Button onClick={onClose}>Close</Button>}>
+      {err && <ErrorNote>{err}</ErrorNote>}
+      {!cfg ? <p className="text-13 text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Loading…</p> : (
+        <div className="space-y-4">
+          <div className="divide-y divide-slate-100">
+            <Check1 k="auto_analyze" label="Analyze newly found competitors automatically" hint="Also decides whether the scheduler reads competitors on its own." />
+            <Check1 k="authority" label="Fetch Domain Authority" hint="Moz, read through Apify." />
+            <Check1 k="keywords" label="Fetch the keywords each competitor ranks for" hint="Apify ranked-keywords actor. Paid per keyword." />
+            <Check1 k="retry_failed" label="Try again when a read failed or only half worked" hint="Waits 30 minutes between tries, up to the number below." />
+            <Num k="max_retries" label="Tries in a row" min={1} max={10} />
+            <label className="flex items-center gap-3 py-1.5 text-13 text-slate-900"><span className="flex-1">Read analyzed competitors again</span>
+              <Select value={cfg.refresh_days} onChange={e => save({ refresh_days: Number(e.target.value) })} aria-label="Refresh period" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13">{REFRESH.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></label>
+            <Num k="cache_hours" label="Keep a read as fresh for (hours)" min={0} max={720} hint="A competitor read more recently is not requested again, unless you press Analyze on its row." />
+            <Num k="daily_limit" label="Most automatic reads a day" min={1} max={500} hint="Each read is paid at Apify (about $0.04 plus $0.003 a keyword)." />
+          </div>
+          {use && (
+            <div>
+              <h4 className="text-13 font-semibold text-slate-900">Usage</h4>
+              <p className="text-12.5 text-slate-600 mt-0.5">Today: {use.today.automatic} automatic read{use.today.automatic === 1 ? '' : 's'} of {use.today.daily_limit} allowed · {use.today.all} in all.</p>
+              {Object.keys(use.paused || {}).length > 0 && <p className="mt-1 text-12.5 text-amber-700">Paused after a quota or rate-limit answer: {Object.entries(use.paused).map(([k, v]) => `${PROVIDER[k] || k} until ${v}`).join(', ')}. Reads in that time are skipped, not failed.</p>}
+              {use.providers.length ? (
+                <table className="mt-2 w-full text-12.5"><thead><tr className="text-left text-slate-500"><th className="py-1 font-medium">Provider</th><th className="font-medium text-right">Calls</th><th className="font-medium text-right">Failed</th><th className="font-medium text-right">Cost</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">{use.providers.map(p => <tr key={p.provider}><td className="py-1">{PROVIDER[p.provider] || p.provider}</td><td className="text-right tabular-nums">{p.calls}</td><td className={`text-right tabular-nums ${p.failed ? 'text-rose-600 font-semibold' : ''}`}>{p.failed}</td><td className="text-right tabular-nums">{p.cost ? `$${p.cost.toFixed(2)}` : '—'}</td></tr>)}</tbody></table>
+              ) : <p className="mt-2 text-12.5 text-slate-500">No calls made yet for this project.</p>}
+              {use.latest.length > 0 && <details className="mt-2"><summary className="text-12.5 text-indigo-700 cursor-pointer">Latest {Math.min(10, use.latest.length)} calls</summary>
+                <ul className="mt-1 text-12 text-slate-600 space-y-0.5">{use.latest.slice(0, 10).map((c, i) => <li key={i}><span className={c.ok ? 'text-emerald-700' : 'text-rose-600'}>{c.ok ? 'ok' : 'failed'}</span> · {PROVIDER[c.provider] || c.provider} · {c.target} · {fdate(c.at)}{c.detail ? ` · ${c.detail}` : ''}</li>)}</ul></details>}
+            </div>
+          )}
+        </div>)}
+    </Modal>
   );
 }
 
@@ -176,17 +231,17 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
     setHist({ c, runs: [], loading: true });
     try { const r = await api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/history?domain=${encodeURIComponent(c.host)}`); setHist({ c, runs: r.runs || [], loading: false }); } catch (e) { setHist({ c, runs: [], loading: false, error: e.message }); }
   };
-  const analyze = async (list) => {
+  const analyze = async (list, force = false) => {
     const todo = list.filter(c => c.host && running[c.host] !== 'running');
     if (!todo.length) { toast('Nothing to analyze: these have no website.'); return; }
     let ok = 0;
     for (const c of todo) { // one competitor at a time, each row shows its own state
       setRunning(r => ({ ...r, [c.host]: 'running' }));
       try {
-        const r = await api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/analyze`, { method: 'POST', body: { domain: c.host, limit: 100 }, timeout: 240000 });
+        const r = await api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/analyze`, { method: 'POST', body: { domain: c.host, limit: 100, force }, timeout: 240000 });
         setRunning(x => { const n = { ...x }; delete n[c.host]; return n; });
         await reload();
-        if (r.notes?.length) toast(`${c.name}: ${r.notes[0]}`); else ok += 1;
+        if (r.cached) toast(`${c.name}: ${r.notes[0]}`); else if (r.notes?.length) toast(`${c.name}: ${r.notes[0]}`); else ok += 1;
       } catch (e) { setRunning(x => ({ ...x, [c.host]: 'failed' })); toast(`${c.name}: ${e.message}`); }
     }
     if (ok) toast(`${ok} competitor${ok === 1 ? '' : 's'} analyzed`);
@@ -237,14 +292,14 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
         const done = c.status === 'analyzed' || c.status === 'partial';
         const busy = c.status === 'running' || c.status === 'queued';
         const tip = failedBy[c.host] && !done ? `Last try failed: ${failedBy[c.host]}. Press to analyze again` : done ? `${c.name} is analyzed. Open its traffic comparison` : busy ? 'It is being read now' : c.host ? 'Not analyzed yet. Press to read its Domain Authority and ranked keywords now' : 'It has no website to analyze';
-        return <Go tip={tip} onClick={() => (done ? onGo('traffic', c.host) : busy || !c.host ? null : analyze([c]))}><Badge tone={failedBy[c.host] && c.status !== 'analyzed' ? 'amber' : (STATUS[c.status] || STATUS.pending)[1]}>{c.status === 'running' && <Loader2 size={11} className="animate-spin" />}{(STATUS[c.status] || STATUS.pending)[0]}</Badge></Go>;
+        return <Go tip={tip} onClick={() => (done ? onGo('traffic', c.host) : busy || !c.host ? null : analyze([c], true))}><Badge tone={failedBy[c.host] && c.status !== 'analyzed' ? 'amber' : (STATUS[c.status] || STATUS.pending)[1]}>{c.status === 'running' && <Loader2 size={11} className="animate-spin" />}{(STATUS[c.status] || STATUS.pending)[0]}</Badge></Go>;
       } },
     { id: 'chosen', header: 'Selected', value: c => (c.chosen ? 'Yes' : 'No'), hide: true },
     { id: 'actions', header: 'Actions', right: true, csv: false, className: 'px-2 py-1.5 text-right whitespace-nowrap',
       cell: c => (
         <span className="inline-flex items-center">
           <Icon label={`View ${c.name}`} onClick={() => onDetail(c)}><Eye size={16} /></Icon>
-          <Icon label="Analyze now: Domain Authority and ranked keywords" disabled={!c.host || c.status === 'running'} onClick={() => analyze([c])}><BarChart3 size={16} /></Icon>
+          <Icon label="Analyze now: Domain Authority and ranked keywords" disabled={!c.host || c.status === 'running'} onClick={() => analyze([c], true)}><BarChart3 size={16} /></Icon>
           <Icon label="Its keywords" onClick={() => onGo('keywords', c.host)}><Layers size={16} /></Icon>
           <Icon label="Analysis history: every earlier read of this competitor" disabled={!c.host} onClick={() => openHistory(c)}><Clock size={16} /></Icon>
           <Icon label={c.chosen ? 'Remove from selected competitors' : 'Select as a competitor'} onClick={() => choose([c], !c.chosen)} tone={c.chosen ? 'text-emerald-600 hover:text-emerald-800' : 'text-slate-500 hover:text-emerald-700'}><CheckCircle2 size={16} /></Icon>

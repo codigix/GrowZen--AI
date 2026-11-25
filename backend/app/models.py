@@ -87,6 +87,7 @@ class Business(TimestampMixin, Base):
     connection_id: Mapped[int | None] = mapped_column(ForeignKey("google_connections.id", ondelete="SET NULL"))
     audit_config: Mapped[dict | None] = mapped_column(JSON)  # Site Audit settings: pages to crawl, limit, rules, schedule (routers/businesses.py)
     track_config: Mapped[dict | None] = mapped_column(JSON)  # Position Tracking targeting: engine, device, location, language (routers/seo.py)
+    competitor_config: Mapped[dict | None] = mapped_column(JSON)  # Competitor Analysis automation: what is read by itself, retries, refresh, daily limit (services/competitor_analysis.py)
     gbp_account: Mapped[str | None] = mapped_column(String(120))  # "accounts/123"
     gbp_location: Mapped[str | None] = mapped_column(String(120), unique=True)  # "locations/456"
     place_id: Mapped[str | None] = mapped_column(String(200))

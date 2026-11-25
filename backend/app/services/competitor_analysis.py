@@ -59,9 +59,96 @@ def metrics(db: Session, b: Business, domains: list[str]) -> dict[str, dict[str,
     return out
 
 
+DEFAULTS: dict[str, Any] = {
+    "auto_analyze": True,   # read newly found competitors by itself
+    "authority": True,      # ... their Domain Authority (Moz, through Apify)
+    "keywords": True,       # ... the keywords they rank for
+    "retry_failed": True,   # try again when a read failed or only half worked
+    "max_retries": 3,       # at most this many tries in a row
+    "refresh_days": 0,      # read analyzed competitors again after this many days; 0 = never by itself
+    "cache_hours": 24,      # a competitor read this recently is not read again unless asked with force
+    "daily_limit": 30,      # most automatic reads a day for the project (each is paid at Apify)
+}
+RETRY_WAIT = 30 * 60        # seconds before a failed competitor is tried again
+COOLDOWN = 60 * 60          # seconds a provider is left alone after it said quota / rate limit
+_cooldown: dict[str, float] = {}
+
+
+def get_config(b: Business) -> dict[str, Any]:
+    return {**DEFAULTS, **(getattr(b, "competitor_config", None) or {})}
+
+
+def set_config(db: Session, b: Business, patch: dict[str, Any]) -> dict[str, Any]:
+    """Save the settings that were sent (unknown names are ignored, numbers are kept in range) and return all of them."""
+    cfg = get_config(b)
+    ranges = {"max_retries": (1, 10), "refresh_days": (0, 365), "cache_hours": (0, 720), "daily_limit": (1, 500)}
+    for k, v in (patch or {}).items():
+        if k in ranges:
+            try:
+                cfg[k] = max(ranges[k][0], min(ranges[k][1], int(v)))
+            except (TypeError, ValueError):
+                continue
+        elif k in DEFAULTS and isinstance(DEFAULTS[k], bool):
+            cfg[k] = bool(v)
+    b.competitor_config = cfg
+    db.commit()
+    return cfg
+
+
+def _is_quota(msg: str) -> bool:
+    m = (msg or "").lower()
+    return any(w in m for w in ("429", "402", "quota", "rate limit", "usage limit", "limit exceeded", "credit"))
+
+
 def _retryable(msg: str) -> bool:
     m = (msg or "").lower()
-    return any(w in m for w in ("429", "quota", "limit", "timeout", "timed out", "answered 5", "no apify key", "unavailable", "connect"))
+    return _is_quota(m) or any(w in m for w in ("timeout", "timed out", "answered 5", "no apify key", "unavailable", "connect"))
+
+
+def _paused(provider: str) -> str | None:
+    until = _cooldown.get(provider, 0)
+    if until > time.time():
+        return time.strftime("%H:%M", time.localtime(until))
+    return None
+
+
+def _latest_runs(db: Session, b: Business, domain: str, n: int = 12) -> list[Any]:
+    from ..models import CompetitorAnalysisRun  # noqa: PLC0415
+    return list(db.scalars(select(CompetitorAnalysisRun).where(CompetitorAnalysisRun.business_id == b.id, CompetitorAnalysisRun.domain == domain).order_by(CompetitorAnalysisRun.id.desc()).limit(n)))
+
+
+def runs_today(db: Session, b: Business, trigger: str | None = None) -> int:
+    from datetime import datetime, timezone  # noqa: PLC0415
+    from sqlalchemy import func  # noqa: PLC0415
+    from ..models import CompetitorAnalysisRun  # noqa: PLC0415
+    start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    q = select(func.count()).select_from(CompetitorAnalysisRun).where(CompetitorAnalysisRun.business_id == b.id, CompetitorAnalysisRun.started_at >= start)
+    if trigger:
+        q = q.where(CompetitorAnalysisRun.trigger == trigger)
+    return int(db.scalar(q) or 0)
+
+
+def due_reason(db: Session, b: Business, domain: str, cfg: dict[str, Any], now: float | None = None) -> str | None:
+    """Why this competitor should be read now by itself: new (never read), retry (the last read failed or was half done, enough time has passed and tries are left),
+    refresh (analyzed longer ago than the refresh period). None = leave it alone."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+    now = now or time.time()
+    runs = _latest_runs(db, b, domain)
+    if not runs:
+        return "new" if cfg["auto_analyze"] else None
+    last = runs[0]
+    ended = (last.finished_at or last.started_at)
+    age = now - (ended.replace(tzinfo=timezone.utc) if ended.tzinfo is None else ended).timestamp()
+    if last.status == "analyzing":
+        return "retry" if age > 30 * 60 else None  # a read that never finished (the server stopped)
+    if last.status == "analyzed":
+        return "refresh" if cfg["refresh_days"] and age > cfg["refresh_days"] * 86400 else None
+    tries = 0
+    for r in runs:  # failed or half-done reads in a row, newest first
+        if r.status == "analyzed":
+            break
+        tries += 1
+    return "retry" if cfg["retry_failed"] and tries < cfg["max_retries"] and age > RETRY_WAIT else None
 
 
 def log_usage(db: Session, b: Business | None, provider: str, target: str, ok: bool, detail: str | None = None, cost: float | None = None) -> None:
@@ -75,45 +162,88 @@ def log_usage(db: Session, b: Business | None, provider: str, target: str, ok: b
         db.rollback()
 
 
-def analyze_one(db: Session, b: Business, domain: str, limit: int = 100, trigger: str = "manual") -> dict[str, Any]:
+def _call(db: Session, b: Business, provider: str, domain: str, fn) -> tuple[Any, str | None]:
+    """One provider call with its rules: skipped while the provider is paused for quota, tried once more after a short wait on a temporary error, a quota answer pauses the provider for an hour."""
+    until = _paused(provider)
+    if until:
+        return None, f"paused until {until} because the provider reported a quota or rate limit"
+    err, out = None, None
+    for attempt in (1, 2):
+        try:
+            out, err = fn()
+        except Exception as exc:  # noqa: BLE001 -- a part that fails must not stop the other
+            out, err = None, str(exc)[:200]
+        if not err:
+            return out, None
+        if _is_quota(err):
+            _cooldown[provider] = time.time() + COOLDOWN
+            break
+        if attempt == 1 and _retryable(err):
+            time.sleep(2)
+            continue
+        break
+    return out, str(err)[:200]
+
+
+def analyze_one(db: Session, b: Business, domain: str, limit: int = 100, trigger: str = "manual", force: bool = False) -> dict[str, Any]:
     """Read one competitor: its site strength (Moz, through Apify) and the keywords it ranks for. Each part reports its own reason when it could not be read, and every run is kept
-    (status, provider per part, what was missing, the figures at the end), so a refresh never overwrites the history. analyzed = both parts read; partial = one; retry / failed = none."""
+    (status, provider per part, what was missing, the figures at the end), so a refresh never overwrites the history. analyzed = both parts read; partial = one, or one switched off in the
+    settings; retry / failed = none. A competitor analyzed within the cache period is not read again unless `force`. Automatic reads follow the settings (which parts, daily limit)."""
     from datetime import datetime, timezone  # noqa: PLC0415
     from ..models import CompetitorAnalysisRun  # noqa: PLC0415
     domain = _host(domain)
+    cfg = get_config(b)
+    prev = _latest_runs(db, b, domain, 1)
+    if prev and prev[0].status == "analyzed" and not force and cfg["cache_hours"]:
+        ended = prev[0].finished_at or prev[0].started_at
+        age_h = (time.time() - (ended.replace(tzinfo=timezone.utc) if ended.tzinfo is None else ended).timestamp()) / 3600
+        if age_h < cfg["cache_hours"]:
+            return {"domain": domain, "metrics": metrics(db, b, [domain])[domain], "notes": [f"Read {max(1, round(age_h))} hour(s) ago: kept figures shown, no new request was made."], "cost": 0, "keywords_read": 0,
+                    "cached": True, "run": {"id": prev[0].id, "status": prev[0].status, "missing": []}}
     run = CompetitorAnalysisRun(business_id=b.id, domain=domain, status="analyzing", trigger=trigger, started_at=datetime.now(timezone.utc), parts={})
     db.add(run)
     db.commit()
     notes: list[str] = []
     parts: dict[str, dict[str, Any]] = {}
-    try:
-        got = apify_metrics.check([domain], force=True)
-        err = got[0].get("error") if got else "no answer"
-        if err or not got or got[0].get("da") is None:
-            notes.append(f"Domain Authority: {str(err or 'no figure returned')[:140]}")
-            parts["authority"] = {"provider": "Moz via Apify", "status": "failed", "error": str(err or "no figure returned")[:200]}
-        else:
-            parts["authority"] = {"provider": "Moz via Apify", "status": "ok"}
-    except Exception as exc:  # noqa: BLE001 -- a part that fails must not stop the other
-        notes.append(f"Domain Authority: {str(exc)[:140]}")
-        parts["authority"] = {"provider": "Moz via Apify", "status": "failed", "error": str(exc)[:200]}
-    log_usage(db, b, "apify_moz", domain, parts["authority"]["status"] == "ok", parts["authority"].get("error"))
-    r = ck.ranked(db, b, domain, limit)
-    kw_ok = bool(r.get("rows")) and not r.get("note")
-    if r.get("note"):
-        notes.append(f"Keywords: {r['note']}")
-    parts["keywords"] = {"provider": "Apify ranked-keywords actor", "status": "ok" if kw_ok else "failed", **({"error": str(r["note"])[:200]} if r.get("note") else {})}
-    log_usage(db, b, "apify_ranked", domain, kw_ok, r.get("note"), r.get("cost"))
+    auto = trigger == "auto"
+    if auto and not cfg["authority"]:
+        parts["authority"] = {"provider": "Moz via Apify", "status": "skipped", "error": "turned off in the automatic analysis settings"}
+    else:
+        def moz():
+            got = apify_metrics.check([domain], force=True)
+            err = got[0].get("error") if got else "no answer"
+            if not err and (not got or got[0].get("da") is None):
+                err = "no figure returned"
+            return got, (str(err) if err else None)
+        _got, err = _call(db, b, "apify_moz", domain, moz)
+        parts["authority"] = {"provider": "Moz via Apify", "status": "failed" if err else "ok", **({"error": err} if err else {})}
+        if err:
+            notes.append(f"Domain Authority: {err[:140]}")
+        log_usage(db, b, "apify_moz", domain, not err, err)
+    cost = None
+    rows_read = 0
+    if auto and not cfg["keywords"]:
+        parts["keywords"] = {"provider": "Apify ranked-keywords actor", "status": "skipped", "error": "turned off in the automatic analysis settings"}
+    else:
+        def ranked():
+            r = ck.ranked(db, b, domain, limit)
+            return r, (str(r["note"]) if r.get("note") else "no ranked keywords returned" if not r.get("rows") else None)
+        r, err = _call(db, b, "apify_ranked", domain, ranked)
+        cost, rows_read = (r or {}).get("cost"), len((r or {}).get("rows") or [])
+        parts["keywords"] = {"provider": "Apify ranked-keywords actor", "status": "failed" if err else "ok", **({"error": err} if err else {})}
+        if err:
+            notes.append(f"Keywords: {err[:140]}")
+        log_usage(db, b, "apify_ranked", domain, not err, err, cost)
     ok = [k for k, v in parts.items() if v["status"] == "ok"]
     missing = [k for k, v in parts.items() if v["status"] != "ok"]
-    errors = "; ".join(f"{k}: {v['error']}" for k, v in parts.items() if v.get("error"))
+    errors = "; ".join(f"{k}: {v['error']}" for k, v in parts.items() if v.get("error") and v["status"] == "failed")
     run.status = "analyzed" if not missing else "partial" if ok else "retry" if _retryable(errors) else "failed"
     run.finished_at, run.parts, run.missing, run.error = datetime.now(timezone.utc), parts, missing, errors or None
     m = metrics(db, b, [domain])[domain]
     run.snapshot = {k: m.get(k) for k in ("da", "pa", "spam", "rd", "keywords", "traffic", "top3", "top10", "avg_position")}
     db.commit()
     m = metrics(db, b, [domain])[domain]
-    return {"domain": domain, "metrics": m, "notes": notes, "cost": r.get("cost"), "keywords_read": len(r.get("rows") or []), "run": {"id": run.id, "status": run.status, "missing": missing}}
+    return {"domain": domain, "metrics": m, "notes": notes, "cost": cost, "keywords_read": rows_read, "cached": False, "run": {"id": run.id, "status": run.status, "missing": missing}}
 
 
 def history(db: Session, b: Business, domain: str, limit: int = 20) -> list[dict[str, Any]]:
@@ -131,7 +261,9 @@ def usage(db: Session, b: Business, limit: int = 50) -> dict[str, Any]:
     tot = db.execute(select(ApiUsageLog.provider, func.count(), func.sum(case((ApiUsageLog.ok.is_(False), 1), else_=0)), func.coalesce(func.sum(ApiUsageLog.cost), 0.0))
                      .where(ApiUsageLog.business_id == b.id).group_by(ApiUsageLog.provider)).all()
     last = db.scalars(select(ApiUsageLog).where(ApiUsageLog.business_id == b.id).order_by(ApiUsageLog.id.desc()).limit(limit))
-    return {"providers": [{"provider": p, "calls": c, "failed": int(f or 0), "cost": round(float(x or 0), 4)} for p, c, f, x in tot],
+    cfg = get_config(b)
+    return {"providers": [{"provider": p, "calls": c, "failed": int(f or 0), "cost": round(float(x or 0), 4), "paused_until": _paused(p)} for p, c, f, x in tot],
+            "today": {"automatic": runs_today(db, b, "auto"), "all": runs_today(db, b), "daily_limit": cfg["daily_limit"]}, "paused": {p: _paused(p) for p in ("apify_moz", "apify_ranked") if _paused(p)},
             "latest": [{"provider": r.provider, "target": r.target, "ok": r.ok, "detail": r.detail, "cost": r.cost, "at": r.at.isoformat() if r.at else None} for r in last]}
 
 
@@ -176,10 +308,8 @@ import threading  # noqa: E402
 import time  # noqa: E402
 
 _progress: dict[int, dict[str, Any]] = {}
-_tried: dict[tuple[int, str], float] = {}  # (business, domain) -> when it was last tried: a competitor is not read again automatically within a day
 _lock = threading.Lock()
 MAX_AUTO = 10
-RETRY_AFTER = 24 * 3600
 
 
 def progress(business_id: int) -> dict[str, Any]:
@@ -188,20 +318,40 @@ def progress(business_id: int) -> dict[str, Any]:
 
 
 def start_auto(db: Session, b: Business, domains: list[str], limit: int = 100) -> dict[str, Any]:
-    """Analyze the competitors that were not analyzed yet, one after another in the background, so nobody has to press anything. A competitor read within the last day is skipped,
-    and at most MAX_AUTO are started at once. Progress is kept for the page to follow."""
+    """Analyze, one after another in the background, the competitors that are due by the project's settings: new ones, failed or half-done ones that may be tried again, and analyzed ones older than
+    the refresh period. At most MAX_AUTO at once and no more than the daily limit a day. Progress is kept for the page to follow."""
+    cfg = get_config(b)
     with _lock:
         cur = _progress.get(b.id)
         if cur and cur.get("running"):
             return dict(cur)
         now = time.time()
-        known = metrics(db, b, domains)
-        todo = [d for d in dict.fromkeys(_host(x) for x in domains if x) if known.get(d, {}).get("status") != "analyzed" and now - _tried.get((b.id, d), 0) > RETRY_AFTER][:MAX_AUTO]
+        due = {}
+        for d in dict.fromkeys(_host(x) for x in domains if x):
+            why = due_reason(db, b, d, cfg, now)
+            if why:
+                due[d] = why
+        room = max(0, cfg["daily_limit"] - runs_today(db, b, "auto"))
+        todo = list(due)[:min(MAX_AUTO, room)]
         if not todo:
-            return progress(b.id) | {"running": False}
-        _progress[b.id] = {"running": True, "total": len(todo), "done": 0, "current": todo[0], "queue": list(todo), "failed": {}, "finished_at": None, "stop": False}
+            return progress(b.id) | {"running": False, "limit_reached": bool(due) and room <= 0, "due": len(due)}
+        _progress[b.id] = {"running": True, "total": len(todo), "done": 0, "current": todo[0], "queue": list(todo), "failed": {}, "finished_at": None, "stop": False, "why": {d: due[d] for d in todo}}
     threading.Thread(target=_work, args=(b.id, todo, limit), daemon=True, name=f"competitor-analysis-{b.id}").start()
     return progress(b.id)
+
+
+def run_scheduled(db: Session) -> int:
+    """Called by the scheduler: for each project that switched on refreshing or retrying, start the reads that are due. Returns how many projects started one."""
+    n = 0
+    for b in db.scalars(select(Business)):
+        cfg = get_config(b)
+        if not (cfg["auto_analyze"] or cfg["refresh_days"] or cfg["retry_failed"]):
+            continue
+        from ..models import Competitor  # noqa: PLC0415
+        hosts = [c.domain or _host(c.website) for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)) if (c.website or c.domain) and c.selected is not False]
+        if hosts and start_auto(db, b, hosts).get("running"):
+            n += 1
+    return n
 
 
 def stop_auto(business_id: int) -> dict[str, Any]:
@@ -228,7 +378,6 @@ def _work(business_id: int, todo: list[str], limit: int) -> None:
             except Exception as exc:  # noqa: BLE001 -- one competitor failing must not stop the rest
                 db.rollback()
                 p["failed"][d] = str(exc)[:160]
-            _tried[(business_id, d)] = time.time()
             p["done"] += 1
             p["queue"] = [x for x in p["queue"] if x != d]
     finally:

@@ -275,6 +275,7 @@ class AnalysisIn(BaseModel):
 class AnalyzeIn(BaseModel):
     domain: str = Field(min_length=3, max_length=120)
     limit: int = Field(default=100, ge=10, le=300)
+    force: bool = False  # read again even when it was read within the cache period
 
 
 @router.post("/competitor-analysis")
@@ -288,7 +289,7 @@ def competitor_analysis(body: AnalysisIn, b: Business = Depends(get_business), d
 def competitor_analyze(body: AnalyzeIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Read one competitor now: its Domain Authority and the keywords it ranks for (paid per keyword at Apify). No website audit."""
     from ..services import competitor_analysis as ca  # noqa: PLC0415
-    return ca.analyze_one(db, b, body.domain, body.limit)
+    return ca.analyze_one(db, b, body.domain, body.limit, force=body.force)
 
 
 @router.get("/competitor-analysis/history")
@@ -303,6 +304,19 @@ def competitor_usage(b: Business = Depends(get_business), db: Session = Depends(
     """Provider calls made for this project: totals per provider and the latest calls."""
     from ..services import competitor_analysis as ca  # noqa: PLC0415
     return ca.usage(db, b)
+
+
+@router.get("/competitor-analysis/config")
+def competitor_config(b: Business = Depends(get_business)):
+    """What is read by itself (new competitors, Domain Authority, keywords), retries, refresh period, cache and the daily limit."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.get_config(b)
+
+
+@router.put("/competitor-analysis/config")
+def competitor_config_put(body: dict, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.set_config(db, b, body)
 
 
 @router.post("/competitor-analysis/pages")
