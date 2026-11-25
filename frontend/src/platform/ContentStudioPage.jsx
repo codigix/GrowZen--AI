@@ -748,7 +748,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     meta_description: selectedArticle?.meta_description || ''
   });
   const urlBase = useApi(selectedArticle ? `/businesses/${b.id}/articles/url-base` : null).data; // where this site's posts live, learned from the ones already published
-  const mark = false; // the preview shows the article as it is: no keyword colouring
+  const mark = false; // keywords are bold only, no background color highlights
   const [previewView, setPreviewView] = useState('post'); // standard | post (the site's blog details page, the default) | list (the site's blog page)
   const [device, setDevice] = useState('desktop');
   const [site, setSite] = useState({ busy: false, html: '', error: '', notes: [], ref: '' });
@@ -1512,7 +1512,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                             [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5 [&_ul]:my-3
                             [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1.5 [&_ol]:my-3
                             [&_li]:text-slate-700 [&_li]:leading-relaxed
-                            [&_strong]:font-semibold [&_strong]:text-slate-900
+                            [&_strong]:font-bold [&_strong]:text-slate-950
                             [&_em]:italic [&_em]:text-slate-700
                             [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-500 [&_blockquote]:bg-slate-50/60 [&_blockquote]:p-3.5 [&_blockquote]:my-3.5 [&_blockquote]:italic [&_blockquote]:text-slate-700 [&_blockquote]:rounded-r-lg
                             [&_a]:text-indigo-600 [&_a]:underline [&_a]:hover:text-indigo-800
@@ -1570,7 +1570,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   {liveBody ? (
                     <div>
                       <div
-                        className="text-[13px] text-slate-800 leading-relaxed space-y-3 [&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-slate-100 [&_h2]:pb-1 [&_h3]:text-[13.5px] [&_h3]:font-semibold [&_h3]:text-slate-800 [&_h3]:mt-3 [&_p]:mt-2 [&_p]:text-slate-700 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mt-1 [&_figure]:hidden [&_img]:hidden"
+                        className="text-[13px] text-slate-800 leading-relaxed space-y-3 [&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-slate-100 [&_h2]:pb-1 [&_h3]:text-[13.5px] [&_h3]:font-semibold [&_h3]:text-slate-800 [&_h3]:mt-3 [&_p]:mt-2 [&_p]:text-slate-700 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mt-1 [&_strong]:font-bold [&_strong]:text-slate-950 [&_figure]:hidden [&_img]:hidden"
                         dangerouslySetInnerHTML={{ __html: liveBody }}
                       />
                       {isGenerating && (

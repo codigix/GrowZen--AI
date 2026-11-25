@@ -29,35 +29,43 @@ Workflow: /brainstorm-content-ideas, /research-search-intent, /research-entities
 [Enter blog-title, search-intent, primary & secondary keywords]
 
 Blog Structure:
-1. Title - H1: Write a clear, SEO-optimized title here
-2. Introduction: Paragraph, minimum 500 characters and in chunks.
-   Begin with a compelling opening that highlights the blog's topic, relevance, and how it helps the reader. Use location-based keywords where necessary.
+1. Title - H1: Write a clear, SEO-optimized title here (under 60 characters, containing exact primary keyword)
+2. Introduction: Detailed introduction divided into chunks (approximately 400 to 500 words in chunks).
+   Begin with a compelling opening that highlights the blog's topic, relevance, and how it helps the reader. Use location-based keywords where necessary. Mention [company_clientname] in bold.
 3. H2
-   Paragraph (minimum 500 characters): continue elaborating on the topic. Provide useful insights or background information.
-   Paragraph (minimum 500 characters): expand on the subtopic, add examples, tips, or data to support the information.
+   Section content: approximately 500 words divided into readable paragraph chunks (minimum 2 to 3 chunks):
+   - Chunk 1: continue elaborating on the topic. Provide useful insights or background information.
+   - Chunk 2: expand on the subtopic, add examples, tips, or data to support the information.
 4. H2
-   Paragraph (minimum 500 characters): introduce the next angle or perspective of the topic. Include relevant keywords.
-5. H2 - WH Question (What, Why, How, When, Where, etc.)
-   WH Answer (maximum 750 characters): give a precise and informative answer. Stay concise while ensuring clarity.
-6. Don't Wait to Seek Help: encourage readers to take timely action for their concern. Use empathetic language.
-7. Why Choose [company_clientname]?: list 5 strong reasons with short explanations (credibility, experience, testimonials, etc.).
-8. FAQs: the 5 most relevant FAQs based on the blog topic and SEO keywords (Q1/A1 ... Q5/A5).
-9. CTA - Call To Action: strong and clear CTA with contact info, appointment link, or location.
+   Section content: approximately 500 words divided into readable paragraph chunks:
+   - Introduce the next angle or perspective of the topic, comparing options and practical advice. Include relevant keywords.
+5. H2 - Why Questions - Write WH Question (What, Why, How, When, Where, etc.)
+   WH Answer - (Maximum 750 characters): give a precise and informative answer. Stay concise while ensuring clarity.
+6. Don't Wait to Seek Help
+   Encourage readers to take timely action for their concern. Use empathetic language. Include scannable next steps.
+7. Why Choose [company_clientname]?
+   List 5 strong reasons with short explanations – credibility, experience, testimonials, etc.
+8. FAQs
+   Q1: [Insert Question]
+   A1: [Insert Answer]
+   Q2: [Insert Question]
+   A2: [Insert Answer]
+   (Add most relevant 5 FAQs based on the blog topic and SEO keywords. Mention [company_clientname] in bold in most of the FAQs.)
+9. CTA – Call To Action
+   Strong and clear CTA with contact info, appointment link, or location. Use verified business details from the profile; where phone or booking link is not yet set in profile, provide draft placeholders (e.g. 📞 Call Now: +91-XXXXXXXXXX or [Add Phone Number], 📅 Book Appointment: [Appointment Link]) for the user to add.
 
-Also prepare a meta-title, meta-description, and slug-url.
-Use the most relevant secondary keywords and synonyms.
+Now prepare a blog for the given information, and also prepare a meta-title, meta-description, and slug-url.
+Use most relevant secondary keywords and synonyms.
 Prepare AEO, GEO, SEO, and SXO optimized content.
 Add bullet points or numbering if required.
-The primary keyword must be in subheadings as well, but not forcefully, naturally.
-The primary keyword is the focus keyword: mention it in the meta title, meta description and URL. All content must be in chunks.
-Meta title: under 60 characters. Meta description: under 160 characters. Keyword density: about 2%.
-Add [company_clientname] and highlight it in the intro part and in most of the FAQs, naturally, not forcefully.
-Highlight the primary keyword; add the most relevant and highly searched queries as secondary keywords and highlight them as well.
-
-Notes that keep the template honest:
-- Contact details, appointment links and the location come ONLY from the business profile; never write placeholders such as +91-XXXXXXXXXX.
-- "Why Choose" reasons and testimonials only from what the business profile states; never invent them.
-- If [company_clientname] does not provide what the article is about, keep it informational and do not present it as the provider."""
+Primary keyword must be in subheadings as well but not forcefully yet naturally.
+Note: The Primary keyword is a focused keyword, so mention this keyword in the meta title, description, and URL.
+All content must be in readable chunks (approximately 500 words per section divided into chunks).
+Meta title - under 60 characters.
+Meta description - under 160 characters.
+Keyword Density: about 2%.
+Bold the primary keyword and secondary keywords when they appear (bold text only, no background color highlighting).
+Add [company_clientname] in bold, in intro part and in most of the FAQs, naturally, not forcefully."""
 
 
 def template_block(brand: str) -> list[str]:
@@ -77,19 +85,19 @@ def content_rules(primary: str, brand: str, location: str = "") -> list[str]:
         "- Write naturally, like an experienced human writer: no robotic, repetitive or generic AI wording.",
         "- Simple, professional, conversational English; informative and trustworthy; explain technical ideas simply, with practical examples.",
         "- No unnecessary introductions or repetitive conclusions; logical connections between sections; never repeat a point already made.",
-        "- CHUNKS: every body paragraph is a full chunk of at least 500 characters (4 to 6 sentences) that develops one complete point and can be read and quoted on its own.",
+        "- CHUNKS: content is presented in readable paragraph chunks (each main section approximately 500 words divided into chunks of 3 to 5 sentences each) that develop complete points and can be read and quoted easily.",
         "- Add bullets or numbered steps only where they are genuinely needed; explanations are written as paragraphs.",
         f'- Primary keyword in the H2 subheadings naturally (not forced in every one).',
         "- Do NOT invent statistics, testimonials, certifications, company achievements, contact details, prices or research findings. No exaggerated marketing claims, no fear-based selling.",
         "- Adapt headings and wording to the topic and its industry; never reuse wording from an unrelated industry.",
         "- A caveat such as \"confirm with the store/provider\" or \"check current prices\" appears at most ONCE in the whole article; do not end sections with it.",
         "",
-        "KEYWORDS:",
-        f'- Primary keyword "{primary}": naturally in the SEO title, the meta description, the introduction, relevant H2/H3 headings and throughout the article.',
-        "- Secondary keywords: use them, plus long-tail phrases, related search questions, synonyms and related entities, where they fit the section; never in unrelated content.",
-        f'- Keyword density about 2% for "{primary}" (roughly once or twice per 100 words), spread evenly. Elsewhere use synonyms, pronouns and related'
-        " terms instead of repeating it. Never force a keyword into a heading or a sentence where it reads badly.",
-        "- Add the most relevant, highly searched related queries as secondary keywords, and synonyms, where they fit.",
+        "KEYWORDS & BOLDING (NO BACKGROUND HIGHLIGHTS):",
+        f'- Primary keyword "{primary}": naturally in bold (<strong>), in the SEO title, the meta description, the introduction, relevant H2/H3 headings and throughout the article.',
+        "- Secondary keywords: use them in bold (<strong>) where they fit naturally; never in unrelated content.",
+        f'- Keyword density about 2% for "{primary}" (roughly once or twice per 100 words), spread evenly. Elsewhere use synonyms and pronouns.',
+        "- Bold only: primary and secondary keywords and the business name are bold text only; do NOT use background color highlights.",
+        f'- Business name "{brand}": mention in bold (<strong>) naturally in the introduction, in most of the FAQ answers, in Why Choose and the CTA.',
         "",
         "SEO / AEO / GEO / SXO:",
         "- SEO: match the search intent; clear heading hierarchy; natural keyword spread.",

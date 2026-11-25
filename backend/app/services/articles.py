@@ -1216,14 +1216,14 @@ SKIP_HEADING = re.compile(r"(?:introduction|frequently asked questions|faqs?|con
 
 # Paragraph plan per article length for write(): (paragraphs, words per paragraph). Totals with the fixed parts
 # (WH answer, action paragraph, Why Choose, FAQs, CTA) land near the lengths shown on the page (~850 / ~2,000 / ~2,500 words).
-WRITE_PLAN = {  # the blog template: every paragraph is a full chunk of at least 500 characters (about 90-130 words); five FAQs
-    # short = the template's minimum (H2 #1: two paragraphs, H2 #2: one); standard and long add paragraphs per section
-    # "sections": how many main H2 sections (each: full paragraphs, then an H3 + list sub-section where a list helps), as in the approved format
-    "short": {"intro": (2, 95), "sub1": (2, 105), "sub2": (2, 105), "extra": (2, 105), "sections": 3, "faqs": 5},
-    "standard": {"intro": (3, 100), "sub1": (2, 110), "sub2": (2, 110), "extra": (2, 110), "sections": 5, "faqs": 5},
-    "long": {"intro": (3, 110), "sub1": (3, 120), "sub2": (3, 120), "extra": (3, 120), "sections": 7, "faqs": 5},
+WRITE_PLAN = {  # the gold-standard blog template: approximately 500 words per section in readable chunks; five FAQs
+    # each main section: 3 paragraph chunks of ~150-170 words (~500 words total per section)
+    "short": {"intro": (3, 130), "sub1": (3, 150), "sub2": (3, 150), "extra": (2, 130), "sections": 2, "faqs": 5},
+    "standard": {"intro": (3, 140), "sub1": (3, 160), "sub2": (3, 160), "extra": (3, 150), "sections": 4, "faqs": 5},
+    "long": {"intro": (3, 150), "sub1": (3, 170), "sub2": (3, 170), "extra": (3, 160), "sections": 5, "faqs": 5},
 }
 PARA_MIN_CHARS = 500  # the template's minimum paragraph size
+SECTION_CHUNK_WORDS = 70  # main sections: small paragraph chunks of about 70 words (3-4 sentences), ~500 words per section in total
 _SENTENCE_END = re.compile(r"[.!?…][\"'”’)\]]*$")
 
 
@@ -1867,10 +1867,10 @@ def required_sections(body: str) -> dict:
     special = re.compile(r"^(what|why|how|when|where)\b.*\?$|why choose|what to look for|frequently asked|faq|contact|ready to get started|" + ACTION_RE.pattern, re.I)
     main = [(h, c) for h, c in secs if not special.search(h)]
     return {
-        "h1": bool(re.search(r"<h1\b", vis, re.I)), "intro": len(intro) >= 500, "main_sections": len(main) >= 2 and all(len(_text(c)) >= 80 for _, c in main),
+        "h1": bool(re.search(r"<h1\b", vis, re.I)), "intro": len(intro) >= 500, "main_sections": len(main) >= 2 and all(len(_text(c)) >= 350 for _, c in main),
         "wh": has(r"^(what|why|how|when|where)\b.*\?$", 60), "dont_wait": has(ACTION_RE.pattern), "why": has(r"why choose|what to look for"),
         "faqs": answered >= 5, "cta": has(r"contact|ready to get started", 40), "faq_count": answered,
-        "empty_main": [h for h, c in main if len(_text(c)) < 80],
+        "empty_main": [h for h, c in main if len(_text(c)) < 350],
     }
 
 
@@ -1907,7 +1907,7 @@ def complete_article(body: str, *, title: str, primary: str, brand: str, loc_str
             pieces[i + 1] = _complete_faqs(content, title=title, primary=primary, brand=brand, n=faq_n, fixed=fixed, facts=facts,
                                            avoid=[_text(pieces[j]) for j in range(1, len(pieces), 2)])  # FAQs never repeat a section heading (e.g. the WH question)
             continue
-        if re.search(r"contact|ready to get started|why choose|what to look for", h, re.I) or len(_text(content)) >= 80:
+        if re.search(r"contact|ready to get started|why choose|what to look for", h, re.I) or len(_text(content)) >= 350:
             continue  # the CTA and "Why choose" are built by their own profile-only code (free text there could invent claims); a section with text is left
         if re.match(r"^(what|why|how|when|where)\b", h, re.I) and h.endswith("?"):
             txt = " ".join(write(f'Answer the question "{h}" in ONE direct paragraph of 3 to 4 sentences (at most 700 characters). The first sentence is the answer.', 1, 110).split())
@@ -1920,7 +1920,7 @@ def complete_article(body: str, *, title: str, primary: str, brand: str, loc_str
             txt = write(f'Write the section "{h}": empathetic, informative guidance on why timely action matters for this topic. No fear-based selling.', 2, 60)
             new = _paras(txt) if txt else ""
         else:
-            txt = write(f'Write the body of the section "{h}": practical explanations and an example; do not repeat other sections of the article.', 3, 60)
+            txt = write(f'Write the body of the section "{h}": full informative paragraphs of at least 500 characters with practical explanations and an example; do not repeat other sections of the article.', 2, 100)
             new = _paras(txt) if txt else ""
         if new:
             pieces[i + 1] = "\n" + new + "\n" + content
@@ -2250,8 +2250,9 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 "",
                 "FORMAT OF THIS ANSWER:",
                 "- Plain-text paragraphs only, separated by ONE blank line: no headings, labels, markdown, bullets or numbering (lists are added separately).",
-                f"- Each paragraph is one full chunk of 4 to 6 complete sentences (at least {PARA_MIN_CHARS} characters, about 90 to 130 words) that develops ONE"
+                f"- Write detailed content in readable chunks (each paragraph chunk about 140 to 170 words, totaling approximately 500 words per section) that develops ONE"
                 " point with explanation, an example or a tip; each paragraph makes a NEW point and starts with different words.",
+                "- Bold primary and secondary keywords naturally (bold text only, no background highlights).",
                 "- Stay inside this part's scope; the other outline sections cover their own points.",
             ]
             outline_line = "Article outline: Introduction → " + " → ".join(outline)
@@ -2331,7 +2332,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 prompt = "\n".join([
                     f'You are an expert content writer for {brand}{loc_str}. Write the section "{h2}" of the blog article "{title}" (primary keyword: "{primary}").',
                     outline_line,
-                    f"Write exactly {n_p} paragraphs of about {w_p} words each (every paragraph at least {PARA_MIN_CHARS} characters). {task}",
+                    f"Write exactly {n_p} short paragraphs of about {w_p} words (3 to 4 sentences) each. {task}",
                     *([f"- Cover these points across the paragraphs: " + "; ".join([*(sec.get("h3") or [])[:4], *(sec.get("points") or [])[:6]])]
                       if sec and (sec.get("h3") or sec.get("points")) else []),
                     *covered_note(),
@@ -2347,23 +2348,36 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             for si, sec in enumerate(sections):
                 h2x = sec["h2"]
                 n, w = wp["sub1" if si == 0 else "sub2" if si == 1 else "extra"]
+                # same section length (~500 words), written as SMALL chunks: ~70 words (3-4 sentences) each, so 6-7 chunks per section
+                n, w = max(n, round(n * w / SECTION_CHUNK_WORDS)), SECTION_CHUNK_WORDS
                 step(f"Writing section {si + 1} of {len(sections)}: {h2x} ({n} paragraphs)...")
                 parts.append(f"<h2>{html.escape(h2x, quote=False)}</h2>")
                 progress(f"Writing: {h2x}", "\n\n".join(parts), title=title, meta=meta)
                 own = [k for k in fit_kws if sec.get("kw") and k.lower() == sec["kw"].lower()]
                 kws_x = own or pool[si:si + 1]
-                task = ("Explain this part of the topic with useful background, practical tips and a concrete example." if si == 0 else
-                        "The earlier sections already covered their own points; cover only this section's angle, with practical guidance and an example.")
+                # about 500 words per section, written as SEPARATE natural paragraph chunks (never one long block of text)
+                chunk_rule = (f" Split the section into {n} separate SHORT paragraph chunks of about {w} words (3 to 4 sentences) each, with ONE blank line between them;"
+                              " never one long block of text."
+                              f' Each chunk naturally uses the primary keyword "{primary}" or one of the secondary keywords given below'
+                              " (spread them across the chunks, about once each; never forced).")
+                if si == 0:
+                    task = ("Chunk 1: continue elaborating on the topic, providing useful insights and background information. "
+                            "Next chunks: expand on the subtopic, adding examples and practical tips (one new point per chunk)." + chunk_rule)
+                else:
+                    task = ("Introduce the next angle or perspective of the topic; each chunk covers one new point of this angle with practical guidance or an example. "
+                            "The earlier sections already covered their own points; cover only this section's angle." + chunk_rule)
                 if bridge and re.search(r"\brent|\balternative|instead of", h2x, re.I):
                     task += f" This is the section where {brand}'s real service ({offers}) may be mentioned once, honestly, as an option to explore."
                 x_txt = section_text(h2x, sec, n, w, task, kws_x)
                 if x_txt:
-                    parts.append(_paras(x_txt))
-                    sub = _section_list(f'Blog article "{title}" (primary keyword "{primary}"){loc_str}. Do not mention any business name in the list.',
-                                        h2x, x_txt, [*h3_used, *[s["h2"] for s in sections]])
-                    if sub:
-                        parts.append(sub)
-                        h3_used.append(_text(re.search(r"<h3>(.*?)</h3>", sub).group(1)))
+                    # a section that still came back as one long block is cut into natural chunks of whole sentences (~w words each)
+                    parts.append(chunk_paragraphs(_paras(x_txt), max_words=w)[0])
+                    if sec.get("h3") or sec.get("points") or length in ("standard", "long"):
+                        sub = _section_list(f'Blog article "{title}" (primary keyword "{primary}"){loc_str}. Do not mention any business name in the list.',
+                                            h2x, x_txt, [*h3_used, *[s["h2"] for s in sections]])
+                        if sub:
+                            parts.append(sub)
+                            h3_used.append(_text(re.search(r"<h3>(.*?)</h3>", sub).group(1)))
                 progress(f"{h2x} complete.", "\n\n".join(parts), title=title, meta=meta)
 
             # 5. WH Question (answer up to 750 characters, ending on a full sentence): on a point the main sections have NOT explained
@@ -2431,7 +2445,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             elif bridge:
                 why_title = f"Why Choose {brand}?"  # about what the business really offers, not the article's topic
             else:
-                why_title = f"What to Look For When Choosing {kw_head}"  # neutral: fits a product ("Market Brand Clothing") and a service ("Manufacturing ERP")
+                why_title = f"Why Choose {brand}?" if brand else f"What to Look For When Choosing {kw_head}"  # template 7: Why Choose [company_clientname]?
             step(f"Writing: {why_title}...")
             h2_why = f"<h2>{html.escape(why_title, quote=False)}</h2>"
             parts.append(h2_why)
@@ -2501,13 +2515,19 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             contact_items = []
             if b.phone:
                 contact_items.append(f"<li><strong>📞 {'Call now' if business_fits or bridge else 'Phone'}:</strong> <a href=\"tel:{html.escape(b.phone, quote=True)}\">{html.escape(b.phone, quote=False)}</a></li>")
-            if b.website:
-                contact_items.append(f"<li><strong>🌐 Website:</strong> <a href=\"{html.escape(b.website, quote=True)}\" target=\"_blank\" rel=\"noopener\">{html.escape(b.website, quote=False)}</a></li>")
+            else:
+                contact_items.append('<li><strong>📞 Call Now:</strong> +91-XXXXXXXXXX <em>(Add phone number)</em></li>')
             if getattr(b, "booking_url", None):
                 contact_items.append(f"<li><strong>📅 Book an appointment:</strong> <a href=\"{html.escape(b.booking_url, quote=True)}\" target=\"_blank\" rel=\"noopener\">Book online</a></li>")
+            else:
+                contact_items.append('<li><strong>📅 Book Appointment:</strong> <em>[Appointment Link]</em></li>')
+            if b.website:
+                contact_items.append(f"<li><strong>🌐 Website:</strong> <a href=\"{html.escape(b.website, quote=True)}\" target=\"_blank\" rel=\"noopener\">{html.escape(b.website, quote=False)}</a></li>")
             loc_disp = _place(b)  # address, area and city once each, in display case
             if loc_disp:
                 contact_items.append(f"<li><strong>📍 Location:</strong> {html.escape(loc_disp, quote=False)}</li>")
+            elif town:
+                contact_items.append(f"<li><strong>📍 Location:</strong> {html.escape(town, quote=False)}</li>")
             # real contact details from the profile only (a missing one is left out: placeholders like +91-XXXXXXXXXX must never reach a live blog)
             cta_html = "\n".join([
                 h2_cta,
@@ -2557,7 +2577,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             correct_content(draft, primary, secondary, topic)
             step("Breaking the article into short chunks...")
             # the template's paragraphs are full chunks of 500+ characters: only a paragraph that runs far past that (about 190+ words) is split
-            draft["body"], n_split = chunk_paragraphs(draft["body"], max_words=150)
+            draft["body"], n_split = chunk_paragraphs(draft["body"], max_words=175)
             # (No automatic "a keyword in every paragraph" rewrite any more: the content brief says never force a keyword in.
             # The editor still has the "Add a keyword to those paragraphs" button for paragraphs they choose to change.)
             # (No paragraphs are rewritten just to reach a brand-mention count any more; the prompts ask for natural mentions and the
@@ -2627,6 +2647,7 @@ def run_article(db: Session, article_id: int) -> None:
         wf_runner._record(wf, "write_article", "done", {"words": len(_text(d["body"]).split()), "used_brief": bool(wf.get("brief")),
                                                          "basis": "Written from the confirmed content brief" if wf.get("brief") else "Planned by the writer (no research brief)"})
         a.title, a.meta_description = d["title"][:255] or a.keyword.title(), d["meta"]
+        a.slug = a.slug or slugify(a.keyword)
         a.suggested_keywords, a.body, a.headings, a.warnings = d["tags"], d["body"], headings_of(d["body"]), d["warnings"]
         a.model, a.generated_at = getattr(get_settings(), "claude_model", "claude-haiku-5-5"), utcnow()
         a.stats = {**(a.stats or {}), **d["stats"], "workflow": wf}  # keep the workflow (research, brief, stage results) with the article
